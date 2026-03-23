@@ -23,6 +23,9 @@ import { usePointerClickGuard } from "@/lib/usePointerClickGuard";
 const DEFAULT_TOPBAR_HEIGHT = 30;
 const DEFAULT_CONTROL_BAND_HEIGHT = 30;
 const DEFAULT_BOTTOM_BAND_HEIGHT = 58;
+const MOBILE_CARD_TAP_MAX_DISTANCE_SQ = 16 * 16;
+const MOBILE_OPPONENT_CARD_HIT_SLOP_X = 14;
+const MOBILE_OPPONENT_CARD_HIT_SLOP_Y = 18;
 
 function stripActionPrefix(label = "") {
   const activateMatch = String(label).match(/^Activate\s+.+?:\s*(.+)$/i);
@@ -293,8 +296,13 @@ export default function MobileBattleScene({
   const [bottomBandHeight, setBottomBandHeight] = useState(DEFAULT_BOTTOM_BAND_HEIGHT);
   const [handExpanded, setHandExpanded] = useState(false);
   const [actionPopoverState, setActionPopoverState] = useState(null);
+  const opponentTapRef = useRef(null);
   const stackPressTimerRef = useRef(null);
   const stackLongPressTriggeredRef = useRef(false);
+  const inspectSuppressUntilRef = useRef(0);
+  const inspectOverlayRef = useRef(null);
+  const inspectLockReleaseTimerRef = useRef(null);
+  const [inspectInteractionLockActive, setInspectInteractionLockActive] = useState(false);
   const opponentRows = useMemo(
     () => partitionBattlefieldCards(activeOpponent?.battlefield || []),
     [activeOpponent?.battlefield]
@@ -303,6 +311,16 @@ export default function MobileBattleScene({
     () => partitionBattlefieldCards(me?.battlefield || []),
     [me?.battlefield]
   );
+  const opponentCardById = useMemo(() => {
+    const index = new Map();
+    for (const card of activeOpponent?.battlefield || []) {
+      if (card?.id != null) {
+        index.set(String(card.id), card);
+      }
+    }
+    return index;
+  }, [activeOpponent?.battlefield]);
+  const opponentBandSelector = ".mobile-battle-opponent-band";
   const layout = useMobileBattleLayout({
     topBandHeight: topbarHeight,
     controlBandHeight,
@@ -325,6 +343,7 @@ export default function MobileBattleScene({
   }, [state?.decision]);
   const canPickTargets = state?.decision?.kind === "targets"
     && state?.decision?.player === state?.perspective;
+  const inspectorOpen = selectedObjectId != null;
 
   useEffect(() => {
     if (selectedObjectId != null) {
@@ -376,9 +395,99 @@ export default function MobileBattleScene({
     }
   }, []);
 
+  useEffect(() => () => {
+    opponentTapRef.current = null;
+  }, []);
+
+  useEffect(() => () => {
+    if (inspectLockReleaseTimerRef.current != null && typeof window !== "undefined") {
+      window.clearTimeout(inspectLockReleaseTimerRef.current);
+      inspectLockReleaseTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    if (inspectLockReleaseTimerRef.current != null) {
+      window.clearTimeout(inspectLockReleaseTimerRef.current);
+      inspectLockReleaseTimerRef.current = null;
+    }
+
+    if (inspectorOpen) {
+      setInspectInteractionLockActive(true);
+      return undefined;
+    }
+
+    if (!inspectInteractionLockActive) return undefined;
+
+    const remainingLockMs = Math.max(0, inspectSuppressUntilRef.current - performance.now());
+    if (remainingLockMs <= 0) {
+      setInspectInteractionLockActive(false);
+      return undefined;
+    }
+
+    inspectLockReleaseTimerRef.current = window.setTimeout(() => {
+      inspectLockReleaseTimerRef.current = null;
+      setInspectInteractionLockActive(false);
+    }, remainingLockMs);
+
+    return () => {
+      if (inspectLockReleaseTimerRef.current != null) {
+        window.clearTimeout(inspectLockReleaseTimerRef.current);
+        inspectLockReleaseTimerRef.current = null;
+      }
+    };
+  }, [inspectInteractionLockActive, inspectorOpen]);
+
+  useEffect(() => {
+    if (!inspectInteractionLockActive || typeof document === "undefined") return undefined;
+
+    const blockBackgroundInteraction = (event) => {
+      const overlayNode = inspectOverlayRef.current;
+      const eventTarget = event.target;
+      if (overlayNode && eventTarget instanceof Node && overlayNode.contains(eventTarget)) {
+        return;
+      }
+      if (typeof event.stopImmediatePropagation === "function") {
+        event.stopImmediatePropagation();
+      }
+      event.stopPropagation();
+      if (event.cancelable) {
+        event.preventDefault();
+      }
+    };
+
+    const listenerOptions = { capture: true, passive: false };
+    const eventTypes = ["pointerdown", "pointerup", "click", "touchstart", "touchend", "mousedown", "mouseup"];
+
+    for (const eventType of eventTypes) {
+      document.addEventListener(eventType, blockBackgroundInteraction, listenerOptions);
+    }
+
+    return () => {
+      for (const eventType of eventTypes) {
+        document.removeEventListener(eventType, blockBackgroundInteraction, listenerOptions);
+      }
+    };
+  }, [inspectInteractionLockActive]);
+
   const closeInspector = useCallback(() => {
+    inspectSuppressUntilRef.current = performance.now() + 320;
+    setInspectInteractionLockActive(true);
     onInspect?.(null);
   }, [onInspect]);
+
+  const requestInspectObject = useCallback((objectId, meta = undefined) => {
+    if (performance.now() < inspectSuppressUntilRef.current) return false;
+    if (objectId == null) {
+      onInspect?.(null);
+      return true;
+    }
+    if (selectedObjectId != null) return false;
+    onInspect?.(objectId, meta);
+    return true;
+  }, [onInspect, selectedObjectId]);
 
   const closeActionPopover = useCallback(() => {
     setActionPopoverState(null);
@@ -393,6 +502,7 @@ export default function MobileBattleScene({
   }, []);
 
   const openObjectActions = useCallback(({ card, actions = [], anchorRect = null }) => {
+    if (selectedObjectId != null) return false;
     if (!Array.isArray(actions) || actions.length === 0 || state?.decision?.kind !== "priority") {
       return false;
     }
@@ -420,12 +530,12 @@ export default function MobileBattleScene({
     });
     onInspect?.(null);
     return true;
-  }, [decisionIdentity, onInspect, state?.decision?.kind]);
+  }, [decisionIdentity, onInspect, selectedObjectId, state?.decision?.kind]);
 
   const inspectHeldObject = useCallback(({ card }) => {
     closeActionPopover();
-    onInspect?.(card?.id ?? null);
-  }, [closeActionPopover, onInspect]);
+    requestInspectObject(card?.id ?? null);
+  }, [closeActionPopover, requestInspectObject]);
 
   const handlePopoverAction = useCallback((action) => {
     if (!action) return;
@@ -437,6 +547,7 @@ export default function MobileBattleScene({
   }, [closeActionPopover, dispatch]);
 
   const handleCardInspect = useCallback((event, card) => {
+    if (selectedObjectId != null) return;
     if (canPickTargets && !shouldHandleClick(event)) return;
     const candidateObjectIds = collectCardObjectIds(card);
     if (canPickTargets) {
@@ -450,8 +561,172 @@ export default function MobileBattleScene({
         return;
       }
     }
-    onInspect?.(card.id, { candidateObjectIds });
-  }, [canPickTargets, legalTargetObjectIds, onInspect, shouldHandleClick]);
+    requestInspectObject(card.id, { candidateObjectIds });
+  }, [canPickTargets, legalTargetObjectIds, requestInspectObject, selectedObjectId, shouldHandleClick]);
+
+  const opponentCardFromPointerEvent = useCallback((event) => {
+    const withinExpandedRect = (rect, x, y) => (
+      x >= (rect.left - MOBILE_OPPONENT_CARD_HIT_SLOP_X)
+      && x <= (rect.right + MOBILE_OPPONENT_CARD_HIT_SLOP_X)
+      && y >= (rect.top - MOBILE_OPPONENT_CARD_HIT_SLOP_Y)
+      && y <= (rect.bottom + MOBILE_OPPONENT_CARD_HIT_SLOP_Y)
+    );
+
+    const cardFromGeometry = () => {
+      if (typeof document === "undefined") return null;
+      if (!Number.isFinite(event?.clientX) || !Number.isFinite(event?.clientY)) return null;
+      const cardNodes = document.querySelectorAll(
+        `${opponentBandSelector} .game-card[data-object-id]`
+      );
+      let bestMatch = null;
+      let bestDistanceSq = Infinity;
+
+      for (const node of cardNodes) {
+        const rect = node.getBoundingClientRect();
+        if (!withinExpandedRect(rect, event.clientX, event.clientY)) {
+          continue;
+        }
+        const objectId = node.dataset?.objectId;
+        if (!objectId) continue;
+        const card = opponentCardById.get(String(objectId));
+        if (!card) continue;
+        const centerX = rect.left + (rect.width / 2);
+        const centerY = rect.top + (rect.height / 2);
+        const distanceSq = ((event.clientX - centerX) ** 2) + ((event.clientY - centerY) ** 2);
+        if (distanceSq < bestDistanceSq) {
+          bestMatch = card;
+          bestDistanceSq = distanceSq;
+        }
+      }
+
+      return bestMatch;
+    };
+
+    const tryElementFromPointOffsets = () => {
+      if (typeof document === "undefined") return null;
+      if (!Number.isFinite(event?.clientX) || !Number.isFinite(event?.clientY)) return null;
+
+      const sampleOffsets = [
+        [0, 0],
+        [-12, 0],
+        [12, 0],
+        [0, -12],
+        [0, 12],
+        [-10, -10],
+        [10, -10],
+        [-10, 10],
+        [10, 10],
+      ];
+
+      for (const [offsetX, offsetY] of sampleOffsets) {
+        const hitElement = document.elementFromPoint(event.clientX + offsetX, event.clientY + offsetY);
+        const hitCardEl = hitElement?.closest?.(".game-card[data-object-id]");
+        if (!hitCardEl) continue;
+        const id = hitCardEl.dataset?.objectId;
+        if (!id) continue;
+        const card = opponentCardById.get(String(id));
+        if (card) return card;
+      }
+
+      return null;
+    };
+
+    // Prefer the event composed path when available (handles Shadow DOM/layered elements)
+    const tryFromPath = () => {
+      const path = typeof event.composedPath === "function" ? event.composedPath() : (event.path || null);
+      if (Array.isArray(path)) {
+        for (const node of path) {
+          if (!(node instanceof Element)) continue;
+          const cardEl = node.closest?.(".game-card[data-object-id]") || (node.matches?.(".game-card[data-object-id]") ? node : null);
+          if (cardEl) return cardEl;
+        }
+      }
+      return null;
+    };
+
+    const pathCardEl = tryFromPath();
+    if (pathCardEl) {
+      const id = pathCardEl.dataset?.objectId;
+      if (id) {
+        const card = opponentCardById.get(String(id));
+        if (card) return card;
+      }
+    }
+
+    const targetCardEl = event.target instanceof Element
+      ? event.target.closest(".game-card[data-object-id]")
+      : null;
+    if (targetCardEl) {
+      const id = targetCardEl.dataset?.objectId;
+      if (id) {
+        const card = opponentCardById.get(String(id));
+        if (card) return card;
+      }
+    }
+
+    const sampledCard = tryElementFromPointOffsets();
+    if (sampledCard) return sampledCard;
+
+    return cardFromGeometry();
+  }, [opponentBandSelector, opponentCardById]);
+
+  const handleOpponentBandPointerDownCapture = useCallback((event) => {
+    if (canPickTargets) {
+      opponentTapRef.current = null;
+      return;
+    }
+    if (event.button != null && event.button !== 0) {
+      opponentTapRef.current = null;
+      return;
+    }
+
+    const card = opponentCardFromPointerEvent(event);
+    if (!card) {
+      opponentTapRef.current = null;
+      return;
+    }
+
+    opponentTapRef.current = {
+      pointerId: event.pointerId,
+      cardId: String(card.id),
+      startX: event.clientX,
+      startY: event.clientY,
+    };
+  }, [canPickTargets, opponentCardFromPointerEvent]);
+
+  const handleOpponentBandPointerUpCapture = useCallback((event) => {
+    const pendingTap = opponentTapRef.current;
+    opponentTapRef.current = null;
+
+    if (canPickTargets || !pendingTap) return;
+    if (pendingTap.pointerId != null && event.pointerId !== pendingTap.pointerId) return;
+
+    const deltaX = event.clientX - pendingTap.startX;
+    const deltaY = event.clientY - pendingTap.startY;
+    if (((deltaX * deltaX) + (deltaY * deltaY)) > MOBILE_CARD_TAP_MAX_DISTANCE_SQ) return;
+
+    const resolvedCard = (
+      pendingTap.cardId != null
+        ? opponentCardById.get(String(pendingTap.cardId)) || null
+        : null
+    ) || opponentCardFromPointerEvent(event);
+
+    if (!resolvedCard) {
+      return;
+    }
+
+    handleCardInspect(event, resolvedCard);
+  }, [canPickTargets, handleCardInspect, opponentCardFromPointerEvent, opponentCardById]);
+
+  const handleOpponentBandPointerCancelCapture = useCallback(() => {
+    opponentTapRef.current = null;
+  }, []);
+
+  const handleOpponentBandPointerLeave = useCallback((event) => {
+    if (event.pointerType === "mouse") {
+      opponentTapRef.current = null;
+    }
+  }, []);
 
   const handleCardTargetPointerDown = useCallback((event, card) => {
     if (!canPickTargets || !registerPointerDown(event)) return;
@@ -499,17 +774,48 @@ export default function MobileBattleScene({
       return;
     }
 
+    // Prefer composed path when available (handles Shadow DOM/layered elements)
+    const tryFromPath = () => {
+      const path = typeof event.composedPath === "function" ? event.composedPath() : (event.path || null);
+      if (Array.isArray(path)) {
+        for (const node of path) {
+          if (!(node instanceof Element)) continue;
+          const cardEl = node.closest?.(".game-card[data-object-id]") || (node.matches?.(".game-card[data-object-id]") ? node : null);
+          if (cardEl) return cardEl;
+        }
+      }
+      return null;
+    };
+
+    const pathCardEl = tryFromPath();
+    if (pathCardEl) return;
+
+    const targetCardEl = event.target instanceof Element
+      ? event.target.closest(".game-card[data-object-id]")
+      : null;
+    if (targetCardEl) {
+      return;
+    }
+
+    const hitElement = document.elementFromPoint(event.clientX, event.clientY);
+    const hitCardEl = hitElement?.closest(".game-card[data-object-id]");
+    if (hitCardEl) {
+      return;
+    }
+
     event.preventDefault();
     event.stopPropagation();
-    const hitElement = document.elementFromPoint(event.clientX, event.clientY);
-    const cardEl = hitElement?.closest(".game-card[data-object-id]");
-    const objectId = cardEl ? Number(cardEl.dataset.objectId) : null;
     const validTargets = currentCombatMode.validTargetPlayersByAttacker?.[Number(currentCombatMode.selectedAttacker)];
     const directId = Number(activeOpponent.id);
     const fallbackId = Number(activeOpponent.index);
     const playerId = validTargets?.has?.(directId) ? directId : fallbackId;
-    currentCombatMode.onTargetAreaClick(playerId, objectId);
+    currentCombatMode.onTargetAreaClick(playerId, null);
   }, [activeOpponent, combatModeRef]);
+  const opponentBandCaptureEnabled = Boolean(
+    activeOpponent
+    && combatModeRef.current?.onTargetAreaClick
+    && combatModeRef.current?.selectedAttacker != null
+  );
 
   const opponentTargetable = activeOpponent != null && (
     legalTargetPlayerIds.has(Number(activeOpponent.id))
@@ -542,12 +848,12 @@ export default function MobileBattleScene({
     stackPressTimerRef.current = window.setTimeout(() => {
       stackLongPressTriggeredRef.current = true;
       stackPressTimerRef.current = null;
-      onInspect?.(topStackObject.inspect_object_id ?? topStackObject.id, {
+      requestInspectObject(topStackObject.inspect_object_id ?? topStackObject.id, {
         source: "stack",
         stackEntry: topStackObject,
       });
     }, 380);
-  }, [clearPendingStackLongPress, onInspect, topStackObject]);
+  }, [clearPendingStackLongPress, requestInspectObject, topStackObject]);
   const handleStackPointerUp = useCallback(() => {
     clearPendingStackLongPress();
   }, [clearPendingStackLongPress]);
@@ -555,6 +861,11 @@ export default function MobileBattleScene({
     clearPendingStackLongPress();
   }, [clearPendingStackLongPress]);
   const handleInlineStackClick = useCallback((event) => {
+    if (inspectorOpen) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     if (stackLongPressTriggeredRef.current) {
       stackLongPressTriggeredRef.current = false;
       event.preventDefault();
@@ -564,13 +875,14 @@ export default function MobileBattleScene({
     if (!topStackObject) return;
     setActionPopoverState(null);
     onFocusStackObject?.(topStackObject);
-  }, [onFocusStackObject, topStackObject]);
+  }, [inspectorOpen, onFocusStackObject, topStackObject]);
 
   return (
     <main
       className="mobile-battle-scene table-gradient table-shell relative h-full min-h-0 overflow-hidden"
       data-drop-zone
       data-mobile-battle-scene
+      data-inspector-open={inspectInteractionLockActive ? "true" : "false"}
       style={{
         "--mobile-battle-card-width": `${layout.cardWidth}px`,
         "--mobile-battle-card-height": `${layout.cardHeight}px`,
@@ -592,7 +904,11 @@ export default function MobileBattleScene({
 
         <section
           className="mobile-battle-opponent-band"
-          onClickCapture={handleOpponentBandClickCapture}
+          onPointerDownCapture={handleOpponentBandPointerDownCapture}
+          onPointerUpCapture={handleOpponentBandPointerUpCapture}
+          onPointerCancelCapture={handleOpponentBandPointerCancelCapture}
+          onPointerLeave={handleOpponentBandPointerLeave}
+          onClickCapture={opponentBandCaptureEnabled ? handleOpponentBandClickCapture : undefined}
         >
           <BattlefieldLane
             cards={opponentRows.backCards}
@@ -770,7 +1086,7 @@ export default function MobileBattleScene({
                 <HandZone
                   player={me}
                   selectedObjectId={selectedObjectId}
-                  onInspect={onInspect}
+                  onInspect={requestInspectObject}
                   isExpanded
                   layout="mobile-fan"
                 />
@@ -813,7 +1129,7 @@ export default function MobileBattleScene({
               <HandZone
                 player={me}
                 selectedObjectId={selectedObjectId}
-                onInspect={onInspect}
+                onInspect={requestInspectObject}
                 isExpanded
                 layout="mobile-fan"
               />
@@ -822,42 +1138,55 @@ export default function MobileBattleScene({
         </>
       ) : null}
 
-      {selectedObjectId != null ? (
-        <>
-          <button
-            type="button"
+      {inspectorOpen ? (
+        <div
+          ref={inspectOverlayRef}
+          className="mobile-battle-inspect-overlay"
+          data-mobile-hand-drop-target="inspector"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Card inspector"
+          onPointerDown={(event) => {
+            event.stopPropagation();
+          }}
+          onPointerUp={(event) => {
+            event.stopPropagation();
+          }}
+          onClick={(event) => {
+            event.stopPropagation();
+            if (event.target === event.currentTarget) {
+              closeInspector();
+            }
+          }}
+        >
+          <div
             className="mobile-battle-inspect-overlay-backdrop"
-            aria-label="Close inspector"
-            onClick={closeInspector}
+            aria-hidden="true"
           />
           <div
-            className="mobile-battle-inspect-overlay"
-            data-mobile-hand-drop-target="inspector"
+            className="mobile-battle-inspect-overlay-shell"
+            onClick={(event) => event.stopPropagation()}
+            onPointerDown={(event) => {
+              event.stopPropagation();
+            }}
+            onPointerUp={(event) => {
+              event.stopPropagation();
+            }}
           >
-            <div className="mobile-battle-inspect-overlay-shell">
-              <button
-                type="button"
-                className="mobile-battle-inspect-overlay-close"
-                aria-label="Close inspector"
-                onClick={closeInspector}
-              >
-                <X className="h-4 w-4" aria-hidden="true" />
-              </button>
-              <div className="mobile-battle-inspect-overlay-stage">
-                <HoverArtOverlay
-                  objectId={selectedObjectId}
-                  displayMode="inspector"
-                  availableInspectorWidth={360}
-                  availableInspectorHeight={228}
-                  hideOwnershipMetadata
-                  minInspectorTextScale={0.54}
-                  minInspectorTitleScale={0.46}
-                  onInspectorAccentChange={null}
-                />
-              </div>
+            <div className="mobile-battle-inspect-overlay-stage">
+              <HoverArtOverlay
+                objectId={selectedObjectId}
+                displayMode="inspector"
+                availableInspectorWidth={360}
+                availableInspectorHeight={228}
+                hideOwnershipMetadata
+                minInspectorTextScale={0.54}
+                minInspectorTitleScale={0.46}
+                onInspectorAccentChange={null}
+              />
             </div>
           </div>
-        </>
+        </div>
       ) : null}
 
       {activeOpponent && canPickTargets ? (

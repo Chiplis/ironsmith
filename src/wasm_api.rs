@@ -329,6 +329,9 @@ fn grouped_battlefield_for_player(
             });
             let mana_cost =
                 representative.and_then(|obj| obj.mana_cost.as_ref().map(|mc| mc.to_oracle()));
+            let oracle_text = representative
+                .map(|obj| obj.oracle_text.clone())
+                .unwrap_or_default();
             let counters = representative
                 .map(counter_snapshots_for_object)
                 .unwrap_or_default();
@@ -343,6 +346,7 @@ fn grouped_battlefield_for_player(
                 member_stable_ids,
                 lane: key.lane.as_str().to_string(),
                 mana_cost,
+                oracle_text,
                 power_toughness,
                 counter_signature: key.counter_signature.clone(),
                 counters,
@@ -438,6 +442,7 @@ struct PermanentSnapshot {
     member_stable_ids: Vec<u64>,
     lane: String,
     mana_cost: Option<String>,
+    oracle_text: String,
     power_toughness: Option<String>,
     counter_signature: String,
     counters: Vec<CounterSnapshot>,

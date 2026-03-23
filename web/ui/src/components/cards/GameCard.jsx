@@ -237,6 +237,425 @@ function BattlefieldCounterBadge({ badge }) {
   );
 }
 
+const BATTLEFIELD_SYMBOL_DEFS = [
+  { id: "flying", title: "Flying", aliases: ["flying"] },
+  { id: "vigilance", title: "Vigilance", aliases: ["vigilance"] },
+  { id: "trample", title: "Trample", aliases: ["trample"] },
+  { id: "haste", title: "Haste", aliases: ["haste"] },
+  { id: "deathtouch", title: "Deathtouch", aliases: ["deathtouch"] },
+  { id: "lifelink", title: "Lifelink", aliases: ["lifelink"] },
+  { id: "menace", title: "Menace", aliases: ["menace"] },
+  { id: "ward", title: "Ward", aliases: ["ward"] },
+  { id: "hexproof", title: "Hexproof", aliases: ["hexproof"] },
+  { id: "indestructible", title: "Indestructible", aliases: ["indestructible"] },
+  { id: "reach", title: "Reach", aliases: ["reach"] },
+  { id: "flash", title: "Flash", aliases: ["flash"] },
+  { id: "first-strike", title: "First Strike", aliases: ["first strike", "firststrike"] },
+  { id: "double-strike", title: "Double Strike", aliases: ["double strike", "doublestrike"] },
+];
+const BATTLEFIELD_MANA_TEXT_FIELDS = ["oracle_text", "effect_text", "ability_text"];
+const BATTLEFIELD_MANA_SYMBOL_RE = /\{([^}]+)\}/g;
+const BATTLEFIELD_MANA_CODE_RE = /^(?:W|U|B|R|G|C|S|E|T|Q|X|Y|Z|\d+)$/i;
+
+function manaBadgeSymbolId(code) {
+  return `mana:${code}`;
+}
+
+function battlefieldManaCodeFromSymbolId(symbolId) {
+  if (typeof symbolId !== "string" || !symbolId.startsWith("mana:")) return null;
+  const code = symbolId.slice(5).trim().toUpperCase();
+  return code || null;
+}
+
+function normalizeBattlefieldManaCode(rawCode) {
+  const code = String(rawCode || "").trim().toUpperCase();
+  if (!code || !BATTLEFIELD_MANA_CODE_RE.test(code)) return null;
+  return code;
+}
+
+function buildBattlefieldManaSymbolDisplay(code) {
+  const normalizedCode = normalizeBattlefieldManaCode(code);
+  if (!normalizedCode) return null;
+  return {
+    kind: "symbol",
+    symbol: manaBadgeSymbolId(normalizedCode),
+    title: `Adds ${normalizedCode}`,
+  };
+}
+
+function buildBattlefieldSplitManaSymbolDisplay(leftCode, rightCode) {
+  const left = normalizeBattlefieldManaCode(leftCode);
+  const right = normalizeBattlefieldManaCode(rightCode);
+  if (!left || !right || left === right) {
+    return buildBattlefieldManaSymbolDisplay(left || right);
+  }
+  return {
+    kind: "split-symbol",
+    left: manaBadgeSymbolId(left),
+    right: manaBadgeSymbolId(right),
+    title: `Adds ${left} or ${right}`,
+  };
+}
+
+function escapeRegExp(text) {
+  return String(text).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function normalizeBattlefieldBadgeDisplay(value) {
+  if (!value) return null;
+  if (value.kind === "number") return value.label ? value : null;
+  if (value.kind === "symbol") return value.symbol ? value : null;
+  if (value.kind === "split-symbol") {
+    return value.left && value.right ? value : null;
+  }
+  return null;
+}
+
+function uniqueBattlefieldDisplays(displays) {
+  const unique = [];
+  const seen = new Set();
+  for (const display of displays) {
+    const normalized = normalizeBattlefieldBadgeDisplay(display);
+    if (!normalized) continue;
+    const key = normalized.kind === "number"
+      ? `number:${normalized.label}`
+      : normalized.kind === "symbol"
+        ? `symbol:${normalized.symbol}`
+        : `split:${normalized.left}|${normalized.right}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(normalized);
+  }
+  return unique;
+}
+
+function deriveBattlefieldManaDisplays(card) {
+  const displays = [];
+  const sections = BATTLEFIELD_MANA_TEXT_FIELDS
+    .map((field) => card?.[field])
+    .filter(Boolean)
+    .map((value) => String(value));
+
+  for (const section of sections) {
+    const clauses = section
+      .split(/\r?\n|(?<=[.;])\s+/)
+      .map((clause) => clause.trim())
+      .filter(Boolean);
+    for (const clause of clauses) {
+      if (!/\badd\b/i.test(clause)) continue;
+      const codes = Array.from(clause.matchAll(BATTLEFIELD_MANA_SYMBOL_RE))
+        .map((match) => normalizeBattlefieldManaCode(match[1]))
+        .filter(Boolean);
+      if (codes.length === 0) continue;
+
+      const uniqueCodes = [...new Set(codes)];
+      if (uniqueCodes.length >= 2 && /(?:\bor\b|\/)/i.test(clause)) {
+        displays.push(buildBattlefieldSplitManaSymbolDisplay(uniqueCodes[0], uniqueCodes[1]));
+      } else {
+        for (const code of uniqueCodes.slice(0, 2)) {
+          displays.push(buildBattlefieldManaSymbolDisplay(code));
+        }
+      }
+    }
+  }
+
+  if (displays.length === 0 && Array.isArray(card?.produced_mana)) {
+    const producedMana = card.produced_mana
+      .map(normalizeBattlefieldManaCode)
+      .filter(Boolean);
+    const uniqueProducedMana = [...new Set(producedMana)];
+    if (uniqueProducedMana.length >= 2) {
+      displays.push(buildBattlefieldSplitManaSymbolDisplay(uniqueProducedMana[0], uniqueProducedMana[1]));
+    } else if (uniqueProducedMana.length === 1) {
+      displays.push(buildBattlefieldManaSymbolDisplay(uniqueProducedMana[0]));
+    }
+  }
+
+  return uniqueBattlefieldDisplays(displays).slice(0, 2);
+}
+
+function deriveBattlefieldEffectSymbolDisplays(card) {
+  const textParts = [];
+  if (Array.isArray(card?.keywords)) {
+    for (const keyword of card.keywords) {
+      if (keyword) textParts.push(String(keyword));
+    }
+  }
+  for (const value of [card?.oracle_text, card?.effect_text, card?.ability_text, card?.keyword_text]) {
+    if (value) textParts.push(String(value));
+  }
+  const sourceText = textParts.join("\n").trim();
+  if (!sourceText) return [];
+
+  const matches = [];
+  for (const def of BATTLEFIELD_SYMBOL_DEFS) {
+    for (const alias of def.aliases) {
+      const regex = new RegExp(`\\b${escapeRegExp(alias)}\\b`, "gi");
+      let match = regex.exec(sourceText);
+      while (match) {
+        matches.push({
+          id: def.id,
+          title: def.title,
+          index: match.index,
+          end: match.index + match[0].length,
+        });
+        match = regex.exec(sourceText);
+      }
+    }
+  }
+
+  matches.sort((left, right) => left.index - right.index);
+  const orderedUnique = [];
+  const seenIds = new Set();
+  for (const match of matches) {
+    if (seenIds.has(match.id)) continue;
+    seenIds.add(match.id);
+    orderedUnique.push(match);
+  }
+
+  const displays = [];
+  for (let index = 0; index < orderedUnique.length; index += 1) {
+    const current = orderedUnique[index];
+    const next = orderedUnique[index + 1] || null;
+    if (next) {
+      const between = sourceText.slice(current.end, next.index);
+      if (/^[\s,;:()/-]*(?:or|\/)[\s,;:()/-]*$/i.test(between)) {
+        displays.push({
+          kind: "split-symbol",
+          left: current.id,
+          right: next.id,
+          title: `${current.title} or ${next.title}`,
+        });
+        index += 1;
+        continue;
+      }
+    }
+    displays.push({
+      kind: "symbol",
+      symbol: current.id,
+      title: current.title,
+    });
+  }
+
+  return uniqueBattlefieldDisplays(displays).slice(0, 2);
+}
+
+function renderBattlefieldBadgeSymbolShape(symbolId) {
+  switch (symbolId) {
+    case "flying":
+      return (
+        <>
+          <path d="M-8 2 Q-2 -7 7 -1" />
+          <path d="M-7 4 Q-1 0 6 5" />
+        </>
+      );
+    case "vigilance":
+      return <path d="M0 -8 L7 -4 V2 C7 6 4 8 0 10 C-4 8 -7 6 -7 2 V-4 Z" />;
+    case "trample":
+      return (
+        <>
+          <path d="M-8 5 L-2 -3 L2 2 L8 -6" />
+          <path d="M5 -6 H8 V-3" />
+        </>
+      );
+    case "haste":
+      return <path d="M-4 -8 L1 -8 L-2 -1 H4 L-5 10 L-1 2 H-6 Z" />;
+    case "deathtouch":
+      return (
+        <>
+          <path d="M0 -9 C4 -4 5 -1 5 2 C5 6 2 9 0 10 C-2 9 -5 6 -5 2 C-5 -1 -4 -4 0 -9 Z" />
+          <path d="M-2 2 Q0 4 2 2" />
+        </>
+      );
+    case "lifelink":
+      return (
+        <>
+          <circle cx="0" cy="0" r="8" />
+          <path d="M0 -4 V4" />
+          <path d="M-4 0 H4" />
+        </>
+      );
+    case "menace":
+      return (
+        <>
+          <path d="M-8 -2 L-1 -8 L-1 8" />
+          <path d="M8 -2 L1 -8 L1 8" />
+        </>
+      );
+    case "ward":
+    case "hexproof":
+      return <path d="M0 -9 L7 -5 V4 L0 9 L-7 4 V-5 Z" />;
+    case "indestructible":
+      return <path d="M0 -9 L4 -1 L9 0 L4 4 L5 9 L0 6 L-5 9 L-4 4 L-9 0 L-4 -1 Z" />;
+    case "reach":
+      return (
+        <>
+          <circle cx="0" cy="0" r="6.5" />
+          <path d="M0 -10 V10" />
+          <path d="M-10 0 H10" />
+        </>
+      );
+    case "flash":
+      return (
+        <>
+          <path d="M-5 -8 L1 -8 L-1 -2 H5 L-4 9 L-1 1 H-7 Z" />
+          <path d="M5 -7 L8 -10" />
+        </>
+      );
+    case "first-strike":
+      return <path d="M-6 8 L4 -8" />;
+    case "double-strike":
+      return (
+        <>
+          <path d="M-8 8 L1 -8" />
+          <path d="M-1 8 L8 -8" />
+        </>
+      );
+    default:
+      return <circle cx="0" cy="0" r="7.5" />;
+  }
+}
+
+function battlefieldManaSymbolPalette(code) {
+  switch (code) {
+    case "W":
+      return { fill: "#e7dbc1", stroke: "#fff6df", text: "#2f281b" };
+    case "U":
+      return { fill: "#6ba9d8", stroke: "#dff4ff", text: "#081721" };
+    case "B":
+      return { fill: "#857b92", stroke: "#ece4f5", text: "#faf7ff" };
+    case "R":
+      return { fill: "#cf6a49", stroke: "#ffd8ca", text: "#2b0902" };
+    case "G":
+      return { fill: "#6a9f5b", stroke: "#ddf6d7", text: "#0d1a0c" };
+    case "C":
+      return { fill: "#8c949f", stroke: "#eef2f5", text: "#10161b" };
+    default:
+      return { fill: "#9aa5b1", stroke: "#eff4f8", text: "#11161b" };
+  }
+}
+
+function renderBattlefieldManaSymbolShape(code, isMain) {
+  const palette = battlefieldManaSymbolPalette(code);
+  const radius = isMain ? 8 : 6.9;
+  const fontSize = isMain ? 9.6 : 7.7;
+  const y = isMain ? 3.7 : 3.1;
+
+  return (
+    <>
+      <circle
+        cx="0"
+        cy="0"
+        r={radius}
+        fill={palette.fill}
+        stroke={palette.stroke}
+        strokeWidth={isMain ? 1.35 : 1.2}
+      />
+      <text
+        x="0"
+        y={y}
+        textAnchor="middle"
+        fill={palette.text}
+        fontSize={fontSize}
+        fontWeight="900"
+        letterSpacing="-0.02em"
+        fontFamily="Bahnschrift, Avenir Next Condensed, Segoe UI, sans-serif"
+      >
+        {code}
+      </text>
+    </>
+  );
+}
+
+function renderBattlefieldSplitChoiceBackdrop(display, slot, ids) {
+  const leftManaCode = battlefieldManaCodeFromSymbolId(display?.left);
+  const rightManaCode = battlefieldManaCodeFromSymbolId(display?.right);
+  if (!leftManaCode || !rightManaCode) return null;
+
+  const isMain = slot === "main";
+  const leftFill = battlefieldManaSymbolPalette(leftManaCode).fill;
+  const rightFill = battlefieldManaSymbolPalette(rightManaCode).fill;
+  const leftClipId = isMain ? ids.mainLeft : ids.sideLeft;
+  const rightClipId = isMain ? ids.mainRight : ids.sideRight;
+  const choiceDividerClassName = isMain
+    ? "battlefield-token-main-divider battlefield-token-choice-divider"
+    : "battlefield-token-side-divider battlefield-token-choice-divider";
+
+  return (
+    <>
+      {isMain ? (
+        <>
+          <polygon
+            points="60,78 71,84.5 71,97 60,103.5 49,97 49,84.5"
+            className="battlefield-token-choice-half battlefield-token-choice-half--left"
+            fill={leftFill}
+            clipPath={`url(#${leftClipId})`}
+          />
+          <polygon
+            points="60,78 71,84.5 71,97 60,103.5 49,97 49,84.5"
+            className="battlefield-token-choice-half battlefield-token-choice-half--right"
+            fill={rightFill}
+            clipPath={`url(#${rightClipId})`}
+          />
+          <path d="M57 83.25 L60 80.9 L63 83.25" className="battlefield-token-choice-indicator" />
+          <path d="M60 81 L60 101" className={choiceDividerClassName} />
+        </>
+      ) : (
+        <>
+          <rect
+            x="77"
+            y="83.5"
+            width="26"
+            height="19"
+            rx="3.5"
+            className="battlefield-token-choice-half battlefield-token-choice-half--left"
+            fill={leftFill}
+            clipPath={`url(#${leftClipId})`}
+          />
+          <rect
+            x="77"
+            y="83.5"
+            width="26"
+            height="19"
+            rx="3.5"
+            className="battlefield-token-choice-half battlefield-token-choice-half--right"
+            fill={rightFill}
+            clipPath={`url(#${rightClipId})`}
+          />
+          <path d="M87.7 87.2 L90 85.5 L92.3 87.2" className="battlefield-token-choice-indicator" />
+          <path d="M90 84.5 L90 101.5" className={choiceDividerClassName} />
+        </>
+      )}
+    </>
+  );
+}
+
+function renderBattlefieldBadgeGraphic(symbolId, options) {
+  const { centerX, centerY, symbolScale, clipPathId, isMain, offsetX = 0 } = options;
+  const manaCode = battlefieldManaCodeFromSymbolId(symbolId);
+  if (manaCode) {
+    const content = (
+      <g
+        className="battlefield-token-mana-symbol"
+        transform={`translate(${centerX + offsetX} ${centerY}) scale(${symbolScale})`}
+      >
+        {renderBattlefieldManaSymbolShape(manaCode, isMain)}
+      </g>
+    );
+    return clipPathId ? <g clipPath={`url(#${clipPathId})`}>{content}</g> : content;
+  }
+
+  const shape = (
+    <g
+      className="battlefield-token-symbol"
+      transform={`translate(${centerX + offsetX} ${centerY}) scale(${symbolScale})`}
+    >
+      {renderBattlefieldBadgeSymbolShape(symbolId)}
+    </g>
+  );
+  return clipPathId ? <g clipPath={`url(#${clipPathId})`}>{shape}</g> : shape;
+}
+
 function handCardFooterStat(card) {
   if (card?.power_toughness) {
     return {
@@ -260,6 +679,98 @@ function handCardFooterStat(card) {
     };
   }
   return null;
+}
+
+function battlefieldPrimaryInfo(card) {
+  if (card?.power_toughness) {
+    return {
+      kind: "number",
+      label: String(card.power_toughness),
+      title: `Power/Toughness ${card.power_toughness}`,
+    };
+  }
+  if (card?.loyalty != null) {
+    return {
+      kind: "number",
+      label: String(card.loyalty),
+      title: `Loyalty ${card.loyalty}`,
+    };
+  }
+  if (card?.defense != null) {
+    return {
+      kind: "number",
+      label: String(card.defense),
+      title: `Defense ${card.defense}`,
+    };
+  }
+  return null;
+}
+
+function renderBattlefieldTokenBadgeContent(display, slot, ids) {
+  const normalized = normalizeBattlefieldBadgeDisplay(display);
+  if (!normalized) return null;
+
+  const isMain = slot === "main";
+  const centerX = isMain ? 60 : 90;
+  const centerY = isMain ? 91 : 93;
+  const symbolScale = isMain ? 1 : 0.92;
+  const textClassName = isMain ? "battlefield-token-main-text" : "battlefield-token-side-text";
+  const dividerClassName = isMain ? "battlefield-token-main-divider" : "battlefield-token-side-divider";
+  const leftClipId = isMain ? ids.mainLeft : ids.sideLeft;
+  const rightClipId = isMain ? ids.mainRight : ids.sideRight;
+  const isManaChoice = normalized.kind === "split-symbol"
+    && battlefieldManaCodeFromSymbolId(normalized.left)
+    && battlefieldManaCodeFromSymbolId(normalized.right);
+
+  if (normalized.kind === "number") {
+    return (
+      <text
+        x={centerX}
+        y={isMain ? 97 : 97}
+        textAnchor="middle"
+        className={textClassName}
+      >
+        {normalized.label}
+      </text>
+    );
+  }
+
+  if (normalized.kind === "symbol") {
+    return renderBattlefieldBadgeGraphic(normalized.symbol, {
+      centerX,
+      centerY,
+      symbolScale,
+      isMain,
+    });
+  }
+
+  return (
+    <>
+      {isManaChoice ? renderBattlefieldSplitChoiceBackdrop(normalized, slot, ids) : null}
+      {renderBattlefieldBadgeGraphic(normalized.left, {
+        centerX,
+        centerY,
+        symbolScale: isManaChoice ? (symbolScale * (isMain ? 0.84 : 0.8)) : symbolScale,
+        clipPathId: leftClipId,
+        isMain,
+        offsetX: isManaChoice ? (isMain ? -4.2 : -3.1) : 0,
+      })}
+      {renderBattlefieldBadgeGraphic(normalized.right, {
+        centerX,
+        centerY,
+        symbolScale: isManaChoice ? (symbolScale * (isMain ? 0.84 : 0.8)) : symbolScale,
+        clipPathId: rightClipId,
+        isMain,
+        offsetX: isManaChoice ? (isMain ? 4.2 : 3.1) : 0,
+      })}
+      {!isManaChoice ? (
+        <path
+          d={isMain ? "M60 81 L60 101" : "M90 84.5 L90 101.5"}
+          className={dividerClassName}
+        />
+      ) : null}
+    </>
+  );
 }
 
 export default function GameCard({
@@ -288,17 +799,19 @@ export default function GameCard({
   handCircuitMode = "full",
   hideDebugBadge = false,
   suppressTooltip = false,
+  battlefieldVisualMode = "classic",
 }) {
   const { game, inspectorDebug } = useGame();
   const name = card.name || "";
-  const artVersion = "art_crop";
+  const artVersion = variant === "hand" ? "normal" : "art_crop";
   const artUrl = scryfallImageUrl(name, artVersion);
+  const useTokenBattlefield = variant === "battlefield" && battlefieldVisualMode === "mobile-token";
   const count = Number(card.count);
   const groupSize = Number.isFinite(count) && count > 1 ? count : 1;
   const battlefieldStackDepth = variant === "battlefield"
     ? Math.max(0, Math.min(groupSize, 4) - 1)
     : 0;
-  const [battlefieldManaCost, setBattlefieldManaCost] = useState(card.mana_cost ?? null);
+  const [fetchedBattlefieldMeta, setFetchedBattlefieldMeta] = useState(null);
   const glowPhase = glowPhaseFromSeed(`${card.id}:${name}`);
   const auraDelay1 = `-${((glowPhase % 4200) / 1000).toFixed(3)}s`;
   const auraDelay2 = `-${(((glowPhase * 17) % 5600) / 1000).toFixed(3)}s`;
@@ -307,7 +820,6 @@ export default function GameCard({
   const auraRot1Neg = `${-0.85 * rotationSign}deg`;
   const auraRot2Pos = `${1.2 * rotationSign}deg`;
   const auraRot2Neg = `${-1.2 * rotationSign}deg`;
-  const battlefieldManaIconSize = compact ? 10 : 11;
   const stableId = card?.stable_id ?? card?.id ?? "";
   const directSemanticScore = normalizeSemanticScore(card?.semantic_score);
   if (directSemanticScore != null) {
@@ -329,20 +841,11 @@ export default function GameCard({
     || glowKind === "attack-selected"
     || glowKind === "spell"
   );
-  const battlefieldFullBrightness = variant === "battlefield" && (
-    isInspected
-    || isPlayable
-    || Boolean(glowKind)
-  );
   const artTreatmentClass = variant === "battlefield"
-    ? (
-      battlefieldFullBrightness
-        ? "opacity-100 saturate-[1.12] contrast-[1.08] brightness-[1]"
-        : "opacity-100 saturate-[1.02] contrast-[1.01] brightness-[0.85]"
-    )
+    ? "opacity-100"
     : variant === "hand"
-      ? "opacity-100 saturate-[1.08] contrast-[1.05] brightness-[1]"
-      : "opacity-72 saturate-[1.05] contrast-[1.04]";
+      ? "opacity-100"
+      : "opacity-72";
   const showBattlefieldCircuit = battlefieldCircuitActive;
   const showHandCircuit = variant === "hand" && (Boolean(glowKind) || isPlayable || isInspected);
   const showCircuitAnimation = showBattlefieldCircuit || showHandCircuit;
@@ -370,6 +873,67 @@ export default function GameCard({
       .map(buildCounterBadge)
       .filter(Boolean)
     : [];
+  const totalBattlefieldCounters = counterBadges.reduce((sum, badge) => sum + badge.amount, 0);
+  const activeFetchedBattlefieldMeta = fetchedBattlefieldMeta?.name === name
+    ? fetchedBattlefieldMeta
+    : null;
+  const resolvedBattlefieldCard = variant === "battlefield"
+    ? {
+      ...card,
+      mana_cost: card.mana_cost ?? activeFetchedBattlefieldMeta?.mana_cost ?? null,
+      oracle_text: String(card?.oracle_text || activeFetchedBattlefieldMeta?.oracle_text || ""),
+      produced_mana: Array.isArray(card?.produced_mana) && card.produced_mana.length > 0
+        ? card.produced_mana
+        : (Array.isArray(activeFetchedBattlefieldMeta?.produced_mana)
+          ? activeFetchedBattlefieldMeta.produced_mana
+          : []),
+    }
+    : card;
+  const manaBattlefieldDisplays = variant === "battlefield"
+    ? deriveBattlefieldManaDisplays(resolvedBattlefieldCard)
+    : [];
+  const symbolicBattlefieldDisplays = variant === "battlefield"
+    ? deriveBattlefieldEffectSymbolDisplays(resolvedBattlefieldCard)
+    : [];
+  const numericPrimaryBattlefieldInfo = variant === "battlefield"
+    ? battlefieldPrimaryInfo(resolvedBattlefieldCard)
+    : null;
+  const numericSecondaryBattlefieldInfo = variant !== "battlefield"
+    ? null
+    : groupSize > 1
+      ? {
+        kind: "number",
+        label: groupSize > 99 ? "99+" : String(groupSize),
+        title: `${groupSize} grouped permanents`,
+      }
+      : totalBattlefieldCounters > 0
+        ? {
+          kind: "number",
+          label: totalBattlefieldCounters > 99 ? "99+" : String(totalBattlefieldCounters),
+          title: `${totalBattlefieldCounters} counter${totalBattlefieldCounters === 1 ? "" : "s"}`,
+        }
+        : null;
+  const primaryBattlefieldInfo = (
+    numericPrimaryBattlefieldInfo
+    || manaBattlefieldDisplays[0]
+    || symbolicBattlefieldDisplays[0]
+    || null
+  );
+  const secondaryBattlefieldInfo = numericSecondaryBattlefieldInfo
+    || (!numericPrimaryBattlefieldInfo && (manaBattlefieldDisplays[1] || symbolicBattlefieldDisplays[0]))
+    || null;
+  const battlefieldSvgIdBase = `battlefield-${String(stableId || card?.id || name || "card")
+    .replace(/[^a-zA-Z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "card"}`;
+  const battlefieldBaseGradientId = `${battlefieldSvgIdBase}-base-gradient`;
+  const battlefieldRingGradientId = `${battlefieldSvgIdBase}-ring-gradient`;
+  const battlefieldBadgeGradientId = `${battlefieldSvgIdBase}-badge-gradient`;
+  const battlefieldSideBadgeGradientId = `${battlefieldSvgIdBase}-side-badge-gradient`;
+  const battlefieldImageClipId = `${battlefieldSvgIdBase}-image-clip`;
+  const battlefieldMainLeftClipId = `${battlefieldSvgIdBase}-main-left-clip`;
+  const battlefieldMainRightClipId = `${battlefieldSvgIdBase}-main-right-clip`;
+  const battlefieldSideLeftClipId = `${battlefieldSvgIdBase}-side-left-clip`;
+  const battlefieldSideRightClipId = `${battlefieldSvgIdBase}-side-right-clip`;
   const handFooterStat = variant === "hand" ? handCardFooterStat(card) : null;
   const debugSimilarityLabel = semanticScore != null ? formatSemanticScore(semanticScore) : null;
   const showDebugSimilarityBadge = (
@@ -662,23 +1226,34 @@ export default function GameCard({
   }, []);
 
   useEffect(() => {
-    if (variant !== "battlefield" || card.mana_cost != null || !name) return undefined;
+    if (variant !== "battlefield" || !name) return undefined;
+    const needsMeta = (
+      card.mana_cost == null
+      || !String(card?.oracle_text || "").trim()
+      || !(Array.isArray(card?.produced_mana) && card.produced_mana.length > 0)
+    );
+    if (!needsMeta) return undefined;
 
     let cancelled = false;
     fetchScryfallCardMeta(name)
       .then((meta) => {
         if (cancelled) return;
-        setBattlefieldManaCost(meta?.mana_cost ?? null);
+        setFetchedBattlefieldMeta({
+          name,
+          mana_cost: meta?.mana_cost ?? null,
+          oracle_text: String(meta?.oracle_text || ""),
+          produced_mana: Array.isArray(meta?.produced_mana) ? meta.produced_mana : [],
+        });
       })
       .catch(() => {});
 
     return () => {
       cancelled = true;
     };
-  }, [card.mana_cost, name, variant]);
+  }, [card.mana_cost, card.oracle_text, card.produced_mana, name, variant]);
 
   const visibleBattlefieldManaCost = variant === "battlefield"
-    ? (card.mana_cost ?? battlefieldManaCost)
+    ? (resolvedBattlefieldCard.mana_cost ?? null)
     : null;
   const memberStableIds = Array.isArray(card?.member_stable_ids) && card.member_stable_ids.length > 0
     ? card.member_stable_ids
@@ -688,8 +1263,10 @@ export default function GameCard({
     <div
       ref={rootRef}
       className={cn(
-        "game-card p-1.5 grid content-start",
+        "game-card grid content-start",
+        useTokenBattlefield ? "p-0.5" : "p-1.5",
         variant === "battlefield" && "field-card",
+        useTokenBattlefield && "battlefield-token-card",
         variant === "hand" && "hand-card",
         compact && "w-[96px] min-w-[96px] min-h-[134px] p-1 text-[14px]",
         !compact && variant === "hand" && "flex-1 basis-0 min-w-0 max-w-[124px] min-h-[100px]",
@@ -766,16 +1343,16 @@ export default function GameCard({
                 />
               )}
               <span className="battlefield-frame" aria-hidden="true" />
-              <span className="game-card-shade battlefield-card-shade" aria-hidden="true" />
             </div>
           ))}
         </div>
       )}
       <div className="game-card-surface">
-        {artUrl && (
+        {artUrl && (variant !== "battlefield" || !useTokenBattlefield) && (
           <img
             className={cn(
-              "absolute inset-0 w-full h-full object-cover z-0 pointer-events-none",
+              "absolute inset-0 w-full h-full z-0 pointer-events-none",
+              variant === "battlefield" ? "object-contain" : "object-cover",
               artTreatmentClass,
             )}
             src={artUrl}
@@ -784,7 +1361,7 @@ export default function GameCard({
             referrerPolicy="no-referrer"
           />
         )}
-        {variant === "battlefield" && (
+        {variant === "battlefield" && !useTokenBattlefield && (
           <span className="battlefield-frame" aria-hidden="true" />
         )}
         {showCircuitAnimation && (
@@ -823,15 +1400,144 @@ export default function GameCard({
             </svg>
           </div>
         )}
-        <span
-          className={cn(
-            "game-card-shade",
-            variant === "battlefield" && "battlefield-card-shade",
-          )}
-          aria-hidden="true"
-        />
+        {useTokenBattlefield ? (
+          <div className="battlefield-token-shell">
+            <svg
+              className="battlefield-token-svg"
+              viewBox="0 0 120 120"
+              role="img"
+              aria-label={name}
+              preserveAspectRatio="xMidYMid meet"
+            >
+              <defs>
+                <linearGradient id={battlefieldBaseGradientId} x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stopColor="#c8cdd3" />
+                  <stop offset="38%" stopColor="#7d8691" />
+                  <stop offset="72%" stopColor="#39424d" />
+                  <stop offset="100%" stopColor="#191f26" />
+                </linearGradient>
+                <linearGradient id={battlefieldRingGradientId} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#edf1f5" />
+                  <stop offset="28%" stopColor="#b1b8c0" />
+                  <stop offset="62%" stopColor="#5a636e" />
+                  <stop offset="100%" stopColor="#1b2129" />
+                </linearGradient>
+                <linearGradient id={battlefieldBadgeGradientId} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#5a616c" />
+                  <stop offset="48%" stopColor="#2a313a" />
+                  <stop offset="100%" stopColor="#10151b" />
+                </linearGradient>
+                <linearGradient id={battlefieldSideBadgeGradientId} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#646c77" />
+                  <stop offset="52%" stopColor="#313843" />
+                  <stop offset="100%" stopColor="#12171d" />
+                </linearGradient>
+                <clipPath id={battlefieldImageClipId}>
+                  <circle cx="60" cy="45" r="38" />
+                </clipPath>
+                <clipPath id={battlefieldMainLeftClipId}>
+                  <rect x="48" y="78" width="12" height="26" />
+                </clipPath>
+                <clipPath id={battlefieldMainRightClipId}>
+                  <rect x="60" y="78" width="12" height="26" />
+                </clipPath>
+                <clipPath id={battlefieldSideLeftClipId}>
+                  <rect x="77" y="83.5" width="13" height="19" />
+                </clipPath>
+                <clipPath id={battlefieldSideRightClipId}>
+                  <rect x="90" y="83.5" width="13" height="19" />
+                </clipPath>
+              </defs>
 
-        {variant === "hand" ? (
+              <path
+                d="M24 72 Q60 82 96 72 L86 100 L60 114 L34 100 Z"
+                className="battlefield-token-base"
+                fill={`url(#${battlefieldBaseGradientId})`}
+              />
+
+              <path
+                d="M28 75 Q60 84 92 75"
+                className="battlefield-token-base-edge"
+              />
+
+              <circle
+                cx="60"
+                cy="45"
+                r="42"
+                fill={`url(#${battlefieldRingGradientId})`}
+                className="battlefield-token-ring"
+              />
+
+              <circle
+                cx="60"
+                cy="45"
+                r="38"
+                className="battlefield-token-inner-ring"
+              />
+
+              <path
+                d="M33 22 A34 34 0 0 1 87 22"
+                className="battlefield-token-ring-glint"
+              />
+
+              {artUrl && (
+                <image
+                  href={artUrl}
+                  x="22"
+                  y="7"
+                  width="76"
+                  height="76"
+                  clipPath={`url(#${battlefieldImageClipId})`}
+                  preserveAspectRatio="xMidYMid slice"
+                />
+              )}
+
+              <polygon
+                points="60,78 71,84.5 71,97 60,103.5 49,97 49,84.5"
+                className="battlefield-token-main-badge"
+                fill={`url(#${battlefieldBadgeGradientId})`}
+              />
+
+              {renderBattlefieldTokenBadgeContent(primaryBattlefieldInfo, "main", {
+                mainLeft: battlefieldMainLeftClipId,
+                mainRight: battlefieldMainRightClipId,
+                sideLeft: battlefieldSideLeftClipId,
+                sideRight: battlefieldSideRightClipId,
+              })}
+
+              {secondaryBattlefieldInfo ? (
+                <>
+                  <rect
+                    x="77"
+                    y="83.5"
+                    width="26"
+                    height="19"
+                    rx="3.5"
+                    className="battlefield-token-side-badge"
+                    fill={`url(#${battlefieldSideBadgeGradientId})`}
+                  />
+                  {renderBattlefieldTokenBadgeContent(secondaryBattlefieldInfo, "side", {
+                    mainLeft: battlefieldMainLeftClipId,
+                    mainRight: battlefieldMainRightClipId,
+                    sideLeft: battlefieldSideLeftClipId,
+                    sideRight: battlefieldSideRightClipId,
+                  })}
+                </>
+              ) : null}
+            </svg>
+
+            {primaryBattlefieldInfo ? (
+              <span className="sr-only">
+                {primaryBattlefieldInfo.title}
+              </span>
+            ) : null}
+            {secondaryBattlefieldInfo ? (
+              <span className="sr-only">
+                {secondaryBattlefieldInfo.title}
+              </span>
+            ) : null}
+          </div>
+        ) : variant === "hand" ? (
           <div className="hand-card-header absolute top-0 left-0 right-0 z-2 px-1.5 py-1">
             <div className="hand-card-title whitespace-nowrap overflow-hidden text-ellipsis text-shadow-[0_1px_1px_rgba(0,0,0,0.85)]">
               {name}
@@ -868,14 +1574,14 @@ export default function GameCard({
               )}
               {visibleBattlefieldManaCost && (
                 <span className="battlefield-mana-rack">
-                  <ManaCostIcons cost={visibleBattlefieldManaCost} size={battlefieldManaIconSize} />
+                  <ManaCostIcons cost={visibleBattlefieldManaCost} size={compact ? 10 : 11} />
                 </span>
               )}
             </span>
           </div>
         )}
 
-        {variant === "battlefield" && counterBadges.length > 0 && (
+        {variant === "battlefield" && !useTokenBattlefield && counterBadges.length > 0 && (
           <div className="battlefield-counter-rail">
             {counterBadges.map((badge, index) => (
               <BattlefieldCounterBadge
@@ -894,13 +1600,11 @@ export default function GameCard({
           </div>
         )}
 
-        {variant === "battlefield" && card.power_toughness && (
+        {variant === "battlefield" && !useTokenBattlefield && card.power_toughness && (
           <div className="battlefield-footer">
-            {card.power_toughness && (
-              <span className="battlefield-pt-badge">
-                {card.power_toughness}
-              </span>
-            )}
+            <span className="battlefield-pt-badge">
+              {card.power_toughness}
+            </span>
           </div>
         )}
 
