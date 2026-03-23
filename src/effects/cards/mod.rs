@@ -4,6 +4,7 @@
 //! such as milling, shuffling libraries, drawing cards, discarding, etc.
 
 mod clash;
+mod consult_top_of_library;
 mod connive;
 mod discard;
 mod discard_hand;
@@ -15,6 +16,7 @@ mod imprint;
 mod look_at_hand;
 mod look_at_top;
 mod mill;
+mod put_tagged_remainder_on_library_bottom;
 mod rearrange_looked_cards_in_library;
 mod reveal_from_hand;
 mod reveal_tagged;
@@ -27,6 +29,7 @@ mod shuffle_library;
 mod surveil;
 
 pub use clash::ClashEffect;
+pub use consult_top_of_library::{ConsultTopOfLibraryEffect, ConsultTopOfLibraryStopRule};
 pub use connive::ConniveEffect;
 pub use discard::DiscardEffect;
 pub use discard_hand::DiscardHandEffect;
@@ -38,6 +41,7 @@ pub use imprint::ImprintFromHandEffect;
 pub use look_at_hand::LookAtHandEffect;
 pub use look_at_top::LookAtTopCardsEffect;
 pub use mill::MillEffect;
+pub use put_tagged_remainder_on_library_bottom::PutTaggedRemainderOnLibraryBottomEffect;
 pub use rearrange_looked_cards_in_library::RearrangeLookedCardsInLibraryEffect;
 pub use reveal_from_hand::RevealFromHandEffect;
 pub use reveal_tagged::RevealTaggedEffect;

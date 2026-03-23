@@ -7,13 +7,17 @@
 
 use crate::alternative_cast::CastingMethod;
 use crate::cost::OptionalCostsPaid;
-use crate::effect::{EffectOutcome, Value};
+use crate::effect::{Effect, EffectOutcome, OutcomeValue, Value};
 use crate::effects::EffectExecutor;
+use crate::effects::consult_helpers::{
+    LibraryBottomOrder, LibraryConsultMode, LibraryConsultStopRule, execute_library_consult,
+};
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
 use crate::events::{KeywordActionEvent, KeywordActionKind};
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::{GameState, StackEntry};
 use crate::mana::ManaCost;
+use crate::tag::TagKey;
 use crate::target::PlayerFilter;
 use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
@@ -49,42 +53,47 @@ impl EffectExecutor for DiscoverEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
         let count = resolve_value(game, &self.count, ctx)?.max(0) as u32;
-
-        let mut exiled = Vec::new();
-        let mut candidate = None;
-
-        loop {
-            let top_card = game
-                .player(player_id)
-                .and_then(|player| player.library.last().copied());
-            let Some(top_card_id) = top_card else {
-                break;
-            };
-
-            let Some(exiled_id) = game.move_object_by_effect(top_card_id, Zone::Exile) else {
-                break;
-            };
-            exiled.push(exiled_id);
-
-            let Some(card) = game.object(exiled_id) else {
-                continue;
-            };
-            if card.is_land() {
-                continue;
-            }
-
-            let mv = card.mana_cost.as_ref().map_or(0, ManaCost::mana_value);
-            if mv <= count {
-                candidate = Some(exiled_id);
-                break;
-            }
-        }
+        let all_tag = TagKey::from("__discover_all");
+        let match_tag = TagKey::from("__discover_match");
+        execute_library_consult(
+            game,
+            ctx,
+            player_id,
+            LibraryConsultMode::Exile,
+            LibraryConsultStopRule::FirstMatch,
+            Some(&all_tag),
+            Some(&match_tag),
+            |card, _| {
+                if card.is_land() {
+                    return false;
+                }
+                card.mana_cost.as_ref().map_or(0, ManaCost::mana_value) <= count
+            },
+        )?;
 
         let mut selected_object = None;
         let mut casted_spell = None;
-        if let Some(candidate_id) = candidate {
+        if let Some(candidate_snapshot) = ctx.get_tagged(match_tag.as_str()).cloned() {
+            let mut candidate_id = candidate_snapshot.object_id;
+            if game.object(candidate_id).is_none() {
+                if let Some(found) = game.find_object_by_stable_id(candidate_snapshot.stable_id) {
+                    candidate_id = found;
+                } else {
+                    return Ok(EffectOutcome::count(0).with_event(
+                        TriggerEvent::new_with_provenance(
+                            KeywordActionEvent::new(
+                                KeywordActionKind::Discover,
+                                player_id,
+                                ctx.source,
+                                count,
+                            ),
+                            ctx.provenance,
+                        ),
+                    ));
+                }
+            }
             let Some(candidate_obj) = game.object(candidate_id) else {
-                return Ok(EffectOutcome::count(exiled.len() as i32).with_event(
+                return Ok(EffectOutcome::count(0).with_event(
                     TriggerEvent::new_with_provenance(
                         KeywordActionEvent::new(
                             KeywordActionKind::Discover,
@@ -161,39 +170,22 @@ impl EffectExecutor for DiscoverEffect {
                 }
             }
         }
-
-        let mut to_bottom = exiled;
-        if let Some(candidate_id) = candidate {
-            to_bottom.retain(|id| *id != candidate_id);
-        }
-        game.shuffle_slice(&mut to_bottom);
-
-        for exiled_id in to_bottom {
-            if let Some((new_id, final_zone)) = game.move_object_with_commander_options(
-                exiled_id,
-                Zone::Library,
-                ctx.cause.clone(),
-                &mut *ctx.decision_maker,
-            ) {
-                if final_zone != Zone::Library {
-                    continue;
-                }
-                let owner = game.object(new_id).map(|obj| obj.owner);
-                if let Some(owner) = owner
-                    && let Some(player) = game.player_mut(owner)
-                    && let Some(pos) = player.library.iter().position(|id| *id == new_id)
-                {
-                    // Library vec end = top, start = bottom. Ensure this card goes to bottom.
-                    player.library.remove(pos);
-                    player.library.insert(0, new_id);
-                }
-            }
-        }
+        let keep_tagged = selected_object.as_ref().map(|_| match_tag.clone());
+        crate::executor::execute_effect(
+            game,
+            &Effect::put_tagged_remainder_on_library_bottom(
+                all_tag,
+                keep_tagged,
+                LibraryBottomOrder::Random,
+                PlayerFilter::Specific(player_id),
+            ),
+            ctx,
+        )?;
 
         let value = if let Some(id) = selected_object {
-            crate::effect::OutcomeValue::Objects(vec![id])
+            OutcomeValue::Objects(vec![id])
         } else {
-            crate::effect::OutcomeValue::Count(0)
+            OutcomeValue::Count(0)
         };
 
         let mut outcome = EffectOutcome::with_details(

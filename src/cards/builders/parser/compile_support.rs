@@ -4705,6 +4705,82 @@ fn try_compile_player_resource_and_choice_effect(
             || Effect::discover(count.clone()),
             |filter| Effect::discover_player(count.clone(), filter),
         )?,
+        EffectAst::ConsultTopOfLibrary {
+            player,
+            mode,
+            filter,
+            stop_rule,
+            all_tag,
+            match_tag,
+        } => {
+            let (player_filter, choices) =
+                resolve_effect_player_filter(*player, ctx, true, true, true)?;
+            let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+            let resolved_all_tag = resolve_it_tag_key(all_tag, &current_reference_env(ctx))?;
+            let resolved_match_tag = resolve_it_tag_key(match_tag, &current_reference_env(ctx))?;
+            let resolved_stop_rule = match stop_rule {
+                crate::cards::builders::LibraryConsultStopRuleAst::FirstMatch => {
+                    crate::effects::ConsultTopOfLibraryStopRule::FirstMatch
+                }
+                crate::cards::builders::LibraryConsultStopRuleAst::MatchCount(value) => {
+                    crate::effects::ConsultTopOfLibraryStopRule::MatchCount(
+                        resolve_value_it_tag(value, &current_reference_env(ctx))?,
+                    )
+                }
+            };
+            let resolved_mode = match mode {
+                crate::cards::builders::LibraryConsultModeAst::Reveal => {
+                    crate::effects::consult_helpers::LibraryConsultMode::Reveal
+                }
+                crate::cards::builders::LibraryConsultModeAst::Exile => {
+                    crate::effects::consult_helpers::LibraryConsultMode::Exile
+                }
+            };
+            ctx.last_object_tag = Some(resolved_match_tag.as_str().to_string());
+            ctx.last_player_filter = Some(player_filter.clone());
+            (
+                vec![Effect::consult_top_of_library(
+                    player_filter,
+                    resolved_mode,
+                    resolved_filter,
+                    resolved_stop_rule,
+                    resolved_all_tag,
+                    resolved_match_tag,
+                )],
+                choices,
+            )
+        }
+        EffectAst::PutTaggedRemainderOnBottomOfLibrary {
+            tag,
+            keep_tagged,
+            order,
+            player,
+        } => {
+            let (player_filter, choices) =
+                resolve_effect_player_filter(*player, ctx, true, true, true)?;
+            let resolved_tag = resolve_it_tag_key(tag, &current_reference_env(ctx))?;
+            let resolved_keep_tagged = keep_tagged
+                .as_ref()
+                .map(|tag| resolve_it_tag_key(tag, &current_reference_env(ctx)))
+                .transpose()?;
+            let resolved_order = match order {
+                crate::cards::builders::LibraryBottomOrderAst::Random => {
+                    crate::effects::consult_helpers::LibraryBottomOrder::Random
+                }
+                crate::cards::builders::LibraryBottomOrderAst::ChooserChooses => {
+                    crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses
+                }
+            };
+            (
+                vec![Effect::put_tagged_remainder_on_library_bottom(
+                    resolved_tag,
+                    resolved_keep_tagged,
+                    resolved_order,
+                    player_filter,
+                )],
+                choices,
+            )
+        }
         EffectAst::ExileUntilMatchGrantPlayUntilEndOfTurn {
             player,
             filter,

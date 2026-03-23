@@ -6,8 +6,8 @@ use super::super::lexer::{OwnedLexToken, split_lexed_sentences};
 use super::super::native_tokens::LowercaseWordView;
 use super::super::object_filters::parse_object_filter;
 use super::super::util::{
-    is_article, mana_pips_from_token, parse_number, parse_subject, parse_target_phrase,
-    span_from_tokens, token_index_for_word_index, trim_commas, words,
+    helper_tag_for_tokens, is_article, mana_pips_from_token, parse_number, parse_subject,
+    parse_target_phrase, span_from_tokens, token_index_for_word_index, trim_commas, words,
 };
 use super::sentence_helpers::*;
 use super::{
@@ -17,8 +17,9 @@ use super::{
 #[allow(unused_imports)]
 use crate::cards::builders::{
     CardTextError, CarryContext, EffectAst, GrantedAbilityAst, IT_TAG, IfResultPredicate,
-    InsteadSemantics, KeywordAction, PlayerAst, PredicateAst, SubjectAst, TagKey, TargetAst,
-    TextSpan, TokenCopyFollowup, ZoneReplacementDurationAst,
+    InsteadSemantics, KeywordAction, LibraryBottomOrderAst, LibraryConsultModeAst,
+    LibraryConsultStopRuleAst, PlayerAst, PredicateAst, SubjectAst, TagKey, TargetAst, TextSpan,
+    TokenCopyFollowup, ZoneReplacementDurationAst,
 };
 use crate::effect::{ChoiceCount, Until, Value};
 use crate::mana::ManaSymbol;
@@ -55,148 +56,6 @@ fn lowercase_word_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
 fn parse_exact_card_effect_bundle_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
     let lowered = lowercase_word_tokens(tokens);
     let sentence_words = words(&lowered);
-
-    if sentence_words.as_slice()
-        == [
-            "choose", "a", "card", "name", "exile", "the", "top", "six", "cards", "of", "your",
-            "library", "then", "reveal", "cards", "from", "the", "top", "of", "your", "library",
-            "until", "you", "reveal", "the", "chosen", "card", "put", "that", "card", "into",
-            "your", "hand", "and", "exile", "all", "other", "cards", "revealed", "this", "way",
-        ]
-    {
-        let tag = TagKey::from("chosen_name");
-        let exiled_tag = TagKey::from("demonic_consultation_exiled");
-        let match_tag = TagKey::from("demonic_consultation_match");
-        return Some(vec![
-            EffectAst::ChooseCardName {
-                player: PlayerAst::You,
-                filter: None,
-                tag: tag.clone(),
-            },
-            EffectAst::ForEachTagged {
-                tag,
-                effects: vec![
-                    EffectAst::ExileTopOfLibrary {
-                        count: Value::Fixed(6),
-                        player: PlayerAst::You,
-                        tags: Vec::new(),
-                        accumulated_tags: Vec::new(),
-                    },
-                    EffectAst::ExileUntilMatch {
-                        player: PlayerAst::You,
-                        filter: ObjectFilter::default().match_tagged(
-                            TagKey::from(IT_TAG),
-                            TaggedOpbjectRelation::SameNameAsTagged,
-                        ),
-                        exiled_tag: Some(exiled_tag),
-                        match_tag: Some(match_tag.clone()),
-                    },
-                    EffectAst::ForEachTagged {
-                        tag: match_tag,
-                        effects: vec![EffectAst::MoveToZone {
-                            target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
-                            zone: Zone::Hand,
-                            to_top: false,
-                            battlefield_controller:
-                                crate::cards::builders::ReturnControllerAst::Preserve,
-                            battlefield_tapped: false,
-                            attached_to: None,
-                        }],
-                    },
-                ],
-            },
-        ]);
-    }
-
-    if sentence_words.as_slice()
-        == [
-            "exile",
-            "the",
-            "top",
-            "card",
-            "of",
-            "your",
-            "library",
-            "you",
-            "may",
-            "put",
-            "that",
-            "card",
-            "into",
-            "your",
-            "hand",
-            "unless",
-            "it",
-            "has",
-            "the",
-            "same",
-            "name",
-            "as",
-            "another",
-            "card",
-            "exiled",
-            "this",
-            "way",
-            "repeat",
-            "this",
-            "process",
-            "until",
-            "you",
-            "put",
-            "a",
-            "card",
-            "into",
-            "your",
-            "hand",
-            "or",
-            "you",
-            "exile",
-            "two",
-            "cards",
-            "with",
-            "the",
-            "same",
-            "name",
-            "whichever",
-            "comes",
-            "first",
-        ]
-    {
-        let current_tag = TagKey::from("tainted_pact_current");
-        let exiled_tag = TagKey::from("tainted_pact_exiled");
-        let all_exiled_filter = ObjectFilter::tagged(exiled_tag.clone()).in_zone(Zone::Exile);
-        return Some(vec![EffectAst::RepeatProcess {
-            effects: vec![
-                EffectAst::ExileTopOfLibrary {
-                    count: Value::Fixed(1),
-                    player: PlayerAst::You,
-                    tags: vec![current_tag.clone()],
-                    accumulated_tags: vec![exiled_tag.clone()],
-                },
-                EffectAst::Conditional {
-                    predicate: PredicateAst::And(
-                        Box::new(PredicateAst::TaggedMatches(
-                            current_tag.clone(),
-                            ObjectFilter::default().in_zone(Zone::Exile),
-                        )),
-                        Box::new(PredicateAst::ValueComparison {
-                            left: Value::Count(all_exiled_filter.clone()),
-                            operator: crate::effect::ValueComparisonOperator::Equal,
-                            right: Value::DistinctNames(all_exiled_filter),
-                        }),
-                    ),
-                    if_true: vec![EffectAst::MayMoveToZone {
-                        target: TargetAst::Tagged(current_tag.clone(), None),
-                        zone: Zone::Hand,
-                        player: PlayerAst::You,
-                    }],
-                    if_false: Vec::new(),
-                },
-            ],
-            continue_effect_index: 1,
-            continue_predicate: IfResultPredicate::WasDeclined,
-        }]);
-    }
 
     if sentence_words.as_slice()
         == [
@@ -312,6 +171,395 @@ fn parse_exact_card_effect_bundle_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<
     }
 
     None
+}
+
+#[derive(Debug, Clone)]
+struct ConsultSentenceParts {
+    effects: Vec<EffectAst>,
+    player: PlayerAst,
+    all_tag: TagKey,
+    match_tag: TagKey,
+}
+
+fn parse_consult_traversal_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<ConsultSentenceParts>, CardTextError> {
+    let sentence_tokens = trim_commas(tokens);
+    if sentence_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let mut prefix_effects = Vec::new();
+    let consult_tokens = if let Some(then_idx) = sentence_tokens.iter().position(|token| token.is_word("then")) {
+        let prefix_tokens = trim_commas(&sentence_tokens[..then_idx]);
+        if prefix_tokens.is_empty() {
+            return Ok(None);
+        }
+        prefix_effects = parse_effect_chain(&prefix_tokens)?;
+        trim_commas(&sentence_tokens[then_idx + 1..])
+    } else {
+        sentence_tokens
+    };
+    if consult_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let Some(consult_verb_idx) = consult_tokens.iter().position(|token| {
+        token.is_word("reveal")
+            || token.is_word("reveals")
+            || token.is_word("exile")
+            || token.is_word("exiles")
+    }) else {
+        return Ok(None);
+    };
+    let player = if consult_verb_idx == 0 {
+        PlayerAst::You
+    } else {
+        match parse_subject(&consult_tokens[..consult_verb_idx]) {
+            SubjectAst::Player(player) => player,
+            _ => return Ok(None),
+        }
+    };
+    let mode = if consult_tokens[consult_verb_idx].is_word("reveal")
+        || consult_tokens[consult_verb_idx].is_word("reveals")
+    {
+        LibraryConsultModeAst::Reveal
+    } else {
+        LibraryConsultModeAst::Exile
+    };
+
+    let Some(until_idx) = consult_tokens.iter().position(|token| token.is_word("until")) else {
+        return Ok(None);
+    };
+    if until_idx <= consult_verb_idx + 1 {
+        return Ok(None);
+    }
+
+    let prefix_words: Vec<&str> = words(&consult_tokens[consult_verb_idx + 1..until_idx])
+        .into_iter()
+        .filter(|word| !is_article(word))
+        .collect();
+    if !prefix_words.starts_with(&["cards", "from", "top", "of"])
+        || !prefix_words.ends_with(&["library"])
+    {
+        return Ok(None);
+    }
+
+    let until_tokens = trim_commas(&consult_tokens[until_idx + 1..]);
+    let Some(match_verb_idx) = until_tokens.iter().position(|token| {
+        token.is_word("reveal")
+            || token.is_word("reveals")
+            || token.is_word("exile")
+            || token.is_word("exiles")
+    }) else {
+        return Ok(None);
+    };
+    if match_verb_idx == 0 || match_verb_idx + 1 >= until_tokens.len() {
+        return Ok(None);
+    }
+
+    let mut filter_tokens = trim_commas(&until_tokens[match_verb_idx + 1..]).to_vec();
+    if filter_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let stop_rule = if let Some((count, used)) = parse_number(&filter_tokens) {
+        let remaining = trim_commas(&filter_tokens[used..]).to_vec();
+        if remaining.is_empty() {
+            return Ok(None);
+        }
+        filter_tokens = remaining;
+        LibraryConsultStopRuleAst::MatchCount(Value::Fixed(count as i32))
+    } else {
+        LibraryConsultStopRuleAst::FirstMatch
+    };
+
+    let mut filter = if let Some(filter) = parse_looked_card_reveal_filter(&filter_tokens) {
+        filter
+    } else {
+        match parse_object_filter(&filter_tokens, false) {
+            Ok(filter) => filter,
+            Err(_) => return Ok(None),
+        }
+    };
+    normalize_search_library_filter(&mut filter);
+    filter.zone = None;
+
+    let all_tag = helper_tag_for_tokens(
+        tokens,
+        match mode {
+            LibraryConsultModeAst::Reveal => "revealed",
+            LibraryConsultModeAst::Exile => "exiled",
+        },
+    );
+    let match_tag = helper_tag_for_tokens(tokens, "chosen");
+    let mut effects = prefix_effects;
+    effects.push(EffectAst::ConsultTopOfLibrary {
+        player,
+        mode,
+        filter,
+        stop_rule,
+        all_tag: all_tag.clone(),
+        match_tag: match_tag.clone(),
+    });
+
+    Ok(Some(ConsultSentenceParts {
+        effects,
+        player,
+        all_tag,
+        match_tag,
+    }))
+}
+
+fn parse_consult_remainder_order(words: &[&str]) -> Option<LibraryBottomOrderAst> {
+    if !words.contains(&"bottom") || !words.contains(&"library") {
+        return None;
+    }
+    if words.windows(2).any(|window| window == ["random", "order"]) {
+        return Some(LibraryBottomOrderAst::Random);
+    }
+    if words.windows(2).any(|window| window == ["any", "order"]) {
+        return Some(LibraryBottomOrderAst::ChooserChooses);
+    }
+    None
+}
+
+fn parse_consult_match_move_and_bottom_remainder(
+    first: &[OwnedLexToken],
+    second: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(parts) = parse_consult_traversal_sentence(first)? else {
+        return Ok(None);
+    };
+
+    let second_tokens = trim_commas(second);
+    let second_words = words(&second_tokens);
+    let (zone, battlefield_tapped) = if second_words.starts_with(&["put", "that", "card", "into", "your", "hand"])
+        || second_words.starts_with(&["put", "it", "into", "your", "hand"])
+    {
+        (Zone::Hand, false)
+    } else if second_words.starts_with(&["put", "that", "card", "onto", "the", "battlefield", "tapped"])
+        || second_words.starts_with(&["put", "it", "onto", "the", "battlefield", "tapped"])
+        || second_words.starts_with(&["put", "that", "card", "onto", "battlefield", "tapped"])
+        || second_words.starts_with(&["put", "it", "onto", "battlefield", "tapped"])
+    {
+        (Zone::Battlefield, true)
+    } else if second_words.starts_with(&["put", "that", "card", "onto", "the", "battlefield"])
+        || second_words.starts_with(&["put", "it", "onto", "the", "battlefield"])
+        || second_words.starts_with(&["put", "that", "card", "onto", "battlefield"])
+        || second_words.starts_with(&["put", "it", "onto", "battlefield"])
+    {
+        (Zone::Battlefield, false)
+    } else {
+        return Ok(None);
+    };
+
+    if !second_words.contains(&"rest") && !second_words.contains(&"other") {
+        return Ok(None);
+    }
+    let Some(order) = parse_consult_remainder_order(&second_words) else {
+        return Ok(None);
+    };
+
+    let mut effects = parts.effects;
+    effects.push(EffectAst::MoveToZone {
+        target: TargetAst::Tagged(parts.match_tag.clone(), None),
+        zone,
+        to_top: false,
+        battlefield_controller: crate::cards::builders::ReturnControllerAst::Preserve,
+        battlefield_tapped,
+        attached_to: None,
+    });
+    effects.push(EffectAst::PutTaggedRemainderOnBottomOfLibrary {
+        tag: parts.all_tag,
+        keep_tagged: Some(parts.match_tag),
+        order,
+        player: parts.player,
+    });
+    Ok(Some(effects))
+}
+
+fn parse_consult_match_into_hand_exile_others(
+    first: &[OwnedLexToken],
+    second: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(parts) = parse_consult_traversal_sentence(first)? else {
+        return Ok(None);
+    };
+    if !matches!(
+        parts.effects.last(),
+        Some(EffectAst::ConsultTopOfLibrary {
+            mode: LibraryConsultModeAst::Reveal,
+            ..
+        })
+    ) {
+        return Ok(None);
+    }
+
+    let second_tokens = trim_commas(second);
+    let second_words = words(&second_tokens);
+    let moves_to_hand = second_words.starts_with(&["put", "that", "card", "into", "your", "hand"])
+        || second_words.starts_with(&["put", "it", "into", "your", "hand"]);
+    let exiles_rest = second_words.contains(&"exile")
+        && second_words.contains(&"other")
+        && second_words.contains(&"cards");
+    if !moves_to_hand || !exiles_rest {
+        return Ok(None);
+    }
+
+    let mut effects = parts.effects;
+    effects.push(EffectAst::MoveToZone {
+        target: TargetAst::Tagged(parts.match_tag.clone(), None),
+        zone: Zone::Hand,
+        to_top: false,
+        battlefield_controller: crate::cards::builders::ReturnControllerAst::Preserve,
+        battlefield_tapped: false,
+        attached_to: None,
+    });
+    effects.push(EffectAst::ForEachTagged {
+        tag: parts.all_tag,
+        effects: vec![EffectAst::Conditional {
+            predicate: PredicateAst::TaggedMatches(
+                TagKey::from(IT_TAG),
+                ObjectFilter::tagged(parts.match_tag),
+            ),
+            if_true: Vec::new(),
+            if_false: vec![EffectAst::Exile {
+                target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                face_down: false,
+            }],
+        }],
+    });
+    Ok(Some(effects))
+}
+
+fn parse_tainted_pact_sequence(
+    first: &[OwnedLexToken],
+    second: &[OwnedLexToken],
+    third: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first_tokens = trim_commas(first);
+    let first_words: Vec<&str> = words(&first_tokens)
+        .into_iter()
+        .filter(|word| !is_article(word))
+        .collect();
+    if first_words.as_slice() != ["exile", "top", "card", "of", "your", "library"] {
+        return Ok(None);
+    }
+
+    let second_tokens = trim_commas(second);
+    let second_words: Vec<&str> = words(&second_tokens)
+        .into_iter()
+        .filter(|word| !is_article(word))
+        .collect();
+    let second_matches = second_words.as_slice()
+        == [
+            "you", "may", "put", "that", "card", "into", "your", "hand", "unless", "it", "has",
+            "same", "name", "as", "another", "card", "exiled", "this", "way",
+        ]
+        || second_words.as_slice()
+            == [
+                "you", "may", "put", "it", "into", "your", "hand", "unless", "it", "has",
+                "same", "name", "as", "another", "card", "exiled", "this", "way",
+            ];
+    if !second_matches {
+        return Ok(None);
+    }
+
+    let third_tokens = trim_commas(third);
+    let third_words: Vec<&str> = words(&third_tokens)
+        .into_iter()
+        .filter(|word| !is_article(word))
+        .collect();
+    let third_matches = third_words.as_slice()
+        == [
+            "repeat", "this", "process", "until", "you", "put", "card", "into", "your", "hand",
+            "or", "you", "exile", "two", "cards", "with", "same", "name", "whichever", "comes",
+            "first",
+        ];
+    if !third_matches {
+        return Ok(None);
+    }
+
+    let current_tag = TagKey::from("tainted_pact_current");
+    let exiled_tag = TagKey::from("tainted_pact_exiled");
+    let all_exiled_filter = ObjectFilter::tagged(exiled_tag.clone()).in_zone(Zone::Exile);
+    Ok(Some(vec![EffectAst::RepeatProcess {
+        effects: vec![
+            EffectAst::ExileTopOfLibrary {
+                count: Value::Fixed(1),
+                player: PlayerAst::You,
+                tags: vec![current_tag.clone()],
+                accumulated_tags: vec![exiled_tag.clone()],
+            },
+            EffectAst::Conditional {
+                predicate: PredicateAst::And(
+                    Box::new(PredicateAst::TaggedMatches(
+                        current_tag.clone(),
+                        ObjectFilter::default().in_zone(Zone::Exile),
+                    )),
+                    Box::new(PredicateAst::ValueComparison {
+                        left: Value::Count(all_exiled_filter.clone()),
+                        operator: crate::effect::ValueComparisonOperator::Equal,
+                        right: Value::DistinctNames(all_exiled_filter),
+                    }),
+                ),
+                if_true: vec![EffectAst::MayMoveToZone {
+                    target: TargetAst::Tagged(current_tag.clone(), None),
+                    zone: Zone::Hand,
+                    player: PlayerAst::You,
+                }],
+                if_false: Vec::new(),
+            },
+        ],
+        continue_effect_index: 1,
+        continue_predicate: IfResultPredicate::WasDeclined,
+    }]))
+}
+
+fn prepend_prefix_sentence_to_consult_pair(
+    prefix: &[OwnedLexToken],
+    consult: &[OwnedLexToken],
+    followup: &[OwnedLexToken],
+    pair_rule: PairSentenceRule,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let prefix_effects = parse_effect_chain(prefix)?;
+    if prefix_effects.is_empty() {
+        return Ok(None);
+    }
+
+    let Some(mut combined) = pair_rule(consult, followup)? else {
+        return Ok(None);
+    };
+    let mut effects = prefix_effects;
+    effects.append(&mut combined);
+    Ok(Some(effects))
+}
+
+fn parse_prefix_then_consult_match_move_and_bottom_remainder(
+    first: &[OwnedLexToken],
+    second: &[OwnedLexToken],
+    third: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    prepend_prefix_sentence_to_consult_pair(
+        first,
+        second,
+        third,
+        parse_consult_match_move_and_bottom_remainder,
+    )
+}
+
+fn parse_prefix_then_consult_match_into_hand_exile_others(
+    first: &[OwnedLexToken],
+    second: &[OwnedLexToken],
+    third: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    prepend_prefix_sentence_to_consult_pair(
+        first,
+        second,
+        third,
+        parse_consult_match_into_hand_exile_others,
+    )
 }
 
 struct SentenceInput {
@@ -594,7 +842,7 @@ fn parse_pair_sentence_sequence(
     first: &[OwnedLexToken],
     second: &[OwnedLexToken],
 ) -> Result<Option<(&'static str, Vec<EffectAst>)>, CardTextError> {
-    const RULES: [(&str, PairSentenceRule); 9] = [
+    const RULES: [(&str, PairSentenceRule); 11] = [
         (
             "delayed-dies-exile-top-power-choose-play",
             parse_delayed_dies_exile_top_power_choose_play,
@@ -630,6 +878,14 @@ fn parse_pair_sentence_sequence(
         (
             "reveal-top-matching-into-hand-rest-graveyard",
             parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard,
+        ),
+        (
+            "consult-match-move-bottom-remainder",
+            parse_consult_match_move_and_bottom_remainder,
+        ),
+        (
+            "consult-match-into-hand-exile-others",
+            parse_consult_match_into_hand_exile_others,
         ),
     ];
 
@@ -762,57 +1018,19 @@ fn parse_exile_until_match_grant_play_this_turn(
     first: &[OwnedLexToken],
     second: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let first_tokens = trim_commas(first);
-    let Some(exile_idx) = first_tokens
-        .iter()
-        .position(|token| token.is_word("exile") || token.is_word("exiles"))
-    else {
+    let Some(parts) = parse_consult_traversal_sentence(first)? else {
         return Ok(None);
     };
-    let player = if exile_idx == 0 {
-        PlayerAst::You
-    } else {
-        match parse_subject(&first_tokens[..exile_idx]) {
-            SubjectAst::Player(player) => player,
-            _ => return Ok(None),
-        }
-    };
-
-    let Some(until_idx) = first_tokens.iter().position(|token| token.is_word("until")) else {
-        return Ok(None);
-    };
-    if until_idx <= exile_idx + 1 {
+    if !matches!(
+        parts.effects.last(),
+        Some(EffectAst::ConsultTopOfLibrary {
+            mode: LibraryConsultModeAst::Exile,
+            stop_rule: LibraryConsultStopRuleAst::FirstMatch,
+            ..
+        })
+    ) {
         return Ok(None);
     }
-
-    let prefix_words: Vec<&str> = words(&first_tokens[exile_idx + 1..until_idx])
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect();
-    if !prefix_words.starts_with(&["cards", "from", "top", "of"])
-        || !prefix_words.ends_with(&["library"])
-    {
-        return Ok(None);
-    }
-
-    let until_tokens = trim_commas(&first_tokens[until_idx + 1..]);
-    let Some(match_verb_idx) = until_tokens
-        .iter()
-        .position(|token| token.is_word("exile") || token.is_word("exiles"))
-    else {
-        return Ok(None);
-    };
-    if match_verb_idx == 0 || match_verb_idx + 1 >= until_tokens.len() {
-        return Ok(None);
-    }
-    let filter_tokens = trim_commas(&until_tokens[match_verb_idx + 1..]);
-    if filter_tokens.is_empty() {
-        return Ok(None);
-    }
-    let filter = match parse_object_filter(&filter_tokens, false) {
-        Ok(filter) => filter,
-        Err(_) => return Ok(None),
-    };
 
     let second_tokens = trim_commas(second);
     let Some(may_idx) = second_tokens.iter().position(|token| token.is_word("may")) else {
@@ -834,13 +1052,15 @@ fn parse_exile_until_match_grant_play_this_turn(
         return Ok(None);
     }
 
-    Ok(Some(vec![
-        EffectAst::ExileUntilMatchGrantPlayUntilEndOfTurn {
-            player,
-            filter,
-            caster,
-        },
-    ]))
+    let allow_land = tail_words[0] == "play";
+    let mut effects = parts.effects;
+    effects.push(EffectAst::GrantPlayTaggedUntilEndOfTurn {
+        tag: parts.match_tag,
+        player: caster,
+        allow_land,
+        without_paying_mana_cost: false,
+    });
+    Ok(Some(effects))
 }
 
 fn parse_look_at_top_reveal_match_put_rest_bottom(
@@ -1362,13 +1582,13 @@ fn parse_exile_until_match_cast_rest_bottom(
     else {
         return Ok(None);
     };
-    if exile_idx == 0 {
-        return Ok(None);
-    }
-
-    let player = match parse_subject(&first_tokens[..exile_idx]) {
-        SubjectAst::Player(player) => player,
-        _ => return Ok(None),
+    let player = if exile_idx == 0 {
+        PlayerAst::You
+    } else {
+        match parse_subject(&first_tokens[..exile_idx]) {
+            SubjectAst::Player(player) => player,
+            _ => return Ok(None),
+        }
     };
 
     let Some(until_idx) = first_tokens.iter().position(|token| token.is_word("until")) else {
@@ -1402,10 +1622,18 @@ fn parse_exile_until_match_cast_rest_bottom(
     if filter_tokens.is_empty() {
         return Ok(None);
     }
-    let filter = match parse_object_filter(&filter_tokens, false) {
-        Ok(filter) => filter,
-        Err(_) => return Ok(None),
+    let mut filter = if let Some(filter) = parse_looked_card_reveal_filter(&filter_tokens) {
+        filter
+    } else {
+        match parse_object_filter(&filter_tokens, false) {
+            Ok(filter) => filter,
+            Err(_) => return Ok(None),
+        }
     };
+    normalize_search_library_filter(&mut filter);
+    filter.zone = None;
+    let all_tag = helper_tag_for_tokens(first, "exiled");
+    let match_tag = helper_tag_for_tokens(first, "chosen");
 
     let second_tokens = trim_commas(second);
     let Some(may_idx) = second_tokens.iter().position(|token| token.is_word("may")) else {
@@ -1447,12 +1675,29 @@ fn parse_exile_until_match_cast_rest_bottom(
         return Ok(None);
     }
 
-    Ok(Some(vec![EffectAst::ExileUntilMatchCast {
+    let mut effects = vec![EffectAst::ConsultTopOfLibrary {
         player,
+        mode: LibraryConsultModeAst::Exile,
         filter,
-        caster,
-        without_paying_mana_cost: true,
-    }]))
+        stop_rule: LibraryConsultStopRuleAst::FirstMatch,
+        all_tag: all_tag.clone(),
+        match_tag: match_tag.clone(),
+    }];
+    effects.push(EffectAst::May {
+        effects: vec![EffectAst::CastTagged {
+            tag: match_tag,
+            allow_land: false,
+            as_copy: false,
+            without_paying_mana_cost: true,
+        }],
+    });
+    effects.push(EffectAst::PutTaggedRemainderOnBottomOfLibrary {
+        tag: all_tag,
+        keep_tagged: None,
+        order: LibraryBottomOrderAst::Random,
+        player: caster,
+    });
+    Ok(Some(effects))
 }
 
 fn title_case_words(words: &[&str]) -> String {
@@ -1692,7 +1937,7 @@ fn parse_triple_sentence_sequence(
     second: &[OwnedLexToken],
     third: &[OwnedLexToken],
 ) -> Result<Option<(&'static str, Vec<EffectAst>)>, CardTextError> {
-    const RULES: [(&str, TripleSentenceRule); 5] = [
+    const RULES: [(&str, TripleSentenceRule); 8] = [
         (
             "mill-then-put-from-among-into-hand-then-if-you-dont",
             parse_mill_then_may_put_from_among_into_hand_then_if_you_dont,
@@ -1713,6 +1958,15 @@ fn parse_triple_sentence_sequence(
             "look-at-top-reveal-match-put-rest-bottom",
             parse_look_at_top_reveal_match_put_rest_bottom,
         ),
+        (
+            "prefix-then-consult-match-move-bottom-remainder",
+            parse_prefix_then_consult_match_move_and_bottom_remainder,
+        ),
+        (
+            "prefix-then-consult-match-into-hand-exile-others",
+            parse_prefix_then_consult_match_into_hand_exile_others,
+        ),
+        ("tainted-pact-sequence", parse_tainted_pact_sequence),
     ];
 
     for (name, rule) in RULES {

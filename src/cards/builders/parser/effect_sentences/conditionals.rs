@@ -5,8 +5,8 @@ use super::super::native_tokens::LowercaseWordView;
 use super::super::object_filters::parse_object_filter;
 use super::super::util::{
     is_article, is_permanent_type, parse_card_type, parse_counter_type_word,
-    parse_mana_symbol_word_flexible, parse_number, parse_target_phrase, span_from_tokens,
-    token_index_for_word_index, trim_commas, words,
+    parse_mana_symbol_word_flexible, parse_number, parse_target_phrase, parse_zone_word,
+    span_from_tokens, token_index_for_word_index, trim_commas, words,
 };
 use super::super::value_helpers::parse_filter_comparison_tokens;
 use super::{parse_effect_chain, parse_effect_chain_inner, parse_effect_chain_lexed};
@@ -1577,6 +1577,29 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         || filtered.as_slice() == ["you", "cast", "this", "spell"]
     {
         return Ok(PredicateAst::SourceWasCast);
+    }
+
+    if filtered.len() >= 6
+        && filtered[0] == "this"
+        && filtered[1] == "spell"
+        && filtered[2] == "was"
+        && filtered[3] == "cast"
+        && filtered[4] == "from"
+    {
+        let zone_words = &filtered[5..];
+        let zone = if zone_words.len() == 1 {
+            parse_zone_word(zone_words[0])
+        } else if zone_words.len() == 2 && is_article(zone_words[0]) {
+            parse_zone_word(zone_words[1])
+        } else if zone_words.len() == 2 && zone_words[0] == "the" {
+            parse_zone_word(zone_words[1])
+        } else {
+            None
+        };
+
+        if let Some(zone) = zone {
+            return Ok(PredicateAst::ThisSpellWasCastFromZone(zone));
+        }
     }
 
     if filtered.as_slice() == ["no", "spells", "were", "cast", "last", "turn"]

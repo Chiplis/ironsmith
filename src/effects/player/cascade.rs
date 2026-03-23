@@ -6,11 +6,16 @@
 
 use crate::alternative_cast::CastingMethod;
 use crate::cost::OptionalCostsPaid;
-use crate::effect::EffectOutcome;
+use crate::effect::{Effect, EffectOutcome};
 use crate::effects::EffectExecutor;
+use crate::effects::consult_helpers::{
+    LibraryBottomOrder, LibraryConsultMode, LibraryConsultStopRule, execute_library_consult,
+};
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::{GameState, StackEntry};
 use crate::mana::{ManaCost, ManaSymbol};
+use crate::tag::TagKey;
+use crate::target::PlayerFilter;
 use crate::zone::Zone;
 
 use super::runtime_helpers::with_spell_cast_event;
@@ -64,40 +69,36 @@ impl EffectExecutor for CascadeEffect {
         } else {
             return Ok(EffectOutcome::target_invalid());
         };
-
-        let mut exiled = Vec::new();
-        let mut candidate = None;
-
-        loop {
-            let top_card = game
-                .player(ctx.controller)
-                .and_then(|player| player.library.last().copied());
-            let Some(top_card_id) = top_card else {
-                break;
-            };
-
-            let Some(exiled_id) = game.move_object_by_effect(top_card_id, Zone::Exile) else {
-                break;
-            };
-            exiled.push(exiled_id);
-
-            let Some(card) = game.object(exiled_id) else {
-                continue;
-            };
-            if card.is_land() {
-                continue;
-            }
-            let card_mana_value = card.mana_cost.as_ref().map_or(0, ManaCost::mana_value);
-            if card_mana_value < source_mana_value {
-                candidate = Some(exiled_id);
-                break;
-            }
-        }
+        let all_tag = TagKey::from("__cascade_all");
+        let match_tag = TagKey::from("__cascade_match");
+        execute_library_consult(
+            game,
+            ctx,
+            ctx.controller,
+            LibraryConsultMode::Exile,
+            LibraryConsultStopRule::FirstMatch,
+            Some(&all_tag),
+            Some(&match_tag),
+            |card, _| {
+                if card.is_land() {
+                    return false;
+                }
+                card.mana_cost.as_ref().map_or(0, ManaCost::mana_value) < source_mana_value
+            },
+        )?;
 
         let mut casted_card = None;
-        if let Some(candidate_id) = candidate {
+        if let Some(candidate_snapshot) = ctx.get_tagged(match_tag.as_str()).cloned() {
+            let mut candidate_id = candidate_snapshot.object_id;
+            if game.object(candidate_id).is_none() {
+                if let Some(found) = game.find_object_by_stable_id(candidate_snapshot.stable_id) {
+                    candidate_id = found;
+                } else {
+                    return Ok(EffectOutcome::count(0));
+                }
+            }
             let Some(candidate_obj) = game.object(candidate_id) else {
-                return Ok(EffectOutcome::count(exiled.len() as i32));
+                return Ok(EffectOutcome::count(0));
             };
             let candidate_name = candidate_obj.name.clone();
 
@@ -156,33 +157,17 @@ impl EffectExecutor for CascadeEffect {
                 }
             }
         }
-
-        let mut to_bottom = exiled;
-        if let Some((casted_from_exile, _, _)) = casted_card {
-            to_bottom.retain(|id| *id != casted_from_exile);
-        }
-        game.shuffle_slice(&mut to_bottom);
-
-        for exiled_id in to_bottom {
-            if let Some((new_id, final_zone)) = game.move_object_with_commander_options(
-                exiled_id,
-                Zone::Library,
-                ctx.cause.clone(),
-                &mut *ctx.decision_maker,
-            ) {
-                if final_zone != Zone::Library {
-                    continue;
-                }
-                let owner = game.object(new_id).map(|obj| obj.owner);
-                if let Some(owner) = owner
-                    && let Some(player) = game.player_mut(owner)
-                    && let Some(pos) = player.library.iter().position(|id| *id == new_id)
-                {
-                    player.library.remove(pos);
-                    player.library.insert(0, new_id);
-                }
-            }
-        }
+        let keep_tagged = casted_card.as_ref().map(|_| match_tag.clone());
+        crate::executor::execute_effect(
+            game,
+            &Effect::put_tagged_remainder_on_library_bottom(
+                all_tag,
+                keep_tagged,
+                LibraryBottomOrder::Random,
+                PlayerFilter::You,
+            ),
+            ctx,
+        )?;
 
         if let Some((_, casted_id, from_zone)) = casted_card {
             Ok(with_spell_cast_event(

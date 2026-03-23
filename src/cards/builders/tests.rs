@@ -1933,6 +1933,40 @@ fn test_parse_choose_new_targets_for_the_copy() {
 }
 
 #[test]
+fn test_parse_sevinnes_reclamation_flashback_copy_clause() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Sevinne's Reclamation")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Return target permanent card with mana value 3 or less from your graveyard to the battlefield.\nIf this spell was cast from a graveyard, you may copy this spell and may choose a new target for the copy.\nFlashback {4}{W}",
+        )
+        .expect("Sevinne's Reclamation text should parse");
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("ReturnFromGraveyardToBattlefieldEffect"),
+        "expected graveyard return effect, got {debug}"
+    );
+    assert!(
+        debug.contains("ThisSpellWasCastFromZone(Graveyard)"),
+        "expected graveyard-cast condition, got {debug}"
+    );
+    assert!(
+        debug.contains("CopySpellEffect"),
+        "expected copy effect in flashback conditional, got {debug}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("if this spell was cast from a graveyard"),
+        "expected graveyard-cast conditional in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("you may copy this spell"),
+        "expected copy clause in compiled text, got {rendered}"
+    );
+}
+
+#[test]
 fn test_parse_gain_keyword_ability_does_not_fall_back_to_gain_life() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Gain Keyword Variant")
         .card_types(vec![CardType::Instant])

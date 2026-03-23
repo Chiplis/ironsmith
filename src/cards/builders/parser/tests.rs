@@ -1155,6 +1155,23 @@ fn rewrite_lexed_predicate_parser_matches_wrapper_output() {
 }
 
 #[test]
+fn rewrite_lexed_predicate_parser_matches_wrapper_for_this_spell_cast_from_zone() {
+    let text = "this spell was cast from a graveyard";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify graveyard-cast predicate");
+    let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
+
+    let native = super::parse_predicate_lexed(&lexed).expect("lexed predicate should parse");
+    let wrapper =
+        super::conditionals::parse_predicate(&compat).expect("wrapper predicate should parse");
+
+    assert_eq!(format!("{native:?}"), format!("{wrapper:?}"));
+    assert!(
+        format!("{native:?}").contains("ThisSpellWasCastFromZone(Graveyard)"),
+        "expected graveyard-cast predicate AST, got {native:?}"
+    );
+}
+
+#[test]
 fn rewrite_lexed_effect_sentence_matches_wrapper_pre_diagnostic_clause_helpers() {
     for text in [
         "The next time a red source of your choice would deal damage to you this turn, prevent that damage.",
@@ -1408,6 +1425,57 @@ fn rewrite_lexed_effect_sequence_builds_self_replacement_for_full_party_followup
     let debug = format!("{parsed:?}");
 
     assert!(debug.contains("SelfReplacement"), "{debug}");
+}
+
+#[test]
+fn rewrite_lexed_effect_sequence_parses_consult_hand_bottom_family() {
+    let text = "Reveal cards from the top of your library until you reveal an artifact card. Put that card into your hand and the rest on the bottom of your library in a random order.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify consult-hand-bottom text");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed).expect("sequence");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("ConsultTopOfLibrary"), "{debug}");
+    assert!(debug.contains("MoveToZone"), "{debug}");
+    assert!(debug.contains("PutTaggedRemainderOnBottomOfLibrary"), "{debug}");
+}
+
+#[test]
+fn rewrite_lexed_effect_sequence_parses_prefixed_consult_sequence() {
+    let text = "Draw a card. Reveal cards from the top of your library until you reveal an artifact card. Put that card into your hand and the rest on the bottom of your library in a random order.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify prefixed consult text");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed).expect("sequence");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("Draw"), "{debug}");
+    assert!(debug.contains("ConsultTopOfLibrary"), "{debug}");
+    assert!(debug.contains("PutTaggedRemainderOnBottomOfLibrary"), "{debug}");
+}
+
+#[test]
+fn rewrite_lexed_effect_sequence_keeps_consult_cast_bottom_family_parseable() {
+    let text = "Exile cards from the top of your library until you exile a nonland card. You may cast that card without paying its mana cost. Put all cards exiled this way that weren't cast this way on the bottom of your library in a random order.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify consult-cast-bottom text");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed).expect("sequence");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("CastTagged"), "{debug}");
+    assert!(debug.contains("MoveToZone"), "{debug}");
+}
+
+#[test]
+fn rewrite_lexed_effect_sequence_parses_tainted_pact_loop() {
+    let text = "Exile the top card of your library. You may put that card into your hand unless it has the same name as another card exiled this way. Repeat this process until you put a card into your hand or you exile two cards with the same name, whichever comes first.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify tainted pact text");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed).expect("sequence");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("RepeatProcess"), "{debug}");
+    assert!(debug.contains("ExileTopOfLibrary"), "{debug}");
+    assert!(debug.contains("MayMoveToZone"), "{debug}");
 }
 
 #[test]

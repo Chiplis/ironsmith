@@ -1152,6 +1152,24 @@ pub(crate) enum ReturnControllerAst {
     You,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LibraryConsultModeAst {
+    Reveal,
+    Exile,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum LibraryConsultStopRuleAst {
+    FirstMatch,
+    MatchCount(Value),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LibraryBottomOrderAst {
+    Random,
+    ChooserChooses,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum TargetAst {
     Source(Option<TextSpan>),
@@ -1602,6 +1620,20 @@ pub(crate) enum EffectAst {
     },
     Discover {
         count: Value,
+        player: PlayerAst,
+    },
+    ConsultTopOfLibrary {
+        player: PlayerAst,
+        mode: LibraryConsultModeAst,
+        filter: ObjectFilter,
+        stop_rule: LibraryConsultStopRuleAst,
+        all_tag: TagKey,
+        match_tag: TagKey,
+    },
+    PutTaggedRemainderOnBottomOfLibrary {
+        tag: TagKey,
+        keep_tagged: Option<TagKey>,
+        order: LibraryBottomOrderAst,
         player: PlayerAst,
     },
     ExileUntilMatchGrantPlayUntilEndOfTurn {

@@ -4121,6 +4121,32 @@ impl Effect {
         Self::new(ExileUntilMatchEffect::new(player, filter))
     }
 
+    pub fn consult_top_of_library(
+        player: PlayerFilter,
+        mode: crate::effects::consult_helpers::LibraryConsultMode,
+        filter: ObjectFilter,
+        stop_rule: crate::effects::ConsultTopOfLibraryStopRule,
+        all_tag: impl Into<TagKey>,
+        match_tag: impl Into<TagKey>,
+    ) -> Self {
+        use crate::effects::ConsultTopOfLibraryEffect;
+        Self::new(ConsultTopOfLibraryEffect::new(
+            player, mode, filter, stop_rule, all_tag, match_tag,
+        ))
+    }
+
+    pub fn put_tagged_remainder_on_library_bottom(
+        tag: impl Into<TagKey>,
+        keep_tagged: Option<TagKey>,
+        order: crate::effects::consult_helpers::LibraryBottomOrder,
+        player: PlayerFilter,
+    ) -> Self {
+        use crate::effects::PutTaggedRemainderOnLibraryBottomEffect;
+        Self::new(PutTaggedRemainderOnLibraryBottomEffect::new(
+            tag, keep_tagged, order, player,
+        ))
+    }
+
     /// Create a "surveil" effect.
     pub fn surveil(count: impl Into<Value>) -> Self {
         use crate::effects::SurveilEffect;

@@ -304,6 +304,15 @@ fn advance_reference_frame_for_effect(
             track_effect_player(*player, frame, true, true)?;
             maybe_tag_generated_object_results(effect, frame, id_gen);
         }
+        EffectAst::ConsultTopOfLibrary {
+            player, match_tag, ..
+        } => {
+            track_effect_player(*player, frame, true, true)?;
+            frame.last_object_tag = Some(match_tag.as_str().to_string());
+        }
+        EffectAst::PutTaggedRemainderOnBottomOfLibrary { player, .. } => {
+            track_effect_player(*player, frame, true, true)?;
+        }
         EffectAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard { player, .. }
         | EffectAst::ChooseFromLookedCardsIntoHandRestOnBottomOfLibrary { player, .. }
         | EffectAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary {
@@ -1470,6 +1479,30 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             }
             for tag in accumulated_tags {
                 replacements += bind_unresolved_it_in_tag(tag, seed_tag);
+            }
+            replacements
+        }
+        EffectAst::ConsultTopOfLibrary {
+            filter,
+            stop_rule,
+            all_tag,
+            match_tag,
+            ..
+        } => {
+            let mut replacements = bind_unresolved_it_in_filter(filter, seed_tag)
+                + bind_unresolved_it_in_tag(all_tag, seed_tag)
+                + bind_unresolved_it_in_tag(match_tag, seed_tag);
+            if let crate::cards::builders::LibraryConsultStopRuleAst::MatchCount(value) = stop_rule {
+                replacements += bind_unresolved_it_in_value(value, seed_tag);
+            }
+            replacements
+        }
+        EffectAst::PutTaggedRemainderOnBottomOfLibrary {
+            tag, keep_tagged, ..
+        } => {
+            let mut replacements = bind_unresolved_it_in_tag(tag, seed_tag);
+            if let Some(keep_tagged) = keep_tagged.as_mut() {
+                replacements += bind_unresolved_it_in_tag(keep_tagged, seed_tag);
             }
             replacements
         }

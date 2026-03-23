@@ -37,6 +37,7 @@
 //! - `execute_effect()` delegates to modular implementations via bridges
 //! - New effects can be added directly to this module
 
+pub(crate) mod consult_helpers;
 pub mod cards;
 pub mod combat;
 pub mod composition;
@@ -62,9 +63,10 @@ pub use executor_trait::{CostExecutableEffect, CostValidationError, EffectExecut
 
 // Re-export effect implementations
 pub use cards::{
-    ClashEffect, ConniveEffect, DiscardEffect, DiscardHandEffect, DrawCardsEffect,
-    DrawForEachTaggedMatchingEffect, ExileTopOfLibraryEffect, ExileUntilMatchEffect,
-    LookAtHandEffect, LookAtTopCardsEffect, MillEffect, RearrangeLookedCardsInLibraryEffect,
+    ClashEffect, ConsultTopOfLibraryEffect, ConsultTopOfLibraryStopRule, ConniveEffect,
+    DiscardEffect, DiscardHandEffect, DrawCardsEffect, DrawForEachTaggedMatchingEffect,
+    ExileTopOfLibraryEffect, ExileUntilMatchEffect, LookAtHandEffect, LookAtTopCardsEffect,
+    MillEffect, PutTaggedRemainderOnLibraryBottomEffect, RearrangeLookedCardsInLibraryEffect,
     RevealFromHandEffect, RevealTaggedEffect, RevealTopEffect, ScryEffect, SearchLibraryEffect,
     SearchLibrarySlot, SearchLibrarySlotsEffect, ShuffleGraveyardIntoLibraryEffect,
     ShuffleLibraryEffect, SurveilEffect,

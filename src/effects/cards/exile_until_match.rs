@@ -2,13 +2,12 @@
 
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
+use crate::effects::consult_helpers::{LibraryConsultMode, LibraryConsultStopRule, execute_library_consult};
 use crate::effects::helpers::resolve_player_filter;
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
-use crate::snapshot::ObjectSnapshot;
 use crate::tag::TagKey;
 use crate::target::{ObjectFilter, PlayerFilter};
-use crate::zone::Zone;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExileUntilMatchEffect {
@@ -46,66 +45,22 @@ impl EffectExecutor for ExileUntilMatchEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
-        if let Some(tag) = &self.exiled_tag {
-            ctx.clear_object_tag(tag);
-        }
-        if let Some(tag) = &self.match_tag {
-            ctx.clear_object_tag(tag);
-        }
+        let filter_ctx = ctx.filter_context(game);
+        let result = execute_library_consult(
+            game,
+            ctx,
+            player_id,
+            LibraryConsultMode::Exile,
+            LibraryConsultStopRule::FirstMatch,
+            self.exiled_tag.as_ref(),
+            self.match_tag.as_ref(),
+            |object, game| self.filter.matches(object, &filter_ctx, game),
+        )?;
 
-        let mut exiled = Vec::new();
-
-        loop {
-            let Some(top_card_id) = game
-                .player(player_id)
-                .and_then(|player| player.library.last().copied())
-            else {
-                break;
-            };
-
-            let Some((exiled_id, final_zone)) = game.move_object_with_commander_options(
-                top_card_id,
-                Zone::Exile,
-                ctx.cause.clone(),
-                &mut *ctx.decision_maker,
-            ) else {
-                break;
-            };
-            if final_zone != Zone::Exile {
-                continue;
-            }
-
-            let Some(snapshot) = game
-                .object(exiled_id)
-                .map(|object| ObjectSnapshot::from_object(object, game))
-            else {
-                continue;
-            };
-
-            let filter_ctx = ctx.filter_context(game);
-            let is_match = game
-                .object(exiled_id)
-                .is_some_and(|object| self.filter.matches(object, &filter_ctx, game));
-
-            if let Some(tag) = &self.exiled_tag {
-                ctx.tag_object(tag.clone(), snapshot.clone());
-            }
-            exiled.push(exiled_id);
-
-            if !is_match {
-                continue;
-            }
-
-            if let Some(tag) = &self.match_tag {
-                ctx.set_tagged_objects(tag.clone(), vec![snapshot]);
-            }
-            break;
-        }
-
-        if exiled.is_empty() {
+        if result.exposed_object_ids.is_empty() {
             Ok(EffectOutcome::count(0))
         } else {
-            Ok(EffectOutcome::with_objects(exiled))
+            Ok(EffectOutcome::with_objects(result.exposed_object_ids))
         }
     }
 }
@@ -117,6 +72,7 @@ mod tests {
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::ManaCost;
     use crate::types::CardType;
+    use crate::zone::Zone;
 
     const CHOSEN_NAME_TAG: &str = "chosen_name";
     const EXILED_TAG: &str = "exiled";
