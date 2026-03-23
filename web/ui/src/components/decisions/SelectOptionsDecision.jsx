@@ -34,6 +34,10 @@ function isPaymentOptionDescription(text) {
   return /^\s*pay\b/i.test(String(text || ""));
 }
 
+function isLifePaymentOptionDescription(text) {
+  return /^\s*pay\b.*\blife\b/i.test(String(text || ""));
+}
+
 function isCastOptionDescription(text) {
   return /^\s*cast\b/i.test(String(text || ""));
 }
@@ -501,6 +505,12 @@ function SingleSelectDecision({
     [state],
   );
   const options = useMemo(() => decision.options || [], [decision.options]);
+  const decisionDescription = String(decision?.description || "");
+  const normalizedDecisionDescription = decisionDescription.trim().toLowerCase();
+  const searchResetKey = `${decisionDescription}|${decision?.source_id || ""}|${optionsSignature(options)}`;
+  const [searchState, setSearchState] = useState({ key: "", query: "" });
+  const searchQuery =
+    searchState.key === searchResetKey ? searchState.query : "";
   const paymentDecision = useMemo(
     () => isPaymentDecision(decision),
     [decision],
@@ -515,6 +525,16 @@ function SingleSelectDecision({
       null,
     [options],
   );
+  const autoSubmitPayOption = useMemo(
+    () =>
+      payOption && !isLifePaymentOptionDescription(payOption.description)
+        ? payOption
+        : null,
+    [payOption],
+  );
+  const searchableLargeOptionDecision =
+    normalizedDecisionDescription === "choose a card name"
+    || (options.length >= 200 && options.every((opt) => opt?.object_id == null));
   const spellCastPaymentDecision = useMemo(() => {
     if (!paymentDecision) return false;
     const topStackObject = getVisibleTopStackObject(state);
@@ -534,24 +554,75 @@ function SingleSelectDecision({
   );
   const showDescription =
     !hideDescription && !(stripLayout && colorChoiceDecision);
-  const canSubmitPayment = canAct && !!payOption && payOption.legal !== false;
+  const canSubmitPayment =
+    canAct && !!autoSubmitPayOption && autoSubmitPayOption.legal !== false;
   const paymentProgressLabel = canSubmitPayment
     ? "Submit (1/1)"
     : "Submit (0/1)";
   const submitPayment = useCallback(() => {
-    if (!payOption || payOption.legal === false) return;
+    if (!autoSubmitPayOption || autoSubmitPayOption.legal === false) return;
     dispatch(
-      { type: "select_options", option_indices: [payOption.index] },
-      payOption.description || "Submit",
+      { type: "select_options", option_indices: [autoSubmitPayOption.index] },
+      autoSubmitPayOption.description || "Submit",
     );
-  }, [dispatch, payOption]);
-  const displayOptions = useMemo(
-    () =>
-      paymentDecision
-        ? options.filter((opt) => !isPaymentOptionDescription(opt.description))
-        : options,
-    [options, paymentDecision],
-  );
+  }, [dispatch, autoSubmitPayOption]);
+  const displayOptions = useMemo(() => {
+    let visible = paymentDecision
+      ? options.filter(
+          (opt) =>
+            opt.index !== autoSubmitPayOption?.index ||
+            isLifePaymentOptionDescription(opt.description),
+        )
+      : options;
+
+    if (!searchableLargeOptionDecision) {
+      return visible;
+    }
+
+    const normalizedQuery = String(searchQuery || "").trim().toLowerCase();
+    if (!normalizedQuery) {
+      return visible.slice(0, 80);
+    }
+
+    return visible
+      .filter((opt) =>
+        String(opt.description || "").toLowerCase().includes(normalizedQuery),
+      )
+      .slice(0, 200);
+  }, [
+    options,
+    paymentDecision,
+    autoSubmitPayOption,
+    searchableLargeOptionDecision,
+    searchQuery,
+  ]);
+  const searchSummary = useMemo(() => {
+    if (!searchableLargeOptionDecision) return "";
+    const normalizedQuery = String(searchQuery || "").trim();
+    if (!normalizedQuery) {
+      return `Showing first ${displayOptions.length} of ${options.length} options. Type to search.`;
+    }
+    return `Showing ${displayOptions.length} matching option${displayOptions.length === 1 ? "" : "s"}.`;
+  }, [searchQuery, searchableLargeOptionDecision, displayOptions.length, options.length]);
+  const searchPlaceholder =
+    normalizedDecisionDescription === "choose a card name"
+      ? "Search card names"
+      : "Search options";
+  const searchField = searchableLargeOptionDecision ? (
+    <div className="px-1.5 pb-1">
+      <Input
+        value={searchQuery}
+        onChange={(event) =>
+          setSearchState({ key: searchResetKey, query: event.target.value })
+        }
+        placeholder={searchPlaceholder}
+        className="decision-inline-input h-8 w-full bg-transparent text-[13px]"
+      />
+      <div className="px-1 pt-1 text-[11px] text-[#bfae8e]">
+        {searchSummary}
+      </div>
+    </div>
+  ) : null;
   const selectedObjectFamilyIds = useMemo(
     () => buildObjectFamilyIds(state?.players, selectedObjectId),
     [selectedObjectId, state?.players]
@@ -651,6 +722,7 @@ function SingleSelectDecision({
             )}
           </div>
         )}
+        {searchField}
         <div
           className={cn(
             "w-full min-w-0 max-w-full",

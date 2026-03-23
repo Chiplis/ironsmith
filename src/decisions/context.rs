@@ -138,6 +138,69 @@ impl NumberContext {
 }
 
 // ============================================================================
+// Text Input Context
+// ============================================================================
+
+/// Context for free-form text entry decisions.
+#[derive(Debug, Clone)]
+pub struct TextInputContext {
+    /// The player making the decision.
+    pub player: PlayerId,
+    /// The source of the effect (optional).
+    pub source: Option<ObjectId>,
+    /// Description of what text should be entered.
+    pub description: String,
+    /// Optional placeholder text for the UI.
+    pub placeholder: Option<String>,
+    /// Optional initial value for the UI.
+    pub initial_value: Option<String>,
+    /// Whether the entered text must correspond to a known card name.
+    pub require_known_value: bool,
+    /// Optional richer UI hints for contextual rendering.
+    pub ui_hints: DecisionUiHints,
+}
+
+impl TextInputContext {
+    /// Create a new TextInputContext.
+    pub fn new(player: PlayerId, source: Option<ObjectId>, description: impl Into<String>) -> Self {
+        Self {
+            player,
+            source,
+            description: description.into(),
+            placeholder: None,
+            initial_value: None,
+            require_known_value: false,
+            ui_hints: DecisionUiHints::default(),
+        }
+    }
+
+    pub fn with_placeholder(mut self, placeholder: impl Into<String>) -> Self {
+        self.placeholder = Some(placeholder.into());
+        self
+    }
+
+    pub fn with_initial_value(mut self, value: impl Into<String>) -> Self {
+        self.initial_value = Some(value.into());
+        self
+    }
+
+    pub fn require_known_value(mut self, require_known_value: bool) -> Self {
+        self.require_known_value = require_known_value;
+        self
+    }
+
+    pub fn with_context_text(mut self, text: impl Into<String>) -> Self {
+        self.ui_hints.context_text = Some(text.into());
+        self
+    }
+
+    pub fn with_consequence_text(mut self, text: impl Into<String>) -> Self {
+        self.ui_hints.consequence_text = Some(text.into());
+        self
+    }
+}
+
+// ============================================================================
 // View Cards Context
 // ============================================================================
 
@@ -1022,6 +1085,7 @@ impl TargetsContext {
 pub enum DecisionContext {
     Boolean(BooleanContext),
     Number(NumberContext),
+    TextInput(TextInputContext),
     SelectObjects(SelectObjectsContext),
     SelectOptions(SelectOptionsContext),
     /// Mode selection for modal spells (per MTG rule 601.2b).
@@ -1047,6 +1111,7 @@ impl DecisionContext {
         match self {
             DecisionContext::Boolean(ctx) => ctx.source,
             DecisionContext::Number(ctx) => ctx.source,
+            DecisionContext::TextInput(ctx) => ctx.source,
             DecisionContext::SelectObjects(ctx) => ctx.source,
             DecisionContext::SelectOptions(ctx) => ctx.source,
             DecisionContext::Modes(ctx) => ctx.source,
@@ -1068,6 +1133,7 @@ impl DecisionContext {
         match self {
             DecisionContext::Boolean(ctx) => Some(&ctx.description),
             DecisionContext::Number(ctx) => Some(&ctx.description),
+            DecisionContext::TextInput(ctx) => Some(&ctx.description),
             DecisionContext::SelectObjects(ctx) => Some(&ctx.description),
             DecisionContext::SelectOptions(ctx) => Some(&ctx.description),
             DecisionContext::Modes(ctx) => Some(&ctx.spell_name),
@@ -1089,6 +1155,7 @@ impl DecisionContext {
         match self {
             DecisionContext::Boolean(ctx) => ctx.ui_hints.context_text.as_deref(),
             DecisionContext::Number(ctx) => ctx.ui_hints.context_text.as_deref(),
+            DecisionContext::TextInput(ctx) => ctx.ui_hints.context_text.as_deref(),
             DecisionContext::SelectObjects(ctx) => ctx.ui_hints.context_text.as_deref(),
             DecisionContext::SelectOptions(ctx) => ctx.ui_hints.context_text.as_deref(),
             DecisionContext::Targets(ctx) => ctx.ui_hints.context_text.as_deref(),
@@ -1110,6 +1177,7 @@ impl DecisionContext {
         match self {
             DecisionContext::Boolean(ctx) => ctx.ui_hints.consequence_text.as_deref(),
             DecisionContext::Number(ctx) => ctx.ui_hints.consequence_text.as_deref(),
+            DecisionContext::TextInput(ctx) => ctx.ui_hints.consequence_text.as_deref(),
             DecisionContext::SelectObjects(ctx) => ctx.ui_hints.consequence_text.as_deref(),
             DecisionContext::SelectOptions(ctx) => ctx.ui_hints.consequence_text.as_deref(),
             DecisionContext::Targets(ctx) => ctx.ui_hints.consequence_text.as_deref(),
@@ -1132,6 +1200,7 @@ impl DecisionContext {
         match &mut self {
             DecisionContext::Boolean(ctx) => ctx.ui_hints.context_text = Some(text),
             DecisionContext::Number(ctx) => ctx.ui_hints.context_text = Some(text),
+            DecisionContext::TextInput(ctx) => ctx.ui_hints.context_text = Some(text),
             DecisionContext::SelectObjects(ctx) => ctx.ui_hints.context_text = Some(text),
             DecisionContext::SelectOptions(ctx) => ctx.ui_hints.context_text = Some(text),
             DecisionContext::Targets(ctx) => ctx.ui_hints.context_text = Some(text),
@@ -1155,6 +1224,7 @@ impl DecisionContext {
         match &mut self {
             DecisionContext::Boolean(ctx) => ctx.ui_hints.consequence_text = Some(text),
             DecisionContext::Number(ctx) => ctx.ui_hints.consequence_text = Some(text),
+            DecisionContext::TextInput(ctx) => ctx.ui_hints.consequence_text = Some(text),
             DecisionContext::SelectObjects(ctx) => ctx.ui_hints.consequence_text = Some(text),
             DecisionContext::SelectOptions(ctx) => ctx.ui_hints.consequence_text = Some(text),
             DecisionContext::Targets(ctx) => ctx.ui_hints.consequence_text = Some(text),
@@ -1186,6 +1256,14 @@ impl DecisionContext {
         match self {
             DecisionContext::Number(ctx) => ctx,
             _ => panic!("Expected NumberContext"),
+        }
+    }
+
+    /// Convert to TextInputContext, panicking if wrong type.
+    pub fn into_text_input(self) -> TextInputContext {
+        match self {
+            DecisionContext::TextInput(ctx) => ctx,
+            _ => panic!("Expected TextInputContext"),
         }
     }
 

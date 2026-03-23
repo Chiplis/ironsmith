@@ -524,6 +524,14 @@ pub fn resolve_value(
             Ok(player.hand.len() as i32)
         }
 
+        Value::CardsInLibrary(player_spec) => {
+            let player_id = resolve_player_filter(game, player_spec, ctx)?;
+            let player = game
+                .player(player_id)
+                .ok_or(ExecutionError::PlayerNotFound(player_id))?;
+            Ok(player.library.len() as i32)
+        }
+
         Value::DevotionToChosenColor(player_spec) => {
             let chosen = game.chosen_color(ctx.source).ok_or_else(|| {
                 ExecutionError::UnresolvableValue(

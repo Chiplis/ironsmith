@@ -775,6 +775,30 @@ impl Comparison {
     }
 }
 
+/// Comparison operations between two runtime-resolved values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ValueComparisonOperator {
+    GreaterThan,
+    GreaterThanOrEqual,
+    Equal,
+    LessThan,
+    LessThanOrEqual,
+    NotEqual,
+}
+
+impl ValueComparisonOperator {
+    pub fn evaluate(self, left: i32, right: i32) -> bool {
+        match self {
+            Self::GreaterThan => left > right,
+            Self::GreaterThanOrEqual => left >= right,
+            Self::Equal => left == right,
+            Self::LessThan => left < right,
+            Self::LessThanOrEqual => left <= right,
+            Self::NotEqual => left != right,
+        }
+    }
+}
+
 // ============================================================================
 // Values
 // ============================================================================
@@ -879,6 +903,9 @@ pub enum Value {
 
     /// Number of cards in a player's hand
     CardsInHand(PlayerFilter),
+
+    /// Number of cards in a player's library.
+    CardsInLibrary(PlayerFilter),
 
     /// Devotion to the color previously chosen for the source object.
     DevotionToChosenColor(PlayerFilter),
@@ -1971,6 +1998,9 @@ pub enum Condition {
     /// A creature died this turn
     CreatureDiedThisTurn,
 
+    /// N or more creatures died this turn.
+    CreatureDiedThisTurnOrMore(u32),
+
     /// You cast a spell this turn
     CastSpellThisTurn,
 
@@ -1989,11 +2019,24 @@ pub enum Condition {
     /// This source object entered as a spell that was cast.
     SourceWasCast,
 
+    /// This resolving spell was cast from the given zone.
+    ThisSpellWasCastFromZone(Zone),
+
     /// A player tapped a land for mana this turn.
     PlayerTappedLandForManaThisTurn { player: PlayerFilter },
 
+    /// A player gained N or more life this turn.
+    PlayerGainedLifeThisTurnOrMore { player: PlayerFilter, count: u32 },
+
     /// A player had a land enter the battlefield under their control this turn.
     PlayerHadLandEnterBattlefieldThisTurn { player: PlayerFilter },
+
+    /// Compare two runtime values.
+    ValueComparison {
+        left: Value,
+        operator: ValueComparisonOperator,
+        right: Value,
+    },
 
     /// No spells were cast last turn
     NoSpellsWereCastLastTurn,
@@ -2022,6 +2065,9 @@ pub enum Condition {
 
     /// This resolving spell paid the optional cost with the given label.
     ThisSpellPaidLabel(String),
+
+    /// You have a full party.
+    YouHaveFullParty,
 
     /// The targeted spell was the Nth spell cast this turn.
     TargetSpellCastOrderThisTurn(u32),
@@ -2547,6 +2593,11 @@ impl Effect {
     pub fn move_to_zone(target: ChooseSpec, zone: Zone, to_top: bool) -> Self {
         use crate::effects::MoveToZoneEffect;
         Self::new(MoveToZoneEffect::new(target, zone, to_top))
+    }
+
+    pub fn may_move_to_zone(target: ChooseSpec, zone: Zone, decider: PlayerFilter) -> Self {
+        use crate::effects::MayMoveToZoneEffect;
+        Self::new(MayMoveToZoneEffect::new(target, zone, decider))
     }
 
     /// Create a "return target card from graveyard to hand" effect.
@@ -4064,6 +4115,12 @@ impl Effect {
         Self::new(ExileUntilMatchGrantPlayEffect::new(player, filter, caster))
     }
 
+    /// Exile cards from the top of a library until one matches `filter`.
+    pub fn exile_until_match(player: PlayerFilter, filter: ObjectFilter) -> Self {
+        use crate::effects::ExileUntilMatchEffect;
+        Self::new(ExileUntilMatchEffect::new(player, filter))
+    }
+
     /// Create a "surveil" effect.
     pub fn surveil(count: impl Into<Value>) -> Self {
         use crate::effects::SurveilEffect;
@@ -4090,6 +4147,19 @@ impl Effect {
     ) -> Self {
         use crate::effects::LookAtTopCardsEffect;
         Self::new(LookAtTopCardsEffect::new(player, count, tag))
+    }
+
+    /// Rearrange tagged library cards by keeping some on top and putting the
+    /// rest on the bottom in random order.
+    pub fn rearrange_looked_cards_in_library(
+        tag: impl Into<TagKey>,
+        chooser: PlayerFilter,
+        count: ChoiceCount,
+    ) -> Self {
+        use crate::effects::RearrangeLookedCardsInLibraryEffect;
+        Self::new(RearrangeLookedCardsInLibraryEffect::new(
+            tag, chooser, count,
+        ))
     }
 
     /// Create a "search library" effect.
@@ -4127,6 +4197,22 @@ impl Effect {
             filter,
             PlayerFilter::You,
             reveal,
+        ))
+    }
+
+    /// Create a multi-slot search that finds several differently constrained cards.
+    pub fn search_library_slots_to_hand(
+        slots: Vec<crate::effects::SearchLibrarySlot>,
+        player: PlayerFilter,
+        reveal: bool,
+        progress_tag: impl Into<TagKey>,
+    ) -> Self {
+        use crate::effects::SearchLibrarySlotsEffect;
+        Self::new(SearchLibrarySlotsEffect::to_hand(
+            slots,
+            player,
+            reveal,
+            progress_tag,
         ))
     }
 

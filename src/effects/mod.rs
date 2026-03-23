@@ -63,10 +63,11 @@ pub use executor_trait::{CostExecutableEffect, CostValidationError, EffectExecut
 // Re-export effect implementations
 pub use cards::{
     ClashEffect, ConniveEffect, DiscardEffect, DiscardHandEffect, DrawCardsEffect,
-    DrawForEachTaggedMatchingEffect, ExileTopOfLibraryEffect, LookAtHandEffect,
-    LookAtTopCardsEffect, MillEffect, RevealFromHandEffect, RevealTaggedEffect, RevealTopEffect,
-    ScryEffect, SearchLibraryEffect, ShuffleGraveyardIntoLibraryEffect, ShuffleLibraryEffect,
-    SurveilEffect,
+    DrawForEachTaggedMatchingEffect, ExileTopOfLibraryEffect, ExileUntilMatchEffect,
+    LookAtHandEffect, LookAtTopCardsEffect, MillEffect, RearrangeLookedCardsInLibraryEffect,
+    RevealFromHandEffect, RevealTaggedEffect, RevealTopEffect, ScryEffect, SearchLibraryEffect,
+    SearchLibrarySlot, SearchLibrarySlotsEffect, ShuffleGraveyardIntoLibraryEffect,
+    ShuffleLibraryEffect, SurveilEffect,
 };
 pub use combat::{
     EnterAttackingEffect, FightEffect, GoadEffect, GrantAbilitiesAllEffect,
@@ -121,15 +122,14 @@ pub use permanents::{
 pub use player::{
     AdditionalLandPlaysEffect, BecomeMonarchEffect, CascadeEffect, CastSourceEffect,
     CastTaggedEffect, ChooseCardNameEffect, ChooseColorEffect, ChooseCreatureTypeEffect,
-    ChoosePlayerEffect, ControlPlayerEffect, CreateEmblemEffect, DemonicConsultationEffect,
-    DiscoverEffect, EnergyCountersEffect, ExileInsteadOfGraveyardEffect, ExileThenGrantPlayEffect,
+    ChoosePlayerEffect, ControlPlayerEffect, CreateEmblemEffect, DiscoverEffect,
+    EnergyCountersEffect, ExileInsteadOfGraveyardEffect, ExileThenGrantPlayEffect,
     ExileUntilMatchCastEffect, ExileUntilMatchGrantPlayEffect, ExperienceCountersEffect,
     ExtraTurnAfterNextTurnEffect, ExtraTurnEffect, GrantBySpecEffect, GrantEffect,
     GrantNextSpellCostReductionEffect, GrantPlayTaggedDuration, GrantPlayTaggedEffect,
     GrantTaggedSpellFreeCastUntilEndOfTurnEffect, GrantTaggedSpellLifeCostByManaValueEffect,
-    LoseTheGameEffect, PayEnergyEffect, PoisonCountersEffect, SavinesReclamationEffect,
-    SkipCombatPhasesEffect, SkipDrawStepEffect, SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect,
-    TaintedPactEffect, ThassasOracleEffect, WinTheGameEffect, YasharnImplacableEarthEffect,
+    LoseTheGameEffect, PayEnergyEffect, PoisonCountersEffect, SkipCombatPhasesEffect,
+    SkipDrawStepEffect, SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect, WinTheGameEffect,
 };
 pub use replacement::{
     ApplyReplacementEffect, RegisterZoneReplacementEffect, ReplacementApplyMode,
@@ -144,9 +144,9 @@ pub use tokens::{
 };
 pub use zones::{
     BattlefieldController, DestroyEffect, DestroyNoRegenerationEffect, ExileEffect,
-    ExileUntilDuration, ExileUntilEffect, HauntExileEffect, MoveToLibraryNthFromTopEffect,
-    MoveToZoneEffect, PutOntoBattlefieldEffect, ReorderGraveyardEffect, ReorderLibraryTopEffect,
-    ReturnAllToBattlefieldEffect, ReturnFromGraveyardOrExileToBattlefieldEffect,
-    ReturnFromGraveyardToBattlefieldEffect, ReturnFromGraveyardToHandEffect, ReturnToHandEffect,
-    SacrificeEffect, SacrificeTargetEffect,
+    ExileUntilDuration, ExileUntilEffect, HauntExileEffect, MayMoveToZoneEffect,
+    MoveToLibraryNthFromTopEffect, MoveToZoneEffect, PutOntoBattlefieldEffect,
+    ReorderGraveyardEffect, ReorderLibraryTopEffect, ReturnAllToBattlefieldEffect,
+    ReturnFromGraveyardOrExileToBattlefieldEffect, ReturnFromGraveyardToBattlefieldEffect,
+    ReturnFromGraveyardToHandEffect, ReturnToHandEffect, SacrificeEffect, SacrificeTargetEffect,
 };

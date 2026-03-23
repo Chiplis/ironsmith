@@ -17,8 +17,8 @@ use super::{
 #[allow(unused_imports)]
 use crate::cards::builders::{
     CardTextError, CarryContext, EffectAst, GrantedAbilityAst, IT_TAG, IfResultPredicate,
-    InsteadSemantics, KeywordAction, PlayerAst, SubjectAst, TagKey, TargetAst, TextSpan,
-    TokenCopyFollowup, ZoneReplacementDurationAst,
+    InsteadSemantics, KeywordAction, PlayerAst, PredicateAst, SubjectAst, TagKey, TargetAst,
+    TextSpan, TokenCopyFollowup, ZoneReplacementDurationAst,
 };
 use crate::effect::{ChoiceCount, Until, Value};
 use crate::mana::ManaSymbol;
@@ -65,14 +65,45 @@ fn parse_exact_card_effect_bundle_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<
         ]
     {
         let tag = TagKey::from("chosen_name");
+        let exiled_tag = TagKey::from("demonic_consultation_exiled");
+        let match_tag = TagKey::from("demonic_consultation_match");
         return Some(vec![
             EffectAst::ChooseCardName {
                 player: PlayerAst::You,
                 filter: None,
                 tag: tag.clone(),
             },
-            EffectAst::DemonicConsultation {
-                chosen_name_tag: tag,
+            EffectAst::ForEachTagged {
+                tag,
+                effects: vec![
+                    EffectAst::ExileTopOfLibrary {
+                        count: Value::Fixed(6),
+                        player: PlayerAst::You,
+                        tags: Vec::new(),
+                        accumulated_tags: Vec::new(),
+                    },
+                    EffectAst::ExileUntilMatch {
+                        player: PlayerAst::You,
+                        filter: ObjectFilter::default().match_tagged(
+                            TagKey::from(IT_TAG),
+                            TaggedOpbjectRelation::SameNameAsTagged,
+                        ),
+                        exiled_tag: Some(exiled_tag),
+                        match_tag: Some(match_tag.clone()),
+                    },
+                    EffectAst::ForEachTagged {
+                        tag: match_tag,
+                        effects: vec![EffectAst::MoveToZone {
+                            target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                            zone: Zone::Hand,
+                            to_top: false,
+                            battlefield_controller:
+                                crate::cards::builders::ReturnControllerAst::Preserve,
+                            battlefield_tapped: false,
+                            attached_to: None,
+                        }],
+                    },
+                ],
             },
         ]);
     }
@@ -131,7 +162,40 @@ fn parse_exact_card_effect_bundle_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<
             "first",
         ]
     {
-        return Some(vec![EffectAst::TaintedPact]);
+        let current_tag = TagKey::from("tainted_pact_current");
+        let exiled_tag = TagKey::from("tainted_pact_exiled");
+        let all_exiled_filter = ObjectFilter::tagged(exiled_tag.clone()).in_zone(Zone::Exile);
+        return Some(vec![EffectAst::RepeatProcess {
+            effects: vec![
+                EffectAst::ExileTopOfLibrary {
+                    count: Value::Fixed(1),
+                    player: PlayerAst::You,
+                    tags: vec![current_tag.clone()],
+                    accumulated_tags: vec![exiled_tag.clone()],
+                },
+                EffectAst::Conditional {
+                    predicate: PredicateAst::And(
+                        Box::new(PredicateAst::TaggedMatches(
+                            current_tag.clone(),
+                            ObjectFilter::default().in_zone(Zone::Exile),
+                        )),
+                        Box::new(PredicateAst::ValueComparison {
+                            left: Value::Count(all_exiled_filter.clone()),
+                            operator: crate::effect::ValueComparisonOperator::Equal,
+                            right: Value::DistinctNames(all_exiled_filter),
+                        }),
+                    ),
+                    if_true: vec![EffectAst::MayMoveToZone {
+                        target: TargetAst::Tagged(current_tag.clone(), None),
+                        zone: Zone::Hand,
+                        player: PlayerAst::You,
+                    }],
+                    if_false: Vec::new(),
+                },
+            ],
+            continue_effect_index: 1,
+            continue_predicate: IfResultPredicate::WasDeclined,
+        }]);
     }
 
     if sentence_words.as_slice()
@@ -144,7 +208,36 @@ fn parse_exact_card_effect_bundle_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<
             "the", "game",
         ]
     {
-        return Some(vec![EffectAst::ThassasOracle]);
+        let looked_tag = TagKey::from("thassas_oracle_looked");
+        return Some(vec![
+            EffectAst::LookAtTopCards {
+                player: PlayerAst::You,
+                count: Value::Devotion {
+                    player: PlayerFilter::You,
+                    color: crate::color::Color::Blue,
+                },
+                tag: looked_tag.clone(),
+            },
+            EffectAst::RearrangeLookedCardsInLibrary {
+                tag: looked_tag,
+                player: PlayerAst::You,
+                count: ChoiceCount::up_to(1),
+            },
+            EffectAst::Conditional {
+                predicate: PredicateAst::ValueComparison {
+                    left: Value::Devotion {
+                        player: PlayerFilter::You,
+                        color: crate::color::Color::Blue,
+                    },
+                    operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                    right: Value::CardsInLibrary(PlayerFilter::You),
+                },
+                if_true: vec![EffectAst::WinGame {
+                    player: PlayerAst::You,
+                }],
+                if_false: Vec::new(),
+            },
+        ]);
     }
 
     if sentence_words.as_slice()
@@ -172,7 +265,16 @@ fn parse_exact_card_effect_bundle_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<
             "copy",
         ]
     {
-        return Some(vec![EffectAst::SavinesReclamationFlashbackCopy]);
+        return Some(vec![EffectAst::Conditional {
+            predicate: PredicateAst::ThisSpellWasCastFromZone(Zone::Graveyard),
+            if_true: vec![EffectAst::CopySpell {
+                target: TargetAst::Source(None),
+                count: Value::Fixed(1),
+                player: PlayerAst::Implicit,
+                may_choose_new_targets: true,
+            }],
+            if_false: Vec::new(),
+        }]);
     }
 
     if sentence_words.as_slice()
@@ -182,7 +284,31 @@ fn parse_exact_card_effect_bundle_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<
             "hand", "then", "shuffle",
         ]
     {
-        return Some(vec![EffectAst::YasharnImplacableEarthSearch]);
+        return Some(vec![EffectAst::SearchLibrarySlotsToHand {
+            slots: vec![
+                crate::cards::builders::SearchLibrarySlotAst {
+                    filter: ObjectFilter::default()
+                        .in_zone(Zone::Library)
+                        .owned_by(PlayerFilter::You)
+                        .with_type(crate::types::CardType::Land)
+                        .with_supertype(crate::types::Supertype::Basic)
+                        .with_subtype(crate::types::Subtype::Forest),
+                    optional: true,
+                },
+                crate::cards::builders::SearchLibrarySlotAst {
+                    filter: ObjectFilter::default()
+                        .in_zone(Zone::Library)
+                        .owned_by(PlayerFilter::You)
+                        .with_type(crate::types::CardType::Land)
+                        .with_supertype(crate::types::Supertype::Basic)
+                        .with_subtype(crate::types::Subtype::Plains),
+                    optional: true,
+                },
+            ],
+            player: PlayerAst::You,
+            reveal: true,
+            progress_tag: TagKey::from("yasharn_search_progress"),
+        }]);
     }
 
     None

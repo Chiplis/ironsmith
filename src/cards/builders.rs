@@ -1249,6 +1249,10 @@ pub(crate) enum PredicateAst {
     PlayerTappedLandForManaThisTurn {
         player: PlayerAst,
     },
+    PlayerGainedLifeThisTurnOrMore {
+        player: PlayerAst,
+        count: u32,
+    },
     PlayerHadLandEnterBattlefieldThisTurn {
         player: PlayerAst,
     },
@@ -1290,12 +1294,15 @@ pub(crate) enum PredicateAst {
     SourceIsInZone(Zone),
     YourTurn,
     CreatureDiedThisTurn,
+    CreatureDiedThisTurnOrMore(u32),
     PermanentLeftBattlefieldUnderYourControlThisTurn,
+    YouHaveFullParty,
     YouAttackedThisTurn,
     SourceWasCast,
     NoSpellsWereCastLastTurn,
     /// The current resolving spell was kicked (not a target predicate).
     ThisSpellWasKicked,
+    ThisSpellPaidLabel(String),
     TargetWasKicked,
     TargetSpellCastOrderThisTurn(u32),
     TargetSpellControllerIsPoisoned,
@@ -1308,9 +1315,21 @@ pub(crate) enum PredicateAst {
         amount: u32,
         symbol: Option<ManaSymbol>,
     },
+    ThisSpellWasCastFromZone(Zone),
+    ValueComparison {
+        left: Value,
+        operator: crate::effect::ValueComparisonOperator,
+        right: Value,
+    },
     Unmodeled(String),
     Not(Box<PredicateAst>),
     And(Box<PredicateAst>, Box<PredicateAst>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct SearchLibrarySlotAst {
+    pub(crate) filter: ObjectFilter,
+    pub(crate) optional: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1726,10 +1745,27 @@ pub(crate) enum EffectAst {
     RevealTagged {
         tag: TagKey,
     },
+    ExileTopOfLibrary {
+        count: Value,
+        player: PlayerAst,
+        tags: Vec<TagKey>,
+        accumulated_tags: Vec<TagKey>,
+    },
+    ExileUntilMatch {
+        player: PlayerAst,
+        filter: ObjectFilter,
+        exiled_tag: Option<TagKey>,
+        match_tag: Option<TagKey>,
+    },
     LookAtTopCards {
         player: PlayerAst,
         count: Value,
         tag: TagKey,
+    },
+    RearrangeLookedCardsInLibrary {
+        tag: TagKey,
+        player: PlayerAst,
+        count: ChoiceCount,
     },
     RevealHand {
         player: PlayerAst,
@@ -1918,9 +1954,6 @@ pub(crate) enum EffectAst {
         filter: Option<ObjectFilter>,
         tag: TagKey,
     },
-    DemonicConsultation {
-        chosen_name_tag: TagKey,
-    },
     ChoosePlayer {
         chooser: PlayerAst,
         filter: PlayerFilter,
@@ -1928,7 +1961,6 @@ pub(crate) enum EffectAst {
         random: bool,
         exclude_previous_choices: usize,
     },
-    SavinesReclamationFlashbackCopy,
     ChooseSpellCastHistory {
         chooser: PlayerAst,
         cast_by: PlayerAst,
@@ -1942,8 +1974,6 @@ pub(crate) enum EffectAst {
         player: PlayerAst,
         excluded_subtypes: Vec<Subtype>,
     },
-    TaintedPact,
-    ThassasOracle,
     RepeatThisProcess,
     RepeatThisProcessOnce,
     May {
@@ -2280,7 +2310,17 @@ pub(crate) enum EffectAst {
         count: ChoiceCount,
         tapped: bool,
     },
-    YasharnImplacableEarthSearch,
+    SearchLibrarySlotsToHand {
+        slots: Vec<SearchLibrarySlotAst>,
+        player: PlayerAst,
+        reveal: bool,
+        progress_tag: TagKey,
+    },
+    MayMoveToZone {
+        target: TargetAst,
+        zone: Zone,
+        player: PlayerAst,
+    },
     ShuffleGraveyardIntoLibrary {
         player: PlayerAst,
     },
@@ -2342,6 +2382,7 @@ pub(crate) enum IfResultPredicate {
     Did,
     DidNot,
     DiesThisWay,
+    WasDeclined,
 }
 
 const IT_TAG: &str = "__it__";

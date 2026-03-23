@@ -370,14 +370,20 @@ pub(crate) fn materialize_prepared_statement_effects(
 pub(crate) fn materialize_prepared_effects_with_trigger_context(
     prepared: &PreparedEffectsForLowering,
 ) -> Result<LoweredEffects, CardTextError> {
-    if let [
+    if let Some((
         EffectAst::SelfReplacement {
             predicate,
             if_true,
             if_false,
         },
-    ] = prepared.effects.as_slice()
+        prefix_effects,
+    )) = prepared.effects.split_last()
+        && prefix_effects
+            .iter()
+            .all(|effect| !matches!(effect, EffectAst::SelfReplacement { .. }))
     {
+        let prefix_lowered =
+            compile_statement_effects_with_imports(prefix_effects, &prepared.imports)?;
         let default_lowered = compile_statement_effects_with_imports(if_false, &prepared.imports)?;
         let replacement_lowered =
             compile_statement_effects_with_imports(if_true, &prepared.imports)?;
@@ -386,12 +392,16 @@ pub(crate) fn materialize_prepared_effects_with_trigger_context(
             &prepared.initial_env,
             prepared.imports.last_object_tag.as_ref(),
         )?;
-        let mut choices = default_lowered.choices;
+        let mut default_effects = prefix_lowered.effects.flattened_default_effects().to_vec();
+        default_effects.extend(default_lowered.effects.flattened_default_effects().to_vec());
+
+        let mut choices = prefix_lowered.choices;
+        choices.extend(default_lowered.choices);
         choices.extend(replacement_lowered.choices);
         return Ok(LoweredEffects {
             effects: crate::resolution::ResolutionProgram::new(vec![
                 crate::resolution::ResolutionSegment {
-                    default_effects: default_lowered.effects.flattened_default_effects().to_vec(),
+                    default_effects,
                     self_replacements: vec![crate::resolution::SelfReplacementBranch::new(
                         condition,
                         replacement_lowered
@@ -1045,6 +1055,16 @@ pub(crate) fn compile_condition_from_predicate_ast(
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerTappedLandForManaThisTurn { player }
         }
+        PredicateAst::PlayerGainedLifeThisTurnOrMore { player, count } => {
+            let player = resolve_non_target_player_filter(*player, &refs)?;
+            Condition::PlayerGainedLifeThisTurnOrMore {
+                player,
+                count: *count,
+            }
+        }
+        PredicateAst::CreatureDiedThisTurnOrMore(count) => {
+            Condition::CreatureDiedThisTurnOrMore(*count)
+        }
         PredicateAst::PlayerHadLandEnterBattlefieldThisTurn { player } => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerHadLandEnterBattlefieldThisTurn { player }
@@ -1127,7 +1147,9 @@ pub(crate) fn compile_condition_from_predicate_ast(
         PredicateAst::YouAttackedThisTurn => Condition::AttackedThisTurn,
         PredicateAst::SourceWasCast => Condition::SourceWasCast,
         PredicateAst::NoSpellsWereCastLastTurn => Condition::NoSpellsWereCastLastTurn,
+        PredicateAst::YouHaveFullParty => Condition::YouHaveFullParty,
         PredicateAst::ThisSpellWasKicked => Condition::ThisSpellWasKicked,
+        PredicateAst::ThisSpellPaidLabel(label) => Condition::ThisSpellPaidLabel(label.clone()),
         PredicateAst::TargetWasKicked => Condition::TargetWasKicked,
         PredicateAst::TargetSpellCastOrderThisTurn(order) => {
             Condition::TargetSpellCastOrderThisTurn(*order)
@@ -1155,6 +1177,16 @@ pub(crate) fn compile_condition_from_predicate_ast(
                 symbol: *symbol,
             }
         }
+        PredicateAst::ThisSpellWasCastFromZone(zone) => Condition::ThisSpellWasCastFromZone(*zone),
+        PredicateAst::ValueComparison {
+            left,
+            operator,
+            right,
+        } => Condition::ValueComparison {
+            left: resolve_value_it_tag(left, &refs)?,
+            operator: *operator,
+            right: resolve_value_it_tag(right, &refs)?,
+        },
         PredicateAst::Unmodeled(text) => Condition::Unmodeled(text.clone()),
         PredicateAst::Not(inner) => {
             let inner = compile_condition_from_predicate_ast(inner, ctx, saved_last_tag)?;
@@ -1853,6 +1885,11 @@ pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
                     .is_some_and(|value| value_references_tag(value, IT_TAG))
         }
         EffectAst::Conditional {
+            predicate,
+            if_true,
+            if_false,
+        }
+        | EffectAst::SelfReplacement {
             predicate,
             if_true,
             if_false,
@@ -2916,6 +2953,7 @@ fn effect_predicate_from_if_result(predicate: IfResultPredicate) -> EffectPredic
         IfResultPredicate::Did => EffectPredicate::Happened,
         IfResultPredicate::DidNot => EffectPredicate::DidNotHappen,
         IfResultPredicate::DiesThisWay => EffectPredicate::HappenedNotReplaced,
+        IfResultPredicate::WasDeclined => EffectPredicate::WasDeclined,
     }
 }
 
@@ -4301,32 +4339,119 @@ fn try_compile_player_resource_and_choice_effect(
             Effect::win_the_game,
             Effect::win_the_game_player,
         )?,
-        EffectAst::DemonicConsultation { chosen_name_tag } => (
-            vec![Effect::new(crate::effects::DemonicConsultationEffect::new(
-                chosen_name_tag.clone(),
-            ))],
-            Vec::new(),
-        ),
-        EffectAst::SavinesReclamationFlashbackCopy => (
-            vec![Effect::new(
-                crate::effects::SavinesReclamationEffect::copy_if_cast_from_graveyard(),
-            )],
-            Vec::new(),
-        ),
-        EffectAst::TaintedPact => (
-            vec![Effect::new(crate::effects::TaintedPactEffect)],
-            Vec::new(),
-        ),
-        EffectAst::ThassasOracle => (
-            vec![Effect::new(crate::effects::ThassasOracleEffect)],
-            Vec::new(),
-        ),
-        EffectAst::YasharnImplacableEarthSearch => (
-            vec![Effect::new(
-                crate::effects::YasharnImplacableEarthEffect::new(),
-            )],
-            Vec::new(),
-        ),
+        EffectAst::ExileTopOfLibrary {
+            count,
+            player,
+            tags,
+            accumulated_tags,
+        } => {
+            let resolved_count = resolve_value_it_tag(count, &current_reference_env(ctx))?;
+            let (player_filter, choices) =
+                resolve_effect_player_filter(*player, ctx, true, true, true)?;
+            let mut effect =
+                crate::effects::ExileTopOfLibraryEffect::new(resolved_count, player_filter.clone());
+            for tag in tags {
+                let resolved_tag = resolve_it_tag_key(tag, &current_reference_env(ctx))?;
+                effect = effect.tag_moved(resolved_tag);
+            }
+            for tag in accumulated_tags {
+                let resolved_tag = resolve_it_tag_key(tag, &current_reference_env(ctx))?;
+                effect = effect.append_tagged(resolved_tag);
+            }
+            if let Some(tag) = tags.first() {
+                let resolved_tag = resolve_it_tag_key(tag, &current_reference_env(ctx))?;
+                ctx.last_object_tag = Some(resolved_tag.as_str().to_string());
+            }
+            ctx.last_player_filter = Some(player_filter);
+            (vec![Effect::new(effect)], choices)
+        }
+        EffectAst::ExileUntilMatch {
+            player,
+            filter,
+            exiled_tag,
+            match_tag,
+        } => {
+            let (player_filter, choices) =
+                resolve_effect_player_filter(*player, ctx, true, true, true)?;
+            let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+            let mut effect =
+                crate::effects::ExileUntilMatchEffect::new(player_filter.clone(), resolved_filter);
+            if let Some(tag) = exiled_tag {
+                let resolved_tag = resolve_it_tag_key(tag, &current_reference_env(ctx))?;
+                effect = effect.tag_all_exiled(resolved_tag);
+            }
+            if let Some(tag) = match_tag {
+                let resolved_tag = resolve_it_tag_key(tag, &current_reference_env(ctx))?;
+                ctx.last_object_tag = Some(resolved_tag.as_str().to_string());
+                effect = effect.tag_match(resolved_tag);
+            }
+            ctx.last_player_filter = Some(player_filter);
+            (vec![Effect::new(effect)], choices)
+        }
+        EffectAst::RearrangeLookedCardsInLibrary { tag, player, count } => {
+            let (player_filter, choices) =
+                resolve_effect_player_filter(*player, ctx, true, true, true)?;
+            let resolved_tag = resolve_it_tag_key(tag, &current_reference_env(ctx))?;
+            ctx.last_object_tag = Some(resolved_tag.as_str().to_string());
+            (
+                vec![Effect::rearrange_looked_cards_in_library(
+                    resolved_tag,
+                    player_filter,
+                    *count,
+                )],
+                choices,
+            )
+        }
+        EffectAst::SearchLibrarySlotsToHand {
+            slots,
+            player,
+            reveal,
+            progress_tag,
+        } => {
+            let (player_filter, choices) =
+                resolve_effect_player_filter(*player, ctx, true, true, true)?;
+            let refs = current_reference_env(ctx);
+            let resolved_slots = slots
+                .iter()
+                .map(|slot| {
+                    let resolved_filter = resolve_it_tag(&slot.filter, &refs)?;
+                    Ok(if slot.optional {
+                        crate::effects::SearchLibrarySlot::optional(resolved_filter)
+                    } else {
+                        crate::effects::SearchLibrarySlot::required(resolved_filter)
+                    })
+                })
+                .collect::<Result<Vec<_>, CardTextError>>()?;
+            let resolved_tag = resolve_it_tag_key(progress_tag, &refs)?;
+            ctx.last_object_tag = Some(resolved_tag.as_str().to_string());
+            ctx.last_player_filter = Some(player_filter.clone());
+            (
+                vec![Effect::search_library_slots_to_hand(
+                    resolved_slots,
+                    player_filter,
+                    *reveal,
+                    resolved_tag,
+                )],
+                choices,
+            )
+        }
+        EffectAst::MayMoveToZone {
+            target,
+            zone,
+            player,
+        } => {
+            let (spec, mut choices) =
+                resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            let (decider, player_choices) =
+                resolve_effect_player_filter(*player, ctx, true, true, true)?;
+            for choice in player_choices {
+                push_choice(&mut choices, choice);
+            }
+            (
+                vec![Effect::may_move_to_zone(spec, *zone, decider)],
+                choices,
+            )
+        }
         EffectAst::PreventAllCombatDamage { duration } => (
             vec![Effect::prevent_all_combat_damage(duration.clone())],
             Vec::new(),
@@ -6400,11 +6525,7 @@ fn try_compile_stack_and_condition_effect(
         } => {
             let (inner_effects, inner_choices) =
                 with_preserved_lowering_context(ctx, |_| {}, |ctx| compile_effects(effects, ctx))?;
-            let predicate = match predicate {
-                IfResultPredicate::Did => EffectPredicate::Happened,
-                IfResultPredicate::DidNot => EffectPredicate::DidNotHappen,
-                IfResultPredicate::DiesThisWay => EffectPredicate::HappenedNotReplaced,
-            };
+            let predicate = effect_predicate_from_if_result(*predicate);
             let effect = Effect::if_then(*condition, predicate, inner_effects);
             (vec![effect], inner_choices)
         }
@@ -6415,11 +6536,7 @@ fn try_compile_stack_and_condition_effect(
         } => {
             let (inner_effects, inner_choices) =
                 with_preserved_lowering_context(ctx, |_| {}, |ctx| compile_effects(effects, ctx))?;
-            let predicate = match predicate {
-                IfResultPredicate::Did => EffectPredicate::Happened,
-                IfResultPredicate::DidNot => EffectPredicate::DidNotHappen,
-                IfResultPredicate::DiesThisWay => EffectPredicate::HappenedNotReplaced,
-            };
+            let predicate = effect_predicate_from_if_result(*predicate);
             let effect =
                 Effect::reflexive_trigger(*condition, predicate, inner_effects, inner_choices);
             (vec![effect], Vec::new())

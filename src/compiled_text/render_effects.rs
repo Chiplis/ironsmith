@@ -1017,7 +1017,9 @@ pub(super) fn describe_inline_ability(ability: &Ability) -> String {
                         .join(""),
                 );
             } else if !activated.effects.is_empty() {
-                payload.push_str(&describe_effect_list(&activated.effects));
+                payload.push_str(&super::render_pipeline::describe_resolution_program(
+                    &activated.effects,
+                ));
             }
             if !payload.is_empty() {
                 if !line.is_empty() {
@@ -1064,7 +1066,9 @@ pub(super) fn describe_inline_ability(ability: &Ability) -> String {
                 if !line.is_empty() {
                     line.push_str(": ");
                 }
-                line.push_str(&describe_effect_list(&activated.effects));
+                line.push_str(&super::render_pipeline::describe_resolution_program(
+                    &activated.effects,
+                ));
             }
             let restriction_clauses = collect_activation_restriction_clauses(
                 &activated.timing,
@@ -6103,6 +6107,45 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             destination
         );
     }
+    if let Some(search_slots) = effect.downcast_ref::<crate::effects::SearchLibrarySlotsEffect>() {
+        let destination = match search_slots.destination {
+            Zone::Hand => "into your hand",
+            Zone::Battlefield => "onto the battlefield",
+            Zone::Library => "on top of your library",
+            Zone::Graveyard => "into your graveyard",
+            Zone::Exile => "into exile",
+            Zone::Stack => "onto the stack",
+            Zone::Command => "into the command zone",
+        };
+        let selections: Vec<String> = search_slots
+            .slots
+            .iter()
+            .map(|slot| {
+                let mut display_filter = slot.filter.clone();
+                if display_filter.owner.as_ref() == Some(&search_slots.player) {
+                    display_filter.owner = None;
+                }
+                describe_search_selection_with_cards(&display_filter.description())
+            })
+            .collect();
+        let joined = if selections.len() == 2 {
+            format!("{} and {}", selections[0], selections[1])
+        } else {
+            selections.join(", ")
+        };
+        let reveal = if search_slots.reveal {
+            "reveal those cards, "
+        } else {
+            ""
+        };
+        return format!(
+            "Search {} library for {}, {}put them {}, then shuffle",
+            describe_possessive_player_filter(&search_slots.player),
+            joined,
+            reveal,
+            destination
+        );
+    }
     if effect
         .downcast_ref::<crate::effects::RevealTaggedEffect>()
         .is_some()
@@ -6136,6 +6179,20 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         let owner = describe_possessive_player_filter(&look_at_top.player);
         let (count_text, noun, _) = describe_look_count_and_noun(&look_at_top.count);
         return format!("Look at the top {count_text} {noun} of {owner} library");
+    }
+    if let Some(rearrange) =
+        effect.downcast_ref::<crate::effects::RearrangeLookedCardsInLibraryEffect>()
+    {
+        let count_text = match (rearrange.count.min, rearrange.count.max) {
+            (0, Some(1)) => "up to one".to_string(),
+            (min, Some(max)) if min == max => max.to_string(),
+            (0, Some(max)) => format!("up to {max}"),
+            (min, Some(max)) => format!("between {min} and {max}"),
+            (min, None) => format!("at least {min}"),
+        };
+        return format!(
+            "Put {count_text} of the looked-at cards on top of your library and the rest on the bottom of your library in a random order"
+        );
     }
     if let Some(look_at_hand) = effect.downcast_ref::<crate::effects::LookAtHandEffect>() {
         if look_at_hand.reveal {
@@ -7000,6 +7057,18 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             player,
             player_verb(&player, "discover", "discovers"),
             describe_value(&discover.count)
+        );
+    }
+    if let Some(exile_until_match) = effect.downcast_ref::<crate::effects::ExileUntilMatchEffect>()
+    {
+        let player = describe_player_filter(&exile_until_match.player);
+        let player_verb = player_verb(&player, "exile", "exiles");
+        let player_pronoun = if player == "you" { "you" } else { "they" };
+        let library_owner = describe_possessive_player_filter(&exile_until_match.player);
+        let selection =
+            describe_search_selection_with_cards(&exile_until_match.filter.description());
+        return format!(
+            "{player} {player_verb} cards from the top of {library_owner} library until {player_pronoun} exile {selection}"
         );
     }
     if let Some(exile_until_match) =
@@ -8039,20 +8108,22 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     {
         return "Unearth".to_string();
     }
-    if let Some(_effect) = effect.downcast_ref::<crate::effects::DemonicConsultationEffect>() {
-        return "Exile the top six cards of your library, then reveal cards from the top of your library until you reveal the chosen card. Put that card into your hand and exile all other cards revealed this way".to_string();
-    }
-    if let Some(_effect) = effect.downcast_ref::<crate::effects::SavinesReclamationEffect>() {
-        return "If this spell was cast from a graveyard, copy this spell and you may choose a new target for the copy".to_string();
-    }
-    if let Some(_effect) = effect.downcast_ref::<crate::effects::TaintedPactEffect>() {
-        return "Exile the top card of your library. You may put that card into your hand unless it has the same name as another card exiled this way. Repeat this process until you put a card into your hand or you exile two cards with the same name, whichever comes first".to_string();
-    }
-    if let Some(_effect) = effect.downcast_ref::<crate::effects::ThassasOracleEffect>() {
-        return "Look at the top X cards of your library, where X is your devotion to blue. Put up to one of them on top of your library and the rest on the bottom of your library in a random order. If X is greater than or equal to the number of cards in your library, you win the game".to_string();
-    }
-    if let Some(_effect) = effect.downcast_ref::<crate::effects::YasharnImplacableEarthEffect>() {
-        return "Search your library for a basic Forest card and a basic Plains card, reveal those cards, put them into your hand, then shuffle".to_string();
+    if let Some(may_move) = effect.downcast_ref::<crate::effects::MayMoveToZoneEffect>() {
+        let destination = match may_move.zone {
+            crate::zone::Zone::Hand => "into your hand",
+            crate::zone::Zone::Exile => "into exile",
+            crate::zone::Zone::Graveyard => "into its owner's graveyard",
+            crate::zone::Zone::Library => "into its owner's library",
+            crate::zone::Zone::Battlefield => "onto the battlefield",
+            crate::zone::Zone::Command => "into the command zone",
+            crate::zone::Zone::Stack => "onto the stack",
+        };
+        return format!(
+            "{} may put {} {}",
+            describe_player_filter(&may_move.decider),
+            describe_choose_spec(&may_move.target),
+            destination
+        );
     }
     if let Some(vote) = effect.downcast_ref::<crate::effects::VoteEffect>() {
         let choices = vote
@@ -8562,7 +8633,8 @@ pub(super) fn describe_ability(
                 clauses.push(format!("choose {choices}"));
             }
             if !triggered.effects.is_empty() {
-                let effects = describe_effect_list(&triggered.effects);
+                let effects =
+                    super::render_pipeline::describe_resolution_program(&triggered.effects);
                 clauses.push(rewrite_damage_phrases_for_permanent_abilities(
                     &effects,
                     subject,
@@ -8637,7 +8709,8 @@ pub(super) fn describe_ability(
             }
             if !activated.effects.is_empty() {
                 line.push_str(": ");
-                let effects = describe_effect_list(&activated.effects);
+                let effects =
+                    super::render_pipeline::describe_resolution_program(&activated.effects);
                 line.push_str(&rewrite_damage_phrases_for_permanent_abilities(
                     &effects,
                     subject,
@@ -8738,7 +8811,8 @@ pub(super) fn describe_ability(
             }
             if !activated.effects.is_empty() {
                 line.push_str(": ");
-                let effects = describe_effect_list(&activated.effects);
+                let effects =
+                    super::render_pipeline::describe_resolution_program(&activated.effects);
                 line.push_str(&rewrite_damage_phrases_for_permanent_abilities(
                     &effects,
                     subject,

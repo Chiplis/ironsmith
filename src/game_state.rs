@@ -3514,6 +3514,17 @@ impl GameState {
         .unwrap_or(false)
     }
 
+    pub fn player_can_pay_black_with_life_for_reason(
+        &self,
+        payer: PlayerId,
+        source: Option<ObjectId>,
+        reason: crate::costs::PaymentReason,
+    ) -> bool {
+        self.player_can_pay_black_with_life(payer, source)
+            && (!reason.is_cast_or_ability_payment()
+                || !self.player_cant_pay_life_to_cast_or_activate(payer))
+    }
+
     pub fn minimum_total_spell_mana_payment(&self) -> Option<u32> {
         let all_effects = self.all_continuous_effects();
         let mut minimum = None;
@@ -3638,21 +3649,13 @@ impl GameState {
     pub fn adjust_mana_cost_for_payment_reason(
         &self,
         payer: PlayerId,
-        source: Option<ObjectId>,
+        _source: Option<ObjectId>,
         cost: &crate::mana::ManaCost,
         reason: crate::costs::PaymentReason,
     ) -> crate::mana::ManaCost {
         use crate::mana::ManaSymbol;
 
         let mut pips = cost.pips().to_vec();
-
-        if self.player_can_pay_black_with_life(payer, source) {
-            for pip in &mut pips {
-                if pip.len() == 1 && pip[0] == ManaSymbol::Black {
-                    pip.push(ManaSymbol::Life(2));
-                }
-            }
-        }
 
         if reason.is_cast_or_ability_payment()
             && self.player_cant_pay_life_to_cast_or_activate(payer)
@@ -3696,9 +3699,16 @@ impl GameState {
         };
 
         let allow_any_color = self.can_spend_mana_as_any_color(payer, source);
+        let allow_black_life =
+            self.player_can_pay_black_with_life_for_reason(payer, source, reason);
         let mut preview_pool = player.mana_pool.clone();
-        let (can_pay, life_to_pay) =
-            preview_pool.try_pay_tracking_life_with_any_color(cost, x_value, allow_any_color);
+        let (can_pay, life_to_pay) = preview_pool
+            .try_pay_tracking_life_with_any_color_and_black_life(
+                cost,
+                x_value,
+                allow_any_color,
+                allow_black_life,
+            );
         can_pay && self.can_pay_life_with_reason(payer, life_to_pay, reason)
     }
 
@@ -3729,6 +3739,8 @@ impl GameState {
         reason: crate::costs::PaymentReason,
     ) -> bool {
         let allow_any_color = self.can_spend_mana_as_any_color(payer, source);
+        let allow_black_life =
+            self.player_can_pay_black_with_life_for_reason(payer, source, reason);
         let original_pool = self.player(payer).map(|player| player.mana_pool.clone());
         let (paid, life_to_pay) = {
             let Some(player) = self.player_mut(payer) else {
@@ -3736,7 +3748,12 @@ impl GameState {
             };
             player
                 .mana_pool
-                .try_pay_tracking_life_with_any_color(cost, x_value, allow_any_color)
+                .try_pay_tracking_life_with_any_color_and_black_life(
+                    cost,
+                    x_value,
+                    allow_any_color,
+                    allow_black_life,
+                )
         };
         if !paid {
             return false;

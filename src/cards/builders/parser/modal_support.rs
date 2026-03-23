@@ -391,6 +391,7 @@ fn strip_trailing_modal_gate_clause(
         IfResultPredicate::Did => EffectPredicate::Happened,
         IfResultPredicate::DidNot => EffectPredicate::DidNotHappen,
         IfResultPredicate::DiesThisWay => EffectPredicate::HappenedNotReplaced,
+        IfResultPredicate::WasDeclined => EffectPredicate::WasDeclined,
     };
     let predicate_view = LowercaseWordView::new(predicate_tokens);
     let predicate_words = predicate_view.to_word_refs();

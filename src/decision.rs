@@ -4021,6 +4021,15 @@ pub trait DecisionMaker {
         ctx.min
     }
 
+    /// Free-form text entry decisions.
+    fn decide_text(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::TextInputContext,
+    ) -> String {
+        ctx.initial_value.clone().unwrap_or_default()
+    }
+
     /// Object selection (sacrifice, discard, search, etc.).
     /// Returns IDs of selected objects.
     fn decide_objects(
@@ -4256,6 +4265,14 @@ impl DecisionMaker for DecisionRouter {
         self.dm_for(game, ctx.player).decide_options(game, ctx)
     }
 
+    fn decide_text(
+        &mut self,
+        game: &GameState,
+        ctx: &crate::decisions::context::TextInputContext,
+    ) -> String {
+        self.dm_for(game, ctx.player).decide_text(game, ctx)
+    }
+
     fn view_cards(
         &mut self,
         game: &GameState,
@@ -4399,6 +4416,14 @@ impl<D: DecisionMaker + ?Sized> DecisionMaker for &mut D {
         (*self).decide_options(game, ctx)
     }
 
+    fn decide_text(
+        &mut self,
+        game: &GameState,
+        ctx: &crate::decisions::context::TextInputContext,
+    ) -> String {
+        (*self).decide_text(game, ctx)
+    }
+
     fn decide_order(
         &mut self,
         game: &GameState,
@@ -4525,6 +4550,14 @@ impl<D: DecisionMaker + ?Sized> DecisionMaker for Box<D> {
         ctx: &crate::decisions::context::SelectOptionsContext,
     ) -> Vec<usize> {
         (**self).decide_options(game, ctx)
+    }
+
+    fn decide_text(
+        &mut self,
+        game: &GameState,
+        ctx: &crate::decisions::context::TextInputContext,
+    ) -> String {
+        (**self).decide_text(game, ctx)
     }
 
     fn decide_order(
@@ -4661,6 +4694,14 @@ impl DecisionMaker for AutoPassDecisionMaker {
             .map(|o| o.index)
             .collect();
         legal.into_iter().take(ctx.min).collect()
+    }
+
+    fn decide_text(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::TextInputContext,
+    ) -> String {
+        ctx.initial_value.clone().unwrap_or_default()
     }
 
     fn decide_order(
@@ -7479,7 +7520,7 @@ mod tests {
     }
 
     #[test]
-    fn krrik_rewrites_black_spell_costs_as_phyrexian_choices() {
+    fn krrik_keeps_black_spell_costs_as_black_pips() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
 
@@ -7510,7 +7551,7 @@ mod tests {
             .expect("spell should have a cost");
 
         let effective = calculate_effective_mana_cost(&game, alice, spell_obj, base_cost);
-        assert_eq!(effective.to_oracle(), "{1}{B/P}{B/P}");
+        assert_eq!(effective.to_oracle(), "{1}{B}{B}");
     }
 
     #[test]
@@ -7590,7 +7631,7 @@ mod tests {
             calculate_effective_mana_cost(&game, alice, spell_obj, base_cost)
         };
 
-        assert_eq!(effective.to_oracle(), "{B/P}{B/P}{B/P}");
+        assert_eq!(effective.to_oracle(), "{B}{B}{B}");
         assert_eq!(effective.mana_value(), 3);
         assert!(
             game.try_pay_mana_cost_with_reason(
@@ -7606,7 +7647,7 @@ mod tests {
     }
 
     #[test]
-    fn yasharn_removes_krrik_life_choices_from_spell_costs() {
+    fn yasharn_blocks_krrik_life_payment_without_rewriting_spell_costs() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
 

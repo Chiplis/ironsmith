@@ -237,6 +237,13 @@ function serializeMultiplayerCommand(command, _currentState) {
     };
   }
 
+  if (command.type === "text_choice") {
+    return {
+      type: "text_choice",
+      value: String(command.value ?? ""),
+    };
+  }
+
   if (command.type === "declare_attackers") {
     return {
       type: "declare_attackers",
@@ -398,6 +405,8 @@ function isDecisionCommandCompatible(decision, command) {
       return command.type === "select_objects";
     case "number":
       return command.type === "number_choice";
+    case "text_input":
+      return command.type === "text_choice";
     case "attackers":
       return command.type === "declare_attackers";
     case "blockers":

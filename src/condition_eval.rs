@@ -31,6 +31,29 @@ fn source_was_cast(
     game.turn_history.spell_cast_order(source).is_some()
 }
 
+fn this_spell_was_cast_from_zone(
+    game: &GameState,
+    source: ObjectId,
+    ctx: &ExecutionContext,
+    zone: Zone,
+) -> bool {
+    match &ctx.casting_method {
+        crate::alternative_cast::CastingMethod::GrantedFlashback => zone == Zone::Graveyard,
+        crate::alternative_cast::CastingMethod::GrantedEscape { .. } => zone == Zone::Graveyard,
+        crate::alternative_cast::CastingMethod::PlayFrom {
+            zone: from_zone, ..
+        } => *from_zone == zone,
+        crate::alternative_cast::CastingMethod::Alternative(idx) => game
+            .object(source)
+            .and_then(|obj| obj.alternative_casts.get(*idx))
+            .is_some_and(|method| method.cast_from_zone() == zone),
+        crate::alternative_cast::CastingMethod::Normal
+        | crate::alternative_cast::CastingMethod::FaceDown
+        | crate::alternative_cast::CastingMethod::SplitOtherHalf
+        | crate::alternative_cast::CastingMethod::Fuse => false,
+    }
+}
+
 fn player_has_card_in_hand_matching(
     game: &GameState,
     player: PlayerId,
@@ -59,6 +82,24 @@ fn player_life_compares_to_half_starting(
             doubled_life < state.starting_life
         }
     })
+}
+
+fn evaluate_value_comparison(
+    game: &GameState,
+    controller: PlayerId,
+    source: ObjectId,
+    left: &Value,
+    operator: crate::effect::ValueComparisonOperator,
+    right: &Value,
+) -> bool {
+    let mut ctx = ExecutionContext::new_default(source, controller);
+    let Ok(left_value) = resolve_value(game, left, &mut ctx) else {
+        return false;
+    };
+    let Ok(right_value) = resolve_value(game, right, &mut ctx) else {
+        return false;
+    };
+    operator.evaluate(left_value, right_value)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -100,6 +141,9 @@ fn evaluate_condition_shared_core(
         Condition::CreatureDiedThisTurn => {
             Some(game.turn_history.total_creatures_died_this_turn() > 0)
         }
+        Condition::CreatureDiedThisTurnOrMore(count) => {
+            Some(game.turn_history.total_creatures_died_this_turn() >= *count)
+        }
         Condition::CastSpellThisTurn => Some(game.turn_history.any_spell_was_cast_this_turn()),
         Condition::AttackedThisTurn => Some(
             game.turn_history
@@ -121,10 +165,12 @@ fn evaluate_condition_shared_core(
                 > 0,
         ),
         Condition::SourceWasCast => Some(source_was_cast(game, ctx.source, ctx.triggering_event)),
+        Condition::ThisSpellWasCastFromZone(_) => None,
         Condition::NoSpellsWereCastLastTurn => Some(game.spells_cast_last_turn_total == 0),
         Condition::SpellsWereCastLastTurnOrMore(count) => {
             Some(game.spells_cast_last_turn_total >= *count)
         }
+        Condition::YouHaveFullParty => Some(player_has_full_party(game, ctx.controller)),
         Condition::ManaSpentToCastThisSpellAtLeast { amount, symbol } => {
             let Some(source_obj) = game.object(ctx.source) else {
                 return Some(false);
@@ -226,13 +272,16 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::YouHaveCardInHandMatching(..) => {}
         Condition::YourTurn => {}
         Condition::CreatureDiedThisTurn => {}
+        Condition::CreatureDiedThisTurnOrMore(..) => {}
         Condition::CastSpellThisTurn => {}
         Condition::AttackedThisTurn => {}
         Condition::OpponentLostLifeThisTurn => {}
         Condition::PermanentLeftBattlefieldUnderYourControlThisTurn => {}
         Condition::SourceWasCast => {}
+        Condition::ThisSpellWasCastFromZone(..) => {}
         Condition::NoSpellsWereCastLastTurn => {}
         Condition::SpellsWereCastLastTurnOrMore(..) => {}
+        Condition::YouHaveFullParty => {}
         Condition::TargetIsTapped => {}
         Condition::TargetIsAttacking => {}
         Condition::TargetIsBlocked => {}
@@ -296,7 +345,9 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::Or(..) => {}
         Condition::PlayerCastSpellsThisTurnOrMore { .. } => {}
         Condition::PlayerTappedLandForManaThisTurn { .. } => {}
+        Condition::PlayerGainedLifeThisTurnOrMore { .. } => {}
         Condition::PlayerHadLandEnterBattlefieldThisTurn { .. } => {}
+        Condition::ValueComparison { .. } => {}
         Condition::PlayerCardsInHandOrMore { .. } => {}
         Condition::PlayerCardsInHandOrFewer { .. } => {}
         Condition::PlayerControlsBasicLandTypesAmongLandsOrMore { .. } => {}
@@ -382,15 +433,25 @@ pub fn evaluate_condition_external(
     ) {
         return result;
     }
+    if let Condition::ValueComparison {
+        left,
+        operator,
+        right,
+    } = condition
+    {
+        return evaluate_value_comparison(game, ctx.controller, ctx.source, left, *operator, right);
+    }
 
     match condition {
         Condition::XValueAtLeast(_) => false, // X not available in static context
         Condition::ThisSpellWasKicked => game
             .object(ctx.source)
             .is_some_and(|obj| obj.optional_costs_paid.was_kicked()),
+        Condition::ThisSpellWasCastFromZone(_) => false,
         Condition::ThisSpellPaidLabel(label) => game
             .object(ctx.source)
             .is_some_and(|obj| obj.optional_costs_paid.was_paid_label(label)),
+        Condition::YouHaveFullParty => player_has_full_party(game, ctx.controller),
         Condition::YouControl(filter) => {
             let filter_ctx = game.filter_context_for(ctx.controller, ctx.filter_source);
             game.battlefield.iter().any(|&obj_id| {
@@ -435,6 +496,17 @@ pub fn evaluate_condition_external(
             game.turn_history
                 .players_tapped_land_for_mana_this_turn
                 .contains(&player_id)
+        }
+        Condition::PlayerGainedLifeThisTurnOrMore { player, count } => {
+            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
+                return false;
+            };
+            game.turn_history
+                .total_life_gained_for_players(&[player_id])
+                >= *count
+        }
+        Condition::CreatureDiedThisTurnOrMore(count) => {
+            game.turn_history.total_creatures_died_this_turn() >= *count
         }
         Condition::PlayerHadLandEnterBattlefieldThisTurn { player } => {
             let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
@@ -974,6 +1046,7 @@ pub fn evaluate_condition_external(
         | Condition::ManaSpentToCastThisSpellAtLeast { .. }
         | Condition::ColorsOfManaSpentToCastThisSpellOrMore(_)
         | Condition::PlayerGraveyardHasCardsAtLeast { .. }
+        | Condition::ValueComparison { .. }
         | Condition::YouControlCommander
         | Condition::Not(_)
         | Condition::And(_, _)
@@ -1091,6 +1164,24 @@ fn player_had_land_enter_battlefield_this_turn(game: &GameState, player_id: Play
         .player_had_land_enter_battlefield_this_turn(player_id)
 }
 
+fn player_has_full_party(game: &GameState, player_id: PlayerId) -> bool {
+    let has_role = |role: crate::types::Subtype| {
+        game.battlefield
+            .iter()
+            .filter_map(|&id| game.object(id))
+            .any(|obj| {
+                obj.controller == player_id
+                    && obj.has_card_type(crate::types::CardType::Creature)
+                    && obj.has_subtype(role)
+            })
+    };
+
+    has_role(crate::types::Subtype::Cleric)
+        && has_role(crate::types::Subtype::Rogue)
+        && has_role(crate::types::Subtype::Warrior)
+        && has_role(crate::types::Subtype::Wizard)
+}
+
 /// Evaluate a condition with minimal context (for cast-time evaluation).
 ///
 /// This simplified version is used during spell casting to evaluate conditions
@@ -1137,14 +1228,24 @@ fn evaluate_condition_simple(
     ) {
         return result;
     }
+    if let Condition::ValueComparison {
+        left,
+        operator,
+        right,
+    } = condition
+    {
+        return evaluate_value_comparison(game, controller, source, left, *operator, right);
+    }
 
     match condition {
         Condition::ThisSpellWasKicked => game
             .object(source)
             .is_some_and(|obj| obj.optional_costs_paid.was_kicked()),
+        Condition::ThisSpellWasCastFromZone(_) => false,
         Condition::ThisSpellPaidLabel(label) => game
             .object(source)
             .is_some_and(|obj| obj.optional_costs_paid.was_paid_label(label)),
+        Condition::YouHaveFullParty => player_has_full_party(game, controller),
         Condition::YouControl(filter) => game
             .battlefield
             .iter()
@@ -1483,6 +1584,17 @@ fn evaluate_condition_simple(
                 .players_tapped_land_for_mana_this_turn
                 .contains(&player_id)
         }
+        Condition::PlayerGainedLifeThisTurnOrMore { player, count } => {
+            let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
+                return false;
+            };
+            game.turn_history
+                .total_life_gained_for_players(&[player_id])
+                >= *count
+        }
+        Condition::CreatureDiedThisTurnOrMore(count) => {
+            game.turn_history.total_creatures_died_this_turn() >= *count
+        }
         Condition::PlayerHadLandEnterBattlefieldThisTurn { player } => {
             let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
                 return false;
@@ -1558,6 +1670,7 @@ fn evaluate_condition_simple(
         | Condition::ManaSpentToCastThisSpellAtLeast { .. }
         | Condition::ColorsOfManaSpentToCastThisSpellOrMore(_)
         | Condition::PlayerGraveyardHasCardsAtLeast { .. }
+        | Condition::ValueComparison { .. }
         | Condition::YouControlCommander
         | Condition::Not(_)
         | Condition::And(_, _)
@@ -1987,6 +2100,16 @@ fn evaluate_condition(
                 .players_tapped_land_for_mana_this_turn
                 .contains(&player_id))
         }
+        Condition::PlayerGainedLifeThisTurnOrMore { player, count } => {
+            let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
+            Ok(game
+                .turn_history
+                .total_life_gained_for_players(&[player_id])
+                >= *count)
+        }
+        Condition::CreatureDiedThisTurnOrMore(count) => {
+            Ok(game.turn_history.total_creatures_died_this_turn() >= *count)
+        }
         Condition::PlayerHadLandEnterBattlefieldThisTurn { player } => {
             let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
             Ok(player_had_land_enter_battlefield_this_turn(game, player_id))
@@ -2009,9 +2132,13 @@ fn evaluate_condition(
             Ok(false)
         }
         Condition::ThisSpellWasKicked => Ok(resolve_value(game, &Value::WasKicked, ctx)? != 0),
+        Condition::ThisSpellWasCastFromZone(zone) => {
+            Ok(this_spell_was_cast_from_zone(game, ctx.source, ctx, *zone))
+        }
         Condition::ThisSpellPaidLabel(label) => {
             Ok(resolve_value(game, &Value::WasPaidLabel(label.clone()), ctx)? != 0)
         }
+        Condition::YouHaveFullParty => Ok(player_has_full_party(game, ctx.controller)),
         Condition::TargetSpellCastOrderThisTurn(order) => {
             for target in &ctx.targets {
                 if let crate::executor::ResolvedTarget::Object(id) = target {
@@ -2372,6 +2499,14 @@ fn evaluate_condition(
                 ctx.controller,
             )),
         ),
+        Condition::ValueComparison {
+            left,
+            operator,
+            right,
+        } => Ok(operator.evaluate(
+            resolve_value(game, left, ctx)?,
+            resolve_value(game, right, ctx)?,
+        )),
         Condition::OwnsCardExiledWithCounter(counter) => Ok(game.exile.iter().any(|&id| {
             game.object(id).is_some_and(|obj| {
                 obj.owner == ctx.controller && obj.counters.get(counter).copied().unwrap_or(0) > 0

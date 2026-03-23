@@ -30,9 +30,10 @@ mod tests {
     use super::*;
     use crate::card::CardBuilder;
     use crate::decision::DecisionMaker;
+    use crate::executor::{ExecutionContext, execute_effect};
     use crate::game_loop::resolve_stack_entry_with;
     use crate::game_state::{GameState, StackEntry};
-    use crate::ids::{CardId, PlayerId};
+    use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::types::CardType;
     use crate::zone::Zone;
 
@@ -59,6 +60,26 @@ mod tests {
         }
     }
 
+    #[derive(Default)]
+    struct PromptOnlyDecisionMaker {
+        prompted: bool,
+    }
+
+    impl DecisionMaker for PromptOnlyDecisionMaker {
+        fn awaiting_choice(&self) -> bool {
+            self.prompted
+        }
+
+        fn decide_boolean(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            self.prompted = true;
+            false
+        }
+    }
+
     #[test]
     fn test_tainted_pact_basic_properties() {
         let def = tainted_pact();
@@ -72,6 +93,68 @@ mod tests {
                 .expect("spell effect exists")
                 .len(),
             1
+        );
+    }
+
+    #[test]
+    fn test_tainted_pact_repeat_process_keeps_progress_across_prompt_resume() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        game.create_object_from_card(
+            &CardBuilder::new(CardId::new(), "Second Card")
+                .card_types(vec![CardType::Artifact])
+                .build(),
+            alice,
+            Zone::Library,
+        );
+        game.create_object_from_card(
+            &CardBuilder::new(CardId::new(), "First Card")
+                .card_types(vec![CardType::Artifact])
+                .build(),
+            alice,
+            Zone::Library,
+        );
+
+        let effect = tainted_pact()
+            .spell_effect
+            .as_ref()
+            .expect("spell effect exists")
+            .segments[0]
+            .default_effects[0]
+            .clone();
+        let source = ObjectId::from_raw(999);
+
+        let ctx = ExecutionContext::new_default(source, alice);
+        let mut prompt_dm = PromptOnlyDecisionMaker::default();
+        let mut ctx = ctx.with_decision_maker(&mut prompt_dm);
+
+        let first =
+            execute_effect(&mut game, &effect, &mut ctx).expect("first prompt should execute");
+        assert_eq!(first.status, crate::effect::OutcomeStatus::Succeeded);
+        assert_eq!(
+            game.player(alice).expect("alice exists").library.len(),
+            1,
+            "the first card should already be exiled before the prompt resolves"
+        );
+
+        let mut decline_dm = crate::decision::AutoPassDecisionMaker;
+        let mut ctx = ctx.with_decision_maker(&mut decline_dm);
+        let second = execute_effect(&mut game, &effect, &mut ctx).expect("resume should execute");
+        assert_eq!(second.status, crate::effect::OutcomeStatus::Succeeded);
+        assert_eq!(
+            game.player(alice).expect("alice exists").library.len(),
+            0,
+            "resuming after declining should continue exiling through the library"
+        );
+        assert_eq!(
+            game.exile
+                .iter()
+                .filter(|id| game
+                    .object(**id)
+                    .is_some_and(|obj| { obj.name == "First Card" || obj.name == "Second Card" }))
+                .count(),
+            2,
+            "both distinct cards should be exiled this way"
         );
     }
 

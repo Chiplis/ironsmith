@@ -1,6 +1,8 @@
 use super::*;
 
-fn describe_resolution_program(program: &crate::resolution::ResolutionProgram) -> String {
+pub(super) fn describe_resolution_program(
+    program: &crate::resolution::ResolutionProgram,
+) -> String {
     let mut rendered_segments = Vec::new();
     for segment in &program.segments {
         if segment.self_replacements.len() == 1 {

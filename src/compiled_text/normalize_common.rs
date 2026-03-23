@@ -5712,6 +5712,10 @@ pub(crate) fn describe_value(value: &Value) -> String {
             "the number of cards in {} graveyard",
             describe_possessive_player_filter(filter)
         ),
+        Value::CardsInLibrary(filter) => format!(
+            "the number of cards in {} library",
+            describe_possessive_player_filter(filter)
+        ),
         Value::SpellsCastThisTurn(filter) => {
             format!(
                 "the number of spells cast this turn by {}",
@@ -7222,6 +7226,9 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         }
         Condition::YourTurn => "it is your turn".to_string(),
         Condition::CreatureDiedThisTurn => "a creature died this turn".to_string(),
+        Condition::CreatureDiedThisTurnOrMore(count) => {
+            format!("{count} or more creatures died this turn")
+        }
         Condition::CastSpellThisTurn => "a spell was cast this turn".to_string(),
         Condition::PlayerCastSpellsThisTurnOrMore { player, count } => {
             let subject = describe_player_filter(player);
@@ -7241,11 +7248,29 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             "a permanent left the battlefield under your control this turn".to_string()
         }
         Condition::SourceWasCast => "you cast it".to_string(),
+        Condition::ThisSpellWasCastFromZone(zone) => {
+            let zone_text = match zone {
+                Zone::Graveyard => "a graveyard".to_string(),
+                _ => format!("the {}", zone.name()),
+            };
+            format!("this spell was cast from {zone_text}")
+        }
         Condition::PlayerTappedLandForManaThisTurn { player } => {
             format!(
                 "{} tapped a land for mana this turn",
                 describe_player_filter(player)
             )
+        }
+        Condition::PlayerGainedLifeThisTurnOrMore { player, count } => {
+            if *count <= 1 {
+                format!("{} gained life this turn", describe_player_filter(player))
+            } else {
+                format!(
+                    "{} gained {} or more life this turn",
+                    describe_player_filter(player),
+                    count
+                )
+            }
         }
         Condition::PlayerHadLandEnterBattlefieldThisTurn { player } => {
             format!(
@@ -7265,7 +7290,10 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         Condition::TargetIsBlocked => "the target is blocked".to_string(),
         Condition::TargetWasKicked => "the target spell was kicked".to_string(),
         Condition::ThisSpellWasKicked => "this spell was kicked".to_string(),
-        Condition::ThisSpellPaidLabel(label) => format!("this spell paid {label}"),
+        Condition::ThisSpellPaidLabel(label) => {
+            format!("this spell's {} cost was paid", label.to_ascii_lowercase())
+        }
+        Condition::YouHaveFullParty => "you have a full party".to_string(),
         Condition::TargetSpellCastOrderThisTurn(2) => {
             "the target spell was the second spell cast this turn".to_string()
         }
@@ -7604,6 +7632,30 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             .as_ref()
             .map(|s| s.to_string())
             .unwrap_or_else(|| "count comparison".to_string()),
+        Condition::ValueComparison {
+            left,
+            operator,
+            right,
+        } => {
+            let operator_text = match operator {
+                crate::effect::ValueComparisonOperator::GreaterThan => "is greater than",
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual => {
+                    "is greater than or equal to"
+                }
+                crate::effect::ValueComparisonOperator::Equal => "is equal to",
+                crate::effect::ValueComparisonOperator::LessThan => "is less than",
+                crate::effect::ValueComparisonOperator::LessThanOrEqual => {
+                    "is less than or equal to"
+                }
+                crate::effect::ValueComparisonOperator::NotEqual => "is not equal to",
+            };
+            format!(
+                "{} {} {}",
+                describe_value(left),
+                operator_text,
+                describe_value(right)
+            )
+        }
         Condition::OwnsCardExiledWithCounter(counter) => format!(
             "you own a card in exile with a {} counter on it",
             counter.description()

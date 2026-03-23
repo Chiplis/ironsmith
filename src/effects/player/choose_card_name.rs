@@ -1,5 +1,5 @@
 use crate::cards::CardRegistry;
-use crate::decisions::context::{SelectOptionsContext, SelectableOption};
+use crate::decisions::context::{SelectOptionsContext, SelectableOption, TextInputContext};
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
@@ -33,14 +33,14 @@ impl ChooseCardNameEffect {
     }
 
     fn choice_options(filter: Option<&ObjectFilter>) -> Vec<String> {
-        let mut registry = CardRegistry::with_builtin_cards();
-        registry.ensure_all_generated_cards_loaded();
         let mut names = CardRegistry::supported_card_names();
         if let Some(filter) = filter
             && !filter.card_types.is_empty()
         {
+            let mut full_registry = CardRegistry::with_builtin_cards();
+            full_registry.ensure_all_generated_cards_loaded();
             names.retain(|name| {
-                registry.get(name).is_some_and(|definition| {
+                full_registry.get(name).is_some_and(|definition| {
                     filter
                         .card_types
                         .iter()
@@ -112,6 +112,35 @@ impl EffectExecutor for ChooseCardNameEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let chooser = resolve_player_filter(game, &self.chooser, ctx)?;
+        let uses_filtered_option_list = self
+            .filter
+            .as_ref()
+            .is_some_and(|filter| !filter.card_types.is_empty());
+        if !uses_filtered_option_list {
+            let choice_ctx = TextInputContext::new(chooser, Some(ctx.source), "Choose a card name")
+                .with_placeholder("Enter a card name")
+                .require_known_value(true);
+            let chosen_name = ctx.decision_maker.decide_text(game, &choice_ctx);
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+            let chosen_name = chosen_name.trim();
+            if chosen_name.is_empty() {
+                return Ok(EffectOutcome::count(0));
+            }
+
+            let mut registry = CardRegistry::new();
+            registry.ensure_cards_loaded([chosen_name]);
+            let canonical_name = registry
+                .get(chosen_name)
+                .map(|definition| definition.name().to_string())
+                .unwrap_or_else(|| chosen_name.to_string());
+
+            let snapshot = Self::synthetic_snapshot(ctx.source, chooser, canonical_name);
+            ctx.set_tagged_objects(self.tag.clone(), vec![snapshot]);
+            return Ok(EffectOutcome::count(1));
+        }
+
         let names = Self::choice_options(self.filter.as_ref());
         if names.is_empty() {
             return Ok(EffectOutcome::resolved());

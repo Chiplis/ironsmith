@@ -6,6 +6,8 @@ use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
+use crate::snapshot::ObjectSnapshot;
+use crate::tag::TagKey;
 use crate::target::PlayerFilter;
 use crate::zone::Zone;
 
@@ -16,6 +18,10 @@ pub struct ExileTopOfLibraryEffect {
     pub count: Value,
     /// Which player's library to exile from.
     pub player: PlayerFilter,
+    /// Optional tags to record the cards moved this way.
+    pub moved_tags: Vec<TagKey>,
+    /// Optional tags that accumulate all cards moved across repeated executions.
+    pub accumulated_tags: Vec<TagKey>,
 }
 
 impl ExileTopOfLibraryEffect {
@@ -24,7 +30,19 @@ impl ExileTopOfLibraryEffect {
         Self {
             count: count.into(),
             player,
+            moved_tags: Vec::new(),
+            accumulated_tags: Vec::new(),
         }
+    }
+
+    pub fn tag_moved(mut self, tag: impl Into<TagKey>) -> Self {
+        self.moved_tags.push(tag.into());
+        self
+    }
+
+    pub fn append_tagged(mut self, tag: impl Into<TagKey>) -> Self {
+        self.accumulated_tags.push(tag.into());
+        self
     }
 }
 
@@ -40,6 +58,9 @@ impl EffectExecutor for ExileTopOfLibraryEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
         let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
+        for tag in &self.moved_tags {
+            ctx.clear_object_tag(tag.as_str());
+        }
 
         let top_cards = game
             .player(player_id)
@@ -50,14 +71,25 @@ impl EffectExecutor for ExileTopOfLibraryEffect {
             })
             .unwrap_or_default();
 
-        let mut moved = 0i32;
+        let mut moved_ids = Vec::new();
         for card_id in top_cards {
-            if game.move_object_by_effect(card_id, Zone::Exile).is_some() {
-                moved += 1;
+            if let Some(exiled_id) = game.move_object_by_effect(card_id, Zone::Exile) {
+                if (!self.moved_tags.is_empty() || !self.accumulated_tags.is_empty())
+                    && let Some(obj) = game.object(exiled_id)
+                {
+                    let snapshot = ObjectSnapshot::from_object(obj, game);
+                    for tag in &self.moved_tags {
+                        ctx.tag_object(tag.clone(), snapshot.clone());
+                    }
+                    for tag in &self.accumulated_tags {
+                        ctx.tag_object(tag.clone(), snapshot.clone());
+                    }
+                }
+                moved_ids.push(exiled_id);
             }
         }
 
-        Ok(EffectOutcome::count(moved))
+        Ok(EffectOutcome::with_objects(moved_ids))
     }
 }
 

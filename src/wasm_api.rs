@@ -244,6 +244,7 @@ fn protected_object_ids_for_decision(decision: Option<&DecisionContext>) -> Hash
         }
         DecisionContext::Modes(_)
         | DecisionContext::HybridChoice(_)
+        | DecisionContext::TextInput(_)
         | DecisionContext::SelectOptions(_)
         | DecisionContext::Boolean(_)
         | DecisionContext::Number(_)
@@ -1362,6 +1363,18 @@ enum DecisionView {
         player: u8,
         actions: Vec<ActionView>,
     },
+    TextInput {
+        player: u8,
+        description: String,
+        placeholder: Option<String>,
+        value: Option<String>,
+        require_known_value: bool,
+        source_id: Option<u64>,
+        source_name: Option<String>,
+        context_text: Option<String>,
+        consequence_text: Option<String>,
+        reason: Option<String>,
+    },
     Number {
         player: u8,
         description: String,
@@ -1492,6 +1505,18 @@ impl DecisionView {
                         build_action_view(game, perspective, viewed_cards, index, action)
                     })
                     .collect(),
+            },
+            DecisionContext::TextInput(text) => DecisionView::TextInput {
+                player: text.player.0,
+                description: text.description.clone(),
+                placeholder: text.placeholder.clone(),
+                value: text.initial_value.clone(),
+                require_known_value: text.require_known_value,
+                source_id: resolve_source_id(text.source),
+                source_name: resolve_source_name(text.source),
+                context_text: context_text(),
+                consequence_text: consequence_text(),
+                reason: reason.clone(),
             },
             DecisionContext::Number(number) => DecisionView::Number {
                 player: number.player.0,
@@ -1955,6 +1980,9 @@ enum UiCommand {
     NumberChoice {
         value: u32,
     },
+    TextChoice {
+        value: String,
+    },
     SelectOptions {
         option_indices: Vec<usize>,
     },
@@ -2002,6 +2030,7 @@ struct BlockerDeclarationInput {
 enum ReplayDecisionAnswer {
     Boolean(bool),
     Number(u32),
+    Text(String),
     Options(Vec<usize>),
     Objects(Vec<ObjectId>),
     Order(Vec<ObjectId>),
@@ -2132,6 +2161,24 @@ impl DecisionMaker for WasmReplayDecisionMaker {
             _ => {
                 self.capture_once_for_game(game, DecisionContext::Number(ctx.clone()));
                 ctx.min
+            }
+        }
+    }
+
+    fn decide_text(
+        &mut self,
+        game: &GameState,
+        ctx: &crate::decisions::context::TextInputContext,
+    ) -> String {
+        match self.answers.front() {
+            Some(ReplayDecisionAnswer::Text(value)) => {
+                let value = value.clone();
+                self.answers.pop_front();
+                value
+            }
+            _ => {
+                self.capture_once_for_game(game, DecisionContext::TextInput(ctx.clone()));
+                ctx.initial_value.clone().unwrap_or_default()
             }
         }
     }
@@ -3079,6 +3126,12 @@ impl WasmGame {
 
         serde_wasm_bindgen::to_value(&suggestions)
             .map_err(|e| JsValue::from_str(&format!("autocompleteCardNames encode failed: {e}")))
+    }
+
+    /// Return whether the query resolves to a locally known card name.
+    #[wasm_bindgen(js_name = isKnownCardName)]
+    pub fn is_known_card_name(&mut self, query: String) -> bool {
+        self.is_known_card_name_query(query.trim())
     }
 
     /// Set a player's life total.
@@ -4319,6 +4372,14 @@ impl WasmGame {
 
     fn semantic_score_for_name(card_name: &str) -> Option<f32> {
         CardRegistry::generated_parser_semantic_score(card_name)
+    }
+
+    fn is_known_card_name_query(&mut self, query: &str) -> bool {
+        if query.trim().is_empty() {
+            return false;
+        }
+        self.registry.ensure_cards_loaded([query]);
+        self.registry.get(query).is_some()
     }
 
     fn autocomplete_name_corpus() -> &'static [(String, String)] {
@@ -6487,12 +6548,17 @@ impl WasmGame {
                 return Err(err);
             }
         };
-        if matches!(pending_ctx, DecisionContext::Boolean(_))
-            && matches!(answer, ReplayDecisionAnswer::Boolean(false))
-            && continuation
-                .speculative_progress
-                .as_ref()
-                .is_some_and(|progress| !matches!(progress, GameProgress::NeedsDecisionCtx(_)))
+        if matches!(
+            (&continuation.root, &pending_ctx, &answer),
+            (
+                PendingPriorityContinuation::ApplyDecisionContext(DecisionContext::Boolean(_)),
+                DecisionContext::Boolean(_),
+                ReplayDecisionAnswer::Boolean(false),
+            )
+        ) && continuation
+            .speculative_progress
+            .as_ref()
+            .is_some_and(|progress| !matches!(progress, GameProgress::NeedsDecisionCtx(_)))
         {
             return self.finish_live_priority_dispatch(
                 continuation
@@ -6746,7 +6812,7 @@ impl WasmGame {
     }
 
     fn command_to_replay_answer(
-        &self,
+        &mut self,
         ctx: &DecisionContext,
         command: UiCommand,
     ) -> Result<ReplayDecisionAnswer, JsValue> {
@@ -6767,6 +6833,16 @@ impl WasmGame {
                     )));
                 }
                 Ok(ReplayDecisionAnswer::Number(value))
+            }
+            (DecisionContext::TextInput(text), UiCommand::TextChoice { value }) => {
+                let value = value.trim();
+                if value.is_empty() {
+                    return Err(JsValue::from_str("text choice cannot be empty"));
+                }
+                if text.require_known_value && !self.is_known_card_name_query(value) {
+                    return Err(JsValue::from_str(&format!("unknown card name: {value}")));
+                }
+                Ok(ReplayDecisionAnswer::Text(value.to_string()))
             }
             (
                 DecisionContext::SelectOptions(options),
@@ -7128,6 +7204,11 @@ impl WasmGame {
                 } else {
                     Ok(PriorityResponse::NumberChoice(value))
                 }
+            }
+            (DecisionContext::TextInput(_), UiCommand::TextChoice { .. }) => {
+                Err(JsValue::from_str(
+                    "text input decisions should be replayed through their originating effect",
+                ))
             }
             (
                 DecisionContext::SelectOptions(options),
@@ -7855,6 +7936,7 @@ fn decision_exposes_object_to_perspective(
         DecisionContext::Partition(_)
         | DecisionContext::Modes(_)
         | DecisionContext::HybridChoice(_)
+        | DecisionContext::TextInput(_)
         | DecisionContext::Boolean(_)
         | DecisionContext::Number(_)
         | DecisionContext::Priority(_)
@@ -8066,6 +8148,7 @@ fn decision_reason(ctx: &DecisionContext) -> Option<String> {
                 Some("Choose number".into())
             }
         }
+        DecisionContext::TextInput(_) => Some("Text entry".into()),
         DecisionContext::SelectOptions(o) => {
             let d = o.description.to_lowercase();
             if d.contains("replacement") {
@@ -8240,6 +8323,7 @@ fn decision_context_kind(ctx: &DecisionContext) -> &'static str {
     match ctx {
         DecisionContext::Boolean(_) => "boolean",
         DecisionContext::Number(_) => "number",
+        DecisionContext::TextInput(_) => "text_input",
         DecisionContext::SelectObjects(_) => "select_objects",
         DecisionContext::SelectOptions(_) => "select_options",
         DecisionContext::Modes(_) => "modes",
@@ -8261,6 +8345,7 @@ fn replay_decision_requires_root_reexecution(ctx: &DecisionContext) -> bool {
     matches!(
         ctx,
         DecisionContext::Boolean(_)
+            | DecisionContext::TextInput(_)
             | DecisionContext::SelectOptions(_)
             | DecisionContext::Order(_)
             | DecisionContext::Distribute(_)
@@ -13000,6 +13085,161 @@ mod tests {
             Some(expected_resolving_id),
             "live follow-up prompts should restore the resolving stack entry from the committed resolution checkpoint"
         );
+    }
+
+    #[test]
+    fn tainted_pact_declining_first_card_advances_to_second_prompt_in_live_ui_flow() {
+        let mut wasm = WasmGame::new();
+        let alice = PlayerId::from_index(0);
+
+        wasm.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+        wasm.game.turn.active_player = alice;
+        wasm.game.turn.priority_player = Some(alice);
+        wasm.game.turn.phase = Phase::FirstMain;
+        wasm.game.turn.step = None;
+
+        let spell_id = ObjectId::from_raw(
+            wasm.add_card_to_zone(0, "Tainted Pact".to_string(), "hand".to_string(), true)
+                .expect("Tainted Pact should be added to hand"),
+        );
+        wasm.add_card_to_zone(0, "Second Card".to_string(), "library".to_string(), true)
+            .expect("second library card should be added");
+        wasm.add_card_to_zone(0, "First Card".to_string(), "library".to_string(), true)
+            .expect("first library card should be added");
+
+        wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
+        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+            alice,
+            compute_legal_actions(&wasm.game, alice),
+        )));
+
+        dispatch_matching_priority_action(
+            &mut wasm,
+            |action| matches!(action, LegalAction::CastSpell { spell_id: id, .. } if *id == spell_id),
+        );
+
+        dispatch_pass_priority(&mut wasm);
+        dispatch_pass_priority(&mut wasm);
+
+        match wasm.pending_decision.as_ref() {
+            Some(DecisionContext::Boolean(ctx)) => {
+                assert!(
+                    ctx.description.to_ascii_lowercase().contains("first card"),
+                    "expected first Tainted Pact prompt, got {:?}",
+                    ctx.description
+                );
+            }
+            other => panic!("expected first Tainted Pact boolean prompt, got {other:?}"),
+        }
+
+        dispatch_select_options(&mut wasm, &[0]);
+
+        match wasm.pending_decision.as_ref() {
+            Some(DecisionContext::Boolean(ctx)) => {
+                assert!(
+                    ctx.description.to_ascii_lowercase().contains("second card"),
+                    "declining the first card should advance to the second prompt, got {:?}",
+                    ctx.description
+                );
+            }
+            other => panic!("expected second Tainted Pact boolean prompt, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn demonic_consultation_resolution_prompts_for_card_name_in_wasm_flow() {
+        let mut wasm = WasmGame::new();
+        let alice = PlayerId::from_index(0);
+
+        wasm.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+        wasm.game.turn.active_player = alice;
+        wasm.game.turn.priority_player = Some(alice);
+        wasm.game.turn.phase = Phase::FirstMain;
+        wasm.game.turn.step = None;
+
+        let spell_id = ObjectId::from_raw(
+            wasm.add_card_to_zone(
+                0,
+                "Demonic Consultation".to_string(),
+                "hand".to_string(),
+                true,
+            )
+            .expect("Demonic Consultation should be added to hand"),
+        );
+
+        wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
+        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+            alice,
+            compute_legal_actions(&wasm.game, alice),
+        )));
+
+        dispatch_matching_priority_action(
+            &mut wasm,
+            |action| matches!(action, LegalAction::CastSpell { spell_id: id, .. } if *id == spell_id),
+        );
+
+        dispatch_pass_priority(&mut wasm);
+        dispatch_pass_priority(&mut wasm);
+
+        match wasm.pending_decision.as_ref() {
+            Some(DecisionContext::TextInput(ctx)) => {
+                assert_eq!(ctx.description, "Choose a card name");
+                assert_eq!(ctx.placeholder.as_deref(), Some("Enter a card name"));
+            }
+            other => panic!("expected Demonic Consultation card-name prompt, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn krrik_casting_black_spell_surfaces_pay_two_life_option_in_wasm_flow() {
+        let mut wasm = WasmGame::new();
+        let alice = PlayerId::from_index(0);
+
+        wasm.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+        wasm.game.turn.active_player = alice;
+        wasm.game.turn.priority_player = Some(alice);
+        wasm.game.turn.phase = Phase::FirstMain;
+        wasm.game.turn.step = None;
+
+        wasm.add_card_to_zone(
+            0,
+            "K'rrik, Son of Yawgmoth".to_string(),
+            "battlefield".to_string(),
+            true,
+        )
+        .expect("K'rrik should be added to the battlefield");
+        let spell_id = ObjectId::from_raw(
+            wasm.add_card_to_zone(
+                0,
+                "Demonic Consultation".to_string(),
+                "hand".to_string(),
+                true,
+            )
+            .expect("Demonic Consultation should be added to hand"),
+        );
+
+        wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
+        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+            alice,
+            compute_legal_actions(&wasm.game, alice),
+        )));
+
+        dispatch_matching_priority_action(
+            &mut wasm,
+            |action| matches!(action, LegalAction::CastSpell { spell_id: id, .. } if *id == spell_id),
+        );
+
+        match wasm.pending_decision.as_ref() {
+            Some(DecisionContext::SelectOptions(ctx)) => {
+                assert!(
+                    ctx.options
+                        .iter()
+                        .any(|option| option.description == "Pay 2 life"),
+                    "expected K'rrik to surface a pay-2-life payment option in the WASM decision"
+                );
+            }
+            other => panic!("expected mana payment choice after starting the cast, got {other:?}"),
+        }
     }
 
     #[test]

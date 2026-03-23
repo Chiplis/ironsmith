@@ -1175,6 +1175,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::HalfStartingLifeTotalRoundedUp(_)
         | Value::HalfStartingLifeTotalRoundedDown(_)
         | Value::CardsInHand(_)
+        | Value::CardsInLibrary(_)
         | Value::LifeGainedThisTurn(_)
         | Value::LifeLostThisTurn(_)
         | Value::NoncombatDamageDealtToPlayersThisTurn(_)

@@ -57,9 +57,16 @@ impl CostPayer for ManaPaymentCost {
         // Use the existing compute_potential_mana function
         let potential = crate::decision::compute_potential_mana(game, ctx.payer);
         let allow_any_color = game.can_spend_mana_as_any_color(ctx.payer, Some(ctx.source));
+        let allow_black_life =
+            game.player_can_pay_black_with_life_for_reason(ctx.payer, Some(ctx.source), ctx.reason);
         let mut preview_pool = potential.clone();
-        let (can_pay, life_to_pay) =
-            preview_pool.try_pay_tracking_life_with_any_color(&self.cost, x_value, allow_any_color);
+        let (can_pay, life_to_pay) = preview_pool
+            .try_pay_tracking_life_with_any_color_and_black_life(
+                &self.cost,
+                x_value,
+                allow_any_color,
+                allow_black_life,
+            );
         if !can_pay || !game.can_pay_life_with_reason(ctx.payer, life_to_pay, ctx.reason) {
             return Err(CostPaymentError::InsufficientMana);
         }

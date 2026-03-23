@@ -16,6 +16,7 @@ const WORKER_METHODS = [
   "drawCard",
   "drawOpeningHands",
   "getCardSemanticScore",
+  "isKnownCardName",
   "getSemanticThreshold",
   "loadDecks",
   "loadDemoDecks",

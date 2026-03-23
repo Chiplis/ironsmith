@@ -195,6 +195,17 @@ export class WasmGame {
         return ret;
     }
     /**
+     * Return whether the query resolves to a locally known card name.
+     * @param {string} query
+     * @returns {boolean}
+     */
+    isKnownCardName(query) {
+        const ptr0 = passStringToWasm0(query, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmgame_isKnownCardName(this.__wbg_ptr, ptr0, len0);
+        return ret !== 0;
+    }
+    /**
      * Load explicit decks by card name. JS format: `string[][]`.
      *
      * Deck list index maps to player index.

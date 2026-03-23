@@ -419,9 +419,17 @@ pub(super) fn compute_spell_cast_x_bounds(
 
     if pay_has_x && let Some(cost) = mana_cost_to_pay {
         let allow_any_color = game.can_spend_mana_as_any_color(caster, Some(stack_id));
+        let allow_black_life = game.player_can_pay_black_with_life_for_reason(
+            caster,
+            Some(stack_id),
+            crate::costs::PaymentReason::CastSpell,
+        );
         max_x = Some(
-            compute_potential_mana(game, caster)
-                .max_x_for_cost_with_any_color(cost, allow_any_color),
+            compute_potential_mana(game, caster).max_x_for_cost_with_any_color_and_black_life(
+                cost,
+                allow_any_color,
+                allow_black_life,
+            ),
         );
     }
 
@@ -1434,11 +1442,19 @@ pub(super) fn continue_spell_cast_mana_payment(
         .unwrap_or_else(|| "spell".to_string());
 
     let allow_any_color = game.can_spend_mana_as_any_color(player_id, Some(source));
+    let allow_black_life = game.player_can_pay_black_with_life_for_reason(
+        player_id,
+        Some(source),
+        crate::costs::PaymentReason::CastSpell,
+    );
+    let display_pip = current_display_pip(&pending.display_mana_pips, &pending.remaining_mana_pips);
     let options = build_pip_payment_options(
         game,
         player_id,
         &pip,
+        display_pip,
         allow_any_color,
+        allow_black_life,
         Some(source),
         &mut *decision_maker,
     );
@@ -2600,8 +2616,17 @@ pub(super) fn continue_activation(
             let max_x = if let Some(ref cost) = pending.mana_cost_to_pay {
                 let allow_any_color =
                     game.can_spend_mana_as_any_color(pending.activator, Some(pending.source));
+                let allow_black_life = game.player_can_pay_black_with_life_for_reason(
+                    pending.activator,
+                    Some(pending.source),
+                    crate::costs::PaymentReason::ActivateAbility,
+                );
                 compute_potential_mana(game, pending.activator)
-                    .max_x_for_cost_with_any_color(cost, allow_any_color)
+                    .max_x_for_cost_with_any_color_and_black_life(
+                        cost,
+                        allow_any_color,
+                        allow_black_life,
+                    )
             } else {
                 0
             };
@@ -2795,12 +2820,21 @@ pub(super) fn continue_activation(
                 .unwrap_or_else(|| "ability".to_string());
 
             let allow_any_color = game.can_spend_mana_as_any_color(player_id, Some(source));
+            let allow_black_life = game.player_can_pay_black_with_life_for_reason(
+                player_id,
+                Some(source),
+                crate::costs::PaymentReason::ActivateAbility,
+            );
+            let display_pip =
+                current_display_pip(&pending.display_mana_pips, &pending.remaining_mana_pips);
             let options = build_pip_payment_options(
                 game,
                 player_id,
                 &pip,
+                display_pip,
                 allow_any_color,
-                None,
+                allow_black_life,
+                Some(source),
                 &mut *decision_maker,
             );
 

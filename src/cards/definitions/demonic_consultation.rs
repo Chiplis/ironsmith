@@ -27,6 +27,7 @@ mod tests {
     use crate::card::CardBuilder;
     use crate::cards::definitions::lightning_bolt;
     use crate::decision::DecisionMaker;
+    use crate::executor::{ExecutionContext, execute_effect};
     use crate::game_loop::resolve_stack_entry_with;
     use crate::game_state::{GameState, StackEntry};
     use crate::ids::{CardId, PlayerId};
@@ -36,16 +37,32 @@ mod tests {
     struct ChooseBoltDm;
 
     impl DecisionMaker for ChooseBoltDm {
-        fn decide_options(
+        fn decide_text(
             &mut self,
             _game: &GameState,
-            ctx: &crate::decisions::context::SelectOptionsContext,
-        ) -> Vec<usize> {
-            ctx.options
-                .iter()
-                .find(|option| option.description == "Lightning Bolt")
-                .map(|option| vec![option.index])
-                .unwrap_or_default()
+            _ctx: &crate::decisions::context::TextInputContext,
+        ) -> String {
+            "Lightning Bolt".to_string()
+        }
+    }
+
+    #[derive(Default)]
+    struct PromptOnlyDecisionMaker {
+        prompted: bool,
+    }
+
+    impl DecisionMaker for PromptOnlyDecisionMaker {
+        fn awaiting_choice(&self) -> bool {
+            self.prompted
+        }
+
+        fn decide_text(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::TextInputContext,
+        ) -> String {
+            self.prompted = true;
+            String::new()
         }
     }
 
@@ -62,6 +79,52 @@ mod tests {
                 .expect("spell effect exists")
                 .len(),
             2
+        );
+    }
+
+    #[test]
+    fn test_demonic_consultation_waits_for_name_choice_before_exiling() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        game.create_object_from_card(
+            &CardBuilder::new(CardId::new(), "Second Card")
+                .card_types(vec![CardType::Artifact])
+                .build(),
+            alice,
+            Zone::Library,
+        );
+        game.create_object_from_card(
+            &CardBuilder::new(CardId::new(), "First Card")
+                .card_types(vec![CardType::Artifact])
+                .build(),
+            alice,
+            Zone::Library,
+        );
+
+        let effect = demonic_consultation()
+            .spell_effect
+            .as_ref()
+            .expect("spell effect exists")
+            .segments[0]
+            .default_effects[0]
+            .clone();
+        let source = crate::ids::ObjectId::from_raw(999);
+
+        let ctx = ExecutionContext::new_default(source, alice);
+        let mut prompt_dm = PromptOnlyDecisionMaker::default();
+        let mut ctx = ctx.with_decision_maker(&mut prompt_dm);
+
+        let first =
+            execute_effect(&mut game, &effect, &mut ctx).expect("prompt should execute cleanly");
+        assert_eq!(first.status, crate::effect::OutcomeStatus::Succeeded);
+        assert_eq!(
+            game.player(alice).expect("alice exists").library.len(),
+            2,
+            "the library should remain untouched until a card name is chosen"
+        );
+        assert!(
+            game.exile.is_empty(),
+            "no cards should be exiled before the player chooses a card name"
         );
     }
 

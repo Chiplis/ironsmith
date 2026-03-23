@@ -1356,6 +1356,61 @@ fn rewrite_lexed_effect_sequence_preserves_for_each_player_doesnt_predicate() {
 }
 
 #[test]
+fn rewrite_lexed_effect_sequence_builds_self_replacement_for_return_followup() {
+    let text = "Return target creature card from your graveyard to your hand. If you gained 7 or more life this turn, return that card to the battlefield instead.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify return followup");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed).expect("sequence");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("SelfReplacement"), "{debug}");
+}
+
+#[test]
+fn rewrite_lexed_effect_sequence_builds_self_replacement_for_damage_followup() {
+    let text = "This creature deals 1 damage to any target. If that land is a Mountain, this creature deals 2 damage instead.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify damage followup");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed).expect("sequence");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("SelfReplacement"), "{debug}");
+}
+
+#[test]
+fn rewrite_lexed_effect_sequence_builds_self_replacement_for_toxic_followup() {
+    let text = "Target creature you control gets +1/+1 until end of turn. If that creature has toxic, instead it gets +2/+2 until end of turn.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify toxic followup");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed).expect("sequence");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("SelfReplacement"), "{debug}");
+}
+
+#[test]
+fn rewrite_lexed_effect_sequence_builds_self_replacement_for_creatures_died_count_followup() {
+    let text = "If a creature died this turn, you draw a card and you lose 1 life. If seven or more creatures died this turn, instead you draw seven cards and you lose 7 life.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify died-count followup");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed).expect("sequence");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("SelfReplacement"), "{debug}");
+}
+
+#[test]
+fn rewrite_lexed_effect_sequence_builds_self_replacement_for_full_party_followup() {
+    let text = "Creatures you control get +1/+0 until end of turn. If you have a full party, creatures you control get +3/+0 until end of turn instead.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify full-party followup");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed).expect("sequence");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("SelfReplacement"), "{debug}");
+}
+
+#[test]
 fn rewrite_semantic_parse_supports_adamant_spent_to_cast_statement_line()
 -> Result<(), CardTextError> {
     let builder = CardDefinitionBuilder::new(CardId::new(), "Adamant Variant")

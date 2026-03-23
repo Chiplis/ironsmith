@@ -10,7 +10,6 @@ use crate::types::{CardType, Subtype};
 /// Thassa's Oracle - {U}{U}
 /// Creature — Merfolk Wizard
 /// 1/3
-/// Flying
 /// When Thassa's Oracle enters the battlefield, look at the top X cards of your library,
 /// where X is your devotion to blue. Put up to one of them on top of your library and the
 /// rest on the bottom of your library in a random order. If X is greater than or equal to
@@ -25,7 +24,7 @@ pub fn thassas_oracle() -> CardDefinition {
         .subtypes(vec![Subtype::Merfolk, Subtype::Wizard])
         .power_toughness(PowerToughness::fixed(1, 3))
         .parse_text(
-            "Flying\nWhen Thassa's Oracle enters the battlefield, look at the top X cards of your library, where X is your devotion to blue. Put up to one of them on top of your library and the rest on the bottom of your library in a random order. If X is greater than or equal to the number of cards in your library, you win the game.",
+            "When Thassa's Oracle enters the battlefield, look at the top X cards of your library, where X is your devotion to blue. Put up to one of them on top of your library and the rest on the bottom of your library in a random order. If X is greater than or equal to the number of cards in your library, you win the game.",
         )
         .expect("Card text should be supported")
 }
@@ -36,10 +35,10 @@ mod tests {
     use crate::ability::AbilityKind;
     use crate::card::CardBuilder;
     use crate::decision::DecisionMaker;
-    use crate::executor::{ExecutionContext, execute_effect};
+    use crate::executor::ExecutionContext;
+    use crate::game_loop::execute_resolution_program;
     use crate::game_state::GameState;
     use crate::ids::{CardId, PlayerId};
-    use crate::static_abilities::StaticAbility;
     use crate::types::CardType;
     use crate::zone::Zone;
 
@@ -50,12 +49,7 @@ mod tests {
         assert_eq!(def.name(), "Thassa's Oracle");
         assert!(def.is_creature());
         assert_eq!(def.card.mana_value(), 2);
-        assert_eq!(def.abilities.len(), 2);
-        assert!(def.abilities.iter().any(|ability| matches!(
-            &ability.kind,
-            AbilityKind::Static(static_ability)
-                if static_ability == &StaticAbility::flying()
-        )));
+        assert_eq!(def.abilities.len(), 1);
         assert!(def.abilities.iter().any(|ability| matches!(
             &ability.kind,
             AbilityKind::Triggered(triggered)
@@ -102,14 +96,22 @@ mod tests {
             .abilities
             .iter()
             .find_map(|ability| match &ability.kind {
-                AbilityKind::Triggered(triggered) => Some(&triggered.effects[0]),
+                AbilityKind::Triggered(triggered) => Some(triggered),
                 _ => None,
             })
             .expect("oracle should have an ETB trigger");
 
         let mut dm = ChooseNothingDm;
         let mut ctx = ExecutionContext::new(oracle_id, alice, &mut dm);
-        let result = execute_effect(&mut game, trigger, &mut ctx);
+        let result = execute_resolution_program(
+            &mut game,
+            &mut ctx,
+            alice,
+            oracle_id,
+            &trigger.effects,
+            None,
+            &[],
+        );
 
         assert!(result.is_ok(), "oracle trigger should resolve");
         assert!(
@@ -151,14 +153,23 @@ mod tests {
             .abilities
             .iter()
             .find_map(|ability| match &ability.kind {
-                AbilityKind::Triggered(triggered) => Some(&triggered.effects[0]),
+                AbilityKind::Triggered(triggered) => Some(triggered),
                 _ => None,
             })
             .expect("oracle should have an ETB trigger");
 
         let mut dm = ChooseNothingDm;
         let mut ctx = ExecutionContext::new(oracle_id, alice, &mut dm);
-        execute_effect(&mut game, trigger, &mut ctx).expect("oracle trigger should resolve");
+        execute_resolution_program(
+            &mut game,
+            &mut ctx,
+            alice,
+            oracle_id,
+            &trigger.effects,
+            None,
+            &[],
+        )
+        .expect("oracle trigger should resolve");
 
         let library_names: Vec<_> = game
             .player(alice)

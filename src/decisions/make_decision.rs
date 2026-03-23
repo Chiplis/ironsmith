@@ -78,6 +78,13 @@ fn make_decision_from_context<R: FromPrimitiveResponse>(
             let result = dm.decide_number(game, &ctx);
             R::from_number(result, fallback)
         }
+        DecisionContext::TextInput(ctx) => {
+            let result = dm.decide_text(game, &ctx);
+            if dm.awaiting_choice() {
+                return R::pending_response(fallback);
+            }
+            R::from_text(result, fallback)
+        }
         DecisionContext::SelectObjects(ctx) => {
             let result = dm.decide_objects(game, &ctx);
             R::from_objects(result, fallback)
@@ -247,6 +254,12 @@ pub trait FromPrimitiveResponse: Sized {
 
     /// Convert from an object selection result.
     fn from_objects(result: Vec<ObjectId>, fallback: Self) -> Self {
+        let _ = result;
+        fallback
+    }
+
+    /// Convert from a text input result.
+    fn from_text(result: String, fallback: Self) -> Self {
         let _ = result;
         fallback
     }

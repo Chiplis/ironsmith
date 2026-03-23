@@ -4,8 +4,8 @@ use crate::effect::{EffectOutcome, Value};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_objects_for_effect, resolve_player_filter, resolve_value};
 use crate::events::spells::SpellCopiedEvent;
-use crate::executor::{ExecutionContext, ExecutionError};
-use crate::game_state::{GameState, StackEntry};
+use crate::executor::{ExecutionContext, ExecutionError, ResolvedTarget};
+use crate::game_state::{GameState, StackEntry, Target};
 use crate::object::Object;
 use crate::target::{ChooseSpec, PlayerFilter};
 use crate::triggers::TriggerEvent;
@@ -66,6 +66,33 @@ impl CopySpellEffect {
     pub fn single(target: ChooseSpec) -> Self {
         Self::new(target, 1)
     }
+
+    fn target_from_resolved_target(target: &ResolvedTarget) -> Target {
+        match target {
+            ResolvedTarget::Object(id) => Target::Object(*id),
+            ResolvedTarget::Player(id) => Target::Player(*id),
+        }
+    }
+
+    fn resolving_source_stack_entry(ctx: &ExecutionContext) -> StackEntry {
+        let mut entry = StackEntry::new(ctx.source, ctx.controller);
+        entry.provenance = ctx.provenance;
+        entry.targets = ctx
+            .targets
+            .iter()
+            .map(Self::target_from_resolved_target)
+            .collect();
+        entry.target_assignments = ctx.target_assignments.clone();
+        entry.x_value = ctx.x_value;
+        entry.casting_method = ctx.casting_method.clone();
+        entry.optional_costs_paid = ctx.optional_costs_paid.clone();
+        entry.defending_player = ctx.defending_player;
+        entry.source_snapshot = ctx.source_snapshot.clone();
+        entry.triggering_event = ctx.triggering_event.clone();
+        entry.chosen_modes = ctx.chosen_modes.clone();
+        entry.tagged_objects = ctx.tagged_objects.clone();
+        entry
+    }
 }
 
 impl EffectExecutor for CopySpellEffect {
@@ -97,7 +124,11 @@ impl EffectExecutor for CopySpellEffect {
             .find(|e| e.object_id == target_id)
             .cloned();
 
-        let Some(original_entry) = stack_entry_opt else {
+        let original_entry = if let Some(entry) = stack_entry_opt {
+            entry
+        } else if target_id == ctx.source {
+            Self::resolving_source_stack_entry(ctx)
+        } else {
             return Ok(EffectOutcome::target_invalid());
         };
 
@@ -366,6 +397,32 @@ mod tests {
         } else {
             panic!("Expected Objects result");
         }
+    }
+
+    #[test]
+    fn test_copy_spell_can_copy_currently_resolving_source_spell() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        let spell_id = create_instant_on_stack(&mut game, "Resolving Bolt", alice);
+        game.stack.clear();
+
+        let mut ctx = ExecutionContext::new_default(spell_id, alice);
+
+        let effect = CopySpellEffect::single(ChooseSpec::Source);
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        let copy_id = match result.value {
+            crate::effect::OutcomeValue::Objects(ids) => ids[0],
+            _ => panic!("Expected Objects result"),
+        };
+
+        assert_eq!(game.stack.len(), 1);
+        assert_eq!(game.stack[0].object_id, copy_id);
+        assert_eq!(
+            game.object(copy_id).expect("copy exists").name,
+            "Resolving Bolt"
+        );
     }
 
     #[test]

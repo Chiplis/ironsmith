@@ -70,6 +70,10 @@ export class WasmGame {
      */
     getSemanticThreshold(): number;
     /**
+     * Return whether the query resolves to a locally known card name.
+     */
+    isKnownCardName(query: string): boolean;
+    /**
      * Load explicit decks by card name. JS format: `string[][]`.
      *
      * Deck list index maps to player index.
@@ -163,6 +167,7 @@ export interface InitOutput {
     readonly wasmgame_objectDetails: (a: number, b: bigint) => [number, number, number];
     readonly wasmgame_snapshotJson: (a: number) => [number, number, number, number];
     readonly wasmgame_autocompleteCardNames: (a: number, b: number, c: number, d: number) => [number, number, number];
+    readonly wasmgame_isKnownCardName: (a: number, b: number, c: number) => number;
     readonly wasmgame_setLife: (a: number, b: number, c: number) => [number, number];
     readonly wasmgame_addLifeDelta: (a: number, b: number, c: number) => [number, number];
     readonly wasmgame_drawCard: (a: number, b: number) => [number, number, number];

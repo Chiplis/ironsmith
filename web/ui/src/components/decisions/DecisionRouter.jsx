@@ -5,6 +5,7 @@ import BlockersDecision from "./BlockersDecision";
 import SelectObjectsDecision from "./SelectObjectsDecision";
 import SelectOptionsDecision from "./SelectOptionsDecision";
 import NumberDecision from "./NumberDecision";
+import TextInputDecision from "./TextInputDecision";
 import { decisionKey } from "@/lib/decision-key";
 
 export default function DecisionRouter({
@@ -91,6 +92,18 @@ export default function DecisionRouter({
     case "number":
       return (
         <NumberDecision
+          key={key}
+          decision={decision}
+          canAct={canAct}
+          inlineSubmit={inlineSubmit}
+          onSubmitActionChange={onSubmitActionChange}
+          hideDescription={hideDescription}
+          layout={layout}
+        />
+      );
+    case "text_input":
+      return (
+        <TextInputDecision
           key={key}
           decision={decision}
           canAct={canAct}

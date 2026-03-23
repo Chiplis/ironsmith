@@ -1447,6 +1447,13 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(PredicateAst::CreatureDiedThisTurn);
     }
 
+    if filtered.len() == 7
+        && let Some(count) = parse_named_number(filtered[0])
+        && filtered[1..] == ["or", "more", "creatures", "died", "this", "turn"]
+    {
+        return Ok(PredicateAst::CreatureDiedThisTurnOrMore(count));
+    }
+
     if matches!(
         filtered.as_slice(),
         [
@@ -1525,6 +1532,25 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         });
     }
 
+    if filtered.len() >= 7
+        && filtered[0] == "you"
+        && filtered[1] == "gained"
+        && let Some((count, used)) = parse_number(&tokens[2..])
+        && filtered[2 + used..] == ["or", "more", "life", "this", "turn"]
+    {
+        return Ok(PredicateAst::PlayerGainedLifeThisTurnOrMore {
+            player: PlayerAst::You,
+            count: count as u32,
+        });
+    }
+
+    if filtered.as_slice() == ["you", "gained", "life", "this", "turn"] {
+        return Ok(PredicateAst::PlayerGainedLifeThisTurnOrMore {
+            player: PlayerAst::You,
+            count: 1,
+        });
+    }
+
     if filtered.as_slice() == ["you", "attacked", "this", "turn"] {
         return Ok(PredicateAst::YouAttackedThisTurn);
     }
@@ -1561,10 +1587,37 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     if filtered.as_slice() == ["this", "spell", "was", "kicked"] {
         return Ok(PredicateAst::ThisSpellWasKicked);
     }
+    if filtered.len() == 6
+        && filtered[0] == "this"
+        && matches!(
+            filtered[1],
+            "spell's" | "card's" | "creature's" | "permanent's"
+        )
+        && filtered[3] == "cost"
+        && filtered[4] == "was"
+        && filtered[5] == "paid"
+    {
+        let mut chars = filtered[2].chars();
+        let Some(first) = chars.next() else {
+            return Err(CardTextError::ParseError(
+                "missing paid-cost label in predicate".to_string(),
+            ));
+        };
+        let label = format!(
+            "{}{}",
+            first.to_ascii_uppercase(),
+            chars.as_str().to_ascii_lowercase()
+        );
+        return Ok(PredicateAst::ThisSpellPaidLabel(label));
+    }
     if filtered.as_slice() == ["it", "was", "kicked"]
         || filtered.as_slice() == ["that", "was", "kicked"]
     {
         return Ok(PredicateAst::TargetWasKicked);
+    }
+
+    if filtered.as_slice() == ["you", "have", "full", "party"] {
+        return Ok(PredicateAst::YouHaveFullParty);
     }
     if filtered.as_slice() == ["its", "controller", "poisoned"]
         || filtered.as_slice() == ["that", "spells", "controller", "poisoned"]
@@ -1695,6 +1748,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             "artifact"
                 | "card"
                 | "creature"
+                | "land"
                 | "object"
                 | "permanent"
                 | "source"
@@ -1834,6 +1888,21 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
 
     if let Some(reference_len) = demonstrative_reference_len {
         let mut descriptor_words = filtered[reference_len..].to_vec();
+        if descriptor_words.as_slice() == ["has", "toxic"]
+            || descriptor_words.as_slice() == ["have", "toxic"]
+        {
+            let mut filter = ObjectFilter::default().with_ability_marker("toxic");
+            if filtered.get(1).copied() == Some("creature") {
+                filter.card_types.push(CardType::Creature);
+            }
+            return Ok(PredicateAst::ItMatches(filter));
+        }
+        if descriptor_words
+            .first()
+            .is_some_and(|word| matches!(*word, "is" | "are"))
+        {
+            descriptor_words.remove(0);
+        }
         if descriptor_words.starts_with(&["not", "token"]) {
             descriptor_words.drain(0..2);
             descriptor_words.insert(0, "nontoken");

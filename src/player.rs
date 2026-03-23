@@ -97,15 +97,33 @@ impl ManaPool {
         x_value: u32,
         allow_any_color: bool,
     ) -> bool {
+        self.can_pay_with_any_color_and_black_life(cost, x_value, allow_any_color, false)
+    }
+
+    /// Check if this pool can pay a mana cost with X=x_value, optionally
+    /// allowing mana to be spent as though it were any color and singleton
+    /// black pips to be paid with 2 life (for effects like K'rrik).
+    pub fn can_pay_with_any_color_and_black_life(
+        &self,
+        cost: &crate::mana::ManaCost,
+        x_value: u32,
+        allow_any_color: bool,
+        allow_black_life: bool,
+    ) -> bool {
         // First try normal payment (uses mana when available)
         let mut pool = self.clone();
-        if pool.try_pay_with_any_color(cost, x_value, allow_any_color) {
+        if pool.try_pay_with_any_color_and_black_life(
+            cost,
+            x_value,
+            allow_any_color,
+            allow_black_life,
+        ) {
             return true;
         }
 
         // If that fails, try with life payment for Phyrexian pips
         let mut pool = self.clone();
-        pool.try_pay_with_life_preference(cost, x_value, allow_any_color)
+        pool.try_pay_with_life_preference(cost, x_value, allow_any_color, allow_black_life)
     }
 
     /// Try to pay preferring life for Phyrexian pips (to preserve mana for X).
@@ -115,6 +133,7 @@ impl ManaPool {
         cost: &crate::mana::ManaCost,
         x_value: u32,
         allow_any_color: bool,
+        allow_black_life: bool,
     ) -> bool {
         use crate::mana::ManaSymbol;
 
@@ -132,6 +151,8 @@ impl ManaPool {
 
         for pip in pips {
             let mut paid = false;
+            let allow_krrik_life =
+                Self::singleton_black_pip_with_life_option(pip, allow_black_life);
 
             for alternative in pip.iter() {
                 match alternative {
@@ -188,6 +209,10 @@ impl ManaPool {
                 }
             }
 
+            if !paid && allow_krrik_life {
+                paid = true;
+            }
+
             if !paid {
                 return false;
             }
@@ -230,16 +255,34 @@ impl ManaPool {
         x_value: u32,
         allow_any_color: bool,
     ) -> (bool, u32) {
+        self.try_pay_tracking_life_with_any_color_and_black_life(
+            cost,
+            x_value,
+            allow_any_color,
+            false,
+        )
+    }
+
+    /// Try to pay a mana cost with X=x_value, tracking life payment and optionally
+    /// allowing mana to be spent as though it were any color and singleton black
+    /// pips to be paid with 2 life.
+    pub fn try_pay_tracking_life_with_any_color_and_black_life(
+        &mut self,
+        cost: &crate::mana::ManaCost,
+        x_value: u32,
+        allow_any_color: bool,
+        allow_black_life: bool,
+    ) -> (bool, u32) {
         // First, try mana-first strategy (prefer mana over life for Phyrexian pips)
         let original_pool = self.clone();
-        let result = self.try_pay_internal(cost, x_value, false, allow_any_color);
+        let result = self.try_pay_internal(cost, x_value, false, allow_any_color, allow_black_life);
         if result.0 {
             return result;
         }
 
         // Mana-first failed, restore pool and try life-first strategy
         *self = original_pool;
-        self.try_pay_internal(cost, x_value, true, allow_any_color)
+        self.try_pay_internal(cost, x_value, true, allow_any_color, allow_black_life)
     }
 
     /// Try to pay a mana cost with X=x_value, optionally allowing any color spending.
@@ -249,8 +292,25 @@ impl ManaPool {
         x_value: u32,
         allow_any_color: bool,
     ) -> bool {
-        self.try_pay_tracking_life_with_any_color(cost, x_value, allow_any_color)
-            .0
+        self.try_pay_with_any_color_and_black_life(cost, x_value, allow_any_color, false)
+    }
+
+    /// Try to pay a mana cost with X=x_value, optionally allowing any color spending
+    /// and singleton black pips to be paid with 2 life.
+    pub fn try_pay_with_any_color_and_black_life(
+        &mut self,
+        cost: &crate::mana::ManaCost,
+        x_value: u32,
+        allow_any_color: bool,
+        allow_black_life: bool,
+    ) -> bool {
+        self.try_pay_tracking_life_with_any_color_and_black_life(
+            cost,
+            x_value,
+            allow_any_color,
+            allow_black_life,
+        )
+        .0
     }
 
     /// Internal payment implementation with configurable Phyrexian strategy.
@@ -263,6 +323,7 @@ impl ManaPool {
         x_value: u32,
         prefer_life_for_phyrexian: bool,
         allow_any_color: bool,
+        allow_black_life: bool,
     ) -> (bool, u32) {
         // Sort pips so colored costs are paid first (more constrained),
         // then generic/X costs last (more flexible). This prevents the bug
@@ -290,14 +351,22 @@ impl ManaPool {
 
             // Check if this is a Phyrexian pip (has Life alternative)
             let is_phyrexian = pip.iter().any(|s| matches!(s, ManaSymbol::Life(_)));
+            let is_singleton_black_with_life =
+                Self::singleton_black_pip_with_life_option(pip, allow_black_life);
+            let has_life_option = is_phyrexian || is_singleton_black_with_life;
 
             // If preferring life for Phyrexian and this is a Phyrexian pip, pay with life first
-            if prefer_life_for_phyrexian && is_phyrexian {
-                for alternative in pip.iter() {
-                    if let ManaSymbol::Life(amount) = alternative {
-                        life_to_pay += *amount as u32;
-                        paid = true;
-                        break;
+            if prefer_life_for_phyrexian && has_life_option {
+                if is_singleton_black_with_life {
+                    life_to_pay += 2;
+                    paid = true;
+                } else {
+                    for alternative in pip.iter() {
+                        if let ManaSymbol::Life(amount) = alternative {
+                            life_to_pay += *amount as u32;
+                            paid = true;
+                            break;
+                        }
                     }
                 }
                 if paid {
@@ -320,6 +389,11 @@ impl ManaPool {
                             }
                         } else if self.amount(*alternative) > 0 {
                             self.remove(*alternative, 1);
+                            paid = true;
+                            break;
+                        } else if *alternative == ManaSymbol::Black && is_singleton_black_with_life
+                        {
+                            life_to_pay += 2;
                             paid = true;
                             break;
                         }
@@ -412,6 +486,18 @@ impl ManaPool {
         cost: &crate::mana::ManaCost,
         allow_any_color: bool,
     ) -> u32 {
+        self.max_x_for_cost_with_any_color_and_black_life(cost, allow_any_color, false)
+    }
+
+    /// Calculate the maximum X value that can be paid given a mana cost,
+    /// optionally allowing any-color spending and singleton black pips to be
+    /// paid with 2 life.
+    pub fn max_x_for_cost_with_any_color_and_black_life(
+        &self,
+        cost: &crate::mana::ManaCost,
+        allow_any_color: bool,
+        allow_black_life: bool,
+    ) -> u32 {
         // First check if the non-X part of the cost can be paid
         let mut test_pool = self.clone();
 
@@ -436,7 +522,8 @@ impl ManaPool {
             }
 
             // First check if there's a life payment option - prefer it to save mana for X
-            let has_life_option = pip.iter().any(|s| matches!(s, ManaSymbol::Life(_)));
+            let has_life_option = pip.iter().any(|s| matches!(s, ManaSymbol::Life(_)))
+                || Self::singleton_black_pip_with_life_option(pip, allow_black_life);
             if has_life_option {
                 continue; // Can pay with life, preserving mana for X
             }
@@ -489,6 +576,10 @@ impl ManaPool {
 
         // Remaining mana can all go to X (divided by number of X pips, but usually 1)
         test_pool.total() / x_pip_count
+    }
+
+    fn singleton_black_pip_with_life_option(pip: &[ManaSymbol], allow_black_life: bool) -> bool {
+        allow_black_life && pip.len() == 1 && pip[0] == ManaSymbol::Black
     }
 }
 
@@ -848,6 +939,22 @@ mod tests {
     }
 
     #[test]
+    fn test_single_black_pip_can_use_krrik_life_without_rewriting_cost() {
+        use crate::mana::ManaCost;
+
+        let cost = ManaCost::from_symbols(vec![ManaSymbol::Black]);
+
+        let mut pool = ManaPool::new();
+        let (success, life_to_pay) =
+            pool.try_pay_tracking_life_with_any_color_and_black_life(&cost, 0, false, true);
+        assert!(
+            success,
+            "Krrik-style life payment should cover a plain {{B}} pip"
+        );
+        assert_eq!(life_to_pay, 2, "the plain black pip should cost 2 life");
+    }
+
+    #[test]
     fn test_phyrexian_mana_with_x_cost() {
         use crate::mana::ManaCost;
 
@@ -900,6 +1007,23 @@ mod tests {
         assert_eq!(
             max_x, 2,
             "max_x should be 2 when we can use life for {{B/P}} and all mana for X"
+        );
+    }
+
+    #[test]
+    fn test_max_x_prefers_krrik_life_for_single_black_pip() {
+        use crate::mana::ManaCost;
+
+        let cost = ManaCost::from_pips(vec![vec![ManaSymbol::X], vec![ManaSymbol::Black]]);
+
+        let mut pool = ManaPool::new();
+        pool.add(ManaSymbol::Black, 1);
+        pool.add(ManaSymbol::Red, 1);
+
+        let max_x = pool.max_x_for_cost_with_any_color_and_black_life(&cost, false, true);
+        assert_eq!(
+            max_x, 2,
+            "Krrik-style payment should preserve both mana for X"
         );
     }
 

@@ -112,6 +112,7 @@ mod tests {
 
         let mut dm = SelectFirstDecisionMaker;
         resolve_stack_entry_with(&mut game, &mut dm).expect("flashback savine should resolve");
+        resolve_stack_entry_with(&mut game, &mut dm).expect("copied savine should resolve");
 
         for expected in ["Ornithopter", "Grizzly Bears"] {
             assert!(

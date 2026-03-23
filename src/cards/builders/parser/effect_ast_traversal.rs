@@ -130,11 +130,11 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::GainLife { .. } => {}
         EffectAst::LoseGame { .. } => {}
         EffectAst::WinGame { .. } => {}
-        EffectAst::DemonicConsultation { .. } => {}
-        EffectAst::SavinesReclamationFlashbackCopy => {}
-        EffectAst::TaintedPact => {}
-        EffectAst::ThassasOracle => {}
-        EffectAst::YasharnImplacableEarthSearch => {}
+        EffectAst::ExileTopOfLibrary { .. } => {}
+        EffectAst::ExileUntilMatch { .. } => {}
+        EffectAst::RearrangeLookedCardsInLibrary { .. } => {}
+        EffectAst::SearchLibrarySlotsToHand { .. } => {}
+        EffectAst::MayMoveToZone { .. } => {}
         EffectAst::PreventAllCombatDamage { .. } => {}
         EffectAst::PreventAllCombatDamageFromSource { .. } => {}
         EffectAst::PreventAllCombatDamageToPlayers { .. } => {}

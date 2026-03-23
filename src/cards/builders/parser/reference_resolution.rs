@@ -774,6 +774,11 @@ fn advance_reference_frame_for_effect(
         | EffectAst::BecomeCreatureTypeChoice { .. }
         | EffectAst::BecomeColorChoice { .. }
         | EffectAst::BecomeCopy { .. }
+        | EffectAst::ExileTopOfLibrary { .. }
+        | EffectAst::ExileUntilMatch { .. }
+        | EffectAst::RearrangeLookedCardsInLibrary { .. }
+        | EffectAst::SearchLibrarySlotsToHand { .. }
+        | EffectAst::MayMoveToZone { .. }
         | EffectAst::ExileUntilMatchGrantPlayUntilEndOfTurn { .. }
         | EffectAst::ExileUntilMatchCast { .. }
         | EffectAst::Cant { .. }
@@ -784,10 +789,6 @@ fn advance_reference_frame_for_effect(
         | EffectAst::GrantPlayTaggedUntilYourNextTurn { .. }
         | EffectAst::CastTagged { .. }
         | EffectAst::ExileInsteadOfGraveyardThisTurn { .. }
-        | EffectAst::DemonicConsultation { .. }
-        | EffectAst::SavinesReclamationFlashbackCopy
-        | EffectAst::TaintedPact
-        | EffectAst::ThassasOracle
         | EffectAst::RepeatThisProcess
         | EffectAst::RepeatThisProcessOnce
         | EffectAst::RevealTopChooseCardTypePutToHandRestBottom { .. }
@@ -820,8 +821,7 @@ fn advance_reference_frame_for_effect(
         | EffectAst::VoteOption { .. }
         | EffectAst::VoteExtra { .. }
         | EffectAst::ReturnAllToHand { .. }
-        | EffectAst::ReturnAllToHandOfChosenColor { .. }
-        | EffectAst::YasharnImplacableEarthSearch => {}
+        | EffectAst::ReturnAllToHandOfChosenColor { .. } => {}
     }
 
     Ok(())
@@ -1458,6 +1458,36 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             bind_unresolved_it_in_value(amount, seed_tag)
                 + bind_unresolved_it_in_filter(land_filter, seed_tag)
         }
+        EffectAst::ExileTopOfLibrary {
+            count,
+            tags,
+            accumulated_tags,
+            ..
+        } => {
+            let mut replacements = bind_unresolved_it_in_value(count, seed_tag);
+            for tag in tags {
+                replacements += bind_unresolved_it_in_tag(tag, seed_tag);
+            }
+            for tag in accumulated_tags {
+                replacements += bind_unresolved_it_in_tag(tag, seed_tag);
+            }
+            replacements
+        }
+        EffectAst::ExileUntilMatch {
+            filter,
+            exiled_tag,
+            match_tag,
+            ..
+        } => {
+            let mut replacements = bind_unresolved_it_in_filter(filter, seed_tag);
+            if let Some(tag) = exiled_tag.as_mut() {
+                replacements += bind_unresolved_it_in_tag(tag, seed_tag);
+            }
+            if let Some(tag) = match_tag.as_mut() {
+                replacements += bind_unresolved_it_in_tag(tag, seed_tag);
+            }
+            replacements
+        }
         EffectAst::ExileUntilMatchGrantPlayUntilEndOfTurn { filter, .. }
         | EffectAst::ExileUntilMatchCast { filter, .. } => {
             bind_unresolved_it_in_filter(filter, seed_tag)
@@ -1473,8 +1503,20 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
         | EffectAst::CastTagged { tag, .. }
         | EffectAst::RevealTagged { tag }
         | EffectAst::ReorderTopOfLibrary { tag }
+        | EffectAst::RearrangeLookedCardsInLibrary { tag, .. }
         | EffectAst::ForEachTagged { tag, .. }
         | EffectAst::ForEachTaggedPlayer { tag, .. } => bind_unresolved_it_in_tag(tag, seed_tag),
+        EffectAst::SearchLibrarySlotsToHand {
+            slots,
+            progress_tag,
+            ..
+        } => {
+            let mut replacements = bind_unresolved_it_in_tag(progress_tag, seed_tag);
+            for slot in slots {
+                replacements += bind_unresolved_it_in_filter(&mut slot.filter, seed_tag);
+            }
+            replacements
+        }
         EffectAst::DrawForEachTaggedMatching { tag, filter, .. } => {
             bind_unresolved_it_in_tag(tag, seed_tag)
                 + bind_unresolved_it_in_filter(filter, seed_tag)
@@ -1553,6 +1595,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             }
             replacements
         }
+        EffectAst::MayMoveToZone { target, .. } => bind_unresolved_it_in_target(target, seed_tag),
         EffectAst::Investigate { count } | EffectAst::Proliferate { count } => {
             bind_unresolved_it_in_value(count, seed_tag)
         }
@@ -1797,6 +1840,10 @@ fn bind_unresolved_it_in_predicate(predicate: &mut PredicateAst, seed_tag: &TagK
         PredicateAst::And(left, right) => {
             bind_unresolved_it_in_predicate(left, seed_tag)
                 + bind_unresolved_it_in_predicate(right, seed_tag)
+        }
+        PredicateAst::ValueComparison { left, right, .. } => {
+            bind_unresolved_it_in_value(left, seed_tag)
+                + bind_unresolved_it_in_value(right, seed_tag)
         }
         _ => 0,
     }

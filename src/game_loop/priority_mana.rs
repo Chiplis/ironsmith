@@ -11,6 +11,7 @@ pub(super) fn decision_context_name(
 
     match ctx {
         DecisionContext::Boolean(_) => "boolean",
+        DecisionContext::TextInput(_) => "text input",
         DecisionContext::SelectObjects(_) => "select objects",
         DecisionContext::SelectOptions(_) => "select options",
         DecisionContext::Targets(_) => "targets",
@@ -190,6 +191,14 @@ pub(crate) fn expand_mana_cost_to_display_pips(
     colored_pips
 }
 
+pub(super) fn current_display_pip<'a>(
+    display_pips: &'a [Vec<crate::mana::ManaSymbol>],
+    remaining_pips: &[Vec<crate::mana::ManaSymbol>],
+) -> Option<&'a [crate::mana::ManaSymbol]> {
+    let current_index = display_pips.len().checked_sub(remaining_pips.len())?;
+    display_pips.get(current_index).map(Vec::as_slice)
+}
+
 pub(super) fn preferred_auto_pip_choice(
     state: &PriorityLoopState,
     options: &[ManaPipPaymentOption],
@@ -217,7 +226,9 @@ pub(super) fn build_pip_payment_options(
     game: &GameState,
     player: PlayerId,
     pip: &[crate::mana::ManaSymbol],
+    display_pip: Option<&[crate::mana::ManaSymbol]>,
     allow_any_color: bool,
+    allow_black_life: bool,
     source_for_pip_alternatives: Option<ObjectId>,
     decision_maker: &mut impl DecisionMaker,
 ) -> Vec<ManaPipPaymentOption> {
@@ -398,7 +409,7 @@ pub(super) fn build_pip_payment_options(
                 // Can always pay life (if player has enough)
                 let has_life = game
                     .player(player)
-                    .map(|p| p.life > *amount as i32)
+                    .map(|p| p.life >= *amount as i32)
                     .unwrap_or(false);
                 if has_life {
                     options.push(ManaPipPaymentOption {
@@ -429,6 +440,18 @@ pub(super) fn build_pip_payment_options(
                 // X should have been expanded already
             }
         }
+    }
+
+    let krrik_can_pay_this_pip = allow_black_life
+        && display_pip.is_some_and(|display| display.len() == 1 && display[0] == ManaSymbol::Black)
+        && game.can_pay_life(player, 2);
+    if krrik_can_pay_this_pip {
+        options.push(ManaPipPaymentOption {
+            index,
+            description: "Pay 2 life".to_string(),
+            action: ManaPipPaymentAction::PayLife(2),
+        });
+        index += 1;
     }
 
     add_pip_alternative_payment_options(
@@ -1788,6 +1811,11 @@ pub(super) fn apply_mana_payment_response_activation(
         if let Some(ref cost) = pending.mana_cost_to_pay {
             let allow_any_color =
                 game.can_spend_mana_as_any_color(pending.activator, Some(pending.source));
+            let allow_black_life = game.player_can_pay_black_with_life_for_reason(
+                pending.activator,
+                Some(pending.source),
+                crate::costs::PaymentReason::ActivateAbility,
+            );
             let life_to_pay_preview = {
                 let Some(player) = game.player(pending.activator) else {
                     return Err(GameLoopError::InvalidState(
@@ -1795,33 +1823,38 @@ pub(super) fn apply_mana_payment_response_activation(
                     ));
                 };
                 let mut preview_pool = player.mana_pool.clone();
-                let (_, life_to_pay) = preview_pool.try_pay_tracking_life_with_any_color(
-                    cost,
-                    x_value,
-                    allow_any_color,
-                );
+                let (_, life_to_pay) = preview_pool
+                    .try_pay_tracking_life_with_any_color_and_black_life(
+                        cost,
+                        x_value,
+                        allow_any_color,
+                        allow_black_life,
+                    );
                 life_to_pay
             };
             if life_to_pay_preview > 0 && !game.can_pay_life(pending.activator, life_to_pay_preview)
             {
                 return Err(GameLoopError::InvalidState(
-                    "Cannot pay mana cost - insufficient life for Phyrexian payment".to_string(),
+                    "Cannot pay mana cost - insufficient life for life payment".to_string(),
                 ));
             }
             let mut life_to_pay = 0u32;
             if let Some(player) = game.player_mut(pending.activator) {
-                // Pay mana and track life for Phyrexian costs
-                let (_, paid_life) = player.mana_pool.try_pay_tracking_life_with_any_color(
-                    cost,
-                    x_value,
-                    allow_any_color,
-                );
+                // Pay mana and track life for Phyrexian/K'rrik-style costs.
+                let (_, paid_life) = player
+                    .mana_pool
+                    .try_pay_tracking_life_with_any_color_and_black_life(
+                        cost,
+                        x_value,
+                        allow_any_color,
+                        allow_black_life,
+                    );
                 life_to_pay = paid_life;
             }
-            // Deduct life for Phyrexian mana that couldn't be paid with mana.
+            // Deduct life for mana pips paid with life.
             if life_to_pay > 0 && !game.pay_life(pending.activator, life_to_pay) {
                 return Err(GameLoopError::InvalidState(
-                    "Cannot pay mana cost - insufficient life for Phyrexian payment".to_string(),
+                    "Cannot pay mana cost - insufficient life for life payment".to_string(),
                 ));
             }
         }
@@ -1850,15 +1883,23 @@ pub(super) fn apply_pip_payment_response_activation(
     }
 
     let pip = pending.remaining_mana_pips[0].clone();
+    let display_pip = current_display_pip(&pending.display_mana_pips, &pending.remaining_mana_pips);
 
     // Rebuild the options to get the action for this choice
     let allow_any_color = game.can_spend_mana_as_any_color(pending.activator, Some(pending.source));
+    let allow_black_life = game.player_can_pay_black_with_life_for_reason(
+        pending.activator,
+        Some(pending.source),
+        crate::costs::PaymentReason::ActivateAbility,
+    );
     let options = build_pip_payment_options(
         game,
         pending.activator,
         &pip,
+        display_pip,
         allow_any_color,
-        None,
+        allow_black_life,
+        Some(pending.source),
         &mut *decision_maker,
     );
 
@@ -1931,14 +1972,22 @@ pub(super) fn apply_pip_payment_response_cast(
     }
 
     let pip = pending.remaining_mana_pips[0].clone();
+    let display_pip = current_display_pip(&pending.display_mana_pips, &pending.remaining_mana_pips);
 
     // Rebuild the options to get the action for this choice
     let allow_any_color = game.can_spend_mana_as_any_color(pending.caster, Some(pending.spell_id));
+    let allow_black_life = game.player_can_pay_black_with_life_for_reason(
+        pending.caster,
+        Some(pending.spell_id),
+        crate::costs::PaymentReason::CastSpell,
+    );
     let options = build_pip_payment_options(
         game,
         pending.caster,
         &pip,
+        display_pip,
         allow_any_color,
+        allow_black_life,
         Some(pending.spell_id),
         &mut *decision_maker,
     );
@@ -3509,6 +3558,7 @@ pub(crate) fn apply_decision_context_with_dm<D: DecisionMaker>(
             )))
         }
         DecisionContext::Boolean(_)
+        | DecisionContext::TextInput(_)
         | DecisionContext::Order(_)
         | DecisionContext::Attackers(_)
         | DecisionContext::Blockers(_)
@@ -3598,7 +3648,7 @@ mod priority_mana_tests {
     use crate::decision::DecisionMaker;
     use crate::ids::CardId;
     use crate::mana::ManaSymbol;
-    use crate::static_abilities::StaticAbilityId;
+    use crate::static_abilities::{StaticAbility, StaticAbilityId};
     use crate::types::{CardType, Subtype};
     use crate::zone::Zone;
 
@@ -3846,5 +3896,70 @@ mod priority_mana_tests {
             "treasure should be sacrificed as part of activation cost"
         );
         let _ = payment_trace;
+    }
+
+    #[test]
+    fn test_build_pip_payment_options_adds_krrik_life_for_plain_black_pip() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+
+        let helper = CardDefinitionBuilder::new(CardId::new(), "Krrik Helper")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let helper_id = game.create_object_from_definition(&helper, alice, Zone::Battlefield);
+        game.object_mut(helper_id)
+            .expect("helper should exist")
+            .abilities
+            .push(Ability::static_ability(
+                StaticAbility::krrik_black_mana_may_be_paid_with_life(),
+            ));
+
+        let options = build_pip_payment_options(
+            &game,
+            alice,
+            &[ManaSymbol::Black],
+            Some(&[ManaSymbol::Black]),
+            false,
+            game.player_can_pay_black_with_life_for_reason(
+                alice,
+                Some(helper_id),
+                crate::costs::PaymentReason::CastSpell,
+            ),
+            None,
+            &mut dm,
+        );
+
+        assert!(
+            options
+                .iter()
+                .any(|option| matches!(option.action, ManaPipPaymentAction::PayLife(2))),
+            "a printed {{B}} pip should offer Krrik's pay-2-life option"
+        );
+    }
+
+    #[test]
+    fn test_build_pip_payment_options_does_not_add_krrik_life_to_announced_phyrexian_black() {
+        let game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+
+        let options = build_pip_payment_options(
+            &game,
+            alice,
+            &[ManaSymbol::Black],
+            Some(&[ManaSymbol::Black, ManaSymbol::Life(2)]),
+            false,
+            true,
+            None,
+            &mut dm,
+        );
+
+        assert!(
+            options
+                .iter()
+                .all(|option| !matches!(option.action, ManaPipPaymentAction::PayLife(2))),
+            "Krrik should not create a second life-payment option for a printed Phyrexian pip"
+        );
     }
 }

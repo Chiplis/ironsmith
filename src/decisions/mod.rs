@@ -39,7 +39,7 @@ pub use context::{
     AttackerOptionContext, AttackersContext, BlockerOptionContext, BlockersContext, BooleanContext,
     ColorsContext, CountersContext, DecisionContext, DistributeContext, DistributeTarget,
     NumberContext, OrderContext, PartitionContext, ProliferateContext, SelectObjectsContext,
-    SelectOptionsContext, SelectableObject, SelectableOption, ViewCardsContext,
+    SelectOptionsContext, SelectableObject, SelectableOption, TextInputContext, ViewCardsContext,
 };
 
 // Re-export the make_decision function

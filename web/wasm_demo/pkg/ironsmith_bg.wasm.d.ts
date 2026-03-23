@@ -12,6 +12,7 @@ export const wasmgame_preloadRegistryChunk: (a: number, b: number) => [number, n
 export const wasmgame_objectDetails: (a: number, b: bigint) => [number, number, number];
 export const wasmgame_snapshotJson: (a: number) => [number, number, number, number];
 export const wasmgame_autocompleteCardNames: (a: number, b: number, c: number, d: number) => [number, number, number];
+export const wasmgame_isKnownCardName: (a: number, b: number, c: number) => number;
 export const wasmgame_setLife: (a: number, b: number, c: number) => [number, number];
 export const wasmgame_addLifeDelta: (a: number, b: number, c: number) => [number, number];
 export const wasmgame_drawCard: (a: number, b: number) => [number, number, number];

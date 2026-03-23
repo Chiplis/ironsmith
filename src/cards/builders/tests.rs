@@ -8737,6 +8737,166 @@ fn parse_cabal_ritual_threshold_instead_compiles_to_self_replacement_branch() {
 }
 
 #[test]
+fn parse_triggered_instead_followup_preserves_default_branch() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Aerith Trigger Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "At the beginning of your end step, return target creature card from your graveyard to your hand. If you gained 7 or more life this turn, return that card to the battlefield instead.",
+        )
+        .expect("triggered instead followup should parse");
+
+    let ability = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("expected triggered ability");
+    assert_eq!(ability.effects.segments.len(), 1);
+    assert_eq!(ability.effects.segments[0].self_replacements.len(), 1);
+
+    let rendered = compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_lowercase();
+    assert!(
+        rendered_lower.contains("if you gained 7 or more life this turn")
+            && rendered_lower
+                .contains("return target creature card from your graveyard to the battlefield")
+            && rendered_lower.contains(
+                "otherwise, return target creature card from your graveyard to your hand"
+            ),
+        "expected rendered trigger to keep both default and replacement branches, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_landfall_instead_followup_preserves_default_branch() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Akoum Hellkite Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Landfall — Whenever a land you control enters, this creature deals 1 damage to any target. If that land is a Mountain, this creature deals 2 damage instead.",
+        )
+        .expect("landfall instead followup should parse");
+
+    let ability = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("expected triggered ability");
+    assert_eq!(ability.effects.segments.len(), 1);
+    assert_eq!(ability.effects.segments[0].self_replacements.len(), 1);
+    assert!(matches!(
+        ability.effects.segments[0].self_replacements[0].condition,
+        Condition::TaggedObjectMatches(ref tag, _)
+            if tag.as_str() == "triggering"
+    ));
+
+    let rendered = compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("deals 1 damage to any target")
+            && rendered.contains("deals 2 damage instead"),
+        "expected rendered trigger to keep both damage branches, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_triggered_instead_followup_with_toxic_condition_preserves_default_branch() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Porcelain Zealot Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "At the beginning of combat on your turn, target creature you control gets +1/+1 until end of turn. If that creature has toxic, instead it gets +2/+2 until end of turn.",
+        )
+        .expect("toxic instead followup should parse");
+
+    let ability = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("expected triggered ability");
+    assert_eq!(ability.effects.segments.len(), 1);
+    assert_eq!(ability.effects.segments[0].self_replacements.len(), 1);
+
+    let rendered = compiled_lines(&def).join(" ").to_lowercase();
+    assert!(
+        rendered.contains("gets +1/+1 until end of turn")
+            && rendered.contains("gets +2/+2 until end of turn"),
+        "expected rendered trigger to keep both pump branches, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_triggered_instead_followup_with_creatures_died_count_preserves_default_branch() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Tallyman Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "At the beginning of your end step, if a creature died this turn, you draw a card and you lose 1 life. If seven or more creatures died this turn, instead you draw seven cards and you lose 7 life.",
+        )
+        .expect("died-count instead followup should parse");
+
+    let ability = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("expected triggered ability");
+    assert_eq!(ability.effects.segments.len(), 1);
+    assert_eq!(ability.effects.segments[0].self_replacements.len(), 1);
+    assert!(matches!(
+        ability.effects.segments[0].self_replacements[0].condition,
+        Condition::CreatureDiedThisTurnOrMore(7)
+    ));
+
+    let rendered = compiled_lines(&def).join(" ").to_lowercase();
+    assert!(
+        rendered.contains("draw a card")
+            && rendered.contains("lose 1 life")
+            && rendered.contains("draw seven cards")
+            && rendered.contains("lose 7 life"),
+        "expected rendered trigger to keep both tallyman branches, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_triggered_instead_followup_with_full_party_preserves_default_branch() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Destined Warrior Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "At the beginning of combat on your turn, creatures you control get +1/+0 until end of turn. If you have a full party, creatures you control get +3/+0 until end of turn instead.",
+        )
+        .expect("full-party instead followup should parse");
+
+    let ability = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("expected triggered ability");
+    assert_eq!(ability.effects.segments.len(), 1);
+    assert_eq!(ability.effects.segments[0].self_replacements.len(), 1);
+    assert!(matches!(
+        ability.effects.segments[0].self_replacements[0].condition,
+        Condition::YouHaveFullParty
+    ));
+
+    let rendered = compiled_lines(&def).join(" ").to_lowercase();
+    assert!(
+        rendered.contains("get +1/+0 until end of turn")
+            && rendered.contains("get +3/+0 until end of turn"),
+        "expected rendered trigger to keep both party branches, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_instead_followup_without_prior_spell_segment_fails_loudly() {
     let err = CardDefinitionBuilder::new(CardId::new(), "Broken Self-Replacement Variant")
         .card_types(vec![CardType::Instant])
