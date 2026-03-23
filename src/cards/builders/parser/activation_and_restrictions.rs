@@ -1651,11 +1651,15 @@ pub(crate) fn parse_activation_cost(tokens: &[OwnedLexToken]) -> Result<TotalCos
         }
 
         let segment_words = words(&segment);
+        let segment_words_lower = segment_words
+            .iter()
+            .map(|word| word.to_ascii_lowercase())
+            .collect::<Vec<_>>();
         if segment_words.is_empty() {
             continue;
         }
 
-        if segment_words[0] == "tap" || segment_words[0] == "t" {
+        if segment_words_lower[0] == "tap" || segment_words_lower[0] == "t" {
             if segment_words.len() == 1 {
                 explicit_costs.push(crate::costs::Cost::tap());
                 continue;
@@ -1711,7 +1715,7 @@ pub(crate) fn parse_activation_cost(tokens: &[OwnedLexToken]) -> Result<TotalCos
             continue;
         }
 
-        if segment_words[0] == "pay" {
+        if segment_words_lower[0] == "pay" {
             if segment_words.contains(&"life") {
                 // "Pay N life for each card in your hand." (Hand of Vecna)
                 if segment_words.len() == 9
@@ -1767,7 +1771,7 @@ pub(crate) fn parse_activation_cost(tokens: &[OwnedLexToken]) -> Result<TotalCos
             continue;
         }
 
-        if segment_words[0] == "behold" {
+        if segment_words_lower[0] == "behold" {
             let mut idx = 1usize;
             let mut count = 1u32;
             if let Some((value, used)) = parse_number(&segment[idx..]) {
@@ -1812,7 +1816,7 @@ pub(crate) fn parse_activation_cost(tokens: &[OwnedLexToken]) -> Result<TotalCos
             continue;
         }
 
-        if segment_words[0] == "discard" {
+        if segment_words_lower[0] == "discard" {
             let mut idx = 1usize;
             let mut count = 1u32;
 
@@ -1927,7 +1931,7 @@ pub(crate) fn parse_activation_cost(tokens: &[OwnedLexToken]) -> Result<TotalCos
             continue;
         }
 
-        if segment_words[0] == "mill" {
+        if segment_words_lower[0] == "mill" {
             let mut idx = 1usize;
             let mut count = 1u32;
             if let Some((value, used)) = parse_number(&segment[idx..]) {
@@ -1954,7 +1958,7 @@ pub(crate) fn parse_activation_cost(tokens: &[OwnedLexToken]) -> Result<TotalCos
             continue;
         }
 
-        if segment_words[0] == "sacrifice" {
+        if segment_words_lower[0] == "sacrifice" {
             if segment_words.get(1).copied() == Some("this") {
                 explicit_costs.push(crate::costs::Cost::validated_effect(
                     Effect::sacrifice_source(),
@@ -2011,7 +2015,7 @@ pub(crate) fn parse_activation_cost(tokens: &[OwnedLexToken]) -> Result<TotalCos
             continue;
         }
 
-        if segment_words[0] == "exile" {
+        if segment_words_lower[0] == "exile" {
             let mut idx = 1usize;
             let mut count = 1u32;
             if let Some((value, used)) = parse_number(&segment[idx..]) {
@@ -2164,7 +2168,7 @@ pub(crate) fn parse_activation_cost(tokens: &[OwnedLexToken]) -> Result<TotalCos
             continue;
         }
 
-        if segment_words[0] == "put" {
+        if segment_words_lower[0] == "put" {
             let (count, used) = parse_number(&segment[1..]).ok_or_else(|| {
                 CardTextError::ParseError("unable to parse put counter cost amount".to_string())
             })?;
@@ -2179,7 +2183,7 @@ pub(crate) fn parse_activation_cost(tokens: &[OwnedLexToken]) -> Result<TotalCos
             continue;
         }
 
-        if segment_words[0] == "remove" {
+        if segment_words_lower[0] == "remove" {
             let mut any_number = false;
             let mut variable_x = false;
             let (count, used) = if segment.get(1).is_some_and(|token| token.is_word("any"))
@@ -2300,7 +2304,7 @@ pub(crate) fn parse_activation_cost(tokens: &[OwnedLexToken]) -> Result<TotalCos
             continue;
         }
 
-        if segment_words[0] == "return" {
+        if segment_words_lower[0] == "return" {
             let mut idx = 1usize;
             let mut count = 1u32;
             if let Some((value, used)) = parse_number(&segment[idx..]) {
@@ -5531,11 +5535,36 @@ pub(crate) fn parse_single_word_keyword_action(word: &str) -> Option<KeywordActi
         "compleated" => Some(KeywordAction::Marker("compleated")),
         "daybound" => Some(KeywordAction::Daybound),
         "nightbound" => Some(KeywordAction::Nightbound),
-        "islandwalk" => Some(KeywordAction::Landwalk(Subtype::Island)),
-        "swampwalk" => Some(KeywordAction::Landwalk(Subtype::Swamp)),
-        "mountainwalk" => Some(KeywordAction::Landwalk(Subtype::Mountain)),
-        "forestwalk" => Some(KeywordAction::Landwalk(Subtype::Forest)),
-        "plainswalk" => Some(KeywordAction::Landwalk(Subtype::Plains)),
+        "islandwalk" => Some(KeywordAction::Landwalk(
+            crate::static_abilities::LandwalkKind::Subtype {
+                subtype: Subtype::Island,
+                snow: false,
+            },
+        )),
+        "swampwalk" => Some(KeywordAction::Landwalk(
+            crate::static_abilities::LandwalkKind::Subtype {
+                subtype: Subtype::Swamp,
+                snow: false,
+            },
+        )),
+        "mountainwalk" => Some(KeywordAction::Landwalk(
+            crate::static_abilities::LandwalkKind::Subtype {
+                subtype: Subtype::Mountain,
+                snow: false,
+            },
+        )),
+        "forestwalk" => Some(KeywordAction::Landwalk(
+            crate::static_abilities::LandwalkKind::Subtype {
+                subtype: Subtype::Forest,
+                snow: false,
+            },
+        )),
+        "plainswalk" => Some(KeywordAction::Landwalk(
+            crate::static_abilities::LandwalkKind::Subtype {
+                subtype: Subtype::Plains,
+                snow: false,
+            },
+        )),
         "fear" => Some(KeywordAction::Fear),
         "intimidate" => Some(KeywordAction::Intimidate),
         "shadow" => Some(KeywordAction::Shadow),
@@ -5555,6 +5584,40 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
 
     if words.first().copied() == Some("and") {
         words.remove(0);
+    }
+
+    match words.as_slice() {
+        ["landwalk"] => {
+            return Some(KeywordAction::Landwalk(
+                crate::static_abilities::LandwalkKind::AnyLand,
+            ));
+        }
+        ["nonbasic", "landwalk"] => {
+            return Some(KeywordAction::Landwalk(
+                crate::static_abilities::LandwalkKind::NonbasicLand,
+            ));
+        }
+        ["artifact", "landwalk"] => {
+            return Some(KeywordAction::Landwalk(
+                crate::static_abilities::LandwalkKind::ArtifactLand,
+            ));
+        }
+        ["snow", subtype_walk] => {
+            if let Some(action) = parse_single_word_keyword_action(subtype_walk)
+                && let KeywordAction::Landwalk(crate::static_abilities::LandwalkKind::Subtype {
+                    subtype,
+                    ..
+                }) = action
+            {
+                return Some(KeywordAction::Landwalk(
+                    crate::static_abilities::LandwalkKind::Subtype {
+                        subtype,
+                        snow: true,
+                    },
+                ));
+            }
+        }
+        _ => {}
     }
 
     if words.starts_with(&["cumulative", "upkeep"]) {
@@ -7710,6 +7773,13 @@ pub(crate) fn parse_trigger_clause_lexed(
         return Ok(TriggerSpec::Expend {
             player: PlayerFilter::Opponent,
             amount,
+        });
+    }
+
+    if words.as_slice() == ["the", "ring", "tempts", "you"] {
+        return Ok(TriggerSpec::KeywordAction {
+            action: crate::events::KeywordActionKind::RingTemptsYou,
+            player: PlayerFilter::You,
         });
     }
 
@@ -10364,11 +10434,13 @@ pub(crate) fn parse_choose_card_type_then_reveal_top_and_put_chosen_to_hand(
     second: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let first_words = words(first);
-    if first_words.is_empty() || !matches!(first_words[0], "choose" | "chooses") {
+    let Some(mut idx) = first_words
+        .iter()
+        .position(|word| matches!(*word, "choose" | "chooses"))
+    else {
         return Ok(None);
-    }
-
-    let mut idx = 1usize;
+    };
+    idx += 1;
     if first_words.get(idx).is_some_and(|word| is_article(word)) {
         idx += 1;
     }
@@ -10529,6 +10601,15 @@ pub(crate) fn parse_choose_basic_land_type_phrase_words(words: &[&str]) -> Optio
         return None;
     }
     idx += 3;
+    Some(idx)
+}
+
+pub(crate) fn parse_choose_land_type_phrase_words(words: &[&str]) -> Option<usize> {
+    let mut idx = parse_choose_phrase_prefix_words(words)?;
+    if words.get(idx) != Some(&"land") || words.get(idx + 1) != Some(&"type") {
+        return None;
+    }
+    idx += 2;
     Some(idx)
 }
 

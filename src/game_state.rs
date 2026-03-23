@@ -1291,6 +1291,8 @@ pub struct GameState {
     /// Effects (like VoteEffect) can push events here, and the game loop
     /// processes them after effect resolution.
     pub pending_trigger_events: Vec<crate::triggers::TriggerEvent>,
+    /// State-triggered abilities whose conditions are currently true.
+    pub active_state_trigger_conditions: HashSet<crate::triggers::ActiveStateTriggerKey>,
     /// One-shot battlefield transition hints consumed by the UI snapshot layer.
     pub ui_battlefield_transitions: Vec<UiBattlefieldTransition>,
     /// Event provenance graph for this game.
@@ -1401,6 +1403,9 @@ pub struct GameState {
     /// Chosen basic land types for permanents ("as this Aura enters, choose a basic land type").
     pub chosen_basic_land_types: HashMap<ObjectId, crate::types::Subtype>,
 
+    /// Chosen land types for permanents ("as this enters, choose a land type").
+    pub chosen_land_types: HashMap<ObjectId, crate::types::Subtype>,
+
     /// Chosen creature types for permanents ("as this enters, choose a creature type").
     pub chosen_creature_types: HashMap<ObjectId, crate::types::Subtype>,
 
@@ -1504,6 +1509,7 @@ impl GameState {
             mana_spend_effects: ManaSpendEffectTracker::new(),
             delayed_triggers: Vec::new(),
             pending_trigger_events: Vec::new(),
+            active_state_trigger_conditions: HashSet::new(),
             ui_battlefield_transitions: Vec::new(),
             provenance_graph: ProvenanceGraph::new(),
             combat: None,
@@ -1536,6 +1542,7 @@ impl GameState {
             damage_persists: HashSet::new(),
             chosen_colors: HashMap::new(),
             chosen_basic_land_types: HashMap::new(),
+            chosen_land_types: HashMap::new(),
             chosen_creature_types: HashMap::new(),
             chosen_players: HashMap::new(),
             chosen_named_options: HashMap::new(),
@@ -2310,6 +2317,8 @@ impl GameState {
         #[cfg(debug_assertions)]
         self.debug_assert_zone_consistency();
 
+        self.reconcile_ring_bearers();
+
         Some(new_id)
     }
 
@@ -2508,6 +2517,28 @@ impl GameState {
                         );
                         if let Some(chosen_idx) = chosen.pop().filter(|idx| *idx < options.len()) {
                             self.set_chosen_basic_land_type(new_id, options[chosen_idx]);
+                        }
+                    }
+                    if static_ability.land_type_choice_as_enters().is_some() {
+                        let options = crate::types::Subtype::all_land_types();
+                        let display_options = options
+                            .iter()
+                            .enumerate()
+                            .map(|(idx, subtype)| {
+                                crate::decisions::spec::DisplayOption::new(idx, subtype.to_string())
+                            })
+                            .collect::<Vec<_>>();
+                        let choice_spec =
+                            crate::decisions::specs::ChoiceSpec::single(new_id, display_options);
+                        let mut chosen = crate::decisions::make_decision(
+                            self,
+                            decision_maker,
+                            controller,
+                            Some(new_id),
+                            choice_spec,
+                        );
+                        if let Some(chosen_idx) = chosen.pop().filter(|idx| *idx < options.len()) {
+                            self.set_chosen_land_type(new_id, options[chosen_idx]);
                         }
                     }
                     if static_ability.creature_type_choice_as_enters().is_some() {
@@ -4047,6 +4078,97 @@ impl GameState {
         self.monarch = monarch;
     }
 
+    /// Reconcile any Ring-bearers that are no longer valid.
+    pub fn reconcile_ring_bearers(&mut self) {
+        let player_ids = self
+            .players
+            .iter()
+            .map(|player| player.id)
+            .collect::<Vec<_>>();
+        for player in player_ids {
+            self.reconcile_ring_bearer(player);
+        }
+    }
+
+    /// Reconcile one player's Ring-bearer state against the live battlefield.
+    pub fn reconcile_ring_bearer(&mut self, player: PlayerId) {
+        if self.current_ring_bearer(player).is_some() {
+            return;
+        }
+        self.clear_ring_bearer(player);
+    }
+
+    /// Returns how many times the Ring has tempted this player this game.
+    pub fn ring_temptations(&self, player: PlayerId) -> u32 {
+        self.player(player)
+            .map(|player| player.ring_temptations)
+            .unwrap_or(0)
+    }
+
+    /// Returns the unlocked Ring tier for this player, capped at four.
+    pub fn ring_level(&self, player: PlayerId) -> u32 {
+        self.ring_temptations(player).min(4)
+    }
+
+    /// Returns the player's current Ring-bearer if it is still valid.
+    pub fn current_ring_bearer(&self, player: PlayerId) -> Option<ObjectId> {
+        let bearer = self.player(player)?.ring_bearer?;
+        if !self.battlefield.contains(&bearer) {
+            return None;
+        }
+        if self.current_controller(bearer) != Some(player) {
+            return None;
+        }
+        if !self.current_is_creature(bearer) {
+            return None;
+        }
+        Some(bearer)
+    }
+
+    /// Increments the number of times the Ring has tempted the player.
+    pub fn increment_ring_temptations(&mut self, player: PlayerId) {
+        if let Some(player_state) = self.player_mut(player) {
+            player_state.ring_temptations = player_state.ring_temptations.saturating_add(1);
+        }
+    }
+
+    /// Clear the player's current Ring-bearer designation.
+    pub fn clear_ring_bearer(&mut self, player: PlayerId) {
+        let previous_legendary_added = self
+            .player(player)
+            .and_then(|player_state| player_state.ring_legendary_added);
+        if let Some(object_id) = previous_legendary_added
+            && let Some(object) = self.object_mut(object_id)
+        {
+            object
+                .supertypes
+                .retain(|supertype| *supertype != crate::types::Supertype::Legendary);
+        }
+
+        if let Some(player_state) = self.player_mut(player) {
+            player_state.ring_bearer = None;
+            player_state.ring_legendary_added = None;
+        }
+    }
+
+    /// Set the player's Ring-bearer designation to the given creature.
+    pub fn set_ring_bearer(&mut self, player: PlayerId, bearer: ObjectId) {
+        self.clear_ring_bearer(player);
+
+        let mut legendary_added = None;
+        if let Some(object) = self.object_mut(bearer)
+            && !object.has_supertype(crate::types::Supertype::Legendary)
+        {
+            object.supertypes.push(crate::types::Supertype::Legendary);
+            legendary_added = Some(bearer);
+        }
+
+        if let Some(player_state) = self.player_mut(player) {
+            player_state.ring_bearer = Some(bearer);
+            player_state.ring_legendary_added = legendary_added;
+        }
+    }
+
     /// Returns true if the given player is currently the monarch.
     pub fn is_monarch(&self, player: PlayerId) -> bool {
         self.monarch == Some(player)
@@ -5084,6 +5206,7 @@ impl GameState {
         self.imprinted_cards.remove(&id);
         self.chosen_colors.remove(&id);
         self.chosen_basic_land_types.remove(&id);
+        self.chosen_land_types.remove(&id);
         self.chosen_creature_types.remove(&id);
         self.chosen_players.remove(&id);
         self.chosen_named_options.remove(&id);
@@ -5182,6 +5305,18 @@ impl GameState {
     /// Get a chosen basic land type for a permanent, if any.
     pub fn chosen_basic_land_type(&self, permanent_id: ObjectId) -> Option<crate::types::Subtype> {
         self.chosen_basic_land_types.get(&permanent_id).copied()
+    }
+
+    // === Chosen land type helpers ===
+
+    /// Record a chosen land type for a permanent.
+    pub fn set_chosen_land_type(&mut self, permanent_id: ObjectId, subtype: crate::types::Subtype) {
+        self.chosen_land_types.insert(permanent_id, subtype);
+    }
+
+    /// Get a chosen land type for a permanent, if any.
+    pub fn chosen_land_type(&self, permanent_id: ObjectId) -> Option<crate::types::Subtype> {
+        self.chosen_land_types.get(&permanent_id).copied()
     }
 
     // === Chosen creature type helpers ===

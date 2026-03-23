@@ -193,6 +193,10 @@ pub(crate) fn execute_resolution_program(
             apply_self_replacement_tag_prelude(game, ctx, &segment.default_effects)?;
         }
 
+        let mut active_scope: Option<(
+            Vec<crate::executor::ResolvedTarget>,
+            Vec<crate::game_state::TargetAssignment>,
+        )> = None;
         for effect in &selected_effects {
             let effect_target_assignments = active_target_assignments_for_effect(
                 game,
@@ -204,13 +208,20 @@ pub(crate) fn execute_resolution_program(
                 valid_target_assignments,
                 &mut assignment_cursor,
             );
-            let (effect_targets, effect_target_assignments) =
-                rebase_target_scope(&ctx.targets, &effect_target_assignments);
-            let outcome = ctx.with_temp_targets(effect_targets, |ctx| {
-                ctx.with_temp_target_assignments(effect_target_assignments, |ctx| {
-                    execute_effect(game, effect, ctx)
+            if !effect_target_assignments.is_empty() {
+                let (effect_targets, effect_target_assignments) =
+                    rebase_target_scope(&ctx.targets, &effect_target_assignments);
+                active_scope = Some((effect_targets, effect_target_assignments));
+            }
+            let outcome = if let Some((effect_targets, effect_target_assignments)) = &active_scope {
+                ctx.with_temp_targets(effect_targets.clone(), |ctx| {
+                    ctx.with_temp_target_assignments(effect_target_assignments.clone(), |ctx| {
+                        execute_effect(game, effect, ctx)
+                    })
                 })
-            });
+            } else {
+                execute_effect(game, effect, ctx)
+            };
             if let Ok(outcome) = outcome {
                 all_events.extend(outcome.events);
             }

@@ -1117,6 +1117,40 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(PredicateAst::SourceHasNoCounter(counter_type));
     }
 
+    let source_has_counter_prefix_len = if raw_words.starts_with(&["this", "has"]) {
+        Some(2)
+    } else if raw_words.len() >= 3
+        && raw_words[0] == "this"
+        && matches!(
+            raw_words[1],
+            "creature"
+                | "permanent"
+                | "artifact"
+                | "enchantment"
+                | "land"
+                | "planeswalker"
+                | "battle"
+        )
+        && raw_words[2] == "has"
+    {
+        Some(3)
+    } else {
+        None
+    };
+    if let Some(prefix_len) = source_has_counter_prefix_len
+        && raw_words.len() >= prefix_len + 4
+        && raw_words[prefix_len] == "no"
+        && let Some(counter_type) = parse_counter_type_word(raw_words[prefix_len + 1])
+        && matches!(raw_words[prefix_len + 2], "counter" | "counters")
+        && raw_words[prefix_len + 3] == "on"
+        && matches!(
+            raw_words.get(prefix_len + 4).copied(),
+            Some("it" | "him" | "her" | "them" | "this" | "that")
+        )
+    {
+        return Ok(PredicateAst::SourceHasNoCounter(counter_type));
+    }
+
     let triggering_object_had_no_counter_prefix_len = if raw_words.starts_with(&["it", "had", "no"])
     {
         Some(3)
@@ -1165,6 +1199,25 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
                 });
             }
         }
+    }
+
+    if let Some(prefix_len) = source_has_counter_prefix_len
+        && raw_words.len() >= prefix_len + 6
+        && let Some(count) = parse_named_number(raw_words[prefix_len])
+        && raw_words[prefix_len + 1] == "or"
+        && raw_words[prefix_len + 2] == "more"
+        && let Some(counter_type) = parse_counter_type_word(raw_words[prefix_len + 3])
+        && matches!(raw_words[prefix_len + 4], "counter" | "counters")
+        && raw_words[prefix_len + 5] == "on"
+        && matches!(
+            raw_words.get(prefix_len + 6).copied(),
+            Some("it" | "him" | "her" | "them" | "this" | "that")
+        )
+    {
+        return Ok(PredicateAst::SourceHasCounterAtLeast {
+            counter_type,
+            count,
+        });
     }
 
     if filtered.len() == 7

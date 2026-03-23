@@ -24,6 +24,7 @@ pub const SCRYFALL_TAGGER_TAGS_URL: &str = "https://scryfall.com/docs/tagger-tag
 pub const TAGGER_BASE_URL: &str = "https://tagger.scryfall.com";
 const DB_SCHEMA_VERSION: i64 = 2;
 const FIXED_SNAPSHOT_CARD_ID: u32 = 1;
+const SUPPORTED_PAPER_FORMATS: &[&str] = &["commander", "standard", "modern", "legacy", "vintage"];
 const TAGGER_FETCH_ORACLE_CARD_TAG_QUERY: &str = r#"
 query FetchOracleCardTagPage($slug: String!, $type: TagType!, $page: Int) {
   tagBySlug(slug: $slug, type: $type) {
@@ -107,6 +108,13 @@ pub struct TagImportSummary {
 pub struct OracleTagSyncSummary {
     pub tags_replaced: usize,
     pub rows_inserted: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct CardPruneSummary {
+    pub distinct_cards_deleted: usize,
+    pub compilation_rows_deleted: usize,
+    pub tag_rows_deleted: usize,
 }
 
 #[derive(Debug)]
@@ -517,6 +525,97 @@ impl CardStatusDb {
         })
     }
 
+    pub fn prune_cards_not_in_names(
+        &mut self,
+        allowed_names: &[String],
+    ) -> Result<CardPruneSummary, Box<dyn Error>> {
+        let allowed_names = allowed_names
+            .iter()
+            .map(|name| normalize_lookup_name(name))
+            .filter(|name| !name.is_empty())
+            .collect::<BTreeSet<_>>();
+        if allowed_names.is_empty() {
+            return Err("refusing to prune against an empty canonical card set".into());
+        }
+
+        let tx = self.conn.transaction()?;
+        tx.execute_batch(
+            "DROP TABLE IF EXISTS temp_allowed_card_name;
+             CREATE TEMP TABLE temp_allowed_card_name (
+                 card_name TEXT PRIMARY KEY
+             );",
+        )?;
+
+        {
+            let mut insert =
+                tx.prepare("INSERT OR IGNORE INTO temp_allowed_card_name(card_name) VALUES (?1)")?;
+            for name in &allowed_names {
+                insert.execute([name])?;
+            }
+        }
+
+        let distinct_cards_deleted: usize = tx.query_row(
+            "SELECT COUNT(DISTINCT card_name)
+             FROM card_compilation
+             WHERE NOT EXISTS (
+                 SELECT 1
+                 FROM temp_allowed_card_name allowed
+                 WHERE allowed.card_name = card_compilation.card_name
+             )",
+            [],
+            |row| row.get(0),
+        )?;
+        let compilation_rows_deleted: usize = tx.query_row(
+            "SELECT COUNT(*)
+             FROM card_compilation
+             WHERE NOT EXISTS (
+                 SELECT 1
+                 FROM temp_allowed_card_name allowed
+                 WHERE allowed.card_name = card_compilation.card_name
+             )",
+            [],
+            |row| row.get(0),
+        )?;
+        let tag_rows_deleted: usize = tx.query_row(
+            "SELECT COUNT(*)
+             FROM card_tagging
+             WHERE NOT EXISTS (
+                 SELECT 1
+                 FROM temp_allowed_card_name allowed
+                 WHERE allowed.card_name = card_tagging.card_name
+             )",
+            [],
+            |row| row.get(0),
+        )?;
+
+        tx.execute(
+            "DELETE FROM card_tagging
+             WHERE NOT EXISTS (
+                 SELECT 1
+                 FROM temp_allowed_card_name allowed
+                 WHERE allowed.card_name = card_tagging.card_name
+             )",
+            [],
+        )?;
+        tx.execute(
+            "DELETE FROM card_compilation
+             WHERE NOT EXISTS (
+                 SELECT 1
+                 FROM temp_allowed_card_name allowed
+                 WHERE allowed.card_name = card_compilation.card_name
+             )",
+            [],
+        )?;
+        tx.execute("DROP TABLE temp_allowed_card_name", [])?;
+        tx.commit()?;
+
+        Ok(CardPruneSummary {
+            distinct_cards_deleted,
+            compilation_rows_deleted,
+            tag_rows_deleted,
+        })
+    }
+
     pub fn connection(&self) -> &Connection {
         &self.conn
     }
@@ -862,6 +961,17 @@ where
 }
 
 fn build_card_payload(card: &Value) -> Option<CardPayload> {
+    if card
+        .get("digital")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        return None;
+    }
+    if !card_is_legal_in_supported_paper_format(card) {
+        return None;
+    }
+
     let face = get_first_face(card);
     let name = normalize_lookup_name(&pick_field(card, face, "name")?);
     if name.is_empty() {
@@ -910,6 +1020,22 @@ fn build_card_payload(card: &Value) -> Option<CardPayload> {
         oracle_text,
         metadata_lines,
         parse_input,
+    })
+}
+
+fn card_is_legal_in_supported_paper_format(card: &Value) -> bool {
+    let Some(legalities) = card.get("legalities").and_then(Value::as_object) else {
+        return true;
+    };
+    if legalities.is_empty() {
+        return true;
+    }
+
+    SUPPORTED_PAPER_FORMATS.iter().any(|format| {
+        legalities
+            .get(*format)
+            .and_then(Value::as_str)
+            .is_some_and(|status| status == "legal")
     })
 }
 
@@ -1055,6 +1181,73 @@ mod tests {
                 .oracle_text,
             "Lightning Bolt deals 3 damage to any target."
         );
+    }
+
+    #[test]
+    fn canonical_loader_skips_digital_cards() {
+        let cards = vec![
+            serde_json::json!({
+                "name": "Lightning Bolt",
+                "oracle_text": "Lightning Bolt deals 3 damage to any target.",
+                "mana_cost": "{R}",
+                "type_line": "Instant",
+                "digital": false
+            }),
+            serde_json::json!({
+                "name": "Digital Bolt",
+                "oracle_text": "Conjure a card named Lightning Bolt into your hand.",
+                "mana_cost": "{R}",
+                "type_line": "Instant",
+                "digital": true
+            }),
+        ];
+
+        let loaded = load_canonical_cards_from_values(cards);
+        assert!(loaded.contains_key("Lightning Bolt"));
+        assert!(!loaded.contains_key("Digital Bolt"));
+    }
+
+    #[test]
+    fn canonical_loader_skips_cards_without_supported_format_legality() {
+        let cards = vec![
+            serde_json::json!({
+                "name": "Lightning Bolt",
+                "oracle_text": "Lightning Bolt deals 3 damage to any target.",
+                "mana_cost": "{R}",
+                "type_line": "Instant",
+                "legalities": {
+                    "modern": "legal",
+                    "legacy": "legal",
+                    "vintage": "legal",
+                    "commander": "legal",
+                    "standard": "not_legal"
+                }
+            }),
+            serde_json::json!({
+                "name": "Contract from Below",
+                "oracle_text": "Discard your hand, ante the top card of your library, then draw seven cards.",
+                "mana_cost": "{B}",
+                "type_line": "Sorcery",
+                "legalities": {
+                    "modern": "not_legal",
+                    "legacy": "not_legal",
+                    "vintage": "not_legal",
+                    "commander": "not_legal",
+                    "standard": "not_legal"
+                }
+            }),
+            serde_json::json!({
+                "name": "Fixture Without Legalities",
+                "oracle_text": "Draw a card.",
+                "mana_cost": "{U}",
+                "type_line": "Sorcery"
+            }),
+        ];
+
+        let loaded = load_canonical_cards_from_values(cards);
+        assert!(loaded.contains_key("Lightning Bolt"));
+        assert!(!loaded.contains_key("Contract from Below"));
+        assert!(loaded.contains_key("Fixture Without Legalities"));
     }
 
     #[test]
@@ -1298,5 +1491,66 @@ mod tests {
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].card_name, "Abrade");
         assert_eq!(rows[1].card_name, "Wear // Tear");
+    }
+
+    #[test]
+    fn prune_cards_not_in_names_removes_compilations_and_tags() {
+        let path = unique_temp_path("prune");
+        let mut db = CardStatusDb::open(&path).expect("open db");
+
+        let lightning = compile_snapshot_from_payload(&lightning_bolt_payload());
+        let shock = compile_snapshot_from_payload(&CardPayload {
+            name: "Shock".to_string(),
+            oracle_text: "Shock deals 2 damage to any target.".to_string(),
+            metadata_lines: vec!["Mana cost: {R}".to_string(), "Type: Instant".to_string()],
+            parse_input: "Mana cost: {R}\nType: Instant\nShock deals 2 damage to any target."
+                .to_string(),
+        });
+
+        db.insert_snapshot_if_changed(&lightning)
+            .expect("insert lightning");
+        db.insert_snapshot_if_changed(&shock).expect("insert shock");
+        db.replace_tag_rows(&[
+            TagImportRow {
+                card_name: "Lightning Bolt".to_string(),
+                tag: "burn".to_string(),
+            },
+            TagImportRow {
+                card_name: "Shock".to_string(),
+                tag: "burn".to_string(),
+            },
+        ])
+        .expect("seed tags");
+
+        let summary = db
+            .prune_cards_not_in_names(&["Lightning Bolt".to_string()])
+            .expect("prune cards");
+        assert_eq!(summary.distinct_cards_deleted, 1);
+        assert_eq!(summary.compilation_rows_deleted, 1);
+        assert_eq!(summary.tag_rows_deleted, 1);
+
+        let remaining_cards: Vec<String> = {
+            let mut stmt = db
+                .connection()
+                .prepare("SELECT card_name FROM latest_card_compilation ORDER BY card_name ASC")
+                .expect("prepare remaining cards query");
+            stmt.query_map([], |row| row.get(0))
+                .expect("query remaining cards")
+                .collect::<Result<_, _>>()
+                .expect("collect remaining cards")
+        };
+        assert_eq!(remaining_cards, vec!["Lightning Bolt".to_string()]);
+
+        let remaining_tag_rows: i64 = db
+            .connection()
+            .query_row(
+                "SELECT COUNT(*) FROM card_tagging WHERE card_name = 'Shock'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count remaining shock tag rows");
+        assert_eq!(remaining_tag_rows, 0);
+
+        let _ = fs::remove_file(path);
     }
 }

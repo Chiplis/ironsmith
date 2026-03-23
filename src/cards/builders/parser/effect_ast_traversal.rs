@@ -131,7 +131,6 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::LoseGame { .. } => {}
         EffectAst::WinGame { .. } => {}
         EffectAst::ExileTopOfLibrary { .. } => {}
-        EffectAst::ExileUntilMatch { .. } => {}
         EffectAst::RearrangeLookedCardsInLibrary { .. } => {}
         EffectAst::SearchLibrarySlotsToHand { .. } => {}
         EffectAst::MayMoveToZone { .. } => {}
@@ -165,8 +164,6 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::Discover { .. } => {}
         EffectAst::ConsultTopOfLibrary { .. } => {}
         EffectAst::PutTaggedRemainderOnBottomOfLibrary { .. } => {}
-        EffectAst::ExileUntilMatchGrantPlayUntilEndOfTurn { .. } => {}
-        EffectAst::ExileUntilMatchCast { .. } => {}
         EffectAst::BecomeBasicLandTypeChoice { .. } => {}
         EffectAst::BecomeBasicLandType { .. } => {}
         EffectAst::BecomeCreatureTypeChoice { .. } => {}
@@ -238,6 +235,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::ReturnAllToHandOfChosenColor { .. } => {}
         EffectAst::ReturnAllToBattlefield { .. } => {}
         EffectAst::ExchangeControl { .. } => {}
+        EffectAst::RingTemptsYou { .. } => {}
         EffectAst::BecomeMonarch { .. } => {}
         EffectAst::CreateEmblem { .. } => {}
         EffectAst::SetLifeTotal { .. } => {}

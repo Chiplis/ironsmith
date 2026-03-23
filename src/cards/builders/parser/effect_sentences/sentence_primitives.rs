@@ -4593,7 +4593,6 @@ pub(crate) fn parse_sentence_fallback_mechanic_marker(
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let clause_words = words(tokens);
     let is_match = clause_words.as_slice() == ["venture", "into", "the", "dungeon"]
-        || clause_words.as_slice() == ["the", "ring", "tempts", "you"]
         || clause_words.as_slice() == ["its", "still", "a", "land"]
         || clause_words.as_slice() == ["it", "still", "a", "land"]
         || clause_words.starts_with(&["manifest", "the", "top", "card", "of", "your", "library"])

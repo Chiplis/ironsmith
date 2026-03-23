@@ -273,6 +273,26 @@ pub(crate) fn parse_enchanted_creature_has_line(
         ability_tokens = ability_head;
     }
 
+    let ability_words = words(&ability_tokens);
+    if matches!(ability_words.as_slice(), ["landwalk", "of", "the", "chosen", "type"])
+        || matches!(
+            ability_words.as_slice(),
+            ["snow", "landwalk", "of", "the", "chosen", "type"]
+        )
+    {
+        let snow = ability_words.first().copied() == Some("snow");
+        let display = if snow {
+            format!("{subject} has snow landwalk of the chosen type")
+        } else {
+            format!("{subject} has landwalk of the chosen type")
+        };
+        return Ok(Some(vec![StaticAbilityAst::AttachedChosenLandwalkGrant {
+            snow,
+            display,
+            condition,
+        }]));
+    }
+
     let Some(actions) = parse_ability_line(&ability_tokens) else {
         return Ok(None);
     };

@@ -1,6 +1,7 @@
 use super::activation_and_restrictions::parse_cycling_line;
 use super::activation_and_restrictions::{
     normalize_cant_words, parse_ability_phrase, parse_activated_line, parse_activation_cost,
+    parse_choose_land_type_phrase_words,
 };
 use super::keyword_static_helpers::*;
 use super::lexer::{OwnedLexToken, TokenKind, trim_lexed_commas};
@@ -1588,16 +1589,23 @@ pub(crate) fn parse_choose_basic_land_type_as_enters_line(
     else {
         return Ok(None);
     };
-    let Some(consumed) = parse_choose_basic_land_type_phrase_words(&words[idx..]) else {
+    if let Some(consumed) = parse_choose_basic_land_type_phrase_words(&words[idx..]) {
+        if idx + consumed == words.len() {
+            return Ok(Some(StaticAbility::choose_basic_land_type_as_enters(
+                format!("As {display_subject} enters, choose a basic land type."),
+            )));
+        }
+    }
+    let Some(consumed) = parse_choose_land_type_phrase_words(&words[idx..]) else {
         return Ok(None);
     };
     if idx + consumed != words.len() {
         return Ok(None);
     }
 
-    Ok(Some(StaticAbility::choose_basic_land_type_as_enters(
-        format!("As {display_subject} enters, choose a basic land type."),
-    )))
+    Ok(Some(StaticAbility::choose_land_type_as_enters(format!(
+        "As {display_subject} enters, choose a land type."
+    ))))
 }
 
 pub(crate) fn parse_enchanted_land_is_chosen_type_line(
@@ -1763,6 +1771,7 @@ pub(crate) fn parse_choose_named_options_as_enters_line(
     if parse_choose_color_phrase_words(choice_words)?.is_some()
         || parse_choose_player_phrase_words(choice_words).is_some()
         || parse_choose_basic_land_type_phrase_words(choice_words).is_some()
+        || parse_choose_land_type_phrase_words(choice_words).is_some()
         || parse_choose_creature_type_phrase_words(choice_words)?.is_some()
     {
         return Ok(None);

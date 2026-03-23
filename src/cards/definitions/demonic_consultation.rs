@@ -73,12 +73,21 @@ mod tests {
         assert_eq!(def.name(), "Demonic Consultation");
         assert!(def.card.is_instant());
         assert_eq!(def.card.mana_value(), 1);
-        assert_eq!(
-            def.spell_effect
-                .as_ref()
-                .expect("spell effect exists")
-                .len(),
-            2
+        let spell_debug = format!(
+            "{:#?}",
+            def.spell_effect.as_ref().expect("spell effect exists")
+        );
+        assert!(
+            spell_debug.contains("ChooseCardNameEffect"),
+            "expected name-choice prelude, got {spell_debug}"
+        );
+        assert!(
+            spell_debug.contains("ExileTopOfLibraryEffect"),
+            "expected exile-six prelude, got {spell_debug}"
+        );
+        assert!(
+            spell_debug.contains("ConsultTopOfLibraryEffect"),
+            "expected consult reveal-until lowering, got {spell_debug}"
         );
     }
 

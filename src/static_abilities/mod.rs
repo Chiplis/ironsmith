@@ -507,10 +507,8 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
-    /// Returns required land subtype for "can't be blocked as long as defending player controls ...".
-    fn required_defending_player_land_subtype_for_unblockable(
-        &self,
-    ) -> Option<crate::types::Subtype> {
+    /// Returns landwalk behavior for unblockable checks.
+    fn landwalk_kind(&self) -> Option<crate::static_abilities::LandwalkKind> {
         None
     }
 
@@ -613,6 +611,11 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
 
     /// Returns info for "as this enters, choose a basic land type" abilities.
     fn basic_land_type_choice_as_enters(&self) -> Option<ChooseBasicLandTypeAsEntersSpec> {
+        None
+    }
+
+    /// Returns info for "as this enters, choose a land type" abilities.
+    fn land_type_choice_as_enters(&self) -> Option<ChooseLandTypeAsEntersSpec> {
         None
     }
 
@@ -878,6 +881,10 @@ pub struct ChoosePlayerAsEntersSpec;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ChooseBasicLandTypeAsEntersSpec;
 
+/// Spec for "as this enters, choose a land type" abilities.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ChooseLandTypeAsEntersSpec;
+
 /// Spec for "as this enters, choose a creature type" abilities.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ChooseCreatureTypeAsEntersSpec;
@@ -954,6 +961,10 @@ impl StaticAbility {
 
     pub fn basic_land_type_choice_as_enters(&self) -> Option<ChooseBasicLandTypeAsEntersSpec> {
         self.0.basic_land_type_choice_as_enters()
+    }
+
+    pub fn land_type_choice_as_enters(&self) -> Option<ChooseLandTypeAsEntersSpec> {
+        self.0.land_type_choice_as_enters()
     }
 
     pub fn creature_type_choice_as_enters(&self) -> Option<ChooseCreatureTypeAsEntersSpec> {
@@ -1114,11 +1125,8 @@ impl StaticAbility {
         self.0.pay_non_mana_attack_cost(game, source, controller)
     }
 
-    pub fn required_defending_player_land_subtype_for_unblockable(
-        &self,
-    ) -> Option<crate::types::Subtype> {
-        self.0
-            .required_defending_player_land_subtype_for_unblockable()
+    pub fn landwalk_kind(&self) -> Option<crate::static_abilities::LandwalkKind> {
+        self.0.landwalk_kind()
     }
 
     pub fn required_defending_player_card_type_for_unblockable(
@@ -1579,7 +1587,33 @@ impl StaticAbility {
     }
 
     pub fn landwalk(land_subtype: crate::types::Subtype) -> Self {
-        Self::new(Landwalk::new(land_subtype))
+        Self::new(Landwalk::new(LandwalkKind::Subtype {
+            subtype: land_subtype,
+            snow: false,
+        }))
+    }
+
+    pub fn snow_landwalk(land_subtype: crate::types::Subtype) -> Self {
+        Self::new(Landwalk::new(LandwalkKind::Subtype {
+            subtype: land_subtype,
+            snow: true,
+        }))
+    }
+
+    pub fn any_landwalk() -> Self {
+        Self::new(Landwalk::new(LandwalkKind::AnyLand))
+    }
+
+    pub fn nonbasic_landwalk() -> Self {
+        Self::new(Landwalk::new(LandwalkKind::NonbasicLand))
+    }
+
+    pub fn artifact_landwalk() -> Self {
+        Self::new(Landwalk::new(LandwalkKind::ArtifactLand))
+    }
+
+    pub fn attached_chosen_landwalk_grant(display: String, snow: bool) -> Self {
+        Self::new(AttachedChosenLandwalkGrant::new(display, snow))
     }
 
     pub fn cant_be_blocked_as_long_as_defending_player_controls_card_type(
@@ -2056,6 +2090,10 @@ impl StaticAbility {
 
     pub fn choose_basic_land_type_as_enters(display: String) -> Self {
         Self::new(ChooseBasicLandTypeAsEnters::new(display))
+    }
+
+    pub fn choose_land_type_as_enters(display: String) -> Self {
+        Self::new(ChooseLandTypeAsEnters::new(display))
     }
 
     pub fn choose_creature_type_as_enters(display: String) -> Self {

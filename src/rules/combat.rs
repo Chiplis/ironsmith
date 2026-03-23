@@ -9,9 +9,9 @@ use crate::ability::{ProtectionFrom, extract_static_abilities};
 use crate::color::Color;
 use crate::derived_view::DerivedGameView;
 use crate::object::Object;
-use crate::static_abilities::StaticAbilityId;
+use crate::static_abilities::{LandwalkKind, StaticAbilityId};
 use crate::target::FilterContext;
-use crate::types::CardType;
+use crate::types::{CardType, Supertype};
 
 /// Evasion ability types for convenience.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -176,6 +176,25 @@ pub(crate) fn can_block_with_view(
         }
     }
 
+    if let Some(attacker_controller) = game.current_controller(attacker.id)
+        && game.ring_level(attacker_controller) >= 1
+        && game.current_ring_bearer(attacker_controller) == Some(attacker.id)
+    {
+        let attacker_power = attacker_chars
+            .as_ref()
+            .and_then(|c| c.power)
+            .or_else(|| attacker.power());
+        let blocker_power = blocker_chars
+            .as_ref()
+            .and_then(|c| c.power)
+            .or_else(|| blocker.power());
+        if let (Some(attacker_power), Some(blocker_power)) = (attacker_power, blocker_power)
+            && blocker_power > attacker_power
+        {
+            return false;
+        }
+    }
+
     // Protection: can't be blocked by creatures the permanent has protection from
     // Check both the object's base abilities AND abilities from continuous effects
     for ability in &attacker_abilities {
@@ -238,21 +257,39 @@ pub(crate) fn can_block_with_view(
         }
     }
 
-    // Landwalk: unblockable if defending player controls the required land subtype.
-    for required_land_subtype in attacker_abilities
+    for landwalk_kind in attacker_abilities
         .iter()
-        .filter_map(|ability| ability.required_defending_player_land_subtype_for_unblockable())
+        .filter_map(|ability| ability.landwalk_kind())
     {
         let defending_has_required_land = game
             .battlefield
             .iter()
             .filter_map(|&id| game.object(id))
             .any(|obj| {
-                obj.controller == blocker.controller
-                    && view.object_has_card_type(obj.id, CardType::Land)
-                    && view
-                        .calculated_subtypes(obj.id)
-                        .contains(&required_land_subtype)
+                if obj.controller != blocker.controller
+                    || !view.object_has_card_type(obj.id, CardType::Land)
+                {
+                    return false;
+                }
+
+                match landwalk_kind {
+                    LandwalkKind::Subtype {
+                        subtype,
+                        snow: false,
+                    } => view.calculated_subtypes(obj.id).contains(&subtype),
+                    LandwalkKind::Subtype {
+                        subtype,
+                        snow: true,
+                    } => {
+                        obj.has_supertype(Supertype::Snow)
+                            && view.calculated_subtypes(obj.id).contains(&subtype)
+                    }
+                    LandwalkKind::AnyLand => true,
+                    LandwalkKind::NonbasicLand => !obj.has_supertype(Supertype::Basic),
+                    LandwalkKind::ArtifactLand => {
+                        view.object_has_card_type(obj.id, CardType::Artifact)
+                    }
+                }
             });
         if defending_has_required_land {
             return false;
@@ -830,6 +867,34 @@ mod tests {
     }
 
     #[test]
+    fn test_ring_bearer_cant_be_blocked_by_greater_power() {
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let mut game = test_game_state();
+
+        let mut ring_bearer = make_creature("Bearer", 2, 2);
+        ring_bearer.controller = alice;
+        ring_bearer.owner = alice;
+
+        let mut equal_power_blocker = make_creature("Equal", 2, 2);
+        equal_power_blocker.controller = bob;
+        equal_power_blocker.owner = bob;
+
+        let mut larger_blocker = make_creature("Large", 3, 3);
+        larger_blocker.controller = bob;
+        larger_blocker.owner = bob;
+
+        game.add_object(ring_bearer.clone());
+        game.add_object(equal_power_blocker.clone());
+        game.add_object(larger_blocker.clone());
+        game.increment_ring_temptations(alice);
+        game.set_ring_bearer(alice, ring_bearer.id);
+
+        assert!(can_block(&ring_bearer, &equal_power_blocker, &game));
+        assert!(!can_block(&ring_bearer, &larger_blocker, &game));
+    }
+
+    #[test]
     fn test_cant_be_blocked_when_defending_player_controls_required_card_type() {
         let alice = PlayerId::from_index(0);
         let bob = PlayerId::from_index(1);
@@ -1169,5 +1234,148 @@ mod tests {
         add_ability(&mut cant_block, StaticAbility::cant_block());
 
         assert!(!can_block(&attacker, &cant_block, &game));
+    }
+
+    #[test]
+    fn test_any_landwalk_checks_for_any_land() {
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let mut attacker = make_creature("Pathwalker", 2, 2);
+        attacker.controller = alice;
+        add_ability(&mut attacker, StaticAbility::any_landwalk());
+
+        let mut blocker = make_creature("Blocker", 2, 2);
+        blocker.controller = bob;
+
+        let mut game = test_game_state();
+        game.add_object(attacker.clone());
+        game.add_object(blocker.clone());
+        assert!(can_block(&attacker, &blocker, &game));
+
+        let mut land = make_creature("Plains", 0, 1);
+        land.controller = bob;
+        land.card_types = vec![CardType::Land];
+        land.subtypes = vec![crate::types::Subtype::Plains];
+        game.add_object(land);
+
+        assert!(!can_block(&attacker, &blocker, &game));
+    }
+
+    #[test]
+    fn test_nonbasic_landwalk_requires_nonbasic_land() {
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let mut attacker = make_creature("Boots Walker", 2, 2);
+        attacker.controller = alice;
+        add_ability(&mut attacker, StaticAbility::nonbasic_landwalk());
+
+        let mut blocker = make_creature("Blocker", 2, 2);
+        blocker.controller = bob;
+
+        let mut basic_land = make_creature("Forest", 0, 1);
+        basic_land.controller = bob;
+        basic_land.card_types = vec![CardType::Land];
+        basic_land.subtypes = vec![crate::types::Subtype::Forest];
+        basic_land.supertypes = vec![Supertype::Basic];
+
+        let mut nonbasic_land = make_creature("Maze", 0, 1);
+        nonbasic_land.controller = bob;
+        nonbasic_land.card_types = vec![CardType::Land];
+        nonbasic_land.subtypes = vec![crate::types::Subtype::Desert];
+
+        let mut game = test_game_state();
+        game.add_object(attacker.clone());
+        game.add_object(blocker.clone());
+        game.add_object(basic_land);
+        assert!(can_block(&attacker, &blocker, &game));
+
+        game.add_object(nonbasic_land);
+        assert!(!can_block(&attacker, &blocker, &game));
+    }
+
+    #[test]
+    fn test_snow_landwalk_requires_snow_land_of_matching_type() {
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let mut attacker = make_creature("Snow Scout", 2, 2);
+        attacker.controller = alice;
+        add_ability(
+            &mut attacker,
+            StaticAbility::snow_landwalk(crate::types::Subtype::Forest),
+        );
+
+        let mut blocker = make_creature("Blocker", 2, 2);
+        blocker.controller = bob;
+
+        let mut forest = make_creature("Forest", 0, 1);
+        forest.controller = bob;
+        forest.card_types = vec![CardType::Land];
+        forest.subtypes = vec![crate::types::Subtype::Forest];
+
+        let mut snow_forest = forest.clone();
+        snow_forest.id = ObjectId::from_raw(5000);
+        snow_forest.stable_id = StableId::from_raw(5000);
+        snow_forest.supertypes = vec![Supertype::Snow];
+
+        let mut game = test_game_state();
+        game.add_object(attacker.clone());
+        game.add_object(blocker.clone());
+        game.add_object(forest);
+        assert!(can_block(&attacker, &blocker, &game));
+
+        game.add_object(snow_forest);
+        assert!(!can_block(&attacker, &blocker, &game));
+    }
+
+    #[test]
+    fn test_attached_chosen_landwalk_uses_source_choice() {
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let mut attacker = make_creature("Traveler", 2, 2);
+        attacker.controller = alice;
+        attacker.owner = alice;
+
+        let mut blocker = make_creature("Blocker", 2, 2);
+        blocker.controller = bob;
+        blocker.owner = bob;
+
+        let mut aura = make_creature("Traveler's Cloak", 0, 0);
+        aura.controller = alice;
+        aura.owner = alice;
+        aura.card_types = vec![CardType::Enchantment];
+        aura.subtypes = vec![crate::types::Subtype::Aura];
+        aura.attached_to = Some(attacker.id);
+        aura.abilities.push(Ability::static_ability(
+            StaticAbility::attached_chosen_landwalk_grant(
+                "enchanted creature has landwalk of the chosen type".to_string(),
+                false,
+            ),
+        ));
+
+        let mut chosen_land = make_creature("Desert", 0, 1);
+        chosen_land.controller = bob;
+        chosen_land.owner = bob;
+        chosen_land.card_types = vec![CardType::Land];
+        chosen_land.subtypes = vec![crate::types::Subtype::Desert];
+
+        let mut game = test_game_state();
+        let attacker_id = attacker.id;
+        let blocker_id = blocker.id;
+        let aura_id = aura.id;
+        game.add_object(attacker);
+        game.add_object(blocker);
+        game.add_object(aura);
+        game.add_object(chosen_land);
+        game.set_chosen_land_type(aura_id, crate::types::Subtype::Desert);
+
+        assert!(!can_block(
+            game.object(attacker_id).expect("attacker should exist"),
+            game.object(blocker_id).expect("blocker should exist"),
+            &game,
+        ));
     }
 }

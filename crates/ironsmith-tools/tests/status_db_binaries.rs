@@ -230,6 +230,126 @@ fn sync_card_status_db_writes_rows_by_default() {
 }
 
 #[test]
+fn sync_card_status_db_prunes_cards_without_supported_format_legality() {
+    let dir = tempdir().expect("tempdir");
+    let cards_path = dir.path().join("cards.json");
+    let db_path = dir.path().join("engine-status.sqlite3");
+
+    fs::write(
+        &cards_path,
+        r#"[
+  {
+    "name":"Lightning Bolt",
+    "oracle_text":"Lightning Bolt deals 3 damage to any target.",
+    "mana_cost":"{R}",
+    "type_line":"Instant",
+    "legalities":{
+      "standard":"not_legal",
+      "modern":"legal",
+      "legacy":"legal",
+      "vintage":"legal",
+      "commander":"legal"
+    }
+  },
+  {
+    "name":"Abrade",
+    "oracle_text":"Choose one — Abrade deals 3 damage to target creature; or destroy target artifact.",
+    "mana_cost":"{1}{R}",
+    "type_line":"Instant",
+    "legalities":{
+      "standard":"not_legal",
+      "modern":"legal",
+      "legacy":"legal",
+      "vintage":"legal",
+      "commander":"legal"
+    }
+  }
+]"#,
+    )
+    .expect("write initial cards.json");
+
+    let status = Command::new(env!("CARGO_BIN_EXE_sync_card_status_db"))
+        .arg("--cards")
+        .arg(&cards_path)
+        .arg("--db-path")
+        .arg(&db_path)
+        .status()
+        .expect("run initial sync_card_status_db");
+    assert!(
+        status.success(),
+        "initial sync_card_status_db should succeed"
+    );
+    assert_eq!(
+        query_count(&db_path, "SELECT COUNT(*) FROM latest_card_compilation"),
+        2
+    );
+
+    fs::write(
+        &cards_path,
+        r#"[
+  {
+    "name":"Lightning Bolt",
+    "oracle_text":"Lightning Bolt deals 3 damage to any target.",
+    "mana_cost":"{R}",
+    "type_line":"Instant",
+    "legalities":{
+      "standard":"not_legal",
+      "modern":"legal",
+      "legacy":"legal",
+      "vintage":"legal",
+      "commander":"legal"
+    }
+  },
+  {
+    "name":"Contract from Below",
+    "oracle_text":"Discard your hand, ante the top card of your library, then draw seven cards.",
+    "mana_cost":"{B}",
+    "type_line":"Sorcery",
+    "legalities":{
+      "standard":"not_legal",
+      "modern":"not_legal",
+      "legacy":"not_legal",
+      "vintage":"not_legal",
+      "commander":"not_legal"
+    }
+  }
+]"#,
+    )
+    .expect("write updated cards.json");
+
+    let status = Command::new(env!("CARGO_BIN_EXE_sync_card_status_db"))
+        .arg("--cards")
+        .arg(&cards_path)
+        .arg("--db-path")
+        .arg(&db_path)
+        .status()
+        .expect("run second sync_card_status_db");
+    assert!(
+        status.success(),
+        "second sync_card_status_db should succeed"
+    );
+
+    assert_eq!(
+        query_count(&db_path, "SELECT COUNT(*) FROM latest_card_compilation"),
+        1
+    );
+    assert_eq!(
+        query_count(
+            &db_path,
+            "SELECT COUNT(*) FROM latest_card_compilation WHERE card_name = 'Lightning Bolt'"
+        ),
+        1
+    );
+    assert_eq!(
+        query_count(
+            &db_path,
+            "SELECT COUNT(*) FROM latest_card_compilation WHERE card_name IN ('Abrade', 'Contract from Below')"
+        ),
+        0
+    );
+}
+
+#[test]
 fn compile_oracle_text_only_writes_for_authoritative_cards_and_obeys_no_db() {
     let dir = tempdir().expect("tempdir");
     let cards_path = dir.path().join("cards.json");

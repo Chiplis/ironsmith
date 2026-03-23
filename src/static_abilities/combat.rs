@@ -225,15 +225,44 @@ impl StaticAbilityKind for MaxCreaturesCanBlockEachCombat {
     }
 }
 
-/// Landwalk: can't be blocked as long as defending player controls a land of the given subtype.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LandwalkKind {
+    Subtype {
+        subtype: crate::types::Subtype,
+        snow: bool,
+    },
+    AnyLand,
+    NonbasicLand,
+    ArtifactLand,
+}
+
+impl LandwalkKind {
+    pub fn display(self) -> String {
+        match self {
+            Self::Subtype {
+                subtype,
+                snow: false,
+            } => format!("{subtype}walk"),
+            Self::Subtype {
+                subtype,
+                snow: true,
+            } => format!("Snow {subtype}walk"),
+            Self::AnyLand => "Landwalk".to_string(),
+            Self::NonbasicLand => "Nonbasic landwalk".to_string(),
+            Self::ArtifactLand => "Artifact landwalk".to_string(),
+        }
+    }
+}
+
+/// Landwalk and landwalk-like unblockable keyword variants.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Landwalk {
-    pub land_subtype: crate::types::Subtype,
+    pub kind: LandwalkKind,
 }
 
 impl Landwalk {
-    pub const fn new(land_subtype: crate::types::Subtype) -> Self {
-        Self { land_subtype }
+    pub const fn new(kind: LandwalkKind) -> Self {
+        Self { kind }
     }
 }
 
@@ -243,7 +272,7 @@ impl StaticAbilityKind for Landwalk {
     }
 
     fn display(&self) -> String {
-        format!("{}walk", self.land_subtype)
+        self.kind.display()
     }
 
     fn is_keyword(&self) -> bool {
@@ -254,10 +283,8 @@ impl StaticAbilityKind for Landwalk {
         true
     }
 
-    fn required_defending_player_land_subtype_for_unblockable(
-        &self,
-    ) -> Option<crate::types::Subtype> {
-        Some(self.land_subtype)
+    fn landwalk_kind(&self) -> Option<LandwalkKind> {
+        Some(self.kind)
     }
 }
 

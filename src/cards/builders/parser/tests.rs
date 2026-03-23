@@ -1146,6 +1146,28 @@ fn rewrite_lexed_triggered_line_handles_punctuation_before_enter_verb() {
 }
 
 #[test]
+fn rewrite_lexed_triggered_line_parses_state_trigger_condition() {
+    let text = "When you control no Swamps, sacrifice this creature.";
+    let tokens = lex_line(text, 0).expect("rewrite lexer should classify state trigger line");
+
+    let parsed = super::clause_support::parse_triggered_line_lexed(&tokens)
+        .expect("state-triggered line should parse");
+
+    match parsed {
+        crate::cards::builders::LineAst::Triggered { trigger, .. } => {
+            assert!(
+                matches!(
+                    trigger,
+                    crate::cards::builders::TriggerSpec::StateBased { .. }
+                ),
+                "expected state trigger, got {trigger:?}"
+            );
+        }
+        other => panic!("expected triggered line, got {other:?}"),
+    }
+}
+
+#[test]
 fn rewrite_lexed_effect_entrypoint_matches_wrapper_multisentence_followups() {
     let text = "Exile the top card of that player's library. You may cast it. If you don't, create a Treasure token.";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify multisentence effect");
@@ -1238,13 +1260,13 @@ fn rewrite_lexed_effect_sentence_matches_wrapper_pre_diagnostic_clause_helpers()
 #[test]
 fn rewrite_lexed_effect_sentence_unsupported_diagnostic_matches_wrapper_error() {
     let text = "The Ring tempts you.";
-    let lexed = lex_line(text, 0).expect("rewrite lexer should classify unsupported sentence");
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify ring sentence");
     let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
 
-    let native = parse_effect_sentence_lexed(&lexed)
-        .expect_err("lexed sentence should reject unsupported diagnostic probe");
-    let wrapper = parse_effect_sentence_lexed(&compat)
-        .expect_err("wrapper sentence should reject unsupported diagnostic probe");
+    let native =
+        parse_effect_sentence_lexed(&lexed).expect("lexed sentence should parse ring clause");
+    let wrapper =
+        parse_effect_sentence_lexed(&compat).expect("wrapper sentence should parse ring clause");
 
     assert_eq!(format!("{native:?}"), format!("{wrapper:?}"));
 }
@@ -1514,7 +1536,10 @@ fn rewrite_lexed_effect_sequence_keeps_consult_cast_bottom_family_parseable() {
     let debug = format!("{parsed:?}");
 
     assert!(debug.contains("CastTagged"), "{debug}");
-    assert!(debug.contains("MoveToZone"), "{debug}");
+    assert!(
+        debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+        "{debug}"
+    );
 }
 
 #[test]

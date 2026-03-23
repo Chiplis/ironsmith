@@ -995,13 +995,28 @@ pub(crate) enum FilterKeywordConstraint {
 fn keyword_action_to_filter_constraint(action: KeywordAction) -> Option<FilterKeywordConstraint> {
     use FilterKeywordConstraint::{Marker, Static};
 
-    if let KeywordAction::Landwalk(subtype) = action {
-        let constraint = match subtype {
-            Subtype::Island => Marker("islandwalk"),
-            Subtype::Swamp => Marker("swampwalk"),
-            Subtype::Mountain => Marker("mountainwalk"),
-            Subtype::Forest => Marker("forestwalk"),
-            Subtype::Plains => Marker("plainswalk"),
+    if let KeywordAction::Landwalk(kind) = action {
+        let constraint = match kind {
+            crate::static_abilities::LandwalkKind::Subtype {
+                subtype: Subtype::Island,
+                snow: false,
+            } => Marker("islandwalk"),
+            crate::static_abilities::LandwalkKind::Subtype {
+                subtype: Subtype::Swamp,
+                snow: false,
+            } => Marker("swampwalk"),
+            crate::static_abilities::LandwalkKind::Subtype {
+                subtype: Subtype::Mountain,
+                snow: false,
+            } => Marker("mountainwalk"),
+            crate::static_abilities::LandwalkKind::Subtype {
+                subtype: Subtype::Forest,
+                snow: false,
+            } => Marker("forestwalk"),
+            crate::static_abilities::LandwalkKind::Subtype {
+                subtype: Subtype::Plains,
+                snow: false,
+            } => Marker("plainswalk"),
             _ => Static(StaticAbilityId::Landwalk),
         };
         return Some(constraint);

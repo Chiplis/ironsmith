@@ -80,6 +80,7 @@ use super::util::{
 
 pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
     match trigger {
+        TriggerSpec::StateBased { display, .. } => Trigger::state_based(display),
         TriggerSpec::ThisAttacks => Trigger::this_attacks(),
         TriggerSpec::ThisAttacksAndIsntBlocked => Trigger::this_attacks_and_isnt_blocked(),
         TriggerSpec::ThisAttacksWhileSaddled => Trigger::this_attacks_while_saddled(),
@@ -685,6 +686,7 @@ pub(crate) fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
         | TriggerSpec::KeywordAction { .. }
         | TriggerSpec::KeywordActionFromSource { .. }
         | TriggerSpec::Expend { .. } => true,
+        TriggerSpec::StateBased { .. } => false,
         TriggerSpec::BecomesTargetedBySourceController {
             source_controller, ..
         } => *source_controller != PlayerFilter::Any,
@@ -740,6 +742,7 @@ fn prepend_effect_prelude(mut compiled: Vec<Effect>, mut prelude: Vec<Effect>) -
 
 pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFilter> {
     match trigger {
+        TriggerSpec::StateBased { .. } => None,
         TriggerSpec::EntersBattlefield(_)
         | TriggerSpec::EntersBattlefieldOneOrMore(_)
         | TriggerSpec::EntersBattlefieldFromZone { .. }
@@ -828,6 +831,7 @@ pub(crate) fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventVa
             | TriggerSpec::KeywordAction { .. }
             | TriggerSpec::KeywordActionFromSource { .. }
             | TriggerSpec::CounterPutOn { .. } => true,
+            TriggerSpec::StateBased { .. } => false,
             TriggerSpec::Either(left, right) => {
                 trigger_supports_event_value(left, spec)
                     && trigger_supports_event_value(right, spec)
@@ -4389,29 +4393,6 @@ fn try_compile_player_resource_and_choice_effect(
             ctx.last_player_filter = Some(player_filter);
             (vec![Effect::new(effect)], choices)
         }
-        EffectAst::ExileUntilMatch {
-            player,
-            filter,
-            exiled_tag,
-            match_tag,
-        } => {
-            let (player_filter, choices) =
-                resolve_effect_player_filter(*player, ctx, true, true, true)?;
-            let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
-            let mut effect =
-                crate::effects::ExileUntilMatchEffect::new(player_filter.clone(), resolved_filter);
-            if let Some(tag) = exiled_tag {
-                let resolved_tag = resolve_it_tag_key(tag, &current_reference_env(ctx))?;
-                effect = effect.tag_all_exiled(resolved_tag);
-            }
-            if let Some(tag) = match_tag {
-                let resolved_tag = resolve_it_tag_key(tag, &current_reference_env(ctx))?;
-                ctx.last_object_tag = Some(resolved_tag.as_str().to_string());
-                effect = effect.tag_match(resolved_tag);
-            }
-            ctx.last_player_filter = Some(player_filter);
-            (vec![Effect::new(effect)], choices)
-        }
         EffectAst::RearrangeLookedCardsInLibrary { tag, player, count } => {
             let (player_filter, choices) =
                 resolve_effect_player_filter(*player, ctx, true, true, true)?;
@@ -4802,54 +4783,6 @@ fn try_compile_player_resource_and_choice_effect(
                     resolved_keep_tagged,
                     resolved_order,
                     player_filter,
-                )],
-                choices,
-            )
-        }
-        EffectAst::ExileUntilMatchGrantPlayUntilEndOfTurn {
-            player,
-            filter,
-            caster,
-        } => {
-            let (library_player, mut choices) =
-                resolve_effect_player_filter(*player, ctx, true, true, true)?;
-            let (casting_player, casting_choices) =
-                resolve_effect_player_filter(*caster, ctx, true, true, true)?;
-            for choice in casting_choices {
-                push_choice(&mut choices, choice);
-            }
-            let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
-            ctx.last_player_filter = Some(library_player.clone());
-            (
-                vec![Effect::exile_until_match_grant_play_until_eot(
-                    library_player,
-                    resolved_filter,
-                    casting_player,
-                )],
-                choices,
-            )
-        }
-        EffectAst::ExileUntilMatchCast {
-            player,
-            filter,
-            caster,
-            without_paying_mana_cost,
-        } => {
-            let (library_player, mut choices) =
-                resolve_effect_player_filter(*player, ctx, true, true, true)?;
-            let (casting_player, casting_choices) =
-                resolve_effect_player_filter(*caster, ctx, true, true, true)?;
-            for choice in casting_choices {
-                push_choice(&mut choices, choice);
-            }
-            let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
-            ctx.last_player_filter = Some(library_player.clone());
-            (
-                vec![Effect::exile_until_match_cast(
-                    library_player,
-                    resolved_filter,
-                    casting_player,
-                    *without_paying_mana_cost,
                 )],
                 choices,
             )
@@ -8587,6 +8520,9 @@ fn try_compile_player_turn_and_counter_effect(
     ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
     let compiled = match effect {
+        EffectAst::RingTemptsYou { player } => {
+            compile_player_effect_from_filter(*player, ctx, true, Effect::ring_tempts_player)?
+        }
         EffectAst::BecomeMonarch { player } => {
             compile_player_effect_from_filter(*player, ctx, true, Effect::become_monarch_player)?
         }

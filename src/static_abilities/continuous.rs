@@ -2354,6 +2354,76 @@ impl StaticAbilityKind for AttachedAbilityGrant {
     }
 }
 
+/// Enchanted/attached permanent has landwalk of the chosen land type.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AttachedChosenLandwalkGrant {
+    pub display: String,
+    pub snow: bool,
+    pub condition: Option<crate::ConditionExpr>,
+}
+
+impl AttachedChosenLandwalkGrant {
+    pub fn new(display: String, snow: bool) -> Self {
+        Self {
+            display,
+            snow,
+            condition: None,
+        }
+    }
+
+    pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
+        self.condition = Some(condition);
+        self
+    }
+}
+
+impl StaticAbilityKind for AttachedChosenLandwalkGrant {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::AttachedChosenLandwalkGrant
+    }
+
+    fn display(&self) -> String {
+        let mut text = self.display.clone();
+        if let Some(condition) = &self.condition {
+            text.push(' ');
+            text.push_str(&describe_static_condition(condition));
+        }
+        text
+    }
+
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        Some(StaticAbility::new(self.clone().with_condition(condition)))
+    }
+
+    fn generate_effects(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+        game: &GameState,
+    ) -> Vec<ContinuousEffect> {
+        let Some(chosen_type) = game.chosen_land_type(source) else {
+            return Vec::new();
+        };
+
+        let ability = if self.snow {
+            StaticAbility::snow_landwalk(chosen_type)
+        } else {
+            StaticAbility::landwalk(chosen_type)
+        };
+
+        vec![effect_with_optional_static_condition(
+            ContinuousEffect::new(
+                source,
+                controller,
+                EffectTarget::AttachedTo(source),
+                Modification::AddAbility(ability),
+            )
+            .with_source_type(EffectSourceType::StaticAbility),
+            &self.condition,
+        )]
+    }
+}
+
 /// Controller of source controls the permanent attached to source.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ControlAttachedPermanent {

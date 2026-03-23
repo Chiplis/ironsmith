@@ -86,6 +86,14 @@ impl TriggerMatcher for KeywordActionTrigger {
                 _ => "Whenever a player puts a name sticker on a creature".to_string(),
             };
         }
+        if self.action == KeywordActionKind::RingTemptsYou {
+            return match &self.player {
+                PlayerFilter::You => "Whenever the Ring tempts you".to_string(),
+                PlayerFilter::Opponent => "Whenever the Ring tempts an opponent".to_string(),
+                PlayerFilter::Any => "Whenever the Ring tempts a player".to_string(),
+                _ => "Whenever the Ring tempts a player".to_string(),
+            };
+        }
 
         match &self.player {
             PlayerFilter::You => format!("Whenever you {}", self.action.infinitive()),
@@ -189,5 +197,12 @@ mod tests {
             trigger.display(),
             "Whenever you put a name sticker on a creature"
         );
+    }
+
+    #[test]
+    fn keyword_action_ring_tempts_display_phrase() {
+        let trigger =
+            KeywordActionTrigger::new(KeywordActionKind::RingTemptsYou, PlayerFilter::You);
+        assert_eq!(trigger.display(), "Whenever the Ring tempts you");
     }
 }

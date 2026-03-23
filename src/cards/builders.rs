@@ -533,7 +533,7 @@ pub(crate) enum KeywordAction {
     Horsemanship,
     Flanking,
     UmbraArmor,
-    Landwalk(Subtype),
+    Landwalk(crate::static_abilities::LandwalkKind),
     Bloodthirst(u32),
     Rampage(u32),
     Bushido(u32),
@@ -652,22 +652,6 @@ impl KeywordAction {
     }
 
     pub(crate) fn display_text(&self) -> String {
-        fn title_case_words(text: &str) -> String {
-            text.split_whitespace()
-                .map(|word| {
-                    let mut chars = word.chars();
-                    let Some(first) = chars.next() else {
-                        return String::new();
-                    };
-                    let mut out = String::new();
-                    out.extend(first.to_uppercase());
-                    out.push_str(chars.as_str());
-                    out
-                })
-                .collect::<Vec<_>>()
-                .join(" ")
-        }
-
         fn single_color_name(colors: ColorSet) -> Option<&'static str> {
             if colors == ColorSet::WHITE {
                 return Some("white");
@@ -779,11 +763,7 @@ impl KeywordAction {
             Self::Horsemanship => "Horsemanship".to_string(),
             Self::Flanking => "Flanking".to_string(),
             Self::UmbraArmor => "Umbra armor".to_string(),
-            Self::Landwalk(subtype) => {
-                let mut subtype = subtype.to_string().to_ascii_lowercase();
-                subtype.push_str("walk");
-                title_case_words(&subtype)
-            }
+            Self::Landwalk(kind) => kind.display(),
             Self::Bloodthirst(amount) => format!("Bloodthirst {amount}"),
             Self::Rampage(amount) => format!("Rampage {amount}"),
             Self::Bushido(amount) => format!("Bushido {amount}"),
@@ -918,6 +898,11 @@ pub(crate) enum StaticAbilityAst {
         display: String,
         condition: Option<ConditionExpr>,
     },
+    AttachedChosenLandwalkGrant {
+        snow: bool,
+        display: String,
+        condition: Option<ConditionExpr>,
+    },
     EquipmentKeywordActionsGrant {
         actions: Vec<KeywordAction>,
     },
@@ -967,6 +952,10 @@ impl From<KeywordAction> for GrantedAbilityAst {
 
 #[derive(Debug, Clone)]
 pub(crate) enum TriggerSpec {
+    StateBased {
+        condition: PredicateAst,
+        display: String,
+    },
     ThisAttacks,
     ThisAttacksAndIsntBlocked,
     ThisAttacksWhileSaddled,
@@ -1636,17 +1625,6 @@ pub(crate) enum EffectAst {
         order: LibraryBottomOrderAst,
         player: PlayerAst,
     },
-    ExileUntilMatchGrantPlayUntilEndOfTurn {
-        player: PlayerAst,
-        filter: ObjectFilter,
-        caster: PlayerAst,
-    },
-    ExileUntilMatchCast {
-        player: PlayerAst,
-        filter: ObjectFilter,
-        caster: PlayerAst,
-        without_paying_mana_cost: bool,
-    },
     BecomeBasicLandTypeChoice {
         target: TargetAst,
         duration: Until,
@@ -1787,12 +1765,6 @@ pub(crate) enum EffectAst {
         player: PlayerAst,
         tags: Vec<TagKey>,
         accumulated_tags: Vec<TagKey>,
-    },
-    ExileUntilMatch {
-        player: PlayerAst,
-        filter: ObjectFilter,
-        exiled_tag: Option<TagKey>,
-        match_tag: Option<TagKey>,
     },
     LookAtTopCards {
         player: PlayerAst,
@@ -1950,6 +1922,9 @@ pub(crate) enum EffectAst {
         filter: ObjectFilter,
         count: u32,
         shared_type: Option<SharedTypeConstraintAst>,
+    },
+    RingTemptsYou {
+        player: PlayerAst,
     },
     BecomeMonarch {
         player: PlayerAst,
@@ -2730,8 +2705,25 @@ impl CardDefinitionBuilder {
             KeywordAction::UmbraArmor => {
                 self.with_ability(Ability::static_ability(StaticAbility::umbra_armor()))
             }
-            KeywordAction::Landwalk(subtype) => {
-                self.with_ability(Ability::static_ability(StaticAbility::landwalk(subtype)))
+            KeywordAction::Landwalk(kind) => {
+                let ability = match kind {
+                    crate::static_abilities::LandwalkKind::Subtype {
+                        subtype,
+                        snow: false,
+                    } => StaticAbility::landwalk(subtype),
+                    crate::static_abilities::LandwalkKind::Subtype {
+                        subtype,
+                        snow: true,
+                    } => StaticAbility::snow_landwalk(subtype),
+                    crate::static_abilities::LandwalkKind::AnyLand => StaticAbility::any_landwalk(),
+                    crate::static_abilities::LandwalkKind::NonbasicLand => {
+                        StaticAbility::nonbasic_landwalk()
+                    }
+                    crate::static_abilities::LandwalkKind::ArtifactLand => {
+                        StaticAbility::artifact_landwalk()
+                    }
+                };
+                self.with_ability(Ability::static_ability(ability))
             }
             KeywordAction::Bloodthirst(amount) => self.bloodthirst(amount),
             KeywordAction::Rampage(amount) => self.rampage(amount),
@@ -7499,12 +7491,17 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
-    fn parse_ring_tempts_now_errors_instead_of_silent_success() {
-        let result = CardDefinitionBuilder::new(CardId::new(), "Ring Variant")
-            .parse_text("The Ring tempts you.");
+    fn parse_ring_tempts_compiles_and_renders() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Ring Variant")
+            .parse_text("The Ring tempts you.")
+            .expect("ring tempts clause should parse");
+
+        let lines = compiled_lines(&def);
         assert!(
-            result.is_err(),
-            "ring tempts clause should fail instead of being silently ignored"
+            lines
+                .iter()
+                .any(|line| line.contains("The Ring tempts you")),
+            "expected rendered text to contain ring clause, got {lines:?}"
         );
     }
 

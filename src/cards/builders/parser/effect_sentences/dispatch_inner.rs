@@ -77,10 +77,6 @@ macro_rules! sentence_unsupported_adapters_lexed {
     };
 }
 
-fn sentence_has_ring_tempts_clause_lexed(view: &LexClauseView<'_>) -> bool {
-    is_ring_tempts_sentence(view.tokens)
-}
-
 fn next_spell_grant_player_ast(filter: &ObjectFilter) -> Option<PlayerAst> {
     match filter.cast_by.as_ref()? {
         crate::target::PlayerFilter::You => Some(PlayerAst::You),
@@ -369,15 +365,7 @@ sentence_unsupported_adapters_lexed!(
     ),
 );
 
-const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 33] = [
-    LexUnsupportedRuleDef {
-        id: "ring-tempts",
-        priority: 10,
-        heads: &["the"],
-        shape_mask: 0,
-        message: "unsupported ring tempts clause",
-        predicate: sentence_has_ring_tempts_clause_lexed,
-    },
+const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 32] = [
     LexUnsupportedRuleDef {
         id: "enters-as-copy",
         priority: 20,
@@ -2626,11 +2614,6 @@ pub(crate) fn parse_take_extra_turn_sentence(
         }));
     }
     Ok(None)
-}
-
-pub(crate) fn is_ring_tempts_sentence(tokens: &[OwnedLexToken]) -> bool {
-    let words = LowercaseWordView::new(tokens);
-    words.to_word_refs().as_slice() == ["the", "ring", "tempts", "you"]
 }
 
 pub(crate) fn find_same_name_reference_span(

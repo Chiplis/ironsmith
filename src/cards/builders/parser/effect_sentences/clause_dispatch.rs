@@ -80,6 +80,11 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
     }
 
     let clause_words = words(tokens);
+    if clause_words.as_slice() == ["the", "ring", "tempts", "you"] {
+        return Ok(EffectAst::RingTemptsYou {
+            player: crate::cards::builders::PlayerAst::You,
+        });
+    }
     if is_mana_replacement_clause_words(&clause_words) {
         return Err(CardTextError::ParseError(format!(
             "unsupported mana replacement clause (clause: '{}') [rule=mana-replacement]",

@@ -106,7 +106,23 @@ pub(crate) fn static_ability_for_keyword_action(action: KeywordAction) -> Option
         KeywordAction::Horsemanship => Some(StaticAbility::horsemanship()),
         KeywordAction::Flanking => Some(StaticAbility::flanking()),
         KeywordAction::UmbraArmor => Some(StaticAbility::umbra_armor()),
-        KeywordAction::Landwalk(subtype) => Some(StaticAbility::landwalk(subtype)),
+        KeywordAction::Landwalk(kind) => Some(match kind {
+            crate::static_abilities::LandwalkKind::Subtype {
+                subtype,
+                snow: false,
+            } => StaticAbility::landwalk(subtype),
+            crate::static_abilities::LandwalkKind::Subtype {
+                subtype,
+                snow: true,
+            } => StaticAbility::snow_landwalk(subtype),
+            crate::static_abilities::LandwalkKind::AnyLand => StaticAbility::any_landwalk(),
+            crate::static_abilities::LandwalkKind::NonbasicLand => {
+                StaticAbility::nonbasic_landwalk()
+            }
+            crate::static_abilities::LandwalkKind::ArtifactLand => {
+                StaticAbility::artifact_landwalk()
+            }
+        }),
         KeywordAction::Bloodthirst(amount) => Some(StaticAbility::bloodthirst(amount)),
         KeywordAction::Rampage(amount) => {
             Some(StaticAbility::keyword_marker(format!("rampage {amount}")))

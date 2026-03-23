@@ -3,7 +3,7 @@
 //! This module contains the `check_triggers()` function that scans all permanents
 //! for triggered abilities that match a game event.
 
-use std::collections::hash_map::DefaultHasher;
+use std::collections::{HashSet, hash_map::DefaultHasher};
 use std::hash::{Hash, Hasher};
 
 use crate::Effect;
@@ -16,7 +16,7 @@ use crate::ids::{ObjectId, PlayerId, StableId};
 use crate::resolution::ResolutionProgram;
 use crate::snapshot::ObjectSnapshot;
 use crate::static_abilities::StaticAbilityId;
-use crate::target::PlayerFilter;
+use crate::target::{ChooseSpec, PlayerFilter};
 use crate::types::CardType;
 use crate::zone::Zone;
 
@@ -27,6 +27,13 @@ use super::matcher_trait::TriggerContext;
 /// Stable, structural identity for a trigger definition.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TriggerIdentity(pub u64);
+
+/// Stable key for remembering whether a state trigger is currently true.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ActiveStateTriggerKey {
+    pub source_stable_id: StableId,
+    pub trigger_identity: TriggerIdentity,
+}
 
 /// A triggered ability that needs to go on the stack.
 #[derive(Debug, Clone)]
@@ -416,6 +423,11 @@ fn monarch_designation_source() -> (ObjectId, StableId, String) {
     (source, StableId::from(source), "The Monarch".to_string())
 }
 
+fn ring_designation_source() -> (ObjectId, StableId, String) {
+    let source = ObjectId::from_raw(u64::MAX);
+    (source, StableId::from(source), "The Ring".to_string())
+}
+
 fn push_monarch_trigger(
     triggered: &mut Vec<TriggeredAbilityEntry>,
     controller: PlayerId,
@@ -423,6 +435,28 @@ fn push_monarch_trigger(
     trigger_event: &TriggerEvent,
 ) {
     let (source, source_stable_id, source_name) = monarch_designation_source();
+    let trigger_identity = compute_trigger_identity(&ability);
+    triggered.push(TriggeredAbilityEntry {
+        source,
+        controller,
+        x_value: None,
+        ability,
+        triggering_event: trigger_event.clone(),
+        source_stable_id,
+        source_name,
+        source_snapshot: None,
+        tagged_objects: std::collections::HashMap::new(),
+        trigger_identity,
+    });
+}
+
+fn push_ring_trigger(
+    triggered: &mut Vec<TriggeredAbilityEntry>,
+    controller: PlayerId,
+    ability: TriggeredAbility,
+    trigger_event: &TriggerEvent,
+) {
+    let (source, source_stable_id, source_name) = ring_designation_source();
     let trigger_identity = compute_trigger_identity(&ability);
     triggered.push(TriggeredAbilityEntry {
         source,
@@ -491,6 +525,100 @@ fn add_monarch_designation_triggers(
                 effects: ResolutionProgram::from_effects(vec![Effect::become_monarch_player(
                     PlayerFilter::Specific(source_obj.controller),
                 )]),
+                choices: vec![],
+                intervening_if: None,
+            },
+            trigger_event,
+        );
+    }
+}
+
+fn add_ring_designation_triggers(
+    game: &GameState,
+    trigger_event: &TriggerEvent,
+    triggered: &mut Vec<TriggeredAbilityEntry>,
+) {
+    if trigger_event.kind() == crate::events::traits::EventKind::CreatureAttacked
+        && let Some(attacked) =
+            trigger_event.downcast::<crate::events::combat::CreatureAttackedEvent>()
+        && let Some(attacker) = game.object(attacked.attacker)
+        && game.ring_level(attacker.controller) >= 2
+        && game.current_ring_bearer(attacker.controller) == Some(attacked.attacker)
+    {
+        push_ring_trigger(
+            triggered,
+            attacker.controller,
+            TriggeredAbility {
+                trigger: Trigger::custom(
+                    "ring_bearer_attacks",
+                    "Whenever your Ring-bearer attacks".to_string(),
+                ),
+                effects: ResolutionProgram::from_effects(vec![
+                    Effect::target_draws(1, PlayerFilter::Specific(attacker.controller)),
+                    Effect::discard_player(1, PlayerFilter::Specific(attacker.controller), false),
+                ]),
+                choices: vec![],
+                intervening_if: None,
+            },
+            trigger_event,
+        );
+    }
+
+    if trigger_event.kind() == crate::events::traits::EventKind::CreatureBlocked
+        && let Some(blocked) =
+            trigger_event.downcast::<crate::events::combat::CreatureBlockedEvent>()
+        && let Some(attacker) = game.object(blocked.attacker)
+        && game.ring_level(attacker.controller) >= 3
+        && game.current_ring_bearer(attacker.controller) == Some(blocked.attacker)
+    {
+        let delayed = Effect::new(crate::effects::ScheduleDelayedTriggerEffect::new(
+            Trigger::end_of_combat(),
+            vec![Effect::new(crate::effects::SacrificeTargetEffect::new(
+                ChooseSpec::SpecificObject(blocked.blocker),
+            ))],
+            true,
+            vec![blocked.blocker],
+            PlayerFilter::Specific(attacker.controller),
+        ));
+        push_ring_trigger(
+            triggered,
+            attacker.controller,
+            TriggeredAbility {
+                trigger: Trigger::custom(
+                    "ring_bearer_becomes_blocked",
+                    "Whenever your Ring-bearer becomes blocked by a creature".to_string(),
+                ),
+                effects: ResolutionProgram::from_effects(vec![delayed]),
+                choices: vec![],
+                intervening_if: None,
+            },
+            trigger_event,
+        );
+    }
+
+    if trigger_event.kind() == crate::events::traits::EventKind::Damage
+        && let Some(damage_event) = trigger_event.downcast::<crate::events::damage::DamageEvent>()
+        && damage_event.is_combat
+        && damage_event.amount > 0
+        && matches!(
+            damage_event.target,
+            crate::game_event::DamageTarget::Player(_)
+        )
+        && let Some(source_obj) = game.object(damage_event.source)
+        && game.ring_level(source_obj.controller) >= 4
+        && game.current_ring_bearer(source_obj.controller) == Some(damage_event.source)
+    {
+        push_ring_trigger(
+            triggered,
+            source_obj.controller,
+            TriggeredAbility {
+                trigger: Trigger::custom(
+                    "ring_bearer_combat_damage",
+                    "Whenever your Ring-bearer deals combat damage to a player".to_string(),
+                ),
+                effects: ResolutionProgram::from_effects(vec![Effect::for_each_opponent(vec![
+                    Effect::lose_life_player(3, PlayerFilter::IteratedPlayer),
+                ])]),
                 choices: vec![],
                 intervening_if: None,
             },
@@ -792,10 +920,162 @@ pub(crate) fn check_triggers_with_view(
     }
 
     add_monarch_designation_triggers(game, trigger_event, &mut triggered);
+    add_ring_designation_triggers(game, trigger_event, &mut triggered);
     remove_suppressed_triggers(game, view, &mut triggered);
     append_additional_trigger_copies(game, view, &mut triggered);
 
     triggered
+}
+
+fn state_trigger_event(source: ObjectId) -> TriggerEvent {
+    TriggerEvent::new_with_provenance(
+        crate::events::StateTriggerEvent::new(source),
+        crate::provenance::ProvNodeId::default(),
+    )
+}
+
+fn collect_state_triggers_for_object(
+    game: &GameState,
+    obj: &crate::object::Object,
+    abilities: &[crate::ability::Ability],
+    triggered: &mut Vec<TriggeredAbilityEntry>,
+    active: &mut HashSet<ActiveStateTriggerKey>,
+) {
+    for ability in abilities {
+        let AbilityKind::Triggered(trigger_ability) = &ability.kind else {
+            continue;
+        };
+        if !ability.functions_in(&obj.zone) {
+            continue;
+        }
+        if trigger_ability
+            .trigger
+            .downcast_ref::<crate::triggers::StateTrigger>()
+            .is_none()
+        {
+            continue;
+        }
+        let Some(condition) = trigger_ability.intervening_if.as_ref() else {
+            continue;
+        };
+
+        let trigger_identity = compute_trigger_identity(trigger_ability);
+        let key = ActiveStateTriggerKey {
+            source_stable_id: obj.stable_id,
+            trigger_identity,
+        };
+        let trigger_event = state_trigger_event(obj.id);
+        if !verify_intervening_if(
+            game,
+            condition,
+            obj.controller,
+            &trigger_event,
+            obj.id,
+            Some(trigger_identity),
+        ) {
+            continue;
+        }
+
+        active.insert(key);
+        if game.active_state_trigger_conditions.contains(&key) {
+            continue;
+        }
+
+        triggered.push(TriggeredAbilityEntry {
+            source: obj.id,
+            controller: obj.controller,
+            x_value: obj.x_value,
+            ability: TriggeredAbility {
+                trigger: trigger_ability.trigger.clone(),
+                effects: trigger_ability.effects.clone(),
+                choices: trigger_ability.choices.clone(),
+                intervening_if: trigger_ability.intervening_if.clone(),
+            },
+            triggering_event: trigger_event,
+            source_stable_id: obj.stable_id,
+            source_name: obj.name.clone(),
+            source_snapshot: None,
+            tagged_objects: std::collections::HashMap::new(),
+            trigger_identity,
+        });
+    }
+}
+
+/// Check all current state-triggered abilities and return newly-triggered entries plus
+/// the set of state-trigger conditions that are currently true.
+pub fn check_state_triggers(
+    game: &GameState,
+) -> (Vec<TriggeredAbilityEntry>, HashSet<ActiveStateTriggerKey>) {
+    let view = crate::derived_view::DerivedGameView::new(game);
+    let mut triggered = Vec::new();
+    let mut active = HashSet::new();
+
+    for &obj_id in &game.battlefield {
+        let Some(obj) = game.object(obj_id) else {
+            continue;
+        };
+        let calculated_abilities = view
+            .abilities(obj_id)
+            .unwrap_or_else(|| obj.abilities.clone());
+        collect_state_triggers_for_object(
+            game,
+            obj,
+            &calculated_abilities,
+            &mut triggered,
+            &mut active,
+        );
+    }
+
+    for player in &game.players {
+        for &obj_id in &player.graveyard {
+            if let Some(obj) = game.object(obj_id) {
+                collect_state_triggers_for_object(
+                    game,
+                    obj,
+                    &obj.abilities,
+                    &mut triggered,
+                    &mut active,
+                );
+            }
+        }
+        for &obj_id in &player.hand {
+            if let Some(obj) = game.object(obj_id) {
+                collect_state_triggers_for_object(
+                    game,
+                    obj,
+                    &obj.abilities,
+                    &mut triggered,
+                    &mut active,
+                );
+            }
+        }
+    }
+
+    for &obj_id in &game.command_zone {
+        if let Some(obj) = game.object(obj_id) {
+            collect_state_triggers_for_object(
+                game,
+                obj,
+                &obj.abilities,
+                &mut triggered,
+                &mut active,
+            );
+        }
+    }
+
+    for entry in &game.stack {
+        if let Some(obj) = game.object(entry.object_id) {
+            collect_state_triggers_for_object(
+                game,
+                obj,
+                &obj.abilities,
+                &mut triggered,
+                &mut active,
+            );
+        }
+    }
+
+    (triggered, active)
 }
 
 /// Check delayed triggers against an event and return triggered entries.
@@ -1147,10 +1427,28 @@ pub fn verify_intervening_if(
 mod tests {
     use super::*;
     use crate::card::CardBuilder;
+    use crate::card::PowerToughness;
+    use crate::events::DamageEvent;
+    use crate::events::cause::EventCause;
+    use crate::events::combat::{AttackEventTarget, CreatureAttackedEvent, CreatureBlockedEvent};
     use crate::events::spells::SpellCastEvent;
+    use crate::game_event::DamageTarget;
     use crate::ids::{CardId, PlayerId};
     use crate::static_abilities::StaticAbility;
     use crate::types::CardType;
+    use crate::zone::Zone;
+
+    fn make_battlefield_creature(
+        game: &mut GameState,
+        owner: PlayerId,
+        name: &str,
+    ) -> crate::ids::ObjectId {
+        let card = CardBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        game.create_object_from_card(&card, owner, Zone::Battlefield)
+    }
 
     #[test]
     fn temporary_next_spell_cascade_grant_triggers_once() {
@@ -1185,6 +1483,123 @@ mod tests {
             game.temporary_granted_spell_abilities(spell_id, alice)
                 .is_empty(),
             "grant should be consumed after the cast event resolves"
+        );
+    }
+
+    #[test]
+    fn ring_designation_attack_trigger_draws_then_discards() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let bearer = make_battlefield_creature(&mut game, alice, "Bearer");
+
+        game.increment_ring_temptations(alice);
+        game.increment_ring_temptations(alice);
+        game.set_ring_bearer(alice, bearer);
+
+        let triggered = check_triggers(
+            &game,
+            &TriggerEvent::new_with_provenance(
+                CreatureAttackedEvent::new(bearer, AttackEventTarget::Player(bob)),
+                crate::provenance::ProvNodeId::default(),
+            ),
+        );
+
+        assert_eq!(triggered.len(), 1);
+        assert_eq!(triggered[0].source_name, "The Ring");
+        let effects = triggered[0].ability.effects.all_effects();
+        assert!(effects.iter().any(|effect| {
+            effect
+                .downcast_ref::<crate::effects::DrawCardsEffect>()
+                .is_some()
+        }));
+        assert!(effects.iter().any(|effect| {
+            effect
+                .downcast_ref::<crate::effects::DiscardEffect>()
+                .is_some()
+        }));
+    }
+
+    #[test]
+    fn ring_designation_block_trigger_schedules_end_of_combat_sacrifice() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let bearer = make_battlefield_creature(&mut game, alice, "Bearer");
+        let blocker = make_battlefield_creature(&mut game, bob, "Blocker");
+
+        for _ in 0..3 {
+            game.increment_ring_temptations(alice);
+        }
+        game.set_ring_bearer(alice, bearer);
+
+        let triggered = check_triggers(
+            &game,
+            &TriggerEvent::new_with_provenance(
+                CreatureBlockedEvent::new(blocker, bearer),
+                crate::provenance::ProvNodeId::default(),
+            ),
+        );
+
+        assert_eq!(triggered.len(), 1);
+        let schedule = triggered[0]
+            .ability
+            .effects
+            .all_effects()
+            .iter()
+            .find_map(|effect| {
+                effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()
+            })
+            .expect("expected delayed end-of-combat sacrifice");
+        assert!(schedule.trigger.display().contains("end of combat"));
+        let sacrifice = schedule
+            .effects
+            .all_effects()
+            .iter()
+            .find_map(|effect| effect.downcast_ref::<crate::effects::SacrificeTargetEffect>())
+            .expect("expected sacrifice effect");
+        assert_eq!(sacrifice.target, ChooseSpec::SpecificObject(blocker));
+    }
+
+    #[test]
+    fn ring_designation_combat_damage_trigger_hits_each_opponent() {
+        let mut game = GameState::new(
+            vec!["Alice".to_string(), "Bob".to_string(), "Cara".to_string()],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let bearer = make_battlefield_creature(&mut game, alice, "Bearer");
+
+        for _ in 0..4 {
+            game.increment_ring_temptations(alice);
+        }
+        game.set_ring_bearer(alice, bearer);
+
+        let triggered = check_triggers(
+            &game,
+            &TriggerEvent::new_with_provenance(
+                DamageEvent::with_cause(
+                    bearer,
+                    DamageTarget::Player(bob),
+                    2,
+                    true,
+                    EventCause::combat_damage(bearer),
+                ),
+                crate::provenance::ProvNodeId::default(),
+            ),
+        );
+
+        assert_eq!(triggered.len(), 1);
+        assert!(
+            triggered[0]
+                .ability
+                .effects
+                .all_effects()
+                .iter()
+                .any(|effect| effect
+                    .downcast_ref::<crate::effects::ForPlayersEffect>()
+                    .is_some())
         );
     }
 }

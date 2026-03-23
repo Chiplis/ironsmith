@@ -215,6 +215,10 @@ pub(crate) fn run_choose_mode(
     let mut consumed_modal_selection = false;
     for &idx in &valid_chosen_indices {
         if let Some(mode) = effect.modes.get(idx) {
+            let mut active_scope: Option<(
+                Vec<crate::executor::ResolvedTarget>,
+                Vec<TargetAssignment>,
+            )> = None;
             for inner in &mode.effects {
                 let inner_target_assignments = active_target_assignments_for_inner_effect(
                     game,
@@ -224,13 +228,21 @@ pub(crate) fn run_choose_mode(
                     &available_assignments,
                     &mut assignment_cursor,
                 );
-                let (inner_targets, inner_target_assignments) =
-                    rebase_target_scope(&ctx.targets, &inner_target_assignments);
-                let outcome = ctx.with_temp_targets(inner_targets, |ctx| {
-                    ctx.with_temp_target_assignments(inner_target_assignments, |ctx| {
-                        execute_effect(game, inner, ctx)
+                if !inner_target_assignments.is_empty() {
+                    let (inner_targets, inner_target_assignments) =
+                        rebase_target_scope(&ctx.targets, &inner_target_assignments);
+                    active_scope = Some((inner_targets, inner_target_assignments));
+                }
+                let outcome = if let Some((inner_targets, inner_target_assignments)) = &active_scope
+                {
+                    ctx.with_temp_targets(inner_targets.clone(), |ctx| {
+                        ctx.with_temp_target_assignments(inner_target_assignments.clone(), |ctx| {
+                            execute_effect(game, inner, ctx)
+                        })
                     })
-                })?;
+                } else {
+                    execute_effect(game, inner, ctx)
+                }?;
                 outcomes.push(outcome);
             }
         }

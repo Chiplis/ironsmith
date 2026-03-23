@@ -9,6 +9,7 @@ use crate::target::PlayerFilter;
 use super::activation_and_restrictions::{
     parse_ability_phrase, parse_single_word_keyword_action, parse_triggered_times_each_turn_lexed,
 };
+use super::effect_sentences::conditionals::parse_predicate_lexed;
 use super::lexer::{OwnedLexToken, TokenKind, split_lexed_sentences};
 use super::native_tokens::LowercaseWordView;
 use super::util::{
@@ -942,6 +943,34 @@ pub(crate) fn parse_triggered_line_lexed(
                 }
                 Err(err) => return Err(err),
             }
+        }
+
+        if matches!(
+            tokens.first(),
+            Some(token) if token.is_word("when") || token.is_word("whenever")
+        ) && let Ok(predicate) = parse_predicate_lexed(trigger_tokens)
+            && !matches!(
+                predicate,
+                crate::cards::builders::PredicateAst::Unmodeled(_)
+            )
+        {
+            let effects_tokens = rewrite_attached_controller_trigger_effect_tokens_lexed(
+                trigger_tokens,
+                &tokens[split_idx + 1..],
+            );
+            let effects = parse_effect_sentences_lexed(&effects_tokens)?;
+            return Ok(LineAst::Triggered {
+                trigger: TriggerSpec::StateBased {
+                    condition: predicate,
+                    display: tokens[..split_idx]
+                        .iter()
+                        .map(|token| token.slice.as_str())
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                },
+                effects,
+                max_triggers_per_turn: None,
+            });
         }
     }
 

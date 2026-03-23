@@ -58,9 +58,10 @@ pub mod zone_changes;
 
 // Re-export core types
 pub use check::{
-    DelayedTrigger, TriggerIdentity, TriggerQueue, TriggeredAbilityEntry, check_delayed_triggers,
-    check_triggers, compute_delayed_trigger_identity, compute_trigger_identity,
-    generate_step_trigger_events, player_filter_matches_with_context, verify_intervening_if,
+    ActiveStateTriggerKey, DelayedTrigger, TriggerIdentity, TriggerQueue, TriggeredAbilityEntry,
+    check_delayed_triggers, check_state_triggers, check_triggers, compute_delayed_trigger_identity,
+    compute_trigger_identity, generate_step_trigger_events, player_filter_matches_with_context,
+    verify_intervening_if,
 };
 pub use event::{AttackEventTarget, DamageEventTarget};
 pub use matcher_trait::{TriggerContext, TriggerMatcher};
@@ -810,6 +811,11 @@ impl Trigger {
     /// Create a custom trigger with a unique ID and description.
     pub fn custom(id: &'static str, description: String) -> Self {
         Self::new(CustomTrigger::new(id, description))
+    }
+
+    /// Create a state-trigger matcher. These are checked during SBA scans.
+    pub fn state_based(description: impl Into<String>) -> Self {
+        Self::new(StateTrigger::new(description.into()))
     }
 
     // === Trigger Combinators ===

@@ -2,7 +2,7 @@ use crate::ability::{Ability, AbilityKind, TriggeredAbility};
 use crate::cards::ParseAnnotations;
 use crate::cards::builders::{
     CardDefinitionBuilder, CardTextError, EffectAst, KeywordAction, LineInfo, ParsedAbility,
-    StaticAbilityAst, TriggerSpec,
+    PredicateAst, StaticAbilityAst, TriggerSpec,
 };
 use crate::effect::{Condition, Effect, EffectMode, EventValueSpec};
 use crate::filter::ObjectFilter;
@@ -177,12 +177,27 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
     effects: &[EffectAst],
     imports: impl Into<ReferenceImports>,
 ) -> Result<PreparedTriggeredEffectsForLowering, CardTextError> {
+    fn merge_intervening_predicates(
+        left: Option<PredicateAst>,
+        right: Option<PredicateAst>,
+    ) -> Option<PredicateAst> {
+        match (left, right) {
+            (Some(left), Some(right)) => Some(PredicateAst::And(Box::new(left), Box::new(right))),
+            (Some(left), None) => Some(left),
+            (None, Some(right)) => Some(right),
+            (None, None) => None,
+        }
+    }
+
     let imports = imports.into();
     ensure_concrete_trigger_spec(trigger)?;
 
     let normalized = normalize_effects_ast(effects);
     let mut body_effects = normalized.clone();
-    let mut intervening_if = None;
+    let mut intervening_if = match trigger {
+        TriggerSpec::StateBased { condition, .. } => Some(condition.clone()),
+        _ => None,
+    };
     if normalized.len() == 1
         && let EffectAst::Conditional {
             predicate,
@@ -193,7 +208,7 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
         && !if_true.is_empty()
     {
         body_effects = if_true.clone();
-        intervening_if = Some(predicate.clone());
+        intervening_if = merge_intervening_predicates(intervening_if, Some(predicate.clone()));
     }
 
     let prepared = rewrite_prepare_effects_from_normalized(
@@ -595,7 +610,23 @@ pub(crate) fn rewrite_static_ability_for_keyword_action(
         KeywordAction::Horsemanship => Some(StaticAbility::horsemanship()),
         KeywordAction::Flanking => Some(StaticAbility::flanking()),
         KeywordAction::UmbraArmor => Some(StaticAbility::umbra_armor()),
-        KeywordAction::Landwalk(subtype) => Some(StaticAbility::landwalk(subtype)),
+        KeywordAction::Landwalk(kind) => Some(match kind {
+            crate::static_abilities::LandwalkKind::Subtype {
+                subtype,
+                snow: false,
+            } => StaticAbility::landwalk(subtype),
+            crate::static_abilities::LandwalkKind::Subtype {
+                subtype,
+                snow: true,
+            } => StaticAbility::snow_landwalk(subtype),
+            crate::static_abilities::LandwalkKind::AnyLand => StaticAbility::any_landwalk(),
+            crate::static_abilities::LandwalkKind::NonbasicLand => {
+                StaticAbility::nonbasic_landwalk()
+            }
+            crate::static_abilities::LandwalkKind::ArtifactLand => {
+                StaticAbility::artifact_landwalk()
+            }
+        }),
         KeywordAction::Bloodthirst(amount) => Some(StaticAbility::bloodthirst(amount)),
         KeywordAction::Rampage(amount) => {
             Some(StaticAbility::keyword_marker(format!("rampage {amount}")))
@@ -707,6 +738,18 @@ fn rewrite_lower_attached_static_ability_grant(
     Ok(StaticAbility::new(grant))
 }
 
+fn rewrite_lower_attached_chosen_landwalk_grant(
+    display: String,
+    snow: bool,
+    condition: Option<crate::ConditionExpr>,
+) -> Result<StaticAbility, CardTextError> {
+    let mut grant = crate::static_abilities::AttachedChosenLandwalkGrant::new(display, snow);
+    if let Some(condition) = condition {
+        grant = grant.with_condition(condition);
+    }
+    Ok(StaticAbility::new(grant))
+}
+
 pub(crate) fn rewrite_lower_static_ability_ast(
     ability: StaticAbilityAst,
 ) -> Result<StaticAbility, CardTextError> {
@@ -752,6 +795,11 @@ pub(crate) fn rewrite_lower_static_ability_ast(
             display,
             condition,
         } => rewrite_lower_attached_keyword_action_grant(action, display, condition),
+        StaticAbilityAst::AttachedChosenLandwalkGrant {
+            snow,
+            display,
+            condition,
+        } => rewrite_lower_attached_chosen_landwalk_grant(display, snow, condition),
         StaticAbilityAst::EquipmentKeywordActionsGrant { actions } => {
             let mut lowered = Vec::with_capacity(actions.len());
             for action in actions {

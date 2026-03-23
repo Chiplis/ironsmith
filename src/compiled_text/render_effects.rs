@@ -262,6 +262,16 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         }
         if idx + 1 < filtered.len()
             && let Some(with_id) = filtered[idx].downcast_ref::<crate::effects::WithIdEffect>()
+            && let Some(for_players) =
+                filtered[idx + 1].downcast_ref::<crate::effects::ForPlayersEffect>()
+            && let Some(compact) = describe_with_id_then_for_players_if_didnt(with_id, for_players)
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(with_id) = filtered[idx].downcast_ref::<crate::effects::WithIdEffect>()
             && let Some(reflexive) =
                 filtered[idx + 1].downcast_ref::<crate::effects::ReflexiveTriggerEffect>()
             && let Some(compact) = describe_with_id_then_reflexive_trigger(with_id, reflexive)
@@ -3884,6 +3894,99 @@ pub(super) fn describe_with_id_then_if(
     } else {
         Some(format!(
             "{setup}. {condition}, {then_text}. Otherwise, {else_text}"
+        ))
+    }
+}
+
+fn describe_for_players_may_clause(
+    for_players: &crate::effects::ForPlayersEffect,
+) -> Option<(String, String, String)> {
+    if for_players.effects.len() != 1 {
+        return None;
+    }
+    let may = for_players.effects[0].downcast_ref::<crate::effects::MayEffect>()?;
+    if may.decider.is_some() {
+        return None;
+    }
+
+    let subject = match for_players.filter {
+        PlayerFilter::Any => "Each player".to_string(),
+        PlayerFilter::Opponent => "Each opponent".to_string(),
+        PlayerFilter::You => "You".to_string(),
+        _ => return None,
+    };
+    let each_player =
+        strip_leading_article(&describe_player_filter(&for_players.filter)).to_string();
+
+    let mut action = describe_effect_list(&may.effects);
+    if let Some(rest) = action.strip_prefix("that player ") {
+        action = rest.to_string();
+    }
+    if let Some(rest) = action.strip_prefix("you ") {
+        action = rest.to_string();
+    }
+    action = match for_players.filter {
+        PlayerFilter::You => normalize_you_verb_phrase(&action),
+        _ => normalize_third_person_verb_phrase(&action),
+    };
+    action = lowercase_may_clause(&action);
+
+    Some((subject, each_player, action))
+}
+
+fn describe_for_players_didnt_followup(effects: &[Effect]) -> Option<String> {
+    if effects.len() == 2
+        && let Some(lose) = effects[0].downcast_ref::<crate::effects::LoseLifeEffect>()
+        && let Some(draw) = effects[1].downcast_ref::<crate::effects::DrawCardsEffect>()
+        && matches!(
+            lose.player,
+            ChooseSpec::Player(PlayerFilter::IteratedPlayer)
+        )
+        && draw.player == PlayerFilter::You
+        && draw.count == Value::Fixed(1)
+    {
+        let amount = describe_value(&lose.amount);
+        return Some(format!(
+            "that player loses {amount} life and you draw a card"
+        ));
+    }
+
+    let mut followup = describe_effect_list(effects);
+    if let Some(rest) = followup.strip_prefix("you lose ") {
+        followup = format!("that player loses {rest}");
+    } else if let Some(rest) = followup.strip_prefix("you ") {
+        let normalized = normalize_third_person_verb_phrase(rest);
+        followup = format!("that player {normalized}");
+    }
+    Some(followup)
+}
+
+pub(super) fn describe_with_id_then_for_players_if_didnt(
+    with_id: &crate::effects::WithIdEffect,
+    for_players: &crate::effects::ForPlayersEffect,
+) -> Option<String> {
+    let antecedent = with_id
+        .effect
+        .downcast_ref::<crate::effects::ForPlayersEffect>()?;
+    if antecedent.filter != for_players.filter || for_players.effects.len() != 1 {
+        return None;
+    }
+    let if_effect = for_players.effects[0].downcast_ref::<crate::effects::IfEffect>()?;
+    if if_effect.condition != with_id.id
+        || if_effect.predicate != EffectPredicate::DidNotHappen
+        || !if_effect.else_.is_empty()
+    {
+        return None;
+    }
+
+    let (subject, each_player, action) = describe_for_players_may_clause(antecedent)?;
+    let followup = describe_for_players_didnt_followup(&if_effect.then)?;
+
+    if antecedent.filter == PlayerFilter::You {
+        Some(format!("{subject} may {action}. If you don't, {followup}"))
+    } else {
+        Some(format!(
+            "{subject} may {action}. For each {each_player} who doesn't, {followup}"
         ))
     }
 }
@@ -7727,6 +7830,15 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             damage_type,
             protected,
             describe_until(&prevent_all.until)
+        );
+    }
+    if let Some(ring_tempts) = effect.downcast_ref::<crate::effects::RingTemptsYouEffect>() {
+        if ring_tempts.player == crate::target::PlayerFilter::You {
+            return "The Ring tempts you".to_string();
+        }
+        return format!(
+            "The Ring tempts {}",
+            describe_player_filter(&ring_tempts.player)
         );
     }
     if let Some(schedule) = effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>() {

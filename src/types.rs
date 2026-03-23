@@ -369,6 +369,21 @@ pub enum Subtype {
 }
 
 impl Subtype {
+    pub const fn all_land_types() -> &'static [Subtype] {
+        &[
+            Subtype::Plains,
+            Subtype::Island,
+            Subtype::Swamp,
+            Subtype::Mountain,
+            Subtype::Forest,
+            Subtype::Desert,
+            Subtype::Urzas,
+            Subtype::Cave,
+            Subtype::Gate,
+            Subtype::Locus,
+        ]
+    }
+
     pub fn display_name(self) -> String {
         match self {
             Subtype::Urzas => "Urza's".to_string(),

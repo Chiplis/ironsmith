@@ -18,6 +18,8 @@ use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOp
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 
+const CHOSEN_NAME_TAG: &str = "__chosen_name__";
+
 #[derive(Clone)]
 enum SearchLibraryManaConstraint {
     Equal(u32),
@@ -888,7 +890,7 @@ pub(crate) fn parse_search_library_sentence(
     }
 
     enum SameNameReference {
-        TaggedIt,
+        Tagged(TagKey),
         Target(TargetAst),
         Choose { filter: ObjectFilter, tag: TagKey },
     }
@@ -911,7 +913,7 @@ pub(crate) fn parse_search_library_sentence(
             .token_index_for_word_index(raw_filter_words.len() - 3)
             .unwrap_or(raw_filter_tokens.len());
         filter_tokens = trim_commas(&raw_filter_tokens[..base_end]);
-        same_name_reference = Some(SameNameReference::TaggedIt);
+        same_name_reference = Some(SameNameReference::Tagged(TagKey::from(CHOSEN_NAME_TAG)));
     } else if raw_filter_words.len() >= 4
         && raw_filter_words[raw_filter_words.len() - 4..] == ["with", "the", "chosen", "name"]
     {
@@ -919,7 +921,7 @@ pub(crate) fn parse_search_library_sentence(
             .token_index_for_word_index(raw_filter_words.len() - 4)
             .unwrap_or(raw_filter_tokens.len());
         filter_tokens = trim_commas(&raw_filter_tokens[..base_end]);
-        same_name_reference = Some(SameNameReference::TaggedIt);
+        same_name_reference = Some(SameNameReference::Tagged(TagKey::from(CHOSEN_NAME_TAG)));
     } else if raw_filter_words.len() >= 3
         && raw_filter_words[raw_filter_words.len() - 3..] == ["with", "chosen", "name"]
     {
@@ -927,7 +929,7 @@ pub(crate) fn parse_search_library_sentence(
             .token_index_for_word_index(raw_filter_words.len() - 3)
             .unwrap_or(raw_filter_tokens.len());
         filter_tokens = trim_commas(&raw_filter_tokens[..base_end]);
-        same_name_reference = Some(SameNameReference::TaggedIt);
+        same_name_reference = Some(SameNameReference::Tagged(TagKey::from(CHOSEN_NAME_TAG)));
     } else if let Some((base_filter_tokens, reference_tokens)) =
         split_search_same_name_reference_filter(&raw_filter_tokens)
     {
@@ -940,7 +942,7 @@ pub(crate) fn parse_search_library_sentence(
         filter_tokens = base_filter_tokens;
         let reference_words = words(&reference_tokens);
         same_name_reference = if is_same_name_that_reference_words(&reference_words) {
-            Some(SameNameReference::TaggedIt)
+            Some(SameNameReference::Tagged(TagKey::from(IT_TAG)))
         } else if reference_words.iter().any(|word| *word == "target") {
             let target = parse_target_phrase(&reference_tokens).map_err(|_| {
                 CardTextError::ParseError(format!(
@@ -1034,7 +1036,8 @@ pub(crate) fn parse_search_library_sentence(
     if let Some(same_name_tag) = same_name_reference
         .as_ref()
         .map(|reference| match reference {
-            SameNameReference::TaggedIt | SameNameReference::Target(_) => TagKey::from(IT_TAG),
+            SameNameReference::Tagged(tag) => tag.clone(),
+            SameNameReference::Target(_) => TagKey::from(IT_TAG),
             SameNameReference::Choose { tag, .. } => tag.clone(),
         })
     {
@@ -1267,7 +1270,7 @@ pub(crate) fn parse_search_library_sentence(
 
     if let Some(reference) = same_name_reference {
         match reference {
-            SameNameReference::TaggedIt => {}
+            SameNameReference::Tagged(_) => {}
             SameNameReference::Target(target) => {
                 effects.insert(0, EffectAst::TargetOnly { target });
             }

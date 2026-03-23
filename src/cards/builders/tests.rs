@@ -1212,6 +1212,28 @@ fn test_parse_choose_basic_land_type_as_enters_for_aura() {
 }
 
 #[test]
+fn test_parse_choose_land_type_as_enters_for_aura() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Traveler's Cloak Variant")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura])
+        .parse_text(
+            "Enchant creature.\nAs this aura enters, choose a land type.\nEnchanted creature has landwalk of the chosen type.",
+        )
+        .expect("parse as this aura enters choose a land type");
+
+    let ids: Vec<StaticAbilityId> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(ids.contains(&StaticAbilityId::ChooseLandTypeAsEnters));
+    assert!(ids.contains(&StaticAbilityId::AttachedChosenLandwalkGrant));
+}
+
+#[test]
 fn test_parse_choose_player_as_enters_without_placeholder() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Player Choice Artifact")
         .card_types(vec![CardType::Artifact])
@@ -5730,6 +5752,34 @@ fn test_parse_landwalk_keyword_line() {
 }
 
 #[test]
+fn test_parse_nonbasic_landwalk_keyword_line() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Nonbasic Landwalk Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Nonbasic landwalk")
+        .expect("nonbasic landwalk keyword line should parse");
+
+    let rendered = compiled_lines(&def).join(" | ");
+    assert!(
+        rendered.contains("Nonbasic landwalk"),
+        "expected compiled text to preserve nonbasic landwalk, got {rendered}"
+    );
+}
+
+#[test]
+fn test_parse_snow_landwalk_keyword_line() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Snow Forestwalk Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Snow forestwalk")
+        .expect("snow forestwalk keyword line should parse");
+
+    let rendered = compiled_lines(&def).join(" | ");
+    assert!(
+        rendered.contains("Snow Forestwalk"),
+        "expected compiled text to preserve snow forestwalk, got {rendered}"
+    );
+}
+
+#[test]
 fn test_parse_cant_be_blocked_by_more_than_one_creature() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Max Blockers Probe")
         .card_types(vec![CardType::Creature])
@@ -6373,6 +6423,37 @@ fn test_parse_trigger_without_comma() {
         .iter()
         .any(|a| matches!(a.kind, AbilityKind::Triggered(_)));
     assert!(has_triggered, "expected triggered ability");
+}
+
+#[test]
+fn test_parse_state_triggered_sacrifice_line() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "State Trigger Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text("When you control no Swamps, sacrifice this creature.")
+        .expect("parse state-triggered sacrifice line");
+
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("expected triggered ability");
+
+    assert!(
+        triggered
+            .trigger
+            .downcast_ref::<crate::triggers::StateTrigger>()
+            .is_some(),
+        "expected state-trigger matcher, got {:?}",
+        triggered.trigger
+    );
+    assert!(
+        format!("{:?}", triggered.effects).contains("SacrificeTargetEffect"),
+        "expected sacrifice effect, got {:?}",
+        triggered.effects
+    );
 }
 
 #[test]

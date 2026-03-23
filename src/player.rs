@@ -597,6 +597,9 @@ pub struct Player {
     pub poison_counters: u32,
     pub energy_counters: u32,
     pub experience_counters: u32,
+    pub ring_temptations: u32,
+    pub ring_bearer: Option<ObjectId>,
+    pub ring_legendary_added: Option<ObjectId>,
 
     // Per-turn tracking
     pub lands_played_this_turn: u32,
@@ -638,6 +641,9 @@ impl Player {
             poison_counters: 0,
             energy_counters: 0,
             experience_counters: 0,
+            ring_temptations: 0,
+            ring_bearer: None,
+            ring_legendary_added: None,
             lands_played_this_turn: 0,
             land_plays_per_turn: 1,
             max_hand_size: 7,

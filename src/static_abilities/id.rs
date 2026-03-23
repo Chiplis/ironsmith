@@ -108,6 +108,7 @@ pub enum StaticAbilityId {
     MarvinMurderousMimic,
     SoulbondSharedBonus,
     AttachedAbilityGrant,
+    AttachedChosenLandwalkGrant,
     ControlAttachedPermanent,
     GrantObjectAbilityForFilter,
     SetColors,
@@ -153,6 +154,7 @@ pub enum StaticAbilityId {
     ChooseColorAsEnters,
     ChoosePlayerAsEnters,
     ChooseBasicLandTypeAsEnters,
+    ChooseLandTypeAsEnters,
     ChooseNamedOptionAsEnters,
     EnchantedLandIsChosenType,
     AddChosenCreatureType,
@@ -335,6 +337,7 @@ impl StaticAbilityId {
             | MarvinMurderousMimic
             | SoulbondSharedBonus
             | AttachedAbilityGrant
+            | AttachedChosenLandwalkGrant
             | ControlAttachedPermanent
             | GrantObjectAbilityForFilter
             | SetColors
@@ -374,6 +377,7 @@ impl StaticAbilityId {
             | ChooseColorAsEnters
             | ChoosePlayerAsEnters
             | ChooseBasicLandTypeAsEnters
+            | ChooseLandTypeAsEnters
             | ChooseNamedOptionAsEnters
             | EnchantedLandIsChosenType
             | AddChosenCreatureType
@@ -567,6 +571,8 @@ impl StaticAbilityId {
             self,
             Anthem
                 | GrantAbility
+                | AttachedAbilityGrant
+                | AttachedChosenLandwalkGrant
                 | RemoveAllAbilitiesForFilter
                 | RemoveAllAbilitiesExceptManaForFilter
                 | SetBasePowerToughnessForFilter

@@ -1193,7 +1193,8 @@ mod tests {
             "expected target ability grant, got {debug}"
         );
         assert!(
-            debug.contains("Landwalk(Forest)") && debug.contains("YourNextTurn"),
+            debug.contains("Landwalk(Subtype { subtype: Forest, snow: false })")
+                && debug.contains("YourNextTurn"),
             "expected forestwalk grant to keep next-upkeep duration, got {debug}"
         );
     }
@@ -1220,7 +1221,8 @@ mod tests {
             "expected target ability grant, got {debug}"
         );
         assert!(
-            debug.contains("Landwalk(Forest)") && debug.contains("YourNextTurn"),
+            debug.contains("Landwalk(Subtype { subtype: Forest, snow: false })")
+                && debug.contains("YourNextTurn"),
             "expected forestwalk grant to keep next-upkeep duration, got {debug}"
         );
     }

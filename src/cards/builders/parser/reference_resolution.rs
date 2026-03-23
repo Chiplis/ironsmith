@@ -290,6 +290,7 @@ fn advance_reference_frame_for_effect(
         | EffectAst::GainLife { player, .. }
         | EffectAst::CreateEmblem { player, .. }
         | EffectAst::SetLifeTotal { player, .. }
+        | EffectAst::RingTemptsYou { player }
         | EffectAst::BecomeMonarch { player }
         | EffectAst::PoisonCounters { player, .. }
         | EffectAst::EnergyCounters { player, .. }
@@ -810,12 +811,9 @@ fn advance_reference_frame_for_effect(
         | EffectAst::BecomeColorChoice { .. }
         | EffectAst::BecomeCopy { .. }
         | EffectAst::ExileTopOfLibrary { .. }
-        | EffectAst::ExileUntilMatch { .. }
         | EffectAst::RearrangeLookedCardsInLibrary { .. }
         | EffectAst::SearchLibrarySlotsToHand { .. }
         | EffectAst::MayMoveToZone { .. }
-        | EffectAst::ExileUntilMatchGrantPlayUntilEndOfTurn { .. }
-        | EffectAst::ExileUntilMatchCast { .. }
         | EffectAst::Cant { .. }
         | EffectAst::PlayFromGraveyardUntilEot { .. }
         | EffectAst::AdditionalLandPlays { .. }
@@ -1532,25 +1530,6 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 replacements += bind_unresolved_it_in_tag(keep_tagged, seed_tag);
             }
             replacements
-        }
-        EffectAst::ExileUntilMatch {
-            filter,
-            exiled_tag,
-            match_tag,
-            ..
-        } => {
-            let mut replacements = bind_unresolved_it_in_filter(filter, seed_tag);
-            if let Some(tag) = exiled_tag.as_mut() {
-                replacements += bind_unresolved_it_in_tag(tag, seed_tag);
-            }
-            if let Some(tag) = match_tag.as_mut() {
-                replacements += bind_unresolved_it_in_tag(tag, seed_tag);
-            }
-            replacements
-        }
-        EffectAst::ExileUntilMatchGrantPlayUntilEndOfTurn { filter, .. }
-        | EffectAst::ExileUntilMatchCast { filter, .. } => {
-            bind_unresolved_it_in_filter(filter, seed_tag)
         }
         EffectAst::Cant { restriction, .. } => {
             bind_unresolved_it_in_restriction(restriction, seed_tag)

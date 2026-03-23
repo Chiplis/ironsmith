@@ -78,6 +78,12 @@ pub fn check_and_apply_sbas_with(
         }
     }
 
+    let (state_triggers, active_state_triggers) = crate::triggers::check_state_triggers(game);
+    game.active_state_trigger_conditions = active_state_triggers;
+    for trigger in state_triggers {
+        trigger_queue.add(trigger);
+    }
+
     Ok(())
 }
 

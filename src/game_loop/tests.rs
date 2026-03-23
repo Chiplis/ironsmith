@@ -1500,6 +1500,54 @@ fn test_distinct_player_target_clauses_resolve_against_their_own_selected_target
 }
 
 #[test]
+fn test_verdant_command_distinct_player_modes_use_their_own_targets() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let token_count_before = game
+        .battlefield
+        .iter()
+        .filter(|&&id| game.object(id).is_some_and(|obj| obj.controller == alice))
+        .count();
+
+    let verdant_command = CardDefinitionBuilder::new(CardId::from_raw(5_103), "Verdant Command")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Choose two —\n• Target player creates two tapped 1/1 green Squirrel creature tokens.\n• Counter target loyalty ability of a planeswalker.\n• Exile target card from a graveyard.\n• Target player gains 3 life.",
+        )
+        .expect("Verdant Command should parse");
+    let spell_id = game.create_object_from_definition(&verdant_command, alice, Zone::Stack);
+    game.push_to_stack(
+        StackEntry::new(spell_id, alice)
+            .with_chosen_modes(Some(vec![0, 3]))
+            .with_targets(vec![Target::Player(alice), Target::Player(bob)])
+            .with_target_assignments(vec![
+                crate::game_state::TargetAssignment {
+                    spec: ChooseSpec::target_player(),
+                    range: 0..1,
+                },
+                crate::game_state::TargetAssignment {
+                    spec: ChooseSpec::target_player(),
+                    range: 1..2,
+                },
+            ]),
+    );
+
+    super::resolve_stack_entry(&mut game).expect("Verdant Command should resolve");
+
+    let token_count_after = game
+        .battlefield
+        .iter()
+        .filter(|&&id| game.object(id).is_some_and(|obj| obj.controller == alice))
+        .count();
+
+    assert_eq!(token_count_after, token_count_before + 2);
+    assert_eq!(game.player(alice).expect("alice exists").life, 20);
+    assert_eq!(game.player(bob).expect("bob exists").life, 23);
+}
+
+#[test]
 fn test_stack_resolution_keeps_distinct_target_clause_assignments_when_one_target_goes_invalid() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
@@ -3208,6 +3256,85 @@ fn test_sba_player_loses() {
 
     // Alice should have lost
     assert!(game.player(alice).unwrap().has_lost);
+}
+
+#[test]
+fn test_state_trigger_sacrifice_fires_from_sba_scan() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let def = CardDefinitionBuilder::new(CardId::new(), "State Trigger Crocodile")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(5, 5))
+        .parse_text("When you control no Swamps, sacrifice this creature.")
+        .expect("state trigger card should parse");
+    let creature_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    let mut trigger_queue = TriggerQueue::new();
+    check_and_apply_sbas(&mut game, &mut trigger_queue).unwrap();
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "expected state trigger to be queued when condition is true"
+    );
+
+    put_triggers_on_stack(&mut game, &mut trigger_queue).unwrap();
+    resolve_stack_entry(&mut game).expect("state trigger should resolve");
+
+    assert!(
+        !game.battlefield.contains(&creature_id),
+        "creature should be sacrificed once the trigger resolves"
+    );
+}
+
+#[test]
+fn test_state_trigger_only_retriggers_after_condition_turns_false() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let def = CardDefinitionBuilder::new(CardId::new(), "State Trigger Study")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text("When you control no Swamps, draw a card.")
+        .expect("state trigger card should parse");
+    game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    let mut trigger_queue = TriggerQueue::new();
+    check_and_apply_sbas(&mut game, &mut trigger_queue).unwrap();
+    assert_eq!(trigger_queue.entries.len(), 1, "condition starts true");
+
+    trigger_queue.clear();
+    check_and_apply_sbas(&mut game, &mut trigger_queue).unwrap();
+    assert!(
+        trigger_queue.is_empty(),
+        "state trigger should not requeue while the condition remains true"
+    );
+
+    let swamp_card = CardBuilder::new(CardId::new(), "Test Swamp")
+        .card_types(vec![CardType::Land])
+        .subtypes(vec![crate::types::Subtype::Swamp])
+        .build();
+    let swamp_id = game.create_object_from_card(&swamp_card, alice, Zone::Battlefield);
+
+    check_and_apply_sbas(&mut game, &mut trigger_queue).unwrap();
+    assert!(
+        trigger_queue.is_empty(),
+        "controlling a Swamp should clear the active state trigger"
+    );
+
+    game.move_object(
+        swamp_id,
+        Zone::Graveyard,
+        crate::events::cause::EventCause::effect(),
+    )
+    .expect("moving the swamp away should succeed");
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+
+    check_and_apply_sbas(&mut game, &mut trigger_queue).unwrap();
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "state trigger should fire again after the condition becomes false, then true again"
+    );
 }
 
 // === Priority Loop Tests ===

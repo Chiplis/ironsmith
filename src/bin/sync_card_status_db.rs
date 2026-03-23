@@ -48,7 +48,8 @@ fn parse_args() -> Result<Args, String> {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = parse_args().map_err(std::io::Error::other)?;
     let cards = load_canonical_cards(&args.cards_path)?;
-    let db = CardStatusDb::open(&args.db_path)?;
+    let canonical_card_names = cards.keys().cloned().collect::<Vec<_>>();
+    let mut db = CardStatusDb::open(&args.db_path)?;
 
     let mut inserted = 0usize;
     for payload in cards.values() {
@@ -57,10 +58,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             inserted += 1;
         }
     }
+    let pruned = db.prune_cards_not_in_names(&canonical_card_names)?;
 
     println!("Card status DB sync complete");
     println!("- Canonical cards processed: {}", cards.len());
     println!("- New compilation rows inserted: {inserted}");
+    println!("- Cards removed from DB: {}", pruned.distinct_cards_deleted);
+    println!(
+        "- Compilation rows deleted: {}",
+        pruned.compilation_rows_deleted
+    );
+    println!("- Tag rows deleted: {}", pruned.tag_rows_deleted);
     println!("- DB: {}", args.db_path);
 
     Ok(())

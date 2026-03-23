@@ -4,10 +4,10 @@
 
 use super::{
     ChooseBasicLandTypeAsEntersSpec, ChooseColorAsEntersSpec, ChooseCreatureTypeAsEntersSpec,
-    ChooseNamedOptionAsEntersSpec, ChoosePlayerAsEntersSpec, ConditionalSpellKeywordKind,
-    ConditionalSpellKeywordSpec, EnterAsCopyAsEntersSpec, GraveyardCountMetric, StaticAbilityId,
-    StaticAbilityKind, ThisSpellCastRestrictionKind, TriggerDuplicationSpec,
-    TriggerSuppressionSpec,
+    ChooseLandTypeAsEntersSpec, ChooseNamedOptionAsEntersSpec, ChoosePlayerAsEntersSpec,
+    ConditionalSpellKeywordKind, ConditionalSpellKeywordSpec, EnterAsCopyAsEntersSpec,
+    GraveyardCountMetric, StaticAbilityId, StaticAbilityKind, ThisSpellCastRestrictionKind,
+    TriggerDuplicationSpec, TriggerSuppressionSpec,
     text_utils::{capitalize_first, join_with_and, number_word_u32},
 };
 use crate::ability::LevelAbility;
@@ -1117,6 +1117,32 @@ impl StaticAbilityKind for ChooseBasicLandTypeAsEnters {
 
     fn basic_land_type_choice_as_enters(&self) -> Option<ChooseBasicLandTypeAsEntersSpec> {
         Some(ChooseBasicLandTypeAsEntersSpec)
+    }
+}
+
+/// "As this enters, choose a land type."
+#[derive(Debug, Clone, PartialEq)]
+pub struct ChooseLandTypeAsEnters {
+    pub display: String,
+}
+
+impl ChooseLandTypeAsEnters {
+    pub fn new(display: String) -> Self {
+        Self { display }
+    }
+}
+
+impl StaticAbilityKind for ChooseLandTypeAsEnters {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::ChooseLandTypeAsEnters
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn land_type_choice_as_enters(&self) -> Option<ChooseLandTypeAsEntersSpec> {
+        Some(ChooseLandTypeAsEntersSpec)
     }
 }
 

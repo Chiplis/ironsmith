@@ -290,11 +290,7 @@ fn keyword_action_line_text(action: &crate::cards::builders::KeywordAction) -> S
         KeywordAction::Horsemanship => "Horsemanship".to_string(),
         KeywordAction::Flanking => "Flanking".to_string(),
         KeywordAction::UmbraArmor => "Umbra armor".to_string(),
-        KeywordAction::Landwalk(subtype) => {
-            let mut subtype = subtype.to_string().to_ascii_lowercase();
-            subtype.push_str("walk");
-            title_case_words(&subtype)
-        }
+        KeywordAction::Landwalk(kind) => kind.display(),
         KeywordAction::Bloodthirst(amount) => format!("Bloodthirst {amount}"),
         KeywordAction::Rampage(amount) => format!("Rampage {amount}"),
         KeywordAction::Bushido(amount) => format!("Bushido {amount}"),

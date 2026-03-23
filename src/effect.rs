@@ -2468,6 +2468,18 @@ impl Effect {
         Self::new(BecomeMonarchEffect::new(player))
     }
 
+    /// Create a "The Ring tempts you" effect for the controller.
+    pub fn ring_tempts_you() -> Self {
+        use crate::effects::RingTemptsYouEffect;
+        Self::new(RingTemptsYouEffect::you())
+    }
+
+    /// Create a "The Ring tempts you" effect for a specific player.
+    pub fn ring_tempts_player(player: PlayerFilter) -> Self {
+        use crate::effects::RingTemptsYouEffect;
+        Self::new(RingTemptsYouEffect::new(player))
+    }
+
     /// Create an "exchange life totals" effect.
     pub fn exchange_life_totals(player1: PlayerFilter, player2: PlayerFilter) -> Self {
         use crate::effects::ExchangeLifeTotalsEffect;

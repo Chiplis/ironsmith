@@ -45,6 +45,8 @@ type QuadSentenceRule = fn(
     &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError>;
 
+const CHOSEN_NAME_TAG: &str = "__chosen_name__";
+
 fn lowercase_word_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     let mut lowered = tokens.to_vec();
     for token in &mut lowered {
@@ -57,6 +59,15 @@ fn lowercase_word_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
 
 fn parse_exact_card_effect_bundle_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
     let lowered = lowercase_word_tokens(tokens);
+    let sentences = split_lexed_sentences(&lowered);
+    if sentences.len() == 2
+        && let Ok(Some(effects)) = parse_choose_card_type_then_reveal_top_and_put_chosen_to_hand(
+            sentences[0],
+            sentences[1],
+        )
+    {
+        return Some(effects);
+    }
     let sentence_words = words(&lowered);
 
     if sentence_words.as_slice()
@@ -210,6 +221,42 @@ struct ConsultCastManaValueCondition {
     right: Value,
 }
 
+fn parse_exile_top_library_prefix(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
+    let tokens = trim_commas(tokens);
+    let token_words = words(&tokens);
+    let count_word_idx = if token_words.starts_with(&["exile", "the", "top"]) {
+        3usize
+    } else if token_words.starts_with(&["exile", "top"]) {
+        2usize
+    } else {
+        return None;
+    };
+
+    let count_tokens = token_words[count_word_idx..]
+        .iter()
+        .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+        .collect::<Vec<_>>();
+    let (count, used) = parse_number(&count_tokens)?;
+    if count_tokens
+        .get(used)
+        .and_then(OwnedLexToken::as_word)
+        .is_none_or(|word| word != "card" && word != "cards")
+    {
+        return None;
+    }
+    let tail_words = words(&count_tokens[used + 1..]);
+    if tail_words != ["of", "your", "library"] {
+        return None;
+    }
+
+    Some(vec![EffectAst::ExileTopOfLibrary {
+        count: Value::Fixed(count as i32),
+        player: PlayerAst::You,
+        tags: Vec::new(),
+        accumulated_tags: Vec::new(),
+    }])
+}
+
 fn parse_consult_traversal_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ConsultSentenceParts>, CardTextError> {
@@ -240,7 +287,13 @@ fn parse_consult_traversal_sentence(
         if prefix_tokens.is_empty() {
             return Ok(None);
         }
-        prefix_effects = parse_effect_chain(&prefix_tokens)?;
+        prefix_effects = parse_exile_top_library_prefix(&prefix_tokens)
+            .or_else(|| parse_effect_sentence_lexed(&prefix_tokens).ok())
+            .or_else(|| parse_effect_chain(&prefix_tokens).ok())
+            .unwrap_or_default();
+        if prefix_effects.is_empty() {
+            return Ok(None);
+        }
         trim_commas(&sentence_tokens[then_idx + 1..])
     } else {
         sentence_tokens
@@ -974,7 +1027,8 @@ fn prepend_prefix_sentence_to_consult_pair(
     followup: &[OwnedLexToken],
     pair_rule: PairSentenceRule,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let prefix_effects = parse_effect_chain(prefix)?;
+    let prefix_effects =
+        parse_effect_sentence_lexed(prefix).or_else(|_| parse_effect_chain(prefix))?;
     if prefix_effects.is_empty() {
         return Ok(None);
     }
@@ -2173,21 +2227,77 @@ fn split_reveal_filter_segments(tokens: &[OwnedLexToken]) -> Vec<Vec<OwnedLexTok
 }
 
 fn parse_looked_card_reveal_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
-    let words_all = words(tokens);
+    let mut filter_tokens = trim_commas(tokens).to_vec();
+    let raw_word_view = LowercaseWordView::new(&filter_tokens);
+    let raw_words = raw_word_view.to_word_refs();
+    let same_name_suffix_len = if raw_words.len() >= 3
+        && raw_words[raw_words.len() - 3..] == ["with", "that", "name"]
+    {
+        Some(3usize)
+    } else if raw_words.len() >= 4
+        && raw_words[raw_words.len() - 4..] == ["with", "the", "chosen", "name"]
+    {
+        Some(4usize)
+    } else if raw_words.len() >= 3 && raw_words[raw_words.len() - 3..] == ["with", "chosen", "name"]
+    {
+        Some(3usize)
+    } else {
+        None
+    };
+    if let Some(suffix_len) = same_name_suffix_len {
+        let base_end = raw_word_view
+            .token_index_for_word_index(raw_words.len().saturating_sub(suffix_len))
+            .unwrap_or(filter_tokens.len());
+        filter_tokens = trim_commas(&filter_tokens[..base_end]).to_vec();
+    }
+
+    let words_all = words(&filter_tokens);
+    let non_article_words = words_all
+        .iter()
+        .copied()
+        .filter(|word| !is_article(word))
+        .collect::<Vec<_>>();
+    if matches!(
+        non_article_words.as_slice(),
+        ["chosen", "card"] | ["chosen", "cards"]
+    ) {
+        let mut filter = ObjectFilter::default();
+        filter = filter.match_tagged(
+            TagKey::from(CHOSEN_NAME_TAG),
+            TaggedOpbjectRelation::SameNameAsTagged,
+        );
+        return Some(filter);
+    }
+    if matches!(non_article_words.as_slice(), ["card"] | ["cards"]) {
+        let mut filter = ObjectFilter::default();
+        if same_name_suffix_len.is_some() {
+            filter = filter.match_tagged(
+                TagKey::from(CHOSEN_NAME_TAG),
+                TaggedOpbjectRelation::SameNameAsTagged,
+            );
+        }
+        return Some(filter);
+    }
     if matches!(
         words_all.as_slice(),
         ["permanent", "card"] | ["permanent", "cards"]
     ) {
-        return Some(ObjectFilter::permanent_card());
+        let mut filter = ObjectFilter::permanent_card();
+        if same_name_suffix_len.is_some() {
+            filter = filter.match_tagged(
+                TagKey::from(CHOSEN_NAME_TAG),
+                TaggedOpbjectRelation::SameNameAsTagged,
+            );
+        }
+        return Some(filter);
     }
 
-    let has_noncomparison_or = tokens
-        .iter()
-        .enumerate()
-        .any(|(idx, token)| token.is_word("or") && !is_comparison_or_delimiter(tokens, idx));
+    let has_noncomparison_or = filter_tokens.iter().enumerate().any(|(idx, token)| {
+        token.is_word("or") && !is_comparison_or_delimiter(&filter_tokens, idx)
+    });
     if has_noncomparison_or {
         let shared_card_suffix = matches!(words_all.last().copied(), Some("card" | "cards"));
-        let segments = split_reveal_filter_segments(tokens);
+        let segments = split_reveal_filter_segments(&filter_tokens);
         if segments.len() >= 2 {
             let mut branches = Vec::new();
             for mut segment in segments {
@@ -2213,12 +2323,25 @@ fn parse_looked_card_reveal_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFil
             }
             let mut filter = ObjectFilter::default();
             filter.any_of = branches;
+            if same_name_suffix_len.is_some() {
+                filter = filter.match_tagged(
+                    TagKey::from(CHOSEN_NAME_TAG),
+                    TaggedOpbjectRelation::SameNameAsTagged,
+                );
+            }
             return Some(filter);
         }
     }
 
-    parse_search_library_disjunction_filter(tokens)
-        .or_else(|| parse_object_filter(tokens, false).ok())
+    let mut filter = parse_search_library_disjunction_filter(&filter_tokens)
+        .or_else(|| parse_object_filter(&filter_tokens, false).ok())?;
+    if same_name_suffix_len.is_some() {
+        filter = filter.match_tagged(
+            TagKey::from(CHOSEN_NAME_TAG),
+            TaggedOpbjectRelation::SameNameAsTagged,
+        );
+    }
+    Some(filter)
 }
 
 fn parse_may_put_filtered_card_from_among_into_hand(

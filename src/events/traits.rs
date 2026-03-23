@@ -103,6 +103,8 @@ pub enum EventKind {
     Transformed,
     /// A permanent was turned face up
     TurnedFaceUp,
+    /// A state-triggered ability's condition became true
+    StateTrigger,
 }
 
 /// A target within an event that can potentially be redirected.

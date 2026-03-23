@@ -1582,6 +1582,23 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             pay_tail.trim_end_matches('.')
         );
     }
+    if let Some((prefix, rest)) = split_once_ascii_ci(
+        &normalized,
+        ". If you do, For each opponent, You may that player ",
+    ) && let Some((action_clause, fallback_rest)) = split_once_ascii_ci(rest, ". If effect #")
+        && let Some((_, fallback_clause)) =
+            split_once_ascii_ci(fallback_rest, " that doesn't happen, ")
+        && let Some(loss_tail) = strip_prefix_ascii_ci(fallback_clause.trim(), "you lose ")
+        && let Some(loss_amount) = strip_suffix_ascii_ci(loss_tail.trim(), " life. Draw a card.")
+    {
+        let action = normalize_you_verb_phrase(action_clause.trim());
+        normalized = format!(
+            "{}. If you do, each opponent may {}. For each opponent who doesn't, that player loses {} life and you draw a card.",
+            prefix.trim(),
+            action.trim_end_matches('.'),
+            loss_amount.trim()
+        );
+    }
     if normalized.contains("another target creature has base power and toughness") {
         normalized = normalized.replace(
             "another target creature has base power and toughness",

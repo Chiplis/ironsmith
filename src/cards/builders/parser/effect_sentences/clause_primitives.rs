@@ -30,6 +30,8 @@ pub(crate) struct ClausePrimitive {
     pub(crate) parser: ClausePrimitiveParser,
 }
 
+const CHOSEN_NAME_TAG: &str = "__chosen_name__";
+
 pub(crate) fn parse_retarget_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
@@ -503,7 +505,7 @@ pub(crate) fn parse_choose_card_name_clause(
     Ok(Some(EffectAst::ChooseCardName {
         player,
         filter,
-        tag: TagKey::from(IT_TAG),
+        tag: TagKey::from(CHOSEN_NAME_TAG),
     }))
 }
 
