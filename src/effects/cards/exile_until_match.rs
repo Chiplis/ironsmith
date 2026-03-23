@@ -2,7 +2,9 @@
 
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::effects::consult_helpers::{LibraryConsultMode, LibraryConsultStopRule, execute_library_consult};
+use crate::effects::consult_helpers::{
+    LibraryConsultMode, LibraryConsultStopRule, execute_library_consult,
+};
 use crate::effects::helpers::resolve_player_filter;
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;

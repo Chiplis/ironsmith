@@ -4143,7 +4143,10 @@ impl Effect {
     ) -> Self {
         use crate::effects::PutTaggedRemainderOnLibraryBottomEffect;
         Self::new(PutTaggedRemainderOnLibraryBottomEffect::new(
-            tag, keep_tagged, order, player,
+            tag,
+            keep_tagged,
+            order,
+            player,
         ))
     }
 

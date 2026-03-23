@@ -1492,7 +1492,8 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             let mut replacements = bind_unresolved_it_in_filter(filter, seed_tag)
                 + bind_unresolved_it_in_tag(all_tag, seed_tag)
                 + bind_unresolved_it_in_tag(match_tag, seed_tag);
-            if let crate::cards::builders::LibraryConsultStopRuleAst::MatchCount(value) = stop_rule {
+            if let crate::cards::builders::LibraryConsultStopRuleAst::MatchCount(value) = stop_rule
+            {
                 replacements += bind_unresolved_it_in_value(value, seed_tag);
             }
             replacements

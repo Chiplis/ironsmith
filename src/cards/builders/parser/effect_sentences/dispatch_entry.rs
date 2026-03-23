@@ -4,14 +4,14 @@ use super::super::effect_ast_traversal::{
 use super::super::keyword_static::parse_where_x_value_clause;
 use super::super::lexer::{OwnedLexToken, split_lexed_sentences};
 use super::super::native_tokens::LowercaseWordView;
-use super::super::object_filters::parse_object_filter;
+use super::super::object_filters::{is_comparison_or_delimiter, parse_object_filter};
 use super::super::util::{
     helper_tag_for_tokens, is_article, mana_pips_from_token, parse_number, parse_subject,
     parse_target_phrase, span_from_tokens, token_index_for_word_index, trim_commas, words,
 };
 use super::sentence_helpers::*;
 use super::{
-    parse_effect_sentence_lexed, parse_search_library_disjunction_filter,
+    find_verb, parse_effect_sentence_lexed, parse_search_library_disjunction_filter,
     parse_token_copy_modifier_sentence, trim_edge_punctuation,
 };
 #[allow(unused_imports)]
@@ -185,8 +185,15 @@ struct ConsultSentenceParts {
 struct ConsultCastClause {
     caster: PlayerAst,
     allow_land: bool,
+    timing: ConsultCastTiming,
     without_paying_mana_cost: bool,
     max_mana_value: Option<i32>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ConsultCastTiming {
+    Immediate,
+    UntilEndOfTurn,
 }
 
 fn parse_consult_traversal_sentence(
@@ -198,8 +205,8 @@ fn parse_consult_traversal_sentence(
         || sentence_words.starts_with(&["if", "they", "do"]);
     if leading_if_you_do {
         let start_word_idx = 3usize;
-        let Some(start_token_idx) =
-            token_index_for_word_index(&sentence_tokens, start_word_idx).or(Some(sentence_tokens.len()))
+        let Some(start_token_idx) = token_index_for_word_index(&sentence_tokens, start_word_idx)
+            .or(Some(sentence_tokens.len()))
         else {
             return Ok(None);
         };
@@ -210,8 +217,12 @@ fn parse_consult_traversal_sentence(
     }
 
     let mut prefix_effects = Vec::new();
-    let consult_tokens = if let Some(then_idx) = sentence_tokens.iter().position(|token| token.is_word("then")) {
-        let prefix_tokens = trim_commas(&sentence_tokens[..then_idx]);
+    let mut prefix_tokens: Vec<OwnedLexToken> = Vec::new();
+    let consult_tokens = if let Some(then_idx) = sentence_tokens
+        .iter()
+        .position(|token| token.is_word("then"))
+    {
+        prefix_tokens = trim_commas(&sentence_tokens[..then_idx]);
         if prefix_tokens.is_empty() {
             return Ok(None);
         }
@@ -233,7 +244,7 @@ fn parse_consult_traversal_sentence(
         return Ok(None);
     };
     let player = if consult_verb_idx == 0 {
-        PlayerAst::You
+        infer_consult_player_from_prefix(&prefix_tokens).unwrap_or(PlayerAst::You)
     } else {
         match parse_subject(&consult_tokens[..consult_verb_idx]) {
             SubjectAst::Player(player) => player,
@@ -248,7 +259,10 @@ fn parse_consult_traversal_sentence(
         LibraryConsultModeAst::Exile
     };
 
-    let Some(until_idx) = consult_tokens.iter().position(|token| token.is_word("until")) else {
+    let Some(until_idx) = consult_tokens
+        .iter()
+        .position(|token| token.is_word("until"))
+    else {
         return Ok(None);
     };
     if until_idx <= consult_verb_idx + 1 {
@@ -331,6 +345,15 @@ fn parse_consult_traversal_sentence(
     }))
 }
 
+fn infer_consult_player_from_prefix(tokens: &[OwnedLexToken]) -> Option<PlayerAst> {
+    let prefix_tokens = trim_commas(tokens);
+    let (_, verb_idx) = find_verb(&prefix_tokens)?;
+    match parse_subject(&prefix_tokens[..verb_idx]) {
+        SubjectAst::Player(player) => Some(player),
+        _ => None,
+    }
+}
+
 fn parse_consult_remainder_order(words: &[&str]) -> Option<LibraryBottomOrderAst> {
     if !words.contains(&"bottom") || !words.contains(&"library") {
         return None;
@@ -347,12 +370,29 @@ fn parse_consult_remainder_order(words: &[&str]) -> Option<LibraryBottomOrderAst
 fn consult_stop_rule_is_single_match(stop_rule: &LibraryConsultStopRuleAst) -> bool {
     matches!(
         stop_rule,
-        LibraryConsultStopRuleAst::FirstMatch | LibraryConsultStopRuleAst::MatchCount(Value::Fixed(1))
+        LibraryConsultStopRuleAst::FirstMatch
+            | LibraryConsultStopRuleAst::MatchCount(Value::Fixed(1))
     )
 }
 
 fn parse_consult_cast_clause(tokens: &[OwnedLexToken]) -> Option<ConsultCastClause> {
-    let second_tokens = trim_commas(tokens);
+    let mut second_tokens = trim_commas(tokens);
+    let duration_words = words(&second_tokens);
+    let mut timing = ConsultCastTiming::Immediate;
+    if starts_with_until_end_of_turn(&duration_words)
+        || duration_words.starts_with(&["until", "the", "end", "of", "turn"])
+    {
+        let consumed_words = if duration_words.get(1) == Some(&"the") {
+            5usize
+        } else {
+            4usize
+        };
+        let start_token_idx = token_index_for_word_index(&second_tokens, consumed_words)
+            .unwrap_or(second_tokens.len());
+        second_tokens = trim_commas(&second_tokens[start_token_idx..]);
+        timing = ConsultCastTiming::UntilEndOfTurn;
+    }
+
     let may_idx = second_tokens
         .iter()
         .position(|token| token.is_word("may"))?;
@@ -382,6 +422,7 @@ fn parse_consult_cast_clause(tokens: &[OwnedLexToken]) -> Option<ConsultCastClau
         return Some(ConsultCastClause {
             caster,
             allow_land,
+            timing: ConsultCastTiming::UntilEndOfTurn,
             without_paying_mana_cost: false,
             max_mana_value: None,
         });
@@ -415,6 +456,7 @@ fn parse_consult_cast_clause(tokens: &[OwnedLexToken]) -> Option<ConsultCastClau
     Some(ConsultCastClause {
         caster,
         allow_land,
+        timing,
         without_paying_mana_cost: true,
         max_mana_value,
     })
@@ -445,9 +487,13 @@ fn parse_consult_bottom_remainder_clause(
     let mentions_cast_window = clause_words
         .windows(3)
         .any(|window| window == ["not", "cast", "this"])
+        || clause_words.windows(4).any(|window| {
+            window == ["werent", "cast", "this", "way"]
+                || window == ["weren't", "cast", "this", "way"]
+        })
         || clause_words
-            .windows(4)
-            .any(|window| window == ["werent", "cast", "this", "way"]);
+            .windows(5)
+            .any(|window| window == ["were", "not", "cast", "this", "way"]);
     let mentions_remainder = clause_words.contains(&"rest") || clause_words.contains(&"other");
 
     (mentions_cast_window || mentions_remainder).then_some(order)
@@ -460,12 +506,20 @@ fn parse_if_declined_put_match_into_hand(
     let clause_words = words(tokens);
     let moves_to_hand = clause_words == ["put", "that", "card", "into", "your", "hand"]
         || clause_words == ["put", "it", "into", "your", "hand"]
-        || clause_words.starts_with(&["if", "you", "dont", "put", "that", "card", "into", "your", "hand"])
+        || clause_words.starts_with(&[
+            "if", "you", "dont", "put", "that", "card", "into", "your", "hand",
+        ])
         || clause_words.starts_with(&["if", "you", "dont", "put", "it", "into", "your", "hand"])
-        || clause_words.starts_with(&["if", "you", "don't", "put", "that", "card", "into", "your", "hand"])
+        || clause_words.starts_with(&[
+            "if", "you", "don't", "put", "that", "card", "into", "your", "hand",
+        ])
         || clause_words.starts_with(&["if", "you", "don't", "put", "it", "into", "your", "hand"])
-        || clause_words.starts_with(&["if", "you", "do", "not", "put", "that", "card", "into", "your", "hand"])
-        || clause_words.starts_with(&["if", "you", "do", "not", "put", "it", "into", "your", "hand"]);
+        || clause_words.starts_with(&[
+            "if", "you", "do", "not", "put", "that", "card", "into", "your", "hand",
+        ])
+        || clause_words.starts_with(&[
+            "if", "you", "do", "not", "put", "it", "into", "your", "hand",
+        ]);
     if !moves_to_hand {
         return None;
     }
@@ -490,29 +544,31 @@ fn consult_cast_effects(
         ));
     }
 
-    let mut cast_effects = if clause.allow_land {
-        vec![EffectAst::GrantPlayTaggedUntilEndOfTurn {
-            tag: match_tag.clone(),
-            player: clause.caster,
-            allow_land: true,
-            without_paying_mana_cost: false,
-        }]
-    } else {
-        vec![EffectAst::May {
-            effects: vec![EffectAst::CastTagged {
+    let mut cast_effects =
+        if clause.allow_land || matches!(clause.timing, ConsultCastTiming::UntilEndOfTurn) {
+            vec![EffectAst::GrantPlayTaggedUntilEndOfTurn {
                 tag: match_tag.clone(),
-                allow_land: false,
-                as_copy: false,
+                player: clause.caster,
+                allow_land: clause.allow_land,
                 without_paying_mana_cost: clause.without_paying_mana_cost,
-            }],
-        }]
-    };
+            }]
+        } else {
+            vec![EffectAst::May {
+                effects: vec![EffectAst::CastTagged {
+                    tag: match_tag.clone(),
+                    allow_land: false,
+                    as_copy: false,
+                    without_paying_mana_cost: clause.without_paying_mana_cost,
+                }],
+            }]
+        };
 
     if let Some(max_mana_value) = clause.max_mana_value {
         cast_effects = vec![EffectAst::Conditional {
             predicate: PredicateAst::TaggedMatches(
                 match_tag,
-                ObjectFilter::default().with_mana_value(Comparison::LessThanOrEqual(max_mana_value)),
+                ObjectFilter::default()
+                    .with_mana_value(Comparison::LessThanOrEqual(max_mana_value)),
             ),
             if_true: cast_effects,
             if_false: Vec::new(),
@@ -532,12 +588,20 @@ fn parse_consult_match_move_and_bottom_remainder(
 
     let second_tokens = trim_commas(second);
     let second_words = words(&second_tokens);
-    let (zone, battlefield_tapped) = if second_words.starts_with(&["put", "that", "card", "into", "your", "hand"])
+    let (zone, battlefield_tapped) = if second_words
+        .starts_with(&["put", "that", "card", "into", "your", "hand"])
         || second_words.starts_with(&["put", "it", "into", "your", "hand"])
     {
         (Zone::Hand, false)
-    } else if second_words.starts_with(&["put", "that", "card", "onto", "the", "battlefield", "tapped"])
-        || second_words.starts_with(&["put", "it", "onto", "the", "battlefield", "tapped"])
+    } else if second_words.starts_with(&[
+        "put",
+        "that",
+        "card",
+        "onto",
+        "the",
+        "battlefield",
+        "tapped",
+    ]) || second_words.starts_with(&["put", "it", "onto", "the", "battlefield", "tapped"])
         || second_words.starts_with(&["put", "that", "card", "onto", "battlefield", "tapped"])
         || second_words.starts_with(&["put", "it", "onto", "battlefield", "tapped"])
     {
@@ -657,8 +721,8 @@ fn parse_tainted_pact_sequence(
         ]
         || second_words.as_slice()
             == [
-                "you", "may", "put", "it", "into", "your", "hand", "unless", "it", "has",
-                "same", "name", "as", "another", "card", "exiled", "this", "way",
+                "you", "may", "put", "it", "into", "your", "hand", "unless", "it", "has", "same",
+                "name", "as", "another", "card", "exiled", "this", "way",
             ];
     if !second_matches {
         return Ok(None);
@@ -671,8 +735,26 @@ fn parse_tainted_pact_sequence(
         .collect();
     let third_matches = third_words.as_slice()
         == [
-            "repeat", "this", "process", "until", "you", "put", "card", "into", "your", "hand",
-            "or", "you", "exile", "two", "cards", "with", "same", "name", "whichever", "comes",
+            "repeat",
+            "this",
+            "process",
+            "until",
+            "you",
+            "put",
+            "card",
+            "into",
+            "your",
+            "hand",
+            "or",
+            "you",
+            "exile",
+            "two",
+            "cards",
+            "with",
+            "same",
+            "name",
+            "whichever",
+            "comes",
             "first",
         ];
     if !third_matches {
@@ -1233,17 +1315,12 @@ fn parse_exile_until_match_grant_play_this_turn(
     let Some(clause) = parse_consult_cast_clause(second) else {
         return Ok(None);
     };
-    if clause.without_paying_mana_cost || clause.max_mana_value.is_some() {
+    if !matches!(clause.timing, ConsultCastTiming::UntilEndOfTurn) {
         return Ok(None);
     }
 
     let mut effects = parts.effects;
-    effects.push(EffectAst::GrantPlayTaggedUntilEndOfTurn {
-        tag: parts.match_tag,
-        player: clause.caster,
-        allow_land: clause.allow_land,
-        without_paying_mana_cost: false,
-    });
+    effects.extend(consult_cast_effects(&clause, parts.match_tag)?);
     Ok(Some(effects))
 }
 
@@ -1768,10 +1845,13 @@ fn parse_exile_until_match_cast_rest_bottom(
     if !clause.without_paying_mana_cost {
         return Ok(None);
     }
-    let Some(order) = parse_consult_bottom_remainder_clause(third, match parts.effects.last() {
-        Some(EffectAst::ConsultTopOfLibrary { mode, .. }) => *mode,
-        _ => return Ok(None),
-    }) else {
+    let Some(order) = parse_consult_bottom_remainder_clause(
+        third,
+        match parts.effects.last() {
+            Some(EffectAst::ConsultTopOfLibrary { mode, .. }) => *mode,
+            _ => return Ok(None),
+        },
+    ) else {
         return Ok(None);
     };
 
@@ -1781,7 +1861,7 @@ fn parse_exile_until_match_cast_rest_bottom(
         tag: parts.all_tag,
         keep_tagged: None,
         order,
-        player: clause.caster,
+        player: parts.player,
     });
     Ok(Some(effects))
 }
@@ -1890,8 +1970,14 @@ fn parse_named_card_filter_segment(tokens: &[OwnedLexToken]) -> Option<ObjectFil
 fn split_reveal_filter_segments(tokens: &[OwnedLexToken]) -> Vec<Vec<OwnedLexToken>> {
     let mut segments = Vec::new();
     let mut current: Vec<OwnedLexToken> = Vec::new();
-    for token in tokens {
-        if token.is_word("or") || token.is_comma() {
+    let has_noncomparison_or = tokens
+        .iter()
+        .enumerate()
+        .any(|(idx, token)| token.is_word("or") && !is_comparison_or_delimiter(tokens, idx));
+    for (idx, token) in tokens.iter().enumerate() {
+        let is_separator = (token.is_word("or") && !is_comparison_or_delimiter(tokens, idx))
+            || (has_noncomparison_or && token.is_comma());
+        if is_separator {
             while current.last().is_some_and(|entry| entry.is_word("and")) {
                 current.pop();
             }
@@ -1923,7 +2009,11 @@ fn parse_looked_card_reveal_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFil
         return Some(ObjectFilter::permanent_card());
     }
 
-    if words_all.contains(&"or") {
+    let has_noncomparison_or = tokens
+        .iter()
+        .enumerate()
+        .any(|(idx, token)| token.is_word("or") && !is_comparison_or_delimiter(tokens, idx));
+    if has_noncomparison_or {
         let shared_card_suffix = matches!(words_all.last().copied(), Some("card" | "cards"));
         let segments = split_reveal_filter_segments(tokens);
         if segments.len() >= 2 {

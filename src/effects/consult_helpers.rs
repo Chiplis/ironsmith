@@ -303,7 +303,10 @@ fn order_bottom_candidates(
 ) -> Vec<ObjectId> {
     match order {
         LibraryBottomOrder::Random => {
-            let mut ordered = candidates.iter().map(|candidate| candidate.object_id).collect::<Vec<_>>();
+            let mut ordered = candidates
+                .iter()
+                .map(|candidate| candidate.object_id)
+                .collect::<Vec<_>>();
             game.shuffle_slice(&mut ordered);
             ordered
         }
@@ -329,7 +332,10 @@ fn order_bottom_candidates(
     }
 }
 
-fn normalize_candidate_order(response: Vec<ObjectId>, original: &[BottomCandidate]) -> Vec<BottomCandidate> {
+fn normalize_candidate_order(
+    response: Vec<ObjectId>,
+    original: &[BottomCandidate],
+) -> Vec<BottomCandidate> {
     let mut remaining = original.to_vec();
     let mut ordered = Vec::with_capacity(original.len());
 
@@ -368,7 +374,12 @@ mod tests {
             .expect("player exists")
             .library
             .iter()
-            .map(|id| game.object(*id).expect("library object exists").name.clone())
+            .map(|id| {
+                game.object(*id)
+                    .expect("library object exists")
+                    .name
+                    .clone()
+            })
             .collect()
     }
 
@@ -613,8 +624,14 @@ mod tests {
         ctx.set_tagged_objects(
             "all",
             vec![
-                ObjectSnapshot::from_object(game.object(exile_one).expect("exile one exists"), &game),
-                ObjectSnapshot::from_object(game.object(exile_two).expect("exile two exists"), &game),
+                ObjectSnapshot::from_object(
+                    game.object(exile_one).expect("exile one exists"),
+                    &game,
+                ),
+                ObjectSnapshot::from_object(
+                    game.object(exile_two).expect("exile two exists"),
+                    &game,
+                ),
             ],
         );
 
@@ -632,10 +649,7 @@ mod tests {
         let bottom_two = library[..2].iter().cloned().collect::<HashSet<_>>();
         assert_eq!(
             bottom_two,
-            HashSet::from([
-                "Exile One".to_string(),
-                "Exile Two".to_string(),
-            ])
+            HashSet::from(["Exile One".to_string(), "Exile Two".to_string(),])
         );
         assert_eq!(
             library.iter().cloned().collect::<HashSet<_>>(),

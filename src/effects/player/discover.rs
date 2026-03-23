@@ -93,8 +93,8 @@ impl EffectExecutor for DiscoverEffect {
                 }
             }
             let Some(candidate_obj) = game.object(candidate_id) else {
-                return Ok(EffectOutcome::count(0).with_event(
-                    TriggerEvent::new_with_provenance(
+                return Ok(
+                    EffectOutcome::count(0).with_event(TriggerEvent::new_with_provenance(
                         KeywordActionEvent::new(
                             KeywordActionKind::Discover,
                             player_id,
@@ -102,8 +102,8 @@ impl EffectExecutor for DiscoverEffect {
                             count,
                         ),
                         ctx.provenance,
-                    ),
-                ));
+                    )),
+                );
             };
 
             let candidate_name = candidate_obj.name.clone();

@@ -7085,8 +7085,8 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             "{player} {verb} cards from the top of {library_owner} library until {pronoun} {verb} {stop_text}"
         );
     }
-    if let Some(remainder) = effect
-        .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()
+    if let Some(remainder) =
+        effect.downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()
     {
         let library_owner = describe_possessive_player_filter(&remainder.player);
         let remainder_text = if remainder.keep_tagged.is_some() {
@@ -7103,9 +7103,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 describe_player_filter(&remainder.player)
             ),
         };
-        return format!(
-            "{remainder_text} on the bottom of {library_owner} library{order_text}"
-        );
+        return format!("{remainder_text} on the bottom of {library_owner} library{order_text}");
     }
     if let Some(exile_until_match) = effect.downcast_ref::<crate::effects::ExileUntilMatchEffect>()
     {

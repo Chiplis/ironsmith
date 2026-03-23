@@ -3,7 +3,7 @@ use crate::cards::builders::{
     PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst, SubjectAst, TagKey, TargetAst,
     TextSpan, Verb,
 };
-use crate::effect::{Until, Value};
+use crate::effect::{EventValueSpec, Until, Value};
 use crate::static_abilities::StaticAbilityId;
 use crate::target::ObjectFilter;
 use crate::zone::Zone;
@@ -1564,6 +1564,15 @@ pub(crate) fn parse_keyword_mechanic_clause(
         clause_words.first().copied(),
         Some("discover" | "discovers")
     ) {
+        if clause_words
+            .get(1..)
+            .is_some_and(|tail| tail == ["again", "for", "the", "same", "value"])
+        {
+            return Ok(Some(EffectAst::Discover {
+                count: Value::EventValue(EventValueSpec::Amount),
+                player: PlayerAst::You,
+            }));
+        }
         let (count, used) = parse_value(&clause_tokens[1..]).ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "missing amount for discover clause (clause: '{}')",

@@ -490,12 +490,26 @@ pub(crate) fn parse_shuffle(
         match words {
             ["library", ..] => Some((default_player, 1)),
             ["your", "library", ..] => Some((PlayerAst::You, 2)),
-            ["their", "library", ..] => Some((default_player, 2)),
+            ["their", "library", ..] => Some((
+                if matches!(default_player, PlayerAst::Implicit) {
+                    PlayerAst::ItsController
+                } else {
+                    default_player
+                },
+                2,
+            )),
             ["that", "player", "library", ..] => Some((PlayerAst::That, 3)),
             ["that", "players", "library", ..] => Some((PlayerAst::That, 3)),
             ["its", "owner", "library", ..] => Some((PlayerAst::ItsOwner, 3)),
             ["its", "owners", "library", ..] => Some((PlayerAst::ItsOwner, 3)),
-            ["his", "or", "her", "library", ..] => Some((default_player, 4)),
+            ["his", "or", "her", "library", ..] => Some((
+                if matches!(default_player, PlayerAst::Implicit) {
+                    PlayerAst::ItsController
+                } else {
+                    default_player
+                },
+                4,
+            )),
             _ => None,
         }
     }
@@ -575,10 +589,10 @@ pub(crate) fn parse_shuffle(
             }
         }
 
-        let consult_style_remainder_shuffle = (target_words.starts_with(&["the", "rest"])
-            || target_words.starts_with(&["all", "other"]))
-            && target_words.contains(&"cards")
-            && (target_words.contains(&"revealed") || target_words.contains(&"exiled"));
+        let consult_style_remainder_shuffle = target_words.starts_with(&["the", "rest"])
+            || (target_words.starts_with(&["all", "other"])
+                && target_words.contains(&"cards")
+                && (target_words.contains(&"revealed") || target_words.contains(&"exiled")));
         if consult_style_remainder_shuffle
             && let Some((destination_player, consumed)) =
                 parse_library_destination_player(&destination_words, player)

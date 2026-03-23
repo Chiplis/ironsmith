@@ -4,8 +4,8 @@
 //! such as milling, shuffling libraries, drawing cards, discarding, etc.
 
 mod clash;
-mod consult_top_of_library;
 mod connive;
+mod consult_top_of_library;
 mod discard;
 mod discard_hand;
 mod draw_cards;
@@ -29,8 +29,8 @@ mod shuffle_library;
 mod surveil;
 
 pub use clash::ClashEffect;
-pub use consult_top_of_library::{ConsultTopOfLibraryEffect, ConsultTopOfLibraryStopRule};
 pub use connive::ConniveEffect;
+pub use consult_top_of_library::{ConsultTopOfLibraryEffect, ConsultTopOfLibraryStopRule};
 pub use discard::DiscardEffect;
 pub use discard_hand::DiscardHandEffect;
 pub use draw_cards::DrawCardsEffect;

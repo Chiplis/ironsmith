@@ -1437,7 +1437,10 @@ fn rewrite_lexed_effect_sequence_parses_consult_hand_bottom_family() {
 
     assert!(debug.contains("ConsultTopOfLibrary"), "{debug}");
     assert!(debug.contains("MoveToZone"), "{debug}");
-    assert!(debug.contains("PutTaggedRemainderOnBottomOfLibrary"), "{debug}");
+    assert!(
+        debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+        "{debug}"
+    );
 }
 
 #[test]
@@ -1450,7 +1453,10 @@ fn rewrite_lexed_effect_sequence_parses_prefixed_consult_sequence() {
 
     assert!(debug.contains("Draw"), "{debug}");
     assert!(debug.contains("ConsultTopOfLibrary"), "{debug}");
-    assert!(debug.contains("PutTaggedRemainderOnBottomOfLibrary"), "{debug}");
+    assert!(
+        debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+        "{debug}"
+    );
 }
 
 #[test]
@@ -1468,14 +1474,48 @@ fn rewrite_lexed_effect_sequence_keeps_consult_cast_bottom_family_parseable() {
 #[test]
 fn rewrite_lexed_effect_sequence_keeps_reveal_consult_cast_bottom_family_parseable() {
     let text = "Reveal cards from the top of your library until you reveal a nonland card. You may cast that card without paying its mana cost. Then put all revealed cards not cast this way on the bottom of your library in a random order.";
-    let lexed = lex_line(text, 0).expect("rewrite lexer should classify reveal consult-cast-bottom text");
+    let lexed =
+        lex_line(text, 0).expect("rewrite lexer should classify reveal consult-cast-bottom text");
 
     let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed).expect("sequence");
     let debug = format!("{parsed:?}");
 
     assert!(debug.contains("ConsultTopOfLibrary"), "{debug}");
     assert!(debug.contains("CastTagged"), "{debug}");
-    assert!(debug.contains("PutTaggedRemainderOnBottomOfLibrary"), "{debug}");
+    assert!(
+        debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+        "{debug}"
+    );
+}
+
+#[test]
+fn rewrite_lexed_effect_sequence_parses_target_opponent_consult_until_eot_cast() {
+    let text = "Target opponent exiles cards from the top of their library until they exile a nonland card. Until end of turn, you may cast that card without paying its mana cost.";
+    let lexed =
+        lex_line(text, 0).expect("rewrite lexer should classify target-opponent consult text");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed).expect("sequence");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("ConsultTopOfLibrary"), "{debug}");
+    assert!(debug.contains("TargetOpponent"), "{debug}");
+    assert!(debug.contains("GrantPlayTaggedUntilEndOfTurn"), "{debug}");
+}
+
+#[test]
+fn rewrite_lexed_effect_sequence_parses_target_opponent_consult_cast_bottom_family() {
+    let text = "Target opponent exiles cards from the top of their library until they exile an instant or sorcery card. You may cast that card without paying its mana cost. Then put the exiled cards that weren't cast this way on the bottom of that library in a random order.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify chaos-wand consult text");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed).expect("sequence");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("ConsultTopOfLibrary"), "{debug}");
+    assert!(debug.contains("CastTagged"), "{debug}");
+    assert!(
+        debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+        "{debug}"
+    );
 }
 
 #[test]

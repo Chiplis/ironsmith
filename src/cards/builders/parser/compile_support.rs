@@ -825,6 +825,8 @@ pub(crate) fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventVa
             | TriggerSpec::ThisDealsCombatDamageToPlayer
             | TriggerSpec::DealsCombatDamageToPlayer { .. }
             | TriggerSpec::DealsCombatDamageToPlayerOneOrMore { .. }
+            | TriggerSpec::KeywordAction { .. }
+            | TriggerSpec::KeywordActionFromSource { .. }
             | TriggerSpec::CounterPutOn { .. } => true,
             TriggerSpec::Either(left, right) => {
                 trigger_supports_event_value(left, spec)
@@ -4723,9 +4725,10 @@ fn try_compile_player_resource_and_choice_effect(
                     crate::effects::ConsultTopOfLibraryStopRule::FirstMatch
                 }
                 crate::cards::builders::LibraryConsultStopRuleAst::MatchCount(value) => {
-                    crate::effects::ConsultTopOfLibraryStopRule::MatchCount(
-                        resolve_value_it_tag(value, &current_reference_env(ctx))?,
-                    )
+                    crate::effects::ConsultTopOfLibraryStopRule::MatchCount(resolve_value_it_tag(
+                        value,
+                        &current_reference_env(ctx),
+                    )?)
                 }
             };
             let resolved_mode = match mode {

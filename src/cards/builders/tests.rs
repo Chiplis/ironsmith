@@ -17072,6 +17072,65 @@ fn parse_target_player_may_cast_tagged_card_without_paying_mana_cost() {
 }
 
 #[test]
+fn parse_oracle_stolen_goods_uses_consult_target_opponent_path() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Stolen Goods")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Target opponent exiles cards from the top of their library until they exile a nonland card. Until end of turn, you may cast that card without paying its mana cost.",
+        )
+        .expect("stolen goods should parse");
+
+    let spell_debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        spell_debug.contains("ConsultTopOfLibraryEffect"),
+        "expected consult-top-of-library lowering, got {spell_debug}"
+    );
+    assert!(
+        spell_debug.contains("GrantPlayTaggedEffect")
+            && spell_debug.contains("GrantTaggedSpellFreeCastUntilEndOfTurnEffect"),
+        "expected until-end-of-turn free-cast grant, got {spell_debug}"
+    );
+    assert!(
+        spell_debug.contains("Target(\n                                Opponent")
+            || spell_debug.contains("Target(Opponent)"),
+        "expected targeted-opponent player binding, got {spell_debug}"
+    );
+    assert!(
+        !spell_debug.contains("ChooseObjectsEffect"),
+        "expected consult lowering instead of raw library chooser, got {spell_debug}"
+    );
+}
+
+#[test]
+fn parse_oracle_chaos_wand_uses_consult_cast_bottom_path() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Chaos Wand")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "{4}, {T}: Target opponent exiles cards from the top of their library until they exile an instant or sorcery card. You may cast that card without paying its mana cost. Then put the exiled cards that weren't cast this way on the bottom of that library in a random order.",
+        )
+        .expect("chaos wand should parse");
+
+    let abilities_debug = format!("{:#?}", def.abilities);
+    assert!(
+        abilities_debug.contains("ConsultTopOfLibraryEffect"),
+        "expected consult-top-of-library lowering, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("CastTaggedEffect")
+            || abilities_debug.contains("GrantPlayTaggedEffect"),
+        "expected consult cast permission, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("PutTaggedRemainderOnLibraryBottomEffect"),
+        "expected consult remainder bottom effect, got {abilities_debug}"
+    );
+    assert!(
+        !abilities_debug.contains("ChooseObjectsEffect"),
+        "expected consult lowering instead of raw library chooser, got {abilities_debug}"
+    );
+}
+
+#[test]
 fn parse_put_the_rest_on_bottom_with_previous_put_into_hand() {
     let _def = CardDefinitionBuilder::new(CardId::from_raw(1), "Put Rest Variant")
         .card_types(vec![CardType::Sorcery])
@@ -18859,6 +18918,96 @@ fn parse_oracle_breaching_dragonstorm_consult_cast_else_hand() {
     assert!(
         rendered.contains("into your hand") || rendered.contains("owner's hand"),
         "expected Breaching Dragonstorm to keep the fallback move to hand, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_treasure_keeper_keeps_mana_value_or_less_filter() {
+    let def = parse_oracle_card_definition("Treasure Keeper");
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("mana value 3 or less"),
+        "expected Treasure Keeper to keep its mana-value cap, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("named less"),
+        "expected Treasure Keeper to avoid bogus named-Less parsing, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_transmogrify_shuffle_rest_into_library() {
+    let def = parse_oracle_card_definition("Transmogrify");
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        !rendered.contains("unsupported effect"),
+        "expected Transmogrify to compile without unsupported effects, got {rendered}"
+    );
+    assert!(
+        rendered.contains("shuffle"),
+        "expected Transmogrify to keep its shuffle remainder, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_transmogrify_keeps_iterated_library_owner() {
+    let def = parse_oracle_card_definition("Transmogrify");
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("their library"),
+        "expected Transmogrify to keep the target controller's library, got {rendered}"
+    );
+    assert!(
+        rendered.contains("onto the battlefield"),
+        "expected Transmogrify to keep its battlefield hit, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_hurl_into_history_discovers_that_spells_mana_value() {
+    let def = parse_oracle_card_definition("Hurl into History");
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        !rendered.contains("unsupported effect"),
+        "expected Hurl into History to compile without unsupported effects, got {rendered}"
+    );
+    assert!(
+        rendered.contains("discover"),
+        "expected Hurl into History to keep discover, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_monstrous_vortex_discovers_that_spells_mana_value() {
+    let def = parse_oracle_card_definition("Monstrous Vortex");
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        !rendered.contains("unsupported effect"),
+        "expected Monstrous Vortex to compile without unsupported effects, got {rendered}"
+    );
+    assert!(
+        rendered.contains("discover"),
+        "expected Monstrous Vortex to keep discover, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_curator_of_suns_creation_discovers_same_value_again() {
+    let def = parse_oracle_card_definition("Curator of Sun's Creation");
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        !rendered.contains("unsupported effect"),
+        "expected Curator of Sun's Creation to compile without unsupported effects, got {rendered}"
+    );
+    assert!(
+        rendered.matches("discover").count() >= 2,
+        "expected Curator of Sun's Creation to keep both discover actions, got {rendered}"
     );
 }
 

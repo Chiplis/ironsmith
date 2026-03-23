@@ -671,6 +671,8 @@ pub(crate) fn parse_where_x_value_clause(tokens: &[OwnedLexToken]) -> Option<Val
         Some(["the", "mana", "value", "of", "the", "exiled", "card"])
             | Some(["the", "exiled", "card", "mana", "value"])
             | Some(["the", "exiled", "cards", "mana", "value"])
+            | Some(["that", "spell", "mana", "value"])
+            | Some(["that", "spells", "mana", "value"])
     ) {
         return Some(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
             TagKey::from(IT_TAG),
