@@ -24,6 +24,8 @@ const DEFAULT_TOPBAR_HEIGHT = 30;
 const DEFAULT_CONTROL_BAND_HEIGHT = 30;
 const DEFAULT_BOTTOM_BAND_HEIGHT = 58;
 const MOBILE_CARD_TAP_MAX_DISTANCE_SQ = 16 * 16;
+const MOBILE_OPPONENT_CARD_HIT_SLOP_X = 14;
+const MOBILE_OPPONENT_CARD_HIT_SLOP_Y = 18;
 
 function stripActionPrefix(label = "") {
   const activateMatch = String(label).match(/^Activate\s+.+?:\s*(.+)$/i);
@@ -563,6 +565,13 @@ export default function MobileBattleScene({
   }, [canPickTargets, legalTargetObjectIds, requestInspectObject, selectedObjectId, shouldHandleClick]);
 
   const opponentCardFromPointerEvent = useCallback((event) => {
+    const withinExpandedRect = (rect, x, y) => (
+      x >= (rect.left - MOBILE_OPPONENT_CARD_HIT_SLOP_X)
+      && x <= (rect.right + MOBILE_OPPONENT_CARD_HIT_SLOP_X)
+      && y >= (rect.top - MOBILE_OPPONENT_CARD_HIT_SLOP_Y)
+      && y <= (rect.bottom + MOBILE_OPPONENT_CARD_HIT_SLOP_Y)
+    );
+
     const cardFromGeometry = () => {
       if (typeof document === "undefined") return null;
       if (!Number.isFinite(event?.clientX) || !Number.isFinite(event?.clientY)) return null;
@@ -574,12 +583,7 @@ export default function MobileBattleScene({
 
       for (const node of cardNodes) {
         const rect = node.getBoundingClientRect();
-        if (
-          event.clientX < rect.left
-          || event.clientX > rect.right
-          || event.clientY < rect.top
-          || event.clientY > rect.bottom
-        ) {
+        if (!withinExpandedRect(rect, event.clientX, event.clientY)) {
           continue;
         }
         const objectId = node.dataset?.objectId;
@@ -596,6 +600,35 @@ export default function MobileBattleScene({
       }
 
       return bestMatch;
+    };
+
+    const tryElementFromPointOffsets = () => {
+      if (typeof document === "undefined") return null;
+      if (!Number.isFinite(event?.clientX) || !Number.isFinite(event?.clientY)) return null;
+
+      const sampleOffsets = [
+        [0, 0],
+        [-12, 0],
+        [12, 0],
+        [0, -12],
+        [0, 12],
+        [-10, -10],
+        [10, -10],
+        [-10, 10],
+        [10, 10],
+      ];
+
+      for (const [offsetX, offsetY] of sampleOffsets) {
+        const hitElement = document.elementFromPoint(event.clientX + offsetX, event.clientY + offsetY);
+        const hitCardEl = hitElement?.closest?.(".game-card[data-object-id]");
+        if (!hitCardEl) continue;
+        const id = hitCardEl.dataset?.objectId;
+        if (!id) continue;
+        const card = opponentCardById.get(String(id));
+        if (card) return card;
+      }
+
+      return null;
     };
 
     // Prefer the event composed path when available (handles Shadow DOM/layered elements)
@@ -631,12 +664,8 @@ export default function MobileBattleScene({
       }
     }
 
-    const hitElement = document.elementFromPoint(event.clientX, event.clientY);
-    const hitCardEl = hitElement?.closest?.(".game-card[data-object-id]");
-    if (hitCardEl) {
-      const id = hitCardEl.dataset?.objectId;
-      if (id) return opponentCardById.get(String(id)) || null;
-    }
+    const sampledCard = tryElementFromPointOffsets();
+    if (sampledCard) return sampledCard;
 
     return cardFromGeometry();
   }, [opponentBandSelector, opponentCardById]);
@@ -1111,31 +1140,36 @@ export default function MobileBattleScene({
 
       {inspectorOpen ? (
         <div
+          ref={inspectOverlayRef}
           className="mobile-battle-inspect-overlay"
           data-mobile-hand-drop-target="inspector"
           role="dialog"
           aria-modal="true"
           aria-label="Card inspector"
           onPointerDown={(event) => {
-            event.preventDefault();
             event.stopPropagation();
           }}
+          onPointerUp={(event) => {
+            event.stopPropagation();
+          }}
+          onClick={(event) => {
+            event.stopPropagation();
+            if (event.target === event.currentTarget) {
+              closeInspector();
+            }
+          }}
         >
-          <button
-            type="button"
+          <div
             className="mobile-battle-inspect-overlay-backdrop"
-            aria-label="Close inspector"
-            onPointerDown={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-            }}
-            onClick={closeInspector}
+            aria-hidden="true"
           />
           <div
             className="mobile-battle-inspect-overlay-shell"
             onClick={(event) => event.stopPropagation()}
             onPointerDown={(event) => {
-              event.preventDefault();
+              event.stopPropagation();
+            }}
+            onPointerUp={(event) => {
               event.stopPropagation();
             }}
           >

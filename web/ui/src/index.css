@@ -9350,10 +9350,9 @@ textarea,
     position: absolute;
     inset: 0;
     z-index: 0;
-    border: 0;
     background:
       linear-gradient(180deg, rgba(2, 4, 8, 0.42), rgba(3, 5, 9, 0.62));
-    pointer-events: auto;
+    pointer-events: none;
   }
 
   .mobile-battle-inspect-overlay-shell {
