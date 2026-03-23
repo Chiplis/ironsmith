@@ -1466,6 +1466,19 @@ fn rewrite_lexed_effect_sequence_keeps_consult_cast_bottom_family_parseable() {
 }
 
 #[test]
+fn rewrite_lexed_effect_sequence_keeps_reveal_consult_cast_bottom_family_parseable() {
+    let text = "Reveal cards from the top of your library until you reveal a nonland card. You may cast that card without paying its mana cost. Then put all revealed cards not cast this way on the bottom of your library in a random order.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify reveal consult-cast-bottom text");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed).expect("sequence");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("ConsultTopOfLibrary"), "{debug}");
+    assert!(debug.contains("CastTagged"), "{debug}");
+    assert!(debug.contains("PutTaggedRemainderOnBottomOfLibrary"), "{debug}");
+}
+
+#[test]
 fn rewrite_lexed_effect_sequence_parses_tainted_pact_loop() {
     let text = "Exile the top card of your library. You may put that card into your hand unless it has the same name as another card exiled this way. Repeat this process until you put a card into your hand or you exile two cards with the same name, whichever comes first.";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify tainted pact text");

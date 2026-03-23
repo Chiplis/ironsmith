@@ -18795,6 +18795,74 @@ fn consult_the_star_charts_kicker_override_with_extra_tail_still_fails_loudly() 
 }
 
 #[test]
+fn parse_oracle_kindred_summons_shuffle_remainder() {
+    let def = parse_oracle_card_definition("Kindred Summons");
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("onto the battlefield"),
+        "expected Kindred Summons to keep its battlefield hit, got {rendered}"
+    );
+    assert!(
+        rendered.contains("shuffle"),
+        "expected Kindred Summons to keep its shuffled remainder, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_mass_polymorph_shuffle_remainder() {
+    let def = parse_oracle_card_definition("Mass Polymorph");
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("battlefield"),
+        "expected Mass Polymorph to keep its battlefield hit, got {rendered}"
+    );
+    assert!(
+        rendered.contains("shuffle"),
+        "expected Mass Polymorph to keep its shuffled remainder, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_neera_wild_mage_consult_cast_bottom() {
+    let def = parse_oracle_card_definition("Neera, Wild Mage");
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        !rendered.contains("unsupported effect"),
+        "expected Neera to compile without unsupported effects, got {rendered}"
+    );
+    assert!(
+        rendered.contains("without paying its mana cost"),
+        "expected Neera to keep the free-cast follow-up, got {rendered}"
+    );
+    assert!(
+        rendered.contains("bottom of your library"),
+        "expected Neera to keep the consult remainder move, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_breaching_dragonstorm_consult_cast_else_hand() {
+    let def = parse_oracle_card_definition("Breaching Dragonstorm");
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        !rendered.contains("unsupported effect"),
+        "expected Breaching Dragonstorm to compile without unsupported effects, got {rendered}"
+    );
+    assert!(
+        rendered.contains("without paying its mana cost"),
+        "expected Breaching Dragonstorm to keep the free-cast follow-up, got {rendered}"
+    );
+    assert!(
+        rendered.contains("into your hand") || rendered.contains("owner's hand"),
+        "expected Breaching Dragonstorm to keep the fallback move to hand, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_planar_genesis_looked_card_fallback_sequence() {
     CardDefinitionBuilder::new(CardId::new(), "Planar Genesis Variant")
         .card_types(vec![CardType::Instant])

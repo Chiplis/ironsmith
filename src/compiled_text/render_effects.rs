@@ -7059,6 +7059,54 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             describe_value(&discover.count)
         );
     }
+    if let Some(consult) = effect.downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>() {
+        let player = describe_player_filter(&consult.player);
+        let library_owner = describe_possessive_player_filter(&consult.player);
+        let verb = match consult.mode {
+            crate::effects::consult_helpers::LibraryConsultMode::Reveal => {
+                player_verb(&player, "reveal", "reveals")
+            }
+            crate::effects::consult_helpers::LibraryConsultMode::Exile => {
+                player_verb(&player, "exile", "exiles")
+            }
+        };
+        let pronoun = if player == "you" { "you" } else { "they" };
+        let selection = describe_search_selection_with_cards(&consult.filter.description());
+        let stop_text = match &consult.stop_rule {
+            crate::effects::ConsultTopOfLibraryStopRule::FirstMatch => selection,
+            crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1)) => selection,
+            crate::effects::ConsultTopOfLibraryStopRule::MatchCount(count) => format!(
+                "{} {}",
+                describe_value(count),
+                pluralize_noun_phrase(&selection)
+            ),
+        };
+        return format!(
+            "{player} {verb} cards from the top of {library_owner} library until {pronoun} {verb} {stop_text}"
+        );
+    }
+    if let Some(remainder) = effect
+        .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()
+    {
+        let library_owner = describe_possessive_player_filter(&remainder.player);
+        let remainder_text = if remainder.keep_tagged.is_some() {
+            "Put the remaining tagged cards"
+        } else {
+            "Put the tagged remainder"
+        };
+        let order_text = match remainder.order {
+            crate::effects::consult_helpers::LibraryBottomOrder::Random => {
+                " in a random order".to_string()
+            }
+            crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses => format!(
+                " in an order chosen by {}",
+                describe_player_filter(&remainder.player)
+            ),
+        };
+        return format!(
+            "{remainder_text} on the bottom of {library_owner} library{order_text}"
+        );
+    }
     if let Some(exile_until_match) = effect.downcast_ref::<crate::effects::ExileUntilMatchEffect>()
     {
         let player = describe_player_filter(&exile_until_match.player);

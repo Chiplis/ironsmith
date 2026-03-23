@@ -22,6 +22,7 @@ use crate::cards::builders::{
     TokenCopyFollowup, ZoneReplacementDurationAst,
 };
 use crate::effect::{ChoiceCount, Until, Value};
+use crate::filter::Comparison;
 use crate::mana::ManaSymbol;
 use crate::target::{
     ChooseSpec, ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation,
@@ -181,10 +182,29 @@ struct ConsultSentenceParts {
     match_tag: TagKey,
 }
 
+struct ConsultCastClause {
+    caster: PlayerAst,
+    allow_land: bool,
+    without_paying_mana_cost: bool,
+    max_mana_value: Option<i32>,
+}
+
 fn parse_consult_traversal_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ConsultSentenceParts>, CardTextError> {
-    let sentence_tokens = trim_commas(tokens);
+    let mut sentence_tokens = trim_commas(tokens);
+    let sentence_words = words(&sentence_tokens);
+    let leading_if_you_do = sentence_words.starts_with(&["if", "you", "do"])
+        || sentence_words.starts_with(&["if", "they", "do"]);
+    if leading_if_you_do {
+        let start_word_idx = 3usize;
+        let Some(start_token_idx) =
+            token_index_for_word_index(&sentence_tokens, start_word_idx).or(Some(sentence_tokens.len()))
+        else {
+            return Ok(None);
+        };
+        sentence_tokens = trim_commas(&sentence_tokens[start_token_idx..]);
+    }
     if sentence_tokens.is_empty() {
         return Ok(None);
     }
@@ -322,6 +342,184 @@ fn parse_consult_remainder_order(words: &[&str]) -> Option<LibraryBottomOrderAst
         return Some(LibraryBottomOrderAst::ChooserChooses);
     }
     None
+}
+
+fn consult_stop_rule_is_single_match(stop_rule: &LibraryConsultStopRuleAst) -> bool {
+    matches!(
+        stop_rule,
+        LibraryConsultStopRuleAst::FirstMatch | LibraryConsultStopRuleAst::MatchCount(Value::Fixed(1))
+    )
+}
+
+fn parse_consult_cast_clause(tokens: &[OwnedLexToken]) -> Option<ConsultCastClause> {
+    let second_tokens = trim_commas(tokens);
+    let may_idx = second_tokens
+        .iter()
+        .position(|token| token.is_word("may"))?;
+    if may_idx == 0 || may_idx + 1 >= second_tokens.len() {
+        return None;
+    }
+
+    let caster = match parse_subject(&second_tokens[..may_idx]) {
+        SubjectAst::Player(player) => player,
+        _ => return None,
+    };
+    let tail_words = words(&second_tokens[may_idx + 1..]);
+    let (allow_land, prefix_len) = if tail_words.starts_with(&["cast", "that", "card"]) {
+        (false, 3usize)
+    } else if tail_words.starts_with(&["cast", "it"]) {
+        (false, 2usize)
+    } else if tail_words.starts_with(&["play", "that", "card"]) {
+        (true, 3usize)
+    } else if tail_words.starts_with(&["play", "it"]) {
+        (true, 2usize)
+    } else {
+        return None;
+    };
+
+    let remainder = &tail_words[prefix_len..];
+    if remainder == ["this", "turn"] {
+        return Some(ConsultCastClause {
+            caster,
+            allow_land,
+            without_paying_mana_cost: false,
+            max_mana_value: None,
+        });
+    }
+
+    if !remainder.starts_with(&["without", "paying", "its", "mana", "cost"]) {
+        return None;
+    }
+
+    let mut max_mana_value = None;
+    let condition_words = &remainder[5..];
+    if !condition_words.is_empty() {
+        if condition_words.len() != 9
+            || condition_words[0] != "if"
+            || condition_words[1] != "that"
+            || !matches!(condition_words[2], "spells" | "spell's")
+            || condition_words[3] != "mana"
+            || condition_words[4] != "value"
+            || condition_words[5] != "is"
+            || condition_words[7] != "or"
+            || condition_words[8] != "less"
+        {
+            return None;
+        }
+        max_mana_value = condition_words[6].parse::<i32>().ok();
+        if max_mana_value.is_none() {
+            return None;
+        }
+    }
+
+    Some(ConsultCastClause {
+        caster,
+        allow_land,
+        without_paying_mana_cost: true,
+        max_mana_value,
+    })
+}
+
+fn parse_consult_bottom_remainder_clause(
+    tokens: &[OwnedLexToken],
+    mode: LibraryConsultModeAst,
+) -> Option<LibraryBottomOrderAst> {
+    let mut clause_words = words(tokens);
+    while clause_words
+        .first()
+        .is_some_and(|word| *word == "then" || *word == "and")
+    {
+        clause_words.remove(0);
+    }
+
+    let Some(order) = parse_consult_remainder_order(&clause_words) else {
+        return None;
+    };
+    let mode_word = match mode {
+        LibraryConsultModeAst::Reveal => "revealed",
+        LibraryConsultModeAst::Exile => "exiled",
+    };
+    if !clause_words.contains(&mode_word) {
+        return None;
+    }
+    let mentions_cast_window = clause_words
+        .windows(3)
+        .any(|window| window == ["not", "cast", "this"])
+        || clause_words
+            .windows(4)
+            .any(|window| window == ["werent", "cast", "this", "way"]);
+    let mentions_remainder = clause_words.contains(&"rest") || clause_words.contains(&"other");
+
+    (mentions_cast_window || mentions_remainder).then_some(order)
+}
+
+fn parse_if_declined_put_match_into_hand(
+    tokens: &[OwnedLexToken],
+    match_tag: TagKey,
+) -> Option<Vec<EffectAst>> {
+    let clause_words = words(tokens);
+    let moves_to_hand = clause_words == ["put", "that", "card", "into", "your", "hand"]
+        || clause_words == ["put", "it", "into", "your", "hand"]
+        || clause_words.starts_with(&["if", "you", "dont", "put", "that", "card", "into", "your", "hand"])
+        || clause_words.starts_with(&["if", "you", "dont", "put", "it", "into", "your", "hand"])
+        || clause_words.starts_with(&["if", "you", "don't", "put", "that", "card", "into", "your", "hand"])
+        || clause_words.starts_with(&["if", "you", "don't", "put", "it", "into", "your", "hand"])
+        || clause_words.starts_with(&["if", "you", "do", "not", "put", "that", "card", "into", "your", "hand"])
+        || clause_words.starts_with(&["if", "you", "do", "not", "put", "it", "into", "your", "hand"]);
+    if !moves_to_hand {
+        return None;
+    }
+
+    Some(vec![EffectAst::MoveToZone {
+        target: TargetAst::Tagged(match_tag, None),
+        zone: Zone::Hand,
+        to_top: false,
+        battlefield_controller: crate::cards::builders::ReturnControllerAst::Preserve,
+        battlefield_tapped: false,
+        attached_to: None,
+    }])
+}
+
+fn consult_cast_effects(
+    clause: &ConsultCastClause,
+    match_tag: TagKey,
+) -> Result<Vec<EffectAst>, CardTextError> {
+    if clause.allow_land && clause.without_paying_mana_cost {
+        return Err(CardTextError::ParseError(
+            "playing a land without paying its mana cost is unsupported".to_string(),
+        ));
+    }
+
+    let mut cast_effects = if clause.allow_land {
+        vec![EffectAst::GrantPlayTaggedUntilEndOfTurn {
+            tag: match_tag.clone(),
+            player: clause.caster,
+            allow_land: true,
+            without_paying_mana_cost: false,
+        }]
+    } else {
+        vec![EffectAst::May {
+            effects: vec![EffectAst::CastTagged {
+                tag: match_tag.clone(),
+                allow_land: false,
+                as_copy: false,
+                without_paying_mana_cost: clause.without_paying_mana_cost,
+            }],
+        }]
+    };
+
+    if let Some(max_mana_value) = clause.max_mana_value {
+        cast_effects = vec![EffectAst::Conditional {
+            predicate: PredicateAst::TaggedMatches(
+                match_tag,
+                ObjectFilter::default().with_mana_value(Comparison::LessThanOrEqual(max_mana_value)),
+            ),
+            if_true: cast_effects,
+            if_false: Vec::new(),
+        }];
+    }
+
+    Ok(cast_effects)
 }
 
 fn parse_consult_match_move_and_bottom_remainder(
@@ -1025,39 +1223,25 @@ fn parse_exile_until_match_grant_play_this_turn(
         parts.effects.last(),
         Some(EffectAst::ConsultTopOfLibrary {
             mode: LibraryConsultModeAst::Exile,
-            stop_rule: LibraryConsultStopRuleAst::FirstMatch,
+            stop_rule,
             ..
-        })
+        }) if consult_stop_rule_is_single_match(stop_rule)
     ) {
         return Ok(None);
     }
 
-    let second_tokens = trim_commas(second);
-    let Some(may_idx) = second_tokens.iter().position(|token| token.is_word("may")) else {
+    let Some(clause) = parse_consult_cast_clause(second) else {
         return Ok(None);
     };
-    if may_idx == 0 || may_idx + 1 >= second_tokens.len() {
-        return Ok(None);
-    }
-    let caster = match parse_subject(&second_tokens[..may_idx]) {
-        SubjectAst::Player(player) => player,
-        _ => return Ok(None),
-    };
-    let tail_words = words(&second_tokens[may_idx + 1..]);
-    let is_supported_clause = tail_words == ["cast", "that", "card", "this", "turn"]
-        || tail_words == ["cast", "it", "this", "turn"]
-        || tail_words == ["play", "that", "card", "this", "turn"]
-        || tail_words == ["play", "it", "this", "turn"];
-    if !is_supported_clause {
+    if clause.without_paying_mana_cost || clause.max_mana_value.is_some() {
         return Ok(None);
     }
 
-    let allow_land = tail_words[0] == "play";
     let mut effects = parts.effects;
     effects.push(EffectAst::GrantPlayTaggedUntilEndOfTurn {
         tag: parts.match_tag,
-        player: caster,
-        allow_land,
+        player: clause.caster,
+        allow_land: clause.allow_land,
         without_paying_mana_cost: false,
     });
     Ok(Some(effects))
@@ -1575,128 +1759,97 @@ fn parse_exile_until_match_cast_rest_bottom(
     second: &[OwnedLexToken],
     third: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let first_tokens = trim_commas(first);
-    let Some(exile_idx) = first_tokens
-        .iter()
-        .position(|token| token.is_word("exile") || token.is_word("exiles"))
-    else {
+    let Some(parts) = parse_consult_traversal_sentence(first)? else {
         return Ok(None);
     };
-    let player = if exile_idx == 0 {
-        PlayerAst::You
-    } else {
-        match parse_subject(&first_tokens[..exile_idx]) {
-            SubjectAst::Player(player) => player,
-            _ => return Ok(None),
-        }
-    };
-
-    let Some(until_idx) = first_tokens.iter().position(|token| token.is_word("until")) else {
+    let Some(clause) = parse_consult_cast_clause(second) else {
         return Ok(None);
     };
-    if until_idx <= exile_idx + 1 {
+    if !clause.without_paying_mana_cost {
         return Ok(None);
     }
-
-    let prefix_words: Vec<&str> = words(&first_tokens[exile_idx + 1..until_idx])
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect();
-    if !prefix_words.starts_with(&["cards", "from", "top", "of"])
-        || !prefix_words.ends_with(&["library"])
-    {
-        return Ok(None);
-    }
-
-    let until_tokens = trim_commas(&first_tokens[until_idx + 1..]);
-    let Some(match_verb_idx) = until_tokens
-        .iter()
-        .position(|token| token.is_word("exile") || token.is_word("exiles"))
-    else {
-        return Ok(None);
-    };
-    if match_verb_idx == 0 || match_verb_idx + 1 >= until_tokens.len() {
-        return Ok(None);
-    }
-    let filter_tokens = trim_commas(&until_tokens[match_verb_idx + 1..]);
-    if filter_tokens.is_empty() {
-        return Ok(None);
-    }
-    let mut filter = if let Some(filter) = parse_looked_card_reveal_filter(&filter_tokens) {
-        filter
-    } else {
-        match parse_object_filter(&filter_tokens, false) {
-            Ok(filter) => filter,
-            Err(_) => return Ok(None),
-        }
-    };
-    normalize_search_library_filter(&mut filter);
-    filter.zone = None;
-    let all_tag = helper_tag_for_tokens(first, "exiled");
-    let match_tag = helper_tag_for_tokens(first, "chosen");
-
-    let second_tokens = trim_commas(second);
-    let Some(may_idx) = second_tokens.iter().position(|token| token.is_word("may")) else {
-        return Ok(None);
-    };
-    if may_idx == 0 || may_idx + 1 >= second_tokens.len() {
-        return Ok(None);
-    }
-    let caster = match parse_subject(&second_tokens[..may_idx]) {
-        SubjectAst::Player(player) => player,
+    let Some(order) = parse_consult_bottom_remainder_clause(third, match parts.effects.last() {
+        Some(EffectAst::ConsultTopOfLibrary { mode, .. }) => *mode,
         _ => return Ok(None),
+    }) else {
+        return Ok(None);
     };
-    let cast_words = words(&second_tokens[may_idx + 1..]);
-    let is_cast_clause = (cast_words.starts_with(&["cast", "that", "card"])
-        || cast_words.starts_with(&["cast", "it"]))
-        && cast_words.ends_with(&["without", "paying", "its", "mana", "cost"]);
-    if !is_cast_clause {
-        return Ok(None);
-    }
 
-    let mut third_words = words(third);
-    while third_words
-        .first()
-        .is_some_and(|word| *word == "then" || *word == "and")
-    {
-        third_words.remove(0);
-    }
-    let puts_rest_bottom_random = third_words.contains(&"exiled")
-        && third_words.contains(&"cards")
-        && third_words
-            .windows(4)
-            .any(|window| window == ["werent", "cast", "this", "way"])
-        && third_words.contains(&"bottom")
-        && third_words.contains(&"library")
-        && third_words
-            .windows(2)
-            .any(|window| window == ["random", "order"]);
-    if !puts_rest_bottom_random {
-        return Ok(None);
-    }
-
-    let mut effects = vec![EffectAst::ConsultTopOfLibrary {
-        player,
-        mode: LibraryConsultModeAst::Exile,
-        filter,
-        stop_rule: LibraryConsultStopRuleAst::FirstMatch,
-        all_tag: all_tag.clone(),
-        match_tag: match_tag.clone(),
-    }];
-    effects.push(EffectAst::May {
-        effects: vec![EffectAst::CastTagged {
-            tag: match_tag,
-            allow_land: false,
-            as_copy: false,
-            without_paying_mana_cost: true,
-        }],
-    });
+    let mut effects = parts.effects;
+    effects.extend(consult_cast_effects(&clause, parts.match_tag.clone())?);
     effects.push(EffectAst::PutTaggedRemainderOnBottomOfLibrary {
-        tag: all_tag,
+        tag: parts.all_tag,
         keep_tagged: None,
-        order: LibraryBottomOrderAst::Random,
-        player: caster,
+        order,
+        player: clause.caster,
     });
+    Ok(Some(effects))
+}
+
+fn parse_exile_until_match_cast_else_hand(
+    first: &[OwnedLexToken],
+    second: &[OwnedLexToken],
+    third: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(parts) = parse_consult_traversal_sentence(first)? else {
+        return Ok(None);
+    };
+    let Some(EffectAst::ConsultTopOfLibrary {
+        mode: LibraryConsultModeAst::Exile,
+        stop_rule,
+        ..
+    }) = parts.effects.last()
+    else {
+        return Ok(None);
+    };
+    if !consult_stop_rule_is_single_match(stop_rule) {
+        return Ok(None);
+    }
+    let Some(clause) = parse_consult_cast_clause(second) else {
+        return Ok(None);
+    };
+    if !clause.without_paying_mana_cost || clause.allow_land {
+        return Ok(None);
+    }
+    let Some(hand_effects) = parse_if_declined_put_match_into_hand(third, parts.match_tag.clone())
+    else {
+        return Ok(None);
+    };
+
+    let cast_effects = consult_cast_effects(&clause, parts.match_tag)?;
+    let mut effects = parts.effects;
+    if clause.max_mana_value.is_some() {
+        let EffectAst::Conditional {
+            predicate,
+            if_true,
+            if_false,
+        } = cast_effects.into_iter().next().ok_or_else(|| {
+            CardTextError::ParseError("missing cast effect for consult follow-up".to_string())
+        })?
+        else {
+            return Err(CardTextError::ParseError(
+                "expected conditional cast effect for mana-value-gated consult clause".to_string(),
+            ));
+        };
+        let mut gated_if_true = if_true;
+        gated_if_true.push(EffectAst::IfResult {
+            predicate: IfResultPredicate::WasDeclined,
+            effects: hand_effects.clone(),
+        });
+        let mut gated_if_false = if_false;
+        gated_if_false.extend(hand_effects);
+        effects.push(EffectAst::Conditional {
+            predicate,
+            if_true: gated_if_true,
+            if_false: gated_if_false,
+        });
+    } else {
+        effects.extend(cast_effects);
+        effects.push(EffectAst::IfResult {
+            predicate: IfResultPredicate::WasDeclined,
+            effects: hand_effects,
+        });
+    }
     Ok(Some(effects))
 }
 
@@ -1937,7 +2090,7 @@ fn parse_triple_sentence_sequence(
     second: &[OwnedLexToken],
     third: &[OwnedLexToken],
 ) -> Result<Option<(&'static str, Vec<EffectAst>)>, CardTextError> {
-    const RULES: [(&str, TripleSentenceRule); 8] = [
+    const RULES: [(&str, TripleSentenceRule); 9] = [
         (
             "mill-then-put-from-among-into-hand-then-if-you-dont",
             parse_mill_then_may_put_from_among_into_hand_then_if_you_dont,
@@ -1949,6 +2102,10 @@ fn parse_triple_sentence_sequence(
         (
             "exile-until-match-cast-rest-bottom",
             parse_exile_until_match_cast_rest_bottom,
+        ),
+        (
+            "exile-until-match-cast-else-hand",
+            parse_exile_until_match_cast_else_hand,
         ),
         (
             "top-cards-put-match-into-hand-rest-graveyard",

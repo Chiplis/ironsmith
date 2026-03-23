@@ -574,6 +574,20 @@ pub(crate) fn parse_shuffle(
                 });
             }
         }
+
+        let consult_style_remainder_shuffle = (target_words.starts_with(&["the", "rest"])
+            || target_words.starts_with(&["all", "other"]))
+            && target_words.contains(&"cards")
+            && (target_words.contains(&"revealed") || target_words.contains(&"exiled"));
+        if consult_style_remainder_shuffle
+            && let Some((destination_player, consumed)) =
+                parse_library_destination_player(&destination_words, player)
+            && is_supported_shuffle_source_tail(&destination_words[consumed..])
+        {
+            return Ok(EffectAst::ShuffleLibrary {
+                player: destination_player,
+            });
+        }
     }
 
     if matches!(player, PlayerAst::ItsOwner)
