@@ -9256,6 +9256,14 @@ textarea,
     gap: 6px;
   }
 
+  .mobile-select-options-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-width: 0;
+  }
+
   .mobile-decision-close {
     display: inline-flex;
     align-items: center;
@@ -9389,6 +9397,8 @@ textarea,
     min-height: 0;
     flex: 1 1 auto;
     flex-direction: column;
+    width: 100%;
+    margin-block: auto;
   }
 
   .mobile-battle-action-menu-sheet-body .mobile-decision-action-text {
@@ -9417,9 +9427,15 @@ textarea,
   }
 
   .mobile-select-options-summary {
+    min-width: 0;
+    flex: 1 1 auto;
     color: #dbc7a2;
     font-size: clamp(12px, 1.25vw, 18px);
     line-height: 1.26;
+  }
+
+  .mobile-select-options-summary--empty {
+    min-height: 1px;
   }
 
   .mobile-select-options-summary.is-compact {
@@ -9430,6 +9446,14 @@ textarea,
   .mobile-select-options-summary.is-tight {
     font-size: clamp(10px, 0.94vw, 13px);
     line-height: 1.18;
+  }
+
+  .mobile-select-options-submit {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: min(34vw, 164px);
+    padding-inline: 16px;
+    align-self: flex-start;
   }
 
   .mobile-decision-action-list {
@@ -9647,6 +9671,15 @@ textarea,
 
     .mobile-select-options-summary {
       font-size: clamp(11px, 1vw, 15px);
+    }
+
+    .mobile-select-options-toolbar {
+      gap: 8px;
+    }
+
+    .mobile-select-options-submit {
+      min-width: 112px;
+      padding-inline: 12px;
     }
 
     .mobile-decision-action-row {

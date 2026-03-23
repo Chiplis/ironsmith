@@ -271,7 +271,168 @@ fn pluralize_terminal_word(phrase: &str) -> String {
 }
 
 fn grant_subject_text(filter: &ObjectFilter) -> String {
+    if let Some(subject) = spell_grant_subject_text(filter) {
+        return subject;
+    }
     pluralized_subject_text(filter)
+}
+
+fn describe_filter_comparison(cmp: &crate::filter::Comparison) -> String {
+    let describe_values = |values: &[i32]| -> String {
+        match values.len() {
+            0 => String::new(),
+            1 => values[0].to_string(),
+            2 => format!("{} or {}", values[0], values[1]),
+            _ => {
+                let head = values[..values.len() - 1]
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("{head}, or {}", values[values.len() - 1])
+            }
+        }
+    };
+
+    match cmp {
+        crate::filter::Comparison::Equal(v) => v.to_string(),
+        crate::filter::Comparison::OneOf(values) => describe_values(values),
+        crate::filter::Comparison::NotEqual(v) => format!("not equal to {v}"),
+        crate::filter::Comparison::LessThan(v) => format!("less than {v}"),
+        crate::filter::Comparison::LessThanOrEqual(v) => format!("{v} or less"),
+        crate::filter::Comparison::GreaterThan(v) => format!("greater than {v}"),
+        crate::filter::Comparison::GreaterThanOrEqual(v) => format!("{v} or greater"),
+        crate::filter::Comparison::EqualExpr(_)
+        | crate::filter::Comparison::NotEqualExpr(_)
+        | crate::filter::Comparison::LessThanExpr(_)
+        | crate::filter::Comparison::LessThanOrEqualExpr(_)
+        | crate::filter::Comparison::GreaterThanExpr(_)
+        | crate::filter::Comparison::GreaterThanOrEqualExpr(_) => "a dynamic value".to_string(),
+    }
+}
+
+fn spell_grant_subject_text(filter: &ObjectFilter) -> Option<String> {
+    let is_spell_subject = filter.has_mana_cost
+        && (filter.cast_by.is_some()
+            || matches!(
+                filter.zone,
+                Some(
+                    Zone::Stack
+                        | Zone::Hand
+                        | Zone::Graveyard
+                        | Zone::Exile
+                        | Zone::Library
+                        | Zone::Command
+                )
+            ));
+    if !is_spell_subject {
+        return None;
+    }
+
+    let mut qualifiers = Vec::new();
+    if filter.nontoken {
+        qualifiers.push("nontoken".to_string());
+    }
+    if filter.colorless {
+        qualifiers.push("colorless".to_string());
+    }
+    if filter.multicolored {
+        qualifiers.push("multicolored".to_string());
+    }
+    if filter.monocolored {
+        qualifiers.push("monocolored".to_string());
+    }
+    if let Some(colors) = filter.colors {
+        qualifiers.push(join_with_and(&color_list(colors)));
+    }
+    if filter.historic {
+        qualifiers.push("historic".to_string());
+    }
+    if filter.nonhistoric {
+        qualifiers.push("nonhistoric".to_string());
+    }
+    if filter.is_commander {
+        qualifiers.push("commander".to_string());
+    }
+    for card_type in &filter.excluded_card_types {
+        qualifiers.push(format!("non{}", card_type.name().to_ascii_lowercase()));
+    }
+    if !filter.subtypes.is_empty() {
+        qualifiers.push(join_with_and(
+            &filter
+                .subtypes
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect::<Vec<_>>(),
+        ));
+    }
+    if !filter.card_types.is_empty() {
+        qualifiers.push(join_with_and(
+            &filter
+                .card_types
+                .iter()
+                .map(|card_type| card_type.name().to_ascii_lowercase())
+                .collect::<Vec<_>>(),
+        ));
+    }
+
+    let mut subject = if qualifiers.is_empty() {
+        "spells".to_string()
+    } else {
+        format!("{} spells", qualifiers.join(" "))
+    };
+
+    if let Some(cast_by) = &filter.cast_by {
+        match cast_by {
+            crate::target::PlayerFilter::You => subject.push_str(" you cast"),
+            crate::target::PlayerFilter::Opponent => subject.push_str(" your opponents cast"),
+            other => subject.push_str(&format!(" cast by {}", other.description())),
+        }
+    }
+
+    let zone_suffix = match filter.zone {
+        Some(Zone::Hand) => Some(match filter.owner.as_ref() {
+            Some(crate::target::PlayerFilter::You) => "from your hand".to_string(),
+            Some(owner) => format!("from {} hand", owner.description()),
+            None => "from your hand".to_string(),
+        }),
+        Some(Zone::Graveyard) => Some(match filter.owner.as_ref() {
+            Some(crate::target::PlayerFilter::You) => "from your graveyard".to_string(),
+            Some(owner) => format!("from {} graveyard", owner.description()),
+            None => "from a graveyard".to_string(),
+        }),
+        Some(Zone::Exile) => Some(match filter.owner.as_ref() {
+            Some(crate::target::PlayerFilter::You) => "from exile you own".to_string(),
+            Some(owner) => format!("from exile {}", owner.description()),
+            None => "from exile".to_string(),
+        }),
+        Some(Zone::Library) => Some(match filter.owner.as_ref() {
+            Some(crate::target::PlayerFilter::You) => "from your library".to_string(),
+            Some(owner) => format!("from {} library", owner.description()),
+            None => "from a library".to_string(),
+        }),
+        Some(Zone::Command) => Some("from the command zone".to_string()),
+        _ => None,
+    };
+    if let Some(zone_suffix) = zone_suffix {
+        subject.push(' ');
+        subject.push_str(&zone_suffix);
+    }
+
+    if let Some(power) = &filter.power {
+        subject.push_str(" with power ");
+        subject.push_str(&describe_filter_comparison(power));
+    }
+    if let Some(toughness) = &filter.toughness {
+        subject.push_str(" with toughness ");
+        subject.push_str(&describe_filter_comparison(toughness));
+    }
+    if let Some(mana_value) = &filter.mana_value {
+        subject.push_str(" with mana value ");
+        subject.push_str(&describe_filter_comparison(mana_value));
+    }
+
+    Some(subject)
 }
 
 fn subject_verb_and_possessive(subject: &str) -> (&'static str, &'static str) {
@@ -2746,6 +2907,21 @@ mod tests {
         assert_eq!(grant.id(), StaticAbilityId::GrantAbility);
         assert!(grant.grants_abilities());
         assert_eq!(grant.display(), "creatures you control have Flying");
+    }
+
+    #[test]
+    fn test_grant_ability_displays_spell_subjects_with_cast_and_origin() {
+        let mut filter = ObjectFilter::default();
+        filter.has_mana_cost = true;
+        filter.zone = Some(Zone::Hand);
+        filter.cast_by = Some(crate::target::PlayerFilter::You);
+        filter.card_types.push(CardType::Enchantment);
+        let grant = GrantAbility::new(filter, StaticAbility::cascade());
+
+        assert_eq!(
+            grant.display(),
+            "enchantment spells you cast from your hand have Cascade"
+        );
     }
 
     #[test]

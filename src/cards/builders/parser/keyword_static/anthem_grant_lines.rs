@@ -395,7 +395,8 @@ pub(crate) fn parse_granted_keyword_static_line(
     let subject_words = words(&subject_tokens);
     if subject_words.contains(&"equipped")
         || subject_words.contains(&"enchanted")
-        || subject_words.contains(&"mana")
+        || (subject_words.contains(&"mana")
+            && !subject_words.windows(2).any(|window| window == ["mana", "value"]))
     {
         return Ok(None);
     }
@@ -411,9 +412,6 @@ pub(crate) fn parse_granted_keyword_static_line(
                 | "blocks"
                 | "blocked"
                 | "blocking"
-                | "cast"
-                | "spell"
-                | "spells"
                 | "during"
                 | "until"
                 | "unless"
@@ -3825,7 +3823,8 @@ pub(crate) fn parse_filter_has_granted_ability_line(
     if subject_words.contains(&"may") {
         return Ok(None);
     }
-    let ability_tokens = trim_edge_punctuation(&tokens[has_idx + 1..]);
+    let ability_tokens_raw = &tokens[has_idx + 1..];
+    let ability_tokens = trim_edge_punctuation(ability_tokens_raw);
     let has_colon = ability_tokens.iter().any(|token| token.is_colon());
     let looks_like_trigger = ability_tokens.first().is_some_and(|token| {
         token.is_word("when")
@@ -3835,10 +3834,18 @@ pub(crate) fn parse_filter_has_granted_ability_line(
                     .get(1)
                     .is_some_and(|next| next.is_word("the")))
     });
+    let attached_subject = subject_words
+        .first()
+        .is_some_and(|word| *word == "enchanted" || *word == "equipped");
     let mut granted_static: Vec<StaticAbilityAst> = Vec::new();
     let mut granted_object_abilities: Vec<(ParsedAbility, String)> = Vec::new();
     if has_colon {
-        let Some(parsed) = parse_activated_line(&ability_tokens)? else {
+        let parsed = if attached_subject {
+            parse_attached_granted_activated_line(ability_tokens_raw)?
+        } else {
+            parse_activated_line(&ability_tokens)?
+        };
+        let Some(parsed) = parsed else {
             return Err(CardTextError::ParseError(format!(
                 "unsupported granted activated/triggered ability clause (clause: '{}')",
                 clause_words.join(" ")
@@ -3933,9 +3940,6 @@ pub(crate) fn parse_filter_has_granted_ability_line(
         }
     }
 
-    let attached_subject = subject_words
-        .first()
-        .is_some_and(|word| *word == "enchanted" || *word == "equipped");
     let filter = match &subject {
         AnthemSubjectAst::Filter(filter) => filter.clone(),
         AnthemSubjectAst::Source => ObjectFilter::source(),
@@ -3944,7 +3948,7 @@ pub(crate) fn parse_filter_has_granted_ability_line(
         if attached_subject {
             granted.push(StaticAbilityAst::AttachedObjectAbilityGrant {
                 ability,
-                display: display.clone(),
+                display: format!("{} has {}", subject_words.join(" "), display),
                 condition: condition.clone(),
             });
             continue;

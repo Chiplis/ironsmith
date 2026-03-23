@@ -9,6 +9,7 @@ use super::super::util::{
     helper_tag_for_tokens, is_article, mana_pips_from_token, parse_number, parse_subject,
     parse_target_phrase, span_from_tokens, token_index_for_word_index, trim_commas, words,
 };
+use super::super::value_helpers::parse_value_from_lexed;
 use super::sentence_helpers::*;
 use super::{
     find_verb, parse_effect_sentence_lexed, parse_search_library_disjunction_filter,
@@ -186,14 +187,27 @@ struct ConsultCastClause {
     caster: PlayerAst,
     allow_land: bool,
     timing: ConsultCastTiming,
-    without_paying_mana_cost: bool,
-    max_mana_value: Option<i32>,
+    cost: ConsultCastCost,
+    mana_value_condition: Option<ConsultCastManaValueCondition>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ConsultCastTiming {
     Immediate,
     UntilEndOfTurn,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ConsultCastCost {
+    Normal,
+    WithoutPayingManaCost,
+    PayLifeEqualToManaValue,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct ConsultCastManaValueCondition {
+    operator: crate::effect::ValueComparisonOperator,
+    right: Value,
 }
 
 fn parse_consult_traversal_sentence(
@@ -375,6 +389,91 @@ fn consult_stop_rule_is_single_match(stop_rule: &LibraryConsultStopRuleAst) -> b
     )
 }
 
+fn parse_consult_condition_value(tokens: &[&str]) -> Option<Value> {
+    if matches!(tokens, ["this's", "power"]) {
+        return Some(Value::SourcePower);
+    }
+
+    let value_tokens = tokens
+        .iter()
+        .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+        .collect::<Vec<_>>();
+    if let Some((value, used)) = parse_value_from_lexed(&value_tokens)
+        && words(&value_tokens[used..]).is_empty()
+    {
+        return Some(value);
+    }
+
+    let (filter_tokens, had_number_prefix) = if tokens.starts_with(&["the", "number", "of"]) {
+        (&tokens[3..], true)
+    } else if tokens.starts_with(&["number", "of"]) {
+        (&tokens[2..], true)
+    } else {
+        (tokens, false)
+    };
+    if !had_number_prefix || filter_tokens.is_empty() {
+        return None;
+    }
+
+    let filter_tokens = filter_tokens
+        .iter()
+        .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+        .collect::<Vec<_>>();
+    let filter = parse_object_filter(&filter_tokens, false).ok()?;
+    Some(Value::Count(filter))
+}
+
+fn parse_consult_mana_value_condition(words: &[&str]) -> Option<ConsultCastManaValueCondition> {
+    if words.is_empty() {
+        return None;
+    }
+    if words.first().copied() != Some("if") {
+        return None;
+    }
+
+    let after_prefix = if words.starts_with(&["if", "it's", "a", "spell", "with", "mana", "value"])
+    {
+        &words[7..]
+    } else if words.starts_with(&["if", "it", "is", "a", "spell", "with", "mana", "value"]) {
+        &words[8..]
+    } else if words.starts_with(&["if", "the", "spell's", "mana", "value"]) {
+        &words[5..]
+    } else if words.starts_with(&["if", "that", "spell's", "mana", "value"]) {
+        &words[5..]
+    } else if words.starts_with(&["if", "its", "mana", "value"]) {
+        &words[4..]
+    } else {
+        return None;
+    };
+
+    let (operator, right_tokens) =
+        if after_prefix.starts_with(&["is", "less", "than", "or", "equal", "to"]) {
+            (
+                crate::effect::ValueComparisonOperator::LessThanOrEqual,
+                &after_prefix[6..],
+            )
+        } else if after_prefix.starts_with(&["is", "less", "than"]) {
+            (
+                crate::effect::ValueComparisonOperator::LessThan,
+                &after_prefix[3..],
+            )
+        } else if after_prefix.len() >= 4
+            && after_prefix[0] == "is"
+            && after_prefix[2] == "or"
+            && after_prefix[3] == "less"
+        {
+            (
+                crate::effect::ValueComparisonOperator::LessThanOrEqual,
+                &after_prefix[1..2],
+            )
+        } else {
+            return None;
+        };
+
+    let right = parse_consult_condition_value(right_tokens)?;
+    Some(ConsultCastManaValueCondition { operator, right })
+}
+
 fn parse_consult_cast_clause(tokens: &[OwnedLexToken]) -> Option<ConsultCastClause> {
     let mut second_tokens = trim_commas(tokens);
     let duration_words = words(&second_tokens);
@@ -409,6 +508,10 @@ fn parse_consult_cast_clause(tokens: &[OwnedLexToken]) -> Option<ConsultCastClau
         (false, 3usize)
     } else if tail_words.starts_with(&["cast", "it"]) {
         (false, 2usize)
+    } else if tail_words.starts_with(&["cast", "that", "exiled", "card"]) {
+        (false, 4usize)
+    } else if tail_words.starts_with(&["cast", "the", "exiled", "card"]) {
+        (false, 4usize)
     } else if tail_words.starts_with(&["play", "that", "card"]) {
         (true, 3usize)
     } else if tail_words.starts_with(&["play", "it"]) {
@@ -423,8 +526,23 @@ fn parse_consult_cast_clause(tokens: &[OwnedLexToken]) -> Option<ConsultCastClau
             caster,
             allow_land,
             timing: ConsultCastTiming::UntilEndOfTurn,
-            without_paying_mana_cost: false,
-            max_mana_value: None,
+            cost: ConsultCastCost::Normal,
+            mana_value_condition: None,
+        });
+    }
+
+    if remainder
+        == [
+            "by", "paying", "life", "equal", "to", "the", "spell's", "mana", "value", "rather",
+            "than", "paying", "its", "mana", "cost",
+        ]
+    {
+        return Some(ConsultCastClause {
+            caster,
+            allow_land,
+            timing,
+            cost: ConsultCastCost::PayLifeEqualToManaValue,
+            mana_value_condition: None,
         });
     }
 
@@ -432,33 +550,40 @@ fn parse_consult_cast_clause(tokens: &[OwnedLexToken]) -> Option<ConsultCastClau
         return None;
     }
 
-    let mut max_mana_value = None;
-    let condition_words = &remainder[5..];
-    if !condition_words.is_empty() {
-        if condition_words.len() != 9
-            || condition_words[0] != "if"
-            || condition_words[1] != "that"
-            || !matches!(condition_words[2], "spells" | "spell's")
-            || condition_words[3] != "mana"
-            || condition_words[4] != "value"
-            || condition_words[5] != "is"
-            || condition_words[7] != "or"
-            || condition_words[8] != "less"
-        {
-            return None;
-        }
-        max_mana_value = condition_words[6].parse::<i32>().ok();
-        if max_mana_value.is_none() {
-            return None;
-        }
-    }
+    let mana_value_condition = if remainder.len() == 5 {
+        None
+    } else {
+        Some(
+            parse_consult_mana_value_condition(&remainder[5..]).or_else(|| {
+                let condition_words = &remainder[5..];
+                if condition_words.len() == 9
+                    && condition_words[0] == "if"
+                    && condition_words[1] == "that"
+                    && matches!(condition_words[2], "spells" | "spell's")
+                    && condition_words[3] == "mana"
+                    && condition_words[4] == "value"
+                    && condition_words[5] == "is"
+                    && condition_words[7] == "or"
+                    && condition_words[8] == "less"
+                {
+                    let value = condition_words[6].parse::<i32>().ok()?;
+                    Some(ConsultCastManaValueCondition {
+                        operator: crate::effect::ValueComparisonOperator::LessThanOrEqual,
+                        right: Value::Fixed(value),
+                    })
+                } else {
+                    None
+                }
+            })?,
+        )
+    };
 
     Some(ConsultCastClause {
         caster,
         allow_land,
         timing,
-        without_paying_mana_cost: true,
-        max_mana_value,
+        cost: ConsultCastCost::WithoutPayingManaCost,
+        mana_value_condition,
     })
 }
 
@@ -519,6 +644,28 @@ fn parse_if_declined_put_match_into_hand(
         ])
         || clause_words.starts_with(&[
             "if", "you", "do", "not", "put", "it", "into", "your", "hand",
+        ])
+        || clause_words.starts_with(&[
+            "if", "you", "dont", "cast", "that", "card", "this", "way", "put", "it", "into",
+            "your", "hand",
+        ])
+        || clause_words.starts_with(&[
+            "if", "you", "don't", "cast", "that", "card", "this", "way", "put", "it", "into",
+            "your", "hand",
+        ])
+        || clause_words.starts_with(&[
+            "if", "you", "do", "not", "cast", "that", "card", "this", "way", "put", "it", "into",
+            "your", "hand",
+        ])
+        || clause_words.starts_with(&[
+            "if", "you", "dont", "cast", "it", "this", "way", "put", "it", "into", "your", "hand",
+        ])
+        || clause_words.starts_with(&[
+            "if", "you", "don't", "cast", "it", "this", "way", "put", "it", "into", "your", "hand",
+        ])
+        || clause_words.starts_with(&[
+            "if", "you", "do", "not", "cast", "it", "this", "way", "put", "it", "into", "your",
+            "hand",
         ]);
     if !moves_to_hand {
         return None;
@@ -538,41 +685,65 @@ fn consult_cast_effects(
     clause: &ConsultCastClause,
     match_tag: TagKey,
 ) -> Result<Vec<EffectAst>, CardTextError> {
-    if clause.allow_land && clause.without_paying_mana_cost {
+    if clause.allow_land && !matches!(clause.cost, ConsultCastCost::Normal) {
         return Err(CardTextError::ParseError(
             "playing a land without paying its mana cost is unsupported".to_string(),
         ));
     }
 
-    let mut cast_effects =
-        if clause.allow_land || matches!(clause.timing, ConsultCastTiming::UntilEndOfTurn) {
-            vec![EffectAst::GrantPlayTaggedUntilEndOfTurn {
-                tag: match_tag.clone(),
-                player: clause.caster,
-                allow_land: clause.allow_land,
-                without_paying_mana_cost: clause.without_paying_mana_cost,
-            }]
-        } else {
-            vec![EffectAst::May {
-                effects: vec![EffectAst::CastTagged {
+    let mut cast_effects = match clause.cost {
+        ConsultCastCost::Normal | ConsultCastCost::WithoutPayingManaCost => {
+            let without_paying_mana_cost =
+                matches!(clause.cost, ConsultCastCost::WithoutPayingManaCost);
+            if clause.allow_land || matches!(clause.timing, ConsultCastTiming::UntilEndOfTurn) {
+                vec![EffectAst::GrantPlayTaggedUntilEndOfTurn {
                     tag: match_tag.clone(),
+                    player: clause.caster,
+                    allow_land: clause.allow_land,
+                    without_paying_mana_cost,
+                }]
+            } else {
+                vec![EffectAst::May {
+                    effects: vec![EffectAst::CastTagged {
+                        tag: match_tag.clone(),
+                        allow_land: false,
+                        as_copy: false,
+                        without_paying_mana_cost,
+                    }],
+                }]
+            }
+        }
+        ConsultCastCost::PayLifeEqualToManaValue => {
+            if clause.allow_land {
+                return Err(CardTextError::ParseError(
+                    "pay-life consult cast clauses cannot allow lands".to_string(),
+                ));
+            }
+            vec![
+                EffectAst::GrantPlayTaggedUntilEndOfTurn {
+                    tag: match_tag.clone(),
+                    player: clause.caster,
                     allow_land: false,
-                    as_copy: false,
-                    without_paying_mana_cost: clause.without_paying_mana_cost,
-                }],
-            }]
-        };
+                    without_paying_mana_cost: false,
+                },
+                EffectAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn {
+                    tag: match_tag.clone(),
+                    player: clause.caster,
+                },
+            ]
+        }
+    };
 
-    if let Some(max_mana_value) = clause.max_mana_value {
+    if let Some(condition) = &clause.mana_value_condition {
         cast_effects = vec![EffectAst::Conditional {
-            predicate: PredicateAst::TaggedMatches(
-                match_tag,
-                ObjectFilter::default()
-                    .with_mana_value(Comparison::LessThanOrEqual(max_mana_value)),
-            ),
+            predicate: PredicateAst::ValueComparison {
+                left: Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(match_tag))),
+                operator: condition.operator,
+                right: condition.right.clone(),
+            },
             if_true: cast_effects,
             if_false: Vec::new(),
-        }];
+        }]
     }
 
     Ok(cast_effects)
@@ -1315,9 +1486,6 @@ fn parse_exile_until_match_grant_play_this_turn(
     let Some(clause) = parse_consult_cast_clause(second) else {
         return Ok(None);
     };
-    if !matches!(clause.timing, ConsultCastTiming::UntilEndOfTurn) {
-        return Ok(None);
-    }
 
     let mut effects = parts.effects;
     effects.extend(consult_cast_effects(&clause, parts.match_tag)?);
@@ -1842,7 +2010,7 @@ fn parse_exile_until_match_cast_rest_bottom(
     let Some(clause) = parse_consult_cast_clause(second) else {
         return Ok(None);
     };
-    if !clause.without_paying_mana_cost {
+    if !matches!(clause.cost, ConsultCastCost::WithoutPayingManaCost) {
         return Ok(None);
     }
     let Some(order) = parse_consult_bottom_remainder_clause(
@@ -1888,7 +2056,7 @@ fn parse_exile_until_match_cast_else_hand(
     let Some(clause) = parse_consult_cast_clause(second) else {
         return Ok(None);
     };
-    if !clause.without_paying_mana_cost || clause.allow_land {
+    if !matches!(clause.cost, ConsultCastCost::WithoutPayingManaCost) || clause.allow_land {
         return Ok(None);
     }
     let Some(hand_effects) = parse_if_declined_put_match_into_hand(third, parts.match_tag.clone())
@@ -1898,18 +2066,22 @@ fn parse_exile_until_match_cast_else_hand(
 
     let cast_effects = consult_cast_effects(&clause, parts.match_tag)?;
     let mut effects = parts.effects;
-    if clause.max_mana_value.is_some() {
+    if cast_effects.len() == 1 {
+        let single_effect = cast_effects.into_iter().next().ok_or_else(|| {
+            CardTextError::ParseError("missing cast effect for consult follow-up".to_string())
+        })?;
         let EffectAst::Conditional {
             predicate,
             if_true,
             if_false,
-        } = cast_effects.into_iter().next().ok_or_else(|| {
-            CardTextError::ParseError("missing cast effect for consult follow-up".to_string())
-        })?
+        } = single_effect
         else {
-            return Err(CardTextError::ParseError(
-                "expected conditional cast effect for mana-value-gated consult clause".to_string(),
-            ));
+            effects.push(single_effect);
+            effects.push(EffectAst::IfResult {
+                predicate: IfResultPredicate::WasDeclined,
+                effects: hand_effects,
+            });
+            return Ok(Some(effects));
         };
         let mut gated_if_true = if_true;
         gated_if_true.push(EffectAst::IfResult {

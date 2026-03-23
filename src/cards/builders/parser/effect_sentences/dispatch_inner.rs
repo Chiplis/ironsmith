@@ -1,8 +1,10 @@
-use super::super::keyword_static::parse_pt_modifier;
-use super::super::keyword_static::{parse_where_x_value_clause, parse_where_x_value_clause_lexed};
+use super::super::keyword_static::{
+    parse_ability_line, parse_pt_modifier, parse_where_x_value_clause,
+    parse_where_x_value_clause_lexed,
+};
 use super::super::lexer::OwnedLexToken;
 use super::super::native_tokens::LowercaseWordView;
-use super::super::object_filters::parse_object_filter;
+use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed};
 use super::super::rule_engine::{
     LexClauseView, LexRuleDef, LexRuleIndex, LexUnsupportedDiagnoser, LexUnsupportedRuleDef,
 };
@@ -77,6 +79,162 @@ macro_rules! sentence_unsupported_adapters_lexed {
 
 fn sentence_has_ring_tempts_clause_lexed(view: &LexClauseView<'_>) -> bool {
     is_ring_tempts_sentence(view.tokens)
+}
+
+fn next_spell_grant_player_ast(filter: &ObjectFilter) -> Option<PlayerAst> {
+    match filter.cast_by.as_ref()? {
+        crate::target::PlayerFilter::You => Some(PlayerAst::You),
+        crate::target::PlayerFilter::Opponent => Some(PlayerAst::Opponent),
+        crate::target::PlayerFilter::IteratedPlayer => Some(PlayerAst::That),
+        crate::target::PlayerFilter::Target(base) => match base.as_ref() {
+            crate::target::PlayerFilter::Any => Some(PlayerAst::Target),
+            crate::target::PlayerFilter::Opponent => Some(PlayerAst::TargetOpponent),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn next_spell_grant_shared_cast_suffix<'a>(words: &'a [&'a str]) -> Option<&'a [&'a str]> {
+    for suffix in [
+        &["you", "cast"][..],
+        &["they", "cast"][..],
+        &["that", "player", "cast"][..],
+        &["target", "player", "cast"][..],
+        &["target", "opponent", "cast"][..],
+        &["opponent", "cast"][..],
+        &["opponents", "cast"][..],
+    ] {
+        if words.ends_with(suffix) {
+            return Some(suffix);
+        }
+    }
+    None
+}
+
+fn parse_next_spell_grant_ability(
+    words: &[&str],
+) -> Option<crate::cards::builders::GrantedAbilityAst> {
+    let tokens = synth_word_tokens(words);
+    let actions = parse_ability_line(&tokens)?;
+    let [action] = actions.as_slice() else {
+        return None;
+    };
+    if !action.lowers_to_static_ability() {
+        return None;
+    }
+    Some(action.clone().into())
+}
+
+fn synth_word_tokens(words: &[&str]) -> Vec<OwnedLexToken> {
+    words
+        .iter()
+        .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+        .collect()
+}
+
+fn parse_next_spell_subject_filter(words: &[&str]) -> Result<Option<ObjectFilter>, CardTextError> {
+    let tokens = synth_word_tokens(words);
+    let filter = parse_object_filter_lexed(&tokens, false)?;
+    if filter.cast_by.is_none() {
+        return Ok(None);
+    }
+    Ok(Some(filter))
+}
+
+fn parse_next_spell_grant_sentence_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let clause_word_view = LowercaseWordView::new(tokens);
+    let clause_words = clause_word_view.to_word_refs();
+    if !clause_words.starts_with(&["the", "next"]) {
+        return Ok(None);
+    }
+
+    if let Some(have_idx) = clause_words
+        .windows(2)
+        .position(|window| window == ["each", "have"])
+    {
+        let subject_words = &clause_words[..have_idx];
+        let ability_words = &clause_words[have_idx + 2..];
+        let Some(ability) = parse_next_spell_grant_ability(ability_words) else {
+            return Ok(None);
+        };
+        if !subject_words.ends_with(&["this", "turn"]) {
+            return Ok(None);
+        }
+        let subject_without_turn = &subject_words[..subject_words.len() - 2];
+        let Some(shared_cast_words) = next_spell_grant_shared_cast_suffix(subject_without_turn)
+        else {
+            return Ok(None);
+        };
+        let shared_prefix =
+            &subject_without_turn[2..subject_without_turn.len() - shared_cast_words.len()];
+        let Some(split_idx) = shared_prefix
+            .windows(3)
+            .position(|window| window == ["and", "the", "next"])
+        else {
+            return Ok(None);
+        };
+        let first_subject = &shared_prefix[..split_idx];
+        let second_subject = &shared_prefix[split_idx + 3..];
+        if first_subject.is_empty() || second_subject.is_empty() {
+            return Ok(None);
+        }
+
+        let first_filter_words = [first_subject, shared_cast_words].concat();
+        let second_filter_words = [second_subject, shared_cast_words].concat();
+        let Some(first_filter) = parse_next_spell_subject_filter(&first_filter_words)? else {
+            return Ok(None);
+        };
+        let Some(second_filter) = parse_next_spell_subject_filter(&second_filter_words)? else {
+            return Ok(None);
+        };
+        let Some(player) = next_spell_grant_player_ast(&first_filter) else {
+            return Ok(None);
+        };
+
+        return Ok(Some(vec![
+            EffectAst::GrantNextSpellAbilityThisTurn {
+                player,
+                filter: first_filter,
+                ability: ability.clone(),
+            },
+            EffectAst::GrantNextSpellAbilityThisTurn {
+                player,
+                filter: second_filter,
+                ability,
+            },
+        ]));
+    }
+
+    let Some(has_idx) = clause_words
+        .iter()
+        .position(|word| matches!(*word, "has" | "have"))
+    else {
+        return Ok(None);
+    };
+    let subject_words = &clause_words[..has_idx];
+    let ability_words = &clause_words[has_idx + 1..];
+    let Some(ability) = parse_next_spell_grant_ability(ability_words) else {
+        return Ok(None);
+    };
+    if !subject_words.ends_with(&["this", "turn"]) {
+        return Ok(None);
+    }
+
+    let filter_words = &subject_words[2..subject_words.len() - 2];
+    let Some(filter) = parse_next_spell_subject_filter(filter_words)? else {
+        return Ok(None);
+    };
+    let Some(player) = next_spell_grant_player_ast(&filter) else {
+        return Ok(None);
+    };
+    Ok(Some(vec![EffectAst::GrantNextSpellAbilityThisTurn {
+        player,
+        filter,
+        ability,
+    }]))
 }
 
 fn sentence_has_enters_as_copy_rule_lexed(view: &LexClauseView<'_>) -> bool {
@@ -1139,6 +1297,9 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
     }
     if sentence_starts_with_supported_spent_to_cast_conditional(sentence_words.as_slice()) {
         return parse_conditional_sentence_lexed(tokens);
+    }
+    if let Some(effects) = parse_next_spell_grant_sentence_lexed(tokens)? {
+        return Ok(effects);
     }
     if tokens.first().is_some_and(|token| token.is_word("then"))
         && tokens.get(1).is_some_and(|token| token.is_word("if"))

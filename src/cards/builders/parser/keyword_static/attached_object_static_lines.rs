@@ -112,6 +112,19 @@ pub(crate) fn display_text_for_tokens(
     text
 }
 
+fn parse_attached_granted_activated_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<ParsedAbility>, CardTextError> {
+    let trimmed = trim_edge_punctuation(tokens);
+    let rendered = display_text_for_tokens(&trimmed, false);
+    if let Ok(reparsed) = crate::cards::builders::parser::lexer::lex_line(rendered.as_str(), 0) {
+        if let Some(parsed) = parse_activated_line(&reparsed)? {
+            return Ok(Some(parsed));
+        }
+    }
+    parse_activated_line(&trimmed)
+}
+
 pub(crate) fn cumulative_upkeep_granted_ability(
     mana_symbols_per_counter: Vec<ManaSymbol>,
     life_per_counter: u32,
@@ -1085,7 +1098,8 @@ pub(crate) fn parse_attached_gets_and_has_ability_line(
         .rev()
     {
         let keyword_tokens = trim_edge_punctuation(&ability_tokens[..and_idx]);
-        let granted_tokens = trim_edge_punctuation(&ability_tokens[and_idx + 1..]);
+        let granted_tokens_raw = &ability_tokens[and_idx + 1..];
+        let granted_tokens = trim_edge_punctuation(granted_tokens_raw);
         if keyword_tokens.is_empty() || granted_tokens.is_empty() {
             continue;
         }
@@ -1102,7 +1116,7 @@ pub(crate) fn parse_attached_gets_and_has_ability_line(
             continue;
         }
 
-        if let Some(parsed) = parse_activated_line(&granted_tokens)? {
+        if let Some(parsed) = parse_attached_granted_activated_line(granted_tokens_raw)? {
             let mut out = vec![anthem.clone().into()];
             for action in keyword_actions {
                 out.push(grant_keyword_action_for_anthem_subject(&clause, action));
@@ -1115,7 +1129,7 @@ pub(crate) fn parse_attached_gets_and_has_ability_line(
     }
 
     let has_colon = ability_tokens.iter().any(|token| token.is_colon());
-    if let Some(parsed) = parse_activated_line(&ability_tokens)? {
+    if let Some(parsed) = parse_attached_granted_activated_line(&ability_tokens)? {
         let display = display_text_for_tokens(&ability_tokens, false);
         let grant = grant_object_ability_for_anthem_subject(&clause, parsed, display);
         return Ok(Some(vec![anthem.into(), grant]));
@@ -1175,12 +1189,13 @@ pub(crate) fn parse_equipped_gets_and_has_activated_ability_line(
     if has_idx + 1 >= tokens.len() {
         return Ok(None);
     }
-    let ability_tokens = trim_edge_punctuation(&tokens[has_idx + 1..]);
+    let ability_tokens_raw = &tokens[has_idx + 1..];
+    let ability_tokens = trim_edge_punctuation(ability_tokens_raw);
     if ability_tokens.is_empty() {
         return Ok(None);
     }
     let has_colon = ability_tokens.iter().any(|token| token.is_colon());
-    let Some(parsed) = parse_activated_line(&ability_tokens)? else {
+    let Some(parsed) = parse_attached_granted_activated_line(ability_tokens_raw)? else {
         if has_colon {
             return Err(CardTextError::ParseError(format!(
                 "unsupported equipped activated-ability grant (clause: '{}')",
@@ -1232,11 +1247,12 @@ pub(crate) fn parse_enchanted_has_activated_ability_line(
     let Some(has_idx) = tokens.iter().position(|token| token.is_word("has")) else {
         return Ok(None);
     };
-    let ability_tokens = trim_edge_punctuation(&tokens[has_idx + 1..]);
+    let ability_tokens_raw = &tokens[has_idx + 1..];
+    let ability_tokens = trim_edge_punctuation(ability_tokens_raw);
     if ability_tokens.is_empty() {
         return Ok(None);
     }
-    let Some(parsed) = parse_activated_line(&ability_tokens)? else {
+    let Some(parsed) = parse_attached_granted_activated_line(ability_tokens_raw)? else {
         return Ok(None);
     };
 

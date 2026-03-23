@@ -29,6 +29,8 @@ const MOBILE_BOTTOM_BACK_ROW_TRANSLATE_Y_PX = 32;
 const MOBILE_BOTTOM_MIN_VISIBLE_BACK_ROW_RATIO = 0.6;
 const MOBILE_BOTTOM_BACK_ROW_SCALE = 0.96;
 const MOBILE_BOTTOM_DOCK_CLEARANCE_PX = 10;
+const MOBILE_BATTLEFIELD_TOKEN_HIT_SLOP_X = 16;
+const MOBILE_BATTLEFIELD_TOKEN_HIT_SLOP_Y = 16;
 
 function buildPaperRowGroups(battlefieldSide, buckets, options = {}) {
   const singleRow = options.singleRow === true;
@@ -150,6 +152,33 @@ function stableIdsForCard(card) {
   if (card?.stable_id != null) return [String(card.stable_id)];
   if (card?.id != null) return [String(card.id)];
   return [];
+}
+
+function collectActivatableActionsForCard(card, activatableMap) {
+  if (!activatableMap || !card) return [];
+
+  const actions = [];
+  const seenActionIndices = new Set();
+  const objectIds = [Number(card?.id)];
+  if (Array.isArray(card?.member_ids)) {
+    for (const memberId of card.member_ids) {
+      objectIds.push(Number(memberId));
+    }
+  }
+
+  for (const objectId of objectIds) {
+    if (!Number.isFinite(objectId) || !activatableMap.has(objectId)) continue;
+    for (const action of activatableMap.get(objectId) || []) {
+      const actionIndex = Number(action?.index);
+      if (Number.isFinite(actionIndex)) {
+        if (seenActionIndices.has(actionIndex)) continue;
+        seenActionIndices.add(actionIndex);
+      }
+      actions.push(action);
+    }
+  }
+
+  return actions;
 }
 
 function indexCardsByStableId(cards) {
@@ -1138,10 +1167,24 @@ export default function BattlefieldRow({
       }
     }
 
+    const cardObjectIds = [Number(card?.id)];
+    if (Array.isArray(card?.member_ids)) {
+      for (const memberId of card.member_ids) {
+        cardObjectIds.push(Number(memberId));
+      }
+    }
+    const isLegalTargetCard = cardObjectIds.some((id) => legalTargetObjectIds.has(id));
+    const cardActions = collectActivatableActionsForCard(card, activatableMap);
+
+    if (mobileObjectGesturesEnabled && isLegalTargetCard && onCardClick) {
+      onCardClick(event, card);
+      return;
+    }
+
     if (mobileObjectGesturesEnabled && typeof onMobileCardActionMenu === "function") {
       const didOpenMenu = onMobileCardActionMenu({
         card,
-        actions: activatableMap?.get(Number(card.id)) || [],
+        actions: cardActions,
         anchorRect: event.currentTarget?.getBoundingClientRect?.() || null,
       });
       if (didOpenMenu) {
@@ -1149,6 +1192,12 @@ export default function BattlefieldRow({
         event.stopPropagation();
         return;
       }
+    }
+
+    if (mobileObjectGesturesEnabled) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
     }
 
     if (onCardClick) {
@@ -1165,6 +1214,7 @@ export default function BattlefieldRow({
     onCardClick,
     onInspect,
     onMobileCardActionMenu,
+    legalTargetObjectIds,
   ]);
 
   const handleRowClickFallback = useCallback((event) => {
@@ -1175,7 +1225,36 @@ export default function BattlefieldRow({
     if (event.target.closest("button, a, input, textarea, select, [role='button']")) return;
 
     const hitElement = document.elementFromPoint(event.clientX, event.clientY);
-    const hitCardEl = hitElement?.closest?.(".battlefield-row-card[data-object-id]");
+    let hitCardEl = hitElement?.closest?.(".battlefield-row-card[data-object-id]") || null;
+
+    if (!hitCardEl && rowRef.current) {
+      const withinExpandedRect = (rect, x, y) => (
+        x >= (rect.left - MOBILE_BATTLEFIELD_TOKEN_HIT_SLOP_X)
+        && x <= (rect.right + MOBILE_BATTLEFIELD_TOKEN_HIT_SLOP_X)
+        && y >= (rect.top - MOBILE_BATTLEFIELD_TOKEN_HIT_SLOP_Y)
+        && y <= (rect.bottom + MOBILE_BATTLEFIELD_TOKEN_HIT_SLOP_Y)
+      );
+
+      let bestMatch = null;
+      let bestDistanceSq = Infinity;
+      const cardNodes = rowRef.current.querySelectorAll(".battlefield-row-card[data-object-id]");
+
+      for (const node of cardNodes) {
+        const rect = node.getBoundingClientRect();
+        if (!withinExpandedRect(rect, event.clientX, event.clientY)) continue;
+
+        const centerX = rect.left + (rect.width / 2);
+        const centerY = rect.top + (rect.height / 2);
+        const distanceSq = ((event.clientX - centerX) ** 2) + ((event.clientY - centerY) ** 2);
+        if (distanceSq < bestDistanceSq) {
+          bestMatch = node;
+          bestDistanceSq = distanceSq;
+        }
+      }
+
+      hitCardEl = bestMatch;
+    }
+
     const fallbackCardId = hitCardEl?.dataset?.objectId;
     if (!fallbackCardId) return;
 
@@ -1262,7 +1341,8 @@ export default function BattlefieldRow({
         />
       )) : null}
       {displayCards.map((card, i) => {
-        const isActivatable = activatableMap?.has(Number(card.id));
+        const cardActions = collectActivatableActionsForCard(card, activatableMap);
+        const isActivatable = cardActions.length > 0;
         const cardObjectIds = [Number(card.id)];
         if (Array.isArray(card.member_ids)) {
           for (const memberId of card.member_ids) {
@@ -1322,9 +1402,8 @@ export default function BattlefieldRow({
         // Determine ability glow kind: mana vs non-mana
         let abilityGlow = null;
         if (isActivatable) {
-          const actions = activatableMap.get(Number(card.id)) || [];
-          const hasMana = actions.some((a) => a.kind === "activate_mana_ability");
-          const hasNonMana = actions.some((a) => a.kind === "activate_ability");
+          const hasMana = cardActions.some((a) => a.kind === "activate_mana_ability");
+          const hasNonMana = cardActions.some((a) => a.kind === "activate_ability");
           abilityGlow = hasMana && !hasNonMana ? "mana" : hasNonMana ? "ability" : "mana";
         }
         const isInteractable = isActivatable || isCombatCandidate || isCombatTargetCard;

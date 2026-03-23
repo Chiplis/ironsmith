@@ -1695,6 +1695,11 @@ pub(crate) enum EffectAst {
         filter: ObjectFilter,
         reduction: ManaCost,
     },
+    GrantNextSpellAbilityThisTurn {
+        player: PlayerAst,
+        filter: ObjectFilter,
+        ability: GrantedAbilityAst,
+    },
     GrantPlayTaggedUntilEndOfTurn {
         tag: TagKey,
         player: PlayerAst,

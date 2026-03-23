@@ -1000,7 +1000,7 @@ export default function Workspace({
           { type: "priority_action", action_index: onlyAction.index },
           onlyAction.label
         );
-        if (!combatDeclarationActive && ds.objectId != null) {
+        if (!combatDeclarationActive && ds.objectId != null && !nonDesktopViewport) {
           setSelectedObjectId(ds.objectId);
           setPinnedInspectorObjectId(null);
           setSuppressFallbackInspector(false);

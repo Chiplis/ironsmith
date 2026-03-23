@@ -56,10 +56,21 @@ fn parse_tagged_cast_or_play_target(words: &[&str]) -> Option<(bool, usize)> {
         || words.starts_with(&["those", "cards"])
         || words.starts_with(&["that", "spell"])
         || words.starts_with(&["those", "spells"])
+        || words.starts_with(&["that", "exiled", "card"])
+        || words.starts_with(&["the", "exiled", "card"])
         || words.starts_with(&["the", "card"])
         || words.starts_with(&["the", "cards"])
     {
-        return Some((false, 2));
+        return Some((
+            false,
+            if words.starts_with(&["that", "exiled", "card"])
+                || words.starts_with(&["the", "exiled", "card"])
+            {
+                3
+            } else {
+                2
+            },
+        ));
     }
     if words.starts_with(&["the", "copy"])
         || words.starts_with(&["that", "copy"])

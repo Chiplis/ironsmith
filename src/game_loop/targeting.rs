@@ -74,6 +74,10 @@ pub(super) fn queue_triggers_from_event(
             trigger_queue.add(trigger);
         }
     }
+
+    if let Some(cast) = event.downcast::<crate::events::spells::SpellCastEvent>() {
+        game.consume_temporary_spell_ability_grants_for_spell(cast.spell, cast.caster);
+    }
 }
 
 /// Queue trigger matches for each event in this list.

@@ -1792,6 +1792,18 @@ pub(crate) fn parse_object_filter(
     if all_words.len() >= 2 {
         for window in all_words.windows(2) {
             match window {
+                ["you", "cast"] | ["you", "casts"] => {
+                    filter.cast_by = Some(PlayerFilter::You);
+                }
+                ["opponent", "cast"]
+                | ["opponent", "casts"]
+                | ["opponents", "cast"]
+                | ["opponents", "casts"] => {
+                    filter.cast_by = Some(PlayerFilter::Opponent);
+                }
+                ["they", "cast"] | ["they", "casts"] => {
+                    filter.cast_by = Some(pronoun_player_filter.clone());
+                }
                 ["you", "control"] | ["you", "controls"] => {
                     filter.controller = Some(PlayerFilter::You);
                 }
@@ -1836,6 +1848,9 @@ pub(crate) fn parse_object_filter(
                 ["that", "player", "control"] | ["that", "player", "controls"] => {
                     filter.controller = Some(PlayerFilter::IteratedPlayer);
                 }
+                ["that", "player", "cast"] | ["that", "player", "casts"] => {
+                    filter.cast_by = Some(PlayerFilter::IteratedPlayer);
+                }
                 ["defending", "player", "control"] | ["defending", "player", "controls"] => {
                     filter.controller = Some(PlayerFilter::Defending);
                 }
@@ -1848,8 +1863,14 @@ pub(crate) fn parse_object_filter(
                 ["target", "player", "control"] | ["target", "player", "controls"] => {
                     filter.controller = Some(PlayerFilter::target_player());
                 }
+                ["target", "player", "cast"] | ["target", "player", "casts"] => {
+                    filter.cast_by = Some(PlayerFilter::target_player());
+                }
                 ["target", "opponent", "control"] | ["target", "opponent", "controls"] => {
                     filter.controller = Some(PlayerFilter::target_opponent());
+                }
+                ["target", "opponent", "cast"] | ["target", "opponent", "casts"] => {
+                    filter.cast_by = Some(PlayerFilter::target_opponent());
                 }
                 ["target", "player", "own"] | ["target", "player", "owns"] => {
                     filter.owner = Some(PlayerFilter::target_player());
@@ -1884,6 +1905,10 @@ pub(crate) fn parse_object_filter(
                 || window[1..] == ["your", "team", "controls"]
             {
                 filter.controller = Some(PlayerFilter::You);
+            } else if window == ["your", "opponents", "cast", "from"]
+                || window == ["your", "opponents", "casts", "from"]
+            {
+                filter.cast_by = Some(PlayerFilter::Opponent);
             } else if window == ["the", "chosen", "player", "graveyard"]
                 || window == ["the", "chosen", "players", "graveyard"]
             {
@@ -2707,6 +2732,16 @@ pub(crate) fn parse_object_filter(
         } else if saw_permanent || saw_permanent_type || saw_subtype {
             filter.zone = Some(Zone::Battlefield);
         }
+    }
+
+    if contains_unqualified_spell_word
+        && filter.cast_by.is_some()
+        && matches!(
+            filter.zone,
+            Some(Zone::Hand | Zone::Graveyard | Zone::Exile | Zone::Library | Zone::Command)
+        )
+    {
+        filter.owner = None;
     }
 
     if target_player.is_some() || target_object.is_some() {

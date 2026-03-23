@@ -1871,19 +1871,38 @@ function MobileBattleDecisionLayer({
 
   if (decision.kind === "select_options") {
     const optionSummary = buildMobileSelectOptionsSummary(decision);
-    const optionFooter = effectiveSubmitAction ? (
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="mobile-decision-primary-button mobile-decision-primary-button--full"
-        disabled={!canSubmitFocused}
-        onClick={() => effectiveSubmitAction.onSubmit()}
-      >
-        <span className="mobile-decision-primary-label">
-          {effectiveSubmitAction.label || "Submit"}
-        </span>
-      </Button>
+    const optionHeaderDetails = (
+      optionSummary || effectiveSubmitAction
+    ) ? (
+      <div className="mobile-select-options-toolbar">
+        {optionSummary ? (
+          <div
+            className={cn(
+              "mobile-select-options-summary",
+              optionSummary.length > 220 && "is-compact",
+              optionSummary.length > 340 && "is-tight"
+            )}
+          >
+            <SymbolText text={optionSummary} />
+          </div>
+        ) : (
+          <div className="mobile-select-options-summary mobile-select-options-summary--empty" />
+        )}
+        {effectiveSubmitAction ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="mobile-decision-primary-button mobile-select-options-submit"
+            disabled={!canSubmitFocused}
+            onClick={() => effectiveSubmitAction.onSubmit()}
+          >
+            <span className="mobile-decision-primary-label">
+              {effectiveSubmitAction.label || "Submit"}
+            </span>
+          </Button>
+        ) : null}
+      </div>
     ) : null;
 
     return renderMobileBattlePortal(
@@ -1892,26 +1911,13 @@ function MobileBattleDecisionLayer({
         title={resolveDecisionTitle(decision)}
         subtitle={decision?.source_name || ""}
         headerClassName="mobile-select-options-header"
-        headerDetails={
-          optionSummary ? (
-            <div
-              className={cn(
-                "mobile-select-options-summary",
-                optionSummary.length > 220 && "is-compact",
-                optionSummary.length > 340 && "is-tight"
-              )}
-            >
-              <SymbolText text={optionSummary} />
-            </div>
-          ) : null
-        }
+        headerDetails={optionHeaderDetails}
         className="mobile-decision-sheet--select-options"
         bodyClassName="mobile-decision-sheet-body--select-options"
         onClose={canCancelDecision ? () => cancelDecision() : null}
         closeLabel="Close option picker"
         inline={false}
         onBackdropClick={canCancelDecision ? () => cancelDecision() : null}
-        footer={optionFooter}
       >
         <DecisionRouter
           decision={decision}

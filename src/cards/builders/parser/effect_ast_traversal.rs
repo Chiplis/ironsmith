@@ -179,6 +179,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::PlayFromGraveyardUntilEot { .. } => {}
         EffectAst::AdditionalLandPlays { .. } => {}
         EffectAst::ReduceNextSpellCostThisTurn { .. } => {}
+        EffectAst::GrantNextSpellAbilityThisTurn { .. } => {}
         EffectAst::GrantPlayTaggedUntilEndOfTurn { .. } => {}
         EffectAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn { .. } => {}
         EffectAst::GrantPlayTaggedUntilYourNextTurn { .. } => {}

@@ -1,12 +1,29 @@
 import argparse
+import gzip
 import json
 from pathlib import Path
+
+
+SUPPORTED_PAPER_FORMATS = (
+    "commander",
+    "standard",
+    "modern",
+    "legacy",
+    "vintage",
+)
+
+
+def open_text_stream(path):
+    path = Path(path)
+    if path.suffix == ".gz":
+        return gzip.open(path, "rt", encoding="utf-8")
+    return path.open("r", encoding="utf-8")
 
 
 def iter_json_array(path):
     decoder = json.JSONDecoder()
     buf = ""
-    with open(path, "r", encoding="utf-8") as f:
+    with open_text_stream(path) as f:
         # find array start
         while True:
             ch = f.read(1)
@@ -119,6 +136,11 @@ def is_non_paper_print(card):
         if normalized_games and "paper" not in normalized_games:
             return True
     return bool(card.get("digital"))
+
+
+def is_legal_in_supported_paper_format(card, formats=SUPPORTED_PAPER_FORMATS):
+    legalities = card.get("legalities") or {}
+    return any(legalities.get(fmt) == "legal" for fmt in formats)
 
 
 def is_non_playable(card, type_line, oracle_text):

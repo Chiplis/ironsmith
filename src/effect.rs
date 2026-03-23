@@ -3296,6 +3296,16 @@ impl Effect {
         Self::new(GrantBySpecEffect::new(spec, player, duration))
     }
 
+    /// Create an effect that grants the next matching spell this turn a static ability.
+    pub fn grant_next_spell_ability_this_turn(
+        player: crate::target::PlayerFilter,
+        filter: crate::target::ObjectFilter,
+        ability: crate::static_abilities::StaticAbility,
+    ) -> Self {
+        use crate::effects::GrantNextSpellAbilityEffect;
+        Self::new(GrantNextSpellAbilityEffect::new(player, filter, ability))
+    }
+
     /// Create an effect that grants an ability directly to an object.
     ///
     /// This is useful for effects like saga chapters that say "this permanent gains ...".

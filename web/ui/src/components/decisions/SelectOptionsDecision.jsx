@@ -313,7 +313,6 @@ function OptionButton({
       disabled={disabled}
       onPointerDown={(e) => {
         if (disabled || !registerPointerDown(e)) return;
-        if (e.pointerType && e.pointerType !== "mouse") return;
         // Trigger as early as possible so option picks are not lost to
         // document-level pointerup handlers used by hand-drag interactions.
         e.preventDefault();

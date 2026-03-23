@@ -690,7 +690,7 @@ pub(crate) fn check_triggers_with_view(
         && let Some(entry) = game.stack.iter().find(|e| e.object_id == cast.spell)
         && let Some(obj) = game.object(cast.spell)
     {
-        let cascade_count = obj
+        let native_cascade_count = obj
             .abilities
             .iter()
             .filter(|ability| {
@@ -715,6 +715,12 @@ pub(crate) fn check_triggers_with_view(
                 false
             })
             .count();
+        let granted_cascade_count = game
+            .temporary_granted_spell_abilities(cast.spell, cast.caster)
+            .into_iter()
+            .filter(|ability| ability.id() == crate::static_abilities::StaticAbilityId::Cascade)
+            .count();
+        let cascade_count = native_cascade_count + granted_cascade_count;
         if cascade_count > 0 {
             let ability = TriggeredAbility {
                 trigger: Trigger::you_cast_this_spell(),
@@ -1135,4 +1141,50 @@ pub fn verify_intervening_if(
         options: Default::default(),
     };
     crate::condition_eval::evaluate_condition_external(game, condition, &eval_ctx)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::card::CardBuilder;
+    use crate::events::spells::SpellCastEvent;
+    use crate::ids::{CardId, PlayerId};
+    use crate::static_abilities::StaticAbility;
+    use crate::types::CardType;
+
+    #[test]
+    fn temporary_next_spell_cascade_grant_triggers_once() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+
+        let spell = CardBuilder::new(CardId::from_raw(9001), "Test Sorcery")
+            .card_types(vec![CardType::Sorcery])
+            .build();
+        let spell_id = game.create_object_from_card(&spell, alice, Zone::Stack);
+        game.push_to_stack(crate::game_state::StackEntry::new(spell_id, alice));
+
+        game.add_temporary_spell_ability_grant(
+            alice,
+            spell_id,
+            crate::target::ObjectFilter::noncreature_spell().cast_by(crate::PlayerFilter::You),
+            StaticAbility::cascade(),
+            1,
+        );
+
+        let triggered = check_triggers(
+            &game,
+            &TriggerEvent::new_with_provenance(
+                SpellCastEvent::new(spell_id, alice, Zone::Hand),
+                crate::provenance::ProvNodeId::default(),
+            ),
+        );
+        assert_eq!(triggered.len(), 1, "expected one cascade trigger");
+
+        game.consume_temporary_spell_ability_grants_for_spell(spell_id, alice);
+        assert!(
+            game.temporary_granted_spell_abilities(spell_id, alice)
+                .is_empty(),
+            "grant should be consumed after the cast event resolves"
+        );
+    }
 }

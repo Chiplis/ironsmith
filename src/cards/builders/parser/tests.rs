@@ -211,6 +211,19 @@ fn rewrite_lexed_spell_filter_parser_preserves_native_shape() {
 }
 
 #[test]
+fn rewrite_lexed_object_filter_tracks_spell_caster_and_origin_zone() {
+    let tokens = lex_line("enchantment spells you cast from your hand", 0)
+        .expect("rewrite lexer should classify spell grant filter text");
+    let filter =
+        super::parse_object_filter_lexed(&tokens, false).expect("spell grant filter should parse");
+
+    assert_eq!(filter.zone, Some(crate::zone::Zone::Hand));
+    assert_eq!(filter.cast_by, Some(crate::target::PlayerFilter::You));
+    assert_eq!(filter.owner, None);
+    assert_eq!(filter.card_types, vec![CardType::Enchantment]);
+}
+
+#[test]
 fn rewrite_lexed_value_and_permission_helpers_match_existing_semantics() {
     let count_tokens = lex_line("equal to the number of creatures", 0)
         .expect("rewrite lexer should classify count-value clause");
@@ -439,6 +452,39 @@ fn rewrite_lexed_keyword_line_and_static_cost_probe_work_natively() {
         Ok(Some(ability))
             if ability.id() == crate::static_abilities::StaticAbilityId::ThisSpellCostReduction
     ));
+}
+
+#[test]
+fn rewrite_lexed_next_spell_cascade_grants_parse_natively() {
+    let single_tokens = lex_line(
+        "The next noncreature spell you cast this turn has cascade.",
+        0,
+    )
+    .expect("rewrite lexer should classify single next-spell cascade grant");
+    let dual_tokens = lex_line(
+        "The next instant spell and the next sorcery spell you cast this turn each have cascade.",
+        0,
+    )
+    .expect("rewrite lexer should classify dual next-spell cascade grant");
+
+    let single_effects = super::effect_sentences::parse_effect_sentence_lexed(&single_tokens)
+        .expect("single next-spell cascade grant should parse");
+    let dual_effects = super::effect_sentences::parse_effect_sentence_lexed(&dual_tokens)
+        .expect("dual next-spell cascade grant should parse");
+
+    assert!(matches!(
+        single_effects.as_slice(),
+        [crate::cards::builders::EffectAst::GrantNextSpellAbilityThisTurn { .. }]
+    ));
+    assert_eq!(
+        dual_effects.len(),
+        2,
+        "expected one grant per next-spell lane"
+    );
+    assert!(dual_effects.iter().all(|effect| matches!(
+        effect,
+        crate::cards::builders::EffectAst::GrantNextSpellAbilityThisTurn { .. }
+    )));
 }
 
 #[test]
@@ -1516,6 +1562,23 @@ fn rewrite_lexed_effect_sequence_parses_target_opponent_consult_cast_bottom_fami
         debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
         "{debug}"
     );
+}
+
+#[test]
+fn rewrite_lexed_effect_sequence_parses_consult_dynamic_mana_value_gate() {
+    let text = "Exile cards from the top of your library until you exile a nonland card. You may cast the exiled card without paying its mana cost if it's a spell with mana value less than or equal to this's power. Put the exiled cards not cast this way on the bottom of your library in a random order.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify dynamic consult gate");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed).expect("sequence");
+    let debug = format!("{parsed:?}");
+
+    assert!(
+        debug.contains("mana_value: Some(LessThanOrEqualExpr"),
+        "{debug}"
+    );
+    assert!(debug.contains("SourcePower"), "{debug}");
+    assert!(debug.contains("CastTagged"), "{debug}");
+    assert!(debug.contains("MoveToZone"), "{debug}");
 }
 
 #[test]

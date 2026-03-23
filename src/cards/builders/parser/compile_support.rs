@@ -1774,6 +1774,7 @@ pub(crate) fn effect_references_its_controller(effect: &EffectAst) -> bool {
         | EffectAst::PlayFromGraveyardUntilEot { player }
         | EffectAst::AdditionalLandPlays { player, .. }
         | EffectAst::ReduceNextSpellCostThisTurn { player, .. }
+        | EffectAst::GrantNextSpellAbilityThisTurn { player, .. }
         | EffectAst::GrantPlayTaggedUntilEndOfTurn { player, .. }
         | EffectAst::GrantBySpec { player, .. }
         | EffectAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn {
@@ -3189,6 +3190,9 @@ fn preserve_chooser_relative_player_filters(
     if matches!(original.controller, Some(PlayerFilter::IteratedPlayer)) {
         resolved.controller = Some(PlayerFilter::IteratedPlayer);
     }
+    if matches!(original.cast_by, Some(PlayerFilter::IteratedPlayer)) {
+        resolved.cast_by = Some(PlayerFilter::IteratedPlayer);
+    }
     if matches!(original.targets_player, Some(PlayerFilter::IteratedPlayer)) {
         resolved.targets_player = Some(PlayerFilter::IteratedPlayer);
     }
@@ -3243,6 +3247,9 @@ fn bind_relative_iterated_player_filters_to_chooser(
     if matches!(filter.controller, Some(PlayerFilter::IteratedPlayer)) {
         filter.controller = Some(chooser.clone());
     }
+    if matches!(filter.cast_by, Some(PlayerFilter::IteratedPlayer)) {
+        filter.cast_by = Some(chooser.clone());
+    }
     if matches!(filter.targets_player, Some(PlayerFilter::IteratedPlayer)) {
         filter.targets_player = Some(chooser.clone());
     }
@@ -3273,6 +3280,21 @@ fn bind_relative_iterated_player_filters_to_chooser(
     for any_of in &mut filter.any_of {
         bind_relative_iterated_player_filters_to_chooser(any_of, chooser);
     }
+}
+
+fn bind_relative_iterated_player_to_last_player_filter(
+    player_filter: &mut PlayerFilter,
+    filter: &mut ObjectFilter,
+    last_player_filter: &PlayerFilter,
+) {
+    if last_player_filter.mentions_iterated_player() {
+        return;
+    }
+
+    if matches!(player_filter, PlayerFilter::IteratedPlayer) {
+        *player_filter = last_player_filter.clone();
+    }
+    bind_relative_iterated_player_filters_to_chooser(filter, last_player_filter);
 }
 
 fn bind_relative_iterated_player_in_value_to_player_filter(
@@ -4576,7 +4598,7 @@ fn try_compile_player_resource_and_choice_effect(
         EffectAst::AddMana { mana, player } => compile_player_effect(
             *player,
             ctx,
-            false,
+            true,
             || Effect::add_mana(mana.clone()),
             |filter| Effect::add_mana_player(mana.clone(), filter),
         )?,
@@ -4586,7 +4608,7 @@ fn try_compile_player_resource_and_choice_effect(
             player,
         } => {
             let amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
-            compile_player_effect_from_filter(*player, ctx, false, |filter| {
+            compile_player_effect_from_filter(*player, ctx, true, |filter| {
                 Effect::new(crate::effects::mana::AddScaledManaEffect::new(
                     mana.clone(),
                     amount.clone(),
@@ -4603,7 +4625,7 @@ fn try_compile_player_resource_and_choice_effect(
             compile_player_effect(
                 *player,
                 ctx,
-                false,
+                true,
                 || {
                     if let Some(colors) = available_colors.clone() {
                         Effect::add_mana_of_any_color_restricted(amount.clone(), colors)
@@ -4629,7 +4651,7 @@ fn try_compile_player_resource_and_choice_effect(
             compile_player_effect(
                 *player,
                 ctx,
-                false,
+                true,
                 || Effect::add_mana_of_any_one_color(amount.clone()),
                 |filter| Effect::add_mana_of_any_one_color_player(amount.clone(), filter),
             )?
@@ -4640,7 +4662,7 @@ fn try_compile_player_resource_and_choice_effect(
             fixed_option,
         } => {
             let amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
-            compile_player_effect_from_filter(*player, ctx, false, |filter| {
+            compile_player_effect_from_filter(*player, ctx, true, |filter| {
                 if let Some(fixed) = fixed_option {
                     Effect::new(
                         crate::effects::mana::AddManaOfChosenColorEffect::with_fixed_option(
@@ -4665,7 +4687,7 @@ fn try_compile_player_resource_and_choice_effect(
             same_type,
         } => {
             let amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
-            compile_player_effect_from_filter(*player, ctx, false, |filter| {
+            compile_player_effect_from_filter(*player, ctx, true, |filter| {
                 Effect::add_mana_of_land_produced_types_player(
                     amount.clone(),
                     filter,
@@ -4680,7 +4702,7 @@ fn try_compile_player_resource_and_choice_effect(
             compile_player_effect(
                 *player,
                 ctx,
-                false,
+                true,
                 || Effect::add_mana_from_commander_color_identity(amount.clone()),
                 |filter| {
                     Effect::add_mana_from_commander_color_identity_player(amount.clone(), filter)
@@ -4982,15 +5004,53 @@ fn try_compile_timing_and_control_effect(
             filter,
             reduction,
         } => {
-            let player_filter =
+            let mut player_filter =
                 resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
+            let mut resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+            if let Some(last_player_filter) = ctx.last_player_filter.clone() {
+                bind_relative_iterated_player_to_last_player_filter(
+                    &mut player_filter,
+                    &mut resolved_filter,
+                    &last_player_filter,
+                );
+            }
             (
                 vec![Effect::new(
                     crate::effects::GrantNextSpellCostReductionEffect::new(
                         player_filter,
-                        filter.clone(),
+                        resolved_filter,
                         reduction.clone(),
                     ),
+                )],
+                Vec::new(),
+            )
+        }
+        EffectAst::GrantNextSpellAbilityThisTurn {
+            player,
+            filter,
+            ability,
+        } => {
+            let mut player_filter =
+                resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
+            let mut resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+            if let Some(last_player_filter) = ctx.last_player_filter.clone() {
+                bind_relative_iterated_player_to_last_player_filter(
+                    &mut player_filter,
+                    &mut resolved_filter,
+                    &last_player_filter,
+                );
+            }
+            let mut lowered = lower_granted_abilities_ast(std::slice::from_ref(ability))?;
+            let Some(ability) = lowered.pop() else {
+                return Err(CardTextError::ParseError(
+                    "temporary next-spell grant did not lower to a static ability".to_string(),
+                ));
+            };
+            (
+                vec![Effect::grant_next_spell_ability_this_turn(
+                    player_filter,
+                    resolved_filter,
+                    ability,
                 )],
                 Vec::new(),
             )
@@ -10761,5 +10821,74 @@ mod parse_compile_tests {
         ));
         assert!(matches!(move_true.target, ChooseSpec::Iterated));
         assert!(matches!(move_false.target, ChooseSpec::Iterated));
+    }
+
+    #[test]
+    fn compile_next_spell_grant_after_targeted_player_effect_binds_that_player() {
+        let effects = vec![
+            EffectAst::AddManaAnyOneColor {
+                amount: Value::Fixed(2),
+                player: PlayerAst::Target,
+            },
+            EffectAst::GrantNextSpellAbilityThisTurn {
+                player: PlayerAst::That,
+                filter: ObjectFilter::spell().cast_by(PlayerFilter::IteratedPlayer),
+                ability: GrantedAbilityAst::KeywordAction(
+                    crate::cards::builders::KeywordAction::Cascade,
+                ),
+            },
+        ];
+
+        let (compiled, _, _) = compile_effects_with_explicit_frame(
+            &effects,
+            &mut IdGenContext::default(),
+            LoweringFrame::default(),
+        )
+        .expect("targeted player followup should compile");
+
+        let grant = compiled
+            .iter()
+            .find_map(|effect| effect.downcast_ref::<crate::effects::GrantNextSpellAbilityEffect>())
+            .expect("expected next-spell grant effect");
+        assert!(
+            !matches!(grant.player, PlayerFilter::IteratedPlayer),
+            "grant player should bind to the targeted player, got {grant:?}"
+        );
+        assert!(
+            !matches!(grant.filter.cast_by, Some(PlayerFilter::IteratedPlayer)),
+            "grant filter should bind caster to the targeted player, got {grant:?}"
+        );
+    }
+
+    #[test]
+    fn compile_next_spell_grant_with_imported_target_player_binds_that_player() {
+        let effects = vec![EffectAst::GrantNextSpellAbilityThisTurn {
+            player: PlayerAst::That,
+            filter: ObjectFilter::spell().cast_by(PlayerFilter::IteratedPlayer),
+            ability: GrantedAbilityAst::KeywordAction(
+                crate::cards::builders::KeywordAction::Cascade,
+            ),
+        }];
+
+        let frame = LoweringFrame {
+            last_player_filter: Some(PlayerFilter::target_player()),
+            ..Default::default()
+        };
+        let (compiled, _, _) =
+            compile_effects_with_explicit_frame(&effects, &mut IdGenContext::default(), frame)
+                .expect("imported target-player followup should compile");
+
+        let grant = compiled
+            .iter()
+            .find_map(|effect| effect.downcast_ref::<crate::effects::GrantNextSpellAbilityEffect>())
+            .expect("expected next-spell grant effect");
+        assert!(
+            !matches!(grant.player, PlayerFilter::IteratedPlayer),
+            "grant player should bind to the imported targeted player, got {grant:?}"
+        );
+        assert!(
+            !matches!(grant.filter.cast_by, Some(PlayerFilter::IteratedPlayer)),
+            "grant filter should bind caster to the imported targeted player, got {grant:?}"
+        );
     }
 }

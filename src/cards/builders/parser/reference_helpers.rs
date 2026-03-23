@@ -52,7 +52,11 @@ pub(crate) fn resolve_non_target_player_filter(
         )),
         PlayerAst::Opponent => Ok(PlayerFilter::Opponent),
         PlayerAst::That => {
-            if refs.iterated_player {
+            if let Some(filter) = refs.known_last_player_filter()
+                && !filter.mentions_iterated_player()
+            {
+                Ok(filter.clone())
+            } else if refs.iterated_player {
                 Ok(PlayerFilter::IteratedPlayer)
             } else if let Some(filter) = refs.known_last_player_filter() {
                 Ok(filter.clone())
@@ -128,8 +132,9 @@ fn resolve_contextual_player_filter(
     refs: &ReferenceEnv,
 ) -> Result<PlayerFilter, CardTextError> {
     Ok(match filter {
-        PlayerFilter::IteratedPlayer if !refs.iterated_player => refs
+        PlayerFilter::IteratedPlayer => refs
             .known_last_player_filter()
+            .filter(|filter| !filter.mentions_iterated_player())
             .cloned()
             .unwrap_or(PlayerFilter::IteratedPlayer),
         PlayerFilter::Target(inner) => {

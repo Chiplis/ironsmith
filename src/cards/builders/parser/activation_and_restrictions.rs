@@ -28,8 +28,8 @@ use super::object_filters::{parse_object_filter, parse_object_filter_lexed, pars
 use super::util::{
     is_source_reference_words, mana_pips_from_token, parse_card_type, parse_color,
     parse_counter_type_from_tokens, parse_non_type, parse_number, parse_number_word_u32,
-    parse_target_count_range_prefix, parse_target_phrase, span_from_tokens, split_on_and,
-    split_on_period, trim_commas, words,
+    parse_subject, parse_target_count_range_prefix, parse_target_phrase, span_from_tokens,
+    split_on_and, split_on_period, trim_commas, words,
 };
 #[allow(unused_imports)]
 use crate::ability::{Ability, AbilityKind, ActivatedAbility, ActivationTiming};
@@ -178,9 +178,11 @@ pub(crate) fn parse_activated_line_with_raw(
 
             let add_token_idx = primary_sentence
                 .iter()
-                .position(|token| token.is_word("add"))
+                .position(|token| token.is_word("add") || token.is_word("adds"))
                 .unwrap_or(0);
             let mana_tokens = &primary_sentence[add_token_idx + 1..];
+            let mana_subject =
+                (add_token_idx > 0).then(|| parse_subject(&primary_sentence[..add_token_idx]));
             let mana_words = words(mana_tokens);
             let has_for_each_tail = mana_tokens
                 .windows(2)
@@ -235,7 +237,7 @@ pub(crate) fn parse_activated_line_with_raw(
                 || uses_commander_identity
                 || has_chosen_color
             {
-                let mut mana_ast = parse_add_mana(mana_tokens, None)?;
+                let mut mana_ast = parse_add_mana(mana_tokens, mana_subject.clone())?;
                 resolve_activated_mana_x_requirements(
                     &mut mana_ast,
                     primary_sentence,
@@ -305,7 +307,7 @@ pub(crate) fn parse_activated_line_with_raw(
                         trigger_spec: None,
                     }));
                 }
-                let mut mana_ast = parse_add_mana(mana_tokens, None)?;
+                let mut mana_ast = parse_add_mana(mana_tokens, mana_subject)?;
                 resolve_activated_mana_x_requirements(
                     &mut mana_ast,
                     primary_sentence,

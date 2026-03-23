@@ -8048,16 +8048,56 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(grant_next_spell_cost_reduction) =
         effect.downcast_ref::<crate::effects::GrantNextSpellCostReductionEffect>()
     {
+        let player_text = describe_player_filter(&grant_next_spell_cost_reduction.player);
         let spell_text = describe_cast_limit_spell_filter(&grant_next_spell_cost_reduction.filter);
         let spell_text = spell_text
             .strip_prefix("spell matching ")
-            .map(|rest| format!("{rest} spell"))
+            .map(|rest| {
+                if rest.contains("spell") || rest.contains("spells") {
+                    rest.to_string()
+                } else {
+                    format!("{rest} spell")
+                }
+            })
             .unwrap_or(spell_text);
+        let player_suffix = format!(" cast by {player_text}");
+        let spell_text = spell_text
+            .strip_suffix(player_suffix.as_str())
+            .unwrap_or(spell_text.as_str());
         return format!(
             "The next {} {} cast this turn costs {} less to cast",
             spell_text,
-            describe_player_filter(&grant_next_spell_cost_reduction.player),
+            player_text,
             grant_next_spell_cost_reduction.reduction.to_oracle(),
+        );
+    }
+    if let Some(grant_next_spell_ability) =
+        effect.downcast_ref::<crate::effects::GrantNextSpellAbilityEffect>()
+    {
+        let player_text = describe_player_filter(&grant_next_spell_ability.player);
+        let spell_text = describe_cast_limit_spell_filter(&grant_next_spell_ability.filter);
+        let spell_text = spell_text
+            .strip_prefix("spell matching ")
+            .map(|rest| {
+                if rest.contains("spell") || rest.contains("spells") {
+                    rest.to_string()
+                } else {
+                    format!("{rest} spell")
+                }
+            })
+            .unwrap_or(spell_text);
+        let player_suffix = format!(" cast by {player_text}");
+        let spell_text = spell_text
+            .strip_suffix(player_suffix.as_str())
+            .unwrap_or(spell_text.as_str());
+        let granted_text = grant_next_spell_ability
+            .ability
+            .granted_inline_ability()
+            .map(describe_inline_ability)
+            .unwrap_or_else(|| grant_next_spell_ability.ability.display());
+        return format!(
+            "The next {} {} cast this turn has {}",
+            spell_text, player_text, granted_text,
         );
     }
     if effect

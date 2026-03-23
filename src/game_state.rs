@@ -389,6 +389,22 @@ impl TemporarySpellCostReductionEffectInstance {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct TemporarySpellAbilityGrantEffectInstance {
+    pub player: PlayerId,
+    pub source: ObjectId,
+    pub filter: crate::target::ObjectFilter,
+    pub ability: crate::static_abilities::StaticAbility,
+    pub remaining_uses: u32,
+    pub expires_end_of_turn: u32,
+}
+
+impl TemporarySpellAbilityGrantEffectInstance {
+    pub fn is_expired(&self, current_turn: u32) -> bool {
+        self.remaining_uses == 0 || current_turn > self.expires_end_of_turn
+    }
+}
+
 impl CantEffectTracker {
     /// Create a new empty tracker.
     pub fn new() -> Self {
@@ -1352,6 +1368,9 @@ pub struct GameState {
     /// Temporary spell-cost reductions waiting for the next matching spell this turn.
     pub temporary_spell_cost_reductions: Vec<TemporarySpellCostReductionEffectInstance>,
 
+    /// Temporary spell-ability grants waiting for the next matching spell this turn.
+    pub temporary_spell_ability_grants: Vec<TemporarySpellAbilityGrantEffectInstance>,
+
     /// Active restriction effects (spell/ability-based "can't" effects).
     pub restriction_effects: Vec<RestrictionEffectInstance>,
 
@@ -1507,6 +1526,7 @@ impl GameState {
             combat_damage_player_batch_hits: Vec::new(),
             granted_mana_abilities: Vec::new(),
             temporary_spell_cost_reductions: Vec::new(),
+            temporary_spell_ability_grants: Vec::new(),
             restriction_effects: Vec::new(),
             goad_effects: Vec::new(),
             // Battlefield state extension maps
@@ -1680,6 +1700,96 @@ impl GameState {
             });
     }
 
+    pub fn add_temporary_spell_ability_grant(
+        &mut self,
+        player: PlayerId,
+        source: ObjectId,
+        filter: crate::target::ObjectFilter,
+        ability: crate::static_abilities::StaticAbility,
+        remaining_uses: u32,
+    ) {
+        self.temporary_spell_ability_grants
+            .push(TemporarySpellAbilityGrantEffectInstance {
+                player,
+                source,
+                filter,
+                ability,
+                remaining_uses,
+                expires_end_of_turn: self.turn.turn_number,
+            });
+    }
+
+    pub fn temporary_granted_spell_abilities(
+        &self,
+        spell_id: ObjectId,
+        player: PlayerId,
+    ) -> Vec<crate::static_abilities::StaticAbility> {
+        let Some(spell_obj) = self.object(spell_id).cloned() else {
+            return Vec::new();
+        };
+        let current_turn = self.turn.turn_number;
+        let ctx = crate::filter::FilterContext::new(player)
+            .with_source(spell_id)
+            .with_active_player(self.turn.active_player)
+            .with_opponents(
+                self.turn_order
+                    .iter()
+                    .copied()
+                    .filter(|player_id| *player_id != player)
+                    .collect(),
+            )
+            .with_caster(Some(player));
+        self.temporary_spell_ability_grants
+            .iter()
+            .filter(|effect| {
+                effect.player == player
+                    && !effect.is_expired(current_turn)
+                    && effect.filter.matches(&spell_obj, &ctx, self)
+            })
+            .map(|effect| effect.ability.clone())
+            .collect()
+    }
+
+    pub fn consume_temporary_spell_ability_grants_for_spell(
+        &mut self,
+        spell_id: ObjectId,
+        player: PlayerId,
+    ) {
+        let Some(spell_obj) = self.object(spell_id).cloned() else {
+            return;
+        };
+        let current_turn = self.turn.turn_number;
+        let ctx = crate::filter::FilterContext::new(player)
+            .with_source(spell_id)
+            .with_active_player(self.turn.active_player)
+            .with_opponents(
+                self.turn_order
+                    .iter()
+                    .copied()
+                    .filter(|player_id| *player_id != player)
+                    .collect(),
+            )
+            .with_caster(Some(player));
+        let matching = self
+            .temporary_spell_ability_grants
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, effect)| {
+                (effect.player == player
+                    && !effect.is_expired(current_turn)
+                    && effect.filter.matches(&spell_obj, &ctx, self))
+                .then_some(idx)
+            })
+            .collect::<Vec<_>>();
+        for idx in matching {
+            if let Some(effect) = self.temporary_spell_ability_grants.get_mut(idx)
+                && effect.remaining_uses > 0
+            {
+                effect.remaining_uses -= 1;
+            }
+        }
+    }
+
     pub fn active_goaders_for(&self, creature: ObjectId) -> HashSet<PlayerId> {
         let current_turn = self.turn.turn_number;
         self.goad_effects
@@ -1710,6 +1820,12 @@ impl GameState {
     pub fn cleanup_temporary_spell_cost_reductions_end_of_turn(&mut self) {
         let current_turn = self.turn.turn_number;
         self.temporary_spell_cost_reductions
+            .retain(|effect| !effect.is_expired(current_turn));
+    }
+
+    pub fn cleanup_temporary_spell_ability_grants_end_of_turn(&mut self) {
+        let current_turn = self.turn.turn_number;
+        self.temporary_spell_ability_grants
             .retain(|effect| !effect.is_expired(current_turn));
     }
 

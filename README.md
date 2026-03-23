@@ -81,6 +81,7 @@ That boundary is important because it keeps the engine honest: parser coverage i
 
 The repo expects a local, gitignored [`cards.json`](cards.json) Scryfall-style dump for bulk parsing and registry generation.
 
+- [`scripts/download_scryfall_cards.py`](scripts/download_scryfall_cards.py) downloads the official Scryfall `oracle_cards` bulk export and filters it down to paper cards that are legal in Commander, Standard, Modern, Legacy, or Vintage.
 - [`scripts/stream_scryfall_blocks.py`](scripts/stream_scryfall_blocks.py) streams playable cards as parser input blocks.
 - [`scripts/generate_baked_registry.py`](scripts/generate_baked_registry.py) converts bulk card data into generated Rust source used by the registry build.
 - [`build.rs`](build.rs) generates a stub registry unless the `generated-registry` feature is enabled.
@@ -417,6 +418,12 @@ You will typically want:
 `cards.json` is intentionally gitignored, along with most generated reports and CSV/JSON outputs.
 
 ### Common Commands
+
+Refresh the local filtered Scryfall dump:
+
+```bash
+python3 scripts/download_scryfall_cards.py
+```
 
 Run the interactive CLI:
 

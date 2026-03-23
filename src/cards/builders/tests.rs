@@ -2937,6 +2937,49 @@ fn test_parse_cascade_keyword_line() {
 }
 
 #[test]
+fn test_parse_spells_you_cast_have_cascade_line() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Imoti Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Spells you cast with mana value 6 or greater have cascade.")
+        .expect("spell-grant cascade line should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("spells you cast with mana value 6 or greater have cascade"),
+        "expected cascade grant in render output, got {rendered}"
+    );
+    let debug = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        debug.contains("grantability")
+            && debug.contains("cascade")
+            && debug.contains("cast_by: some")
+            && debug.contains("you"),
+        "expected granted cascade static ability, got {debug}"
+    );
+}
+
+#[test]
+fn test_parse_colorless_spells_from_hand_have_double_cascade_line() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Zhulodok Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Colorless spells you cast from your hand with mana value 7 or greater have \"Cascade, cascade.\"",
+        )
+        .expect("double-cascade spell grant line should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Cascade, cascade"),
+        "expected doubled cascade text in render output, got {rendered}"
+    );
+    let debug = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        debug.matches("cascade").count() >= 2,
+        "expected two granted cascade abilities, got {debug}"
+    );
+}
+
+#[test]
 fn test_parse_riot_keyword_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Riot Probe")
         .card_types(vec![CardType::Creature])
@@ -16199,6 +16242,52 @@ fn parse_panoptic_projektor_full_text_compiles() {
 }
 
 #[test]
+fn parse_next_spell_cascade_family_compiles() {
+    for (name, card_types, text) in [
+        (
+            "Dark Apostle",
+            vec![CardType::Creature],
+            "Gift of Chaos — {3}, {T}: The next noncreature spell you cast this turn has cascade. (When you cast that spell, exile cards from the top of your library until you exile a nonland card that costs less. You may cast it without paying its mana cost. Put the exiled cards on the bottom in a random order.)",
+        ),
+        (
+            "Sloppity Bilepiper",
+            vec![CardType::Creature],
+            "Jolly Gutpipes — {2}, {T}, Sacrifice a creature: The next creature spell you cast this turn has cascade. (When you next cast a creature spell, exile cards from the top of your library until you exile a nonland card that costs less. You may cast it without paying its mana cost. Put the exiled cards on the bottom in a random order.)",
+        ),
+        (
+            "Smoldering Stagecoach",
+            vec![CardType::Creature],
+            "Smoldering Stagecoach's power is equal to the number of instant and sorcery cards in your graveyard.\nWhenever Smoldering Stagecoach attacks, the next instant spell and the next sorcery spell you cast this turn each have cascade.",
+        ),
+        (
+            "Bigger on the Inside",
+            vec![CardType::Enchantment],
+            "Enchant artifact or land\nEnchanted permanent has \"{T}: Target player adds two mana of any one color. The next spell they cast this turn has cascade.\" (When they cast their next spell, they exile cards from the top of their library until they exile a nonland card that costs less. They may cast it without paying its mana cost. They put the exiled cards on the bottom in a random order.)",
+        ),
+    ] {
+        CardDefinitionBuilder::new(CardId::from_raw(1), name)
+            .card_types(card_types)
+            .parse_text(text)
+            .unwrap_or_else(|err| panic!("{name} should compile, got {err:?}"));
+    }
+}
+
+#[test]
+fn parse_next_spell_cascade_family_renders_cleanly() {
+    let dark_apostle = CardDefinitionBuilder::new(CardId::from_raw(1), "Dark Apostle")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Gift of Chaos — {3}, {T}: The next noncreature spell you cast this turn has cascade. (When you cast that spell, exile cards from the top of your library until you exile a nonland card that costs less. You may cast it without paying its mana cost. Put the exiled cards on the bottom in a random order.)",
+        )
+        .expect("Dark Apostle should compile");
+    let dark_rendered = compiled_lines(&dark_apostle).join(" ");
+    assert!(
+        dark_rendered.contains("The next noncreature spell you cast this turn has Cascade."),
+        "expected clean next-spell render for Dark Apostle, got {dark_rendered}"
+    );
+}
+
+#[test]
 fn parse_wayta_trainer_prodigy_full_text_compiles() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Wayta, Trainer Prodigy")
         .card_types(vec![CardType::Creature])
@@ -17127,6 +17216,63 @@ fn parse_oracle_chaos_wand_uses_consult_cast_bottom_path() {
     assert!(
         !abilities_debug.contains("ChooseObjectsEffect"),
         "expected consult lowering instead of raw library chooser, got {abilities_debug}"
+    );
+}
+
+#[test]
+fn parse_oracle_ryan_sinclair_uses_dynamic_consult_gate() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Ryan Sinclair")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Whenever Ryan attacks, exile cards from the top of your library until you exile a nonland card. You may cast the exiled card without paying its mana cost if it's a spell with mana value less than or equal to Ryan's power. Put the exiled cards not cast this way on the bottom of your library in a random order.",
+        )
+        .expect("ryan sinclair should parse");
+
+    let abilities_debug = format!("{:#?}", def.abilities);
+    assert!(
+        abilities_debug.contains("CastTaggedEffect"),
+        "expected immediate tagged cast in consult follow-up, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("MoveToZoneEffect") && abilities_debug.contains("zone: Library"),
+        "expected exiled remainder to return to library bottom, got {abilities_debug}"
+    );
+}
+
+#[test]
+fn parse_oracle_solstice_revelations_uses_dynamic_consult_gate_with_hand_fallback() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Solstice Revelations")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Exile cards from the top of your library until you exile a nonland card. You may cast that card without paying its mana cost if the spell's mana value is less than the number of Mountains you control. If you don't cast that card this way, put it into your hand.\nFlashback {6}{R}",
+        )
+        .expect("solstice revelations should parse");
+
+    let spell_debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        spell_debug.contains("Condition::ValueComparison")
+            || spell_debug.contains("ValueComparison"),
+        "expected mana-value gate in consult follow-up, got {spell_debug}"
+    );
+    assert!(
+        spell_debug.contains("MoveToZoneEffect") && spell_debug.contains("zone: Hand"),
+        "expected declined-cast hand fallback, got {spell_debug}"
+    );
+}
+
+#[test]
+fn parse_oracle_synthesis_pod_accepts_that_exiled_card_cast_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Synthesis Pod")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "({U/P} can be paid with either {U} or 2 life.)\n{1}{U/P}, {T}, Exile a spell you control: Target opponent reveals cards from the top of their library until they reveal a card with mana value equal to 1 plus the exiled spell's mana value. Exile that card, then that player shuffles. You may cast that exiled card without paying its mana cost.",
+        )
+        .expect("synthesis pod should parse");
+
+    let abilities_debug = format!("{:#?}", def.abilities);
+    assert!(
+        abilities_debug.contains("CastTaggedEffect"),
+        "expected tagged cast effect from exiled-card clause, got {abilities_debug}"
     );
 }
 

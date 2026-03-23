@@ -88,6 +88,27 @@ function collectCardObjectIds(card) {
   return ids.filter((id) => Number.isFinite(id));
 }
 
+function collectActivatableActionsForCard(card, activatableMap) {
+  if (!card || !activatableMap) return [];
+
+  const actions = [];
+  const seenActionIndices = new Set();
+
+  for (const objectId of collectCardObjectIds(card)) {
+    if (!activatableMap.has(objectId)) continue;
+    for (const action of activatableMap.get(objectId) || []) {
+      const actionIndex = Number(action?.index);
+      if (Number.isFinite(actionIndex)) {
+        if (seenActionIndices.has(actionIndex)) continue;
+        seenActionIndices.add(actionIndex);
+      }
+      actions.push(action);
+    }
+  }
+
+  return actions;
+}
+
 function buildActivatableMap(decision) {
   const activatableMap = new Map();
   if (decision?.kind !== "priority" || !Array.isArray(decision.actions)) {
@@ -341,8 +362,37 @@ export default function MobileBattleScene({
       decision?.description || "",
     ].join("|");
   }, [state?.decision]);
+  const legalSelectableObjectIds = useMemo(() => {
+    const ids = new Set();
+    const decision = state?.decision || null;
+    if (!decision) return ids;
+
+    if (decision.kind === "targets") {
+      for (const req of decision.requirements || []) {
+        for (const target of req.legal_targets || []) {
+          if (target?.kind === "object" && target.object != null) {
+            ids.add(Number(target.object));
+          }
+        }
+      }
+      return ids;
+    }
+
+    if (decision.kind === "select_objects") {
+      for (const candidate of decision.candidates || []) {
+        if (candidate?.legal === false || candidate?.id == null) continue;
+        ids.add(Number(candidate.id));
+      }
+    }
+
+    return ids;
+  }, [state?.decision]);
   const canPickTargets = state?.decision?.kind === "targets"
     && state?.decision?.player === state?.perspective;
+  const canPickBattlefieldObjects = (
+    (state?.decision?.kind === "targets" || state?.decision?.kind === "select_objects")
+    && state?.decision?.player === state?.perspective
+  );
   const inspectorOpen = selectedObjectId != null;
 
   useEffect(() => {
@@ -501,9 +551,12 @@ export default function MobileBattleScene({
     setControlDockNode(node);
   }, []);
 
-  const openObjectActions = useCallback(({ card, actions = [], anchorRect = null }) => {
+  const openObjectActions = useCallback(({ card, actions = null, anchorRect = null }) => {
     if (selectedObjectId != null) return false;
-    if (!Array.isArray(actions) || actions.length === 0 || state?.decision?.kind !== "priority") {
+    const resolvedActions = Array.isArray(actions)
+      ? actions
+      : collectActivatableActionsForCard(card, activatableMap);
+    if (resolvedActions.length === 0 || state?.decision?.kind !== "priority") {
       return false;
     }
 
@@ -524,13 +577,13 @@ export default function MobileBattleScene({
         objectId: Number(card?.id),
         cardName: card?.name || "Actions",
         anchorRect: normalizedAnchorRect,
-        actions,
+        actions: resolvedActions,
         decisionIdentity,
       };
     });
     onInspect?.(null);
     return true;
-  }, [decisionIdentity, onInspect, selectedObjectId, state?.decision?.kind]);
+  }, [activatableMap, decisionIdentity, onInspect, selectedObjectId, state?.decision?.kind]);
 
   const inspectHeldObject = useCallback(({ card }) => {
     closeActionPopover();
@@ -547,22 +600,24 @@ export default function MobileBattleScene({
   }, [closeActionPopover, dispatch]);
 
   const handleCardInspect = useCallback((event, card) => {
-    if (selectedObjectId != null) return;
-    if (canPickTargets && !shouldHandleClick(event)) return;
+    if (canPickBattlefieldObjects && !shouldHandleClick(event)) return;
     const candidateObjectIds = collectCardObjectIds(card);
-    if (canPickTargets) {
-      const matchedTargetId = candidateObjectIds.find((id) => legalTargetObjectIds.has(id));
+    if (canPickBattlefieldObjects) {
+      const matchedTargetId = candidateObjectIds.find((id) => legalSelectableObjectIds.has(id));
       if (matchedTargetId != null) {
-        window.dispatchEvent(
-          new CustomEvent("ironsmith:target-choice", {
-            detail: { target: { kind: "object", object: matchedTargetId } },
-          })
-        );
+        const eventName = state?.decision?.kind === "select_objects"
+          ? "ironsmith:select-object-choice"
+          : "ironsmith:target-choice";
+        const detail = state?.decision?.kind === "select_objects"
+          ? { objectId: matchedTargetId }
+          : { target: { kind: "object", object: matchedTargetId } };
+        window.dispatchEvent(new CustomEvent(eventName, { detail }));
         return;
       }
     }
+    if (selectedObjectId != null) return;
     requestInspectObject(card.id, { candidateObjectIds });
-  }, [canPickTargets, legalTargetObjectIds, requestInspectObject, selectedObjectId, shouldHandleClick]);
+  }, [canPickBattlefieldObjects, legalSelectableObjectIds, requestInspectObject, selectedObjectId, shouldHandleClick, state?.decision?.kind]);
 
   const opponentCardFromPointerEvent = useCallback((event) => {
     const withinExpandedRect = (rect, x, y) => (
@@ -671,7 +726,7 @@ export default function MobileBattleScene({
   }, [opponentBandSelector, opponentCardById]);
 
   const handleOpponentBandPointerDownCapture = useCallback((event) => {
-    if (canPickTargets) {
+    if (canPickBattlefieldObjects) {
       opponentTapRef.current = null;
       return;
     }
@@ -692,13 +747,13 @@ export default function MobileBattleScene({
       startX: event.clientX,
       startY: event.clientY,
     };
-  }, [canPickTargets, opponentCardFromPointerEvent]);
+  }, [canPickBattlefieldObjects, opponentCardFromPointerEvent]);
 
   const handleOpponentBandPointerUpCapture = useCallback((event) => {
     const pendingTap = opponentTapRef.current;
     opponentTapRef.current = null;
 
-    if (canPickTargets || !pendingTap) return;
+    if (canPickBattlefieldObjects || !pendingTap) return;
     if (pendingTap.pointerId != null && event.pointerId !== pendingTap.pointerId) return;
 
     const deltaX = event.clientX - pendingTap.startX;
@@ -715,8 +770,17 @@ export default function MobileBattleScene({
       return;
     }
 
-    handleCardInspect(event, resolvedCard);
-  }, [canPickTargets, handleCardInspect, opponentCardFromPointerEvent, opponentCardById]);
+    const didOpenMenu = openObjectActions({
+      card: resolvedCard,
+      anchorRect: event.target instanceof Element
+        ? event.target.closest(".game-card[data-object-id]")?.getBoundingClientRect?.() || null
+        : null,
+    });
+    if (didOpenMenu) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }, [canPickBattlefieldObjects, openObjectActions, opponentCardFromPointerEvent, opponentCardById]);
 
   const handleOpponentBandPointerCancelCapture = useCallback(() => {
     opponentTapRef.current = null;
@@ -729,18 +793,20 @@ export default function MobileBattleScene({
   }, []);
 
   const handleCardTargetPointerDown = useCallback((event, card) => {
-    if (!canPickTargets || !registerPointerDown(event)) return;
+    if (!canPickBattlefieldObjects || !registerPointerDown(event)) return;
     const candidateObjectIds = collectCardObjectIds(card);
-    const matchedTargetId = candidateObjectIds.find((id) => legalTargetObjectIds.has(id));
+    const matchedTargetId = candidateObjectIds.find((id) => legalSelectableObjectIds.has(id));
     if (matchedTargetId == null) return;
     event.preventDefault();
     event.stopPropagation();
-    window.dispatchEvent(
-      new CustomEvent("ironsmith:target-choice", {
-        detail: { target: { kind: "object", object: matchedTargetId } },
-      })
-    );
-  }, [canPickTargets, legalTargetObjectIds, registerPointerDown]);
+    const eventName = state?.decision?.kind === "select_objects"
+      ? "ironsmith:select-object-choice"
+      : "ironsmith:target-choice";
+    const detail = state?.decision?.kind === "select_objects"
+      ? { objectId: matchedTargetId }
+      : { target: { kind: "object", object: matchedTargetId } };
+    window.dispatchEvent(new CustomEvent(eventName, { detail }));
+  }, [canPickBattlefieldObjects, legalSelectableObjectIds, registerPointerDown, state?.decision?.kind]);
 
   const dispatchOpponentPlayerChoice = useCallback(() => {
     if (!canPickTargets || !activeOpponent) return;
@@ -921,7 +987,7 @@ export default function MobileBattleScene({
             onMobileCardActionMenu={openObjectActions}
             onMobileCardLongPress={inspectHeldObject}
             activatableMap={activatableMap}
-            legalTargetObjectIds={legalTargetObjectIds}
+            legalTargetObjectIds={legalSelectableObjectIds}
             className="mobile-battle-lane--opponent"
           />
           <BattlefieldLane
@@ -935,7 +1001,7 @@ export default function MobileBattleScene({
             onMobileCardActionMenu={openObjectActions}
             onMobileCardLongPress={inspectHeldObject}
             activatableMap={activatableMap}
-            legalTargetObjectIds={legalTargetObjectIds}
+            legalTargetObjectIds={legalSelectableObjectIds}
             className="mobile-battle-lane--opponent"
           />
         </section>
@@ -1027,7 +1093,7 @@ export default function MobileBattleScene({
             onMobileCardActionMenu={openObjectActions}
             onMobileCardLongPress={inspectHeldObject}
             activatableMap={activatableMap}
-            legalTargetObjectIds={legalTargetObjectIds}
+            legalTargetObjectIds={legalSelectableObjectIds}
             className="mobile-battle-lane--self-front"
           />
           <BattlefieldLane
@@ -1042,7 +1108,7 @@ export default function MobileBattleScene({
             onMobileCardActionMenu={openObjectActions}
             onMobileCardLongPress={inspectHeldObject}
             activatableMap={activatableMap}
-            legalTargetObjectIds={legalTargetObjectIds}
+            legalTargetObjectIds={legalSelectableObjectIds}
             className="mobile-battle-lane--self-back"
           />
         </section>
