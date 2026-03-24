@@ -3406,6 +3406,14 @@ fn split_cant_clause_on_or(tokens: &[OwnedLexToken]) -> Option<Vec<Vec<OwnedLexT
     let (neg_start, neg_end) = find_negation_span(tokens)?;
     let subject_tokens = trim_commas(&tokens[..neg_start]);
     let remainder_tokens = trim_commas(&tokens[neg_end..]);
+    let remainder_words_storage = normalize_cant_words(&remainder_tokens);
+    let remainder_words = remainder_words_storage
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    if remainder_words.starts_with(&["attack", "or", "block"]) {
+        return None;
+    }
     let or_idx = remainder_tokens
         .iter()
         .position(|token| token.is_word("or"))?;
@@ -5168,10 +5176,7 @@ fn parse_player_restriction_subject(
                 Some(target),
             )));
         }
-        return Err(CardTextError::ParseError(format!(
-            "unsupported target restriction subject (clause: '{}')",
-            words(subject_tokens).join(" ")
-        )));
+        return Ok(None);
     }
 
     let normalized_storage = normalize_cant_words(subject_tokens);

@@ -533,14 +533,20 @@ pub(crate) fn parse_static_ability_ast_line_lexed(
     if sentences.len() > 1 {
         let mut combined = Vec::new();
         for sentence in sentences {
-            let Some(mut parsed) = parse_static_ability_ast_line_lexed(sentence)? else {
-                return Ok(None);
-            };
-            combined.append(&mut parsed);
+            match parse_static_ability_ast_line_lexed_single(sentence) {
+                Ok(Some(mut parsed)) => combined.append(&mut parsed),
+                Ok(None) | Err(_) => return parse_static_ability_ast_line_lexed_single(tokens),
+            }
         }
         return Ok((!combined.is_empty()).then_some(combined));
     }
 
+    parse_static_ability_ast_line_lexed_single(tokens)
+}
+
+fn parse_static_ability_ast_line_lexed_single(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let lowered = lowercase_word_tokens(tokens);
     let words = words(&lowered);
     if matches!(
@@ -1554,7 +1560,9 @@ fn parse_graveyard_metric_threshold_condition(
     }
 
     let quantified = &tokens[2..];
-    let (comparison, used) = parse_static_quantity_prefix(quantified, false)?;
+    let Ok((comparison, used)) = parse_static_quantity_prefix(quantified, false) else {
+        return Ok(None);
+    };
     let Some(threshold) = comparison_to_at_least_threshold(&comparison) else {
         return Ok(None);
     };

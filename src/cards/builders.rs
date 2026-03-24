@@ -10509,7 +10509,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         let debug = format!("{err:?}");
         assert!(
             debug.contains("unsupported conditional gain-control clause")
-                || debug.contains("unsupported power-vs-count conditional clause"),
+                || debug.contains("unsupported power-vs-count conditional clause")
+                || debug.contains("unsupported predicate"),
             "expected strict conditional gain-control rejection, got {debug}"
         );
     }

@@ -381,14 +381,35 @@ fn uses_all_zone_functional_zones(static_ability: &StaticAbility) -> bool {
 
 fn infer_static_ability_functional_zones(normalized_line: &str) -> Option<Vec<Zone>> {
     let mut zones = Vec::new();
-    for (needle, zone) in [
-        ("this card is in your hand", Zone::Hand),
-        ("this card is in your graveyard", Zone::Graveyard),
-        ("this card is in your library", Zone::Library),
-        ("this card is in exile", Zone::Exile),
-        ("this card is in the command zone", Zone::Command),
+    for (needles, zone) in [
+        (
+            &["this card is in your hand", "there is this card in your hand"][..],
+            Zone::Hand,
+        ),
+        (
+            &[
+                "this card is in your graveyard",
+                "there is this card in your graveyard",
+            ][..],
+            Zone::Graveyard,
+        ),
+        (
+            &["this card is in your library", "there is this card in your library"][..],
+            Zone::Library,
+        ),
+        (
+            &["this card is in exile", "there is this card in exile"][..],
+            Zone::Exile,
+        ),
+        (
+            &[
+                "this card is in the command zone",
+                "there is this card in the command zone",
+            ][..],
+            Zone::Command,
+        ),
     ] {
-        if normalized_line.contains(needle) {
+        if needles.iter().any(|needle| normalized_line.contains(needle)) {
             zones.push(zone);
         }
     }

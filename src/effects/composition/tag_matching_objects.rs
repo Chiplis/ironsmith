@@ -48,7 +48,7 @@ impl TagMatchingObjectsEffect {
 
     fn zones(&self) -> Vec<Zone> {
         let mut zones = Vec::new();
-        if let Some(zone) = self.filter.zone.or(self.zone) {
+        if let Some(zone) = self.zone.or(self.filter.zone) {
             zones.push(zone);
         }
         for zone in &self.additional_zones {

@@ -1549,6 +1549,10 @@ pub(crate) fn parse_static_condition_clause(
         }
     }
 
+    if let Some(conjoined) = parse_conjoined_static_condition_clause(&tokens) {
+        return Ok(conjoined);
+    }
+
     if clause_words.starts_with(&["there", "are"]) || clause_words.starts_with(&["there", "is"]) {
         if let Some((metric, threshold)) = parse_graveyard_metric_threshold_condition(&tokens)? {
             if metric == crate::static_abilities::GraveyardCountMetric::CardTypes {
@@ -1560,7 +1564,10 @@ pub(crate) fn parse_static_condition_clause(
         }
 
         let quantified = &tokens[2..];
-        let (comparison, used) = parse_static_quantity_prefix(quantified, false)?;
+        let (comparison, used) = parse_static_quantity_prefix(
+            quantified,
+            clause_words.starts_with(&["there", "is"]),
+        )?;
         let mut filter_tokens = &quantified[used..];
         if filter_tokens
             .first()
@@ -1575,14 +1582,39 @@ pub(crate) fn parse_static_condition_clause(
             )));
         }
 
-        let filter = parse_permanent_card_count_filter(filter_tokens)
-            .or_else(|| parse_object_filter(filter_tokens, false).ok())
-            .ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "unsupported counted object phrase in static condition (clause: '{}')",
-                    clause_words.join(" ")
-                ))
-            })?;
+        let filter_words = words(filter_tokens);
+        let filter = if let Some(in_idx) = filter_words.iter().position(|word| *word == "in") {
+            let subject_words = &filter_words[..in_idx];
+            let zone_tail = &filter_words[in_idx..];
+            if is_source_reference_words(subject_words)
+                && matches!(
+                    zone_tail,
+                    ["in", "your", "graveyard"] | ["in", "graveyard"]
+                )
+            {
+                let mut filter = ObjectFilter::source();
+                filter.zone = Some(Zone::Graveyard);
+                filter
+            } else {
+                parse_permanent_card_count_filter(filter_tokens)
+                    .or_else(|| parse_object_filter(filter_tokens, false).ok())
+                    .ok_or_else(|| {
+                        CardTextError::ParseError(format!(
+                            "unsupported counted object phrase in static condition (clause: '{}')",
+                            clause_words.join(" ")
+                        ))
+                    })?
+            }
+        } else {
+            parse_permanent_card_count_filter(filter_tokens)
+                .or_else(|| parse_object_filter(filter_tokens, false).ok())
+                .ok_or_else(|| {
+                    CardTextError::ParseError(format!(
+                        "unsupported counted object phrase in static condition (clause: '{}')",
+                        clause_words.join(" ")
+                    ))
+                })?
+        };
         return Ok(crate::ConditionExpr::CountComparison {
             count: AnthemCountExpression::MatchingFilter(filter),
             comparison,
@@ -1729,10 +1761,6 @@ pub(crate) fn parse_static_condition_clause(
                 display: Some(clause_words.join(" ")),
             });
         }
-    }
-
-    if let Some(conjoined) = parse_conjoined_static_condition_clause(&tokens) {
-        return Ok(conjoined);
     }
 
     Err(CardTextError::ParseError(format!(

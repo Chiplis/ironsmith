@@ -1289,6 +1289,12 @@ pub(crate) fn parse_enters_tapped_for_filter_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let clause_words = words(tokens);
+    if matches!(
+        clause_words.first().copied(),
+        Some("if" | "when" | "whenever" | "as")
+    ) {
+        return Ok(None);
+    }
     if is_negated_untap_clause(&clause_words) {
         let has_enters_tapped = clause_words.contains(&"enter") || clause_words.contains(&"enters");
         let has_tapped = clause_words.contains(&"tapped");
@@ -1359,6 +1365,12 @@ pub(crate) fn parse_enters_untapped_for_filter_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let clause_words = words(tokens);
+    if matches!(
+        clause_words.first().copied(),
+        Some("if" | "when" | "whenever" | "as")
+    ) {
+        return Ok(None);
+    }
     if clause_words.contains(&"unless") || clause_words.first().copied() == Some("this") {
         return Ok(None);
     }

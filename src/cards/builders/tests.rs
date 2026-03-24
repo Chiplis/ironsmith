@@ -6530,16 +6530,20 @@ fn test_parse_trigger_this_creature_enters_from_your_graveyard() {
 
 #[test]
 fn test_parse_composed_anthems_keep_independent_land_conditions() {
-    let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Tek Variant")
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Tek Variant")
         .card_types(vec![CardType::Artifact, CardType::Creature])
         .parse_text(
             "This creature gets +0/+2 as long as you control a Plains, has flying as long as you control an Island, gets +2/+0 as long as you control a Swamp, has first strike as long as you control a Mountain, and has trample as long as you control a Forest.",
         )
-        .expect_err("composed anthems are currently unsupported");
-    let message = format!("{err:?}");
+        .expect("composed anthems should parse with independent conditions");
+    let abilities_debug = format!("{:?}", def.abilities);
     assert!(
-        message.contains("multiple anthem conditions are not supported"),
-        "expected explicit unsupported composed-anthem error, got {message}"
+        abilities_debug.contains("you control a plains")
+            && abilities_debug.contains("you control an island")
+            && abilities_debug.contains("you control a swamp")
+            && abilities_debug.contains("you control a mountain")
+            && abilities_debug.contains("you control a forest"),
+        "expected independent land conditions for each composed anthem branch, got {abilities_debug}"
     );
 }
 
