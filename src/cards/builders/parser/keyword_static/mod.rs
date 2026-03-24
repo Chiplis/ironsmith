@@ -234,6 +234,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(
             parse_filter_dont_untap_during_controllers_untap_steps_line
         ),
+        single_static_ability_ast_rule!(parse_damage_doubling_mana_value_marker_line),
         single_static_ability_ast_rule!(parse_conditional_source_spell_keyword_line),
         single_static_ability_ast_rule!(parse_pregame_begin_on_battlefield_line),
         multi_static_ability_ast_rule!(parse_combined_pregame_choose_color_line),
@@ -249,6 +250,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         multi_static_ability_ast_rule!(parse_enters_tapped_with_choose_color_line),
         single_static_ability_ast_rule!(parse_damage_not_removed_cleanup_line),
         single_static_ability_ast_rule!(parse_prevent_damage_to_source_remove_counter_line),
+        single_static_ability_ast_passthrough_rule!(parse_prevent_damage_to_source_put_counters_line),
         single_static_ability_ast_rule!(parse_choose_color_as_enters_line),
         single_static_ability_ast_rule!(parse_damage_redirect_to_source_line),
         single_static_ability_ast_rule!(
@@ -356,6 +358,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_passthrough_rule!(
             parse_attached_tap_abilities_cant_be_activated_line
         ),
+        multi_static_ability_ast_rule!(parse_attached_type_transform_line),
         multi_static_ability_ast_rule!(parse_attached_has_and_loses_keywords_line),
         single_static_ability_ast_rule!(parse_you_control_attached_creature_line),
         single_static_ability_ast_passthrough_rule!(parse_attached_cant_attack_or_block_line),
@@ -404,6 +407,9 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_cast_this_spell_as_though_it_had_flash_line),
         single_static_ability_ast_rule!(parse_prevent_all_combat_damage_to_source_line),
         single_static_ability_ast_rule!(parse_prevent_all_damage_to_source_by_creatures_line),
+        single_static_ability_ast_rule!(
+            parse_prevent_damage_to_other_creature_you_control_put_counters_line
+        ),
         single_static_ability_ast_rule!(parse_prevent_all_damage_dealt_to_creatures_line),
         single_static_ability_ast_passthrough_rule!(parse_creatures_cant_block_line),
         multi_static_ability_ast_rule!(parse_enters_tapped_with_counters_line),
@@ -436,12 +442,17 @@ fn parse_static_ability_ast_line_lowered(
     let rules = static_ability_ast_line_rules();
     let head = words(tokens).first().copied().unwrap_or("");
     let mut tried = vec![false; rules.len()];
+    let mut deferred_error: Option<CardTextError> = None;
 
     if let Some(candidate_indices) = STATIC_ABILITY_AST_LINE_RULE_INDEX.by_head.get(head) {
         for &idx in candidate_indices {
             tried[idx] = true;
-            if let Some(abilities) = run_static_ability_ast_line_rule(rules[idx].rule, tokens)? {
-                return Ok(Some(abilities));
+            match run_static_ability_ast_line_rule(rules[idx].rule, tokens) {
+                Ok(Some(abilities)) => return Ok(Some(abilities)),
+                Ok(None) => {}
+                Err(err) => {
+                    deferred_error.get_or_insert(err);
+                }
             }
         }
     }
@@ -450,11 +461,67 @@ fn parse_static_ability_ast_line_lowered(
         if tried[idx] {
             continue;
         }
-        if let Some(abilities) = run_static_ability_ast_line_rule(rule.rule, tokens)? {
-            return Ok(Some(abilities));
+        match run_static_ability_ast_line_rule(rule.rule, tokens) {
+            Ok(Some(abilities)) => return Ok(Some(abilities)),
+            Ok(None) => {}
+            Err(err) => {
+                deferred_error.get_or_insert(err);
+            }
         }
     }
+
+    if let Some(err) = deferred_error {
+        return Err(err);
+    }
+
     Ok(None)
+}
+
+pub(crate) fn parse_damage_doubling_mana_value_marker_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let clause_words = words(tokens);
+    if !clause_words.starts_with(&["if", "a", "source", "you", "control", "with"])
+        || !clause_words.contains(&"mana")
+        || !clause_words.contains(&"value")
+        || !clause_words.windows(5).any(|window| {
+            window == ["would", "deal", "damage", "to", "a"]
+                || window == ["would", "deal", "damage", "to", "target"]
+        })
+        || !clause_words.contains(&"double")
+        || clause_words.last().copied() != Some("instead")
+    {
+        return Ok(None);
+    }
+
+    let mut text = String::new();
+    for token in tokens {
+        let attach_to_prev = matches!(
+            token.kind,
+            TokenKind::Comma
+                | TokenKind::Period
+                | TokenKind::Semicolon
+                | TokenKind::Colon
+                | TokenKind::Question
+                | TokenKind::Bang
+                | TokenKind::RBracket
+        );
+        let spaced_dash = matches!(token.kind, TokenKind::Dash | TokenKind::EmDash);
+        if spaced_dash {
+            if !text.is_empty() && !text.ends_with(' ') {
+                text.push(' ');
+            }
+            text.push_str(token.slice.as_str());
+            text.push(' ');
+            continue;
+        }
+        if !text.is_empty() && !attach_to_prev && !text.ends_with(' ') {
+            text.push(' ');
+        }
+        text.push_str(token.slice.as_str());
+    }
+
+    Ok(Some(StaticAbility::keyword_marker(text.trim().to_string())))
 }
 
 pub(crate) fn parse_static_ability_ast_line_lexed(
@@ -1233,6 +1300,36 @@ pub(crate) fn parse_static_text_marker_line(tokens: &[OwnedLexToken]) -> Option<
         return None;
     }
 
+    let marker_text = || {
+        let mut text = String::new();
+        for token in tokens {
+            let attach_to_prev = matches!(
+                token.kind,
+                TokenKind::Comma
+                    | TokenKind::Period
+                    | TokenKind::Semicolon
+                    | TokenKind::Colon
+                    | TokenKind::Question
+                    | TokenKind::Bang
+                    | TokenKind::RBracket
+            );
+            let spaced_dash = matches!(token.kind, TokenKind::Dash | TokenKind::EmDash);
+            if spaced_dash {
+                if !text.is_empty() && !text.ends_with(' ') {
+                    text.push(' ');
+                }
+                text.push_str(token.slice.as_str());
+                text.push(' ');
+                continue;
+            }
+            if !text.is_empty() && !attach_to_prev && !text.ends_with(' ') {
+                text.push(' ');
+            }
+            text.push_str(token.slice.as_str());
+        }
+        StaticAbility::keyword_marker(text.trim().to_string())
+    };
+
     let is_once_each_turn_play_from_exile = words
         .starts_with(&["once", "each", "turn", "you", "may", "play"])
         && words.contains(&"from")
@@ -1252,6 +1349,69 @@ pub(crate) fn parse_static_text_marker_line(tokens: &[OwnedLexToken]) -> Option<
     if words.starts_with(&["doctors", "companion"]) || words.starts_with(&["doctor's", "companion"])
     {
         return Some(StaticAbility::doctors_companion());
+    }
+
+    if words.first() == Some(&"companion") {
+        return Some(marker_text());
+    }
+
+    if words.starts_with(&["more", "than", "meets", "the", "eye"]) {
+        return Some(marker_text());
+    }
+
+    if matches!(
+        words.as_slice(),
+        ["protection", "from", "odd", "mana", "values"]
+            | ["protection", "from", "even", "mana", "values"]
+            | [
+                "this",
+                "creature",
+                "has",
+                "protection",
+                "from",
+                "each",
+                "mana",
+                "value",
+                "of",
+                "the",
+                "chosen",
+                "quality",
+            ]
+    ) {
+        return Some(marker_text());
+    }
+
+    if tokens.iter().any(|token| token.kind == TokenKind::ManaGroup)
+        && words.last().is_some_and(|word| word.contains('/'))
+    {
+        return Some(marker_text());
+    }
+
+    if words.starts_with(&["if", "source", "you", "control", "with"])
+        && words.contains(&"mana")
+        && words.contains(&"value")
+        && words.contains(&"double")
+        && words.last() == Some(&"instead")
+    {
+        return Some(marker_text());
+    }
+
+    if words.starts_with(&["as", "long", "as"])
+        && words.contains(&"power")
+        && (words.contains(&"odd") || words.contains(&"even"))
+        && words.contains(&"flash")
+    {
+        return Some(marker_text());
+    }
+
+    if words.starts_with(&["this", "creature", "can", "attack", "as", "though", "it", "had", "haste"])
+        && words.ends_with(&["unless", "it", "entered", "this", "turn"])
+    {
+        return Some(marker_text());
+    }
+
+    if words.starts_with(&["sab-sunen", "cant", "attack", "or", "block", "unless"]) {
+        return Some(marker_text());
     }
 
     if words == ["you", "have", "shroud"] {
@@ -2252,10 +2412,13 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
             )));
         };
 
-        if !matches!(tail.get(article_idx).copied(), Some("a" | "an"))
-            || tail.get(subtype_idx + 1..)
-                != Some(&["in", "addition", "to", "its", "other", "types"])
-        {
+        let tail_after_subtype = tail.get(subtype_idx + 1..).unwrap_or_default();
+        let supported_tail = tail_after_subtype == ["in", "addition", "to", "its", "other", "types"]
+            || tail_after_subtype.starts_with(&["and", "it", "has"])
+            || tail_after_subtype.starts_with(&["and", "it", "s"])
+            || tail_after_subtype.starts_with(&["and", "it's"])
+            || tail_after_subtype.starts_with(&["and", "it’s"]);
+        if !matches!(tail.get(article_idx).copied(), Some("a" | "an")) || !supported_tail {
             return Err(CardTextError::ParseError(format!(
                 "unsupported enters-as-copy exception clause (clause: '{}')",
                 clause_words.join(" ")
@@ -5172,6 +5335,52 @@ pub(crate) fn parse_prevent_all_damage_dealt_to_creatures_line(
         return Ok(Some(StaticAbility::prevent_all_damage_dealt_to_creatures()));
     }
     Ok(None)
+}
+
+pub(crate) fn parse_prevent_damage_to_other_creature_you_control_put_counters_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = words(tokens);
+    let matches_vigor_wording = words.as_slice()
+        == [
+            "if",
+            "damage",
+            "would",
+            "be",
+            "dealt",
+            "to",
+            "another",
+            "creature",
+            "you",
+            "control",
+            "prevent",
+            "that",
+            "damage",
+            "put",
+            "a",
+            "+1/+1",
+            "counter",
+            "on",
+            "that",
+            "creature",
+            "for",
+            "each",
+            "1",
+            "damage",
+            "prevented",
+            "this",
+            "way",
+        ];
+    if !matches_vigor_wording {
+        return Ok(None);
+    }
+
+    Ok(Some(
+        StaticAbility::prevent_damage_to_other_creature_you_control_put_counters_instead(
+            crate::object::CounterType::PlusOnePlusOne,
+            display_text_for_tokens(tokens, true),
+        ),
+    ))
 }
 
 pub(crate) fn parse_prevent_all_combat_damage_to_source_line(

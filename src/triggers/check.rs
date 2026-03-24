@@ -423,6 +423,11 @@ fn monarch_designation_source() -> (ObjectId, StableId, String) {
     (source, StableId::from(source), "The Monarch".to_string())
 }
 
+fn initiative_designation_source() -> (ObjectId, StableId, String) {
+    let source = ObjectId::from_raw(u64::MAX - 1);
+    (source, StableId::from(source), "The Initiative".to_string())
+}
+
 fn ring_designation_source() -> (ObjectId, StableId, String) {
     let source = ObjectId::from_raw(u64::MAX);
     (source, StableId::from(source), "The Ring".to_string())
@@ -457,6 +462,28 @@ fn push_ring_trigger(
     trigger_event: &TriggerEvent,
 ) {
     let (source, source_stable_id, source_name) = ring_designation_source();
+    let trigger_identity = compute_trigger_identity(&ability);
+    triggered.push(TriggeredAbilityEntry {
+        source,
+        controller,
+        x_value: None,
+        ability,
+        triggering_event: trigger_event.clone(),
+        source_stable_id,
+        source_name,
+        source_snapshot: None,
+        tagged_objects: std::collections::HashMap::new(),
+        trigger_identity,
+    });
+}
+
+fn push_initiative_trigger(
+    triggered: &mut Vec<TriggeredAbilityEntry>,
+    controller: PlayerId,
+    ability: TriggeredAbility,
+    trigger_event: &TriggerEvent,
+) {
+    let (source, source_stable_id, source_name) = initiative_designation_source();
     let trigger_identity = compute_trigger_identity(&ability);
     triggered.push(TriggeredAbilityEntry {
         source,
@@ -523,6 +550,81 @@ fn add_monarch_designation_triggers(
                     "Whenever a creature deals combat damage to the monarch".to_string(),
                 ),
                 effects: ResolutionProgram::from_effects(vec![Effect::become_monarch_player(
+                    PlayerFilter::Specific(source_obj.controller),
+                )]),
+                choices: vec![],
+                intervening_if: None,
+            },
+            trigger_event,
+        );
+    }
+}
+
+fn initiative_already_transferred_this_batch(
+    game: &GameState,
+    damaged_player: PlayerId,
+    controller: PlayerId,
+) -> bool {
+    game.combat_damage_player_batch_hits()
+        .iter()
+        .filter(|(_, player)| *player == damaged_player)
+        .filter_map(|(source, _)| game.object(*source))
+        .any(|object| object.controller == controller)
+}
+
+fn add_initiative_designation_triggers(
+    game: &GameState,
+    trigger_event: &TriggerEvent,
+    triggered: &mut Vec<TriggeredAbilityEntry>,
+) {
+    let Some(initiative) = game.initiative else {
+        return;
+    };
+
+    if trigger_event.kind() == crate::events::traits::EventKind::BeginningOfUpkeep
+        && let Some(upkeep) =
+            trigger_event.downcast::<crate::events::phase::BeginningOfUpkeepEvent>()
+        && upkeep.player == initiative
+    {
+        push_initiative_trigger(
+            triggered,
+            initiative,
+            TriggeredAbility {
+                trigger: Trigger::custom(
+                    "initiative_upkeep",
+                    "At the beginning of the upkeep of the player who has the initiative"
+                        .to_string(),
+                ),
+                effects: ResolutionProgram::from_effects(vec![Effect::venture_into_undercity_player(
+                    PlayerFilter::Specific(initiative),
+                )]),
+                choices: vec![],
+                intervening_if: None,
+            },
+            trigger_event,
+        );
+    }
+
+    if trigger_event.kind() == crate::events::traits::EventKind::Damage
+        && let Some(damage_event) = trigger_event.downcast::<crate::events::damage::DamageEvent>()
+        && damage_event.is_combat
+        && damage_event.amount > 0
+        && let crate::game_event::DamageTarget::Player(player_id) = damage_event.target
+        && player_id == initiative
+        && let Some(source_obj) = game.object(damage_event.source)
+        && game.object_has_card_type(source_obj.id, CardType::Creature)
+        && !initiative_already_transferred_this_batch(game, initiative, source_obj.controller)
+    {
+        push_initiative_trigger(
+            triggered,
+            initiative,
+            TriggeredAbility {
+                trigger: Trigger::custom(
+                    "initiative_combat_damage",
+                    "Whenever one or more creatures a player controls deal combat damage to the player who has the initiative"
+                        .to_string(),
+                ),
+                effects: ResolutionProgram::from_effects(vec![Effect::take_initiative_player(
                     PlayerFilter::Specific(source_obj.controller),
                 )]),
                 choices: vec![],
@@ -920,6 +1022,7 @@ pub(crate) fn check_triggers_with_view(
     }
 
     add_monarch_designation_triggers(game, trigger_event, &mut triggered);
+    add_initiative_designation_triggers(game, trigger_event, &mut triggered);
     add_ring_designation_triggers(game, trigger_event, &mut triggered);
     remove_suppressed_triggers(game, view, &mut triggered);
     append_additional_trigger_copies(game, view, &mut triggered);

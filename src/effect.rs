@@ -1088,6 +1088,7 @@ pub enum Restriction {
     ChangeLifeTotal(PlayerFilter),
     LoseGame(PlayerFilter),
     WinGame(PlayerFilter),
+    BecomeMonarch(PlayerFilter),
     PreventDamage,
     Attack(ObjectFilter),
     AttackAlone(ObjectFilter),
@@ -1245,6 +1246,10 @@ impl Restriction {
 
     pub fn win_game(filter: PlayerFilter) -> Self {
         Self::WinGame(filter)
+    }
+
+    pub fn become_monarch(filter: PlayerFilter) -> Self {
+        Self::BecomeMonarch(filter)
     }
 
     pub fn prevent_damage() -> Self {
@@ -1489,6 +1494,17 @@ impl Restriction {
                         )
                     {
                         tracker.cant_win_game.insert(player.id);
+                    }
+                }
+            }
+            Restriction::BecomeMonarch(filter) => {
+                for player in &game.players {
+                    if player.is_in_game()
+                        && player_matches_filter_with_combat(
+                            player.id, filter, game, controller, combat,
+                        )
+                    {
+                        tracker.cant_become_monarch.insert(player.id);
                     }
                 }
             }
@@ -1965,8 +1981,17 @@ pub enum Condition {
     /// A specific player is currently the monarch.
     PlayerIsMonarch { player: PlayerFilter },
 
+    /// A specific player currently has the initiative.
+    PlayerHasInitiative { player: PlayerFilter },
+
     /// A specific player has the city's blessing designation.
     PlayerHasCitysBlessing { player: PlayerFilter },
+
+    /// A specific player has completed a dungeon, optionally by name.
+    PlayerCompletedDungeon {
+        player: PlayerFilter,
+        dungeon_name: Option<String>,
+    },
 
     /// Your life total is N or less
     LifeTotalOrLess(i32),
@@ -2394,6 +2419,24 @@ impl Effect {
     pub fn amass(subtype: Option<crate::types::Subtype>, amount: u32) -> Self {
         use crate::effects::AmassEffect;
         Self::new(AmassEffect::new(subtype, amount))
+    }
+
+    /// Create a "venture into the dungeon" effect for a specific player.
+    pub fn venture_into_dungeon_player(player: PlayerFilter) -> Self {
+        use crate::effects::VentureIntoDungeonEffect;
+        Self::new(VentureIntoDungeonEffect::new(player))
+    }
+
+    /// Create a venture effect that starts in Undercity when the player has no active dungeon.
+    pub fn venture_into_undercity_player(player: PlayerFilter) -> Self {
+        use crate::effects::VentureIntoDungeonEffect;
+        Self::new(VentureIntoDungeonEffect::via_initiative(player))
+    }
+
+    /// Create a "take the initiative" effect for a specific player.
+    pub fn take_initiative_player(player: PlayerFilter) -> Self {
+        use crate::effects::TakeInitiativeEffect;
+        Self::new(TakeInitiativeEffect::new(player))
     }
 
     /// Emit a keyword-action event (for "when you <keyword action>" triggers).
@@ -3790,6 +3833,12 @@ impl Effect {
     pub fn choose_color(chooser: PlayerFilter) -> Self {
         use crate::effects::ChooseColorEffect;
         Self::new(ChooseColorEffect::new(chooser))
+    }
+
+    /// Choose one named option and store it on the source object for later effects.
+    pub fn choose_named_option(chooser: PlayerFilter, options: Vec<String>) -> Self {
+        use crate::effects::ChooseNamedOptionEffect;
+        Self::new(ChooseNamedOptionEffect::new(chooser, options))
     }
 
     /// Choose a creature type and store it on the source object for later effects.

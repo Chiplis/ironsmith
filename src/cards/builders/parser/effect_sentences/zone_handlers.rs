@@ -1260,7 +1260,20 @@ pub(crate) fn parse_transform(tokens: &[OwnedLexToken]) -> Result<EffectAst, Car
             target: TargetAst::Source(span_from_tokens(tokens)),
         });
     }
-    let target = parse_target_phrase(tokens)?;
+    let target = match parse_target_phrase(tokens) {
+        Ok(target) => target,
+        Err(_) if target_words.len() <= 3
+            && !target_words.iter().any(|word| {
+                matches!(
+                    *word,
+                    "target" | "another" | "other" | "each" | "all" | "that" | "those"
+                )
+            }) =>
+        {
+            TargetAst::Source(span_from_tokens(tokens))
+        }
+        Err(err) => return Err(err),
+    };
     Ok(EffectAst::Transform { target })
 }
 

@@ -3227,6 +3227,32 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             subject.trim()
         );
     }
+    if let Some((subject, tail)) = normalized.split_once(" has \"If damage would be dealt to this, ")
+        && let Some(effect_text) = tail.strip_suffix("\" as long as you're the monarch")
+    {
+        return format!(
+            "If damage would be dealt to {} while you're the monarch, {}",
+            subject.trim(),
+            effect_text.trim()
+        );
+    }
+    if let Some((subject, tail)) = normalized.split_once(" has \"If damage would be dealt to this, ")
+        && let Some(effect_text) = tail.strip_suffix("\" as long as you're the monarch.")
+    {
+        return format!(
+            "If damage would be dealt to {} while you're the monarch, {}",
+            subject.trim(),
+            effect_text.trim().trim_end_matches('.')
+        );
+    }
+    if let Some((prefix, suffix)) = normalized.split_once(". you can't become the monarch this turn")
+        && suffix.trim_matches('.').trim().is_empty()
+    {
+        return format!(
+            "{}. You can't become the monarch this turn",
+            prefix.trim_end_matches('.').trim()
+        );
+    }
     if let Some((types, tail)) = normalized.split_once(" creatures get ")
         && types.contains(" or ")
         && looks_like_creature_type_list_subject(types)
@@ -6706,6 +6732,9 @@ pub(super) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
         crate::effect::Restriction::WinGame(filter) => {
             format!("{} can't win the game", describe_player_set_filter(filter))
         }
+        crate::effect::Restriction::BecomeMonarch(filter) => {
+            format!("{} can't become the monarch", describe_player_set_filter(filter))
+        }
         crate::effect::Restriction::PreventDamage => "damage can't be prevented".to_string(),
         crate::effect::Restriction::Attack(filter) => {
             format!("{} can't attack", filter.description())
@@ -7215,9 +7244,19 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         Condition::PlayerIsMonarch { player } => {
             format!("{} is the monarch", describe_player_filter(player))
         }
+        Condition::PlayerHasInitiative { player } => {
+            format!("{} has the initiative", describe_player_filter(player))
+        }
         Condition::PlayerHasCitysBlessing { player } => {
             format!("{} has the city's blessing", describe_player_filter(player))
         }
+        Condition::PlayerCompletedDungeon {
+            player,
+            dungeon_name,
+        } => match dungeon_name {
+            Some(name) => format!("{} completed {}", describe_player_filter(player), name),
+            None => format!("{} completed a dungeon", describe_player_filter(player)),
+        },
         Condition::LifeTotalOrLess(n) => format!("your life total is {n} or less"),
         Condition::LifeTotalOrGreater(n) => format!("your life total is {n} or greater"),
         Condition::CardsInHandOrMore(n) => format!("you have {n} or more cards in hand"),

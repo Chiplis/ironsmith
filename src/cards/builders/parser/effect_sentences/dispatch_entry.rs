@@ -25,6 +25,7 @@ use crate::cards::builders::{
 use crate::effect::{ChoiceCount, Until, Value};
 use crate::filter::Comparison;
 use crate::mana::ManaSymbol;
+use crate::object::CounterType;
 use crate::target::{
     ChooseSpec, ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation,
 };
@@ -1347,7 +1348,11 @@ fn parse_pair_sentence_sequence(
     first: &[OwnedLexToken],
     second: &[OwnedLexToken],
 ) -> Result<Option<(&'static str, Vec<EffectAst>)>, CardTextError> {
-    const RULES: [(&str, PairSentenceRule); 11] = [
+    const RULES: [(&str, PairSentenceRule); 12] = [
+        (
+            "damage-prevention-then-put-counters",
+            parse_damage_prevention_then_put_counters,
+        ),
         (
             "delayed-dies-exile-top-power-choose-play",
             parse_delayed_dies_exile_top_power_choose_play,
@@ -1401,6 +1406,66 @@ fn parse_pair_sentence_sequence(
     }
 
     Ok(None)
+}
+
+fn parse_damage_prevention_then_put_counters(
+    first: &[OwnedLexToken],
+    second: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Ok(first_effects) = parse_effect_sentence_lexed(first) else {
+        return Ok(None);
+    };
+    let Some(first_effect) = first_effects.first() else {
+        return Ok(None);
+    };
+    if first_effects.len() != 1 {
+        return Ok(None);
+    }
+
+    let (amount, target, duration) = match first_effect {
+        EffectAst::PreventDamage {
+            amount,
+            target,
+            duration,
+        } => (Some(amount.clone()), target.clone(), duration.clone()),
+        EffectAst::PreventAllDamageToTarget { target, duration } => {
+            (None, target.clone(), duration.clone())
+        }
+        _ => return Ok(None),
+    };
+
+    let second_tokens = trim_commas(second);
+    let second_words: Vec<&str> = words(&second_tokens)
+        .into_iter()
+        .filter(|word| !is_article(word))
+        .collect();
+    if !second_words.starts_with(&["for", "each", "1", "damage", "prevented", "this", "way"])
+        || !second_words.contains(&"put")
+        || !second_words.contains(&"+1/+1")
+        || !second_words.contains(&"counter")
+        || !second_words.contains(&"on")
+    {
+        return Ok(None);
+    }
+
+    let Some(on_idx) = second_words.iter().position(|word| *word == "on") else {
+        return Ok(None);
+    };
+    let target_words = &second_words[on_idx + 1..];
+    let valid_target_tail = matches!(
+        target_words,
+        ["that", "creature"] | ["it"] | ["that", "permanent"] | ["that", "object"]
+    );
+    if !valid_target_tail {
+        return Ok(None);
+    }
+
+    Ok(Some(vec![EffectAst::PreventDamageToTargetPutCounters {
+        amount,
+        target,
+        duration,
+        counter_type: CounterType::PlusOnePlusOne,
+    }]))
 }
 
 fn parse_target_gains_flashback_until_eot_with_targets_mana_cost(
@@ -3314,6 +3379,7 @@ pub(crate) fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst
         | EffectAst::GrantProtectionChoice { target, .. }
         | EffectAst::PreventDamage { target, .. }
         | EffectAst::PreventAllDamageToTarget { target, .. }
+        | EffectAst::PreventDamageToTargetPutCounters { target, .. }
         | EffectAst::PreventAllCombatDamageFromSource { source: target, .. }
         | EffectAst::RedirectNextDamageFromSourceToTarget { target, .. }
         | EffectAst::RedirectNextTimeDamageToSource { target, .. }
@@ -3459,6 +3525,12 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
         | EffectAst::CopySpell { count: amount, .. }
         | EffectAst::SetLifeTotal { amount, .. }
         | EffectAst::Monstrosity { amount } => {
+            replace_value(amount, replacement, clause)?;
+        }
+        EffectAst::PreventDamageToTargetPutCounters {
+            amount: Some(amount),
+            ..
+        } => {
             replace_value(amount, replacement, clause)?;
         }
         EffectAst::Pump {
@@ -3710,6 +3782,10 @@ pub(crate) fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
             ..
         }
         | EffectAst::PreventAllDamageToTarget {
+            target: effect_target,
+            ..
+        }
+        | EffectAst::PreventDamageToTargetPutCounters {
             target: effect_target,
             ..
         }

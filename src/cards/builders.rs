@@ -1250,8 +1250,15 @@ pub(crate) enum PredicateAst {
     PlayerIsMonarch {
         player: PlayerAst,
     },
+    PlayerHasInitiative {
+        player: PlayerAst,
+    },
     PlayerHasCitysBlessing {
         player: PlayerAst,
+    },
+    PlayerCompletedDungeon {
+        player: PlayerAst,
+        dungeon_name: Option<String>,
     },
     PlayerTappedLandForManaThisTurn {
         player: PlayerAst,
@@ -1529,6 +1536,12 @@ pub(crate) enum EffectAst {
     PreventAllDamageToTarget {
         target: TargetAst,
         duration: Until,
+    },
+    PreventDamageToTargetPutCounters {
+        amount: Option<Value>,
+        target: TargetAst,
+        duration: Until,
+        counter_type: CounterType,
     },
     PreventNextTimeDamage {
         source: PreventNextTimeDamageSourceAst,
@@ -1926,7 +1939,14 @@ pub(crate) enum EffectAst {
     RingTemptsYou {
         player: PlayerAst,
     },
+    VentureIntoDungeon {
+        player: PlayerAst,
+        undercity_if_no_active: bool,
+    },
     BecomeMonarch {
+        player: PlayerAst,
+    },
+    TakeInitiative {
         player: PlayerAst,
     },
     SetLifeTotal {
@@ -1981,6 +2001,10 @@ pub(crate) enum EffectAst {
     },
     ChooseColor {
         player: PlayerAst,
+    },
+    ChooseNamedOption {
+        player: PlayerAst,
+        options: Vec<String>,
     },
     ChooseCreatureType {
         player: PlayerAst,

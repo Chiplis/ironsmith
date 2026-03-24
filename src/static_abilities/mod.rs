@@ -1979,6 +1979,40 @@ impl StaticAbility {
         Self::new(PreventDamageToSelfRemoveCounter::new(counter_type, amount))
     }
 
+    pub fn prevent_damage_to_self_put_counters_instead(
+        counter_type: crate::object::CounterType,
+        display: impl Into<String>,
+    ) -> Self {
+        Self::new(PreventDamageToSelfPutCountersInstead::new(
+            counter_type,
+            display,
+        ))
+    }
+
+    pub fn prevent_constrained_damage_to_self_put_counters_instead(
+        counter_type: crate::object::CounterType,
+        display: impl Into<String>,
+        source_filter: Option<crate::target::ObjectFilter>,
+        combat_only: Option<bool>,
+    ) -> Self {
+        Self::new(PreventConstrainedDamageToSelfPutCountersInstead::new(
+            counter_type,
+            display,
+            source_filter,
+            combat_only,
+        ))
+    }
+
+    pub fn prevent_damage_to_other_creature_you_control_put_counters_instead(
+        counter_type: crate::object::CounterType,
+        display: impl Into<String>,
+    ) -> Self {
+        Self::new(PreventDamageToOtherCreatureYouControlPutCountersInstead::new(
+            counter_type,
+            display,
+        ))
+    }
+
     pub fn shuffle_into_library_from_graveyard() -> Self {
         Self::new(ShuffleIntoLibraryFromGraveyard)
     }

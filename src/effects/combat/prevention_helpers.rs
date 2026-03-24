@@ -1,4 +1,4 @@
-use crate::effect::Until;
+use crate::effect::{Effect, Until};
 use crate::effects::helpers::{resolve_objects_from_spec, resolve_players_from_spec};
 use crate::executor::{ExecutionContext, ExecutionError, ResolvedTarget};
 use crate::game_state::GameState;
@@ -49,9 +49,11 @@ pub fn register_prevention_shield(
     amount: Option<u32>,
     duration: Until,
     damage_filter: DamageFilter,
+    follow_up_effects: Vec<Effect>,
 ) -> PreventionShieldId {
     let shield = PreventionShield::new(ctx.source, ctx.controller, protected, amount, duration)
-        .with_filter(damage_filter);
+        .with_filter(damage_filter)
+        .with_follow_up_effects(follow_up_effects);
     game.prevention_effects.add_shield(shield)
 }
 
@@ -218,6 +220,7 @@ mod tests {
             Some(3),
             Until::EndOfTurn,
             DamageFilter::all(),
+            Vec::new(),
         );
 
         let shields = game.prevention_effects.shields();

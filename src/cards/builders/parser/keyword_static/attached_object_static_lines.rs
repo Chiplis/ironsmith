@@ -125,6 +125,74 @@ fn parse_attached_granted_activated_line(
     parse_activated_line(&trimmed)
 }
 
+fn parse_nonstatic_keyword_action_as_object_ability(
+    action: KeywordAction,
+) -> Option<ParsedAbility> {
+    match action {
+        KeywordAction::Crew {
+            amount,
+            timing,
+            additional_restrictions,
+        } => {
+            let cost = TotalCost::from_cost(crate::costs::Cost::effect(
+                crate::effects::CrewCostEffect::new(amount),
+            ));
+            let animate = Effect::new(crate::effects::ApplyContinuousEffect::new(
+                crate::continuous::EffectTarget::Source,
+                crate::continuous::Modification::AddCardTypes(vec![CardType::Creature]),
+                crate::effect::Until::EndOfTurn,
+            ));
+            Some(ParsedAbility {
+                ability: Ability {
+                    kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+                        mana_cost: cost,
+                        effects: crate::resolution::ResolutionProgram::from_effects(vec![animate]),
+                        choices: Vec::new(),
+                        timing,
+                        additional_restrictions,
+                        activation_restrictions: vec![],
+                        mana_output: None,
+                        activation_condition: None,
+                        mana_usage_restrictions: vec![],
+                    }),
+                    functional_zones: vec![Zone::Battlefield],
+                    text: Some(format!("Crew {amount}")),
+                },
+                effects_ast: None,
+                reference_imports: ReferenceImports::default(),
+                trigger_spec: None,
+            })
+        }
+        _ => None,
+    }
+}
+
+fn parse_attached_nonstatic_keyword_ability(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<(ParsedAbility, String)>, CardTextError> {
+    let ability_tokens = trim_edge_punctuation(tokens);
+    if ability_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let Some(actions) = parse_ability_line(&ability_tokens) else {
+        return Ok(None);
+    };
+    if actions.len() != 1 {
+        return Ok(None);
+    }
+
+    let action = actions.into_iter().next().expect("single action exists");
+    let Some(parsed) = parse_nonstatic_keyword_action_as_object_ability(action.clone()) else {
+        return Ok(None);
+    };
+    let display = match action {
+        KeywordAction::Crew { amount, .. } => format!("Crew {amount}"),
+        _ => return Ok(None),
+    };
+    Ok(Some((parsed, display)))
+}
+
 pub(crate) fn cumulative_upkeep_granted_ability(
     mana_symbols_per_counter: Vec<ManaSymbol>,
     life_per_counter: u32,
@@ -710,6 +778,196 @@ pub(crate) fn parse_attached_gets_and_cant_block_line(
     Ok(Some(vec![anthem.into(), granted]))
 }
 
+pub(crate) fn parse_attached_type_transform_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let line_words = words(tokens);
+    if line_words.len() < 4 {
+        return Ok(None);
+    }
+
+    if !line_words.starts_with(&["enchanted", "creature"])
+        && !line_words.starts_with(&["enchanted", "permanent"])
+        && !line_words.starts_with(&["enchanted", "artifact"])
+        && !line_words.starts_with(&["enchanted", "land"])
+        && !line_words.starts_with(&["equipped", "creature"])
+        && !line_words.starts_with(&["equipped", "permanent"])
+    {
+        return Ok(None);
+    }
+
+    let subject_token_end = token_index_for_word_index(tokens, 2).unwrap_or(tokens.len());
+    let subject_tokens = trim_commas(&tokens[..subject_token_end]);
+    let subject_text = words(&subject_tokens).join(" ");
+    let filter = parse_object_filter(&subject_tokens, false).map_err(|_| {
+        CardTextError::ParseError(format!(
+            "unsupported attached transform subject (clause: '{}')",
+            line_words.join(" ")
+        ))
+    })?;
+
+    let remainder = trim_commas(&tokens[subject_token_end..]);
+    let remainder_words = words(&remainder);
+    if !matches!(remainder_words.first().copied(), Some("is" | "are")) {
+        return Ok(None);
+    }
+
+    let mut with_idx = None;
+    let mut lose_idx = None;
+    let mut in_quotes = false;
+    for (idx, token) in remainder.iter().enumerate() {
+        if token.is_quote() {
+            in_quotes = !in_quotes;
+            continue;
+        }
+        if in_quotes {
+            continue;
+        }
+        if with_idx.is_none() && token.is_word("with") {
+            with_idx = Some(idx);
+            continue;
+        }
+        if token.is_word("lose") || token.is_word("loses") {
+            lose_idx = Some(idx);
+            break;
+        }
+    }
+
+    let descriptor_end = with_idx.or(lose_idx).unwrap_or(remainder.len());
+    let mut descriptor_tokens = trim_commas(&remainder[1..descriptor_end]).to_vec();
+    while descriptor_tokens
+        .first()
+        .is_some_and(|token| token.is_word("a") || token.is_word("an"))
+    {
+        descriptor_tokens.remove(0);
+    }
+    let descriptor_words = words(&descriptor_tokens);
+    if descriptor_words.is_empty() {
+        return Ok(None);
+    }
+
+    let mut set_card_types = Vec::new();
+    let mut add_subtypes = Vec::new();
+    let mut set_colors = ColorSet::new();
+    let mut make_colorless = false;
+    for word in descriptor_words {
+        if word == "and" {
+            continue;
+        }
+        if word == "colorless" {
+            make_colorless = true;
+            continue;
+        }
+        if let Some(color) = parse_color(word) {
+            set_colors = set_colors.union(color);
+            continue;
+        }
+        if let Some(card_type) = parse_card_type(word) {
+            if !set_card_types.contains(&card_type) {
+                set_card_types.push(card_type);
+            }
+            continue;
+        }
+        if let Some(subtype) = parse_subtype_word(word)
+            .or_else(|| word.strip_suffix('s').and_then(parse_subtype_word))
+        {
+            if !add_subtypes.contains(&subtype) {
+                add_subtypes.push(subtype);
+            }
+            continue;
+        }
+        return Err(CardTextError::ParseError(format!(
+            "unsupported attached transform descriptor '{}' (clause: '{}')",
+            word,
+            line_words.join(" ")
+        )));
+    }
+
+    let mut out = Vec::new();
+    if !set_card_types.is_empty() {
+        out.push(StaticAbility::set_card_types(filter.clone(), set_card_types).into());
+    }
+    if !add_subtypes.is_empty() {
+        out.push(StaticAbility::add_subtypes(filter.clone(), add_subtypes).into());
+    }
+    if !set_colors.is_empty() {
+        out.push(StaticAbility::set_colors(filter.clone(), set_colors).into());
+    }
+    if make_colorless {
+        out.push(StaticAbility::make_colorless(filter.clone()).into());
+    }
+
+    if let Some(with_idx) = with_idx {
+        let ability_end = lose_idx.unwrap_or(remainder.len());
+        let mut ability_tokens = trim_commas(&remainder[with_idx + 1..ability_end]).to_vec();
+        while ability_tokens
+            .last()
+            .is_some_and(|token| token.is_word("and") || token.is_word("it"))
+        {
+            ability_tokens.pop();
+        }
+        let ability_tokens = trim_commas(&ability_tokens);
+        if ability_tokens.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "missing attached transform granted ability (clause: '{}')",
+                line_words.join(" ")
+            )));
+        }
+
+        if let Some(parsed) = parse_attached_granted_activated_line(&ability_tokens)? {
+            out.push(StaticAbilityAst::AttachedObjectAbilityGrant {
+                ability: parsed,
+                display: format!(
+                    "{subject_text} has {}",
+                    display_text_for_tokens(&ability_tokens, true)
+                ),
+                condition: None,
+            });
+        } else if let Some((parsed, display)) =
+            parse_attached_nonstatic_keyword_ability(&ability_tokens)?
+        {
+            out.push(StaticAbilityAst::AttachedObjectAbilityGrant {
+                ability: parsed,
+                display: format!("{subject_text} has {display}"),
+                condition: None,
+            });
+        } else {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported attached transform granted ability (clause: '{}')",
+                line_words.join(" ")
+            )));
+        }
+    }
+
+    if let Some(lose_idx) = lose_idx {
+        let loss_tokens = trim_commas(&remainder[lose_idx..]);
+        let loss_words = words(&loss_tokens);
+        if matches!(
+            loss_words.as_slice(),
+            ["lose", "all", "other", "abilities"]
+                | ["loses", "all", "other", "abilities"]
+                | ["lose", "all", "other", "card", "types", "and", "abilities"]
+                | ["loses", "all", "other", "card", "types", "and", "abilities"]
+        ) {
+            out.push(StaticAbility::remove_all_abilities(filter.clone()).into());
+        } else if !matches!(
+            loss_words.as_slice(),
+            ["lose", "all", "other", "card", "types"]
+                | ["loses", "all", "other", "card", "types"]
+        ) {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported attached transform loss clause (clause: '{}')",
+                line_words.join(" ")
+            )));
+        }
+    }
+
+    if out.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(out))
+}
+
 pub(crate) fn parse_prevent_damage_to_source_remove_counter_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -798,6 +1056,234 @@ pub(crate) fn parse_prevent_damage_to_source_remove_counter_line(
         counter_type,
         amount,
     )))
+}
+
+pub(crate) fn parse_prevent_damage_to_source_put_counters_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbilityAst>, CardTextError> {
+    let line_words = words(tokens);
+    if line_words.len() < 11 {
+        return Ok(None);
+    }
+
+    let self_damage_prefix = ["if", "damage", "would", "be", "dealt", "to"];
+    if line_words.starts_with(&self_damage_prefix) {
+        let source_words_used = if line_words[6..].starts_with(&["this", "creature"])
+            || line_words[6..].starts_with(&["this", "permanent"])
+        {
+            Some(2usize)
+        } else if line_words[6..].starts_with(&["this"]) {
+            Some(1usize)
+        } else {
+            None
+        };
+        if let Some(source_words_used) = source_words_used {
+            let generic_tail = [
+                "prevent",
+                "that",
+                "damage",
+                "and",
+                "put",
+                "that",
+                "many",
+                "+1/+1",
+                "counters",
+                "on",
+                "it",
+            ];
+            let generic_tail_alt = [
+                "prevent",
+                "that",
+                "damage",
+                "and",
+                "put",
+                "that",
+                "many",
+                "+1/+1",
+                "counters",
+                "on",
+                "this",
+                "creature",
+            ];
+            let generic_tail_pronoun = [
+                "prevent",
+                "that",
+                "damage",
+                "and",
+                "put",
+                "that",
+                "many",
+                "+1/+1",
+                "counters",
+                "on",
+                "him",
+            ];
+            let instead_tail = [
+                "put",
+                "that",
+                "many",
+                "+1/+1",
+                "counters",
+                "on",
+                "it",
+                "instead",
+            ];
+            let instead_tail_alt = [
+                "put",
+                "that",
+                "many",
+                "+1/+1",
+                "counters",
+                "on",
+                "this",
+                "creature",
+                "instead",
+            ];
+
+            let tail_word_start = 6 + source_words_used;
+            let mut tail = &line_words[tail_word_start..];
+            let mut condition = None;
+
+            if tail.first().copied() == Some("while") {
+                let Some(prevent_word_idx) = tail.iter().position(|word| *word == "prevent") else {
+                    return Err(CardTextError::ParseError(format!(
+                        "unsupported conditional prevent-damage tail (clause: '{}')",
+                        line_words.join(" ")
+                    )));
+                };
+                if prevent_word_idx <= 1 {
+                    return Err(CardTextError::ParseError(format!(
+                        "missing condition in conditional prevent-damage line (clause: '{}')",
+                        line_words.join(" ")
+                    )));
+                }
+
+                let condition_start_word_idx = tail_word_start + 1;
+                let condition_end_word_idx = tail_word_start + prevent_word_idx;
+                let condition_start_token_idx =
+                    token_index_for_word_index(tokens, condition_start_word_idx).ok_or_else(
+                        || {
+                            CardTextError::ParseError(format!(
+                                "unable to map prevent-damage condition start (clause: '{}')",
+                                line_words.join(" ")
+                            ))
+                        },
+                    )?;
+                let condition_end_token_idx =
+                    token_index_for_word_index(tokens, condition_end_word_idx)
+                        .unwrap_or(tokens.len());
+                let condition_tokens =
+                    trim_commas(&tokens[condition_start_token_idx..condition_end_token_idx]);
+                condition = Some(parse_static_condition_clause(&condition_tokens)?);
+                tail = &tail[prevent_word_idx..];
+            }
+
+            if tail == generic_tail
+                || tail == generic_tail_alt
+                || tail == generic_tail_pronoun
+                || tail == instead_tail
+                || tail == instead_tail_alt
+            {
+                let display = match condition {
+                    Some(_) => {
+                        let prefix = line_words[..tail_word_start].join(" ");
+                        let effect = tail.join(" ");
+                        let mut text = format!("{prefix}, {effect}");
+                        if let Some(first) = text.get_mut(0..1) {
+                            first.make_ascii_uppercase();
+                        }
+                        text
+                    }
+                    None => display_text_for_tokens(tokens, true),
+                };
+                let ability = StaticAbility::prevent_damage_to_self_put_counters_instead(
+                    crate::object::CounterType::PlusOnePlusOne,
+                    display,
+                );
+                let ast = StaticAbilityAst::Static(ability);
+                return Ok(Some(match condition {
+                    Some(condition) => StaticAbilityAst::ConditionalStaticAbility {
+                        ability: Box::new(ast),
+                        condition,
+                    },
+                    None => ast,
+                }));
+            }
+        }
+    }
+
+    let noncombat_tail = [
+        "prevent",
+        "that",
+        "damage",
+        "put",
+        "a",
+        "+1/+1",
+        "counter",
+        "on",
+        "this",
+        "creature",
+        "for",
+        "each",
+        "1",
+        "damage",
+        "prevented",
+        "this",
+        "way",
+    ];
+    if line_words.starts_with(&["if", "noncombat", "damage", "would", "be", "dealt", "to"])
+        && line_words[7..].starts_with(&["this", "creature"])
+        && line_words[9..] == noncombat_tail
+    {
+        return Ok(Some(StaticAbilityAst::Static(
+            StaticAbility::prevent_constrained_damage_to_self_put_counters_instead(
+                crate::object::CounterType::PlusOnePlusOne,
+                display_text_for_tokens(tokens, true),
+                None,
+                Some(false),
+            ),
+        )));
+    }
+
+    let combat_creature_prefix = [
+        "if",
+        "a",
+        "creature",
+        "would",
+        "deal",
+        "combat",
+        "damage",
+        "to",
+        "this",
+        "creature",
+    ];
+    let combat_creature_tail = [
+        "prevent",
+        "that",
+        "damage",
+        "and",
+        "put",
+        "a",
+        "+1/+1",
+        "counter",
+        "on",
+        "this",
+        "creature",
+    ];
+    if line_words.starts_with(&combat_creature_prefix)
+        && line_words[10..] == combat_creature_tail
+    {
+        return Ok(Some(StaticAbilityAst::Static(
+            StaticAbility::prevent_constrained_damage_to_self_put_counters_instead(
+                crate::object::CounterType::PlusOnePlusOne,
+                display_text_for_tokens(tokens, true),
+                Some(ObjectFilter::creature()),
+                Some(true),
+            ),
+        )));
+    }
+
+    Ok(None)
 }
 
 pub(crate) fn parse_attached_prevent_all_damage_dealt_by_attached_line(

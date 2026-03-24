@@ -5,6 +5,38 @@ pub fn compile_effect_list(effects: &[Effect]) -> String {
     describe_effect_list(effects)
 }
 
+fn prevention_put_counters_follow_up(
+    follow_up_effects: &[Effect],
+) -> Option<&crate::effects::PutCountersEffect> {
+    let [effect] = follow_up_effects else {
+        return None;
+    };
+    let put = effect.downcast_ref::<crate::effects::PutCountersEffect>()?;
+    if put.distributed || put.target_count.is_some() {
+        return None;
+    }
+    if !matches!(put.count, Value::EventValue(EventValueSpec::Amount)) {
+        return None;
+    }
+    if !matches!(put.target, ChooseSpec::AnyTarget) {
+        return None;
+    }
+    Some(put)
+}
+
+fn describe_prevention_follow_up_target(target: &ChooseSpec) -> &'static str {
+    let described = describe_choose_spec(target);
+    if described.contains("creature") {
+        "that creature"
+    } else if described.contains("player") {
+        "that player"
+    } else if described.contains("permanent") {
+        "that permanent"
+    } else {
+        "it"
+    }
+}
+
 fn choose_primary_zone(choose: &crate::effects::ChooseObjectsEffect) -> Option<Zone> {
     choose.filter.zone.or(choose.zone)
 }
@@ -4978,6 +5010,18 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         let choose_verb = player_verb(&chooser, "choose", "chooses");
         return format!("{chooser} {choose_verb} a color");
     }
+    if let Some(choose_named_option) =
+        effect.downcast_ref::<crate::effects::ChooseNamedOptionEffect>()
+    {
+        let chooser = describe_player_filter(&choose_named_option.chooser);
+        let choose_verb = player_verb(&chooser, "choose", "chooses");
+        let options = choose_named_option
+            .options
+            .iter()
+            .map(|option| option.to_ascii_lowercase())
+            .collect::<Vec<_>>();
+        return format!("{chooser} {choose_verb} {}", join_with_or(&options));
+    }
     if let Some(choose_creature_type) =
         effect.downcast_ref::<crate::effects::ChooseCreatureTypeEffect>()
     {
@@ -7707,6 +7751,17 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         } else {
             describe_until(&prevent_damage.duration)
         };
+        if let Some(put) = prevention_put_counters_follow_up(&prevent_damage.follow_up_effects) {
+            return format!(
+                "Prevent the next {} {} that would be dealt to {} {}. For each 1 damage prevented this way, put a {} counter on {}",
+                describe_value(&prevent_damage.amount),
+                damage_text,
+                describe_choose_spec(&prevent_damage.target),
+                timing,
+                describe_counter_type(put.counter_type),
+                describe_prevention_follow_up_target(&prevent_damage.target)
+            );
+        }
         return format!(
             "Prevent the next {} {} that would be dealt to {} {}",
             describe_value(&prevent_damage.amount),
@@ -7741,6 +7796,17 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         } else {
             describe_until(&prevent_all_target.duration)
         };
+        if let Some(put) = prevention_put_counters_follow_up(&prevent_all_target.follow_up_effects)
+        {
+            return format!(
+                "If {} would be dealt to {} {}, prevent that damage and put that many {} counters on {}",
+                damage_text,
+                describe_choose_spec(&prevent_all_target.target),
+                timing,
+                describe_counter_type(put.counter_type),
+                describe_prevention_follow_up_target(&prevent_all_target.target)
+            );
+        }
         return format!(
             "Prevent all {} that would be dealt to {} {}",
             damage_text,
@@ -7839,6 +7905,33 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         return format!(
             "The Ring tempts {}",
             describe_player_filter(&ring_tempts.player)
+        );
+    }
+    if let Some(venture) = effect.downcast_ref::<crate::effects::VentureIntoDungeonEffect>() {
+        if venture.player == crate::target::PlayerFilter::You {
+            return "Venture into the dungeon".to_string();
+        }
+        return format!(
+            "{} ventures into the dungeon",
+            describe_player_filter(&venture.player)
+        );
+    }
+    if let Some(become_monarch) = effect.downcast_ref::<crate::effects::BecomeMonarchEffect>() {
+        if become_monarch.player == crate::target::PlayerFilter::You {
+            return "You become the monarch".to_string();
+        }
+        return format!(
+            "{} becomes the monarch",
+            describe_player_filter(&become_monarch.player)
+        );
+    }
+    if let Some(initiative) = effect.downcast_ref::<crate::effects::TakeInitiativeEffect>() {
+        if initiative.player == crate::target::PlayerFilter::You {
+            return "You take the initiative".to_string();
+        }
+        return format!(
+            "{} takes the initiative",
+            describe_player_filter(&initiative.player)
         );
     }
     if let Some(schedule) = effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>() {

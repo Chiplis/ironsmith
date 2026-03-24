@@ -424,6 +424,88 @@ impl ReplacementMatcher for DamageToSelfMatcher {
     }
 }
 
+/// Matches preventable damage to the source of the replacement effect with optional constraints.
+#[derive(Debug, Clone, Default)]
+pub struct DamageToSelfConstraintMatcher {
+    pub source_filter: Option<ObjectFilter>,
+    pub combat_only: Option<bool>,
+}
+
+impl DamageToSelfConstraintMatcher {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn from_source_filter(source_filter: ObjectFilter) -> Self {
+        Self {
+            source_filter: Some(source_filter),
+            combat_only: None,
+        }
+    }
+
+    pub fn noncombat() -> Self {
+        Self {
+            source_filter: None,
+            combat_only: Some(false),
+        }
+    }
+
+    pub fn combat_from_source_filter(source_filter: ObjectFilter) -> Self {
+        Self {
+            source_filter: Some(source_filter),
+            combat_only: Some(true),
+        }
+    }
+}
+
+impl ReplacementMatcher for DamageToSelfConstraintMatcher {
+    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+        if event.event_kind() != EventKind::Damage {
+            return false;
+        }
+
+        let Some(damage) = downcast_event::<DamageEvent>(event) else {
+            return false;
+        };
+
+        if damage.is_unpreventable {
+            return false;
+        }
+
+        let DamageTarget::Object(target_id) = damage.target else {
+            return false;
+        };
+        if ctx.source != Some(target_id) {
+            return false;
+        }
+
+        if let Some(combat_only) = self.combat_only
+            && damage.is_combat != combat_only
+        {
+            return false;
+        }
+
+        if let Some(source_filter) = &self.source_filter {
+            let Some(source_obj) = ctx.game.object(damage.source) else {
+                return false;
+            };
+            if !source_filter.matches(source_obj, &ctx.filter_ctx, ctx.game) {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    fn priority(&self) -> ReplacementPriority {
+        ReplacementPriority::Other
+    }
+
+    fn display(&self) -> String {
+        "When constrained damage would be dealt to this permanent".to_string()
+    }
+}
+
 /// Matches preventable combat damage events to the source of the replacement effect.
 #[derive(Debug, Clone)]
 pub struct DamageToSelfCombatMatcher;
@@ -466,6 +548,47 @@ impl ReplacementMatcher for DamageToSelfCombatMatcher {
 
     fn display(&self) -> String {
         "When combat damage would be dealt to this permanent".to_string()
+    }
+}
+
+/// Matches damage events dealt to another creature you control.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct DamageToOtherCreatureYouControlMatcher;
+
+impl ReplacementMatcher for DamageToOtherCreatureYouControlMatcher {
+    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+        if event.event_kind() != EventKind::Damage {
+            return false;
+        }
+
+        let Some(damage) = downcast_event::<DamageEvent>(event) else {
+            return false;
+        };
+
+        if damage.is_unpreventable {
+            return false;
+        }
+
+        let DamageTarget::Object(target_id) = damage.target else {
+            return false;
+        };
+        if ctx.source == Some(target_id) {
+            return false;
+        }
+
+        let Some(target_obj) = ctx.game.object(target_id) else {
+            return false;
+        };
+        target_obj.controller == ctx.controller
+            && target_obj.card_types.contains(&crate::types::CardType::Creature)
+    }
+
+    fn priority(&self) -> ReplacementPriority {
+        ReplacementPriority::Other
+    }
+
+    fn display(&self) -> String {
+        "When damage would be dealt to another creature you control".to_string()
     }
 }
 

@@ -107,6 +107,7 @@ impl EffectExecutor for PreventAllDamageEffect {
             None,
             self.until.clone(),
             self.damage_filter.clone(),
+            Vec::new(),
         );
 
         Ok(EffectOutcome::resolved())

@@ -140,6 +140,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::PreventAllCombatDamageToYou { .. } => {}
         EffectAst::PreventDamage { .. } => {}
         EffectAst::PreventAllDamageToTarget { .. } => {}
+        EffectAst::PreventDamageToTargetPutCounters { .. } => {}
         EffectAst::PreventNextTimeDamage { .. } => {}
         EffectAst::RedirectNextDamageFromSourceToTarget { .. } => {}
         EffectAst::RedirectNextTimeDamageToSource { .. } => {}
@@ -236,7 +237,9 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::ReturnAllToBattlefield { .. } => {}
         EffectAst::ExchangeControl { .. } => {}
         EffectAst::RingTemptsYou { .. } => {}
+        EffectAst::VentureIntoDungeon { .. } => {}
         EffectAst::BecomeMonarch { .. } => {}
+        EffectAst::TakeInitiative { .. } => {}
         EffectAst::CreateEmblem { .. } => {}
         EffectAst::SetLifeTotal { .. } => {}
         EffectAst::SkipTurn { .. } => {}
@@ -247,6 +250,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::EnergyCounters { .. } => {}
         EffectAst::ChooseCardName { .. } => {}
         EffectAst::ChooseColor { .. } => {}
+        EffectAst::ChooseNamedOption { .. } => {}
         EffectAst::ChooseCreatureType { .. } => {}
         EffectAst::RepeatThisProcess => {}
         EffectAst::RepeatThisProcessOnce => {}

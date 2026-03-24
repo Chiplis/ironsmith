@@ -2155,6 +2155,16 @@ pub fn process_damage_assignments_with_event_with_source_snapshot(
             };
         }
         TraitEventResult::Replaced { effects, effect_id } => {
+            let triggering_event = crate::events::RawEvent::new(
+                crate::events::DamageEvent::with_cause(
+                    source,
+                    target,
+                    amount,
+                    is_combat,
+                    cause.clone(),
+                ),
+                event_provenance,
+            );
             let (replacement_source, replacement_controller) = game
                 .replacement_effects
                 .get_effect(effect_id)
@@ -2173,14 +2183,20 @@ pub fn process_damage_assignments_with_event_with_source_snapshot(
                 replacement_controller,
                 &mut dm,
             )
+            .with_triggering_event(triggering_event)
             .with_cause(crate::events::cause::EventCause::from_effect(
                 replacement_source,
                 replacement_controller,
             ))
             .with_provenance(event_provenance);
-            exec_ctx
-                .targets
-                .push(crate::executor::ResolvedTarget::Object(replacement_source));
+            match target {
+                DamageTarget::Player(player_id) => exec_ctx
+                    .targets
+                    .push(crate::executor::ResolvedTarget::Player(player_id)),
+                DamageTarget::Object(object_id) => exec_ctx
+                    .targets
+                    .push(crate::executor::ResolvedTarget::Object(object_id)),
+            }
             for effect in effects {
                 if let Ok(outcome) = crate::executor::execute_effect(game, &effect, &mut exec_ctx) {
                     for trigger_event in outcome.events {
@@ -2217,6 +2233,8 @@ pub fn process_damage_assignments_with_event_with_source_snapshot(
         replaced.source,
         source_snapshot,
         can_prevent,
+        &replaced.cause,
+        event_provenance,
     );
     if final_damage > 0 {
         assignments.push(ProcessedDamageAssignment {
@@ -2282,7 +2300,11 @@ fn apply_prevention_for_damage_assignment(
     source: crate::ids::ObjectId,
     source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
     can_prevent: bool,
+    cause: &crate::events::cause::EventCause,
+    provenance: crate::provenance::ProvNodeId,
 ) -> u32 {
+    use crate::events::DamageEvent;
+
     if amount == 0 {
         return 0;
     }
@@ -2295,8 +2317,10 @@ fn apply_prevention_for_damage_assignment(
         (crate::color::ColorSet::COLORLESS, Vec::new())
     };
 
-    match target {
-        DamageTarget::Player(player_id) => game.prevention_effects.apply_prevention_to_player(
+    let result = match target {
+        DamageTarget::Player(player_id) => game
+            .prevention_effects
+            .apply_prevention_to_player_with_follow_ups(
             player_id,
             amount,
             is_combat,
@@ -2310,7 +2334,7 @@ fn apply_prevention_for_damage_assignment(
                 .object(object_id)
                 .map(|o| o.controller)
                 .unwrap_or(game.turn.active_player);
-            game.prevention_effects.apply_prevention_to_permanent(
+            game.prevention_effects.apply_prevention_to_permanent_with_follow_ups(
                 object_id,
                 controller,
                 amount,
@@ -2321,7 +2345,49 @@ fn apply_prevention_for_damage_assignment(
                 can_prevent,
             )
         }
+    };
+
+    if can_prevent && !result.follow_ups.is_empty() {
+        let prevented_event = crate::events::RawEvent::new(
+            DamageEvent::with_cause(source, target, amount - result.remaining, is_combat, cause.clone()),
+            provenance,
+        );
+        for follow_up in result.follow_ups {
+            let mut dm = crate::decision::AutoPassDecisionMaker;
+            let mut exec_ctx = crate::executor::ExecutionContext::new(
+                follow_up.source,
+                follow_up.controller,
+                &mut dm,
+            )
+            .with_triggering_event(prevented_event.clone())
+            .with_cause(crate::events::cause::EventCause::from_effect(
+                follow_up.source,
+                follow_up.controller,
+            ))
+            .with_provenance(provenance);
+            match target {
+                DamageTarget::Player(player_id) => {
+                    exec_ctx
+                        .targets
+                        .push(crate::executor::ResolvedTarget::Player(player_id));
+                }
+                DamageTarget::Object(object_id) => {
+                    exec_ctx
+                        .targets
+                        .push(crate::executor::ResolvedTarget::Object(object_id));
+                }
+            }
+            for effect in follow_up.effects {
+                if let Ok(outcome) = crate::executor::execute_effect(game, &effect, &mut exec_ctx) {
+                    for trigger_event in outcome.events {
+                        game.queue_trigger_event(trigger_event.provenance(), trigger_event);
+                    }
+                }
+            }
+        }
     }
+
+    result.remaining
 }
 
 /// Process a life gain event using the new Event type.
@@ -3019,5 +3085,78 @@ pub fn process_event_with_chosen_replacement_trait(
                 _ => None,
             },
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::card::{CardBuilder, PowerToughness};
+    use crate::effect::{Effect, EventValueSpec, Value};
+    use crate::events::cause::EventCause;
+    use crate::ids::{CardId, ObjectId};
+    use crate::mana::{ManaCost, ManaSymbol};
+    use crate::object::{CounterType, Object};
+    use crate::prevention::{PreventionShield, PreventionTarget};
+    use crate::target::ChooseSpec;
+    use crate::types::CardType;
+    use crate::zone::Zone;
+
+    fn make_creature_card(card_id: u32, name: &str) -> crate::card::Card {
+        CardBuilder::new(CardId::from_raw(card_id), name)
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build()
+    }
+
+    fn create_creature(game: &mut GameState, name: &str, controller: PlayerId) -> ObjectId {
+        let id = game.new_object_id();
+        let card = make_creature_card(id.0 as u32, name);
+        let obj = Object::from_card(id, &card, controller, Zone::Battlefield);
+        game.add_object(obj);
+        id
+    }
+
+    #[test]
+    fn prevention_follow_up_executes_with_prevented_amount_on_damaged_target() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let protected = create_creature(&mut game, "Protected Bear", alice);
+        let source = create_creature(&mut game, "Shock Bear", bob);
+
+        let shield = PreventionShield::prevent_next_n(
+            source,
+            alice,
+            PreventionTarget::Permanent(protected),
+            3,
+        )
+        .with_follow_up_effects(vec![Effect::new(crate::effects::PutCountersEffect::new(
+            CounterType::PlusOnePlusOne,
+            Value::EventValue(EventValueSpec::Amount),
+            ChooseSpec::AnyTarget,
+        ))]);
+        game.prevention_effects.add_shield(shield);
+
+        let processed = process_damage_assignments_with_event(
+            &mut game,
+            source,
+            DamageTarget::Object(protected),
+            3,
+            false,
+            EventCause::effect(),
+        );
+
+        assert!(
+            processed.assignments.is_empty(),
+            "damage should be fully prevented: {processed:?}"
+        );
+        assert_eq!(
+            game.counter_count(protected, CounterType::PlusOnePlusOne),
+            3,
+            "follow-up should use the prevented amount on the damaged creature"
+        );
     }
 }

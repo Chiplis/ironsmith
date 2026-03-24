@@ -13,12 +13,13 @@ use super::{
 use crate::ability::LevelAbility;
 use crate::color::Color;
 use crate::compiled_text::describe_value;
-use crate::effect::{Condition, Effect, Value};
+use crate::effect::{Condition, Effect, EventValueSpec, Value};
 use crate::events::cards::matchers::{WouldDiscardMatcher, WouldDrawCardMatcher};
 use crate::events::damage::DamageEvent;
 use crate::events::damage::matchers::{
-    DamageFromSelfMatcher, DamageToObjectMatcher, DamageToPlayerOrObjectMatcher,
-    DamageToSelfCombatMatcher, DamageToSelfFromSourceFilterMatcher,
+    DamageFromSelfMatcher, DamageToObjectMatcher, DamageToOtherCreatureYouControlMatcher,
+    DamageToPlayerOrObjectMatcher, DamageToSelfCombatMatcher, DamageToSelfConstraintMatcher,
+    DamageToSelfFromSourceFilterMatcher,
 };
 use crate::events::permanents::matchers::AttachedPermanentWouldBeDestroyedMatcher;
 use crate::events::traits::{EventKind, ReplacementMatcher, ReplacementPriority, downcast_event};
@@ -1429,6 +1430,150 @@ impl StaticAbilityKind for PreventDamageToSelfRemoveCounter {
                 self.counter_type,
                 Value::Fixed(self.amount as i32),
                 ChooseSpec::Source,
+            )]),
+        ))
+    }
+}
+
+/// "If damage would be dealt to this creature, put that many +1/+1 counters on it instead."
+#[derive(Debug, Clone, PartialEq)]
+pub struct PreventDamageToSelfPutCountersInstead {
+    pub counter_type: CounterType,
+    pub display: String,
+}
+
+impl PreventDamageToSelfPutCountersInstead {
+    pub fn new(counter_type: CounterType, display: impl Into<String>) -> Self {
+        Self {
+            counter_type,
+            display: display.into(),
+        }
+    }
+}
+
+impl StaticAbilityKind for PreventDamageToSelfPutCountersInstead {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::PreventDamageToSelfPutCountersInstead
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            crate::events::DamageToSelfMatcher::new(),
+            ReplacementAction::Instead(vec![Effect::put_counters_on_source(
+                self.counter_type,
+                Value::EventValue(EventValueSpec::Amount),
+            )]),
+        ))
+    }
+}
+
+/// Constrained self-damage replacement that turns prevented damage into counters.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PreventConstrainedDamageToSelfPutCountersInstead {
+    pub counter_type: CounterType,
+    pub display: String,
+    pub source_filter: Option<ObjectFilter>,
+    pub combat_only: Option<bool>,
+}
+
+impl PreventConstrainedDamageToSelfPutCountersInstead {
+    pub fn new(
+        counter_type: CounterType,
+        display: impl Into<String>,
+        source_filter: Option<ObjectFilter>,
+        combat_only: Option<bool>,
+    ) -> Self {
+        Self {
+            counter_type,
+            display: display.into(),
+            source_filter,
+            combat_only,
+        }
+    }
+}
+
+impl StaticAbilityKind for PreventConstrainedDamageToSelfPutCountersInstead {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::PreventConstrainedDamageToSelfPutCountersInstead
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        let matcher = match (&self.source_filter, self.combat_only) {
+            (Some(filter), Some(true)) => {
+                DamageToSelfConstraintMatcher::combat_from_source_filter(filter.clone())
+            }
+            (Some(filter), _) => DamageToSelfConstraintMatcher::from_source_filter(filter.clone()),
+            (None, Some(false)) => DamageToSelfConstraintMatcher::noncombat(),
+            _ => DamageToSelfConstraintMatcher::new(),
+        };
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            matcher,
+            ReplacementAction::Instead(vec![Effect::put_counters_on_source(
+                self.counter_type,
+                Value::EventValue(EventValueSpec::Amount),
+            )]),
+        ))
+    }
+}
+
+/// "If damage would be dealt to another creature you control, prevent that damage..."
+#[derive(Debug, Clone, PartialEq)]
+pub struct PreventDamageToOtherCreatureYouControlPutCountersInstead {
+    pub counter_type: CounterType,
+    pub display: String,
+}
+
+impl PreventDamageToOtherCreatureYouControlPutCountersInstead {
+    pub fn new(counter_type: CounterType, display: impl Into<String>) -> Self {
+        Self {
+            counter_type,
+            display: display.into(),
+        }
+    }
+}
+
+impl StaticAbilityKind for PreventDamageToOtherCreatureYouControlPutCountersInstead {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::PreventDamageToOtherCreatureYouControlPutCountersInstead
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            DamageToOtherCreatureYouControlMatcher,
+            ReplacementAction::Instead(vec![Effect::put_counters(
+                self.counter_type,
+                Value::EventValue(EventValueSpec::Amount),
+                ChooseSpec::AnyTarget,
             )]),
         ))
     }

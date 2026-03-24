@@ -3,7 +3,7 @@
 use super::prevention_helpers::{
     PreventionTargetResolveMode, register_prevention_shield, resolve_prevention_target_from_spec,
 };
-use crate::effect::{EffectOutcome, Until, Value};
+use crate::effect::{Effect, EffectOutcome, Until, Value};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_value;
 use crate::executor::{ExecutionContext, ExecutionError};
@@ -41,6 +41,8 @@ pub struct PreventDamageEffect {
     pub duration: Until,
     /// Filter for what damage this shield applies to.
     pub damage_filter: DamageFilter,
+    /// Effects to run using the amount this shield actually prevented.
+    pub follow_up_effects: Vec<Effect>,
 }
 
 impl PreventDamageEffect {
@@ -51,6 +53,7 @@ impl PreventDamageEffect {
             target,
             duration,
             damage_filter: DamageFilter::all(),
+            follow_up_effects: Vec::new(),
         }
     }
 
@@ -67,6 +70,12 @@ impl PreventDamageEffect {
     /// Set a damage filter for this prevention effect.
     pub fn with_filter(mut self, filter: DamageFilter) -> Self {
         self.damage_filter = filter;
+        self
+    }
+
+    /// Execute these effects using the amount this shield prevented.
+    pub fn with_follow_up_effects(mut self, effects: Vec<Effect>) -> Self {
+        self.follow_up_effects = effects;
         self
     }
 }
@@ -92,6 +101,7 @@ impl EffectExecutor for PreventDamageEffect {
             Some(amount),
             self.duration.clone(),
             self.damage_filter.clone(),
+            self.follow_up_effects.clone(),
         );
 
         Ok(EffectOutcome::resolved())

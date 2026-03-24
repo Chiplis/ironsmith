@@ -11,7 +11,7 @@
 //! - Rule 615.12: "Can't be prevented" damage bypasses prevention entirely
 
 use crate::color::Color;
-use crate::effect::Until;
+use crate::effect::{Effect, Until};
 use crate::ids::{ObjectId, PlayerId};
 use crate::target::ObjectFilter;
 use crate::types::CardType;
@@ -185,6 +185,9 @@ pub struct PreventionShield {
     /// Filter for what damage this shield applies to
     pub damage_filter: DamageFilter,
 
+    /// Effects to execute using the prevented amount when this shield prevents damage.
+    pub follow_up_effects: Vec<Effect>,
+
     /// Turn this shield was created (for end-of-turn cleanup)
     pub created_turn: u32,
 }
@@ -206,6 +209,7 @@ impl PreventionShield {
             amount_remaining: amount,
             duration,
             damage_filter: DamageFilter::default(),
+            follow_up_effects: Vec::new(),
             created_turn: 0, // Set when added to manager
         }
     }
@@ -213,6 +217,12 @@ impl PreventionShield {
     /// Set the damage filter.
     pub fn with_filter(mut self, filter: DamageFilter) -> Self {
         self.damage_filter = filter;
+        self
+    }
+
+    /// Execute these effects with the amount of damage this shield prevented.
+    pub fn with_follow_up_effects(mut self, effects: Vec<Effect>) -> Self {
+        self.follow_up_effects = effects;
         self
     }
 
@@ -279,6 +289,22 @@ pub struct PreventionEffectManager {
 
     /// Current turn number (for duration tracking)
     current_turn: u32,
+}
+
+/// A follow-up to run after a prevention shield actually prevents damage.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PreventionFollowUp {
+    pub source: ObjectId,
+    pub controller: PlayerId,
+    pub prevented: u32,
+    pub effects: Vec<Effect>,
+}
+
+/// Result of applying prevention to a single damage assignment.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct PreventionApplicationResult {
+    pub remaining: u32,
+    pub follow_ups: Vec<PreventionFollowUp>,
 }
 
 impl PreventionEffectManager {
@@ -401,11 +427,35 @@ impl PreventionEffectManager {
         source_card_types: &[CardType],
         can_be_prevented: bool,
     ) -> u32 {
+        self.apply_prevention_to_player_with_follow_ups(
+            player,
+            damage,
+            is_combat,
+            source,
+            source_colors,
+            source_card_types,
+            can_be_prevented,
+        )
+        .remaining
+    }
+
+    /// Apply prevention to damage to a player, collecting any shield follow-ups.
+    pub fn apply_prevention_to_player_with_follow_ups(
+        &mut self,
+        player: PlayerId,
+        damage: u32,
+        is_combat: bool,
+        source: ObjectId,
+        source_colors: &crate::color::ColorSet,
+        source_card_types: &[CardType],
+        can_be_prevented: bool,
+    ) -> PreventionApplicationResult {
         if damage == 0 {
-            return 0;
+            return PreventionApplicationResult::default();
         }
 
         let mut remaining = damage;
+        let mut follow_ups = Vec::new();
 
         // Find applicable shields
         let shield_ids: Vec<PreventionShieldId> = self
@@ -430,6 +480,14 @@ impl PreventionEffectManager {
                 // Normal prevention - reduce damage and consume shield
                 let prevented = shield.reduce(remaining);
                 remaining -= prevented;
+                if prevented > 0 && !shield.follow_up_effects.is_empty() {
+                    follow_ups.push(PreventionFollowUp {
+                        source: shield.source,
+                        controller: shield.controller,
+                        prevented,
+                        effects: shield.follow_up_effects.clone(),
+                    });
+                }
             }
             // If can't be prevented: shield is "applied" but doesn't prevent
             // and doesn't get consumed (per Rule 615.12)
@@ -438,7 +496,10 @@ impl PreventionEffectManager {
         // Clean up exhausted shields
         self.cleanup_exhausted();
 
-        remaining
+        PreventionApplicationResult {
+            remaining,
+            follow_ups,
+        }
     }
 
     /// Apply prevention to damage to a permanent.
@@ -455,11 +516,37 @@ impl PreventionEffectManager {
         source_card_types: &[CardType],
         can_be_prevented: bool,
     ) -> u32 {
+        self.apply_prevention_to_permanent_with_follow_ups(
+            permanent,
+            controller,
+            damage,
+            is_combat,
+            source,
+            source_colors,
+            source_card_types,
+            can_be_prevented,
+        )
+        .remaining
+    }
+
+    /// Apply prevention to damage to a permanent, collecting any shield follow-ups.
+    pub fn apply_prevention_to_permanent_with_follow_ups(
+        &mut self,
+        permanent: ObjectId,
+        controller: PlayerId,
+        damage: u32,
+        is_combat: bool,
+        source: ObjectId,
+        source_colors: &crate::color::ColorSet,
+        source_card_types: &[CardType],
+        can_be_prevented: bool,
+    ) -> PreventionApplicationResult {
         if damage == 0 {
-            return 0;
+            return PreventionApplicationResult::default();
         }
 
         let mut remaining = damage;
+        let mut follow_ups = Vec::new();
 
         // Find applicable shields
         let shield_ids: Vec<PreventionShieldId> = self
@@ -483,13 +570,24 @@ impl PreventionEffectManager {
             {
                 let prevented = shield.reduce(remaining);
                 remaining -= prevented;
+                if prevented > 0 && !shield.follow_up_effects.is_empty() {
+                    follow_ups.push(PreventionFollowUp {
+                        source: shield.source,
+                        controller: shield.controller,
+                        prevented,
+                        effects: shield.follow_up_effects.clone(),
+                    });
+                }
             }
         }
 
         // Clean up exhausted shields
         self.cleanup_exhausted();
 
-        remaining
+        PreventionApplicationResult {
+            remaining,
+            follow_ups,
+        }
     }
 }
 

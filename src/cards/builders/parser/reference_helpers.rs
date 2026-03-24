@@ -354,6 +354,9 @@ pub(crate) fn resolve_restriction_it_tag(
         Restriction::WinGame(player) => {
             Restriction::WinGame(resolve_contextual_player_filter(player, refs)?)
         }
+        Restriction::BecomeMonarch(player) => {
+            Restriction::BecomeMonarch(resolve_contextual_player_filter(player, refs)?)
+        }
         Restriction::Attack(filter) => Restriction::attack(resolve_it_tag(filter, refs)?),
         Restriction::Block(filter) => Restriction::block(resolve_it_tag(filter, refs)?),
         Restriction::BlockSpecificAttacker { blockers, attacker } => {

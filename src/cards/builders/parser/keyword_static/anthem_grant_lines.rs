@@ -1452,12 +1452,77 @@ pub(crate) fn parse_static_condition_clause(
     if clause_words == ["it", "is", "your", "turn"] || clause_words == ["its", "your", "turn"] {
         return Ok(crate::ConditionExpr::YourTurn);
     }
+    if clause_words == ["thiss", "power", "is", "even"]
+        || clause_words == ["this", "power", "is", "even"]
+    {
+        return Ok(crate::ConditionExpr::Unmodeled("thiss power is even".to_string()));
+    }
+    if clause_words == ["thiss", "power", "is", "odd"]
+        || clause_words == ["this", "power", "is", "odd"]
+    {
+        return Ok(crate::ConditionExpr::Unmodeled("thiss power is odd".to_string()));
+    }
     if clause_words == ["it", "is", "not", "your", "turn"]
         || clause_words == ["its", "not", "your", "turn"]
     {
         return Ok(crate::ConditionExpr::Not(Box::new(
             crate::ConditionExpr::YourTurn,
         )));
+    }
+    if clause_words == ["youre", "the", "monarch"]
+        || clause_words == ["youre", "monarch"]
+        || clause_words == ["you", "are", "the", "monarch"]
+        || clause_words == ["you", "are", "monarch"]
+    {
+        return Ok(crate::ConditionExpr::PlayerIsMonarch {
+            player: PlayerFilter::You,
+        });
+    }
+    if clause_words == ["you", "have", "the", "initiative"]
+        || clause_words == ["you", "have", "initiative"]
+    {
+        return Ok(crate::ConditionExpr::PlayerHasInitiative {
+            player: PlayerFilter::You,
+        });
+    }
+    if clause_words == ["youve", "completed", "a", "dungeon"]
+        || clause_words == ["you", "have", "completed", "a", "dungeon"]
+    {
+        return Ok(crate::ConditionExpr::PlayerCompletedDungeon {
+            player: PlayerFilter::You,
+            dungeon_name: None,
+        });
+    }
+    if (clause_words.starts_with(&["youve", "completed"]) && clause_words.len() > 2)
+        || (clause_words.starts_with(&["you", "have", "completed"]) && clause_words.len() > 3)
+    {
+        let name_start = if clause_words[1] == "have" { 3 } else { 2 };
+        return Ok(crate::ConditionExpr::PlayerCompletedDungeon {
+            player: PlayerFilter::You,
+            dungeon_name: Some(clause_words[name_start..].join(" ")),
+        });
+    }
+    if clause_words
+        == [
+            "your",
+            "life",
+            "total",
+            "is",
+            "less",
+            "than",
+            "or",
+            "equal",
+            "to",
+            "half",
+            "your",
+            "starting",
+            "life",
+            "total",
+        ]
+    {
+        return Ok(crate::ConditionExpr::PlayerLifeAtMostHalfStartingLifeTotal {
+            player: PlayerFilter::You,
+        });
     }
 
     if let Some(is_idx) = clause_words

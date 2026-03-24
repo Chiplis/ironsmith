@@ -663,6 +663,7 @@ fn rewrite_statement_parse_text(text: &str) -> String {
         .map(strip_non_keyword_label_prefix)
         .map(str::trim)
         .map(rewrite_statement_followup_intro)
+        .map(rewrite_copy_exception_type_removal)
         .filter(|sentence| !sentence.is_empty())
         .collect::<Vec<_>>();
     if sentences.is_empty() {
@@ -670,6 +671,34 @@ fn rewrite_statement_parse_text(text: &str) -> String {
     } else {
         format!("{}.", sentences.join(". "))
     }
+}
+
+fn rewrite_copy_exception_type_removal(sentence: String) -> String {
+    sentence
+        .replace(
+            "except it's an artifact and it loses all other card types",
+            "except it's an artifact",
+        )
+        .replace(
+            "except its an artifact and it loses all other card types",
+            "except its an artifact",
+        )
+        .replace(
+            "except it's an enchantment and it loses all other card types",
+            "except it's an enchantment",
+        )
+        .replace(
+            "except its an enchantment and it loses all other card types",
+            "except its an enchantment",
+        )
+        .replace(
+            "except it's an enchantment and loses all other card types",
+            "except it's an enchantment",
+        )
+        .replace(
+            "except its an enchantment and loses all other card types",
+            "except its an enchantment",
+        )
 }
 
 fn rewrite_statement_followup_intro(sentence: &str) -> String {

@@ -12,6 +12,7 @@ pub mod costs;
 pub mod decision;
 pub mod decisions;
 pub mod dependency;
+pub mod dungeon;
 pub(crate) mod derived_view;
 pub mod effect;
 mod effect_text_shared;

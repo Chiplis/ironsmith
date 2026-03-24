@@ -561,6 +561,63 @@ impl Comparison {
     }
 }
 
+/// A parity requirement for numeric object properties.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParityRequirement {
+    Odd,
+    Even,
+    Chosen,
+}
+
+impl ParityRequirement {
+    fn explicit_label(self) -> Option<&'static str> {
+        match self {
+            Self::Odd => Some("odd"),
+            Self::Even => Some("even"),
+            Self::Chosen => None,
+        }
+    }
+
+    fn resolve(self, game: &crate::game_state::GameState, source: Option<ObjectId>) -> Option<Self> {
+        match self {
+            Self::Odd | Self::Even => Some(self),
+            Self::Chosen => {
+                let source = source?;
+                let chosen = game.chosen_named_option(source)?;
+                if chosen.eq_ignore_ascii_case("odd") {
+                    Some(Self::Odd)
+                } else if chosen.eq_ignore_ascii_case("even") {
+                    Some(Self::Even)
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
+    fn matches(
+        self,
+        value: i32,
+        game: &crate::game_state::GameState,
+        ctx: &FilterContext,
+    ) -> bool {
+        match self.resolve(game, ctx.source) {
+            Some(Self::Odd) => value.rem_euclid(2) == 1,
+            Some(Self::Even) => value.rem_euclid(2) == 0,
+            Some(Self::Chosen) | None => false,
+        }
+    }
+
+    fn describe_axis(self, axis: &str) -> String {
+        match self {
+            Self::Odd | Self::Even => {
+                format!("with {} {axis}", self.explicit_label().unwrap_or(""))
+            }
+            Self::Chosen => format!("with {axis} of the chosen quality"),
+        }
+    }
+}
+
 fn resolve_filter_comparison_rhs_value(
     rhs: &crate::effect::Value,
     game: &crate::game_state::GameState,
@@ -1182,6 +1239,8 @@ pub struct ObjectFilter {
 
     /// Power comparison (creature must satisfy)
     pub power: Option<Comparison>,
+    /// Power parity requirement.
+    pub power_parity: Option<ParityRequirement>,
     /// Whether `power` is checked against effective or base power.
     pub power_reference: PtReference,
     /// Relative power comparison against the source object in filter context.
@@ -1194,6 +1253,8 @@ pub struct ObjectFilter {
 
     /// Mana value comparison
     pub mana_value: Option<Comparison>,
+    /// Mana value parity requirement.
+    pub mana_value_parity: Option<ParityRequirement>,
 
     /// Mana value must equal the number of `counter_type` counters on the source permanent.
     ///
@@ -1219,6 +1280,8 @@ pub struct ObjectFilter {
 
     /// Counter-state exclusions such as "without a +1/+1 counter on it".
     pub without_counter: Option<CounterConstraint>,
+    /// Total counter parity requirement.
+    pub total_counters_parity: Option<ParityRequirement>,
 
     /// Name must match (for cards like "Rat Colony")
     pub name: Option<String>,
@@ -1636,6 +1699,12 @@ impl ObjectFilter {
         self
     }
 
+    /// Require power to have a specific parity.
+    pub fn with_power_parity(mut self, parity: ParityRequirement) -> Self {
+        self.power_parity = Some(parity);
+        self
+    }
+
     /// Require base power to satisfy a comparison.
     pub fn with_base_power(mut self, cmp: Comparison) -> Self {
         self.power = Some(cmp);
@@ -1666,6 +1735,18 @@ impl ObjectFilter {
     /// Require mana value to satisfy a comparison.
     pub fn with_mana_value(mut self, cmp: Comparison) -> Self {
         self.mana_value = Some(cmp);
+        self
+    }
+
+    /// Require mana value to have a specific parity.
+    pub fn with_mana_value_parity(mut self, parity: ParityRequirement) -> Self {
+        self.mana_value_parity = Some(parity);
+        self
+    }
+
+    /// Require the total number of counters on the object to have a specific parity.
+    pub fn with_total_counters_parity(mut self, parity: ParityRequirement) -> Self {
+        self.total_counters_parity = Some(parity);
         self
     }
 
@@ -2662,6 +2743,20 @@ impl ObjectFilter {
                 return false; // No power means not a creature
             }
         }
+        if let Some(power_parity) = self.power_parity {
+            if let Some(power) = resolve_object_power_for_filter(
+                object,
+                game,
+                self.power_reference,
+                allow_calculated_pt,
+            ) {
+                if !power_parity.matches(power, game, ctx) {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        }
 
         if let Some(relation) = self.power_relative_to_source {
             let Some(candidate_power) = resolve_object_power_for_filter(
@@ -2722,6 +2817,16 @@ impl ObjectFilter {
                 return false;
             }
         }
+        if let Some(mana_value_parity) = self.mana_value_parity {
+            let mv = object
+                .mana_cost
+                .as_ref()
+                .map(|mc| mc.mana_value() as i32)
+                .unwrap_or(0);
+            if !mana_value_parity.matches(mv, game, ctx) {
+                return false;
+            }
+        }
         if let Some(counter_type) = self.mana_value_eq_counters_on_source {
             let Some(source_id) = ctx.source else {
                 return false;
@@ -2736,6 +2841,12 @@ impl ObjectFilter {
                 .map(|mc| mc.mana_value() as i32)
                 .unwrap_or(0);
             if mv != required {
+                return false;
+            }
+        }
+        if let Some(total_counters_parity) = self.total_counters_parity {
+            let total_counters = object.counters.values().copied().sum::<u32>() as i32;
+            if !total_counters_parity.matches(total_counters, game, ctx) {
                 return false;
             }
         }
@@ -3073,6 +3184,15 @@ impl ObjectFilter {
                 return false; // No power means not a creature
             }
         }
+        if let Some(power_parity) = self.power_parity {
+            if let Some(power) = resolve_snapshot_power_for_filter(snapshot, self.power_reference) {
+                if !power_parity.matches(power, game, ctx) {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        }
 
         if let Some(relation) = self.power_relative_to_source {
             let Some(candidate_power) =
@@ -3125,6 +3245,16 @@ impl ObjectFilter {
                 return false;
             }
         }
+        if let Some(mana_value_parity) = self.mana_value_parity {
+            let mv = snapshot
+                .mana_cost
+                .as_ref()
+                .map(|mc| mc.mana_value() as i32)
+                .unwrap_or(0);
+            if !mana_value_parity.matches(mv, game, ctx) {
+                return false;
+            }
+        }
         if let Some(counter_type) = self.mana_value_eq_counters_on_source {
             let Some(source_id) = ctx.source else {
                 return false;
@@ -3139,6 +3269,12 @@ impl ObjectFilter {
                 .map(|mc| mc.mana_value() as i32)
                 .unwrap_or(0);
             if mv != required {
+                return false;
+            }
+        }
+        if let Some(total_counters_parity) = self.total_counters_parity {
+            let total_counters = snapshot.counters.values().copied().sum::<u32>() as i32;
+            if !total_counters_parity.matches(total_counters, game, ctx) {
                 return false;
             }
         }
@@ -3802,6 +3938,13 @@ impl ObjectFilter {
                 };
                 parts.push(format!("with {label} {}", describe_comparison(power)));
             }
+            if let Some(power_parity) = self.power_parity {
+                let axis = match self.power_reference {
+                    PtReference::Effective => "power",
+                    PtReference::Base => "base power",
+                };
+                parts.push(power_parity.describe_axis(axis));
+            }
             if let Some(relation) = self.power_relative_to_source {
                 match relation {
                     SourcePowerRelation::LessThanSource => {
@@ -3822,6 +3965,9 @@ impl ObjectFilter {
                 "with mana value {}",
                 describe_comparison(mana_value)
             ));
+        }
+        if let Some(mana_value_parity) = self.mana_value_parity {
+            parts.push(mana_value_parity.describe_axis("mana value"));
         }
         if let Some(counter_type) = self.mana_value_eq_counters_on_source {
             parts.push(format!(
@@ -3859,6 +4005,17 @@ impl ObjectFilter {
                 "without {} on it",
                 describe_counter_constraint(counter_exclusion)
             ));
+        }
+        if let Some(total_counters_parity) = self.total_counters_parity {
+            match total_counters_parity {
+                ParityRequirement::Odd | ParityRequirement::Even => parts.push(format!(
+                    "with an {} number of counters on it",
+                    total_counters_parity.explicit_label().unwrap_or("")
+                )),
+                ParityRequirement::Chosen => {
+                    parts.push("with a number of counters on it of the chosen quality".to_string())
+                }
+            }
         }
         if let Some(kind) = self.alternative_cast {
             parts.push(format!("with {}", describe_alternative_cast_kind(kind)));

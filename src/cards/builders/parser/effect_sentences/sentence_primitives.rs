@@ -4592,8 +4592,14 @@ pub(crate) fn parse_sentence_fallback_mechanic_marker(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let clause_words = words(tokens);
-    let is_match = clause_words.as_slice() == ["venture", "into", "the", "dungeon"]
-        || clause_words.as_slice() == ["its", "still", "a", "land"]
+    if clause_words.as_slice() == ["venture", "into", "the", "dungeon"] {
+        return Ok(Some(vec![EffectAst::VentureIntoDungeon {
+            player: crate::cards::builders::PlayerAst::You,
+            undercity_if_no_active: false,
+        }]));
+    }
+
+    let is_match = clause_words.as_slice() == ["its", "still", "a", "land"]
         || clause_words.as_slice() == ["it", "still", "a", "land"]
         || clause_words.starts_with(&["manifest", "the", "top", "card", "of", "your", "library"])
         || clause_words.starts_with(&["you", "choose", "one", "of", "them"])

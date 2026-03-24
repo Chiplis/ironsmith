@@ -124,7 +124,7 @@ pub use permanents::{
 pub use player::{
     AdditionalLandPlaysEffect, BecomeMonarchEffect, CascadeEffect, CastSourceEffect,
     CastTaggedEffect, ChooseCardNameEffect, ChooseColorEffect, ChooseCreatureTypeEffect,
-    ChoosePlayerEffect, ControlPlayerEffect, CreateEmblemEffect, DiscoverEffect,
+    ChooseNamedOptionEffect, ChoosePlayerEffect, ControlPlayerEffect, CreateEmblemEffect, DiscoverEffect,
     EnergyCountersEffect, ExileInsteadOfGraveyardEffect, ExileThenGrantPlayEffect,
     ExileUntilMatchCastEffect, ExileUntilMatchGrantPlayEffect, ExperienceCountersEffect,
     ExtraTurnAfterNextTurnEffect, ExtraTurnEffect, GrantBySpecEffect, GrantEffect,
@@ -132,7 +132,8 @@ pub use player::{
     GrantPlayTaggedEffect, GrantTaggedSpellFreeCastUntilEndOfTurnEffect,
     GrantTaggedSpellLifeCostByManaValueEffect, LoseTheGameEffect, PayEnergyEffect,
     PoisonCountersEffect, RingTemptsYouEffect, SkipCombatPhasesEffect, SkipDrawStepEffect,
-    SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect, WinTheGameEffect,
+    SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect, TakeInitiativeEffect,
+    VentureIntoDungeonEffect, WinTheGameEffect,
 };
 pub use replacement::{
     ApplyReplacementEffect, RegisterZoneReplacementEffect, ReplacementApplyMode,

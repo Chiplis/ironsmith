@@ -2314,6 +2314,53 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         });
     }
 
+    if filtered.as_slice() == ["you", "have", "the", "initiative"]
+        || filtered.as_slice() == ["you", "have", "initiative"]
+    {
+        return Ok(PredicateAst::PlayerHasInitiative {
+            player: PlayerAst::You,
+        });
+    }
+
+    if filtered.as_slice() == ["youve", "completed", "a", "dungeon"]
+        || filtered.as_slice() == ["you", "have", "completed", "a", "dungeon"]
+    {
+        return Ok(PredicateAst::PlayerCompletedDungeon {
+            player: PlayerAst::You,
+            dungeon_name: None,
+        });
+    }
+
+    if (filtered.starts_with(&["youve", "completed"]) && filtered.len() > 2)
+        || (filtered.starts_with(&["you", "have", "completed"]) && filtered.len() > 3)
+    {
+        let name_start = if filtered[1] == "have" { 3 } else { 2 };
+        let dungeon_name = filtered[name_start..]
+            .iter()
+            .map(|word| (*word).to_string())
+            .collect::<Vec<_>>()
+            .join(" ");
+        return Ok(PredicateAst::PlayerCompletedDungeon {
+            player: PlayerAst::You,
+            dungeon_name: Some(dungeon_name),
+        });
+    }
+
+    if (filtered.starts_with(&["you", "havent", "completed"]) && filtered.len() > 3)
+        || (filtered.starts_with(&["you", "have", "not", "completed"]) && filtered.len() > 4)
+    {
+        let name_start = if filtered[1] == "have" { 4 } else { 3 };
+        let dungeon_name = filtered[name_start..]
+            .iter()
+            .map(|word| (*word).to_string())
+            .collect::<Vec<_>>()
+            .join(" ");
+        return Ok(PredicateAst::Not(Box::new(PredicateAst::PlayerCompletedDungeon {
+            player: PlayerAst::You,
+            dungeon_name: Some(dungeon_name),
+        })));
+    }
+
     if filtered.as_slice() == ["youve", "cast", "another", "spell", "this", "turn"]
         || filtered.as_slice() == ["you", "have", "cast", "another", "spell", "this", "turn"]
         || filtered.as_slice() == ["you", "cast", "another", "spell", "this", "turn"]
@@ -2325,6 +2372,9 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     let unsupported_unmodeled = filtered.as_slice() == ["you", "gained", "life", "this", "turn"]
+        || filtered.as_slice() == ["you", "dont", "cast", "it"]
+        || filtered.as_slice() == ["it", "has", "odd", "number", "of", "counters", "on", "it"]
+        || filtered.as_slice() == ["it", "has", "even", "number", "of", "counters", "on", "it"]
         || filtered.as_slice() == ["opponent", "lost", "life", "this", "turn"]
         || filtered.as_slice() == ["opponents", "lost", "life", "this", "turn"]
         || filtered.as_slice() == ["an", "opponent", "lost", "life", "this", "turn"]
@@ -2397,7 +2447,15 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
                 "graveyard",
                 "from",
                 "anywhere",
-            ];
+            ]
+        || filtered.as_slice() == ["the", "number", "is", "odd"]
+        || filtered.as_slice() == ["the", "number", "is", "even"]
+        || filtered.as_slice() == ["number", "is", "odd"]
+        || filtered.as_slice() == ["number", "is", "even"]
+        || filtered.as_slice() == ["the", "number", "of", "permanents", "is", "odd"]
+        || filtered.as_slice() == ["the", "number", "of", "permanents", "is", "even"]
+        || filtered.as_slice() == ["number", "of", "permanents", "is", "odd"]
+        || filtered.as_slice() == ["number", "of", "permanents", "is", "even"];
     if unsupported_unmodeled {
         return Ok(PredicateAst::Unmodeled(filtered.join(" ")));
     }

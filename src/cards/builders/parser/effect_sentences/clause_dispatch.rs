@@ -85,6 +85,11 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
             player: crate::cards::builders::PlayerAst::You,
         });
     }
+    if clause_words.as_slice() == ["you", "take", "the", "initiative"] {
+        return Ok(EffectAst::TakeInitiative {
+            player: crate::cards::builders::PlayerAst::You,
+        });
+    }
     if is_mana_replacement_clause_words(&clause_words) {
         return Err(CardTextError::ParseError(format!(
             "unsupported mana replacement clause (clause: '{}') [rule=mana-replacement]",
@@ -133,6 +138,13 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
     {
         return Ok(EffectAst::ChooseColor {
             player: crate::cards::builders::PlayerAst::Implicit,
+        });
+    }
+
+    if matches!(choice_words, ["choose", "odd", "or", "even"]) {
+        return Ok(EffectAst::ChooseNamedOption {
+            player: crate::cards::builders::PlayerAst::Implicit,
+            options: vec!["odd".to_string(), "even".to_string()],
         });
     }
 

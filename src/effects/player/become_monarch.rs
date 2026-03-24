@@ -29,6 +29,9 @@ impl EffectExecutor for BecomeMonarchEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
+        if !game.can_become_monarch(player_id) {
+            return Ok(EffectOutcome::prevented());
+        }
         game.set_monarch(Some(player_id));
         Ok(EffectOutcome::resolved())
     }

@@ -2860,27 +2860,49 @@ pub(crate) fn parse_gain_control(
     } else {
         &tokens[idx..]
     };
-    if target_tokens
-        .iter()
-        .any(|token| token.is_word("if") || token.is_word("unless"))
-    {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported conditional gain-control clause (clause: '{}')",
-            clause_words.join(" ")
-        )));
-    }
-
-    let target_ast = parse_target_phrase(target_tokens)?;
+    let (target_ast, trailing_predicate, is_unless) =
+        if let Some(if_idx) = target_tokens.iter().position(|token| token.is_word("if")) {
+            let pre_target_tokens = trim_commas(&target_tokens[..if_idx]);
+            let predicate_tokens = trim_commas(&target_tokens[if_idx + 1..]);
+            if pre_target_tokens.is_empty() || predicate_tokens.is_empty() {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported conditional gain-control clause (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            }
+            (
+                parse_target_phrase(&pre_target_tokens)?,
+                Some(parse_predicate(&predicate_tokens)?),
+                false,
+            )
+        } else if let Some(unless_idx) = target_tokens.iter().position(|token| token.is_word("unless"))
+        {
+            let pre_target_tokens = trim_commas(&target_tokens[..unless_idx]);
+            let predicate_tokens = trim_commas(&target_tokens[unless_idx + 1..]);
+            if pre_target_tokens.is_empty() || predicate_tokens.is_empty() {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported conditional gain-control clause (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            }
+            (
+                parse_target_phrase(&pre_target_tokens)?,
+                Some(parse_predicate(&predicate_tokens)?),
+                true,
+            )
+        } else {
+            (parse_target_phrase(target_tokens)?, None, false)
+        };
     let duration_tokens = duration_idx
         .map(|dur_idx| &tokens[dur_idx..])
         .unwrap_or(&[]);
     let duration = parse_control_duration(duration_tokens)?;
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
-    match target_ast {
-        TargetAst::Player(filter, _) => Ok(EffectAst::ControlPlayer {
+    let base_effect = match target_ast {
+        TargetAst::Player(filter, _) => EffectAst::ControlPlayer {
             player: PlayerFilter::Target(Box::new(filter)),
             duration,
-        }),
+        },
         _ => {
             let until = match duration {
                 ControlDurationAst::UntilEndOfTurn => Until::EndOfTurn,
@@ -2892,13 +2914,31 @@ pub(crate) fn parse_gain_control(
                     ));
                 }
             };
-            Ok(EffectAst::GainControl {
+            EffectAst::GainControl {
                 target: target_ast,
                 player,
                 duration: until,
-            })
+            }
         }
+    };
+
+    if let Some(predicate) = trailing_predicate {
+        return Ok(if is_unless {
+            EffectAst::Conditional {
+                predicate,
+                if_true: Vec::new(),
+                if_false: vec![base_effect],
+            }
+        } else {
+            EffectAst::Conditional {
+                predicate,
+                if_true: vec![base_effect],
+                if_false: Vec::new(),
+            }
+        });
     }
+
+    Ok(base_effect)
 }
 
 pub(crate) fn parse_control_duration(

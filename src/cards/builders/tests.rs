@@ -7168,6 +7168,76 @@ fn parse_equipped_gets_and_has_activated_grant_as_static_abilities() {
 }
 
 #[test]
+fn parse_song_of_the_dryads_type_transform_line() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Song of the Dryads")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura])
+        .parse_text("Enchant permanent\nEnchanted permanent is a colorless Forest land.")
+        .expect("song-style attached transform should parse");
+
+    let compiled = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        compiled.contains("enchanted permanent is land"),
+        "expected land type-setting text, got {compiled}"
+    );
+    assert!(
+        compiled.contains("forest"),
+        "expected forest subtype text, got {compiled}"
+    );
+    assert!(
+        compiled.contains("colorless"),
+        "expected colorless text, got {compiled}"
+    );
+}
+
+#[test]
+fn parse_imprisoned_in_the_moon_type_transform_line() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Imprisoned in the Moon")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura])
+        .parse_text(
+            "Enchant creature, land, or planeswalker\nEnchanted permanent is a colorless land with \"{T}: Add {C}\" and loses all other card types and abilities.",
+        )
+        .expect("imprisoned-style attached transform should parse");
+
+    let compiled = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        compiled.contains("colorless"),
+        "expected colorless text, got {compiled}"
+    );
+    assert!(
+        compiled.contains("{t}: add {c}") || compiled.contains("{t}: add c"),
+        "expected granted mana ability text, got {compiled}"
+    );
+    assert!(
+        compiled.contains("loses all other card types and abilities")
+            || compiled.contains("lose all abilities"),
+        "expected ability-loss text, got {compiled}"
+    );
+}
+
+#[test]
+fn parse_swift_reconfiguration_vehicle_transform_line() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Swift Reconfiguration")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura])
+        .parse_text(
+            "Flash\nEnchant creature or Vehicle\nEnchanted permanent is a Vehicle artifact with crew 5 and it loses all other card types.",
+        )
+        .expect("swift-reconfiguration-style transform should parse");
+
+    let compiled = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        compiled.contains("vehicle"),
+        "expected vehicle text, got {compiled}"
+    );
+    assert!(
+        compiled.contains("crew 5"),
+        "expected crew keyword text, got {compiled}"
+    );
+}
+
+#[test]
 fn parse_equipped_activated_grant_with_unsupported_cost_errors_instead_of_partial_compile() {
     let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Equip Unsupported Grant Variant")
             .parse_text(
@@ -18534,14 +18604,19 @@ fn assert_oracle_card_fails_strict(name: &str) {
 
 const STRICT_PARSE_REGRESSION_SUCCESS_CARDS: &[&str] = &[
     "Banefire",
+    "Barrowin of Clan Undurr",
     "Blast Zone",
     "Boseiju, Who Endures",
     "Cabal Ritual",
+    "Caves of Chaos Adventurer",
     "Cavern of Souls",
     "Cultivator Colossus",
+    "Dungeon Crawler",
     "Echoing Deeps",
     "Fatal Push",
+    "Gloom Stalker",
     "Grief",
+    "Imoen, Mystic Trickster",
     "Mox Amber",
     "Nexus of Fate",
     "Nykthos, Shrine to Nyx",
@@ -18551,6 +18626,7 @@ const STRICT_PARSE_REGRESSION_SUCCESS_CARDS: &[&str] = &[
     "Pawn of Ulamog",
     "Genesis Chamber",
     "Sacrifice",
+    "Sefris of the Hidden Ways",
     "Sephiroth, Fabled SOLDIER",
     "Susurian Voidborn",
     "Shifting Woodland",
@@ -18561,6 +18637,7 @@ const STRICT_PARSE_REGRESSION_SUCCESS_CARDS: &[&str] = &[
     "Turn the Earth",
     "Unmarked Grave",
     "Vesuva",
+    "White Plume Adventurer",
 ];
 
 const STRICT_PARSE_REGRESSION_EXPECTED_FAILURE_CARDS: &[&str] = &[
@@ -18682,6 +18759,31 @@ fn strict_parse_shared_parser_regression_cards() {
     ] {
         assert_oracle_card_parses_strict(name);
     }
+}
+
+#[test]
+fn dungeon_regression_cards_render_key_mechanics() {
+    let crawler = parse_oracle_card_definition("Dungeon Crawler");
+    let crawler_lines = oracle_like_lines(&crawler).join(" ");
+    assert!(
+        crawler_lines.contains("Whenever you complete a dungeon"),
+        "expected Dungeon Crawler to keep its completion trigger, got {crawler_lines}"
+    );
+
+    let stalker = parse_oracle_card_definition("Gloom Stalker");
+    let stalker_lines = oracle_like_lines(&stalker).join(" ");
+    assert!(
+        stalker_lines.contains("completed a dungeon"),
+        "expected Gloom Stalker to keep its completed-dungeon condition, got {stalker_lines}"
+    );
+
+    let adventurer = parse_oracle_card_definition("White Plume Adventurer");
+    let adventurer_lines = oracle_like_lines(&adventurer).join(" ");
+    assert!(
+        adventurer_lines.contains("take the initiative")
+            && adventurer_lines.contains("completed dungeon"),
+        "expected White Plume Adventurer to keep initiative and completion text, got {adventurer_lines}"
+    );
 }
 
 #[test]
@@ -19703,5 +19805,79 @@ fn parse_gandalf_flash_union_uses_generic_permission_parser() {
             && debug.contains("Artifact")
             && !debug.contains("RuleTextPlaceholder"),
         "expected shared permission filter union without placeholders, got {debug}"
+    );
+}
+
+#[test]
+fn strength_of_will_compiled_text_keeps_target_and_granted_trigger() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Strength of Will")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Until end of turn, target creature you control gains indestructible and \"Whenever this creature is dealt damage, put that many +1/+1 counters on it.\"",
+        )
+        .expect("strength of will text should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("target creature you control gains indestructible")
+            && rendered.contains("whenever this creature is dealt damage")
+            && rendered.contains("put that many +1/+1 counters on it"),
+        "expected targeted granted trigger rendering, got {rendered}"
+    );
+}
+
+#[test]
+fn anti_venom_static_damage_replacement_compiles() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Anti-Venom, Horrifying Healer")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "If damage would be dealt to Anti-Venom, prevent that damage and put that many +1/+1 counters on him.",
+        )
+        .expect("anti-venom replacement text should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("prevent that damage")
+            && rendered.contains("put that many +1/+1 counters"),
+        "expected damage replacement rendering, got {rendered}"
+    );
+}
+
+#[test]
+fn test_of_faith_renders_prevention_follow_up_counters() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Test of Faith")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Prevent the next 3 damage that would be dealt to target creature this turn. For each 1 damage prevented this way, put a +1/+1 counter on that creature.",
+        )
+        .expect("test of faith text should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("prevent the next 3 damage")
+            && rendered.contains("for each 1 damage prevented this way")
+            && rendered.contains("put a +1/+1 counter on that creature"),
+        "expected prevention follow-up rendering, got {rendered}"
+    );
+}
+
+#[test]
+fn jared_carthalion_true_heir_compiles_monarch_and_damage_replacement_text() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Jared Carthalion, True Heir")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "When Jared Carthalion enters, target opponent becomes the monarch. You can't become the monarch this turn.\nIf damage would be dealt to Jared Carthalion while you're the monarch, prevent that damage and put that many +1/+1 counters on it.",
+        )
+        .expect("jared rules text should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ");
+    let lowered = rendered.to_ascii_lowercase();
+    assert!(
+        lowered.contains("target opponent becomes the monarch")
+            && lowered.contains("you can't become the monarch this turn")
+            && lowered.contains("if damage would be dealt to jared carthalion while you're the monarch")
+            && lowered.contains("put that many +1/+1 counters on it")
+            && !lowered.contains("unsupported effect"),
+        "expected Jared to render monarch and prevention text cleanly, got {rendered}"
     );
 }

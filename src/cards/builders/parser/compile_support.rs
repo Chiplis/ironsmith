@@ -1053,9 +1053,23 @@ pub(crate) fn compile_condition_from_predicate_ast(
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerIsMonarch { player }
         }
+        PredicateAst::PlayerHasInitiative { player } => {
+            let player = resolve_non_target_player_filter(*player, &refs)?;
+            Condition::PlayerHasInitiative { player }
+        }
         PredicateAst::PlayerHasCitysBlessing { player } => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerHasCitysBlessing { player }
+        }
+        PredicateAst::PlayerCompletedDungeon {
+            player,
+            dungeon_name,
+        } => {
+            let player = resolve_non_target_player_filter(*player, &refs)?;
+            Condition::PlayerCompletedDungeon {
+                player,
+                dungeon_name: dungeon_name.clone(),
+            }
         }
         PredicateAst::PlayerTappedLandForManaThisTurn { player } => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
@@ -1351,6 +1365,10 @@ macro_rules! direct_target_effect_variants {
                 ..
             }
             | EffectAst::PreventAllDamageToTarget {
+                target: $target,
+                ..
+            }
+            | EffectAst::PreventDamageToTargetPutCounters {
                 target: $target,
                 ..
             }
@@ -1702,6 +1720,10 @@ pub(crate) fn effect_references_event_derived_amount(effect: &EffectAst) -> bool
         | EffectAst::RemoveUpToAnyCounters { amount, .. } => {
             value_references_event_derived_amount(amount)
         }
+        EffectAst::PreventDamageToTargetPutCounters {
+            amount: Some(amount),
+            ..
+        } => value_references_event_derived_amount(amount),
         EffectAst::PutCounters { count, .. } | EffectAst::PutCountersAll { count, .. } => {
             value_references_event_derived_amount(count)
         }
@@ -1873,6 +1895,10 @@ pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
             value_references_tag(amount, IT_TAG)
         }
         EffectAst::PreventDamage { amount, .. } => value_references_tag(amount, IT_TAG),
+        EffectAst::PreventDamageToTargetPutCounters {
+            amount: Some(amount),
+            ..
+        } => value_references_tag(amount, IT_TAG),
         EffectAst::PreventDamageEach { amount, filter, .. } => {
             value_references_tag(amount, IT_TAG) || filter_references_tag(filter, IT_TAG)
         }
@@ -4502,6 +4528,42 @@ fn try_compile_player_resource_and_choice_effect(
                 compile_effect_for_target(target, ctx, |spec| {
                     Effect::prevent_all_damage_to_target(spec, duration.clone())
                 })?
+            }
+        }
+        EffectAst::PreventDamageToTargetPutCounters {
+            amount,
+            target,
+            duration,
+            counter_type,
+        } => {
+            let follow_up = vec![Effect::put_counters(
+                *counter_type,
+                Value::EventValue(EventValueSpec::Amount),
+                ChooseSpec::AnyTarget,
+            )];
+            match amount {
+                Some(amount) => {
+                    let amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
+                    compile_effect_for_target(target, ctx, |spec| {
+                        Effect::new(
+                            crate::effects::PreventDamageEffect::new(
+                                amount.clone(),
+                                spec,
+                                duration.clone(),
+                            )
+                            .with_follow_up_effects(follow_up.clone()),
+                        )
+                    })?
+                }
+                None => compile_effect_for_target(target, ctx, |spec| {
+                    Effect::new(
+                        crate::effects::PreventAllDamageToTargetEffect::new(
+                            spec,
+                            duration.clone(),
+                        )
+                        .with_follow_up_effects(follow_up.clone()),
+                    )
+                })?,
             }
         }
         EffectAst::PreventNextTimeDamage { source, target } => {
@@ -8007,6 +8069,17 @@ fn try_compile_object_zone_and_exchange_effect(
             ctx.last_player_filter = Some(chooser);
             (effects, choices)
         }
+        EffectAst::ChooseNamedOption { player, options } => {
+            let (chooser, choices) = resolve_effect_player_filter(*player, ctx, true, true, false)?;
+            let mut effects: Vec<Effect> = choices
+                .iter()
+                .cloned()
+                .map(|spec| Effect::new(crate::effects::TargetOnlyEffect::new(spec)))
+                .collect();
+            effects.push(Effect::choose_named_option(chooser.clone(), options.clone()));
+            ctx.last_player_filter = Some(chooser);
+            (effects, choices)
+        }
         EffectAst::ChooseCreatureType {
             player,
             excluded_subtypes,
@@ -8523,8 +8596,21 @@ fn try_compile_player_turn_and_counter_effect(
         EffectAst::RingTemptsYou { player } => {
             compile_player_effect_from_filter(*player, ctx, true, Effect::ring_tempts_player)?
         }
+        EffectAst::VentureIntoDungeon {
+            player,
+            undercity_if_no_active,
+        } => compile_player_effect_from_filter(*player, ctx, true, |filter| {
+            if *undercity_if_no_active {
+                Effect::venture_into_undercity_player(filter)
+            } else {
+                Effect::venture_into_dungeon_player(filter)
+            }
+        })?,
         EffectAst::BecomeMonarch { player } => {
             compile_player_effect_from_filter(*player, ctx, true, Effect::become_monarch_player)?
+        }
+        EffectAst::TakeInitiative { player } => {
+            compile_player_effect_from_filter(*player, ctx, true, Effect::take_initiative_player)?
         }
         EffectAst::SetLifeTotal { amount, player } => {
             compile_player_effect_from_filter(*player, ctx, true, |filter| {

@@ -226,7 +226,7 @@ pub(crate) fn parse_verb_first_clause(
         "untap" => Verb::Untap,
         "scry" => Verb::Scry,
         "discard" => Verb::Discard,
-        "transform" => Verb::Transform,
+        "transform" | "convert" => Verb::Transform,
         "regenerate" => Verb::Regenerate,
         "mill" => Verb::Mill,
         "get" => Verb::Get,

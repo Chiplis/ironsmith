@@ -3,6 +3,7 @@ use crate::{
     CardType, Color, ColorSet, ObjectFilter, PlayerFilter, Supertype, TagKey,
     TaggedObjectConstraint, TaggedOpbjectRelation, Zone,
 };
+use crate::filter::ParityRequirement;
 
 use super::effect_sentences::{parse_subtype_word, parse_supertype_word};
 use super::keyword_static::parse_pt_modifier;
@@ -34,6 +35,67 @@ fn normalized_token_index_after_words(
 
 fn lower_words_end_with(words: &[&str], suffix: &[&str]) -> bool {
     words.len() >= suffix.len() && words[words.len() - suffix.len()..] == *suffix
+}
+
+fn parse_parity_word(word: &str) -> Option<ParityRequirement> {
+    match word {
+        "odd" => Some(ParityRequirement::Odd),
+        "even" => Some(ParityRequirement::Even),
+        _ => None,
+    }
+}
+
+fn apply_parity_filter_phrases(words: &[&str], filter: &mut ObjectFilter) {
+    for window in words.windows(3) {
+        if let Some(parity) = parse_parity_word(window[0]) {
+            match &window[1..] {
+                ["mana", "value"] | ["mana", "values"] => filter.mana_value_parity = Some(parity),
+                ["power", _] => {}
+                _ => {}
+            }
+        }
+    }
+    for window in words.windows(2) {
+        if let Some(parity) = parse_parity_word(window[0])
+            && window[1] == "power"
+        {
+            filter.power_parity = Some(parity);
+        }
+    }
+    for window in words.windows(4) {
+        if matches!(
+            window,
+            ["power", "of", "chosen", "quality"] | ["power", "of", "that", "quality"]
+        ) {
+            filter.power_parity = Some(ParityRequirement::Chosen);
+        }
+    }
+    for window in words.windows(5) {
+        if matches!(
+            window,
+            ["power", "of", "the", "chosen", "quality"]
+        ) {
+            filter.power_parity = Some(ParityRequirement::Chosen);
+        }
+        if matches!(
+            window,
+            ["mana", "value", "of", "chosen", "quality"]
+                | ["mana", "value", "of", "that", "quality"]
+                | ["mana", "values", "of", "chosen", "quality"]
+                | ["mana", "values", "of", "that", "quality"]
+        ) {
+            filter.mana_value_parity = Some(ParityRequirement::Chosen);
+        }
+    }
+    for window in words.windows(6) {
+        if matches!(
+            window,
+            ["mana", "value", "of", "the", "chosen", "quality"]
+                | ["mana", "values", "of", "the", "chosen", "quality"]
+        ) {
+            filter.mana_value_parity = Some(ParityRequirement::Chosen);
+        }
+    }
 }
 
 fn parse_simple_object_filter_lexed(tokens: &[OwnedLexToken], other: bool) -> Option<ObjectFilter> {
@@ -2228,6 +2290,8 @@ pub(crate) fn parse_object_filter(
         idx += axis_word_count + consumed;
     }
 
+    apply_parity_filter_phrases(&clause_words, &mut filter);
+
     let mut saw_permanent = false;
     let mut saw_spell = false;
     let mut saw_permanent_type = false;
@@ -2909,13 +2973,16 @@ pub(crate) fn parse_object_filter(
         || filter.historic
         || filter.nonhistoric
         || filter.power.is_some()
+        || filter.power_parity.is_some()
         || filter.toughness.is_some()
         || filter.mana_value.is_some()
+        || filter.mana_value_parity.is_some()
         || filter.name.is_some()
         || filter.excluded_name.is_some()
         || filter.source
         || filter.with_counter.is_some()
         || filter.without_counter.is_some()
+        || filter.total_counters_parity.is_some()
         || filter.alternative_cast.is_some()
         || !filter.static_abilities.is_empty()
         || !filter.excluded_static_abilities.is_empty()
@@ -2966,13 +3033,16 @@ pub(crate) fn parse_object_filter(
         || filter.historic
         || filter.nonhistoric
         || filter.power.is_some()
+        || filter.power_parity.is_some()
         || filter.toughness.is_some()
         || filter.mana_value.is_some()
+        || filter.mana_value_parity.is_some()
         || filter.name.is_some()
         || filter.excluded_name.is_some()
         || filter.source
         || filter.with_counter.is_some()
         || filter.without_counter.is_some()
+        || filter.total_counters_parity.is_some()
         || filter.alternative_cast.is_some()
         || !filter.static_abilities.is_empty()
         || !filter.excluded_static_abilities.is_empty()
@@ -3058,6 +3128,8 @@ pub(crate) fn parse_spell_filter(tokens: &[OwnedLexToken]) -> ObjectFilter {
         idx += 1;
     }
 
+    apply_parity_filter_phrases(&words, &mut filter);
+
     let mut cmp_idx = 0usize;
     while cmp_idx < words.len() {
         let axis = match words[cmp_idx] {
@@ -3095,6 +3167,8 @@ pub(crate) fn parse_spell_filter(tokens: &[OwnedLexToken]) -> ObjectFilter {
         }
         cmp_idx += axis_word_count + consumed;
     }
+
+    apply_parity_filter_phrases(&clause_words, &mut filter);
 
     for idx in 0..words.len() {
         let Some(value_tokens) = (match words.get(idx..) {
@@ -3241,6 +3315,8 @@ pub(crate) fn parse_spell_filter_lexed(tokens: &[OwnedLexToken]) -> ObjectFilter
         cmp_idx += axis_word_count + consumed;
     }
 
+    apply_parity_filter_phrases(&clause_words, &mut filter);
+
     for idx in 0..words.len() {
         let Some(value_tokens) = (match words.get(idx..) {
             Some(["power", "or", "toughness", rest @ ..]) => Some(rest),
@@ -3283,8 +3359,11 @@ pub(crate) fn spell_filter_has_identity(filter: &ObjectFilter) -> bool {
         || filter.excluded_chosen_creature_type
         || filter.colors.is_some()
         || filter.power.is_some()
+        || filter.power_parity.is_some()
         || filter.toughness.is_some()
         || filter.mana_value.is_some()
+        || filter.mana_value_parity.is_some()
+        || filter.total_counters_parity.is_some()
         || filter.cast_by.is_some()
         || filter.targets_player.is_some()
         || filter.targets_object.is_some()
@@ -3321,11 +3400,20 @@ pub(crate) fn merge_spell_filters(base: &mut ObjectFilter, extra: ObjectFilter) 
     if base.power.is_none() {
         base.power = extra.power;
     }
+    if base.power_parity.is_none() {
+        base.power_parity = extra.power_parity;
+    }
     if base.toughness.is_none() {
         base.toughness = extra.toughness;
     }
     if base.mana_value.is_none() {
         base.mana_value = extra.mana_value;
+    }
+    if base.mana_value_parity.is_none() {
+        base.mana_value_parity = extra.mana_value_parity;
+    }
+    if base.total_counters_parity.is_none() {
+        base.total_counters_parity = extra.total_counters_parity;
     }
     if base.cast_by.is_none() {
         base.cast_by = extra.cast_by;

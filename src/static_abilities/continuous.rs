@@ -635,6 +635,90 @@ fn describe_static_condition(condition: &crate::ConditionExpr) -> String {
                 describe_anthem_count_expression(count)
             )
         }
+        crate::ConditionExpr::PlayerIsMonarch { player } => match player {
+            crate::target::PlayerFilter::You => "as long as you're the monarch".to_string(),
+            crate::target::PlayerFilter::Opponent => {
+                "as long as an opponent is the monarch".to_string()
+            }
+            crate::target::PlayerFilter::Any => "as long as a player is the monarch".to_string(),
+            crate::target::PlayerFilter::NotYou => {
+                "as long as another player is the monarch".to_string()
+            }
+            crate::target::PlayerFilter::Teammate => {
+                "as long as a teammate is the monarch".to_string()
+            }
+            crate::target::PlayerFilter::Active => {
+                "as long as the active player is the monarch".to_string()
+            }
+            crate::target::PlayerFilter::Specific(_) => {
+                "as long as that player is the monarch".to_string()
+            }
+            crate::target::PlayerFilter::Defending => {
+                "as long as the defending player is the monarch".to_string()
+            }
+            crate::target::PlayerFilter::Attacking => {
+                "as long as the attacking player is the monarch".to_string()
+            }
+            crate::target::PlayerFilter::DamagedPlayer => {
+                "as long as the damaged player is the monarch".to_string()
+            }
+            crate::target::PlayerFilter::EffectController => {
+                "as long as that effect's controller is the monarch".to_string()
+            }
+            crate::target::PlayerFilter::MostLifeTied => {
+                "as long as the player with the most life is the monarch".to_string()
+            }
+            crate::target::PlayerFilter::CastCardTypeThisTurn(_) => {
+                "as long as that player is the monarch".to_string()
+            }
+            crate::target::PlayerFilter::ChosenPlayer => {
+                "as long as the chosen player is the monarch".to_string()
+            }
+            crate::target::PlayerFilter::TaggedPlayer(_) => {
+                "as long as that player is the monarch".to_string()
+            }
+            crate::target::PlayerFilter::IteratedPlayer => {
+                "as long as that player is the monarch".to_string()
+            }
+            crate::target::PlayerFilter::TargetPlayerOrControllerOfTarget => {
+                "as long as that player is the monarch".to_string()
+            }
+            crate::target::PlayerFilter::Target(_) => {
+                "as long as that player is the monarch".to_string()
+            }
+            crate::target::PlayerFilter::Excluding { .. } => {
+                "as long as that player is the monarch".to_string()
+            }
+            crate::target::PlayerFilter::ControllerOf(_) => {
+                "as long as that target's controller is the monarch".to_string()
+            }
+            crate::target::PlayerFilter::OwnerOf(_) => {
+                "as long as that target's owner is the monarch".to_string()
+            }
+            crate::target::PlayerFilter::AliasedOwnerOf(_) => {
+                "as long as that player is the monarch".to_string()
+            }
+            crate::target::PlayerFilter::AliasedControllerOf(_) => {
+                "as long as that player is the monarch".to_string()
+            }
+        },
+        crate::ConditionExpr::PlayerHasInitiative { player } => match player {
+            crate::target::PlayerFilter::You => "as long as you have the initiative".to_string(),
+            _ => "as long as that player has the initiative".to_string(),
+        },
+        crate::ConditionExpr::PlayerCompletedDungeon {
+            player,
+            dungeon_name,
+        } => match (player, dungeon_name.as_deref()) {
+            (crate::target::PlayerFilter::You, None) => {
+                "as long as you've completed a dungeon".to_string()
+            }
+            (crate::target::PlayerFilter::You, Some(name)) => {
+                format!("as long as you've completed {name}")
+            }
+            (_, None) => "as long as that player completed a dungeon".to_string(),
+            (_, Some(name)) => format!("as long as that player completed {name}"),
+        },
         crate::ConditionExpr::Unmodeled(text) if !text.is_empty() => format!("as long as {text}"),
         _ => format!("as long as {condition:?}"),
     }
@@ -2089,7 +2173,9 @@ impl StaticAbilityKind for MakeColorlessForFilter {
         if self.filter == ObjectFilter::source() {
             "Devoid".to_string()
         } else {
-            "Permanents are colorless".to_string()
+            let subject = pluralized_subject_text(&self.filter);
+            let (verb, _) = subject_verb_and_possessive(&subject);
+            format!("{subject} {verb} colorless")
         }
     }
 

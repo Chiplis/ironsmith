@@ -48,6 +48,7 @@ impl EffectExecutor for PreventAllCombatDamageFromEffect {
             None,
             self.until.clone(),
             filter,
+            Vec::new(),
         );
         Ok(EffectOutcome::resolved())
     }

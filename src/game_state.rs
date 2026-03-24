@@ -11,6 +11,7 @@ use crate::card::Card;
 use crate::continuous::{ContinuousEffect, ContinuousEffectManager};
 use crate::cost::OptionalCostsPaid;
 use crate::decision::KeywordPaymentContribution;
+use crate::dungeon::ActiveDungeonProgress;
 use crate::events::{Event, EventKind};
 use crate::ids::{ObjectId, PlayerId, StableId, reset_runtime_id_counters};
 use crate::object::Object;
@@ -270,6 +271,9 @@ pub struct CantEffectTracker {
     /// Example: Angel's Grace preventing opponent's win
     pub cant_win_game: HashSet<PlayerId>,
 
+    /// Players who can't become the monarch.
+    pub cant_become_monarch: HashSet<PlayerId>,
+
     /// Permanents that can't be targeted.
     /// Example: Hexproof/Shroud (tracked separately), but also effects like
     /// "can't be the target of spells or abilities"
@@ -463,6 +467,7 @@ impl CantEffectTracker {
             .extend(other.life_total_cant_change);
         self.cant_lose_game.extend(other.cant_lose_game);
         self.cant_win_game.extend(other.cant_win_game);
+        self.cant_become_monarch.extend(other.cant_become_monarch);
         self.cant_be_targeted.extend(other.cant_be_targeted);
         self.cant_target_players.extend(other.cant_target_players);
         self.cant_be_countered.extend(other.cant_be_countered);
@@ -498,6 +503,7 @@ impl CantEffectTracker {
         self.life_total_cant_change.clear();
         self.cant_lose_game.clear();
         self.cant_win_game.clear();
+        self.cant_become_monarch.clear();
         self.cant_be_targeted.clear();
         self.cant_target_players.clear();
         self.cant_be_countered.clear();
@@ -603,6 +609,11 @@ impl CantEffectTracker {
     /// Check if a player can win the game.
     pub fn can_win_game(&self, player: PlayerId) -> bool {
         !self.cant_win_game.contains(&player)
+    }
+
+    /// Check if a player can become the monarch.
+    pub fn can_become_monarch(&self, player: PlayerId) -> bool {
+        !self.cant_become_monarch.contains(&player)
     }
 
     /// Check if a player can draw cards at all.
@@ -1305,6 +1316,12 @@ pub struct GameState {
     pub is_night: bool,
     /// Current monarch designation holder, if any.
     pub monarch: Option<PlayerId>,
+    /// Current initiative designation holder, if any.
+    pub initiative: Option<PlayerId>,
+    /// Current dungeon progress for each player, if any.
+    pub active_dungeons: HashMap<PlayerId, ActiveDungeonProgress>,
+    /// Named dungeons each player has completed this game.
+    pub completed_dungeons: HashMap<PlayerId, Vec<String>>,
 
     /// Tracks modal choices that were already selected for an activated ability.
     /// Key is (source ObjectId, ability index), value is the set of chosen mode indices.
@@ -1515,6 +1532,9 @@ impl GameState {
             combat: None,
             is_night: false,
             monarch: None,
+            initiative: None,
+            active_dungeons: HashMap::new(),
+            completed_dungeons: HashMap::new(),
             chosen_modes_by_ability: HashMap::new(),
             turn_history: TurnHistory::default(),
             pending_replacement_choice: None,
@@ -1991,6 +2011,11 @@ impl GameState {
     /// Can the player win the game?
     pub fn can_win_game(&self, player: PlayerId) -> bool {
         self.cant_effects.can_win_game(player)
+    }
+
+    /// Can the player become the monarch?
+    pub fn can_become_monarch(&self, player: PlayerId) -> bool {
+        self.cant_effects.can_become_monarch(player)
     }
 
     /// Can the player cast spells?
@@ -4078,6 +4103,13 @@ impl GameState {
         self.monarch = monarch;
     }
 
+    /// Set the current initiative designation holder.
+    ///
+    /// Use `None` to clear the designation.
+    pub fn set_initiative(&mut self, initiative: Option<PlayerId>) {
+        self.initiative = initiative;
+    }
+
     /// Reconcile any Ring-bearers that are no longer valid.
     pub fn reconcile_ring_bearers(&mut self) {
         let player_ids = self
@@ -4172,6 +4204,63 @@ impl GameState {
     /// Returns true if the given player is currently the monarch.
     pub fn is_monarch(&self, player: PlayerId) -> bool {
         self.monarch == Some(player)
+    }
+
+    /// Returns true if the given player currently has the initiative.
+    pub fn has_initiative(&self, player: PlayerId) -> bool {
+        self.initiative == Some(player)
+    }
+
+    /// Returns the player's active dungeon progress, if any.
+    pub fn active_dungeon(&self, player: PlayerId) -> Option<&ActiveDungeonProgress> {
+        self.active_dungeons.get(&player)
+    }
+
+    /// Set the player's active dungeon progress.
+    pub fn set_active_dungeon(&mut self, player: PlayerId, progress: ActiveDungeonProgress) {
+        self.active_dungeons.insert(player, progress);
+    }
+
+    /// Clear the player's active dungeon progress.
+    pub fn clear_active_dungeon(&mut self, player: PlayerId) {
+        self.active_dungeons.remove(&player);
+    }
+
+    /// Record that the player completed the named dungeon.
+    pub fn record_completed_dungeon(&mut self, player: PlayerId, dungeon_name: impl Into<String>) {
+        self.completed_dungeons
+            .entry(player)
+            .or_default()
+            .push(dungeon_name.into());
+    }
+
+    /// Returns the names of dungeons the player has completed this game.
+    pub fn completed_dungeons(&self, player: PlayerId) -> &[String] {
+        self.completed_dungeons
+            .get(&player)
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
+    }
+
+    /// Returns true if the player has completed one or more dungeons this game.
+    pub fn has_completed_dungeon(&self, player: PlayerId) -> bool {
+        !self.completed_dungeons(player).is_empty()
+    }
+
+    /// Returns true if the player has completed the named dungeon this game.
+    pub fn has_completed_named_dungeon(&self, player: PlayerId, dungeon_name: &str) -> bool {
+        self.completed_dungeons(player)
+            .iter()
+            .any(|completed| completed.eq_ignore_ascii_case(dungeon_name))
+    }
+
+    /// Returns the count of differently named dungeons the player has completed this game.
+    pub fn completed_different_dungeon_names_count(&self, player: PlayerId) -> usize {
+        let mut seen = HashSet::new();
+        for completed in self.completed_dungeons(player) {
+            seen.insert(completed.to_ascii_lowercase());
+        }
+        seen.len()
     }
 
     /// Returns true if the given player has the city's blessing designation.

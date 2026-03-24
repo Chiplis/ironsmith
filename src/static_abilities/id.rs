@@ -165,6 +165,9 @@ pub enum StaticAbilityId {
     PreventAllCombatDamageToSelf,
     PreventAllDamageToSelfByCreatures,
     PreventDamageToSelfRemoveCounter,
+    PreventDamageToSelfPutCountersInstead,
+    PreventConstrainedDamageToSelfPutCountersInstead,
+    PreventDamageToOtherCreatureYouControlPutCountersInstead,
     DoesntUntap,
     MayChooseNotToUntapDuringUntapStep,
     ChooseCreatureTypeAsEnters,
@@ -388,6 +391,9 @@ impl StaticAbilityId {
             | PreventAllCombatDamageToSelf
             | PreventAllDamageToSelfByCreatures
             | PreventDamageToSelfRemoveCounter
+            | PreventDamageToSelfPutCountersInstead
+            | PreventConstrainedDamageToSelfPutCountersInstead
+            | PreventDamageToOtherCreatureYouControlPutCountersInstead
             | DoesntUntap
             | MayChooseNotToUntapDuringUntapStep
             | ChooseCreatureTypeAsEnters

@@ -291,7 +291,9 @@ fn advance_reference_frame_for_effect(
         | EffectAst::CreateEmblem { player, .. }
         | EffectAst::SetLifeTotal { player, .. }
         | EffectAst::RingTemptsYou { player }
+        | EffectAst::VentureIntoDungeon { player, .. }
         | EffectAst::BecomeMonarch { player }
+        | EffectAst::TakeInitiative { player }
         | EffectAst::PoisonCounters { player, .. }
         | EffectAst::EnergyCounters { player, .. }
         | EffectAst::Scry { player, .. }
@@ -363,6 +365,7 @@ fn advance_reference_frame_for_effect(
         | EffectAst::CopySpell { target, .. }
         | EffectAst::PreventDamage { target, .. }
         | EffectAst::PreventAllDamageToTarget { target, .. }
+        | EffectAst::PreventDamageToTargetPutCounters { target, .. }
         | EffectAst::RedirectNextDamageFromSourceToTarget { target, .. }
         | EffectAst::RedirectNextTimeDamageToSource { target, .. }
         | EffectAst::Transform { target }
@@ -579,6 +582,9 @@ fn advance_reference_frame_for_effect(
             frame.last_object_tag = Some(tag.as_str().to_string());
         }
         EffectAst::ChooseColor { player } => {
+            track_effect_player(*player, frame, true, true)?;
+        }
+        EffectAst::ChooseNamedOption { player, .. } => {
             track_effect_player(*player, frame, true, true)?;
         }
         EffectAst::ChooseCreatureType { player, .. } => {
@@ -1185,6 +1191,12 @@ fn resolve_effect_result_values_in_fields(
         | EffectAst::RemoveUpToAnyCounters { amount, .. } => {
             resolve_effect_result_value(amount, state)?;
         }
+        EffectAst::PreventDamageToTargetPutCounters {
+            amount: Some(amount),
+            ..
+        } => {
+            resolve_effect_result_value(amount, state)?;
+        }
         EffectAst::PutCounters { count, .. } | EffectAst::PutCountersAll { count, .. } => {
             resolve_effect_result_value(count, state)?;
         }
@@ -1456,6 +1468,13 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             bind_unresolved_it_in_value(amount, seed_tag)
                 + bind_unresolved_it_in_target(target, seed_tag)
         }
+        EffectAst::PreventDamageToTargetPutCounters { amount, target, .. } => {
+            amount
+                .as_mut()
+                .map(|amount| bind_unresolved_it_in_value(amount, seed_tag))
+                .unwrap_or(0)
+                + bind_unresolved_it_in_target(target, seed_tag)
+        }
         EffectAst::PreventNextTimeDamage { source, .. } => {
             bind_unresolved_it_in_prevent_next_source(source, seed_tag)
         }
@@ -1606,7 +1625,10 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
         }
         EffectAst::ChooseCardName { tag, .. } => bind_unresolved_it_in_tag(tag, seed_tag),
         EffectAst::ChooseColor { .. } => 0,
+        EffectAst::ChooseNamedOption { .. } => 0,
         EffectAst::ChooseCreatureType { .. } => 0,
+        EffectAst::VentureIntoDungeon { .. } => 0,
+        EffectAst::TakeInitiative { .. } => 0,
         EffectAst::Sacrifice { filter, .. }
         | EffectAst::SacrificeAll { filter, .. }
         | EffectAst::ExchangeControl { filter, .. }

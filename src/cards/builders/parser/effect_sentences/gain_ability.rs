@@ -7,7 +7,7 @@ use super::super::native_tokens::LowercaseWordView;
 use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed, split_on_or};
 use super::super::util::{
     is_article, is_source_reference_words, parse_mana_symbol, parse_target_phrase,
-    span_from_tokens, token_index_for_word_index, trim_commas, words,
+    span_from_tokens, split_on_and, token_index_for_word_index, trim_commas, words,
 };
 use super::dispatch_inner::trim_edge_punctuation;
 use super::lex_chain_helpers::find_verb_lexed;
@@ -76,6 +76,74 @@ fn grants_protection_from_everything(ability: &GrantedAbilityAst) -> bool {
         ability,
         GrantedAbilityAst::KeywordAction(KeywordAction::ProtectionFromEverything)
     )
+}
+
+fn parse_granted_ability_component_for_gain(
+    ability_tokens: &[OwnedLexToken],
+    clause_words: &[&str],
+) -> Result<Option<Vec<GrantedAbilityAst>>, CardTextError> {
+    let ability_tokens = trim_edge_punctuation(ability_tokens);
+    if ability_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    if let Some(granted) =
+        parse_granted_activated_or_triggered_ability_for_gain(&ability_tokens, clause_words)?
+    {
+        return Ok(Some(vec![granted]));
+    }
+
+    if let Some(actions) = parse_ability_line(&ability_tokens) {
+        reject_unimplemented_keyword_actions(&actions, &clause_words.join(" "))?;
+        return Ok(Some(
+            actions.into_iter().map(GrantedAbilityAst::from).collect(),
+        ));
+    }
+
+    if let Some(action) = ability_tokens
+        .first()
+        .and_then(OwnedLexToken::as_word)
+        .filter(|_| ability_tokens.len() == 1)
+        .and_then(parse_single_word_keyword_action)
+    {
+        return Ok(Some(vec![GrantedAbilityAst::from(action)]));
+    }
+
+    Ok(None)
+}
+
+fn parse_granted_abilities_for_gain_clause(
+    ability_tokens: &[OwnedLexToken],
+    clause_words: &[&str],
+    allow_choice: bool,
+) -> Result<(Vec<GrantedAbilityAst>, bool), CardTextError> {
+    if let Some(abilities) = parse_granted_ability_component_for_gain(ability_tokens, clause_words)?
+    {
+        return Ok((abilities, false));
+    }
+
+    if allow_choice && let Some(actions) = parse_choice_of_abilities(ability_tokens) {
+        reject_unimplemented_keyword_actions(&actions, &clause_words.join(" "))?;
+        return Ok((
+            actions.into_iter().map(GrantedAbilityAst::from).collect(),
+            true,
+        ));
+    }
+
+    let segments = split_on_and(ability_tokens);
+    if segments.len() <= 1 {
+        return Ok((Vec::new(), false));
+    }
+
+    let mut abilities = Vec::new();
+    for segment in segments {
+        let Some(parsed) = parse_granted_ability_component_for_gain(&segment, clause_words)? else {
+            return Ok((Vec::new(), false));
+        };
+        abilities.extend(parsed);
+    }
+
+    Ok((abilities, false))
 }
 
 pub(crate) fn parse_simple_ability_duration(
@@ -210,30 +278,12 @@ fn parse_simple_ability_modifier_clause_lexed(
         return Ok(None);
     }
 
-    let mut abilities = if let Some(actions) = parse_ability_line(ability_tokens) {
-        reject_unimplemented_keyword_actions(&actions, &clause_words.join(" "))?;
-        actions
-            .into_iter()
-            .map(GrantedAbilityAst::from)
-            .collect::<Vec<_>>()
-    } else if let Some(action) = clause_words[verb_idx + 1..ability_end_word_idx]
-        .first()
-        .filter(|_| verb_idx + 2 == ability_end_word_idx)
-        .and_then(|word| parse_single_word_keyword_action(word))
-    {
-        vec![GrantedAbilityAst::from(action)]
-    } else {
-        Vec::new()
-    };
-    if abilities.is_empty()
-        && let Some(granted) =
-            parse_granted_activated_or_triggered_ability_for_gain(ability_tokens, &clause_words)?
-    {
-        abilities.push(granted);
-    }
+    let (abilities, _) =
+        parse_granted_abilities_for_gain_clause(ability_tokens, &clause_words, false)?;
     if abilities.is_empty() {
         return Ok(None);
     }
+    let abilities = abilities;
 
     if let Some((start, len, _)) = duration_phrase {
         let tail_word_idx = verb_idx + 1 + start + len;
@@ -392,25 +442,12 @@ pub(crate) fn parse_simple_ability_modifier_clause(
         return Ok(None);
     }
 
-    let mut abilities = Vec::new();
-    if let Some(granted) =
-        parse_granted_activated_or_triggered_ability_for_gain(&ability_tokens, &clause_words)?
-    {
-        abilities.push(granted);
-    } else if let Some(actions) = parse_ability_line(&ability_tokens) {
-        reject_unimplemented_keyword_actions(&actions, &clause_words.join(" "))?;
-        abilities.extend(actions.into_iter().map(GrantedAbilityAst::from));
-    } else if let Some(action) = ability_tokens
-        .first()
-        .and_then(OwnedLexToken::as_word)
-        .filter(|_| ability_tokens.len() == 1)
-        .and_then(parse_single_word_keyword_action)
-    {
-        abilities.push(GrantedAbilityAst::from(action));
-    }
+    let (abilities, _) =
+        parse_granted_abilities_for_gain_clause(&ability_tokens, &clause_words, false)?;
     if abilities.is_empty() {
         return Ok(None);
     }
+    let abilities = abilities;
 
     if let Some((start, len, _)) = duration_phrase {
         let tail_word_idx = verb_idx + 1 + start + len;
@@ -629,28 +666,8 @@ pub(crate) fn parse_gain_ability_sentence(
     }
     let ability_tokens = trim_commas(&tokens[ability_start_token_idx..ability_end_token_idx]);
 
-    let mut grant_is_choice = false;
-    let mut abilities = Vec::new();
-    if !losing
-        && let Some(granted) =
-            parse_granted_activated_or_triggered_ability_for_gain(&ability_tokens, &word_list)?
-    {
-        abilities.push(granted);
-    } else if let Some(actions) = parse_ability_line(&ability_tokens) {
-        reject_unimplemented_keyword_actions(&actions, &word_list.join(" "))?;
-        abilities.extend(actions.into_iter().map(GrantedAbilityAst::from));
-    } else if let Some(action) = ability_tokens
-        .first()
-        .and_then(OwnedLexToken::as_word)
-        .filter(|_| ability_tokens.len() == 1)
-        .and_then(parse_single_word_keyword_action)
-    {
-        abilities.push(GrantedAbilityAst::from(action));
-    } else if !losing && let Some(actions) = parse_choice_of_abilities(&ability_tokens) {
-        grant_is_choice = true;
-        reject_unimplemented_keyword_actions(&actions, &word_list.join(" "))?;
-        abilities.extend(actions.into_iter().map(GrantedAbilityAst::from));
-    }
+    let (mut abilities, grant_is_choice) =
+        parse_granted_abilities_for_gain_clause(&ability_tokens, &word_list, !losing)?;
     if abilities.is_empty() && !grants_must_attack {
         return Ok(None);
     }
@@ -1310,6 +1327,35 @@ mod tests {
         assert!(
             trigger_debug.contains("damaged_player: Some("),
             "granted trigger should constrain the damaged player: {trigger_debug}"
+        );
+    }
+
+    #[test]
+    fn mixed_keyword_and_quoted_trigger_grant_stays_targeted() {
+        let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Strength of Will")
+            .parse_text(
+                "Until end of turn, target creature you control gains indestructible and \"Whenever this creature is dealt damage, put that many +1/+1 counters on it.\"",
+            )
+            .expect("strength of will grant line should parse");
+
+        let debug = format!("{:?}", def.spell_effect);
+        assert!(
+            debug.contains("Indestructible"),
+            "grant should keep the keyword ability: {debug}"
+        );
+        assert!(
+            debug.contains("TriggeredAbility"),
+            "grant should keep the quoted triggered ability: {debug}"
+        );
+
+        let rendered = crate::compiled_text::oracle_like_lines(&def)
+            .join(" ")
+            .to_ascii_lowercase();
+        assert!(
+            rendered.contains("target creature you control gains indestructible")
+                && rendered.contains("whenever this creature is dealt damage")
+                && rendered.contains("put that many +1/+1 counters on it"),
+            "grant should stay targeted in compiled text: {rendered}"
         );
     }
 }

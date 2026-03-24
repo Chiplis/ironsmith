@@ -323,7 +323,7 @@ pub(crate) fn find_verb_lexed(tokens: &[OwnedLexToken]) -> Option<(Verb, usize)>
             "untaps" | "untap" => Verb::Untap,
             "scries" | "scry" => Verb::Scry,
             "discards" | "discard" => Verb::Discard,
-            "transforms" | "transform" => Verb::Transform,
+            "transforms" | "transform" | "converts" | "convert" => Verb::Transform,
             "flips" | "flip" => Verb::Flip,
             "regenerates" | "regenerate" => Verb::Regenerate,
             "mills" | "mill" => Verb::Mill,

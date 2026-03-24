@@ -28,6 +28,7 @@ use crate::cards::builders::{
     TargetAst, TextSpan, TriggerSpec, Verb,
 };
 use crate::effect::{ChoiceCount, EventValueSpec, Until, Value};
+use crate::object::CounterType;
 use crate::target::{
     ChooseSpec, ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation,
 };
@@ -1119,6 +1120,9 @@ fn sentence_has_unsupported_negated_untap_clause(words: &[&str], _: &[OwnedLexTo
 pub(crate) fn parse_effect_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(effect) = parse_if_damage_would_be_dealt_put_counters_sentence(tokens)? {
+        return Ok(vec![effect]);
+    }
     let clause_word_view = LowercaseWordView::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
     if clause_words
@@ -1128,6 +1132,47 @@ pub(crate) fn parse_effect_sentence_lexed(
         return parse_effect_sentence_with_where_x_lexed(tokens);
     }
     parse_effect_sentence_inner_lexed(tokens)
+}
+
+fn parse_if_damage_would_be_dealt_put_counters_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let clause_words = words(tokens);
+    if !clause_words.starts_with(&["if", "damage", "would", "be", "dealt", "to"]) {
+        return Ok(None);
+    }
+
+    let Some(this_turn_rel) = clause_words[6..]
+        .windows(2)
+        .position(|window| window == ["this", "turn"])
+    else {
+        return Ok(None);
+    };
+    let this_turn_idx = 6 + this_turn_rel;
+    let tail = &clause_words[this_turn_idx + 2..];
+    let valid_tail = matches!(
+        tail,
+        ["prevent", "that", "damage", "and", "put", "that", "many", "+1/+1", "counters", "on", "it"]
+            | ["prevent", "that", "damage", "and", "put", "that", "many", "+1/+1", "counters", "on", "that", "creature"]
+            | ["prevent", "that", "damage", "and", "put", "that", "many", "+1/+1", "counter", "on", "it"]
+            | ["prevent", "that", "damage", "and", "put", "that", "many", "+1/+1", "counter", "on", "that", "creature"]
+    );
+    if !valid_tail {
+        return Ok(None);
+    }
+
+    let target_tokens = &tokens[6..this_turn_idx];
+    if target_tokens.is_empty() {
+        return Ok(None);
+    }
+    let target = parse_target_phrase(target_tokens)?;
+
+    Ok(Some(EffectAst::PreventDamageToTargetPutCounters {
+        amount: None,
+        target,
+        duration: Until::EndOfTurn,
+        counter_type: CounterType::PlusOnePlusOne,
+    }))
 }
 
 fn parse_effect_sentence_with_where_x_lexed(

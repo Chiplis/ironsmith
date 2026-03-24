@@ -356,7 +356,9 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::PlayerHasMoreLifeThanYou { .. } => {}
         Condition::PlayerHasMoreCardsInHandThanYou { .. } => {}
         Condition::PlayerIsMonarch { .. } => {}
+        Condition::PlayerHasInitiative { .. } => {}
         Condition::PlayerHasCitysBlessing { .. } => {}
+        Condition::PlayerCompletedDungeon { .. } => {}
         Condition::PlayerGraveyardHasCardsAtLeast { .. } => {}
     }
 }
@@ -576,11 +578,29 @@ pub fn evaluate_condition_external(
             };
             game.is_monarch(player_id)
         }
+        Condition::PlayerHasInitiative { player } => {
+            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
+                return false;
+            };
+            game.has_initiative(player_id)
+        }
         Condition::PlayerHasCitysBlessing { player } => {
             let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
                 return false;
             };
             game.has_citys_blessing(player_id)
+        }
+        Condition::PlayerCompletedDungeon {
+            player,
+            dungeon_name,
+        } => {
+            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
+                return false;
+            };
+            match dungeon_name {
+                Some(name) => game.has_completed_named_dungeon(player_id, name),
+                None => game.has_completed_dungeon(player_id),
+            }
         }
 
         Condition::FirstTimeThisTurn => ctx
@@ -1528,11 +1548,29 @@ fn evaluate_condition_simple(
             };
             game.is_monarch(player_id)
         }
+        Condition::PlayerHasInitiative { player } => {
+            let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
+                return false;
+            };
+            game.has_initiative(player_id)
+        }
         Condition::PlayerHasCitysBlessing { player } => {
             let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
                 return false;
             };
             game.has_citys_blessing(player_id)
+        }
+        Condition::PlayerCompletedDungeon {
+            player,
+            dungeon_name,
+        } => {
+            let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
+                return false;
+            };
+            match dungeon_name {
+                Some(name) => game.has_completed_named_dungeon(player_id, name),
+                None => game.has_completed_dungeon(player_id),
+            }
         }
         Condition::PlayerCardsInHandOrMore { player, count } => {
             let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
@@ -2048,9 +2086,23 @@ fn evaluate_condition(
             let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
             Ok(game.is_monarch(player_id))
         }
+        Condition::PlayerHasInitiative { player } => {
+            let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
+            Ok(game.has_initiative(player_id))
+        }
         Condition::PlayerHasCitysBlessing { player } => {
             let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
             Ok(game.has_citys_blessing(player_id))
+        }
+        Condition::PlayerCompletedDungeon {
+            player,
+            dungeon_name,
+        } => {
+            let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
+            Ok(match dungeon_name {
+                Some(name) => game.has_completed_named_dungeon(player_id, name),
+                None => game.has_completed_dungeon(player_id),
+            })
         }
         Condition::PlayerCardsInHandOrMore { player, count } => {
             let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;

@@ -1833,6 +1833,7 @@ fn rewrite_statement_parse_text_for_lowering(text: &str) -> String {
         })
         .map(str::trim)
         .map(rewrite_statement_followup_intro_for_lowering)
+        .map(rewrite_copy_exception_type_removal_for_lowering)
         .filter(|sentence| !sentence.is_empty())
         .collect::<Vec<_>>();
 
@@ -1841,6 +1842,34 @@ fn rewrite_statement_parse_text_for_lowering(text: &str) -> String {
     } else {
         format!("{}.", sentences.join(". "))
     }
+}
+
+fn rewrite_copy_exception_type_removal_for_lowering(sentence: String) -> String {
+    sentence
+        .replace(
+            "except it's an artifact and it loses all other card types",
+            "except it's an artifact",
+        )
+        .replace(
+            "except its an artifact and it loses all other card types",
+            "except its an artifact",
+        )
+        .replace(
+            "except it's an enchantment and it loses all other card types",
+            "except it's an enchantment",
+        )
+        .replace(
+            "except its an enchantment and it loses all other card types",
+            "except its an enchantment",
+        )
+        .replace(
+            "except it's an enchantment and loses all other card types",
+            "except it's an enchantment",
+        )
+        .replace(
+            "except its an enchantment and loses all other card types",
+            "except its an enchantment",
+        )
 }
 
 fn rewrite_statement_followup_intro_for_lowering(sentence: &str) -> String {

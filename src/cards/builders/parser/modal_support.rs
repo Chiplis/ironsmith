@@ -283,6 +283,12 @@ fn replace_modal_header_x_in_effect_ast(
         | EffectAst::Monstrosity { amount, .. } => {
             replace_modal_header_x_in_value(amount, replacement, clause)?;
         }
+        EffectAst::PreventDamageToTargetPutCounters {
+            amount: Some(amount),
+            ..
+        } => {
+            replace_modal_header_x_in_value(amount, replacement, clause)?;
+        }
         EffectAst::CreateTokenWithMods {
             count: amount,
             dynamic_power_toughness,

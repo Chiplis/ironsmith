@@ -35,8 +35,8 @@ use super::util::{
 use crate::ability::{Ability, AbilityKind, ActivatedAbility, ActivationTiming};
 use crate::cards::builders::{
     CardTextError, DamageBySpec, EffectAst, IT_TAG, KeywordAction, LineAst, ParsedAbility,
-    PlayerAst, ReferenceImports, ReturnControllerAst, StaticAbilityAst, TagKey, TargetAst,
-    TextSpan, TriggerSpec,
+    PlayerAst, PredicateAst, ReferenceImports, ReturnControllerAst, StaticAbilityAst, TagKey,
+    TargetAst, TextSpan, TriggerSpec,
 };
 use crate::color::ColorSet;
 use crate::cost::TotalCost;
@@ -4272,6 +4272,69 @@ pub(crate) fn parse_cant_clause(
         }
     }
 
+    if normalized.starts_with(&["your", "opponents", "cant", "cast", "spells", "with"])
+        && normalized.len() >= 8
+        && normalized[6] == "mana"
+        && normalized[7] == "values"
+    {
+        let parity = match normalized[5] {
+            "odd" => crate::filter::ParityRequirement::Odd,
+            "even" => crate::filter::ParityRequirement::Even,
+            _ => return Ok(None),
+        };
+        return Ok(Some(StaticAbility::restriction(
+            crate::effect::Restriction::cast_spells_matching(
+                PlayerFilter::Opponent,
+                ObjectFilter::spell().with_mana_value_parity(parity),
+            ),
+            format_negated_restriction_display(tokens),
+        )));
+    }
+
+    if normalized.starts_with(&[
+        "your",
+        "opponents",
+        "cant",
+        "block",
+        "with",
+        "creatures",
+        "with",
+    ]) && normalized.len() >= 10
+        && normalized[8] == "mana"
+        && normalized[9] == "values"
+    {
+        let parity = match normalized[7] {
+            "odd" => crate::filter::ParityRequirement::Odd,
+            "even" => crate::filter::ParityRequirement::Even,
+            _ => return Ok(None),
+        };
+        return Ok(Some(StaticAbility::restriction(
+            crate::effect::Restriction::block(
+                ObjectFilter::creature()
+                    .opponent_controls()
+                    .with_mana_value_parity(parity),
+            ),
+            format_negated_restriction_display(tokens),
+        )));
+    }
+
+    if normalized.starts_with(&["this", "cant", "attack", "or", "block", "unless"])
+        && normalized.ends_with(&["even", "number", "of", "counters", "on", "it"])
+    {
+        return Ok(Some(StaticAbility::keyword_marker(
+            format_negated_restriction_display(tokens),
+        )));
+    }
+
+    if normalized.starts_with(&["if", "source", "you", "control", "with"])
+        && normalized.contains(&"mana")
+        && normalized.contains(&"value")
+        && normalized.contains(&"double")
+        && normalized.last().is_some_and(|word| *word == "instead")
+    {
+        return Ok(Some(StaticAbility::keyword_marker(words(tokens).join(" "))));
+    }
+
     if let Some(parsed) = parse_cant_restriction_clause(tokens)?
         && parsed.target.is_none()
         && matches!(
@@ -4509,6 +4572,33 @@ pub(crate) fn parse_cant_restriction_clause(
     let restriction = if let Some(parsed) = parse_cant_cast_restriction_words(&normalized) {
         parsed
     } else {
+        if let [
+            "your",
+            "opponents",
+            "cant",
+            "block",
+            "with",
+            "creatures",
+            "with",
+            parity,
+            "mana",
+            "values",
+        ] = normalized.as_slice()
+        {
+            let parity = match *parity {
+                "odd" => crate::filter::ParityRequirement::Odd,
+                "even" => crate::filter::ParityRequirement::Even,
+                _ => return parse_negated_object_restriction_clause(tokens),
+            };
+            return Ok(Some(ParsedCantRestriction {
+                restriction: Restriction::block(
+                    ObjectFilter::creature()
+                        .opponent_controls()
+                        .with_mana_value_parity(parity),
+                ),
+                target: None,
+            }));
+        }
         match normalized.as_slice() {
             ["players", "cant", "gain", "life"] => Restriction::gain_life(PlayerFilter::Any),
             ["players", "cant", "search", "libraries"] => {
@@ -4563,6 +4653,12 @@ pub(crate) fn parse_cant_restriction_clause(
                 Restriction::search_libraries(PlayerFilter::You)
             }
             ["you", "cant", "draw", "cards"] => Restriction::draw_cards(PlayerFilter::You),
+            ["you", "cant", "become", "the", "monarch"]
+            | ["you", "cant", "become", "monarch"]
+            | ["you", "cant", "become", "the", "monarch", "this", "turn"]
+            | ["you", "cant", "become", "monarch", "this", "turn"] => {
+                Restriction::become_monarch(PlayerFilter::You)
+            }
             ["they", "cant", "gain", "life"] | ["that", "player", "cant", "gain", "life"] => {
                 Restriction::gain_life(PlayerFilter::IteratedPlayer)
             }
@@ -4594,6 +4690,24 @@ fn parse_cant_cast_restriction_words(words: &[&str]) -> Option<crate::effect::Re
 
         if cant_tail == ["cast", "spells"] || cant_tail == ["cast", "spells", "this", "turn"] {
             return Some(Restriction::cast_spells(player));
+        }
+        if cant_tail.len() >= 6
+            && cant_tail[0] == "cast"
+            && cant_tail[1] == "spells"
+            && cant_tail[2] == "with"
+            && cant_tail[4] == "mana"
+            && cant_tail[5] == "values"
+        {
+            let parity = cant_tail[3];
+            let parity = match parity {
+                "odd" => crate::filter::ParityRequirement::Odd,
+                "even" => crate::filter::ParityRequirement::Even,
+                _ => return None,
+            };
+            return Some(Restriction::cast_spells_matching(
+                player,
+                ObjectFilter::spell().with_mana_value_parity(parity),
+            ));
         }
         if cant_tail == ["cast", "creature", "spells"]
             || cant_tail == ["cast", "creature", "spells", "this", "turn"]
@@ -8198,6 +8312,16 @@ pub(crate) fn parse_trigger_clause_lexed(
         }
     }
 
+    if words == ["you", "complete", "a", "dungeon"]
+        || words == ["you", "completed", "a", "dungeon"]
+        || words == ["you", "completes", "a", "dungeon"]
+    {
+        return Ok(TriggerSpec::KeywordAction {
+            action: crate::events::KeywordActionKind::CompleteDungeon,
+            player: PlayerFilter::You,
+        });
+    }
+
     if let Some(counter_word_idx) = words
         .iter()
         .position(|word| *word == "counter" || *word == "counters")
@@ -9440,6 +9564,7 @@ pub(crate) struct MayCastTaggedSpec {
     pub(crate) verb: MayCastItVerb,
     pub(crate) as_copy: bool,
     pub(crate) without_paying_mana_cost: bool,
+    pub(crate) predicate: Option<PredicateAst>,
 }
 
 pub(crate) fn parse_may_cast_it_sentence(tokens: &[OwnedLexToken]) -> Option<MayCastTaggedSpec> {
@@ -9489,6 +9614,7 @@ pub(crate) fn parse_may_cast_it_sentence(tokens: &[OwnedLexToken]) -> Option<May
             verb,
             as_copy,
             without_paying_mana_cost: false,
+            predicate: None,
         });
     }
     if tail == ["without", "paying", "its", "mana", "cost"] {
@@ -9496,19 +9622,47 @@ pub(crate) fn parse_may_cast_it_sentence(tokens: &[OwnedLexToken]) -> Option<May
             verb,
             as_copy,
             without_paying_mana_cost: true,
+            predicate: None,
+        });
+    }
+    if let ["without", "paying", "its", "mana", "cost", "if", "its", "mana", "value", "is", parity] =
+        tail
+    {
+        let parity = match *parity {
+            "odd" => crate::filter::ParityRequirement::Odd,
+            "even" => crate::filter::ParityRequirement::Even,
+            _ => return None,
+        };
+        return Some(MayCastTaggedSpec {
+            verb,
+            as_copy,
+            without_paying_mana_cost: true,
+            predicate: Some(PredicateAst::ItMatches(
+                ObjectFilter::default().with_mana_value_parity(parity),
+            )),
         });
     }
     None
 }
 
 pub(crate) fn build_may_cast_tagged_effect(spec: &MayCastTaggedSpec) -> EffectAst {
-    EffectAst::May {
-        effects: vec![EffectAst::CastTagged {
-            tag: TagKey::from(IT_TAG),
-            allow_land: matches!(spec.verb, MayCastItVerb::Play),
-            as_copy: spec.as_copy,
-            without_paying_mana_cost: spec.without_paying_mana_cost,
-        }],
+    let cast = EffectAst::CastTagged {
+        tag: TagKey::from(IT_TAG),
+        allow_land: matches!(spec.verb, MayCastItVerb::Play),
+        as_copy: spec.as_copy,
+        without_paying_mana_cost: spec.without_paying_mana_cost,
+    };
+    let may = EffectAst::May {
+        effects: vec![cast],
+    };
+    if let Some(predicate) = &spec.predicate {
+        EffectAst::Conditional {
+            predicate: predicate.clone(),
+            if_true: vec![may],
+            if_false: Vec::new(),
+        }
+    } else {
+        may
     }
 }
 
