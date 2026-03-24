@@ -1011,6 +1011,11 @@ pub(crate) enum TriggerSpec {
         player: PlayerFilter,
         filter: ObjectFilter,
     },
+    AbilityActivated {
+        activator: PlayerFilter,
+        filter: ObjectFilter,
+        non_mana_only: bool,
+    },
     ThisIsDealtDamage,
     IsDealtDamage(ObjectFilter),
     YouGainLife,

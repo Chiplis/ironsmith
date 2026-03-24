@@ -76,6 +76,87 @@ pub(crate) fn parse_search_library_sentence_lexed(
 pub(crate) fn parse_cant_effect_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let lowered_tokens = lowercase_word_tokens(tokens);
+    let lowered_words = words(&lowered_tokens);
+    for suffix in [
+        ["during", "that", "players", "next", "turn"].as_slice(),
+        ["during", "that", "player's", "next", "turn"].as_slice(),
+        ["during", "that", "player", "s", "next", "turn"].as_slice(),
+    ] {
+        if !lowered_words.ends_with(suffix) {
+            continue;
+        }
+
+        let prefix_word_len = lowered_words.len().saturating_sub(suffix.len());
+        let prefix_end = token_index_for_word_index(&lowered_tokens, prefix_word_len)
+            .unwrap_or(lowered_tokens.len());
+        let prefix_tokens = &lowered_tokens[..prefix_end];
+        let Some(parsed) =
+            super::super::activation_and_restrictions::parse_cant_restriction_clause(
+                prefix_tokens,
+            )?
+        else {
+            continue;
+        };
+
+        let iterated_restriction = match parsed.restriction {
+            crate::effect::Restriction::CastSpellsMatching(player, spell_filter) => {
+                let nested = crate::effect::Restriction::cast_spells_matching(
+                    PlayerFilter::Active,
+                    spell_filter,
+                );
+                match player {
+                    PlayerFilter::Opponent => {
+                        return Ok(Some(vec![EffectAst::ForEachOpponent {
+                            effects: vec![EffectAst::DelayedUntilNextUpkeep {
+                                player: PlayerAst::That,
+                                effects: vec![EffectAst::Cant {
+                                    restriction: nested,
+                                    duration: crate::effect::Until::EndOfTurn,
+                                    condition: None,
+                                }],
+                            }],
+                        }]));
+                    }
+                    PlayerFilter::IteratedPlayer => nested,
+                    _ => continue,
+                }
+            }
+            crate::effect::Restriction::CastMoreThanOneSpellEachTurn(player, spell_filter) => {
+                let nested = crate::effect::Restriction::CastMoreThanOneSpellEachTurn(
+                    PlayerFilter::Active,
+                    spell_filter,
+                );
+                match player {
+                    PlayerFilter::Opponent => {
+                        return Ok(Some(vec![EffectAst::ForEachOpponent {
+                            effects: vec![EffectAst::DelayedUntilNextUpkeep {
+                                player: PlayerAst::That,
+                                effects: vec![EffectAst::Cant {
+                                    restriction: nested,
+                                    duration: crate::effect::Until::EndOfTurn,
+                                    condition: None,
+                                }],
+                            }],
+                        }]));
+                    }
+                    PlayerFilter::IteratedPlayer => nested,
+                    _ => continue,
+                }
+            }
+            _ => continue,
+        };
+
+        return Ok(Some(vec![EffectAst::DelayedUntilNextUpkeep {
+            player: PlayerAst::That,
+            effects: vec![EffectAst::Cant {
+                restriction: iterated_restriction,
+                duration: crate::effect::Until::EndOfTurn,
+                condition: None,
+            }],
+        }]));
+    }
+
     let source_tapped_duration = has_source_remains_tapped_duration_lexed(tokens);
     let Some((duration, clause_tokens)) = parse_restriction_duration_lexed(tokens)? else {
         return Ok(None);
@@ -1994,6 +2075,90 @@ pub(crate) fn parse_enchant_sentence(
 pub(crate) fn parse_cant_effect_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let lowered_tokens = lowercase_word_tokens(tokens);
+    let lowered_words = words(&lowered_tokens);
+    for suffix in [
+        ["during", "that", "players", "next", "turn"].as_slice(),
+        ["during", "that", "player's", "next", "turn"].as_slice(),
+        ["during", "that", "player", "s", "next", "turn"].as_slice(),
+    ] {
+        if !lowered_words.ends_with(suffix) {
+            continue;
+        }
+
+        let prefix_word_len = lowered_words.len().saturating_sub(suffix.len());
+        let prefix_end = token_index_for_word_index(&lowered_tokens, prefix_word_len)
+            .unwrap_or(lowered_tokens.len());
+        let prefix_tokens = &lowered_tokens[..prefix_end];
+        let Some(parsed) =
+            super::super::activation_and_restrictions::parse_cant_restriction_clause(
+                prefix_tokens,
+            )?
+        else {
+            continue;
+        };
+
+        match parsed.restriction {
+            crate::effect::Restriction::CastSpellsMatching(player, spell_filter) => {
+                let nested = crate::effect::Restriction::cast_spells_matching(
+                    PlayerFilter::Active,
+                    spell_filter,
+                );
+                if player == PlayerFilter::Opponent {
+                    return Ok(Some(vec![EffectAst::ForEachOpponent {
+                        effects: vec![EffectAst::DelayedUntilNextUpkeep {
+                            player: PlayerAst::That,
+                            effects: vec![EffectAst::Cant {
+                                restriction: nested,
+                                duration: crate::effect::Until::EndOfTurn,
+                                condition: None,
+                            }],
+                        }],
+                    }]));
+                }
+                if player == PlayerFilter::IteratedPlayer {
+                    return Ok(Some(vec![EffectAst::DelayedUntilNextUpkeep {
+                        player: PlayerAst::That,
+                        effects: vec![EffectAst::Cant {
+                            restriction: nested,
+                            duration: crate::effect::Until::EndOfTurn,
+                            condition: None,
+                        }],
+                    }]));
+                }
+            }
+            crate::effect::Restriction::CastMoreThanOneSpellEachTurn(player, spell_filter) => {
+                let nested = crate::effect::Restriction::CastMoreThanOneSpellEachTurn(
+                    PlayerFilter::Active,
+                    spell_filter,
+                );
+                if player == PlayerFilter::Opponent {
+                    return Ok(Some(vec![EffectAst::ForEachOpponent {
+                        effects: vec![EffectAst::DelayedUntilNextUpkeep {
+                            player: PlayerAst::That,
+                            effects: vec![EffectAst::Cant {
+                                restriction: nested,
+                                duration: crate::effect::Until::EndOfTurn,
+                                condition: None,
+                            }],
+                        }],
+                    }]));
+                }
+                if player == PlayerFilter::IteratedPlayer {
+                    return Ok(Some(vec![EffectAst::DelayedUntilNextUpkeep {
+                        player: PlayerAst::That,
+                        effects: vec![EffectAst::Cant {
+                            restriction: nested,
+                            duration: crate::effect::Until::EndOfTurn,
+                            condition: None,
+                        }],
+                    }]));
+                }
+            }
+            _ => {}
+        }
+    }
+
     let source_tapped_duration = has_source_remains_tapped_duration(tokens);
     let Some((duration, clause_tokens)) = parse_restriction_duration(tokens)? else {
         return Ok(None);

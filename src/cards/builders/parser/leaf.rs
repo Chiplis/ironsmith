@@ -54,6 +54,8 @@ pub(crate) enum ActivationCostSegmentCst {
         count: u32,
         card_types: Vec<CardType>,
         random: bool,
+        name: Option<String>,
+        other: bool,
     },
     Mill(u32),
     SacrificeSelf,
@@ -615,6 +617,13 @@ fn parse_discard_segment_rewrite(raw: &str) -> Result<ActivationCostSegmentCst, 
         return Ok(ActivationCostSegmentCst::DiscardSource);
     }
 
+    let Some(first_space) = trimmed.find(char::is_whitespace) else {
+        return Err(CardTextError::ParseError(format!(
+            "rewrite discard parser expected selector in '{raw}'"
+        )));
+    };
+    let rest_original = trimmed[first_space..].trim();
+    let original_parts = rest_original.split_whitespace().collect::<Vec<_>>();
     let parts = rest.split_whitespace().collect::<Vec<_>>();
     let mut idx = 0usize;
     let mut count = 1u32;
@@ -628,11 +637,36 @@ fn parse_discard_segment_rewrite(raw: &str) -> Result<ActivationCostSegmentCst, 
         }
     }
 
+    let mut other = false;
+    if parts
+        .get(idx)
+        .is_some_and(|part| matches!(*part, "another" | "other"))
+    {
+        other = true;
+        idx += 1;
+    }
+
     while parts
         .get(idx)
         .is_some_and(|part| matches!(*part, "a" | "an"))
     {
         idx += 1;
+    }
+
+    if parts.get(idx) == Some(&"card") && parts.get(idx + 1) == Some(&"named") {
+        let name_words = &original_parts[idx + 2..];
+        if name_words.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "rewrite discard parser expected card name in '{raw}'"
+            )));
+        }
+        return Ok(ActivationCostSegmentCst::DiscardFiltered {
+            count,
+            card_types: Vec::new(),
+            random: false,
+            name: Some(name_words.join(" ")),
+            other,
+        });
     }
 
     let mut card_types = Vec::new();
@@ -683,6 +717,8 @@ fn parse_discard_segment_rewrite(raw: &str) -> Result<ActivationCostSegmentCst, 
         count,
         card_types,
         random,
+        name: None,
+        other,
     })
 }
 
@@ -1339,6 +1375,66 @@ pub(crate) fn parse_type_line_rewrite(raw: &str) -> Result<TypeLineCst, CardText
 
 pub(crate) fn parse_activation_cost_rewrite(raw: &str) -> Result<ActivationCostCst, CardTextError> {
     let parser_only = || -> Result<ActivationCostCst, CardTextError> {
+        fn split_activation_cost_segments(raw: &str) -> Vec<String> {
+            fn starts_new_cost_segment(text: &str) -> bool {
+                let trimmed = text.trim_start();
+                [
+                    "{",
+                    "tap",
+                    "untap",
+                    "pay",
+                    "discard",
+                    "mill",
+                    "sacrifice",
+                    "exile",
+                    "return",
+                    "put",
+                    "remove",
+                    "and ",
+                ]
+                .iter()
+                .any(|prefix| trimmed.to_ascii_lowercase().starts_with(prefix))
+            }
+
+            let mut segments = Vec::new();
+            let mut start = 0usize;
+            let mut brace_depth = 0u32;
+            let mut inside_named_card = false;
+
+            for (idx, ch) in raw.char_indices() {
+                match ch {
+                    '{' => {
+                        brace_depth = brace_depth.saturating_add(1);
+                    }
+                    '}' => {
+                        brace_depth = brace_depth.saturating_sub(1);
+                    }
+                    ',' if brace_depth == 0 => {
+                        let remainder = &raw[idx + ch.len_utf8()..];
+                        if !inside_named_card || starts_new_cost_segment(remainder) {
+                            let segment = raw[start..idx].trim();
+                            if !segment.is_empty() {
+                                segments.push(segment.to_string());
+                            }
+                            start = idx + ch.len_utf8();
+                            inside_named_card = false;
+                        }
+                    }
+                    _ => {}
+                }
+
+                if brace_depth == 0 && raw[idx..].to_ascii_lowercase().starts_with("card named ") {
+                    inside_named_card = true;
+                }
+            }
+
+            let tail = raw[start..].trim();
+            if !tail.is_empty() {
+                segments.push(tail.to_string());
+            }
+            segments
+        }
+
         if let Some((left, right)) = parse_shard_style_mana_or_tap_cost_rewrite(raw) {
             return Ok(ActivationCostCst {
                 raw: raw.trim().to_string(),
@@ -1351,7 +1447,7 @@ pub(crate) fn parse_activation_cost_rewrite(raw: &str) -> Result<ActivationCostC
 
         let mut segments = Vec::new();
         let mut raw_segments = Vec::new();
-        for raw_segment in raw.split(',') {
+        for raw_segment in split_activation_cost_segments(raw) {
             let segment = raw_segment.trim();
             if segment.is_empty() {
                 continue;
@@ -1512,22 +1608,31 @@ pub(crate) fn lower_activation_cost_cst(
                 count,
                 card_types,
                 random,
+                name,
+                other,
             } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
-                if *random {
-                    let card_filter = if card_types.is_empty() {
+                if *random || name.is_some() || *other {
+                    let card_filter = if card_types.is_empty() && name.is_none() && !*other {
                         None
                     } else {
-                        Some(ObjectFilter {
+                        let mut filter = ObjectFilter {
                             zone: Some(crate::zone::Zone::Hand),
                             card_types: card_types.clone(),
                             ..Default::default()
-                        })
+                        };
+                        if let Some(name) = name {
+                            filter = filter.named(name.clone());
+                        }
+                        if *other {
+                            filter.other = true;
+                        }
+                        Some(filter)
                     };
                     costs.push(Cost::validated_effect(Effect::discard_player_filtered(
                         *count as i32,
                         PlayerFilter::You,
-                        true,
+                        *random,
                         card_filter,
                     )));
                 } else if card_types.len() > 1 {

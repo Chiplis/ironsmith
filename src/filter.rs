@@ -1244,6 +1244,8 @@ pub struct ObjectFilter {
     pub power_reference: PtReference,
     /// Relative power comparison against the source object in filter context.
     pub power_relative_to_source: Option<SourcePowerRelation>,
+    /// Require the object's effective power to be greater than its base power.
+    pub power_greater_than_base_power: bool,
 
     /// Toughness comparison (creature must satisfy)
     pub toughness: Option<Comparison>,
@@ -2756,6 +2758,27 @@ impl ObjectFilter {
                 return false;
             }
         }
+        if self.power_greater_than_base_power {
+            let Some(effective_power) = resolve_object_power_for_filter(
+                object,
+                game,
+                PtReference::Effective,
+                allow_calculated_pt,
+            ) else {
+                return false;
+            };
+            let Some(base_power) = resolve_object_power_for_filter(
+                object,
+                game,
+                PtReference::Base,
+                allow_calculated_pt,
+            ) else {
+                return false;
+            };
+            if effective_power <= base_power {
+                return false;
+            }
+        }
 
         if let Some(relation) = self.power_relative_to_source {
             let Some(candidate_power) = resolve_object_power_for_filter(
@@ -3189,6 +3212,20 @@ impl ObjectFilter {
                     return false;
                 }
             } else {
+                return false;
+            }
+        }
+        if self.power_greater_than_base_power {
+            let Some(effective_power) =
+                resolve_snapshot_power_for_filter(snapshot, PtReference::Effective)
+            else {
+                return false;
+            };
+            let Some(base_power) = resolve_snapshot_power_for_filter(snapshot, PtReference::Base)
+            else {
+                return false;
+            };
+            if effective_power <= base_power {
                 return false;
             }
         }
@@ -3943,6 +3980,9 @@ impl ObjectFilter {
                     PtReference::Base => "base power",
                 };
                 parts.push(power_parity.describe_axis(axis));
+            }
+            if self.power_greater_than_base_power {
+                parts.push("with power greater than its base power".to_string());
             }
             if let Some(relation) = self.power_relative_to_source {
                 match relation {

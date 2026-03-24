@@ -6113,6 +6113,24 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 color_name
             );
         }
+        if let Value::LifeLostThisTurn(player) = &add_scaled.amount {
+            let life_text = match player {
+                PlayerFilter::You => "for each 1 life you have lost this turn".to_string(),
+                PlayerFilter::Opponent => {
+                    "for each 1 life your opponents have lost this turn".to_string()
+                }
+                _ => format!(
+                    "for each 1 life {} lost this turn",
+                    describe_player_filter(player)
+                ),
+            };
+            return format!(
+                "Add {} {} to {}",
+                mana_text,
+                life_text,
+                describe_mana_pool_owner(&add_scaled.player)
+            );
+        }
         if let Value::PowerOf(spec) = &add_scaled.amount {
             return format!(
                 "Add an amount of {} equal to the power of {} to {}",
@@ -8346,7 +8364,15 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             crate::grant::GrantDuration::UntilEndOfTurn => " until end of turn",
             crate::grant::GrantDuration::Forever => "",
         };
-        return format!("{}{}", grant.spec.display(), duration);
+        return format!(
+            "{}{}",
+            grant
+                .spec
+                .clone()
+                .with_beneficiary(grant.player.clone())
+                .display(),
+            duration
+        );
     }
     if let Some(grant_play_tagged) = effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
     {

@@ -597,6 +597,13 @@ fn looks_like_statement_line(normalized: &str) -> bool {
         return looks_like_statement_line(body);
     }
 
+    if (normalized.contains("during that player's next turn")
+        || normalized.contains("during that players next turn"))
+        && normalized.contains("can't cast")
+    {
+        return true;
+    }
+
     let is_statement_verb = |word: &str| {
         matches!(
             word,

@@ -613,7 +613,24 @@ impl Trigger {
 
     /// Create a "when [filter] ability is activated" trigger.
     pub fn ability_activated(filter: ObjectFilter) -> Self {
-        Self::new(AbilityActivatedTrigger::new(filter))
+        Self::new(AbilityActivatedTrigger::new(
+            PlayerFilter::Any,
+            filter,
+            false,
+        ))
+    }
+
+    /// Create a qualified "when [player] activates [ability]" trigger.
+    pub fn ability_activated_qualified(
+        activator: PlayerFilter,
+        filter: ObjectFilter,
+        non_mana_only: bool,
+    ) -> Self {
+        Self::new(AbilityActivatedTrigger::new(
+            activator,
+            filter,
+            non_mana_only,
+        ))
     }
 
     /// Create a "whenever [player] taps [filter] for mana" trigger.

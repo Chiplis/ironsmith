@@ -2289,6 +2289,13 @@ pub(crate) fn parse_object_filter(
 
     apply_parity_filter_phrases(&clause_words, &mut filter);
 
+    if clause_words
+        .windows(6)
+        .any(|window| window == ["power", "greater", "than", "its", "base", "power"])
+    {
+        filter.power_greater_than_base_power = true;
+    }
+
     let mut saw_permanent = false;
     let mut saw_spell = false;
     let mut saw_permanent_type = false;

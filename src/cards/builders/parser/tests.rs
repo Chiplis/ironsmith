@@ -300,6 +300,48 @@ fn rewrite_lexed_cant_sentence_matches_wrapper_output() {
 }
 
 #[test]
+fn rewrite_lexed_cant_sentence_supports_next_turn_silence() {
+    let text = "Each opponent can't cast instant or sorcery spells during that player's next turn.";
+    let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify next-turn silence");
+
+    let parsed =
+        parse_cant_effect_sentence_lexed(&lexed).expect("lexed next-turn silence should parse");
+    let wrapper =
+        parse_cant_effect_sentence(&compat).expect("wrapper next-turn silence should parse");
+    let sentence =
+        super::clause_support::parse_effect_sentences_lexed(&lexed).expect("sentence parser");
+
+    assert!(
+        parsed.is_some(),
+        "expected next-turn silence helper to match"
+    );
+    assert!(
+        wrapper.is_some(),
+        "expected next-turn silence wrapper to match"
+    );
+    assert!(
+        !sentence.is_empty(),
+        "expected sentence parser to produce next-turn silence effects"
+    );
+}
+
+#[test]
+fn semantic_document_supports_next_turn_silence() {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Sphinx's Decree")
+        .card_types(vec![CardType::Sorcery]);
+
+    let parsed = parse_text_to_semantic_document(
+        builder,
+        "Each opponent can't cast instant or sorcery spells during that player's next turn."
+            .to_string(),
+        false,
+    );
+
+    parsed.expect("expected semantic document parse to succeed");
+}
+
+#[test]
 fn rewrite_lexed_restriction_duration_matches_wrapper_shapes() {
     let text = "Target creature can't attack this turn.";
     let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);

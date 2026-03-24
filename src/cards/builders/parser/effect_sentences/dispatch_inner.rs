@@ -18,9 +18,10 @@ use super::super::{
 use super::sentence_helpers::*;
 use super::zone_handlers::collapse_leading_signed_pt_modifier_tokens;
 use super::{
-    LeadingResultPrefixKind, TokenCopyFollowup, parse_conditional_sentence_lexed,
-    parse_effect_chain_lexed, parse_search_library_sentence_lexed,
-    parse_simple_gain_ability_clause, split_leading_result_prefix_lexed,
+    LeadingResultPrefixKind, TokenCopyFollowup, parse_cant_effect_sentence_lexed,
+    parse_conditional_sentence_lexed, parse_effect_chain_lexed,
+    parse_search_library_sentence_lexed, parse_simple_gain_ability_clause,
+    split_leading_result_prefix_lexed,
 };
 #[allow(unused_imports)]
 use crate::cards::builders::{
@@ -1122,6 +1123,9 @@ pub(crate) fn parse_effect_sentence_lexed(
 ) -> Result<Vec<EffectAst>, CardTextError> {
     if let Some(effect) = parse_if_damage_would_be_dealt_put_counters_sentence(tokens)? {
         return Ok(vec![effect]);
+    }
+    if let Some(effects) = parse_cant_effect_sentence_lexed(tokens)? {
+        return Ok(effects);
     }
     let clause_word_view = LowercaseWordView::new(tokens);
     let clause_words = clause_word_view.to_word_refs();

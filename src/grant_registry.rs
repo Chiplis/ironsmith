@@ -477,6 +477,7 @@ impl GrantRegistry {
 
     fn static_grants(&self, game: &crate::game_state::GameState) -> Vec<Grant> {
         use crate::ability::AbilityKind;
+        use crate::game_loop::player_matches_filter_with_combat;
 
         let mut grants = Vec::new();
 
@@ -490,14 +491,26 @@ impl GrantRegistry {
             for ability in &perm.abilities {
                 if let AbilityKind::Static(s) = &ability.kind {
                     if let Some(spec) = s.grant_spec() {
-                        grants.push(Grant {
-                            target_id: None,
-                            filter: Some(normalize_grant_filter(spec.filter.clone())),
-                            zone: spec.zone,
-                            player: controller,
-                            grantable: spec.grantable.clone(),
-                            source: GrantSource::StaticAbility { source_id: perm_id },
-                        });
+                        let combat = game.combat.as_ref();
+                        for player in game.players.iter().filter(|player| {
+                            player.is_in_game()
+                                && player_matches_filter_with_combat(
+                                    player.id,
+                                    &spec.beneficiary,
+                                    game,
+                                    controller,
+                                    combat,
+                                )
+                        }) {
+                            grants.push(Grant {
+                                target_id: None,
+                                filter: Some(normalize_grant_filter(spec.filter.clone())),
+                                zone: spec.zone,
+                                player: player.id,
+                                grantable: spec.grantable.clone(),
+                                source: GrantSource::StaticAbility { source_id: perm_id },
+                            });
+                        }
                     }
                 }
             }
@@ -555,9 +568,13 @@ fn dedupe_vec<T: Eq + std::hash::Hash + Copy>(values: &mut Vec<T>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ability::Ability;
     use crate::alternative_cast::AlternativeCastingMethod;
+    use crate::card::CardBuilder;
     use crate::ids::{ObjectId, PlayerId};
     use crate::mana::ManaCost;
+    use crate::target::PlayerFilter;
+    use crate::types::CardType;
 
     #[test]
     fn test_grant_registry_creation() {
@@ -631,5 +648,49 @@ mod tests {
             registry.grants[0].source,
             GrantSource::until_end_of_turn(source_id, 3)
         );
+    }
+
+    #[test]
+    fn test_static_any_player_flash_grant_applies_to_each_player() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let source = CardBuilder::new(crate::ids::CardId::from_raw(50), "Shared Flash")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(3, 3))
+            .build();
+        let source_id = game.create_object_from_card(&source, alice, Zone::Battlefield);
+        game.object_mut(source_id)
+            .expect("source permanent should exist")
+            .abilities
+            .push(Ability::static_ability(StaticAbility::grants(
+                crate::grant::GrantSpec::flash_to_spells().with_beneficiary(PlayerFilter::Any),
+            )));
+
+        let alice_spell = CardBuilder::new(crate::ids::CardId::from_raw(51), "Alice Spell")
+            .card_types(vec![CardType::Sorcery])
+            .build();
+        let bob_spell = CardBuilder::new(crate::ids::CardId::from_raw(52), "Bob Spell")
+            .card_types(vec![CardType::Sorcery])
+            .build();
+        let alice_spell_id = game.create_object_from_card(&alice_spell, alice, Zone::Hand);
+        let bob_spell_id = game.create_object_from_card(&bob_spell, bob, Zone::Hand);
+
+        let flash = StaticAbility::flash();
+        assert!(game.grant_registry.card_has_granted_ability(
+            &game,
+            alice_spell_id,
+            Zone::Hand,
+            alice,
+            &flash,
+        ));
+        assert!(game.grant_registry.card_has_granted_ability(
+            &game,
+            bob_spell_id,
+            Zone::Hand,
+            bob,
+            &flash,
+        ));
     }
 }

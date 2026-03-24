@@ -38,7 +38,7 @@ use crate::cost::TotalCost;
 use crate::costs::Cost;
 use crate::object::Object;
 use crate::static_abilities::StaticAbility;
-use crate::target::ObjectFilter;
+use crate::target::{ObjectFilter, PlayerFilter};
 use crate::types::CardType;
 use crate::zone::Zone;
 
@@ -156,6 +156,8 @@ pub struct GrantSpec {
     pub filter: ObjectFilter,
     /// The zone where this grant applies.
     pub zone: Zone,
+    /// Which player may use the grant when rendered or applied statically.
+    pub beneficiary: PlayerFilter,
 }
 
 impl GrantSpec {
@@ -165,7 +167,14 @@ impl GrantSpec {
             grantable,
             filter,
             zone,
+            beneficiary: PlayerFilter::You,
         }
+    }
+
+    /// Return a copy of this grant specification with an explicit beneficiary.
+    pub fn with_beneficiary(mut self, beneficiary: PlayerFilter) -> Self {
+        self.beneficiary = beneficiary;
+        self
     }
 
     /// Create a grant spec for flash to spells in hand.
@@ -179,6 +188,7 @@ impl GrantSpec {
             grantable: Grantable::Ability(StaticAbility::flash()),
             filter,
             zone: Zone::Hand,
+            beneficiary: PlayerFilter::You,
         }
     }
 
@@ -224,6 +234,7 @@ impl GrantSpec {
             grantable: Grantable::escape(exile_count),
             filter: ObjectFilter::nonland(),
             zone: Zone::Graveyard,
+            beneficiary: PlayerFilter::You,
         }
     }
 
@@ -277,33 +288,69 @@ impl GrantSpec {
             }
         }
 
+        fn beneficiary_may_prefix(beneficiary: &PlayerFilter) -> String {
+            match beneficiary {
+                PlayerFilter::Any => "Any player may".to_string(),
+                PlayerFilter::You => "You may".to_string(),
+                PlayerFilter::NotYou => "Any player other than you may".to_string(),
+                PlayerFilter::Opponent => "Opponent may".to_string(),
+                PlayerFilter::Teammate => "A teammate may".to_string(),
+                PlayerFilter::Active => "The active player may".to_string(),
+                PlayerFilter::Defending => "The defending player may".to_string(),
+                PlayerFilter::Attacking => "The attacking player may".to_string(),
+                PlayerFilter::DamagedPlayer => "That player may".to_string(),
+                PlayerFilter::EffectController => "The player who cast this spell may".to_string(),
+                PlayerFilter::Specific(_) => "That player may".to_string(),
+                PlayerFilter::MostLifeTied => {
+                    "The player with the most life or tied for most life may".to_string()
+                }
+                PlayerFilter::CastCardTypeThisTurn(card_type) => format!(
+                    "Any player who cast one or more {} spells this turn may",
+                    card_type.to_string().to_ascii_lowercase()
+                ),
+                PlayerFilter::ChosenPlayer => "The chosen player may".to_string(),
+                PlayerFilter::TaggedPlayer(_)
+                | PlayerFilter::IteratedPlayer
+                | PlayerFilter::AliasedOwnerOf(_)
+                | PlayerFilter::AliasedControllerOf(_) => "That player may".to_string(),
+                PlayerFilter::TargetPlayerOrControllerOfTarget => {
+                    "That player or that object's controller may".to_string()
+                }
+                PlayerFilter::Excluding { .. } => "A player may".to_string(),
+                PlayerFilter::Target(_) => "Target player may".to_string(),
+                PlayerFilter::ControllerOf(_) => "That object's controller may".to_string(),
+                PlayerFilter::OwnerOf(_) => "That object's owner may".to_string(),
+            }
+        }
+
         let mut filter = self.filter.clone();
         filter.zone.get_or_insert(self.zone);
         let filter_desc = filter.description();
+        let may_prefix = beneficiary_may_prefix(&self.beneficiary);
 
         if matches!(self.grantable, Grantable::PlayFrom)
             && self.zone == Zone::Graveyard
             && self.filter.card_types.as_slice() == [CardType::Land]
         {
-            return "You may play lands from your graveyard".to_string();
+            return format!("{may_prefix} play lands from your graveyard");
         }
         if matches!(self.grantable, Grantable::PlayFrom)
             && self.zone == Zone::Graveyard
             && self.filter == ObjectFilter::default()
         {
-            return "You may play lands and cast spells from your graveyard".to_string();
+            return format!("{may_prefix} play lands and cast spells from your graveyard");
         }
         if matches!(self.grantable, Grantable::PlayFrom)
             && self.zone == Zone::Library
             && self.filter == ObjectFilter::default()
         {
-            return "You may play lands and cast spells from the top of your library".to_string();
+            return format!("{may_prefix} play lands and cast spells from the top of your library");
         }
         if matches!(self.grantable, Grantable::PlayFrom)
             && self.zone == Zone::Library
             && self.filter.card_types.as_slice() == [CardType::Land]
         {
-            return "You may play lands from the top of your library".to_string();
+            return format!("{may_prefix} play lands from the top of your library");
         }
         if matches!(self.grantable, Grantable::PlayFrom)
             && self.zone == Zone::Library
@@ -323,13 +370,16 @@ impl GrantSpec {
                 && let Some(other) = other_branch
             {
                 return format!(
-                    "You may play lands and cast {} from the top of your library",
+                    "{may_prefix} play lands and cast {} from the top of your library",
                     castable_filter_description(other)
                 );
             }
         }
         if matches!(self.grantable, Grantable::PlayFrom) && self.zone == Zone::Library {
-            return format!("You may play {} from the top of your library", filter_desc);
+            return format!(
+                "{may_prefix} play {} from the top of your library",
+                filter_desc
+            );
         }
         if let Grantable::AlternativeCast(method) = &self.grantable
             && self.zone == Zone::Hand
@@ -338,8 +388,9 @@ impl GrantSpec {
             && method.mana_cost().is_none()
             && method.non_mana_costs().is_empty()
         {
-            return "You may cast spells from your hand without paying their mana costs"
-                .to_string();
+            return format!(
+                "{may_prefix} cast spells from your hand without paying their mana costs"
+            );
         }
         if let Grantable::DerivedAlternativeCast(DerivedAlternativeCast::EscapeFromCardManaCost {
             exile_count,
@@ -363,10 +414,10 @@ impl GrantSpec {
             && self.zone == Zone::Hand
         {
             if self.filter == ObjectFilter::nonland() {
-                return "You may cast spells as though they had flash".to_string();
+                return format!("{may_prefix} cast spells as though they had flash");
             }
             return format!(
-                "You may cast {} as though they had flash",
+                "{may_prefix} cast {} as though they had flash",
                 castable_filter_description(&self.filter)
             );
         }
@@ -426,6 +477,15 @@ mod tests {
         assert_eq!(
             spec.display(),
             "You may cast spells as though they had flash"
+        );
+    }
+
+    #[test]
+    fn test_grant_spec_flash_to_spells_any_player_display() {
+        let spec = GrantSpec::flash_to_spells().with_beneficiary(PlayerFilter::Any);
+        assert_eq!(
+            spec.display(),
+            "Any player may cast spells as though they had flash"
         );
     }
 

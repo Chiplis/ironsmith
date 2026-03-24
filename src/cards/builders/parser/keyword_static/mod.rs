@@ -549,6 +549,37 @@ fn parse_static_ability_ast_line_lexed_single(
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let lowered = lowercase_word_tokens(tokens);
     let words = words(&lowered);
+    if words.starts_with(&["craft", "with"]) {
+        let mut text = String::new();
+        for token in tokens {
+            let attach_to_prev = matches!(
+                token.kind,
+                TokenKind::Comma
+                    | TokenKind::Period
+                    | TokenKind::Semicolon
+                    | TokenKind::Colon
+                    | TokenKind::Question
+                    | TokenKind::Bang
+                    | TokenKind::RBracket
+            );
+            let spaced_dash = matches!(token.kind, TokenKind::Dash | TokenKind::EmDash);
+            if spaced_dash {
+                if !text.is_empty() && !text.ends_with(' ') {
+                    text.push(' ');
+                }
+                text.push_str(token.slice.as_str());
+                text.push(' ');
+                continue;
+            }
+            if !text.is_empty() && !attach_to_prev && !text.ends_with(' ') {
+                text.push(' ');
+            }
+            text.push_str(token.slice.as_str());
+        }
+        return Ok(Some(vec![
+            StaticAbility::keyword_marker(text.trim().to_string()).into(),
+        ]));
+    }
     if matches!(
         words.as_slice(),
         [
@@ -4392,6 +4423,28 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
     {
         return Ok(Some(Value::CreaturesDiedThisTurn));
     }
+    if filter_words.starts_with(&[
+        "1",
+        "life",
+        "your",
+        "opponents",
+        "have",
+        "lost",
+        "this",
+        "turn",
+    ]) || filter_words.starts_with(&[
+        "life",
+        "your",
+        "opponents",
+        "have",
+        "lost",
+        "this",
+        "turn",
+    ]) || filter_words.starts_with(&["1", "life", "opponents", "have", "lost", "this", "turn"])
+        || filter_words.starts_with(&["life", "opponents", "have", "lost", "this", "turn"])
+    {
+        return Ok(Some(Value::LifeLostThisTurn(PlayerFilter::Opponent)));
+    }
     if filter_words.starts_with(&["creature", "that", "died", "under", "your", "control"])
         || filter_words.starts_with(&["creatures", "that", "died", "under", "your", "control"])
     {
@@ -5842,16 +5895,26 @@ pub(crate) fn parse_grant_flash_to_noncreature_spells_line(
     }
 }
 
+fn static_grant_beneficiary(player: crate::cards::builders::PlayerAst) -> Option<PlayerFilter> {
+    match player {
+        crate::cards::builders::PlayerAst::You | crate::cards::builders::PlayerAst::Implicit => {
+            Some(PlayerFilter::You)
+        }
+        crate::cards::builders::PlayerAst::Any => Some(PlayerFilter::Any),
+        _ => None,
+    }
+}
+
 pub(crate) fn parse_you_may_static_grant_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     match parse_permission_clause_spec(tokens)? {
         Some(crate::cards::builders::PermissionClauseSpec::GrantBySpec {
-            player:
-                crate::cards::builders::PlayerAst::You | crate::cards::builders::PlayerAst::Implicit,
+            player,
             spec,
             lifetime: crate::cards::builders::PermissionLifetime::Static,
-        }) => Ok(Some(StaticAbility::grants(spec))),
+        }) => Ok(static_grant_beneficiary(player)
+            .map(|beneficiary| StaticAbility::grants(spec.with_beneficiary(beneficiary)))),
         _ => Ok(None),
     }
 }

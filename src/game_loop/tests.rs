@@ -10295,43 +10295,100 @@ fn test_convoke_colored_creatures_pay_colored_mana() {
 }
 
 #[test]
-fn test_convoke_summoning_sick_creatures_cannot_be_tapped() {
-    // Summoning sick creatures cannot be used for Convoke (unless they have haste)
-    use crate::decision::get_convoke_creatures;
+fn test_convoke_summoning_sick_creatures_can_be_tapped() {
+    // Convoke taps creatures to pay a spell's cost, so summoning sickness does not matter.
+    use crate::cards::definitions::stoke_the_flames;
+    use crate::decision::{compute_legal_actions, get_convoke_creatures};
 
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
 
-    // Create 2 creatures - one summoning sick, one not
-    let creature1 = CardBuilder::new(CardId::from_raw(800), "Regular Creature")
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+    game.turn.active_player = alice;
+
+    // Create 4 summoning sick creatures so Stoke the Flames can be fully convoked.
+    let creature1 = CardBuilder::new(CardId::from_raw(800), "Fresh Creature 1")
+        .card_types(vec![CardType::Creature])
+        .color_indicator(crate::color::ColorSet::RED)
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let creature2 = CardBuilder::new(CardId::from_raw(801), "Fresh Creature 2")
+        .card_types(vec![CardType::Creature])
+        .color_indicator(crate::color::ColorSet::RED)
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let creature3 = CardBuilder::new(CardId::from_raw(802), "Fresh Creature 3")
         .card_types(vec![CardType::Creature])
         .power_toughness(PowerToughness::fixed(1, 1))
         .build();
-    let creature2 = CardBuilder::new(CardId::from_raw(801), "Sick Creature")
+    let creature4 = CardBuilder::new(CardId::from_raw(803), "Fresh Creature 4")
         .card_types(vec![CardType::Creature])
         .power_toughness(PowerToughness::fixed(1, 1))
         .build();
 
     let id1 = game.create_object_from_card(&creature1, alice, Zone::Battlefield);
     let id2 = game.create_object_from_card(&creature2, alice, Zone::Battlefield);
+    let id3 = game.create_object_from_card(&creature3, alice, Zone::Battlefield);
+    let id4 = game.create_object_from_card(&creature4, alice, Zone::Battlefield);
 
-    // from_card sets summoning_sick to false by default, so we need to:
-    // - Keep id1 as not summoning sick (can be used for convoke)
-    // - Set id2 as summoning sick (cannot be used for convoke)
+    // Simulate all four creatures entering this turn.
+    game.set_summoning_sick(id1);
     game.set_summoning_sick(id2);
+    game.set_summoning_sick(id3);
+    game.set_summoning_sick(id4);
 
-    // Get convoke creatures
+    let stoke_def = stoke_the_flames();
+    let stoke_id = game.create_object_from_definition(&stoke_def, alice, Zone::Hand);
+
     let convoke_creatures = get_convoke_creatures(&game, alice);
-
-    // Should only get the non-summoning-sick creature
     assert_eq!(
         convoke_creatures.len(),
-        1,
-        "Only 1 creature should be available (summoning sick creatures can't convoke)"
+        4,
+        "All untapped creatures should be available for convoke, even while summoning sick"
     );
-    assert_eq!(
-        convoke_creatures[0].0, id1,
-        "Only the non-summoning-sick creature should be available"
+
+    let actions = compute_legal_actions(&game, alice);
+    let cast_action = actions.iter().find(|a| {
+        matches!(
+            a,
+            LegalAction::CastSpell {
+                spell_id,
+                from_zone: Zone::Hand,
+                ..
+            } if *spell_id == stoke_id
+        )
+    });
+    assert!(
+        cast_action.is_some(),
+        "Should be able to cast Stoke the Flames by convoking summoning-sick creatures"
+    );
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let response = PriorityResponse::PriorityAction(cast_action.expect("cast action").clone());
+    let result =
+        apply_priority_response(&mut game, &mut trigger_queue, &mut state, &response).unwrap();
+
+    if let GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Targets(_)) =
+        result
+    {
+        let target_response = PriorityResponse::Targets(vec![Target::Player(bob)]);
+        apply_priority_response(&mut game, &mut trigger_queue, &mut state, &target_response)
+            .unwrap();
+    } else {
+        panic!("Expected ChooseTargets decision, got {:?}", result);
+    }
+
+    let tapped_count = [id1, id2, id3, id4]
+        .iter()
+        .filter(|&&id| game.is_tapped(id))
+        .count();
+    assert!(
+        tapped_count >= 4,
+        "All four creatures should be tapped when fully convoking Stoke the Flames"
     );
 }
 

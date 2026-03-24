@@ -19768,6 +19768,21 @@ fn parse_borne_upon_a_wind_flash_permission_clause() {
 }
 
 #[test]
+fn parse_tidal_barracuda_any_player_flash_permission_clause() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Tidal Barracuda")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Any player may cast spells as though they had flash.")
+        .expect("any-player flash permission should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("any player may cast spells as though they had flash")
+            || rendered.contains("players may cast spells as though they had flash"),
+        "expected static flash permission text, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_choose_color_then_add_devotion_to_that_color() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Nykthos Variant")
         .card_types(vec![CardType::Land])
@@ -19780,6 +19795,22 @@ fn parse_choose_color_then_add_devotion_to_that_color() {
             && debug.contains("AddManaOfChosenColorEffect")
             && debug.contains("DevotionToChosenColor"),
         "expected choose-color plus devotion-to-chosen-color mana sequence, got {debug}"
+    );
+}
+
+#[test]
+fn parse_oriss_grandeur_named_discard_cost() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Oriss, Samite Guardian")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Grandeur — Discard another card named Oriss, Samite Guardian: Target player can't cast spells this turn, and creatures that player controls can't attack this turn.",
+        )
+        .expect("grandeur named discard cost should parse");
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("DiscardEffect") && debug.contains("Oriss, Samite Guardian"),
+        "expected named-card discard cost, got {debug}"
     );
 }
 
@@ -19819,6 +19850,22 @@ fn parse_bonded_horncrest_attack_or_block_alone_uses_alone_restriction() {
 }
 
 #[test]
+fn parse_flamescroll_celebrant_non_mana_ability_trigger() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Flamescroll Celebrant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Whenever an opponent activates an ability that isn't a mana ability, this creature deals 1 damage to that player.",
+        )
+        .expect("non-mana ability activation trigger should parse");
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("AbilityActivatedTrigger") && debug.contains("non_mana_only: true"),
+        "expected qualified ability-activated trigger, got {debug}"
+    );
+}
+
+#[test]
 fn parse_coercion_choose_card_from_it_uses_tagged_hand_choice() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Coercion")
         .card_types(vec![CardType::Sorcery])
@@ -19848,6 +19895,22 @@ fn parse_coercion_choose_card_from_it_uses_tagged_hand_choice() {
 }
 
 #[test]
+fn parse_kutzil_power_greater_than_base_power_trigger() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Kutzil Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Whenever one or more creatures you control each with power greater than its base power deals combat damage to a player, draw a card.",
+        )
+        .expect("base-power comparison trigger subject should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("power greater than its base power"),
+        "expected base-power comparison to survive compilation, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_choose_an_opponent_then_that_player_cant_cast_spells() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Xanathar Restriction Variant")
         .card_types(vec![CardType::Creature])
@@ -19864,6 +19927,75 @@ fn parse_choose_an_opponent_then_that_player_cant_cast_spells() {
         abilities_debug.contains("CastSpellsMatching(TaggedPlayer")
             || abilities_debug.contains("CastSpellsMatching(IteratedPlayer"),
         "expected that-player cant-cast restriction to lower through existing player filters, got {abilities_debug}"
+    );
+}
+
+#[test]
+fn parse_megatron_life_lost_turn_mana_clause() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Megatron Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Your opponents can't cast spells during combat.\nAt the beginning of each of your postcombat main phases, you may convert Megatron. If you do, add {C} for each 1 life your opponents have lost this turn.",
+        )
+        .expect("life-lost mana clause should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("during combat")
+            && rendered.contains("add {c} for each 1 life your opponents have lost this turn")
+            && !rendered.contains("time(s)"),
+        "expected megatron silence and mana text, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_craft_keyword_line_as_marker() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Craft Variant")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "Craft with artifact {3}{W}{W} ({3}{W}{W}, Exile this artifact, Exile another artifact you control or an artifact card from your graveyard: Return this card transformed under its owner's control. Craft only as a sorcery.)",
+        )
+        .expect("craft keyword line should parse as marker");
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("craft with artifact {3}{w}{w}"),
+        "expected craft keyword text to survive compilation, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_sphinxs_decree_next_turn_silence() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Sphinx's Decree")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Each opponent can't cast instant or sorcery spells during that player's next turn.",
+        )
+        .expect("sphinx's decree silence clause should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("each opponent")
+            && rendered.contains("next upkeep")
+            && rendered.contains("instant or sorcery spells"),
+        "expected next-turn silence to lower through next upkeep, got {rendered}"
+    );
+}
+
+#[test]
+fn compiled_static_restriction_keeps_during_turn_condition_text() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Grand Abolisher")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "During your turn, your opponents can't cast spells or activate abilities of artifacts, creatures, or enchantments.",
+        )
+        .expect("grand abolisher should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("during your turn")
+            && rendered.contains("your opponents can't cast spells"),
+        "expected compiled text to keep during-your-turn condition, got {rendered}"
     );
 }
 

@@ -2,18 +2,24 @@
 
 use crate::events::EventKind;
 use crate::events::spells::AbilityActivatedEvent;
-use crate::target::ObjectFilter;
+use crate::target::{ObjectFilter, PlayerFilter};
 use crate::triggers::TriggerEvent;
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AbilityActivatedTrigger {
+    pub activator: PlayerFilter,
     pub filter: ObjectFilter,
+    pub non_mana_only: bool,
 }
 
 impl AbilityActivatedTrigger {
-    pub fn new(filter: ObjectFilter) -> Self {
-        Self { filter }
+    pub fn new(activator: PlayerFilter, filter: ObjectFilter, non_mana_only: bool) -> Self {
+        Self {
+            activator,
+            filter,
+            non_mana_only,
+        }
     }
 }
 
@@ -25,6 +31,12 @@ impl TriggerMatcher for AbilityActivatedTrigger {
         let Some(e) = event.downcast::<AbilityActivatedEvent>() else {
             return false;
         };
+        if self.non_mana_only && e.is_mana_ability {
+            return false;
+        }
+        if !self.activator.matches_player(e.activator, &ctx.filter_ctx) {
+            return false;
+        }
 
         if let Some(obj) = ctx.game.object(e.source) {
             self.filter.matches(obj, &ctx.filter_ctx, ctx.game)
@@ -37,10 +49,20 @@ impl TriggerMatcher for AbilityActivatedTrigger {
     }
 
     fn display(&self) -> String {
-        format!(
-            "Whenever an ability of {} is activated",
-            self.filter.description()
-        )
+        let subject = self.activator.description();
+        let ability = if self.non_mana_only {
+            "a non-mana ability"
+        } else {
+            "an ability"
+        };
+        if self.filter == ObjectFilter::default() {
+            format!("Whenever {subject} activates {ability}")
+        } else {
+            format!(
+                "Whenever {subject} activates {ability} of {}",
+                self.filter.description()
+            )
+        }
     }
 }
 
@@ -50,7 +72,8 @@ mod tests {
 
     #[test]
     fn test_display() {
-        let trigger = AbilityActivatedTrigger::new(ObjectFilter::default());
-        assert!(trigger.display().contains("activated"));
+        let trigger =
+            AbilityActivatedTrigger::new(PlayerFilter::Any, ObjectFilter::default(), false);
+        assert!(trigger.display().contains("activates"));
     }
 }

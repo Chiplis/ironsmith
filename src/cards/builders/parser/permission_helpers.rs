@@ -221,6 +221,10 @@ pub(crate) fn parse_permission_clause_spec_lexed(
         Some((PlayerAst::You, false, 3usize))
     } else if body.starts_with(&["you", "may", "play"]) {
         Some((PlayerAst::You, true, 3usize))
+    } else if body.starts_with(&["any", "player", "may", "cast"]) {
+        Some((PlayerAst::Any, false, 4usize))
+    } else if body.starts_with(&["any", "player", "may", "play"]) {
+        Some((PlayerAst::Any, true, 4usize))
     } else if body.starts_with(&["cast"]) {
         Some((PlayerAst::Implicit, false, 1usize))
     } else if body.starts_with(&["play"]) {

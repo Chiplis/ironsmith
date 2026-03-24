@@ -477,7 +477,30 @@ impl StaticAbilityKind for RuleRestriction {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        let Some(condition) = &self.condition else {
+            return self.display.clone();
+        };
+        let prefix = match condition {
+            crate::ConditionExpr::ActivationTiming(
+                crate::ability::ActivationTiming::DuringYourTurn,
+            ) => Some("During your turn"),
+            crate::ConditionExpr::ActivationTiming(
+                crate::ability::ActivationTiming::DuringCombat,
+            ) => Some("During combat"),
+            _ => None,
+        };
+        let Some(prefix) = prefix else {
+            return self.display.clone();
+        };
+        let body = self.display.trim();
+        if body
+            .to_ascii_lowercase()
+            .contains(&prefix.to_ascii_lowercase())
+        {
+            body.to_string()
+        } else {
+            format!("{prefix}, {body}")
+        }
     }
 
     fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {

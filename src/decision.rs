@@ -3701,16 +3701,7 @@ pub fn get_convoke_creatures(
             if game.is_tapped(id) {
                 return None;
             }
-            // Must not have summoning sickness (unless has haste)
-            if game.is_summoning_sick(id) {
-                if !game.current_has_static_ability_id(
-                    id,
-                    crate::static_abilities::StaticAbilityId::Haste,
-                ) {
-                    return None;
-                }
-            }
-            Some((id, obj.colors()))
+            Some((id, game.current_colors(id).unwrap_or_else(|| obj.colors())))
         })
         .collect()
 }

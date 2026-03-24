@@ -8985,6 +8985,31 @@ mod tests {
     }
 
     #[test]
+    fn object_details_include_convoke_for_builtin_cards() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let definition = crate::cards::definitions::stoke_the_flames();
+        let object_id = game.create_object_from_definition(&definition, alice, Zone::Hand);
+
+        let details =
+            build_object_details_snapshot(&game, object_id).expect("expected object details");
+
+        assert!(
+            details.oracle_text.contains("Convoke"),
+            "expected oracle text to include Convoke, got {:?}",
+            details.oracle_text
+        );
+        assert!(
+            details
+                .compiled_text
+                .iter()
+                .any(|line| line.contains("Convoke")),
+            "expected compiled inspector text to include Convoke, got {:?}",
+            details.compiled_text
+        );
+    }
+
+    #[test]
     fn resolving_spell_snapshot_uses_current_source_object_name_after_stack_exit() {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
         let alice = PlayerId::from_index(0);

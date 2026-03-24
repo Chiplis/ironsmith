@@ -1819,6 +1819,7 @@ pub(crate) fn parse_activation_cost(tokens: &[OwnedLexToken]) -> Result<TotalCos
         if segment_words_lower[0] == "discard" {
             let mut idx = 1usize;
             let mut count = 1u32;
+            let mut named_discard = false;
 
             let after_discard_words = words(&segment[idx..]);
             if after_discard_words.starts_with(&["your", "hand"]) {
@@ -1847,11 +1848,48 @@ pub(crate) fn parse_activation_cost(tokens: &[OwnedLexToken]) -> Result<TotalCos
                 idx += used;
             }
 
+            if segment
+                .get(idx)
+                .is_some_and(|token| token.is_word("another"))
+            {
+                named_discard = true;
+                idx += 1;
+            }
+
             while segment
                 .get(idx)
                 .is_some_and(|token| token.is_word("a") || token.is_word("an"))
             {
                 idx += 1;
+            }
+
+            if segment.get(idx).is_some_and(|token| token.is_word("card"))
+                && segment
+                    .get(idx + 1)
+                    .is_some_and(|token| token.is_word("named"))
+            {
+                let name_words = words(&segment[idx + 2..]);
+                if name_words.is_empty() {
+                    return Err(CardTextError::ParseError(format!(
+                        "unsupported discard cost selector (clause: '{}')",
+                        segment_words.join(" ")
+                    )));
+                }
+                let mut filter = ObjectFilter::default()
+                    .named(name_words.join(" "))
+                    .in_zone(Zone::Hand);
+                if named_discard {
+                    filter.other = true;
+                }
+                explicit_costs.push(crate::costs::Cost::validated_effect(
+                    Effect::discard_player_filtered(
+                        Value::Fixed(count as i32),
+                        PlayerFilter::You,
+                        false,
+                        Some(filter),
+                    ),
+                ));
+                continue;
             }
 
             let mut card_types = Vec::<CardType>::new();
@@ -7692,6 +7730,31 @@ pub(crate) fn parse_trigger_clause_lexed(
         }
     }
 
+    if let Some(activate_idx) = words
+        .iter()
+        .position(|word| *word == "activate" || *word == "activates")
+    {
+        let subject_tokens = &tokens[..activate_idx];
+        let subject_word_view = LowercaseWordView::new(subject_tokens);
+        let subject_words = subject_word_view.to_word_refs();
+        if let Some(activator) = parse_trigger_subject_player_filter(&subject_words) {
+            let tail_words = &words[activate_idx + 1..];
+            if tail_words == ["an", "ability"]
+                || tail_words == ["abilities"]
+                || tail_words == ["an", "ability", "that", "isnt", "a", "mana", "ability"]
+                || tail_words == ["an", "ability", "that", "isn't", "a", "mana", "ability"]
+                || tail_words == ["abilities", "that", "arent", "mana", "abilities"]
+                || tail_words == ["abilities", "that", "aren't", "mana", "abilities"]
+            {
+                return Ok(TriggerSpec::AbilityActivated {
+                    activator,
+                    filter: ObjectFilter::default(),
+                    non_mana_only: tail_words.contains(&"mana"),
+                });
+            }
+        }
+    }
+
     let has_deal = words.iter().any(|word| *word == "deal" || *word == "deals");
     if has_deal && words.contains(&"combat") && words.contains(&"damage") {
         if let Some(deals_idx) = tokens
@@ -9487,7 +9550,93 @@ fn parse_trigger_subject_filter_lexed(
         )));
     }
 
-    parse_object_filter_lexed(subject_tokens, other)
+    if subject_words
+        .windows(6)
+        .any(|window| window == ["power", "greater", "than", "its", "base", "power"])
+        && subject_words
+            .iter()
+            .any(|word| matches!(*word, "creature" | "creatures"))
+    {
+        let mut filter = ObjectFilter::creature().in_zone(Zone::Battlefield);
+        filter.power_greater_than_base_power = true;
+        if other {
+            filter.other = true;
+        }
+        if subject_words
+            .windows(2)
+            .any(|window| window == ["you", "control"])
+        {
+            filter.controller = Some(PlayerFilter::You);
+        } else if subject_words
+            .windows(2)
+            .any(|window| window == ["opponents", "control"])
+            || subject_words
+                .windows(2)
+                .any(|window| window == ["opponent", "controls"])
+        {
+            filter.controller = Some(PlayerFilter::Opponent);
+        }
+        return Ok(Some(filter));
+    }
+
+    let mut normalized_subject_tokens = subject_tokens.to_vec();
+    if normalized_subject_tokens
+        .windows(2)
+        .any(|window| window[0].is_word("each") && window[1].is_word("with"))
+    {
+        let mut normalized = Vec::with_capacity(normalized_subject_tokens.len());
+        let mut idx = 0usize;
+        while idx < normalized_subject_tokens.len() {
+            if normalized_subject_tokens[idx].is_word("each")
+                && normalized_subject_tokens
+                    .get(idx + 1)
+                    .is_some_and(|token| token.is_word("with"))
+            {
+                idx += 1;
+                continue;
+            }
+            normalized.push(normalized_subject_tokens[idx].clone());
+            idx += 1;
+        }
+        normalized_subject_tokens = normalized;
+    }
+
+    let mut controller_override = None;
+    let word_view = LowercaseWordView::new(&normalized_subject_tokens);
+    let normalized_words = word_view.to_word_refs();
+    let controller_phrase = if let Some(idx) = normalized_words
+        .windows(2)
+        .position(|window| window == ["you", "control"])
+        .filter(|idx| idx + 2 < normalized_words.len())
+    {
+        controller_override = Some(PlayerFilter::You);
+        Some((idx, 2usize))
+    } else if let Some(idx) = normalized_words
+        .windows(2)
+        .position(|window| window == ["opponents", "control"])
+        .filter(|idx| idx + 2 < normalized_words.len())
+    {
+        controller_override = Some(PlayerFilter::Opponent);
+        Some((idx, 2usize))
+    } else if let Some(idx) = normalized_words
+        .windows(2)
+        .position(|window| window == ["opponent", "controls"])
+        .filter(|idx| idx + 2 < normalized_words.len())
+    {
+        controller_override = Some(PlayerFilter::Opponent);
+        Some((idx, 2usize))
+    } else {
+        None
+    };
+
+    if let Some((word_idx, len)) = controller_phrase
+        && let Some(start) = token_index_for_word_index(&normalized_subject_tokens, word_idx)
+        && let Some(end) = token_index_for_word_index(&normalized_subject_tokens, word_idx + len)
+    {
+        normalized_subject_tokens.drain(start..end);
+    }
+
+    parse_object_filter_lexed(&normalized_subject_tokens, other)
         .map(|mut filter| {
             if filter.zone.is_none()
                 && filter.tagged_constraints.is_empty()
@@ -9495,6 +9644,10 @@ fn parse_trigger_subject_filter_lexed(
                 && !filter.source
             {
                 filter.zone = Some(Zone::Battlefield);
+            }
+            if let Some(controller) = controller_override {
+                filter.controller = Some(controller);
+                filter.zone.get_or_insert(Zone::Battlefield);
             }
             Some(filter)
         })

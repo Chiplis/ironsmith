@@ -383,7 +383,10 @@ fn infer_static_ability_functional_zones(normalized_line: &str) -> Option<Vec<Zo
     let mut zones = Vec::new();
     for (needles, zone) in [
         (
-            &["this card is in your hand", "there is this card in your hand"][..],
+            &[
+                "this card is in your hand",
+                "there is this card in your hand",
+            ][..],
             Zone::Hand,
         ),
         (
@@ -394,7 +397,10 @@ fn infer_static_ability_functional_zones(normalized_line: &str) -> Option<Vec<Zo
             Zone::Graveyard,
         ),
         (
-            &["this card is in your library", "there is this card in your library"][..],
+            &[
+                "this card is in your library",
+                "there is this card in your library",
+            ][..],
             Zone::Library,
         ),
         (
@@ -409,7 +415,10 @@ fn infer_static_ability_functional_zones(normalized_line: &str) -> Option<Vec<Zo
             Zone::Command,
         ),
     ] {
-        if needles.iter().any(|needle| normalized_line.contains(needle)) {
+        if needles
+            .iter()
+            .any(|needle| normalized_line.contains(needle))
+        {
             zones.push(zone);
         }
     }
