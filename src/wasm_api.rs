@@ -4475,30 +4475,45 @@ impl WasmGame {
             ));
         }
 
+        const DEMO_BASIC_LANDS: &[&str] = &["Plains", "Island", "Swamp", "Mountain", "Forest"];
+        const DEMO_SPELL_POOL: &[&str] = &[
+            "Lightning Bolt",
+            "Counterspell",
+            "Giant Growth",
+            "Opt",
+            "Divination",
+            "Llanowar Elves",
+            "Grizzly Bears",
+            "Ornithopter",
+            "Serra Angel",
+            "Doom Blade",
+            "Raise Dead",
+            "Unsummon",
+        ];
+
         let spells_needed = deck_size - land_count;
         let mut rng = StdRng::seed_from_u64(self.next_deck_seed());
 
-        // Keep demo setup JIT-friendly: only parse/register cards as they are sampled.
-        let mut candidate_names = CardRegistry::generated_parser_card_names();
-        candidate_names.shuffle(&mut rng);
-        self.registry
-            .ensure_cards_loaded(["Plains", "Island", "Swamp", "Mountain", "Forest"]);
+        self.registry.ensure_cards_loaded(
+            DEMO_BASIC_LANDS
+                .iter()
+                .copied()
+                .chain(DEMO_SPELL_POOL.iter().copied()),
+        );
 
         let mut strict_spell_pool: Vec<String> = Vec::new();
         let mut fallback_spell_pool: Vec<String> = Vec::new();
         let mut strict_seen: HashSet<String> = HashSet::new();
         let mut fallback_seen: HashSet<String> = HashSet::new();
 
-        for candidate in candidate_names {
-            // Skip cards below the semantic fidelity threshold before parsing.
+        for candidate in DEMO_SPELL_POOL {
             if self.semantic_threshold > 0.0
-                && let Some(score) = Self::semantic_score_for_name(candidate.as_str())
+                && let Some(score) = Self::semantic_score_for_name(candidate)
                 && score < self.semantic_threshold
             {
                 continue;
             }
-            self.registry.ensure_cards_loaded([candidate.as_str()]);
-            let Some(def) = self.registry.get(candidate.as_str()) else {
+            let Some(def) = self.registry.get(candidate) else {
                 continue;
             };
             let canonical = def.name().to_string();
@@ -4507,15 +4522,12 @@ impl WasmGame {
                 if strict_seen.insert(key) {
                     strict_spell_pool.push(canonical);
                 }
-                if strict_spell_pool.len() >= spells_needed {
-                    break;
-                }
             } else if Self::is_fallback_demo_spell_candidate(def) && fallback_seen.insert(key) {
                 fallback_spell_pool.push(canonical);
             }
         }
 
-        let mut spell_pool: Vec<String> = if strict_spell_pool.is_empty() {
+        let mut spell_pool = if strict_spell_pool.is_empty() {
             fallback_spell_pool
         } else {
             strict_spell_pool
@@ -4608,7 +4620,7 @@ impl WasmGame {
             .unwrap_or(ManaSymbol::Green);
         let mut fallback_land = Self::basic_land_name_for_symbol(fallback_color);
         if self.registry.get(fallback_land).is_none() {
-            fallback_land = ["Plains", "Island", "Swamp", "Mountain", "Forest"]
+            fallback_land = DEMO_BASIC_LANDS
                 .into_iter()
                 .find(|name| self.registry.get(name).is_some())
                 .ok_or_else(|| {

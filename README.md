@@ -77,13 +77,13 @@ Even the hand-maintained cards in [`src/cards/definitions/`](src/cards/definitio
 
 That boundary is important because it keeps the engine honest: parser coverage improves only if real cards actually depend on it.
 
-### Generated Registry and `cards.json`
+### Generated Registry and SQLite
 
-The repo expects a local, gitignored [`cards.json`](cards.json) Scryfall-style dump for bulk parsing and registry generation.
+The repo expects a local SQLite registry DB for wasm builds and semantic audits. A gitignored [`cards.json`](cards.json) Scryfall-style dump is still used to ingest canonical card data into that DB.
 
-- [`scripts/download_scryfall_cards.py`](scripts/download_scryfall_cards.py) downloads the official Scryfall `oracle_cards` bulk export and filters it down to paper cards that are legal in Commander, Standard, Modern, Legacy, or Vintage.
+- [`scripts/download_scryfall_cards.py`](scripts/download_scryfall_cards.py) downloads the official Scryfall `default-cards` bulk export, keeps paper cards that are legal in Commander, Standard, Modern, Legacy, or Vintage, and collapses printings down to one canonical paper record per card.
 - [`scripts/stream_scryfall_blocks.py`](scripts/stream_scryfall_blocks.py) streams playable cards as parser input blocks.
-- [`scripts/generate_baked_registry.py`](scripts/generate_baked_registry.py) converts bulk card data into generated Rust source used by the registry build.
+- [`scripts/generate_baked_registry.py`](scripts/generate_baked_registry.py) converts registry DB rows into generated Rust source used by the registry build.
 - [`build.rs`](build.rs) generates a stub registry unless the `generated-registry` feature is enabled.
 
 This keeps normal engine iteration fast while still supporting “compile the world” style workflows when needed.
@@ -392,7 +392,11 @@ The repo ships several useful binaries. Most of them live in the `ironsmith-tool
 
 - `sync_card_status_db`
   - Package: `ironsmith-tools`
-  - Purpose: compile canonical `cards.json` entries and append only changed rows into the SQLite status DB
+  - Purpose: compile canonical `registry_card` entries from SQLite and append only changed rows into the compilation history tables
+
+- `sync_registry_db`
+  - Package: `ironsmith-tools`
+  - Purpose: ingest canonical cards from `cards.json` into the SQLite `registry_card` table and prune removed cards
 
 - `import_card_tags`
   - Package: `ironsmith-tools`
@@ -422,7 +426,8 @@ You will typically want:
 - Python 3
 - `wasm-pack` for wasm builds
 - `pnpm` for the React UI
-- a local `cards.json` dump for bulk parsing, registry generation, and several audit tools
+- a local SQLite registry DB for wasm builds and semantic audits
+- a local `cards.json` dump when you need to refresh canonical registry data from Scryfall
 
 `cards.json` is intentionally gitignored, along with most generated reports, CSV/JSON outputs, and the SQLite engine status DB.
 
@@ -475,11 +480,18 @@ cargo run -p ironsmith-tools --bin compile_oracle_text -- \
   --text $'Mana cost: {R}\nType: Instant\nLightning Bolt deals 3 damage to any target.'
 ```
 
-Sync the SQLite engine status index from canonical cards:
+Ingest canonical cards into the SQLite registry:
+
+```bash
+cargo run -p ironsmith-tools --bin sync_registry_db -- \
+  --cards cards.json \
+  --db-path reports/engine-status.sqlite3
+```
+
+Compile/update the SQLite engine status index from canonical registry rows:
 
 ```bash
 cargo run -p ironsmith-tools --bin sync_card_status_db -- \
-  --cards cards.json \
   --db-path reports/engine-status.sqlite3
 ```
 
@@ -523,7 +535,7 @@ python3 scripts/stream_scryfall_blocks.py --cards cards.json \
   | cargo run -p ironsmith-tools --bin parse_card_text --
 ```
 
-Regenerate wasm artifacts and semantic caches:
+Regenerate wasm artifacts and semantic caches from SQLite:
 
 ```bash
 ./rebuild-wasm.sh --threshold 0.99

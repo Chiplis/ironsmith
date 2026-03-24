@@ -69,6 +69,11 @@ path = "../../src/bin/sync_card_status_db.rs"
 test = false
 
 [[bin]]
+name = "sync_registry_db"
+path = "../../src/bin/sync_registry_db.rs"
+test = false
+
+[[bin]]
 name = "import_card_tags"
 path = "../../src/bin/import_card_tags.rs"
 test = false

@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Generate Rust source with parser-backed card registry entries from cards.json."""
+"""Generate Rust source with parser-backed card registry entries from SQLite."""
 
 from __future__ import annotations
 
 import argparse
 import json
 import os
+import sqlite3
 import struct
 from pathlib import Path
 from typing import Dict, List, Tuple
@@ -15,15 +16,32 @@ from stream_scryfall_blocks import (
     has_digital_only_oracle_marker,
     is_non_paper_print,
     is_non_playable,
-    iter_json_array,
 )
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CARDS_JSON = ROOT / "cards.json"
+DEFAULT_DB_PATH = ROOT / "reports" / "engine-status.sqlite3"
 OUT_FILE = ROOT / "src" / "cards" / "generated_registry.rs"
 PAYLOAD_FILE_NAME = "generated_registry_payload.bin"
 SCORES_FILE_ENV = "IRONSMITH_GENERATED_REGISTRY_SCORES_FILE"
+REGISTRY_DB_PATH_ENV = "IRONSMITH_REGISTRY_DB_PATH"
+
+
+def iter_registry_cards(db_path: Path):
+    conn = sqlite3.connect(db_path)
+    try:
+        seen_any = False
+        for (raw_card_json,) in conn.execute(
+            "SELECT raw_card_json FROM registry_card ORDER BY card_name COLLATE NOCASE ASC"
+        ):
+            seen_any = True
+            yield json.loads(raw_card_json)
+        if not seen_any:
+            raise RuntimeError(
+                f"[generate_baked_registry] no registry_card rows found in {db_path}; run sync_registry_db first"
+            )
+    finally:
+        conn.close()
 
 def card_oracle_text(card: dict) -> str | None:
     oracle_text = card.get("oracle_text")
@@ -121,6 +139,7 @@ AliasEntry = Tuple[str, str]
 
 
 def collect_unique_blocks(
+    db_path: Path,
     semantic_scores: Dict[str, float],
     strict_scores: bool,
 ) -> Tuple[Dict[str, SingleEntry], List[FlipPair], List[SplitPair], List[AliasEntry]]:
@@ -226,7 +245,7 @@ def collect_unique_blocks(
                 continue
             maybe_register_alias(face.get("printed_name"), canonical)
 
-    for card in iter_json_array(CARDS_JSON):
+    for card in iter_registry_cards(db_path):
         oracle_text = card_oracle_text(card)
         if (
             oracle_text
@@ -1182,7 +1201,7 @@ def write_generated_payload(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Generate baked parser registry source from cards.json"
+        description="Generate baked parser registry source from the registry SQLite DB"
     )
     parser.add_argument(
         "--out",
@@ -1190,14 +1209,27 @@ def parse_args() -> argparse.Namespace:
         default=str(OUT_FILE),
         help="Output Rust source file path",
     )
+    parser.add_argument(
+        "--db-path",
+        dest="db_path",
+        default=os.environ.get(REGISTRY_DB_PATH_ENV, str(DEFAULT_DB_PATH)),
+        help="Path to the registry SQLite DB",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
     output_path = Path(args.out)
+    db_path = Path(args.db_path)
+    if not db_path.exists():
+        raise FileNotFoundError(
+            f"[generate_baked_registry] registry DB not found: {db_path}"
+        )
     semantic_scores, strict_scores = load_semantic_scores()
-    cards, flips, splits, aliases = collect_unique_blocks(semantic_scores, strict_scores)
+    cards, flips, splits, aliases = collect_unique_blocks(
+        db_path, semantic_scores, strict_scores
+    )
     write_generated_source(cards, flips, splits, aliases, output_path)
     print(
         f"wrote {output_path} with {len(cards) + 2 * len(flips) + 2 * len(splits)} source cards "

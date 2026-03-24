@@ -18,6 +18,27 @@ function maybeInsertScore(scoresByName, rawName, rawScore) {
 }
 
 export function buildSemanticStats(payload) {
+  if (
+    payload
+    && typeof payload === "object"
+    && Array.isArray(payload.thresholdCounts)
+    && Number.isFinite(Number(payload.scoredCount))
+  ) {
+    const thresholdCounts = payload.thresholdCounts
+      .slice(0, 100)
+      .map((value) => {
+        const count = Number(value);
+        return Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
+      });
+    while (thresholdCounts.length < 100) {
+      thresholdCounts.push(0);
+    }
+    return {
+      scoredCount: Math.max(0, Math.floor(Number(payload.scoredCount))),
+      thresholdCounts,
+    };
+  }
+
   const scoresByName = new Map();
 
   if (Array.isArray(payload)) {

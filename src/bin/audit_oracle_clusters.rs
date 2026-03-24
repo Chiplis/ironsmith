@@ -20,7 +20,7 @@ mod tooling_paths;
 
 #[derive(Debug)]
 struct Args {
-    cards_path: String,
+    cards_path: Option<String>,
     limit: Option<usize>,
     min_cluster_size: usize,
     top_clusters: usize,
@@ -169,7 +169,7 @@ struct ParseFailureClusterRef<'a> {
 }
 
 fn parse_args() -> Result<Args, String> {
-    let mut cards_path = "cards.json".to_string();
+    let mut cards_path = None;
     let mut limit = None;
     let mut min_cluster_size = 8usize;
     let mut top_clusters = 30usize;
@@ -195,9 +195,10 @@ fn parse_args() -> Result<Args, String> {
     while let Some(arg) = iter.next() {
         match arg.as_str() {
             "--cards" => {
-                cards_path = iter
-                    .next()
-                    .ok_or_else(|| "--cards requires a path".to_string())?;
+                cards_path = Some(
+                    iter.next()
+                        .ok_or_else(|| "--cards requires a path".to_string())?,
+                );
             }
             "--limit" => {
                 let raw = iter
@@ -1221,6 +1222,23 @@ for card in iter_json_array(cards_path):
     Ok(cards)
 }
 
+fn load_card_inputs_from_registry(
+    db: &CardStatusDb,
+) -> Result<Vec<CardInput>, Box<dyn std::error::Error>> {
+    let payloads = db.registry_card_payloads()?;
+    if payloads.is_empty() {
+        return Err("no registry_card rows found in DB; run sync_registry_db first".into());
+    }
+    Ok(payloads
+        .into_iter()
+        .map(|payload| CardInput {
+            name: payload.name,
+            oracle_text: payload.oracle_text,
+            parse_input: payload.parse_input,
+        })
+        .collect())
+}
+
 fn json_push_string(out: &mut String, value: &str) {
     out.push('"');
     for ch in value.chars() {
@@ -1900,7 +1918,18 @@ fn set_allow_unsupported(enabled: bool) {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = parse_args().map_err(std::io::Error::other)?;
-    let cards = load_card_inputs_from_stream(&args.cards_path)?;
+    let db = if args.no_db {
+        None
+    } else {
+        Some(CardStatusDb::open(&args.db_path)?)
+    };
+    let cards = if let Some(cards_path) = args.cards_path.as_deref() {
+        load_card_inputs_from_stream(cards_path)?
+    } else if let Some(db) = db.as_ref() {
+        load_card_inputs_from_registry(db)?
+    } else {
+        return Err("no card input source available: pass --cards or omit --no-db".into());
+    };
 
     let original_trace = env::var("IRONSMITH_PARSER_TRACE").ok();
     let original_allow_unsupported = env::var("IRONSMITH_PARSER_ALLOW_UNSUPPORTED").ok();
@@ -1928,12 +1957,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(path) => read_name_set(path)?,
         None => HashSet::new(),
     };
-    let db = if args.no_db {
-        None
-    } else {
-        Some(CardStatusDb::open(&args.db_path)?)
-    };
-
     let mut audits = Vec::new();
     for card_input in cards {
         if let Some(limit) = args.limit

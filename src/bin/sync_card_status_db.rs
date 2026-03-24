@@ -1,17 +1,17 @@
 use ironsmith_tools::{
-    CardStatusDb, compile_snapshot_from_payload, default_db_path, load_canonical_cards,
+    CardPayload, CardStatusDb, compile_snapshot_from_payload, default_db_path, load_canonical_cards,
 };
 use std::collections::BTreeSet;
 
 #[derive(Debug)]
 struct Args {
-    cards_path: String,
+    cards_path: Option<String>,
     db_path: String,
     tag: Option<String>,
 }
 
 fn parse_args() -> Result<Args, String> {
-    let mut cards_path = "cards.json".to_string();
+    let mut cards_path = None;
     let mut db_path = default_db_path().display().to_string();
     let mut tag = None;
 
@@ -19,9 +19,10 @@ fn parse_args() -> Result<Args, String> {
     while let Some(arg) = iter.next() {
         match arg.as_str() {
             "--cards" => {
-                cards_path = iter
-                    .next()
-                    .ok_or_else(|| "--cards requires a path".to_string())?;
+                cards_path = Some(
+                    iter.next()
+                        .ok_or_else(|| "--cards requires a path".to_string())?,
+                );
             }
             "--db-path" => {
                 db_path = iter
@@ -36,7 +37,7 @@ fn parse_args() -> Result<Args, String> {
             }
             "-h" | "--help" => {
                 return Err(
-                    "usage: cargo run --release -p ironsmith-tools --bin sync_card_status_db -- [--cards <path>] [--db-path <path>] [--tag <slug>]"
+                    "usage: cargo run --release -p ironsmith-tools --bin sync_card_status_db -- [--db-path <path>] [--tag <slug>] [--cards <path>]"
                         .to_string(),
                 );
             }
@@ -58,8 +59,25 @@ fn parse_args() -> Result<Args, String> {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = parse_args().map_err(std::io::Error::other)?;
     let mut db = CardStatusDb::open(&args.db_path)?;
-    let cards = load_canonical_cards(&args.cards_path)?;
-    let canonical_card_names = cards.keys().cloned().collect::<Vec<_>>();
+    let cards = if let Some(cards_path) = args.cards_path.as_deref() {
+        load_canonical_cards(cards_path)?
+            .into_values()
+            .collect::<Vec<CardPayload>>()
+    } else {
+        let rows = db.registry_card_payloads()?;
+        if rows.is_empty() {
+            return Err(format!(
+                "no registry_card rows found in {}; run sync_registry_db first or pass --cards",
+                args.db_path
+            )
+            .into());
+        }
+        rows
+    };
+    let canonical_card_names = cards
+        .iter()
+        .map(|payload| payload.name.clone())
+        .collect::<Vec<_>>();
     let tag_filtered_names = if let Some(tag) = args.tag.as_deref() {
         let names = db.card_names_for_tag(tag)?;
         if names.is_empty() {
@@ -76,7 +94,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut inserted = 0usize;
     let mut processed = 0usize;
-    for (name, payload) in &cards {
+    for payload in &cards {
+        let name = &payload.name;
         if let Some(filtered_names) = &tag_filtered_names
             && !filtered_names.contains(name)
         {

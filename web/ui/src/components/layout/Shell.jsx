@@ -497,7 +497,11 @@ async function addStartingBattlefieldPreset(game) {
 
   for (const playerIndex of [0, 1]) {
     for (const cardName of openingBattlefield) {
-      await game.addCardToZone(playerIndex, cardName, "battlefield", true);
+      try {
+        await game.addCardToZone(playerIndex, cardName, "battlefield", true);
+      } catch (err) {
+        console.warn(`Skipping startup battlefield card "${cardName}":`, err);
+      }
     }
   }
 }

@@ -52,6 +52,20 @@ pub struct CardPayload {
     pub parse_input: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RegistryCardRecord {
+    pub payload: CardPayload,
+    pub raw_card_json: String,
+    pub mana_cost: Option<String>,
+    pub type_line: Option<String>,
+    pub power: Option<String>,
+    pub toughness: Option<String>,
+    pub loyalty: Option<String>,
+    pub defense: Option<String>,
+    pub layout: Option<String>,
+    pub content_hash: String,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ParseStatus {
     StrictCompiled,
@@ -117,6 +131,14 @@ pub struct CardPruneSummary {
     pub tag_rows_deleted: usize,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct RegistrySyncSummary {
+    pub inserted: usize,
+    pub updated: usize,
+    pub unchanged: usize,
+    pub deleted: usize,
+}
+
 #[derive(Debug)]
 pub struct TagImportRow {
     pub card_name: String,
@@ -166,7 +188,18 @@ pub fn build_parse_input(metadata_lines: &[String], oracle_text: &str) -> String
 pub fn load_canonical_cards(path: &str) -> Result<BTreeMap<String, CardPayload>, Box<dyn Error>> {
     let raw = fs::read_to_string(path)?;
     let cards: Vec<Value> = serde_json::from_str(&raw)?;
-    Ok(load_canonical_cards_from_values(cards.into_iter()))
+    Ok(load_registry_cards_from_values(cards.into_iter())
+        .into_iter()
+        .map(|(name, record)| (name, record.payload))
+        .collect())
+}
+
+pub fn load_registry_cards(
+    path: &str,
+) -> Result<BTreeMap<String, RegistryCardRecord>, Box<dyn Error>> {
+    let raw = fs::read_to_string(path)?;
+    let cards: Vec<Value> = serde_json::from_str(&raw)?;
+    Ok(load_registry_cards_from_values(cards.into_iter()))
 }
 
 pub fn load_card_by_name(path: &str, name: &str) -> Result<Option<CardPayload>, Box<dyn Error>> {
@@ -375,6 +408,23 @@ impl CardStatusDb {
             CREATE TABLE IF NOT EXISTS oracle_tag (
                 tag TEXT PRIMARY KEY
             );
+            CREATE TABLE IF NOT EXISTS registry_card (
+                card_name TEXT PRIMARY KEY,
+                oracle_text TEXT NOT NULL,
+                parse_input TEXT NOT NULL,
+                raw_card_json TEXT NOT NULL,
+                mana_cost TEXT,
+                type_line TEXT,
+                power TEXT,
+                toughness TEXT,
+                loyalty TEXT,
+                defense TEXT,
+                layout TEXT,
+                content_hash TEXT NOT NULL,
+                updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_registry_card_content_hash
+                ON registry_card(content_hash);
             DROP VIEW IF EXISTS latest_card_compilation;
             CREATE VIEW latest_card_compilation AS
             SELECT cc.*
@@ -525,6 +575,146 @@ impl CardStatusDb {
         })
     }
 
+    pub fn replace_registry_cards(
+        &mut self,
+        rows: &[RegistryCardRecord],
+    ) -> Result<RegistrySyncSummary, Box<dyn Error>> {
+        let normalized_rows = rows
+            .iter()
+            .filter_map(|row| {
+                let normalized = normalize_lookup_name(&row.payload.name);
+                if normalized.is_empty() {
+                    return None;
+                }
+                let mut row = row.clone();
+                row.payload.name = normalized;
+                Some(row)
+            })
+            .collect::<Vec<_>>();
+        if normalized_rows.is_empty() {
+            return Err("refusing to replace registry cards with an empty row set".into());
+        }
+
+        let tx = self.conn.transaction()?;
+        let mut existing_hashes = BTreeMap::new();
+        {
+            let mut stmt = tx.prepare("SELECT card_name, content_hash FROM registry_card")?;
+            let rows = stmt.query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?;
+            for row in rows {
+                let (name, hash) = row?;
+                existing_hashes.insert(name, hash);
+            }
+        }
+
+        let allowed_names = normalized_rows
+            .iter()
+            .map(|row| row.payload.name.clone())
+            .collect::<BTreeSet<_>>();
+
+        let mut inserted = 0usize;
+        let mut updated = 0usize;
+        let mut unchanged = 0usize;
+        {
+            let mut upsert = tx.prepare(
+                "INSERT INTO registry_card (
+                    card_name,
+                    oracle_text,
+                    parse_input,
+                    raw_card_json,
+                    mana_cost,
+                    type_line,
+                    power,
+                    toughness,
+                    loyalty,
+                    defense,
+                    layout,
+                    content_hash,
+                    updated_at
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+                ON CONFLICT(card_name) DO UPDATE SET
+                    oracle_text = excluded.oracle_text,
+                    parse_input = excluded.parse_input,
+                    raw_card_json = excluded.raw_card_json,
+                    mana_cost = excluded.mana_cost,
+                    type_line = excluded.type_line,
+                    power = excluded.power,
+                    toughness = excluded.toughness,
+                    loyalty = excluded.loyalty,
+                    defense = excluded.defense,
+                    layout = excluded.layout,
+                    content_hash = excluded.content_hash,
+                    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+            )?;
+            for row in &normalized_rows {
+                match existing_hashes.get(&row.payload.name) {
+                    None => inserted += 1,
+                    Some(existing_hash) if existing_hash == &row.content_hash => unchanged += 1,
+                    Some(_) => updated += 1,
+                }
+                upsert.execute(params![
+                    row.payload.name.as_str(),
+                    row.payload.oracle_text.as_str(),
+                    row.payload.parse_input.as_str(),
+                    row.raw_card_json.as_str(),
+                    row.mana_cost.as_deref(),
+                    row.type_line.as_deref(),
+                    row.power.as_deref(),
+                    row.toughness.as_deref(),
+                    row.loyalty.as_deref(),
+                    row.defense.as_deref(),
+                    row.layout.as_deref(),
+                    row.content_hash.as_str(),
+                ])?;
+            }
+        }
+
+        tx.execute_batch(
+            "DROP TABLE IF EXISTS temp_allowed_registry_card;
+             CREATE TEMP TABLE temp_allowed_registry_card (
+                 card_name TEXT PRIMARY KEY
+             );",
+        )?;
+        {
+            let mut insert = tx.prepare(
+                "INSERT OR IGNORE INTO temp_allowed_registry_card(card_name) VALUES (?1)",
+            )?;
+            for name in &allowed_names {
+                insert.execute([name])?;
+            }
+        }
+        let deleted: usize = tx.query_row(
+            "SELECT COUNT(*)
+             FROM registry_card
+             WHERE NOT EXISTS (
+                 SELECT 1
+                 FROM temp_allowed_registry_card allowed
+                 WHERE allowed.card_name = registry_card.card_name
+             )",
+            [],
+            |row| row.get(0),
+        )?;
+        tx.execute(
+            "DELETE FROM registry_card
+             WHERE NOT EXISTS (
+                 SELECT 1
+                 FROM temp_allowed_registry_card allowed
+                 WHERE allowed.card_name = registry_card.card_name
+             )",
+            [],
+        )?;
+        tx.execute("DROP TABLE temp_allowed_registry_card", [])?;
+        tx.commit()?;
+
+        Ok(RegistrySyncSummary {
+            inserted,
+            updated,
+            unchanged,
+            deleted,
+        })
+    }
+
     pub fn prune_cards_not_in_names(
         &mut self,
         allowed_names: &[String],
@@ -641,6 +831,32 @@ impl CardStatusDb {
             .query_map([tag], |row| row.get(0))?
             .collect::<Result<Vec<String>, _>>()?;
         Ok(names)
+    }
+
+    pub fn registry_card_payloads(&self) -> Result<Vec<CardPayload>, Box<dyn Error>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT card_name, oracle_text, parse_input
+             FROM registry_card
+             ORDER BY card_name ASC",
+        )?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(CardPayload {
+                    name: row.get(0)?,
+                    oracle_text: row.get(1)?,
+                    metadata_lines: Vec::new(),
+                    parse_input: row.get(2)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    pub fn registry_card_count(&self) -> Result<usize, Box<dyn Error>> {
+        let count = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM registry_card", [], |row| row.get(0))?;
+        Ok(count)
     }
 }
 
@@ -959,21 +1175,55 @@ fn decode_html_entities(raw: &str) -> String {
         .replace("&gt;", ">")
 }
 
-fn load_canonical_cards_from_values<I>(cards: I) -> BTreeMap<String, CardPayload>
+fn registry_card_content_hash(
+    payload: &CardPayload,
+    raw_card_json: &str,
+    layout: Option<&str>,
+) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(payload.name.as_bytes());
+    hasher.update([0]);
+    hasher.update(payload.oracle_text.as_bytes());
+    hasher.update([0]);
+    hasher.update(payload.parse_input.as_bytes());
+    hasher.update([0]);
+    hasher.update(layout.unwrap_or("").as_bytes());
+    hasher.update([0]);
+    hasher.update(raw_card_json.as_bytes());
+    let digest = hasher.finalize();
+    let mut out = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        out.push_str(&format!("{byte:02x}"));
+    }
+    out
+}
+
+fn load_registry_cards_from_values<I>(cards: I) -> BTreeMap<String, RegistryCardRecord>
 where
     I: IntoIterator<Item = Value>,
 {
     let mut out = BTreeMap::new();
     for card in cards {
-        let Some(payload) = build_card_payload(&card) else {
+        let Some(record) = build_registry_card_record(&card) else {
             continue;
         };
-        out.entry(payload.name.clone()).or_insert(payload);
+        out.entry(record.payload.name.clone()).or_insert(record);
     }
     out
 }
 
-fn build_card_payload(card: &Value) -> Option<CardPayload> {
+#[cfg(test)]
+fn load_canonical_cards_from_values<I>(cards: I) -> BTreeMap<String, CardPayload>
+where
+    I: IntoIterator<Item = Value>,
+{
+    load_registry_cards_from_values(cards)
+        .into_iter()
+        .map(|(name, record)| (name, record.payload))
+        .collect()
+}
+
+fn build_registry_card_record(card: &Value) -> Option<RegistryCardRecord> {
     if card
         .get("digital")
         .and_then(Value::as_bool)
@@ -1004,13 +1254,19 @@ fn build_card_payload(card: &Value) -> Option<CardPayload> {
     let defense = pick_field(card, face, "defense");
 
     let mut metadata_lines = Vec::new();
-    if let Some(mana_cost) = mana_cost.filter(|value| !value.trim().is_empty()) {
+    if let Some(mana_cost) = mana_cost
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
         metadata_lines.push(format!("Mana cost: {}", mana_cost.trim()));
     }
-    if let Some(type_line) = type_line.filter(|value| !value.trim().is_empty()) {
+    if let Some(type_line) = type_line
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
         metadata_lines.push(format!("Type: {}", type_line.trim()));
     }
-    if let (Some(power), Some(toughness)) = (power, toughness)
+    if let (Some(power), Some(toughness)) = (power.as_deref(), toughness.as_deref())
         && !power.trim().is_empty()
         && !toughness.trim().is_empty()
     {
@@ -1020,19 +1276,64 @@ fn build_card_payload(card: &Value) -> Option<CardPayload> {
             toughness.trim()
         ));
     }
-    if let Some(loyalty) = loyalty.filter(|value| !value.trim().is_empty()) {
+    if let Some(loyalty) = loyalty.as_deref().filter(|value| !value.trim().is_empty()) {
         metadata_lines.push(format!("Loyalty: {}", loyalty.trim()));
     }
-    if let Some(defense) = defense.filter(|value| !value.trim().is_empty()) {
+    if let Some(defense) = defense.as_deref().filter(|value| !value.trim().is_empty()) {
         metadata_lines.push(format!("Defense: {}", defense.trim()));
     }
 
     let parse_input = build_parse_input(&metadata_lines, &oracle_text);
-    Some(CardPayload {
+    let payload = CardPayload {
         name,
         oracle_text,
         metadata_lines,
         parse_input,
+    };
+    let layout = card
+        .get("layout")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned);
+    let raw_card_json = serde_json::to_string(card).ok()?;
+    let content_hash = registry_card_content_hash(&payload, &raw_card_json, layout.as_deref());
+
+    Some(RegistryCardRecord {
+        payload,
+        raw_card_json,
+        mana_cost: mana_cost
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned),
+        type_line: type_line
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned),
+        power: power
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned),
+        toughness: toughness
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned),
+        loyalty: loyalty
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned),
+        defense: defense
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned),
+        layout,
+        content_hash,
     })
 }
 

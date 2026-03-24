@@ -74,6 +74,17 @@ fn query_count(db_path: &Path, sql: &str) -> i64 {
         .expect("query count")
 }
 
+fn sync_registry_db(cards_path: &Path, db_path: &Path) {
+    let status = Command::new(env!("CARGO_BIN_EXE_sync_registry_db"))
+        .arg("--cards")
+        .arg(cards_path)
+        .arg("--db-path")
+        .arg(db_path)
+        .status()
+        .expect("run sync_registry_db");
+    assert!(status.success(), "sync_registry_db should succeed");
+}
+
 fn spawn_mock_tagger_server() -> String {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind test server");
     let addr = listener.local_addr().expect("server addr");
@@ -227,9 +238,9 @@ fn sync_card_status_db_writes_rows_by_default() {
     let db_path = dir.path().join("engine-status.sqlite3");
     write_cards_json(&cards_path);
 
+    sync_registry_db(&cards_path, &db_path);
+
     let status = Command::new(env!("CARGO_BIN_EXE_sync_card_status_db"))
-        .arg("--cards")
-        .arg(&cards_path)
         .arg("--db-path")
         .arg(&db_path)
         .status()
@@ -242,6 +253,21 @@ fn sync_card_status_db_writes_rows_by_default() {
     );
     assert_eq!(
         query_count(&db_path, "SELECT COUNT(*) FROM latest_card_compilation"),
+        2
+    );
+}
+
+#[test]
+fn sync_registry_db_writes_registry_rows_by_default() {
+    let dir = tempdir().expect("tempdir");
+    let cards_path = dir.path().join("cards.json");
+    let db_path = dir.path().join("engine-status.sqlite3");
+    write_cards_json(&cards_path);
+
+    sync_registry_db(&cards_path, &db_path);
+
+    assert_eq!(
+        query_count(&db_path, "SELECT COUNT(*) FROM registry_card"),
         2
     );
 }

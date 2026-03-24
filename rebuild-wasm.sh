@@ -4,7 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PKG_DIR="$ROOT_DIR/pkg"
 DEMO_PKG_DIR="$ROOT_DIR/web/wasm_demo/pkg"
-CARDS_JSON_FILE="$ROOT_DIR/cards.json"
+DEFAULT_DB_PATH="$ROOT_DIR/reports/engine-status.sqlite3"
+DEFAULT_INTERNAL_SCORES_FILE="$ROOT_DIR/reports/ironsmith_semantic_scores.json"
 DEFAULT_FRONTEND_SCORES_FILE="$ROOT_DIR/web/ui/public/ironsmith_semantic_scores.json"
 DEFAULT_CLUSTER_CSV_FILE="$ROOT_DIR/reports/ironsmith_parse_failure_clusters.csv"
 DEFAULT_PARSE_ERRORS_CSV_FILE="$ROOT_DIR/reports/ironsmith_parse_errors.csv"
@@ -14,9 +15,10 @@ DIMS="${IRONSMITH_WASM_SEMANTIC_DIMS:-384}"
 FEATURES="wasm,generated-registry"
 THRESHOLD="${IRONSMITH_WASM_SEMANTIC_THRESHOLD:-}"
 OPTIMIZE_WASM=0
+DB_PATH="${IRONSMITH_REGISTRY_DB_PATH:-$DEFAULT_DB_PATH}"
 FRONTEND_SCORES_FILE="${IRONSMITH_FRONTEND_SEMANTIC_SCORES_FILE:-$DEFAULT_FRONTEND_SCORES_FILE}"
 FRONTEND_SCORES_FILE_EXPLICIT=0
-SCORES_FILE="${IRONSMITH_GENERATED_REGISTRY_SCORES_FILE:-}"
+SCORES_FILE="${IRONSMITH_GENERATED_REGISTRY_SCORES_FILE:-$DEFAULT_INTERNAL_SCORES_FILE}"
 SCORES_FILE_EXPLICIT=0
 CLUSTER_CSV_FILE="${IRONSMITH_CLUSTER_CSV_FILE:-$DEFAULT_CLUSTER_CSV_FILE}"
 PARSE_ERRORS_CSV_FILE="${IRONSMITH_PARSE_ERRORS_CSV_FILE:-$DEFAULT_PARSE_ERRORS_CSV_FILE}"
@@ -60,8 +62,9 @@ Examples:
 Notes:
   - Cargo always builds the WASM crate in release mode.
   - wasm-opt is skipped by default for faster iteration; pass --release to enable it.
-  - Per-card semantic scores are loaded from --scores-file (default: --frontend-scores-file).
-  - Frontend cache file defaults to $DEFAULT_FRONTEND_SCORES_FILE.
+  - Canonical card data is loaded from the registry SQLite DB (default: $DEFAULT_DB_PATH).
+  - Per-card semantic scores for the generated registry are loaded from --scores-file.
+  - Frontend cache file defaults to $DEFAULT_FRONTEND_SCORES_FILE and stores only compact threshold stats.
   - Cluster and parse-error CSVs are refreshed only when --threshold is provided.
   - The script recomputes scores only when --threshold is provided.
   - If --threshold is omitted and the scores file is missing, the build fails.
@@ -138,25 +141,15 @@ require_cmd cargo
 require_cmd wasm-pack
 
 if [[ -n "$THRESHOLD" ]] || feature_enabled "generated-registry"; then
-  if [[ ! -f "$CARDS_JSON_FILE" ]]; then
+  if [[ ! -f "$DB_PATH" ]]; then
     cat >&2 <<EOF
-[ERROR] cards database not found: $CARDS_JSON_FILE
+[ERROR] registry DB not found: $DB_PATH
 
-This repo expects a local gitignored Scryfall dump at cards.json.
-The current command needs it because:
-  - --threshold recomputes semantic audits from card data
-  - the generated-registry build reads cards.json during build.rs
+Run the registry sync first, for example:
+  cargo run --release -p ironsmith-tools --bin sync_registry_db -- --cards cards.json --db-path $DB_PATH
 EOF
     exit 1
   fi
-fi
-
-if [[ "$SCORES_FILE_EXPLICIT" -eq 1 ]]; then
-  :
-elif [[ "$FRONTEND_SCORES_FILE_EXPLICIT" -eq 1 ]]; then
-  SCORES_FILE="$FRONTEND_SCORES_FILE"
-elif [[ -z "$SCORES_FILE" ]]; then
-  SCORES_FILE="$FRONTEND_SCORES_FILE"
 fi
 
 if [[ -n "$THRESHOLD" ]]; then
@@ -167,7 +160,7 @@ if [[ -n "$THRESHOLD" ]]; then
   echo "[INFO] computing semantic audits report (dims=${DIMS}, threshold=${THRESHOLD})..."
   AUDIT_CMD=(
     cargo run --quiet --release -p ironsmith-tools --bin audit_oracle_clusters --
-    --cards "$ROOT_DIR/cards.json"
+    --db-path "$DB_PATH"
     --use-embeddings
     --embedding-dims "$DIMS"
     --embedding-threshold "$THRESHOLD"
@@ -199,14 +192,77 @@ EOF
   echo "[INFO] reusing semantic scores file: $SCORES_FILE"
 fi
 
-if [[ "$SCORES_FILE" != "$FRONTEND_SCORES_FILE" ]]; then
-  mkdir -p "$(dirname "$FRONTEND_SCORES_FILE")"
-  cp -f "$SCORES_FILE" "$FRONTEND_SCORES_FILE"
-  echo "[INFO] synced semantic scores cache for frontend: $FRONTEND_SCORES_FILE"
-fi
+mkdir -p "$(dirname "$FRONTEND_SCORES_FILE")"
+python3 - "$SCORES_FILE" "$FRONTEND_SCORES_FILE" <<'PY'
+import json
+import math
+import sys
+from pathlib import Path
+
+source = Path(sys.argv[1])
+target = Path(sys.argv[2])
+payload = json.loads(source.read_text(encoding="utf-8"))
+
+if isinstance(payload, dict) and isinstance(payload.get("thresholdCounts"), list) and "scoredCount" in payload:
+    summary = {
+        "scoredCount": int(payload["scoredCount"]),
+        "thresholdCounts": [int(v) for v in payload["thresholdCounts"]],
+    }
+else:
+    scores_by_name = {}
+
+    def maybe_insert(raw_name, raw_score):
+        if not isinstance(raw_name, str):
+            return
+        try:
+            score = float(raw_score)
+        except (TypeError, ValueError):
+            return
+        score = max(0.0, min(1.0, score))
+        name = raw_name.strip().lower()
+        if not name:
+            return
+        prev = scores_by_name.get(name)
+        if prev is None or score > prev:
+            scores_by_name[name] = score
+
+    if isinstance(payload, dict) and isinstance(payload.get("entries"), list):
+        for entry in payload["entries"]:
+            if not isinstance(entry, dict):
+                continue
+            if entry.get("parse_error") is not None:
+                continue
+            if bool(entry.get("has_unimplemented", False)):
+                continue
+            maybe_insert(entry.get("name"), entry.get("similarity_score"))
+    elif isinstance(payload, dict):
+        for name, score in payload.items():
+            maybe_insert(name, score)
+    elif isinstance(payload, list):
+        for entry in payload:
+            if not isinstance(entry, dict):
+                continue
+            maybe_insert(entry.get("name"), entry.get("similarity_score"))
+
+    threshold_counts = [0] * 100
+    for score in scores_by_name.values():
+        thresholds_met = int(math.floor(score * 100))
+        for idx in range(thresholds_met):
+            threshold_counts[idx] += 1
+
+    summary = {
+        "scoredCount": len(scores_by_name),
+        "thresholdCounts": threshold_counts,
+    }
+
+target.write_text(json.dumps(summary, separators=(",", ":")), encoding="utf-8")
+PY
+echo "[INFO] synced semantic threshold cache for frontend: $FRONTEND_SCORES_FILE"
 
 export IRONSMITH_GENERATED_REGISTRY_SCORES_FILE="$SCORES_FILE"
+export IRONSMITH_REGISTRY_DB_PATH="$DB_PATH"
 echo "[INFO] semantic scores source: $IRONSMITH_GENERATED_REGISTRY_SCORES_FILE"
+echo "[INFO] registry DB source: $IRONSMITH_REGISTRY_DB_PATH"
 echo "[INFO] wasm build profile: release"
 if [[ "$OPTIMIZE_WASM" -eq 1 ]]; then
   echo "[INFO] wasm-opt: enabled"

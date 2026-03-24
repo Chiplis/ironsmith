@@ -111,15 +111,19 @@ fn enforce_definition_builder_boundary(manifest_dir: &str) {
 }
 
 fn main() {
-    println!("cargo:rerun-if-changed=cards.json");
     println!("cargo:rerun-if-changed=scripts/generate_baked_registry.py");
     println!("cargo:rerun-if-changed=scripts/stream_scryfall_blocks.py");
     println!("cargo:rerun-if-env-changed=IRONSMITH_GENERATED_REGISTRY_SCORES_FILE");
+    println!("cargo:rerun-if-env-changed=IRONSMITH_REGISTRY_DB_PATH");
 
     if let Some(scores_file) = env::var_os("IRONSMITH_GENERATED_REGISTRY_SCORES_FILE") {
         let scores_file = PathBuf::from(scores_file);
         println!("cargo:rerun-if-changed={}", scores_file.display());
     }
+    let registry_db_path = env::var_os("IRONSMITH_REGISTRY_DB_PATH")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("reports/engine-status.sqlite3"));
+    println!("cargo:rerun-if-changed={}", registry_db_path.display());
 
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is not set");
     enforce_definition_builder_boundary(&manifest_dir);
@@ -164,6 +168,8 @@ pub fn try_compile_card_by_name(_name: &str) -> Result<crate::cards::CardDefinit
     let status = Command::new(python)
         .current_dir(&manifest_dir)
         .arg("scripts/generate_baked_registry.py")
+        .arg("--db-path")
+        .arg(&registry_db_path)
         .arg("--out")
         .arg(&out_file)
         .status()

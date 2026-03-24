@@ -209,7 +209,7 @@ impl CardRegistry {
         let mut registry = Self::new();
         registry.register_builtin_handwritten_cards_if(|_| true);
 
-        // Non-test builds are populated from cards.json via generated parser output.
+        // Non-test builds are populated from the registry DB via generated parser output.
         generated_registry::register_generated_parser_cards(&mut registry);
 
         registry
@@ -224,7 +224,16 @@ impl CardRegistry {
             return;
         }
 
-        let requested_name_keys = requested_names
+        let unresolved_names = requested_names
+            .iter()
+            .map(|name| name.trim())
+            .filter(|name| !name.is_empty() && self.get(name).is_none())
+            .collect::<Vec<_>>();
+        if unresolved_names.is_empty() {
+            return;
+        }
+
+        let requested_name_keys = unresolved_names
             .iter()
             .map(|name| normalize_card_lookup_name(name))
             .collect::<std::collections::HashSet<_>>();
@@ -233,7 +242,7 @@ impl CardRegistry {
             requested_name_keys.contains(&normalize_card_lookup_name(name))
         });
 
-        for requested in &requested_names {
+        for requested in &unresolved_names {
             let normalized = requested.trim();
             if normalized.is_empty() || self.get(normalized).is_some() {
                 continue;
