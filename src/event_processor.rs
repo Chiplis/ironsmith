@@ -62,7 +62,9 @@ pub fn process_trait_event_with_additional_effects(
 ) -> TraitEventResult {
     let event = game.ensure_event_provenance(event);
     let mut state = TraitEventProcessingState::default();
-    process_event_direct(game, event, &mut state, additional_effects)
+    let mut additional_effects = additional_effects.to_vec();
+    assign_ephemeral_effect_ids(&mut additional_effects, u64::MAX / 2);
+    process_event_direct(game, event, &mut state, &additional_effects)
 }
 
 /// State for tracking trait-based event processing.
@@ -1770,6 +1772,18 @@ pub fn process_zone_change(
     cause: crate::events::cause::EventCause,
     dm: &mut dyn DecisionMaker,
 ) -> ZoneChangeOutcome {
+    process_zone_change_with_additional_effects(game, object, from, to, cause, dm, &[])
+}
+
+pub fn process_zone_change_with_additional_effects(
+    game: &mut GameState,
+    object: crate::ids::ObjectId,
+    from: Zone,
+    to: Zone,
+    cause: crate::events::cause::EventCause,
+    dm: &mut dyn DecisionMaker,
+    additional_effects: &[ReplacementEffect],
+) -> ZoneChangeOutcome {
     use crate::events::{ZoneChangeEvent, downcast_event};
 
     game.update_replacement_effects();
@@ -1794,7 +1808,9 @@ pub fn process_zone_change(
         .map(|o| crate::snapshot::ObjectSnapshot::from_object(o, game));
 
     let event = Event::zone_change(object, from, requested_to, cause, snapshot.clone());
-    let result = process_with_dm(game, event.clone(), dm); // dm is already &mut Option
+    let mut additional_effects = additional_effects.to_vec();
+    assign_ephemeral_effect_ids(&mut additional_effects, (u64::MAX / 2).saturating_add(1024));
+    let result = process_with_dm_and_additional_effects(game, event.clone(), dm, &additional_effects);
 
     match result {
         TraitEventResult::Prevented => EventOutcome::Prevented,
@@ -1898,6 +1914,15 @@ fn process_with_dm(
     event: Event,
     dm: &mut (impl DecisionMaker + ?Sized),
 ) -> TraitEventResult {
+    process_with_dm_and_additional_effects(game, event, dm, &[])
+}
+
+fn process_with_dm_and_additional_effects(
+    game: &mut GameState,
+    event: Event,
+    dm: &mut (impl DecisionMaker + ?Sized),
+    additional_effects: &[ReplacementEffect],
+) -> TraitEventResult {
     use crate::decisions::{
         make_decision,
         specs::{ReplacementOption, ReplacementSpec, replacement_option_description},
@@ -1907,7 +1932,7 @@ fn process_with_dm(
     let mut state = TraitEventProcessingState::default();
 
     loop {
-        let result = process_event_direct(game, current_event.clone(), &mut state, &[]);
+        let result = process_event_direct(game, current_event.clone(), &mut state, additional_effects);
 
         match result {
             TraitEventResult::NeedsChoice {

@@ -8138,6 +8138,54 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             "If a card would be put into {graveyard_owner} graveyard from anywhere this turn, exile that card instead"
         );
     }
+    if let Some(local) = effect.downcast_ref::<crate::effects::LocalRewriteEffect>() {
+        let base = describe_effect(&local.effect);
+        let followups = local
+            .zone_replacements
+            .iter()
+            .map(|register| {
+                let target = describe_choose_spec(&register.target);
+                let referent = if target.contains("spell") {
+                    "that spell".to_string()
+                } else if target.contains("creature") {
+                    "that creature".to_string()
+                } else if target.contains("permanent") {
+                    "that permanent".to_string()
+                } else {
+                    "it".to_string()
+                };
+                if register.from_zone == Some(Zone::Stack)
+                    && register.to_zone == Some(Zone::Graveyard)
+                {
+                    return format!(
+                        "If {referent} is countered this way, it goes to {:?} instead of graveyard",
+                        register.replacement_zone
+                    )
+                    .to_ascii_lowercase();
+                }
+
+                let from = register
+                    .from_zone
+                    .map(|zone| format!(" from {zone:?}"))
+                    .unwrap_or_default()
+                    .to_ascii_lowercase();
+                let to = register
+                    .to_zone
+                    .map(|zone| format!(" into {zone:?}"))
+                    .unwrap_or_default()
+                    .to_ascii_lowercase();
+                format!(
+                    "If {referent} would go{from}{to}, it goes to {:?} instead",
+                    register.replacement_zone
+                )
+                .to_ascii_lowercase()
+            })
+            .collect::<Vec<_>>();
+        if followups.is_empty() {
+            return base;
+        }
+        return format!("{base}. {}", followups.join(". "));
+    }
     if let Some(register) = effect.downcast_ref::<crate::effects::RegisterZoneReplacementEffect>() {
         let target = describe_choose_spec(&register.target);
         let from = register

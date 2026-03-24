@@ -9,7 +9,7 @@ use crate::game_state::GameState;
 use crate::target::ChooseSpec;
 use crate::zone::Zone;
 
-use super::apply_zone_change;
+use super::apply_zone_change_with_additional_effects;
 
 /// "Put target [object] into its owner's library Nth from the top."
 #[derive(Debug, Clone, PartialEq)]
@@ -46,14 +46,16 @@ impl EffectExecutor for MoveToLibraryNthFromTopEffect {
                 continue;
             };
             let from_zone = obj.zone;
+            let additional_effects = ctx.additional_replacement_effects_snapshot();
 
-            let result = apply_zone_change(
+            let result = apply_zone_change_with_additional_effects(
                 game,
                 object_id,
                 from_zone,
                 Zone::Library,
                 ctx.cause.clone(),
                 &mut ctx.decision_maker,
+                &additional_effects,
             );
 
             match result {

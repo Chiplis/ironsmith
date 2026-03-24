@@ -9,6 +9,7 @@ use super::super::util::{
 };
 use super::super::util::{parse_target_phrase, parse_value, span_from_tokens};
 use super::sentence_helpers::*;
+use super::verb_handlers::parse_half_rounded_down_draw_count_words;
 #[allow(unused_imports)]
 use super::{
     bind_implicit_player_context, parse_after_turn_sentence, parse_become_clause,
@@ -233,6 +234,25 @@ pub(crate) fn parse_you_and_target_player_each_draw_sentence(
             "missing draw count in shared draw sentence (clause: '{}')",
             clause_words.join(" ")
         )));
+    }
+    if let Some((count, used_words)) = parse_half_rounded_down_draw_count_words(remainder_words) {
+        let trailing_words = &remainder_words[used_words..];
+        if !trailing_words.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported trailing shared draw clause (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+        return Ok(Some(vec![
+            EffectAst::Draw {
+                count: count.clone(),
+                player: PlayerAst::You,
+            },
+            EffectAst::Draw {
+                count,
+                player: target_player,
+            },
+        ]));
     }
     let synthetic_tokens = remainder_words
         .iter()
@@ -537,24 +557,31 @@ pub(crate) fn parse_sentence_you_and_attacking_player_each_draw_and_lose(
         .iter()
         .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
         .collect::<Vec<_>>();
-    let (draw_count, draw_used) = parse_value(&draw_tokens).ok_or_else(|| {
-        CardTextError::ParseError(format!(
-            "missing shared draw count (clause: '{}')",
-            clause_words.join(" ")
-        ))
-    })?;
-    if draw_tokens
-        .get(draw_used)
-        .and_then(OwnedLexToken::as_word)
-        .is_none_or(|word| word != "card" && word != "cards")
+    let draw_words = words(&draw_tokens);
+    let (draw_count, after_draw_words) = if let Some((draw_count, used_words)) =
+        parse_half_rounded_down_draw_count_words(&draw_words)
     {
-        return Err(CardTextError::ParseError(format!(
-            "missing card keyword in shared draw/lose sentence (clause: '{}')",
-            clause_words.join(" ")
-        )));
-    }
+        (draw_count, draw_words[used_words..].to_vec())
+    } else {
+        let (draw_count, draw_used) = parse_value(&draw_tokens).ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "missing shared draw count (clause: '{}')",
+                clause_words.join(" ")
+            ))
+        })?;
+        if draw_tokens
+            .get(draw_used)
+            .and_then(OwnedLexToken::as_word)
+            .is_none_or(|word| word != "card" && word != "cards")
+        {
+            return Err(CardTextError::ParseError(format!(
+                "missing card keyword in shared draw/lose sentence (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
 
-    let after_draw_words = words(&draw_tokens[draw_used + 1..]);
+        (draw_count, words(&draw_tokens[draw_used + 1..]))
+    };
     if after_draw_words.first() != Some(&"and")
         || !matches!(after_draw_words.get(1).copied(), Some("lose" | "loses"))
     {

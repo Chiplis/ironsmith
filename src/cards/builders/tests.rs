@@ -5396,6 +5396,35 @@ fn parse_as_this_land_enters_reveal_unless_revealed_or_control_line() {
 }
 
 #[test]
+fn parse_starting_town_first_three_turns_etb_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Starting Town")
+        .card_types(vec![CardType::Land])
+        .parse_text(
+            "This land enters tapped unless it's your first, second, or third turn of the game.\n{T}: Add {R}.",
+        )
+        .expect("Starting Town ETB clause should parse");
+
+    let ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        ids.contains(&StaticAbilityId::EntersTappedUnlessCondition),
+        "expected generic enters-tapped-unless replacement, got {ids:?}"
+    );
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("YourFirstTurnsOfTheGameOrFewer(3)"),
+        "expected first-three-turns condition in replacement ability, got {debug}"
+    );
+}
+
+#[test]
 fn test_render_sacrifice_unless_you_pay_uses_pay_verb() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Conversion Probe")
         .card_types(vec![CardType::Enchantment])
@@ -17940,6 +17969,69 @@ fn parse_oracle_ugins_insight_where_x_tail_regression() {
 }
 
 #[test]
+fn parse_oracle_wan_shi_tong_half_x_draw_regression() {
+    let def = parse_oracle_card_definition("Wan Shi Tong, Librarian");
+
+    let raw = format!("{def:#?}");
+    assert!(
+        raw.contains("HalfRoundedDown") && raw.contains("X"),
+        "expected Wan Shi Tong to keep half-X draw semantics, got {raw}"
+    );
+    assert!(
+        raw.contains("PlayerSearchesLibraryTrigger") && raw.contains("player: Opponent"),
+        "expected Wan Shi Tong to keep the opponent-search trigger, got {raw}"
+    );
+    assert!(
+        raw.contains("target: Source"),
+        "expected Wan Shi Tong to put counters on itself, got {raw}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("half X") && rendered.contains("rounded down"),
+        "expected Wan Shi Tong compiled text to preserve half-X draw wording, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "When Wan Shi Tong enters, put X +1/+1 counter(s) on this creature, then draw half X cards, rounded down."
+        ),
+        "expected Wan Shi Tong ETB text to normalize the rounded-down draw clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "Whenever an opponent searches their library, put a +1/+1 counter on this creature and draw a card."
+        ),
+        "expected Wan Shi Tong trigger text to read like oracle text, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_smothering_tithe_player_doesnt_regression() {
+    let def = parse_oracle_card_definition("Smothering Tithe");
+
+    let raw = format!("{def:#?}");
+    assert!(
+        raw.contains("DidNot"),
+        "expected Smothering Tithe to preserve the negative pay result gate, got {raw}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ");
+    let lower = rendered.to_ascii_lowercase();
+    assert!(
+        lower.contains("that player may pay {2}") || lower.contains("player may pay {2}"),
+        "expected Smothering Tithe to keep the payment choice, got {rendered}"
+    );
+    assert!(
+        lower.contains("doesn't") || lower.contains("dont"),
+        "expected Smothering Tithe to render the negative follow-up, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Treasure token"),
+        "expected Smothering Tithe to keep the Treasure creation clause, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_oracle_soul_partition_exile_and_recast_regression() {
     let def = parse_oracle_card_definition("Soul Partition");
 
@@ -18493,6 +18585,59 @@ fn oracle_render_regression_named_cards_compile_cleanly() {
     assert!(
         !tolaria.contains("permanent card"),
         "expected Tolaria West to avoid placeholder search text, got {tolaria}"
+    );
+}
+
+#[test]
+fn oracle_like_lines_normalize_remaining_tag_scaffolding_regressions() {
+    let argivian = oracle_like_lines(&parse_oracle_card_definition("Argivian Cavalier")).join("\n");
+    assert!(
+        argivian.contains(
+            "Whenever this creature attacks, you may tap another nonattacking creature you control. When you do, this creature gets +X/+0 until end of turn, where X is that creature's power."
+        ),
+        "expected Argivian Cavalier enlist text to normalize, got {argivian}"
+    );
+    assert!(
+        !argivian.contains("enlist_attacker") && !argivian.contains("enlisted_creature"),
+        "expected Argivian Cavalier to avoid raw enlist tags, got {argivian}"
+    );
+
+    let adewale =
+        oracle_like_lines(&parse_oracle_card_definition("Adéwalé, Breaker of Chains")).join("\n");
+    assert!(
+        adewale.contains(
+            "When Adéwalé enters, reveal the top card of your library. Put it into your hand."
+        ),
+        "expected Adéwalé helper chain to normalize, got {adewale}"
+    );
+    assert!(
+        !adewale.contains("__sentence_helper_chosen_"),
+        "expected Adéwalé to avoid sentence helper tags, got {adewale}"
+    );
+
+    let ainok = oracle_like_lines(&parse_oracle_card_definition("Ainok Wayfarer")).join("\n");
+    assert!(
+        ainok.contains(
+            "When this creature enters, you mill three cards. Return up to one land card from a graveyard to your hand. If you don't, put a +1/+1 counter on this creature."
+        ),
+        "expected Ainok Wayfarer helper chain to normalize, got {ainok}"
+    );
+    assert!(
+        !ainok.contains("__sentence_helper_chosen_"),
+        "expected Ainok Wayfarer to avoid sentence helper tags, got {ainok}"
+    );
+
+    let tempt =
+        oracle_like_lines(&parse_oracle_card_definition("Tempt with Immortality")).join("\n");
+    assert!(
+        tempt.contains(
+            "Return a creature card from your graveyard to the battlefield. Each opponent may return a creature card from their graveyard to the battlefield. For each opponent who does, you return a creature card from your graveyard to the battlefield."
+        ),
+        "expected Tempt with Immortality tempting-offer text to normalize, got {tempt}"
+    );
+    assert!(
+        !tempt.contains("chosen_return_3"),
+        "expected Tempt with Immortality to avoid chosen_return tags, got {tempt}"
     );
 }
 
@@ -19114,6 +19259,10 @@ fn parse_counter_then_exile_clause_registers_future_zone_replacement() {
     assert!(
         debug.contains("RegisterZoneReplacementEffect"),
         "expected countered-this-way exile clause to lower as a future zone replacement, got {debug}"
+    );
+    assert!(
+        debug.contains("LocalRewriteEffect"),
+        "expected countered-this-way exile clause to be scoped as a local self-rewrite, got {debug}"
     );
     assert!(
         !debug.contains("SelfReplacementBranch"),

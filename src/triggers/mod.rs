@@ -633,14 +633,19 @@ impl Trigger {
         ))
     }
 
-    /// Create a "whenever [player] taps [filter] for mana" trigger.
-    pub fn player_taps_for_mana(player: PlayerFilter, filter: ObjectFilter) -> Self {
-        Self::new(TapForManaTrigger::new(player, filter))
-    }
-
     /// Create a "whenever [player] plays [land filter]" trigger.
     pub fn player_plays_land(player: PlayerFilter, filter: ObjectFilter) -> Self {
         Self::new(PlayerPlaysLandTrigger::new(player, filter))
+    }
+
+    /// Create a "whenever [player] searches a library" trigger.
+    pub fn player_searches_library(player: PlayerFilter) -> Self {
+        Self::new(PlayerSearchesLibraryTrigger::new(player))
+    }
+
+    /// Create a "whenever [player] taps [filter] for mana" trigger.
+    pub fn player_taps_for_mana(player: PlayerFilter, filter: ObjectFilter) -> Self {
+        Self::new(TapForManaTrigger::new(player, filter))
     }
 
     /// Create a "when this permanent becomes the target of a spell or ability" trigger.

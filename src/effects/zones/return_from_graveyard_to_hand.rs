@@ -10,7 +10,7 @@ use crate::ids::ObjectId;
 use crate::target::ChooseSpec;
 use crate::zone::Zone;
 
-use super::apply_zone_change;
+use super::apply_zone_change_with_additional_effects;
 
 /// Effect that returns a target card from a graveyard to its owner's hand.
 ///
@@ -56,14 +56,16 @@ impl ReturnFromGraveyardToHandEffect {
         if obj.zone != Zone::Graveyard {
             return None;
         }
+        let additional_effects = ctx.additional_replacement_effects_snapshot();
 
-        match apply_zone_change(
+        match apply_zone_change_with_additional_effects(
             game,
             object_id,
             Zone::Graveyard,
             Zone::Hand,
             ctx.cause.clone(),
             &mut ctx.decision_maker,
+            &additional_effects,
         ) {
             EventOutcome::Proceed(result) => result.new_object_id,
             EventOutcome::Prevented | EventOutcome::Replaced | EventOutcome::NotApplicable => None,

@@ -23,8 +23,9 @@ use super::super::object_filters::parse_object_filter;
 use super::super::util::{
     is_article, is_source_reference_words, mana_pips_from_token, parse_card_type,
     parse_mana_symbol, parse_number, parse_number_word_u32, parse_target_count_range_prefix,
-    parse_target_phrase, parse_value, replace_unbound_x_with_value, span_from_tokens,
-    token_index_for_word_index, trim_commas, value_contains_unbound_x, words, wrap_target_count,
+    parse_target_phrase, parse_value, parse_value_expr_words, replace_unbound_x_with_value,
+    span_from_tokens, token_index_for_word_index, trim_commas, value_contains_unbound_x, words,
+    wrap_target_count,
 };
 use super::clause_pattern_helpers::extract_subject_player;
 use super::conditionals::parse_predicate;
@@ -1568,6 +1569,14 @@ pub(crate) fn parse_draw(
             }
         }
         (value, consumed)
+    } else if let Some((value, used_words)) =
+        parse_half_rounded_down_draw_count_words(&clause_words)
+    {
+        consumed_embedded_card_keyword = true;
+        (
+            value,
+            token_index_for_word_index(tokens, used_words).unwrap_or(tokens.len()),
+        )
     } else if let Some(value) = parse_draw_as_many_cards_value(tokens) {
         consumed_embedded_card_keyword = true;
         (value, tokens.len())
@@ -1677,6 +1686,31 @@ pub(crate) fn parse_draw(
         }
     }
     Ok(effect)
+}
+
+pub(crate) fn parse_half_rounded_down_draw_count_words(words: &[&str]) -> Option<(Value, usize)> {
+    if words.first().copied() != Some("half") {
+        return None;
+    }
+
+    let mut card_idx = None;
+    for idx in 1..words.len() {
+        if matches!(words.get(idx).copied(), Some("card" | "cards"))
+            && words.get(idx + 1..idx + 3) == Some(&["rounded", "down"][..])
+        {
+            card_idx = Some(idx);
+            break;
+        }
+    }
+    let card_idx = card_idx?;
+
+    let inner_words = &words[1..card_idx];
+    let (inner, used_inner) = parse_value_expr_words(inner_words)?;
+    if used_inner != inner_words.len() {
+        return None;
+    }
+
+    Some((Value::HalfRoundedDown(Box::new(inner)), card_idx + 3))
 }
 
 pub(crate) fn parse_draw_trailing_clause(

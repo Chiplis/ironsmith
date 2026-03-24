@@ -39,8 +39,9 @@ impl EffectExecutor for ExileThenGrantPlayEffect {
             GrantDuration::UntilEndOfTurn => game.turn.turn_number,
             GrantDuration::Forever => u32::MAX,
         };
+        let additional_effects = ctx.additional_replacement_effects_snapshot();
 
-        let outcome = crate::effects::zones::apply_zone_change(
+        let outcome = crate::effects::zones::apply_zone_change_with_additional_effects(
             game,
             target_id,
             game.object(target_id)
@@ -49,6 +50,7 @@ impl EffectExecutor for ExileThenGrantPlayEffect {
             Zone::Exile,
             crate::events::cause::EventCause::from_effect(ctx.source, ctx.controller),
             ctx.decision_maker,
+            &additional_effects,
         );
 
         let crate::event_processor::EventOutcome::Proceed(result) = outcome else {

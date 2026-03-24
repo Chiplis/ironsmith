@@ -1348,7 +1348,7 @@ mod tests {
             "grant should keep the quoted triggered ability: {debug}"
         );
 
-        let rendered = crate::compiled_text::oracle_like_lines(&def)
+        let rendered = crate::compiled_text::canonical_compiled_lines(&def)
             .join(" ")
             .to_ascii_lowercase();
         assert!(

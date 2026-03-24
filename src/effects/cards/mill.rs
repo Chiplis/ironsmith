@@ -2,7 +2,7 @@
 
 use crate::effect::{EffectOutcome, Value};
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
-use crate::effects::zones::apply_zone_change;
+use crate::effects::zones::apply_zone_change_with_additional_effects;
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::event_processor::EventOutcome;
 use crate::executor::{ExecutionContext, ExecutionError};
@@ -94,14 +94,16 @@ impl EffectExecutor for MillEffect {
             let Some(from_zone) = game.object(card_id).map(|obj| obj.zone) else {
                 continue;
             };
+            let additional_effects = ctx.additional_replacement_effects_snapshot();
 
-            match apply_zone_change(
+            match apply_zone_change_with_additional_effects(
                 game,
                 card_id,
                 from_zone,
                 Zone::Graveyard,
                 ctx.cause.clone(),
                 &mut *ctx.decision_maker,
+                &additional_effects,
             ) {
                 EventOutcome::Proceed(change) => {
                     if change.final_zone == Zone::Graveyard

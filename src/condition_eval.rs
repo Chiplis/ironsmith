@@ -138,6 +138,9 @@ fn evaluate_condition_shared_core(
             ctx.filter_source,
         )),
         Condition::YourTurn => Some(game.turn.active_player == ctx.controller),
+        Condition::YourFirstTurnsOfTheGameOrFewer(count) => {
+            Some(game.turn.active_player == ctx.controller && game.turn.turn_number <= *count)
+        }
         Condition::CreatureDiedThisTurn => {
             Some(game.turn_history.total_creatures_died_this_turn() > 0)
         }
@@ -271,6 +274,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::CardsInHandOrMore(..) => {}
         Condition::YouHaveCardInHandMatching(..) => {}
         Condition::YourTurn => {}
+        Condition::YourFirstTurnsOfTheGameOrFewer(..) => {}
         Condition::CreatureDiedThisTurn => {}
         Condition::CreatureDiedThisTurnOrMore(..) => {}
         Condition::CastSpellThisTurn => {}
@@ -1052,6 +1056,7 @@ pub fn evaluate_condition_external(
         | Condition::CardsInHandOrMore(_)
         | Condition::YouHaveCardInHandMatching(_)
         | Condition::YourTurn
+        | Condition::YourFirstTurnsOfTheGameOrFewer(_)
         | Condition::CreatureDiedThisTurn
         | Condition::CastSpellThisTurn
         | Condition::AttackedThisTurn
@@ -1694,6 +1699,7 @@ fn evaluate_condition_simple(
         | Condition::CardsInHandOrMore(_)
         | Condition::YouHaveCardInHandMatching(_)
         | Condition::YourTurn
+        | Condition::YourFirstTurnsOfTheGameOrFewer(_)
         | Condition::CreatureDiedThisTurn
         | Condition::CastSpellThisTurn
         | Condition::AttackedThisTurn
@@ -2583,6 +2589,7 @@ fn evaluate_condition(
         | Condition::CardsInHandOrMore(_)
         | Condition::YouHaveCardInHandMatching(_)
         | Condition::YourTurn
+        | Condition::YourFirstTurnsOfTheGameOrFewer(_)
         | Condition::CreatureDiedThisTurn
         | Condition::CastSpellThisTurn
         | Condition::AttackedThisTurn

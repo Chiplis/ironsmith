@@ -9,7 +9,7 @@ use crate::game_state::GameState;
 use crate::target::ChooseSpec;
 use crate::zone::Zone;
 
-use super::apply_zone_change;
+use super::apply_zone_change_with_additional_effects;
 
 /// Duration for "exile ... until ..." effects.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -71,14 +71,16 @@ impl EffectExecutor for ExileUntilEffect {
                 continue;
             };
             let from_zone = obj.zone;
+            let additional_effects = ctx.additional_replacement_effects_snapshot();
 
-            let result = apply_zone_change(
+            let result = apply_zone_change_with_additional_effects(
                 game,
                 object_id,
                 from_zone,
                 Zone::Exile,
                 ctx.cause.clone(),
                 &mut ctx.decision_maker,
+                &additional_effects,
             );
 
             if let EventOutcome::Proceed(result) = result

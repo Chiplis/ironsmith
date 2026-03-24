@@ -3481,6 +3481,74 @@ mod tests {
     }
 
     #[test]
+    fn test_enters_tapped_unless_first_three_turns_does_not_match_on_your_turn_three() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let source = ObjectId::from_raw(77);
+        let alice = PlayerId::from_index(0);
+        game.turn.active_player = alice;
+        game.turn.turn_number = 3;
+
+        let ability = EntersTappedUnlessCondition::new(
+            Condition::YourFirstTurnsOfTheGameOrFewer(3),
+            "it's your first second or third turn of the game".to_string(),
+        );
+        let replacement = ability
+            .generate_replacement_effect(source, alice)
+            .expect("conditional enters-tapped replacement should create replacement");
+        let matcher = replacement
+            .matcher
+            .as_ref()
+            .expect("conditional enters-tapped replacement must have matcher");
+        let event = ZoneChangeEvent::with_cause(
+            source,
+            Zone::Stack,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::effect(),
+            None,
+        );
+        let ctx = EventContext::for_replacement_effect(alice, source, &game);
+
+        assert!(
+            !matcher.matches_event(&event, &ctx),
+            "replacement should not apply during one of your first three turns"
+        );
+    }
+
+    #[test]
+    fn test_enters_tapped_unless_first_three_turns_matches_on_your_turn_four() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let source = ObjectId::from_raw(78);
+        let alice = PlayerId::from_index(0);
+        game.turn.active_player = alice;
+        game.turn.turn_number = 4;
+
+        let ability = EntersTappedUnlessCondition::new(
+            Condition::YourFirstTurnsOfTheGameOrFewer(3),
+            "it's your first second or third turn of the game".to_string(),
+        );
+        let replacement = ability
+            .generate_replacement_effect(source, alice)
+            .expect("conditional enters-tapped replacement should create replacement");
+        let matcher = replacement
+            .matcher
+            .as_ref()
+            .expect("conditional enters-tapped replacement must have matcher");
+        let event = ZoneChangeEvent::with_cause(
+            source,
+            Zone::Stack,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::effect(),
+            None,
+        );
+        let ctx = EventContext::for_replacement_effect(alice, source, &game);
+
+        assert!(
+            matcher.matches_event(&event, &ctx),
+            "replacement should apply after your first three turns"
+        );
+    }
+
+    #[test]
     fn test_prevent_all_damage_dealt_by_this_permanent_generates_replacement() {
         let game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
         let src = ObjectId::from_raw(42);

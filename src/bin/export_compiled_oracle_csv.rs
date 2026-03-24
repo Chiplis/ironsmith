@@ -8,7 +8,7 @@ use std::panic::{self, AssertUnwindSafe};
 use ironsmith::cards::{
     CardDefinition, CardDefinitionBuilder, generated_definition_has_unimplemented_content,
 };
-use ironsmith::compiled_text::oracle_like_lines;
+use ironsmith::compiled_text::canonical_compiled_lines;
 use ironsmith::ids::CardId;
 use ironsmith::semantic_compare::strip_reminder_text_for_comparison;
 use ironsmith_tools::{CardStatusDb, CompilationSnapshot, ParseStatus, default_db_path};
@@ -452,7 +452,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .map_err(|err| err.to_string())?;
         }
 
-        let compiled = oracle_like_lines(&definition);
+        let compiled = canonical_compiled_lines(&definition);
         let compiled_text = compiled.join("\n");
         let comparison_compiled_text = if args.strip_reminder_for_comparison {
             strip_compiled_reminder_equivalents(&compiled_text, &card_input.oracle_text)

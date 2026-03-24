@@ -135,6 +135,7 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::PlayerPlaysLand { player, filter } => {
             Trigger::player_plays_land(player, filter)
         }
+        TriggerSpec::PlayerSearchesLibrary(player) => Trigger::player_searches_library(player),
         TriggerSpec::PlayerTapsForMana { player, filter } => {
             Trigger::player_taps_for_mana(player, filter)
         }
@@ -365,6 +366,7 @@ pub(crate) fn materialize_prepared_statement_effects(
     ctx.force_auto_tag_object_targets = prepared.force_auto_tag_object_targets;
     ctx.apply_reference_env(&prepared.initial_env);
     let (compiled, _) = compile_annotated_effects_with_context(&prepared.annotated, &mut ctx)?;
+    let compiled = fold_local_zone_rewrite_self_replacements(compiled);
     let final_env = ctx.reference_env();
     Ok(LoweredEffects {
         effects: crate::resolution::ResolutionProgram::from_effects(prepend_effect_prelude(
@@ -430,6 +432,7 @@ pub(crate) fn materialize_prepared_effects_with_trigger_context(
     ctx.apply_reference_env(&prepared.initial_env);
     let (compiled, choices) =
         compile_annotated_effects_with_context(&prepared.annotated, &mut ctx)?;
+    let compiled = fold_local_zone_rewrite_self_replacements(compiled);
     let final_env = ctx.reference_env();
     Ok(LoweredEffects {
         effects: crate::resolution::ResolutionProgram::from_effects(prepend_effect_prelude(
@@ -451,6 +454,54 @@ pub(crate) fn materialize_prepared_triggered_effects(
         .map(compile_prepared_predicate_for_lowering)
         .transpose()?;
     Ok((lowered, intervening_if))
+}
+
+fn fold_local_zone_rewrite_self_replacements(effects: Vec<Effect>) -> Vec<Effect> {
+    let mut rewritten = Vec::new();
+    let mut idx = 0usize;
+
+    while idx < effects.len() {
+        if idx + 1 < effects.len()
+            && let Some(with_id) = effects[idx].downcast_ref::<crate::effects::WithIdEffect>()
+            && let Some(if_effect) = effects[idx + 1].downcast_ref::<crate::effects::IfEffect>()
+            && if_effect.condition == with_id.id
+            && if_effect.predicate == EffectPredicate::Happened
+            && if_effect.else_.is_empty()
+            && let Some(zone_replacements) =
+                extract_local_zone_replacement_followups(&if_effect.then)
+        {
+            rewritten.push(Effect::with_id(
+                with_id.id.0,
+                Effect::new(crate::effects::LocalRewriteEffect::new(
+                    (*with_id.effect).clone(),
+                    zone_replacements,
+                )),
+            ));
+            idx += 2;
+            continue;
+        }
+
+        rewritten.push(effects[idx].clone());
+        idx += 1;
+    }
+
+    rewritten
+}
+
+fn extract_local_zone_replacement_followups(
+    effects: &[Effect],
+) -> Option<Vec<crate::effects::RegisterZoneReplacementEffect>> {
+    let mut replacements = Vec::new();
+    for effect in effects {
+        let register = effect
+            .downcast_ref::<crate::effects::RegisterZoneReplacementEffect>()?
+            .clone();
+        if register.mode != crate::effects::ReplacementApplyMode::OneShot {
+            return None;
+        }
+        replacements.push(register);
+    }
+    Some(replacements)
 }
 
 fn validate_unbound_iterated_player(
@@ -681,6 +732,7 @@ pub(crate) fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
         | TriggerSpec::PlayerDrawsNthCardEachTurn { .. }
         | TriggerSpec::PlayerDiscardsCard { .. }
         | TriggerSpec::PlayerPlaysLand { .. }
+        | TriggerSpec::PlayerSearchesLibrary(_)
         | TriggerSpec::PlayerTapsForMana { .. }
         | TriggerSpec::PlayerSacrifices { .. }
         | TriggerSpec::BeginningOfUpkeep(_)
@@ -767,6 +819,7 @@ pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<Pl
         TriggerSpec::PlayerDrawsNthCardEachTurn { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerDiscardsCard { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerPlaysLand { .. } => Some(PlayerFilter::IteratedPlayer),
+        TriggerSpec::PlayerSearchesLibrary(_) => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerTapsForMana { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::AbilityActivated { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerSacrifices { .. } => Some(PlayerFilter::IteratedPlayer),

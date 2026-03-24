@@ -15,6 +15,7 @@ use crate::events::cause::EventCause;
 use crate::game_state::{GameState, TargetAssignment};
 use crate::ids::{ObjectId, PlayerId};
 use crate::provenance::{ProvNodeId, ProvenanceNodeKind};
+use crate::replacement::ReplacementEffect;
 use crate::snapshot::ObjectSnapshot;
 use crate::tag::{SOURCE_EXILED_TAG, TagKey};
 use crate::target::{ChooseSpec, FilterContext};
@@ -177,6 +178,8 @@ pub struct ExecutionContext<'a> {
     pub mana_usage_restrictions: Vec<crate::ability::ManaUsageRestriction>,
     /// Chosen creature type snapshot for mana produced by the source.
     pub mana_source_chosen_creature_type: Option<Subtype>,
+    /// Ephemeral replacement effects scoped to the current resolution path.
+    pub additional_replacement_effects: Vec<ReplacementEffect>,
 }
 
 impl std::fmt::Debug for ExecutionContext<'_> {
@@ -212,6 +215,10 @@ impl std::fmt::Debug for ExecutionContext<'_> {
             .field(
                 "mana_source_chosen_creature_type",
                 &self.mana_source_chosen_creature_type,
+            )
+            .field(
+                "additional_replacement_effects",
+                &self.additional_replacement_effects.len(),
             )
             .finish()
     }
@@ -249,6 +256,7 @@ impl<'a> ExecutionContext<'a> {
             mana_color_restriction: None,
             mana_usage_restrictions: Vec::new(),
             mana_source_chosen_creature_type: None,
+            additional_replacement_effects: Vec::new(),
         }
     }
 
@@ -290,6 +298,7 @@ impl<'a> ExecutionContext<'a> {
             mana_color_restriction: None,
             mana_usage_restrictions: Vec::new(),
             mana_source_chosen_creature_type: None,
+            additional_replacement_effects: Vec::new(),
         }
     }
 
@@ -321,7 +330,28 @@ impl<'a> ExecutionContext<'a> {
             mana_color_restriction: self.mana_color_restriction,
             mana_usage_restrictions: self.mana_usage_restrictions,
             mana_source_chosen_creature_type: self.mana_source_chosen_creature_type,
+            additional_replacement_effects: self.additional_replacement_effects,
         }
+    }
+
+    pub fn additional_replacement_effects(&self) -> &[ReplacementEffect] {
+        &self.additional_replacement_effects
+    }
+
+    pub fn additional_replacement_effects_snapshot(&self) -> Vec<ReplacementEffect> {
+        self.additional_replacement_effects.clone()
+    }
+
+    pub fn with_temp_additional_replacement_effects<R>(
+        &mut self,
+        effects: Vec<ReplacementEffect>,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        let original_len = self.additional_replacement_effects.len();
+        self.additional_replacement_effects.extend(effects);
+        let result = f(self);
+        self.additional_replacement_effects.truncate(original_len);
+        result
     }
 
     /// Restrict mana color choices for effects executed in this context.

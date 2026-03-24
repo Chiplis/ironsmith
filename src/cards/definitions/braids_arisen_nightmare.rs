@@ -380,7 +380,7 @@ mod tests {
     #[test]
     fn test_braids_oracle_like_text_is_emittable() {
         let def = braids_arisen_nightmare();
-        let rendered = crate::compiled_text::oracle_like_lines(&def).join(" ");
+        let rendered = crate::compiled_text::canonical_compiled_lines(&def).join(" ");
         let lower = rendered.to_ascii_lowercase();
 
         assert!(

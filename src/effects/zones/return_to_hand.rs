@@ -11,7 +11,7 @@ use crate::game_state::GameState;
 use crate::target::{ChooseSpec, ObjectFilter};
 use crate::zone::Zone;
 
-use super::apply_zone_change;
+use super::apply_zone_change_with_additional_effects;
 
 /// Effect that returns permanents to their owners' hands.
 ///
@@ -89,15 +89,17 @@ impl ReturnToHandEffect {
     ) -> Result<Option<OutcomeStatus>, ExecutionError> {
         if let Some(obj) = game.object(object_id) {
             let from_zone = obj.zone;
+            let additional_effects = ctx.additional_replacement_effects_snapshot();
 
             // Process through replacement effects with decision maker.
-            let result = apply_zone_change(
+            let result = apply_zone_change_with_additional_effects(
                 game,
                 object_id,
                 from_zone,
                 Zone::Hand,
                 ctx.cause.clone(),
                 &mut ctx.decision_maker,
+                &additional_effects,
             );
 
             match result {
@@ -151,13 +153,15 @@ impl EffectExecutor for ReturnToHandEffect {
                 let Some(from_zone) = game.object(object_id).map(|obj| obj.zone) else {
                     return Ok(false);
                 };
-                match apply_zone_change(
+                let additional_effects = ctx.additional_replacement_effects_snapshot();
+                match apply_zone_change_with_additional_effects(
                     game,
                     object_id,
                     from_zone,
                     Zone::Hand,
                     ctx.cause.clone(),
                     &mut ctx.decision_maker,
+                    &additional_effects,
                 ) {
                     EventOutcome::Proceed(result) => Ok(result.new_object_id.is_some()),
                     EventOutcome::Prevented

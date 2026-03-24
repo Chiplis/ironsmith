@@ -86,6 +86,15 @@ pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str
                     "When this enchantment leaves the battlefield, you discard three cards, lose 6 life, and sacrifice three creatures.",
                 );
         }
+        if let Some(rewritten) =
+            normalize_simple_trigger_heading_body(prefix.trim(), &normalized_body)
+        {
+            return rewritten;
+        }
+        let normalized_body = normalized_body
+            .strip_suffix("..")
+            .map(|body| format!("{body}."))
+            .unwrap_or(normalized_body);
         return format!("{}: {}", prefix.trim(), normalized_body);
     }
     let mut normalized =
@@ -164,6 +173,23 @@ pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str
             );
     }
     normalized
+        .strip_suffix("..")
+        .map(|body| format!("{body}."))
+        .unwrap_or(normalized)
+}
+
+fn normalize_simple_trigger_heading_body(prefix: &str, body: &str) -> Option<String> {
+    let prefix_lower = prefix.to_ascii_lowercase();
+    if !prefix_lower.starts_with("when ") && !prefix_lower.starts_with("whenever ") {
+        return None;
+    }
+
+    let action = strip_suffix_ascii_ci(body.trim(), ". Draw a card.")
+        .or_else(|| strip_suffix_ascii_ci(body.trim(), ". Draw a card"))?;
+    Some(format!(
+        "{prefix}, {} and draw a card.",
+        lowercase_first(action.trim())
+    ))
 }
 
 pub(super) fn normalize_gain_life_plus_phrase(text: &str) -> String {
@@ -1466,6 +1492,25 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
             normalized = rewritten;
             changed = true;
         }
+        if let Some(rewritten) =
+            normalize_sentence_helper_graveyard_to_hand_choice_clause(&normalized)
+            && rewritten != normalized
+        {
+            normalized = rewritten;
+            changed = true;
+        }
+        if let Some(rewritten) = normalize_sentence_helper_milled_to_hand_clause(&normalized)
+            && rewritten != normalized
+        {
+            normalized = rewritten;
+            changed = true;
+        }
+        if let Some(rewritten) = normalize_sentence_helper_put_from_other_hand_clause(&normalized)
+            && rewritten != normalized
+        {
+            normalized = rewritten;
+            changed = true;
+        }
         if let Some(rewritten) = normalize_sentence_helper_put_from_hand_clause(&normalized)
             && rewritten != normalized
         {
@@ -1480,6 +1525,37 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
             changed = true;
         }
         if let Some(rewritten) = normalize_sentence_helper_reveal_from_hand_clause(&normalized)
+            && rewritten != normalized
+        {
+            normalized = rewritten;
+            changed = true;
+        }
+        if let Some(rewritten) = normalize_sentence_helper_simple_exile_clause(&normalized)
+            && rewritten != normalized
+        {
+            normalized = rewritten;
+            changed = true;
+        }
+        if let Some(rewritten) =
+            normalize_sentence_helper_choose_exiled_card_play_clause(&normalized)
+            && rewritten != normalized
+        {
+            normalized = rewritten;
+            changed = true;
+        }
+        if let Some(rewritten) = normalize_sentence_helper_planar_genesis_clause(&normalized)
+            && rewritten != normalized
+        {
+            normalized = rewritten;
+            changed = true;
+        }
+        if let Some(rewritten) = normalize_sentence_helper_kicked_top_x_clause(&normalized)
+            && rewritten != normalized
+        {
+            normalized = rewritten;
+            changed = true;
+        }
+        if let Some(rewritten) = normalize_sentence_helper_spell_mastery_gather_clause(&normalized)
             && rewritten != normalized
         {
             normalized = rewritten;
@@ -1761,6 +1837,18 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
             draw_tail.trim().trim_end_matches('.')
         );
     }
+    if let Some((prefix, draw_tail)) = split_once_ascii_ci(&normalized, ". you draw ")
+        && let Some(base_amount) = strip_suffix_ascii_ci(
+            draw_tail.trim().trim_end_matches('.'),
+            ", rounded down cards",
+        )
+    {
+        return format!(
+            "{}, then draw {} cards, rounded down.",
+            prefix.trim().trim_end_matches('.'),
+            base_amount.trim()
+        );
+    }
     if let Some((prefix, rest)) = split_once_ascii_ci(&normalized, ". you draw ")
         && let Some((draw_tail, gain_tail)) = split_once_ascii_ci(rest, ". you gain ")
         && gain_tail
@@ -1998,6 +2086,15 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
             put_tail.trim()
         );
     }
+    if let Some(rewritten) = normalize_search_put_onto_battlefield_clause(&normalized) {
+        return rewritten;
+    }
+    if let Some(rewritten) = normalize_search_reveal_into_hand_clause(&normalized) {
+        return rewritten;
+    }
+    if let Some(rewritten) = normalize_search_reveal_battlefield_or_hand_clause(&normalized) {
+        return rewritten;
+    }
     if let Some(rewritten) = normalize_split_search_battlefield_then_hand_clause(&normalized) {
         return rewritten;
     }
@@ -2112,7 +2209,16 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
     if let Some(rewritten) = normalize_typed_graveyard_return_choice_clause(&normalized) {
         normalized = rewritten;
     }
+    if let Some(rewritten) = normalize_generic_chosen_return_clause(&normalized) {
+        normalized = rewritten;
+    }
     if let Some(rewritten) = normalize_sacrificed_choice_clause(&normalized) {
+        normalized = rewritten;
+    }
+    if let Some(rewritten) = normalize_same_name_reference_choice_clause(&normalized) {
+        normalized = rewritten;
+    }
+    if let Some(rewritten) = normalize_single_bound_it_tag_reference_clause(&normalized) {
         normalized = rewritten;
     }
     if let Some(rewritten) = normalize_remaining_it_tag_choice_clause(&normalized) {
@@ -3935,17 +4041,109 @@ pub(super) fn normalize_typed_graveyard_return_choice_clause(text: &str) -> Opti
     None
 }
 
+pub(super) fn normalize_generic_chosen_return_clause(text: &str) -> Option<String> {
+    let patterns = [
+        ("you choose exactly 1 ", " in your graveyard", "return "),
+        (
+            "you may choose exactly 1 ",
+            " in your graveyard",
+            "you may return ",
+        ),
+        (
+            "each opponent may choose exactly 1 ",
+            " from that player's graveyard",
+            "each opponent may return ",
+        ),
+        (
+            "an opponent chooses exactly 1 ",
+            " in a graveyard",
+            "return ",
+        ),
+        ("you choose exactly 1 ", " in a graveyard", "return "),
+    ];
+    for (marker, zone_marker, lead) in patterns {
+        let Some((before, rest)) = split_once_ascii_ci(text, marker) else {
+            continue;
+        };
+        let Some((descriptor_raw, rest)) = split_once_ascii_ci(
+            rest,
+            &format!("{zone_marker} and tags it as 'chosen_return_"),
+        ) else {
+            continue;
+        };
+        let Some((_tag_suffix, after)) = rest.split_once("'. ") else {
+            continue;
+        };
+        let descriptor = with_indefinite_article(descriptor_raw.trim());
+        let zone_phrase = match (marker, zone_marker) {
+            (m, " from that player's graveyard") if m.starts_with("each opponent may") => {
+                "from their graveyard"
+            }
+            (_, " in your graveyard") => "from your graveyard",
+            (_, " from that player's graveyard") => "from that player's graveyard",
+            (_, " in a graveyard") => "from a graveyard",
+            _ => continue,
+        };
+
+        let replacement = if let Some(tail) =
+            strip_prefix_ascii_ci(after, "Return it from graveyard to the battlefield tapped")
+        {
+            format!("{lead}{descriptor} {zone_phrase} to the battlefield tapped{tail}")
+        } else if let Some(tail) =
+            strip_prefix_ascii_ci(after, "Return it from graveyard to the battlefield")
+        {
+            format!("{lead}{descriptor} {zone_phrase} to the battlefield{tail}")
+        } else if let Some(tail) = strip_prefix_ascii_ci(
+            after,
+            "Put it onto the battlefield under its owner's control",
+        ) {
+            format!(
+                "{lead}{descriptor} {zone_phrase} to the battlefield under its owner's control{tail}"
+            )
+        } else {
+            continue;
+        };
+        return Some(apply_replacement_with_case(before, &replacement, ""));
+    }
+    None
+}
+
 fn reference_phrase_for_bound_choice(head: &str) -> &'static str {
     let lower = head.to_ascii_lowercase();
-    if lower.contains(" card") {
+    if lower.starts_with("card ")
+        || lower == "card"
+        || lower.contains(" card")
+        || lower.starts_with("a card ")
+        || lower.starts_with("an card ")
+    {
         "that card"
-    } else if lower.contains(" token") {
+    } else if lower.starts_with("token ")
+        || lower == "token"
+        || lower.contains(" token")
+        || lower.starts_with("a token ")
+        || lower.starts_with("an token ")
+    {
         "that token"
-    } else if lower.contains(" creature") {
+    } else if lower.starts_with("creature ")
+        || lower == "creature"
+        || lower.contains(" creature")
+        || lower.starts_with("a creature ")
+        || lower.starts_with("an creature ")
+    {
         "that creature"
-    } else if lower.contains(" artifact") {
+    } else if lower.starts_with("artifact ")
+        || lower == "artifact"
+        || lower.contains(" artifact")
+        || lower.starts_with("a artifact ")
+        || lower.starts_with("an artifact ")
+    {
         "that artifact"
-    } else if lower.contains(" land") {
+    } else if lower.starts_with("land ")
+        || lower == "land"
+        || lower.contains(" land")
+        || lower.starts_with("a land ")
+        || lower.starts_with("an land ")
+    {
         "that land"
     } else {
         "that permanent"
@@ -3992,7 +4190,111 @@ pub(super) fn normalize_remaining_it_tag_choice_clause(text: &str) -> Option<Str
     ))
 }
 
+fn rewrite_single_bound_it_tail(tail: &str, reference: &str) -> String {
+    if tail
+        .trim()
+        .eq_ignore_ascii_case("Attach any number of all Equipmentses you control to that object.")
+    {
+        return "Attach any number of Equipment you control to that creature.".to_string();
+    }
+    let reference_cap = capitalize_first(reference);
+    let reference_possessive = format!("{reference}'s");
+    let reference_possessive_cap = capitalize_first(&reference_possessive);
+    let rewritten = tail
+        .replace("that object's", &reference_possessive)
+        .replace("That object's", &reference_possessive_cap)
+        .replace("that object", reference)
+        .replace("That object", &reference_cap)
+        .replace("Return it", &format!("Return {reference}"))
+        .replace("return it", &format!("return {reference}"))
+        .replace("Put it", &format!("Put {reference}"))
+        .replace("put it", &format!("put {reference}"))
+        .replace("Exile it", &format!("Exile {reference}"))
+        .replace("exile it", &format!("exile {reference}"))
+        .replace("Untap it", &format!("Untap {reference}"))
+        .replace("untap it", &format!("untap {reference}"))
+        .replace(
+            "Gain control of it",
+            &format!("Gain control of {reference}"),
+        )
+        .replace(
+            "gain control of it",
+            &format!("gain control of {reference}"),
+        )
+        .replace("If it's ", &format!("If {reference} is "))
+        .replace("if it's ", &format!("if {reference} is "));
+    rewritten
+}
+
+pub(super) fn normalize_single_bound_it_tag_reference_clause(text: &str) -> Option<String> {
+    let patterns = [
+        "you choose exactly 1 ",
+        "you may choose exactly 1 ",
+        "you choose up to one ",
+    ];
+    for marker in patterns {
+        let Some((before, rest)) = split_once_ascii_ci(text, marker) else {
+            continue;
+        };
+        let Some((descriptor_raw, tail)) = split_once_ascii_ci(rest, " and tags it as '__it__'.")
+        else {
+            continue;
+        };
+        let tail = tail.trim();
+        if tail.is_empty() {
+            continue;
+        }
+        let tail_lower = tail.to_ascii_lowercase();
+        if tail_lower.contains("tagged '__it__'")
+            || tail_lower.contains("the tagged object '__it__'")
+            || tail_lower.contains("target tagged object")
+            || tail_lower.contains("for each tagged '__it__'")
+        {
+            continue;
+        }
+        let reference = reference_phrase_for_bound_choice(descriptor_raw);
+        let rewritten_tail = rewrite_single_bound_it_tail(tail, reference);
+        if rewritten_tail == tail {
+            continue;
+        }
+        let replacement = format!(
+            "{marker}{}. {}.",
+            descriptor_raw.trim(),
+            capitalize_first(rewritten_tail.trim().trim_end_matches('.'))
+        );
+        return Some(apply_replacement_with_case(before, &replacement, ""));
+    }
+    None
+}
+
 pub(super) fn normalize_sacrificed_choice_clause(text: &str) -> Option<String> {
+    if let Some((before, rest)) = split_once_ascii_ci(text, "you may choose exactly ")
+        && let Some((count_token, rest)) = rest.split_once(' ')
+        && let Some((descriptor_raw, after_tag)) =
+            split_once_ascii_ci(rest, " and tags it as 'sacrificed_")
+        && let Some((_tag_suffix, after)) = split_once_ascii_ci(after_tag, "'. you sacrifice ")
+    {
+        let count = count_token.parse::<usize>().ok()?;
+        let descriptor = choice_descriptor_for_zone(descriptor_raw, " in the battlefield")?;
+        let mut subject = render_choose_exact_subject(&descriptor, count);
+        if count == 1
+            && !subject.starts_with("a ")
+            && !subject.starts_with("an ")
+            && !subject.starts_with("this ")
+            && !subject.starts_with("that ")
+        {
+            subject = with_indefinite_article(&subject);
+        }
+        let tail = after
+            .split_once(".")
+            .map(|(_, tail)| format!(".{}", tail))
+            .unwrap_or_else(|| ".".to_string());
+        return Some(apply_replacement_with_case(
+            before,
+            &format!("you may sacrifice {subject}"),
+            &tail,
+        ));
+    }
     if let Some((before, rest)) = split_once_ascii_ci(text, "you may choose exactly 1 ")
         && let Some((descriptor_raw, after)) = split_once_ascii_ci(
             rest,
@@ -4035,6 +4337,28 @@ pub(super) fn normalize_sacrificed_choice_clause(text: &str) -> Option<String> {
             "{prefix} sacrifices {chosen} of their choice{tail}"
         ));
     }
+    if let Some((head, after_tag)) = split_once_ascii_ci(text, " and tags it as 'sacrificed_")
+        && let Some((_tag_suffix, tail)) =
+            split_once_ascii_ci(after_tag, "', then that player sacrifices ")
+        && let Some((prefix, count, descriptor)) = parse_choose_exact_tail(head)
+        && prefix.trim().to_ascii_lowercase().ends_with("that player")
+    {
+        let descriptor = descriptor
+            .replace("target player's ", "")
+            .replace("that player's ", "");
+        if descriptor.contains("a controller's ") {
+            return None;
+        }
+        let chosen = render_choose_exact_subject(&descriptor, count)
+            .replace("that player controls", "they control");
+        let tail = tail
+            .split_once(".")
+            .map(|(_, rest)| format!(".{}", rest))
+            .unwrap_or_else(|| ".".to_string());
+        return Some(format!(
+            "{prefix} sacrifices {chosen} of their choice{tail}"
+        ));
+    }
     if let Some((before, rest)) = split_once_ascii_ci(text, "Choose exactly 1 ")
         && let Some((descriptor_raw, after)) = split_once_ascii_ci(
             rest,
@@ -4049,6 +4373,86 @@ pub(super) fn normalize_sacrificed_choice_clause(text: &str) -> Option<String> {
             after,
         ));
     }
+    if let Some((before, rest)) =
+        split_once_ascii_ci(text, "sacrifice it unless you choose exactly ")
+        && let Some((count_token, rest)) = rest.split_once(' ')
+        && let Some((descriptor_raw, after_tag)) =
+            split_once_ascii_ci(rest, " and tags it as 'sacrificed_")
+        && let Some((_tag_suffix, after)) = split_once_ascii_ci(after_tag, "'. you sacrifice ")
+    {
+        let count = count_token.parse::<usize>().ok()?;
+        let descriptor = choice_descriptor_for_zone(descriptor_raw, " in the battlefield")?;
+        let subject = render_choose_exact_subject(&descriptor, count);
+        let tail = after
+            .split_once(".")
+            .map(|(_, tail)| format!(".{}", tail))
+            .unwrap_or_default();
+        return Some(format!(
+            "{before}sacrifice it unless you sacrifice {subject}{tail}"
+        ));
+    }
+    if let Some((before, rest)) = split_once_ascii_ci(text, "you choose exactly ")
+        && let Some((count_token, rest)) = rest.split_once(' ')
+        && let Some((descriptor_raw, after_tag)) =
+            split_once_ascii_ci(rest, " and tags it as 'sacrificed_")
+        && let Some((_tag_suffix, after)) = split_once_ascii_ci(after_tag, "'. you sacrifice ")
+    {
+        let count = count_token.parse::<usize>().ok()?;
+        let descriptor = choice_descriptor_for_zone(descriptor_raw, " in the battlefield")?;
+        let mut subject = render_choose_exact_subject(&descriptor, count);
+        if count == 1
+            && !subject.starts_with("a ")
+            && !subject.starts_with("an ")
+            && !subject.starts_with("this ")
+            && !subject.starts_with("that ")
+        {
+            subject = with_indefinite_article(&subject);
+        }
+        let tail = after
+            .split_once(".")
+            .map(|(_, tail)| format!(".{}", tail))
+            .unwrap_or_else(|| ".".to_string());
+        return Some(apply_replacement_with_case(
+            before,
+            &format!("sacrifice {subject}"),
+            &tail,
+        ));
+    }
+    None
+}
+
+pub(super) fn normalize_same_name_reference_choice_clause(text: &str) -> Option<String> {
+    if let Some((before, rest)) = split_once_ascii_ci(text, "you may choose exactly 1 ")
+        && let Some((descriptor_raw, after)) =
+            split_once_ascii_ci(rest, " and tags it as 'same_name_reference'. ")
+    {
+        let descriptor = descriptor_raw
+            .trim()
+            .strip_suffix(" in the battlefield")
+            .unwrap_or(descriptor_raw.trim());
+        let search_tail = "Search your library for a card with the same name as that object, reveal it, put it into your hand, then shuffle";
+        if let Some(tail) = strip_prefix_ascii_ci(after, search_tail) {
+            let replacement = format!(
+                "you may search your library for a card with the same name as {}, reveal it, put it into your hand, then shuffle",
+                descriptor
+            );
+            return Some(apply_replacement_with_case(before, &replacement, tail));
+        }
+    }
+    if let Some((before, rest)) = split_once_ascii_ci(
+        text,
+        "you choose exactly 1 card in your graveyard and tags it as 'same_name_reference'. ",
+    ) && let Some((search_subject, tail)) =
+        split_once_ascii_ci(rest, ", reveal it, put it into your hand, then shuffle")
+        && let Some(search_subject) =
+            strip_prefix_ascii_ci(search_subject, "Search your library for ")
+    {
+        let replacement = format!(
+            "search your library for {} with the same name as a card in your graveyard, reveal it, put it into your hand, then shuffle",
+            search_subject.trim()
+        );
+        return Some(apply_replacement_with_case(before, &replacement, tail));
+    }
     None
 }
 
@@ -4060,9 +4464,12 @@ pub(super) fn normalize_sentence_helper_top_cards_choose_to_hand_sequence(
         ": Reveal the top ",
         ". Look at the top ",
         ". Reveal the top ",
+        ", look at the top ",
+        ", reveal the top ",
     ] {
         if let Some((before, rest)) = split_once_ascii_ci(text, marker) {
-            let restored = if marker.contains("Look") {
+            let marker_lower = marker.to_ascii_lowercase();
+            let restored = if marker_lower.contains("look") {
                 format!("Look at the top {rest}")
             } else {
                 format!("Reveal the top {rest}")
@@ -4070,6 +4477,9 @@ pub(super) fn normalize_sentence_helper_top_cards_choose_to_hand_sequence(
             if let Some(rewritten) =
                 normalize_sentence_helper_top_cards_choose_to_hand_sequence(&restored)
             {
+                if marker.starts_with(", ") {
+                    return Some(format!("{before}, {}", lowercase_first(&rewritten)));
+                }
                 let joiner = marker.get(..2).unwrap_or(": ");
                 return Some(format!("{before}{joiner}{rewritten}"));
             }
@@ -4080,15 +4490,15 @@ pub(super) fn normalize_sentence_helper_top_cards_choose_to_hand_sequence(
     if !(lower.starts_with("look at the top ") || lower.starts_with("reveal the top ")) {
         return None;
     }
-    if !lower.contains(" cards of your library. you choose exactly ") {
+    if !lower.contains(" of your library. you choose exactly ") {
         return None;
     }
 
     let (head, tail) = split_once_ascii_ci(trimmed, ". you choose exactly ")?;
-    if !head
-        .to_ascii_lowercase()
-        .ends_with(" cards of your library")
-    {
+    let head_lower = head.to_ascii_lowercase();
+    let plural_top_cards = head_lower.ends_with(" cards of your library");
+    let singular_top_card = head_lower.ends_with(" card of your library");
+    if !plural_top_cards && !singular_top_card {
         return None;
     }
     let (count_token, tail) = tail.split_once(' ')?;
@@ -4098,12 +4508,16 @@ pub(super) fn normalize_sentence_helper_top_cards_choose_to_hand_sequence(
     if !chosen_tag.starts_with("__sentence_helper_chosen_") {
         return None;
     }
-    let tail = tail.strip_prefix("For each tagged '")?;
-    let tail = tail.strip_prefix(chosen_tag)?;
-    let tail =
-        tail.strip_prefix("' object, Return that object to its owner's hand. For each tagged '")?;
-    let (revealed_tag, tail) =
-        tail.split_once("' object, if it isn't true that it matches permanent, ")?;
+    let tail = strip_prefix_ascii_ci(tail, "For each tagged '")?;
+    let tail = strip_prefix_ascii_ci(tail, chosen_tag)?;
+    let tail = strip_prefix_ascii_ci(
+        tail,
+        "' object, Return that object to its owner's hand. For each tagged '",
+    )?;
+    let (revealed_tag, tail) = split_once_ascii_ci(
+        tail,
+        "' object, if it isn't true that it matches permanent, ",
+    )?;
     if !revealed_tag.starts_with("__sentence_helper_revealed_") {
         return None;
     }
@@ -4120,17 +4534,24 @@ pub(super) fn normalize_sentence_helper_top_cards_choose_to_hand_sequence(
         return None;
     };
 
-    let chosen_text = if count == 1 {
-        "one of them".to_string()
+    let mut rewritten = if singular_top_card && count == 1 {
+        format!(
+            "{}. Put it into your hand.",
+            head.trim().trim_end_matches('.')
+        )
     } else {
-        format!("{} of them", render_small_number_or_raw(&count.to_string()))
+        let chosen_text = if count == 1 {
+            "one of them".to_string()
+        } else {
+            format!("{} of them", render_small_number_or_raw(&count.to_string()))
+        };
+        format!(
+            "{}. Put {} into your hand and the rest {}.",
+            head.trim().trim_end_matches('.'),
+            chosen_text,
+            rest_destination
+        )
     };
-    let mut rewritten = format!(
-        "{}. Put {} into your hand and the rest {}.",
-        head.trim().trim_end_matches('.'),
-        chosen_text,
-        rest_destination
-    );
     let suffix = suffix.trim();
     if let Some(tail) = suffix.strip_prefix('.') {
         let tail = tail.trim();
@@ -4146,6 +4567,123 @@ pub(super) fn normalize_sentence_helper_top_cards_choose_to_hand_sequence(
         rewritten.push_str(suffix);
     }
     Some(rewritten)
+}
+
+pub(super) fn normalize_sentence_helper_graveyard_to_hand_choice_clause(
+    text: &str,
+) -> Option<String> {
+    let patterns = [
+        ("you choose up to one ", "return up to one "),
+        ("you may choose exactly 1 ", "you may return "),
+        ("you choose exactly 1 ", "return "),
+    ];
+    for (marker, lead) in patterns {
+        let Some((before, rest)) = split_once_ascii_ci(text, marker) else {
+            continue;
+        };
+        let Some((descriptor_raw, rest)) =
+            split_once_ascii_ci(rest, " in a graveyard and tags it as '")
+        else {
+            continue;
+        };
+        let Some((tag, rest)) = rest.split_once("'. ") else {
+            continue;
+        };
+        if !tag.starts_with("__sentence_helper_chosen_") {
+            continue;
+        }
+        let Some(after) = strip_prefix_ascii_ci(
+            rest,
+            &format!("For each tagged '{tag}' object, Return that object to its owner's hand"),
+        ) else {
+            continue;
+        };
+
+        let mut rewritten = format!(
+            "{lead}{} from a graveyard to your hand",
+            if marker.contains("up to one") {
+                strip_leading_article(descriptor_raw.trim()).to_string()
+            } else {
+                with_indefinite_article(strip_leading_article(descriptor_raw.trim()))
+            }
+        );
+        let after = after.trim();
+        if let Some(tail) = strip_prefix_ascii_ci(after, ". If that doesn't happen, ") {
+            rewritten.push_str(". If you don't, ");
+            rewritten.push_str(lowercase_first(tail).trim_end_matches('.'));
+            rewritten.push('.');
+            return Some(apply_replacement_with_case(before, &rewritten, ""));
+        }
+        return Some(apply_replacement_with_case(
+            before,
+            &append_sentence_tail(rewritten, after),
+            "",
+        ));
+    }
+    None
+}
+
+pub(super) fn normalize_sentence_helper_milled_to_hand_clause(text: &str) -> Option<String> {
+    let marker = "you may choose exactly 1 card in library and tags it as '";
+    let (before, rest) = split_once_ascii_ci(text, marker)?;
+    let (tag, rest) = rest.split_once("'. ")?;
+    if !tag.starts_with("__sentence_helper_chosen_") {
+        return None;
+    }
+    let after = strip_prefix_ascii_ci(
+        rest,
+        &format!(
+            "For each tagged '{tag}' object, Return that object to its owner's hand. For each tagged 'milled_0' object, if it isn't true that it matches permanent, Put that object into its owner's graveyard"
+        ),
+    )?;
+    if !before.to_ascii_lowercase().contains("mill ") {
+        return None;
+    }
+    let replacement =
+        "you may put a permanent card from among the cards milled this way into your hand";
+    Some(apply_replacement_with_case(
+        before,
+        &append_sentence_tail(replacement.to_string(), after),
+        "",
+    ))
+}
+
+pub(super) fn normalize_sentence_helper_put_from_other_hand_clause(text: &str) -> Option<String> {
+    let patterns = [
+        (
+            "each player may choose exactly 1 ",
+            " from that player's hand and tags it as '",
+            "each player may put",
+            "from their hand onto the battlefield",
+        ),
+        (
+            "that object's controller may choose exactly 1 ",
+            " in its controller's hand and tags it as '",
+            "that object's controller may put",
+            "from their hand onto the battlefield",
+        ),
+    ];
+    for (marker, zone_marker, lead, destination) in patterns {
+        let Some((before, rest)) = split_once_ascii_ci(text, marker) else {
+            continue;
+        };
+        let Some((descriptor_raw, rest)) = split_once_ascii_ci(rest, zone_marker) else {
+            continue;
+        };
+        let Some((tag, rest)) = rest.split_once("'. ") else {
+            continue;
+        };
+        if !tag.starts_with("__sentence_helper_chosen_") {
+            continue;
+        }
+        let Some(after) = strip_prefix_ascii_ci(rest, "Put it onto the battlefield") else {
+            continue;
+        };
+        let descriptor = with_indefinite_article(strip_leading_article(descriptor_raw.trim()));
+        let replacement = format!("{lead} {descriptor} {destination}");
+        return Some(apply_replacement_with_case(before, &replacement, after));
+    }
+    None
 }
 
 pub(super) fn normalize_sentence_helper_put_from_hand_clause(text: &str) -> Option<String> {
@@ -4313,6 +4851,148 @@ pub(super) fn normalize_sentence_helper_reveal_from_hand_clause(text: &str) -> O
     None
 }
 
+pub(super) fn normalize_sentence_helper_simple_exile_clause(text: &str) -> Option<String> {
+    if let Some((before, rest)) = split_once_ascii_ci(
+        text,
+        "you choose the top card in your library and tags it as '",
+    ) && let Some((tag, rest)) = rest.split_once("', then exile it")
+        && tag.starts_with("__sentence_helper_exiled_")
+    {
+        let replacement = format!("exile the top card of your library{rest}");
+        return Some(apply_replacement_with_case(before, &replacement, ""));
+    }
+    let marker = "you choose exactly 1 ";
+    let lower = text.to_ascii_lowercase();
+    if let Some(idx) = lower.rfind(&marker.to_ascii_lowercase()) {
+        let before = &text[..idx];
+        let rest = &text[idx + marker.len()..];
+        if let Some((descriptor_raw, rest)) =
+            split_once_ascii_ci(rest, " in your hand and tags it as '")
+            && let Some((tag, rest)) = rest.split_once("', then exile it")
+            && tag.starts_with("__sentence_helper_exiled_")
+        {
+            let replacement = format!(
+                "exile {} from your hand{rest}",
+                with_indefinite_article(descriptor_raw.trim())
+            );
+            return Some(apply_replacement_with_case(before, &replacement, ""));
+        }
+    }
+    None
+}
+
+pub(super) fn normalize_sentence_helper_choose_exiled_card_play_clause(
+    text: &str,
+) -> Option<String> {
+    let marker = "you choose exactly 1 card in exile and tags it as '";
+    let (before, rest) = split_once_ascii_ci(text, marker)?;
+    let (tag, rest) = rest.split_once("'. ")?;
+    if !tag.starts_with("__sentence_helper_chosen_") {
+        return None;
+    }
+    if !before.to_ascii_lowercase().contains("exile ") {
+        return None;
+    }
+    let after = strip_prefix_ascii_ci(rest, "you may play that card until")?;
+    Some(apply_replacement_with_case(
+        before,
+        "choose a card exiled this way. You may play that card until",
+        after,
+    ))
+}
+
+pub(super) fn normalize_sentence_helper_planar_genesis_clause(text: &str) -> Option<String> {
+    let marker = "Look at the top four cards of your library. you choose up to one land card in library and tags it as '";
+    let (before, rest) = split_once_ascii_ci(text, marker)?;
+    let (land_tag, rest) = rest.split_once("'. ")?;
+    if !land_tag.starts_with("__sentence_helper_chosen_") {
+        return None;
+    }
+    let rest = strip_prefix_ascii_ci(
+        rest,
+        &format!(
+            "For each tagged '{land_tag}' object, Put that object onto the battlefield tapped. If that doesn't happen, you choose exactly 1 card in library and tags it as '"
+        ),
+    )?;
+    let (card_tag, rest) = rest.split_once("'. ")?;
+    if !card_tag.starts_with("__sentence_helper_chosen_") {
+        return None;
+    }
+    let after = strip_prefix_ascii_ci(
+        rest,
+        &format!(
+            "For each tagged '{card_tag}' object, Return that object to its owner's hand. For each tagged '__sentence_helper_revealed_l0_s0_e0' object, if it isn't true that it matches permanent, if it isn't true that it matches permanent, Put that object on the bottom of its owner's library"
+        ),
+    )?;
+    let replacement = "Look at the top four cards of your library. You may put a land card from among them onto the battlefield tapped. If you don't, put a card from among them into your hand. Put the rest on the bottom of your library";
+    Some(format!(
+        "{before}{}",
+        append_sentence_tail(replacement.to_string(), after)
+    ))
+}
+
+pub(super) fn normalize_sentence_helper_kicked_top_x_clause(text: &str) -> Option<String> {
+    let marker = "Look at the top the number of lands you control cards of your library. If this spell was kicked, you choose exactly 2 card in library and tags it as '";
+    let (before, rest) = split_once_ascii_ci(text, marker)?;
+    let (kicked_tag, rest) = rest.split_once("', ")?;
+    if !kicked_tag.starts_with("__sentence_helper_chosen_") {
+        return None;
+    }
+    let rest = strip_prefix_ascii_ci(
+        rest,
+        &format!(
+            "for each tagged '{kicked_tag}' object, Return that object to its owner's hand, then for each tagged '__sentence_helper_revealed_l0_s0_e0' object, if it isn't true that it matches permanent, Put that object on the bottom of its owner's library. Otherwise, you choose exactly 1 card in library and tags it as '"
+        ),
+    )?;
+    let (base_tag, rest) = rest.split_once("', ")?;
+    if !base_tag.starts_with("__sentence_helper_chosen_") {
+        return None;
+    }
+    let after = strip_prefix_ascii_ci(
+        rest,
+        &format!(
+            "for each tagged '{base_tag}' object, Return that object to its owner's hand, then for each tagged '__sentence_helper_revealed_l0_s0_e0' object, if it isn't true that it matches permanent, Put that object on the bottom of its owner's library."
+        ),
+    )
+    .or_else(|| {
+        strip_prefix_ascii_ci(
+            rest,
+            &format!(
+                "for each tagged '{base_tag}' object, Return that object to its owner's hand, then for each tagged '__sentence_helper_revealed_l0_s0_e0' object, if it isn't true that it matches permanent, Put that object on the bottom of its owner's library"
+            ),
+        )
+    })?;
+    let replacement = "Look at the top the number of lands you control cards of your library. If this spell was kicked, put two of those cards into your hand. Otherwise, put one of those cards into your hand. Put the rest on the bottom of your library.";
+    Some(format!("{before}{replacement}{after}"))
+}
+
+pub(super) fn normalize_sentence_helper_spell_mastery_gather_clause(text: &str) -> Option<String> {
+    let marker = "Reveal the top five cards of your library. You may put a creature card from among them into your hand. Put the rest into your graveyard. If you have two or more instants or sorcery cards in your graveyard, you choose exactly 1 card in library and tags it as '";
+    let (before, rest) = split_once_ascii_ci(text, marker)?;
+    let (first_tag, rest) = rest.split_once("', ")?;
+    if !first_tag.starts_with("__sentence_helper_chosen_") {
+        return None;
+    }
+    let rest = strip_prefix_ascii_ci(
+        rest,
+        &format!(
+            "for each tagged '{first_tag}' object, Return that object to its owner's hand, then for each tagged '"
+        ),
+    )?;
+    let (second_tag, rest) = split_once_ascii_ci(
+        rest,
+        "' object, if it isn't true that it matches permanent, Put that object into its owner's graveyard",
+    )?;
+    if !second_tag.starts_with("__sentence_helper_chosen_") {
+        return None;
+    }
+    let replacement = "Reveal the top five cards of your library. You may put a creature card from among them into your hand. Put the rest into your graveyard. If you have two or more instants or sorcery cards in your graveyard, put up to two creature cards from among the revealed cards into your hand instead of one";
+    Some(format!(
+        "{before}{}",
+        append_sentence_tail(replacement.to_string(), rest)
+    ))
+}
+
 pub(super) fn normalize_enlist_tag_sequence(text: &str) -> Option<String> {
     let marker = "Tag the triggering object as 'enlist_attacker'. you choose exactly 1 ";
     let (before, rest) = split_once_ascii_ci(text, marker)?;
@@ -4448,6 +5128,278 @@ pub(super) fn normalize_choose_exact_tagged_it_clause(text: &str) -> Option<Stri
         descriptor = descriptor.replace(" in their hand in their hand", " in their hand");
         let chosen = render_choose_exact_subject(&descriptor, count);
         return Some(format!("{chooser} chooses {chosen}{tail}"));
+    }
+    None
+}
+
+fn strip_leading_article(descriptor: &str) -> &str {
+    descriptor
+        .trim()
+        .strip_prefix("a ")
+        .or_else(|| descriptor.trim().strip_prefix("an "))
+        .unwrap_or(descriptor.trim())
+}
+
+fn append_sentence_tail(mut rewritten: String, tail: &str) -> String {
+    let tail = tail.trim();
+    if let Some(rest) = tail.strip_prefix('.') {
+        let rest = rest.trim();
+        if rest.is_empty() {
+            if !rewritten.ends_with('.') {
+                rewritten.push('.');
+            }
+        } else {
+            if !rewritten.ends_with('.') {
+                rewritten.push('.');
+            }
+            rewritten.push(' ');
+            rewritten.push_str(&capitalize_first(rest));
+            if !rewritten.ends_with('.') {
+                rewritten.push('.');
+            }
+        }
+    } else if !tail.is_empty() {
+        if !rewritten.ends_with('.') && !tail.starts_with(',') {
+            rewritten.push('.');
+        }
+        if !rewritten.ends_with(' ') && !tail.starts_with(',') {
+            rewritten.push(' ');
+        }
+        rewritten.push_str(tail);
+    } else if !rewritten.ends_with('.') {
+        rewritten.push('.');
+    }
+    rewritten
+}
+
+fn render_search_subject_and_pronoun(
+    descriptor_raw: &str,
+    selection_kind: &str,
+) -> Option<(String, &'static str)> {
+    let descriptor = descriptor_raw.trim();
+    match selection_kind {
+        "X" => Some((
+            render_choose_subject_for_count_token(strip_leading_article(descriptor), "X"),
+            "them",
+        )),
+        "up to one" => Some((
+            format!("up to one {}", strip_leading_article(descriptor)),
+            "it",
+        )),
+        "exactly one" => Some((
+            with_indefinite_article(strip_leading_article(descriptor)),
+            "it",
+        )),
+        _ => None,
+    }
+}
+
+pub(super) fn normalize_search_put_onto_battlefield_clause(text: &str) -> Option<String> {
+    let patterns = [
+        (
+            "you searches for X ",
+            "X",
+            "search your library for",
+            "put",
+            "shuffle",
+        ),
+        (
+            "you searches for up to one ",
+            "up to one",
+            "search your library for",
+            "put",
+            "shuffle",
+        ),
+        (
+            "you may searches for up to one ",
+            "up to one",
+            "you may search your library for",
+            "put",
+            "shuffle",
+        ),
+        (
+            "that object's controller searches for up to one ",
+            "up to one",
+            "that object's controller searches their library for",
+            "puts",
+            "shuffles",
+        ),
+    ];
+    for (marker, selection_kind, lead, put_verb, shuffle_verb) in patterns {
+        let Some((before, rest)) = split_once_ascii_ci(text, marker) else {
+            continue;
+        };
+        let Some((descriptor_raw, after)) =
+            split_once_ascii_ci(rest, " in a library and tags it as 'searched'. ")
+        else {
+            continue;
+        };
+        let Some((subject, pronoun)) =
+            render_search_subject_and_pronoun(descriptor_raw, selection_kind)
+        else {
+            continue;
+        };
+
+        let battlefield_suffix = if let Some(tail) = strip_prefix_ascii_ci(
+            after,
+            "Put the tagged object 'searched' onto the battlefield tapped. Shuffle your library",
+        ) {
+            Some(("onto the battlefield tapped", tail))
+        } else if let Some(tail) = strip_prefix_ascii_ci(
+            after,
+            "Put the tagged object 'searched' onto the battlefield. Shuffle your library",
+        ) {
+            Some(("onto the battlefield", tail))
+        } else {
+            None
+        };
+        let Some((destination, tail)) = battlefield_suffix else {
+            continue;
+        };
+
+        let rewritten =
+            format!("{lead} {subject}, {put_verb} {pronoun} {destination}, then {shuffle_verb}");
+        return Some(apply_replacement_with_case(
+            before,
+            &append_sentence_tail(rewritten, tail),
+            "",
+        ));
+    }
+    None
+}
+
+pub(super) fn normalize_search_reveal_into_hand_clause(text: &str) -> Option<String> {
+    let patterns = [
+        (
+            "you searches for X ",
+            "X",
+            "search your library for",
+            "your",
+        ),
+        (
+            "you searches for up to one ",
+            "up to one",
+            "search your library for",
+            "your",
+        ),
+        (
+            "you may searches for up to one ",
+            "up to one",
+            "you may search your library for",
+            "your",
+        ),
+    ];
+    for (marker, selection_kind, lead, hand_owner) in patterns {
+        let Some((before, rest)) = split_once_ascii_ci(text, marker) else {
+            continue;
+        };
+        let Some((descriptor_raw, after)) =
+            split_once_ascii_ci(rest, " in a library and tags it as 'searched'. ")
+        else {
+            continue;
+        };
+        let Some((subject, pronoun)) =
+            render_search_subject_and_pronoun(descriptor_raw, selection_kind)
+        else {
+            continue;
+        };
+
+        let rewritten = if let Some(tail) = strip_prefix_ascii_ci(
+            after,
+            "Reveal it. Return the tagged object 'searched' to its owner's hand. Shuffle your library",
+        ) {
+            Some(append_sentence_tail(
+                format!(
+                    "{lead} {subject}, reveal {pronoun}, put {pronoun} into {hand_owner} hand, then shuffle"
+                ),
+                tail,
+            ))
+        } else if let Some(tail) = strip_prefix_ascii_ci(
+            after,
+            "Reveal it. Return the tagged object 'searched' to its owner's hand. you discard a card at random. Shuffle your library",
+        ) {
+            Some(append_sentence_tail(
+                format!(
+                    "{lead} {subject}, reveal {pronoun}, put {pronoun} into {hand_owner} hand, discard a card at random, then shuffle"
+                ),
+                tail,
+            ))
+        } else {
+            None
+        };
+        let Some(rewritten) = rewritten else {
+            continue;
+        };
+        return Some(apply_replacement_with_case(before, &rewritten, ""));
+    }
+    None
+}
+
+fn normalize_search_condition_text(condition: &str) -> String {
+    if let Some(rest) = strip_prefix_ascii_ci(
+        condition.trim(),
+        "If the tagged object 'searched' matches permanent with mana value ",
+    ) {
+        return format!("If it has mana value {}", rest.trim());
+    }
+    condition.trim().to_string()
+}
+
+pub(super) fn normalize_search_reveal_battlefield_or_hand_clause(text: &str) -> Option<String> {
+    let patterns = [
+        (
+            "you searches for up to one ",
+            "search your library for",
+            "put",
+            "shuffle",
+        ),
+        (
+            "you may searches for up to one ",
+            "you may search your library for",
+            "put",
+            "shuffle",
+        ),
+    ];
+    for (marker, lead, put_verb, shuffle_verb) in patterns {
+        let Some((before, rest)) = split_once_ascii_ci(text, marker) else {
+            continue;
+        };
+        let Some((descriptor_raw, after)) =
+            split_once_ascii_ci(rest, " in a library and tags it as 'searched'. Reveal it. ")
+        else {
+            continue;
+        };
+        let Some((subject, pronoun)) =
+            render_search_subject_and_pronoun(descriptor_raw, "up to one")
+        else {
+            continue;
+        };
+
+        let parsed = if let Some((condition, tail)) = split_once_ascii_ci(
+            after,
+            ", Put the tagged object 'searched' onto the battlefield tapped. If that doesn't happen, Return the tagged object 'searched' to its owner's hand. Shuffle your library",
+        ) {
+            Some((condition, "onto the battlefield tapped", tail))
+        } else if let Some((condition, tail)) = split_once_ascii_ci(
+            after,
+            ", Put the tagged object 'searched' onto the battlefield. If that doesn't happen, Return the tagged object 'searched' to its owner's hand. Shuffle your library",
+        ) {
+            Some((condition, "onto the battlefield", tail))
+        } else {
+            None
+        };
+        let Some((condition_raw, destination, tail)) = parsed else {
+            continue;
+        };
+        let condition = normalize_search_condition_text(condition_raw);
+        let rewritten = format!(
+            "{lead} {subject}, reveal {pronoun}. {condition}, {put_verb} {pronoun} {destination}. Otherwise, put {pronoun} into your hand, then {shuffle_verb}"
+        );
+        return Some(apply_replacement_with_case(
+            before,
+            &append_sentence_tail(rewritten, tail),
+            "",
+        ));
     }
     None
 }

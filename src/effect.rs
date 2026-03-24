@@ -2020,6 +2020,9 @@ pub enum Condition {
     /// It's your turn
     YourTurn,
 
+    /// It is one of your first `count` turns of the game.
+    YourFirstTurnsOfTheGameOrFewer(u32),
+
     /// A creature died this turn
     CreatureDiedThisTurn,
 

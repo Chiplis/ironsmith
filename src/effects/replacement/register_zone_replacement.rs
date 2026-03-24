@@ -33,6 +33,33 @@ impl RegisterZoneReplacementEffect {
             mode,
         }
     }
+
+    pub fn resolve_replacements(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Vec<ReplacementEffect>, ExecutionError> {
+        let object_ids = resolve_objects_for_effect(game, ctx, &self.target)?;
+        if object_ids.is_empty() {
+            return Err(ExecutionError::InvalidTarget);
+        }
+
+        Ok(object_ids
+            .into_iter()
+            .map(|object_id| {
+                ReplacementEffect::with_matcher(
+                    ctx.source,
+                    ctx.controller,
+                    crate::events::zones::matchers::WouldChangeZoneMatcher::new(
+                        ObjectFilter::specific(object_id),
+                        self.from_zone,
+                        self.to_zone,
+                    ),
+                    ReplacementAction::ChangeDestination(self.replacement_zone),
+                )
+            })
+            .collect())
+    }
 }
 
 impl EffectExecutor for RegisterZoneReplacementEffect {
@@ -41,23 +68,13 @@ impl EffectExecutor for RegisterZoneReplacementEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let object_ids = resolve_objects_for_effect(game, ctx, &self.target)?;
-        if object_ids.is_empty() {
-            return Ok(EffectOutcome::target_invalid());
-        }
+        let replacements = match self.resolve_replacements(game, ctx) {
+            Ok(replacements) => replacements,
+            Err(ExecutionError::InvalidTarget) => return Ok(EffectOutcome::target_invalid()),
+            Err(err) => return Err(err),
+        };
 
-        for object_id in &object_ids {
-            let replacement = ReplacementEffect::with_matcher(
-                ctx.source,
-                ctx.controller,
-                crate::events::zones::matchers::WouldChangeZoneMatcher::new(
-                    ObjectFilter::specific(*object_id),
-                    self.from_zone,
-                    self.to_zone,
-                ),
-                ReplacementAction::ChangeDestination(self.replacement_zone),
-            );
-
+        for replacement in replacements {
             match self.mode {
                 ReplacementApplyMode::OneShot => {
                     game.replacement_effects.add_one_shot_effect(replacement);
@@ -72,6 +89,7 @@ impl EffectExecutor for RegisterZoneReplacementEffect {
             }
         }
 
+        let object_ids = resolve_objects_for_effect(game, ctx, &self.target)?;
         Ok(EffectOutcome::with_objects(object_ids))
     }
 

@@ -270,6 +270,14 @@ fn merge_it_match_filter_into_target(target: &mut TargetAst, it_filter: &ObjectF
     true
 }
 
+fn parse_counter_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTextError> {
+    let target_words = words(tokens);
+    if matches!(target_words.as_slice(), ["him"] | ["her"]) {
+        return Ok(TargetAst::Source(span_from_tokens(tokens)));
+    }
+    parse_target_phrase(tokens)
+}
+
 pub(crate) fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     let (count_value, used) = parse_put_counter_count_value(tokens)?;
     let rest = &tokens[used..];
@@ -326,7 +334,7 @@ pub(crate) fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, 
     } else if let Value::CountersOn(_, Some(counter_type)) = &count_value {
         *counter_type
     } else if let Value::CountersOn(spec, None) = &count_value {
-        let target = parse_target_phrase(&target_tokens)?;
+        let target = parse_counter_target_phrase(&target_tokens)?;
         let from = target_from_counter_source_spec(spec.as_ref(), span_from_tokens(tokens))
             .ok_or_else(|| {
                 CardTextError::ParseError(format!(
@@ -380,7 +388,7 @@ pub(crate) fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, 
                 words(tokens).join(" ")
             )));
         }
-        let mut target = parse_target_phrase(target_phrase)?;
+        let mut target = parse_counter_target_phrase(target_phrase)?;
         let mut predicate = trailing_predicate.clone();
         if let Some(PredicateAst::ItMatches(filter)) = predicate.as_ref()
             && merge_it_match_filter_into_target(&mut target, filter)
@@ -422,7 +430,7 @@ pub(crate) fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, 
         let base_target_tokens = trim_commas(&target_tokens[..for_each_idx]);
         let count_filter_tokens = trim_commas(&target_tokens[for_each_idx + 2..]);
         if !base_target_tokens.is_empty() && !count_filter_tokens.is_empty() {
-            let mut target = parse_target_phrase(&base_target_tokens)?;
+            let mut target = parse_counter_target_phrase(&base_target_tokens)?;
             let mut predicate = trailing_predicate.clone();
             if let Some(PredicateAst::ItMatches(filter)) = predicate.as_ref()
                 && merge_it_match_filter_into_target(&mut target, filter)
@@ -461,7 +469,7 @@ pub(crate) fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, 
             });
         }
     }
-    let mut target = parse_target_phrase(&target_tokens)?;
+    let mut target = parse_counter_target_phrase(&target_tokens)?;
     let mut predicate = trailing_predicate.clone();
     if let Some(PredicateAst::ItMatches(filter)) = predicate.as_ref()
         && merge_it_match_filter_into_target(&mut target, filter)
@@ -669,9 +677,12 @@ fn parse_put_or_remove_counter_choice(
                 words(clause_tokens).join(" ")
             )));
         }
-        (parse_target_phrase(target_phrase)?, Some(target_count))
+        (
+            parse_counter_target_phrase(target_phrase)?,
+            Some(target_count),
+        )
     } else {
-        (parse_target_phrase(&base_target_tokens)?, None)
+        (parse_counter_target_phrase(&base_target_tokens)?, None)
     };
 
     let target_phrase = words(&base_target_tokens).join(" ");

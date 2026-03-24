@@ -26,6 +26,8 @@ use self::render_effects::*;
 use self::render_pipeline::*;
 
 pub(crate) use self::normalize_common::describe_value;
+pub use self::oracle_style::canonical_compiled_lines;
 pub use self::oracle_style::oracle_like_lines;
 pub use self::render_effects::compile_effect_list;
 pub use self::render_pipeline::compiled_lines;
+pub use self::render_pipeline::raw_compiled_lines;

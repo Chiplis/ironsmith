@@ -4,9 +4,10 @@
 //! such as destroy, exile, sacrifice, and return to hand.
 
 use crate::DecisionMaker;
-use crate::event_processor::{EventOutcome, process_zone_change};
+use crate::event_processor::{EventOutcome, process_zone_change_with_additional_effects};
 use crate::game_state::GameState;
 use crate::ids::ObjectId;
+use crate::replacement::ReplacementEffect;
 use crate::zone::Zone;
 
 mod battlefield_entry;
@@ -54,7 +55,35 @@ pub(crate) fn apply_zone_change(
     cause: crate::events::cause::EventCause,
     decision_maker: &mut dyn DecisionMaker,
 ) -> EventOutcome<AppliedZoneChange> {
-    match process_zone_change(game, object_id, from, to, cause.clone(), decision_maker) {
+    apply_zone_change_with_additional_effects(
+        game,
+        object_id,
+        from,
+        to,
+        cause,
+        decision_maker,
+        &[],
+    )
+}
+
+pub(crate) fn apply_zone_change_with_additional_effects(
+    game: &mut GameState,
+    object_id: ObjectId,
+    from: Zone,
+    to: Zone,
+    cause: crate::events::cause::EventCause,
+    decision_maker: &mut dyn DecisionMaker,
+    additional_effects: &[ReplacementEffect],
+) -> EventOutcome<AppliedZoneChange> {
+    match process_zone_change_with_additional_effects(
+        game,
+        object_id,
+        from,
+        to,
+        cause.clone(),
+        decision_maker,
+        additional_effects,
+    ) {
         EventOutcome::Proceed(final_zone) => EventOutcome::Proceed(finalize_zone_change_move(
             game, object_id, final_zone, cause,
         )),

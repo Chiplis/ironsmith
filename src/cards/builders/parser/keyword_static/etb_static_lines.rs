@@ -1589,6 +1589,16 @@ pub(crate) fn parse_conditional_enters_tapped_unless_line(
             StaticAbility::enters_tapped_unless_two_or_more_opponents(),
         ));
     }
+    if condition_words.starts_with(&[
+        "it", "s", "your", "first", "second", "or", "third", "turn", "of", "the", "game",
+    ]) || condition_words.starts_with(&[
+        "it's", "your", "first", "second", "or", "third", "turn", "of", "the", "game",
+    ]) {
+        return Ok(Some(StaticAbility::enters_tapped_unless_condition(
+            crate::ConditionExpr::YourFirstTurnsOfTheGameOrFewer(3),
+            clause_words.join(" "),
+        )));
+    }
 
     // Generic: "unless you control <object filter>" (covers Mount/Vehicle, etc.).
     if condition_words.starts_with(&["you", "control"])

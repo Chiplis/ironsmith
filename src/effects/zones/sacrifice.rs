@@ -16,7 +16,7 @@ use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 
-use super::apply_zone_change;
+use super::apply_zone_change_with_additional_effects;
 
 /// Effect that makes a player sacrifice permanents.
 ///
@@ -149,15 +149,17 @@ impl EffectExecutor for SacrificeEffect {
                 .object(id)
                 .map(|obj| ObjectSnapshot::from_object(obj, game));
             let sacrificing_player = pre_snapshot.as_ref().map(|snapshot| snapshot.controller);
+            let additional_effects = ctx.additional_replacement_effects_snapshot();
 
             // Process each sacrifice through replacement effects with decision maker
-            let result = apply_zone_change(
+            let result = apply_zone_change_with_additional_effects(
                 game,
                 id,
                 Zone::Battlefield,
                 Zone::Graveyard,
                 ctx.cause.clone(),
                 &mut *ctx.decision_maker,
+                &additional_effects,
             );
 
             match result {
@@ -354,15 +356,17 @@ impl SacrificeTargetEffect {
             .object(object_id)
             .map(|obj| ObjectSnapshot::from_object(obj, game));
         let sacrificing_player = pre_snapshot.as_ref().map(|snapshot| snapshot.controller);
+        let additional_effects = ctx.additional_replacement_effects_snapshot();
 
         // Process sacrifice through replacement effects
-        let result = apply_zone_change(
+        let result = apply_zone_change_with_additional_effects(
             game,
             object_id,
             Zone::Battlefield,
             Zone::Graveyard,
             ctx.cause.clone(),
             &mut *ctx.decision_maker,
+            &additional_effects,
         );
 
         match result {

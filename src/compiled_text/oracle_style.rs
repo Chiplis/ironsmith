@@ -209,6 +209,20 @@ pub(super) fn normalize_sentence_surface_style(line: &str) -> String {
             trigger_body.trim()
         );
     }
+    if let Some((trigger_head, trigger_body)) = normalized.split_once(':')
+        && matches!(
+            trigger_head.trim().to_ascii_lowercase().as_str(),
+            head if head.starts_with("when ") || head.starts_with("whenever ")
+        )
+        && let Some(action) = strip_suffix_ascii_ci(trigger_body.trim(), ". Draw a card.")
+            .or_else(|| strip_suffix_ascii_ci(trigger_body.trim(), ". Draw a card"))
+    {
+        return format!(
+            "{}, {} and draw a card.",
+            trigger_head.trim(),
+            lowercase_first(action.trim())
+        );
+    }
     if let Some(rest) = normalized.strip_prefix("Creatures you control get ")
         && let Some(pt) = rest
             .strip_suffix(" as long as it's your turn.")
@@ -1640,15 +1654,15 @@ pub(super) fn normalize_granted_beginning_trigger_clause(text: &str) -> Option<S
     ))
 }
 
-/// Render compiled output in a near-oracle style for semantic diffing.
-pub fn oracle_like_lines(def: &CardDefinition) -> Vec<String> {
+/// Render the canonical normalized compiled-text surface used for storage and exports.
+pub fn canonical_compiled_lines(def: &CardDefinition) -> Vec<String> {
     let _ = def;
     let base_lines = compiled_lines(def);
     let normalized = base_lines
         .iter()
         .map(|line| strip_render_heading(line))
         .filter(|line| !line.is_empty())
-        .map(|line| normalize_common_semantic_phrasing(&line))
+        .map(|line| normalize_compiled_post_pass_effect(&normalize_common_semantic_phrasing(&line)))
         .collect::<Vec<_>>();
     let merged_predicates = merge_adjacent_subject_predicate_lines(normalized);
     let merged_mana = merge_adjacent_simple_mana_add_lines(merged_predicates);
@@ -1660,6 +1674,11 @@ pub fn oracle_like_lines(def: &CardDefinition) -> Vec<String> {
         .into_iter()
         .map(|line| normalize_sentence_surface_style(&line))
         .collect()
+}
+
+/// Backward-compatible alias for the canonical normalized compiled-text surface.
+pub fn oracle_like_lines(def: &CardDefinition) -> Vec<String> {
+    canonical_compiled_lines(def)
 }
 
 #[cfg(test)]
@@ -4442,6 +4461,38 @@ mod tests {
     }
 
     #[test]
+    fn compiled_line_post_pass_normalizes_enlist_tag_sequence() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Argivian Cavalier")
+            .oracle_text(
+                "Enlist\nWhen this creature enters, create a 1/1 white Soldier creature token.",
+            )
+            .build();
+        let normalized = normalize_compiled_line_post_pass(
+            &def,
+            "Triggered ability 1: Whenever this creature attacks, you may Tag the triggering object as 'enlist_attacker'. you choose exactly 1 another nonattacking creature you control in the battlefield and tags it as 'enlisted_creature'. Tap target tagged object 'enlisted_creature'. the tagged object 'enlist_attacker' gets +1/+0 until end of turn for each the tagged object 'enlisted_creature''s power",
+        );
+        assert_eq!(
+            normalized,
+            "Triggered ability 1: Whenever this creature attacks, you may tap another nonattacking creature you control. When you do, this creature gets +X/+0 until end of turn, where X is that creature's power."
+        );
+    }
+
+    #[test]
+    fn compiled_line_post_pass_normalizes_top_cards_sequence() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Raven Familiar")
+            .oracle_text("Flying\nWhen this creature enters, look at the top three cards of your library. Put one of them into your hand and the rest on the bottom of your library in any order.")
+            .build();
+        let normalized = normalize_compiled_line_post_pass(
+            &def,
+            "Triggered ability 4: When this creature enters, look at the top three cards of your library. you choose exactly 1 card in library and tags it as '__sentence_helper_chosen_l0_s0_e1'. For each tagged '__sentence_helper_chosen_l0_s0_e1' object, Return that object to its owner's hand. For each tagged '__sentence_helper_revealed_l0_s0_e0' object, if it isn't true that it matches permanent, Put that object on the bottom of its owner's library.",
+        );
+        assert_eq!(
+            normalized,
+            "Triggered ability 4: When this creature enters, look at the top three cards of your library. Put one of them into your hand and the rest on the bottom of your library."
+        );
+    }
+
+    #[test]
     fn post_pass_normalizes_remaining_it_tag_choice_clause() {
         let normalized = normalize_compiled_post_pass_effect(
             "For each player, you choose up to one creature card from that player's graveyard and tags it as '__it__'. Put it onto the battlefield under your control.",
@@ -4457,6 +4508,39 @@ mod tests {
         let text = "{T}, Sacrifice this creature: you choose exactly 1 card with a void counter on it in an opponent's exile and tags it as '__it__'. you may play that card until end of turn. you may cast tagged '__it__' and mana of any type can be spent to cast that spell.";
         let normalized = normalize_compiled_post_pass_effect(text);
         assert_eq!(normalized, text);
+    }
+
+    #[test]
+    fn post_pass_normalizes_single_bound_it_choice_with_that_object_tail() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "You choose exactly 1 a Giant creature you control in the battlefield and tags it as '__it__'. that object deals damage equal to its power to target creature.",
+        );
+        assert_eq!(
+            normalized,
+            "You choose exactly 1 a Giant creature you control in the battlefield. That creature deals damage equal to its power to target creature."
+        );
+    }
+
+    #[test]
+    fn post_pass_normalizes_single_bound_it_choice_with_return_it_tail() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "At the beginning of your upkeep, you choose exactly 1 card in your graveyard and tags it as '__it__'. If it's a creature, Put that object onto the battlefield. If that doesn't happen, Return it to its owner's hand.",
+        );
+        assert_eq!(
+            normalized,
+            "At the beginning of your upkeep, you choose exactly 1 card in your graveyard. If that card is a creature, Put that card onto the battlefield. If that doesn't happen, Return that card to its owner's hand."
+        );
+    }
+
+    #[test]
+    fn post_pass_normalizes_single_bound_it_choice_with_equipment_clause() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "Each Vehicle you control becomes an artifact creature until end of turn. you choose exactly 1 a Dwarf you control in the battlefield and tags it as '__it__'. Attach any number of all Equipmentses you control to that object.",
+        );
+        assert_eq!(
+            normalized,
+            "Each Vehicle you control becomes an artifact creature until end of turn. You choose exactly 1 a Dwarf you control in the battlefield. Attach any number of Equipment you control to that creature."
+        );
     }
 
     #[test]
@@ -4478,6 +4562,28 @@ mod tests {
         assert_eq!(
             normalized,
             "Look at the top seven cards of your library. Put two of them into your hand and the rest into your graveyard."
+        );
+    }
+
+    #[test]
+    fn post_pass_normalizes_sentence_helper_single_top_card_to_hand() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "When Adéwalé enters, reveal the top card of your library. you choose exactly 1 card in library and tags it as '__sentence_helper_chosen_l0_s0_e1'. For each tagged '__sentence_helper_chosen_l0_s0_e1' object, Return that object to its owner's hand. For each tagged '__sentence_helper_revealed_l0_s0_e0' object, if it isn't true that it matches permanent, Put that object into its owner's graveyard.",
+        );
+        assert_eq!(
+            normalized,
+            "When Adéwalé enters, reveal the top card of your library. Put it into your hand."
+        );
+    }
+
+    #[test]
+    fn post_pass_normalizes_sentence_helper_graveyard_to_hand_choice_clause() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "When this creature enters, you mill three cards. you choose up to one land card in a graveyard and tags it as '__sentence_helper_chosen_l0_s0_e1'. For each tagged '__sentence_helper_chosen_l0_s0_e1' object, Return that object to its owner's hand. If that doesn't happen, Put a +1/+1 counter on this creature.",
+        );
+        assert_eq!(
+            normalized,
+            "When this creature enters, you mill three cards. Return up to one land card from a graveyard to your hand. If you don't, put a +1/+1 counter on this creature."
         );
     }
 
@@ -4515,6 +4621,39 @@ mod tests {
     }
 
     #[test]
+    fn post_pass_normalizes_sentence_helper_put_from_other_players_hand_clause() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "Each player may choose exactly 1 artifact or creature or enchantment or land card from that player's hand and tags it as '__sentence_helper_chosen_l0_s0_e0'. Put it onto the battlefield.",
+        );
+        assert_eq!(
+            normalized,
+            "Each player may put an artifact or creature or enchantment or land card from their hand onto the battlefield."
+        );
+    }
+
+    #[test]
+    fn post_pass_normalizes_sentence_helper_put_from_that_controllers_hand_clause() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "Counter target spell. If you do, that object's controller may choose exactly 1 creature card in its controller's hand and tags it as '__sentence_helper_chosen_l0_s0_e1'. Put it onto the battlefield.",
+        );
+        assert_eq!(
+            normalized,
+            "Counter target spell. If you do, that object's controller may put a creature card from their hand onto the battlefield."
+        );
+    }
+
+    #[test]
+    fn post_pass_normalizes_sentence_helper_milled_to_hand_clause() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "You mill two cards. you may choose exactly 1 card in library and tags it as '__sentence_helper_chosen_l0_s0_e1'. For each tagged '__sentence_helper_chosen_l0_s0_e1' object, Return that object to its owner's hand. For each tagged 'milled_0' object, if it isn't true that it matches permanent, Put that object into its owner's graveyard. you gain 2 life.",
+        );
+        assert_eq!(
+            normalized,
+            "You mill two cards. You may put a permanent card from among the cards milled this way into your hand. You gain 2 life."
+        );
+    }
+
+    #[test]
     fn post_pass_normalizes_sentence_helper_reveal_search_same_name_clause() {
         let normalized = normalize_compiled_post_pass_effect(
             "{4}, {T}: you choose exactly 1 creature card in your hand and tags it as '__sentence_helper_revealed_l16_s0_e35'. Reveal it. Search your library for a card with the same name as that object, reveal it, put it into your hand, then shuffle.",
@@ -4540,7 +4679,10 @@ mod tests {
     fn post_pass_keeps_plain_card_graveyard_return_choice_visible() {
         let text = "At the beginning of your upkeep, you choose exactly 1 card in your graveyard and tags it as 'chosen_return_0'. Return it from graveyard to the battlefield.";
         let normalized = normalize_compiled_post_pass_effect(text);
-        assert_eq!(normalized, text);
+        assert_eq!(
+            normalized,
+            "At the beginning of your upkeep, return a card from your graveyard to the battlefield."
+        );
     }
 
     #[test]
@@ -4640,6 +4782,50 @@ mod tests {
     }
 
     #[test]
+    fn post_pass_normalizes_sentence_helper_choose_exiled_card_play_clause() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "Deal X damage to target creature. When that creature dies this turn, exile a number of cards from the top of your library equal to its power. you choose exactly 1 card in exile and tags it as '__sentence_helper_chosen_l16_s40_e182'. you may play that card until the end of your next turn.",
+        );
+        assert_eq!(
+            normalized,
+            "Deal X damage to target creature. When that creature dies this turn, exile a number of cards from the top of your library equal to its power. Choose a card exiled this way. You may play that card until the end of your next turn."
+        );
+    }
+
+    #[test]
+    fn post_pass_normalizes_sentence_helper_planar_genesis_clause() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "Look at the top four cards of your library. you choose up to one land card in library and tags it as '__sentence_helper_chosen_l0_s0_e1'. For each tagged '__sentence_helper_chosen_l0_s0_e1' object, Put that object onto the battlefield tapped. If that doesn't happen, you choose exactly 1 card in library and tags it as '__sentence_helper_chosen_l0_s0_e2'. For each tagged '__sentence_helper_chosen_l0_s0_e2' object, Return that object to its owner's hand. For each tagged '__sentence_helper_revealed_l0_s0_e0' object, if it isn't true that it matches permanent, if it isn't true that it matches permanent, Put that object on the bottom of its owner's library.",
+        );
+        assert_eq!(
+            normalized,
+            "Look at the top four cards of your library. You may put a land card from among them onto the battlefield tapped. If you don't, put a card from among them into your hand. Put the rest on the bottom of your library."
+        );
+    }
+
+    #[test]
+    fn post_pass_normalizes_sentence_helper_kicked_top_x_clause() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "Kicker {1}{U}\nLook at the top the number of lands you control cards of your library. If this spell was kicked, you choose exactly 2 card in library and tags it as '__sentence_helper_chosen_l0_s0_e1', for each tagged '__sentence_helper_chosen_l0_s0_e1' object, Return that object to its owner's hand, then for each tagged '__sentence_helper_revealed_l0_s0_e0' object, if it isn't true that it matches permanent, Put that object on the bottom of its owner's library. Otherwise, you choose exactly 1 card in library and tags it as '__sentence_helper_chosen_l0_s0_e2', for each tagged '__sentence_helper_chosen_l0_s0_e2' object, Return that object to its owner's hand, then for each tagged '__sentence_helper_revealed_l0_s0_e0' object, if it isn't true that it matches permanent, Put that object on the bottom of its owner's library.",
+        );
+        assert_eq!(
+            normalized,
+            "Kicker {1}{U}\nLook at the top the number of lands you control cards of your library. If this spell was kicked, put two of those cards into your hand. Otherwise, put one of those cards into your hand. Put the rest on the bottom of your library."
+        );
+    }
+
+    #[test]
+    fn post_pass_normalizes_sentence_helper_gather_the_pack_spell_mastery_clause() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "Reveal the top five cards of your library. You may put a creature card from among them into your hand. Put the rest into your graveyard. If you have two or more instants or sorcery cards in your graveyard, you choose exactly 1 card in library and tags it as '__sentence_helper_chosen_l0_s0_e0', for each tagged '__sentence_helper_chosen_l0_s0_e0' object, Return that object to its owner's hand, then for each tagged '__sentence_helper_chosen_l0_s0_e1' object, if it isn't true that it matches permanent, Put that object into its owner's graveyard.",
+        );
+        assert_eq!(
+            normalized,
+            "Reveal the top five cards of your library. You may put a creature card from among them into your hand. Put the rest into your graveyard. If you have two or more instants or sorcery cards in your graveyard, put up to two creature cards from among the revealed cards into your hand instead of one."
+        );
+    }
+
+    #[test]
     fn post_pass_normalizes_divvy_graveyard_pile_choice_clause() {
         let normalized = normalize_compiled_post_pass_effect(
             "An opponent chooses any number creature card in your graveyard and tags it as 'divvy_chosen'. Exile the tagged object 'divvy_chosen'. Return all other creature card in your graveyard to the battlefield.",
@@ -4691,6 +4877,201 @@ mod tests {
         assert_eq!(
             normalized,
             "When enchanted creature leaves the battlefield, if enchanted creature matches creature, return an Aura card from your graveyard to the battlefield."
+        );
+    }
+
+    #[test]
+    fn post_pass_normalizes_generic_chosen_return_from_your_graveyard() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "You may mill three cards. you choose exactly 1 creature card in your graveyard and tags it as 'chosen_return_1'. Return it from graveyard to the battlefield.",
+        );
+        assert_eq!(
+            normalized,
+            "You may mill three cards. Return a creature card from your graveyard to the battlefield."
+        );
+    }
+
+    #[test]
+    fn post_pass_normalizes_generic_chosen_return_from_their_graveyard() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "Return a creature card from your graveyard to the battlefield. each opponent may choose exactly 1 creature card from that player's graveyard and tags it as 'chosen_return_3'. Return it from graveyard to the battlefield.",
+        );
+        assert_eq!(
+            normalized,
+            "Return a creature card from your graveyard to the battlefield. Each opponent may return a creature card from their graveyard to the battlefield."
+        );
+    }
+
+    #[test]
+    fn post_pass_normalizes_generic_chosen_return_under_owners_control() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "Choose target creature. When that creature dies this turn, you choose exactly 1 creature card in a graveyard and tags it as 'chosen_return_1'. Put it onto the battlefield under its owner's control.",
+        );
+        assert_eq!(
+            normalized,
+            "Choose target creature. When that creature dies this turn, return a creature card from a graveyard to the battlefield under its owner's control."
+        );
+    }
+
+    #[test]
+    fn post_pass_normalizes_sacrifice_it_unless_exact_count_choice_clause() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "When this creature enters, sacrifice it unless you choose exactly 2 a Mountain you control and tags it as 'sacrificed_0'. you sacrifice two permanent.",
+        );
+        assert_eq!(
+            normalized,
+            "When this creature enters, sacrifice it unless you sacrifice two Mountains you control."
+        );
+    }
+
+    #[test]
+    fn post_pass_normalizes_exact_count_sacrificed_choice_clause() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "You choose exactly 2 a Mountain you control and tags it as 'sacrificed_0'. you sacrifice two permanent.",
+        );
+        assert_eq!(normalized, "Sacrifice two Mountains you control.");
+    }
+
+    #[test]
+    fn post_pass_normalizes_may_exact_count_sacrificed_choice_clause() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "You may choose exactly 2 a Food you control and tags it as 'sacrificed_0'. you sacrifice two permanent. If effect #0 happened, Create a 7/7 green Giant creature tokens.",
+        );
+        assert_eq!(
+            normalized,
+            "You may sacrifice two Foods you control. If effect #0 happened, Create a 7/7 green Giant creature tokens."
+        );
+    }
+
+    #[test]
+    fn post_pass_normalizes_exact_count_player_sacrificed_choice_clause() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "Whenever this creature attacks, for each player, if that player controls the most lands, that player chooses exactly 2 a land that player controls in the battlefield and tags it as 'sacrificed_0', then that player sacrifices two permanent.",
+        );
+        assert_eq!(
+            normalized,
+            "Whenever this creature attacks, for each player, if that player controls the most lands, that player sacrifices two lands they control of their choice."
+        );
+    }
+
+    #[test]
+    fn post_pass_normalizes_sacrificed_choice_with_nonzero_tag_suffix() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "Create two 3/1 red Elemental creature tokens with haste and trample. you choose exactly 1 token and tags it as 'sacrificed_1'. you sacrifice a permanent.",
+        );
+        assert_eq!(
+            normalized,
+            "Create two 3/1 red Elemental creature tokens with haste and trample. Sacrifice a token."
+        );
+    }
+
+    #[test]
+    fn post_pass_normalizes_same_name_reference_battlefield_clause() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "When this creature enters, you may choose exactly 1 another creature you control in the battlefield and tags it as 'same_name_reference'. Search your library for a card with the same name as that object, reveal it, put it into your hand, then shuffle.",
+        );
+        assert_eq!(
+            normalized,
+            "When this creature enters, you may search your library for a card with the same name as another creature you control, reveal it, put it into your hand, then shuffle."
+        );
+    }
+
+    #[test]
+    fn post_pass_normalizes_same_name_reference_graveyard_clause() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "When this creature enters, you choose exactly 1 card in your graveyard and tags it as 'same_name_reference'. Search your library for an instant or sorcery card, reveal it, put it into your hand, then shuffle.",
+        );
+        assert_eq!(
+            normalized,
+            "When this creature enters, search your library for an instant or sorcery card with the same name as a card in your graveyard, reveal it, put it into your hand, then shuffle."
+        );
+    }
+
+    #[test]
+    fn post_pass_normalizes_sentence_helper_top_card_exile_play_clause() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "Each creature you control gets +2/+0 until end of turn. If you control an outlaw, you choose the top card in your library and tags it as '__sentence_helper_exiled_l0_s0_e1', then exile it. you may play that card until the end of your next turn.",
+        );
+        assert_eq!(
+            normalized,
+            "Each creature you control gets +2/+0 until end of turn. If you control an outlaw, exile the top card of your library. you may play that card until the end of your next turn."
+        );
+    }
+
+    #[test]
+    fn post_pass_normalizes_sentence_helper_exile_card_from_hand_clause() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "Target opponent reveals their hand. you choose exactly 1 nonland card in target opponent's hand. Target opponent discards that card. If you control no Faerie, you choose exactly 1 card in your hand and tags it as '__sentence_helper_exiled_l0_s0_e1', then exile it.",
+        );
+        assert_eq!(
+            normalized,
+            "Target opponent reveals their hand. you choose exactly 1 nonland card in target opponent's hand. Target opponent discards that card. If you control no Faerie, exile a card from your hand."
+        );
+    }
+
+    #[test]
+    fn post_pass_normalizes_search_put_onto_battlefield_clause() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "You searches for X basic land in a library and tags it as 'searched'. Put the tagged object 'searched' onto the battlefield tapped. Shuffle your library.",
+        );
+        assert_eq!(
+            normalized,
+            "Search your library for X basic lands, put them onto the battlefield tapped, then shuffle."
+        );
+    }
+
+    #[test]
+    fn post_pass_normalizes_search_put_onto_battlefield_with_trailing_clause() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "You searches for X basic land in a library and tags it as 'searched'. Put the tagged object 'searched' onto the battlefield tapped. Shuffle your library. Prevent all combat damage that would be dealt this turn.",
+        );
+        assert_eq!(
+            normalized,
+            "Search your library for X basic lands, put them onto the battlefield tapped, then shuffle. Prevent all combat damage that would be dealt this turn."
+        );
+    }
+
+    #[test]
+    fn post_pass_normalizes_search_reveal_into_hand_clause() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "Activated ability 1: {3}, {T}, Sacrifice this artifact: you searches for up to one Island or Swamp or Mountain in a library and tags it as 'searched'. Reveal it. Return the tagged object 'searched' to its owner's hand. Shuffle your library.",
+        );
+        assert_eq!(
+            normalized,
+            "Activated ability 1: {3}, {T}, Sacrifice this artifact: Search your library for up to one Island or Swamp or Mountain, reveal it, put it into your hand, then shuffle."
+        );
+    }
+
+    #[test]
+    fn post_pass_normalizes_search_reveal_into_hand_with_discard_clause() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "Activated ability 1: {1}{W}: you searches for up to one enchantment in a library and tags it as 'searched'. Reveal it. Return the tagged object 'searched' to its owner's hand. you discard a card at random. Shuffle your library.",
+        );
+        assert_eq!(
+            normalized,
+            "Activated ability 1: {1}{W}: Search your library for up to one enchantment, reveal it, put it into your hand, discard a card at random, then shuffle."
+        );
+    }
+
+    #[test]
+    fn post_pass_normalizes_search_reveal_battlefield_or_hand_clause() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "When this creature enters, you searches for up to one basic Plains in a library and tags it as 'searched'. Reveal it. If an opponent controls more lands than you, Put the tagged object 'searched' onto the battlefield tapped. If that doesn't happen, Return the tagged object 'searched' to its owner's hand. Shuffle your library.",
+        );
+        assert_eq!(
+            normalized,
+            "When this creature enters, search your library for up to one basic Plains, reveal it. If an opponent controls more lands than you, put it onto the battlefield tapped. Otherwise, put it into your hand, then shuffle."
+        );
+    }
+
+    #[test]
+    fn post_pass_normalizes_search_reveal_battlefield_or_hand_with_mana_value_condition() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "When this Vehicle enters, you may searches for up to one artifact in a library and tags it as 'searched'. Reveal it. If the tagged object 'searched' matches permanent with mana value 2 or less, Put the tagged object 'searched' onto the battlefield. If that doesn't happen, Return the tagged object 'searched' to its owner's hand. Shuffle your library.",
+        );
+        assert_eq!(
+            normalized,
+            "When this Vehicle enters, you may search your library for up to one artifact, reveal it. If it has mana value 2 or less, put it onto the battlefield. Otherwise, put it into your hand, then shuffle."
         );
     }
 

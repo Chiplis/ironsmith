@@ -3,7 +3,7 @@
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_objects_for_effect;
-use crate::event_processor::{EventOutcome, process_zone_change};
+use crate::event_processor::{EventOutcome, process_zone_change_with_additional_effects};
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
@@ -120,15 +120,17 @@ impl EffectExecutor for MoveToZoneEffect {
                 continue;
             };
             let from_zone = obj.zone;
+            let additional_effects = ctx.additional_replacement_effects_snapshot();
 
             // Process through replacement effects with decision maker
-            let result = process_zone_change(
+            let result = process_zone_change_with_additional_effects(
                 game,
                 object_id,
                 from_zone,
                 self.zone,
                 ctx.cause.clone(),
                 &mut ctx.decision_maker,
+                &additional_effects,
             );
 
             match result {

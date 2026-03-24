@@ -77,6 +77,33 @@ pub(crate) fn parse_if_result_predicate(tokens: &[OwnedLexToken]) -> Option<IfRe
         Some(IfResultPredicate::Did)
     } else if is_negated_this_way_result("when") {
         Some(IfResultPredicate::DidNot)
+    } else if (words.len() == 2
+        && matches!(words[0], "player" | "players")
+        && matches!(words[1], "dont" | "doesnt" | "didnt" | "cant"))
+        || (words.len() == 3
+            && matches!(words[0], "player" | "players")
+            && matches!(words[1], "do" | "does" | "did" | "can")
+            && words[2] == "not")
+        || (words.len() == 3
+            && words[0] == "that"
+            && words[1] == "player"
+            && matches!(words[2], "dont" | "doesnt" | "didnt" | "cant"))
+        || (words.len() == 4
+            && words[0] == "that"
+            && words[1] == "player"
+            && matches!(words[2], "do" | "does" | "did" | "can")
+            && words[3] == "not")
+    {
+        Some(IfResultPredicate::DidNot)
+    } else if (words.len() == 2
+        && matches!(words[0], "player" | "players")
+        && matches!(words[1], "do" | "does"))
+        || (words.len() == 3
+            && words[0] == "that"
+            && words[1] == "player"
+            && matches!(words[2], "do" | "does"))
+    {
+        Some(IfResultPredicate::Did)
     } else {
         None
     }
@@ -164,6 +191,13 @@ pub(crate) fn parse_if_result_predicate_lexed(
     {
         return Some(IfResultPredicate::Did);
     }
+    if words.len() == 3
+        && words[0] == "that"
+        && words[1] == "player"
+        && (words[2] == "do" || words[2] == "does")
+    {
+        return Some(IfResultPredicate::Did);
+    }
     if words.len() >= 6
         && words[0] == "you"
         && words[1] == "searched"
@@ -225,6 +259,28 @@ pub(crate) fn parse_if_result_predicate_lexed(
         return Some(IfResultPredicate::DidNot);
     }
     if is_exact_negated_result("they") || is_negated_this_way_result("they") {
+        return Some(IfResultPredicate::DidNot);
+    }
+    if (words.len() == 2
+        && matches!(words[0], "player" | "players")
+        && matches!(words[1], "dont" | "doesnt" | "didnt" | "cant"))
+        || (words.len() == 3
+            && matches!(words[0], "player" | "players")
+            && matches!(words[1], "do" | "does" | "did" | "can")
+            && words[2] == "not")
+    {
+        return Some(IfResultPredicate::DidNot);
+    }
+    if (words.len() == 3
+        && words[0] == "that"
+        && words[1] == "player"
+        && matches!(words[2], "dont" | "doesnt" | "didnt" | "cant"))
+        || (words.len() == 4
+            && words[0] == "that"
+            && words[1] == "player"
+            && matches!(words[2], "do" | "does" | "did" | "can")
+            && words[3] == "not")
+    {
         return Some(IfResultPredicate::DidNot);
     }
 

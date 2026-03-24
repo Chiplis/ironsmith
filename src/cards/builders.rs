@@ -1007,6 +1007,7 @@ pub(crate) enum TriggerSpec {
         player: PlayerFilter,
         filter: ObjectFilter,
     },
+    PlayerSearchesLibrary(PlayerFilter),
     PlayerTapsForMana {
         player: PlayerFilter,
         filter: ObjectFilter,

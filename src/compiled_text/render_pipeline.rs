@@ -25,8 +25,14 @@ pub(super) fn describe_resolution_program(
     rendered_segments.join(". ")
 }
 
-pub fn compiled_lines(def: &CardDefinition) -> Vec<String> {
+/// Raw rendered compiled text with heading prefixes preserved.
+pub fn raw_compiled_lines(def: &CardDefinition) -> Vec<String> {
     stacker::maybe_grow(1024 * 1024, 8 * 1024 * 1024, || compiled_lines_inner(def))
+}
+
+/// Backward-compatible alias for the raw compiled renderer.
+pub fn compiled_lines(def: &CardDefinition) -> Vec<String> {
+    raw_compiled_lines(def)
 }
 
 pub(super) fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {

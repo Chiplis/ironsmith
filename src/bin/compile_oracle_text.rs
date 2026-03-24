@@ -2,12 +2,14 @@ use std::env;
 use std::io::{self, Read};
 
 use ironsmith::cards::CardDefinitionBuilder;
-use ironsmith::compiled_text::{compiled_lines, oracle_like_lines};
+use ironsmith::compiled_text::{canonical_compiled_lines, raw_compiled_lines};
 use ironsmith::ids::CardId;
 use ironsmith_tools::{
     CardStatusDb, build_parse_input, compile_snapshot_from_payload, default_db_path,
     load_card_by_name,
 };
+
+const DEFAULT_PROBE_NAME: &str = "Parser Probe";
 
 fn text_includes_metadata(text: &str) -> bool {
     text.lines().map(str::trim).any(|line| {
@@ -78,8 +80,120 @@ fn snapshot_payload_for_db(
     })
 }
 
+struct CompileJob {
+    name: String,
+    oracle_text: String,
+    parse_input: String,
+    db_payload: Option<ironsmith_tools::CardPayload>,
+}
+
+fn compile_job_for_name(
+    cards_path: &str,
+    name: &str,
+    input_text: Option<&str>,
+) -> Result<CompileJob, String> {
+    let card_input = load_card_by_name(cards_path, name).map_err(|err| err.to_string())?;
+    match (input_text, card_input) {
+        (Some(text), Some(card)) if !text_includes_metadata(text) => {
+            let parse_input = build_parse_input(&card.metadata_lines, text);
+            let oracle_text = text.trim().to_string();
+            let db_payload = snapshot_payload_for_db(Some(&card), &oracle_text, &parse_input);
+            Ok(CompileJob {
+                name: card.name,
+                oracle_text,
+                parse_input,
+                db_payload,
+            })
+        }
+        (Some(text), Some(card)) => {
+            let db_payload = snapshot_payload_for_db(Some(&card), &card.oracle_text, text);
+            Ok(CompileJob {
+                name: card.name,
+                oracle_text: card.oracle_text,
+                parse_input: text.to_string(),
+                db_payload,
+            })
+        }
+        (Some(text), None) => Ok(CompileJob {
+            name: name.to_string(),
+            oracle_text: text.to_string(),
+            parse_input: text.to_string(),
+            db_payload: None,
+        }),
+        (None, Some(card)) => {
+            let name = card.name.clone();
+            let oracle_text = card.oracle_text.clone();
+            let parse_input = build_parse_input(&card.metadata_lines, &card.oracle_text);
+            let db_payload = snapshot_payload_for_db(Some(&card), &oracle_text, &parse_input);
+            Ok(CompileJob {
+                name,
+                oracle_text,
+                parse_input,
+                db_payload,
+            })
+        }
+        (None, None) => Err(format!("unknown card name: {name}")),
+    }
+}
+
+fn print_compiled_job(
+    job: &CompileJob,
+    detailed: bool,
+    raw: bool,
+    show_definition: bool,
+    should_write_db: bool,
+    db_path: &str,
+) -> Result<(), String> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), &job.name);
+    let def = builder.parse_text(job.parse_input.clone()).map_err(|err| {
+        let _ = store_snapshot_if_requested(should_write_db, job.db_payload.as_ref(), db_path);
+        format!("parse failed for {}: {err:?}", job.name)
+    })?;
+
+    println!("Name: {}", def.card.name);
+    if detailed {
+        println!("Oracle text:");
+        println!("{}", job.oracle_text.trim());
+        println!("Parse input:");
+        println!("{}", job.parse_input.trim());
+    }
+    println!(
+        "Type: {}",
+        def.card
+            .card_types
+            .iter()
+            .map(|t| format!("{t:?}"))
+            .collect::<Vec<_>>()
+            .join(" ")
+    );
+    println!("Compiled abilities/effects");
+    if raw {
+        println!("- {:#?}", def);
+    } else {
+        let lines = if detailed {
+            raw_compiled_lines(&def)
+        } else {
+            canonical_compiled_lines(&def)
+        };
+        if lines.is_empty() {
+            println!("- <none>");
+        } else {
+            for line in lines {
+                println!("- {}", line.trim());
+            }
+        }
+    }
+    if show_definition {
+        println!("Compiled card definition:");
+        println!("{:#?}", def);
+    }
+
+    store_snapshot_if_requested(should_write_db, job.db_payload.as_ref(), db_path)?;
+    Ok(())
+}
+
 fn main() -> Result<(), String> {
-    let mut name = "Parser Probe".to_string();
+    let mut names: Vec<String> = Vec::new();
     let mut cards_path = "cards.json".to_string();
     let mut text_arg: Option<String> = None;
     let mut stacktrace = false;
@@ -95,9 +209,24 @@ fn main() -> Result<(), String> {
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--name" => {
-                name = args
+                names.push(
+                    args.next()
+                        .ok_or_else(|| "--name requires a value".to_string())?,
+                );
+            }
+            "--names" => {
+                let path = args
                     .next()
-                    .ok_or_else(|| "--name requires a value".to_string())?;
+                    .ok_or_else(|| "--names requires a value".to_string())?;
+                let contents = std::fs::read_to_string(&path)
+                    .map_err(|err| format!("failed to read --names file {path}: {err}"))?;
+                for line in contents.lines() {
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() {
+                        continue;
+                    }
+                    names.push(trimmed.to_string());
+                }
             }
             "--cards" => {
                 cards_path = args
@@ -138,7 +267,7 @@ fn main() -> Result<(), String> {
             }
             _ => {
                 return Err(format!(
-                    "unknown argument '{arg}'. expected --name <value>, --cards <path>, --text <value>, --trace, --allow-unsupported, --detailed, --raw, --show-definition, --db-path <path>, --no-db, and/or --stacktrace"
+                    "unknown argument '{arg}'. expected --name <value>, --names <path>, --cards <path>, --text <value>, --trace, --allow-unsupported, --detailed, --raw, --show-definition, --db-path <path>, --no-db, and/or --stacktrace"
                 ));
             }
         }
@@ -163,85 +292,43 @@ fn main() -> Result<(), String> {
     }
 
     let input_text = read_input_text(text_arg)?;
-    let card_input = if name != "Parser Probe" {
-        load_card_by_name(&cards_path, &name).map_err(|err| err.to_string())?
-    } else {
-        None
-    };
-
-    let (name, oracle_text, parse_input, db_payload) = match (input_text, card_input) {
-        (Some(text), Some(card)) if !text_includes_metadata(&text) => {
-            let parse_input = build_parse_input(&card.metadata_lines, &text);
-            let oracle_text = text.trim().to_string();
-            let db_payload = snapshot_payload_for_db(Some(&card), &oracle_text, &parse_input);
-            (card.name, oracle_text, parse_input, db_payload)
-        }
-        (Some(text), Some(card)) => {
-            let db_payload = snapshot_payload_for_db(Some(&card), &card.oracle_text, &text);
-            (card.name, card.oracle_text, text, db_payload)
-        }
-        (Some(text), None) => (name, text.clone(), text, None),
-        (None, Some(card)) => {
-            let name = card.name.clone();
-            let oracle_text = card.oracle_text.clone();
-            let parse_input = build_parse_input(&card.metadata_lines, &card.oracle_text);
-            let db_payload = snapshot_payload_for_db(Some(&card), &oracle_text, &parse_input);
-            (name, oracle_text, parse_input, db_payload)
-        }
-        (None, None) => {
-            return Err(
-                "missing oracle text (pass --text or stdin) and no matching card found via --name/--cards"
-                    .to_string(),
-            )
-        }
-    };
-    let should_write_db = !no_db && db_payload.is_some();
-
-    let builder = CardDefinitionBuilder::new(CardId::new(), &name);
-    let def = builder.parse_text(parse_input.clone()).map_err(|err| {
-        let _ = store_snapshot_if_requested(should_write_db, db_payload.as_ref(), &db_path);
-        format!("parse failed: {err:?}")
-    })?;
-
-    println!("Name: {}", def.card.name);
-    if detailed {
-        println!("Oracle text:");
-        println!("{}", oracle_text.trim());
-        println!("Parse input:");
-        println!("{}", parse_input.trim());
-    }
-    println!(
-        "Type: {}",
-        def.card
-            .card_types
-            .iter()
-            .map(|t| format!("{t:?}"))
-            .collect::<Vec<_>>()
-            .join(" ")
-    );
-    println!("Compiled abilities/effects");
-    if raw {
-        println!("- {:#?}", def);
-        return Ok(());
-    }
-    let lines = if detailed {
-        compiled_lines(&def)
-    } else {
-        oracle_like_lines(&def)
-    };
-    if lines.is_empty() {
-        println!("- <none>");
-    } else {
-        for line in lines {
-            println!("- {}", line.trim());
-        }
-    }
-    if show_definition {
-        println!("Compiled card definition:");
-        println!("{:#?}", def);
+    if input_text.is_some() && names.len() > 1 {
+        return Err(
+            "pass --text/stdin with at most one --name; batch mode only supports card lookups"
+                .to_string(),
+        );
     }
 
-    store_snapshot_if_requested(should_write_db, db_payload.as_ref(), &db_path)?;
+    if names.is_empty() && input_text.is_none() {
+        return Err(
+            "missing oracle text (pass --text or stdin) and no matching card found via --name/--cards"
+                .to_string(),
+        );
+    }
+
+    if names.is_empty() {
+        names.push(DEFAULT_PROBE_NAME.to_string());
+    }
+
+    let jobs = names
+        .iter()
+        .map(|name| compile_job_for_name(&cards_path, name, input_text.as_deref()))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    for (idx, job) in jobs.iter().enumerate() {
+        if idx > 0 {
+            println!();
+        }
+        let should_write_db = !no_db && job.db_payload.is_some();
+        print_compiled_job(
+            job,
+            detailed,
+            raw,
+            show_definition,
+            should_write_db,
+            &db_path,
+        )?;
+    }
 
     Ok(())
 }
@@ -320,5 +407,16 @@ mod tests {
             matched.is_none(),
             "non-canonical override text should not store a snapshot"
         );
+    }
+
+    #[test]
+    fn compile_job_for_name_builds_batch_lookup_job() {
+        let cards_path = format!("{}/../../cards.json", env!("CARGO_MANIFEST_DIR"));
+        let job = compile_job_for_name(&cards_path, "House Cartographer", None)
+            .expect("House Cartographer should exist");
+
+        assert_eq!(job.name, "House Cartographer");
+        assert!(job.parse_input.contains("Type: Creature"));
+        assert!(job.db_payload.is_some());
     }
 }

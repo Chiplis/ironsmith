@@ -15,7 +15,7 @@ use sha2::{Digest, Sha256};
 use crate::cards::{
     CardDefinition, CardDefinitionBuilder, generated_definition_has_unimplemented_content,
 };
-use crate::compiled_text::compiled_lines;
+use crate::compiled_text::canonical_compiled_lines;
 use crate::ids::CardId;
 use crate::semantic_compare::{compare_semantics_scored, report_embedding_config};
 
@@ -277,7 +277,7 @@ impl CompilationSnapshot {
             semantic_mismatch,
             has_unimplemented,
         ) = if let Some(definition) = definition {
-            let compiled = compiled_lines(definition);
+            let compiled = canonical_compiled_lines(definition);
             let compiled_text = compiled.join("\n");
             let (
                 oracle_coverage,
@@ -1633,7 +1633,7 @@ mod tests {
         let definition = CardDefinitionBuilder::new(CardId::new(), "House Cartographer")
             .parse_text(oracle)
             .expect("house cartographer should parse");
-        let compiled = compiled_lines(&definition);
+        let compiled = canonical_compiled_lines(&definition);
         let snapshot = CompilationSnapshot::from_definition_result(
             "House Cartographer",
             oracle,
@@ -1650,6 +1650,36 @@ mod tests {
         assert!(
             embedded_similarity > lexical_similarity,
             "expected embedding-backed similarity to improve over lexical-only scoring, lexical={lexical_similarity}, embedded={embedded_similarity}, compiled={compiled:?}"
+        );
+    }
+
+    #[test]
+    fn compilation_snapshot_uses_same_normalized_text_as_default_cli_surface() {
+        let oracle = "Enlist (As this creature attacks, you may tap a nonattacking creature you control without summoning sickness. When you do, add its power to this creature's until end of turn.)\nWhen this creature enters, create a 1/1 white Soldier creature token.";
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Argivian Cavalier")
+            .parse_text(oracle)
+            .expect("argivian cavalier should parse");
+
+        let snapshot = CompilationSnapshot::from_definition_result(
+            "Argivian Cavalier",
+            oracle,
+            ParseStatus::StrictCompiled,
+            None,
+            Some(&definition),
+        );
+        let stored_text = snapshot
+            .compiled_text
+            .expect("snapshot should include compiled text");
+
+        assert!(
+            stored_text.contains(
+                "Whenever this creature attacks, you may tap another nonattacking creature you control. When you do, this creature gets +X/+0 until end of turn, where X is that creature's power."
+            ),
+            "expected normalized enlist text in snapshot, got {stored_text}"
+        );
+        assert!(
+            !stored_text.contains("enlist_attacker") && !stored_text.contains("enlisted_creature"),
+            "expected snapshot to avoid raw enlist tags, got {stored_text}"
         );
     }
 
