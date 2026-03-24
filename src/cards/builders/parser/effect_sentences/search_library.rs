@@ -983,19 +983,43 @@ pub(crate) fn parse_search_library_sentence(
         .collect();
     let mut filter = if let Some(named_idx) = filter_words.iter().position(|word| *word == "named")
     {
-        let name = filter_words
+        let negated_named = named_idx > 0 && filter_words[named_idx - 1] == "not";
+        let base_words_end = if negated_named {
+            named_idx.saturating_sub(1)
+        } else {
+            named_idx
+        };
+        let name_words = filter_words
             .iter()
             .skip(named_idx + 1)
             .copied()
-            .collect::<Vec<_>>()
-            .join(" ");
+            .take_while(|word| !matches!(*word, "that" | "with"))
+            .collect::<Vec<_>>();
+        let name = name_words.join(" ");
         if name.is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "missing card name in named search clause (clause: '{}')",
                 words_all.join(" ")
             )));
         }
-        let base_words = &filter_words[..named_idx];
+        let mut base_words = filter_words[..base_words_end].to_vec();
+        if base_words.first().copied() == Some("exactly") {
+            let count_tokens = base_words[1..]
+                .iter()
+                .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+                .collect::<Vec<_>>();
+            if let Some((_, used)) = parse_number(&count_tokens) {
+                base_words = base_words[1 + used..].to_vec();
+            }
+        } else {
+            let count_tokens = base_words
+                .iter()
+                .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+                .collect::<Vec<_>>();
+            if let Some((_, used)) = parse_number(&count_tokens) {
+                base_words = base_words[used..].to_vec();
+            }
+        }
         let mut base_filter = if base_words.is_empty()
             || (base_words.len() == 1 && (base_words[0] == "card" || base_words[0] == "cards"))
         {
@@ -1012,7 +1036,11 @@ pub(crate) fn parse_search_library_sentence(
                 ))
             })?
         };
-        base_filter.name = Some(name);
+        if negated_named {
+            base_filter.excluded_name = Some(name);
+        } else {
+            base_filter.name = Some(name);
+        }
         base_filter
     } else if filter_words.len() == 1 && (filter_words[0] == "card" || filter_words[0] == "cards") {
         ObjectFilter::default()

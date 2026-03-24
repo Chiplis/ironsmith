@@ -96,7 +96,7 @@ fn parse_args() -> Result<Args, String> {
             }
             "-h" | "--help" => {
                 return Err(
-                    "usage: cargo run --bin report_replacement_effect_parse_status -- [--names <path>] [--cards <path>] [--out <path>] [--limit <n>] [--db-path <path>] [--no-db]".to_string(),
+                    "usage: cargo run --release --bin report_replacement_effect_parse_status -- [--names <path>] [--cards <path>] [--out <path>] [--limit <n>] [--db-path <path>] [--no-db]".to_string(),
                 );
             }
             _ => {

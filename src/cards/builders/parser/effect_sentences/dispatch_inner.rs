@@ -1152,10 +1152,19 @@ fn parse_if_damage_would_be_dealt_put_counters_sentence(
     let tail = &clause_words[this_turn_idx + 2..];
     let valid_tail = matches!(
         tail,
-        ["prevent", "that", "damage", "and", "put", "that", "many", "+1/+1", "counters", "on", "it"]
-            | ["prevent", "that", "damage", "and", "put", "that", "many", "+1/+1", "counters", "on", "that", "creature"]
-            | ["prevent", "that", "damage", "and", "put", "that", "many", "+1/+1", "counter", "on", "it"]
-            | ["prevent", "that", "damage", "and", "put", "that", "many", "+1/+1", "counter", "on", "that", "creature"]
+        [
+            "prevent", "that", "damage", "and", "put", "that", "many", "+1/+1", "counters", "on",
+            "it"
+        ] | [
+            "prevent", "that", "damage", "and", "put", "that", "many", "+1/+1", "counters", "on",
+            "that", "creature"
+        ] | [
+            "prevent", "that", "damage", "and", "put", "that", "many", "+1/+1", "counter", "on",
+            "it"
+        ] | [
+            "prevent", "that", "damage", "and", "put", "that", "many", "+1/+1", "counter", "on",
+            "that", "creature"
+        ]
     );
     if !valid_tail {
         return Ok(None);

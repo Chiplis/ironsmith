@@ -181,7 +181,7 @@ fn parse_args() -> Result<Args, String> {
                 no_db = true;
             }
             "-h" | "--help" => {
-                return Err("usage: cargo run --bin export_cedh_support_report -- [--cards <path>] [--out <path>] [--top <n>] [--days <n>] [--concurrency <n>] [--event-limit <n>] [--db-path <path>] [--no-db]".to_string());
+                return Err("usage: cargo run --release --bin export_cedh_support_report -- [--cards <path>] [--out <path>] [--top <n>] [--days <n>] [--concurrency <n>] [--event-limit <n>] [--db-path <path>] [--no-db]".to_string());
             }
             _ => {
                 return Err(format!(

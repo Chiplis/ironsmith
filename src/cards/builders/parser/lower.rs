@@ -1,9 +1,11 @@
+use crate::Until;
 use crate::ability::{Ability, AbilityKind, ActivatedAbility, ActivationTiming};
 use crate::cards::builders::{
-    CardDefinition, CardDefinitionBuilder, CardTextError, EffectAst, IT_TAG, InsteadSemantics,
-    LineAst, LineInfo, OptionalCost, ParseAnnotations, ParsedAbility, ParsedCardItem,
-    ParsedLevelAbilityAst, ParsedLevelAbilityItemAst, ParsedLineAst, ParsedModalAst,
-    ParsedModalModeAst, ParsedRestrictions, ReferenceImports, TriggerSpec,
+    CardDefinition, CardDefinitionBuilder, CardTextError, ChoiceCount, EffectAst, IT_TAG,
+    InsteadSemantics, LineAst, LineInfo, OptionalCost, ParseAnnotations, ParsedAbility,
+    ParsedCardItem, ParsedLevelAbilityAst, ParsedLevelAbilityItemAst, ParsedLineAst,
+    ParsedModalAst, ParsedModalModeAst, ParsedRestrictions, PlayerAst, PredicateAst,
+    ReferenceImports, ReturnControllerAst, TagKey, TargetAst, TriggerSpec,
 };
 use crate::color::ColorSet;
 use crate::cost::TotalCost;
@@ -11,7 +13,7 @@ use crate::costs::Cost;
 use crate::mana::ManaSymbol;
 use crate::resolution::ResolutionProgram;
 use crate::static_abilities::StaticAbility;
-use crate::target::{ChooseSpec, PlayerFilter};
+use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::types::CardType;
 use crate::zone::Zone;
 
@@ -1408,6 +1410,9 @@ fn lower_rewrite_statement_to_chunks_impl(
     if let Some(soul_partition_chunk) = lower_rewrite_soul_partition_statement_to_chunk(line)? {
         return Ok(vec![soul_partition_chunk]);
     }
+    if let Some(divvy_chunk) = lower_rewrite_divvy_statement_to_chunk(line)? {
+        return Ok(vec![divvy_chunk]);
+    }
     let parse_text = rewrite_statement_parse_text_for_lowering(&line.text);
     let grouped_sentences = group_statement_sentences_for_lowering(&parse_text);
     let mut chunks = Vec::new();
@@ -1474,6 +1479,332 @@ fn lower_rewrite_soul_partition_statement_to_chunk(
     Ok(Some(LineAst::Statement { effects }))
 }
 
+fn membership_predicate_for_iterated_object(tag: &str) -> PredicateAst {
+    PredicateAst::TaggedMatches(
+        TagKey::from(tag),
+        ObjectFilter::default().same_stable_id_as_tagged(TagKey::from(IT_TAG)),
+    )
+}
+
+fn parse_single_effect_from_text(
+    text: &str,
+    line_index: usize,
+) -> Result<EffectAst, CardTextError> {
+    parse_effect_sentences_from_text(text, line_index)?
+        .into_iter()
+        .next()
+        .ok_or_else(|| CardTextError::ParseError(format!("missing effect for '{text}'")))
+}
+
+fn lower_rewrite_divvy_statement_to_chunk(
+    line: &super::RewriteStatementLine,
+) -> Result<Option<LineAst>, CardTextError> {
+    let normalized = line.text.trim().to_ascii_lowercase();
+
+    if normalized
+        == "separate all creatures target player controls into two piles. destroy all creatures in the pile of that player's choice. they can't be regenerated."
+    {
+        return Ok(Some(LineAst::Statement {
+            effects: vec![
+                EffectAst::ChooseObjects {
+                    filter: ObjectFilter::creature().controlled_by(PlayerFilter::target_player()),
+                    count: ChoiceCount::any_number(),
+                    player: PlayerAst::Target,
+                    tag: TagKey::from("divvy_chosen"),
+                },
+                EffectAst::DestroyNoRegeneration {
+                    target: TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
+                },
+            ],
+        }));
+    }
+
+    if normalized
+        == "separate all creature cards in your graveyard into two piles. exile the pile of an opponent's choice and return the other to the battlefield."
+    {
+        let mut graveyard_creatures = ObjectFilter::creature();
+        graveyard_creatures.zone = Some(Zone::Graveyard);
+        graveyard_creatures.owner = Some(PlayerFilter::You);
+        let rest_filter = graveyard_creatures
+            .clone()
+            .not_tagged(TagKey::from("divvy_chosen"));
+        return Ok(Some(LineAst::Statement {
+            effects: vec![
+                EffectAst::ChooseObjects {
+                    filter: graveyard_creatures,
+                    count: ChoiceCount::any_number(),
+                    player: PlayerAst::Opponent,
+                    tag: TagKey::from("divvy_chosen"),
+                },
+                EffectAst::Exile {
+                    target: TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
+                    face_down: false,
+                },
+                EffectAst::ReturnAllToBattlefield {
+                    filter: rest_filter,
+                    tapped: false,
+                },
+            ],
+        }));
+    }
+
+    if normalized
+        == "each opponent separates the creatures they control into two piles. for each opponent, you choose one of their piles. each opponent sacrifices the creatures in their chosen pile. (piles can be empty.)"
+    {
+        return Ok(Some(LineAst::Statement {
+            effects: vec![EffectAst::ForEachPlayersFiltered {
+                filter: PlayerFilter::Opponent,
+                effects: vec![
+                    EffectAst::ChooseObjects {
+                        filter: ObjectFilter::creature()
+                            .controlled_by(PlayerFilter::IteratedPlayer),
+                        count: ChoiceCount::any_number(),
+                        player: PlayerAst::You,
+                        tag: TagKey::from("divvy_chosen"),
+                    },
+                    EffectAst::SacrificeAll {
+                        filter: ObjectFilter::creature()
+                            .controlled_by(PlayerFilter::IteratedPlayer)
+                            .match_tagged(
+                                TagKey::from("divvy_chosen"),
+                                crate::target::TaggedOpbjectRelation::IsTaggedObject,
+                            ),
+                        player: PlayerAst::Implicit,
+                    },
+                ],
+            }],
+        }));
+    }
+
+    if normalized
+        == "separate all permanents target player controls into two piles. that player sacrifices all permanents in the pile of their choice."
+    {
+        return Ok(Some(LineAst::Statement {
+            effects: vec![
+                EffectAst::ChooseObjects {
+                    filter: ObjectFilter::permanent().controlled_by(PlayerFilter::target_player()),
+                    count: ChoiceCount::any_number(),
+                    player: PlayerAst::Target,
+                    tag: TagKey::from("divvy_chosen"),
+                },
+                EffectAst::SacrificeAll {
+                    filter: ObjectFilter::tagged(TagKey::from("divvy_chosen")),
+                    player: PlayerAst::Target,
+                },
+            ],
+        }));
+    }
+
+    if normalized
+        == "at the beginning of combat on your turn, for each defending player, separate all creatures that player controls into two piles and that player chooses one. only creatures in the chosen piles can block this turn."
+    {
+        return Ok(Some(LineAst::Statement {
+            effects: vec![EffectAst::ForEachPlayersFiltered {
+                filter: PlayerFilter::Defending,
+                effects: vec![
+                    EffectAst::ChooseObjects {
+                        filter: ObjectFilter::creature()
+                            .controlled_by(PlayerFilter::IteratedPlayer),
+                        count: ChoiceCount::any_number(),
+                        player: PlayerAst::That,
+                        tag: TagKey::from("divvy_chosen"),
+                    },
+                    EffectAst::Cant {
+                        restriction: crate::effect::Restriction::block(
+                            ObjectFilter::creature()
+                                .controlled_by(PlayerFilter::IteratedPlayer)
+                                .not_tagged(TagKey::from("divvy_chosen")),
+                        ),
+                        duration: Until::EndOfTurn,
+                        condition: None,
+                    },
+                ],
+            }],
+        }));
+    }
+
+    if normalized
+        == "each player separates all nontoken lands they control into two piles. for each player, one of their piles is chosen by one of their opponents of their choice. destroy all lands in the chosen piles. tap all lands in the other piles."
+    {
+        return Ok(Some(LineAst::Statement {
+            effects: vec![EffectAst::ForEachPlayer {
+                effects: vec![
+                    EffectAst::ChoosePlayer {
+                        chooser: PlayerAst::Implicit,
+                        filter: PlayerFilter::Opponent,
+                        tag: TagKey::from("divvy_opponent"),
+                        random: false,
+                        exclude_previous_choices: 0,
+                    },
+                    EffectAst::ChooseObjects {
+                        filter: ObjectFilter::land()
+                            .nontoken()
+                            .controlled_by(PlayerFilter::IteratedPlayer),
+                        count: ChoiceCount::any_number(),
+                        player: PlayerAst::Chosen,
+                        tag: TagKey::from("divvy_chosen"),
+                    },
+                    EffectAst::Destroy {
+                        target: TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
+                    },
+                    EffectAst::TapAll {
+                        filter: ObjectFilter::land()
+                            .nontoken()
+                            .controlled_by(PlayerFilter::IteratedPlayer)
+                            .not_tagged(TagKey::from("divvy_chosen")),
+                    },
+                ],
+            }],
+        }));
+    }
+
+    if normalized
+        == "exile up to five target permanent cards from your graveyard and separate them into two piles. an opponent chooses one of those piles. put that pile into your hand and the other into your graveyard. (piles can be empty.)"
+    {
+        return Ok(Some(LineAst::Statement {
+            effects: vec![
+                parse_single_effect_from_text(
+                    "Exile up to five target permanent cards from your graveyard.",
+                    line.info.line_index,
+                )?,
+                EffectAst::TagMatchingObjects {
+                    filter: ObjectFilter::tagged(TagKey::from(IT_TAG)),
+                    zones: vec![Zone::Exile],
+                    tag: TagKey::from("divvy_source"),
+                },
+                EffectAst::ChooseObjectsAcrossZones {
+                    filter: ObjectFilter::tagged(TagKey::from("divvy_source")),
+                    count: ChoiceCount::any_number(),
+                    player: PlayerAst::Opponent,
+                    tag: TagKey::from("divvy_chosen"),
+                    zones: vec![Zone::Exile],
+                },
+                EffectAst::ReturnToHand {
+                    target: TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
+                    random: false,
+                },
+                EffectAst::ForEachTagged {
+                    tag: TagKey::from("divvy_source"),
+                    effects: vec![EffectAst::Conditional {
+                        predicate: membership_predicate_for_iterated_object("divvy_chosen"),
+                        if_true: Vec::new(),
+                        if_false: vec![EffectAst::MoveToZone {
+                            target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                            zone: Zone::Graveyard,
+                            to_top: false,
+                            battlefield_controller: ReturnControllerAst::Preserve,
+                            battlefield_tapped: false,
+                            attached_to: None,
+                        }],
+                    }],
+                },
+            ],
+        }));
+    }
+
+    if normalized
+        == "exile up to five target creature cards from graveyards. an opponent separates those cards into two piles. put all cards from the pile of your choice onto the battlefield under your control and the rest into their owners' graveyards."
+    {
+        return Ok(Some(LineAst::Statement {
+            effects: vec![
+                parse_single_effect_from_text(
+                    "Exile up to five target creature cards from graveyards.",
+                    line.info.line_index,
+                )?,
+                EffectAst::TagMatchingObjects {
+                    filter: ObjectFilter::tagged(TagKey::from(IT_TAG)),
+                    zones: vec![Zone::Exile],
+                    tag: TagKey::from("divvy_source"),
+                },
+                EffectAst::ChooseObjectsAcrossZones {
+                    filter: ObjectFilter::tagged(TagKey::from("divvy_source")),
+                    count: ChoiceCount::any_number(),
+                    player: PlayerAst::Opponent,
+                    tag: TagKey::from("divvy_chosen"),
+                    zones: vec![Zone::Exile],
+                },
+                EffectAst::MoveToZone {
+                    target: TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
+                    zone: Zone::Battlefield,
+                    to_top: false,
+                    battlefield_controller: ReturnControllerAst::You,
+                    battlefield_tapped: false,
+                    attached_to: None,
+                },
+                EffectAst::ForEachTagged {
+                    tag: TagKey::from("divvy_source"),
+                    effects: vec![EffectAst::Conditional {
+                        predicate: membership_predicate_for_iterated_object("divvy_chosen"),
+                        if_true: Vec::new(),
+                        if_false: vec![EffectAst::MoveToZone {
+                            target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                            zone: Zone::Graveyard,
+                            to_top: false,
+                            battlefield_controller: ReturnControllerAst::Preserve,
+                            battlefield_tapped: false,
+                            attached_to: None,
+                        }],
+                    }],
+                },
+            ],
+        }));
+    }
+
+    if normalized
+        == "search your library and graveyard for up to four creature cards with different names that each have mana value x or less and reveal them. an opponent chooses two of those cards. shuffle the chosen cards into your library and put the rest onto the battlefield. exile ecological appreciation."
+    {
+        let mut effects = parse_effect_sentences_from_text(
+            "Search your library and graveyard for up to four creature cards with different names that each have mana value X or less and reveal them.",
+            line.info.line_index,
+        )?;
+        effects.push(EffectAst::TagMatchingObjects {
+            filter: ObjectFilter::tagged(TagKey::from(IT_TAG)),
+            zones: vec![Zone::Library, Zone::Graveyard],
+            tag: TagKey::from("divvy_source"),
+        });
+        effects.push(EffectAst::ChooseObjectsAcrossZones {
+            filter: ObjectFilter::tagged(TagKey::from("divvy_source")),
+            count: ChoiceCount::exactly(2),
+            player: PlayerAst::Opponent,
+            tag: TagKey::from("divvy_chosen"),
+            zones: vec![Zone::Library, Zone::Graveyard],
+        });
+        effects.push(EffectAst::MoveToZone {
+            target: TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
+            zone: Zone::Library,
+            to_top: false,
+            battlefield_controller: ReturnControllerAst::Preserve,
+            battlefield_tapped: false,
+            attached_to: None,
+        });
+        effects.push(EffectAst::ShuffleLibrary {
+            player: PlayerAst::You,
+        });
+        effects.push(EffectAst::ForEachTagged {
+            tag: TagKey::from("divvy_source"),
+            effects: vec![EffectAst::Conditional {
+                predicate: membership_predicate_for_iterated_object("divvy_chosen"),
+                if_true: Vec::new(),
+                if_false: vec![EffectAst::MoveToZone {
+                    target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                    zone: Zone::Battlefield,
+                    to_top: false,
+                    battlefield_controller: ReturnControllerAst::You,
+                    battlefield_tapped: false,
+                    attached_to: None,
+                }],
+            }],
+        });
+        effects.push(EffectAst::Exile {
+            target: TargetAst::Source(None),
+            face_down: false,
+        });
+        return Ok(Some(LineAst::Statement { effects }));
+    }
+
+    Ok(None)
+}
+
 pub(crate) fn lower_rewrite_triggered_to_chunk(
     info: LineInfo,
     full_text: &str,
@@ -1515,9 +1846,11 @@ fn lower_rewrite_triggered_to_chunk_impl(
     }
 
     let normalized_full_text = line.full_text.to_ascii_lowercase();
+    let normalized_effect_text = line.effect_text.trim().to_ascii_lowercase();
     if !normalized_full_text.contains("if you do")
         && !normalized_full_text.contains("if you don't")
         && !normalized_full_text.contains("if you dont")
+        && !normalized_effect_text.starts_with("if ")
     {
         let direct_trigger =
             parse_trigger_clause_from_text(line.trigger_text.as_str(), line.info.line_index);
@@ -1631,6 +1964,90 @@ fn lower_special_rewrite_triggered_chunk(
             "that creature gains first strike until end of turn.",
             line.info.line_index,
         )?;
+        return Ok(Some(LineAst::Triggered {
+            trigger,
+            effects,
+            max_triggers_per_turn: line.max_triggers_per_turn,
+        }));
+    }
+
+    if normalized
+        == "when this creature enters, you may search your library for exactly two cards not named burning rune demon that have different names. if you do, reveal those cards. an opponent chooses one of them. put the chosen card into your hand and the other into your graveyard, then shuffle"
+    {
+        let trigger = parse_trigger_clause_from_text("this creature enters", line.info.line_index)?;
+        let mut effects = parse_effect_sentences_from_text(
+            "You may search your library for exactly two cards not named Burning-Rune Demon that have different names. If you do, reveal those cards.",
+            line.info.line_index,
+        )?;
+        effects.push(EffectAst::TagMatchingObjects {
+            filter: ObjectFilter::tagged(TagKey::from(IT_TAG)),
+            zones: vec![Zone::Library],
+            tag: TagKey::from("divvy_source"),
+        });
+        effects.push(EffectAst::ChooseObjectsAcrossZones {
+            filter: ObjectFilter::tagged(TagKey::from("divvy_source")),
+            count: ChoiceCount::exactly(1),
+            player: PlayerAst::Opponent,
+            tag: TagKey::from("divvy_chosen"),
+            zones: vec![Zone::Library],
+        });
+        effects.push(EffectAst::MoveToZone {
+            target: TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
+            zone: Zone::Hand,
+            to_top: false,
+            battlefield_controller: ReturnControllerAst::Preserve,
+            battlefield_tapped: false,
+            attached_to: None,
+        });
+        effects.push(EffectAst::ForEachTagged {
+            tag: TagKey::from("divvy_source"),
+            effects: vec![EffectAst::Conditional {
+                predicate: membership_predicate_for_iterated_object("divvy_chosen"),
+                if_true: Vec::new(),
+                if_false: vec![EffectAst::MoveToZone {
+                    target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                    zone: Zone::Graveyard,
+                    to_top: false,
+                    battlefield_controller: ReturnControllerAst::Preserve,
+                    battlefield_tapped: false,
+                    attached_to: None,
+                }],
+            }],
+        });
+        effects.push(EffectAst::ShuffleLibrary {
+            player: PlayerAst::You,
+        });
+        return Ok(Some(LineAst::Triggered {
+            trigger,
+            effects,
+            max_triggers_per_turn: line.max_triggers_per_turn,
+        }));
+    }
+
+    if normalized
+        == "at the beginning of combat on each opponent's turn, separate all creatures that player controls into two piles. only creatures in the pile of their choice can attack this turn"
+    {
+        let trigger = parse_trigger_clause_from_text(
+            "at the beginning of combat on each opponent's turn",
+            line.info.line_index,
+        )?;
+        let effects = vec![
+            EffectAst::ChooseObjects {
+                filter: ObjectFilter::creature().controlled_by(PlayerFilter::IteratedPlayer),
+                count: ChoiceCount::any_number(),
+                player: PlayerAst::That,
+                tag: TagKey::from("divvy_chosen"),
+            },
+            EffectAst::Cant {
+                restriction: crate::effect::Restriction::attack(
+                    ObjectFilter::creature()
+                        .controlled_by(PlayerFilter::IteratedPlayer)
+                        .not_tagged(TagKey::from("divvy_chosen")),
+                ),
+                duration: Until::EndOfTurn,
+                condition: None,
+            },
+        ];
         return Ok(Some(LineAst::Triggered {
             trigger,
             effects,
@@ -2243,6 +2660,7 @@ fn rewrite_copy_count_to_times_paid_label_rewrite(effects: &mut [EffectAst], lab
             | EffectAst::RepeatProcess { effects, .. }
             | EffectAst::DelayedUntilNextEndStep { effects, .. }
             | EffectAst::DelayedUntilNextUpkeep { effects, .. }
+            | EffectAst::DelayedUntilNextDrawStep { effects, .. }
             | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
             | EffectAst::DelayedUntilEndOfCombat { effects }
             | EffectAst::DelayedTriggerThisTurn { effects, .. }

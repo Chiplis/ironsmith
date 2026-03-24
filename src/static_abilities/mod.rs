@@ -2007,10 +2007,9 @@ impl StaticAbility {
         counter_type: crate::object::CounterType,
         display: impl Into<String>,
     ) -> Self {
-        Self::new(PreventDamageToOtherCreatureYouControlPutCountersInstead::new(
-            counter_type,
-            display,
-        ))
+        Self::new(
+            PreventDamageToOtherCreatureYouControlPutCountersInstead::new(counter_type, display),
+        )
     }
 
     pub fn shuffle_into_library_from_graveyard() -> Self {

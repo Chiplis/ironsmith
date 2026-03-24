@@ -19,8 +19,8 @@ use super::{
 use crate::cards::builders::{
     CardTextError, CarryContext, EffectAst, GrantedAbilityAst, IT_TAG, IfResultPredicate,
     InsteadSemantics, KeywordAction, LibraryBottomOrderAst, LibraryConsultModeAst,
-    LibraryConsultStopRuleAst, PlayerAst, PredicateAst, SubjectAst, TagKey, TargetAst, TextSpan,
-    TokenCopyFollowup, ZoneReplacementDurationAst,
+    LibraryConsultStopRuleAst, PlayerAst, PredicateAst, ReturnControllerAst, SubjectAst, TagKey,
+    TargetAst, TextSpan, TokenCopyFollowup, ZoneReplacementDurationAst,
 };
 use crate::effect::{ChoiceCount, Until, Value};
 use crate::filter::Comparison;
@@ -45,6 +45,385 @@ type QuadSentenceRule = fn(
     &[OwnedLexToken],
     &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError>;
+
+fn membership_predicate_for_iterated_object(tag: &str) -> PredicateAst {
+    PredicateAst::TaggedMatches(
+        TagKey::from(tag),
+        ObjectFilter::default().same_stable_id_as_tagged(TagKey::from(IT_TAG)),
+    )
+}
+
+fn parse_single_effect_sentence(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+    parse_effect_sentence_lexed(tokens)?
+        .into_iter()
+        .next()
+        .ok_or_else(|| CardTextError::ParseError("missing effect sentence".to_string()))
+}
+
+fn try_parse_divvy_sentence_sequence(
+    sentences: &[SentenceInput],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let normalized = sentences
+        .iter()
+        .map(|sentence| words(sentence.lowered()).join(" "))
+        .collect::<Vec<_>>();
+    let joined = normalized.join(". ");
+
+    if joined
+        == "separate all creatures target player controls into two piles. destroy all creatures in the pile of that player's choice. they can't be regenerated"
+    {
+        return Ok(Some(vec![
+            EffectAst::ChooseObjects {
+                filter: ObjectFilter::creature().controlled_by(PlayerFilter::target_player()),
+                count: ChoiceCount::any_number(),
+                player: PlayerAst::Target,
+                tag: TagKey::from("divvy_chosen"),
+            },
+            EffectAst::DestroyNoRegeneration {
+                target: TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
+            },
+        ]));
+    }
+
+    if joined
+        == "separate all creature cards in your graveyard into two piles. exile the pile of an opponent's choice and return the other to the battlefield"
+    {
+        let mut graveyard_creatures = ObjectFilter::creature();
+        graveyard_creatures.zone = Some(Zone::Graveyard);
+        graveyard_creatures.owner = Some(PlayerFilter::You);
+        let rest_filter = graveyard_creatures
+            .clone()
+            .not_tagged(TagKey::from("divvy_chosen"));
+        return Ok(Some(vec![
+            EffectAst::ChooseObjects {
+                filter: graveyard_creatures,
+                count: ChoiceCount::any_number(),
+                player: PlayerAst::Opponent,
+                tag: TagKey::from("divvy_chosen"),
+            },
+            EffectAst::Exile {
+                target: TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
+                face_down: false,
+            },
+            EffectAst::ReturnAllToBattlefield {
+                filter: rest_filter,
+                tapped: false,
+            },
+        ]));
+    }
+
+    if joined.starts_with("each opponent separates the creatures they control into two piles")
+        && joined.contains("for each opponent")
+        && joined.contains("each opponent sacrifices the creatures in their chosen pile")
+    {
+        return Ok(Some(vec![EffectAst::ForEachPlayersFiltered {
+            filter: PlayerFilter::Opponent,
+            effects: vec![
+                EffectAst::ChooseObjects {
+                    filter: ObjectFilter::creature().controlled_by(PlayerFilter::IteratedPlayer),
+                    count: ChoiceCount::any_number(),
+                    player: PlayerAst::You,
+                    tag: TagKey::from("divvy_chosen"),
+                },
+                EffectAst::SacrificeAll {
+                    filter: ObjectFilter::creature()
+                        .controlled_by(PlayerFilter::IteratedPlayer)
+                        .match_tagged(
+                            TagKey::from("divvy_chosen"),
+                            TaggedOpbjectRelation::IsTaggedObject,
+                        ),
+                    player: PlayerAst::Implicit,
+                },
+            ],
+        }]));
+    }
+
+    if joined.starts_with("separate all permanents target player controls into two piles")
+        && joined.contains("that player sacrifices all permanents in the pile of their choice")
+    {
+        return Ok(Some(vec![
+            EffectAst::ChooseObjects {
+                filter: ObjectFilter::permanent().controlled_by(PlayerFilter::target_player()),
+                count: ChoiceCount::any_number(),
+                player: PlayerAst::Target,
+                tag: TagKey::from("divvy_chosen"),
+            },
+            EffectAst::SacrificeAll {
+                filter: ObjectFilter::tagged(TagKey::from("divvy_chosen")),
+                player: PlayerAst::Target,
+            },
+        ]));
+    }
+
+    if joined
+        == "for each defending player separate all creatures that player controls into two piles and that player chooses one. only creatures in the chosen piles can block this turn"
+    {
+        return Ok(Some(vec![EffectAst::ForEachPlayersFiltered {
+            filter: PlayerFilter::Defending,
+            effects: vec![
+                EffectAst::ChooseObjects {
+                    filter: ObjectFilter::creature().controlled_by(PlayerFilter::IteratedPlayer),
+                    count: ChoiceCount::any_number(),
+                    player: PlayerAst::That,
+                    tag: TagKey::from("divvy_chosen"),
+                },
+                EffectAst::Cant {
+                    restriction: crate::effect::Restriction::block(
+                        ObjectFilter::creature()
+                            .controlled_by(PlayerFilter::IteratedPlayer)
+                            .not_tagged(TagKey::from("divvy_chosen")),
+                    ),
+                    duration: Until::EndOfTurn,
+                    condition: None,
+                },
+            ],
+        }]));
+    }
+
+    if joined.starts_with("separate all creatures that player controls into two piles")
+        && joined.contains("only creatures in the pile of their choice can attack this turn")
+    {
+        return Ok(Some(vec![
+            EffectAst::ChooseObjects {
+                filter: ObjectFilter::creature().controlled_by(PlayerFilter::IteratedPlayer),
+                count: ChoiceCount::any_number(),
+                player: PlayerAst::That,
+                tag: TagKey::from("divvy_chosen"),
+            },
+            EffectAst::Cant {
+                restriction: crate::effect::Restriction::attack(
+                    ObjectFilter::creature()
+                        .controlled_by(PlayerFilter::IteratedPlayer)
+                        .not_tagged(TagKey::from("divvy_chosen")),
+                ),
+                duration: Until::EndOfTurn,
+                condition: None,
+            },
+        ]));
+    }
+
+    if joined
+        == "each player separates all nontoken lands they control into two piles. for each player one of their piles is chosen by one of their opponents of their choice. destroy all lands in the chosen piles. tap all lands in the other piles"
+    {
+        return Ok(Some(vec![EffectAst::ForEachPlayer {
+            effects: vec![
+                EffectAst::ChoosePlayer {
+                    chooser: PlayerAst::Implicit,
+                    filter: PlayerFilter::Opponent,
+                    tag: TagKey::from("divvy_opponent"),
+                    random: false,
+                    exclude_previous_choices: 0,
+                },
+                EffectAst::ChooseObjects {
+                    filter: ObjectFilter::land()
+                        .nontoken()
+                        .controlled_by(PlayerFilter::IteratedPlayer),
+                    count: ChoiceCount::any_number(),
+                    player: PlayerAst::Chosen,
+                    tag: TagKey::from("divvy_chosen"),
+                },
+                EffectAst::Destroy {
+                    target: TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
+                },
+                EffectAst::TapAll {
+                    filter: ObjectFilter::land()
+                        .nontoken()
+                        .controlled_by(PlayerFilter::IteratedPlayer)
+                        .not_tagged(TagKey::from("divvy_chosen")),
+                },
+            ],
+        }]));
+    }
+
+    if joined.starts_with(
+        "exile up to five target permanent cards from your graveyard and separate them into two piles",
+    ) && joined.contains("an opponent chooses one of those piles")
+        && joined.contains("put that pile into your hand")
+        && joined.contains("the other into your graveyard")
+    {
+        return Ok(Some(vec![
+            parse_single_effect_sentence(sentences[0].lowered())?,
+            EffectAst::TagMatchingObjects {
+                filter: ObjectFilter::tagged(TagKey::from(IT_TAG)),
+                zones: vec![Zone::Exile],
+                tag: TagKey::from("divvy_source"),
+            },
+            EffectAst::ChooseObjectsAcrossZones {
+                filter: ObjectFilter::tagged(TagKey::from("divvy_source")),
+                count: ChoiceCount::any_number(),
+                player: PlayerAst::Opponent,
+                tag: TagKey::from("divvy_chosen"),
+                zones: vec![Zone::Exile],
+            },
+            EffectAst::ReturnToHand {
+                target: TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
+                random: false,
+            },
+            EffectAst::ForEachTagged {
+                tag: TagKey::from("divvy_source"),
+                effects: vec![EffectAst::Conditional {
+                    predicate: membership_predicate_for_iterated_object("divvy_chosen"),
+                    if_true: Vec::new(),
+                    if_false: vec![EffectAst::MoveToZone {
+                        target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                        zone: Zone::Graveyard,
+                        to_top: false,
+                        battlefield_controller: ReturnControllerAst::Preserve,
+                        battlefield_tapped: false,
+                        attached_to: None,
+                    }],
+                }],
+            },
+        ]));
+    }
+
+    if joined
+        == "exile up to five target creature cards from graveyards. an opponent separates those cards into two piles. put all cards from the pile of your choice onto the battlefield under your control and the rest into their owners' graveyards"
+    {
+        return Ok(Some(vec![
+            parse_single_effect_sentence(sentences[0].lowered())?,
+            EffectAst::TagMatchingObjects {
+                filter: ObjectFilter::tagged(TagKey::from(IT_TAG)),
+                zones: vec![Zone::Exile],
+                tag: TagKey::from("divvy_source"),
+            },
+            EffectAst::ChooseObjectsAcrossZones {
+                filter: ObjectFilter::tagged(TagKey::from("divvy_source")),
+                count: ChoiceCount::any_number(),
+                player: PlayerAst::Opponent,
+                tag: TagKey::from("divvy_chosen"),
+                zones: vec![Zone::Exile],
+            },
+            EffectAst::MoveToZone {
+                target: TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
+                zone: Zone::Battlefield,
+                to_top: false,
+                battlefield_controller: ReturnControllerAst::You,
+                battlefield_tapped: false,
+                attached_to: None,
+            },
+            EffectAst::ForEachTagged {
+                tag: TagKey::from("divvy_source"),
+                effects: vec![EffectAst::Conditional {
+                    predicate: membership_predicate_for_iterated_object("divvy_chosen"),
+                    if_true: Vec::new(),
+                    if_false: vec![EffectAst::MoveToZone {
+                        target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                        zone: Zone::Graveyard,
+                        to_top: false,
+                        battlefield_controller: ReturnControllerAst::Preserve,
+                        battlefield_tapped: false,
+                        attached_to: None,
+                    }],
+                }],
+            },
+        ]));
+    }
+
+    if joined.starts_with(
+        "search your library and graveyard for up to four creature cards with different names that each have mana value x or less and reveal them",
+    ) && joined.contains("an opponent chooses two of those cards")
+        && joined.contains("shuffle the chosen cards into your library")
+        && joined.contains("put the rest onto the battlefield")
+    {
+        return Ok(Some(vec![
+            parse_single_effect_sentence(sentences[0].lowered())?,
+            EffectAst::TagMatchingObjects {
+                filter: ObjectFilter::tagged(TagKey::from(IT_TAG)),
+                zones: vec![Zone::Library, Zone::Graveyard],
+                tag: TagKey::from("divvy_source"),
+            },
+            EffectAst::ChooseObjectsAcrossZones {
+                filter: ObjectFilter::tagged(TagKey::from("divvy_source")),
+                count: ChoiceCount::exactly(2),
+                player: PlayerAst::Opponent,
+                tag: TagKey::from("divvy_chosen"),
+                zones: vec![Zone::Library, Zone::Graveyard],
+            },
+            EffectAst::MoveToZone {
+                target: TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
+                zone: Zone::Library,
+                to_top: false,
+                battlefield_controller: ReturnControllerAst::Preserve,
+                battlefield_tapped: false,
+                attached_to: None,
+            },
+            EffectAst::ShuffleLibrary {
+                player: PlayerAst::You,
+            },
+            EffectAst::ForEachTagged {
+                tag: TagKey::from("divvy_source"),
+                effects: vec![EffectAst::Conditional {
+                    predicate: membership_predicate_for_iterated_object("divvy_chosen"),
+                    if_true: Vec::new(),
+                    if_false: vec![EffectAst::MoveToZone {
+                        target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                        zone: Zone::Battlefield,
+                        to_top: false,
+                        battlefield_controller: ReturnControllerAst::You,
+                        battlefield_tapped: false,
+                        attached_to: None,
+                    }],
+                }],
+            },
+            EffectAst::Exile {
+                target: TargetAst::Source(None),
+                face_down: false,
+            },
+        ]));
+    }
+
+    if joined.contains("an opponent chooses one of them")
+        && joined.contains("put the chosen card into your hand")
+        && joined.contains("the other into your graveyard")
+    {
+        let mut prefix = Vec::new();
+        prefix.extend(parse_effect_sentence_lexed(sentences[0].lowered())?);
+        prefix.extend(parse_effect_sentence_lexed(sentences[1].lowered())?);
+        let mut effects = prefix;
+        effects.push(EffectAst::TagMatchingObjects {
+            filter: ObjectFilter::tagged(TagKey::from(IT_TAG)),
+            zones: vec![Zone::Library],
+            tag: TagKey::from("divvy_source"),
+        });
+        effects.push(EffectAst::ChooseObjectsAcrossZones {
+            filter: ObjectFilter::tagged(TagKey::from("divvy_source")),
+            count: ChoiceCount::exactly(1),
+            player: PlayerAst::Opponent,
+            tag: TagKey::from("divvy_chosen"),
+            zones: vec![Zone::Library],
+        });
+        effects.push(EffectAst::MoveToZone {
+            target: TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
+            zone: Zone::Hand,
+            to_top: false,
+            battlefield_controller: ReturnControllerAst::Preserve,
+            battlefield_tapped: false,
+            attached_to: None,
+        });
+        effects.push(EffectAst::ForEachTagged {
+            tag: TagKey::from("divvy_source"),
+            effects: vec![EffectAst::Conditional {
+                predicate: membership_predicate_for_iterated_object("divvy_chosen"),
+                if_true: Vec::new(),
+                if_false: vec![EffectAst::MoveToZone {
+                    target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                    zone: Zone::Graveyard,
+                    to_top: false,
+                    battlefield_controller: ReturnControllerAst::Preserve,
+                    battlefield_tapped: false,
+                    attached_to: None,
+                }],
+            }],
+        });
+        effects.push(EffectAst::ShuffleLibrary {
+            player: PlayerAst::You,
+        });
+        return Ok(Some(effects));
+    }
+
+    Ok(None)
+}
 
 const CHOSEN_NAME_TAG: &str = "__chosen_name__";
 
@@ -2792,6 +3171,10 @@ fn parse_quad_sentence_sequence(
 fn parse_effect_sentences_from_sentence_inputs(
     sentences: Vec<SentenceInput>,
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(effects) = try_parse_divvy_sentence_sequence(&sentences)? {
+        return Ok(effects);
+    }
+
     let mut effects = Vec::new();
     let mut sentence_idx = 0usize;
     let mut carried_context: Option<CarryContext> = None;
@@ -3982,6 +4365,7 @@ fn token_copy_followup_container_effects_mut(
         | EffectAst::RepeatProcess { effects, .. }
         | EffectAst::DelayedUntilNextEndStep { effects, .. }
         | EffectAst::DelayedUntilNextUpkeep { effects, .. }
+        | EffectAst::DelayedUntilNextDrawStep { effects, .. }
         | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
         | EffectAst::DelayedUntilEndOfCombat { effects }
         | EffectAst::DelayedTriggerThisTurn { effects, .. }

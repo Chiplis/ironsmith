@@ -69,7 +69,7 @@ fn parse_args() -> Result<Args, String> {
             }
             "-h" | "--help" => {
                 return Err(
-                    "usage: cargo run -p ironsmith-tools --bin sync_card_tagging -- [--cards <path>] [--db-path <path>] [--tagger-url <url>] [--tag <slug> ...] [--start <n>] [--limit <n>]"
+                    "usage: cargo run --release -p ironsmith-tools --bin sync_card_tagging -- [--cards <path>] [--db-path <path>] [--tagger-url <url>] [--tag <slug> ...] [--start <n>] [--limit <n>]"
                         .to_string(),
                 );
             }

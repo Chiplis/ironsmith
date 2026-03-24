@@ -6,6 +6,13 @@ pub struct EmbeddingConfig {
     pub mismatch_threshold: f32,
 }
 
+pub fn report_embedding_config() -> Option<EmbeddingConfig> {
+    Some(EmbeddingConfig {
+        dims: 384,
+        mismatch_threshold: 0.99,
+    })
+}
+
 fn strip_parenthetical(text: &str) -> String {
     let mut out = String::new();
     let mut depth = 0u32;

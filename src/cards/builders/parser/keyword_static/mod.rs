@@ -4,7 +4,7 @@ use super::activation_and_restrictions::{
     parse_choose_land_type_phrase_words,
 };
 use super::keyword_static_helpers::*;
-use super::lexer::{OwnedLexToken, TokenKind, trim_lexed_commas};
+use super::lexer::{OwnedLexToken, TokenKind, split_lexed_sentences, trim_lexed_commas};
 use super::lowering_support::rewrite_parsed_triggered_ability as parsed_triggered_ability;
 use super::native_tokens::LowercaseWordView;
 use super::object_filters::{parse_object_filter, parse_object_filter_lexed};
@@ -250,7 +250,9 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         multi_static_ability_ast_rule!(parse_enters_tapped_with_choose_color_line),
         single_static_ability_ast_rule!(parse_damage_not_removed_cleanup_line),
         single_static_ability_ast_rule!(parse_prevent_damage_to_source_remove_counter_line),
-        single_static_ability_ast_passthrough_rule!(parse_prevent_damage_to_source_put_counters_line),
+        single_static_ability_ast_passthrough_rule!(
+            parse_prevent_damage_to_source_put_counters_line
+        ),
         single_static_ability_ast_rule!(parse_choose_color_as_enters_line),
         single_static_ability_ast_rule!(parse_damage_redirect_to_source_line),
         single_static_ability_ast_rule!(
@@ -527,6 +529,18 @@ pub(crate) fn parse_damage_doubling_mana_value_marker_line(
 pub(crate) fn parse_static_ability_ast_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let sentences = split_lexed_sentences(tokens);
+    if sentences.len() > 1 {
+        let mut combined = Vec::new();
+        for sentence in sentences {
+            let Some(mut parsed) = parse_static_ability_ast_line_lexed(sentence)? else {
+                return Ok(None);
+            };
+            combined.append(&mut parsed);
+        }
+        return Ok((!combined.is_empty()).then_some(combined));
+    }
+
     let lowered = lowercase_word_tokens(tokens);
     let words = words(&lowered);
     if matches!(
@@ -1381,7 +1395,9 @@ pub(crate) fn parse_static_text_marker_line(tokens: &[OwnedLexToken]) -> Option<
         return Some(marker_text());
     }
 
-    if tokens.iter().any(|token| token.kind == TokenKind::ManaGroup)
+    if tokens
+        .iter()
+        .any(|token| token.kind == TokenKind::ManaGroup)
         && words.last().is_some_and(|word| word.contains('/'))
     {
         return Some(marker_text());
@@ -1404,8 +1420,9 @@ pub(crate) fn parse_static_text_marker_line(tokens: &[OwnedLexToken]) -> Option<
         return Some(marker_text());
     }
 
-    if words.starts_with(&["this", "creature", "can", "attack", "as", "though", "it", "had", "haste"])
-        && words.ends_with(&["unless", "it", "entered", "this", "turn"])
+    if words.starts_with(&[
+        "this", "creature", "can", "attack", "as", "though", "it", "had", "haste",
+    ]) && words.ends_with(&["unless", "it", "entered", "this", "turn"])
     {
         return Some(marker_text());
     }
@@ -2413,7 +2430,8 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
         };
 
         let tail_after_subtype = tail.get(subtype_idx + 1..).unwrap_or_default();
-        let supported_tail = tail_after_subtype == ["in", "addition", "to", "its", "other", "types"]
+        let supported_tail = tail_after_subtype
+            == ["in", "addition", "to", "its", "other", "types"]
             || tail_after_subtype.starts_with(&["and", "it", "has"])
             || tail_after_subtype.starts_with(&["and", "it", "s"])
             || tail_after_subtype.starts_with(&["and", "it's"])

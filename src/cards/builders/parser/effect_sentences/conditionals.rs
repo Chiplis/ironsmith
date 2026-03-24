@@ -2355,10 +2355,12 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             .map(|word| (*word).to_string())
             .collect::<Vec<_>>()
             .join(" ");
-        return Ok(PredicateAst::Not(Box::new(PredicateAst::PlayerCompletedDungeon {
-            player: PlayerAst::You,
-            dungeon_name: Some(dungeon_name),
-        })));
+        return Ok(PredicateAst::Not(Box::new(
+            PredicateAst::PlayerCompletedDungeon {
+                player: PlayerAst::You,
+                dungeon_name: Some(dungeon_name),
+            },
+        )));
     }
 
     if filtered.as_slice() == ["youve", "cast", "another", "spell", "this", "turn"]

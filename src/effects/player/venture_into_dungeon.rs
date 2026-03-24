@@ -49,14 +49,7 @@ fn choose_named_option(
         .enumerate()
         .map(|(idx, option)| SelectableOption::new(idx, option.clone()))
         .collect::<Vec<_>>();
-    let choice_ctx = SelectOptionsContext::new(
-        chooser,
-        Some(ctx.source),
-        prompt,
-        selectable,
-        1,
-        1,
-    );
+    let choice_ctx = SelectOptionsContext::new(chooser, Some(ctx.source), prompt, selectable, 1, 1);
     let selected = ctx.decision_maker.decide_options(game, &choice_ctx);
     if ctx.decision_maker.awaiting_choice() {
         return Ok(None);
@@ -74,9 +67,10 @@ pub(crate) fn advance_player_dungeon(
     player_id: PlayerId,
     undercity_if_no_active: bool,
 ) -> Result<EffectOutcome, ExecutionError> {
-    let (dungeon_name, room_name) = if let Some(progress) = game.active_dungeon(player_id).cloned() {
-        let next_rooms = next_room_names(&progress.dungeon_name, &progress.room_name)
-            .ok_or_else(|| {
+    let (dungeon_name, room_name) = if let Some(progress) = game.active_dungeon(player_id).cloned()
+    {
+        let next_rooms =
+            next_room_names(&progress.dungeon_name, &progress.room_name).ok_or_else(|| {
                 ExecutionError::Impossible(format!(
                     "missing next room data for {} -> {}",
                     progress.dungeon_name, progress.room_name
@@ -97,8 +91,8 @@ pub(crate) fn advance_player_dungeon(
                 player_id,
                 "Choose the next dungeon room",
                 &next_rooms,
-            )
-            ? else {
+            )?
+            else {
                 return Ok(EffectOutcome::count(0));
             };
             next_room
@@ -113,14 +107,9 @@ pub(crate) fn advance_player_dungeon(
         let dungeon_name = if dungeon_options.len() == 1 {
             dungeon_options[0].clone()
         } else {
-            let Some(dungeon_name) = choose_named_option(
-                ctx,
-                game,
-                player_id,
-                "Choose a dungeon",
-                &dungeon_options,
-            )
-            ? else {
+            let Some(dungeon_name) =
+                choose_named_option(ctx, game, player_id, "Choose a dungeon", &dungeon_options)?
+            else {
                 return Ok(EffectOutcome::count(0));
             };
             dungeon_name
@@ -172,11 +161,7 @@ mod tests {
     struct ChooseFirstOptionDecisionMaker;
 
     impl DecisionMaker for ChooseFirstOptionDecisionMaker {
-        fn decide_options(
-            &mut self,
-            _game: &GameState,
-            ctx: &SelectOptionsContext,
-        ) -> Vec<usize> {
+        fn decide_options(&mut self, _game: &GameState, ctx: &SelectOptionsContext) -> Vec<usize> {
             ctx.options
                 .first()
                 .map(|option| vec![option.index])

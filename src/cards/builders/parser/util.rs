@@ -1670,7 +1670,7 @@ pub(crate) fn parse_subject(tokens: &[OwnedLexToken]) -> SubjectAst {
         return SubjectAst::Player(PlayerAst::Attacking);
     }
 
-    if slice.starts_with(&["that", "player"]) {
+    if slice.starts_with(&["that", "player"]) || slice.starts_with(&["the", "player"]) {
         return SubjectAst::Player(PlayerAst::That);
     }
 

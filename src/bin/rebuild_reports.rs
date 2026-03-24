@@ -18,7 +18,7 @@ struct Args {
 
 fn usage() {
     eprintln!(
-        "Usage: cargo run --no-default-features --bin rebuild_reports -- \\
+        "Usage: cargo run --release --no-default-features --bin rebuild_reports -- \\
   [--threshold <float>] [--dims <int>] [--min-cluster-size <int>] [--limit <n>] [--cards <path>] [--reports-dir <path>]"
     );
 }

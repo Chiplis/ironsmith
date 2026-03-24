@@ -1034,6 +1034,8 @@ fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
         0,
     )
     .expect("rewrite lexer should classify graveyard trigger probe");
+    let second_main_tokens = lex_line("the beginning of your second main phase", 0)
+        .expect("rewrite lexer should classify second-main trigger probe");
 
     assert!(matches!(
         super::activation_and_restrictions::parse_trigger_clause_lexed(&dies_tokens),
@@ -1076,6 +1078,14 @@ fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
         ),
         "{graveyard:?}"
     );
+    assert!(matches!(
+        super::activation_and_restrictions::parse_trigger_clause_lexed(&second_main_tokens),
+        Ok(
+            crate::cards::builders::TriggerSpec::BeginningOfPostcombatMain(
+                crate::target::PlayerFilter::You
+            )
+        )
+    ));
 }
 
 #[test]
@@ -1165,6 +1175,25 @@ fn rewrite_lexed_triggered_line_parses_state_trigger_condition() {
         }
         other => panic!("expected triggered line, got {other:?}"),
     }
+}
+
+#[test]
+fn rewrite_lexed_triggered_line_lifts_intervening_if_with_multisentence_body() {
+    let text = "At the beginning of your second main phase, if this creature is tapped, reveal cards from the top of your library until you reveal a land card. Put that card into your hand and the rest on the bottom of your library in a random order.";
+    let tokens =
+        lex_line(text, 0).expect("rewrite lexer should classify postcombat intervening-if trigger");
+
+    let parsed = super::clause_support::parse_triggered_line_lexed(&tokens)
+        .expect("intervening-if trigger should parse");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("BeginningOfPostcombatMain"), "{debug}");
+    assert!(debug.contains("Conditional"), "{debug}");
+    assert!(debug.contains("ConsultTopOfLibrary"), "{debug}");
+    assert!(
+        debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+        "{debug}"
+    );
 }
 
 #[test]
@@ -2187,4 +2216,82 @@ fn rewrite_lowered_former_section9_cases_parse_without_fallback_text() -> Result
     assert!(failures.is_empty(), "{}", failures.join("\n\n"));
 
     Ok(())
+}
+
+#[test]
+fn rewrite_preprocess_expands_same_is_true_trigger_chain() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Thunderous Orator Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Whenever this creature attacks, it gains flying until end of turn if you control a creature with flying. The same is true for first strike and vigilance.",
+        )
+        .expect("same-is-true trigger chain should parse");
+
+    let rendered = crate::compiled_text::compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("whenever this creature attacks, it gains flying until end of turn"),
+        "expected flying branch to remain, got {rendered}"
+    );
+    assert!(
+        rendered
+            .contains("whenever this creature attacks, it gains first strike until end of turn")
+            && rendered
+                .contains("whenever this creature attacks, it gains vigilance until end of turn"),
+        "expected remaining borrowed keyword branches, got {rendered}"
+    );
+}
+
+#[test]
+fn rewrite_preprocess_expands_same_is_true_static_graveyard_chain() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Cairn Wanderer Variant")
+        .parse_text(
+            "As long as a creature card with flying is in a graveyard, this creature has flying. The same is true for first strike and vigilance.",
+        )
+        .expect("same-is-true static graveyard chain should parse");
+
+    let rendered = crate::compiled_text::compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("as long as there is a creature card with flying in a graveyard")
+            && rendered.contains("this creature has flying"),
+        "expected flying graveyard condition to be normalized, got {rendered}"
+    );
+    assert!(
+        rendered.contains("as long as there is a creature card with first strike in a graveyard")
+            && rendered.contains("this creature has first strike")
+            && rendered
+                .contains("as long as there is a creature card with vigilance in a graveyard")
+            && rendered.contains("this creature has vigilance"),
+        "expected same-is-true graveyard branches to expand, got {rendered}"
+    );
+}
+
+#[test]
+fn rewrite_preprocess_expands_same_is_true_static_exile_chain() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Urborg Scavengers Variant")
+        .parse_text(
+            "This creature has flying as long as a card exiled with it has flying. The same is true for trample and vigilance.",
+        )
+        .expect("same-is-true exile chain should parse");
+
+    let rendered = crate::compiled_text::compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains(
+            "this creature has flying as long as there is a card exiled with it with flying"
+        ),
+        "expected exile-linked flying condition to be normalized, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "this creature has trample as long as there is a card exiled with it with trample"
+        ) && rendered.contains(
+            "this creature has vigilance as long as there is a card exiled with it with vigilance"
+        ),
+        "expected same-is-true exile branches to expand, got {rendered}"
+    );
 }

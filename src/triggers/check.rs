@@ -595,9 +595,9 @@ fn add_initiative_designation_triggers(
                     "At the beginning of the upkeep of the player who has the initiative"
                         .to_string(),
                 ),
-                effects: ResolutionProgram::from_effects(vec![Effect::venture_into_undercity_player(
-                    PlayerFilter::Specific(initiative),
-                )]),
+                effects: ResolutionProgram::from_effects(vec![
+                    Effect::venture_into_undercity_player(PlayerFilter::Specific(initiative)),
+                ]),
                 choices: vec![],
                 intervening_if: None,
             },

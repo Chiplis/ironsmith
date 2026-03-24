@@ -51,6 +51,7 @@ fn normalize_nested_effects(effect: &mut EffectAst) {
         | EffectAst::RepeatProcess { effects, .. }
         | EffectAst::DelayedUntilNextEndStep { effects, .. }
         | EffectAst::DelayedUntilNextUpkeep { effects, .. }
+        | EffectAst::DelayedUntilNextDrawStep { effects, .. }
         | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
         | EffectAst::DelayedUntilEndOfCombat { effects }
         | EffectAst::DelayedTriggerThisTurn { effects, .. }

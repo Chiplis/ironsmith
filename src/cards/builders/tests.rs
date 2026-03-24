@@ -17350,6 +17350,100 @@ fn parse_your_opponents_cant_cast_creature_spells_this_turn() {
 }
 
 #[test]
+fn parse_render_silent_uses_controller_subject_for_cast_restriction() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Render Silent")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Counter target spell. Its controller can't cast spells this turn.")
+        .expect("render silent should parse");
+
+    let spell_debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        spell_debug.contains("ControllerOf"),
+        "expected controller-of-target cast restriction, got {spell_debug}"
+    );
+}
+
+#[test]
+fn parse_dragonlord_dromoka_keeps_during_your_turn_static_condition() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Dragonlord Dromoka")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Your opponents can't cast spells during your turn.")
+        .expect("dragonlord dromoka restriction should parse");
+
+    let abilities_debug = format!("{:#?}", def.abilities);
+    assert!(
+        abilities_debug.contains("DuringYourTurn"),
+        "expected during-your-turn condition, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("RuleRestriction"),
+        "expected rule restriction static ability, got {abilities_debug}"
+    );
+}
+
+#[test]
+fn parse_abeyance_supports_instant_or_sorcery_cast_restriction() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Abeyance")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Until end of turn, target player can't cast instant or sorcery spells, and that player can't activate abilities that aren't mana abilities.\nDraw a card.",
+        )
+        .expect("abeyance should parse");
+
+    let spell_debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        spell_debug.contains("Instant") && spell_debug.contains("Sorcery"),
+        "expected instant-or-sorcery restriction, got {spell_debug}"
+    );
+    assert!(
+        spell_debug.contains("ActivateNonManaAbilities"),
+        "expected non-mana ability restriction, got {spell_debug}"
+    );
+}
+
+#[test]
+fn parse_conquerors_flail_condition_maps_attached_equipment_to_equipped() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Conqueror's Flail")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "As long as this Equipment is attached to a creature, your opponents can't cast spells during your turn.",
+        )
+        .expect("conqueror's flail restriction should parse");
+
+    let abilities_debug = format!("{:#?}", def.abilities);
+    assert!(
+        abilities_debug.contains("SourceIsEquipped"),
+        "expected equipped condition, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("DuringYourTurn"),
+        "expected during-your-turn condition, got {abilities_debug}"
+    );
+}
+
+#[test]
+fn parse_grand_abolisher_conditioned_or_restrictions_keep_opponent_subject() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Grand Abolisher")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "During your turn, your opponents can't cast spells or activate abilities of artifacts, creatures, or enchantments.",
+        )
+        .expect("grand abolisher restriction should parse");
+
+    let abilities_debug = format!("{:#?}", def.abilities);
+    assert!(
+        abilities_debug.matches("DuringYourTurn").count() >= 2,
+        "expected both restrictions to keep the during-your-turn condition, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("CastSpellsMatching(")
+            && abilities_debug.contains("Opponent")
+            && abilities_debug.contains("ActivateAbilitiesOf"),
+        "expected cast and activation restrictions for opponents, got {abilities_debug}"
+    );
+}
+
+#[test]
 fn parse_target_player_may_cast_tagged_card_without_paying_mana_cost() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Cast Tagged Variant")
         .card_types(vec![CardType::Sorcery])
@@ -17441,6 +17535,55 @@ fn parse_oracle_ryan_sinclair_uses_dynamic_consult_gate() {
     assert!(
         abilities_debug.contains("MoveToZoneEffect") && abilities_debug.contains("zone: Library"),
         "expected exiled remainder to return to library bottom, got {abilities_debug}"
+    );
+}
+
+#[test]
+fn parse_oracle_house_cartographer_uses_postcombat_consult_trigger() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "House Cartographer")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Survival — At the beginning of your second main phase, if this creature is tapped, reveal cards from the top of your library until you reveal a land card. Put that card into your hand and the rest on the bottom of your library in a random order.",
+        )
+        .expect("house cartographer should parse");
+
+    let abilities_debug = format!("{:#?}", def.abilities);
+    assert!(
+        abilities_debug.contains("phase_type: Postcombat"),
+        "expected second-main trigger lowering, got {abilities_debug}"
+    );
+    assert!(
+        def.abilities.iter().any(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => {
+                triggered.intervening_if == Some(crate::ConditionExpr::SourceIsTapped)
+            }
+            _ => false,
+        }),
+        "expected tapped intervening-if predicate, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("ConsultTopOfLibraryEffect"),
+        "expected consult-top-of-library effect, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("PutTaggedRemainderOnLibraryBottomEffect"),
+        "expected consult remainder-bottom effect, got {abilities_debug}"
+    );
+    assert!(
+        !abilities_debug.contains("RevealCardsEffect"),
+        "expected consult lowering instead of generic reveal effect, got {abilities_debug}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("put that card into your hand")
+            && rendered.contains("put the rest on the bottom of your library in a random order"),
+        "expected consult render cleanup for hand-and-bottom wording, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("return it to its owner's hand")
+            && !rendered.contains("remaining tagged cards"),
+        "expected no internal consult phrasing leaks, got {rendered}"
     );
 }
 
@@ -19875,7 +20018,8 @@ fn jared_carthalion_true_heir_compiles_monarch_and_damage_replacement_text() {
     assert!(
         lowered.contains("target opponent becomes the monarch")
             && lowered.contains("you can't become the monarch this turn")
-            && lowered.contains("if damage would be dealt to jared carthalion while you're the monarch")
+            && lowered
+                .contains("if damage would be dealt to jared carthalion while you're the monarch")
             && lowered.contains("put that many +1/+1 counters on it")
             && !lowered.contains("unsupported effect"),
         "expected Jared to render monarch and prevention text cleanly, got {rendered}"

@@ -683,6 +683,199 @@ fn normalize_line_for_parse(
     })
 }
 
+fn borrow_ability_keyword_phrases() -> &'static [&'static str] {
+    &[
+        "protection from any color",
+        "double strike",
+        "first strike",
+        "indestructible",
+        "deathtouch",
+        "hexproof",
+        "lifelink",
+        "vigilance",
+        "landwalk",
+        "protection",
+        "trample",
+        "shroud",
+        "shadow",
+        "skulk",
+        "flying",
+        "menace",
+        "reach",
+        "haste",
+        "fear",
+    ]
+}
+
+fn split_period_sentences(text: &str) -> Vec<String> {
+    text.split('.')
+        .map(str::trim)
+        .filter(|segment| !segment.is_empty())
+        .map(ToString::to_string)
+        .collect()
+}
+
+fn parse_same_is_true_targets(tail: &str) -> Vec<String> {
+    let normalized = tail
+        .replace(", and ", ", ")
+        .replace(" and ", ", ")
+        .replace(';', ",");
+    normalized
+        .split(',')
+        .map(str::trim)
+        .filter(|segment| !segment.is_empty())
+        .map(ToString::to_string)
+        .collect()
+}
+
+fn find_borrow_ability_source_phrase(sentence: &str) -> Option<&'static str> {
+    let mut best: Option<(usize, &'static str)> = None;
+    for candidate in borrow_ability_keyword_phrases() {
+        for prefix in [
+            "gain ", "gains ", "has ", "have ", "with a ", "with an ", "put a ", "put an ",
+        ] {
+            let needle = format!("{prefix}{candidate}");
+            if let Some(idx) = sentence.find(needle.as_str()) {
+                match best {
+                    Some((best_idx, best_phrase))
+                        if idx > best_idx
+                            || (idx == best_idx && best_phrase.len() >= candidate.len()) => {}
+                    _ => best = Some((idx, *candidate)),
+                }
+            }
+        }
+    }
+    best.map(|(_, phrase)| phrase)
+}
+
+fn replace_whole_phrase_case_insensitive(text: &str, from: &str, to: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut idx = 0usize;
+
+    while idx < text.len() {
+        let rest = &text[idx..];
+        if rest.len() >= from.len()
+            && rest[..from.len()].eq_ignore_ascii_case(from)
+            && (idx == 0
+                || !text[..idx]
+                    .chars()
+                    .next_back()
+                    .is_some_and(|ch| ch.is_ascii_alphanumeric()))
+            && (idx + from.len() == text.len()
+                || !text[idx + from.len()..]
+                    .chars()
+                    .next()
+                    .is_some_and(|ch| ch.is_ascii_alphanumeric()))
+        {
+            out.push_str(to);
+            idx += from.len();
+            continue;
+        }
+
+        let ch = rest
+            .chars()
+            .next()
+            .expect("remaining text should be non-empty");
+        out.push(ch);
+        idx += ch.len_utf8();
+    }
+
+    out
+}
+
+fn rewrite_borrow_static_condition(condition: &str, ability: &str) -> Option<String> {
+    let condition = condition.trim();
+    for suffix in [format!(" has {ability}"), format!(" have {ability}")] {
+        if let Some(subject) = condition.strip_suffix(suffix.as_str()) {
+            return Some(format!("there is {} with {ability}", subject.trim()));
+        }
+    }
+    if let Some((subject, zone_tail)) = condition.split_once(" is in ") {
+        return Some(format!(
+            "there is {} in {}",
+            subject.trim(),
+            zone_tail.trim()
+        ));
+    }
+    if let Some((subject, zone_tail)) = condition.split_once(" are in ") {
+        return Some(format!(
+            "there are {} in {}",
+            subject.trim(),
+            zone_tail.trim()
+        ));
+    }
+    None
+}
+
+fn rewrite_borrow_static_sentence(sentence: &str) -> String {
+    let Some(ability) = find_borrow_ability_source_phrase(sentence) else {
+        return sentence.to_string();
+    };
+
+    if let Some(rest) = sentence.strip_prefix("as long as ")
+        && let Some((condition, consequence)) = rest.split_once(',')
+        && let Some(rewritten) = rewrite_borrow_static_condition(condition, ability)
+    {
+        return format!("as long as {}, {}", rewritten, consequence.trim());
+    }
+
+    if let Some((prefix, condition)) = sentence.split_once(" as long as ")
+        && let Some(rewritten) = rewrite_borrow_static_condition(condition, ability)
+    {
+        return format!("{} as long as {}", prefix.trim(), rewritten);
+    }
+
+    sentence.to_string()
+}
+
+fn expand_borrow_ability_line(text: &str) -> String {
+    let sentences = split_period_sentences(text);
+    if sentences.len() < 2 {
+        return rewrite_borrow_static_sentence(text.trim());
+    }
+
+    let mut expanded: Vec<String> = Vec::new();
+    for sentence in sentences {
+        if let Some(tail) = sentence.strip_prefix("the same is true for ")
+            && let Some(base_sentence) = expanded.last().cloned()
+            && let Some(source_phrase) = find_borrow_ability_source_phrase(base_sentence.as_str())
+        {
+            let targets = parse_same_is_true_targets(tail);
+            if !targets.is_empty() {
+                for target in targets {
+                    let replaced = replace_whole_phrase_case_insensitive(
+                        base_sentence.as_str(),
+                        source_phrase,
+                        target.as_str(),
+                    );
+                    expanded.push(rewrite_borrow_static_sentence(replaced.as_str()));
+                }
+                continue;
+            }
+        }
+
+        expanded.push(rewrite_borrow_static_sentence(sentence.as_str()));
+    }
+
+    let mut joined = expanded.join(". ");
+    if text.trim_end().ends_with('.') {
+        joined.push('.');
+    }
+    joined
+}
+
+fn resized_char_map_for_rewrite(original_map: &[usize], normalized: &str) -> Vec<usize> {
+    let target_len = normalized.chars().count();
+    if target_len == original_map.len() {
+        return original_map.to_vec();
+    }
+
+    let mut rewritten = original_map.to_vec();
+    let fill = original_map.last().copied().unwrap_or(0);
+    rewritten.resize(target_len, fill);
+    rewritten
+}
+
 fn is_ignorable_unparsed_line(line: &str) -> bool {
     let trimmed = line.trim();
     !trimmed.is_empty() && trimmed.starts_with('(') && trimmed.ends_with(')')
@@ -838,6 +1031,18 @@ pub(crate) fn preprocess_document(
             return Err(CardTextError::ParseError(format!(
                 "rewrite preprocessing could not normalize line: '{raw_line}'"
             )));
+        };
+
+        let expanded_normalized = expand_borrow_ability_line(normalized.normalized.as_str());
+        let normalized = if expanded_normalized != normalized.normalized {
+            let char_map = resized_char_map_for_rewrite(&normalized.char_map, &expanded_normalized);
+            NormalizedLine {
+                original: normalized.original,
+                normalized: expanded_normalized,
+                char_map,
+            }
+        } else {
+            normalized
         };
 
         annotations.record_original_line(line_index, &normalized.original);

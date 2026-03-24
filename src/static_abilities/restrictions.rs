@@ -3,7 +3,7 @@
 //! These abilities modify game rules like preventing life gain,
 //! preventing searching, etc.
 
-use super::{StaticAbilityId, StaticAbilityKind};
+use super::{StaticAbility, StaticAbilityId, StaticAbilityKind};
 use crate::effect::Restriction;
 use crate::game_state::{CantEffectTracker, GameState};
 use crate::ids::{ObjectId, PlayerId};
@@ -176,6 +176,16 @@ impl StaticAbilityKind for OpponentsCantCastSpells {
 
     fn display(&self) -> String {
         "Your opponents can't cast spells".to_string()
+    }
+
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        Some(
+            StaticAbility::restriction(
+                Restriction::cast_spells(PlayerFilter::Opponent),
+                self.display(),
+            )
+            .with_condition(condition)?,
+        )
     }
 
     fn apply_restrictions(&self, game: &mut GameState, _source: ObjectId, controller: PlayerId) {
@@ -440,6 +450,7 @@ impl StaticAbilityKind for CantBeCountered {
 pub struct RuleRestriction {
     pub restriction: Restriction,
     pub display: String,
+    pub condition: Option<crate::ConditionExpr>,
 }
 
 impl RuleRestriction {
@@ -447,7 +458,16 @@ impl RuleRestriction {
         Self {
             restriction,
             display,
+            condition: None,
         }
+    }
+
+    pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
+        self.condition = Some(match self.condition.take() {
+            Some(existing) => crate::ConditionExpr::And(Box::new(existing), Box::new(condition)),
+            None => condition,
+        });
+        self
     }
 }
 
@@ -458,6 +478,32 @@ impl StaticAbilityKind for RuleRestriction {
 
     fn display(&self) -> String {
         self.display.clone()
+    }
+
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        Some(StaticAbility::new(self.clone().with_condition(condition)))
+    }
+
+    fn is_active(&self, game: &GameState, source: ObjectId) -> bool {
+        let Some(condition) = &self.condition else {
+            return true;
+        };
+        let controller = match game.object(source) {
+            Some(object) => object.controller,
+            None => return false,
+        };
+        let eval_ctx = crate::condition_eval::ExternalEvaluationContext {
+            controller,
+            source,
+            defending_player: None,
+            attacking_player: None,
+            filter_source: Some(source),
+            triggering_event: None,
+            trigger_identity: None,
+            ability_index: None,
+            options: Default::default(),
+        };
+        crate::condition_eval::evaluate_condition_external(game, condition, &eval_ctx)
     }
 
     fn apply_restrictions(&self, game: &mut GameState, source: ObjectId, controller: PlayerId) {

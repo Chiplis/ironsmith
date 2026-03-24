@@ -818,6 +818,13 @@ pub(crate) fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
 }
 
 pub(crate) fn parse_deal_damage(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+    let tokens = if words(tokens).starts_with(&["an", "additional"]) {
+        &tokens[2..]
+    } else if words(tokens).starts_with(&["additional"]) {
+        &tokens[1..]
+    } else {
+        tokens
+    };
     let clause_words = words(tokens);
     if clause_words.starts_with(&["damage", "to", "each", "opponent", "equal", "to"])
         && clause_words.contains(&"number")
@@ -2875,7 +2882,9 @@ pub(crate) fn parse_gain_control(
                 Some(parse_predicate(&predicate_tokens)?),
                 false,
             )
-        } else if let Some(unless_idx) = target_tokens.iter().position(|token| token.is_word("unless"))
+        } else if let Some(unless_idx) = target_tokens
+            .iter()
+            .position(|token| token.is_word("unless"))
         {
             let pre_target_tokens = trim_commas(&target_tokens[..unless_idx]);
             let predicate_tokens = trim_commas(&target_tokens[unless_idx + 1..]);

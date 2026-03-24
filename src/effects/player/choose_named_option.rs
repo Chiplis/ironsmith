@@ -33,14 +33,8 @@ impl EffectExecutor for ChooseNamedOptionEffect {
             .enumerate()
             .map(|(idx, option)| SelectableOption::new(idx, option.clone()))
             .collect::<Vec<_>>();
-        let choice_ctx = SelectOptionsContext::new(
-            chooser,
-            Some(ctx.source),
-            "Choose one",
-            options,
-            1,
-            1,
-        );
+        let choice_ctx =
+            SelectOptionsContext::new(chooser, Some(ctx.source), "Choose one", options, 1, 1);
         let selected = ctx.decision_maker.decide_options(game, &choice_ctx);
         if ctx.decision_maker.awaiting_choice() {
             return Ok(EffectOutcome::count(0));

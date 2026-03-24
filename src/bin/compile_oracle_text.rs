@@ -33,6 +33,51 @@ fn read_input_text(text_arg: Option<String>) -> Result<Option<String>, String> {
     Ok(Some(input))
 }
 
+fn store_snapshot_if_requested(
+    should_write_db: bool,
+    db_payload: Option<&ironsmith_tools::CardPayload>,
+    db_path: &str,
+) -> Result<(), String> {
+    if !should_write_db {
+        return Ok(());
+    }
+    let Some(payload) = db_payload else {
+        return Ok(());
+    };
+
+    let db = CardStatusDb::open(db_path).map_err(|err| err.to_string())?;
+    let snapshot = compile_snapshot_from_payload(payload);
+    let inserted = db
+        .insert_snapshot_if_changed(&snapshot)
+        .map_err(|err| err.to_string())?;
+    eprintln!(
+        "[INFO] {} card status snapshot in {}",
+        if inserted {
+            "stored"
+        } else {
+            "skipped unchanged"
+        },
+        db_path
+    );
+    Ok(())
+}
+
+fn snapshot_payload_for_db(
+    card: Option<&ironsmith_tools::CardPayload>,
+    oracle_text: &str,
+    parse_input: &str,
+) -> Option<ironsmith_tools::CardPayload> {
+    let card = card?;
+    let oracle_matches = card.oracle_text.trim() == oracle_text.trim();
+    let parse_input_matches = card.parse_input.trim() == parse_input.trim();
+    (oracle_matches && parse_input_matches).then(|| ironsmith_tools::CardPayload {
+        name: card.name.clone(),
+        oracle_text: card.oracle_text.clone(),
+        metadata_lines: card.metadata_lines.clone(),
+        parse_input: card.parse_input.clone(),
+    })
+}
+
 fn main() -> Result<(), String> {
     let mut name = "Parser Probe".to_string();
     let mut cards_path = "cards.json".to_string();
@@ -119,20 +164,25 @@ fn main() -> Result<(), String> {
     } else {
         None
     };
-    let should_write_db = !no_db && input_text.is_none() && card_input.is_some();
 
     let (name, oracle_text, parse_input, db_payload) = match (input_text, card_input) {
         (Some(text), Some(card)) if !text_includes_metadata(&text) => {
             let parse_input = build_parse_input(&card.metadata_lines, &text);
-            (card.name, text.trim().to_string(), parse_input, None)
+            let oracle_text = text.trim().to_string();
+            let db_payload = snapshot_payload_for_db(Some(&card), &oracle_text, &parse_input);
+            (card.name, oracle_text, parse_input, db_payload)
         }
-        (Some(text), Some(card)) => (card.name, card.oracle_text, text, None),
+        (Some(text), Some(card)) => {
+            let db_payload = snapshot_payload_for_db(Some(&card), &card.oracle_text, &text);
+            (card.name, card.oracle_text, text, db_payload)
+        }
         (Some(text), None) => (name, text.clone(), text, None),
         (None, Some(card)) => {
             let name = card.name.clone();
             let oracle_text = card.oracle_text.clone();
             let parse_input = build_parse_input(&card.metadata_lines, &card.oracle_text);
-            (name, oracle_text, parse_input, Some(card))
+            let db_payload = snapshot_payload_for_db(Some(&card), &oracle_text, &parse_input);
+            (name, oracle_text, parse_input, db_payload)
         }
         (None, None) => {
             return Err(
@@ -141,11 +191,13 @@ fn main() -> Result<(), String> {
             )
         }
     };
+    let should_write_db = !no_db && db_payload.is_some();
 
     let builder = CardDefinitionBuilder::new(CardId::new(), &name);
-    let def = builder
-        .parse_text(parse_input.clone())
-        .map_err(|err| format!("parse failed: {err:?}"))?;
+    let def = builder.parse_text(parse_input.clone()).map_err(|err| {
+        let _ = store_snapshot_if_requested(should_write_db, db_payload.as_ref(), &db_path);
+        format!("parse failed: {err:?}")
+    })?;
 
     println!("Name: {}", def.card.name);
     if detailed {
@@ -181,22 +233,7 @@ fn main() -> Result<(), String> {
         }
     }
 
-    if should_write_db && let Some(payload) = db_payload.as_ref() {
-        let db = CardStatusDb::open(&db_path).map_err(|err| err.to_string())?;
-        let snapshot = compile_snapshot_from_payload(payload);
-        let inserted = db
-            .insert_snapshot_if_changed(&snapshot)
-            .map_err(|err| err.to_string())?;
-        eprintln!(
-            "[INFO] {} card status snapshot in {}",
-            if inserted {
-                "stored"
-            } else {
-                "skipped unchanged"
-            },
-            db_path
-        );
-    }
+    store_snapshot_if_requested(should_write_db, db_payload.as_ref(), &db_path)?;
 
     Ok(())
 }
@@ -204,6 +241,7 @@ fn main() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ironsmith_tools::CardPayload;
 
     #[test]
     fn build_parse_input_appends_oracle_text_after_metadata() {
@@ -230,5 +268,49 @@ mod tests {
         assert!(text_includes_metadata(
             "Type: Creature — Merfolk Wizard\nWhen this creature enters, draw a card."
         ));
+    }
+
+    #[test]
+    fn snapshot_payload_for_db_accepts_canonical_stdin_parse_block() {
+        let payload = CardPayload {
+            name: "House Cartographer".to_string(),
+            oracle_text: "Survival — At the beginning of your second main phase, if this creature is tapped, reveal cards from the top of your library until you reveal a land card. Put that card into your hand and the rest on the bottom of your library in a random order.".to_string(),
+            metadata_lines: vec![
+                "Mana cost: {1}{G}".to_string(),
+                "Type: Creature — Human Scout Survivor".to_string(),
+                "Power/Toughness: 2/2".to_string(),
+            ],
+            parse_input: "Mana cost: {1}{G}\nType: Creature — Human Scout Survivor\nPower/Toughness: 2/2\nSurvival — At the beginning of your second main phase, if this creature is tapped, reveal cards from the top of your library until you reveal a land card. Put that card into your hand and the rest on the bottom of your library in a random order.".to_string(),
+        };
+
+        let matched =
+            snapshot_payload_for_db(Some(&payload), &payload.oracle_text, &payload.parse_input);
+
+        assert!(
+            matched.is_some(),
+            "canonical parse block should store a snapshot"
+        );
+    }
+
+    #[test]
+    fn snapshot_payload_for_db_rejects_modified_override_text() {
+        let payload = CardPayload {
+            name: "House Cartographer".to_string(),
+            oracle_text: "Survival — At the beginning of your second main phase, if this creature is tapped, reveal cards from the top of your library until you reveal a land card. Put that card into your hand and the rest on the bottom of your library in a random order.".to_string(),
+            metadata_lines: vec![
+                "Mana cost: {1}{G}".to_string(),
+                "Type: Creature — Human Scout Survivor".to_string(),
+                "Power/Toughness: 2/2".to_string(),
+            ],
+            parse_input: "Mana cost: {1}{G}\nType: Creature — Human Scout Survivor\nPower/Toughness: 2/2\nSurvival — At the beginning of your second main phase, if this creature is tapped, reveal cards from the top of your library until you reveal a land card. Put that card into your hand and the rest on the bottom of your library in a random order.".to_string(),
+        };
+
+        let matched =
+            snapshot_payload_for_db(Some(&payload), "Modified text", &payload.parse_input);
+
+        assert!(
+            matched.is_none(),
+            "non-canonical override text should not store a snapshot"
+        );
     }
 }

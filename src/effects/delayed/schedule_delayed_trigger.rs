@@ -230,4 +230,47 @@ mod tests {
         assert_eq!(tagged.len(), 1);
         assert_eq!(tagged[0].object_id, snapshot.object_id);
     }
+
+    #[test]
+    fn test_schedule_delayed_trigger_starting_next_turn_waits_for_next_draw_step() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let effect = ScheduleDelayedTriggerEffect::new(
+            Trigger::beginning_of_draw_step(PlayerFilter::You),
+            vec![Effect::draw(1)],
+            true,
+            Vec::new(),
+            PlayerFilter::You,
+        )
+        .starting_next_turn();
+
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("schedule should resolve");
+        assert_eq!(game.delayed_triggers.len(), 1);
+
+        let same_turn_draw = crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::phase::BeginningOfDrawStepEvent::new(alice),
+            crate::provenance::ProvNodeId::default(),
+        );
+        assert!(
+            crate::triggers::check_delayed_triggers(&mut game, &same_turn_draw).is_empty(),
+            "draw-step trigger should not fire during the turn it was created"
+        );
+
+        game.turn.turn_number += 2;
+        let next_draw = crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::phase::BeginningOfDrawStepEvent::new(alice),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let triggers = crate::triggers::check_delayed_triggers(&mut game, &next_draw);
+        assert_eq!(
+            triggers.len(),
+            1,
+            "draw-step trigger should fire on the next turn's draw step"
+        );
+    }
 }

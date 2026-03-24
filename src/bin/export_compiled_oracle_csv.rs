@@ -97,7 +97,7 @@ fn parse_args() -> Result<Args, String> {
             }
             "-h" | "--help" => {
                 return Err(
-                    "usage: cargo run --bin export_compiled_oracle_csv -- [--cards <path>] [--all-out <path>] [--mismatch-out <path>] [--comparison-mode <strip-reminder|full>] [--db-path <path>] [--no-db]".to_string(),
+                    "usage: cargo run --release --bin export_compiled_oracle_csv -- [--cards <path>] [--all-out <path>] [--mismatch-out <path>] [--comparison-mode <strip-reminder|full>] [--db-path <path>] [--no-db]".to_string(),
                 );
             }
             _ => {

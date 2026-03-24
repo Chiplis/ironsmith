@@ -51,6 +51,23 @@ fn write_cards_with_abrade_json(path: &Path) {
     .expect("write cards.json with abrade");
 }
 
+fn write_cards_with_unsupported_json(path: &Path) {
+    fs::write(
+        path,
+        r#"[
+  {
+    "name":"Broken Borrow",
+    "oracle_text":"As long as a creature card with flying is in a graveyard, this creature has flying. The same is true for fear, first strike, double strike, deathtouch, haste, landwalk, lifelink, protection, reach, trample, shroud, and vigilance.",
+    "mana_cost":"{3}{B}{B}",
+    "type_line":"Creature — Elemental",
+    "power":"4",
+    "toughness":"4"
+  }
+]"#,
+    )
+    .expect("write cards.json with unsupported card");
+}
+
 fn query_count(db_path: &Path, sql: &str) -> i64 {
     let conn = Connection::open(db_path).expect("open sqlite db");
     conn.query_row(sql, [], |row| row.get(0))
@@ -350,6 +367,111 @@ fn sync_card_status_db_prunes_cards_without_supported_format_legality() {
 }
 
 #[test]
+fn sync_card_status_db_supports_tag_filtered_recompile_without_pruning() {
+    let dir = tempdir().expect("tempdir");
+    let cards_path = dir.path().join("cards.json");
+    let db_path = dir.path().join("engine-status.sqlite3");
+    write_cards_with_abrade_json(&cards_path);
+
+    {
+        let conn = Connection::open(&db_path).expect("open sqlite db");
+        conn.execute(
+            "CREATE TABLE card_tagging (card_name TEXT NOT NULL, tag TEXT NOT NULL, UNIQUE(card_name, tag))",
+            [],
+        )
+        .expect("create card_tagging");
+        conn.execute(
+            "INSERT INTO card_tagging(card_name, tag) VALUES ('Lightning Bolt', 'burn'), ('Abrade', 'removal')",
+            [],
+        )
+        .expect("seed card_tagging");
+    }
+
+    let status = Command::new(env!("CARGO_BIN_EXE_sync_card_status_db"))
+        .arg("--cards")
+        .arg(&cards_path)
+        .arg("--db-path")
+        .arg(&db_path)
+        .status()
+        .expect("run initial sync_card_status_db");
+    assert!(
+        status.success(),
+        "initial sync_card_status_db should succeed"
+    );
+    assert_eq!(
+        query_count(&db_path, "SELECT COUNT(*) FROM latest_card_compilation"),
+        2
+    );
+
+    fs::write(
+        &cards_path,
+        r#"[
+  {
+    "name":"Lightning Bolt",
+    "oracle_text":"Lightning Bolt deals 4 damage to any target.",
+    "mana_cost":"{R}",
+    "type_line":"Instant"
+  },
+  {
+    "name":"Abrade",
+    "oracle_text":"Choose one — Abrade deals 3 damage to target creature; or destroy target artifact.",
+    "mana_cost":"{1}{R}",
+    "type_line":"Instant"
+  }
+]"#,
+    )
+    .expect("write updated cards.json");
+
+    let status = Command::new(env!("CARGO_BIN_EXE_sync_card_status_db"))
+        .arg("--cards")
+        .arg(&cards_path)
+        .arg("--db-path")
+        .arg(&db_path)
+        .arg("--tag")
+        .arg("burn")
+        .status()
+        .expect("run tag-filtered sync_card_status_db");
+    assert!(
+        status.success(),
+        "tag-filtered sync_card_status_db should succeed"
+    );
+
+    assert_eq!(
+        query_count(&db_path, "SELECT COUNT(*) FROM card_compilation"),
+        3
+    );
+    assert_eq!(
+        query_count(&db_path, "SELECT COUNT(*) FROM latest_card_compilation"),
+        2
+    );
+
+    let conn = Connection::open(&db_path).expect("open sqlite db");
+    let lightning_oracle: String = conn
+        .query_row(
+            "SELECT oracle_text FROM latest_card_compilation WHERE card_name = 'Lightning Bolt'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("latest lightning bolt oracle text");
+    let abrade_oracle: String = conn
+        .query_row(
+            "SELECT oracle_text FROM latest_card_compilation WHERE card_name = 'Abrade'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("latest abrade oracle text");
+
+    assert_eq!(
+        lightning_oracle,
+        "Lightning Bolt deals 4 damage to any target."
+    );
+    assert_eq!(
+        abrade_oracle,
+        "Choose one — Abrade deals 3 damage to target creature; or destroy target artifact."
+    );
+}
+
+#[test]
 fn compile_oracle_text_only_writes_for_authoritative_cards_and_obeys_no_db() {
     let dir = tempdir().expect("tempdir");
     let cards_path = dir.path().join("cards.json");
@@ -414,6 +536,42 @@ fn compile_oracle_text_only_writes_for_authoritative_cards_and_obeys_no_db() {
         !adhoc_db.exists(),
         "ad hoc compile_oracle_text should not create the status DB"
     );
+}
+
+#[test]
+fn compile_oracle_text_writes_parse_failed_snapshot_for_authoritative_card() {
+    let dir = tempdir().expect("tempdir");
+    let cards_path = dir.path().join("cards.json");
+    let db_path = dir.path().join("authoritative.sqlite3");
+    write_cards_with_unsupported_json(&cards_path);
+
+    let status = Command::new(env!("CARGO_BIN_EXE_compile_oracle_text"))
+        .arg("--name")
+        .arg("Broken Borrow")
+        .arg("--cards")
+        .arg(&cards_path)
+        .arg("--db-path")
+        .arg(&db_path)
+        .status()
+        .expect("run authoritative compile_oracle_text on unsupported card");
+    assert!(
+        !status.success(),
+        "compile_oracle_text should still fail for unsupported authoritative cards"
+    );
+    assert_eq!(
+        query_count(&db_path, "SELECT COUNT(*) FROM card_compilation"),
+        1
+    );
+
+    let conn = Connection::open(&db_path).expect("open sqlite db");
+    let parse_status: String = conn
+        .query_row(
+            "SELECT parse_status FROM latest_card_compilation WHERE card_name = 'Broken Borrow'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("query parse status");
+    assert_eq!(parse_status, "parse_failed");
 }
 
 #[test]

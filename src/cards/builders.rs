@@ -1078,6 +1078,7 @@ pub(crate) enum TriggerSpec {
     BeginningOfCombat(PlayerFilter),
     BeginningOfEndStep(PlayerFilter),
     BeginningOfPrecombatMain(PlayerFilter),
+    BeginningOfPostcombatMain(PlayerFilter),
     ThisEntersBattlefield,
     ThisEntersBattlefieldFromZone {
         subject_filter: ObjectFilter,
@@ -1743,6 +1744,10 @@ pub(crate) enum EffectAst {
         player: PlayerAst,
         effects: Vec<EffectAst>,
     },
+    DelayedUntilNextDrawStep {
+        player: PlayerAst,
+        effects: Vec<EffectAst>,
+    },
     DelayedUntilEndStepOfExtraTurn {
         player: PlayerAst,
         effects: Vec<EffectAst>,
@@ -1992,6 +1997,11 @@ pub(crate) enum EffectAst {
         tag: TagKey,
         random: bool,
         exclude_previous_choices: usize,
+    },
+    TagMatchingObjects {
+        filter: ObjectFilter,
+        zones: Vec<Zone>,
+        tag: TagKey,
     },
     ChooseSpellCastHistory {
         chooser: PlayerAst,
@@ -5371,6 +5381,43 @@ mod delayed_trigger_finalization_tests {
         assert!(
             !spell_debug.contains("ScheduleDelayedTriggerEffect"),
             "stack trigger should not be rewritten into a delayed spell effect"
+        );
+    }
+
+    #[test]
+    fn parse_delayed_next_draw_step_unless_payment_builds_draw_step_schedule() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Glass Asp Variant")
+            .card_types(vec![CardType::Creature])
+            .parse_text(
+                "Whenever this creature deals damage to a player, that player loses 2 life at the beginning of their next draw step unless they pay {2} before that step.",
+            )
+            .expect("delayed draw-step payment should parse");
+
+        let abilities_debug = format!("{:?}", def.abilities);
+        assert!(
+            abilities_debug.contains("ScheduleDelayedTriggerEffect")
+                && abilities_debug.contains("BeginningOfDrawStep")
+                && abilities_debug.contains("UnlessPaysEffect"),
+            "expected delayed draw-step schedule in ability debug, got {abilities_debug}"
+        );
+    }
+
+    #[test]
+    fn parse_delayed_next_upkeep_unless_payment_keeps_payment_player_choice() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Quenchable Fire Variant")
+            .card_types(vec![CardType::Sorcery])
+            .parse_text(
+                "Quenchable Fire deals 3 damage to target player or planeswalker. It deals an additional 3 damage to that player or planeswalker at the beginning of your next upkeep step unless that player or that planeswalker's controller pays {U} before that step.",
+            )
+            .expect("delayed upkeep payment should parse");
+
+        let spell_debug = format!("{:?}", def.spell_effect);
+        assert!(
+            spell_debug.contains("ScheduleDelayedTriggerEffect")
+                && spell_debug.contains("BeginningOfUpkeep")
+                && spell_debug.contains("TargetPlayerOrControllerOfTarget")
+                && spell_debug.contains("UnlessPaysEffect"),
+            "expected delayed upkeep schedule in spell debug, got {spell_debug}"
         );
     }
 }

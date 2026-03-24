@@ -502,6 +502,12 @@ fn parse_statement_line_cst(
     line: &PreprocessedLine,
 ) -> Result<Option<StatementLineCst>, CardTextError> {
     let normalized = line.info.normalized.normalized.as_str();
+    if looks_like_divvy_statement_line(normalized) {
+        return Ok(Some(StatementLineCst {
+            info: line.info.clone(),
+            text: normalized.to_string(),
+        }));
+    }
     if normalized
         .contains("ask a person outside the game to rate its new art on a scale from 1 to 5")
     {
@@ -546,6 +552,17 @@ fn parse_statement_line_cst(
         info: line.info.clone(),
         text: normalized.to_string(),
     }))
+}
+
+fn looks_like_divvy_statement_line(normalized: &str) -> bool {
+    normalized.contains(" into two piles")
+        || normalized.contains(" into three piles")
+        || normalized.contains("chooses two of those cards")
+        || normalized.contains("chooses one of those piles")
+        || normalized.contains("pile of your choice")
+        || normalized.contains("pile of that player's choice")
+        || normalized.contains("chosen pile")
+        || normalized.contains("chosen piles")
 }
 
 fn parse_former_section9_unsupported_line_cst(

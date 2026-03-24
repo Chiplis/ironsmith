@@ -1,9 +1,9 @@
 use crate::cards::builders::{CardTextError, IT_TAG};
+use crate::filter::ParityRequirement;
 use crate::{
     CardType, Color, ColorSet, ObjectFilter, PlayerFilter, Supertype, TagKey,
     TaggedObjectConstraint, TaggedOpbjectRelation, Zone,
 };
-use crate::filter::ParityRequirement;
 
 use super::effect_sentences::{parse_subtype_word, parse_supertype_word};
 use super::keyword_static::parse_pt_modifier;
@@ -71,10 +71,7 @@ fn apply_parity_filter_phrases(words: &[&str], filter: &mut ObjectFilter) {
         }
     }
     for window in words.windows(5) {
-        if matches!(
-            window,
-            ["power", "of", "the", "chosen", "quality"]
-        ) {
+        if matches!(window, ["power", "of", "the", "chosen", "quality"]) {
             filter.power_parity = Some(ParityRequirement::Chosen);
         }
         if matches!(

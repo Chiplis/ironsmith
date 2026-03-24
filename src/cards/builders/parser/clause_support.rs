@@ -744,6 +744,58 @@ pub(crate) fn parse_triggered_line_lexed(
         }
     }
 
+    if let Some(first_comma_idx) = tokens
+        .iter()
+        .position(|token| token.kind == TokenKind::Comma)
+    {
+        let trigger_tokens = &tokens[start_idx..first_comma_idx];
+        let after_first_comma = trim_commas(&tokens[first_comma_idx + 1..]);
+        if after_first_comma
+            .first()
+            .is_some_and(|token| token.is_word("if"))
+            && let Some(second_comma_rel) = after_first_comma
+                .iter()
+                .position(|token| token.kind == TokenKind::Comma)
+        {
+            let predicate_with_if = trim_commas(&after_first_comma[..second_comma_rel]);
+            let predicate_tokens = if predicate_with_if
+                .first()
+                .is_some_and(|token| token.is_word("if"))
+            {
+                trim_commas(predicate_with_if.get(1..).unwrap_or_default())
+            } else {
+                predicate_with_if
+            };
+            let effects_tokens = trim_commas(&after_first_comma[second_comma_rel + 1..]);
+            if !predicate_tokens.is_empty()
+                && !effects_tokens.is_empty()
+                && let Ok(trigger) = parse_trigger_clause_lexed(trigger_tokens)
+                && let Ok(predicate) = parse_predicate_lexed(&predicate_tokens)
+                && !matches!(
+                    predicate,
+                    crate::cards::builders::PredicateAst::Unmodeled(_)
+                )
+            {
+                let rewritten_effects_tokens =
+                    rewrite_attached_controller_trigger_effect_tokens_lexed(
+                        trigger_tokens,
+                        &effects_tokens,
+                    );
+                if let Ok(effects) = parse_effect_sentences_lexed(&rewritten_effects_tokens) {
+                    return Ok(LineAst::Triggered {
+                        trigger,
+                        effects: vec![EffectAst::Conditional {
+                            predicate,
+                            if_true: effects,
+                            if_false: Vec::new(),
+                        }],
+                        max_triggers_per_turn: None,
+                    });
+                }
+            }
+        }
+    }
+
     if let Some(split_idx) = tokens
         .iter()
         .position(|token| token.kind == TokenKind::Comma)
@@ -984,7 +1036,7 @@ pub(crate) fn parse_triggered_line_lexed(
         if let Ok(trigger) = parse_trigger_clause_lexed(trigger_tokens) {
             let rewritten_effects_tokens = rewrite_attached_controller_trigger_effect_tokens_lexed(
                 trigger_tokens,
-                effects_tokens,
+                &effects_tokens,
             );
             let effects =
                 parse_effect_sentences_lexed(&rewritten_effects_tokens).or_else(|_| {

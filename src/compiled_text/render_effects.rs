@@ -208,6 +208,86 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
                 && remainder.order == crate::effects::consult_helpers::LibraryBottomOrder::Random
         }
 
+        fn render_consult_reveal_put_hand_then_bottom(effects: &[&Effect]) -> Option<String> {
+            if effects.len() != 3 {
+                return None;
+            }
+
+            let consult = effects[0].downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>()?;
+            if consult.mode != crate::effects::consult_helpers::LibraryConsultMode::Reveal {
+                return None;
+            }
+
+            let move_effect = unwrap_tag_wrappers(effects[1]);
+            let move_to_zone = move_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+            if move_to_zone.zone != Zone::Hand || move_to_zone.to_top {
+                return None;
+            }
+            if !matches!(
+                &move_to_zone.target,
+                ChooseSpec::Tagged(tag) if tag == &consult.match_tag
+            ) {
+                return None;
+            }
+
+            let remainder = effects[2]
+                .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
+            if remainder.tag != consult.all_tag
+                || remainder.keep_tagged.as_ref() != Some(&consult.match_tag)
+            {
+                return None;
+            }
+
+            let player = describe_player_filter(&consult.player);
+            let library_owner = describe_possessive_player_filter(&consult.player);
+            let reveal_verb = player_verb(&player, "reveal", "reveals");
+            let put_verb = player_verb(&player, "put", "puts");
+            let pronoun = if player == "you" { "you" } else { "they" };
+            let selection = describe_search_selection_with_cards(&consult.filter.description());
+            let stop_text = match &consult.stop_rule {
+                crate::effects::ConsultTopOfLibraryStopRule::FirstMatch => selection,
+                crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1)) => {
+                    selection
+                }
+                crate::effects::ConsultTopOfLibraryStopRule::MatchCount(count) => format!(
+                    "{} {}",
+                    describe_value(count),
+                    pluralize_noun_phrase(&selection)
+                ),
+            };
+            let order_text = match remainder.order {
+                crate::effects::consult_helpers::LibraryBottomOrder::Random => {
+                    " in a random order".to_string()
+                }
+                crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses => format!(
+                    " in an order chosen by {}",
+                    describe_player_filter(&remainder.player)
+                ),
+            };
+
+            if player == "you" {
+                Some(format!(
+                    "{player} {reveal_verb} cards from the top of {library_owner} library until {pronoun} {reveal_verb} {stop_text}, put that card into your hand, and put the rest on the bottom of {library_owner} library{order_text}"
+                ))
+            } else {
+                Some(format!(
+                    "{player} {reveal_verb} cards from the top of {library_owner} library until {pronoun} {reveal_verb} {stop_text}, then {player} {put_verb} that card into their hand and {put_verb} the rest on the bottom of {library_owner} library{order_text}"
+                ))
+            }
+        }
+
+        if idx + 2 < filtered.len()
+            && let Some(rendered) = render_consult_reveal_put_hand_then_bottom(&[
+                filtered[idx],
+                filtered[idx + 1],
+                filtered[idx + 2],
+            ])
+        {
+            parts.push(rendered);
+            idx += 3;
+            continue;
+        }
+
         // Compact Chaotic Transformation-style prefix:
         // Exile up to one target [type] ... and/or ... then ForEachTagged helper-tag reveal-until.
         if idx + 6 < filtered.len()
@@ -6636,6 +6716,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             tag_attached.tag.as_str()
         );
     }
+    if effect
+        .downcast_ref::<crate::effects::TagMatchingObjectsEffect>()
+        .is_some()
+    {
+        return String::new();
+    }
     if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
         return describe_effect(&with_id.effect);
     }
@@ -7971,14 +8057,25 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             {
                 return format!("At the beginning of that player's next upkeep, {delayed_text}");
             }
+            if trigger_lower.contains("that player's draw step")
+                || trigger_lower.contains("target player's draw step")
+            {
+                return format!("At the beginning of that player's next draw step, {delayed_text}");
+            }
             if trigger_lower.contains("your end step") {
                 return format!("At the beginning of your next end step, {delayed_text}");
             }
             if trigger_lower.contains("your upkeep") {
                 return format!("At the beginning of your next upkeep, {delayed_text}");
             }
+            if trigger_lower.contains("your draw step") {
+                return format!("At the beginning of your next draw step, {delayed_text}");
+            }
             if trigger_lower.contains("upkeep") {
                 return format!("At the beginning of the next turn's upkeep, {delayed_text}");
+            }
+            if trigger_lower.contains("draw step") {
+                return format!("At the beginning of the next turn's draw step, {delayed_text}");
             }
             return format!("At the beginning of the next end step, {delayed_text}");
         }

@@ -27,7 +27,7 @@ struct CardInput {
 
 fn usage() {
     eprintln!(
-        "Usage: cargo run --bin audit_unimplemented_partition -- \\\n+  --partition <reports/parse_ok_unimplemented/...> [--cards <cards.json>] [--limit <n>] [--top <n>]"
+        "Usage: cargo run --release --bin audit_unimplemented_partition -- \\\n+  --partition <reports/parse_ok_unimplemented/...> [--cards <cards.json>] [--limit <n>] [--top <n>]"
     );
 }
 

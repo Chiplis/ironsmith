@@ -2321,35 +2321,42 @@ fn apply_prevention_for_damage_assignment(
         DamageTarget::Player(player_id) => game
             .prevention_effects
             .apply_prevention_to_player_with_follow_ups(
-            player_id,
-            amount,
-            is_combat,
-            source,
-            &source_colors,
-            &source_card_types,
-            can_prevent,
-        ),
-        DamageTarget::Object(object_id) => {
-            let controller = game
-                .object(object_id)
-                .map(|o| o.controller)
-                .unwrap_or(game.turn.active_player);
-            game.prevention_effects.apply_prevention_to_permanent_with_follow_ups(
-                object_id,
-                controller,
+                player_id,
                 amount,
                 is_combat,
                 source,
                 &source_colors,
                 &source_card_types,
                 can_prevent,
-            )
+            ),
+        DamageTarget::Object(object_id) => {
+            let controller = game
+                .object(object_id)
+                .map(|o| o.controller)
+                .unwrap_or(game.turn.active_player);
+            game.prevention_effects
+                .apply_prevention_to_permanent_with_follow_ups(
+                    object_id,
+                    controller,
+                    amount,
+                    is_combat,
+                    source,
+                    &source_colors,
+                    &source_card_types,
+                    can_prevent,
+                )
         }
     };
 
     if can_prevent && !result.follow_ups.is_empty() {
         let prevented_event = crate::events::RawEvent::new(
-            DamageEvent::with_cause(source, target, amount - result.remaining, is_combat, cause.clone()),
+            DamageEvent::with_cause(
+                source,
+                target,
+                amount - result.remaining,
+                is_combat,
+                cause.clone(),
+            ),
             provenance,
         );
         for follow_up in result.follow_ups {

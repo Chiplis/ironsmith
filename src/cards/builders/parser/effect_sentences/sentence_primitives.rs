@@ -4148,6 +4148,30 @@ pub(crate) fn parse_sentence_unless_pays(
 
     // Normal path: parse effects before "unless", then build unless wrapper
     let effect_tokens = &tokens[..unless_idx];
+    if let Some((timing_start_word, _timing_end_word, step, player)) =
+        delayed_next_step_marker(effect_tokens)
+    {
+        let Some(timing_token_idx) = token_index_for_word_index(effect_tokens, timing_start_word)
+        else {
+            return Ok(None);
+        };
+        let delayed_effect_tokens = trim_commas(&effect_tokens[..timing_token_idx]);
+        if delayed_effect_tokens.is_empty() {
+            return Ok(None);
+        }
+        let delayed_effects = parse_effect_chain(&delayed_effect_tokens)?;
+        if delayed_effects.is_empty() {
+            return Ok(None);
+        }
+        if let Some(unless_effect) = try_build_unless(delayed_effects, tokens, unless_idx)? {
+            return Ok(Some(vec![wrap_delayed_next_step_unless_pays(
+                step,
+                player,
+                vec![unless_effect],
+            )]));
+        }
+    }
+
     let effects = parse_effect_chain(&effect_tokens)?;
     if effects.is_empty() {
         return Ok(None);
@@ -4158,6 +4182,210 @@ pub(crate) fn parse_sentence_unless_pays(
     }
 
     Ok(None)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DelayedNextStepKind {
+    Upkeep,
+    DrawStep,
+}
+
+fn delayed_next_step_marker(
+    tokens: &[OwnedLexToken],
+) -> Option<(usize, usize, DelayedNextStepKind, PlayerAst)> {
+    let word_view = LowercaseWordView::new(tokens);
+    let words = word_view.to_word_refs();
+    let patterns: &[(&[&str], DelayedNextStepKind, PlayerAst)] = &[
+        (
+            &["at", "the", "beginning", "of", "your", "next", "upkeep"],
+            DelayedNextStepKind::Upkeep,
+            PlayerAst::You,
+        ),
+        (
+            &[
+                "at",
+                "the",
+                "beginning",
+                "of",
+                "your",
+                "next",
+                "upkeep",
+                "step",
+            ],
+            DelayedNextStepKind::Upkeep,
+            PlayerAst::You,
+        ),
+        (
+            &[
+                "at",
+                "the",
+                "beginning",
+                "of",
+                "your",
+                "next",
+                "draw",
+                "step",
+            ],
+            DelayedNextStepKind::DrawStep,
+            PlayerAst::You,
+        ),
+        (
+            &["at", "the", "beginning", "of", "their", "next", "upkeep"],
+            DelayedNextStepKind::Upkeep,
+            PlayerAst::That,
+        ),
+        (
+            &[
+                "at",
+                "the",
+                "beginning",
+                "of",
+                "their",
+                "next",
+                "upkeep",
+                "step",
+            ],
+            DelayedNextStepKind::Upkeep,
+            PlayerAst::That,
+        ),
+        (
+            &[
+                "at",
+                "the",
+                "beginning",
+                "of",
+                "their",
+                "next",
+                "draw",
+                "step",
+            ],
+            DelayedNextStepKind::DrawStep,
+            PlayerAst::That,
+        ),
+        (
+            &[
+                "at",
+                "the",
+                "beginning",
+                "of",
+                "that",
+                "players",
+                "next",
+                "upkeep",
+            ],
+            DelayedNextStepKind::Upkeep,
+            PlayerAst::That,
+        ),
+        (
+            &[
+                "at",
+                "the",
+                "beginning",
+                "of",
+                "that",
+                "players",
+                "next",
+                "upkeep",
+                "step",
+            ],
+            DelayedNextStepKind::Upkeep,
+            PlayerAst::That,
+        ),
+        (
+            &[
+                "at",
+                "the",
+                "beginning",
+                "of",
+                "that",
+                "players",
+                "next",
+                "draw",
+                "step",
+            ],
+            DelayedNextStepKind::DrawStep,
+            PlayerAst::That,
+        ),
+    ];
+
+    for (pattern, step, player) in patterns {
+        if let Some(start) = words
+            .windows(pattern.len())
+            .position(|window| window == *pattern)
+        {
+            return Some((start, start + pattern.len(), *step, *player));
+        }
+    }
+
+    None
+}
+
+fn wrap_delayed_next_step_unless_pays(
+    step: DelayedNextStepKind,
+    player: PlayerAst,
+    effects: Vec<EffectAst>,
+) -> EffectAst {
+    match step {
+        DelayedNextStepKind::Upkeep => EffectAst::DelayedUntilNextUpkeep { player, effects },
+        DelayedNextStepKind::DrawStep => EffectAst::DelayedUntilNextDrawStep { player, effects },
+    }
+}
+
+pub(crate) fn parse_sentence_delayed_next_step_unless_pays(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let segments = split_on_period(tokens);
+    if segments.is_empty() {
+        return Ok(None);
+    }
+
+    let (leading_segments, final_segment) = segments.split_at(segments.len() - 1);
+    let final_segment = trim_commas(&final_segment[0]);
+    let Some((timing_start_word, _timing_end_word, step, player)) =
+        delayed_next_step_marker(&final_segment)
+    else {
+        return Ok(None);
+    };
+
+    let Some(timing_token_idx) = token_index_for_word_index(&final_segment, timing_start_word)
+    else {
+        return Ok(None);
+    };
+    let delayed_effect_tokens = trim_commas(&final_segment[..timing_token_idx]);
+    if delayed_effect_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let delayed_effects = parse_effect_chain(&delayed_effect_tokens)?;
+    if delayed_effects.is_empty() {
+        return Ok(None);
+    }
+
+    let timing_tokens = trim_commas(&final_segment[timing_token_idx..]);
+    let Some(unless_idx) = timing_tokens
+        .iter()
+        .position(|token| token.is_word("unless"))
+    else {
+        return Ok(None);
+    };
+    let Some(unless_effect) = try_build_unless(delayed_effects, &timing_tokens, unless_idx)? else {
+        return Ok(None);
+    };
+
+    let mut effects = Vec::new();
+    for segment in leading_segments {
+        let parsed = parse_effect_chain(segment)?;
+        if parsed.is_empty() {
+            return Ok(None);
+        }
+        effects.extend(parsed);
+    }
+    effects.push(wrap_delayed_next_step_unless_pays(
+        step,
+        player,
+        vec![unless_effect],
+    ));
+    Ok(Some(effects))
 }
 
 pub(crate) fn parse_sentence_delayed_next_upkeep_unless_pays_lose_game(
@@ -4305,6 +4533,33 @@ pub(crate) fn try_build_unless(
             Some((PlayerAst::ItsController, 2))
         } else if prefix == ["its", "owner"] || prefix == ["their", "owner"] {
             Some((PlayerAst::ItsOwner, 2))
+        } else if prefix.len() >= 6
+            && prefix[0] == "that"
+            && prefix[1] == "player"
+            && prefix[2] == "or"
+            && prefix[3] == "that"
+            && matches!(
+                prefix[4],
+                "ability"
+                    | "abilitys"
+                    | "card"
+                    | "cards"
+                    | "creature"
+                    | "creatures"
+                    | "object"
+                    | "objects"
+                    | "permanent"
+                    | "permanents"
+                    | "planeswalker"
+                    | "planeswalkers"
+                    | "source"
+                    | "sources"
+                    | "spell"
+                    | "spells"
+            )
+            && matches!(prefix[5], "controller" | "controllers")
+        {
+            Some((PlayerAst::ThatPlayerOrTargetController, 6))
         } else if prefix.len() >= 3
             && prefix[0] == "that"
             && matches!(
@@ -4319,6 +4574,8 @@ pub(crate) fn try_build_unless(
                     | "objects"
                     | "permanent"
                     | "permanents"
+                    | "planeswalker"
+                    | "planeswalkers"
                     | "source"
                     | "sources"
                     | "spell"
@@ -4341,6 +4598,8 @@ pub(crate) fn try_build_unless(
                     | "objects"
                     | "permanent"
                     | "permanents"
+                    | "planeswalker"
+                    | "planeswalkers"
                     | "source"
                     | "sources"
                     | "spell"
@@ -4361,6 +4620,8 @@ pub(crate) fn try_build_unless(
                     | "objects"
                     | "permanent"
                     | "permanents"
+                    | "planeswalker"
+                    | "planeswalkers"
                     | "source"
                     | "sources"
                     | "spell"
@@ -4371,7 +4632,7 @@ pub(crate) fn try_build_unless(
             && prefix[4] == "that"
             && prefix[5] == "player"
         {
-            Some((PlayerAst::ItsController, 6))
+            Some((PlayerAst::ThatPlayerOrTargetController, 6))
         } else {
             None
         }
@@ -5110,6 +5371,10 @@ pub(crate) const POST_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
     SentencePrimitive {
         name: "for-each-destroyed-this-way",
         parser: parse_sentence_for_each_destroyed_this_way,
+    },
+    SentencePrimitive {
+        name: "delayed-next-step-unless-pays",
+        parser: parse_sentence_delayed_next_step_unless_pays,
     },
     SentencePrimitive {
         name: "search-delayed-next-upkeep-unless-pays-lose-game",

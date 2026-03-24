@@ -1262,13 +1262,14 @@ pub(crate) fn parse_transform(tokens: &[OwnedLexToken]) -> Result<EffectAst, Car
     }
     let target = match parse_target_phrase(tokens) {
         Ok(target) => target,
-        Err(_) if target_words.len() <= 3
-            && !target_words.iter().any(|word| {
-                matches!(
-                    *word,
-                    "target" | "another" | "other" | "each" | "all" | "that" | "those"
-                )
-            }) =>
+        Err(_)
+            if target_words.len() <= 3
+                && !target_words.iter().any(|word| {
+                    matches!(
+                        *word,
+                        "target" | "another" | "other" | "each" | "all" | "that" | "those"
+                    )
+                }) =>
         {
             TargetAst::Source(span_from_tokens(tokens))
         }

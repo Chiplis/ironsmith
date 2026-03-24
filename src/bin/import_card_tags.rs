@@ -38,7 +38,7 @@ fn parse_args() -> Result<Args, String> {
             }
             "-h" | "--help" => {
                 return Err(
-                    "usage: cargo run -p ironsmith-tools --bin import_card_tags -- --csv <path> [--csv <path> ...] [--cards <path>] [--db-path <path>]"
+                    "usage: cargo run --release -p ironsmith-tools --bin import_card_tags -- --csv <path> [--csv <path> ...] [--cards <path>] [--db-path <path>]"
                         .to_string(),
                 );
             }

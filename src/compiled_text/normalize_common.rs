@@ -3227,7 +3227,8 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             subject.trim()
         );
     }
-    if let Some((subject, tail)) = normalized.split_once(" has \"If damage would be dealt to this, ")
+    if let Some((subject, tail)) =
+        normalized.split_once(" has \"If damage would be dealt to this, ")
         && let Some(effect_text) = tail.strip_suffix("\" as long as you're the monarch")
     {
         return format!(
@@ -3236,7 +3237,8 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             effect_text.trim()
         );
     }
-    if let Some((subject, tail)) = normalized.split_once(" has \"If damage would be dealt to this, ")
+    if let Some((subject, tail)) =
+        normalized.split_once(" has \"If damage would be dealt to this, ")
         && let Some(effect_text) = tail.strip_suffix("\" as long as you're the monarch.")
     {
         return format!(
@@ -3245,7 +3247,8 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             effect_text.trim().trim_end_matches('.')
         );
     }
-    if let Some((prefix, suffix)) = normalized.split_once(". you can't become the monarch this turn")
+    if let Some((prefix, suffix)) =
+        normalized.split_once(". you can't become the monarch this turn")
         && suffix.trim_matches('.').trim().is_empty()
     {
         return format!(
@@ -6733,7 +6736,10 @@ pub(super) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             format!("{} can't win the game", describe_player_set_filter(filter))
         }
         crate::effect::Restriction::BecomeMonarch(filter) => {
-            format!("{} can't become the monarch", describe_player_set_filter(filter))
+            format!(
+                "{} can't become the monarch",
+                describe_player_set_filter(filter)
+            )
         }
         crate::effect::Restriction::PreventDamage => "damage can't be prevented".to_string(),
         crate::effect::Restriction::Attack(filter) => {

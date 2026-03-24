@@ -19,7 +19,7 @@ use super::effect_sentences::{
 };
 use super::keyword_static::{
     parse_add_mana_equal_amount_value, parse_cost_modifier_amount, parse_cost_modifier_mana_cost,
-    parse_dynamic_cost_modifier_value, parse_where_x_value_clause,
+    parse_dynamic_cost_modifier_value, parse_static_condition_clause, parse_where_x_value_clause,
     parse_where_x_value_clause_lexed,
 };
 use super::lexer::{OwnedLexToken, TokenKind};
@@ -3292,6 +3292,19 @@ pub(crate) fn parse_source_must_be_blocked_if_able_line(
 pub(crate) fn parse_cant_clauses(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    if let Some((condition, remainder)) = strip_static_restriction_condition(tokens)?
+        && remainder != tokens
+    {
+        let Some(abilities) = parse_cant_clauses(&remainder)? else {
+            return Ok(None);
+        };
+        let conditioned = abilities
+            .into_iter()
+            .map(|ability| ability.with_condition(condition.clone()).unwrap_or(ability))
+            .collect::<Vec<_>>();
+        return Ok(Some(conditioned));
+    }
+
     let normalized_words_storage = normalize_cant_words(tokens);
     let normalized_words = normalized_words_storage
         .iter()
@@ -3323,6 +3336,22 @@ pub(crate) fn parse_cant_clauses(
 
     if find_negation_span(tokens).is_none() {
         return Ok(None);
+    }
+
+    if let Some(segments) = split_cant_clause_on_or(tokens) {
+        let mut abilities = Vec::new();
+        for segment in segments {
+            let Some(ability) = parse_cant_clause(&segment)? else {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported cant clause segment (clause: '{}')",
+                    words(&segment).join(" ")
+                )));
+            };
+            abilities.push(ability);
+        }
+        if !abilities.is_empty() {
+            return Ok(Some(abilities));
+        }
     }
 
     if tokens.iter().any(|token| token.is_word("and")) {
@@ -3373,9 +3402,64 @@ pub(crate) fn parse_cant_clauses(
     parse_cant_clause(tokens).map(|ability| ability.map(|ability| vec![ability]))
 }
 
+fn split_cant_clause_on_or(tokens: &[OwnedLexToken]) -> Option<Vec<Vec<OwnedLexToken>>> {
+    let (neg_start, neg_end) = find_negation_span(tokens)?;
+    let subject_tokens = trim_commas(&tokens[..neg_start]);
+    let remainder_tokens = trim_commas(&tokens[neg_end..]);
+    let or_idx = remainder_tokens
+        .iter()
+        .position(|token| token.is_word("or"))?;
+    let tail = trim_commas(&remainder_tokens[or_idx + 1..]);
+    let starts_new_restriction = tail.first().is_some_and(|token| {
+        token.is_word("cast")
+            || token.is_word("activate")
+            || token.is_word("attack")
+            || token.is_word("block")
+            || token.is_word("be")
+    });
+    if !starts_new_restriction {
+        return None;
+    }
+
+    let negation_tokens = tokens[neg_start..neg_end].to_vec();
+    let mut first = subject_tokens.clone();
+    first.extend(negation_tokens.iter().cloned());
+    first.extend(trim_commas(&remainder_tokens[..or_idx]).iter().cloned());
+
+    let mut second = subject_tokens.clone();
+    second.extend(negation_tokens.iter().cloned());
+    second.extend(tail.iter().cloned());
+
+    Some(vec![first, second])
+}
+
 pub(crate) fn parse_cant_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
+    if let Some((condition, remainder)) = strip_static_restriction_condition(tokens)?
+        && remainder != tokens
+    {
+        let Some(ability) = parse_cant_clause(&remainder)? else {
+            return Ok(None);
+        };
+        if let Some(conditioned) = ability.with_condition(condition.clone()) {
+            return Ok(Some(conditioned));
+        }
+        if let Some(parsed) = parse_cant_restriction_clause(&remainder)?
+            && parsed.target.is_none()
+        {
+            return Ok(Some(
+                StaticAbility::restriction(
+                    parsed.restriction,
+                    format_negated_restriction_display(tokens),
+                )
+                .with_condition(condition)
+                .unwrap_or(ability),
+            ));
+        }
+        return Ok(Some(ability));
+    }
+
     let normalized_storage = normalize_cant_words(tokens);
     let normalized = normalized_storage
         .iter()
@@ -4342,6 +4426,10 @@ pub(crate) fn parse_cant_clause(
             crate::effect::Restriction::GainLife(_)
                 | crate::effect::Restriction::SearchLibraries(_)
                 | crate::effect::Restriction::CastSpellsMatching(_, _)
+                | crate::effect::Restriction::ActivateNonManaAbilities(_)
+                | crate::effect::Restriction::ActivateAbilitiesOf(_)
+                | crate::effect::Restriction::ActivateTapAbilitiesOf(_)
+                | crate::effect::Restriction::ActivateNonManaAbilitiesOf(_)
                 | crate::effect::Restriction::CastMoreThanOneSpellEachTurn(_, _)
                 | crate::effect::Restriction::DrawCards(_)
                 | crate::effect::Restriction::DrawExtraCards(_)
@@ -4561,6 +4649,10 @@ pub(crate) fn parse_cant_restriction_clause(
         && remainder.len() < tokens.len()
     {
         return parse_cant_restriction_clause(&remainder);
+    }
+
+    if let Some(parsed) = parse_player_negated_restriction_clause(tokens)? {
+        return Ok(Some(parsed));
     }
 
     let normalized_storage = normalize_cant_words(tokens);
@@ -4877,10 +4969,312 @@ fn parse_cast_limit_qualifier(words: &[&str]) -> Option<(ObjectFilter, usize)> {
     if let Some(first) = words.first().copied()
         && let Some(filter) = parse_positive_term(first)
     {
-        return Some((filter, 1));
+        let mut filters = vec![filter];
+        let mut used = 1usize;
+        while words
+            .get(used)
+            .is_some_and(|word| *word == "or" || *word == "and")
+        {
+            let Some(next_word) = words.get(used + 1).copied() else {
+                break;
+            };
+            let Some(next_filter) = parse_positive_term(next_word) else {
+                break;
+            };
+            filters.push(next_filter);
+            used += 2;
+        }
+        if filters.len() == 1 {
+            return Some((filters.pop().expect("single filter"), used));
+        }
+        let mut disjunction = ObjectFilter::default();
+        disjunction.any_of = filters;
+        return Some((disjunction, used));
     }
 
     None
+}
+
+fn strip_static_restriction_condition(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<(crate::ConditionExpr, Vec<OwnedLexToken>)>, CardTextError> {
+    let normalized_storage = normalize_cant_words(tokens);
+    let normalized = normalized_storage
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+
+    if normalized.starts_with(&["during", "your", "turn"]) {
+        let remainder = tokens
+            .iter()
+            .position(|token| token.is_comma())
+            .map(|idx| trim_commas(&tokens[idx + 1..]).to_vec())
+            .unwrap_or_else(|| trim_commas(&tokens[3..]).to_vec());
+        return Ok(Some((
+            crate::ConditionExpr::ActivationTiming(ActivationTiming::DuringYourTurn),
+            remainder,
+        )));
+    }
+
+    if normalized.starts_with(&["during", "combat"]) {
+        let remainder = tokens
+            .iter()
+            .position(|token| token.is_comma())
+            .map(|idx| trim_commas(&tokens[idx + 1..]).to_vec())
+            .unwrap_or_else(|| trim_commas(&tokens[2..]).to_vec());
+        return Ok(Some((
+            crate::ConditionExpr::ActivationTiming(ActivationTiming::DuringCombat),
+            remainder,
+        )));
+    }
+
+    if normalized.ends_with(&["during", "your", "turn"]) {
+        let cut = tokens
+            .iter()
+            .rposition(|token| token.is_word("during"))
+            .unwrap_or(tokens.len());
+        return Ok(Some((
+            crate::ConditionExpr::ActivationTiming(ActivationTiming::DuringYourTurn),
+            trim_commas(&tokens[..cut]).to_vec(),
+        )));
+    }
+
+    if normalized.ends_with(&["during", "combat"]) {
+        let cut = tokens
+            .iter()
+            .rposition(|token| token.is_word("during"))
+            .unwrap_or(tokens.len());
+        return Ok(Some((
+            crate::ConditionExpr::ActivationTiming(ActivationTiming::DuringCombat),
+            trim_commas(&tokens[..cut]).to_vec(),
+        )));
+    }
+
+    if normalized.starts_with(&["as", "long", "as"]) {
+        let Some(comma_idx) = tokens.iter().position(|token| token.is_comma()) else {
+            return Ok(None);
+        };
+        let condition_tokens = trim_commas(&tokens[3..comma_idx]);
+        let condition = parse_static_condition_clause(&condition_tokens).or_else(|_| {
+            let condition_words = normalize_cant_words(&condition_tokens);
+            let normalized_condition = condition_words
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>();
+            match normalized_condition.as_slice() {
+                ["this", "equipment", "is", "attached", "to", "a", "creature"]
+                | ["this", "equipment", "is", "attached", "to", "creature"]
+                | ["this", "permanent", "is", "attached", "to", "a", "creature"]
+                | ["this", "permanent", "is", "attached", "to", "creature"] => {
+                    Ok(crate::ConditionExpr::SourceIsEquipped)
+                }
+                _ => Err(CardTextError::ParseError(format!(
+                    "unsupported static condition clause (clause: '{}')",
+                    words(tokens).join(" ")
+                ))),
+            }
+        })?;
+        return Ok(Some((
+            condition,
+            trim_commas(&tokens[comma_idx + 1..]).to_vec(),
+        )));
+    }
+
+    Ok(None)
+}
+
+fn parse_player_negated_restriction_clause(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<ParsedCantRestriction>, CardTextError> {
+    use crate::effect::Restriction;
+
+    let Some((neg_start, neg_end)) = find_negation_span(tokens) else {
+        return Ok(None);
+    };
+    let subject_tokens = trim_commas(&tokens[..neg_start]);
+    let Some((player, target)) = parse_player_restriction_subject(&subject_tokens)? else {
+        return Ok(None);
+    };
+    let remainder_tokens = trim_commas(&tokens[neg_end..]);
+    if remainder_tokens.is_empty() {
+        return Ok(None);
+    }
+    let remainder_words_storage = normalize_cant_words(&remainder_tokens);
+    let remainder_words = remainder_words_storage
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+
+    if let Some(spell_filter) = parse_cast_restriction_tail_filter(&remainder_words) {
+        return Ok(Some(ParsedCantRestriction {
+            restriction: Restriction::cast_spells_matching(player, spell_filter),
+            target,
+        }));
+    }
+    if remainder_words.as_slice() == ["cast", "spells"] {
+        return Ok(Some(ParsedCantRestriction {
+            restriction: Restriction::cast_spells(player),
+            target,
+        }));
+    }
+    if remainder_words.as_slice()
+        == [
+            "activate",
+            "abilities",
+            "that",
+            "arent",
+            "mana",
+            "abilities",
+        ]
+    {
+        return Ok(Some(ParsedCantRestriction {
+            restriction: Restriction::activate_non_mana_abilities(player),
+            target,
+        }));
+    }
+    if remainder_words.starts_with(&["activate", "abilities", "of"]) {
+        let Some(mut filter) =
+            parse_card_type_list_filter(&remainder_words[3..], Some(Zone::Battlefield))
+        else {
+            return Ok(None);
+        };
+        filter.controller = Some(player);
+        let restriction = if remainder_words.ends_with(&["unless", "theyre", "mana", "abilities"]) {
+            Restriction::activate_non_mana_abilities_of(filter)
+        } else {
+            Restriction::activate_abilities_of(filter)
+        };
+        return Ok(Some(ParsedCantRestriction {
+            restriction,
+            target,
+        }));
+    }
+
+    Ok(None)
+}
+
+fn parse_player_restriction_subject(
+    subject_tokens: &[OwnedLexToken],
+) -> Result<Option<(PlayerFilter, Option<TargetAst>)>, CardTextError> {
+    if subject_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    if starts_with_target_indicator(subject_tokens) {
+        let target = parse_target_phrase(subject_tokens)?;
+        if let TargetAst::Player(player, span) = &target {
+            return Ok(Some((
+                target_ast_player_filter(player.clone(), *span),
+                Some(target),
+            )));
+        }
+        return Err(CardTextError::ParseError(format!(
+            "unsupported target restriction subject (clause: '{}')",
+            words(subject_tokens).join(" ")
+        )));
+    }
+
+    let normalized_storage = normalize_cant_words(subject_tokens);
+    let normalized = normalized_storage
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    match normalized.as_slice() {
+        ["you"] => return Ok(Some((PlayerFilter::You, None))),
+        ["that", "player"] | ["they"] => {
+            return Ok(Some((PlayerFilter::IteratedPlayer, None)));
+        }
+        ["your", "opponents"] | ["each", "opponent"] | ["opponents"] => {
+            return Ok(Some((PlayerFilter::Opponent, None)));
+        }
+        ["players"] | ["each", "player"] => return Ok(Some((PlayerFilter::Any, None))),
+        ["defending", "player"] => return Ok(Some((PlayerFilter::Defending, None))),
+        ["attacking", "player"] => return Ok(Some((PlayerFilter::Attacking, None))),
+        ["its", "controller"] | ["their", "controller"] => {
+            return Ok(Some((
+                PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(TagKey::from(IT_TAG))),
+                None,
+            )));
+        }
+        ["its", "owner"] | ["their", "owner"] => {
+            return Ok(Some((
+                PlayerFilter::OwnerOf(crate::filter::ObjectRef::tagged(TagKey::from(IT_TAG))),
+                None,
+            )));
+        }
+        _ => {}
+    }
+
+    let player = match parse_subject(subject_tokens) {
+        crate::cards::builders::SubjectAst::Player(PlayerAst::You | PlayerAst::Implicit) => {
+            PlayerFilter::You
+        }
+        crate::cards::builders::SubjectAst::Player(PlayerAst::Opponent) => PlayerFilter::Opponent,
+        crate::cards::builders::SubjectAst::Player(PlayerAst::That) => PlayerFilter::IteratedPlayer,
+        crate::cards::builders::SubjectAst::Player(PlayerAst::Defending) => PlayerFilter::Defending,
+        crate::cards::builders::SubjectAst::Player(PlayerAst::ItsController) => {
+            PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(TagKey::from(IT_TAG)))
+        }
+        crate::cards::builders::SubjectAst::Player(PlayerAst::ItsOwner) => {
+            PlayerFilter::OwnerOf(crate::filter::ObjectRef::tagged(TagKey::from(IT_TAG)))
+        }
+        crate::cards::builders::SubjectAst::Player(PlayerAst::Chosen) => PlayerFilter::ChosenPlayer,
+        crate::cards::builders::SubjectAst::Player(PlayerAst::Attacking) => PlayerFilter::Attacking,
+        _ => return Ok(None),
+    };
+    Ok(Some((player, None)))
+}
+
+fn target_ast_player_filter(player: PlayerFilter, span: Option<TextSpan>) -> PlayerFilter {
+    if span.is_some() {
+        match player {
+            PlayerFilter::Any => PlayerFilter::target_player(),
+            PlayerFilter::Opponent => PlayerFilter::target_opponent(),
+            other => other,
+        }
+    } else {
+        player
+    }
+}
+
+fn parse_cast_restriction_tail_filter(words: &[&str]) -> Option<ObjectFilter> {
+    if words == ["cast", "spells"] {
+        return Some(ObjectFilter::default());
+    }
+    if words.first() != Some(&"cast") || words.last() != Some(&"spells") || words.len() < 3 {
+        return None;
+    }
+    let tail = &words[1..words.len() - 1];
+    let (filter, used) = parse_cast_limit_qualifier(tail)?;
+    (used == tail.len()).then_some(filter)
+}
+
+fn parse_card_type_list_filter(words: &[&str], zone: Option<Zone>) -> Option<ObjectFilter> {
+    let cleaned = words
+        .iter()
+        .copied()
+        .filter(|word| !matches!(*word, "a" | "an" | "the" | "or" | "and" | ","))
+        .filter(|word| !matches!(*word, "unless" | "theyre" | "mana" | "abilities"))
+        .collect::<Vec<_>>();
+    if cleaned.is_empty() {
+        return None;
+    }
+
+    let mut filters = Vec::new();
+    for word in cleaned {
+        let normalized = word.trim_end_matches('s');
+        let card_type = parse_card_type(normalized)?;
+        let mut filter = ObjectFilter::default();
+        filter.zone = zone;
+        filter.card_types.push(card_type);
+        filters.push(filter);
+    }
+    if filters.len() == 1 {
+        return filters.pop();
+    }
+    let mut disjunction = ObjectFilter::default();
+    disjunction.any_of = filters;
+    Some(disjunction)
 }
 
 fn restriction_from_cast_limit_filter(
@@ -8596,10 +8990,27 @@ pub(crate) fn parse_trigger_clause_lexed(
             ))
         }
         _ if words.contains(&"beginning")
+            && words.contains(&"second")
+            && words.contains(&"main")
+            && words.contains(&"phase") =>
+        {
+            Ok(TriggerSpec::BeginningOfPostcombatMain(
+                parse_possessive_clause_player_filter(&words),
+            ))
+        }
+        _ if words.contains(&"beginning")
             && words.contains(&"precombat")
             && words.contains(&"main") =>
         {
             Ok(TriggerSpec::BeginningOfPrecombatMain(
+                parse_possessive_clause_player_filter(&words),
+            ))
+        }
+        _ if words.contains(&"beginning")
+            && words.contains(&"postcombat")
+            && words.contains(&"main") =>
+        {
+            Ok(TriggerSpec::BeginningOfPostcombatMain(
                 parse_possessive_clause_player_filter(&words),
             ))
         }
@@ -9625,8 +10036,19 @@ pub(crate) fn parse_may_cast_it_sentence(tokens: &[OwnedLexToken]) -> Option<May
             predicate: None,
         });
     }
-    if let ["without", "paying", "its", "mana", "cost", "if", "its", "mana", "value", "is", parity] =
-        tail
+    if let [
+        "without",
+        "paying",
+        "its",
+        "mana",
+        "cost",
+        "if",
+        "its",
+        "mana",
+        "value",
+        "is",
+        parity,
+    ] = tail
     {
         let parity = match *parity {
             "odd" => crate::filter::ParityRequirement::Odd,

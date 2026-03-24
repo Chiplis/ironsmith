@@ -580,7 +580,9 @@ impl ReplacementMatcher for DamageToOtherCreatureYouControlMatcher {
             return false;
         };
         target_obj.controller == ctx.controller
-            && target_obj.card_types.contains(&crate::types::CardType::Creature)
+            && target_obj
+                .card_types
+                .contains(&crate::types::CardType::Creature)
     }
 
     fn priority(&self) -> ReplacementPriority {

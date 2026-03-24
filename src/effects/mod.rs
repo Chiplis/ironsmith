@@ -85,9 +85,9 @@ pub use composition::{
     ForEachControllerOfTaggedEffect, ForEachObject, ForEachTaggedEffect, ForEachTaggedPlayerEffect,
     ForPlayersEffect, IfEffect, ManifestDreadEffect, MayEffect, OpenAttractionEffect,
     ReflexiveTriggerEffect, RepeatProcessEffect, SequenceEffect, SupportEffect, TagAllEffect,
-    TagAttachedToSourceEffect, TagTriggeringDamageTargetEffect, TagTriggeringObjectEffect,
-    TaggedEffect, TargetOnlyEffect, UnlessActionEffect, UnlessPaysEffect, VoteEffect, VoteOption,
-    WithIdEffect,
+    TagAttachedToSourceEffect, TagMatchingObjectsEffect, TagTriggeringDamageTargetEffect,
+    TagTriggeringObjectEffect, TaggedEffect, TargetOnlyEffect, UnlessActionEffect,
+    UnlessPaysEffect, VoteEffect, VoteOption, WithIdEffect,
 };
 pub use continuous::ApplyContinuousEffect;
 pub use control::{ExchangeControlEffect, GainControlEffect, SharedTypeConstraint};
@@ -124,8 +124,8 @@ pub use permanents::{
 pub use player::{
     AdditionalLandPlaysEffect, BecomeMonarchEffect, CascadeEffect, CastSourceEffect,
     CastTaggedEffect, ChooseCardNameEffect, ChooseColorEffect, ChooseCreatureTypeEffect,
-    ChooseNamedOptionEffect, ChoosePlayerEffect, ControlPlayerEffect, CreateEmblemEffect, DiscoverEffect,
-    EnergyCountersEffect, ExileInsteadOfGraveyardEffect, ExileThenGrantPlayEffect,
+    ChooseNamedOptionEffect, ChoosePlayerEffect, ControlPlayerEffect, CreateEmblemEffect,
+    DiscoverEffect, EnergyCountersEffect, ExileInsteadOfGraveyardEffect, ExileThenGrantPlayEffect,
     ExileUntilMatchCastEffect, ExileUntilMatchGrantPlayEffect, ExperienceCountersEffect,
     ExtraTurnAfterNextTurnEffect, ExtraTurnEffect, GrantBySpecEffect, GrantEffect,
     GrantNextSpellAbilityEffect, GrantNextSpellCostReductionEffect, GrantPlayTaggedDuration,

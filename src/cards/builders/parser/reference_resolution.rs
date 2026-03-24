@@ -574,6 +574,10 @@ fn advance_reference_frame_for_effect(
                 .recent_player_choice_tags
                 .push(tag.as_str().to_string());
         }
+        EffectAst::TagMatchingObjects { filter, tag, .. } => {
+            track_player_from_object_filter(filter, frame);
+            frame.last_object_tag = Some(tag.as_str().to_string());
+        }
         EffectAst::ChooseSpellCastHistory { tag, .. } => {
             frame.last_object_tag = Some(tag.as_str().to_string());
         }
@@ -713,6 +717,7 @@ fn advance_reference_frame_for_effect(
             track_effect_player(player.clone(), frame, true, true)?;
         }
         EffectAst::DelayedUntilNextUpkeep { player, effects }
+        | EffectAst::DelayedUntilNextDrawStep { player, effects }
         | EffectAst::DelayedUntilEndStepOfExtraTurn { player, effects } => {
             advance_effects_preserving_last_effect(&effects, id_gen, frame)?;
             track_effect_player(player.clone(), frame, true, true)?;
@@ -1619,6 +1624,10 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 + bind_unresolved_it_in_tag(tag, seed_tag)
         }
         EffectAst::ChoosePlayer { .. } => 0,
+        EffectAst::TagMatchingObjects { filter, tag, .. } => {
+            bind_unresolved_it_in_filter(filter, seed_tag)
+                + bind_unresolved_it_in_tag(tag, seed_tag)
+        }
         EffectAst::ChooseSpellCastHistory { filter, tag, .. } => {
             bind_unresolved_it_in_filter(filter, seed_tag)
                 + bind_unresolved_it_in_tag(tag, seed_tag)

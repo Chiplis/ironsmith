@@ -17,7 +17,7 @@ use crate::cards::{
 };
 use crate::compiled_text::compiled_lines;
 use crate::ids::CardId;
-use crate::semantic_compare::compare_semantics_scored;
+use crate::semantic_compare::{compare_semantics_scored, report_embedding_config};
 
 pub const DEFAULT_DB_PATH: &str = "reports/engine-status.sqlite3";
 pub const SCRYFALL_TAGGER_TAGS_URL: &str = "https://scryfall.com/docs/tagger-tags";
@@ -246,7 +246,7 @@ impl CompilationSnapshot {
                 similarity_score,
                 line_delta,
                 semantic_mismatch,
-            ) = compare_semantics_scored(oracle_text, &compiled, None);
+            ) = compare_semantics_scored(oracle_text, &compiled, report_embedding_config());
             (
                 Some(compiled_text),
                 Some(stable_compiled_definition_snapshot(definition)),
@@ -628,6 +628,19 @@ impl CardStatusDb {
             .query_map([], |row| row.get(0))?
             .collect::<Result<Vec<String>, _>>()?;
         Ok(tags)
+    }
+
+    pub fn card_names_for_tag(&self, tag: &str) -> Result<Vec<String>, Box<dyn Error>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT card_name
+             FROM card_tagging
+             WHERE tag = ?1
+             ORDER BY card_name ASC",
+        )?;
+        let names = stmt
+            .query_map([tag], |row| row.get(0))?
+            .collect::<Result<Vec<String>, _>>()?;
+        Ok(names)
     }
 }
 
@@ -1134,6 +1147,7 @@ fn pick_field(card: &Value, face: Option<&Value>, key: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::semantic_compare::{compare_semantics_scored, report_embedding_config};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn unique_temp_path(name: &str) -> PathBuf {
@@ -1259,6 +1273,32 @@ mod tests {
         assert_eq!(
             first.compiled_card_definition,
             second.compiled_card_definition
+        );
+    }
+
+    #[test]
+    fn compilation_snapshot_uses_embedding_backed_similarity() {
+        let oracle = "Survival — At the beginning of your second main phase, if this creature is tapped, reveal cards from the top of your library until you reveal a land card. Put that card into your hand and the rest on the bottom of your library in a random order.";
+        let definition = CardDefinitionBuilder::new(CardId::new(), "House Cartographer")
+            .parse_text(oracle)
+            .expect("house cartographer should parse");
+        let compiled = compiled_lines(&definition);
+        let snapshot = CompilationSnapshot::from_definition_result(
+            "House Cartographer",
+            oracle,
+            ParseStatus::StrictCompiled,
+            None,
+            Some(&definition),
+        );
+        let (_oracle_cov, _compiled_cov, lexical_similarity, _delta, _mismatch) =
+            compare_semantics_scored(oracle, &compiled, None);
+        let (_oracle_cov, _compiled_cov, embedded_similarity, _delta, _mismatch) =
+            compare_semantics_scored(oracle, &compiled, report_embedding_config());
+
+        assert_eq!(snapshot.similarity_score, embedded_similarity);
+        assert!(
+            embedded_similarity > lexical_similarity,
+            "expected embedding-backed similarity to improve over lexical-only scoring, lexical={lexical_similarity}, embedded={embedded_similarity}, compiled={compiled:?}"
         );
     }
 

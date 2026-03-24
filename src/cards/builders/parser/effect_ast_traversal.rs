@@ -78,6 +78,10 @@ macro_rules! nested_effects_variants {
                 effects: $effects,
                 ..
             }
+            | EffectAst::DelayedUntilNextDrawStep {
+                effects: $effects,
+                ..
+            }
             | EffectAst::DelayedUntilEndStepOfExtraTurn {
                 effects: $effects,
                 ..
@@ -189,6 +193,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::ExtraTurnAfterTurn { .. } => {}
         EffectAst::DelayedUntilNextEndStep { .. } => {}
         EffectAst::DelayedUntilNextUpkeep { .. } => {}
+        EffectAst::DelayedUntilNextDrawStep { .. } => {}
         EffectAst::DelayedUntilEndStepOfExtraTurn { .. } => {}
         EffectAst::DelayedUntilEndOfCombat { .. } => {}
         EffectAst::DelayedTriggerThisTurn { .. } => {}
@@ -215,6 +220,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::ChooseObjects { .. } => {}
         EffectAst::ChooseObjectsAcrossZones { .. } => {}
         EffectAst::ChoosePlayer { .. } => {}
+        EffectAst::TagMatchingObjects { .. } => {}
         EffectAst::ChooseSpellCastHistory { .. } => {}
         EffectAst::Sacrifice { .. } => {}
         EffectAst::SacrificeAll { .. } => {}

@@ -578,7 +578,11 @@ impl ParityRequirement {
         }
     }
 
-    fn resolve(self, game: &crate::game_state::GameState, source: Option<ObjectId>) -> Option<Self> {
+    fn resolve(
+        self,
+        game: &crate::game_state::GameState,
+        source: Option<ObjectId>,
+    ) -> Option<Self> {
         match self {
             Self::Odd | Self::Even => Some(self),
             Self::Chosen => {
@@ -595,12 +599,7 @@ impl ParityRequirement {
         }
     }
 
-    fn matches(
-        self,
-        value: i32,
-        game: &crate::game_state::GameState,
-        ctx: &FilterContext,
-    ) -> bool {
+    fn matches(self, value: i32, game: &crate::game_state::GameState, ctx: &FilterContext) -> bool {
         match self.resolve(game, ctx.source) {
             Some(Self::Odd) => value.rem_euclid(2) == 1,
             Some(Self::Even) => value.rem_euclid(2) == 0,

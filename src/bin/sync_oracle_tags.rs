@@ -38,7 +38,7 @@ fn parse_args() -> Result<Args, String> {
             }
             "-h" | "--help" => {
                 return Err(
-                    "usage: cargo run -p ironsmith-tools --bin sync_oracle_tags -- [--db-path <path>] [--html <path> | --url <url>]"
+                    "usage: cargo run --release -p ironsmith-tools --bin sync_oracle_tags -- [--db-path <path>] [--html <path> | --url <url>]"
                         .to_string(),
                 );
             }

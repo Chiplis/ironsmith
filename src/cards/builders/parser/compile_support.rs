@@ -248,6 +248,9 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::BeginningOfPrecombatMain(player) => {
             Trigger::beginning_of_precombat_main_phase(player)
         }
+        TriggerSpec::BeginningOfPostcombatMain(player) => {
+            Trigger::beginning_of_postcombat_main_phase(player)
+        }
         TriggerSpec::ThisEntersBattlefield => Trigger::this_enters_battlefield(),
         TriggerSpec::ThisEntersBattlefieldFromZone {
             mut subject_filter,
@@ -680,6 +683,7 @@ pub(crate) fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
         | TriggerSpec::BeginningOfCombat(_)
         | TriggerSpec::BeginningOfEndStep(_)
         | TriggerSpec::BeginningOfPrecombatMain(_)
+        | TriggerSpec::BeginningOfPostcombatMain(_)
         | TriggerSpec::DealsCombatDamageToPlayerOneOrMore { .. }
         | TriggerSpec::AttacksYouOrPlaneswalkerYouControl(_)
         | TriggerSpec::AttacksYouOrPlaneswalkerYouControlOneOrMore(_)
@@ -772,6 +776,7 @@ pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<Pl
         | TriggerSpec::BeginningOfCombat(player)
         | TriggerSpec::BeginningOfEndStep(player)
         | TriggerSpec::BeginningOfPrecombatMain(player)
+        | TriggerSpec::BeginningOfPostcombatMain(player)
         | TriggerSpec::KeywordAction { player, .. }
         | TriggerSpec::KeywordActionFromSource { player, .. } => {
             if *player == PlayerFilter::Any {
@@ -4557,11 +4562,8 @@ fn try_compile_player_resource_and_choice_effect(
                 }
                 None => compile_effect_for_target(target, ctx, |spec| {
                     Effect::new(
-                        crate::effects::PreventAllDamageToTargetEffect::new(
-                            spec,
-                            duration.clone(),
-                        )
-                        .with_follow_up_effects(follow_up.clone()),
+                        crate::effects::PreventAllDamageToTargetEffect::new(spec, duration.clone())
+                            .with_follow_up_effects(follow_up.clone()),
                     )
                 })?,
             }
@@ -5278,6 +5280,24 @@ fn try_compile_timing_and_control_effect(
             let effect = Effect::new(
                 crate::effects::ScheduleDelayedTriggerEffect::new(
                     Trigger::beginning_of_upkeep(player_filter),
+                    delayed_effects,
+                    true,
+                    Vec::new(),
+                    PlayerFilter::You,
+                )
+                .starting_next_turn(),
+            );
+            (vec![effect], choices)
+        }
+        EffectAst::DelayedUntilNextDrawStep { player, effects } => {
+            let (player_filter, mut choices) =
+                resolve_effect_player_filter(*player, ctx, true, true, true)?;
+            let (delayed_effects, nested_choices) =
+                compile_effects_preserving_last_effect(effects, ctx)?;
+            choices.extend(nested_choices);
+            let effect = Effect::new(
+                crate::effects::ScheduleDelayedTriggerEffect::new(
+                    Trigger::beginning_of_draw_step(player_filter),
                     delayed_effects,
                     true,
                     Vec::new(),
@@ -8010,6 +8030,16 @@ fn try_compile_object_zone_and_exchange_effect(
                 .push(resolved_tag.as_str().to_string());
             (effects, choices)
         }
+        EffectAst::TagMatchingObjects { filter, zones, tag } => {
+            let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+            let mut effect =
+                crate::effects::TagMatchingObjectsEffect::new(resolved_filter, tag.clone());
+            if !zones.is_empty() {
+                effect = effect.in_zones(zones.clone());
+            }
+            ctx.last_object_tag = Some(tag.as_str().to_string());
+            (vec![Effect::new(effect)], Vec::new())
+        }
         EffectAst::ChooseSpellCastHistory {
             chooser,
             cast_by,
@@ -8076,7 +8106,10 @@ fn try_compile_object_zone_and_exchange_effect(
                 .cloned()
                 .map(|spec| Effect::new(crate::effects::TargetOnlyEffect::new(spec)))
                 .collect();
-            effects.push(Effect::choose_named_option(chooser.clone(), options.clone()));
+            effects.push(Effect::choose_named_option(
+                chooser.clone(),
+                options.clone(),
+            ));
             ctx.last_player_filter = Some(chooser);
             (effects, choices)
         }
