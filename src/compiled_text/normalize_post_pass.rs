@@ -1457,10 +1457,49 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
         normalized = rewritten;
     }
     normalized = normalize_conditional_target_player_pronouns(&normalized);
-    if let Some(rewritten) =
-        normalize_sentence_helper_top_cards_choose_to_hand_sequence(&normalized)
-    {
-        normalized = rewritten;
+    loop {
+        let mut changed = false;
+        if let Some(rewritten) =
+            normalize_sentence_helper_top_cards_choose_to_hand_sequence(&normalized)
+            && rewritten != normalized
+        {
+            normalized = rewritten;
+            changed = true;
+        }
+        if let Some(rewritten) = normalize_sentence_helper_put_from_hand_clause(&normalized)
+            && rewritten != normalized
+        {
+            normalized = rewritten;
+            changed = true;
+        }
+        if let Some(rewritten) =
+            normalize_sentence_helper_reveal_search_same_name_clause(&normalized)
+            && rewritten != normalized
+        {
+            normalized = rewritten;
+            changed = true;
+        }
+        if let Some(rewritten) = normalize_sentence_helper_reveal_from_hand_clause(&normalized)
+            && rewritten != normalized
+        {
+            normalized = rewritten;
+            changed = true;
+        }
+        if let Some(rewritten) = normalize_enlist_tag_sequence(&normalized)
+            && rewritten != normalized
+        {
+            normalized = rewritten;
+            changed = true;
+        }
+        if let Some(rewritten) = normalize_divvy_chosen_sequence(&normalized)
+            && rewritten != normalized
+        {
+            normalized = rewritten;
+            changed = true;
+        }
+        if !changed {
+            break;
+        }
     }
     let lower_normalized = normalized.to_ascii_lowercase();
     if lower_normalized
@@ -2052,6 +2091,12 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
     if let Some(rewritten) = normalize_choose_exact_sacrifice_cost_clause(&normalized) {
         normalized = rewritten;
     }
+    if let Some(rewritten) = normalize_choose_variable_sacrifice_cost_clause(&normalized) {
+        normalized = rewritten;
+    }
+    if let Some(rewritten) = normalize_choose_at_least_exile_cost_clause(&normalized) {
+        normalized = rewritten;
+    }
     if let Some(rewritten) = normalize_choose_exact_exile_cost_clause(&normalized) {
         normalized = rewritten;
     }
@@ -2062,6 +2107,12 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
         normalized = rewritten;
     }
     if let Some(rewritten) = normalize_choose_exact_tagged_it_clause(&normalized) {
+        normalized = rewritten;
+    }
+    if let Some(rewritten) = normalize_typed_graveyard_return_choice_clause(&normalized) {
+        normalized = rewritten;
+    }
+    if let Some(rewritten) = normalize_sacrificed_choice_clause(&normalized) {
         normalized = rewritten;
     }
     if let Some(rewritten) = normalize_remaining_it_tag_choice_clause(&normalized) {
@@ -3615,6 +3666,47 @@ pub(super) fn render_choose_exact_subject(descriptor: &str, count: usize) -> Str
     format!("{count_word} {}", pluralize_noun_phrase(descriptor))
 }
 
+pub(super) fn render_choose_subject_for_count_token(descriptor: &str, count_token: &str) -> String {
+    if let Ok(count) = count_token.trim().parse::<usize>() {
+        return render_choose_exact_subject(descriptor, count);
+    }
+
+    let descriptor = descriptor.trim();
+    let count_word = render_small_number_or_raw(count_token.trim());
+    if let Some(rest) = descriptor.strip_prefix("a ") {
+        return format!("{count_word} {}", pluralize_noun_phrase(rest));
+    }
+    if let Some(rest) = descriptor.strip_prefix("an ") {
+        return format!("{count_word} {}", pluralize_noun_phrase(rest));
+    }
+    format!("{count_word} {}", pluralize_noun_phrase(descriptor))
+}
+
+pub(super) fn pluralize_choice_descriptor(descriptor: &str) -> String {
+    let descriptor = descriptor
+        .trim()
+        .strip_suffix(" in the battlefield")
+        .or_else(|| descriptor.trim().strip_suffix(" in your hand"))
+        .or_else(|| descriptor.trim().strip_suffix(" in hand"))
+        .or_else(|| descriptor.trim().strip_suffix(" in your graveyard"))
+        .or_else(|| descriptor.trim().strip_suffix(" in a graveyard"))
+        .or_else(|| descriptor.trim().strip_suffix(" in exile"))
+        .or_else(|| descriptor.trim().strip_suffix(" in a library"))
+        .unwrap_or(descriptor.trim())
+        .trim();
+    if let Some(rest) = descriptor.strip_prefix("a ") {
+        return pluralize_noun_phrase(rest);
+    }
+    if let Some(rest) = descriptor.strip_prefix("an ") {
+        return pluralize_noun_phrase(rest);
+    }
+    pluralize_noun_phrase(descriptor)
+}
+
+pub(super) fn render_any_number_subject(descriptor: &str) -> String {
+    format!("any number of {}", pluralize_choice_descriptor(descriptor))
+}
+
 pub(super) fn normalize_choose_exact_return_cost_clause(text: &str) -> Option<String> {
     let marker = " and tags it as 'return_cost_0', ";
     let (head, after) = split_once_ascii_ci(text, marker)?;
@@ -3662,19 +3754,60 @@ pub(super) fn normalize_choose_exact_sacrifice_cost_clause(text: &str) -> Option
     let prefix = &head[..choose_idx];
     let choose_tail = &head[choose_idx + "choose exactly ".len()..];
     let (count_token, rest) = choose_tail.split_once(' ')?;
-    let count = count_token.parse::<usize>().ok()?;
     let descriptor = rest
         .strip_suffix(" in the battlefield")
         .or_else(|| rest.strip_suffix(" in the battlefields"))
         .unwrap_or(rest)
         .trim();
-    let subject = render_choose_exact_subject(descriptor, count);
+    let subject = render_choose_subject_for_count_token(descriptor, count_token);
 
     let after = after.trim_start();
-    let colon_idx = after.find(':')?;
-    let tail = &after[colon_idx..];
+    let tail = if let Some(colon_idx) = after.find(':') {
+        after[colon_idx..].to_string()
+    } else if after.trim().to_ascii_lowercase().starts_with("sacrifice ") {
+        ".".to_string()
+    } else {
+        return None;
+    };
 
     Some(format!("{prefix}Sacrifice {subject}{tail}"))
+}
+
+pub(super) fn normalize_choose_variable_sacrifice_cost_clause(text: &str) -> Option<String> {
+    let marker = " and tags it as 'sacrifice_cost_0', ";
+    let (head, after) = split_once_ascii_ci(text, marker)?;
+    let choose_idx = head.to_ascii_lowercase().rfind("choose ")?;
+    let prefix = &head[..choose_idx];
+    let choose_tail = &head[choose_idx + "choose ".len()..];
+    let (count_token, rest) = choose_tail.split_once(' ')?;
+    if count_token.trim().parse::<usize>().is_ok() || count_token.eq_ignore_ascii_case("exactly") {
+        return None;
+    }
+    let descriptor = rest
+        .strip_suffix(" in the battlefield")
+        .or_else(|| rest.strip_suffix(" in the battlefields"))
+        .unwrap_or(rest)
+        .trim();
+    let subject = render_choose_subject_for_count_token(descriptor, count_token);
+
+    let after = after.trim_start();
+    let tail = if let Some(colon_idx) = after.find(':') {
+        after[colon_idx..].to_string()
+    } else if after.trim().to_ascii_lowercase().starts_with("sacrifice ") {
+        ".".to_string()
+    } else {
+        return None;
+    };
+
+    Some(format!("{prefix}Sacrifice {subject}{tail}"))
+}
+
+pub(super) fn normalize_choose_at_least_exile_cost_clause(text: &str) -> Option<String> {
+    let marker = "Choose at least 1 another artifact with mana value equal to X you control in the battlefield and tags it as 'exile_cost_0', Exile it";
+    let (before, after) = split_once_ascii_ci(text, marker)?;
+    Some(format!(
+        "{before}Exile one or more other artifacts you control with total mana value X{after}"
+    ))
 }
 
 pub(super) fn normalize_choose_exact_exile_cost_clause(text: &str) -> Option<String> {
@@ -3743,6 +3876,65 @@ pub(super) fn normalize_self_return_from_graveyard_clause(text: &str) -> Option<
     Some(format!("{head}{replacement}{tail}"))
 }
 
+fn choice_descriptor_for_zone(raw: &str, zone_suffix: &str) -> Option<String> {
+    let trimmed = raw
+        .trim()
+        .strip_suffix(zone_suffix)
+        .unwrap_or(raw.trim())
+        .trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
+fn apply_replacement_with_case(before: &str, replacement: &str, after: &str) -> String {
+    let replacement =
+        if before.trim().is_empty() || before.ends_with(": ") || before.ends_with(". ") {
+            capitalize_first(replacement)
+        } else {
+            replacement.to_string()
+        };
+    format!("{before}{replacement}{after}")
+}
+
+pub(super) fn normalize_typed_graveyard_return_choice_clause(text: &str) -> Option<String> {
+    let patterns = [
+        ("you choose exactly 1 ", false, " in your graveyard"),
+        ("you may choose exactly 1 ", true, " in your graveyard"),
+        ("you choose exactly 1 ", false, " in a graveyard"),
+        ("you may choose exactly 1 ", true, " in a graveyard"),
+    ];
+    for (marker, keep_may, zone_marker_prefix) in patterns {
+        let Some((before, rest)) = split_once_ascii_ci(text, marker) else {
+            continue;
+        };
+        let zone_marker = format!(
+            "{zone_marker_prefix} and tags it as 'chosen_return_0'. Return it from graveyard to the battlefield"
+        );
+        let Some((descriptor_raw, after)) = split_once_ascii_ci(rest, &zone_marker) else {
+            continue;
+        };
+        let descriptor = choice_descriptor_for_zone(descriptor_raw, "")?;
+        let descriptor_lower = descriptor.to_ascii_lowercase();
+        if descriptor_lower == "card"
+            || descriptor_lower == "a card"
+            || descriptor_lower == "an card"
+        {
+            continue;
+        }
+        let subject = with_indefinite_article(&descriptor);
+        let replacement = if keep_may {
+            format!("you may return {subject} from your graveyard to the battlefield")
+        } else {
+            format!("return {subject} from your graveyard to the battlefield")
+        };
+        return Some(apply_replacement_with_case(before, &replacement, after));
+    }
+    None
+}
+
 fn reference_phrase_for_bound_choice(head: &str) -> &'static str {
     let lower = head.to_ascii_lowercase();
     if lower.contains(" card") {
@@ -3800,9 +3992,89 @@ pub(super) fn normalize_remaining_it_tag_choice_clause(text: &str) -> Option<Str
     ))
 }
 
+pub(super) fn normalize_sacrificed_choice_clause(text: &str) -> Option<String> {
+    if let Some((before, rest)) = split_once_ascii_ci(text, "you may choose exactly 1 ")
+        && let Some((descriptor_raw, after)) = split_once_ascii_ci(
+            rest,
+            " and tags it as 'sacrificed_0'. you sacrifice a permanent",
+        )
+    {
+        let descriptor = choice_descriptor_for_zone(descriptor_raw, " in the battlefield")?;
+        let subject = render_choose_exact_subject(&descriptor, 1);
+        return Some(apply_replacement_with_case(
+            before,
+            &format!("you may sacrifice {subject}"),
+            after,
+        ));
+    }
+    if let Some((before, rest)) = split_once_ascii_ci(text, "you choose exactly 1 ")
+        && let Some((descriptor_raw, after)) = split_once_ascii_ci(
+            rest,
+            " and tags it as 'sacrificed_0'. you sacrifice a permanent",
+        )
+    {
+        let descriptor = choice_descriptor_for_zone(descriptor_raw, " in the battlefield")?;
+        let subject = render_choose_exact_subject(&descriptor, 1);
+        return Some(apply_replacement_with_case(
+            before,
+            &format!("sacrifice {subject}"),
+            after,
+        ));
+    }
+    if let Some((head, tail)) = split_once_ascii_ci(
+        text,
+        " and tags it as 'sacrificed_0', then that player sacrifices a permanent",
+    ) && let Some((prefix, count, descriptor)) = parse_choose_exact_tail(head)
+    {
+        let descriptor = descriptor
+            .replace("that player controls", "they control")
+            .replace("target player's ", "")
+            .replace("that player's ", "");
+        let chosen = render_choose_exact_subject(&descriptor, count);
+        return Some(format!(
+            "{prefix} sacrifices {chosen} of their choice{tail}"
+        ));
+    }
+    if let Some((before, rest)) = split_once_ascii_ci(text, "Choose exactly 1 ")
+        && let Some((descriptor_raw, after)) = split_once_ascii_ci(
+            rest,
+            " and tags it as 'sacrificed_0', Sacrifice a permanent",
+        )
+    {
+        let descriptor = choice_descriptor_for_zone(descriptor_raw, " in the battlefield")?;
+        let subject = render_choose_exact_subject(&descriptor, 1);
+        return Some(apply_replacement_with_case(
+            before,
+            &format!("Sacrifice {subject}"),
+            after,
+        ));
+    }
+    None
+}
+
 pub(super) fn normalize_sentence_helper_top_cards_choose_to_hand_sequence(
     text: &str,
 ) -> Option<String> {
+    for marker in [
+        ": Look at the top ",
+        ": Reveal the top ",
+        ". Look at the top ",
+        ". Reveal the top ",
+    ] {
+        if let Some((before, rest)) = split_once_ascii_ci(text, marker) {
+            let restored = if marker.contains("Look") {
+                format!("Look at the top {rest}")
+            } else {
+                format!("Reveal the top {rest}")
+            };
+            if let Some(rewritten) =
+                normalize_sentence_helper_top_cards_choose_to_hand_sequence(&restored)
+            {
+                let joiner = marker.get(..2).unwrap_or(": ");
+                return Some(format!("{before}{joiner}{rewritten}"));
+            }
+        }
+    }
     let trimmed = text.trim().trim_end_matches('.');
     let lower = trimmed.to_ascii_lowercase();
     if !(lower.starts_with("look at the top ") || lower.starts_with("reveal the top ")) {
@@ -3836,10 +4108,14 @@ pub(super) fn normalize_sentence_helper_top_cards_choose_to_hand_sequence(
         return None;
     }
 
-    let rest_destination = if tail == "Put that object on the bottom of its owner's library" {
-        "on the bottom of your library"
-    } else if tail == "Put that object into its owner's graveyard" {
-        "into your graveyard"
+    let (rest_destination, suffix) = if let Some(suffix) =
+        strip_prefix_ascii_ci(tail, "Put that object on the bottom of its owner's library")
+    {
+        ("on the bottom of your library", suffix)
+    } else if let Some(suffix) =
+        strip_prefix_ascii_ci(tail, "Put that object into its owner's graveyard")
+    {
+        ("into your graveyard", suffix)
     } else {
         return None;
     };
@@ -3849,12 +4125,272 @@ pub(super) fn normalize_sentence_helper_top_cards_choose_to_hand_sequence(
     } else {
         format!("{} of them", render_small_number_or_raw(&count.to_string()))
     };
-    Some(format!(
+    let mut rewritten = format!(
         "{}. Put {} into your hand and the rest {}.",
         head.trim().trim_end_matches('.'),
         chosen_text,
         rest_destination
-    ))
+    );
+    let suffix = suffix.trim();
+    if let Some(tail) = suffix.strip_prefix('.') {
+        let tail = tail.trim();
+        if !tail.is_empty() {
+            rewritten.push(' ');
+            rewritten.push_str(&capitalize_first(tail));
+            if !rewritten.ends_with('.') {
+                rewritten.push('.');
+            }
+        }
+    } else if !suffix.is_empty() {
+        rewritten.push(' ');
+        rewritten.push_str(suffix);
+    }
+    Some(rewritten)
+}
+
+pub(super) fn normalize_sentence_helper_put_from_hand_clause(text: &str) -> Option<String> {
+    for marker in [
+        "you may choose exactly 1 ",
+        "you may choose up to one ",
+        "you choose any number ",
+        "you may choose any number ",
+    ] {
+        let Some((before, rest)) = split_once_ascii_ci(text, marker) else {
+            continue;
+        };
+        let Some((descriptor_raw, rest)) =
+            split_once_ascii_ci(rest, " in your hand and tags it as '")
+        else {
+            continue;
+        };
+        let Some((tag, rest)) = rest.split_once("'. ") else {
+            continue;
+        };
+        if !tag.starts_with("__sentence_helper_chosen_") {
+            continue;
+        }
+        let replacement_tail = if let Some(after) =
+            strip_prefix_ascii_ci(rest, "Put it onto the battlefield tapped")
+        {
+            (
+                if marker.contains("any number") {
+                    format!(
+                        "put {} from your hand onto the battlefield tapped",
+                        render_any_number_subject(descriptor_raw.trim())
+                    )
+                } else {
+                    format!(
+                        "you may put {} from your hand onto the battlefield tapped",
+                        with_indefinite_article(descriptor_raw.trim())
+                    )
+                },
+                after,
+            )
+        } else if let Some(after) = strip_prefix_ascii_ci(rest, "Put it onto the battlefield") {
+            (
+                if marker.contains("any number") {
+                    format!(
+                        "put {} from your hand onto the battlefield",
+                        render_any_number_subject(descriptor_raw.trim())
+                    )
+                } else {
+                    format!(
+                        "you may put {} from your hand onto the battlefield",
+                        with_indefinite_article(descriptor_raw.trim())
+                    )
+                },
+                after,
+            )
+        } else {
+            continue;
+        };
+        return Some(apply_replacement_with_case(
+            before,
+            &replacement_tail.0,
+            replacement_tail.1,
+        ));
+    }
+    None
+}
+
+pub(super) fn normalize_sentence_helper_reveal_search_same_name_clause(
+    text: &str,
+) -> Option<String> {
+    let (before, rest) = split_once_ascii_ci(text, "you choose exactly 1 ")?;
+    let (descriptor_raw, rest) = split_once_ascii_ci(rest, " in your hand and tags it as '")?;
+    let (tag, rest) = rest.split_once("'. ")?;
+    if !tag.starts_with("__sentence_helper_revealed_") {
+        return None;
+    }
+    let after = strip_prefix_ascii_ci(
+        rest,
+        "Reveal it. Search your library for a card with the same name as that object, reveal it, put it into your hand, then shuffle",
+    )?;
+    let replacement = format!(
+        "reveal {} in your hand. Search your library for a card with the same name as that card, reveal it, put it into your hand, then shuffle",
+        with_indefinite_article(descriptor_raw.trim())
+    );
+    Some(apply_replacement_with_case(before, &replacement, after))
+}
+
+pub(super) fn normalize_sentence_helper_reveal_from_hand_clause(text: &str) -> Option<String> {
+    for marker in [
+        "you choose exactly 1 ",
+        "you choose any number ",
+        "you may choose any number ",
+    ] {
+        let Some((before, rest)) = split_once_ascii_ci(text, marker) else {
+            continue;
+        };
+        let Some((descriptor_raw, rest)) =
+            split_once_ascii_ci(rest, " in your hand and tags it as '")
+        else {
+            continue;
+        };
+        let Some((tag, rest)) = rest.split_once("'. ") else {
+            continue;
+        };
+        if !tag.starts_with("__sentence_helper_revealed_") {
+            continue;
+        }
+        let Some(after) = strip_prefix_ascii_ci(rest, "Reveal it") else {
+            continue;
+        };
+        let reveal_clause = if marker.contains("exactly 1") {
+            format!(
+                "reveal {} in your hand",
+                with_indefinite_article(descriptor_raw.trim())
+            )
+        } else {
+            format!(
+                "reveal {} in your hand",
+                render_any_number_subject(descriptor_raw.trim())
+            )
+        };
+
+        let rewritten_after = if let Some(tail) = strip_prefix_ascii_ci(
+            after.trim_start(),
+            ". Counter target spell unless its controller pays {1} for each permanent",
+        ) {
+            format!(
+                ". Counter target spell unless its controller pays {{1}} for each card revealed this way{tail}"
+            )
+        } else if let Some(tail) = strip_prefix_ascii_ci(
+            after.trim_start(),
+            ". Deal the number of permanents damage to any target. X is the number of cards revealed this way",
+        ) {
+            format!(
+                ". Deal damage to any target equal to the number of cards revealed this way{tail}"
+            )
+        } else if let Some(tail) = strip_prefix_ascii_ci(
+            after.trim_start(),
+            ". target creature gets +X/+X until end of turn, where X is the number of permanents",
+        ) {
+            format!(
+                ". Target creature gets +X/+X until end of turn, where X is the number of cards revealed this way{tail}"
+            )
+        } else if let Some(tail) = strip_prefix_ascii_ci(
+            after.trim_start(),
+            ". target creature gets -X/-X until end of turn, where X is the number of permanents",
+        ) {
+            format!(
+                ". Target creature gets -X/-X until end of turn, where X is the number of cards revealed this way{tail}"
+            )
+        } else if let Some(tail) =
+            strip_prefix_ascii_ci(after.trim_start(), ". you gain 2 life for each permanent")
+        {
+            format!(". You gain 2 life for each card revealed this way{tail}")
+        } else {
+            after.to_string()
+        };
+
+        return Some(apply_replacement_with_case(
+            before,
+            &reveal_clause,
+            &rewritten_after,
+        ));
+    }
+    None
+}
+
+pub(super) fn normalize_enlist_tag_sequence(text: &str) -> Option<String> {
+    let marker = "Tag the triggering object as 'enlist_attacker'. you choose exactly 1 ";
+    let (before, rest) = split_once_ascii_ci(text, marker)?;
+    let (descriptor_raw, rest) =
+        split_once_ascii_ci(rest, " and tags it as 'enlisted_creature'. ")?;
+    let tail = "Tap target tagged object 'enlisted_creature'. the tagged object 'enlist_attacker' gets +1/+0 until end of turn for each the tagged object 'enlisted_creature''s power";
+    let after = strip_prefix_ascii_ci(rest, tail)?;
+    let enlisted = descriptor_raw.trim().replace(" in the battlefield", "");
+    let replacement = format!(
+        "tap {enlisted}. When you do, this creature gets +X/+0 until end of turn, where X is that creature's power."
+    );
+    Some(apply_replacement_with_case(before, &replacement, after))
+}
+
+pub(super) fn normalize_divvy_chosen_sequence(text: &str) -> Option<String> {
+    if let Some((before, _rest)) = split_once_ascii_ci(
+        text,
+        " chooses any number that player's nontoken land in the battlefield and tags it as 'divvy_chosen'. Destroy the tagged object 'divvy_chosen'. Tap all that player's nontoken other lands.",
+    ) {
+        return Some(format!(
+            "{before} chooses any number of that player's nontoken lands. Destroy those lands. Tap all other nontoken lands that player controls."
+        ));
+    }
+    if let Some((before, rest)) = split_once_ascii_ci(
+        text,
+        " chooses any number a creature that player controls in the battlefield and tags it as 'divvy_chosen'. a other creature that player controls can't attack this turn.",
+    ) {
+        let _ = rest;
+        return Some(format!(
+            "{before} chooses any number of creatures that player controls. Other creatures that player controls can't attack this turn."
+        ));
+    }
+    if let Some((before, rest)) = split_once_ascii_ci(
+        text,
+        " chooses any number a creature that player controls in the battlefield and tags it as 'divvy_chosen'. a other creature that player controls can't block this turn.",
+    ) {
+        let _ = rest;
+        return Some(format!(
+            "{before} chooses any number of creatures that player controls. Other creatures that player controls can't block this turn."
+        ));
+    }
+    if let Some((before, rest)) = split_once_ascii_ci(
+        text,
+        " chooses any number creature card in your graveyard and tags it as 'divvy_chosen'. Exile the tagged object 'divvy_chosen'. Return all other creature card in your graveyard to the battlefield.",
+    ) {
+        let _ = rest;
+        return Some(format!(
+            "{before} chooses any number of creature cards in your graveyard. Exile those cards. Return all other creature cards from your graveyard to the battlefield."
+        ));
+    }
+    if let Some((before, rest)) = split_once_ascii_ci(
+        text,
+        " chooses any number permanent in exile and tags it as 'divvy_chosen'. Return the tagged object 'divvy_chosen' to its owner's hand. For each tagged 'divvy_source' object, if it isn't true that the tagged object 'divvy_chosen' matches permanent, Put that object into its owner's graveyard.",
+    ) {
+        let _ = rest;
+        return Some(format!(
+            "{before} chooses any number of permanents in exile. Return those cards to their owners' hands. Put the rest into their owners' graveyards."
+        ));
+    }
+    if let Some((before, rest)) = split_once_ascii_ci(
+        text,
+        " chooses any number permanent in exile and tags it as 'divvy_chosen'. Put the tagged object 'divvy_chosen' onto the battlefield under your control. For each tagged 'divvy_source' object, if it isn't true that the tagged object 'divvy_chosen' matches permanent, Put that object into its owner's graveyard.",
+    ) {
+        let _ = rest;
+        return Some(format!(
+            "{before} chooses any number of permanents in exile. Put those cards onto the battlefield under your control. Put the rest into their owners' graveyards."
+        ));
+    }
+    if let Some((before, rest)) = split_once_ascii_ci(
+        text,
+        "you choose any number a creature that player controls in the battlefield and tags it as 'divvy_chosen'. that player sacrifices all creatures you control.",
+    ) {
+        let _ = rest;
+        return Some(format!(
+            "{before}choose any number of creatures that player controls. That player sacrifices those creatures."
+        ));
+    }
+    None
 }
 
 pub(super) fn parse_choose_exact_tail(head: &str) -> Option<(&str, usize, &str)> {
