@@ -87,6 +87,7 @@ fn main() -> Result<(), String> {
     let mut allow_unsupported = false;
     let mut detailed = false;
     let mut raw = false;
+    let mut show_definition = false;
     let mut db_path = default_db_path().display().to_string();
     let mut no_db = false;
 
@@ -124,6 +125,9 @@ fn main() -> Result<(), String> {
             "--raw" => {
                 raw = true;
             }
+            "--show-definition" => {
+                show_definition = true;
+            }
             "--db-path" => {
                 db_path = args
                     .next()
@@ -134,7 +138,7 @@ fn main() -> Result<(), String> {
             }
             _ => {
                 return Err(format!(
-                    "unknown argument '{arg}'. expected --name <value>, --cards <path>, --text <value>, --trace, --allow-unsupported, --detailed, --raw, --db-path <path>, --no-db, and/or --stacktrace"
+                    "unknown argument '{arg}'. expected --name <value>, --cards <path>, --text <value>, --trace, --allow-unsupported, --detailed, --raw, --show-definition, --db-path <path>, --no-db, and/or --stacktrace"
                 ));
             }
         }
@@ -231,6 +235,10 @@ fn main() -> Result<(), String> {
         for line in lines {
             println!("- {}", line.trim());
         }
+    }
+    if show_definition {
+        println!("Compiled card definition:");
+        println!("{:#?}", def);
     }
 
     store_snapshot_if_requested(should_write_db, db_payload.as_ref(), &db_path)?;

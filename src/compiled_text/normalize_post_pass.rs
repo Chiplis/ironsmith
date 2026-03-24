@@ -15,6 +15,9 @@ pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str
             normalize_sentence_surface_style(&normalize_common_semantic_phrasing(rest.trim()))
                 .replace("non-Auran enchantments", "non-Aura enchantments")
                 .replace("non-Auran enchantment", "non-Aura enchantment");
+        if let Some(rewritten) = normalize_choose_background_scaffolding_clause(&normalized_body) {
+            normalized_body = rewritten;
+        }
         normalized_body = normalize_compiled_post_pass_phrase(&normalized_body);
         normalized_body = normalize_stubborn_surface_chain(&normalized_body);
         normalized_body = normalize_cost_subject_for_card(def, &normalized_body);
@@ -89,6 +92,9 @@ pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str
         normalize_sentence_surface_style(&normalize_common_semantic_phrasing(line.trim()))
             .replace("non-Auran enchantments", "non-Aura enchantments")
             .replace("non-Auran enchantment", "non-Aura enchantment");
+    if let Some(rewritten) = normalize_choose_background_scaffolding_clause(&normalized) {
+        normalized = rewritten;
+    }
     normalized = normalize_compiled_post_pass_phrase(&normalized);
     normalized = normalize_stubborn_surface_chain(&normalized);
     normalized = normalize_cost_subject_for_card(def, &normalized);
@@ -2047,6 +2053,9 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
     if let Some(rewritten) = normalize_choose_exact_tap_cost_clause(&normalized) {
         normalized = rewritten;
     }
+    if let Some(rewritten) = normalize_self_return_from_graveyard_clause(&normalized) {
+        normalized = rewritten;
+    }
     if let Some(rewritten) = normalize_choose_exact_tagged_it_clause(&normalized) {
         normalized = rewritten;
     }
@@ -3703,6 +3712,27 @@ pub(super) fn normalize_choose_exact_tap_cost_clause(text: &str) -> Option<Strin
         .unwrap_or(rest);
     let subject = render_choose_exact_subject(descriptor, count);
     Some(format!("{prefix}tap {subject} {tail}"))
+}
+
+pub(super) fn normalize_choose_background_scaffolding_clause(text: &str) -> Option<String> {
+    let trimmed = text.trim().trim_end_matches('.');
+    if trimmed.eq_ignore_ascii_case(
+        "you choose exactly 1 a Background you control in the battlefield and tags it as '__it__'",
+    ) {
+        return Some("Choose a Background.".to_string());
+    }
+    None
+}
+
+pub(super) fn normalize_self_return_from_graveyard_clause(text: &str) -> Option<String> {
+    let marker = "you choose exactly 1 this card in your graveyard and tags it as 'chosen_return_0'. Return it from graveyard to the battlefield";
+    let (head, tail) = split_once_ascii_ci(text, marker)?;
+    let replacement = if head.trim().is_empty() || head.ends_with(": ") || head.ends_with(". ") {
+        "Return this card from your graveyard to the battlefield"
+    } else {
+        "return this card from your graveyard to the battlefield"
+    };
+    Some(format!("{head}{replacement}{tail}"))
 }
 
 pub(super) fn parse_choose_exact_tail(head: &str) -> Option<(&str, usize, &str)> {

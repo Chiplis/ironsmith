@@ -327,6 +327,44 @@ fn rewrite_lexed_cant_sentence_supports_next_turn_silence() {
 }
 
 #[test]
+fn rewrite_lexed_cant_sentence_preserves_hyphenated_spell_filter_for_next_turn_silence() {
+    let text = "Each opponent can't cast non-Creature spells during that player's next turn.";
+    let lexed =
+        lex_line(text, 0).expect("rewrite lexer should classify hyphenated next-turn silence");
+    let parsed =
+        parse_cant_effect_sentence_lexed(&lexed).expect("lexed next-turn silence should parse");
+    let debug = format!("{parsed:?}");
+
+    assert!(
+        debug.contains("excluded_card_types: [Creature]"),
+        "expected non-Creature spell filter to survive parsing, got {debug}"
+    );
+}
+
+#[test]
+fn rewrite_parse_target_phrase_preserves_hyphenated_filter_before_random_suffix() {
+    let text = "target non-Vampire creature chosen at random";
+    let tokens =
+        lex_line(text, 0).expect("rewrite lexer should classify hyphenated random target phrase");
+    let target =
+        super::util::parse_target_phrase(&tokens).expect("hyphenated random target should parse");
+    let debug = format!("{target:?}");
+
+    assert!(
+        debug.contains("random: true"),
+        "expected target to remain random, got {debug}"
+    );
+    assert!(
+        debug.contains("card_types: [Creature]"),
+        "expected creature filter in parsed target, got {debug}"
+    );
+    assert!(
+        debug.contains("excluded_subtypes: [Vampire]"),
+        "expected excluded Vampire subtype in parsed target, got {debug}"
+    );
+}
+
+#[test]
 fn semantic_document_supports_next_turn_silence() {
     let builder = CardDefinitionBuilder::new(CardId::new(), "Sphinx's Decree")
         .card_types(vec![CardType::Sorcery]);
@@ -1845,6 +1883,25 @@ fn rewrite_lexed_effect_entrypoint_matches_wrapper_missing_verb_sacrifice_chain(
         .expect("lexed missing-verb sacrifice parser should succeed");
 
     assert_eq!(format!("{native:?}"), format!("{wrapper:?}"));
+}
+
+#[test]
+fn rewrite_lexed_effect_sentence_preserves_non_vampire_sacrifice_filter() {
+    let text = "Each player sacrifices a non-Vampire creature of their choice.";
+    let lexed =
+        lex_line(text, 0).expect("rewrite lexer should classify non-Vampire sacrifice sentence");
+    let effects = parse_effect_sentence_lexed(&lexed)
+        .expect("lexed non-Vampire sacrifice sentence should parse");
+    let debug = format!("{effects:?}");
+
+    assert!(
+        debug.contains("card_types: [Creature]"),
+        "expected creature filter in parsed effect, got {debug}"
+    );
+    assert!(
+        debug.contains("excluded_subtypes: [Vampire]"),
+        "expected excluded Vampire subtype in parsed effect, got {debug}"
+    );
 }
 
 #[test]

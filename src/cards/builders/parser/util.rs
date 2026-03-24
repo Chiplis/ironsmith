@@ -1903,7 +1903,8 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
     }
 
     let mut random_choice = false;
-    let token_words = words(tokens);
+    let token_word_view = LowercaseWordView::new(tokens);
+    let token_words = token_word_view.to_word_refs();
     if token_words.contains(&"defending")
         && token_words.contains(&"player")
         && token_words.contains(&"choice")
@@ -1914,7 +1915,7 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
         )));
     }
     if token_words.ends_with(&["chosen", "at", "random"])
-        && let Some(random_idx) = token_index_for_word_index(tokens, token_words.len() - 3)
+        && let Some(random_idx) = token_word_view.token_index_for_word_index(token_words.len() - 3)
     {
         tokens = &tokens[..random_idx];
         random_choice = true;

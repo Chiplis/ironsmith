@@ -1730,10 +1730,10 @@ mod tests {
     use super::{
         compiled_lines, describe_additional_costs, describe_for_each_filter,
         merge_adjacent_static_heading_lines, merge_adjacent_subject_predicate_lines,
-        normalize_common_semantic_phrasing, normalize_compiled_post_pass_effect,
-        normalize_gain_life_plus_phrase, normalize_known_low_tail_phrase,
-        normalize_rendered_line_for_card, normalize_sentence_surface_style,
-        normalize_spell_self_exile, pluralize_noun_phrase,
+        normalize_common_semantic_phrasing, normalize_compiled_line_post_pass,
+        normalize_compiled_post_pass_effect, normalize_gain_life_plus_phrase,
+        normalize_known_low_tail_phrase, normalize_rendered_line_for_card,
+        normalize_sentence_surface_style, normalize_spell_self_exile, pluralize_noun_phrase,
     };
     use crate::cards::CardDefinitionBuilder;
     use crate::filter::{ObjectFilter, PlayerFilter};
@@ -4414,6 +4414,31 @@ mod tests {
             normalized,
             "Target opponent chooses exactly 1 artifact card from their graveyard and tags it as '__it__'. Put it onto the battlefield under your control."
         );
+    }
+
+    #[test]
+    fn post_pass_normalizes_self_return_tag_scaffolding() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "{2}{U}, Discard two cards: you choose exactly 1 this card in your graveyard and tags it as 'chosen_return_0'. Return it from graveyard to the battlefield tapped.",
+        );
+        assert_eq!(
+            normalized,
+            "{2}{U}, Discard two cards: Return this card from your graveyard to the battlefield tapped."
+        );
+    }
+
+    #[test]
+    fn compiled_line_post_pass_normalizes_choose_background_scaffolding() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Wilson, Refined Grizzly")
+            .oracle_text(
+                "This spell can't be countered.\nVigilance, reach, trample\nWard {2}\nChoose a Background (You can have a Background as a second commander.)",
+            )
+            .build();
+        let normalized = normalize_compiled_line_post_pass(
+            &def,
+            "Spell effects: You choose exactly 1 a Background you control in the battlefield and tags it as '__it__'.",
+        );
+        assert_eq!(normalized, "Spell effects: Choose a Background.");
     }
 
     #[test]

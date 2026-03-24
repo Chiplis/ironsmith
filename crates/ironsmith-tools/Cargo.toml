@@ -39,6 +39,11 @@ path = "../../src/bin/compile_oracle_text.rs"
 test = false
 
 [[bin]]
+name = "cleanup_compilation_history"
+path = "../../src/bin/cleanup_compilation_history.rs"
+test = false
+
+[[bin]]
 name = "dump_false_positive_texts"
 path = "../../src/bin/dump_false_positive_texts.rs"
 test = false

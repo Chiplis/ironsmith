@@ -2272,7 +2272,8 @@ pub(crate) fn parse_trigger_duplication_line_ast(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     let tokens = trim_edge_punctuation(tokens);
-    let token_words = words(&tokens);
+    let token_word_view = LowercaseWordView::new(&tokens);
+    let token_words = token_word_view.to_word_refs();
     if token_words.starts_with(&["as", "long", "as"]) {
         let Some(comma_idx) = tokens.iter().position(|token| token.is_comma()) else {
             return Ok(None);
@@ -2306,7 +2307,8 @@ pub(crate) fn parse_trigger_suppression_line_ast(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     let tokens = trim_edge_punctuation(tokens);
-    let token_words = words(&tokens);
+    let token_word_view = LowercaseWordView::new(&tokens);
+    let token_words = token_word_view.to_word_refs();
     let Some(neg_idx) = token_words
         .iter()
         .position(|word| matches!(*word, "dont" | "don't" | "doesnt" | "doesn't"))
@@ -2320,7 +2322,7 @@ pub(crate) fn parse_trigger_suppression_line_ast(
         return Ok(None);
     }
 
-    let Some(cause_end_token_idx) = token_index_for_word_index(&tokens, neg_idx) else {
+    let Some(cause_end_token_idx) = token_word_view.token_index_for_word_index(neg_idx) else {
         return Err(CardTextError::ParseError(format!(
             "failed to split trigger-suppression cause (clause: '{}')",
             token_words.join(" ")
@@ -2331,14 +2333,17 @@ pub(crate) fn parse_trigger_suppression_line_ast(
     let source_filter = match body_words {
         ["abilities", "to", "trigger"] => None,
         ["abilities", "of", middle @ .., "to", "trigger"] => {
-            let start = token_index_for_word_index(&tokens, neg_idx + 4).ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "failed to split trigger-suppression source filter (clause: '{}')",
-                    token_words.join(" ")
-                ))
-            })?;
-            let end =
-                token_index_for_word_index(&tokens, token_words.len() - 2).ok_or_else(|| {
+            let start = token_word_view
+                .token_index_for_word_index(neg_idx + 4)
+                .ok_or_else(|| {
+                    CardTextError::ParseError(format!(
+                        "failed to split trigger-suppression source filter (clause: '{}')",
+                        token_words.join(" ")
+                    ))
+                })?;
+            let end = token_word_view
+                .token_index_for_word_index(token_words.len() - 2)
+                .ok_or_else(|| {
                     CardTextError::ParseError(format!(
                         "failed to trim trigger-suppression source tail (clause: '{}')",
                         token_words.join(" ")

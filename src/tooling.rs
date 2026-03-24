@@ -132,6 +132,12 @@ pub struct CardPruneSummary {
 }
 
 #[derive(Debug, Clone, Copy)]
+pub struct CompilationHistoryCleanupSummary {
+    pub distinct_cards_retained: usize,
+    pub compilation_rows_deleted: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
 pub struct RegistrySyncSummary {
     pub inserted: usize,
     pub updated: usize,
@@ -803,6 +809,50 @@ impl CardStatusDb {
             distinct_cards_deleted,
             compilation_rows_deleted,
             tag_rows_deleted,
+        })
+    }
+
+    pub fn prune_compilation_history_to_latest(
+        &mut self,
+    ) -> Result<CompilationHistoryCleanupSummary, Box<dyn Error>> {
+        let tx = self.conn.transaction()?;
+        let distinct_cards_retained: usize = tx.query_row(
+            "SELECT COUNT(DISTINCT card_name) FROM card_compilation",
+            [],
+            |row| row.get(0),
+        )?;
+        let compilation_rows_deleted: usize = tx.query_row(
+            "SELECT COUNT(*)
+             FROM card_compilation
+             WHERE id NOT IN (
+                 SELECT latest_id
+                 FROM (
+                     SELECT MAX(id) AS latest_id
+                     FROM card_compilation
+                     GROUP BY card_name
+                 )
+             )",
+            [],
+            |row| row.get(0),
+        )?;
+
+        tx.execute(
+            "DELETE FROM card_compilation
+             WHERE id NOT IN (
+                 SELECT latest_id
+                 FROM (
+                     SELECT MAX(id) AS latest_id
+                     FROM card_compilation
+                     GROUP BY card_name
+                 )
+             )",
+            [],
+        )?;
+        tx.commit()?;
+
+        Ok(CompilationHistoryCleanupSummary {
+            distinct_cards_retained,
+            compilation_rows_deleted,
         })
     }
 
@@ -1891,6 +1941,70 @@ mod tests {
             )
             .expect("count remaining shock tag rows");
         assert_eq!(remaining_tag_rows, 0);
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn prune_compilation_history_to_latest_keeps_only_latest_snapshot_per_card() {
+        let path = unique_temp_path("history-prune");
+        let mut db = CardStatusDb::open(&path).expect("open db");
+
+        let first_lightning = compile_snapshot_from_payload(&lightning_bolt_payload());
+        let mut latest_lightning = first_lightning.clone();
+        latest_lightning.content_hash = "lightning-bolt-v2".to_string();
+        latest_lightning.similarity_score = 0.25;
+
+        let shock = compile_snapshot_from_payload(&CardPayload {
+            name: "Shock".to_string(),
+            oracle_text: "Shock deals 2 damage to any target.".to_string(),
+            metadata_lines: vec!["Mana cost: {R}".to_string(), "Type: Instant".to_string()],
+            parse_input: "Mana cost: {R}\nType: Instant\nShock deals 2 damage to any target."
+                .to_string(),
+        });
+
+        db.insert_snapshot_if_changed(&first_lightning)
+            .expect("insert first lightning snapshot");
+        db.insert_snapshot_if_changed(&latest_lightning)
+            .expect("insert latest lightning snapshot");
+        db.insert_snapshot_if_changed(&shock)
+            .expect("insert shock snapshot");
+
+        let summary = db
+            .prune_compilation_history_to_latest()
+            .expect("prune compilation history");
+        assert_eq!(summary.distinct_cards_retained, 2);
+        assert_eq!(summary.compilation_rows_deleted, 1);
+
+        let remaining_rows: Vec<(String, String)> = {
+            let mut stmt = db
+                .connection()
+                .prepare(
+                    "SELECT card_name, content_hash
+                     FROM card_compilation
+                     ORDER BY card_name ASC, id ASC",
+                )
+                .expect("prepare remaining compilation rows query");
+            stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+                .expect("query remaining compilation rows")
+                .collect::<Result<_, _>>()
+                .expect("collect remaining compilation rows")
+        };
+        assert_eq!(
+            remaining_rows,
+            vec![
+                (
+                    "Lightning Bolt".to_string(),
+                    "lightning-bolt-v2".to_string()
+                ),
+                ("Shock".to_string(), shock.content_hash.clone()),
+            ]
+        );
+
+        let latest_hash = db
+            .latest_snapshot_hash("Lightning Bolt")
+            .expect("fetch latest lightning hash");
+        assert_eq!(latest_hash.as_deref(), Some("lightning-bolt-v2"));
 
         let _ = fs::remove_file(path);
     }

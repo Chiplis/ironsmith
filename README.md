@@ -394,6 +394,10 @@ The repo ships several useful binaries. Most of them live in the `ironsmith-tool
   - Package: `ironsmith-tools`
   - Purpose: compile canonical `registry_card` entries from SQLite and append only changed rows into the compilation history tables
 
+- `cleanup_compilation_history`
+  - Package: `ironsmith-tools`
+  - Purpose: delete historical `card_compilation` rows while keeping the latest snapshot for each card
+
 - `sync_registry_db`
   - Package: `ironsmith-tools`
   - Purpose: ingest canonical cards from `cards.json` into the SQLite `registry_card` table and prune removed cards
@@ -492,6 +496,13 @@ Compile/update the SQLite engine status index from canonical registry rows:
 
 ```bash
 cargo run -p ironsmith-tools --bin sync_card_status_db -- \
+  --db-path reports/engine-status.sqlite3
+```
+
+Prune historical compilation rows and keep only the latest snapshot per card:
+
+```bash
+cargo run -p ironsmith-tools --bin cleanup_compilation_history -- \
   --db-path reports/engine-status.sqlite3
 ```
 

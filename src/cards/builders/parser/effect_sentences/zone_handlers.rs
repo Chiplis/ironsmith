@@ -16,7 +16,6 @@ use crate::zone::Zone;
 
 use super::super::activation_and_restrictions::{
     controller_filter_for_token_player, parse_devotion_value_from_add_clause,
-    target_ast_to_object_filter,
 };
 use super::super::keyword_static::parse_where_x_is_number_of_filter_value;
 use super::super::keyword_static::{
@@ -25,7 +24,7 @@ use super::super::keyword_static::{
 };
 use super::super::lexer::TokenKind;
 use super::super::native_tokens::LowercaseWordView;
-use super::super::object_filters::parse_object_filter;
+use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed};
 use super::super::util::{
     intern_counter_name, is_article, mana_pips_from_token, parse_color, parse_counter_type_word,
     parse_mana_symbol, parse_number, parse_number_word_i32, parse_target_phrase, parse_value,
@@ -178,7 +177,7 @@ pub(crate) fn parse_sacrifice(
             other = true;
             idx += 1;
         }
-        let mut filter = parse_object_filter(&tokens[idx..], other)?;
+        let mut filter = parse_object_filter_lexed(&tokens[idx..], other)?;
         if other {
             filter.other = true;
         }
@@ -213,11 +212,7 @@ pub(crate) fn parse_sacrifice(
             words(tokens).join(" ")
         )));
     }
-    let mut filter = if let Ok(target) = parse_target_phrase(filter_tokens) {
-        target_ast_to_object_filter(target).unwrap_or(parse_object_filter(filter_tokens, other)?)
-    } else {
-        parse_object_filter(filter_tokens, other)?
-    };
+    let mut filter = parse_object_filter_lexed(filter_tokens, other)?;
     if other {
         filter.other = true;
     }
@@ -252,7 +247,8 @@ pub(crate) fn parse_sacrifice(
 }
 
 pub(crate) fn trim_sacrifice_choice_suffix_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
-    let token_words = words(tokens);
+    let word_view = LowercaseWordView::new(tokens);
+    let token_words = word_view.to_word_refs();
     let suffix_word_count = if token_words.ends_with(&["of", "their", "choice"])
         || token_words.ends_with(&["of", "your", "choice"])
         || token_words.ends_with(&["of", "its", "choice"])
@@ -269,7 +265,9 @@ pub(crate) fn trim_sacrifice_choice_suffix_tokens(tokens: &[OwnedLexToken]) -> &
     }
 
     let keep_words = token_words.len().saturating_sub(suffix_word_count);
-    let cut_idx = token_index_for_word_index(tokens, keep_words).unwrap_or(tokens.len());
+    let cut_idx = word_view
+        .token_index_for_word_index(keep_words)
+        .unwrap_or(tokens.len());
     &tokens[..cut_idx]
 }
 

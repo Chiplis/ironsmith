@@ -7751,6 +7751,36 @@ fn parse_target_opponent_sacrifice_of_their_choice_keeps_non_targeted_object_cho
 }
 
 #[test]
+fn parse_each_player_sacrifice_non_vampire_creature_of_their_choice_keeps_creature_filter() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Anowon Variant")
+        .parse_text(
+            "At the beginning of your upkeep, each player sacrifices a non-Vampire creature of their choice.",
+        )
+        .expect("non-Vampire sacrifice-choice line should parse");
+
+    let joined = crate::compiled_text::compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        joined.contains("non-vampire creature"),
+        "expected non-Vampire creature wording, got {joined}"
+    );
+
+    let abilities_debug = format!("{:?}", def.abilities);
+    assert!(
+        abilities_debug.contains(
+            "card_types: [\n                                                            Creature,"
+        ) || abilities_debug.contains("card_types: [Creature]"),
+        "expected creature filter in lowered ability, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("excluded_subtypes: [\n                                                                Vampire,")
+            || abilities_debug.contains("excluded_subtypes: [Vampire]"),
+        "expected excluded Vampire subtype in lowered ability, got {abilities_debug}"
+    );
+}
+
+#[test]
 fn parse_all_slivers_have_activated_ability_as_static_grant() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Sliver Activated Grant Variant")
         .parse_text("All Slivers have \"{2}, Sacrifice this permanent: Draw a card.\"")

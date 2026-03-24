@@ -77,7 +77,8 @@ pub(crate) fn parse_cant_effect_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let lowered_tokens = lowercase_word_tokens(tokens);
-    let lowered_words = words(&lowered_tokens);
+    let lowered_word_view = LowercaseWordView::new(&lowered_tokens);
+    let lowered_words = lowered_word_view.to_word_refs();
     for suffix in [
         ["during", "that", "players", "next", "turn"].as_slice(),
         ["during", "that", "player's", "next", "turn"].as_slice(),
@@ -88,7 +89,8 @@ pub(crate) fn parse_cant_effect_sentence_lexed(
         }
 
         let prefix_word_len = lowered_words.len().saturating_sub(suffix.len());
-        let prefix_end = token_index_for_word_index(&lowered_tokens, prefix_word_len)
+        let prefix_end = lowered_word_view
+            .token_index_for_word_index(prefix_word_len)
             .unwrap_or(lowered_tokens.len());
         let prefix_tokens = &lowered_tokens[..prefix_end];
         let Some(parsed) =

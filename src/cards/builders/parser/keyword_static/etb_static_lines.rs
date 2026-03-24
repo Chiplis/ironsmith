@@ -1335,11 +1335,13 @@ pub(crate) fn parse_enters_tapped_for_filter_line(
         )));
     }
     let before_enter = &tokens[..enter_token_idx];
-    let before_words = words(before_enter);
+    let before_word_view = LowercaseWordView::new(before_enter);
+    let before_words = before_word_view.to_word_refs();
     let mut controller_override: Option<PlayerFilter> = None;
     let mut filter_end = before_enter.len();
     let find_suffix_cut = |suffix_len: usize| {
-        token_index_for_word_index(before_enter, before_words.len().saturating_sub(suffix_len))
+        before_word_view
+            .token_index_for_word_index(before_words.len().saturating_sub(suffix_len))
             .unwrap_or(before_enter.len())
     };
     if before_words.ends_with(&["played", "by", "your", "opponents"]) {

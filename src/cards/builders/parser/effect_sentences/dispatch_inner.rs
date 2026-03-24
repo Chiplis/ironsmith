@@ -2000,12 +2000,14 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
         )));
     }
 
-    let trigger_words = words(&trigger_tokens);
+    let trigger_word_view = LowercaseWordView::new(&trigger_tokens);
+    let trigger_words = trigger_word_view.to_word_refs();
     if trigger_words.len() < 3 || !trigger_words.ends_with(&["this", "turn"]) {
         return Ok(None);
     }
 
-    let trim_start = token_index_for_word_index(&trigger_tokens, trigger_words.len() - 2)
+    let trim_start = trigger_word_view
+        .token_index_for_word_index(trigger_words.len() - 2)
         .unwrap_or(trigger_tokens.len());
     let trigger_core_tokens = trim_commas(&trigger_tokens[..trim_start]);
     if trigger_core_tokens.is_empty() {
