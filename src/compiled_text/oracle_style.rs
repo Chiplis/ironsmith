@@ -4442,6 +4442,46 @@ mod tests {
     }
 
     #[test]
+    fn post_pass_normalizes_remaining_it_tag_choice_clause() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "For each player, you choose up to one creature card from that player's graveyard and tags it as '__it__'. Put it onto the battlefield under your control.",
+        );
+        assert_eq!(
+            normalized,
+            "For each player, you choose up to one creature card from that player's graveyard. Put that card onto the battlefield under your control."
+        );
+    }
+
+    #[test]
+    fn post_pass_keeps_it_tag_when_later_tag_reference_remains() {
+        let text = "{T}, Sacrifice this creature: you choose exactly 1 card with a void counter on it in an opponent's exile and tags it as '__it__'. you may play that card until end of turn. you may cast tagged '__it__' and mana of any type can be spent to cast that spell.";
+        let normalized = normalize_compiled_post_pass_effect(text);
+        assert_eq!(normalized, text);
+    }
+
+    #[test]
+    fn post_pass_normalizes_sentence_helper_top_cards_to_hand_rest_bottom() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "Look at the top three cards of your library. you choose exactly 1 card in library and tags it as '__sentence_helper_chosen_l0_s0_e1'. For each tagged '__sentence_helper_chosen_l0_s0_e1' object, Return that object to its owner's hand. For each tagged '__sentence_helper_revealed_l0_s0_e0' object, if it isn't true that it matches permanent, Put that object on the bottom of its owner's library.",
+        );
+        assert_eq!(
+            normalized,
+            "Look at the top three cards of your library. Put one of them into your hand and the rest on the bottom of your library."
+        );
+    }
+
+    #[test]
+    fn post_pass_normalizes_sentence_helper_top_cards_to_hand_rest_graveyard() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "Look at the top seven cards of your library. you choose exactly 2 card in library and tags it as '__sentence_helper_chosen_l0_s0_e1'. For each tagged '__sentence_helper_chosen_l0_s0_e1' object, Return that object to its owner's hand. For each tagged '__sentence_helper_revealed_l0_s0_e0' object, if it isn't true that it matches permanent, Put that object into its owner's graveyard.",
+        );
+        assert_eq!(
+            normalized,
+            "Look at the top seven cards of your library. Put two of them into your hand and the rest into your graveyard."
+        );
+    }
+
+    #[test]
     fn known_low_tail_normalizes_choose_from_graveyard_put_under_your_control() {
         let normalized = normalize_known_low_tail_phrase(
             "Target opponent chooses artifact card from a graveyard. Put it onto the battlefield under your control.",

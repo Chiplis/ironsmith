@@ -1457,6 +1457,11 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
         normalized = rewritten;
     }
     normalized = normalize_conditional_target_player_pronouns(&normalized);
+    if let Some(rewritten) =
+        normalize_sentence_helper_top_cards_choose_to_hand_sequence(&normalized)
+    {
+        normalized = rewritten;
+    }
     let lower_normalized = normalized.to_ascii_lowercase();
     if lower_normalized
         == "at the beginning of your end step, for each creature you control, put a +1/+1 counter on that object. for each planeswalker you control, put a loyalty counter on that object."
@@ -2057,6 +2062,9 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
         normalized = rewritten;
     }
     if let Some(rewritten) = normalize_choose_exact_tagged_it_clause(&normalized) {
+        normalized = rewritten;
+    }
+    if let Some(rewritten) = normalize_remaining_it_tag_choice_clause(&normalized) {
         normalized = rewritten;
     }
     if let Some(rewritten) = rewrite_return_with_counters_on_it_sequence(&normalized) {
@@ -3733,6 +3741,120 @@ pub(super) fn normalize_self_return_from_graveyard_clause(text: &str) -> Option<
         "return this card from your graveyard to the battlefield"
     };
     Some(format!("{head}{replacement}{tail}"))
+}
+
+fn reference_phrase_for_bound_choice(head: &str) -> &'static str {
+    let lower = head.to_ascii_lowercase();
+    if lower.contains(" card") {
+        "that card"
+    } else if lower.contains(" token") {
+        "that token"
+    } else if lower.contains(" creature") {
+        "that creature"
+    } else if lower.contains(" artifact") {
+        "that artifact"
+    } else if lower.contains(" land") {
+        "that land"
+    } else {
+        "that permanent"
+    }
+}
+
+pub(super) fn normalize_remaining_it_tag_choice_clause(text: &str) -> Option<String> {
+    let marker = " and tags it as '__it__'.";
+    let (head, tail) = split_once_ascii_ci(text, marker)?;
+    let head_lower = head.to_ascii_lowercase();
+    if !head_lower.contains("choose ") {
+        return None;
+    }
+    let tail = tail.trim();
+    if tail.is_empty() {
+        return None;
+    }
+    let tail_lower = tail.to_ascii_lowercase();
+    if tail_lower.contains("tagged '__it__'")
+        || tail_lower.contains("the tagged object '__it__'")
+        || tail_lower.contains("target tagged object")
+        || tail_lower.contains("that object")
+    {
+        return None;
+    }
+
+    let reference = reference_phrase_for_bound_choice(head);
+    let rewritten_tail = if let Some(rest) = strip_prefix_ascii_ci(tail, "Exile it") {
+        format!("Exile {reference}{rest}")
+    } else if let Some(rest) = strip_prefix_ascii_ci(tail, "Destroy it") {
+        format!("Destroy {reference}{rest}")
+    } else if let Some(rest) = strip_prefix_ascii_ci(tail, "Put it") {
+        format!("Put {reference}{rest}")
+    } else if let Some(rest) = strip_prefix_ascii_ci(tail, "Return it") {
+        format!("Return {reference}{rest}")
+    } else {
+        tail.to_string()
+    };
+
+    Some(format!(
+        "{}. {}.",
+        head.trim().trim_end_matches('.'),
+        capitalize_first(rewritten_tail.trim().trim_end_matches('.'))
+    ))
+}
+
+pub(super) fn normalize_sentence_helper_top_cards_choose_to_hand_sequence(
+    text: &str,
+) -> Option<String> {
+    let trimmed = text.trim().trim_end_matches('.');
+    let lower = trimmed.to_ascii_lowercase();
+    if !(lower.starts_with("look at the top ") || lower.starts_with("reveal the top ")) {
+        return None;
+    }
+    if !lower.contains(" cards of your library. you choose exactly ") {
+        return None;
+    }
+
+    let (head, tail) = split_once_ascii_ci(trimmed, ". you choose exactly ")?;
+    if !head
+        .to_ascii_lowercase()
+        .ends_with(" cards of your library")
+    {
+        return None;
+    }
+    let (count_token, tail) = tail.split_once(' ')?;
+    let count = count_token.parse::<usize>().ok()?;
+    let tail = strip_prefix_ascii_ci(tail, "card in library and tags it as '")?;
+    let (chosen_tag, tail) = tail.split_once("'. ")?;
+    if !chosen_tag.starts_with("__sentence_helper_chosen_") {
+        return None;
+    }
+    let tail = tail.strip_prefix("For each tagged '")?;
+    let tail = tail.strip_prefix(chosen_tag)?;
+    let tail =
+        tail.strip_prefix("' object, Return that object to its owner's hand. For each tagged '")?;
+    let (revealed_tag, tail) =
+        tail.split_once("' object, if it isn't true that it matches permanent, ")?;
+    if !revealed_tag.starts_with("__sentence_helper_revealed_") {
+        return None;
+    }
+
+    let rest_destination = if tail == "Put that object on the bottom of its owner's library" {
+        "on the bottom of your library"
+    } else if tail == "Put that object into its owner's graveyard" {
+        "into your graveyard"
+    } else {
+        return None;
+    };
+
+    let chosen_text = if count == 1 {
+        "one of them".to_string()
+    } else {
+        format!("{} of them", render_small_number_or_raw(&count.to_string()))
+    };
+    Some(format!(
+        "{}. Put {} into your hand and the rest {}.",
+        head.trim().trim_end_matches('.'),
+        chosen_text,
+        rest_destination
+    ))
 }
 
 pub(super) fn parse_choose_exact_tail(head: &str) -> Option<(&str, usize, &str)> {
