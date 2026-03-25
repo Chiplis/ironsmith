@@ -9103,9 +9103,7 @@ pub(crate) fn parse_trigger_clause_lexed(
                 parse_possessive_clause_player_filter(&words),
             ))
         }
-        _ if words.contains(&"beginning")
-            && words.contains(&"combat")
-            && words.contains(&"turn") =>
+        _ if words.contains(&"beginning") && words.contains(&"combat") =>
         {
             Ok(TriggerSpec::BeginningOfCombat(
                 parse_possessive_clause_player_filter(&words),

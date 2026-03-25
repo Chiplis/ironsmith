@@ -3382,6 +3382,102 @@ fn test_sba_creature_dies() {
 }
 
 #[test]
+fn test_sba_deathtouch_damage_destroys_creature() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let attacker_id = create_creature(&mut game, "Deathtoucher", alice, 1, 1);
+    if let Some(obj) = game.object_mut(attacker_id) {
+        obj.abilities
+            .push(Ability::static_ability(StaticAbility::deathtouch()));
+    }
+    let victim_id = create_creature(&mut game, "Victim", bob, 3, 3);
+    game.refresh_continuous_state();
+
+    let keywords = crate::rules::damage::source_damage_keywords(&game, attacker_id, None);
+    let applied = crate::rules::damage::apply_processed_damage_assignment(
+        &mut game,
+        attacker_id,
+        crate::game_event::DamageTarget::Object(victim_id),
+        1,
+        keywords,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert!(applied.applied, "damage should be applied to the victim");
+
+    let mut trigger_queue = TriggerQueue::new();
+    check_and_apply_sbas(&mut game, &mut trigger_queue).unwrap();
+
+    assert!(
+        !game.battlefield.contains(&victim_id),
+        "a creature dealt damage by a source with deathtouch should be destroyed as an SBA"
+    );
+    assert_eq!(
+        game.player(bob).unwrap().graveyard.len(),
+        1,
+        "the destroyed creature should be put into its owner's graveyard"
+    );
+}
+
+#[test]
+fn test_deathtouch_sba_marker_clears_after_each_check() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let attacker_id = create_creature(&mut game, "Deathtoucher", alice, 1, 1);
+    if let Some(obj) = game.object_mut(attacker_id) {
+        obj.abilities
+            .push(Ability::static_ability(StaticAbility::deathtouch()));
+    }
+    let victim_id = create_creature(&mut game, "Stubborn Victim", bob, 3, 3);
+    if let Some(obj) = game.object_mut(victim_id) {
+        obj.abilities
+            .push(Ability::static_ability(StaticAbility::indestructible()));
+    }
+    game.refresh_continuous_state();
+
+    let keywords = crate::rules::damage::source_damage_keywords(&game, attacker_id, None);
+    let applied = crate::rules::damage::apply_processed_damage_assignment(
+        &mut game,
+        attacker_id,
+        crate::game_event::DamageTarget::Object(victim_id),
+        1,
+        keywords,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert!(applied.applied, "damage should be applied to the victim");
+
+    let mut trigger_queue = TriggerQueue::new();
+    check_and_apply_sbas(&mut game, &mut trigger_queue).unwrap();
+
+    assert!(
+        game.battlefield.contains(&victim_id),
+        "indestructible should prevent the first deathtouch-based destruction"
+    );
+
+    if let Some(obj) = game.object_mut(victim_id) {
+        obj.abilities.retain(|ability| {
+            !matches!(
+                &ability.kind,
+                AbilityKind::Static(static_ability)
+                    if static_ability.id()
+                        == crate::static_abilities::StaticAbilityId::Indestructible
+            )
+        });
+    }
+    game.refresh_continuous_state();
+
+    check_and_apply_sbas(&mut game, &mut trigger_queue).unwrap();
+
+    assert!(
+        game.battlefield.contains(&victim_id),
+        "old deathtouch damage should not keep destroying the creature after the next SBA check"
+    );
+}
+
+#[test]
 fn test_sba_player_loses() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);

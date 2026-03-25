@@ -107,7 +107,7 @@ pub(crate) fn parse_effect_with_verb(
         Verb::Get => parse_get(tokens, subject),
         Verb::Remove => parse_remove(tokens),
         Verb::Return => parse_return(tokens),
-        Verb::Exchange => parse_exchange(tokens),
+        Verb::Exchange => parse_exchange(tokens, subject),
         Verb::Become => parse_become(tokens, subject),
         Verb::Switch => parse_switch(tokens),
         Verb::Skip => parse_skip(tokens, subject),

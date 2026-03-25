@@ -1992,7 +1992,8 @@ fn lower_rewrite_triggered_to_chunk_impl(
 
     let normalized_full_text = line.full_text.to_ascii_lowercase();
     let normalized_effect_text = line.effect_text.trim().to_ascii_lowercase();
-    if !normalized_full_text.contains("if you do")
+    if !line.effect_text.trim().is_empty()
+        && !normalized_full_text.contains("if you do")
         && !normalized_full_text.contains("if you don't")
         && !normalized_full_text.contains("if you dont")
         && !normalized_effect_text.starts_with("if ")
@@ -2001,7 +2002,9 @@ fn lower_rewrite_triggered_to_chunk_impl(
             parse_trigger_clause_from_text(line.trigger_text.as_str(), line.info.line_index);
         let direct_effects =
             parse_effect_sentences_from_text(line.effect_text.as_str(), line.info.line_index);
-        if let (Ok(trigger), Ok(effects)) = (direct_trigger, direct_effects) {
+        if let (Ok(trigger), Ok(effects)) = (direct_trigger, direct_effects)
+            && !effects.is_empty()
+        {
             return apply_chosen_option_to_triggered_chunk(
                 LineAst::Triggered {
                     trigger,

@@ -220,6 +220,14 @@ fn check_permanent_sbas_with_view(
                 actions.push(StateBasedAction::ObjectDies(obj_id));
                 continue;
             }
+
+            if toughness_for_lethal.is_some_and(|toughness| toughness > 0)
+                && game.has_deathtouch_damage_since_sba(obj_id)
+                && !is_indestructible
+            {
+                actions.push(StateBasedAction::ObjectDies(obj_id));
+                continue;
+            }
         }
 
         // Planeswalker with 0 or less loyalty

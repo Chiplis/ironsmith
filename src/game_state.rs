@@ -1519,6 +1519,10 @@ pub struct GameState {
     /// Damage marked on creatures (cleared at cleanup step).
     pub damage_marked: HashMap<ObjectId, u32>,
 
+    /// Creatures that have been dealt nonzero damage by a source with deathtouch
+    /// since the last time state-based actions were checked.
+    pub dealt_deathtouch_damage_since_sba: HashSet<ObjectId>,
+
     /// Permanents whose damage is not removed during cleanup.
     pub damage_persists: HashSet<ObjectId>,
 
@@ -1667,6 +1671,7 @@ impl GameState {
             tapped_permanents: HashSet::new(),
             summoning_sick: HashSet::new(),
             damage_marked: HashMap::new(),
+            dealt_deathtouch_damage_since_sba: HashSet::new(),
             damage_persists: HashSet::new(),
             chosen_colors: HashMap::new(),
             chosen_basic_land_types: HashMap::new(),
@@ -5358,6 +5363,22 @@ impl GameState {
         }
     }
 
+    /// Record that a creature was dealt nonzero damage by a source with deathtouch.
+    pub fn mark_deathtouch_damage_since_sba(&mut self, id: ObjectId) {
+        self.dealt_deathtouch_damage_since_sba.insert(id);
+    }
+
+    /// Returns true if the creature was dealt nonzero damage by a source with
+    /// deathtouch since the last time state-based actions were checked.
+    pub fn has_deathtouch_damage_since_sba(&self, id: ObjectId) -> bool {
+        self.dealt_deathtouch_damage_since_sba.contains(&id)
+    }
+
+    /// Clears the transient deathtouch-damage tracker used by SBA evaluation.
+    pub fn clear_deathtouch_damage_since_sba(&mut self) {
+        self.dealt_deathtouch_damage_since_sba.clear();
+    }
+
     /// Returns true if `creature` was dealt damage by `source` this turn.
     pub fn creature_was_damaged_by_source_this_turn(
         &self,
@@ -5580,6 +5601,7 @@ impl GameState {
         self.tapped_permanents.remove(&id);
         self.summoning_sick.remove(&id);
         self.damage_marked.remove(&id);
+        self.dealt_deathtouch_damage_since_sba.remove(&id);
         self.regeneration_shields.remove(&id);
         self.monstrous.remove(&id);
         self.renowned.remove(&id);

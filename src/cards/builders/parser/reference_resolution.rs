@@ -289,6 +289,7 @@ fn advance_reference_frame_for_effect(
         | EffectAst::LoseLife { player, .. }
         | EffectAst::GainLife { player, .. }
         | EffectAst::CreateEmblem { player, .. }
+        | EffectAst::DoubleManaPool { player }
         | EffectAst::SetLifeTotal { player, .. }
         | EffectAst::RingTemptsYou { player }
         | EffectAst::VentureIntoDungeon { player, .. }
@@ -324,6 +325,10 @@ fn advance_reference_frame_for_effect(
         | EffectAst::ReorderGraveyard { player }
         | EffectAst::ShuffleLibrary { player } => {
             track_effect_player(player.clone(), frame, true, true)?;
+        }
+        EffectAst::ExchangeLifeTotals { player1, player2 } => {
+            track_effect_player(*player1, frame, true, true)?;
+            track_effect_player(*player2, frame, true, true)?;
         }
         EffectAst::Mill { player, .. } | EffectAst::Discover { player, .. } => {
             track_effect_player(*player, frame, true, true)?;
@@ -803,6 +808,7 @@ fn advance_reference_frame_for_effect(
         | EffectAst::PutCountersAll { .. }
         | EffectAst::DoubleCountersOnEach { .. }
         | EffectAst::Proliferate { .. }
+        | EffectAst::ScalePowerToughnessAll { .. }
         | EffectAst::TapAll { .. }
         | EffectAst::UntapAll { .. }
         | EffectAst::LoseGame { .. }
@@ -1351,9 +1357,13 @@ fn count_unresolved_it_occurrences(effects: &[EffectAst]) -> usize {
 #[cfg(test)]
 fn bind_unresolved_it_in_effect(effect: &mut EffectAst, seed_tag: &TagKey) -> usize {
     let mut replacements = bind_unresolved_it_in_effect_fields(effect, seed_tag);
+    let nested_seed = match effect {
+        EffectAst::ForEachObject { .. } => TagKey::from(IT_TAG),
+        _ => seed_tag.clone(),
+    };
     for_each_nested_effects_mut(effect, true, |nested| {
         for inner in nested {
-            replacements += bind_unresolved_it_in_effect(inner, seed_tag);
+            replacements += bind_unresolved_it_in_effect(inner, &nested_seed);
         }
     });
     replacements
@@ -1461,6 +1471,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
         | EffectAst::ReturnAllToHandOfChosenColor { filter }
         | EffectAst::ReturnAllToBattlefield { filter, .. }
         | EffectAst::PumpAll { filter, .. }
+        | EffectAst::ScalePowerToughnessAll { filter, .. }
         | EffectAst::GrantAbilitiesAll { filter, .. }
         | EffectAst::RemoveAbilitiesAll { filter, .. }
         | EffectAst::GrantAbilitiesChoiceAll { filter, .. }
@@ -1475,6 +1486,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
         EffectAst::Enchant {
             filter: crate::object::AuraAttachmentFilter::Player(_),
         } => 0,
+        EffectAst::DoubleManaPool { .. } => 0,
         EffectAst::LoseLife { amount, .. }
         | EffectAst::GainLife { amount, .. }
         | EffectAst::SetLifeTotal { amount, .. }
@@ -1655,6 +1667,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
         | EffectAst::ExchangeControl { filter, .. }
         | EffectAst::DestroyAllAttachedTo { filter, .. }
         | EffectAst::SearchLibrary { filter, .. } => bind_unresolved_it_in_filter(filter, seed_tag),
+        EffectAst::ExchangeLifeTotals { .. } => 0,
         EffectAst::BecomeCopy { target, source, .. } => {
             bind_unresolved_it_in_target(target, seed_tag)
                 + bind_unresolved_it_in_target(source, seed_tag)

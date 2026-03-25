@@ -111,8 +111,8 @@ pub use life::{ExchangeLifeTotalsEffect, GainLifeEffect, LoseLifeEffect, SetLife
 pub use mana::{
     AddColorlessManaEffect, AddManaEffect, AddManaFromCommanderColorIdentityEffect,
     AddManaOfAnyColorEffect, AddManaOfAnyOneColorEffect, AddManaOfChosenColorEffect,
-    AddManaOfLandProducedTypesEffect, AddScaledManaEffect, GrantManaAbilityUntilEotEffect,
-    PayManaEffect, RetainManaUntilEndOfTurnEffect,
+    AddManaOfLandProducedTypesEffect, AddScaledManaEffect, DoubleManaPoolEffect,
+    GrantManaAbilityUntilEotEffect, PayManaEffect, RetainManaUntilEndOfTurnEffect,
 };
 pub use permanents::{
     AttachObjectsEffect, AttachToEffect, BecomeBasicLandTypeChoiceEffect, BecomeColorChoiceEffect,

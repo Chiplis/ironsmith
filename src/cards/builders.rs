@@ -1993,6 +1993,10 @@ pub(crate) enum EffectAst {
         count: u32,
         shared_type: Option<SharedTypeConstraintAst>,
     },
+    ExchangeLifeTotals {
+        player1: PlayerAst,
+        player2: PlayerAst,
+    },
     RingTemptsYou {
         player: PlayerAst,
     },
@@ -2004,6 +2008,9 @@ pub(crate) enum EffectAst {
         player: PlayerAst,
     },
     TakeInitiative {
+        player: PlayerAst,
+    },
+    DoubleManaPool {
         player: PlayerAst,
     },
     SetLifeTotal {
@@ -2354,6 +2361,13 @@ pub(crate) enum EffectAst {
         filter: ObjectFilter,
         power: Value,
         toughness: Value,
+        duration: Until,
+    },
+    ScalePowerToughnessAll {
+        filter: ObjectFilter,
+        power: bool,
+        toughness: bool,
+        multiplier: i32,
         duration: Until,
     },
     PumpByLastEffect {
@@ -7022,6 +7036,38 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
                 .any(|e| e.downcast_ref::<ExchangeControlEffect>().is_some())
                 || debug.contains("ExchangeControlEffect"),
             "should include exchange control effect, got {debug}"
+        );
+    }
+
+    #[test]
+    fn parse_exchange_life_totals_with_target_from_text() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Magus Variant")
+            .parse_text("Exchange life totals with target opponent.")
+            .expect("parse exchange life totals with target");
+
+        let effects = def.spell_effect.as_ref().expect("spell effect");
+        let debug = format!("{effects:?}");
+        assert!(
+            debug.contains("ExchangeLifeTotalsEffect"),
+            "should include exchange life totals effect, got {debug}"
+        );
+    }
+
+    #[test]
+    fn parse_exchange_life_totals_between_two_targets_from_text() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Soul Conduit")
+            .parse_text("Two target players exchange life totals.")
+            .expect("parse two-player life exchange");
+
+        let effects = def.spell_effect.as_ref().expect("spell effect");
+        let debug = format!("{effects:?}");
+        assert!(
+            debug.contains("ExchangeLifeTotalsEffect"),
+            "should include exchange life totals effect, got {debug}"
+        );
+        assert!(
+            debug.contains("min: 2") || debug.contains("exactly(2)"),
+            "expected two-player target selection, got {debug}"
         );
     }
 

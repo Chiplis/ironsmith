@@ -406,6 +406,7 @@ impl EffectExecutor for ApplyContinuousEffect {
 mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
+    use crate::continuous::{ContinuousEffect, Modification};
     use crate::effect::Effect;
     use crate::executor::{ExecutionContext, ResolvedTarget, execute_effect};
     use crate::ids::{CardId, ObjectId, PlayerId};
@@ -515,5 +516,88 @@ mod tests {
             }
             _ => panic!("expected resolution-locked effect for tagged filter"),
         }
+    }
+
+    #[test]
+    fn double_power_uses_negative_power_at_resolution() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        let source = create_creature(&mut game, "Source", alice);
+        let target = create_creature(&mut game, "Target", alice);
+        game.continuous_effects.add_effect(
+            ContinuousEffect::new(
+                source,
+                alice,
+                EffectTarget::Specific(target),
+                Modification::ModifyPower(-5),
+            )
+            .until(Until::EndOfTurn),
+        );
+        assert_eq!(game.calculated_power(target), Some(-3));
+
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let effect = Effect::new(
+            ApplyContinuousEffect::new_runtime(
+                EffectTarget::Specific(target),
+                RuntimeModification::ModifyPowerToughness {
+                    power: Value::PowerOf(Box::new(ChooseSpec::SpecificObject(target))),
+                    toughness: Value::Fixed(0),
+                },
+                Until::EndOfTurn,
+            )
+            .require_creature_target(),
+        );
+
+        execute_effect(&mut game, &effect, &mut ctx).expect("execute double power");
+
+        assert_eq!(
+            game.calculated_power(target),
+            Some(-6),
+            "doubling negative power should add the current negative value again"
+        );
+    }
+
+    #[test]
+    fn triple_power_uses_negative_power_at_resolution() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        let source = create_creature(&mut game, "Source", alice);
+        let target = create_creature(&mut game, "Target", alice);
+        game.continuous_effects.add_effect(
+            ContinuousEffect::new(
+                source,
+                alice,
+                EffectTarget::Specific(target),
+                Modification::ModifyPower(-5),
+            )
+            .until(Until::EndOfTurn),
+        );
+        assert_eq!(game.calculated_power(target), Some(-3));
+
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let effect = Effect::new(
+            ApplyContinuousEffect::new_runtime(
+                EffectTarget::Specific(target),
+                RuntimeModification::ModifyPowerToughness {
+                    power: Value::Scaled(
+                        Box::new(Value::PowerOf(Box::new(ChooseSpec::SpecificObject(target)))),
+                        2,
+                    ),
+                    toughness: Value::Fixed(0),
+                },
+                Until::EndOfTurn,
+            )
+            .require_creature_target(),
+        );
+
+        execute_effect(&mut game, &effect, &mut ctx).expect("execute triple power");
+
+        assert_eq!(
+            game.calculated_power(target),
+            Some(-9),
+            "tripling negative power should add twice the current negative value"
+        );
     }
 }

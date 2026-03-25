@@ -2717,6 +2717,161 @@ fn test_parse_double_target_creatures_power_until_end_of_turn() {
 }
 
 #[test]
+fn test_parse_unleash_fury_current_oracle_wording() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Unleash Fury Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Double the power of target creature until end of turn.")
+        .expect("parse current Unleash Fury wording");
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("PowerOf"),
+        "expected dynamic power-based pump amount, got {debug}"
+    );
+
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("target creature")
+            && joined.contains("power")
+            && joined.contains("until end of turn"),
+        "expected compiled output to preserve current double-power wording, got {joined}"
+    );
+}
+
+#[test]
+fn test_parse_double_power_and_toughness_of_each_creature_you_control() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Zopandrel Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "At the beginning of each combat, double the power and toughness of each creature you control until end of turn.",
+        )
+        .expect("parse double-power-and-toughness sweep");
+
+    let debug = format!("{:?}", def);
+    assert!(
+        debug.contains("ForEachObject") && debug.contains("PowerOf") && debug.contains("ToughnessOf"),
+        "expected per-creature dynamic double P/T effect, got {debug}"
+    );
+
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("at the beginning of each combat"),
+        "expected trigger text to be preserved, got {joined}"
+    );
+}
+
+#[test]
+fn test_parse_triple_target_creatures_power_and_toughness_until_end_of_turn() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Tifa Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Triple target creature's power and toughness until end of turn.")
+        .expect("parse triple-target-pt clause");
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("Scaled") && debug.contains("PowerOf") && debug.contains("ToughnessOf"),
+        "expected dynamic scaled triple P/T modifier, got {debug}"
+    );
+
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("target creature")
+            && (joined.contains("twice target creature's power")
+                || joined.contains("twice its power")
+                || joined.contains("target creature's power"))
+            && joined.contains("until end of turn"),
+        "expected compiled output to preserve triple-power semantics, got {joined}"
+    );
+}
+
+#[test]
+fn test_parse_triple_power_and_toughness_of_each_creature_you_control() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Triple Sweep Probe")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "At the beginning of each combat, triple the power and toughness of each creature you control until end of turn.",
+        )
+        .expect("parse triple-power-and-toughness sweep");
+
+    let debug = format!("{:?}", def);
+    assert!(
+        debug.contains("ForEachObject")
+            && debug.contains("Scaled")
+            && debug.contains("PowerOf")
+            && debug.contains("ToughnessOf"),
+        "expected per-creature scaled triple P/T effect, got {debug}"
+    );
+}
+
+#[test]
+fn test_parse_double_target_creatures_power_and_toughness_until_end_of_turn() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Choose Your Weapon Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Double target creature's power and toughness until end of turn.")
+        .expect("parse double-target-pt clause");
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("PowerOf") && debug.contains("ToughnessOf"),
+        "expected dynamic double P/T modifier, got {debug}"
+    );
+}
+
+#[test]
+fn test_parse_double_target_players_life_total() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Beacon Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Double target player's life total.")
+        .expect("parse double target player's life total");
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("SetLifeTotal") && debug.contains("Scaled") && debug.contains("LifeTotal"),
+        "expected scaled life-total setter, got {debug}"
+    );
+
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("double target player's life total"),
+        "expected compact double-life rendering, got {joined}"
+    );
+}
+
+#[test]
+fn test_parse_double_your_life_total() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Revenge Probe")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Double your life total.")
+        .expect("parse double your life total");
+
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("double your life total"),
+        "expected compact self double-life rendering, got {joined}"
+    );
+}
+
+#[test]
+fn test_parse_doubling_cube_oracle_text() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Doubling Cube Probe")
+        .card_types(vec![CardType::Artifact])
+        .parse_text("{3}, {T}: Double the amount of each type of unspent mana you have.")
+        .expect("parse Doubling Cube activation");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("DoubleManaPoolEffect"),
+        "expected mana-pool doubling executor, got {debug}"
+    );
+
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("double the amount of each type of unspent mana you have"),
+        "expected compiled output to preserve mana-doubling semantics, got {joined}"
+    );
+}
+
+#[test]
 fn test_parse_reinforce_keyword_line_from_hand() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Reinforce Probe")
         .card_types(vec![CardType::Creature])

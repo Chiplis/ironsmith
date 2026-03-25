@@ -43,6 +43,7 @@ pub fn check_and_apply_sbas_with(
         let all_effects = view.effects().to_vec();
         let actions = check_state_based_actions_with_view(game, &view);
         drop(view);
+        game.clear_deathtouch_damage_since_sba();
         if actions.is_empty() {
             break;
         }
@@ -62,6 +63,7 @@ pub fn check_and_apply_sbas_with(
             let post_legend_effects = post_legend_view.effects().to_vec();
             let post_legend_actions = check_state_based_actions_with_view(game, &post_legend_view);
             drop(post_legend_view);
+            game.clear_deathtouch_damage_since_sba();
             apply_state_based_actions_from_actions_with(
                 game,
                 post_legend_actions,

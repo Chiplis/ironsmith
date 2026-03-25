@@ -1140,6 +1140,8 @@ fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
         0,
     )
     .expect("rewrite lexer should classify graveyard trigger probe");
+    let combat_tokens = lex_line("the beginning of each combat", 0)
+        .expect("rewrite lexer should classify combat trigger probe");
     let second_main_tokens = lex_line("the beginning of your second main phase", 0)
         .expect("rewrite lexer should classify second-main trigger probe");
     let gift_tokens = lex_line("an opponent gives a gift", 0)
@@ -1194,6 +1196,12 @@ fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
         ),
         "{graveyard:?}"
     );
+    assert!(matches!(
+        super::activation_and_restrictions::parse_trigger_clause_lexed(&combat_tokens),
+        Ok(crate::cards::builders::TriggerSpec::BeginningOfCombat(
+            crate::target::PlayerFilter::Any
+        ))
+    ));
     assert!(matches!(
         super::activation_and_restrictions::parse_trigger_clause_lexed(&second_main_tokens),
         Ok(
@@ -1316,6 +1324,53 @@ fn rewrite_lexed_triggered_line_lifts_intervening_if_with_multisentence_body() {
         debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
         "{debug}"
     );
+}
+
+#[test]
+fn rewrite_lexed_triggered_line_parses_double_sweep_body() {
+    let tokens = lex_line(
+        "At the beginning of each combat, double the power and toughness of each creature you control until end of turn.",
+        0,
+    )
+    .expect("rewrite lexer should classify double sweep trigger");
+
+    let parsed = super::clause_support::parse_triggered_line_lexed(&tokens)
+        .expect("double sweep trigger should parse");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("ScalePowerToughnessAll"), "{debug}");
+}
+
+#[test]
+fn rewrite_lexed_effect_sentence_parses_double_sweep_body() {
+    let tokens = lex_line(
+        "double the power and toughness of each creature you control until end of turn",
+        0,
+    )
+    .expect("rewrite lexer should classify double sweep effect");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&tokens)
+        .expect("double sweep effect should parse");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("ScalePowerToughnessAll"), "{debug}");
+}
+
+#[test]
+fn rewrite_lexed_effect_sentence_parses_triple_target_pt_body() {
+    let tokens = lex_line(
+        "triple target creature's power and toughness until end of turn",
+        0,
+    )
+    .expect("rewrite lexer should classify triple target pt effect");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&tokens)
+        .expect("triple target pt effect should parse");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("Scaled"), "{debug}");
+    assert!(debug.contains("PowerOf"), "{debug}");
+    assert!(debug.contains("ToughnessOf"), "{debug}");
 }
 
 #[test]
@@ -2264,6 +2319,50 @@ fn rewrite_semantic_parse_merges_multiline_spell_when_you_do_followup() -> Resul
     ));
     Ok(())
 }
+
+#[test]
+fn rewrite_semantic_parse_keeps_triggered_double_sweep_body() -> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Zopandrel Variant")
+        .card_types(vec![CardType::Creature]);
+    let (doc, _) = parse_text_to_semantic_document(
+        builder,
+        "At the beginning of each combat, double the power and toughness of each creature you control until end of turn.".to_string(),
+        false,
+    )?;
+
+    match doc.items.as_slice() {
+        [RewriteSemanticItem::Triggered(triggered)] => {
+            let debug = format!("{:?}", triggered.parsed);
+            assert!(debug.contains("ScalePowerToughnessAll"), "{debug}");
+        }
+        other => panic!("expected one triggered semantic item, got {other:?}"),
+    }
+
+    Ok(())
+}
+
+#[test]
+fn rewrite_semantic_parse_keeps_triggered_triple_sweep_body() -> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Triple Sweep Variant")
+        .card_types(vec![CardType::Enchantment]);
+    let (doc, _) = parse_text_to_semantic_document(
+        builder,
+        "At the beginning of each combat, triple the power and toughness of each creature you control until end of turn.".to_string(),
+        false,
+    )?;
+
+    match doc.items.as_slice() {
+        [RewriteSemanticItem::Triggered(triggered)] => {
+            let debug = format!("{:?}", triggered.parsed);
+            assert!(debug.contains("ScalePowerToughnessAll"), "{debug}");
+            assert!(debug.contains("multiplier: 2"), "{debug}");
+        }
+        other => panic!("expected one triggered semantic item, got {other:?}"),
+    }
+
+    Ok(())
+}
+
 
 #[test]
 fn rewrite_semantic_parse_marks_plumb_additional_cost_as_non_choice() -> Result<(), CardTextError> {

@@ -243,11 +243,13 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::ReturnAllToHandOfChosenColor { .. } => {}
         EffectAst::ReturnAllToBattlefield { .. } => {}
         EffectAst::ExchangeControl { .. } => {}
+        EffectAst::ExchangeLifeTotals { .. } => {}
         EffectAst::RingTemptsYou { .. } => {}
         EffectAst::VentureIntoDungeon { .. } => {}
         EffectAst::BecomeMonarch { .. } => {}
         EffectAst::TakeInitiative { .. } => {}
         EffectAst::CreateEmblem { .. } => {}
+        EffectAst::DoubleManaPool { .. } => {}
         EffectAst::SetLifeTotal { .. } => {}
         EffectAst::SkipTurn { .. } => {}
         EffectAst::SkipCombatPhases { .. } => {}
@@ -318,6 +320,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::SetBasePower { .. } => {}
         EffectAst::PumpForEach { .. } => {}
         EffectAst::PumpAll { .. } => {}
+        EffectAst::ScalePowerToughnessAll { .. } => {}
         EffectAst::PumpByLastEffect { .. } => {}
         EffectAst::GrantAbilitiesAll { .. } => {}
         EffectAst::RemoveAbilitiesAll { .. } => {}

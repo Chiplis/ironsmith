@@ -666,10 +666,10 @@ fn parse_prevent_next_time_damage_sentence_rule_lexed(
     parse_prevent_next_time_damage_sentence(view.tokens)
 }
 
-fn parse_double_target_power_sentence_rule_lexed(
+fn parse_scaled_target_power_sentence_rule_lexed(
     view: &LexClauseView<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    parse_double_target_power_sentence(view.tokens)
+    parse_scaled_target_power_sentence(view.tokens)
 }
 
 fn parse_preconditional_sentence_primitives_rule_lexed(
@@ -742,11 +742,11 @@ const SENTENCE_PRE_DIAGNOSTIC_PARSE_RULES_LEXED: [LexRuleDef<Vec<EffectAst>>; 6]
         run: parse_prevent_next_time_damage_sentence_rule_lexed,
     },
     LexRuleDef {
-        id: "double-target-power",
+        id: "scale-target-power",
         priority: 120,
-        heads: &["double"],
+        heads: &["double", "triple"],
         shape_mask: 0,
-        run: parse_double_target_power_sentence_rule_lexed,
+        run: parse_scaled_target_power_sentence_rule_lexed,
     },
     LexRuleDef {
         id: "spell-this-way-pay-life",
@@ -4306,50 +4306,209 @@ pub(crate) fn parse_gain_life_equal_to_power_sentence(
     Ok(Some(vec![EffectAst::GainLife { amount, player }]))
 }
 
-pub(crate) fn parse_double_target_power_sentence(
+pub(crate) fn parse_scaled_target_power_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let word_view = crate::cards::builders::parser::native_tokens::LowercaseWordView::new(tokens);
     let words = word_view.to_word_refs();
-    if !words.starts_with(&["double", "target"]) {
-        return Ok(None);
-    }
-
-    let Some(power_idx) = words.iter().position(|word| *word == "power") else {
+    let Some((verb, multiplier)) = words.first().and_then(|word| match *word {
+        "double" => Some(("double", 1)),
+        "triple" => Some(("triple", 2)),
+        _ => None,
+    }) else {
         return Ok(None);
     };
-    if power_idx <= 1 {
+
+    let scaled_stat = |value: Value| {
+        if multiplier == 1 {
+            value
+        } else {
+            Value::Scaled(Box::new(value), multiplier)
+        }
+    };
+
+    let scale_pt_from_value_spec =
+        |target: &TargetAst, include_power: bool, include_toughness: bool| {
+            let amount_source_filter =
+                target_ast_to_object_filter(target.clone()).unwrap_or_else(|| {
+                    let mut fallback = ObjectFilter::default();
+                    fallback.card_types.push(CardType::Creature);
+                    fallback
+                });
+            let value_spec = Box::new(ChooseSpec::target(ChooseSpec::Object(amount_source_filter)));
+            EffectAst::Pump {
+                power: if include_power {
+                    scaled_stat(Value::PowerOf(value_spec.clone()))
+                } else {
+                    Value::Fixed(0)
+                },
+                toughness: if include_toughness {
+                    scaled_stat(Value::ToughnessOf(value_spec))
+                } else {
+                    Value::Fixed(0)
+                },
+                target: target.clone(),
+                duration: crate::effect::Until::EndOfTurn,
+                condition: None,
+            }
+        };
+    let scale_pt_all = |filter: ObjectFilter, include_power: bool, include_toughness: bool| {
+        EffectAst::ScalePowerToughnessAll {
+            filter,
+            power: include_power,
+            toughness: include_toughness,
+            multiplier,
+            duration: crate::effect::Until::EndOfTurn,
+        }
+    };
+    let parse_double_life_total_subject =
+        |subject_words: &[&str]| -> Option<(PlayerAst, PlayerFilter)> {
+            match subject_words {
+                ["your"] => Some((PlayerAst::You, PlayerFilter::You)),
+                ["target", "player"] | ["target", "players"] => {
+                    Some((PlayerAst::Target, PlayerFilter::target_player()))
+                }
+                ["target", "opponent"] | ["target", "opponents"] => {
+                    Some((PlayerAst::TargetOpponent, PlayerFilter::target_opponent()))
+                }
+                ["opponent"] | ["opponents"] | ["an", "opponent"] | ["an", "opponents"] => {
+                    Some((PlayerAst::Opponent, PlayerFilter::Opponent))
+                }
+                _ => None,
+            }
+        };
+    let parse_double_mana_pool_subject = |subject_words: &[&str]| -> Option<PlayerAst> {
+        match subject_words {
+            ["you", "have"] => Some(PlayerAst::You),
+            ["target", "player", "has"] | ["target", "player", "have"] => Some(PlayerAst::Target),
+            ["target", "opponent", "has"] | ["target", "opponent", "have"] => {
+                Some(PlayerAst::TargetOpponent)
+            }
+            ["opponent", "has"] | ["opponents", "have"] => Some(PlayerAst::Opponent),
+            _ => None,
+        }
+    };
+
+    if verb == "double"
+        && let Some(life_total_idx) = words.iter().position(|word| *word == "life")
+        && words.get(life_total_idx + 1) == Some(&"total")
+        && let Some((player, player_filter)) = parse_double_life_total_subject(&words[1..life_total_idx])
+        && life_total_idx + 2 == words.len()
+    {
+        return Ok(Some(vec![EffectAst::SetLifeTotal {
+            amount: Value::Scaled(Box::new(Value::LifeTotal(player_filter)), 2),
+            player,
+        }]));
+    }
+
+    let mana_prefix = ["double", "the", "amount", "of", "each", "type", "of", "unspent", "mana"];
+    if verb == "double"
+        && words.starts_with(&mana_prefix)
+        && let Some(player) = parse_double_mana_pool_subject(&words[mana_prefix.len()..])
+    {
+        return Ok(Some(vec![EffectAst::DoubleManaPool { player }]));
+    }
+
+    let duration_start = if words.len() >= 4 && is_until_end_of_turn(&words[words.len() - 4..]) {
+        words.len() - 4
+    } else {
+        words.len()
+    };
+    let subject_end = duration_start;
+
+    if words.starts_with(&[verb, "the"]) {
+        let (include_power, include_toughness, subject_start) = match words.get(2..) {
+            Some(["power", "of", ..]) => (true, false, 4),
+            Some(["toughness", "of", ..]) => (false, true, 4),
+            Some(["power", "and", "toughness", "of", ..]) => (true, true, 6),
+            _ => (false, false, 0),
+        };
+        if subject_start != 0 && subject_start < subject_end {
+            let subject_tokens = trim_commas(&tokens[subject_start..subject_end]);
+            if subject_tokens.is_empty() {
+                return Err(CardTextError::ParseError(format!(
+                    "missing subject in {verb} clause (clause: '{}')",
+                    words.join(" ")
+                )));
+            }
+
+            let subject_words = &words[subject_start..subject_end];
+            if subject_words
+                .first()
+                .is_some_and(|word| *word == "each" || *word == "all")
+            {
+                let filter_tokens = &subject_tokens[1..];
+                if filter_tokens.is_empty() {
+                    return Err(CardTextError::ParseError(format!(
+                        "missing filter in {verb} clause (clause: '{}')",
+                        words.join(" ")
+                    )));
+                }
+                let filter = parse_object_filter(filter_tokens, false)?;
+                return Ok(Some(vec![scale_pt_all(
+                    filter,
+                    include_power,
+                    include_toughness,
+                )]));
+            }
+
+            let target = parse_target_phrase(&subject_tokens)?;
+            return Ok(Some(vec![scale_pt_from_value_spec(
+                &target,
+                include_power,
+                include_toughness,
+            )]));
+        }
+    }
+
+    let (include_power, include_toughness, characteristic_start) =
+        if subject_end >= 4 && words[subject_end - 3..subject_end] == ["power", "and", "toughness"]
+        {
+            (true, true, subject_end - 3)
+        } else if subject_end >= 1 && words[subject_end - 1] == "power" {
+            (true, false, subject_end - 1)
+        } else if subject_end >= 1 && words[subject_end - 1] == "toughness" {
+            (false, true, subject_end - 1)
+        } else {
+            return Ok(None);
+        };
+    if characteristic_start <= 1 {
         return Ok(None);
     }
 
-    let tail_words = &words[power_idx + 1..];
-    if !tail_words.is_empty() && !is_until_end_of_turn(tail_words) {
-        return Ok(None);
-    }
-
-    let target_tokens = trim_commas(&tokens[1..power_idx]);
+    let target_tokens = trim_commas(&tokens[1..characteristic_start]);
     if target_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
-            "missing target in double-power clause (clause: '{}')",
+            "missing target in {verb} clause (clause: '{}')",
             words.join(" ")
         )));
     }
 
+    if words
+        .get(1)
+        .is_some_and(|word| *word == "each" || *word == "all")
+    {
+        let filter_tokens = &target_tokens[1..];
+        if filter_tokens.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "missing filter in {verb} clause (clause: '{}')",
+                words.join(" ")
+            )));
+        }
+        let filter = parse_object_filter(filter_tokens, false)?;
+        return Ok(Some(vec![scale_pt_all(
+            filter,
+            include_power,
+            include_toughness,
+        )]));
+    }
+
     let target = parse_target_phrase(&target_tokens)?;
-    let amount_source_filter = target_ast_to_object_filter(target.clone()).unwrap_or_else(|| {
-        let mut fallback = ObjectFilter::default();
-        fallback.card_types.push(CardType::Creature);
-        fallback
-    });
-    Ok(Some(vec![EffectAst::Pump {
-        power: Value::PowerOf(Box::new(ChooseSpec::target(ChooseSpec::Object(
-            amount_source_filter,
-        )))),
-        toughness: Value::Fixed(0),
-        target,
-        duration: crate::effect::Until::EndOfTurn,
-        condition: None,
-    }]))
+    Ok(Some(vec![scale_pt_from_value_spec(
+        &target,
+        include_power,
+        include_toughness,
+    )]))
 }
 
 pub(crate) fn parse_prevent_damage_sentence(

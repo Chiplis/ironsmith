@@ -720,8 +720,14 @@ fn looks_like_statement_line(normalized: &str) -> bool {
         words.as_slice(),
         ["each", "player", third, ..] if is_statement_verb(third)
     );
+    let starts_with_quantified_target_player_statement = matches!(
+        words.as_slice(),
+        [_, "target", "player", fourth, ..] | [_, "target", "players", fourth, ..]
+            if is_statement_verb(fourth)
+    );
 
     starts_with_each_player_statement
+        || starts_with_quantified_target_player_statement
         || is_statement_verb(words[0])
         || matches!(words.as_slice(), ["this", "spell", third, ..] if is_statement_verb(third))
         || matches!(words.as_slice(), [_, second, ..] if is_statement_verb(second))
@@ -1084,13 +1090,30 @@ fn rewrite_named_source_trigger_for_builder(
 }
 
 fn strip_non_keyword_label_prefix(text: &str) -> &str {
-    let Some((label, body)) = split_label_prefix(text) else {
-        return text;
-    };
-    if preserve_keyword_prefix_for_parse(label) {
-        text
-    } else {
-        body
+    let mut current = text.trim();
+    while let Some((label, body)) = split_label_prefix(current) {
+        if preserve_keyword_prefix_for_parse(label) {
+            break;
+        }
+        current = body.trim();
+    }
+    current
+}
+
+#[cfg(test)]
+mod tests {
+    use super::strip_non_keyword_label_prefix;
+
+    #[test]
+    fn strip_non_keyword_label_prefix_removes_chained_mode_name_and_cost() {
+        assert_eq!(
+            strip_non_keyword_label_prefix("Meteor Strikes — {2} — Double target creature's power and toughness until end of turn."),
+            "Double target creature's power and toughness until end of turn."
+        );
+        assert_eq!(
+            strip_non_keyword_label_prefix("Final Heaven — {6}{G} — Triple target creature's power and toughness until end of turn."),
+            "Triple target creature's power and toughness until end of turn."
+        );
     }
 }
 

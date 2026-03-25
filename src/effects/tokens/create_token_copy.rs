@@ -1,5 +1,6 @@
 //! Create token copy effect implementation.
 
+use crate::ability::Ability;
 use crate::card::PtValue;
 use crate::color::ColorSet;
 use crate::combat_state::{AttackTarget, AttackerInfo};
@@ -17,8 +18,7 @@ use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 
 use super::lifecycle::{
-    TokenCleanupOptions, TokenEntryOptions, apply_token_battlefield_entry,
-    grant_token_static_abilities, schedule_token_cleanup,
+    TokenCleanupOptions, TokenEntryOptions, apply_token_battlefield_entry, schedule_token_cleanup,
 };
 
 /// Effect that creates a token copy of a permanent.
@@ -461,6 +461,11 @@ impl EffectExecutor for CreateTokenCopyEffect {
                     .supertypes
                     .retain(|supertype| !self.removed_supertypes.contains(supertype));
             }
+            for static_ability in &static_abilities_to_grant {
+                token
+                    .abilities
+                    .push(Ability::static_ability(static_ability.clone()));
+            }
             let token_is_creature = token.is_creature();
 
             game.add_object(token);
@@ -511,7 +516,6 @@ impl EffectExecutor for CreateTokenCopyEffect {
                 }
 
                 schedule_token_cleanup(game, ctx, entered_id, controller_id, cleanup_options)?;
-                grant_token_static_abilities(game, ctx, entered_id, &static_abilities_to_grant)?;
             }
         }
 
@@ -532,10 +536,14 @@ mod tests {
     use super::*;
     use crate::ability::AbilityKind;
     use crate::card::{CardBuilder, PowerToughness};
+    use crate::cards::CardDefinitionBuilder;
     use crate::executor::ResolvedTarget;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::ObjectKind;
+    use crate::object::CounterType;
+    use crate::static_abilities::{StaticAbility, StaticAbilityId};
+    use crate::target::ObjectFilter;
     use crate::types::CardType;
 
     fn setup_game() -> GameState {
@@ -623,6 +631,42 @@ mod tests {
         } else {
             panic!("Expected Objects result");
         }
+    }
+
+    #[test]
+    fn test_create_token_copy_with_haste_is_seen_by_etb_replacements() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let creature_id = create_creature(&mut game, "Swift Probe", alice);
+        let source = game.new_object_id();
+
+        let haste_matters = CardDefinitionBuilder::new(CardId::new(), "Haste Matters")
+            .card_types(vec![CardType::Enchantment])
+            .with_ability(Ability::static_ability(
+                StaticAbility::enters_with_counters_for_filter(
+                    ObjectFilter::creature().with_static_ability(StaticAbilityId::Haste),
+                    CounterType::Vigilance,
+                    1,
+                ),
+            ))
+            .build();
+        game.create_object_from_definition(&haste_matters, alice, Zone::Battlefield);
+
+        let mut ctx = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![ResolvedTarget::Object(creature_id)]);
+
+        let effect = CreateTokenCopyEffect::with_haste(ChooseSpec::creature());
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        let crate::effect::OutcomeValue::Objects(ids) = result.value else {
+            panic!("Expected Objects result");
+        };
+        let token = game.object(ids[0]).expect("token should exist");
+        assert_eq!(
+            token.counters.get(&CounterType::Vigilance).copied(),
+            Some(1),
+            "ETB replacement effects should see the token's granted haste while it is being created"
+        );
     }
 
     #[test]

@@ -125,6 +125,10 @@ impl EffectExecutor for ExchangeControlEffect {
         let controller2 = game.object(perm2_id).map(|o| o.controller);
 
         if let (Some(c1), Some(c2)) = (controller1, controller2) {
+            if c1 == c2 {
+                return Ok(EffectOutcome::resolved());
+            }
+
             let effect1 = ApplyContinuousEffect::new(
                 EffectTarget::Specific(perm1_id),
                 Modification::ChangeController(c2),
@@ -301,5 +305,29 @@ mod tests {
         let effect = ExchangeControlEffect::creatures();
         let cloned = effect.clone_box();
         assert!(format!("{:?}", cloned).contains("ExchangeControlEffect"));
+    }
+
+    #[test]
+    fn test_exchange_control_same_controller_is_no_op() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        let creature1 = create_creature(&mut game, "Creature A", alice);
+        let creature2 = create_creature(&mut game, "Creature B", alice);
+        let source = game.new_object_id();
+
+        let mut ctx = ExecutionContext::new_default(source, alice).with_targets(vec![
+            ResolvedTarget::Object(creature1),
+            ResolvedTarget::Object(creature2),
+        ]);
+
+        let effect = ExchangeControlEffect::creatures();
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        assert_eq!(result.status, crate::effect::OutcomeStatus::Succeeded);
+        assert!(
+            game.continuous_effects.effects_sorted().is_empty(),
+            "same-controller exchange should create no controller-changing effects"
+        );
     }
 }

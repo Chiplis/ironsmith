@@ -7764,7 +7764,29 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         }
         return base;
     }
+    if let Some(double_mana) = effect.downcast_ref::<crate::effects::DoubleManaPoolEffect>() {
+        let subject = match &double_mana.player {
+            PlayerFilter::You => "you have".to_string(),
+            PlayerFilter::Target(base) if matches!(base.as_ref(), PlayerFilter::Any) => {
+                "target player has".to_string()
+            }
+            PlayerFilter::Target(base) if matches!(base.as_ref(), PlayerFilter::Opponent) => {
+                "target opponent has".to_string()
+            }
+            other => format!("{} has", describe_player_filter(other)),
+        };
+        return format!("Double the amount of each type of unspent mana {subject}");
+    }
     if let Some(set_life) = effect.downcast_ref::<crate::effects::SetLifeTotalEffect>() {
+        if let Value::Scaled(base, 2) = &set_life.amount
+            && let Value::LifeTotal(player) = base.as_ref()
+            && player == &set_life.player
+        {
+            return format!(
+                "Double {} life total",
+                describe_possessive_player_filter(&set_life.player)
+            );
+        }
         return format!(
             "{}'s life total becomes {}",
             describe_player_filter(&set_life.player),

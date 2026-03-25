@@ -890,8 +890,64 @@ fn rewrite_destination_first_return_clause(tokens: &[OwnedLexToken]) -> Option<V
     Some(rewritten)
 }
 
-pub(crate) fn parse_exchange(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+fn parse_exchange_life_totals_player(tokens: &[OwnedLexToken]) -> Option<PlayerAst> {
+    match words(tokens).as_slice() {
+        ["you"] => Some(PlayerAst::You),
+        ["target", "player"] | ["target", "players"] => Some(PlayerAst::Target),
+        ["target", "opponent"] | ["target", "opponents"] => Some(PlayerAst::TargetOpponent),
+        ["that", "player"] | ["that", "players"] => Some(PlayerAst::That),
+        ["opponent"] | ["opponents"] | ["an", "opponent"] => Some(PlayerAst::Opponent),
+        _ => None,
+    }
+}
+
+fn parse_exchange_life_totals(
+    tokens: &[OwnedLexToken],
+    subject: Option<SubjectAst>,
+) -> Result<EffectAst, CardTextError> {
     let clause_words = words(tokens);
+    if clause_words.as_slice() == ["life", "totals"] {
+        return match subject {
+            Some(SubjectAst::Player(PlayerAst::Target)) => Ok(EffectAst::ExchangeLifeTotals {
+                player1: PlayerAst::Target,
+                player2: PlayerAst::Target,
+            }),
+            _ => Err(CardTextError::ParseError(format!(
+                "unsupported life-total exchange clause (clause: '{}')",
+                clause_words.join(" ")
+            ))),
+        };
+    }
+
+    if !clause_words.starts_with(&["life", "totals", "with"]) {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported exchange clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+
+    let player2 = parse_exchange_life_totals_player(&tokens[3..]).ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "unsupported life-total exchange partner (clause: '{}')",
+            clause_words.join(" ")
+        ))
+    })?;
+    let player1 = match subject {
+        Some(SubjectAst::Player(player)) => player,
+        _ => PlayerAst::You,
+    };
+
+    Ok(EffectAst::ExchangeLifeTotals { player1, player2 })
+}
+
+pub(crate) fn parse_exchange(
+    tokens: &[OwnedLexToken],
+    subject: Option<SubjectAst>,
+) -> Result<EffectAst, CardTextError> {
+    let clause_words = words(tokens);
+    if clause_words.starts_with(&["life", "totals"]) {
+        return parse_exchange_life_totals(tokens, subject);
+    }
     if !clause_words.starts_with(&["control", "of"]) {
         return Err(CardTextError::ParseError(format!(
             "unsupported exchange clause (clause: '{}')",

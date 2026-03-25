@@ -1602,6 +1602,7 @@ fn effect_tagged_filter(effect: &EffectAst) -> Option<&ObjectFilter> {
         | EffectAst::ReturnAllToBattlefield { filter, .. }
         | EffectAst::ExchangeControl { filter, .. }
         | EffectAst::PumpAll { filter, .. }
+        | EffectAst::ScalePowerToughnessAll { filter, .. }
         | EffectAst::UntapAll { filter }
         | EffectAst::GrantAbilitiesAll { filter, .. }
         | EffectAst::RemoveAbilitiesAll { filter, .. }
@@ -1873,6 +1874,7 @@ pub(crate) fn effect_references_event_derived_amount(effect: &EffectAst) -> bool
             value_references_event_derived_amount(power)
                 || value_references_event_derived_amount(toughness)
         }
+        EffectAst::ScalePowerToughnessAll { .. } => false,
         EffectAst::SetBasePower { power, .. } => value_references_event_derived_amount(power),
         EffectAst::PumpForEach { count, .. } => value_references_event_derived_amount(count),
         _ => {
@@ -1929,6 +1931,7 @@ pub(crate) fn effect_references_its_controller(effect: &EffectAst) -> bool {
         | EffectAst::DiscardHand { player }
         | EffectAst::Discard { player, .. }
         | EffectAst::Mill { player, .. }
+        | EffectAst::DoubleManaPool { player }
         | EffectAst::SetLifeTotal { player, .. }
         | EffectAst::SkipTurn { player }
         | EffectAst::SkipCombatPhases { player }
@@ -1951,6 +1954,10 @@ pub(crate) fn effect_references_its_controller(effect: &EffectAst) -> bool {
             ..
         } => {
             matches!(player, PlayerAst::ItsController | PlayerAst::ItsOwner)
+        }
+        EffectAst::ExchangeLifeTotals { player1, player2 } => {
+            matches!(player1, PlayerAst::ItsController | PlayerAst::ItsOwner)
+                || matches!(player2, PlayerAst::ItsController | PlayerAst::ItsOwner)
         }
         EffectAst::MayByPlayer { player, effects } => {
             matches!(player, PlayerAst::ItsController | PlayerAst::ItsOwner)
@@ -3934,6 +3941,41 @@ where
     let effect = build(filter);
     // Only inject explicit target-context effects when the payload effect itself
     // does not expose target metadata via get_target_spec().
+    if effect.0.get_target_spec().is_none() {
+        for choice in &choices {
+            effects.push(Effect::new(crate::effects::TargetOnlyEffect::new(
+                choice.clone(),
+            )));
+        }
+    }
+    effects.push(effect);
+    Ok((effects, choices))
+}
+
+fn compile_exchange_life_totals_effect(
+    player1: PlayerAst,
+    player2: PlayerAst,
+    ctx: &mut EffectLoweringContext,
+) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
+    let (filter1, choices1) = resolve_effect_player_filter(player1, ctx, true, true, true)?;
+    let (filter2, choices2) = resolve_effect_player_filter(player2, ctx, true, true, true)?;
+
+    let effect = Effect::exchange_life_totals(filter1, filter2);
+    let mut choices = Vec::new();
+
+    if choices1.len() == 1
+        && choices2.len() == 1
+        && choices1[0].base() == choices2[0].base()
+        && choices1[0].is_target()
+    {
+        push_choice(&mut choices, choices1[0].clone().with_count(ChoiceCount::exactly(2)));
+    } else {
+        for choice in choices1.into_iter().chain(choices2) {
+            push_choice(&mut choices, choice);
+        }
+    }
+
+    let mut effects = Vec::new();
     if effect.0.get_target_spec().is_none() {
         for choice in &choices {
             effects.push(Effect::new(crate::effects::TargetOnlyEffect::new(
@@ -7572,6 +7614,45 @@ fn try_compile_continuous_and_modifier_effect(
             ctx.last_object_tag = Some(tag);
             (vec![effect], Vec::new())
         }
+        EffectAst::ScalePowerToughnessAll {
+            filter,
+            power,
+            toughness,
+            multiplier,
+            duration,
+        } => {
+            let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+            let scaled_stat = |value: Value| {
+                if *multiplier == 1 {
+                    value
+                } else {
+                    Value::Scaled(Box::new(value), *multiplier)
+                }
+            };
+            let effect = Effect::for_each(
+                resolved_filter,
+                vec![Effect::new(
+                    crate::effects::ApplyContinuousEffect::with_spec_runtime(
+                        ChooseSpec::Iterated,
+                        crate::effects::continuous::RuntimeModification::ModifyPowerToughness {
+                            power: if *power {
+                                scaled_stat(Value::PowerOf(Box::new(ChooseSpec::Iterated)))
+                            } else {
+                                Value::Fixed(0)
+                            },
+                            toughness: if *toughness {
+                                scaled_stat(Value::ToughnessOf(Box::new(ChooseSpec::Iterated)))
+                            } else {
+                                Value::Fixed(0)
+                            },
+                        },
+                        duration.clone(),
+                    )
+                    .require_creature_target(),
+                )],
+            );
+            (vec![effect], Vec::new())
+        }
         EffectAst::PumpByLastEffect {
             power,
             toughness,
@@ -8774,6 +8855,12 @@ fn try_compile_player_turn_and_counter_effect(
         }
         EffectAst::TakeInitiative { player } => {
             compile_player_effect_from_filter(*player, ctx, true, Effect::take_initiative_player)?
+        }
+        EffectAst::DoubleManaPool { player } => {
+            compile_player_effect_from_filter(*player, ctx, true, Effect::double_mana_pool_player)?
+        }
+        EffectAst::ExchangeLifeTotals { player1, player2 } => {
+            compile_exchange_life_totals_effect(*player1, *player2, ctx)?
         }
         EffectAst::SetLifeTotal { amount, player } => {
             compile_player_effect_from_filter(*player, ctx, true, |filter| {

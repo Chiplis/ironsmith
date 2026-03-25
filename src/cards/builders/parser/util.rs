@@ -1636,6 +1636,11 @@ pub(crate) fn parse_subject(tokens: &[OwnedLexToken]) -> SubjectAst {
     {
         slice = &slice[1..];
     }
+    if slice.first().is_some_and(|word| {
+        parse_number_word_u32(word).is_some() || word.parse::<u32>().is_ok()
+    }) {
+        slice = &slice[1..];
+    }
     if let Some(have_idx) = slice
         .iter()
         .position(|word| *word == "have" || *word == "has")

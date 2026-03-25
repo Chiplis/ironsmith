@@ -491,6 +491,19 @@ impl<'a> ExecutionContext<'a> {
         Some((first, second))
     }
 
+    /// Resolve the first two context targets as player IDs.
+    pub fn resolve_two_player_targets(&self) -> Option<(PlayerId, PlayerId)> {
+        let first = match self.targets.first()? {
+            ResolvedTarget::Player(id) => *id,
+            _ => return None,
+        };
+        let second = match self.targets.get(1)? {
+            ResolvedTarget::Player(id) => *id,
+            _ => return None,
+        };
+        Some((first, second))
+    }
+
     /// Set source snapshot for source-LKI lookups.
     pub fn with_source_snapshot(mut self, snapshot: ObjectSnapshot) -> Self {
         self.source_snapshot = Some(snapshot);

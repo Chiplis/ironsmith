@@ -2546,6 +2546,12 @@ impl Effect {
         Self::new(SetLifeTotalEffect::new(amount, player))
     }
 
+    /// Create an effect that doubles each type of unspent mana a player has.
+    pub fn double_mana_pool_player(player: PlayerFilter) -> Self {
+        use crate::effects::DoubleManaPoolEffect;
+        Self::new(DoubleManaPoolEffect::new(player))
+    }
+
     /// Create a "become the monarch" effect for the controller.
     pub fn become_monarch() -> Self {
         use crate::effects::BecomeMonarchEffect;

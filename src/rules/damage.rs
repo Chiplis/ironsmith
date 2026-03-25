@@ -169,6 +169,10 @@ pub(crate) fn apply_processed_damage_assignment(
                 game.mark_damage(object_id, amount);
             }
 
+            if is_creature && amount > 0 && keywords.has_deathtouch {
+                game.mark_deathtouch_damage_since_sba(object_id);
+            }
+
             AppliedDamageAssignment {
                 applied: true,
                 life_lost: 0,
