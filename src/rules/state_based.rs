@@ -3,10 +3,10 @@
 //! State-based actions are checked whenever a player would receive priority.
 //! They don't use the stack and happen simultaneously.
 
-use crate::effects::helpers::validate_target;
-use crate::executor::{ExecutionContext, ResolvedTarget};
+use crate::effects::permanents::attachment_can_attach_to_target;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
+use crate::object::AttachmentTarget;
 use crate::object::CounterType;
 use crate::snapshot::ObjectSnapshot;
 use crate::static_abilities::StaticAbilityId;
@@ -43,8 +43,8 @@ pub enum StateBasedAction {
     /// A bestowed Aura is no longer legally attached and reverts to creature form.
     BestowBecomesCreature(ObjectId),
 
-    /// An Equipment or Fortification is attached to an illegal permanent.
-    EquipmentFallsOff(ObjectId),
+    /// A non-Aura attachment becomes unattached from an illegal or nonexistent target.
+    AttachmentBecomesUnattached(ObjectId),
 
     /// +1/+1 and -1/-1 counters on a permanent annihilate (remove pairs).
     CountersAnnihilate { permanent: ObjectId, count: u32 },
@@ -235,7 +235,7 @@ fn check_permanent_sbas_with_view(
             }
         }
 
-        // Aura not attached to anything or attached to illegal permanent
+        // Aura not attached to anything or attached to an illegal object or player
         if view.object_has_card_type(obj_id, CardType::Enchantment)
             && calculated_subtypes.contains(&Subtype::Aura)
         {
@@ -245,43 +245,24 @@ fn check_permanent_sbas_with_view(
                 } else {
                     actions.push(StateBasedAction::AuraFallsOff(obj_id));
                 }
-            } else if let Some(attached_id) = obj.attached_to {
-                // Check if attached permanent still exists
-                if game.object(attached_id).is_none() {
+            }
+        }
+
+        if let Some(attached_target) = obj.attached_to {
+            let is_aura = view.object_has_card_type(obj_id, CardType::Enchantment)
+                && calculated_subtypes.contains(&Subtype::Aura);
+            if is_aura {
+                if !attachment_can_attach_to_target(game, obj_id, attached_target)
+                    || matches!(attached_target, AttachmentTarget::Object(attached_id) if has_protection_from_source(game, attached_id, obj_id))
+                {
                     if obj.is_bestow_overlay_active() {
                         actions.push(StateBasedAction::BestowBecomesCreature(obj_id));
                     } else {
                         actions.push(StateBasedAction::AuraFallsOff(obj_id));
                     }
-                } else if let Some(effects) = obj.spell_effect.as_ref()
-                    && let Some(spec) = effects.iter().filter_map(|e| e.0.get_target_spec()).next()
-                {
-                    let ctx = ExecutionContext::new_default(obj_id, obj.controller);
-                    let resolved = ResolvedTarget::Object(attached_id);
-                    if !validate_target(game, &resolved, spec, &ctx)
-                        || has_protection_from_source(game, attached_id, obj_id)
-                    {
-                        if obj.is_bestow_overlay_active() {
-                            actions.push(StateBasedAction::BestowBecomesCreature(obj_id));
-                        } else {
-                            actions.push(StateBasedAction::AuraFallsOff(obj_id));
-                        }
-                    }
                 }
-            }
-        }
-
-        // Equipment not attached to a creature
-        if view.object_has_card_type(obj_id, CardType::Artifact)
-            && calculated_subtypes.contains(&Subtype::Equipment)
-            && let Some(attached_id) = obj.attached_to
-        {
-            if game.object(attached_id).is_some() {
-                if !view.object_has_card_type(attached_id, CardType::Creature) {
-                    actions.push(StateBasedAction::EquipmentFallsOff(obj_id));
-                }
-            } else {
-                actions.push(StateBasedAction::EquipmentFallsOff(obj_id));
+            } else if !attachment_can_attach_to_target(game, obj_id, attached_target) {
+                actions.push(StateBasedAction::AttachmentBecomesUnattached(obj_id));
             }
         }
 
@@ -326,7 +307,7 @@ fn check_role_sbas_with_view(
         {
             continue;
         }
-        let Some(attached_id) = obj.attached_to else {
+        let Some(AttachmentTarget::Object(attached_id)) = obj.attached_to else {
             continue;
         };
         if game
@@ -723,19 +704,17 @@ fn apply_single_sba_with_snapshots(
             }
         }
 
-        StateBasedAction::AuraFallsOff(obj_id) | StateBasedAction::EquipmentFallsOff(obj_id) => {
+        StateBasedAction::AuraFallsOff(obj_id) => {
             game.move_object_by_sba(obj_id, Zone::Graveyard);
         }
 
+        StateBasedAction::AttachmentBecomesUnattached(obj_id) => {
+            game.detach_object_from_current_target(obj_id);
+        }
+
         StateBasedAction::BestowBecomesCreature(obj_id) => {
-            let attached_to = game.object(obj_id).and_then(|obj| obj.attached_to);
-            if let Some(parent_id) = attached_to
-                && let Some(parent) = game.object_mut(parent_id)
-            {
-                parent.attachments.retain(|id| *id != obj_id);
-            }
+            game.detach_object_from_current_target(obj_id);
             if let Some(obj) = game.object_mut(obj_id) {
-                obj.attached_to = None;
                 obj.end_bestow_cast_overlay();
             }
         }

@@ -58,7 +58,10 @@ use crate::triggers::{
     DamageEventTarget, TriggerEvent, TriggerQueue, TriggeredAbilityEntry, check_triggers,
     generate_step_trigger_events, verify_intervening_if,
 };
-use crate::turn::{PriorityResult, PriorityTracker, TurnError, pass_priority, reset_priority};
+use crate::turn::{
+    PriorityResult, PriorityTracker, TurnError, pass_priority, priority_after_player_action,
+    reset_priority,
+};
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 

@@ -58,7 +58,7 @@ impl DiesDamagedByThisTurnTrigger {
             DamagerSource::EquippedCreature | DamagerSource::EnchantedCreature => ctx
                 .game
                 .object(ctx.source_id)
-                .and_then(|obj| obj.attached_to),
+                .and_then(|obj| obj.attached_to.and_then(|target| target.object_id())),
         }
     }
 

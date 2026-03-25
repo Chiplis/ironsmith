@@ -960,33 +960,33 @@ pub fn evaluate_condition_external(
         }),
         Condition::EnchantedPermanentIsCreature => game
             .object(ctx.source)
-            .and_then(|source_obj| source_obj.attached_to)
+            .and_then(|source_obj| source_obj.attached_to.and_then(|target| target.object_id()))
             .is_some_and(|attached| game.object_has_card_type(attached, CardType::Creature)),
         Condition::EnchantedPermanentIsEquipment => game
             .object(ctx.source)
-            .and_then(|source_obj| source_obj.attached_to)
+            .and_then(|source_obj| source_obj.attached_to.and_then(|target| target.object_id()))
             .is_some_and(|attached| {
                 game.calculated_subtypes(attached)
                     .contains(&crate::types::Subtype::Equipment)
             }),
         Condition::EnchantedPermanentIsVehicle => game
             .object(ctx.source)
-            .and_then(|source_obj| source_obj.attached_to)
+            .and_then(|source_obj| source_obj.attached_to.and_then(|target| target.object_id()))
             .is_some_and(|attached| {
                 game.calculated_subtypes(attached)
                     .contains(&crate::types::Subtype::Vehicle)
             }),
         Condition::EquippedCreatureTapped => game
             .object(ctx.source)
-            .and_then(|source_obj| source_obj.attached_to)
+            .and_then(|source_obj| source_obj.attached_to.and_then(|target| target.object_id()))
             .is_some_and(|attached| game.is_tapped(attached)),
         Condition::EquippedCreatureUntapped => game
             .object(ctx.source)
-            .and_then(|source_obj| source_obj.attached_to)
+            .and_then(|source_obj| source_obj.attached_to.and_then(|target| target.object_id()))
             .is_some_and(|attached| !game.is_tapped(attached)),
         Condition::EquippedCreatureAttacking => game
             .object(ctx.source)
-            .and_then(|source_obj| source_obj.attached_to)
+            .and_then(|source_obj| source_obj.attached_to.and_then(|target| target.object_id()))
             .is_some_and(|attached| {
                 game.combat
                     .as_ref()
@@ -2394,7 +2394,7 @@ fn evaluate_condition(
         }
         Condition::EnchantedPermanentAttackedThisTurn => Ok(game
             .object(ctx.source)
-            .and_then(|source_obj| source_obj.attached_to)
+            .and_then(|source_obj| source_obj.attached_to.and_then(|target| target.object_id()))
             .is_some_and(|attached_to| game.creature_attacked_this_turn(attached_to))),
         Condition::TargetMatches(filter) => {
             let filter_ctx = ctx.filter_context(game);
@@ -2510,35 +2510,35 @@ fn evaluate_condition(
         })),
         Condition::EnchantedPermanentIsCreature => Ok(game
             .object(ctx.source)
-            .and_then(|source_obj| source_obj.attached_to)
+            .and_then(|source_obj| source_obj.attached_to.and_then(|target| target.object_id()))
             .is_some_and(|attached| {
                 game.object_has_card_type(attached, crate::types::CardType::Creature)
             })),
         Condition::EnchantedPermanentIsEquipment => Ok(game
             .object(ctx.source)
-            .and_then(|source_obj| source_obj.attached_to)
+            .and_then(|source_obj| source_obj.attached_to.and_then(|target| target.object_id()))
             .is_some_and(|attached| {
                 game.calculated_subtypes(attached)
                     .contains(&crate::types::Subtype::Equipment)
             })),
         Condition::EnchantedPermanentIsVehicle => Ok(game
             .object(ctx.source)
-            .and_then(|source_obj| source_obj.attached_to)
+            .and_then(|source_obj| source_obj.attached_to.and_then(|target| target.object_id()))
             .is_some_and(|attached| {
                 game.calculated_subtypes(attached)
                     .contains(&crate::types::Subtype::Vehicle)
             })),
         Condition::EquippedCreatureTapped => Ok(game
             .object(ctx.source)
-            .and_then(|source_obj| source_obj.attached_to)
+            .and_then(|source_obj| source_obj.attached_to.and_then(|target| target.object_id()))
             .is_some_and(|attached| game.is_tapped(attached))),
         Condition::EquippedCreatureUntapped => Ok(game
             .object(ctx.source)
-            .and_then(|source_obj| source_obj.attached_to)
+            .and_then(|source_obj| source_obj.attached_to.and_then(|target| target.object_id()))
             .is_some_and(|attached| !game.is_tapped(attached))),
         Condition::EquippedCreatureAttacking => Ok(game
             .object(ctx.source)
-            .and_then(|source_obj| source_obj.attached_to)
+            .and_then(|source_obj| source_obj.attached_to.and_then(|target| target.object_id()))
             .is_some_and(|attached| {
                 game.combat
                     .as_ref()

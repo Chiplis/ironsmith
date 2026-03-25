@@ -2952,7 +2952,7 @@ pub(super) fn continue_activation(
             // Clear pending state and checkpoint - action completed successfully
             state.pending_activation = None;
             state.clear_checkpoint();
-            reset_priority(game, &mut state.tracker);
+            priority_after_player_action(game, &mut state.tracker, pending.activator);
             advance_priority_with_dm(game, trigger_queue, decision_maker)
         }
     }

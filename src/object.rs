@@ -9,6 +9,7 @@ use crate::cost::{OptionalCost, OptionalCostsPaid, TotalCost};
 use crate::ids::{CardId, ObjectId, PlayerId, StableId};
 use crate::mana::ManaCost;
 use crate::player::ManaPool;
+use crate::target::{ChooseSpec, FilterContext, ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 
@@ -247,12 +248,78 @@ impl std::fmt::Display for ObjectKind {
     }
 }
 
+/// A legal thing an attachment can be attached to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AttachmentTarget {
+    Object(ObjectId),
+    Player(PlayerId),
+}
+
+impl AttachmentTarget {
+    pub fn object_id(self) -> Option<ObjectId> {
+        match self {
+            Self::Object(id) => Some(id),
+            Self::Player(_) => None,
+        }
+    }
+
+    pub fn player_id(self) -> Option<PlayerId> {
+        match self {
+            Self::Object(_) => None,
+            Self::Player(id) => Some(id),
+        }
+    }
+}
+
+/// What an Aura is allowed to enchant.
+#[derive(Debug, Clone, PartialEq)]
+pub enum AuraAttachmentFilter {
+    Object(ObjectFilter),
+    Player(PlayerFilter),
+}
+
+impl From<ObjectFilter> for AuraAttachmentFilter {
+    fn from(value: ObjectFilter) -> Self {
+        Self::Object(value)
+    }
+}
+
+impl From<PlayerFilter> for AuraAttachmentFilter {
+    fn from(value: PlayerFilter) -> Self {
+        Self::Player(value)
+    }
+}
+
+impl AuraAttachmentFilter {
+    pub fn target_spec(&self) -> ChooseSpec {
+        match self {
+            Self::Object(filter) => ChooseSpec::target(ChooseSpec::Object(filter.clone())),
+            Self::Player(filter) => ChooseSpec::target(ChooseSpec::Player(filter.clone())),
+        }
+    }
+
+    pub fn matches_target(
+        &self,
+        target: AttachmentTarget,
+        ctx: &FilterContext,
+        game: &crate::game_state::GameState,
+    ) -> bool {
+        match (self, target) {
+            (Self::Object(filter), AttachmentTarget::Object(id)) => game
+                .object(id)
+                .is_some_and(|object| filter.matches(object, ctx, game)),
+            (Self::Player(filter), AttachmentTarget::Player(id)) => filter.matches_player(id, ctx),
+            _ => false,
+        }
+    }
+}
+
 /// Stored copiable fields needed to end a bestow cast and restore creature form.
 #[derive(Debug, Clone)]
 pub struct BestowCastState {
     pub card_types: Vec<CardType>,
     pub subtypes: Vec<Subtype>,
-    pub aura_attach_filter: Option<crate::target::ObjectFilter>,
+    pub aura_attach_filter: Option<AuraAttachmentFilter>,
     pub spell_effect: Option<crate::resolution::ResolutionProgram>,
 }
 
@@ -272,7 +339,7 @@ pub struct FaceDownCastState {
     pub base_defense: Option<u32>,
     pub abilities: Vec<Ability>,
     pub spell_effect: Option<crate::resolution::ResolutionProgram>,
-    pub aura_attach_filter: Option<crate::target::ObjectFilter>,
+    pub aura_attach_filter: Option<AuraAttachmentFilter>,
 }
 
 /// Runtime representation of a game object.
@@ -320,14 +387,14 @@ pub struct Object {
 
     // Non-copiable values (kept on Object)
     pub counters: HashMap<CounterType, u32>,
-    pub attached_to: Option<ObjectId>,
+    pub attached_to: Option<AttachmentTarget>,
     pub attachments: Vec<ObjectId>,
 
     // Spell-related state
     /// Spell effects (for instants/sorceries)
     pub spell_effect: Option<crate::resolution::ResolutionProgram>,
     /// For Auras: what this card can enchant (used for non-target attachments)
-    pub aura_attach_filter: Option<crate::target::ObjectFilter>,
+    pub aura_attach_filter: Option<AuraAttachmentFilter>,
     /// Original copiable fields to restore if this permanent ends bestow.
     pub bestow_cast_state: Option<BestowCastState>,
     /// Original copiable fields to restore if this card was cast face down.
@@ -848,7 +915,7 @@ impl Object {
         subtypes.push(Subtype::Aura);
         self.subtypes = subtypes;
 
-        self.aura_attach_filter = Some(crate::target::ObjectFilter::creature());
+        self.aura_attach_filter = Some(crate::target::ObjectFilter::creature().into());
         self.ensure_aura_cast_spell_effect();
     }
 
@@ -863,8 +930,7 @@ impl Object {
             return;
         };
 
-        let target_spec =
-            crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(filter));
+        let target_spec = filter.target_spec();
         self.spell_effect = Some(crate::resolution::ResolutionProgram::from_effects(vec![
             crate::effect::Effect::attach_to(target_spec),
         ]));

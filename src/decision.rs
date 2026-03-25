@@ -2117,9 +2117,7 @@ fn can_cast_with_cost_with_view(
         && spell.subtypes.contains(&crate::types::Subtype::Aura)
     {
         spell.aura_attach_filter.clone().map(|filter| {
-            vec![crate::effect::Effect::attach_to(
-                crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(filter)),
-            )]
+            vec![crate::effect::Effect::attach_to(filter.target_spec())]
         })
     } else {
         None

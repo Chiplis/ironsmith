@@ -1291,7 +1291,8 @@ fn effect_applies_to_direct(
         EffectTarget::AttachedTo(source_id) => {
             // The effect applies to whatever permanent the source is attached to
             if let Some(source) = objects.get(source_id) {
-                source.attached_to == Some(object.id) && object.zone == Zone::Battlefield
+                source.attached_to == Some(crate::object::AttachmentTarget::Object(object.id))
+                    && object.zone == Zone::Battlefield
             } else {
                 false
             }
@@ -2499,7 +2500,8 @@ fn effect_applies_to(
         EffectTarget::AttachedTo(source_id) => {
             // The effect applies to whatever permanent the source is attached to
             if let Some(source) = ctx.objects.get(source_id) {
-                source.attached_to == Some(object.id) && object.zone == Zone::Battlefield
+                source.attached_to == Some(crate::object::AttachmentTarget::Object(object.id))
+                    && object.zone == Zone::Battlefield
             } else {
                 false
             }

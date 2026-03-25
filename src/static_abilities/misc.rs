@@ -3817,7 +3817,8 @@ mod tests {
                 StaticAbility::umbra_armor(),
             ));
         let aura_id = game.create_object_from_definition(&aura_def, alice, Zone::Battlefield);
-        game.object_mut(aura_id).expect("aura exists").attached_to = Some(creature_id);
+        game.object_mut(aura_id).expect("aura exists").attached_to =
+            Some(crate::object::AttachmentTarget::Object(creature_id));
         game.object_mut(creature_id)
             .expect("creature exists")
             .attachments
@@ -3870,7 +3871,8 @@ mod tests {
                 StaticAbility::umbra_armor(),
             ));
         let aura_id = game.create_object_from_definition(&aura_def, alice, Zone::Battlefield);
-        game.object_mut(aura_id).expect("aura exists").attached_to = Some(creature_id);
+        game.object_mut(aura_id).expect("aura exists").attached_to =
+            Some(crate::object::AttachmentTarget::Object(creature_id));
         game.object_mut(creature_id)
             .expect("creature exists")
             .attachments

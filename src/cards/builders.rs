@@ -17,7 +17,7 @@ use crate::effect::{
 };
 use crate::ids::CardId;
 use crate::mana::{ManaCost, ManaSymbol};
-use crate::object::CounterType;
+use crate::object::{AuraAttachmentFilter, CounterType};
 use crate::resolution::ResolutionProgram;
 use crate::static_abilities::StaticAbility;
 use crate::tag::TagKey;
@@ -2145,7 +2145,7 @@ pub(crate) enum EffectAst {
         continue_predicate: IfResultPredicate,
     },
     Enchant {
-        filter: ObjectFilter,
+        filter: AuraAttachmentFilter,
     },
     Attach {
         object: TargetAst,
@@ -2519,7 +2519,7 @@ pub struct CardDefinitionBuilder {
     additional_cost: TotalCost,
 
     /// For Auras: what this card can enchant (used for non-target attachments)
-    aura_attach_filter: Option<ObjectFilter>,
+    aura_attach_filter: Option<AuraAttachmentFilter>,
 
     /// True if this split card may be cast fused from hand.
     has_fuse: bool,
@@ -2683,10 +2683,11 @@ impl CardDefinitionBuilder {
     }
 
     /// Mark this card as an Aura that enchants objects matching the given filter.
-    pub fn enchants(mut self, filter: ObjectFilter) -> Self {
+    pub fn enchants(mut self, filter: impl Into<AuraAttachmentFilter>) -> Self {
+        let filter = filter.into();
         self.aura_attach_filter = Some(filter.clone());
         self.spell_effect = Some(ResolutionProgram::from_effects(vec![Effect::attach_to(
-            ChooseSpec::target(ChooseSpec::Object(filter)),
+            filter.target_spec(),
         )]));
         self
     }

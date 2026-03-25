@@ -1348,7 +1348,7 @@ mod tests {
         aura.owner = alice;
         aura.card_types = vec![CardType::Enchantment];
         aura.subtypes = vec![crate::types::Subtype::Aura];
-        aura.attached_to = Some(attacker.id);
+        aura.attached_to = Some(crate::object::AttachmentTarget::Object(attacker.id));
         aura.abilities.push(Ability::static_ability(
             StaticAbility::attached_chosen_landwalk_grant(
                 "enchanted creature has landwalk of the chosen type".to_string(),

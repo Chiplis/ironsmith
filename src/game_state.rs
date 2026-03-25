@@ -14,7 +14,7 @@ use crate::decision::KeywordPaymentContribution;
 use crate::dungeon::ActiveDungeonProgress;
 use crate::events::{Event, EventKind};
 use crate::ids::{ObjectId, PlayerId, StableId, reset_runtime_id_counters};
-use crate::object::Object;
+use crate::object::{AttachmentTarget, AuraAttachmentFilter, Object};
 use crate::player::Player;
 use crate::prevention::PreventionEffectManager;
 use crate::provenance::{ProvNodeId, ProvenanceGraph, ProvenanceNodeKind};
@@ -2391,6 +2391,22 @@ impl GameState {
         self.declined_commander_command_zone_moves.remove(&old_id);
         let old_zone = old_object.zone;
         let owner = old_object.owner;
+
+        if let Some(target) = old_object.attached_to {
+            match target {
+                AttachmentTarget::Object(id) => {
+                    if let Some(parent) = self.object_mut(id) {
+                        parent.attachments.retain(|existing| *existing != old_id);
+                    }
+                }
+                AttachmentTarget::Player(id) => {
+                    if let Some(player) = self.player_mut(id) {
+                        player.attachments.retain(|existing| *existing != old_id);
+                    }
+                }
+            }
+        }
+
         // Remove from old zone index
         self.remove_from_zone_index(old_id, old_zone, owner);
 
@@ -2800,43 +2816,84 @@ impl GameState {
         {
             let chooser = obj.owner;
             let filter_ctx = self.filter_context_for(chooser, Some(new_id));
-            let mut candidates = Vec::new();
-            for (id, candidate) in &self.objects {
-                if *id == new_id || candidate.zone != Zone::Battlefield {
-                    continue;
-                }
-                if filter.matches(candidate, &filter_ctx, self) {
-                    candidates.push(crate::decisions::context::SelectableObject::new(
-                        *id,
-                        candidate.name.clone(),
-                    ));
-                }
-            }
+            let chosen_target = match filter {
+                AuraAttachmentFilter::Object(filter) => {
+                    let mut candidates = Vec::new();
+                    for (id, candidate) in &self.objects {
+                        if *id == new_id || candidate.zone != Zone::Battlefield {
+                            continue;
+                        }
+                        if filter.matches(candidate, &filter_ctx, self) {
+                            candidates.push(crate::decisions::context::SelectableObject::new(
+                                *id,
+                                candidate.name.clone(),
+                            ));
+                        }
+                    }
 
-            if candidates.is_empty() {
-                // No legal attachment target - put the Aura into the graveyard
-                self.move_object_by_effect(new_id, Zone::Graveyard);
-            } else {
-                let ctx = crate::decisions::context::SelectObjectsContext::new(
-                    chooser,
-                    Some(new_id),
-                    "Attach Aura to",
-                    candidates,
-                    1,
-                    Some(1),
-                );
-                let chosen = decision_maker.decide_objects(self, &ctx);
-                if let Some(target_id) = chosen.first().copied() {
-                    if let Some(aura) = self.object_mut(new_id) {
-                        aura.attached_to = Some(target_id);
+                    if candidates.is_empty() {
+                        None
+                    } else {
+                        let ctx = crate::decisions::context::SelectObjectsContext::new(
+                            chooser,
+                            Some(new_id),
+                            "Attach Aura to",
+                            candidates,
+                            1,
+                            Some(1),
+                        );
+                        decision_maker
+                            .decide_objects(self, &ctx)
+                            .first()
+                            .copied()
+                            .map(AttachmentTarget::Object)
                     }
-                    if let Some(target) = self.object_mut(target_id)
-                        && !target.attachments.contains(&new_id)
-                    {
-                        target.attachments.push(new_id);
+                }
+                AuraAttachmentFilter::Player(filter) => {
+                    let candidates = self
+                        .players
+                        .iter()
+                        .filter(|player| player.is_in_game() && filter.matches_player(player.id, &filter_ctx))
+                        .map(|player| (player.id, player.name.clone()))
+                        .collect::<Vec<_>>();
+                    if candidates.is_empty() {
+                        None
+                    } else if candidates.len() == 1 {
+                        Some(AttachmentTarget::Player(candidates[0].0))
+                    } else {
+                        let choice_spec = crate::decisions::specs::ChoiceSpec::single(
+                            new_id,
+                            candidates
+                                .iter()
+                                .enumerate()
+                                .map(|(idx, (_, name))| {
+                                    crate::decisions::spec::DisplayOption::new(idx, name.clone())
+                                })
+                                .collect(),
+                        );
+                        let mut chosen = crate::decisions::make_decision(
+                            self,
+                            decision_maker,
+                            chooser,
+                            Some(new_id),
+                            choice_spec,
+                        );
+                        chosen
+                            .pop()
+                            .and_then(|idx| candidates.get(idx).map(|(player_id, _)| *player_id))
+                            .map(AttachmentTarget::Player)
+                            .or_else(|| Some(AttachmentTarget::Player(candidates[0].0)))
                     }
+                }
+            };
+
+            if let Some(target) = chosen_target {
+                if self.attach_object_to_target(new_id, target) {
                     self.continuous_effects.record_attachment(new_id);
                 }
+            } else {
+                // No legal attachment target - put the Aura into the graveyard
+                self.move_object_by_effect(new_id, Zone::Graveyard);
             }
         }
 
@@ -2850,6 +2907,20 @@ impl GameState {
     /// This does NOT create a new object - the object is simply gone.
     pub fn remove_object(&mut self, id: ObjectId) {
         if let Some(obj) = self.objects.remove(&id) {
+            if let Some(target) = obj.attached_to {
+                match target {
+                    AttachmentTarget::Object(parent_id) => {
+                        if let Some(parent) = self.object_mut(parent_id) {
+                            parent.attachments.retain(|existing| *existing != id);
+                        }
+                    }
+                    AttachmentTarget::Player(player_id) => {
+                        if let Some(player) = self.player_mut(player_id) {
+                            player.attachments.retain(|existing| *existing != id);
+                        }
+                    }
+                }
+            }
             self.stable_id_index.remove(&obj.stable_id);
             self.declined_commander_command_zone_moves.remove(&id);
             self.remove_from_zone_index(id, obj.zone, obj.owner);
@@ -3079,6 +3150,82 @@ impl GameState {
     /// Gets a mutable reference to an object by ID.
     pub fn object_mut(&mut self, id: ObjectId) -> Option<&mut Object> {
         self.objects.get_mut(&id)
+    }
+
+    pub fn attachment_target_exists_on_battlefield(&self, target: AttachmentTarget) -> bool {
+        match target {
+            AttachmentTarget::Object(id) => self
+                .object(id)
+                .is_some_and(|object| object.zone == Zone::Battlefield),
+            AttachmentTarget::Player(id) => self.player(id).is_some_and(|player| player.is_in_game()),
+        }
+    }
+
+    pub fn detach_object_from_current_target(&mut self, attachment_id: ObjectId) -> bool {
+        let Some(current_target) = self.object(attachment_id).and_then(|object| object.attached_to)
+        else {
+            return false;
+        };
+
+        match current_target {
+            AttachmentTarget::Object(id) => {
+                if let Some(parent) = self.object_mut(id) {
+                    parent.attachments.retain(|existing| *existing != attachment_id);
+                }
+            }
+            AttachmentTarget::Player(id) => {
+                if let Some(player) = self.player_mut(id) {
+                    player.attachments.retain(|existing| *existing != attachment_id);
+                }
+            }
+        }
+
+        if let Some(object) = self.object_mut(attachment_id) {
+            object.attached_to = None;
+        }
+
+        true
+    }
+
+    pub fn attach_object_to_target(
+        &mut self,
+        attachment_id: ObjectId,
+        target: AttachmentTarget,
+    ) -> bool {
+        if !self
+            .object(attachment_id)
+            .is_some_and(|object| object.zone == Zone::Battlefield)
+            || !self.attachment_target_exists_on_battlefield(target)
+        {
+            return false;
+        }
+
+        self.detach_object_from_current_target(attachment_id);
+
+        if let Some(object) = self.object_mut(attachment_id) {
+            object.attached_to = Some(target);
+        } else {
+            return false;
+        }
+
+        match target {
+            AttachmentTarget::Object(id) => {
+                if let Some(parent) = self.object_mut(id)
+                    && !parent.attachments.contains(&attachment_id)
+                {
+                    parent.attachments.push(attachment_id);
+                }
+            }
+            AttachmentTarget::Player(id) => {
+                if let Some(player) = self.player_mut(id)
+                    && !player.attachments.contains(&attachment_id)
+                {
+                    player.attachments.push(attachment_id);
+                }
+            }
+        }
+
+        true
     }
 
     // =========================================================================
@@ -5060,27 +5207,37 @@ impl GameState {
             .unwrap_or_default();
 
         let mut tagged_objects = std::collections::HashMap::new();
+        let mut tagged_players = std::collections::HashMap::new();
         if let Some(source_id) = source
             && let Some(source_obj) = self.object(source_id)
-            && let Some(attached_id) = source_obj.attached_to
-            && let Some(attached_obj) = self.object(attached_id)
         {
-            let attached_snapshot =
-                crate::snapshot::ObjectSnapshot::from_object(attached_obj, self);
-            if source_obj.subtypes.contains(&crate::types::Subtype::Aura) {
-                tagged_objects.insert(
-                    crate::tag::TagKey::from("enchanted"),
-                    vec![attached_snapshot.clone()],
-                );
-            }
-            if source_obj
-                .subtypes
-                .contains(&crate::types::Subtype::Equipment)
-            {
-                tagged_objects.insert(
-                    crate::tag::TagKey::from("equipped"),
-                    vec![attached_snapshot],
-                );
+            if let Some(attached_target) = source_obj.attached_to {
+                match attached_target {
+                    AttachmentTarget::Object(attached_id) => {
+                        if let Some(attached_obj) = self.object(attached_id) {
+                            let attached_snapshot =
+                                crate::snapshot::ObjectSnapshot::from_object(attached_obj, self);
+                            if source_obj.subtypes.contains(&crate::types::Subtype::Aura) {
+                                tagged_objects.insert(
+                                    crate::tag::TagKey::from("enchanted"),
+                                    vec![attached_snapshot.clone()],
+                                );
+                            }
+                            if source_obj.subtypes.contains(&crate::types::Subtype::Equipment) {
+                                tagged_objects.insert(
+                                    crate::tag::TagKey::from("equipped"),
+                                    vec![attached_snapshot],
+                                );
+                            }
+                        }
+                    }
+                    AttachmentTarget::Player(attached_player) => {
+                        if source_obj.subtypes.contains(&crate::types::Subtype::Aura) {
+                            tagged_players
+                                .insert(crate::tag::TagKey::from("enchanted"), vec![attached_player]);
+                        }
+                    }
+                }
             }
         }
 
@@ -5099,7 +5256,7 @@ impl GameState {
             target_players: Vec::new(),
             target_objects: Vec::new(),
             tagged_objects,
-            tagged_players: std::collections::HashMap::new(),
+            tagged_players,
         }
     }
 

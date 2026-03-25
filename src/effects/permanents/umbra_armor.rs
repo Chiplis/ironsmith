@@ -26,7 +26,7 @@ impl EffectExecutor for UmbraArmorEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let attached_to = game.object(self.aura).and_then(|aura| aura.attached_to);
-        if let Some(permanent) = attached_to {
+        if let Some(permanent) = attached_to.and_then(|target| target.object_id()) {
             game.clear_damage(permanent);
         }
 

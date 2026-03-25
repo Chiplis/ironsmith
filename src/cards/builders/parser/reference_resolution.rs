@@ -1459,7 +1459,6 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
         | EffectAst::ReturnAllToHand { filter }
         | EffectAst::ReturnAllToHandOfChosenColor { filter }
         | EffectAst::ReturnAllToBattlefield { filter, .. }
-        | EffectAst::Enchant { filter }
         | EffectAst::PumpAll { filter, .. }
         | EffectAst::GrantAbilitiesAll { filter, .. }
         | EffectAst::RemoveAbilitiesAll { filter, .. }
@@ -1469,6 +1468,12 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             ..
         }
         | EffectAst::ForEachObject { filter, .. } => bind_unresolved_it_in_filter(filter, seed_tag),
+        EffectAst::Enchant {
+            filter: crate::object::AuraAttachmentFilter::Object(filter),
+        } => bind_unresolved_it_in_filter(filter, seed_tag),
+        EffectAst::Enchant {
+            filter: crate::object::AuraAttachmentFilter::Player(_),
+        } => 0,
         EffectAst::LoseLife { amount, .. }
         | EffectAst::GainLife { amount, .. }
         | EffectAst::SetLifeTotal { amount, .. }

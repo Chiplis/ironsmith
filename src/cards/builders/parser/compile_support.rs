@@ -1610,9 +1610,11 @@ fn effect_tagged_filter(effect: &EffectAst) -> Option<&ObjectFilter> {
             spec: crate::grant::GrantSpec { filter, .. },
             ..
         }
-        | EffectAst::Enchant { filter }
         | EffectAst::SearchLibrary { filter, .. }
         | EffectAst::DestroyAllAttachedTo { filter, .. } => Some(filter),
+        EffectAst::Enchant {
+            filter: crate::object::AuraAttachmentFilter::Object(filter),
+        } => Some(filter),
         _ => None,
     }
 }
@@ -6976,7 +6978,7 @@ fn try_compile_attachment_and_setup_effect(
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
     let compiled = match effect {
         EffectAst::Enchant { filter } => {
-            let spec = ChooseSpec::target(ChooseSpec::Object(filter.clone()));
+            let spec = filter.target_spec();
             let effect = Effect::attach_to(spec.clone());
             (vec![effect], vec![spec])
         }

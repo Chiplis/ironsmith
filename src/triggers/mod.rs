@@ -99,10 +99,13 @@ pub(crate) fn describe_player_filter_subject(filter: &PlayerFilter) -> String {
         | PlayerFilter::MostLifeTied
         | PlayerFilter::CastCardTypeThisTurn(_)
         | PlayerFilter::ChosenPlayer
-        | PlayerFilter::TaggedPlayer(_)
         | PlayerFilter::IteratedPlayer
         | PlayerFilter::Target(_)
         | PlayerFilter::Excluding { .. } => "that player".to_string(),
+        PlayerFilter::TaggedPlayer(tag) if tag.as_str() == "enchanted" => {
+            "enchanted player".to_string()
+        }
+        PlayerFilter::TaggedPlayer(_) => "that player".to_string(),
         PlayerFilter::TargetPlayerOrControllerOfTarget => {
             "that player or that object's controller".to_string()
         }
@@ -130,10 +133,13 @@ pub(crate) fn describe_player_filter_possessive(filter: &PlayerFilter) -> String
         | PlayerFilter::MostLifeTied
         | PlayerFilter::CastCardTypeThisTurn(_)
         | PlayerFilter::ChosenPlayer
-        | PlayerFilter::TaggedPlayer(_)
         | PlayerFilter::IteratedPlayer
         | PlayerFilter::Target(_)
         | PlayerFilter::Excluding { .. } => "that player's".to_string(),
+        PlayerFilter::TaggedPlayer(tag) if tag.as_str() == "enchanted" => {
+            "enchanted player's".to_string()
+        }
+        PlayerFilter::TaggedPlayer(_) => "that player's".to_string(),
         PlayerFilter::TargetPlayerOrControllerOfTarget => {
             "that player's or that object's controller's".to_string()
         }

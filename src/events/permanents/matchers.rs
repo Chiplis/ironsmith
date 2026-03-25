@@ -187,7 +187,7 @@ impl ReplacementMatcher for AttachedPermanentWouldBeDestroyedMatcher {
             return false;
         };
 
-        aura.attached_to == Some(destroy.permanent)
+        aura.attached_to == Some(crate::object::AttachmentTarget::Object(destroy.permanent))
     }
 
     fn display(&self) -> String {

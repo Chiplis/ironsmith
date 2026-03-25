@@ -734,7 +734,7 @@ pub fn apply_priority_response_with_dm(
                     Some(source_stable_id),
                 );
 
-                reset_priority(game, &mut state.tracker);
+                priority_after_player_action(game, &mut state.tracker, player);
                 advance_priority_with_dm(game, trigger_queue, decision_maker)
             }
         }

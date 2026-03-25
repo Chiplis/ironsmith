@@ -2070,7 +2070,14 @@ pub(crate) fn parse_enchant_sentence(
     }
 
     let remaining = if tokens.len() > 1 { &tokens[1..] } else { &[] };
-    let filter = parse_object_filter(remaining, false)?;
+    let filter = match words.get(1..) {
+        Some(["player"]) => crate::object::AuraAttachmentFilter::Player(PlayerFilter::Any),
+        Some(["opponent"]) | Some(["an", "opponent"]) => {
+            crate::object::AuraAttachmentFilter::Player(PlayerFilter::Opponent)
+        }
+        Some(["you"]) => crate::object::AuraAttachmentFilter::Player(PlayerFilter::You),
+        _ => crate::object::AuraAttachmentFilter::Object(parse_object_filter(remaining, false)?),
+    };
     Ok(Some(EffectAst::Enchant { filter }))
 }
 

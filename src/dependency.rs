@@ -648,7 +648,9 @@ fn objects_attached_to(
     game: &GameState,
 ) -> bool {
     game.object(*source_id)
-        .map(|source| source.attached_to == Some(object.id))
+        .map(|source| {
+            source.attached_to == Some(crate::object::AttachmentTarget::Object(object.id))
+        })
         .unwrap_or(false)
 }
 

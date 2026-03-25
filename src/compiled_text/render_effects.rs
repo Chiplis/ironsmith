@@ -9729,24 +9729,34 @@ pub(super) fn describe_mana_activation_condition(condition: &crate::ConditionExp
     }
 }
 
-pub(super) fn describe_enchant_filter(filter: &ObjectFilter) -> String {
-    let aura_creature_gate = filter.card_types.len() == 1
-        && filter.card_types[0] == CardType::Creature
-        && filter.subtypes.len() == 1
-        && filter.subtypes[0] == crate::types::Subtype::Aura
-        && filter.controller.is_none()
-        && filter.owner.is_none()
-        && filter.zone == Some(Zone::Battlefield);
-    if aura_creature_gate {
-        return "creature with another Aura attached to it".to_string();
-    }
-    let desc = filter.description();
-    if let Some(stripped) = desc.strip_prefix("a ") {
-        stripped.to_string()
-    } else if let Some(stripped) = desc.strip_prefix("an ") {
-        stripped.to_string()
-    } else {
-        desc
+pub(super) fn describe_enchant_filter(filter: &crate::object::AuraAttachmentFilter) -> String {
+    match filter {
+        crate::object::AuraAttachmentFilter::Object(filter) => {
+            let aura_creature_gate = filter.card_types.len() == 1
+                && filter.card_types[0] == CardType::Creature
+                && filter.subtypes.len() == 1
+                && filter.subtypes[0] == crate::types::Subtype::Aura
+                && filter.controller.is_none()
+                && filter.owner.is_none()
+                && filter.zone == Some(Zone::Battlefield);
+            if aura_creature_gate {
+                return "creature with another Aura attached to it".to_string();
+            }
+            let desc = filter.description();
+            if let Some(stripped) = desc.strip_prefix("a ") {
+                stripped.to_string()
+            } else if let Some(stripped) = desc.strip_prefix("an ") {
+                stripped.to_string()
+            } else {
+                desc
+            }
+        }
+        crate::object::AuraAttachmentFilter::Player(filter) => match filter {
+            crate::target::PlayerFilter::Any => "player".to_string(),
+            crate::target::PlayerFilter::Opponent => "opponent".to_string(),
+            crate::target::PlayerFilter::You => "you".to_string(),
+            other => crate::filter::describe_player_filter(other),
+        },
     }
 }
 

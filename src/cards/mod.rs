@@ -25,9 +25,9 @@ use crate::card::Card;
 use crate::cost::{OptionalCost, TotalCost};
 use crate::effect::Effect;
 use crate::ids::CardId;
+use crate::object::AuraAttachmentFilter;
 use crate::resolution::ResolutionProgram;
 use crate::static_abilities::StaticAbilityId;
-use crate::target::ObjectFilter;
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
@@ -47,7 +47,7 @@ pub struct CardDefinition {
     pub spell_effect: Option<ResolutionProgram>,
 
     /// For Auras: what this card can enchant (used for non-target attachments)
-    pub aura_attach_filter: Option<ObjectFilter>,
+    pub aura_attach_filter: Option<AuraAttachmentFilter>,
 
     /// Alternative casting methods (flashback, escape, etc.)
     pub alternative_casts: Vec<AlternativeCastingMethod>,

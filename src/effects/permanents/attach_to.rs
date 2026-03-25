@@ -1,10 +1,12 @@
 //! Attach to effect implementation.
 
+use super::attach_battlefield_object_to_target;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::resolve_single_object_for_effect;
+use crate::effects::helpers::resolve_single_target_from_spec;
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
+use crate::object::AttachmentTarget;
 use crate::target::ChooseSpec;
 use crate::zone::Zone;
 
@@ -43,7 +45,7 @@ impl EffectExecutor for AttachToEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let target_id = resolve_single_object_for_effect(game, ctx, &self.target)?;
+        let target = resolve_single_target_from_spec(game, &self.target, ctx)?;
 
         // If this is a spell on the stack (Aura resolving), defer attachment
         if let Some(source) = game.object(ctx.source)
@@ -52,28 +54,14 @@ impl EffectExecutor for AttachToEffect {
             return Ok(EffectOutcome::resolved());
         }
 
-        // Detach from previous parent if needed.
-        let previous_parent = game
-            .object(ctx.source)
-            .and_then(|source| source.attached_to);
-        if let Some(previous_parent) = previous_parent
-            && previous_parent != target_id
-            && let Some(parent) = game.object_mut(previous_parent)
-        {
-            parent.attachments.retain(|id| *id != ctx.source);
+        match target {
+            crate::executor::ResolvedTarget::Object(id) => {
+                attach_battlefield_object_to_target(game, ctx.source, AttachmentTarget::Object(id));
+            }
+            crate::executor::ResolvedTarget::Player(id) => {
+                attach_battlefield_object_to_target(game, ctx.source, AttachmentTarget::Player(id));
+            }
         }
-
-        // Attach the source to the target
-        if let Some(source) = game.object_mut(ctx.source) {
-            source.attached_to = Some(target_id);
-        }
-
-        if let Some(target) = game.object_mut(target_id)
-            && !target.attachments.contains(&ctx.source)
-        {
-            target.attachments.push(ctx.source);
-        }
-        game.continuous_effects.record_attachment(ctx.source);
 
         Ok(EffectOutcome::resolved())
     }
@@ -132,7 +120,8 @@ mod tests {
     fn create_aura(game: &mut GameState, name: &str, controller: PlayerId) -> ObjectId {
         let id = game.new_object_id();
         let card = make_aura_card(id.0 as u32, name);
-        let obj = Object::from_card(id, &card, controller, Zone::Battlefield);
+        let mut obj = Object::from_card(id, &card, controller, Zone::Battlefield);
+        obj.aura_attach_filter = Some(crate::target::ObjectFilter::creature().into());
         game.add_object(obj);
         id
     }
@@ -149,7 +138,10 @@ mod tests {
         let effect = AttachToEffect::new(ChooseSpec::target_creature());
         effect.execute(&mut game, &mut ctx).unwrap();
 
-        assert_eq!(game.object(source).unwrap().attached_to, Some(target));
+        assert_eq!(
+            game.object(source).unwrap().attached_to,
+            Some(crate::object::AttachmentTarget::Object(target))
+        );
         assert!(game.object(target).unwrap().attachments.contains(&source));
     }
 
@@ -166,7 +158,39 @@ mod tests {
         let effect = AttachToEffect::new(ChooseSpec::Tagged("attach_target".into()));
         effect.execute(&mut game, &mut ctx).unwrap();
 
-        assert_eq!(game.object(source).unwrap().attached_to, Some(target));
+        assert_eq!(
+            game.object(source).unwrap().attached_to,
+            Some(crate::object::AttachmentTarget::Object(target))
+        );
         assert!(game.object(target).unwrap().attachments.contains(&source));
+    }
+
+    #[test]
+    fn test_attach_to_player_target_from_ctx_targets() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = create_aura(&mut game, "Curse", alice);
+        game.object_mut(source)
+            .expect("source Aura should exist")
+            .aura_attach_filter = Some(crate::target::PlayerFilter::Any.into());
+        let mut ctx =
+            ExecutionContext::new_default(source, alice).with_targets(vec![ResolvedTarget::Player(
+                bob,
+            )]);
+
+        let effect = AttachToEffect::new(ChooseSpec::target_player());
+        effect.execute(&mut game, &mut ctx).unwrap();
+
+        assert_eq!(
+            game.object(source).unwrap().attached_to,
+            Some(crate::object::AttachmentTarget::Player(bob))
+        );
+        assert!(
+            game.player(bob)
+                .expect("bob should exist")
+                .attachments
+                .contains(&source)
+        );
     }
 }

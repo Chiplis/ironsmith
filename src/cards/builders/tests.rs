@@ -6,6 +6,7 @@ use crate::effects::{
     AddManaEffect, ChooseModeEffect, CreateTokenEffect, GainLifeEffect,
     ReturnFromGraveyardToHandEffect,
 };
+use crate::object::AuraAttachmentFilter;
 use crate::static_abilities::StaticAbilityId;
 use crate::target::{ChooseSpec, PlayerFilter};
 use crate::{ObjectId, PlayerId};
@@ -1321,7 +1322,7 @@ fn test_aura_chosen_basic_land_type_sets_enchanted_land_subtype() {
     );
     assert_eq!(
         game.object(aura_id).and_then(|obj| obj.attached_to),
-        Some(land_id),
+        Some(crate::object::AttachmentTarget::Object(land_id)),
         "aura should attach to the only legal land"
     );
 
@@ -20690,6 +20691,30 @@ fn parse_choose_an_opponent_then_that_player_cant_cast_spells() {
         abilities_debug.contains("CastSpellsMatching(TaggedPlayer")
             || abilities_debug.contains("CastSpellsMatching(IteratedPlayer"),
         "expected that-player cant-cast restriction to lower through existing player filters, got {abilities_debug}"
+    );
+}
+
+#[test]
+fn parse_enchant_player_upkeep_trigger_uses_attached_player_filter() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Curse Variant")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura])
+        .parse_text(
+            "Enchant player\nAt the beginning of enchanted player's upkeep, that player loses 1 life.",
+        )
+        .expect("enchant-player curse text should parse");
+
+    assert_eq!(
+        def.aura_attach_filter,
+        Some(AuraAttachmentFilter::Player(PlayerFilter::Any))
+    );
+
+    let rendered = oracle_like_lines(&def).join("\n").to_ascii_lowercase();
+    assert!(
+        rendered.contains("enchant player")
+            && rendered.contains("at the beginning of enchanted player's upkeep")
+            && rendered.contains("that player loses 1 life"),
+        "expected enchant-player curse text to survive compilation, got {rendered}"
     );
 }
 

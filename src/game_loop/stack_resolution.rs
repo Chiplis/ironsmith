@@ -507,21 +507,16 @@ pub(super) fn resolve_stack_entry_full(
                     game.set_chosen_player(result.new_id, chosen_player);
                 }
                 // If this is an Aura, attach it to its target as it enters
-                if obj.subtypes.contains(&Subtype::Aura)
-                    && let Some(Target::Object(target_id)) = entry
-                        .targets
-                        .iter()
-                        .find(|t| matches!(t, Target::Object(_)))
-                {
-                    if let Some(aura) = game.object_mut(result.new_id) {
-                        aura.attached_to = Some(*target_id);
-                    }
-                    if let Some(target) = game.object_mut(*target_id)
-                        && !target.attachments.contains(&result.new_id)
+                if obj.subtypes.contains(&Subtype::Aura) {
+                    let attached = entry.targets.iter().find_map(|target| match target {
+                        Target::Object(id) => Some(crate::object::AttachmentTarget::Object(*id)),
+                        Target::Player(id) => Some(crate::object::AttachmentTarget::Player(*id)),
+                    });
+                    if let Some(target) = attached
+                        && game.attach_object_to_target(result.new_id, target)
                     {
-                        target.attachments.push(result.new_id);
+                        game.continuous_effects.record_attachment(result.new_id);
                     }
-                    game.continuous_effects.record_attachment(result.new_id);
                 }
 
                 let cast_with_dash = match &entry.casting_method {

@@ -510,7 +510,7 @@ fn test_manascape_refractor_copies_squirrel_nest_ability() {
 
     {
         let nest = game.object_mut(nest_id).unwrap();
-        nest.attached_to = Some(forest_id);
+        nest.attached_to = Some(crate::object::AttachmentTarget::Object(forest_id));
     }
     {
         let forest = game.object_mut(forest_id).unwrap();
@@ -556,7 +556,7 @@ fn test_conditional_attached_creature_check_uses_in_progress_characteristics() {
 
     {
         let aura = game.object_mut(aura_id).expect("aura should exist");
-        aura.attached_to = Some(creature_id);
+        aura.attached_to = Some(crate::object::AttachmentTarget::Object(creature_id));
     }
     {
         let creature = game.object_mut(creature_id).expect("creature should exist");

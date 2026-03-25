@@ -219,6 +219,20 @@ pub fn reset_priority(game: &mut GameState, tracker: &mut PriorityTracker) {
     game.turn.priority_player = Some(game.turn.active_player);
 }
 
+/// Resets pass tracking and returns priority to the player who just took an action.
+///
+/// Per CR 117.3c, if a player had priority when they cast a spell, activate an
+/// ability, or take a special action, that same player receives priority again
+/// afterward.
+pub fn priority_after_player_action(
+    game: &mut GameState,
+    tracker: &mut PriorityTracker,
+    player: PlayerId,
+) {
+    tracker.reset();
+    game.turn.priority_player = Some(player);
+}
+
 /// Advances priority to the next player in turn order.
 fn advance_priority_to_next_player(game: &mut GameState) {
     let current = match game.turn.priority_player {

@@ -42,6 +42,9 @@ pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
             card_type.to_string().to_ascii_lowercase()
         ),
         PlayerFilter::ChosenPlayer => "the chosen player".to_string(),
+        PlayerFilter::TaggedPlayer(tag) if tag.as_str() == "enchanted" => {
+            "enchanted player".to_string()
+        }
         PlayerFilter::TaggedPlayer(_) => "that player".to_string(),
         PlayerFilter::Active => "that player".to_string(),
         PlayerFilter::Defending => "the defending player".to_string(),

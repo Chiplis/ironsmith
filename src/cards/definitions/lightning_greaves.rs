@@ -67,7 +67,7 @@ mod tests {
 
     fn attach_equipment(game: &mut GameState, equipment_id: ObjectId, creature_id: ObjectId) {
         if let Some(equipment) = game.object_mut(equipment_id) {
-            equipment.attached_to = Some(creature_id);
+            equipment.attached_to = Some(crate::object::AttachmentTarget::Object(creature_id));
         }
         if let Some(creature) = game.object_mut(creature_id) {
             creature.attachments.push(equipment_id);
@@ -307,7 +307,7 @@ mod tests {
         // Move equipment to creature2
         {
             let equipment = game.object_mut(equipment_id).unwrap();
-            equipment.attached_to = Some(creature2_id);
+            equipment.attached_to = Some(crate::object::AttachmentTarget::Object(creature2_id));
         }
         {
             let creature1 = game.object_mut(creature1_id).unwrap();

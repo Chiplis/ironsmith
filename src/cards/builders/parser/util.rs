@@ -2419,6 +2419,14 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
             target_count,
         ));
     }
+    if remaining_words.as_slice() == ["enchanted", "player"]
+        || remaining_words.as_slice() == ["enchanted", "players"]
+    {
+        return Ok(wrap_target_count(
+            TargetAst::Player(PlayerFilter::TaggedPlayer(TagKey::from("enchanted")), target_span),
+            target_count,
+        ));
+    }
     if remaining_words.as_slice() == ["that", "player"] {
         return Ok(wrap_target_count(
             TargetAst::Player(PlayerFilter::target_player(), target_span),

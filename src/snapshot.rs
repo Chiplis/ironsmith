@@ -22,9 +22,9 @@ use crate::continuous::ContinuousEffect;
 use crate::ids::CardId;
 use crate::ids::{ObjectId, PlayerId, StableId};
 use crate::mana::ManaCost;
-use crate::object::{CounterType, Object, ObjectKind};
+use crate::object::{AttachmentTarget, CounterType, Object, ObjectKind};
 use crate::static_abilities::StaticAbilityId;
-use crate::target::ObjectFilter;
+use crate::object::AuraAttachmentFilter;
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 
@@ -87,7 +87,7 @@ pub struct ObjectSnapshot {
     /// Abilities the object had.
     pub abilities: Vec<Ability>,
     /// For Auras: what this object can enchant.
-    pub aura_attach_filter: Option<ObjectFilter>,
+    pub aura_attach_filter: Option<AuraAttachmentFilter>,
     /// For sagas: maximum chapter number.
     pub max_saga_chapter: Option<u32>,
     /// X value chosen when this object was cast (if any).
@@ -108,7 +108,7 @@ pub struct ObjectSnapshot {
     /// Whether the object was face-down.
     pub face_down: bool,
     /// What the object was attached to (for Auras/Equipment).
-    pub attached_to: Option<ObjectId>,
+    pub attached_to: Option<AttachmentTarget>,
     /// What was attached to the object.
     pub attachments: Vec<ObjectId>,
     /// Whether the object had any Auras attached.

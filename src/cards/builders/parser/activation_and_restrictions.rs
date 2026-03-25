@@ -9315,8 +9315,18 @@ pub(crate) fn parse_subtype_list_enters_trigger_filter(
 pub(crate) fn parse_possessive_clause_player_filter(words: &[&str]) -> PlayerFilter {
     let attached_controller_filter =
         |tag: &str| PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(TagKey::from(tag)));
+    let normalized_words = words
+        .iter()
+        .map(|word| {
+            word.strip_suffix("'s")
+                .or_else(|| word.strip_suffix("’s"))
+                .or_else(|| word.strip_suffix("s'"))
+                .or_else(|| word.strip_suffix("s’"))
+                .unwrap_or(word)
+        })
+        .collect::<Vec<_>>();
     let has_attached_controller = |subject: &str| {
-        words.windows(3).any(|window| {
+        normalized_words.windows(3).any(|window| {
             window[0] == subject
                 && matches!(
                     window[1],
@@ -9335,6 +9345,11 @@ pub(crate) fn parse_possessive_clause_player_filter(words: &[&str]) -> PlayerFil
         })
     };
 
+    if contains_word_sequence(&normalized_words, &["enchanted", "player"])
+        || contains_word_sequence(&normalized_words, &["enchanted", "players"])
+    {
+        return PlayerFilter::TaggedPlayer(TagKey::from("enchanted"));
+    }
     if has_attached_controller("enchanted") {
         return attached_controller_filter("enchanted");
     }
@@ -9354,6 +9369,10 @@ pub(crate) fn parse_possessive_clause_player_filter(words: &[&str]) -> PlayerFil
 pub(crate) fn parse_subject_clause_player_filter(words: &[&str]) -> PlayerFilter {
     if contains_your_team_words(words) || words.contains(&"you") {
         PlayerFilter::You
+    } else if contains_word_sequence(words, &["enchanted", "player"])
+        || contains_word_sequence(words, &["enchanted", "players"])
+    {
+        PlayerFilter::TaggedPlayer(TagKey::from("enchanted"))
     } else if contains_word_sequence(words, &["chosen", "player"])
         || contains_word_sequence(words, &["chosen", "players"])
     {

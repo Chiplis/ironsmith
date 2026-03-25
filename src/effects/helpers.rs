@@ -1240,6 +1240,23 @@ pub fn resolve_single_object_from_spec(
         .ok_or(ExecutionError::InvalidTarget)
 }
 
+/// Resolve a [`ChooseSpec`] to a single object or player target.
+pub fn resolve_single_target_from_spec(
+    game: &GameState,
+    spec: &ChooseSpec,
+    ctx: &ExecutionContext,
+) -> Result<ResolvedTarget, ExecutionError> {
+    if let Ok(object_id) = resolve_single_object_from_spec(game, spec, ctx) {
+        return Ok(ResolvedTarget::Object(object_id));
+    }
+
+    resolve_players_from_spec(game, spec, ctx)?
+        .into_iter()
+        .next()
+        .map(ResolvedTarget::Player)
+        .ok_or(ExecutionError::InvalidTarget)
+}
+
 /// Find the first player target in the targets list.
 pub fn find_target_player(targets: &[ResolvedTarget]) -> Result<PlayerId, ExecutionError> {
     for target in targets {

@@ -5336,6 +5336,153 @@ fn test_once_per_turn_in_legal_actions() {
 }
 
 #[test]
+fn test_nonactive_player_keeps_priority_after_activating_ability() {
+    use crate::ability::{AbilityKind, ActivatedAbility, ActivationTiming};
+    use crate::cost::TotalCost;
+    use crate::decision::compute_legal_actions;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = bob;
+    game.turn.priority_player = Some(alice);
+
+    let creature_id = create_creature(&mut game, "Quick Test Creature", alice, 2, 2);
+    game.object_mut(creature_id)
+        .expect("test creature should exist")
+        .abilities
+        .push(Ability {
+            kind: AbilityKind::Activated(ActivatedAbility {
+                mana_cost: TotalCost::free(),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::draw(1)]),
+                choices: vec![],
+                timing: ActivationTiming::AnyTime,
+                additional_restrictions: vec![],
+                activation_restrictions: vec![],
+                mana_output: None,
+                activation_condition: None,
+                mana_usage_restrictions: vec![],
+            }),
+            functional_zones: vec![Zone::Battlefield],
+            text: None,
+        });
+
+    let actions = compute_legal_actions(&game, alice);
+    let activate_action = actions
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::ActivateAbility { source, ability_index }
+                    if *source == creature_id && *ability_index == 0
+            )
+        })
+        .expect("alice should be able to activate the ability on bob's turn");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = AutoPassDecisionMaker;
+
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("activation should succeed");
+
+    assert_eq!(
+        game.turn.priority_player,
+        Some(alice),
+        "the activating player should keep priority after activating a non-mana ability"
+    );
+    assert_eq!(game.turn.active_player, bob, "it should still be bob's turn");
+    assert_eq!(game.stack.len(), 1, "the activated ability should be on the stack");
+    assert!(game.stack[0].is_ability, "stack entry should be an ability");
+    assert_eq!(
+        game.stack[0].controller, alice,
+        "the activated ability should be controlled by the activating player"
+    );
+}
+
+#[test]
+fn test_once_per_turn_restriction_survives_control_change() {
+    use crate::ability::{AbilityKind, ActivatedAbility, ActivationTiming};
+    use crate::cost::TotalCost;
+    use crate::decision::compute_legal_actions;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let creature_id = create_creature(&mut game, "Control Change Test", alice, 2, 2);
+    game.object_mut(creature_id)
+        .expect("test creature should exist")
+        .abilities
+        .push(Ability {
+            kind: AbilityKind::Activated(ActivatedAbility {
+                mana_cost: TotalCost::free(),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::draw(1)]),
+                choices: vec![],
+                timing: ActivationTiming::OncePerTurn,
+                additional_restrictions: vec![],
+                activation_restrictions: vec![],
+                mana_output: None,
+                activation_condition: None,
+                mana_usage_restrictions: vec![],
+            }),
+            functional_zones: vec![Zone::Battlefield],
+            text: None,
+        });
+    game.remove_summoning_sickness(creature_id);
+
+    game.record_ability_activation(creature_id, 0);
+    game.object_mut(creature_id)
+        .expect("test creature should still exist")
+        .controller = bob;
+
+    game.turn.priority_player = Some(bob);
+
+    let same_turn_actions = compute_legal_actions(&game, bob);
+    assert!(
+        !same_turn_actions.iter().any(|action| {
+            matches!(
+                action,
+                LegalAction::ActivateAbility { source, ability_index }
+                    if *source == creature_id && *ability_index == 0
+            )
+        }),
+        "the once-per-turn restriction should still apply after the permanent changes controllers"
+    );
+
+    game.next_turn();
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(bob);
+
+    let next_turn_actions = compute_legal_actions(&game, bob);
+    assert!(
+        next_turn_actions.iter().any(|action| {
+            matches!(
+                action,
+                LegalAction::ActivateAbility { source, ability_index }
+                    if *source == creature_id && *ability_index == 0
+            )
+        }),
+        "the restriction should reset on the next turn for the current controller"
+    );
+}
+
+#[test]
 fn test_wall_of_roots_once_per_turn_mana_ability_fast_path() {
     use crate::decision::compute_legal_actions;
 
@@ -7194,7 +7341,7 @@ fn test_bestow_cast_enters_as_aura_and_reverts_when_unattached() {
     );
     assert_eq!(
         bestowed.attached_to,
-        Some(host_id),
+        Some(crate::object::AttachmentTarget::Object(host_id)),
         "bestowed permanent should be attached to the chosen creature"
     );
 
@@ -7218,6 +7365,136 @@ fn test_bestow_cast_enters_as_aura_and_reverts_when_unattached() {
     assert!(
         reverted.attached_to.is_none(),
         "reverted bestow permanent should no longer be attached"
+    );
+}
+
+#[test]
+fn test_curse_aura_attaches_to_player_and_triggers_on_enchanted_players_upkeep() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let curse_def = CardDefinitionBuilder::new(CardId::new(), "Curse Runtime Variant")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![crate::types::Subtype::Aura])
+        .parse_text(
+            "Enchant player\nAt the beginning of enchanted player's upkeep, that player loses 1 life.",
+        )
+        .expect("curse text should parse");
+    let curse_in_hand = game.create_object_from_definition(&curse_def, alice, Zone::Hand);
+
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let cast_response = PriorityResponse::PriorityAction(LegalAction::CastSpell {
+        spell_id: curse_in_hand,
+        from_zone: Zone::Hand,
+        casting_method: CastingMethod::Normal,
+    });
+    let progress =
+        apply_priority_response(&mut game, &mut trigger_queue, &mut state, &cast_response)
+            .expect("curse cast should start successfully");
+    assert!(
+        matches!(
+            progress,
+            GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Targets(_))
+        ),
+        "enchant player Aura should ask for a player target"
+    );
+
+    let target_response = PriorityResponse::Targets(vec![Target::Player(bob)]);
+    apply_priority_response(&mut game, &mut trigger_queue, &mut state, &target_response)
+        .expect("choosing enchanted player should complete cast");
+    resolve_stack_entry(&mut game).expect("curse should resolve");
+
+    let curse_id = game
+        .battlefield
+        .iter()
+        .copied()
+        .find(|&id| {
+            game.object(id)
+                .map(|obj| obj.name == "Curse Runtime Variant")
+                .unwrap_or(false)
+        })
+        .expect("resolved curse should be on the battlefield");
+
+    assert_eq!(
+        game.object(curse_id).and_then(|object| object.attached_to),
+        Some(crate::object::AttachmentTarget::Player(bob)),
+        "the curse should enchant the chosen player"
+    );
+    assert!(
+        game.player(bob)
+            .expect("bob should exist")
+            .attachments
+            .contains(&curse_id),
+        "the enchanted player should track the attached Aura"
+    );
+
+    let life_before = game.player(bob).expect("bob should exist").life;
+    game.turn.turn_number += 1;
+    game.turn.phase = Phase::Beginning;
+    game.turn.step = Some(crate::game_state::Step::Upkeep);
+    game.turn.active_player = bob;
+    game.turn.priority_player = Some(bob);
+
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "the curse should trigger on the enchanted player's upkeep"
+    );
+
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("curse upkeep trigger should go on the stack");
+    resolve_stack_entry(&mut game).expect("curse upkeep trigger should resolve");
+
+    assert_eq!(
+        game.player(bob).expect("bob should exist").life,
+        life_before - 1,
+        "the enchanted player should lose life when the curse trigger resolves"
+    );
+}
+
+#[test]
+fn test_illegal_equipment_becomes_unattached_instead_of_dying() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let creature = create_creature(&mut game, "Bearer", alice, 2, 2);
+    let equipment_card = CardBuilder::new(CardId::new(), "Test Equipment")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![crate::types::Subtype::Equipment])
+        .build();
+    let equipment = game.create_object_from_card(&equipment_card, alice, Zone::Battlefield);
+
+    assert!(crate::effects::permanents::attach_battlefield_object_to_target(
+        &mut game,
+        equipment,
+        crate::object::AttachmentTarget::Object(creature),
+    ));
+
+    game.object_mut(creature)
+        .expect("equipped creature should exist")
+        .card_types = vec![CardType::Land];
+
+    crate::rules::state_based::apply_state_based_actions(&mut game);
+
+    assert_eq!(
+        game.object(equipment).map(|object| object.zone),
+        Some(Zone::Battlefield),
+        "Equipment should remain on the battlefield when it falls off"
+    );
+    assert!(
+        game.object(equipment)
+            .expect("equipment should exist")
+            .attached_to
+            .is_none(),
+        "Equipment should become unattached when its bearer stops being a creature"
     );
 }
 

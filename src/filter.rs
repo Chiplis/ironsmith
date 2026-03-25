@@ -95,7 +95,7 @@ impl TaggedConstraintSubject for Object {
     }
 
     fn subject_attached_to(&self) -> Option<ObjectId> {
-        self.attached_to
+        self.attached_to.and_then(|target| target.object_id())
     }
 }
 
@@ -178,7 +178,7 @@ impl TaggedConstraintSubject for ObjectSnapshot {
     }
 
     fn subject_attached_to(&self) -> Option<ObjectId> {
-        self.attached_to
+        self.attached_to.and_then(|target| target.object_id())
     }
 }
 
@@ -955,6 +955,9 @@ impl PlayerFilter {
                 card_type.to_string().to_ascii_lowercase()
             ),
             PlayerFilter::ChosenPlayer => "the chosen player".to_string(),
+            PlayerFilter::TaggedPlayer(tag) if tag.as_str() == "enchanted" => {
+                "enchanted player".to_string()
+            }
             PlayerFilter::TaggedPlayer(_) => "that player".to_string(),
             PlayerFilter::IteratedPlayer => "that player".to_string(),
             PlayerFilter::TargetPlayerOrControllerOfTarget => {
@@ -4467,7 +4470,7 @@ fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
     }
 }
 
-fn describe_player_filter(filter: &PlayerFilter) -> String {
+pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
     match filter {
         PlayerFilter::Any => "player".to_string(),
         PlayerFilter::You => "you".to_string(),
@@ -4486,6 +4489,9 @@ fn describe_player_filter(filter: &PlayerFilter) -> String {
             card_type.to_string().to_ascii_lowercase()
         ),
         PlayerFilter::ChosenPlayer => "chosen player".to_string(),
+        PlayerFilter::TaggedPlayer(tag) if tag.as_str() == "enchanted" => {
+            "enchanted player".to_string()
+        }
         PlayerFilter::TaggedPlayer(_) => "that player".to_string(),
         PlayerFilter::IteratedPlayer => "that player".to_string(),
         PlayerFilter::TargetPlayerOrControllerOfTarget => {

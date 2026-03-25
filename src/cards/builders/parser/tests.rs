@@ -365,6 +365,22 @@ fn rewrite_parse_target_phrase_preserves_hyphenated_filter_before_random_suffix(
 }
 
 #[test]
+fn rewrite_parse_target_phrase_supports_enchanted_player() {
+    let tokens = lex_line("enchanted player", 0)
+        .expect("rewrite lexer should classify enchanted player target phrase");
+    let target =
+        super::util::parse_target_phrase(&tokens).expect("enchanted player target should parse");
+
+    assert!(matches!(
+        target,
+        crate::cards::builders::TargetAst::Player(
+            crate::target::PlayerFilter::TaggedPlayer(tag),
+            _
+        ) if tag.as_str() == "enchanted"
+    ));
+}
+
+#[test]
 fn semantic_document_supports_next_turn_silence() {
     let builder = CardDefinitionBuilder::new(CardId::new(), "Sphinx's Decree")
         .card_types(vec![CardType::Sorcery]);
@@ -1128,6 +1144,8 @@ fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
         .expect("rewrite lexer should classify second-main trigger probe");
     let gift_tokens = lex_line("an opponent gives a gift", 0)
         .expect("rewrite lexer should classify gift-given trigger probe");
+    let enchanted_upkeep_tokens = lex_line("the beginning of enchanted player's upkeep", 0)
+        .expect("rewrite lexer should classify enchanted player's upkeep trigger probe");
 
     assert!(matches!(
         super::activation_and_restrictions::parse_trigger_clause_lexed(&dies_tokens),
@@ -1138,6 +1156,12 @@ fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
         Ok(crate::cards::builders::TriggerSpec::BeginningOfUpkeep(
             crate::target::PlayerFilter::You
         ))
+    ));
+    assert!(matches!(
+        super::activation_and_restrictions::parse_trigger_clause_lexed(&enchanted_upkeep_tokens),
+        Ok(crate::cards::builders::TriggerSpec::BeginningOfUpkeep(
+            crate::target::PlayerFilter::TaggedPlayer(tag)
+        )) if tag.as_str() == "enchanted"
     ));
     assert!(matches!(
         super::activation_and_restrictions::parse_trigger_clause_lexed(&etb_tokens),

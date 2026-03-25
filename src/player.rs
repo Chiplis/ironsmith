@@ -617,6 +617,7 @@ pub struct Player {
     pub library: Vec<ObjectId>,
     pub hand: Vec<ObjectId>,
     pub graveyard: Vec<ObjectId>,
+    pub attachments: Vec<ObjectId>,
 
     // Commander tracking
     /// The card IDs of this player's commanders.
@@ -653,6 +654,7 @@ impl Player {
             library: Vec::new(),
             hand: Vec::new(),
             graveyard: Vec::new(),
+            attachments: Vec::new(),
             commanders: Vec::new(),
             commander_damage: HashMap::new(),
         }

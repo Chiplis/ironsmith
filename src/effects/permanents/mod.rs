@@ -3,6 +3,12 @@
 //! This module contains effects that modify the state of permanents on the battlefield,
 //! such as tapping, untapping, monstrosity, regeneration, and transformation.
 
+use crate::game_state::GameState;
+use crate::ids::ObjectId;
+use crate::object::AttachmentTarget;
+use crate::types::{CardType, Subtype};
+use crate::zone::Zone;
+
 mod attach_objects;
 mod attach_to;
 mod become_basic_land_type_choice;
@@ -26,6 +32,71 @@ mod transform;
 mod umbra_armor;
 mod unearth;
 mod untap;
+
+pub(crate) fn attachment_can_attach_to_target(
+    game: &GameState,
+    attachment_id: ObjectId,
+    target: AttachmentTarget,
+) -> bool {
+    if matches!(target, AttachmentTarget::Object(target_id) if attachment_id == target_id) {
+        return false;
+    }
+
+    let Some(attachment) = game.object(attachment_id) else {
+        return false;
+    };
+    if attachment.zone != Zone::Battlefield || !game.attachment_target_exists_on_battlefield(target)
+    {
+        return false;
+    }
+
+    let subtypes = game.calculated_subtypes(attachment_id);
+    if subtypes.contains(&Subtype::Aura) {
+        let Some(filter) = attachment.aura_attach_filter.clone() else {
+            return false;
+        };
+        let filter_ctx = game.filter_context_for(attachment.controller, Some(attachment_id));
+        return filter.matches_target(target, &filter_ctx, game);
+    }
+
+    if subtypes.contains(&Subtype::Equipment) {
+        if attachment.card_types.contains(&CardType::Creature) {
+            return false;
+        }
+        return matches!(target, AttachmentTarget::Object(target_id) if game.object_has_card_type(target_id, CardType::Creature));
+    }
+
+    if subtypes.contains(&Subtype::Fortification) {
+        if attachment.card_types.contains(&CardType::Creature) {
+            return false;
+        }
+        return matches!(target, AttachmentTarget::Object(target_id) if game.object_has_card_type(target_id, CardType::Land));
+    }
+
+    false
+}
+
+pub(crate) fn attach_battlefield_object_to_target(
+    game: &mut GameState,
+    attachment_id: ObjectId,
+    target: AttachmentTarget,
+) -> bool {
+    if !attachment_can_attach_to_target(game, attachment_id, target) {
+        return false;
+    }
+
+    let previous_parent = game.object(attachment_id).and_then(|object| object.attached_to);
+    if previous_parent == Some(target) {
+        return false;
+    }
+
+    if !game.attach_object_to_target(attachment_id, target) {
+        return false;
+    }
+
+    game.continuous_effects.record_attachment(attachment_id);
+    true
+}
 
 pub use attach_objects::AttachObjectsEffect;
 pub use attach_to::AttachToEffect;
