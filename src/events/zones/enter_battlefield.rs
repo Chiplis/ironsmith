@@ -6,7 +6,7 @@ use crate::events::traits::{EventKind, GameEventType};
 use crate::game_state::{GameState, Target};
 use crate::ids::{ObjectId, PlayerId};
 use crate::object::CounterType;
-use crate::types::Subtype;
+use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 
 /// An enter battlefield event with ETB-specific modifiers.
@@ -26,6 +26,8 @@ pub struct EnterBattlefieldEvent {
     pub enters_with_counters: Vec<(CounterType, u32)>,
     /// If set, the object enters as a copy of this source object.
     pub enters_as_copy_of: Option<ObjectId>,
+    /// Additional card types granted by the copy-as-enters replacement.
+    pub added_card_types: Vec<CardType>,
     /// Additional subtypes granted by the copy-as-enters replacement.
     pub added_subtypes: Vec<Subtype>,
 }
@@ -39,6 +41,7 @@ impl EnterBattlefieldEvent {
             enters_tapped: false,
             enters_with_counters: Vec::new(),
             enters_as_copy_of: None,
+            added_card_types: Vec::new(),
             added_subtypes: Vec::new(),
         }
     }
@@ -51,6 +54,7 @@ impl EnterBattlefieldEvent {
             enters_tapped: true,
             enters_with_counters: Vec::new(),
             enters_as_copy_of: None,
+            added_card_types: Vec::new(),
             added_subtypes: Vec::new(),
         }
     }
@@ -84,6 +88,20 @@ impl EnterBattlefieldEvent {
     pub fn with_copy_of(&self, source_id: ObjectId) -> Self {
         Self {
             enters_as_copy_of: Some(source_id),
+            ..self.clone()
+        }
+    }
+
+    /// Return a new event with additional card types granted as it enters.
+    pub fn with_added_card_types(&self, card_types: &[CardType]) -> Self {
+        let mut added_card_types = self.added_card_types.clone();
+        for card_type in card_types {
+            if !added_card_types.contains(card_type) {
+                added_card_types.push(*card_type);
+            }
+        }
+        Self {
+            added_card_types,
             ..self.clone()
         }
     }

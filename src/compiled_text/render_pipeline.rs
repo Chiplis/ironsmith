@@ -195,6 +195,19 @@ pub(super) fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                     out.push(format!("Flashback—{mana_cost}, {extra}"));
                 }
             }
+            AlternativeCastingMethod::Harmonize { total_cost } => {
+                let costs = method.non_mana_costs();
+                let mana_cost = total_cost
+                    .mana_cost()
+                    .map(|cost| cost.to_oracle())
+                    .unwrap_or_else(|| "{0}".to_string());
+                if costs.is_empty() {
+                    out.push(format!("Harmonize {mana_cost}"));
+                } else {
+                    let extra = capitalize_first(&describe_alternative_costs(&costs));
+                    out.push(format!("Harmonize {mana_cost}, {extra}"));
+                }
+            }
             AlternativeCastingMethod::JumpStart => {
                 out.push("Jump-start".to_string());
             }

@@ -1063,17 +1063,57 @@ fn parse_if_declined_put_match_into_hand(
 ) -> Option<Vec<EffectAst>> {
     let clause_words = words(tokens);
     let moves_to_hand = clause_words == ["put", "that", "card", "into", "your", "hand"]
+        || clause_words == ["put", "the", "exiled", "card", "into", "your", "hand"]
         || clause_words == ["put", "it", "into", "your", "hand"]
+        || clause_words
+            == [
+                "put", "that", "card", "into", "your", "hand", "if", "it", "wasnt", "cast",
+                "this", "way",
+            ]
+        || clause_words
+            == [
+                "put", "that", "card", "into", "your", "hand", "if", "it", "wasn't", "cast",
+                "this", "way",
+            ]
+        || clause_words
+            == [
+                "put", "the", "exiled", "card", "into", "your", "hand", "if", "it", "wasnt",
+                "cast", "this", "way",
+            ]
+        || clause_words
+            == [
+                "put", "the", "exiled", "card", "into", "your", "hand", "if", "it", "wasn't",
+                "cast", "this", "way",
+            ]
+        || clause_words
+            == [
+                "put", "it", "into", "your", "hand", "if", "it", "wasnt", "cast", "this",
+                "way",
+            ]
+        || clause_words
+            == [
+                "put", "it", "into", "your", "hand", "if", "it", "wasn't", "cast", "this",
+                "way",
+            ]
         || clause_words.starts_with(&[
             "if", "you", "dont", "put", "that", "card", "into", "your", "hand",
+        ])
+        || clause_words.starts_with(&[
+            "if", "you", "dont", "put", "the", "exiled", "card", "into", "your", "hand",
         ])
         || clause_words.starts_with(&["if", "you", "dont", "put", "it", "into", "your", "hand"])
         || clause_words.starts_with(&[
             "if", "you", "don't", "put", "that", "card", "into", "your", "hand",
         ])
+        || clause_words.starts_with(&[
+            "if", "you", "don't", "put", "the", "exiled", "card", "into", "your", "hand",
+        ])
         || clause_words.starts_with(&["if", "you", "don't", "put", "it", "into", "your", "hand"])
         || clause_words.starts_with(&[
             "if", "you", "do", "not", "put", "that", "card", "into", "your", "hand",
+        ])
+        || clause_words.starts_with(&[
+            "if", "you", "do", "not", "put", "the", "exiled", "card", "into", "your", "hand",
         ])
         || clause_words.starts_with(&[
             "if", "you", "do", "not", "put", "it", "into", "your", "hand",
@@ -1083,12 +1123,24 @@ fn parse_if_declined_put_match_into_hand(
             "your", "hand",
         ])
         || clause_words.starts_with(&[
+            "if", "you", "dont", "cast", "the", "exiled", "card", "this", "way", "put", "it",
+            "into", "your", "hand",
+        ])
+        || clause_words.starts_with(&[
             "if", "you", "don't", "cast", "that", "card", "this", "way", "put", "it", "into",
             "your", "hand",
         ])
         || clause_words.starts_with(&[
+            "if", "you", "don't", "cast", "the", "exiled", "card", "this", "way", "put", "it",
+            "into", "your", "hand",
+        ])
+        || clause_words.starts_with(&[
             "if", "you", "do", "not", "cast", "that", "card", "this", "way", "put", "it", "into",
             "your", "hand",
+        ])
+        || clause_words.starts_with(&[
+            "if", "you", "do", "not", "cast", "the", "exiled", "card", "this", "way", "put",
+            "it", "into", "your", "hand",
         ])
         || clause_words.starts_with(&[
             "if", "you", "dont", "cast", "it", "this", "way", "put", "it", "into", "your", "hand",
@@ -2919,10 +2971,14 @@ fn parse_triple_sentence_sequence(
     second: &[OwnedLexToken],
     third: &[OwnedLexToken],
 ) -> Result<Option<(&'static str, Vec<EffectAst>)>, CardTextError> {
-    const RULES: [(&str, TripleSentenceRule); 9] = [
+    const RULES: [(&str, TripleSentenceRule); 10] = [
         (
             "mill-then-put-from-among-into-hand-then-if-you-dont",
             parse_mill_then_may_put_from_among_into_hand_then_if_you_dont,
+        ),
+        (
+            "search-face-down-exile-conditional-cast-else-hand",
+            parse_search_face_down_exile_conditional_cast_else_hand,
         ),
         (
             "search-then-next-upkeep-unless-pays-lose-game",
@@ -2962,6 +3018,125 @@ fn parse_triple_sentence_sequence(
     }
 
     Ok(None)
+}
+
+fn parse_search_face_down_exile_conditional_cast_else_hand(
+    first: &[OwnedLexToken],
+    second: &[OwnedLexToken],
+    third: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first_effects = parse_effect_chain(first)?;
+    let searched_tag: TagKey = "searched_face_down".into();
+    let has_face_down_search = first_effects.iter().any(|effect| {
+        matches!(
+            effect,
+            EffectAst::ChooseObjectsAcrossZones { tag, .. } if *tag == searched_tag
+        ) || matches!(
+            effect,
+            EffectAst::ChooseObjects { tag, .. } if *tag == searched_tag
+        )
+    }) && first_effects.iter().any(|effect| {
+        matches!(
+            effect,
+            EffectAst::Exile {
+                target: TargetAst::Tagged(tag, _),
+                face_down: true,
+            } if *tag == searched_tag
+        )
+    });
+    if !has_face_down_search {
+        return Ok(None);
+    }
+
+    let Some(hand_effects) = parse_if_declined_put_match_into_hand(third, searched_tag.clone())
+    else {
+        return Ok(None);
+    };
+
+    let second_tokens = trim_commas(second);
+    let second_words = words(&second_tokens);
+    if !second_words.starts_with(&["if", "this", "spell", "was", "bargained"]) {
+        return Ok(None);
+    }
+    let Some(effect_start_word_idx) = second_words.iter().position(|word| *word == "you") else {
+        return Ok(None);
+    };
+    let effect_words = &second_words[effect_start_word_idx..];
+    let Some((operator, right)) = parse_face_down_search_cast_mana_value_gate(effect_words) else {
+        return Ok(None);
+    };
+    let combined_predicate = PredicateAst::And(
+        Box::new(PredicateAst::ThisSpellPaidLabel("Bargain".to_string())),
+        Box::new(PredicateAst::ValueComparison {
+            left: Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(
+                searched_tag.clone(),
+            ))),
+            operator,
+            right,
+        }),
+    );
+    let mut effects = first_effects;
+    effects.push(EffectAst::Conditional {
+        predicate: combined_predicate,
+        if_true: vec![
+            EffectAst::May {
+                effects: vec![EffectAst::CastTagged {
+                    tag: searched_tag.clone(),
+                    allow_land: false,
+                    as_copy: false,
+                    without_paying_mana_cost: true,
+                }],
+            },
+            EffectAst::IfResult {
+                predicate: IfResultPredicate::WasDeclined,
+                effects: hand_effects.clone(),
+            },
+        ],
+        if_false: hand_effects,
+    });
+    Ok(Some(effects))
+}
+
+fn parse_face_down_search_cast_mana_value_gate(
+    words: &[&str],
+) -> Option<(crate::effect::ValueComparisonOperator, Value)> {
+    let remainder = if words.starts_with(&["you", "may", "cast", "the", "exiled", "card"]) {
+        &words[6..]
+    } else if words.starts_with(&["you", "may", "cast", "that", "card"]) {
+        &words[5..]
+    } else if words.starts_with(&["you", "may", "cast", "it"]) {
+        &words[4..]
+    } else {
+        return None;
+    };
+
+    if !remainder.starts_with(&["without", "paying", "its", "mana", "cost", "if"]) {
+        return None;
+    }
+    let condition = &remainder[5..];
+    if (condition.starts_with(&["if", "that", "spell's", "mana", "value", "is"])
+        || condition.starts_with(&["if", "that", "spells", "mana", "value", "is"]))
+        && condition.len() == 9
+        && condition[7] == "or"
+        && condition[8] == "less"
+    {
+        let value = condition[6].parse::<i32>().ok()?;
+        return Some((
+            crate::effect::ValueComparisonOperator::LessThanOrEqual,
+            Value::Fixed(value),
+        ));
+    }
+    if (condition.starts_with(&["if", "that", "spell's", "mana", "value", "is", "less", "than", "or", "equal", "to"])
+        || condition.starts_with(&["if", "that", "spells", "mana", "value", "is", "less", "than", "or", "equal", "to"]))
+        && condition.len() == 12
+    {
+        let value = condition[11].parse::<i32>().ok()?;
+        return Some((
+            crate::effect::ValueComparisonOperator::LessThanOrEqual,
+            Value::Fixed(value),
+        ));
+    }
+    None
 }
 
 fn parse_search_then_delayed_next_upkeep_unless_pays_lose_game(

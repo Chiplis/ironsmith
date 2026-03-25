@@ -3983,6 +3983,40 @@ fn test_parse_foretell_keyword_line_compiles_to_alternative_cast() {
 }
 
 #[test]
+fn test_parse_harmonize_keyword_line_compiles_to_alternative_cast() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Harmonize Probe")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Search your library for a creature card with mana value X or less, put it onto the battlefield, then shuffle.\nHarmonize {X}{G}{G}{G}{G} (You may cast this card from your graveyard for its harmonize cost. You may tap a creature you control to reduce that cost by an amount of generic mana equal to its power. Then exile this spell.)",
+        )
+        .expect("harmonize keyword line should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Harmonize {X}{G}{G}{G}{G}"),
+        "expected harmonize cost in render output, got {rendered}"
+    );
+    assert_eq!(def.alternative_casts.len(), 1);
+    match &def.alternative_casts[0] {
+        AlternativeCastingMethod::Harmonize { total_cost } => {
+            assert_eq!(
+                total_cost
+                    .mana_cost()
+                    .expect("harmonize should keep mana cost")
+                    .to_oracle(),
+                "{X}{G}{G}{G}{G}"
+            );
+        }
+        other => panic!("expected harmonize alternative cast, got {other:?}"),
+    }
+    let debug = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        !debug.contains("unsupported"),
+        "harmonize parse should avoid unsupported placeholders, got {debug}"
+    );
+}
+
+#[test]
 fn test_parse_spectacle_keyword_line_compiles_to_alternative_cast() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Spectacle Probe")
         .card_types(vec![CardType::Sorcery])
@@ -9503,6 +9537,85 @@ fn reveal_top_card_sequence_still_fails_loudly_for_unsupported_tail() {
     assert!(
         !rendered.contains("missing reveal count in reveal-top matching split clause"),
         "expected reveal-top helper to decline unrelated top-card text, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_ad_nauseam_style_optional_repeat_process() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Ad Nauseam Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Reveal the top card of your library and put that card into your hand. You lose life equal to its mana value. You may repeat this process any number of times.",
+        )
+        .expect("ad nauseam style optional repeat process should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Reveal the top card of your library and put that card into your hand"),
+        "expected ad nauseam reveal-and-draw clause to stay oracle-like, got {rendered}"
+    );
+    assert!(
+        rendered.contains("You may repeat this process any number of times"),
+        "expected optional repeat-process text in render output, got {rendered}"
+    );
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("RepeatProcess"),
+        "expected repeat-process lowering in compiled card definition, got {debug}"
+    );
+    assert!(
+        !debug.to_ascii_lowercase().contains("unsupported"),
+        "expected ad nauseam style repeat process to avoid unsupported placeholders, got {debug}"
+    );
+}
+
+#[test]
+fn parse_birgi_front_face_support_lines() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Birgi Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Whenever you cast a spell, add {R}. Until end of turn, you don't lose this mana as steps and phases end.\nCreatures you control can boast twice during each of your turns rather than once.",
+        )
+        .expect("birgi front-face rules text should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Until end of turn, you don't lose this mana as steps and phases end"),
+        "expected mana-retention text in render output, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Creatures you control can boast twice during each of your turns rather than once"),
+        "expected boast-frequency text in render output, got {rendered}"
+    );
+    let debug = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        !debug.contains("unsupported"),
+        "expected birgi front-face parse to avoid unsupported placeholders, got {debug}"
+    );
+}
+
+#[test]
+fn parse_phyrexian_metamorph_style_enter_as_copy_with_added_card_type() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Phyrexian Metamorph Variant")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .parse_text(
+            "You may have this creature enter as a copy of any artifact or creature on the battlefield except it's an artifact in addition to its other types.",
+        )
+        .expect("metamorph copy-as-enters text should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ");
+    assert!(
+        rendered.contains("copy of any artifact or creature on the battlefield except it's an artifact in addition to its other types"),
+        "expected copy-as-enters text in render output, got {rendered}"
+    );
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("added_card_types"),
+        "expected copy-as-enters lowering to record added card type support, got {debug}"
+    );
+    assert!(
+        !debug.to_ascii_lowercase().contains("unsupported"),
+        "expected metamorph copy-as-enters parse to avoid unsupported placeholders, got {debug}"
     );
 }
 
@@ -17317,6 +17430,93 @@ fn parse_exile_top_card_you_may_play_that_card_this_turn() {
 }
 
 #[test]
+fn parse_necropotence_style_face_down_exile_with_delayed_return() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Necropotence Variant")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Pay 1 life: Exile the top card of your library face down. Put that card into your hand at the beginning of your next end step.",
+        )
+        .expect("necropotence-style face-down exile should parse");
+
+    let ability_debug = format!("{:#?}", def.abilities);
+    assert!(
+        ability_debug.contains("ScheduleDelayedTriggerEffect"),
+        "expected delayed trigger scheduling in activated ability, got {ability_debug}"
+    );
+    assert!(
+        ability_debug.contains("BeginningOfEndStepTrigger"),
+        "expected next-end-step trigger in activated ability, got {ability_debug}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("face down"),
+        "expected face-down exile wording to remain explicit, got {rendered}"
+    );
+    assert!(
+        rendered.contains("pay 1 life"),
+        "expected necropotence-style activation to stay a life payment cost, got {rendered}"
+    );
+    assert!(
+        rendered.contains("next end step"),
+        "expected delayed return timing to remain explicit, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_veil_of_summer_full_spell() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Veil of Summer Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Draw a card if an opponent has cast a blue or black spell this turn. Spells you control can't be countered this turn. You and permanents you control gain hexproof from blue and from black until end of turn.",
+        )
+        .expect("veil of summer should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("draw a card if an opponent has cast a blue or black spell this turn")
+            || rendered.contains("if an opponent has cast a blue or black spell this turn, you draw a card"),
+        "expected draw condition to survive compilation, got {rendered}"
+    );
+    assert!(
+        rendered.contains("can't be countered this turn")
+            || rendered.contains("cant be countered this turn"),
+        "expected anti-counter clause to survive compilation, got {rendered}"
+    );
+    assert!(
+        rendered.contains("you and permanents you control gain hexproof from blue and from black")
+            || (rendered.contains("you have hexproof from blue or black")
+                && rendered.contains("permanents you control gain hexproof from blue or black")),
+        "expected protection clause to survive compilation, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_finale_of_devastation_x_threshold_spell() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Finale of Devastation Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Search your library and/or graveyard for a creature card with mana value X or less and put it onto the battlefield. If you search your library this way, shuffle. If X is 10 or more, creatures you control get +X/+X and gain haste until end of turn.",
+        )
+        .expect("finale of devastation should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("mana value x or less"),
+        "expected search clause to survive compilation, got {rendered}"
+    );
+    assert!(
+        rendered.contains("if x is 10 or more"),
+        "expected x-threshold clause to survive compilation, got {rendered}"
+    );
+    assert!(
+        rendered.contains("creatures you control get +x/+x")
+            && rendered.contains("gain haste until end of turn"),
+        "expected pump-and-haste clause to survive compilation, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_until_end_of_turn_you_may_cast_that_card() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Ragavan Variant")
         .card_types(vec![CardType::Creature])
@@ -18051,7 +18251,7 @@ fn parse_oracle_smothering_tithe_player_doesnt_regression() {
         "expected Smothering Tithe to render the negative follow-up, got {rendered}"
     );
     assert!(
-        rendered.contains("Treasure token"),
+        rendered.contains("If the player doesn't, you create a Treasure token"),
         "expected Smothering Tithe to keep the Treasure creation clause, got {rendered}"
     );
 }
@@ -19595,18 +19795,22 @@ fn parse_ghost_vacuum_base_pt_and_subtype_followup_sentence() {
 }
 
 #[test]
-fn enduring_curiosity_still_fails_without_type_removal_support() {
-    let err = CardDefinitionBuilder::new(CardId::new(), "Enduring Curiosity Variant")
+fn parse_enduring_curiosity_type_removal_followup() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Enduring Curiosity Variant")
         .parse_text(
             "When this creature dies, if it was a creature, return it to the battlefield under its owner's control. It's an enchantment. (It's not a creature.)",
         )
-        .expect_err("enduring return line must stay unsupported until type-removal semantics exist");
+        .expect("enduring return line should parse with type-removal followup support");
 
-    let rendered = format!("{err:?}").to_ascii_lowercase();
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        rendered.contains("could not find verb in effect clause")
-            || rendered.contains("unsupported"),
-        "expected loud unsupported-type-removal failure, got {rendered}"
+        rendered.contains("it's an enchantment") || rendered.contains("becomes an enchantment"),
+        "expected enduring followup to keep enchantment-return text, got {rendered}"
+    );
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("RemoveCardTypes"),
+        "expected enduring followup to lower creature-type removal, got {debug}"
     );
 }
 
@@ -19794,6 +19998,36 @@ fn parse_oracle_breaching_dragonstorm_consult_cast_else_hand() {
     assert!(
         rendered.contains("into your hand") || rendered.contains("owner's hand"),
         "expected Breaching Dragonstorm to keep the fallback move to hand, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_beseech_the_mirror_bargain_cast_else_hand() {
+    let def = parse_oracle_card_definition("Beseech the Mirror");
+    let rendered = compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        rendered_lower.contains("bargain."),
+        "expected Beseech the Mirror to keep Bargain, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains("search your library for a card, exile it face down, then shuffle"),
+        "expected Beseech the Mirror to keep the face-down search sequence, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains("you may cast the exiled card without paying its mana cost if that spell's mana value is 4 or less"),
+        "expected Beseech the Mirror to keep the bargained cast gate, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains("put it into your hand if it wasn't cast this way"),
+        "expected Beseech the Mirror to keep the fallback-to-hand clause, got {rendered}"
+    );
+    assert!(
+        !rendered_lower.contains("effect #")
+            && !rendered_lower.contains("searched_face_down")
+            && !rendered_lower.contains("tagged object"),
+        "expected Beseech the Mirror rendering to hide internal scaffolding, got {rendered}"
     );
 }
 

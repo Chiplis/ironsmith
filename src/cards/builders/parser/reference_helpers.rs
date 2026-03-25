@@ -389,6 +389,12 @@ pub(crate) fn resolve_restriction_it_tag(
         Restriction::BeTargetedPlayer(player) => {
             Restriction::BeTargetedPlayer(resolve_contextual_player_filter(player, refs)?)
         }
+        Restriction::BeTargetedPlayerFrom(player, source_filter) => {
+            Restriction::be_targeted_player_from(
+                resolve_contextual_player_filter(player, refs)?,
+                resolve_it_tag(source_filter, refs)?,
+            )
+        }
         Restriction::BeCountered(filter) => {
             Restriction::be_countered(resolve_it_tag(filter, refs)?)
         }

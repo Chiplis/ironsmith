@@ -36,8 +36,10 @@ use super::preprocess::{
 };
 use super::util::{
     parse_additional_cost_choice_options_lexed, parse_bestow_line_lexed, parse_buyback_line_lexed,
+    parse_bargain_line_lexed,
     parse_cast_this_spell_only_line_lexed, parse_entwine_line_lexed, parse_escape_line_lexed,
-    parse_flashback_line_lexed, parse_if_conditional_alternative_cost_line_lexed,
+    parse_flashback_line_lexed, parse_harmonize_line_lexed,
+    parse_if_conditional_alternative_cost_line_lexed,
     parse_kicker_line_lexed, parse_level_header, parse_level_up_line_lexed,
     parse_madness_line_lexed, parse_morph_keyword_line_lexed, parse_multikicker_line_lexed,
     parse_offspring_line_lexed, parse_power_toughness, parse_reinforce_line_lexed,
@@ -227,6 +229,7 @@ fn parse_static_line_cst(line: &PreprocessedLine) -> Result<Option<StaticLineCst
             | "as long as trinisphere is untapped, each spell that would cost less than three mana to cast costs three mana to cast."
             | "as long as this is untapped, each spell that would cost less than three mana to cast costs three mana to cast."
             | "players can't pay life or sacrifice nonland permanents to cast spells or activate abilities."
+            | "creatures you control can boast twice during each of your turns rather than once."
     ) {
         return Ok(Some(StaticLineCst {
             info: line.info.clone(),
@@ -387,6 +390,8 @@ fn parse_keyword_line_cst(
         Some(KeywordLineKindCst::AlternativeCast)
     } else if parse_bestow_line_lexed(&tokens)?.is_some() {
         Some(KeywordLineKindCst::Bestow)
+    } else if parse_bargain_line_lexed(&tokens)?.is_some() {
+        Some(KeywordLineKindCst::Bargain)
     } else if parse_buyback_line_lexed(&tokens)?.is_some() {
         Some(KeywordLineKindCst::Buyback)
     } else if parse_channel_line_lexed(&tokens)?.is_some() {
@@ -401,6 +406,8 @@ fn parse_keyword_line_cst(
         Some(KeywordLineKindCst::Kicker)
     } else if parse_flashback_line_lexed(&tokens)?.is_some() {
         Some(KeywordLineKindCst::Flashback)
+    } else if parse_harmonize_line_lexed(&tokens)?.is_some() {
+        Some(KeywordLineKindCst::Harmonize)
     } else if parse_multikicker_line_lexed(&tokens)?.is_some() {
         Some(KeywordLineKindCst::Multikicker)
     } else if parse_entwine_line_lexed(&tokens)?.is_some() {
@@ -928,13 +935,6 @@ fn preflight_known_strict_unsupported(text: &str) -> Option<CardTextError> {
             "unsupported predicate".to_string(),
         ));
     }
-    if normalized.contains("it's an enchantment") && normalized.contains("it's not a creature")
-        || normalized.contains("its an enchantment") && normalized.contains("its not a creature")
-    {
-        return Some(CardTextError::ParseError(
-            "unsupported type-removal followup clause".to_string(),
-        ));
-    }
     None
 }
 
@@ -1297,12 +1297,6 @@ fn diagnose_known_unsupported_rewrite_line(normalized: &str) -> Option<CardTextE
     } else if normalized.contains("if your life total is less than or equal to half your starting life total plus one")
     {
         "unsupported predicate"
-    } else if (normalized.contains("it's an enchantment")
-        || normalized.contains("its an enchantment"))
-        && (normalized.contains("it's not a creature")
-            || normalized.contains("its not a creature"))
-    {
-        "unsupported type-removal followup clause"
     } else if normalized.contains("then sacrifices all creatures they control, then puts all cards they exiled this way onto the battlefield")
     {
         "unsupported each-player exile/sacrifice/return-this-way clause"
@@ -1910,12 +1904,14 @@ fn lower_document_cst(
                     }
                     KeywordLineKindCst::AlternativeCast => RewriteKeywordLineKind::AlternativeCast,
                     KeywordLineKindCst::Bestow => RewriteKeywordLineKind::Bestow,
+                    KeywordLineKindCst::Bargain => RewriteKeywordLineKind::Bargain,
                     KeywordLineKindCst::Buyback => RewriteKeywordLineKind::Buyback,
                     KeywordLineKindCst::Channel => RewriteKeywordLineKind::Channel,
                     KeywordLineKindCst::Cycling => RewriteKeywordLineKind::Cycling,
                     KeywordLineKindCst::Equip => RewriteKeywordLineKind::Equip,
                     KeywordLineKindCst::Escape => RewriteKeywordLineKind::Escape,
                     KeywordLineKindCst::Flashback => RewriteKeywordLineKind::Flashback,
+                    KeywordLineKindCst::Harmonize => RewriteKeywordLineKind::Harmonize,
                     KeywordLineKindCst::Kicker => RewriteKeywordLineKind::Kicker,
                     KeywordLineKindCst::Madness => RewriteKeywordLineKind::Madness,
                     KeywordLineKindCst::Morph => RewriteKeywordLineKind::Morph,

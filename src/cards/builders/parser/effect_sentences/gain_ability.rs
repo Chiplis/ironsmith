@@ -78,6 +78,44 @@ fn grants_protection_from_everything(ability: &GrantedAbilityAst) -> bool {
     )
 }
 
+fn player_gain_effects_for_abilities(
+    abilities: &[GrantedAbilityAst],
+    duration: &Until,
+    subject_tokens: &[OwnedLexToken],
+) -> Option<Vec<EffectAst>> {
+    let player_target = TargetAst::Player(PlayerFilter::You, span_from_lexed_tokens(subject_tokens));
+    let mut effects = Vec::new();
+
+    for ability in abilities {
+        match ability {
+            GrantedAbilityAst::KeywordAction(KeywordAction::HexproofFrom(filter)) => {
+                effects.push(EffectAst::Cant {
+                    restriction: crate::effect::Restriction::be_targeted_player_from(
+                        PlayerFilter::You,
+                        filter.clone(),
+                    ),
+                    duration: duration.clone(),
+                    condition: None,
+                });
+            }
+            GrantedAbilityAst::KeywordAction(KeywordAction::ProtectionFromEverything) => {
+                effects.push(EffectAst::Cant {
+                    restriction: crate::effect::Restriction::be_targeted_player(PlayerFilter::You),
+                    duration: duration.clone(),
+                    condition: None,
+                });
+                effects.push(EffectAst::PreventAllDamageToTarget {
+                    target: player_target.clone(),
+                    duration: duration.clone(),
+                });
+            }
+            _ => return None,
+        }
+    }
+
+    Some(effects)
+}
+
 fn parse_granted_ability_component_for_gain(
     ability_tokens: &[OwnedLexToken],
     clause_words: &[&str],
@@ -85,6 +123,23 @@ fn parse_granted_ability_component_for_gain(
     let ability_tokens = trim_edge_punctuation(ability_tokens);
     if ability_tokens.is_empty() {
         return Ok(None);
+    }
+
+    let ability_word_view = LowercaseWordView::new(&ability_tokens);
+    let ability_words = ability_word_view.to_word_refs();
+    if ability_words.starts_with(&["hexproof", "from"]) {
+        let filter_tokens = ability_tokens[2..]
+            .iter()
+            .filter(|token| !token.is_word("and") && !token.is_word("from"))
+            .cloned()
+            .collect::<Vec<_>>();
+        if !filter_tokens.is_empty()
+            && let Ok(filter) = parse_object_filter_lexed(&filter_tokens, false)
+        {
+            return Ok(Some(vec![GrantedAbilityAst::from(
+                KeywordAction::HexproofFrom(filter),
+            )]));
+        }
     }
 
     if let Some(granted) =
@@ -844,6 +899,26 @@ pub(crate) fn parse_gain_ability_sentence(
             effects = append_gain_ability_trailing_effects(effects, &trailing_tail_tokens)?;
             return Ok(Some(effects));
         }
+    }
+
+    if !losing && real_subject_words.as_slice() == ["you", "and", "permanents", "you", "control"] {
+        let permanent_filter = crate::target::ObjectFilter::permanent().you_control();
+        let Some(mut player_effects) =
+            player_gain_effects_for_abilities(&abilities, &duration, &real_subject_tokens)
+        else {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported mixed player/permanent gain-ability clause (clause: '{}')",
+                word_list.join(" ")
+            )));
+        };
+        effects.append(&mut player_effects);
+        effects.push(EffectAst::GrantAbilitiesAll {
+            filter: permanent_filter,
+            abilities,
+            duration,
+        });
+        effects = append_gain_ability_trailing_effects(effects, &trailing_tail_tokens)?;
+        return Ok(Some(effects));
     }
 
     let filter = parse_object_filter(&real_subject_tokens, false).map_err(|_| {

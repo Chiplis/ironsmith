@@ -2444,6 +2444,7 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
     }
     let filter = parse_object_filter(&filter_tokens, false)?;
 
+    let mut added_card_types = Vec::new();
     let mut added_subtypes = Vec::new();
     if let Some(except_idx) = except_idx {
         let tail = &clause_words[except_idx..];
@@ -2454,7 +2455,7 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
             )));
         }
 
-        let (article_idx, subtype_idx) = if tail.get(1).copied() == Some("its")
+        let (article_idx, type_idx) = if tail.get(1).copied() == Some("its")
             && matches!(tail.get(2).copied(), Some("a" | "an"))
         {
             (2usize, 3usize)
@@ -2473,13 +2474,13 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
             )));
         };
 
-        let tail_after_subtype = tail.get(subtype_idx + 1..).unwrap_or_default();
-        let supported_tail = tail_after_subtype
+        let tail_after_type = tail.get(type_idx + 1..).unwrap_or_default();
+        let supported_tail = tail_after_type
             == ["in", "addition", "to", "its", "other", "types"]
-            || tail_after_subtype.starts_with(&["and", "it", "has"])
-            || tail_after_subtype.starts_with(&["and", "it", "s"])
-            || tail_after_subtype.starts_with(&["and", "it's"])
-            || tail_after_subtype.starts_with(&["and", "it’s"]);
+            || tail_after_type.starts_with(&["and", "it", "has"])
+            || tail_after_type.starts_with(&["and", "it", "s"])
+            || tail_after_type.starts_with(&["and", "it's"])
+            || tail_after_type.starts_with(&["and", "it’s"]);
         if !matches!(tail.get(article_idx).copied(), Some("a" | "an")) || !supported_tail {
             return Err(CardTextError::ParseError(format!(
                 "unsupported enters-as-copy exception clause (clause: '{}')",
@@ -2487,16 +2488,19 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
             )));
         }
 
-        let Some(subtype) = parse_subtype_word(tail[subtype_idx])
-            .or_else(|| parse_subtype_flexible(tail[subtype_idx]))
-        else {
+        if let Some(card_type) = parse_card_type(tail[type_idx]) {
+            added_card_types.push(card_type);
+        } else if let Some(subtype) =
+            parse_subtype_word(tail[type_idx]).or_else(|| parse_subtype_flexible(tail[type_idx]))
+        {
+            added_subtypes.push(subtype);
+        } else {
             return Err(CardTextError::ParseError(format!(
-                "unsupported enters-as-copy subtype '{}' (clause: '{}')",
-                tail[subtype_idx],
+                "unsupported enters-as-copy type '{}' (clause: '{}')",
+                tail[type_idx],
                 clause_words.join(" ")
             )));
-        };
-        added_subtypes.push(subtype);
+        }
     }
 
     Ok(Some(StaticAbility::with_enter_as_copy_as_enters(
@@ -2504,6 +2508,7 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
             filter,
             may: true,
             enters_tapped_if_chosen,
+            added_card_types,
             added_subtypes,
         },
         clause_words.join(" "),

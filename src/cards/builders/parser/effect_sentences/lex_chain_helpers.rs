@@ -250,6 +250,15 @@ fn should_keep_and_for_put_rest_clause(
         && current_words.contains(&"hand")
 }
 
+fn should_keep_and_for_steps_and_phases_end(
+    current: &[OwnedLexToken],
+    remaining: &[OwnedLexToken],
+) -> bool {
+    let current_words = words(current);
+    let remaining_words = words(remaining);
+    current_words.ends_with(&["as", "steps"]) && remaining_words.starts_with(&["phases", "end"])
+}
+
 pub(crate) fn split_effect_chain_on_and(tokens: &[OwnedLexToken]) -> Vec<Vec<OwnedLexToken>> {
     let mut segments = Vec::new();
     let mut current = Vec::new();
@@ -266,6 +275,7 @@ pub(crate) fn split_effect_chain_on_and(tokens: &[OwnedLexToken]) -> Vec<Vec<Own
                 || should_keep_and_for_attachment_object_list(&current, &tokens[idx + 1..])
                 || should_keep_and_for_each_player_may_clause(&current, &tokens[idx + 1..])
                 || should_keep_and_for_put_rest_clause(&current, &tokens[idx + 1..])
+                || should_keep_and_for_steps_and_phases_end(&current, &tokens[idx + 1..])
             {
                 current.push(token.clone());
                 continue;
@@ -461,6 +471,15 @@ fn should_keep_and_for_put_rest_clause_lexed(
         && current_words.contains(&"hand")
 }
 
+fn should_keep_and_for_steps_and_phases_end_lexed(
+    current: &[OwnedLexToken],
+    remaining: &[OwnedLexToken],
+) -> bool {
+    let current_words = lexed_words(current);
+    let remaining_words = lexed_words(remaining);
+    current_words.ends_with(&["as", "steps"]) && remaining_words.starts_with(&["phases", "end"])
+}
+
 fn is_prevent_next_damage_clause_words_lexed(words: &[&str]) -> bool {
     if words.first().copied() != Some("prevent") {
         return false;
@@ -590,6 +609,7 @@ pub(crate) fn split_effect_chain_on_and_lexed(tokens: &[OwnedLexToken]) -> Vec<&
             || should_keep_and_for_attachment_object_list_lexed(current, remaining)
             || should_keep_and_for_each_player_may_clause_lexed(current, remaining)
             || should_keep_and_for_put_rest_clause_lexed(current, remaining)
+            || should_keep_and_for_steps_and_phases_end_lexed(current, remaining)
         {
             continue;
         }

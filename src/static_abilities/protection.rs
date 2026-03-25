@@ -129,13 +129,32 @@ impl HexproofFrom {
     }
 }
 
+fn describe_hexproof_from_filter(filter: &ObjectFilter) -> String {
+    if !filter.any_of.is_empty() {
+        return filter
+            .any_of
+            .iter()
+            .map(describe_hexproof_from_filter)
+            .collect::<Vec<_>>()
+            .join(" or ");
+    }
+
+    let description = filter.description();
+    description
+        .strip_suffix(" permanent")
+        .or_else(|| description.strip_suffix(" spell"))
+        .or_else(|| description.strip_suffix(" source"))
+        .unwrap_or(description.as_str())
+        .to_string()
+}
+
 impl StaticAbilityKind for HexproofFrom {
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::HexproofFrom
     }
 
     fn display(&self) -> String {
-        format!("Hexproof from {}", self.filter.description())
+        format!("Hexproof from {}", describe_hexproof_from_filter(&self.filter))
     }
 
     fn is_keyword(&self) -> bool {

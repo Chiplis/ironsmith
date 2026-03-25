@@ -2,7 +2,7 @@ use super::super::activation_and_restrictions::{contains_word_sequence, parse_na
 use super::super::lexer::{OwnedLexToken, trim_lexed_commas};
 use super::super::modal_helpers::parse_if_result_predicate_lexed;
 use super::super::native_tokens::LowercaseWordView;
-use super::super::object_filters::parse_object_filter;
+use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed};
 use super::super::util::{
     is_article, is_permanent_type, parse_card_type, parse_counter_type_word,
     parse_mana_symbol_word_flexible, parse_number, parse_target_phrase, parse_zone_word,
@@ -16,6 +16,7 @@ use crate::cards::builders::{
     CardTextError, EffectAst, ExtraTurnAnchorAst, IT_TAG, IfResultPredicate, PlayerAst,
     PredicateAst, TagKey, TargetAst, TextSpan,
 };
+use crate::effect::Value;
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::target::{ObjectFilter, PlayerFilter, TaggedOpbjectRelation};
 use crate::types::{CardType, Subtype, Supertype};
@@ -1663,6 +1664,11 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     if filtered.as_slice() == ["this", "spell", "was", "kicked"] {
         return Ok(PredicateAst::ThisSpellWasKicked);
     }
+    if filtered.as_slice() == ["this", "spell", "was", "bargained"]
+        || filtered.as_slice() == ["it", "was", "bargained"]
+    {
+        return Ok(PredicateAst::ThisSpellPaidLabel("Bargain".to_string()));
+    }
     if filtered.as_slice() == ["gift", "was", "promised"] {
         return Ok(PredicateAst::ThisSpellPaidLabel("Gift".to_string()));
     }
@@ -1816,6 +1822,9 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
 
     if filtered[0] == "its" {
         filtered[0] = "it";
+    }
+    if filtered.len() >= 2 && filtered[0] == "it" && filtered[1] == "s" {
+        filtered.remove(1);
     }
 
     let demonstrative_reference_len = if filtered.first().copied() == Some("it") {
@@ -1991,7 +2000,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
                 .iter()
                 .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
                 .collect::<Vec<_>>();
-            if let Ok(filter) = parse_object_filter(&descriptor_tokens, false)
+            if let Ok(filter) = parse_object_filter_lexed(&descriptor_tokens, false)
                 && filter != ObjectFilter::default()
             {
                 if has_card
@@ -2374,6 +2383,60 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             player: PlayerAst::You,
             count: 2,
         });
+    }
+
+    let spell_cast_prefix = if filtered.starts_with(&["opponent", "has", "cast"]) {
+        Some((3usize, PlayerFilter::Opponent))
+    } else if filtered.starts_with(&["opponents", "have", "cast"]) {
+        Some((3usize, PlayerFilter::Opponent))
+    } else if filtered.starts_with(&["youve", "cast"]) {
+        Some((2usize, PlayerFilter::You))
+    } else if filtered.starts_with(&["you", "have", "cast"]) {
+        Some((3usize, PlayerFilter::You))
+    } else if filtered.starts_with(&["you", "cast"]) {
+        Some((2usize, PlayerFilter::You))
+    } else {
+        None
+    };
+    if let Some((prefix_len, player)) = spell_cast_prefix
+        && filtered.len() > prefix_len + 2
+        && filtered[filtered.len() - 2..] == ["this", "turn"]
+    {
+        let filter_words = &filtered[prefix_len..filtered.len() - 2];
+        let filter_tokens = filter_words
+            .iter()
+            .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+            .collect::<Vec<_>>();
+        if let Ok(filter) = parse_object_filter_lexed(&filter_tokens, false) {
+            return Ok(PredicateAst::ValueComparison {
+                left: Value::SpellsCastThisTurnMatching {
+                    player,
+                    filter,
+                    exclude_source: false,
+                },
+                operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                right: Value::Fixed(1),
+            });
+        }
+    }
+
+    if filtered.len() == 5
+        && filtered[0] == "x"
+        && filtered[1] == "is"
+        && filtered[3] == "or"
+        && filtered[4] == "more"
+    {
+        if let Some(amount) = filtered[2]
+            .parse::<i32>()
+            .ok()
+            .or_else(|| parse_named_number(filtered[2]).map(|n| n as i32))
+        {
+            return Ok(PredicateAst::ValueComparison {
+                left: Value::X,
+                operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                right: Value::Fixed(amount),
+            });
+        }
     }
 
     let unsupported_unmodeled = filtered.as_slice() == ["you", "gained", "life", "this", "turn"]

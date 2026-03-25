@@ -635,6 +635,7 @@ pub(crate) fn rewrite_static_ability_for_keyword_action(
             Some(StaticAbility::keyword_marker(format!("bushido {amount}")))
         }
         KeywordAction::Changeling => Some(StaticAbility::changeling()),
+        KeywordAction::HexproofFrom(filter) => Some(StaticAbility::hexproof_from(filter.clone())),
         KeywordAction::ProtectionFrom(colors) => Some(StaticAbility::protection(
             crate::ability::ProtectionFrom::Color(colors),
         )),

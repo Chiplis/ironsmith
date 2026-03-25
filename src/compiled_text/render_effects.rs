@@ -1365,11 +1365,37 @@ fn normalize_duplicate_sacrifice_article(text: &str) -> String {
 pub(super) fn normalize_cost_phrase(text: &str) -> String {
     if let Some(rest) = text.strip_prefix("you ") {
         let normalized = normalize_you_verb_phrase(rest);
-        return normalize_duplicate_sacrifice_article(&capitalize_first(&normalized));
+        let normalized = capitalize_first(&normalized);
+        if let Some(life_tail) = normalized.strip_prefix("Lose ") {
+            if let Some(amount) = life_tail.strip_suffix(" life") {
+                return format!("Pay {} life", amount.trim());
+            }
+            if let Some(amount) = life_tail.strip_suffix(" lives") {
+                return format!("Pay {} life", amount.trim());
+            }
+        }
+        return normalize_duplicate_sacrifice_article(&normalized);
     }
     if let Some(rest) = text.strip_prefix("You ") {
         let normalized = normalize_you_verb_phrase(rest);
-        return normalize_duplicate_sacrifice_article(&capitalize_first(&normalized));
+        let normalized = capitalize_first(&normalized);
+        if let Some(life_tail) = normalized.strip_prefix("Lose ") {
+            if let Some(amount) = life_tail.strip_suffix(" life") {
+                return format!("Pay {} life", amount.trim());
+            }
+            if let Some(amount) = life_tail.strip_suffix(" lives") {
+                return format!("Pay {} life", amount.trim());
+            }
+        }
+        return normalize_duplicate_sacrifice_article(&normalized);
+    }
+    if let Some(life_tail) = text.strip_prefix("Lose ") {
+        if let Some(amount) = life_tail.strip_suffix(" life") {
+            return format!("Pay {} life", amount.trim());
+        }
+        if let Some(amount) = life_tail.strip_suffix(" lives") {
+            return format!("Pay {} life", amount.trim());
+        }
     }
     normalize_duplicate_sacrifice_article(text)
 }
@@ -4294,6 +4320,8 @@ pub(super) fn describe_search_choose_for_each(
     let search_origin = describe_search_origin_zones(choose)?;
     let searched_library =
         choose_search_zones(choose).is_some_and(|zones| zones.contains(&Zone::Library));
+    let searched_multiple_zones =
+        choose_search_zones(choose).is_some_and(|zones| zones.len() > 1);
     let shuffle_clause = if describe_player_filter(search_owner_filter) == "you" {
         "shuffle".to_string()
     } else {
@@ -4531,8 +4559,23 @@ pub(super) fn describe_search_choose_for_each(
         }
     }
     if shuffle.is_some() && !shuffle_before_move && searched_library {
-        text.push_str(", then ");
-        text.push_str(&shuffle_clause);
+        if searched_multiple_zones {
+            let conditional_shuffle_clause = if describe_player_filter(search_owner_filter) == "you"
+            {
+                "If you search your library this way, shuffle".to_string()
+            } else {
+                format!(
+                    "If {} searches their library this way, {}",
+                    describe_player_filter(search_owner_filter),
+                    shuffle_clause
+                )
+            };
+            text.push_str(". ");
+            text.push_str(&conditional_shuffle_clause);
+        } else {
+            text.push_str(", then ");
+            text.push_str(&shuffle_clause);
+        }
     }
     Some(text)
 }
@@ -6749,10 +6792,28 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         if body.is_empty() {
             return "Repeat this process".to_string();
         }
+        if body.ends_with("You may repeat this process any number of times")
+            || body.ends_with("you may repeat this process any number of times")
+            || body.ends_with("You may repeat this process")
+            || body.ends_with("you may repeat this process")
+        {
+            return body.to_string();
+        }
         if body.contains("If you do,") || body.contains("if you do,") {
             return format!("{body} and repeat this process");
         }
         return format!("{body}. Repeat this process");
+    }
+    if let Some(prompt) = effect.downcast_ref::<crate::effects::RepeatProcessPromptEffect>() {
+        return prompt.description.clone();
+    }
+    if let Some(retain) = effect.downcast_ref::<crate::effects::RetainManaUntilEndOfTurnEffect>() {
+        return match retain.player {
+            PlayerFilter::You => {
+                "Until end of turn, you don't lose this mana as steps and phases end".to_string()
+            }
+            _ => "Until end of turn, mana doesn't empty as steps and phases end".to_string(),
+        };
     }
     if let Some(conditional) = effect.downcast_ref::<crate::effects::ConditionalEffect>() {
         if let Some(compact) = describe_conditional_damage_instead(conditional) {
@@ -9825,6 +9886,7 @@ pub(super) fn describe_optional_cost_line(cost: &crate::cost::OptionalCost) -> S
     match label {
         "Replicate" => format!("Replicate—{}.", cost_text.trim_end_matches('.')),
         // Most optional-cost keywords render with a space-separated payload.
+        "Bargain" => label.to_string(),
         "Kicker" | "Multikicker" | "Buyback" | "Entwine" | "Squad" => {
             if cost_text.trim().is_empty() {
                 label.to_string()

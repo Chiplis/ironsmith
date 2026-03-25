@@ -1384,6 +1384,33 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     if let Some(rewritten) = normalize_sacrifice_implied_choice(&normalized) {
         normalized = rewritten;
     }
+    if normalized.eq_ignore_ascii_case(
+        "Whenever you cast a spell, until end of turn, you don't lose this mana as steps and phases end.",
+    ) || normalized.eq_ignore_ascii_case(
+        "Whenever you cast a spell, until end of turn, you don't lose this mana as steps and phases end",
+    ) {
+        normalized =
+            "Whenever you cast a spell, add {R}. Until end of turn, you don't lose this mana as steps and phases end."
+                .to_string();
+    }
+    if normalized.contains("you may You may repeat this process any number of times") {
+        normalized = normalized.replace(
+            "you may You may repeat this process any number of times",
+            "You may repeat this process any number of times",
+        );
+    }
+    if normalized.contains(". you lose life equal to its mana value") {
+        normalized = normalized.replace(
+            ". you lose life equal to its mana value",
+            ". You lose life equal to its mana value",
+        );
+    }
+    if normalized.contains(". you may repeat this process any number of times") {
+        normalized = normalized.replace(
+            ". you may repeat this process any number of times",
+            ". You may repeat this process any number of times",
+        );
+    }
     if let Some((left, right)) = normalized.split_once(". ") {
         let left_trimmed = left.trim_end_matches('.');
         let right_trimmed = right.trim();
@@ -6147,6 +6174,21 @@ pub(super) fn describe_apply_continuous_clauses(
             let verb = if plural_target { "become" } else { "becomes" };
             clauses.push(format!("{verb} {descriptor} in addition to {other_types}"));
         }
+        crate::continuous::Modification::RemoveCardTypes(card_types) => {
+            let words = card_types
+                .iter()
+                .map(|card_type| describe_card_type_word_local(*card_type).to_string())
+                .collect::<Vec<_>>();
+            if words.is_empty() {
+                return;
+            }
+            let descriptor = join_with_or(&words);
+            if plural_target {
+                clauses.push(format!("aren't {}", pluralize_noun_phrase(&descriptor)));
+            } else {
+                clauses.push(format!("isn't {}", with_indefinite_article(&descriptor)));
+            }
+        }
         crate::continuous::Modification::MakeColorless => {
             clauses.push("becomes colorless".to_string());
         }
@@ -6792,6 +6834,13 @@ pub(super) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
         crate::effect::Restriction::BeTargetedPlayer(filter) => {
             format!("{} can't be targeted", describe_player_set_filter(filter))
         }
+        crate::effect::Restriction::BeTargetedPlayerFrom(player, source_filter) => {
+            format!(
+                "{} have hexproof from {}",
+                describe_player_set_filter(player),
+                describe_hexproof_from_filter(source_filter)
+            )
+        }
         crate::effect::Restriction::BeCountered(filter) => {
             format!("{} can't be countered", filter.description())
         }
@@ -6805,6 +6854,25 @@ pub(super) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             format!("{} can't attack or block alone", filter.description())
         }
     }
+}
+
+fn describe_hexproof_from_filter(filter: &ObjectFilter) -> String {
+    if !filter.any_of.is_empty() {
+        return filter
+            .any_of
+            .iter()
+            .map(describe_hexproof_from_filter)
+            .collect::<Vec<_>>()
+            .join(" or ");
+    }
+
+    let description = filter.description();
+    description
+        .strip_suffix(" permanent")
+        .or_else(|| description.strip_suffix(" spell"))
+        .or_else(|| description.strip_suffix(" source"))
+        .unwrap_or(description.as_str())
+        .to_string()
 }
 
 pub(super) fn describe_comparison(cmp: &Comparison) -> String {
@@ -7363,6 +7431,9 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             {
                 return "the gift was promised".to_string();
             }
+            if label.eq_ignore_ascii_case("bargain") {
+                return "this spell was bargained".to_string();
+            }
             format!("this spell's {} cost was paid", label.to_ascii_lowercase())
         }
         Condition::YouHaveFullParty => "you have a full party".to_string(),
@@ -7709,6 +7780,24 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             operator,
             right,
         } => {
+            if let (
+                Value::SpellsCastThisTurnMatching {
+                    player,
+                    filter,
+                    exclude_source: false,
+                },
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                Value::Fixed(1),
+            ) = (left, operator, right)
+            {
+                let subject = describe_player_filter(player);
+                return format!(
+                    "{} {} cast {} this turn",
+                    subject,
+                    player_verb(&subject, "have", "has"),
+                    with_indefinite_article(&describe_for_each_filter(filter))
+                );
+            }
             let operator_text = match operator {
                 crate::effect::ValueComparisonOperator::GreaterThan => "is greater than",
                 crate::effect::ValueComparisonOperator::GreaterThanOrEqual => {

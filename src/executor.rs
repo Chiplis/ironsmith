@@ -841,23 +841,27 @@ pub fn validate_target(
             }
         }
         (ResolvedTarget::Player(id), ChooseSpec::Player(filter)) => {
-            game.can_target_player(*id) && filter.matches_player(*id, &filter_ctx)
+            game.can_target_player_from_source(*id, ctx.source)
+                && filter.matches_player(*id, &filter_ctx)
         }
         (ResolvedTarget::Player(id), ChooseSpec::PlayerOrPlaneswalker(filter)) => {
-            game.can_target_player(*id) && filter.matches_player(*id, &filter_ctx)
+            game.can_target_player_from_source(*id, ctx.source)
+                && filter.matches_player(*id, &filter_ctx)
         }
         (ResolvedTarget::Object(id), ChooseSpec::PlayerOrPlaneswalker(_)) => game
             .object(*id)
             .is_some_and(|obj| obj.has_card_type(crate::types::CardType::Planeswalker)),
         (ResolvedTarget::Object(id), ChooseSpec::AnyTarget) => game.object(*id).is_some(),
         (ResolvedTarget::Player(id), ChooseSpec::AnyTarget) => {
-            game.player(*id).is_some_and(|p| p.is_in_game()) && game.can_target_player(*id)
+            game.player(*id).is_some_and(|p| p.is_in_game())
+                && game.can_target_player_from_source(*id, ctx.source)
         }
         (ResolvedTarget::Object(id), ChooseSpec::AnyOtherTarget) => {
             game.object(*id).is_some_and(|obj| obj.id != ctx.source)
         }
         (ResolvedTarget::Player(id), ChooseSpec::AnyOtherTarget) => {
-            game.player(*id).is_some_and(|p| p.is_in_game()) && game.can_target_player(*id)
+            game.player(*id).is_some_and(|p| p.is_in_game())
+                && game.can_target_player_from_source(*id, ctx.source)
         }
         (ResolvedTarget::Object(id), ChooseSpec::SpecificObject(expected)) => id == expected,
         (ResolvedTarget::Player(id), ChooseSpec::SpecificPlayer(expected)) => id == expected,

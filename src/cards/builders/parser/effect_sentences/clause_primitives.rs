@@ -359,6 +359,9 @@ pub(crate) fn run_clause_primitives(
             parser: parse_repeat_this_process_clause,
         },
         ClausePrimitive {
+            parser: parse_dont_lose_this_mana_as_steps_and_phases_end_clause,
+        },
+        ClausePrimitive {
             parser: parse_retarget_clause,
         },
         ClausePrimitive {
@@ -515,6 +518,35 @@ pub(crate) fn parse_repeat_this_process_clause(
     let clause_words = words(tokens);
     if matches!(
         clause_words.as_slice(),
+        ["repeat", "this", "process", "any", "number", "of", "times"]
+            | [
+                "and",
+                "repeat",
+                "this",
+                "process",
+                "any",
+                "number",
+                "of",
+                "times",
+            ]
+            | ["you", "may", "repeat", "this", "process", "any", "number", "of", "times"]
+            | [
+                "and",
+                "you",
+                "may",
+                "repeat",
+                "this",
+                "process",
+                "any",
+                "number",
+                "of",
+                "times",
+            ]
+    ) {
+        return Ok(Some(EffectAst::RepeatThisProcessMay));
+    }
+    if matches!(
+        clause_words.as_slice(),
         ["repeat", "this", "process"] | ["and", "repeat", "this", "process"]
     ) {
         return Ok(Some(EffectAst::RepeatThisProcess));
@@ -524,6 +556,31 @@ pub(crate) fn parse_repeat_this_process_clause(
         ["repeat", "this", "process", "once"] | ["and", "repeat", "this", "process", "once"]
     ) {
         return Ok(Some(EffectAst::RepeatThisProcessOnce));
+    }
+    Ok(None)
+}
+
+pub(crate) fn parse_dont_lose_this_mana_as_steps_and_phases_end_clause(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let clause_words = words(tokens);
+    if matches!(
+        clause_words.as_slice(),
+        ["you", "dont", "lose", "this", "mana", "as", "steps", "and", "phases", "end"]
+            | [
+                "you",
+                "don't",
+                "lose",
+                "this",
+                "mana",
+                "as",
+                "steps",
+                "and",
+                "phases",
+                "end",
+            ]
+    ) {
+        return Ok(Some(EffectAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn));
     }
     Ok(None)
 }

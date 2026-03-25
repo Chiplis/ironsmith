@@ -3029,6 +3029,17 @@ pub(crate) fn parse_put_into_hand(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
+    fn parse_put_into_hand_delayed_timing(
+        tokens: &[OwnedLexToken],
+    ) -> Option<DelayedReturnTimingAst> {
+        let hand_idx = tokens
+            .iter()
+            .rposition(|token| token.is_word("hand") || token.is_word("hands"))?;
+        let tail_tokens = trim_commas(&tokens[hand_idx + 1..]);
+        let tail_words = words(&tail_tokens);
+        parse_delayed_return_timing_words(&tail_words)
+    }
+
     fn force_object_targeting(target: TargetAst, span: TextSpan) -> TargetAst {
         match target {
             TargetAst::Object(filter, explicit_span, fixed_span) => {
@@ -3208,10 +3219,14 @@ pub(crate) fn parse_put_into_hand(
             });
         }
 
-        return Ok(EffectAst::PutIntoHand {
+        let effect = EffectAst::PutIntoHand {
             player,
             object: ObjectRefAst::Tagged(TagKey::from(IT_TAG)),
-        });
+        };
+        return Ok(wrap_return_with_delayed_timing(
+            effect,
+            parse_put_into_hand_delayed_timing(tokens),
+        ));
     }
 
     // Support destination-first wording:
@@ -3468,6 +3483,11 @@ pub(crate) fn parse_put_into_hand(
         };
 
         if let Some(zone) = zone {
+            let delayed_hand_timing = if zone == Zone::Hand {
+                parse_put_into_hand_delayed_timing(tokens)
+            } else {
+                None
+            };
             let target_words = words(&target_tokens);
             if zone == Zone::Graveyard
                 && matches!(target_words.as_slice(), ["the", "rest"] | ["rest"])
@@ -3491,20 +3511,26 @@ pub(crate) fn parse_put_into_hand(
                     target_words.as_slice(),
                     ["it"] | ["them"] | ["that", "card"] | ["those", "card"] | ["those", "cards"]
                 ) {
-                    return Ok(EffectAst::PutIntoHand {
+                    let effect = EffectAst::PutIntoHand {
                         player,
                         object: ObjectRefAst::Tagged(TagKey::from(IT_TAG)),
-                    });
+                    };
+                    return Ok(wrap_return_with_delayed_timing(effect, delayed_hand_timing));
                 }
             }
 
-            return Ok(EffectAst::MoveToZone {
+            let effect = EffectAst::MoveToZone {
                 target: parse_target_phrase(&target_tokens)?,
                 zone,
                 to_top: false,
                 battlefield_controller: ReturnControllerAst::Preserve,
                 battlefield_tapped: false,
                 attached_to: None,
+            };
+            return Ok(if zone == Zone::Hand {
+                wrap_return_with_delayed_timing(effect, delayed_hand_timing)
+            } else {
+                effect
             });
         }
     }

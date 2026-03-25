@@ -1397,6 +1397,46 @@ mod tests {
     }
 
     #[test]
+    fn test_copy_as_enters_can_add_card_type_to_copied_permanent() {
+        let metamorph =
+            crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Metamorphic Replica")
+                .card_types(vec![crate::types::CardType::Artifact, crate::types::CardType::Creature])
+                .parse_text(
+                    "You may have this creature enter as a copy of any artifact or creature on the battlefield except it's an artifact in addition to its other types."
+                        .to_string(),
+                )
+                .expect("copy creature with added card type should parse");
+
+        let bear = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Runeclaw Bear")
+            .card_types(vec![crate::types::CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+            .build();
+
+        let alice = PlayerId::from_index(0);
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        game.create_object_from_definition(&bear, alice, Zone::Battlefield);
+        let metamorph_id = game.create_object_from_definition(&metamorph, alice, Zone::Hand);
+        let cause = EventCause::from_special_action(Some(metamorph_id), alice);
+        let mut dm = ChooseLastReplacementDecisionMaker;
+
+        let result = game
+            .move_object_with_etb_processing_with_dm_and_cause(
+                metamorph_id,
+                Zone::Battlefield,
+                cause,
+                &mut dm,
+            )
+            .expect("copy creature should enter the battlefield");
+
+        let entered = game
+            .object(result.new_id)
+            .expect("copied permanent should exist on the battlefield");
+        assert_eq!(entered.name, "Runeclaw Bear");
+        assert!(entered.card_types.contains(&crate::types::CardType::Creature));
+        assert!(entered.card_types.contains(&crate::types::CardType::Artifact));
+    }
+
+    #[test]
     fn test_simple_play_land() {
         let result = GameScript::new()
             .player("Alice", &["Forest"])

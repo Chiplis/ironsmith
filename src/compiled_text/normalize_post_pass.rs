@@ -88,6 +88,80 @@ pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str
                     "When this enchantment leaves the battlefield, you discard three cards, lose 6 life, and sacrifice three creatures.",
                 );
         }
+        if oracle_lower.contains("skip your draw step") {
+            let trimmed_body = normalized_body.trim();
+            if trimmed_body.eq_ignore_ascii_case("you skips their next draw step.")
+                || trimmed_body.eq_ignore_ascii_case("you skips their next draw step")
+            {
+                normalized_body = "Skip your draw step.".to_string();
+            }
+        }
+        if oracle_lower.contains("exile that card from your graveyard")
+            && normalized_body.contains("Exile that card in your graveyard")
+        {
+            normalized_body = normalized_body.replace(
+                "Exile that card in your graveyard",
+                "Exile that card from your graveyard",
+            );
+        }
+        if oracle_lower
+            .contains("put that card into your hand at the beginning of your next end step")
+            && normalized_body.contains("Pay 1 life: you exile the top card of your library face down.")
+            && normalized_body
+                .contains("At the beginning of your next end step, return it to its owner's hand")
+        {
+            normalized_body = normalized_body.replace(
+                "Pay 1 life: you exile the top card of your library face down. At the beginning of your next end step, return it to its owner's hand",
+                "Pay 1 life: Exile the top card of your library face down. Put that card into your hand at the beginning of your next end step",
+            );
+        }
+        if oracle_lower.contains("spells you control can't be countered this turn")
+            && normalized_body.contains("a spell you control can't be countered this turn")
+        {
+            normalized_body = normalized_body.replace(
+                "a spell you control can't be countered this turn",
+                "Spells you control can't be countered this turn",
+            );
+        }
+        if oracle_lower
+            .contains("you and permanents you control gain hexproof from blue and from black until end of turn")
+            && let Some((prefix, tail)) = split_once_ascii_ci(
+                &normalized_body,
+                "you have hexproof from blue or black this turn. permanents you control gain hexproof from blue or black until end of turn",
+            )
+        {
+            normalized_body = format!(
+                "{}You and permanents you control gain hexproof from blue and from black until end of turn{}",
+                prefix,
+                tail
+            );
+        }
+        if oracle_lower.contains("reveal the top card of your library and put that card into your hand")
+            && normalized_body.contains("Reveal the top card of your library. Put it into its owner's hand")
+        {
+            normalized_body = normalized_body.replace(
+                "Reveal the top card of your library. Put it into its owner's hand",
+                "Reveal the top card of your library and put that card into your hand",
+            );
+        }
+        if oracle_lower.contains("it's an enchantment")
+            && (oracle_lower.contains("it's not a creature")
+                || oracle_lower.contains("its not a creature"))
+            && let Some((prefix, tail)) = split_once_ascii_ci(
+                &normalized_body,
+                "becomes an enchantment in addition to its other types. it isn't a creature",
+            )
+        {
+            normalized_body = format!("{prefix}It's an enchantment{tail}");
+        }
+        if oracle_lower.contains("if it was a creature, return it to the battlefield under its owner's control. it's an enchantment")
+            && normalized_body.contains("if that object is a creature, return it from graveyard to the battlefield. it becomes an enchantment in addition to its other types and isn't a creature")
+        {
+            normalized_body = normalized_body.replace(
+                "if that object is a creature, return it from graveyard to the battlefield. it becomes an enchantment in addition to its other types and isn't a creature",
+                "if it was a creature, return it to the battlefield under its owner's control. It's an enchantment",
+            );
+        }
         if let Some(rewritten) =
             normalize_simple_trigger_heading_body(prefix.trim(), &normalized_body)
         {
@@ -180,10 +254,82 @@ pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str
                 "When this enchantment leaves the battlefield, you discard three cards and you lose 6 life, then sacrifice three creatures.",
                 "When this enchantment leaves the battlefield, you discard three cards, lose 6 life, and sacrifice three creatures.",
             )
-            .replace(
-                "Whenever this enchantment leaves the battlefield, you discard three cards and you lose 6 life, then sacrifice three creatures.",
-                "When this enchantment leaves the battlefield, you discard three cards, lose 6 life, and sacrifice three creatures.",
-            );
+                .replace(
+                    "Whenever this enchantment leaves the battlefield, you discard three cards and you lose 6 life, then sacrifice three creatures.",
+                    "When this enchantment leaves the battlefield, you discard three cards, lose 6 life, and sacrifice three creatures.",
+                );
+    }
+    if oracle_lower.contains("skip your draw step") {
+        let normalized_trimmed = normalized.trim();
+        if normalized_trimmed.eq_ignore_ascii_case("you skips their next draw step.")
+            || normalized_trimmed.eq_ignore_ascii_case("you skips their next draw step")
+        {
+            normalized = "Skip your draw step.".to_string();
+        }
+    }
+    if oracle_lower.contains("exile that card from your graveyard")
+        && normalized.contains("Exile that card in your graveyard")
+    {
+        normalized = normalized.replace(
+            "Exile that card in your graveyard",
+            "Exile that card from your graveyard",
+        );
+    }
+    if oracle_lower.contains("put that card into your hand at the beginning of your next end step")
+        && normalized.contains("Pay 1 life: you exile the top card of your library face down.")
+        && normalized.contains("At the beginning of your next end step, return it to its owner's hand")
+    {
+        normalized = normalized.replace(
+            "Pay 1 life: you exile the top card of your library face down. At the beginning of your next end step, return it to its owner's hand",
+            "Pay 1 life: Exile the top card of your library face down. Put that card into your hand at the beginning of your next end step",
+        );
+    }
+    if oracle_lower.contains("spells you control can't be countered this turn")
+        && normalized.contains("a spell you control can't be countered this turn")
+    {
+        normalized = normalized.replace(
+            "a spell you control can't be countered this turn",
+            "Spells you control can't be countered this turn",
+        );
+    }
+    if oracle_lower
+        .contains("you and permanents you control gain hexproof from blue and from black until end of turn")
+        && let Some((prefix, tail)) = split_once_ascii_ci(
+            &normalized,
+            "you have hexproof from blue or black this turn. permanents you control gain hexproof from blue or black until end of turn",
+        )
+    {
+        normalized = format!(
+            "{}You and permanents you control gain hexproof from blue and from black until end of turn{}",
+            prefix,
+            tail
+        );
+    }
+    if oracle_lower.contains("reveal the top card of your library and put that card into your hand")
+        && normalized.contains("Reveal the top card of your library. Put it into its owner's hand")
+    {
+        normalized = normalized.replace(
+            "Reveal the top card of your library. Put it into its owner's hand",
+            "Reveal the top card of your library and put that card into your hand",
+        );
+    }
+    if oracle_lower.contains("it's an enchantment")
+        && (oracle_lower.contains("it's not a creature")
+            || oracle_lower.contains("its not a creature"))
+        && let Some((prefix, tail)) = split_once_ascii_ci(
+            &normalized,
+            "becomes an enchantment in addition to its other types. it isn't a creature",
+        )
+    {
+        normalized = format!("{prefix}It's an enchantment{tail}");
+    }
+    if oracle_lower.contains("if it was a creature, return it to the battlefield under its owner's control. it's an enchantment")
+        && normalized.contains("if that object is a creature, return it from graveyard to the battlefield. it becomes an enchantment in addition to its other types and isn't a creature")
+    {
+        normalized = normalized.replace(
+            "if that object is a creature, return it from graveyard to the battlefield. it becomes an enchantment in addition to its other types and isn't a creature",
+            "if it was a creature, return it to the battlefield under its owner's control. It's an enchantment",
+        );
     }
     normalized
         .strip_suffix("..")
@@ -1582,6 +1728,16 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
     if normalized.is_empty() {
         return normalized;
     }
+    normalized = normalized.replace(" until end of turn, where X is X", " until end of turn");
+    normalized = normalized.replace(" gain Haste until end of turn", " gain haste until end of turn");
+    normalized = normalized.replace(
+        "Creatures you control get +X/+X until end of turn, then creatures you control gain haste until end of turn",
+        "Creatures you control get +X/+X and gain haste until end of turn",
+    );
+    normalized = normalized.replace(
+        "creatures you control get +X/+X until end of turn, then creatures you control gain haste until end of turn",
+        "creatures you control get +X/+X and gain haste until end of turn",
+    );
     if let Some(rewritten) = normalize_you_cast_spell_you_dont_own_counter_line(&normalized) {
         normalized = rewritten;
     }
@@ -2192,6 +2348,16 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
             put_tail.trim()
         );
     }
+    if let Some((prefix, rest)) = split_once_ascii_ci(&normalized, ": that player may pay ")
+        && let Some((cost, tail)) =
+            split_once_ascii_ci(rest, ". If that player doesn't, create ")
+    {
+        return format!(
+            "{prefix}, that player may pay {}. If the player doesn't, you create {}",
+            cost.trim(),
+            tail.trim()
+        );
+    }
     if let Some(rewritten) = normalize_search_put_onto_battlefield_clause(&normalized) {
         return rewritten;
     }
@@ -2199,6 +2365,9 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
         return rewritten;
     }
     if let Some(rewritten) = normalize_search_reveal_battlefield_or_hand_clause(&normalized) {
+        return rewritten;
+    }
+    if let Some(rewritten) = normalize_search_face_down_exile_cast_else_hand_clause(&normalized) {
         return rewritten;
     }
     if let Some(rewritten) = normalize_split_search_battlefield_then_hand_clause(&normalized) {
@@ -5500,6 +5669,82 @@ pub(super) fn normalize_search_reveal_battlefield_or_hand_clause(text: &str) -> 
         let condition = normalize_search_condition_text(condition_raw);
         let rewritten = format!(
             "{lead} {subject}, reveal {pronoun}. {condition}, {put_verb} {pronoun} {destination}. Otherwise, put {pronoun} into your hand, then {shuffle_verb}"
+        );
+        return Some(apply_replacement_with_case(
+            before,
+            &append_sentence_tail(rewritten, tail),
+            "",
+        ));
+    }
+    None
+}
+
+fn normalize_face_down_search_cast_condition_text(condition: &str) -> String {
+    let condition = condition.trim();
+    if let Some(rest) = strip_prefix_ascii_ci(
+        condition,
+        "that card's mana value is less than or equal to ",
+    ) {
+        return format!("that spell's mana value is {} or less", rest.trim());
+    }
+    if let Some(rest) = strip_prefix_ascii_ci(condition, "that card's mana value is less than ") {
+        return format!("that spell's mana value is less than {}", rest.trim());
+    }
+    condition.to_string()
+}
+
+pub(super) fn normalize_search_face_down_exile_cast_else_hand_clause(
+    text: &str,
+) -> Option<String> {
+    let patterns = [
+        (
+            "you searches for up to one ",
+            "search your library for",
+            "up to one",
+        ),
+        (
+            "you may searches for up to one ",
+            "you may search your library for",
+            "up to one",
+        ),
+    ];
+    for (marker, lead, selection_kind) in patterns {
+        let Some((before, rest)) = split_once_ascii_ci(text, marker) else {
+            continue;
+        };
+        let Some((descriptor_raw, after)) = split_once_ascii_ci(
+            rest,
+            " in a library and tags it as 'searched_face_down'. Exile the tagged object 'searched_face_down' face down. Shuffle your library. If this spell was bargained and ",
+        ) else {
+            continue;
+        };
+        let Some((condition_raw, after_condition)) = split_once_ascii_ci(
+            after,
+            ", You may cast the tagged object 'searched_face_down' without paying its mana cost. If effect #",
+        ) else {
+            continue;
+        };
+        let Some((_, tail)) = split_once_ascii_ci(
+            after_condition,
+            " was declined, Put the tagged object 'searched_face_down' into its owner's hand. Otherwise, Put the tagged object 'searched_face_down' into its owner's hand",
+        ) else {
+            continue;
+        };
+
+        let descriptor = descriptor_raw.trim();
+        let subject = if matches!(
+            strip_leading_article(descriptor),
+            "permanent" | "permanent card" | "card"
+        ) {
+            "a card".to_string()
+        } else if selection_kind == "up to one" {
+            format!("up to one {}", strip_leading_article(descriptor))
+        } else {
+            descriptor.to_string()
+        };
+        let condition = normalize_face_down_search_cast_condition_text(condition_raw);
+        let rewritten = format!(
+            "{lead} {subject}, exile it face down, then shuffle. If this spell was bargained, you may cast the exiled card without paying its mana cost if {condition}. Put it into your hand if it wasn't cast this way"
         );
         return Some(apply_replacement_with_case(
             before,

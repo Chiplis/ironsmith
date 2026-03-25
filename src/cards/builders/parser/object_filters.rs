@@ -222,6 +222,10 @@ fn parse_simple_object_filter_lexed(tokens: &[OwnedLexToken], other: bool) -> Op
     let mut idx = 0usize;
     while idx < words.len() {
         let word = words[idx];
+        if word == "or" {
+            idx += 1;
+            continue;
+        }
         if let Some((kind, consumed)) = parse_alternative_cast_words(&words[idx..]) {
             filter.alternative_cast = Some(kind);
             saw_spell = true;

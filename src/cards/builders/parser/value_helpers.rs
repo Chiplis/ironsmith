@@ -847,6 +847,17 @@ pub(crate) fn parse_filter_comparison_tokens(
     }
 
     if let Some((value, used)) = parse_value_expr_words(tokens) {
+        if tokens.get(used) == Some(&"or")
+            && let Some(next) = tokens.get(used + 1)
+            && matches!(*next, "less" | "fewer" | "greater" | "more")
+        {
+            let kind = if matches!(*next, "less" | "fewer") {
+                "lte"
+            } else {
+                "gte"
+            };
+            return Ok(Some((to_comparison(kind, value), used + 2)));
+        }
         if let Value::Fixed(fixed) = value
             && used == 1
         {

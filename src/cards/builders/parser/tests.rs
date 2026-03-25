@@ -730,6 +730,7 @@ fn rewrite_lexed_alternative_cost_wrappers_match_wrapper_output() {
     for text in [
         "Madness {2}{R}",
         "Flashback {2}{R}",
+        "Harmonize {2}{R}",
         "Warp {1}{U}",
         "Bestow {3}{W}",
     ] {
@@ -746,6 +747,11 @@ fn rewrite_lexed_alternative_cost_wrappers_match_wrapper_output() {
                 "{:?}",
                 super::util::parse_flashback_line_lexed(&lexed)
                     .expect("lexed flashback should parse")
+            ),
+            t if t.starts_with("Harmonize") => format!(
+                "{:?}",
+                super::util::parse_harmonize_line_lexed(&lexed)
+                    .expect("lexed harmonize should parse")
             ),
             t if t.starts_with("Warp") => format!(
                 "{:?}",
@@ -764,6 +770,10 @@ fn rewrite_lexed_alternative_cost_wrappers_match_wrapper_output() {
             t if t.starts_with("Flashback") => format!(
                 "{:?}",
                 super::util::parse_flashback_line(&compat).expect("wrapper flashback should parse")
+            ),
+            t if t.starts_with("Harmonize") => format!(
+                "{:?}",
+                super::util::parse_harmonize_line(&compat).expect("wrapper harmonize should parse")
             ),
             t if t.starts_with("Warp") => format!(
                 "{:?}",
@@ -1337,6 +1347,25 @@ fn rewrite_lexed_predicate_parser_matches_wrapper_output() {
         super::conditionals::parse_predicate(&compat).expect("wrapper predicate should parse");
 
     assert_eq!(format!("{native:?}"), format!("{wrapper:?}"));
+}
+
+#[test]
+fn rewrite_lexed_predicate_parser_handles_color_contraction() {
+    let text = "it's blue";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify color predicate text");
+    let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
+
+    let native = super::parse_predicate_lexed(&lexed).expect("lexed predicate should parse");
+    let wrapper =
+        super::conditionals::parse_predicate(&compat).expect("wrapper predicate should parse");
+    let debug = format!("{native:?}");
+
+    assert_eq!(debug, format!("{wrapper:?}"));
+    assert!(debug.contains("ItMatches"), "expected object-match predicate, got {debug}");
+    assert!(
+        debug.contains("colors: Some("),
+        "expected blue color constraint in predicate, got {debug}"
+    );
 }
 
 #[test]

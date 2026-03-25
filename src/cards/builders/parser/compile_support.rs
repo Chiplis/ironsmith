@@ -1286,11 +1286,23 @@ pub(crate) fn compile_condition_from_predicate_ast(
             left,
             operator,
             right,
-        } => Condition::ValueComparison {
-            left: resolve_value_it_tag(left, &refs)?,
-            operator: *operator,
-            right: resolve_value_it_tag(right, &refs)?,
-        },
+        } => {
+            if let (
+                Value::X,
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                Value::Fixed(amount),
+            ) = (left, operator, right)
+                && *amount >= 0
+            {
+                Condition::XValueAtLeast(*amount as u32)
+            } else {
+                Condition::ValueComparison {
+                    left: resolve_value_it_tag(left, &refs)?,
+                    operator: *operator,
+                    right: resolve_value_it_tag(right, &refs)?,
+                }
+            }
+        }
         PredicateAst::Unmodeled(text) => Condition::Unmodeled(text.clone()),
         PredicateAst::Not(inner) => {
             let inner = compile_condition_from_predicate_ast(inner, ctx, saved_last_tag)?;
@@ -1401,6 +1413,10 @@ macro_rules! direct_target_effect_variants {
                 ..
             }
             | EffectAst::AddCardTypes {
+                target: $target,
+                ..
+            }
+            | EffectAst::RemoveCardTypes {
                 target: $target,
                 ..
             }
@@ -3703,10 +3719,7 @@ fn compile_effect_inner(
     effect: &EffectAst,
     ctx: &mut EffectLoweringContext,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
-    if matches!(
-        effect,
-        EffectAst::RepeatThisProcess | EffectAst::RepeatThisProcessOnce
-    ) {
+    if matches!(effect, EffectAst::RepeatThisProcess | EffectAst::RepeatThisProcessOnce) {
         return Err(CardTextError::ParseError(
             "unsupported repeat this process effect tail".to_string(),
         ));
@@ -5587,6 +5600,20 @@ fn try_compile_flow_and_iteration_effect(
             choices.append(&mut player_choices);
             (vec![effect], choices)
         }
+        EffectAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn => (
+            vec![Effect::new(
+                crate::effects::RetainManaUntilEndOfTurnEffect::you(),
+            )],
+            Vec::new(),
+        ),
+        EffectAst::RepeatThisProcessMay => (
+            vec![Effect::new(
+                crate::effects::RepeatProcessPromptEffect::new(
+                    "You may repeat this process any number of times",
+                ),
+            )],
+            Vec::new(),
+        ),
         EffectAst::UnlessPays {
             effects,
             player,
@@ -7428,6 +7455,17 @@ fn try_compile_continuous_and_modifier_effect(
             Effect::new(crate::effects::ApplyContinuousEffect::with_spec(
                 spec,
                 crate::continuous::Modification::AddCardTypes(card_types.clone()),
+                duration.clone(),
+            ))
+        })?,
+        EffectAst::RemoveCardTypes {
+            target,
+            card_types,
+            duration,
+        } => compile_tagged_effect_for_target(target, ctx, "typed", |spec| {
+            Effect::new(crate::effects::ApplyContinuousEffect::with_spec(
+                spec,
+                crate::continuous::Modification::RemoveCardTypes(card_types.clone()),
                 duration.clone(),
             ))
         })?,

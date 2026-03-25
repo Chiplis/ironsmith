@@ -39,6 +39,20 @@ fn strip_parenthetical_segments(line: &str) -> String {
     if trimmed.starts_with('(') && trimmed.ends_with(')') {
         return line.to_string();
     }
+    let lower = line.to_ascii_lowercase();
+    if (lower.contains("it's an enchantment") || lower.contains("its an enchantment"))
+        && (lower.contains("(it's not a creature") || lower.contains("(its not a creature"))
+    {
+        return line
+            .replace("(It's not a creature.)", "It's not a creature.")
+            .replace("(It's not a creature)", "It's not a creature")
+            .replace("(it's not a creature.)", "it's not a creature.")
+            .replace("(it's not a creature)", "it's not a creature")
+            .replace("(Its not a creature.)", "Its not a creature.")
+            .replace("(Its not a creature)", "Its not a creature")
+            .replace("(its not a creature.)", "its not a creature.")
+            .replace("(its not a creature)", "its not a creature");
+    }
 
     let mut out = String::with_capacity(line.len());
     let mut depth = 0u32;
@@ -507,6 +521,7 @@ fn is_labeled_ability_word_prefix(prefix: &str) -> bool {
             | "escape"
             | "exhaust"
             | "flashback"
+            | "harmonize"
             | "delirium"
             | "domain"
             | "ferocious"
@@ -558,6 +573,7 @@ fn preserve_keyword_prefix_for_parse(prefix: &str) -> bool {
             | "equip"
             | "escape"
             | "flashback"
+            | "harmonize"
             | "boast"
             | "modular"
             | "replicate"

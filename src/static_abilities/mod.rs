@@ -901,6 +901,7 @@ pub struct EnterAsCopyAsEntersSpec {
     pub filter: crate::target::ObjectFilter,
     pub may: bool,
     pub enters_tapped_if_chosen: bool,
+    pub added_card_types: Vec<crate::types::CardType>,
     pub added_subtypes: Vec<crate::types::Subtype>,
 }
 
@@ -1666,6 +1667,10 @@ impl StaticAbility {
 
     pub fn doesnt_untap() -> Self {
         Self::new(DoesntUntap)
+    }
+
+    pub fn boast_twice_each_turn() -> Self {
+        Self::new(BoastTwiceEachTurn)
     }
 
     pub fn may_choose_not_to_untap_during_untap_step(subject: impl Into<String>) -> Self {

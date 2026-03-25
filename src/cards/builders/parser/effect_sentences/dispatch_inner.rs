@@ -1074,9 +1074,20 @@ fn sentence_has_spent_to_cast_clause(words: &[&str], _: &[OwnedLexToken]) -> boo
 }
 
 fn sentence_has_face_down_clause(words: &[&str], _: &[OwnedLexToken]) -> bool {
-    words.windows(2).any(|window| window == ["face", "down"])
+    let has_face_down = words.windows(2).any(|window| window == ["face", "down"])
         || words.contains(&"face-down")
-        || words.contains(&"facedown")
+        || words.contains(&"facedown");
+    if !has_face_down {
+        return false;
+    }
+
+    // Simple "exile ... face down" clauses are handled by the generic exile
+    // parser; keep rejecting broader manifest/pile patterns here.
+    let simple_exile_face_down = words.first().copied() == Some("exile")
+        && !words.contains(&"then")
+        && !words.contains(&"manifest")
+        && !words.contains(&"pile");
+    !simple_exile_face_down
 }
 
 fn sentence_has_copy_spell_legendary_exception_clause(words: &[&str], _: &[OwnedLexToken]) -> bool {

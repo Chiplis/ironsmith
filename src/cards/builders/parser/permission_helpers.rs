@@ -1,5 +1,5 @@
-use crate::cards::builders::{CardTextError, EffectAst, IT_TAG, PlayerAst, TagKey};
-use crate::effect::{Until, Value};
+use crate::cards::builders::{CardTextError, EffectAst, IT_TAG, PlayerAst, PredicateAst, TagKey};
+use crate::effect::{Until, Value, ValueComparisonOperator};
 use crate::target::ObjectFilter;
 use crate::zone::Zone;
 
@@ -106,6 +106,56 @@ fn is_without_paying_mana_cost_tail(words: &[&str]) -> bool {
             | ["without", "paying", "that", "card", "mana", "cost"]
             | ["without", "paying", "that", "cards", "mana", "cost"]
     )
+}
+
+fn parse_tagged_permission_mana_value_condition(
+    words: &[&str],
+) -> Option<(ValueComparisonOperator, Value)> {
+    if words.is_empty() || words.first().copied() != Some("if") {
+        return None;
+    }
+
+    let after_prefix = if words.starts_with(&["if", "it's", "a", "spell", "with", "mana", "value"])
+    {
+        &words[7..]
+    } else if words.starts_with(&["if", "it", "is", "a", "spell", "with", "mana", "value"]) {
+        &words[8..]
+    } else if words.starts_with(&["if", "the", "spell's", "mana", "value"])
+        || words.starts_with(&["if", "the", "spells", "mana", "value"])
+    {
+        &words[5..]
+    } else if words.starts_with(&["if", "that", "spell's", "mana", "value"])
+        || words.starts_with(&["if", "that", "spells", "mana", "value"])
+    {
+        &words[5..]
+    } else if words.starts_with(&["if", "its", "mana", "value"]) {
+        &words[4..]
+    } else {
+        return None;
+    };
+
+    let (operator, right_words) =
+        if after_prefix.starts_with(&["is", "less", "than", "or", "equal", "to"]) {
+            (ValueComparisonOperator::LessThanOrEqual, &after_prefix[6..])
+        } else if after_prefix.starts_with(&["is", "less", "than"]) {
+            (ValueComparisonOperator::LessThan, &after_prefix[3..])
+        } else if after_prefix.len() >= 4
+            && after_prefix[0] == "is"
+            && after_prefix[2] == "or"
+            && after_prefix[3] == "less"
+        {
+            (ValueComparisonOperator::LessThanOrEqual, &after_prefix[1..2])
+        } else {
+            return None;
+        };
+
+    if right_words.len() == 1
+        && let Ok(value) = right_words[0].parse::<i32>()
+    {
+        return Some((operator, Value::Fixed(value)));
+    }
+
+    None
 }
 
 fn parse_permission_tail(
@@ -683,6 +733,74 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
         trimmed.remove(0);
     }
 
+    let trimmed_words = LowercaseWordView::new(&trimmed);
+    let clause_refs = trimmed_words.to_word_refs();
+
+    let conditional_tagged_permission = if clause_refs.starts_with(&["cast"])
+        || clause_refs.starts_with(&["play"])
+    {
+        let allow_land = clause_refs.first().copied() == Some("play");
+        let rest = &clause_refs[1..];
+        if let Some((as_copy, consumed)) = parse_tagged_cast_or_play_target(rest) {
+            let tail = &rest[consumed..];
+            let (lifetime, without_paying_mana_cost, condition_words) =
+                if tail.starts_with(&["without", "paying", "its", "mana", "cost"]) {
+                    (
+                        PermissionLifetime::Immediate,
+                        true,
+                        &tail[5..],
+                    )
+                } else if tail.starts_with(&["this", "turn", "without", "paying", "its", "mana", "cost"]) {
+                    (
+                        PermissionLifetime::ThisTurn,
+                        true,
+                        &tail[7..],
+                    )
+                } else {
+                    (PermissionLifetime::Immediate, false, &tail[0..0])
+                };
+
+            if without_paying_mana_cost {
+                parse_tagged_permission_mana_value_condition(condition_words).map(
+                    |(operator, right)| {
+                        let inner = if lifetime == PermissionLifetime::Immediate {
+                            EffectAst::CastTagged {
+                                tag: TagKey::from(IT_TAG),
+                                allow_land,
+                                as_copy,
+                                without_paying_mana_cost,
+                            }
+                        } else {
+                            EffectAst::GrantPlayTaggedUntilEndOfTurn {
+                                tag: TagKey::from(IT_TAG),
+                                player: PlayerAst::Implicit,
+                                allow_land,
+                                without_paying_mana_cost,
+                            }
+                        };
+                        EffectAst::Conditional {
+                            predicate: PredicateAst::ValueComparison {
+                                left: Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(
+                                    TagKey::from(IT_TAG),
+                                ))),
+                                operator,
+                                right,
+                            },
+                            if_true: vec![inner],
+                            if_false: Vec::new(),
+                        }
+                    },
+                )
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
     match parse_permission_clause_spec(&trimmed)? {
         Some(PermissionClauseSpec::Tagged {
             player,
@@ -712,6 +830,6 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
                 without_paying_mana_cost,
             }))
         }
-        _ => Ok(None),
+        _ => Ok(conditional_tagged_permission),
     }
 }

@@ -85,10 +85,10 @@ pub use composition::{
     EmitKeywordActionEffect, ExploreEffect, ForEachControllerOfTaggedEffect, ForEachObject,
     ForEachTaggedEffect, ForEachTaggedPlayerEffect, ForPlayersEffect, IfEffect, LocalRewriteEffect,
     ManifestDreadEffect, MayEffect, OpenAttractionEffect, ReflexiveTriggerEffect,
-    RepeatProcessEffect, SequenceEffect, SupportEffect, TagAllEffect, TagAttachedToSourceEffect,
-    TagMatchingObjectsEffect, TagTriggeringDamageTargetEffect, TagTriggeringObjectEffect,
-    TaggedEffect, TargetOnlyEffect, UnlessActionEffect, UnlessPaysEffect, VoteEffect, VoteOption,
-    WithIdEffect,
+    RepeatProcessEffect, RepeatProcessPromptEffect, SequenceEffect, SupportEffect, TagAllEffect,
+    TagAttachedToSourceEffect, TagMatchingObjectsEffect, TagTriggeringDamageTargetEffect,
+    TagTriggeringObjectEffect, TaggedEffect, TargetOnlyEffect, UnlessActionEffect,
+    UnlessPaysEffect, VoteEffect, VoteOption, WithIdEffect,
 };
 pub use continuous::ApplyContinuousEffect;
 pub use control::{ExchangeControlEffect, GainControlEffect, SharedTypeConstraint};
@@ -112,7 +112,7 @@ pub use mana::{
     AddColorlessManaEffect, AddManaEffect, AddManaFromCommanderColorIdentityEffect,
     AddManaOfAnyColorEffect, AddManaOfAnyOneColorEffect, AddManaOfChosenColorEffect,
     AddManaOfLandProducedTypesEffect, AddScaledManaEffect, GrantManaAbilityUntilEotEffect,
-    PayManaEffect,
+    PayManaEffect, RetainManaUntilEndOfTurnEffect,
 };
 pub use permanents::{
     AttachObjectsEffect, AttachToEffect, BecomeBasicLandTypeChoiceEffect, BecomeColorChoiceEffect,

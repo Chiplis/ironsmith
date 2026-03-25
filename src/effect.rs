@@ -1110,6 +1110,7 @@ pub enum Restriction {
     HaveCountersPlaced(ObjectFilter),
     BeTargeted(ObjectFilter),
     BeTargetedPlayer(PlayerFilter),
+    BeTargetedPlayerFrom(PlayerFilter, ObjectFilter),
     BeCountered(ObjectFilter),
     Transform(ObjectFilter),
     AttackOrBlock(ObjectFilter),
@@ -1310,6 +1311,10 @@ impl Restriction {
 
     pub fn be_targeted_player(filter: PlayerFilter) -> Self {
         Self::BeTargetedPlayer(filter)
+    }
+
+    pub fn be_targeted_player_from(player: PlayerFilter, source_filter: ObjectFilter) -> Self {
+        Self::BeTargetedPlayerFrom(player, source_filter)
     }
 
     pub fn be_countered(filter: ObjectFilter) -> Self {
@@ -1670,6 +1675,27 @@ impl Restriction {
                         )
                     {
                         tracker.cant_target_players.insert(player.id);
+                    }
+                }
+            }
+            Restriction::BeTargetedPlayerFrom(player_filter, source_filter) => {
+                for player in &game.players {
+                    if player.is_in_game()
+                        && player_matches_filter_with_combat(
+                            player.id,
+                            player_filter,
+                            game,
+                            controller,
+                            combat,
+                        )
+                    {
+                        tracker.cant_target_players_from.push(
+                            crate::game_state::PlayerCantBeTargetedFrom {
+                                player: player.id,
+                                source_filter: source_filter.clone(),
+                                controller,
+                            },
+                        );
                     }
                 }
             }

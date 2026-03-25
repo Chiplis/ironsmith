@@ -33,6 +33,7 @@ mod may;
 mod mechanic_actions;
 mod reflexive_trigger;
 mod repeat_process;
+mod repeat_process_prompt;
 mod sequence;
 mod tag_attached_to_source;
 mod tag_matching_objects;
@@ -70,6 +71,7 @@ pub use mechanic_actions::{
 };
 pub use reflexive_trigger::ReflexiveTriggerEffect;
 pub use repeat_process::RepeatProcessEffect;
+pub use repeat_process_prompt::RepeatProcessPromptEffect;
 pub use sequence::SequenceEffect;
 pub use tag_attached_to_source::TagAttachedToSourceEffect;
 pub use tag_matching_objects::TagMatchingObjectsEffect;

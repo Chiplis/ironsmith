@@ -182,6 +182,21 @@ impl StaticAbilityKind for DoesntUntap {
     }
 }
 
+/// "Creatures you control can boast twice during each of your turns rather than once."
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct BoastTwiceEachTurn;
+
+impl StaticAbilityKind for BoastTwiceEachTurn {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::BoastTwiceEachTurn
+    }
+
+    fn display(&self) -> String {
+        "Creatures you control can boast twice during each of your turns rather than once"
+            .to_string()
+    }
+}
+
 /// "You may choose not to untap ... during your untap step."
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MayChooseNotToUntapDuringUntapStep {

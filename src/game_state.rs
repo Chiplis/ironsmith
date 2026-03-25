@@ -282,6 +282,9 @@ pub struct CantEffectTracker {
     /// Players that can't be targeted.
     pub cant_target_players: HashSet<PlayerId>,
 
+    /// Players that can't be targeted by sources matching a filter.
+    pub cant_target_players_from: Vec<PlayerCantBeTargetedFrom>,
+
     /// Permanents that can't be countered while on the stack.
     /// Example: Vexing Shusher, Prowling Serpopard
     pub cant_be_countered: HashSet<ObjectId>,
@@ -289,6 +292,13 @@ pub struct CantEffectTracker {
     /// Permanents that can't transform.
     /// Example: "Non-Human Werewolves you control can't transform."
     pub cant_transform: HashSet<ObjectId>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlayerCantBeTargetedFrom {
+    pub player: PlayerId,
+    pub source_filter: crate::target::ObjectFilter,
+    pub controller: PlayerId,
 }
 
 #[derive(Debug, Clone)]
@@ -470,6 +480,8 @@ impl CantEffectTracker {
         self.cant_become_monarch.extend(other.cant_become_monarch);
         self.cant_be_targeted.extend(other.cant_be_targeted);
         self.cant_target_players.extend(other.cant_target_players);
+        self.cant_target_players_from
+            .extend(other.cant_target_players_from.clone());
         self.cant_be_countered.extend(other.cant_be_countered);
         self.cant_transform.extend(other.cant_transform);
     }
@@ -506,6 +518,7 @@ impl CantEffectTracker {
         self.cant_become_monarch.clear();
         self.cant_be_targeted.clear();
         self.cant_target_players.clear();
+        self.cant_target_players_from.clear();
         self.cant_be_countered.clear();
         self.cant_transform.clear();
     }
@@ -763,6 +776,30 @@ impl CantEffectTracker {
     /// Check if a player can be targeted.
     pub fn can_target_player(&self, player: PlayerId) -> bool {
         !self.cant_target_players.contains(&player)
+    }
+
+    /// Check if a player can be targeted by a specific source.
+    pub fn can_target_player_from_source(
+        &self,
+        game: &GameState,
+        player: PlayerId,
+        source_id: ObjectId,
+    ) -> bool {
+        if !self.can_target_player(player) {
+            return false;
+        }
+
+        let Some(source) = game.object(source_id) else {
+            return true;
+        };
+
+        !self.cant_target_players_from.iter().any(|restriction| {
+            if restriction.player != player {
+                return false;
+            }
+            let filter_ctx = game.filter_context_for(restriction.controller, Some(source_id));
+            restriction.source_filter.matches(source, &filter_ctx, game)
+        })
     }
 
     /// Check if a spell on the stack can be countered by effects.
@@ -2096,6 +2133,12 @@ impl GameState {
         self.cant_effects.can_target_player(player)
     }
 
+    /// Can this player be targeted by the specified source object?
+    pub fn can_target_player_from_source(&self, player: PlayerId, source_id: ObjectId) -> bool {
+        self.cant_effects
+            .can_target_player_from_source(self, player, source_id)
+    }
+
     /// Can this spell on the stack be countered?
     pub fn can_be_countered(&self, spell: ObjectId) -> bool {
         self.cant_effects.can_be_countered(spell)
@@ -2461,6 +2504,15 @@ impl GameState {
             let copy_source = self.object(copy_source_id).cloned();
             if let (Some(source_obj), Some(new_obj)) = (copy_source, self.object_mut(new_id)) {
                 new_obj.copy_copiable_values_from(&source_obj);
+            }
+        }
+        if !result.added_card_types.is_empty()
+            && let Some(new_obj) = self.object_mut(new_id)
+        {
+            for card_type in &result.added_card_types {
+                if !new_obj.card_types.contains(card_type) {
+                    new_obj.card_types.push(*card_type);
+                }
             }
         }
         if !result.added_subtypes.is_empty()

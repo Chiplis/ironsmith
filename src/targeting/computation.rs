@@ -292,7 +292,7 @@ pub(crate) fn compute_legal_targets_with_tagged_objects_with_view(
             compute_player_or_planeswalker_targets_with_view(game, filter, caster, source_id, view)
         }
         ChooseSpec::AttackedPlayerOrPlaneswalker => Vec::new(),
-        ChooseSpec::Player(filter) => compute_player_targets(game, filter, caster),
+        ChooseSpec::Player(filter) => compute_player_targets(game, filter, caster, source_id),
         ChooseSpec::Object(filter) => {
             compute_object_targets_with_view(game, filter, caster, source_id, tagged_objects, view)
         }
@@ -316,7 +316,7 @@ fn compute_player_or_planeswalker_targets_with_view(
     source_id: Option<ObjectId>,
     view: &crate::derived_view::DerivedGameView<'_>,
 ) -> Vec<Target> {
-    let mut targets = compute_player_targets(game, player_filter, caster);
+    let mut targets = compute_player_targets(game, player_filter, caster, source_id);
 
     for &obj_id in &game.battlefield {
         let Some(obj) = game.object(obj_id) else {
@@ -406,6 +406,7 @@ fn compute_player_targets(
     game: &GameState,
     filter: &PlayerFilter,
     controller: PlayerId,
+    source_id: Option<ObjectId>,
 ) -> Vec<Target> {
     // Unwrap Target wrapper — during legal target computation we want to know
     // which players *could be* targeted, not which are already targeted.
@@ -427,7 +428,12 @@ fn compute_player_targets(
     game.players
         .iter()
         .filter(|p| p.is_in_game())
-        .filter(|p| game.can_target_player(p.id))
+        .filter(|p| {
+            source_id.map_or_else(
+                || game.can_target_player(p.id),
+                |source| game.can_target_player_from_source(p.id, source),
+            )
+        })
         .filter(|p| filter.matches_player(p.id, &filter_ctx))
         .map(|p| Target::Player(p.id))
         .collect()
@@ -742,6 +748,45 @@ mod tests {
             result,
             TargetingResult::Invalid(TargetingInvalidReason::HasHexproofFrom)
         ));
+    }
+
+    #[test]
+    fn test_player_hexproof_from_blocks_matching_sources() {
+        let mut game = create_test_game();
+        let p0 = PlayerId::from_index(0);
+        let p1 = PlayerId::from_index(1);
+
+        let card = CardBuilder::new(CardId::from_raw(1), "Blue Source")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+            .card_types(vec![CardType::Instant])
+            .build();
+        let mut source = Object::from_card(ObjectId::from_raw(1), &card, p0, Zone::Battlefield);
+        source.controller = p0;
+        let source_id = source.id;
+        game.add_object(source);
+
+        game.cant_effects
+            .cant_target_players_from
+            .push(crate::game_state::PlayerCantBeTargetedFrom {
+                player: p1,
+                source_filter: ObjectFilter {
+                    colors: Some(ColorSet::from(Color::Blue)),
+                    ..Default::default()
+                },
+                controller: p1,
+            });
+
+        let legal_targets =
+            compute_legal_targets(&game, &ChooseSpec::Player(PlayerFilter::Any), p0, Some(source_id));
+
+        assert!(
+            !legal_targets.contains(&Target::Player(p1)),
+            "player with hexproof-from-blue should not be targetable by blue sources"
+        );
+        assert!(
+            legal_targets.contains(&Target::Player(p0)),
+            "other legal players should remain targetable"
+        );
     }
 
     #[test]

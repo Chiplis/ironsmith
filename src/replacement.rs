@@ -17,7 +17,7 @@ use crate::ids::{ObjectId, PlayerId};
 use crate::object::CounterType;
 use crate::target::ChooseSpec;
 use crate::target::{ObjectFilter, PlayerFilter};
-use crate::types::Subtype;
+use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 
 /// A replacement effect that modifies events.
@@ -107,6 +107,7 @@ pub enum ReplacementAction {
     EnterAsCopy {
         source: ObjectId,
         enters_tapped: bool,
+        added_card_types: Vec<CardType>,
         added_subtypes: Vec<Subtype>,
     },
 

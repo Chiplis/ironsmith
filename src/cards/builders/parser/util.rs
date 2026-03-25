@@ -7,6 +7,7 @@ use crate::cards::builders::{
 };
 use crate::cost::OptionalCost;
 use crate::cost::TotalCost;
+use crate::costs::Cost;
 use crate::effect::{Effect, EventValueSpec, Value};
 use crate::filter::AlternativeCastKind;
 use crate::mana::{ManaCost, ManaSymbol};
@@ -3127,6 +3128,38 @@ pub(crate) fn parse_buyback_line_lexed(
     parse_buyback_line(tokens)
 }
 
+pub(crate) fn parse_bargain_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<OptionalCost>, CardTextError> {
+    let clause_view = LowercaseWordView::new(tokens);
+    let clause_words = clause_view.to_word_refs();
+    if clause_words.first().copied() != Some("bargain") {
+        return Ok(None);
+    }
+
+    let filter = crate::target::ObjectFilter {
+        zone: Some(crate::zone::Zone::Battlefield),
+        controller: Some(crate::target::PlayerFilter::You),
+        any_of: vec![
+            crate::target::ObjectFilter::artifact(),
+            crate::target::ObjectFilter::enchantment(),
+            crate::target::ObjectFilter::default().token(),
+        ],
+        ..Default::default()
+    };
+
+    Ok(Some(OptionalCost::custom(
+        "Bargain",
+        TotalCost::from_cost(Cost::sacrifice(filter)),
+    )))
+}
+
+pub(crate) fn parse_bargain_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<OptionalCost>, CardTextError> {
+    parse_bargain_line(tokens)
+}
+
 pub(crate) fn parse_optional_cost_keyword_line(
     tokens: &[OwnedLexToken],
     keyword: &str,
@@ -3410,6 +3443,39 @@ pub(crate) fn parse_flashback_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
     parse_flashback_line(tokens)
+}
+
+pub(crate) fn parse_harmonize_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
+    if !tokens
+        .first()
+        .is_some_and(|token| token.is_word("harmonize"))
+    {
+        return Ok(None);
+    }
+
+    let cost_tokens = tokens.get(1..).unwrap_or_default();
+    if cost_tokens.is_empty() {
+        return Err(CardTextError::ParseError(
+            "harmonize keyword missing mana cost".to_string(),
+        ));
+    }
+
+    let total_cost = parse_activation_cost(cost_tokens)?;
+    if total_cost.mana_cost().is_none() {
+        return Err(CardTextError::ParseError(
+            "harmonize keyword missing mana symbols".to_string(),
+        ));
+    }
+
+    Ok(Some(AlternativeCastingMethod::Harmonize { total_cost }))
+}
+
+pub(crate) fn parse_harmonize_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
+    parse_harmonize_line(tokens)
 }
 
 pub(crate) fn parse_warp_line(

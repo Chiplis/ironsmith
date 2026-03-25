@@ -652,6 +652,9 @@ fn advance_reference_frame_for_effect(
         EffectAst::AddCardTypes { target, .. } => {
             maybe_tag_target(&target, frame, id_gen, "typed")?;
         }
+        EffectAst::RemoveCardTypes { target, .. } => {
+            maybe_tag_target(&target, frame, id_gen, "typed")?;
+        }
         EffectAst::AddSubtypes { target, .. } => {
             maybe_tag_target(&target, frame, id_gen, "subtyped")?;
         }
@@ -833,7 +836,9 @@ fn advance_reference_frame_for_effect(
         | EffectAst::GrantPlayTaggedUntilYourNextTurn { .. }
         | EffectAst::CastTagged { .. }
         | EffectAst::ExileInsteadOfGraveyardThisTurn { .. }
+        | EffectAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn
         | EffectAst::RepeatThisProcess
+        | EffectAst::RepeatThisProcessMay
         | EffectAst::RepeatThisProcessOnce
         | EffectAst::RevealTopChooseCardTypePutToHandRestBottom { .. }
         | EffectAst::PutRestOnBottomOfLibrary
@@ -1435,6 +1440,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
         | EffectAst::GrantAbilitiesChoiceToTarget { target, .. }
         | EffectAst::SwitchPowerToughness { target, .. }
         | EffectAst::AddCardTypes { target, .. }
+        | EffectAst::RemoveCardTypes { target, .. }
         | EffectAst::AddSubtypes { target, .. }
         | EffectAst::BecomeBasicLandType { target, .. }
         | EffectAst::SetColors { target, .. }
@@ -1677,7 +1683,10 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             bind_unresolved_it_in_target(source, seed_tag)
                 + bind_unresolved_it_in_value(count, seed_tag)
         }
-        EffectAst::RepeatThisProcess | EffectAst::RepeatThisProcessOnce => 0,
+        EffectAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn
+        | EffectAst::RepeatThisProcess
+        | EffectAst::RepeatThisProcessMay
+        | EffectAst::RepeatThisProcessOnce => 0,
         EffectAst::CreateTokenWithMods {
             count,
             dynamic_power_toughness,

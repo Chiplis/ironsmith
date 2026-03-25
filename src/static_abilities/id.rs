@@ -156,6 +156,7 @@ pub enum StaticAbilityId {
     ChooseBasicLandTypeAsEnters,
     ChooseLandTypeAsEnters,
     ChooseNamedOptionAsEnters,
+    BoastTwiceEachTurn,
     EnchantedLandIsChosenType,
     AddChosenCreatureType,
     SetChosenColor,
@@ -382,6 +383,7 @@ impl StaticAbilityId {
             | ChooseBasicLandTypeAsEnters
             | ChooseLandTypeAsEnters
             | ChooseNamedOptionAsEnters
+            | BoastTwiceEachTurn
             | EnchantedLandIsChosenType
             | AddChosenCreatureType
             | SetChosenColor

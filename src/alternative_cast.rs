@@ -60,6 +60,16 @@ pub enum AlternativeCastingMethod {
         total_cost: TotalCost,
     },
 
+    /// Harmonize - cast from graveyard for an alternative cost, exile after.
+    ///
+    /// Some cards also carry reminder-text cost reduction riders for this
+    /// method. Those can be modeled separately without losing the core
+    /// graveyard-cast capability.
+    Harmonize {
+        /// Full payment for this casting method.
+        total_cost: TotalCost,
+    },
+
     /// Jump-start - cast from graveyard, discard a card as additional cost, exile after
     JumpStart,
 
@@ -148,6 +158,7 @@ impl AlternativeCastingMethod {
             Self::Warp { .. } => Zone::Hand,
             Self::Plot { .. } | Self::Suspend { .. } => Zone::Exile,
             Self::Flashback { .. }
+            | Self::Harmonize { .. }
             | Self::JumpStart
             | Self::Escape { .. }
             | Self::Disturb { .. } => Zone::Graveyard,
@@ -164,7 +175,10 @@ impl AlternativeCastingMethod {
     pub fn exiles_after_resolution(&self) -> bool {
         matches!(
             self,
-            Self::Flashback { .. } | Self::JumpStart | Self::Escape { .. }
+            Self::Flashback { .. }
+                | Self::Harmonize { .. }
+                | Self::JumpStart
+                | Self::Escape { .. }
         )
     }
 
@@ -179,6 +193,7 @@ impl AlternativeCastingMethod {
             Self::Disturb { cost } => Some(cost),
             Self::Overload { cost, .. } => Some(cost),
             Self::Flashback { total_cost } => total_cost.mana_cost(),
+            Self::Harmonize { total_cost } => total_cost.mana_cost(),
             Self::JumpStart => None, // Uses normal mana cost
             Self::Escape { cost, .. } => cost.as_ref(), // None means use normal mana cost
             Self::Madness { cost } => Some(cost),
@@ -198,6 +213,7 @@ impl AlternativeCastingMethod {
 
         match self {
             Self::Flashback { total_cost } => non_mana_components(total_cost),
+            Self::Harmonize { total_cost } => non_mana_components(total_cost),
             Self::Composed { total_cost, .. } => non_mana_components(total_cost),
             Self::Bestow { total_cost } => non_mana_components(total_cost),
             _ => Vec::new(),
@@ -208,6 +224,7 @@ impl AlternativeCastingMethod {
     pub fn total_cost(&self) -> Option<&TotalCost> {
         match self {
             Self::Flashback { total_cost } => Some(total_cost),
+            Self::Harmonize { total_cost } => Some(total_cost),
             Self::Composed { total_cost, .. } => Some(total_cost),
             Self::Bestow { total_cost } => Some(total_cost),
             _ => None,
@@ -264,6 +281,7 @@ impl AlternativeCastingMethod {
             Self::Disturb { .. } => "Disturb",
             Self::Overload { .. } => "Overload",
             Self::Flashback { .. } => "Flashback",
+            Self::Harmonize { .. } => "Harmonize",
             Self::JumpStart => "Jump-start",
             Self::Escape { .. } => "Escape",
             Self::Madness { .. } => "Madness",
@@ -346,6 +364,7 @@ impl AlternativeCastingMethod {
                 ..Default::default()
             },
             Self::Flashback { .. }
+            | Self::Harmonize { .. }
             | Self::Miracle { .. }
             | Self::Madness { .. }
             | Self::Foretell { .. } => AlternativeCastRequirements::default(),

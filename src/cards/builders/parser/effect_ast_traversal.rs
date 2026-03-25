@@ -258,7 +258,9 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::ChooseColor { .. } => {}
         EffectAst::ChooseNamedOption { .. } => {}
         EffectAst::ChooseCreatureType { .. } => {}
+        EffectAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn => {}
         EffectAst::RepeatThisProcess => {}
+        EffectAst::RepeatThisProcessMay => {}
         EffectAst::RepeatThisProcessOnce => {}
         EffectAst::May { .. } => {}
         EffectAst::MayByPlayer { .. } => {}
@@ -308,6 +310,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::SetBasePowerToughness { .. } => {}
         EffectAst::BecomeBasePtCreature { .. } => {}
         EffectAst::AddCardTypes { .. } => {}
+        EffectAst::RemoveCardTypes { .. } => {}
         EffectAst::AddSubtypes { .. } => {}
         EffectAst::SetColors { .. } => {}
         EffectAst::MakeColorless { .. } => {}

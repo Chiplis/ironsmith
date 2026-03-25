@@ -5047,6 +5047,37 @@ pub(crate) fn parse_sentence_implicit_become_clause(
         return Ok(None);
     }
 
+    let negative_type_words = if rest_words.starts_with(&["not", "a"]) && rest_words.len() > 2 {
+        Some(&rest_words[2..])
+    } else if rest_words.starts_with(&["not", "an"]) && rest_words.len() > 2 {
+        Some(&rest_words[2..])
+    } else if rest_words.starts_with(&["not"]) && rest_words.len() > 1 {
+        Some(&rest_words[1..])
+    } else {
+        None
+    };
+    if let Some(type_words) = negative_type_words {
+        let mut card_types = Vec::new();
+        let mut all_card_types = true;
+        for word in type_words {
+            if let Some(card_type) = parse_card_type(word) {
+                if !card_types.contains(&card_type) {
+                    card_types.push(card_type);
+                }
+            } else {
+                all_card_types = false;
+                break;
+            }
+        }
+        if all_card_types && !card_types.is_empty() {
+            return Ok(Some(vec![EffectAst::RemoveCardTypes {
+                target,
+                card_types,
+                duration: Until::Forever,
+            }]));
+        }
+    }
+
     let addition_tail_len = if rest_words
         .ends_with(&["in", "addition", "to", "its", "other", "types"])
         || rest_words.ends_with(&["in", "addition", "to", "their", "other", "types"])

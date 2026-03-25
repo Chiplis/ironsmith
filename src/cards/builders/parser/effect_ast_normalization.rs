@@ -13,6 +13,9 @@ fn normalize_effects_vec(effects: &mut Vec<EffectAst>) {
     if let Some(rewritten) = rewrite_repeat_process(effects) {
         *effects = rewritten;
     }
+    if let Some(rewritten) = rewrite_repeat_process_may(effects) {
+        *effects = rewritten;
+    }
     if let Some(rewritten) = rewrite_repeat_process_once(effects) {
         *effects = rewritten;
     }
@@ -111,6 +114,18 @@ fn rewrite_repeat_process_once(effects: &[EffectAst]) -> Option<Vec<EffectAst>> 
     Some(duplicated)
 }
 
+fn rewrite_repeat_process_may(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
+    if effects.len() < 2 || !matches!(effects.last(), Some(EffectAst::RepeatThisProcessMay)) {
+        return None;
+    }
+
+    Some(vec![EffectAst::RepeatProcess {
+        effects: effects.to_vec(),
+        continue_effect_index: effects.len() - 1,
+        continue_predicate: crate::cards::builders::IfResultPredicate::Did,
+    }])
+}
+
 fn is_noop_effect(effect: &EffectAst) -> bool {
     match effect {
         EffectAst::GrantAbilitiesAll { abilities, .. }
@@ -191,6 +206,31 @@ mod tests {
             normalized.as_slice(),
             [EffectAst::RepeatProcess {
                 continue_effect_index: 0,
+                continue_predicate: IfResultPredicate::Did,
+                ..
+            }]
+        ));
+    }
+
+    #[test]
+    fn normalize_rewrites_optional_repeat_this_process_tail_into_loop_effect() {
+        let effects = vec![
+            EffectAst::Draw {
+                count: Value::Fixed(1),
+                player: PlayerAst::You,
+            },
+            EffectAst::LoseLife {
+                amount: Value::Fixed(1),
+                player: PlayerAst::You,
+            },
+            EffectAst::RepeatThisProcessMay,
+        ];
+
+        let normalized = normalize_effects_ast(&effects);
+        assert!(matches!(
+            normalized.as_slice(),
+            [EffectAst::RepeatProcess {
+                continue_effect_index: 2,
                 continue_predicate: IfResultPredicate::Did,
                 ..
             }]

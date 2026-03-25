@@ -128,6 +128,25 @@ fn replace_whole_word_case_insensitive(text: &str, from: &str, to: &str) -> Stri
     out
 }
 
+fn describe_hexproof_from_filter(filter: &ObjectFilter) -> String {
+    if !filter.any_of.is_empty() {
+        return filter
+            .any_of
+            .iter()
+            .map(describe_hexproof_from_filter)
+            .collect::<Vec<_>>()
+            .join(" or ");
+    }
+
+    let description = filter.description();
+    description
+        .strip_suffix(" permanent")
+        .or_else(|| description.strip_suffix(" spell"))
+        .or_else(|| description.strip_suffix(" source"))
+        .unwrap_or(description.as_str())
+        .to_string()
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum InsteadSemantics {
     SelfReplacement,
@@ -538,6 +557,7 @@ pub(crate) enum KeywordAction {
     Rampage(u32),
     Bushido(u32),
     Changeling,
+    HexproofFrom(ObjectFilter),
     ProtectionFrom(ColorSet),
     ProtectionFromAllColors,
     ProtectionFromColorless,
@@ -636,6 +656,7 @@ impl KeywordAction {
                 | Self::Rampage(_)
                 | Self::Bushido(_)
                 | Self::Changeling
+                | Self::HexproofFrom(_)
                 | Self::ProtectionFrom(_)
                 | Self::ProtectionFromAllColors
                 | Self::ProtectionFromColorless
@@ -768,6 +789,9 @@ impl KeywordAction {
             Self::Rampage(amount) => format!("Rampage {amount}"),
             Self::Bushido(amount) => format!("Bushido {amount}"),
             Self::Changeling => "Changeling".to_string(),
+            Self::HexproofFrom(filter) => {
+                format!("Hexproof from {}", describe_hexproof_from_filter(filter))
+            }
             Self::ProtectionFrom(colors) => single_color_name(*colors)
                 .map(|name| format!("Protection from {name}"))
                 .unwrap_or_else(|| "Protection from colors".to_string()),
@@ -2039,7 +2063,9 @@ pub(crate) enum EffectAst {
         player: PlayerAst,
         excluded_subtypes: Vec<Subtype>,
     },
+    DontLoseThisManaAsStepsAndPhasesEndThisTurn,
     RepeatThisProcess,
+    RepeatThisProcessMay,
     RepeatThisProcessOnce,
     May {
         effects: Vec<EffectAst>,
@@ -2275,6 +2301,11 @@ pub(crate) enum EffectAst {
         duration: Until,
     },
     AddCardTypes {
+        target: TargetAst,
+        card_types: Vec<CardType>,
+        duration: Until,
+    },
+    RemoveCardTypes {
         target: TargetAst,
         card_types: Vec<CardType>,
         duration: Until,
@@ -2783,6 +2814,9 @@ impl CardDefinitionBuilder {
             KeywordAction::Bushido(amount) => self.bushido(amount),
             KeywordAction::Changeling => {
                 self.with_ability(Ability::static_ability(StaticAbility::changeling()))
+            }
+            KeywordAction::HexproofFrom(filter) => {
+                self.with_ability(Ability::static_ability(StaticAbility::hexproof_from(filter)))
             }
             KeywordAction::ProtectionFrom(colors) => self.protection_from(colors),
             KeywordAction::ProtectionFromAllColors => self.with_ability(Ability::static_ability(
