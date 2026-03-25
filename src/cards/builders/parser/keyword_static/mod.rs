@@ -683,15 +683,11 @@ fn parse_static_ability_ast_line_lexed_single(
         && let Some(during_word_idx) = words.iter().position(|word| *word == "during")
     {
         let tail = &words[during_word_idx..];
-        let matches_tail = tail.starts_with(&[
-            "during", "each", "other", "player", "untap", "step",
-        ]) || tail.starts_with(&[
-            "during", "each", "other", "player's", "untap", "step",
-        ]) || tail.starts_with(&[
-            "during", "each", "other", "players", "untap", "step",
-        ]) || tail.starts_with(&[
-            "during", "each", "other", "player", "s", "untap", "step",
-        ]);
+        let matches_tail = tail
+            .starts_with(&["during", "each", "other", "player", "untap", "step"])
+            || tail.starts_with(&["during", "each", "other", "player's", "untap", "step"])
+            || tail.starts_with(&["during", "each", "other", "players", "untap", "step"])
+            || tail.starts_with(&["during", "each", "other", "player", "s", "untap", "step"]);
         if matches_tail {
             let subject_start = token_index_for_word_index(&lowered, 2).unwrap_or(lowered.len());
             let subject_end =
@@ -2509,8 +2505,7 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
         };
 
         let tail_after_type = tail.get(type_idx + 1..).unwrap_or_default();
-        let supported_tail = tail_after_type
-            == ["in", "addition", "to", "its", "other", "types"]
+        let supported_tail = tail_after_type == ["in", "addition", "to", "its", "other", "types"]
             || tail_after_type.starts_with(&["and", "it", "has"])
             || tail_after_type.starts_with(&["and", "it", "s"])
             || tail_after_type.starts_with(&["and", "it's"])
@@ -5651,10 +5646,12 @@ pub(crate) fn parse_untap_during_each_other_players_untap_step_line(
 
     let filter = parse_object_filter(&subject_tokens, false)?;
     let subject_text = words(&subject_tokens).join(" ");
-    Ok(Some(StaticAbility::untap_during_each_other_players_untap_step(
-        filter,
-        format!("Untap all {subject_text} during each other player's untap step"),
-    )))
+    Ok(Some(
+        StaticAbility::untap_during_each_other_players_untap_step(
+            filter,
+            format!("Untap all {subject_text} during each other player's untap step"),
+        ),
+    ))
 }
 
 pub(crate) fn parse_doesnt_untap_during_untap_step_line(

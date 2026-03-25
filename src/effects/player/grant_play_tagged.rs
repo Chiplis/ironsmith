@@ -188,19 +188,20 @@ impl EffectExecutor for GrantPlayTaggedEffect {
         }
 
         if self.allow_any_color_for_cast && !mana_permission_stable_ids.is_empty() {
-            game.mana_spend_effects
-                .permissions
-                .push(crate::game_state::ActiveManaSpendPermission {
-                    permission: crate::effect::ManaSpendPermission::any_color_for_casting_stable_ids(
-                        crate::target::PlayerFilter::You,
-                        mana_permission_stable_ids,
-                    ),
+            game.mana_spend_effects.permissions.push(
+                crate::game_state::ActiveManaSpendPermission {
+                    permission:
+                        crate::effect::ManaSpendPermission::any_color_for_casting_stable_ids(
+                            crate::target::PlayerFilter::You,
+                            mana_permission_stable_ids,
+                        ),
                     controller: player_id,
                     source: crate::game_state::ManaSpendPermissionSource::Effect {
                         source_id: ctx.source,
                         expires_end_of_turn,
                     },
-                });
+                },
+            );
         }
 
         Ok(EffectOutcome::count(granted as i32))

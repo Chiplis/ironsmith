@@ -930,13 +930,14 @@ impl ManaSpendEffectTracker {
     }
 
     pub fn cleanup_expired(&mut self, current_turn: u32) {
-        self.permissions.retain(|permission| match permission.source {
-            ManaSpendPermissionSource::StaticAbility => true,
-            ManaSpendPermissionSource::Effect {
-                expires_end_of_turn,
-                ..
-            } => current_turn <= expires_end_of_turn,
-        });
+        self.permissions
+            .retain(|permission| match permission.source {
+                ManaSpendPermissionSource::StaticAbility => true,
+                ManaSpendPermissionSource::Effect {
+                    expires_end_of_turn,
+                    ..
+                } => current_turn <= expires_end_of_turn,
+            });
     }
 }
 
@@ -1952,7 +1953,8 @@ impl GameState {
     }
 
     pub fn cleanup_mana_spend_permissions_end_of_turn(&mut self) {
-        self.mana_spend_effects.cleanup_expired(self.turn.turn_number);
+        self.mana_spend_effects
+            .cleanup_expired(self.turn.turn_number);
     }
 
     pub fn cleanup_temporary_spell_cost_reductions_end_of_turn(&mut self) {

@@ -4320,8 +4320,7 @@ pub(super) fn describe_search_choose_for_each(
     let search_origin = describe_search_origin_zones(choose)?;
     let searched_library =
         choose_search_zones(choose).is_some_and(|zones| zones.contains(&Zone::Library));
-    let searched_multiple_zones =
-        choose_search_zones(choose).is_some_and(|zones| zones.len() > 1);
+    let searched_multiple_zones = choose_search_zones(choose).is_some_and(|zones| zones.len() > 1);
     let shuffle_clause = if describe_player_filter(search_owner_filter) == "you" {
         "shuffle".to_string()
     } else {
@@ -8551,7 +8550,11 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                     describe_player_filter(&grant_play_tagged.player),
                 );
             }
-            let pronoun = if object_text == "that card" { "it" } else { "them" };
+            let pronoun = if object_text == "that card" {
+                "it"
+            } else {
+                "them"
+            };
             return format!(
                 "{} may {verb} {object_text} {timing}, and mana of any type can be spent to cast {pronoun}",
                 describe_player_filter(&grant_play_tagged.player),

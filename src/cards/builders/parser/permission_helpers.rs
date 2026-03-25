@@ -150,7 +150,10 @@ fn parse_tagged_permission_mana_value_condition(
             && after_prefix[2] == "or"
             && after_prefix[3] == "less"
         {
-            (ValueComparisonOperator::LessThanOrEqual, &after_prefix[1..2])
+            (
+                ValueComparisonOperator::LessThanOrEqual,
+                &after_prefix[1..2],
+            )
         } else {
             return None;
         };
@@ -741,13 +744,14 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
     }
 
     let any_color_suffixes: [&[&str]; 3] = [
-        &["and", "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "them"],
+        &[
+            "and", "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "them",
+        ],
         &[
             "and", "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "it",
         ],
         &[
-            "and", "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "that",
-            "spell",
+            "and", "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "that", "spell",
         ],
     ];
     let mut allow_any_color_for_cast = false;
@@ -770,71 +774,64 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
     let trimmed_words = LowercaseWordView::new(&trimmed);
     let clause_refs = trimmed_words.to_word_refs();
 
-    let conditional_tagged_permission = if clause_refs.starts_with(&["cast"])
-        || clause_refs.starts_with(&["play"])
-    {
-        let allow_land = clause_refs.first().copied() == Some("play");
-        let rest = &clause_refs[1..];
-        if let Some((as_copy, consumed)) = parse_tagged_cast_or_play_target(rest) {
-            let tail = &rest[consumed..];
-            let (lifetime, without_paying_mana_cost, condition_words) =
-                if tail.starts_with(&["without", "paying", "its", "mana", "cost"]) {
-                    (
-                        PermissionLifetime::Immediate,
-                        true,
-                        &tail[5..],
-                    )
-                } else if tail.starts_with(&["this", "turn", "without", "paying", "its", "mana", "cost"]) {
-                    (
-                        PermissionLifetime::ThisTurn,
-                        true,
-                        &tail[7..],
+    let conditional_tagged_permission =
+        if clause_refs.starts_with(&["cast"]) || clause_refs.starts_with(&["play"]) {
+            let allow_land = clause_refs.first().copied() == Some("play");
+            let rest = &clause_refs[1..];
+            if let Some((as_copy, consumed)) = parse_tagged_cast_or_play_target(rest) {
+                let tail = &rest[consumed..];
+                let (lifetime, without_paying_mana_cost, condition_words) =
+                    if tail.starts_with(&["without", "paying", "its", "mana", "cost"]) {
+                        (PermissionLifetime::Immediate, true, &tail[5..])
+                    } else if tail
+                        .starts_with(&["this", "turn", "without", "paying", "its", "mana", "cost"])
+                    {
+                        (PermissionLifetime::ThisTurn, true, &tail[7..])
+                    } else {
+                        (PermissionLifetime::Immediate, false, &tail[0..0])
+                    };
+
+                if without_paying_mana_cost {
+                    parse_tagged_permission_mana_value_condition(condition_words).map(
+                        |(operator, right)| {
+                            let inner = if lifetime == PermissionLifetime::Immediate {
+                                EffectAst::CastTagged {
+                                    tag: TagKey::from(IT_TAG),
+                                    allow_land,
+                                    as_copy,
+                                    without_paying_mana_cost,
+                                }
+                            } else {
+                                EffectAst::GrantPlayTaggedUntilEndOfTurn {
+                                    tag: TagKey::from(IT_TAG),
+                                    player: PlayerAst::Implicit,
+                                    allow_land,
+                                    without_paying_mana_cost,
+                                    allow_any_color_for_cast,
+                                }
+                            };
+                            EffectAst::Conditional {
+                                predicate: PredicateAst::ValueComparison {
+                                    left: Value::ManaValueOf(Box::new(
+                                        crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG)),
+                                    )),
+                                    operator,
+                                    right,
+                                },
+                                if_true: vec![inner],
+                                if_false: Vec::new(),
+                            }
+                        },
                     )
                 } else {
-                    (PermissionLifetime::Immediate, false, &tail[0..0])
-                };
-
-            if without_paying_mana_cost {
-                parse_tagged_permission_mana_value_condition(condition_words).map(
-                    |(operator, right)| {
-                        let inner = if lifetime == PermissionLifetime::Immediate {
-                            EffectAst::CastTagged {
-                                tag: TagKey::from(IT_TAG),
-                                allow_land,
-                                as_copy,
-                                without_paying_mana_cost,
-                            }
-                        } else {
-                            EffectAst::GrantPlayTaggedUntilEndOfTurn {
-                                tag: TagKey::from(IT_TAG),
-                                player: PlayerAst::Implicit,
-                                allow_land,
-                                without_paying_mana_cost,
-                                allow_any_color_for_cast,
-                            }
-                        };
-                        EffectAst::Conditional {
-                            predicate: PredicateAst::ValueComparison {
-                                left: Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(
-                                    TagKey::from(IT_TAG),
-                                ))),
-                                operator,
-                                right,
-                            },
-                            if_true: vec![inner],
-                            if_false: Vec::new(),
-                        }
-                    },
-                )
+                    None
+                }
             } else {
                 None
             }
         } else {
             None
-        }
-    } else {
-        None
-    };
+        };
 
     match parse_permission_clause_spec(&trimmed)? {
         Some(PermissionClauseSpec::Tagged {

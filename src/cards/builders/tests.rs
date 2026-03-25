@@ -20497,6 +20497,55 @@ fn parse_tidal_barracuda_any_player_flash_permission_clause() {
 }
 
 #[test]
+fn parse_valley_floodcaller_keeps_flash_grant_and_them_reference_wording() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Valley Floodcaller")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Flash\nYou may cast noncreature spells as though they had flash.\nWhenever you cast a noncreature spell, Birds, Frogs, Otters, and Rats you control get +1/+1 until end of turn. Untap them.",
+        )
+        .expect("valley floodcaller text should parse");
+
+    let rendered = oracle_like_lines(&def).join("\n");
+    assert!(
+        rendered.contains("You may cast noncreature spells as though they had flash."),
+        "expected noncreature flash grant wording, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Untap them."),
+        "expected tagged follow-up untap wording, got {rendered}"
+    );
+}
+
+#[test]
+fn valley_floodcaller_compiled_lines_meet_strict_semantic_threshold() {
+    let oracle = "Flash\nYou may cast noncreature spells as though they had flash.\nWhenever you cast a noncreature spell, Birds, Frogs, Otters, and Rats you control get +1/+1 until end of turn. Untap them.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Valley Floodcaller")
+        .card_types(vec![CardType::Creature])
+        .parse_text(oracle)
+        .expect("valley floodcaller text should parse");
+
+    let compiled = crate::compiled_text::compiled_lines(&def);
+    let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+        crate::semantic_compare::compare_semantics_scored(
+            oracle,
+            &compiled,
+            Some(crate::semantic_compare::EmbeddingConfig {
+                dims: 384,
+                mismatch_threshold: 0.99,
+            }),
+        );
+
+    assert!(
+        similarity >= 0.99,
+        "expected Valley Floodcaller to clear strict semantic threshold, got score={similarity}, lines={compiled:?}"
+    );
+    assert!(
+        !mismatch,
+        "expected Valley Floodcaller to avoid semantic mismatch, got lines={compiled:?}"
+    );
+}
+
+#[test]
 fn parse_choose_color_then_add_devotion_to_that_color() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Nykthos Variant")
         .card_types(vec![CardType::Land])

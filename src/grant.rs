@@ -278,6 +278,9 @@ impl GrantSpec {
                     .collect::<Vec<_>>()
                     .join(" or ");
             }
+            if *filter == ObjectFilter::noncreature_spell() {
+                return "noncreature spells".to_string();
+            }
             let description = filter.description();
             if description.contains("permanent") {
                 description.replace("permanent", "spell")
@@ -465,6 +468,10 @@ mod tests {
             spec.filter
                 .excluded_card_types
                 .contains(&CardType::Creature)
+        );
+        assert_eq!(
+            spec.display(),
+            "You may cast noncreature spells as though they had flash"
         );
     }
 

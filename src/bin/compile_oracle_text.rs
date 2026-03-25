@@ -1,5 +1,5 @@
 use std::env;
-use std::io::{self, Read};
+use std::io::{self, IsTerminal, Read};
 
 use ironsmith::cards::CardDefinitionBuilder;
 use ironsmith::compiled_text::{canonical_compiled_lines, raw_compiled_lines};
@@ -10,6 +10,7 @@ use ironsmith_tools::{
 };
 
 const DEFAULT_PROBE_NAME: &str = "Parser Probe";
+const DEFAULT_SHOW_DEFINITION: bool = true;
 
 fn text_includes_metadata(text: &str) -> bool {
     text.lines().map(str::trim).any(|line| {
@@ -33,6 +34,14 @@ fn read_input_text(text_arg: Option<String>) -> Result<Option<String>, String> {
         return Ok(None);
     }
     Ok(Some(input))
+}
+
+fn should_read_input_text(
+    text_arg_present: bool,
+    names_empty: bool,
+    stdin_is_terminal: bool,
+) -> bool {
+    text_arg_present || names_empty || !stdin_is_terminal
 }
 
 fn store_snapshot_if_requested(
@@ -201,7 +210,7 @@ fn main() -> Result<(), String> {
     let mut allow_unsupported = false;
     let mut detailed = false;
     let mut raw = false;
-    let mut show_definition = false;
+    let mut show_definition = DEFAULT_SHOW_DEFINITION;
     let mut db_path = default_db_path().display().to_string();
     let mut no_db = false;
 
@@ -291,7 +300,15 @@ fn main() -> Result<(), String> {
         }
     }
 
-    let input_text = read_input_text(text_arg)?;
+    let input_text = if should_read_input_text(
+        text_arg.is_some(),
+        names.is_empty(),
+        io::stdin().is_terminal(),
+    ) {
+        read_input_text(text_arg)?
+    } else {
+        None
+    };
     if input_text.is_some() && names.len() > 1 {
         return Err(
             "pass --text/stdin with at most one --name; batch mode only supports card lookups"
@@ -363,6 +380,19 @@ mod tests {
         assert!(text_includes_metadata(
             "Type: Creature — Merfolk Wizard\nWhen this creature enters, draw a card."
         ));
+    }
+
+    #[test]
+    fn should_read_input_text_only_when_needed() {
+        assert!(should_read_input_text(true, false, true));
+        assert!(should_read_input_text(false, true, true));
+        assert!(should_read_input_text(false, false, false));
+        assert!(!should_read_input_text(false, false, true));
+    }
+
+    #[test]
+    fn show_definition_defaults_on() {
+        assert!(DEFAULT_SHOW_DEFINITION);
     }
 
     #[test]

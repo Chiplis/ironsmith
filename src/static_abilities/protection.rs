@@ -154,7 +154,10 @@ impl StaticAbilityKind for HexproofFrom {
     }
 
     fn display(&self) -> String {
-        format!("Hexproof from {}", describe_hexproof_from_filter(&self.filter))
+        format!(
+            "Hexproof from {}",
+            describe_hexproof_from_filter(&self.filter)
+        )
     }
 
     fn is_keyword(&self) -> bool {

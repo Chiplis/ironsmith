@@ -1323,18 +1323,72 @@ fn parse_effect_sentence_with_where_x_lexed(
                 crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG))
             }))
         }
-        Some(["2", "plus", "the", "sacrificed", "creature", "mana", "value", ..])
-        | Some(["2", "plus", "the", "sacrificed", "creatures", "mana", "value", ..])
+        Some(
+            [
+                "2",
+                "plus",
+                "the",
+                "sacrificed",
+                "creature",
+                "mana",
+                "value",
+                ..,
+            ],
+        )
+        | Some(
+            [
+                "2",
+                "plus",
+                "the",
+                "sacrificed",
+                "creatures",
+                "mana",
+                "value",
+                ..,
+            ],
+        )
         | Some(["2", "plus", "sacrificed", "creature", "mana", "value", ..])
         | Some(["2", "plus", "sacrificed", "creatures", "mana", "value", ..])
-        | Some(["two", "plus", "the", "sacrificed", "creature", "mana", "value", ..])
-        | Some(["two", "plus", "the", "sacrificed", "creatures", "mana", "value", ..])
+        | Some(
+            [
+                "two",
+                "plus",
+                "the",
+                "sacrificed",
+                "creature",
+                "mana",
+                "value",
+                ..,
+            ],
+        )
+        | Some(
+            [
+                "two",
+                "plus",
+                "the",
+                "sacrificed",
+                "creatures",
+                "mana",
+                "value",
+                ..,
+            ],
+        )
         | Some(["two", "plus", "sacrificed", "creature", "mana", "value", ..])
-        | Some(["two", "plus", "sacrificed", "creatures", "mana", "value", ..]) => Value::Add(
+        | Some(
+            [
+                "two",
+                "plus",
+                "sacrificed",
+                "creatures",
+                "mana",
+                "value",
+                ..,
+            ],
+        ) => Value::Add(
             Box::new(Value::Fixed(2)),
-            Box::new(Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(
-                TagKey::from(IT_TAG),
-            )))),
+            Box::new(Value::ManaValueOf(Box::new(
+                crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG)),
+            ))),
         ),
         _ => parse_where_x_value_clause_lexed(&primary_where_tokens).ok_or_else(|| {
             CardTextError::ParseError(format!(

@@ -1432,8 +1432,16 @@ mod tests {
             .object(result.new_id)
             .expect("copied permanent should exist on the battlefield");
         assert_eq!(entered.name, "Runeclaw Bear");
-        assert!(entered.card_types.contains(&crate::types::CardType::Creature));
-        assert!(entered.card_types.contains(&crate::types::CardType::Artifact));
+        assert!(
+            entered
+                .card_types
+                .contains(&crate::types::CardType::Creature)
+        );
+        assert!(
+            entered
+                .card_types
+                .contains(&crate::types::CardType::Artifact)
+        );
     }
 
     #[test]

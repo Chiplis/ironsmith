@@ -116,9 +116,9 @@ impl TriggerMatcher for PlayerDrawsCardTrigger {
             }
             _ => {
                 let base = format!(
-                "Whenever {} {}",
-                describe_player_filter_subject(&self.player),
-                action
+                    "Whenever {} {}",
+                    describe_player_filter_subject(&self.player),
+                    action
                 );
                 if let Some(not_during_turn) = &self.not_during_turn {
                     let suffix = match not_during_turn {

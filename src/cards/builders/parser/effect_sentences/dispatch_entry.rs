@@ -1113,8 +1113,8 @@ fn parse_if_declined_put_match_into_hand(
         || clause_words == ["put", "it", "into", "your", "hand"]
         || clause_words
             == [
-                "put", "that", "card", "into", "your", "hand", "if", "it", "wasnt", "cast",
-                "this", "way",
+                "put", "that", "card", "into", "your", "hand", "if", "it", "wasnt", "cast", "this",
+                "way",
             ]
         || clause_words
             == [
@@ -1133,13 +1133,11 @@ fn parse_if_declined_put_match_into_hand(
             ]
         || clause_words
             == [
-                "put", "it", "into", "your", "hand", "if", "it", "wasnt", "cast", "this",
-                "way",
+                "put", "it", "into", "your", "hand", "if", "it", "wasnt", "cast", "this", "way",
             ]
         || clause_words
             == [
-                "put", "it", "into", "your", "hand", "if", "it", "wasn't", "cast", "this",
-                "way",
+                "put", "it", "into", "your", "hand", "if", "it", "wasn't", "cast", "this", "way",
             ]
         || clause_words.starts_with(&[
             "if", "you", "dont", "put", "that", "card", "into", "your", "hand",
@@ -1185,8 +1183,8 @@ fn parse_if_declined_put_match_into_hand(
             "your", "hand",
         ])
         || clause_words.starts_with(&[
-            "if", "you", "do", "not", "cast", "the", "exiled", "card", "this", "way", "put",
-            "it", "into", "your", "hand",
+            "if", "you", "do", "not", "cast", "the", "exiled", "card", "this", "way", "put", "it",
+            "into", "your", "hand",
         ])
         || clause_words.starts_with(&[
             "if", "you", "dont", "cast", "it", "this", "way", "put", "it", "into", "your", "hand",
@@ -3174,9 +3172,11 @@ fn parse_face_down_search_cast_mana_value_gate(
             Value::Fixed(value),
         ));
     }
-    if (condition.starts_with(&["if", "that", "spell's", "mana", "value", "is", "less", "than", "or", "equal", "to"])
-        || condition.starts_with(&["if", "that", "spells", "mana", "value", "is", "less", "than", "or", "equal", "to"]))
-        && condition.len() == 12
+    if (condition.starts_with(&[
+        "if", "that", "spell's", "mana", "value", "is", "less", "than", "or", "equal", "to",
+    ]) || condition.starts_with(&[
+        "if", "that", "spells", "mana", "value", "is", "less", "than", "or", "equal", "to",
+    ])) && condition.len() == 12
     {
         let value = condition[11].parse::<i32>().ok()?;
         return Some((

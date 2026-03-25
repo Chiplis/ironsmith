@@ -520,27 +520,13 @@ pub(crate) fn parse_repeat_this_process_clause(
         clause_words.as_slice(),
         ["repeat", "this", "process", "any", "number", "of", "times"]
             | [
-                "and",
-                "repeat",
-                "this",
-                "process",
-                "any",
-                "number",
-                "of",
-                "times",
+                "and", "repeat", "this", "process", "any", "number", "of", "times",
             ]
-            | ["you", "may", "repeat", "this", "process", "any", "number", "of", "times"]
             | [
-                "and",
-                "you",
-                "may",
-                "repeat",
-                "this",
-                "process",
-                "any",
-                "number",
-                "of",
-                "times",
+                "you", "may", "repeat", "this", "process", "any", "number", "of", "times"
+            ]
+            | [
+                "and", "you", "may", "repeat", "this", "process", "any", "number", "of", "times",
             ]
     ) {
         return Ok(Some(EffectAst::RepeatThisProcessMay));
@@ -566,19 +552,11 @@ pub(crate) fn parse_dont_lose_this_mana_as_steps_and_phases_end_clause(
     let clause_words = words(tokens);
     if matches!(
         clause_words.as_slice(),
-        ["you", "dont", "lose", "this", "mana", "as", "steps", "and", "phases", "end"]
-            | [
-                "you",
-                "don't",
-                "lose",
-                "this",
-                "mana",
-                "as",
-                "steps",
-                "and",
-                "phases",
-                "end",
-            ]
+        [
+            "you", "dont", "lose", "this", "mana", "as", "steps", "and", "phases", "end"
+        ] | [
+            "you", "don't", "lose", "this", "mana", "as", "steps", "and", "phases", "end",
+        ]
     ) {
         return Ok(Some(EffectAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn));
     }

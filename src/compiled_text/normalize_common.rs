@@ -4660,6 +4660,10 @@ pub(super) fn describe_demonstrative_tagged_object_filter(
             && constraint.tag.as_str() == implicit_tag)
     });
 
+    if base == crate::filter::ObjectFilter::default() {
+        return Some("that object".to_string());
+    }
+
     let base_desc = strip_leading_article(&base.description())
         .trim()
         .to_string();
@@ -4734,6 +4738,14 @@ pub(super) fn describe_choose_spec(spec: &ChooseSpec) -> String {
             }
         }
         ChooseSpec::All(filter) => {
+            if let Some(tagged_text) = describe_demonstrative_tagged_object_filter(filter) {
+                if tagged_text == "that object" {
+                    return "them".to_string();
+                }
+                if let Some(rest) = tagged_text.strip_prefix("that ") {
+                    return format!("those {}", pluralize_noun_phrase(rest));
+                }
+            }
             let desc = filter.description();
             let stripped = strip_leading_article(&desc);
             format!("all {}", pluralize_noun_phrase(stripped))

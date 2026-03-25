@@ -57,12 +57,11 @@ use super::restriction_support::{
     apply_pending_mana_restriction, apply_pending_restrictions_to_ability, is_restrictable_ability,
 };
 use super::util::{
-    parse_bargain_line_lexed,
     classify_instead_followup_text, find_first_sacrifice_cost_choice_tag,
     find_last_exile_cost_choice_tag, parse_additional_cost_choice_options_lexed,
-    parse_bestow_line_lexed, parse_buyback_line_lexed, parse_cast_this_spell_only_line_lexed,
-    parse_entwine_line_lexed, parse_escape_line_lexed, parse_flashback_line_lexed,
-    parse_harmonize_line_lexed,
+    parse_bargain_line_lexed, parse_bestow_line_lexed, parse_buyback_line_lexed,
+    parse_cast_this_spell_only_line_lexed, parse_entwine_line_lexed, parse_escape_line_lexed,
+    parse_flashback_line_lexed, parse_harmonize_line_lexed,
     parse_if_conditional_alternative_cost_line_lexed, parse_kicker_line_lexed,
     parse_level_up_line_lexed, parse_madness_line_lexed, parse_mana_symbol,
     parse_morph_keyword_line_lexed, parse_multikicker_line_lexed, parse_number_or_x_value_lexed,
@@ -2254,7 +2253,8 @@ fn lower_rewrite_static_to_chunk_impl(
             chosen_option_label,
         );
     }
-    if line.text == "creatures you control can boast twice during each of your turns rather than once."
+    if line.text
+        == "creatures you control can boast twice during each of your turns rather than once."
     {
         return wrap_chosen_option_static_chunk(
             LineAst::StaticAbility(StaticAbility::boast_twice_each_turn().into()),

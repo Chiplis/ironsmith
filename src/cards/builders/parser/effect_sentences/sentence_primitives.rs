@@ -701,9 +701,9 @@ pub(crate) fn parse_sentence_if_tagged_cards_remain_exiled(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let clause_words = words(tokens);
-    let matches_supported_prefix = clause_words.starts_with(&[
-        "if", "any", "of", "those", "cards", "remain", "exiled",
-    ]) || clause_words.starts_with(&["if", "those", "cards", "remain", "exiled"])
+    let matches_supported_prefix = clause_words
+        .starts_with(&["if", "any", "of", "those", "cards", "remain", "exiled"])
+        || clause_words.starts_with(&["if", "those", "cards", "remain", "exiled"])
         || clause_words.starts_with(&["if", "that", "card", "remains", "exiled"])
         || clause_words.starts_with(&["if", "it", "remains", "exiled"]);
     if !matches_supported_prefix {

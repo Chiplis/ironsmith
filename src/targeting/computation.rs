@@ -765,19 +765,23 @@ mod tests {
         let source_id = source.id;
         game.add_object(source);
 
-        game.cant_effects
-            .cant_target_players_from
-            .push(crate::game_state::PlayerCantBeTargetedFrom {
+        game.cant_effects.cant_target_players_from.push(
+            crate::game_state::PlayerCantBeTargetedFrom {
                 player: p1,
                 source_filter: ObjectFilter {
                     colors: Some(ColorSet::from(Color::Blue)),
                     ..Default::default()
                 },
                 controller: p1,
-            });
+            },
+        );
 
-        let legal_targets =
-            compute_legal_targets(&game, &ChooseSpec::Player(PlayerFilter::Any), p0, Some(source_id));
+        let legal_targets = compute_legal_targets(
+            &game,
+            &ChooseSpec::Player(PlayerFilter::Any),
+            p0,
+            Some(source_id),
+        );
 
         assert!(
             !legal_targets.contains(&Target::Player(p1)),

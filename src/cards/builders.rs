@@ -2820,9 +2820,9 @@ impl CardDefinitionBuilder {
             KeywordAction::Changeling => {
                 self.with_ability(Ability::static_ability(StaticAbility::changeling()))
             }
-            KeywordAction::HexproofFrom(filter) => {
-                self.with_ability(Ability::static_ability(StaticAbility::hexproof_from(filter)))
-            }
+            KeywordAction::HexproofFrom(filter) => self.with_ability(Ability::static_ability(
+                StaticAbility::hexproof_from(filter),
+            )),
             KeywordAction::ProtectionFrom(colors) => self.protection_from(colors),
             KeywordAction::ProtectionFromAllColors => self.with_ability(Ability::static_ability(
                 StaticAbility::protection(crate::ability::ProtectionFrom::AllColors),

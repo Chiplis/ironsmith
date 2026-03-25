@@ -325,21 +325,23 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
         .filter_map(|&id| {
             let obj = game.object(id)?;
             // Check if the permanent has "doesn't untap during your untap step"
-            let has_doesnt_untap = obj.controller == active_player && obj.abilities.iter().any(|ability| {
-                if let AbilityKind::Static(s) = &ability.kind {
-                    s.affects_untap()
-                } else {
-                    false
-                }
-            });
-            let has_optional_choice = obj.controller == active_player && obj.abilities.iter().any(|ability| {
-                matches!(
-                    &ability.kind,
-                    AbilityKind::Static(static_ability)
-                        if static_ability.id()
-                            == StaticAbilityId::MayChooseNotToUntapDuringUntapStep
-                )
-            });
+            let has_doesnt_untap = obj.controller == active_player
+                && obj.abilities.iter().any(|ability| {
+                    if let AbilityKind::Static(s) = &ability.kind {
+                        s.affects_untap()
+                    } else {
+                        false
+                    }
+                });
+            let has_optional_choice = obj.controller == active_player
+                && obj.abilities.iter().any(|ability| {
+                    matches!(
+                        &ability.kind,
+                        AbilityKind::Static(static_ability)
+                            if static_ability.id()
+                                == StaticAbilityId::MayChooseNotToUntapDuringUntapStep
+                    )
+                });
             let blocked_by_restriction = !game.can_untap_during_step(id, active_player);
             if has_doesnt_untap || blocked_by_restriction {
                 None

@@ -496,7 +496,10 @@ pub(super) fn format_alternative_method(
                 .mana_cost()
                 .map(format_mana_cost_simple)
                 .unwrap_or_else(|| "0".to_string());
-            ("Harmonize".to_string(), format!("{cost_desc} from graveyard"))
+            (
+                "Harmonize".to_string(),
+                format!("{cost_desc} from graveyard"),
+            )
         }
         AlternativeCastingMethod::JumpStart => {
             // Jump-start uses the spell's mana cost plus discarding a card

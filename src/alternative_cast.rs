@@ -175,10 +175,7 @@ impl AlternativeCastingMethod {
     pub fn exiles_after_resolution(&self) -> bool {
         matches!(
             self,
-            Self::Flashback { .. }
-                | Self::Harmonize { .. }
-                | Self::JumpStart
-                | Self::Escape { .. }
+            Self::Flashback { .. } | Self::Harmonize { .. } | Self::JumpStart | Self::Escape { .. }
         )
     }
 

@@ -106,7 +106,8 @@ pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str
         }
         if oracle_lower
             .contains("put that card into your hand at the beginning of your next end step")
-            && normalized_body.contains("Pay 1 life: you exile the top card of your library face down.")
+            && normalized_body
+                .contains("Pay 1 life: you exile the top card of your library face down.")
             && normalized_body
                 .contains("At the beginning of your next end step, return it to its owner's hand")
         {
@@ -136,8 +137,10 @@ pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str
                 tail
             );
         }
-        if oracle_lower.contains("reveal the top card of your library and put that card into your hand")
-            && normalized_body.contains("Reveal the top card of your library. Put it into its owner's hand")
+        if oracle_lower
+            .contains("reveal the top card of your library and put that card into your hand")
+            && normalized_body
+                .contains("Reveal the top card of your library. Put it into its owner's hand")
         {
             normalized_body = normalized_body.replace(
                 "Reveal the top card of your library. Put it into its owner's hand",
@@ -181,7 +184,8 @@ pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str
         }
         if oracle_lower.contains("search your library for three cards and reveal them")
             && oracle_lower.contains("target opponent chooses one")
-            && oracle_lower.contains("put that card into your hand and the rest into your graveyard")
+            && oracle_lower
+                .contains("put that card into your hand and the rest into your graveyard")
             && let Some(rewritten) =
                 normalize_target_opponent_divvy_library_clause(&normalized_body)
         {
@@ -329,7 +333,8 @@ pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str
     }
     if oracle_lower.contains("put that card into your hand at the beginning of your next end step")
         && normalized.contains("Pay 1 life: you exile the top card of your library face down.")
-        && normalized.contains("At the beginning of your next end step, return it to its owner's hand")
+        && normalized
+            .contains("At the beginning of your next end step, return it to its owner's hand")
     {
         normalized = normalized.replace(
             "Pay 1 life: you exile the top card of your library face down. At the beginning of your next end step, return it to its owner's hand",
@@ -344,17 +349,15 @@ pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str
             "Spells you control can't be countered this turn",
         );
     }
-    if oracle_lower
-        .contains("you and permanents you control gain hexproof from blue and from black until end of turn")
-        && let Some((prefix, tail)) = split_once_ascii_ci(
-            &normalized,
-            "you have hexproof from blue or black this turn. permanents you control gain hexproof from blue or black until end of turn",
-        )
-    {
+    if oracle_lower.contains(
+        "you and permanents you control gain hexproof from blue and from black until end of turn",
+    ) && let Some((prefix, tail)) = split_once_ascii_ci(
+        &normalized,
+        "you have hexproof from blue or black this turn. permanents you control gain hexproof from blue or black until end of turn",
+    ) {
         normalized = format!(
             "{}You and permanents you control gain hexproof from blue and from black until end of turn{}",
-            prefix,
-            tail
+            prefix, tail
         );
     }
     if oracle_lower.contains("reveal the top card of your library and put that card into your hand")
@@ -441,7 +444,11 @@ pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str
 
 fn normalize_target_opponent_divvy_library_clause(text: &str) -> Option<String> {
     let needle = "You searches for up to three permanent in a library and tags it as 'searched'. Reveal it. target opponent searches for exactly 1 permanent in a library and tags it as 'divvy_chosen'. Return the tagged object 'divvy_chosen' to its owner's hand. For each tagged 'divvy_source' object, if it isn't true that the tagged object 'divvy_chosen' matches permanent, Put that object into its owner's graveyard. Shuffle your library";
-    if !text.trim().trim_end_matches('.').eq_ignore_ascii_case(needle) {
+    if !text
+        .trim()
+        .trim_end_matches('.')
+        .eq_ignore_ascii_case(needle)
+    {
         return None;
     }
     Some(
@@ -1842,7 +1849,10 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
         return normalized;
     }
     normalized = normalized.replace(" until end of turn, where X is X", " until end of turn");
-    normalized = normalized.replace(" gain Haste until end of turn", " gain haste until end of turn");
+    normalized = normalized.replace(
+        " gain Haste until end of turn",
+        " gain haste until end of turn",
+    );
     normalized = normalized.replace(
         "Creatures you control get +X/+X until end of turn, then creatures you control gain haste until end of turn",
         "Creatures you control get +X/+X and gain haste until end of turn",
@@ -2476,8 +2486,7 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
         );
     }
     if let Some((prefix, rest)) = split_once_ascii_ci(&normalized, ": that player may pay ")
-        && let Some((cost, tail)) =
-            split_once_ascii_ci(rest, ". If that player doesn't, create ")
+        && let Some((cost, tail)) = split_once_ascii_ci(rest, ". If that player doesn't, create ")
     {
         return format!(
             "{prefix}, that player may pay {}. If the player doesn't, you create {}",
@@ -4146,11 +4155,7 @@ pub(super) fn split_once_ascii_ci<'a>(
     Some((&text[..idx], &text[idx + separator.len()..]))
 }
 
-pub(super) fn replace_once_ascii_ci(
-    text: &str,
-    needle: &str,
-    replacement: &str,
-) -> Option<String> {
+pub(super) fn replace_once_ascii_ci(text: &str, needle: &str, replacement: &str) -> Option<String> {
     let (prefix, tail) = split_once_ascii_ci(text, needle)?;
     Some(format!("{prefix}{replacement}{tail}"))
 }
@@ -5829,9 +5834,7 @@ fn normalize_face_down_search_cast_condition_text(condition: &str) -> String {
     condition.to_string()
 }
 
-pub(super) fn normalize_search_face_down_exile_cast_else_hand_clause(
-    text: &str,
-) -> Option<String> {
+pub(super) fn normalize_search_face_down_exile_cast_else_hand_clause(text: &str) -> Option<String> {
     let patterns = [
         (
             "you searches for up to one ",

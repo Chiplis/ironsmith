@@ -1361,7 +1361,10 @@ fn rewrite_lexed_predicate_parser_handles_color_contraction() {
     let debug = format!("{native:?}");
 
     assert_eq!(debug, format!("{wrapper:?}"));
-    assert!(debug.contains("ItMatches"), "expected object-match predicate, got {debug}");
+    assert!(
+        debug.contains("ItMatches"),
+        "expected object-match predicate, got {debug}"
+    );
     assert!(
         debug.contains("colors: Some("),
         "expected blue color constraint in predicate, got {debug}"

@@ -83,7 +83,8 @@ fn player_gain_effects_for_abilities(
     duration: &Until,
     subject_tokens: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {
-    let player_target = TargetAst::Player(PlayerFilter::You, span_from_lexed_tokens(subject_tokens));
+    let player_target =
+        TargetAst::Player(PlayerFilter::You, span_from_lexed_tokens(subject_tokens));
     let mut effects = Vec::new();
 
     for ability in abilities {

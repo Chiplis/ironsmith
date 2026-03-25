@@ -158,9 +158,10 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         } => Trigger::player_loses_life_during_turn(player, during_turn),
         TriggerSpec::YouDrawCard => Trigger::you_draw_card(),
         TriggerSpec::PlayerDrawsCard(player) => Trigger::player_draws_card(player),
-        TriggerSpec::PlayerDrawsCardNotDuringTurn { player, during_turn } => {
-            Trigger::player_draws_card_not_during_turn(player, during_turn)
-        }
+        TriggerSpec::PlayerDrawsCardNotDuringTurn {
+            player,
+            during_turn,
+        } => Trigger::player_draws_card_not_during_turn(player, during_turn),
         TriggerSpec::PlayerDrawsNthCardEachTurn {
             player,
             card_number,
@@ -3724,7 +3725,10 @@ fn compile_effect_inner(
     effect: &EffectAst,
     ctx: &mut EffectLoweringContext,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
-    if matches!(effect, EffectAst::RepeatThisProcess | EffectAst::RepeatThisProcessOnce) {
+    if matches!(
+        effect,
+        EffectAst::RepeatThisProcess | EffectAst::RepeatThisProcessOnce
+    ) {
         return Err(CardTextError::ParseError(
             "unsupported repeat this process effect tail".to_string(),
         ));
@@ -5615,11 +5619,9 @@ fn try_compile_flow_and_iteration_effect(
             Vec::new(),
         ),
         EffectAst::RepeatThisProcessMay => (
-            vec![Effect::new(
-                crate::effects::RepeatProcessPromptEffect::new(
-                    "You may repeat this process any number of times",
-                ),
-            )],
+            vec![Effect::new(crate::effects::RepeatProcessPromptEffect::new(
+                "You may repeat this process any number of times",
+            ))],
             Vec::new(),
         ),
         EffectAst::UnlessPays {
