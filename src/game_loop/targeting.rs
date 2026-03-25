@@ -621,6 +621,52 @@ pub(crate) fn extract_target_requirements_for_effect_with_state(
     requirements
 }
 
+fn cast_time_selected_effects_from_program(
+    game: &GameState,
+    program: &crate::resolution::ResolutionProgram,
+    caster: PlayerId,
+    source_id: Option<ObjectId>,
+) -> Vec<Effect> {
+    let Some(source_id) = source_id else {
+        return program.flattened_default_effects().to_vec();
+    };
+
+    let mut selected = Vec::new();
+    for segment in &program.segments {
+        let applicable = segment
+            .self_replacements
+            .iter()
+            .filter(|branch| {
+                crate::condition_eval::evaluate_condition_cast_time(
+                    game,
+                    &branch.condition,
+                    caster,
+                    source_id,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        match applicable.as_slice() {
+            [] => selected.extend(segment.default_effects.iter().cloned()),
+            [branch] => selected.extend(branch.replacement_effects.iter().cloned()),
+            [branch, ..] => selected.extend(branch.replacement_effects.iter().cloned()),
+        }
+    }
+
+    selected
+}
+
+pub(crate) fn extract_target_requirements_from_program_with_modes(
+    game: &GameState,
+    program: &crate::resolution::ResolutionProgram,
+    caster: PlayerId,
+    source_id: Option<ObjectId>,
+    chosen_modes: Option<&[usize]>,
+) -> Vec<TargetRequirement> {
+    let selected = cast_time_selected_effects_from_program(game, program, caster, source_id);
+    extract_target_requirements_with_modes(game, &selected, caster, source_id, chosen_modes)
+}
+
 /// Extract target requirements from a list of effects with optional mode choices.
 pub(super) fn extract_target_requirements_with_modes(
     game: &GameState,
@@ -673,6 +719,17 @@ pub(crate) fn spell_has_legal_targets_with_modes(
         chosen_modes,
         &view,
     )
+}
+
+pub(crate) fn spell_program_has_legal_targets_with_modes(
+    game: &GameState,
+    program: &crate::resolution::ResolutionProgram,
+    caster: PlayerId,
+    source_id: Option<ObjectId>,
+    chosen_modes: Option<&[usize]>,
+) -> bool {
+    let selected = cast_time_selected_effects_from_program(game, program, caster, source_id);
+    spell_has_legal_targets_with_modes(game, &selected, caster, source_id, chosen_modes)
 }
 
 pub(crate) fn spell_has_legal_targets_with_mode_preview(

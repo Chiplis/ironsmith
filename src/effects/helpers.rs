@@ -1090,11 +1090,14 @@ pub fn resolve_player_filter(
                 .next()
                 .ok_or_else(|| ExecutionError::UnresolvableValue("No matching players".to_string()))
         }
-        PlayerFilter::ChosenPlayer => game.chosen_player(ctx.source).ok_or_else(|| {
-            ExecutionError::UnresolvableValue(
-                "ChosenPlayer requires a previously chosen player".to_string(),
-            )
-        }),
+        PlayerFilter::ChosenPlayer => ctx
+            .chosen_player
+            .or_else(|| game.chosen_player(ctx.source))
+            .ok_or_else(|| {
+                ExecutionError::UnresolvableValue(
+                    "ChosenPlayer requires a previously chosen player".to_string(),
+                )
+            }),
         PlayerFilter::TaggedPlayer(tag) => ctx
             .get_tagged_players(tag.as_str())
             .and_then(|players| players.first().copied())
@@ -2150,8 +2153,9 @@ pub(crate) fn resolve_player_filter_to_list(
             })
             .map(|player| player.id)
             .collect()),
-        PlayerFilter::ChosenPlayer => game
-            .chosen_player(ctx.source)
+        PlayerFilter::ChosenPlayer => ctx
+            .chosen_player
+            .or_else(|| game.chosen_player(ctx.source))
             .map(|id| vec![id])
             .ok_or_else(|| {
                 ExecutionError::UnresolvableValue(

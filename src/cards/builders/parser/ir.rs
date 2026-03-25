@@ -61,6 +61,7 @@ pub(crate) enum RewriteKeywordLineKind {
     Transmute,
     Entwine,
     CastThisSpellOnly,
+    Gift,
     Warp,
 }
 

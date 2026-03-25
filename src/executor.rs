@@ -136,6 +136,8 @@ pub struct ExecutionContext<'a> {
     pub defending_player: Option<PlayerId>,
     /// The attacking player for combat triggers.
     pub attacking_player: Option<PlayerId>,
+    /// The chosen player linked to this source, if one was captured earlier.
+    pub chosen_player: Option<PlayerId>,
     /// Last known information for target objects (for when they leave the battlefield).
     pub target_snapshots: HashMap<ObjectId, ObjectSnapshot>,
     /// Last known information for the source object.
@@ -197,6 +199,7 @@ impl std::fmt::Debug for ExecutionContext<'_> {
             .field("optional_costs_paid", &self.optional_costs_paid)
             .field("casting_method", &self.casting_method)
             .field("defending_player", &self.defending_player)
+            .field("chosen_player", &self.chosen_player)
             .field("target_snapshots", &self.target_snapshots)
             .field("source_snapshot", &self.source_snapshot)
             .field(
@@ -245,6 +248,7 @@ impl<'a> ExecutionContext<'a> {
             casting_method: crate::alternative_cast::CastingMethod::Normal,
             defending_player: None,
             attacking_player: None,
+            chosen_player: None,
             target_snapshots: HashMap::new(),
             source_snapshot: None,
             tagged_objects: HashMap::new(),
@@ -287,6 +291,7 @@ impl<'a> ExecutionContext<'a> {
             casting_method: crate::alternative_cast::CastingMethod::Normal,
             defending_player: None,
             attacking_player: None,
+            chosen_player: None,
             target_snapshots: HashMap::new(),
             source_snapshot: None,
             tagged_objects: HashMap::new(),
@@ -319,6 +324,7 @@ impl<'a> ExecutionContext<'a> {
             casting_method: self.casting_method,
             defending_player: self.defending_player,
             attacking_player: self.attacking_player,
+            chosen_player: self.chosen_player,
             target_snapshots: self.target_snapshots,
             source_snapshot: self.source_snapshot,
             tagged_objects: self.tagged_objects,
@@ -503,6 +509,12 @@ impl<'a> ExecutionContext<'a> {
         casting_method: crate::alternative_cast::CastingMethod,
     ) -> Self {
         self.casting_method = casting_method;
+        self
+    }
+
+    /// Set the chosen player linked to this source.
+    pub fn with_chosen_player(mut self, player: Option<PlayerId>) -> Self {
+        self.chosen_player = player;
         self
     }
 
@@ -776,6 +788,10 @@ impl<'a> ExecutionContext<'a> {
         let mut filter_ctx = game
             .filter_context_for(self.controller, Some(self.source))
             .with_iterated_player(self.iterated_player)
+            .with_chosen_player(
+                self.chosen_player
+                    .or_else(|| game.chosen_player(self.source)),
+            )
             .with_target_players(target_players)
             .with_target_objects(target_objects)
             .with_tagged_objects(&tagged_objects)

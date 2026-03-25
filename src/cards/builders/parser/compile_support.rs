@@ -135,6 +135,7 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::PlayerPlaysLand { player, filter } => {
             Trigger::player_plays_land(player, filter)
         }
+        TriggerSpec::PlayerGivesGift(player) => Trigger::player_gives_gift(player),
         TriggerSpec::PlayerSearchesLibrary(player) => Trigger::player_searches_library(player),
         TriggerSpec::PlayerTapsForMana { player, filter } => {
             Trigger::player_taps_for_mana(player, filter)
@@ -468,7 +469,7 @@ fn fold_local_zone_rewrite_self_replacements(effects: Vec<Effect>) -> Vec<Effect
             && if_effect.predicate == EffectPredicate::Happened
             && if_effect.else_.is_empty()
             && let Some(zone_replacements) =
-                extract_local_zone_replacement_followups(&if_effect.then)
+                extract_local_zone_replacement_followups(&if_effect.then, &with_id.effect)
         {
             rewritten.push(Effect::with_id(
                 with_id.id.0,
@@ -490,18 +491,35 @@ fn fold_local_zone_rewrite_self_replacements(effects: Vec<Effect>) -> Vec<Effect
 
 fn extract_local_zone_replacement_followups(
     effects: &[Effect],
+    antecedent: &Effect,
 ) -> Option<Vec<crate::effects::RegisterZoneReplacementEffect>> {
     let mut replacements = Vec::new();
+    let antecedent_target = antecedent.0.get_target_spec().cloned();
     for effect in effects {
-        let register = effect
+        let mut register = effect
             .downcast_ref::<crate::effects::RegisterZoneReplacementEffect>()?
             .clone();
         if register.mode != crate::effects::ReplacementApplyMode::OneShot {
             return None;
         }
+        if choose_spec_contains_it_tag(&register.target)
+            && let Some(target_spec) = &antecedent_target
+        {
+            register.target = target_spec.clone();
+        }
         replacements.push(register);
     }
     Some(replacements)
+}
+
+fn choose_spec_contains_it_tag(spec: &ChooseSpec) -> bool {
+    match spec {
+        ChooseSpec::Tagged(tag) => tag.as_str() == IT_TAG,
+        ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _) => {
+            choose_spec_contains_it_tag(inner)
+        }
+        _ => false,
+    }
 }
 
 fn validate_unbound_iterated_player(
@@ -732,6 +750,7 @@ pub(crate) fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
         | TriggerSpec::PlayerDrawsNthCardEachTurn { .. }
         | TriggerSpec::PlayerDiscardsCard { .. }
         | TriggerSpec::PlayerPlaysLand { .. }
+        | TriggerSpec::PlayerGivesGift(_)
         | TriggerSpec::PlayerSearchesLibrary(_)
         | TriggerSpec::PlayerTapsForMana { .. }
         | TriggerSpec::PlayerSacrifices { .. }
@@ -819,6 +838,7 @@ pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<Pl
         TriggerSpec::PlayerDrawsNthCardEachTurn { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerDiscardsCard { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerPlaysLand { .. } => Some(PlayerFilter::IteratedPlayer),
+        TriggerSpec::PlayerGivesGift(_) => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerSearchesLibrary(_) => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerTapsForMana { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::AbilityActivated { .. } => Some(PlayerFilter::IteratedPlayer),

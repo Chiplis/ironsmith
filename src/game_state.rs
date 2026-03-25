@@ -1048,6 +1048,8 @@ pub struct StackEntry {
     pub optional_costs_paid: OptionalCostsPaid,
     /// The defending player for combat-related triggers.
     pub defending_player: Option<PlayerId>,
+    /// The chosen player linked to this source at the time the stack entry was created.
+    pub chosen_player: Option<PlayerId>,
     /// If this is a saga's final chapter ability, the saga's object ID.
     /// When this ability resolves, the saga should be marked for sacrifice.
     pub saga_final_chapter_source: Option<ObjectId>,
@@ -1112,6 +1114,7 @@ impl StackEntry {
             casting_method: CastingMethod::Normal,
             optional_costs_paid: OptionalCostsPaid::default(),
             defending_player: None,
+            chosen_player: None,
             saga_final_chapter_source: None,
             source_stable_id: None,
             source_snapshot: None,
@@ -1144,6 +1147,7 @@ impl StackEntry {
             casting_method: CastingMethod::Normal,
             optional_costs_paid: OptionalCostsPaid::default(),
             defending_player: None,
+            chosen_player: None,
             saga_final_chapter_source: None,
             source_stable_id: None,
             source_snapshot: None,
@@ -1196,6 +1200,11 @@ impl StackEntry {
 
     pub fn with_defending_player(mut self, player: PlayerId) -> Self {
         self.defending_player = Some(player);
+        self
+    }
+
+    pub fn with_chosen_player(mut self, player: Option<PlayerId>) -> Self {
+        self.chosen_player = player;
         self
     }
 

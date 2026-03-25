@@ -101,7 +101,7 @@ pub use combat::{
     CreatureBecameBlockedEvent, CreatureBlockedEvent,
 };
 pub use other::{
-    BecameMonstrousEvent, CardDiscardedEvent, CardsDrawnEvent, CounterPlacedEvent,
+    BecameMonstrousEvent, CardDiscardedEvent, CardsDrawnEvent, CounterPlacedEvent, GiftGivenEvent,
     KeywordActionEvent, KeywordActionKind, LandPlayedEvent, MarkerChangeType, MarkersChangedEvent,
     PermanentTappedEvent, PermanentUntappedEvent, PlayerVote, PlayersFinishedVotingEvent,
     SearchLibraryEvent, StateTriggerEvent, TransformedEvent, TurnedFaceUpEvent,

@@ -39,6 +39,8 @@ pub enum EventKind {
     Destroy,
     /// Permanent being sacrificed
     Sacrifice,
+    /// A player gave a gift as a Gift ability resolved
+    GiftGiven,
     /// Player searching their library
     SearchLibrary,
     /// Player shuffling their library

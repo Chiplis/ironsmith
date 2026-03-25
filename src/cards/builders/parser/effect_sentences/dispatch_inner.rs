@@ -2673,6 +2673,16 @@ pub(crate) fn parse_take_extra_turn_sentence(
             anchor: ExtraTurnAnchorAst::CurrentTurn,
         }));
     }
+    if words.as_slice()
+        == [
+            "the", "chosen", "player", "takes", "an", "extra", "turn", "after", "this", "one",
+        ]
+    {
+        return Ok(Some(EffectAst::ExtraTurnAfterTurn {
+            player: PlayerAst::Chosen,
+            anchor: ExtraTurnAnchorAst::CurrentTurn,
+        }));
+    }
     Ok(None)
 }
 

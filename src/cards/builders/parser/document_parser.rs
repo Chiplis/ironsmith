@@ -421,6 +421,8 @@ fn parse_keyword_line_cst(
         Some(KeywordLineKindCst::Transmute)
     } else if parse_cast_this_spell_only_line_lexed(&tokens)?.is_some() {
         Some(KeywordLineKindCst::CastThisSpellOnly)
+    } else if is_standard_gift_keyword_line(line.info.raw_line.as_str()) {
+        Some(KeywordLineKindCst::Gift)
     } else if parse_warp_line_lexed(&tokens)?.is_some() {
         Some(KeywordLineKindCst::Warp)
     } else {
@@ -432,6 +434,32 @@ fn parse_keyword_line_cst(
         text: normalized.to_string(),
         kind,
     }))
+}
+
+fn is_standard_gift_keyword_line(text: &str) -> bool {
+    let trimmed = text.trim().to_ascii_lowercase();
+    if !trimmed.starts_with("gift ") {
+        return false;
+    }
+    if !trimmed.contains("you may promise an opponent a gift as you cast this spell")
+        || !trimmed.contains("if you do")
+    {
+        return false;
+    }
+
+    let head = trimmed
+        .split_once('(')
+        .map(|(head, _)| head.trim())
+        .unwrap_or(trimmed.as_str());
+    matches!(
+        head,
+        "gift a card"
+            | "gift a treasure"
+            | "gift a food"
+            | "gift a tapped fish"
+            | "gift an extra turn"
+            | "gift an octopus"
+    )
 }
 
 fn additional_cost_tail_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
@@ -1900,6 +1928,7 @@ fn lower_document_cst(
                     KeywordLineKindCst::CastThisSpellOnly => {
                         RewriteKeywordLineKind::CastThisSpellOnly
                     }
+                    KeywordLineKindCst::Gift => RewriteKeywordLineKind::Gift,
                     KeywordLineKindCst::Warp => RewriteKeywordLineKind::Warp,
                 };
                 let parsed =

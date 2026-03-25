@@ -187,6 +187,77 @@ fn test_monarch_changes_when_creature_deals_combat_damage_to_monarch() {
 }
 
 #[test]
+fn test_suspended_card_removes_time_counter_during_upkeep() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let lotus_bloom = CardDefinitionBuilder::new(CardId::from_raw(99001), "Lotus Bloom")
+        .parse_text(
+            "Type: Artifact\n\
+             Suspend 3—{0} (Rather than cast this card from your hand, pay {0} and exile it with three time counters on it. At the beginning of your upkeep, remove a time counter. When the last is removed, you may cast it without paying its mana cost.)\n\
+             {T}, Sacrifice this artifact: Add three mana of any one color.",
+        )
+        .expect("Lotus Bloom text should parse");
+    let card_id = game.create_object_from_definition(&lotus_bloom, alice, Zone::Hand);
+
+    let mut dm = SelectFirstDecisionMaker;
+    crate::special_actions::perform(
+        crate::special_actions::SpecialAction::Suspend { card_id },
+        &mut game,
+        alice,
+        &mut dm,
+    )
+    .expect("suspend special action should resolve");
+
+    let exiled_id = *game.exile.first().expect("Lotus Bloom should be exiled");
+    assert_eq!(
+        game.counter_count(exiled_id, crate::object::CounterType::Time),
+        3,
+        "suspended card should start with three time counters"
+    );
+
+    game.turn.phase = Phase::Beginning;
+    game.turn.step = Some(crate::game_state::Step::Upkeep);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "suspended card should queue its upkeep trigger from exile"
+    );
+
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("suspend upkeep trigger should go on the stack");
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "suspend upkeep trigger should use the stack once it triggers"
+    );
+
+    resolve_stack_entry(&mut game).expect("suspend upkeep trigger should resolve");
+
+    assert_eq!(
+        game.counter_count(exiled_id, crate::object::CounterType::Time),
+        2,
+        "resolving the upkeep trigger should remove one time counter"
+    );
+    assert!(
+        game.object(exiled_id)
+            .is_some_and(|obj| obj.zone == Zone::Exile),
+        "suspended card should remain in exile until the last time counter is removed"
+    );
+}
+
+#[test]
 fn test_queue_triggers_tracks_noncombat_damage_to_players_this_turn() {
     let mut game = setup_game();
     let mut trigger_queue = TriggerQueue::new();
@@ -7106,6 +7177,215 @@ fn test_disturb_cast_uses_back_face_characteristics_on_stack() {
 }
 
 #[test]
+fn test_gift_promise_updates_cast_time_target_requirements() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let spell = CardBuilder::new(CardId::from_raw(9100), "Gift Target Runtime")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let spell_id = game.create_object_from_card(&spell, alice, Zone::Stack);
+
+    let artifact = CardBuilder::new(CardId::from_raw(9101), "Opponent Relic")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let artifact_id = game.create_object_from_card(&artifact, bob, Zone::Battlefield);
+
+    let default_target = crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(
+        crate::target::ObjectFilter::creature().opponent_controls(),
+    ));
+    let gift_target = crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(
+        crate::target::ObjectFilter::nonland_permanent().opponent_controls(),
+    ));
+    let program =
+        crate::resolution::ResolutionProgram::new(vec![crate::resolution::ResolutionSegment {
+            default_effects: vec![Effect::move_to_zone(default_target, Zone::Hand, false)],
+            self_replacements: vec![crate::resolution::SelfReplacementBranch::new(
+                crate::effect::Condition::ThisSpellPaidLabel("Gift".to_string()),
+                vec![Effect::move_to_zone(gift_target, Zone::Hand, false)],
+            )],
+        }]);
+
+    if let Some(obj) = game.object_mut(spell_id) {
+        obj.spell_effect = Some(program);
+        obj.optional_costs = vec![crate::cost::OptionalCost::custom(
+            "Gift a card",
+            crate::cost::TotalCost::free(),
+        )];
+        obj.optional_costs_paid = crate::cost::OptionalCostsPaid::from_costs(&obj.optional_costs);
+    }
+
+    let program = game
+        .object(spell_id)
+        .and_then(|obj| obj.spell_effect.as_ref())
+        .expect("test spell should have a resolution program");
+
+    assert!(
+        !spell_program_has_legal_targets_with_modes(&game, program, alice, Some(spell_id), None),
+        "unpromised Gift branch should still require a creature target"
+    );
+    assert!(
+        extract_target_requirements_from_program_with_modes(
+            &game,
+            program,
+            alice,
+            Some(spell_id),
+            None,
+        )
+        .is_empty(),
+        "unpromised Gift branch should expose no legal target requirements in this setup"
+    );
+
+    game.object_mut(spell_id)
+        .expect("test spell should still exist")
+        .optional_costs_paid
+        .pay_times(0, 1);
+
+    let program = game
+        .object(spell_id)
+        .and_then(|obj| obj.spell_effect.as_ref())
+        .expect("test spell should still have a resolution program");
+    let requirements = extract_target_requirements_from_program_with_modes(
+        &game,
+        program,
+        alice,
+        Some(spell_id),
+        None,
+    );
+
+    assert!(
+        spell_program_has_legal_targets_with_modes(&game, program, alice, Some(spell_id), None),
+        "promised Gift branch should switch to the replacement targets"
+    );
+    assert_eq!(requirements.len(), 1, "expected one promised-branch target");
+    assert_eq!(
+        requirements[0].legal_targets,
+        vec![Target::Object(artifact_id)],
+        "expected the promised Gift branch to target the opponent's nonland permanent"
+    );
+}
+
+#[test]
+fn test_gift_optional_cost_choice_refreshes_pending_target_prompt() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let spell = CardBuilder::new(CardId::from_raw(9110), "Gift Target Pending")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let spell_id = game.create_object_from_card(&spell, alice, Zone::Stack);
+
+    let artifact = CardBuilder::new(CardId::from_raw(9111), "Opponent Relic")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let artifact_id = game.create_object_from_card(&artifact, bob, Zone::Battlefield);
+
+    let default_target = crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(
+        crate::target::ObjectFilter::creature().opponent_controls(),
+    ));
+    let gift_target = crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(
+        crate::target::ObjectFilter::nonland_permanent().opponent_controls(),
+    ));
+    let program =
+        crate::resolution::ResolutionProgram::new(vec![crate::resolution::ResolutionSegment {
+            default_effects: vec![Effect::move_to_zone(default_target, Zone::Hand, false)],
+            self_replacements: vec![crate::resolution::SelfReplacementBranch::new(
+                crate::effect::Condition::ThisSpellPaidLabel("Gift".to_string()),
+                vec![Effect::move_to_zone(gift_target, Zone::Hand, false)],
+            )],
+        }]);
+
+    if let Some(obj) = game.object_mut(spell_id) {
+        obj.spell_effect = Some(program);
+        obj.optional_costs = vec![crate::cost::OptionalCost::custom(
+            "Gift a tapped Fish",
+            crate::cost::TotalCost::free(),
+        )];
+        obj.optional_costs_paid = crate::cost::OptionalCostsPaid::from_costs(&obj.optional_costs);
+    }
+
+    let pre_gift_requirements = game
+        .object(spell_id)
+        .and_then(|obj| obj.spell_effect.as_ref())
+        .map(|program| {
+            extract_target_requirements_from_program_with_modes(
+                &game,
+                program,
+                alice,
+                Some(spell_id),
+                None,
+            )
+        })
+        .expect("test spell should have a resolution program");
+    assert!(
+        pre_gift_requirements.is_empty(),
+        "pre-gift branch should have no legal targets in this setup"
+    );
+
+    let optional_costs_paid = game
+        .object(spell_id)
+        .map(|obj| crate::cost::OptionalCostsPaid::from_costs(&obj.optional_costs))
+        .unwrap_or_default();
+    state.pending_cast = Some(PendingCast::new(
+        spell_id,
+        Zone::Stack,
+        alice,
+        crate::provenance::ProvNodeId::default(),
+        CastStage::ChoosingOptionalCosts,
+        None,
+        pre_gift_requirements,
+        CastingMethod::Normal,
+        optional_costs_paid,
+        None,
+        spell_id,
+    ));
+
+    let mut dm = AutoPassDecisionMaker;
+    let progress = apply_optional_costs_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &[(0, 1)],
+        &mut dm,
+    )
+    .expect("promising the Gift should update the target prompt");
+
+    match progress {
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Targets(
+            ctx,
+        )) => {
+            assert_eq!(
+                ctx.requirements.len(),
+                1,
+                "expected one target prompt after Gift"
+            );
+            assert_eq!(
+                ctx.requirements[0].legal_targets,
+                vec![Target::Object(artifact_id)],
+                "expected the target prompt to refresh to the gifted nonland permanent branch"
+            );
+        }
+        other => panic!("expected Targets context after Gift choice, got {other:?}"),
+    }
+
+    let pending = state
+        .pending_cast
+        .as_ref()
+        .expect("pending cast should continue to target selection");
+    assert_eq!(pending.stage, CastStage::ChoosingTargets);
+    assert_eq!(pending.remaining_requirements.len(), 1);
+    assert_eq!(
+        pending.remaining_requirements[0].legal_targets,
+        vec![Target::Object(artifact_id)],
+        "expected cached pending requirements to be refreshed after choosing Gift"
+    );
+}
+
+#[test]
 fn test_overload_cast_swaps_in_rewritten_effects_and_hits_all_matches() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
@@ -8217,6 +8497,134 @@ fn test_force_of_will_alternative_cost_not_available_without_card() {
     assert!(
         alt_cost_action.is_none(),
         "Should NOT be able to use alternative cost without another blue card"
+    );
+}
+
+#[test]
+fn test_force_of_negation_resolution_counters_and_exiles_target_spell() {
+    use crate::cards::builders::CardDefinitionBuilder;
+    use crate::cards::definitions::lightning_bolt;
+    use crate::game_loop::resolve_stack_entry;
+    use crate::ids::CardId;
+    use crate::types::CardType;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let bolt_def = lightning_bolt();
+    let bolt_id = game.create_object_from_definition(&bolt_def, bob, Zone::Stack);
+    let bolt_stable_id = game
+        .object(bolt_id)
+        .expect("bolt should exist on the stack")
+        .stable_id;
+    game.push_to_stack(StackEntry::new(bolt_id, bob));
+
+    let fon_def = CardDefinitionBuilder::new(CardId::new(), "Force of Negation Test")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Counter target noncreature spell. If that spell is countered this way, exile it instead of putting it into its owner's graveyard.",
+        )
+        .expect("Force of Negation test text should parse");
+    let fon_id = game.create_object_from_definition(&fon_def, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(fon_id, alice).with_targets(vec![Target::Object(bolt_id)]));
+
+    resolve_stack_entry(&mut game).expect("Force of Negation should resolve");
+
+    let moved_bolt_id = game
+        .find_object_by_stable_id(bolt_stable_id)
+        .expect("countered spell should still be findable by stable id");
+    assert_eq!(
+        game.object(moved_bolt_id)
+            .expect("countered spell should still exist after resolution")
+            .zone,
+        Zone::Exile,
+        "Force of Negation should exile the spell it counters"
+    );
+    assert!(
+        !game.stack.iter().any(|entry| entry.object_id == bolt_id),
+        "countered spell should no longer be on the stack"
+    );
+}
+
+#[test]
+fn test_force_of_negation_exiles_nexus_of_fate_instead_of_shuffling_it() {
+    use crate::cards::builders::CardDefinitionBuilder;
+    use crate::game_loop::resolve_stack_entry;
+    use crate::ids::CardId;
+    use crate::types::CardType;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let nexus_def = CardDefinitionBuilder::new(CardId::new(), "Nexus of Fate Test")
+        .card_types(vec![CardType::Instant])
+        .mana_cost(ManaCost::from_symbols(vec![
+            ManaSymbol::Generic(5),
+            ManaSymbol::Blue,
+            ManaSymbol::Blue,
+        ]))
+        .parse_text(
+            "Take an extra turn after this one.\nIf Nexus of Fate would be put into a graveyard from anywhere, reveal Nexus of Fate and shuffle it into its owner's library instead.",
+        )
+        .expect("Nexus of Fate test text should parse");
+    let nexus_id = game.create_object_from_definition(&nexus_def, bob, Zone::Stack);
+    let nexus_stable_id = game
+        .object(nexus_id)
+        .expect("Nexus should exist on the stack")
+        .stable_id;
+    game.push_to_stack(StackEntry::new(nexus_id, bob));
+
+    let library_before = game.player(bob).expect("bob should exist").library.len();
+
+    let fon_def = CardDefinitionBuilder::new(CardId::new(), "Force of Negation Test")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Counter target noncreature spell. If that spell is countered this way, exile it instead of putting it into its owner's graveyard.",
+        )
+        .expect("Force of Negation test text should parse");
+    let fon_id = game.create_object_from_definition(&fon_def, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(fon_id, alice).with_targets(vec![Target::Object(nexus_id)]));
+    let (_, _, all_targets_invalid) = validate_stack_entry_targets(
+        &game,
+        game.stack
+            .last()
+            .expect("Force of Negation should be on the stack"),
+    );
+    assert!(
+        !all_targets_invalid,
+        "Nexus of Fate should still be a legal target for Force of Negation at resolution"
+    );
+
+    resolve_stack_entry(&mut game).expect("Force of Negation should resolve");
+
+    let moved_nexus_id = game
+        .find_object_by_stable_id(nexus_stable_id)
+        .expect("countered Nexus should still be findable by stable id");
+    assert_eq!(
+        game.object(moved_nexus_id)
+            .expect("countered Nexus should still exist after resolution")
+            .zone,
+        Zone::Exile,
+        "Force of Negation should exile Nexus of Fate instead of letting it shuffle"
+    );
+    assert_eq!(
+        game.player(bob).expect("bob should exist").library.len(),
+        library_before,
+        "Nexus of Fate should not get shuffled into its owner's library"
+    );
+    assert!(
+        !game.stack.iter().any(|entry| entry.object_id == nexus_id),
+        "countered Nexus should no longer be on the stack"
     );
 }
 
@@ -13131,5 +13539,77 @@ fn test_valley_floodcaller_only_grants_to_controller() {
             &flash_ability,
         ),
         "Bob's sorcery should NOT have flash from Alice's Floodcaller"
+    );
+}
+
+#[test]
+fn test_gift_given_event_queues_opponent_gives_gift_trigger() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let library_card = CardBuilder::new(CardId::from_raw(9200), "Gift Trigger Draw")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    game.create_object_from_card(&library_card, alice, Zone::Library);
+
+    let watcher = CardDefinitionBuilder::new(CardId::from_raw(9201), "Gift Watcher")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .with_ability(
+            Ability::triggered(
+                Trigger::player_gives_gift(PlayerFilter::Opponent),
+                vec![Effect::target_draws(1, PlayerFilter::You)],
+            )
+            .with_text("Whenever an opponent gives a gift, draw a card."),
+        )
+        .build();
+    let watcher_id = game.create_object_from_definition(&watcher, alice, Zone::Battlefield);
+
+    let gift_source = CardBuilder::new(CardId::from_raw(9202), "Gift Spell")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let gift_source_id = game.create_object_from_card(&gift_source, bob, Zone::Stack);
+
+    let effect = Effect::emit_gift_given(PlayerFilter::ChosenPlayer);
+    let mut dm = SelectFirstDecisionMaker;
+    let mut ctx = ExecutionContext::new(gift_source_id, bob, &mut dm);
+    ctx.chosen_player = Some(alice);
+    let outcome = execute_effect(&mut game, &effect, &mut ctx).expect("gift event should resolve");
+
+    let event = outcome
+        .events
+        .into_iter()
+        .next()
+        .expect("gift event should be emitted");
+    let gift_event = event
+        .downcast::<crate::events::GiftGivenEvent>()
+        .expect("gift emitter should produce a GiftGivenEvent");
+    assert_eq!(gift_event.player, bob);
+    assert_eq!(gift_event.recipient, alice);
+    assert_eq!(gift_event.source, gift_source_id);
+
+    queue_triggers_from_event(&mut game, &mut trigger_queue, event, false);
+
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "opponent-gives-gift trigger should be queued once"
+    );
+    assert_eq!(trigger_queue.entries[0].source, watcher_id);
+    assert_eq!(
+        trigger_queue.entries[0].ability.trigger.display(),
+        "Whenever an opponent gives a gift"
+    );
+
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("gift trigger should go on the stack");
+    resolve_stack_entry(&mut game).expect("gift trigger should resolve");
+
+    assert_eq!(
+        game.player(alice).expect("alice exists").hand.len(),
+        1,
+        "the queued gift trigger should resolve using the normal stack path"
     );
 }

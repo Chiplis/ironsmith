@@ -643,6 +643,11 @@ impl Trigger {
         Self::new(PlayerSearchesLibraryTrigger::new(player))
     }
 
+    /// Create a "whenever [player] gives a gift" trigger.
+    pub fn player_gives_gift(player: PlayerFilter) -> Self {
+        Self::new(PlayerGivesGiftTrigger::new(player))
+    }
+
     /// Create a "whenever [player] taps [filter] for mana" trigger.
     pub fn player_taps_for_mana(player: PlayerFilter, filter: ObjectFilter) -> Self {
         Self::new(TapForManaTrigger::new(player, filter))

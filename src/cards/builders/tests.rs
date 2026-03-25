@@ -3902,6 +3902,31 @@ fn test_parse_suspend_keyword_line_with_reminder_text_keeps_suspend_clause() {
 }
 
 #[test]
+fn test_compile_lotus_bloom_raw_definition_keeps_suspend_and_no_mana_cost() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Lotus Bloom")
+        .parse_text(
+            "Type: Artifact\n\
+             Suspend 3—{0} (Rather than cast this card from your hand, pay {0} and exile it with three time counters on it. At the beginning of your upkeep, remove a time counter. When the last is removed, you may cast it without paying its mana cost.)\n\
+             {T}, Sacrifice this artifact: Add three mana of any one color.",
+        )
+        .expect("Lotus Bloom raw definition should compile");
+
+    assert!(
+        def.card.mana_cost.is_none(),
+        "Lotus Bloom should keep its missing mana cost"
+    );
+    assert_eq!(def.card.card_types, vec![CardType::Artifact]);
+    assert_eq!(def.alternative_casts.len(), 1);
+    match &def.alternative_casts[0] {
+        AlternativeCastingMethod::Suspend { cost, time } => {
+            assert_eq!(*time, 3);
+            assert_eq!(cost.to_oracle(), "{0}");
+        }
+        other => panic!("expected Lotus Bloom suspend metadata, got {other:?}"),
+    }
+}
+
+#[test]
 fn test_parse_plot_keyword_line_compiles_to_alternative_cast() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Plot Probe")
         .card_types(vec![CardType::Sorcery])
@@ -18028,6 +18053,148 @@ fn parse_oracle_smothering_tithe_player_doesnt_regression() {
     assert!(
         rendered.contains("Treasure token"),
         "expected Smothering Tithe to keep the Treasure creation clause, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_into_the_flood_maw_gift_regression() {
+    let def = parse_oracle_card_definition("Into the Flood Maw");
+
+    assert_eq!(
+        def.optional_costs.len(),
+        1,
+        "expected Into the Flood Maw to lower Gift as one optional cost"
+    );
+    assert!(
+        def.optional_costs[0]
+            .label
+            .to_ascii_lowercase()
+            .starts_with("gift a tapped fish"),
+        "expected Into the Flood Maw gift label to preserve the gift descriptor, got {:?}",
+        def.optional_costs[0].label
+    );
+
+    let raw = format!("{def:#?}");
+    assert!(
+        raw.contains("ChoosePlayerEffect")
+            && raw.contains("remember_as_chosen_player: true")
+            && raw.contains("ChosenPlayer"),
+        "expected Into the Flood Maw gift lowering to record and reuse the chosen opponent, got {raw}"
+    );
+    assert!(
+        raw.contains("ThisSpellPaidLabel") && raw.contains("Gift"),
+        "expected Into the Flood Maw to preserve the gift-was-promised condition, got {raw}"
+    );
+    assert!(
+        raw.contains("EmitGiftGivenEffect"),
+        "expected Into the Flood Maw gift lowering to emit a gift-given event when the gift resolves, got {raw}"
+    );
+    assert!(
+        !raw.contains("YouCastThisSpell"),
+        "expected Into the Flood Maw Gift to resolve with the spell instead of a cast trigger, got {raw}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    assert!(
+        rendered.contains("Gift a tapped Fish"),
+        "expected Into the Flood Maw compiled text to preserve the gift line, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Return target creature an opponent controls to its owner's hand. If the gift was promised, instead return target nonland permanent an opponent controls to its owner's hand."),
+        "expected Into the Flood Maw compiled text to normalize the gift branch into oracle order, got {rendered}"
+    );
+    assert!(
+        !rendered_lower.contains("when you cast this spell, if the gift was promised"),
+        "expected Into the Flood Maw compiled text to omit the duplicated Gift cast trigger, got {rendered}"
+    );
+    assert!(
+        !rendered_lower.contains("chosen player creates"),
+        "expected Into the Flood Maw compiled text to hide the synthetic Gift followup line, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_scrapshooter_gift_etb_regression() {
+    let def = parse_oracle_card_definition("Scrapshooter");
+
+    assert_eq!(
+        def.optional_costs.len(),
+        1,
+        "expected Scrapshooter to lower Gift as one optional cost"
+    );
+    assert!(
+        def.optional_costs[0]
+            .label
+            .to_ascii_lowercase()
+            .starts_with("gift a card"),
+        "expected Scrapshooter gift label to preserve the gift descriptor, got {:?}",
+        def.optional_costs[0].label
+    );
+
+    let raw = format!("{def:#?}");
+    assert!(
+        raw.contains("When this permanent enters, if the gift was promised")
+            || raw.contains("When this creature enters, if the gift was promised"),
+        "expected Scrapshooter Gift to become an ETB-triggered ability, got {raw}"
+    );
+    assert!(
+        raw.contains("ThisSpellPaidLabel") && raw.contains("Gift") && raw.contains("ChosenPlayer"),
+        "expected Scrapshooter Gift ETB trigger to depend on Gift and the chosen player, got {raw}"
+    );
+    assert!(
+        raw.contains("EmitGiftGivenEffect"),
+        "expected Scrapshooter Gift ETB trigger to emit a gift-given event when the gift resolves, got {raw}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    assert!(
+        rendered.contains("Gift a card"),
+        "expected Scrapshooter compiled text to preserve the gift line, got {rendered}"
+    );
+    assert!(
+        !rendered_lower.contains("chosen player draws a card"),
+        "expected Scrapshooter compiled text to hide the synthetic Gift ETB line, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_perch_protection_gift_extra_turn_regression() {
+    let def = parse_oracle_card_definition("Perch Protection");
+
+    let raw = format!("{def:#?}");
+    assert!(
+        raw.contains("ExtraTurnEffect") && raw.contains("ChosenPlayer"),
+        "expected Perch Protection Gift to grant the chosen player an extra turn, got {raw}"
+    );
+    assert!(
+        raw.contains("ThisSpellPaidLabel") && raw.contains("Gift"),
+        "expected Perch Protection Gift to preserve the gift-was-promised condition, got {raw}"
+    );
+}
+
+#[test]
+fn parse_oracle_octomancer_gift_octopus_regression() {
+    let def = parse_oracle_card_definition("Octomancer");
+
+    let raw = format!("{def:#?}");
+    assert!(
+        raw.contains("CreateTokenEffect")
+            && raw.contains("Octopus")
+            && raw.contains("ChosenPlayer"),
+        "expected Octomancer Gift to create an Octopus for the chosen player, got {raw}"
+    );
+    assert!(
+        raw.contains("When this permanent enters, if the gift was promised")
+            && raw.contains("ThisSpellPaidLabel"),
+        "expected Octomancer Gift to be an ETB trigger gated by Gift, got {raw}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        !rendered.contains("octopus creature token under the chosen player's control"),
+        "expected Octomancer compiled text to hide the synthetic Gift ETB line, got {rendered}"
     );
 }
 

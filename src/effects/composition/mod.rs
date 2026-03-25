@@ -22,6 +22,7 @@ mod choose_objects;
 mod choose_objects_runtime;
 mod choose_spell_cast_history;
 mod conditional;
+mod emit_gift_given;
 mod emit_keyword_action;
 mod for_each_object;
 mod for_each_tagged;
@@ -52,6 +53,7 @@ pub use choose_mode::ChooseModeEffect;
 pub use choose_objects::ChooseObjectsEffect;
 pub use choose_spell_cast_history::ChooseSpellCastHistoryEffect;
 pub use conditional::ConditionalEffect;
+pub use emit_gift_given::EmitGiftGivenEffect;
 pub use emit_keyword_action::EmitKeywordActionEffect;
 pub use for_each_object::ForEachObject;
 pub use for_each_tagged::{

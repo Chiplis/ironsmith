@@ -81,13 +81,14 @@ pub use combat::{
 pub use composition::{
     AdaptEffect, BackupEffect, BeholdEffect, BolsterEffect, CastEncodedCardCopyEffect,
     ChooseModeEffect, ChooseObjectsEffect, ChooseSpellCastHistoryEffect, CipherEffect,
-    ConditionalEffect, CounterAbilityEffect, DevourEffect, EmitKeywordActionEffect, ExploreEffect,
-    ForEachControllerOfTaggedEffect, ForEachObject, ForEachTaggedEffect, ForEachTaggedPlayerEffect,
-    ForPlayersEffect, IfEffect, LocalRewriteEffect, ManifestDreadEffect, MayEffect, OpenAttractionEffect,
-    ReflexiveTriggerEffect, RepeatProcessEffect, SequenceEffect, SupportEffect, TagAllEffect,
-    TagAttachedToSourceEffect, TagMatchingObjectsEffect, TagTriggeringDamageTargetEffect,
-    TagTriggeringObjectEffect, TaggedEffect, TargetOnlyEffect, UnlessActionEffect,
-    UnlessPaysEffect, VoteEffect, VoteOption, WithIdEffect,
+    ConditionalEffect, CounterAbilityEffect, DevourEffect, EmitGiftGivenEffect,
+    EmitKeywordActionEffect, ExploreEffect, ForEachControllerOfTaggedEffect, ForEachObject,
+    ForEachTaggedEffect, ForEachTaggedPlayerEffect, ForPlayersEffect, IfEffect, LocalRewriteEffect,
+    ManifestDreadEffect, MayEffect, OpenAttractionEffect, ReflexiveTriggerEffect,
+    RepeatProcessEffect, SequenceEffect, SupportEffect, TagAllEffect, TagAttachedToSourceEffect,
+    TagMatchingObjectsEffect, TagTriggeringDamageTargetEffect, TagTriggeringObjectEffect,
+    TaggedEffect, TargetOnlyEffect, UnlessActionEffect, UnlessPaysEffect, VoteEffect, VoteOption,
+    WithIdEffect,
 };
 pub use continuous::ApplyContinuousEffect;
 pub use control::{ExchangeControlEffect, GainControlEffect, SharedTypeConstraint};

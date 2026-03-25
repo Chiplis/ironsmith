@@ -7705,6 +7705,23 @@ pub(crate) fn parse_trigger_clause_lexed(
         }
     }
 
+    if let Some(give_idx) = tokens
+        .iter()
+        .position(|token| token.is_word("give") || token.is_word("gives"))
+    {
+        let subject_tokens = &tokens[..give_idx];
+        let subject_word_view = LowercaseWordView::new(subject_tokens);
+        let subject_words = subject_word_view.to_word_refs();
+        if let Some(player) = parse_trigger_subject_player_filter(&subject_words) {
+            let gifted_tokens = trim_commas(&tokens[give_idx + 1..]);
+            let gifted_word_view = LowercaseWordView::new(&gifted_tokens);
+            let gifted_words = gifted_word_view.to_word_refs();
+            if gifted_words == ["a", "gift"] || gifted_words == ["gift"] {
+                return Ok(TriggerSpec::PlayerGivesGift(player));
+            }
+        }
+    }
+
     if let Some(tap_idx) = tokens
         .iter()
         .position(|token| token.is_word("tap") || token.is_word("taps"))

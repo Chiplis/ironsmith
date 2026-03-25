@@ -740,6 +740,39 @@ pub fn check_triggers(
     check_triggers_with_view(game, trigger_event, &view)
 }
 
+fn for_each_public_nonbattlefield_trigger_object_id(
+    game: &GameState,
+    mut visit: impl FnMut(ObjectId),
+) {
+    for player in &game.players {
+        for &obj_id in &player.graveyard {
+            visit(obj_id);
+        }
+    }
+    for &obj_id in &game.exile {
+        visit(obj_id);
+    }
+    for &obj_id in &game.command_zone {
+        visit(obj_id);
+    }
+    for entry in &game.stack {
+        if game
+            .object(entry.object_id)
+            .is_some_and(|obj| obj.zone == Zone::Stack)
+        {
+            visit(entry.object_id);
+        }
+    }
+}
+
+fn for_each_hidden_trigger_object_id(game: &GameState, mut visit: impl FnMut(ObjectId)) {
+    for player in &game.players {
+        for &obj_id in &player.hand {
+            visit(obj_id);
+        }
+    }
+}
+
 pub(crate) fn check_triggers_with_view(
     game: &GameState,
     trigger_event: &TriggerEvent,
@@ -882,32 +915,15 @@ pub(crate) fn check_triggers_with_view(
         }
     }
 
-    // Check objects in other zones
-    for player in &game.players {
-        for &obj_id in &player.graveyard {
-            check_triggers_in_zone(game, obj_id, trigger_event, &mut triggered);
-        }
-        for &obj_id in &player.hand {
-            check_triggers_in_zone(game, obj_id, trigger_event, &mut triggered);
-        }
-    }
-
-    // Check emblems in command zone
-    for &obj_id in &game.command_zone {
+    // Check objects in all public non-battlefield zones.
+    for_each_public_nonbattlefield_trigger_object_id(game, |obj_id| {
         check_triggers_in_zone(game, obj_id, trigger_event, &mut triggered);
-    }
+    });
 
-    // Check spell objects on the stack for abilities like
-    // "When you cast this spell".
-    for entry in &game.stack {
-        let Some(obj) = game.object(entry.object_id) else {
-            continue;
-        };
-        if obj.zone != Zone::Stack {
-            continue;
-        }
-        check_triggers_in_zone(game, obj.id, trigger_event, &mut triggered);
-    }
+    // Hand is hidden, but some mechanics (for example Miracle) legitimately trigger there.
+    for_each_hidden_trigger_object_id(game, |obj_id| {
+        check_triggers_in_zone(game, obj_id, trigger_event, &mut triggered);
+    });
 
     // Note: Undying/Persist/Miracle triggers are handled through the normal trigger system.
     // They function from the graveyard/hand (where the object is after the event) and use
@@ -1129,32 +1145,7 @@ pub fn check_state_triggers(
         );
     }
 
-    for player in &game.players {
-        for &obj_id in &player.graveyard {
-            if let Some(obj) = game.object(obj_id) {
-                collect_state_triggers_for_object(
-                    game,
-                    obj,
-                    &obj.abilities,
-                    &mut triggered,
-                    &mut active,
-                );
-            }
-        }
-        for &obj_id in &player.hand {
-            if let Some(obj) = game.object(obj_id) {
-                collect_state_triggers_for_object(
-                    game,
-                    obj,
-                    &obj.abilities,
-                    &mut triggered,
-                    &mut active,
-                );
-            }
-        }
-    }
-
-    for &obj_id in &game.command_zone {
+    for_each_public_nonbattlefield_trigger_object_id(game, |obj_id| {
         if let Some(obj) = game.object(obj_id) {
             collect_state_triggers_for_object(
                 game,
@@ -1164,10 +1155,10 @@ pub fn check_state_triggers(
                 &mut active,
             );
         }
-    }
+    });
 
-    for entry in &game.stack {
-        if let Some(obj) = game.object(entry.object_id) {
+    for_each_hidden_trigger_object_id(game, |obj_id| {
+        if let Some(obj) = game.object(obj_id) {
             collect_state_triggers_for_object(
                 game,
                 obj,
@@ -1176,7 +1167,7 @@ pub fn check_state_triggers(
                 &mut active,
             );
         }
-    }
+    });
 
     (triggered, active)
 }

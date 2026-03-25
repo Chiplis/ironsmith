@@ -198,6 +198,7 @@ pub use events::{
     EventContext,
     EventKind,
     GameEventType,
+    GiftGivenEvent,
     LifeGainEvent,
     LifeLossEvent,
     MoveCountersEvent,

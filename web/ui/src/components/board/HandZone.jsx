@@ -78,6 +78,7 @@ function buildPlayableMaps(state, player) {
     const isHandInteraction =
       action.kind === "cast_spell"
       || action.kind === "play_land"
+      || action.kind === "special_action"
       || action.kind === "activate_ability"
       || action.kind === "activate_mana_ability"
       || action.kind === "serum_powder_mulligan"

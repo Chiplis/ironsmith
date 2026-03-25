@@ -8689,6 +8689,13 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         // into oracle-like rendered rules text.
         return String::new();
     }
+    if effect
+        .downcast_ref::<crate::effects::EmitGiftGivenEffect>()
+        .is_some()
+    {
+        // Gift trigger instrumentation is runtime-only and should stay hidden.
+        return String::new();
+    }
     "Unsupported effect".to_string()
 }
 
@@ -9811,6 +9818,9 @@ pub(super) fn describe_optional_cost_line(cost: &crate::cost::OptionalCost) -> S
         .starts_with("as an additional cost to cast this spell")
     {
         return label.trim().trim_end_matches('.').to_string();
+    }
+    if label.to_ascii_lowercase().starts_with("gift ") {
+        return label.trim().to_string();
     }
     match label {
         "Replicate" => format!("Replicate—{}.", cost_text.trim_end_matches('.')),

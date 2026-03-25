@@ -212,6 +212,12 @@ pub struct OptionalCostsPaid {
 }
 
 impl OptionalCostsPaid {
+    fn label_matches_query(stored: &str, query: &str) -> bool {
+        stored == query
+            || (query.eq_ignore_ascii_case("Gift")
+                && stored.to_ascii_lowercase().starts_with("gift "))
+    }
+
     /// Create a new tracker with no costs paid.
     pub fn new(num_optional_costs: usize) -> Self {
         Self {
@@ -238,7 +244,9 @@ impl OptionalCostsPaid {
 
     /// Check if the optional cost with the given label was paid.
     pub fn was_paid_label(&self, label: &str) -> bool {
-        self.costs.iter().any(|(l, n)| *l == label && *n > 0)
+        self.costs
+            .iter()
+            .any(|(l, n)| Self::label_matches_query(l, label) && *n > 0)
     }
 
     /// Get the number of times the optional cost at the given index was paid.
@@ -250,9 +258,9 @@ impl OptionalCostsPaid {
     pub fn times_paid_label(&self, label: &str) -> u32 {
         self.costs
             .iter()
-            .find(|(l, _)| *l == label)
+            .filter(|(l, _)| Self::label_matches_query(l, label))
             .map(|(_, n)| *n)
-            .unwrap_or(0)
+            .sum()
     }
 
     /// Record that an optional cost was paid once.
@@ -467,5 +475,15 @@ mod tests {
         assert!(!cost.is_free());
         assert_eq!(cost.mana_cost(), Some(&mana));
         assert!(!cost.has_non_mana_costs());
+    }
+
+    #[test]
+    fn gift_prefix_lookup_matches_descriptive_gift_label() {
+        let paid = OptionalCostsPaid {
+            costs: vec![("Gift a tapped Fish".to_string(), 1)],
+        };
+
+        assert!(paid.was_paid_label("Gift"));
+        assert_eq!(paid.times_paid_label("Gift"), 1);
     }
 }

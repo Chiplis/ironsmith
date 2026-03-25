@@ -55,15 +55,7 @@ pub(crate) fn apply_zone_change(
     cause: crate::events::cause::EventCause,
     decision_maker: &mut dyn DecisionMaker,
 ) -> EventOutcome<AppliedZoneChange> {
-    apply_zone_change_with_additional_effects(
-        game,
-        object_id,
-        from,
-        to,
-        cause,
-        decision_maker,
-        &[],
-    )
+    apply_zone_change_with_additional_effects(game, object_id, from, to, cause, decision_maker, &[])
 }
 
 pub(crate) fn apply_zone_change_with_additional_effects(

@@ -89,6 +89,7 @@ mod tests {
             casting_method: crate::alternative_cast::CastingMethod::Normal,
             optional_costs_paid: Default::default(),
             defending_player: None,
+            chosen_player: None,
             saga_final_chapter_source: None,
             source_stable_id: None,
             source_snapshot: None,

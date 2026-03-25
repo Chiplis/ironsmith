@@ -2448,6 +2448,12 @@ impl Effect {
         Self::new(EmitKeywordActionEffect::new(action, amount))
     }
 
+    /// Emit a Gift-given event (for "when a player gives a gift" triggers).
+    pub fn emit_gift_given(recipient: PlayerFilter) -> Self {
+        use crate::effects::EmitGiftGivenEffect;
+        Self::new(EmitGiftGivenEffect::new(recipient))
+    }
+
     /// Create a "counter target activated or triggered ability" effect.
     pub fn counter_activated_or_triggered_ability() -> Self {
         use crate::effects::CounterAbilityEffect;

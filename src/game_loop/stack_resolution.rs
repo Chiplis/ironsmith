@@ -300,6 +300,9 @@ pub(super) fn resolve_stack_entry_full(
     if let Some(defending) = entry.defending_player {
         ctx = ctx.with_defending_player(defending);
     }
+    if entry.chosen_player.is_some() {
+        ctx = ctx.with_chosen_player(entry.chosen_player);
+    }
     if let Some(triggering_event) = entry.triggering_event.clone() {
         ctx = ctx.with_triggering_event(triggering_event);
     }
@@ -411,6 +414,9 @@ pub(super) fn resolve_stack_entry_full(
     // Move spell to appropriate zone after resolution
     if let Some(obj) = &obj {
         if obj.zone == Zone::Stack && obj.is_permanent() {
+            let chosen_player = entry
+                .chosen_player
+                .or_else(|| game.chosen_player(entry.object_id));
             // Handle ETB replacement: if player didn't satisfy the replacement, redirect
             if let Some((enters, enters_tapped, redirect_zone)) = etb_replacement_result {
                 if !enters {
@@ -438,6 +444,9 @@ pub(super) fn resolve_stack_entry_full(
                 // and move directly to battlefield (avoids double-processing)
                 let new_id = game.move_object_by_effect(entry.object_id, Zone::Battlefield);
                 if let Some(id) = new_id {
+                    if let Some(chosen_player) = chosen_player {
+                        game.set_chosen_player(id, chosen_player);
+                    }
                     // Apply enters tapped if needed (e.g., shock land not paying life)
                     if enters_tapped {
                         game.tap(id);
@@ -494,6 +503,9 @@ pub(super) fn resolve_stack_entry_full(
 
             // Note: Use the new ID from ETB result since zone change creates a new object
             if let Some(result) = etb_result {
+                if let Some(chosen_player) = chosen_player {
+                    game.set_chosen_player(result.new_id, chosen_player);
+                }
                 // If this is an Aura, attach it to its target as it enters
                 if obj.subtypes.contains(&Subtype::Aura)
                     && let Some(Target::Object(target_id)) = entry

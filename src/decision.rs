@@ -1811,6 +1811,45 @@ pub fn spell_mana_cost_for_cast(
     }
 }
 
+fn alternative_method_uses_printed_mana_cost(
+    method: &crate::alternative_cast::AlternativeCastingMethod,
+) -> bool {
+    matches!(
+        method,
+        crate::alternative_cast::AlternativeCastingMethod::JumpStart
+            | crate::alternative_cast::AlternativeCastingMethod::Escape { cost: None, .. }
+    )
+}
+
+fn casting_method_requires_printed_mana_cost(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    casting_method: &CastingMethod,
+) -> bool {
+    match casting_method {
+        CastingMethod::Normal
+        | CastingMethod::GrantedEscape { .. }
+        | CastingMethod::GrantedFlashback
+        | CastingMethod::PlayFrom {
+            use_alternative: None,
+            ..
+        } => true,
+        CastingMethod::Alternative(idx) => spell
+            .alternative_casts
+            .get(*idx)
+            .is_some_and(alternative_method_uses_printed_mana_cost),
+        CastingMethod::PlayFrom {
+            use_alternative: Some(idx),
+            zone,
+            ..
+        } => resolve_play_from_alternative_method(game, player, spell, *zone, *idx)
+            .as_ref()
+            .is_some_and(alternative_method_uses_printed_mana_cost),
+        _ => false,
+    }
+}
+
 /// Check if a spell can be cast by a player using the given casting method.
 pub fn can_cast_spell(
     game: &GameState,
@@ -1873,6 +1912,11 @@ fn can_cast_spell_with_view(
 
     // Determine which mana cost to check based on casting method.
     let base_mana_cost = spell_mana_cost_for_cast(game, player, spell, casting_method, spell.zone);
+    if base_mana_cost.is_none()
+        && casting_method_requires_printed_mana_cost(game, player, spell, casting_method)
+    {
+        return false;
+    }
 
     // Check mana availability with cost reductions applied
     if let Some(base_cost) = base_mana_cost.as_ref() {
@@ -2194,6 +2238,9 @@ fn can_cast_with_alternative_with_view(
         AlternativeCastingMethod::Suspend { .. } => return false,
         _ => get_mana_cost_for_method(method, spell_for_checks),
     };
+    if mana_cost.is_none() && alternative_method_uses_printed_mana_cost(method) {
+        return false;
+    }
 
     let requirements = build_requirements_for_method(method);
     if !can_cast_with_cost_with_view(
@@ -10750,6 +10797,47 @@ mod tests {
                 }) if *found == card_id
             )),
             "expected suspend special action in legal actions, got {actions:?}"
+        );
+    }
+
+    #[test]
+    fn test_suspend_only_card_does_not_offer_normal_cast_from_hand() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = None;
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+
+        let def = crate::cards::CardDefinitionBuilder::new(CardId::from_raw(782), "Lotus Bloom")
+            .parse_text(
+                "Type: Artifact\n\
+                 Suspend 3—{0} (Rather than cast this card from your hand, pay {0} and exile it with three time counters on it. At the beginning of your upkeep, remove a time counter. When the last is removed, you may cast it without paying its mana cost.)\n\
+                 {T}, Sacrifice this artifact: Add three mana of any one color.",
+            )
+            .expect("Lotus Bloom text should parse");
+        let card_id = game.create_object_from_definition(&def, alice, Zone::Hand);
+
+        let actions = compute_legal_actions(&game, alice);
+        assert!(
+            !actions.iter().any(|action| matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id,
+                    from_zone: Zone::Hand,
+                    casting_method: CastingMethod::Normal,
+                } if *spell_id == card_id
+            )),
+            "suspend-only card should not offer a normal cast action, got {actions:?}"
+        );
+        assert!(
+            actions.iter().any(|action| matches!(
+                action,
+                LegalAction::SpecialAction(crate::special_actions::SpecialAction::Suspend {
+                    card_id: found
+                }) if *found == card_id
+            )),
+            "suspend-only card should still offer suspend, got {actions:?}"
         );
     }
 

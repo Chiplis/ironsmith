@@ -1315,18 +1315,33 @@ pub(super) fn apply_modes_response(
         GameLoopError::InvalidState("No pending cast for modes response".to_string())
     })?;
 
-    let effects = game
+    let has_legal_targets = game
         .object(pending.spell_id)
-        .and_then(|obj| obj.spell_effect.as_deref())
-        .unwrap_or(&[]);
+        .and_then(|obj| obj.spell_effect.as_ref())
+        .map(|program| {
+            spell_program_has_legal_targets_with_modes(
+                game,
+                program,
+                pending.caster,
+                Some(pending.spell_id),
+                Some(modes),
+            )
+        })
+        .unwrap_or_else(|| {
+            let effects = game
+                .object(pending.spell_id)
+                .and_then(|obj| obj.spell_effect.as_deref())
+                .unwrap_or(&[]);
+            spell_has_legal_targets_with_modes(
+                game,
+                effects,
+                pending.caster,
+                Some(pending.spell_id),
+                Some(modes),
+            )
+        });
 
-    if !spell_has_legal_targets_with_modes(
-        game,
-        effects,
-        pending.caster,
-        Some(pending.spell_id),
-        Some(modes),
-    ) {
+    if !has_legal_targets {
         return Err(GameLoopError::InvalidState(
             "Selected mode combination has no legal targets".to_string(),
         ));
@@ -1334,13 +1349,31 @@ pub(super) fn apply_modes_response(
 
     // Store the chosen modes
     pending.chosen_modes = Some(modes.to_vec());
-    pending.remaining_requirements = extract_target_requirements_with_modes(
-        game,
-        effects,
-        pending.caster,
-        Some(pending.spell_id),
-        Some(modes),
-    );
+    pending.remaining_requirements = game
+        .object(pending.spell_id)
+        .and_then(|obj| obj.spell_effect.as_ref())
+        .map(|program| {
+            extract_target_requirements_from_program_with_modes(
+                game,
+                program,
+                pending.caster,
+                Some(pending.spell_id),
+                Some(modes),
+            )
+        })
+        .unwrap_or_else(|| {
+            let effects = game
+                .object(pending.spell_id)
+                .and_then(|obj| obj.spell_effect.as_deref())
+                .unwrap_or(&[]);
+            extract_target_requirements_with_modes(
+                game,
+                effects,
+                pending.caster,
+                Some(pending.spell_id),
+                Some(modes),
+            )
+        });
 
     // Continue to optional costs
     check_optional_costs_or_continue(game, trigger_queue, state, pending, decision_maker)
@@ -1362,6 +1395,68 @@ pub(super) fn apply_optional_costs_response(
     for &(index, times) in choices {
         pending.optional_costs_paid.pay_times(index, times);
     }
+
+    if let Some(spell) = game.object_mut(pending.spell_id) {
+        spell.optional_costs_paid = pending.optional_costs_paid.clone();
+    }
+
+    let has_legal_targets = game
+        .object(pending.spell_id)
+        .and_then(|obj| obj.spell_effect.as_ref())
+        .map(|program| {
+            spell_program_has_legal_targets_with_modes(
+                game,
+                program,
+                pending.caster,
+                Some(pending.spell_id),
+                pending.chosen_modes.as_deref(),
+            )
+        })
+        .unwrap_or_else(|| {
+            let effects = game
+                .object(pending.spell_id)
+                .and_then(|obj| obj.spell_effect.as_deref())
+                .unwrap_or(&[]);
+            spell_has_legal_targets_with_modes(
+                game,
+                effects,
+                pending.caster,
+                Some(pending.spell_id),
+                pending.chosen_modes.as_deref(),
+            )
+        });
+
+    if !has_legal_targets {
+        return Err(GameLoopError::InvalidState(
+            "Selected optional costs leave the spell with no legal targets".to_string(),
+        ));
+    }
+
+    pending.remaining_requirements = game
+        .object(pending.spell_id)
+        .and_then(|obj| obj.spell_effect.as_ref())
+        .map(|program| {
+            extract_target_requirements_from_program_with_modes(
+                game,
+                program,
+                pending.caster,
+                Some(pending.spell_id),
+                pending.chosen_modes.as_deref(),
+            )
+        })
+        .unwrap_or_else(|| {
+            let effects = game
+                .object(pending.spell_id)
+                .and_then(|obj| obj.spell_effect.as_deref())
+                .unwrap_or(&[]);
+            extract_target_requirements_with_modes(
+                game,
+                effects,
+                pending.caster,
+                Some(pending.spell_id),
+                pending.chosen_modes.as_deref(),
+            )
+        });
 
     // Continue to targeting or finalization
     continue_to_targeting_or_finalize(game, trigger_queue, state, pending, decision_maker)
@@ -2735,7 +2830,13 @@ pub(super) fn apply_casting_method_choice_response(
 
     if needs_x {
         // Extract target requirements for later (use stack_id since spell is on stack)
-        let requirements = extract_target_requirements(game, &effects, player, Some(stack_id));
+        let requirements = extract_target_requirements_from_program_with_modes(
+            game,
+            &effects,
+            player,
+            Some(stack_id),
+            None,
+        );
 
         // Initialize optional costs tracker from the spell's optional costs
         let optional_costs_paid = game
@@ -2766,7 +2867,13 @@ pub(super) fn apply_casting_method_choice_response(
         ))
     } else {
         // No X cost, check for optional costs then targets
-        let requirements = extract_target_requirements(game, &effects, player, Some(stack_id));
+        let requirements = extract_target_requirements_from_program_with_modes(
+            game,
+            &effects,
+            player,
+            Some(stack_id),
+            None,
+        );
 
         // Initialize optional costs tracker from the spell's optional costs
         let optional_costs_paid = game
@@ -3109,6 +3216,7 @@ pub(super) fn finalize_spell_cast(
         .with_target_assignments(target_assignments)
         .with_casting_method(casting_method)
         .with_optional_costs_paid(optional_costs_paid)
+        .with_chosen_player(game.chosen_player(new_id))
         .with_chosen_modes(chosen_modes)
         .with_tagged_objects(stack_entry_tagged_objects)
         .with_keyword_payment_contributions(keyword_payment_contributions);

@@ -27,6 +27,8 @@ pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str
         normalized_body = normalize_each_opponent_dynamic_life_exchange(&normalized_body);
         normalized_body = normalize_triggered_self_deals_damage_phrase(def, &normalized_body);
         normalized_body = normalize_gain_life_plus_phrase(&normalized_body);
+        normalized_body = normalize_gift_if_otherwise_surface(&normalized_body);
+        normalized_body = normalize_strip_standard_gift_surface(def, &normalized_body);
         if oracle_lower.contains("with an additional +1/+1 counter on it")
             && normalized_body.contains("with a +1/+1 counter on it")
         {
@@ -89,13 +91,22 @@ pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str
         if let Some(rewritten) =
             normalize_simple_trigger_heading_body(prefix.trim(), &normalized_body)
         {
-            return rewritten;
+            return if should_drop_hidden_gift_line(def, &rewritten) {
+                String::new()
+            } else {
+                rewritten
+            };
         }
         let normalized_body = normalized_body
             .strip_suffix("..")
             .map(|body| format!("{body}."))
             .unwrap_or(normalized_body);
-        return format!("{}: {}", prefix.trim(), normalized_body);
+        let normalized_line = format!("{}: {}", prefix.trim(), normalized_body);
+        return if should_drop_hidden_gift_line(def, &normalized_line) {
+            String::new()
+        } else {
+            normalized_line
+        };
     }
     let mut normalized =
         normalize_sentence_surface_style(&normalize_common_semantic_phrasing(line.trim()))
@@ -113,6 +124,8 @@ pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str
     normalized = normalize_each_opponent_dynamic_life_exchange(&normalized);
     normalized = normalize_triggered_self_deals_damage_phrase(def, &normalized);
     normalized = normalize_gain_life_plus_phrase(&normalized);
+    normalized = normalize_gift_if_otherwise_surface(&normalized);
+    normalized = normalize_strip_standard_gift_surface(def, &normalized);
     if oracle_lower.contains("with an additional +1/+1 counter on it")
         && normalized.contains("with a +1/+1 counter on it")
     {
@@ -190,6 +203,21 @@ fn normalize_simple_trigger_heading_body(prefix: &str, body: &str) -> Option<Str
         "{prefix}, {} and draw a card.",
         lowercase_first(action.trim())
     ))
+}
+
+fn normalize_gift_if_otherwise_surface(text: &str) -> String {
+    let trimmed = text.trim();
+    if let Some(rest) = strip_prefix_ascii_ci(trimmed, "If the gift was promised, ")
+        && let Some((gift_clause, otherwise_clause)) = split_once_ascii_ci(rest, ". Otherwise, ")
+    {
+        return format!(
+            "{}. If the gift was promised, instead {}.",
+            capitalize_first(otherwise_clause.trim().trim_end_matches('.')),
+            lowercase_first(gift_clause.trim().trim_end_matches('.'))
+        );
+    }
+
+    trimmed.to_string()
 }
 
 pub(super) fn normalize_gain_life_plus_phrase(text: &str) -> String {
@@ -662,6 +690,80 @@ pub(super) fn normalize_triggered_self_deals_damage_phrase(
     text.to_string()
 }
 
+fn normalize_strip_standard_gift_surface(def: &CardDefinition, text: &str) -> String {
+    let has_visible_gift_line = def
+        .optional_costs
+        .iter()
+        .any(|cost| cost.label.trim().to_ascii_lowercase().starts_with("gift "));
+    if !has_visible_gift_line {
+        return text.to_string();
+    }
+
+    let mut normalized = text.to_string();
+    for phrase in [
+        "If the gift was promised, the chosen player draws a card.",
+        "If the gift was promised, instead the chosen player draws a card.",
+        "If the gift was promised, create a Treasure token under the chosen player's control.",
+        "If the gift was promised, instead create a Treasure token under the chosen player's control.",
+        "If the gift was promised, create a Food token under the chosen player's control.",
+        "If the gift was promised, instead create a Food token under the chosen player's control.",
+        "If the gift was promised, create a 1/1 blue Fish creature token under the chosen player's control, tapped.",
+        "If the gift was promised, instead create a 1/1 blue Fish creature token under the chosen player's control, tapped.",
+        "If the gift was promised, the chosen player takes an extra turn after this one.",
+        "If the gift was promised, instead the chosen player takes an extra turn after this one.",
+        "If the gift was promised, create an 8/8 blue Octopus creature token under the chosen player's control.",
+        "If the gift was promised, instead create an 8/8 blue Octopus creature token under the chosen player's control.",
+    ] {
+        normalized = normalized.replace(phrase, "");
+    }
+
+    normalized = normalized
+        .replace(". .", ". ")
+        .replace("..", ".")
+        .replace(
+            "If the gift was promised, Return ",
+            "If the gift was promised, instead return ",
+        )
+        .replace("  ", " ")
+        .trim()
+        .trim_matches('.')
+        .to_string();
+
+    if normalized.is_empty() {
+        String::new()
+    } else {
+        format!("{normalized}.")
+    }
+}
+
+fn should_drop_hidden_gift_line(def: &CardDefinition, text: &str) -> bool {
+    let has_visible_gift_line = def
+        .optional_costs
+        .iter()
+        .any(|cost| cost.label.trim().to_ascii_lowercase().starts_with("gift "));
+    if !has_visible_gift_line {
+        return false;
+    }
+
+    let lower = text.trim().to_ascii_lowercase();
+    (lower.starts_with("triggered ability")
+        || lower.starts_with("spell effects: if the gift was promised"))
+        && lower.contains("gift was promised")
+        && (lower.contains("chosen player draws a card")
+            || lower.contains("create a treasure token under the chosen player's control")
+            || lower.contains("create a food token under the chosen player's control")
+            || lower.contains(
+                "create a 1/1 blue fish creature token under the chosen player's control",
+            )
+            || lower.contains("chosen player takes an extra turn after this one")
+            || lower.contains(
+                "create an 8/8 blue octopus creature token under the chosen player's control",
+            )
+            || lower.contains(
+                "create a 8/8 blue octopus creature token under the chosen player's control",
+            ))
+}
+
 pub(super) fn normalize_each_opponent_life_exchange_clause(
     loss: &str,
     gain: &str,
@@ -1037,7 +1139,11 @@ pub(super) fn normalize_spell_self_exile(def: &CardDefinition, text: &str) -> St
     {
         normalized = format!("Exile {card_name}.");
     }
-    normalized
+    if should_drop_hidden_gift_line(def, &normalized) {
+        String::new()
+    } else {
+        normalized
+    }
 }
 
 pub(super) fn normalize_cost_subject_for_card(def: &CardDefinition, text: &str) -> String {

@@ -1,9 +1,9 @@
 use crate::alternative_cast::AlternativeCastingMethod;
 use crate::cards::ParseAnnotations;
 use crate::cards::builders::{
-    CardDefinitionBuilder, CardTextError, EffectAst, KeywordAction, LineInfo, ParsedAbility,
-    ParsedLevelAbilityAst, ParsedModalHeader, ParsedRestrictions, PredicateAst, StaticAbilityAst,
-    TriggerSpec,
+    CardDefinitionBuilder, CardTextError, EffectAst, GiftTimingAst, KeywordAction, LineInfo,
+    ParsedAbility, ParsedLevelAbilityAst, ParsedModalHeader, ParsedRestrictions, PredicateAst,
+    StaticAbilityAst, TriggerSpec,
 };
 use crate::cost::OptionalCost;
 use crate::{CardDefinition, TagKey};
@@ -99,6 +99,12 @@ pub(crate) enum NormalizedLineChunk {
         prepared: PreparedEffectsForLowering,
     },
     OptionalCost(OptionalCost),
+    GiftKeyword {
+        cost: OptionalCost,
+        prepared: PreparedEffectsForLowering,
+        followup_text: String,
+        timing: GiftTimingAst,
+    },
     OptionalCostWithCastTrigger {
         cost: OptionalCost,
         prepared: PreparedEffectsForLowering,

@@ -816,6 +816,12 @@ impl TextSpan {
 pub(crate) use crate::cards::builders::parser::OwnedLexToken;
 
 #[derive(Debug, Clone)]
+pub(crate) enum GiftTimingAst {
+    SpellResolution,
+    PermanentEtb,
+}
+
+#[derive(Debug, Clone)]
 pub(crate) enum LineAst {
     Abilities(Vec<KeywordAction>),
     StaticAbility(StaticAbilityAst),
@@ -833,6 +839,12 @@ pub(crate) enum LineAst {
         effects: Vec<EffectAst>,
     },
     OptionalCost(OptionalCost),
+    GiftKeyword {
+        cost: OptionalCost,
+        effects: Vec<EffectAst>,
+        followup_text: String,
+        timing: GiftTimingAst,
+    },
     OptionalCostWithCastTrigger {
         cost: OptionalCost,
         effects: Vec<EffectAst>,
@@ -1007,6 +1019,7 @@ pub(crate) enum TriggerSpec {
         player: PlayerFilter,
         filter: ObjectFilter,
     },
+    PlayerGivesGift(PlayerFilter),
     PlayerSearchesLibrary(PlayerFilter),
     PlayerTapsForMana {
         player: PlayerFilter,

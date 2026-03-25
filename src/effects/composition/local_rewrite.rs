@@ -1,5 +1,6 @@
 use crate::effect::{Effect, EffectOutcome};
 use crate::effects::{EffectExecutor, RegisterZoneReplacementEffect};
+use crate::events::ReplacementPriority;
 use crate::executor::{ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
 
@@ -30,8 +31,26 @@ impl EffectExecutor for LocalRewriteEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let mut replacements = Vec::new();
+        let fallback_target = self.effect.0.get_target_spec().cloned();
         for replacement in &self.zone_replacements {
-            replacements.extend(replacement.resolve_replacements(game, ctx)?);
+            match replacement.resolve_replacements(game, ctx) {
+                Ok(resolved) => replacements.extend(resolved.into_iter().map(|effect| {
+                    effect.with_priority_override(ReplacementPriority::SelfReplacement)
+                })),
+                Err(ExecutionError::InvalidTarget) => {
+                    let Some(target_spec) = &fallback_target else {
+                        continue;
+                    };
+                    let mut rebound = replacement.clone();
+                    rebound.target = target_spec.clone();
+                    if let Ok(resolved) = rebound.resolve_replacements(game, ctx) {
+                        replacements.extend(resolved.into_iter().map(|effect| {
+                            effect.with_priority_override(ReplacementPriority::SelfReplacement)
+                        }));
+                    }
+                }
+                Err(err) => return Err(err),
+            }
         }
 
         ctx.with_temp_additional_replacement_effects(replacements, |ctx| {

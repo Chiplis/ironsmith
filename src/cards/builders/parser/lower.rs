@@ -1,8 +1,8 @@
 use crate::Until;
 use crate::ability::{Ability, AbilityKind, ActivatedAbility, ActivationTiming};
 use crate::cards::builders::{
-    CardDefinition, CardDefinitionBuilder, CardTextError, ChoiceCount, EffectAst, IT_TAG,
-    InsteadSemantics, LineAst, LineInfo, OptionalCost, ParseAnnotations, ParsedAbility,
+    CardDefinition, CardDefinitionBuilder, CardTextError, ChoiceCount, EffectAst, GiftTimingAst,
+    IT_TAG, InsteadSemantics, LineAst, LineInfo, OptionalCost, ParseAnnotations, ParsedAbility,
     ParsedCardItem, ParsedLevelAbilityAst, ParsedLevelAbilityItemAst, ParsedLineAst,
     ParsedModalAst, ParsedModalModeAst, ParsedRestrictions, PlayerAst, PredicateAst,
     ReferenceImports, ReturnControllerAst, TagKey, TargetAst, TriggerSpec,
@@ -1023,6 +1023,83 @@ fn rewrite_apply_line_ast(
         NormalizedLineChunk::OptionalCost(cost) => {
             builder = builder.optional_cost(cost);
         }
+        NormalizedLineChunk::GiftKeyword {
+            cost,
+            prepared,
+            followup_text,
+            timing,
+        } => {
+            builder = builder.optional_cost(cost);
+            match timing {
+                GiftTimingAst::SpellResolution => {
+                    let lowered = match rewrite_lower_prepared_statement_effects(&prepared) {
+                        Ok(lowered) => lowered,
+                        Err(err) if allow_unsupported => {
+                            return Ok(push_unsupported_marker(
+                                builder,
+                                info.raw_line.as_str(),
+                                format!("{err:?}"),
+                            ));
+                        }
+                        Err(err) => return Err(err),
+                    };
+                    let mut gift_effects = lowered.effects.to_vec();
+                    gift_effects.push(crate::Effect::emit_gift_given(PlayerFilter::ChosenPlayer));
+                    let gift_effect = crate::effect::Effect::conditional(
+                        crate::ConditionExpr::ThisSpellPaidLabel("Gift".to_string()),
+                        gift_effects,
+                        Vec::new(),
+                    );
+                    if let Some(ref mut existing) = builder.spell_effect {
+                        existing.push(gift_effect);
+                    } else {
+                        builder.spell_effect =
+                            Some(crate::resolution::ResolutionProgram::from_effects(vec![
+                                gift_effect,
+                            ]));
+                    }
+                }
+                GiftTimingAst::PermanentEtb => {
+                    let parsed = rewrite_parsed_triggered_ability(
+                        TriggerSpec::ThisEntersBattlefield,
+                        prepared.effects.clone(),
+                        vec![Zone::Battlefield],
+                        Some(format!(
+                            "When this permanent enters, if the gift was promised, {followup_text}"
+                        )),
+                        Some(crate::ConditionExpr::ThisSpellPaidLabel("Gift".to_string())),
+                        prepared.imports.clone(),
+                    );
+                    let parsed = match rewrite_lower_prepared_ability(NormalizedParsedAbility {
+                        parsed,
+                        prepared: Some(NormalizedPreparedAbility::Triggered {
+                            trigger: TriggerSpec::ThisEntersBattlefield,
+                            prepared: super::effect_pipeline::PreparedTriggeredEffectsForLowering {
+                                prepared,
+                                intervening_if: None,
+                            },
+                        }),
+                    }) {
+                        Ok(parsed) => parsed,
+                        Err(err) if allow_unsupported => {
+                            return Ok(push_unsupported_marker(
+                                builder,
+                                info.raw_line.as_str(),
+                                format!("{err:?}"),
+                            ));
+                        }
+                        Err(err) => return Err(err),
+                    };
+                    let mut parsed = parsed;
+                    if let AbilityKind::Triggered(ref mut triggered) = parsed.ability.kind {
+                        triggered
+                            .effects
+                            .push(crate::Effect::emit_gift_given(PlayerFilter::ChosenPlayer));
+                    }
+                    builder = builder.with_ability(parsed.ability);
+                }
+            }
+        }
         NormalizedLineChunk::OptionalCostWithCastTrigger {
             cost,
             prepared,
@@ -1329,6 +1406,21 @@ fn normalize_rewrite_line_ast(
                 }
             }
             LineAst::OptionalCost(cost) => NormalizedLineChunk::OptionalCost(cost),
+            LineAst::GiftKeyword {
+                cost,
+                effects,
+                followup_text,
+                timing,
+            } => {
+                let prepared =
+                    rewrite_prepare_effects_for_lowering(&effects, ReferenceImports::default())?;
+                NormalizedLineChunk::GiftKeyword {
+                    cost,
+                    prepared,
+                    followup_text,
+                    timing,
+                }
+            }
             LineAst::OptionalCostWithCastTrigger {
                 cost,
                 effects,
@@ -2634,6 +2726,7 @@ fn lower_rewrite_keyword_to_chunk_impl(
                     ))
                 })
         }
+        super::RewriteKeywordLineKind::Gift => lower_gift_keyword_to_chunk(line),
         super::RewriteKeywordLineKind::Warp => parse_warp_line_lexed(&tokens)?
             .map(LineAst::AlternativeCastingMethod)
             .ok_or_else(|| {
@@ -2708,6 +2801,87 @@ fn rewrite_copy_count_to_times_paid_label_rewrite(effects: &mut [EffectAst], lab
             }
             _ => {}
         }
+    }
+}
+
+fn lower_gift_keyword_to_chunk(line: &super::RewriteKeywordLine) -> Result<LineAst, CardTextError> {
+    let followup_text = standard_gift_followup_effect_text(line.info.raw_line.as_str())
+        .ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "rewrite keyword lowering could not parse gift line '{}'",
+                line.info.raw_line
+            ))
+        })?;
+    let followup_tokens = lexed_tokens(followup_text.as_str(), line.info.line_index)?;
+    let effects = parse_effect_sentences_lexed(&followup_tokens)?;
+    let timing = standard_gift_timing(line.info.raw_line.as_str()).ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "rewrite keyword lowering could not determine gift timing for line '{}'",
+            line.info.raw_line
+        ))
+    })?;
+    let cost = OptionalCost::custom(
+        line.info.raw_line.trim(),
+        TotalCost::from_cost(Cost::effect(
+            crate::effects::ChoosePlayerEffect::new(
+                PlayerFilter::You,
+                PlayerFilter::Opponent,
+                "gifted_player",
+            )
+            .remember_as_chosen_player(),
+        )),
+    );
+
+    Ok(LineAst::GiftKeyword {
+        cost,
+        effects,
+        followup_text,
+        timing,
+    })
+}
+
+fn standard_gift_followup_effect_text(text: &str) -> Option<String> {
+    let head = text
+        .trim()
+        .split_once('(')
+        .map(|(head, _)| head.trim())
+        .unwrap_or(text.trim())
+        .to_ascii_lowercase();
+
+    let effect = match head.as_str() {
+        "gift a card" => "the chosen player draws a card.",
+        "gift a treasure" => "the chosen player creates a Treasure token.",
+        "gift a food" => "the chosen player creates a Food token.",
+        "gift a tapped fish" => "the chosen player creates a tapped 1/1 blue Fish creature token.",
+        "gift an extra turn" => "the chosen player takes an extra turn after this one.",
+        "gift an octopus" => "the chosen player creates an 8/8 blue Octopus creature token.",
+        _ => return None,
+    };
+
+    Some(effect.to_string())
+}
+
+fn standard_gift_timing(text: &str) -> Option<GiftTimingAst> {
+    let normalized = text.trim().to_ascii_lowercase();
+    let head = normalized
+        .split_once('(')
+        .map(|(head, _)| head.trim())
+        .unwrap_or(normalized.as_str());
+    if normalized.contains("when it enters") {
+        Some(GiftTimingAst::PermanentEtb)
+    } else if matches!(
+        head,
+        "gift a card"
+            | "gift a treasure"
+            | "gift a food"
+            | "gift a tapped fish"
+            | "gift an extra turn"
+    ) {
+        Some(GiftTimingAst::SpellResolution)
+    } else if head == "gift an octopus" {
+        Some(GiftTimingAst::PermanentEtb)
+    } else {
+        None
     }
 }
 

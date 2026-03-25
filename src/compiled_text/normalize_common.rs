@@ -7359,6 +7359,10 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         Condition::TargetWasKicked => "the target spell was kicked".to_string(),
         Condition::ThisSpellWasKicked => "this spell was kicked".to_string(),
         Condition::ThisSpellPaidLabel(label) => {
+            if label.eq_ignore_ascii_case("gift") || label.to_ascii_lowercase().starts_with("gift ")
+            {
+                return "the gift was promised".to_string();
+            }
             format!("this spell's {} cost was paid", label.to_ascii_lowercase())
         }
         Condition::YouHaveFullParty => "you have a full party".to_string(),

@@ -1,9 +1,9 @@
 use crate::effect::EffectOutcome;
-use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_filter, resolve_player_filter_to_list};
+use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
-use crate::ids::PlayerId;
+use crate::ids::{ObjectId, PlayerId};
 use crate::target::{FilterContext, PlayerFilter};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -13,6 +13,7 @@ pub struct ChoosePlayerEffect {
     pub tag: crate::tag::TagKey,
     pub random: bool,
     pub excluded_tags: Vec<crate::tag::TagKey>,
+    pub remember_as_chosen_player: bool,
 }
 
 impl ChoosePlayerEffect {
@@ -27,6 +28,7 @@ impl ChoosePlayerEffect {
             tag: tag.into(),
             random: false,
             excluded_tags: Vec::new(),
+            remember_as_chosen_player: false,
         }
     }
 
@@ -37,6 +39,11 @@ impl ChoosePlayerEffect {
 
     pub fn excluding_tags(mut self, excluded_tags: Vec<crate::tag::TagKey>) -> Self {
         self.excluded_tags = excluded_tags;
+        self
+    }
+
+    pub fn remember_as_chosen_player(mut self) -> Self {
+        self.remember_as_chosen_player = true;
         self
     }
 
@@ -75,6 +82,10 @@ impl ChoosePlayerEffect {
 }
 
 impl EffectExecutor for ChoosePlayerEffect {
+    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
+        Some(self)
+    }
+
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
     }
@@ -117,11 +128,44 @@ impl EffectExecutor for ChoosePlayerEffect {
         }
 
         ctx.set_tagged_players(self.tag.clone(), vec![chosen]);
+        if self.remember_as_chosen_player {
+            game.set_chosen_player(ctx.source, chosen);
+            ctx.chosen_player = Some(chosen);
+        }
         if self.tag.as_str() != "__it__" {
             // Mirror the most recent chosen player onto the conventional follow-up
             // tag so clauses like "that player ..." resolve against the new choice.
             ctx.set_tagged_players(crate::tag::TagKey::from("__it__"), vec![chosen]);
         }
         Ok(EffectOutcome::count(1))
+    }
+
+    fn cost_description(&self) -> Option<String> {
+        match self.filter {
+            PlayerFilter::Opponent => Some("Choose an opponent".to_string()),
+            PlayerFilter::Any => Some("Choose a player".to_string()),
+            _ => None,
+        }
+    }
+}
+
+impl CostExecutableEffect for ChoosePlayerEffect {
+    fn can_execute_as_cost(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Result<(), CostValidationError> {
+        let ctx = ExecutionContext::new_default(source, controller);
+        let candidates = self.candidate_players(game, &ctx).map_err(|err| {
+            CostValidationError::Other(format!("unable to choose player: {err:?}"))
+        })?;
+        if candidates.is_empty() {
+            Err(CostValidationError::Other(
+                "no legal player choices available".to_string(),
+            ))
+        } else {
+            Ok(())
+        }
     }
 }

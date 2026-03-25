@@ -87,6 +87,7 @@ impl CopySpellEffect {
         entry.casting_method = ctx.casting_method.clone();
         entry.optional_costs_paid = ctx.optional_costs_paid.clone();
         entry.defending_player = ctx.defending_player;
+        entry.chosen_player = ctx.chosen_player;
         entry.source_snapshot = ctx.source_snapshot.clone();
         entry.triggering_event = ctx.triggering_event.clone();
         entry.chosen_modes = ctx.chosen_modes.clone();
@@ -158,7 +159,12 @@ impl EffectExecutor for CopySpellEffect {
             copy_entry.ability_effects = original_entry.ability_effects.clone();
             copy_entry.is_ability = original_entry.is_ability;
             copy_entry.optional_costs_paid = original_entry.optional_costs_paid.clone();
+            copy_entry.chosen_player = original_entry.chosen_player;
             copy_entry.chosen_modes = original_entry.chosen_modes.clone();
+
+            if let Some(chosen_player) = copy_entry.chosen_player {
+                game.set_chosen_player(copy_id, chosen_player);
+            }
 
             // Put the copy on top of the stack
             game.stack.push(copy_entry);

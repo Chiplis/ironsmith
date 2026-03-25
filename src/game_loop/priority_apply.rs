@@ -464,8 +464,13 @@ pub fn apply_priority_response_with_dm(
 
             if needs_x {
                 // Extract target requirements for later (use stack_id since spell is on stack)
-                let requirements =
-                    extract_target_requirements(game, &effects, player, Some(stack_id));
+                let requirements = extract_target_requirements_from_program_with_modes(
+                    game,
+                    &effects,
+                    player,
+                    Some(stack_id),
+                    None,
+                );
 
                 // Initialize optional costs tracker from the spell's optional costs
                 let optional_costs_paid = game
@@ -496,8 +501,13 @@ pub fn apply_priority_response_with_dm(
                 ))
             } else {
                 // No X cost, check for optional costs then targets
-                let requirements =
-                    extract_target_requirements(game, &effects, player, Some(stack_id));
+                let requirements = extract_target_requirements_from_program_with_modes(
+                    game,
+                    &effects,
+                    player,
+                    Some(stack_id),
+                    None,
+                );
 
                 // Initialize optional costs tracker from the spell's optional costs
                 let optional_costs_paid = game

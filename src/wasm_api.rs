@@ -7733,7 +7733,41 @@ fn action_drag_metadata(
             Some(zone_name(Zone::Battlefield)),
             Some(zone_name(Zone::Battlefield)),
         ),
-        LegalAction::SpecialAction(_) => ("special_action", None, None, None, None),
+        LegalAction::SpecialAction(action) => match action {
+            crate::special_actions::SpecialAction::PlayLand { card_id } => (
+                "special_action",
+                Some(card_id.0),
+                None,
+                Some(zone_name(Zone::Hand)),
+                Some(zone_name(Zone::Battlefield)),
+            ),
+            crate::special_actions::SpecialAction::TurnFaceUp { permanent_id } => (
+                "special_action",
+                Some(permanent_id.0),
+                None,
+                Some(zone_name(Zone::Battlefield)),
+                Some(zone_name(Zone::Battlefield)),
+            ),
+            crate::special_actions::SpecialAction::Suspend { card_id }
+            | crate::special_actions::SpecialAction::Foretell { card_id }
+            | crate::special_actions::SpecialAction::Plot { card_id } => (
+                "special_action",
+                Some(card_id.0),
+                None,
+                Some(zone_name(Zone::Hand)),
+                Some(zone_name(Zone::Exile)),
+            ),
+            crate::special_actions::SpecialAction::ActivateManaAbility {
+                permanent_id,
+                ability_index,
+            } => (
+                "special_action",
+                Some(permanent_id.0),
+                Some(*ability_index),
+                Some(zone_name(Zone::Battlefield)),
+                None,
+            ),
+        },
     }
 }
 
@@ -8700,6 +8734,21 @@ mod tests {
                     .create_object_from_definition(&ornithopter(), player, zone)
             })
             .collect()
+    }
+
+    #[test]
+    fn test_action_drag_metadata_links_suspend_special_action_to_card_and_exile() {
+        let action = LegalAction::SpecialAction(crate::special_actions::SpecialAction::Suspend {
+            card_id: ObjectId::from_raw(42),
+        });
+
+        let (kind, object_id, ability_index, from_zone, to_zone) = action_drag_metadata(&action);
+
+        assert_eq!(kind, "special_action");
+        assert_eq!(object_id, Some(42));
+        assert_eq!(ability_index, None);
+        assert_eq!(from_zone.as_deref(), Some("hand"));
+        assert_eq!(to_zone.as_deref(), Some("exile"));
     }
 
     fn custom_face(

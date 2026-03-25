@@ -1810,7 +1810,8 @@ pub fn process_zone_change_with_additional_effects(
     let event = Event::zone_change(object, from, requested_to, cause, snapshot.clone());
     let mut additional_effects = additional_effects.to_vec();
     assign_ephemeral_effect_ids(&mut additional_effects, (u64::MAX / 2).saturating_add(1024));
-    let result = process_with_dm_and_additional_effects(game, event.clone(), dm, &additional_effects);
+    let result =
+        process_with_dm_and_additional_effects(game, event.clone(), dm, &additional_effects);
 
     match result {
         TraitEventResult::Prevented => EventOutcome::Prevented,
@@ -1932,7 +1933,8 @@ fn process_with_dm_and_additional_effects(
     let mut state = TraitEventProcessingState::default();
 
     loop {
-        let result = process_event_direct(game, current_event.clone(), &mut state, additional_effects);
+        let result =
+            process_event_direct(game, current_event.clone(), &mut state, additional_effects);
 
         match result {
             TraitEventResult::NeedsChoice {

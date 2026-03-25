@@ -25,6 +25,70 @@ pub(super) fn describe_resolution_program(
     rendered_segments.join(". ")
 }
 
+fn is_standard_gift_render_payload(lower: &str) -> bool {
+    lower.contains("chosen player draws a card")
+        || lower.contains("chosen player creates a treasure token")
+        || lower.contains("create a treasure token under the chosen player's control")
+        || lower.contains("chosen player creates a food token")
+        || lower.contains("create a food token under the chosen player's control")
+        || lower.contains("chosen player creates a tapped 1/1 blue fish creature token")
+        || lower.contains("create a 1/1 blue fish creature token under the chosen player's control")
+        || lower.contains("chosen player takes an extra turn after this one")
+        || lower.contains("chosen player creates an 8/8 blue octopus creature token")
+        || lower
+            .contains("create an 8/8 blue octopus creature token under the chosen player's control")
+        || lower
+            .contains("create a 8/8 blue octopus creature token under the chosen player's control")
+}
+
+fn is_hidden_gift_resolution_segment(segment: &crate::resolution::ResolutionSegment) -> bool {
+    if !segment.self_replacements.is_empty() || segment.default_effects.is_empty() {
+        return false;
+    }
+
+    let lower = describe_effect_list(&segment.default_effects).to_ascii_lowercase();
+    lower.starts_with("if the gift was promised") && is_standard_gift_render_payload(&lower)
+}
+
+fn describe_resolution_program_for_card(
+    def: &CardDefinition,
+    program: &crate::resolution::ResolutionProgram,
+) -> String {
+    let has_visible_gift_line = def
+        .optional_costs
+        .iter()
+        .any(|cost| cost.label.trim().to_ascii_lowercase().starts_with("gift "));
+    if !has_visible_gift_line {
+        return describe_resolution_program(program);
+    }
+
+    let mut rendered_segments = Vec::new();
+    for segment in &program.segments {
+        if is_hidden_gift_resolution_segment(segment) {
+            continue;
+        }
+
+        if segment.self_replacements.len() == 1 {
+            let branch = &segment.self_replacements[0];
+            rendered_segments.push(describe_effect_list(&[Effect::conditional(
+                branch.condition.clone(),
+                branch.replacement_effects.clone(),
+                segment.default_effects.clone(),
+            )]));
+            continue;
+        }
+
+        if !segment.default_effects.is_empty() {
+            rendered_segments.push(describe_effect_list(&segment.default_effects));
+        }
+        for branch in &segment.self_replacements {
+            rendered_segments.push(describe_effect_list(&branch.replacement_effects));
+        }
+    }
+
+    rendered_segments.join(". ")
+}
+
 /// Raw rendered compiled text with heading prefixes preserved.
 pub fn raw_compiled_lines(def: &CardDefinition) -> Vec<String> {
     stacker::maybe_grow(1024 * 1024, 8 * 1024 * 1024, || compiled_lines_inner(def))
@@ -33,6 +97,23 @@ pub fn raw_compiled_lines(def: &CardDefinition) -> Vec<String> {
 /// Backward-compatible alias for the raw compiled renderer.
 pub fn compiled_lines(def: &CardDefinition) -> Vec<String> {
     raw_compiled_lines(def)
+}
+
+fn should_suppress_rendered_ability_line(def: &CardDefinition, line: &str) -> bool {
+    let has_visible_gift_line = def
+        .optional_costs
+        .iter()
+        .any(|cost| cost.label.trim().to_ascii_lowercase().starts_with("gift "));
+    if !has_visible_gift_line {
+        return false;
+    }
+
+    let lower = line.trim().to_ascii_lowercase();
+    (lower.starts_with("triggered ability ")
+        && lower.contains("when you cast this spell, if the gift was promised"))
+        || lower == "choose an opponent."
+        || lower == "choose a player."
+        || (lower.contains("gift was promised") && is_standard_gift_render_payload(&lower))
 }
 
 pub(super) fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
@@ -273,12 +354,11 @@ pub(super) fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                     continue;
                 }
             }
-            output.extend(describe_ability(
-                ability_idx + 1,
-                ability,
-                subject,
-                rewrite_it_deals,
-            ));
+            for line in describe_ability(ability_idx + 1, ability, subject, rewrite_it_deals) {
+                if !should_suppress_rendered_ability_line(def, &line) {
+                    output.push(line);
+                }
+            }
             ability_idx += 1;
         }
     };
@@ -301,7 +381,7 @@ pub(super) fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
     {
         out.push(format!(
             "Spell effects: {}",
-            describe_resolution_program(spell_effects)
+            describe_resolution_program_for_card(def, spell_effects)
         ));
     }
     if spell_like_card {
@@ -314,6 +394,7 @@ pub(super) fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
     merge_adjacent_static_heading_lines(normalized)
         .into_iter()
         .map(|line| normalize_compiled_line_post_pass(def, &line))
+        .filter(|line| !line.trim().is_empty())
         .collect()
 }
 

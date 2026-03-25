@@ -1663,6 +1663,9 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     if filtered.as_slice() == ["this", "spell", "was", "kicked"] {
         return Ok(PredicateAst::ThisSpellWasKicked);
     }
+    if filtered.as_slice() == ["gift", "was", "promised"] {
+        return Ok(PredicateAst::ThisSpellPaidLabel("Gift".to_string()));
+    }
     if filtered.len() == 6
         && filtered[0] == "this"
         && matches!(

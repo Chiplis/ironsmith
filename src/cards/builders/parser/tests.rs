@@ -1116,6 +1116,8 @@ fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
     .expect("rewrite lexer should classify graveyard trigger probe");
     let second_main_tokens = lex_line("the beginning of your second main phase", 0)
         .expect("rewrite lexer should classify second-main trigger probe");
+    let gift_tokens = lex_line("an opponent gives a gift", 0)
+        .expect("rewrite lexer should classify gift-given trigger probe");
 
     assert!(matches!(
         super::activation_and_restrictions::parse_trigger_clause_lexed(&dies_tokens),
@@ -1165,6 +1167,12 @@ fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
                 crate::target::PlayerFilter::You
             )
         )
+    ));
+    assert!(matches!(
+        super::activation_and_restrictions::parse_trigger_clause_lexed(&gift_tokens),
+        Ok(crate::cards::builders::TriggerSpec::PlayerGivesGift(
+            crate::target::PlayerFilter::Opponent
+        ))
     ));
 }
 

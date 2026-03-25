@@ -156,6 +156,7 @@ impl EffectExecutor for MayCastForMiracleCostEffect {
                 casting_method: CastingMethod::Alternative(miracle_index),
                 optional_costs_paid: OptionalCostsPaid::default(),
                 defending_player: None,
+                chosen_player: None,
                 saga_final_chapter_source: None,
                 source_stable_id: stable_id,
                 source_snapshot: None,

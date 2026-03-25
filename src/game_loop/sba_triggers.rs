@@ -417,6 +417,9 @@ pub(super) fn resolve_triggered_stack_entry_immediately(
     if let Some(defending) = entry.defending_player {
         ctx = ctx.with_defending_player(defending);
     }
+    if entry.chosen_player.is_some() {
+        ctx = ctx.with_chosen_player(entry.chosen_player);
+    }
     if let Some(triggering_event) = entry.triggering_event.clone() {
         ctx = ctx.with_triggering_event(triggering_event);
     }
@@ -758,6 +761,7 @@ pub(super) fn triggered_to_stack_entry(
     if let Some(source_obj) = game.object(trigger.source) {
         entry = entry.with_optional_costs_paid(source_obj.optional_costs_paid.clone());
     }
+    entry = entry.with_chosen_player(game.chosen_player(trigger.source));
     if !trigger.tagged_objects.is_empty() {
         entry = entry.with_tagged_objects(trigger.tagged_objects.clone());
     }

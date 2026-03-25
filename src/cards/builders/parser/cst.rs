@@ -54,6 +54,7 @@ pub(crate) enum KeywordLineKindCst {
     Transmute,
     Entwine,
     CastThisSpellOnly,
+    Gift,
     Warp,
 }
 
