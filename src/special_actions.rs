@@ -103,32 +103,6 @@ fn adjust_total_cost_mana_components_for_reason(
     crate::cost::TotalCost::from_costs(costs)
 }
 
-fn spell_has_suspend_timing(
-    game: &GameState,
-    player: PlayerId,
-    object: &crate::object::Object,
-) -> bool {
-    let is_sorcery_speed = object.has_card_type(CardType::Sorcery)
-        || object.has_card_type(CardType::Creature)
-        || object.has_card_type(CardType::Artifact)
-        || object.has_card_type(CardType::Enchantment)
-        || object.has_card_type(CardType::Planeswalker);
-    let has_flash = object.abilities.iter().any(|ability| {
-        matches!(
-            &ability.kind,
-            crate::ability::AbilityKind::Static(static_ability) if static_ability.has_flash()
-        )
-    });
-
-    if !is_sorcery_speed || has_flash {
-        return game.turn.priority_player == Some(player);
-    }
-
-    game.turn.active_player == player
-        && game.turn.priority_player == Some(player)
-        && crate::turn::is_sorcery_timing(game)
-}
-
 fn has_sorcery_speed_special_action_timing(
     game: &GameState,
     player: PlayerId,
@@ -587,7 +561,7 @@ fn can_suspend(game: &GameState, player: PlayerId, card_id: ObjectId) -> Result<
         return Err(ActionError::NoSuchAbility);
     };
 
-    if !spell_has_suspend_timing(game, player, object) {
+    if !crate::decision::can_begin_to_cast_from_hand_for_suspend(game, player, object) {
         return Err(ActionError::InvalidTiming);
     }
 

@@ -63,6 +63,14 @@ impl EffectExecutor for CastSourceEffect {
         let mana_cost = source_obj.mana_cost.clone();
         let stable_id = source_obj.stable_id;
         let source_name = source_obj.name.clone();
+        let suspend_alternative_index = if from_zone == Zone::Exile {
+            source_obj
+                .alternative_casts
+                .iter()
+                .position(|method| method.suspend_spec().is_some())
+        } else {
+            None
+        };
         let x_value = mana_cost
             .as_ref()
             .and_then(|cost| if cost.has_x() { Some(0u32) } else { None });
@@ -107,7 +115,7 @@ impl EffectExecutor for CastSourceEffect {
             casting_method: CastingMethod::PlayFrom {
                 source: source_id,
                 zone: from_zone,
-                use_alternative: None,
+                use_alternative: suspend_alternative_index,
             },
             optional_costs_paid: OptionalCostsPaid::default(),
             defending_player: None,

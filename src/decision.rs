@@ -1861,6 +1861,35 @@ pub fn can_cast_spell(
     can_cast_spell_with_view(game, player, spell, casting_method, &view)
 }
 
+/// Check whether a player could begin casting a spell from hand for suspend.
+///
+/// This enforces cast prohibitions, cast limits, timing, and explicit
+/// "cast this spell only ..." restrictions without requiring a printable mana
+/// cost or legal targets yet.
+pub fn can_begin_to_cast_from_hand_for_suspend(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+) -> bool {
+    if violates_any_cant_cast_restriction(game, player, spell) {
+        return false;
+    }
+
+    if violates_any_cast_limit(game, player, spell) {
+        return false;
+    }
+
+    if spell.is_land() {
+        return false;
+    }
+
+    if !has_valid_spell_timing(game, player, spell, spell.id) {
+        return false;
+    }
+
+    spell_cast_restrictions_allow(game, player, spell)
+}
+
 fn can_cast_spell_with_view(
     game: &GameState,
     player: PlayerId,
@@ -10803,6 +10832,46 @@ mod tests {
                 }) if *found == card_id
             )),
             "expected suspend special action in legal actions, got {actions:?}"
+        );
+    }
+
+    #[test]
+    fn test_suspend_special_action_respects_cant_cast_restrictions() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = None;
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+        game.player_mut(alice)
+            .expect("alice exists")
+            .mana_pool
+            .add(ManaSymbol::Green, 1);
+
+        let def = crate::cards::CardDefinitionBuilder::new(
+            CardId::from_raw(7791),
+            "Suspend Restriction Probe",
+        )
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .suspend(2, ManaCost::from_pips(vec![vec![ManaSymbol::Green]]))
+        .build();
+        let card_id = game.create_object_from_definition(&def, alice, Zone::Hand);
+
+        game.cant_effects.add_cant_cast_filter(
+            alice,
+            crate::target::ObjectFilter::default().with_type(CardType::Creature),
+        );
+
+        let actions = compute_legal_actions(&game, alice);
+        assert!(
+            !actions.iter().any(|action| matches!(
+                action,
+                LegalAction::SpecialAction(crate::special_actions::SpecialAction::Suspend {
+                    card_id: found
+                }) if *found == card_id
+            )),
+            "suspend should not be offered when a cast prohibition would stop starting the cast, got {actions:?}"
         );
     }
 

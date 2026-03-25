@@ -1242,6 +1242,10 @@ fn effect_applies_to_direct(
     _commanders: &HashSet<ObjectId>,
     game: &crate::game_state::GameState,
 ) -> bool {
+    if !continuous_effect_duration_is_active(effect, game) {
+        return false;
+    }
+
     if let Some(condition) = &effect.condition {
         let ctx = crate::condition_eval::ExternalEvaluationContext {
             controller: effect.controller,
@@ -1292,6 +1296,21 @@ fn effect_applies_to_direct(
                 false
             }
         }
+    }
+}
+
+fn continuous_effect_duration_is_active(
+    effect: &ContinuousEffect,
+    game: &crate::game_state::GameState,
+) -> bool {
+    match effect.duration {
+        Until::ThisLeavesTheBattlefield => game
+            .object(effect.source)
+            .is_some_and(|obj| obj.zone == Zone::Battlefield),
+        Until::YouStopControllingThis => game.object(effect.source).is_some_and(|obj| {
+            obj.zone == Zone::Battlefield && obj.controller == effect.controller
+        }),
+        _ => true,
     }
 }
 
@@ -2440,6 +2459,10 @@ fn effect_applies_to(
     chars: &CalculatedCharacteristics,
     ctx: &CalculationContext,
 ) -> bool {
+    if !continuous_effect_duration_is_active(effect, ctx.game) {
+        return false;
+    }
+
     // First, check if this is a Resolution effect with locked targets.
     // Per Rule 611.2c, these effects only apply to the specific targets
     // that were chosen when the spell or ability resolved.

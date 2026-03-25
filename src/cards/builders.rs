@@ -5042,7 +5042,10 @@ impl CardDefinitionBuilder {
                         Effect::remove_counters(CounterType::Time, 1, ChooseSpec::Source),
                     ]),
                     choices: vec![],
-                    intervening_if: None,
+                    intervening_if: Some(Condition::SourceHasCounterAtLeast {
+                        counter_type: CounterType::Time,
+                        count: 1,
+                    }),
                 }),
                 functional_zones: vec![Zone::Exile],
                 text: None,

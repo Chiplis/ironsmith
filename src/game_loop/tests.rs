@@ -258,6 +258,73 @@ fn test_suspended_card_removes_time_counter_during_upkeep() {
 }
 
 #[test]
+fn test_suspend_declined_cast_does_not_keep_triggering_without_time_counters() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let lotus_bloom = CardDefinitionBuilder::new(CardId::from_raw(99002), "Lotus Bloom")
+        .parse_text(
+            "Type: Artifact\n\
+             Suspend 1—{0} (Rather than cast this card from your hand, pay {0} and exile it with one time counter on it. At the beginning of your upkeep, remove a time counter. When the last is removed, you may cast it without paying its mana cost.)\n\
+             {T}, Sacrifice this artifact: Add three mana of any one color.",
+        )
+        .expect("Lotus Bloom text should parse");
+    let card_id = game.create_object_from_definition(&lotus_bloom, alice, Zone::Hand);
+
+    let mut dm = SelectFirstDecisionMaker;
+    crate::special_actions::perform(
+        crate::special_actions::SpecialAction::Suspend { card_id },
+        &mut game,
+        alice,
+        &mut dm,
+    )
+    .expect("suspend special action should resolve");
+
+    let exiled_id = *game.exile.first().expect("Lotus Bloom should be exiled");
+
+    game.turn.phase = Phase::Beginning;
+    game.turn.step = Some(crate::game_state::Step::Upkeep);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "expected upkeep trigger once"
+    );
+
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("suspend upkeep trigger should go on the stack");
+    resolve_stack_entry(&mut game).expect("declining the suspend cast should still resolve");
+
+    assert_eq!(
+        game.counter_count(exiled_id, crate::object::CounterType::Time),
+        0,
+        "last upkeep trigger should remove the final time counter"
+    );
+    assert!(
+        game.object(exiled_id)
+            .is_some_and(|obj| obj.zone == Zone::Exile),
+        "declining the free cast should leave the card in exile"
+    );
+
+    game.stack.clear();
+    game.turn.turn_number += 1;
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+    assert!(
+        trigger_queue.entries.is_empty(),
+        "card without time counters is no longer suspended and should not trigger again"
+    );
+}
+
+#[test]
 fn test_queue_triggers_tracks_noncombat_damage_to_players_this_turn() {
     let mut game = setup_game();
     let mut trigger_queue = TriggerQueue::new();
@@ -6597,6 +6664,90 @@ fn test_dash_grants_haste_and_returns_to_hand_at_next_end_step() {
                 .object(id)
                 .is_some_and(|obj| obj.name == "Dash Runtime Probe")),
         "dashed creature should return to hand at the next end step"
+    );
+}
+
+#[test]
+fn test_suspend_creature_gains_haste_until_control_changes() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let suspend_creature =
+        CardDefinitionBuilder::new(CardId::from_raw(99003), "Suspend Creature Probe")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(3, 3))
+            .suspend(1, ManaCost::new())
+            .build();
+    let card_id = game.create_object_from_definition(&suspend_creature, alice, Zone::Hand);
+
+    let mut dm = SelectFirstDecisionMaker;
+    crate::special_actions::perform(
+        crate::special_actions::SpecialAction::Suspend { card_id },
+        &mut game,
+        alice,
+        &mut dm,
+    )
+    .expect("suspend special action should resolve");
+
+    let mut trigger_queue = TriggerQueue::new();
+    game.turn.phase = Phase::Beginning;
+    game.turn.step = Some(crate::game_state::Step::Upkeep);
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("upkeep trigger should go on the stack");
+
+    resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+        .expect("suspend upkeep trigger should resolve");
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("last-counter trigger should go on the stack");
+    resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+        .expect("suspend cast trigger should resolve");
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "suspend should cast the creature spell"
+    );
+
+    resolve_stack_entry(&mut game).expect("suspended creature spell should resolve");
+
+    let creature_id = *game
+        .battlefield
+        .iter()
+        .find(|&&id| {
+            game.object(id)
+                .is_some_and(|obj| obj.name == "Suspend Creature Probe")
+        })
+        .expect("suspended creature should resolve onto the battlefield");
+
+    let has_haste = game
+        .current_abilities(creature_id)
+        .expect("creature should exist")
+        .iter()
+        .any(|ability| {
+            matches!(&ability.kind, AbilityKind::Static(static_ability) if static_ability.has_haste())
+        });
+    assert!(has_haste, "suspended creature should gain haste");
+
+    if let Some(creature) = game.object_mut(creature_id) {
+        creature.controller = bob;
+    }
+
+    let has_haste_after_control_change = game
+        .current_abilities(creature_id)
+        .expect("creature should still exist")
+        .iter()
+        .any(|ability| {
+            matches!(&ability.kind, AbilityKind::Static(static_ability) if static_ability.has_haste())
+        });
+    assert!(
+        !has_haste_after_control_change,
+        "suspend haste should end once you no longer control the permanent"
     );
 }
 

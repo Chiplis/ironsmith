@@ -566,6 +566,27 @@ pub(super) fn resolve_stack_entry_full(
                     ),
                     _ => false,
                 };
+                let cast_with_suspend = match &entry.casting_method {
+                    CastingMethod::Alternative(idx) => matches!(
+                        obj.alternative_casts.get(*idx),
+                        Some(crate::alternative_cast::AlternativeCastingMethod::Suspend { .. })
+                    ),
+                    CastingMethod::PlayFrom {
+                        use_alternative: Some(idx),
+                        zone,
+                        ..
+                    } => matches!(
+                        crate::decision::resolve_play_from_alternative_method(
+                            game,
+                            entry.controller,
+                            obj,
+                            *zone,
+                            *idx,
+                        ),
+                        Some(crate::alternative_cast::AlternativeCastingMethod::Suspend { .. })
+                    ),
+                    _ => false,
+                };
                 if cast_with_dash {
                     let dash_haste = crate::effects::ApplyContinuousEffect::new(
                         crate::continuous::EffectTarget::Specific(result.new_id),
@@ -602,6 +623,23 @@ pub(super) fn resolve_stack_entry_full(
                     let _ = crate::executor::execute_effect(
                         game,
                         &crate::effect::Effect::new(return_to_hand),
+                        &mut crate::executor::ExecutionContext::new_default(
+                            result.new_id,
+                            entry.controller,
+                        ),
+                    );
+                }
+                if cast_with_suspend && obj.has_card_type(crate::types::CardType::Creature) {
+                    let suspend_haste = crate::effects::ApplyContinuousEffect::new(
+                        crate::continuous::EffectTarget::Specific(result.new_id),
+                        crate::continuous::Modification::AddAbility(
+                            crate::static_abilities::StaticAbility::haste(),
+                        ),
+                        crate::effect::Until::YouStopControllingThis,
+                    );
+                    let _ = crate::executor::execute_effect(
+                        game,
+                        &crate::effect::Effect::new(suspend_haste),
                         &mut crate::executor::ExecutionContext::new_default(
                             result.new_id,
                             entry.controller,
