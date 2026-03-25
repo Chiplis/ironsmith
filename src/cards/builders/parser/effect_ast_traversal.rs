@@ -151,6 +151,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::PreventDamageEach { .. } => {}
         EffectAst::GrantProtectionChoice { .. } => {}
         EffectAst::Earthbend { .. } => {}
+        EffectAst::Behold { .. } => {}
         EffectAst::Explore { .. } => {}
         EffectAst::OpenAttraction => {}
         EffectAst::ManifestDread => {}

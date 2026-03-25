@@ -139,10 +139,11 @@ mod tests {
     use super::*;
     use crate::card::CardBuilder;
     use crate::decision::SelectFirstDecisionMaker;
-    use crate::effect::Effect;
+    use crate::effect::{Effect, OutcomeStatus};
     use crate::executor::execute_effect;
     use crate::game_state::StackEntry;
     use crate::ids::{CardId, PlayerId};
+    use crate::mana::{ManaCost, ManaSymbol};
     use crate::types::CardType;
 
     fn setup_game() -> GameState {
@@ -213,6 +214,143 @@ mod tests {
                 .expect("countered spell should still exist after being moved")
                 .zone,
             Zone::Exile
+        );
+    }
+
+    #[test]
+    fn counter_spell_moves_spell_to_owners_graveyard() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let target_spell = create_instant(&mut game, bob, Zone::Stack, "Target Spell");
+        let stable_id = game
+            .object(target_spell)
+            .expect("target spell should exist")
+            .stable_id;
+        game.stack.push(StackEntry::new(target_spell, bob));
+
+        let counter_source = create_instant(&mut game, alice, Zone::Stack, "Counter Source");
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(counter_source, alice, &mut dm);
+        let outcome = execute_effect(
+            &mut game,
+            &Effect::new(CounterEffect::new(ChooseSpec::SpecificObject(target_spell))),
+            &mut ctx,
+        )
+        .expect("counter should resolve");
+
+        assert_eq!(outcome.status, OutcomeStatus::Succeeded);
+        assert!(
+            !game.stack.iter().any(|entry| entry.object_id == target_spell),
+            "countered spell should leave the stack"
+        );
+
+        let moved_id = game
+            .find_object_by_stable_id(stable_id)
+            .expect("countered spell should still be tracked after moving");
+        let moved_obj = game
+            .object(moved_id)
+            .expect("countered spell should still exist after moving");
+        assert_eq!(moved_obj.zone, Zone::Graveyard);
+        assert_eq!(moved_obj.owner, bob);
+    }
+
+    #[test]
+    fn counter_ability_only_removes_it_from_the_stack() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let source = game.create_object_from_card(
+            &CardBuilder::new(CardId::new(), "Ability Source")
+                .card_types(vec![CardType::Artifact])
+                .build(),
+            bob,
+            Zone::Battlefield,
+        );
+        game.stack.push(StackEntry::ability(
+            source,
+            bob,
+            vec![Effect::draw(1)],
+        ));
+
+        let counter_source = create_instant(&mut game, alice, Zone::Stack, "Counter Source");
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(counter_source, alice, &mut dm);
+        let outcome = execute_effect(
+            &mut game,
+            &Effect::new(CounterEffect::new(ChooseSpec::SpecificObject(source))),
+            &mut ctx,
+        )
+        .expect("counter should resolve");
+
+        assert_eq!(outcome.status, OutcomeStatus::Succeeded);
+        assert!(
+            !game.stack.iter().any(|entry| entry.object_id == source),
+            "countered ability should disappear from the stack"
+        );
+        assert_eq!(
+            game.object(source)
+                .expect("ability source permanent should still exist")
+                .zone,
+            Zone::Battlefield
+        );
+    }
+
+    #[test]
+    fn countering_a_spell_does_not_refund_paid_mana() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let target_spell = game.create_object_from_card(
+            &CardBuilder::new(CardId::new(), "Paid Spell")
+                .card_types(vec![CardType::Instant])
+                .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Blue]))
+                .build(),
+            bob,
+            Zone::Hand,
+        );
+        game.player_mut(bob)
+            .expect("bob exists")
+            .mana_pool
+            .add(ManaSymbol::Blue, 1);
+        assert!(
+            game.try_pay_mana_cost_with_reason(
+                bob,
+                Some(target_spell),
+                &ManaCost::from_symbols(vec![ManaSymbol::Blue]),
+                0,
+                crate::costs::PaymentReason::CastSpell,
+            ),
+            "bob should be able to pay for the spell before it is countered"
+        );
+        let stack_spell = game
+            .move_object_by_effect(target_spell, Zone::Stack)
+            .expect("paid spell should move to stack");
+        game.stack.push(StackEntry::new(stack_spell, bob));
+        assert_eq!(
+            game.player(bob).expect("bob exists").mana_pool.total(),
+            0,
+            "mana should already be spent before the counter resolves"
+        );
+
+        let counter_source = create_instant(&mut game, alice, Zone::Stack, "Counter Source");
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(counter_source, alice, &mut dm);
+        let outcome = execute_effect(
+            &mut game,
+            &Effect::new(CounterEffect::new(ChooseSpec::SpecificObject(stack_spell))),
+            &mut ctx,
+        )
+        .expect("counter should resolve");
+
+        assert_eq!(outcome.status, OutcomeStatus::Succeeded);
+        assert_eq!(
+            game.player(bob).expect("bob exists").mana_pool.total(),
+            0,
+            "countering a spell must not refund the mana already paid to cast it"
         );
     }
 }

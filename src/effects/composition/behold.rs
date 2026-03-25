@@ -6,6 +6,7 @@
 //! "To behold an Elemental, choose an Elemental you control or reveal an Elemental card from your hand."
 
 use crate::effect::EffectOutcome;
+use crate::effects::helpers::normalize_object_selection;
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
@@ -88,8 +89,10 @@ impl EffectExecutor for BeholdEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         use crate::decisions::make_decision;
+        use crate::decisions::context::ViewCardsContext;
         use crate::decisions::specs::ChooseObjectsSpec;
         use crate::effects::helpers::resolve_player_filter;
+        use crate::zone::Zone;
 
         let chooser = resolve_player_filter(game, &self.chooser, ctx)?;
         let required = self.count as usize;
@@ -119,6 +122,31 @@ impl EffectExecutor for BeholdEffect {
             );
             make_decision(game, ctx.decision_maker, chooser, Some(ctx.source), spec)
         };
+        let chosen = normalize_object_selection(chosen, &pool, required);
+
+        let revealed_from_hand: Vec<_> = chosen
+            .iter()
+            .copied()
+            .filter(|id| {
+                game.player(chooser)
+                    .is_some_and(|player| player.hand.contains(id))
+            })
+            .collect();
+        if !revealed_from_hand.is_empty() {
+            for viewer_idx in 0..game.players.len() {
+                let viewer = PlayerId::from_index(viewer_idx as u8);
+                let view_ctx = ViewCardsContext::new(
+                    viewer,
+                    chooser,
+                    Some(ctx.source),
+                    Zone::Hand,
+                    "Reveal cards from hand",
+                )
+                .with_public(true);
+                ctx.decision_maker
+                    .view_cards(game, viewer, &revealed_from_hand, &view_ctx);
+            }
+        }
 
         Ok(EffectOutcome::with_objects(chosen))
     }
@@ -165,6 +193,7 @@ impl CostExecutableEffect for BeholdEffect {
 mod tests {
     use super::*;
     use crate::card::CardBuilder;
+    use crate::decision::DecisionMaker;
     use crate::ids::{CardId, PlayerId};
     use crate::types::CardType;
     use crate::zone::Zone;
@@ -185,6 +214,24 @@ mod tests {
             .subtypes(vec![subtype])
             .build();
         game.create_object_from_card(&card, controller, zone)
+    }
+
+    #[derive(Debug, Default)]
+    struct CaptureViewDm {
+        calls: Vec<(PlayerId, PlayerId, Zone, bool, Vec<ObjectId>)>,
+    }
+
+    impl DecisionMaker for CaptureViewDm {
+        fn view_cards(
+            &mut self,
+            _game: &GameState,
+            viewer: PlayerId,
+            cards: &[ObjectId],
+            ctx: &crate::decisions::context::ViewCardsContext,
+        ) {
+            self.calls
+                .push((viewer, ctx.subject, ctx.zone, ctx.public, cards.to_vec()));
+        }
     }
 
     #[test]
@@ -234,5 +281,32 @@ mod tests {
             crate::effects::EffectExecutor::can_execute_as_cost(&effect, &game, source, alice)
                 .is_err()
         );
+    }
+
+    #[test]
+    fn test_behold_reveals_hand_cards_publicly_when_chosen() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let hand = simple_creature(
+            &mut game,
+            "Hand Dragon",
+            alice,
+            Subtype::Dragon,
+            Zone::Hand,
+        );
+
+        let mut dm = CaptureViewDm::default();
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm)
+            .with_targets(vec![crate::executor::ResolvedTarget::Object(hand)]);
+
+        BeholdEffect::you(Subtype::Dragon, 1)
+            .execute(&mut game, &mut ctx)
+            .expect("behold from hand should execute");
+
+        assert_eq!(dm.calls.len(), 2, "all players should see the revealed hand card");
+        assert!(dm.calls.iter().all(|(_, subject, zone, public, cards)| {
+            *subject == alice && *zone == Zone::Hand && *public && cards == &vec![hand]
+        }));
     }
 }

@@ -813,6 +813,7 @@ fn advance_reference_frame_for_effect(
         | EffectAst::PreventNextTimeDamage { .. }
         | EffectAst::PreventDamageEach { .. }
         | EffectAst::Earthbend { .. }
+        | EffectAst::Behold { .. }
         | EffectAst::OpenAttraction
         | EffectAst::ManifestDread
         | EffectAst::Bolster { .. }

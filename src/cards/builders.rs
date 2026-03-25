@@ -1615,6 +1615,10 @@ pub(crate) enum EffectAst {
     Earthbend {
         counters: u32,
     },
+    Behold {
+        subtype: Subtype,
+        count: u32,
+    },
     Explore {
         target: TargetAst,
     },

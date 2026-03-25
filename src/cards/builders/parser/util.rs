@@ -4020,6 +4020,15 @@ pub(crate) fn parse_you_may_rather_than_spell_cost_line_lexed(
 pub(crate) fn parse_additional_cost_choice_options(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<AdditionalCostChoiceOptionAst>>, CardTextError> {
+    fn render_option_text(tokens: &[OwnedLexToken]) -> String {
+        tokens
+            .iter()
+            .filter(|token| !matches!(token.kind, TokenKind::Comma | TokenKind::Period))
+            .map(|token| token.slice.as_str())
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
     let clause_view = LowercaseWordView::new(tokens);
     let clause_words = clause_view.to_word_refs();
     if clause_words
@@ -4061,10 +4070,9 @@ pub(crate) fn parse_additional_cost_choice_options(
         .map(|option| lowercase_word_tokens(&option))
         .collect::<Vec<_>>();
 
-    if normalized_options
-        .iter()
-        .any(|option| find_verb(option).is_none())
-    {
+    if normalized_options.iter().any(|option| {
+        find_verb(option).is_none() && !option.first().is_some_and(|token| token.is_word("behold"))
+    }) {
         return Ok(None);
     }
 
@@ -4074,11 +4082,11 @@ pub(crate) fn parse_additional_cost_choice_options(
         if effects.is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "additional cost option parsed to no effects (clause: '{}')",
-                words(&option).join(" ")
+                render_option_text(&option)
             )));
         }
         options.push(AdditionalCostChoiceOptionAst {
-            description: words(&option).join(" "),
+            description: render_option_text(&option),
             effects,
         });
     }

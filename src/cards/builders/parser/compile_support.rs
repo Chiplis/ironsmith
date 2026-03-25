@@ -4382,6 +4382,7 @@ fn try_compile_board_state_effect(
             );
             (vec![effect], vec![spec])
         }
+        EffectAst::Behold { subtype, count } => (vec![Effect::behold(*subtype, *count)], Vec::new()),
         EffectAst::Explore { target } => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;

@@ -2420,7 +2420,7 @@ impl Effect {
         Self::new(ManifestDreadEffect::new())
     }
 
-    /// Create a "behold" effect (custom mechanic).
+    /// Create a "behold" effect.
     pub fn behold(subtype: crate::types::Subtype, count: u32) -> Self {
         use crate::effects::BeholdEffect;
         Self::new(BeholdEffect::you(subtype, count))

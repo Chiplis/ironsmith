@@ -144,3 +144,89 @@ impl EffectExecutor for CastSourceEffect {
         ))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::card::CardBuilder;
+    use crate::decision::SelectFirstDecisionMaker;
+    use crate::effect::{OutcomeStatus, OutcomeValue};
+    use crate::ids::{CardId, PlayerId};
+    use crate::mana::{ManaCost, ManaSymbol};
+    use crate::types::CardType;
+
+    fn setup_game() -> GameState {
+        crate::tests::test_helpers::setup_two_player_game()
+    }
+
+    #[test]
+    fn cast_source_requires_exile_when_requested() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source_id = game.create_object_from_card(
+            &CardBuilder::new(CardId::new(), "Suspend Probe")
+                .card_types(vec![CardType::Sorcery])
+                .build(),
+            alice,
+            Zone::Hand,
+        );
+
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(source_id, alice, &mut dm);
+        let outcome = CastSourceEffect::new()
+            .without_paying_mana_cost()
+            .require_exile()
+            .execute(&mut game, &mut ctx)
+            .expect("cast source should execute");
+
+        assert_eq!(outcome.status, OutcomeStatus::TargetInvalid);
+        assert!(game.stack.is_empty());
+    }
+
+    #[test]
+    fn cast_source_free_cast_sets_x_to_zero_and_emits_spell_cast_event() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source_id = game.create_object_from_card(
+            &CardBuilder::new(CardId::new(), "X Fireball")
+                .card_types(vec![CardType::Sorcery])
+                .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::X, ManaSymbol::Red]))
+                .build(),
+            alice,
+            Zone::Exile,
+        );
+
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(source_id, alice, &mut dm);
+        let outcome = CastSourceEffect::new()
+            .without_paying_mana_cost()
+            .require_exile()
+            .execute(&mut game, &mut ctx)
+            .expect("free cast from exile should resolve");
+
+        let OutcomeValue::Objects(ids) = outcome.value else {
+            panic!("expected the source card to move to the stack");
+        };
+        let cast_id = ids[0];
+
+        assert_eq!(outcome.status, OutcomeStatus::Succeeded);
+        assert!(
+            outcome
+                .events
+                .iter()
+                .any(|event| event.kind() == crate::events::EventKind::SpellCast),
+            "cast-source should emit a SpellCast event"
+        );
+
+        let stack_entry = game
+            .stack
+            .iter()
+            .find(|entry| entry.object_id == cast_id)
+            .expect("cast object should be on the stack");
+        assert_eq!(stack_entry.x_value, Some(0));
+
+        let spell = game.object(cast_id).expect("stack spell should exist");
+        assert_eq!(spell.zone, Zone::Stack);
+        assert_eq!(spell.x_value, Some(0));
+    }
+}

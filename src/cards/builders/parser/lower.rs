@@ -19,7 +19,7 @@ use crate::zone::Zone;
 
 use super::activation_and_restrictions::{
     infer_activated_functional_zones_lexed, is_any_player_may_activate_sentence_lexed,
-    parse_mana_usage_restriction_sentence_lexed,
+    parse_activation_cost, parse_mana_usage_restriction_sentence_lexed,
 };
 use super::activation_and_restrictions::{
     parse_channel_line_lexed, parse_cycling_line_lexed, parse_equip_line_lexed,
@@ -2564,6 +2564,9 @@ fn lower_rewrite_keyword_to_chunk_impl(
     if let Some(chunk) = try_lower_optional_cost_with_cast_trigger(line)? {
         return Ok(chunk);
     }
+    if let Some(chunk) = try_lower_optional_behold_additional_cost(line)? {
+        return Ok(chunk);
+    }
     let keyword_parse_text = rewrite_keyword_dash_parse_text_for_lowering(line.text.as_str());
     let tokens = lexed_tokens(keyword_parse_text.as_str(), line.info.line_index)?;
     match line.kind {
@@ -3005,6 +3008,38 @@ fn try_lower_optional_cost_with_cast_trigger(
         effects,
         followup_text: format!("When you do, {}", followup_words.join(" ")),
     }))
+}
+
+fn try_lower_optional_behold_additional_cost(
+    line: &super::RewriteKeywordLine,
+) -> Result<Option<LineAst>, CardTextError> {
+    let normalized = line.text.as_str();
+    let prefix = "as an additional cost to cast this spell, ";
+    if line.kind != super::RewriteKeywordLineKind::AdditionalCost || !normalized.starts_with(prefix)
+    {
+        return Ok(None);
+    }
+
+    let keyword_parse_text = rewrite_keyword_dash_parse_text_for_lowering(line.text.as_str());
+    let tokens = lexed_tokens(keyword_parse_text.as_str(), line.info.line_index)?;
+    let Some(effect_tokens) = additional_cost_tail_tokens(&tokens) else {
+        return Ok(None);
+    };
+    let stripped = trim_lexed_commas(effect_tokens);
+    let view = LowercaseWordView::new(stripped);
+    if !view.starts_with(&["you", "may", "behold"]) {
+        return Ok(None);
+    }
+
+    let total_cost = parse_activation_cost(&stripped[2..])?;
+    if total_cost.mana_cost().is_some() || total_cost.costs().len() != 1 {
+        return Ok(None);
+    }
+
+    Ok(Some(LineAst::OptionalCost(OptionalCost::custom(
+        line.info.raw_line.trim(),
+        total_cost,
+    ))))
 }
 
 fn additional_cost_tail_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {

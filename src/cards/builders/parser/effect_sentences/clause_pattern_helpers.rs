@@ -1511,6 +1511,44 @@ pub(crate) fn parse_keyword_mechanic_clause(
         return Ok(Some(EffectAst::OpenAttraction));
     }
 
+    if clause_words.first() == Some(&"behold") {
+        let mut idx = 1usize;
+        let mut count = 1u32;
+        if let Some((value, used)) = parse_number(&clause_tokens[idx..]) {
+            count = value;
+            idx += used;
+        } else if clause_words
+            .get(idx)
+            .is_some_and(|word| matches!(*word, "a" | "an"))
+        {
+            idx += 1;
+        }
+
+        let subtype_word = clause_words.get(idx).copied().ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "missing subtype in behold clause (clause: '{}')",
+                clause_words.join(" ")
+            ))
+        })?;
+        let subtype = parse_subtype_word(subtype_word)
+            .or_else(|| subtype_word.strip_suffix('s').and_then(parse_subtype_word))
+            .ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "unsupported subtype in behold clause (clause: '{}')",
+                    clause_words.join(" ")
+                ))
+            })?;
+
+        if idx + 1 != clause_words.len() {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported trailing behold clause (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+
+        return Ok(Some(EffectAst::Behold { subtype, count }));
+    }
+
     if clause_words == ["manifest", "dread"] {
         return Ok(Some(EffectAst::ManifestDread));
     }

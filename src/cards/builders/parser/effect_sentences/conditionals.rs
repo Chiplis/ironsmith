@@ -1669,6 +1669,21 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     {
         return Ok(PredicateAst::ThisSpellPaidLabel("Bargain".to_string()));
     }
+    if filtered.len() == 4
+        && matches!(filtered[0], "a" | "an")
+        && parse_subtype_word(filtered[1]).is_some()
+        && matches!(filtered[2], "was" | "were")
+        && filtered[3] == "beheld"
+    {
+        return Ok(PredicateAst::ThisSpellPaidLabel("Behold".to_string()));
+    }
+    if filtered.len() == 3
+        && parse_subtype_word(filtered[0]).is_some()
+        && matches!(filtered[1], "was" | "were")
+        && filtered[2] == "beheld"
+    {
+        return Ok(PredicateAst::ThisSpellPaidLabel("Behold".to_string()));
+    }
     if filtered.as_slice() == ["gift", "was", "promised"] {
         return Ok(PredicateAst::ThisSpellPaidLabel("Gift".to_string()));
     }

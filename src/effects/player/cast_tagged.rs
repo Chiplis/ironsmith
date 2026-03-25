@@ -360,4 +360,30 @@ mod tests {
             "playing a tagged land should queue a LandPlayedEvent"
         );
     }
+
+    #[test]
+    fn cast_tagged_land_is_invalid_without_play_permission() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let card = CardBuilder::new(CardId::new(), "Tagged Land")
+            .card_types(vec![CardType::Land])
+            .build();
+        let exiled_id = game.create_object_from_card(&card, alice, Zone::Exile);
+        let snapshot =
+            ObjectSnapshot::from_object(game.object(exiled_id).expect("tagged land"), &game);
+        let mut tags = std::collections::HashMap::new();
+        tags.insert(TagKey::from("it"), vec![snapshot]);
+
+        let source = game.new_object_id();
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm).with_tagged_objects(tags);
+
+        let outcome = CastTaggedEffect::new("it")
+            .execute(&mut game, &mut ctx)
+            .expect("cast tagged should resolve");
+
+        assert_eq!(outcome.status, crate::effect::OutcomeStatus::TargetInvalid);
+        assert!(game.stack.is_empty());
+        assert!(!game.battlefield.contains(&exiled_id));
+    }
 }

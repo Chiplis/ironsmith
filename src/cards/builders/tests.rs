@@ -18495,6 +18495,74 @@ fn parse_oracle_scrapshooter_gift_etb_regression() {
 }
 
 #[test]
+fn parse_oracle_sarkhan_dragon_ascendant_behold_regression() {
+    let def = parse_oracle_card_definition("Sarkhan, Dragon Ascendant");
+    let raw = format!("{def:#?}");
+    let rendered = compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        raw.contains("BeholdEffect"),
+        "expected Sarkhan to lower behold into a runtime behold effect, got {raw}"
+    );
+    assert!(
+        rendered.contains("Behold a dragon"),
+        "expected Sarkhan compiled text to preserve the behold clause, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains("if you do, create a treasure token"),
+        "expected Sarkhan to preserve the behold follow-up, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_osseous_exhale_behold_paid_regression() {
+    let def = parse_oracle_card_definition("Osseous Exhale");
+    let raw = format!("{def:#?}");
+    let rendered = compiled_lines(&def).join(" ");
+
+    assert_eq!(
+        def.optional_costs.len(),
+        1,
+        "expected Osseous Exhale to lower optional behold as one optional cost"
+    );
+    assert!(
+        def.optional_costs[0]
+            .label
+            .to_ascii_lowercase()
+            .starts_with("as an additional cost to cast this spell, you may behold a dragon"),
+        "expected Osseous Exhale to preserve the optional behold line, got {:?}",
+        def.optional_costs[0].label
+    );
+    assert!(
+        raw.contains("ThisSpellPaidLabel") && raw.contains("Behold"),
+        "expected Osseous Exhale to preserve the 'was beheld' condition, got {raw}"
+    );
+    assert!(
+        rendered.contains("If this spell's behold cost was paid, you gain 2 life"),
+        "expected Osseous Exhale compiled text to keep the behold payoff, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_caustic_exhale_behold_or_pay_regression() {
+    let def = parse_oracle_card_definition("Caustic Exhale");
+    let raw = format!("{def:#?}");
+    let rendered = compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        raw.contains("ChooseModeEffect") || raw.contains("ChooseMode"),
+        "expected Caustic Exhale to lower the behold-or-pay additional cost as a modal cost, got {raw}"
+    );
+    assert!(
+        rendered_lower.contains("behold a dragon or pay {1}")
+            || rendered_lower.contains("behold a dragon, or pay {1}"),
+        "expected Caustic Exhale compiled text to preserve the behold-or-pay choice, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_oracle_perch_protection_gift_extra_turn_regression() {
     let def = parse_oracle_card_definition("Perch Protection");
 
