@@ -2118,6 +2118,7 @@ mod tests {
                 player: PlayerAst::You,
                 allow_land: false,
                 without_paying_mana_cost: false,
+                allow_any_color_for_cast: false,
             },
         ];
 
@@ -2150,6 +2151,7 @@ mod tests {
                 player: PlayerAst::You,
                 allow_land: false,
                 without_paying_mana_cost: false,
+                allow_any_color_for_cast: false,
             },
         ];
 
@@ -2239,6 +2241,7 @@ mod tests {
                     player: PlayerAst::You,
                     allow_land: false,
                     without_paying_mana_cost: false,
+                    allow_any_color_for_cast: false,
                 },
             ],
             if_false: vec![
@@ -2255,6 +2258,7 @@ mod tests {
                     player: PlayerAst::You,
                     allow_land: false,
                     without_paying_mana_cost: false,
+                    allow_any_color_for_cast: false,
                 },
             ],
         }];

@@ -8496,6 +8496,28 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         } else {
             "cast"
         };
+        let helper_tag = grant_play_tagged.tag.as_str().starts_with("targeted_")
+            || grant_play_tagged.tag.as_str() == "__it__"
+            || crate::cards::builders::is_sentence_helper_tag(
+                grant_play_tagged.tag.as_str(),
+                "exiled",
+            )
+            || crate::cards::builders::is_sentence_helper_tag(
+                grant_play_tagged.tag.as_str(),
+                "revealed",
+            )
+            || crate::cards::builders::is_sentence_helper_tag(
+                grant_play_tagged.tag.as_str(),
+                "looked",
+            )
+            || crate::cards::builders::is_sentence_helper_tag(
+                grant_play_tagged.tag.as_str(),
+                "chosen",
+            )
+            || crate::cards::builders::is_sentence_helper_tag(
+                grant_play_tagged.tag.as_str(),
+                "searched",
+            );
         let object_text = if grant_play_tagged.tag.as_str().starts_with("targeted_")
             || grant_play_tagged.tag.as_str() == "__it__"
             || crate::cards::builders::is_sentence_helper_tag(
@@ -8522,6 +8544,19 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         } else {
             format!("tagged '{}' cards", grant_play_tagged.tag.as_str())
         };
+        if grant_play_tagged.allow_any_color_for_cast {
+            if helper_tag && !grant_play_tagged.allow_land {
+                return format!(
+                    "{} may cast spells from among those cards this turn, and mana of any type can be spent to cast them",
+                    describe_player_filter(&grant_play_tagged.player),
+                );
+            }
+            let pronoun = if object_text == "that card" { "it" } else { "them" };
+            return format!(
+                "{} may {verb} {object_text} {timing}, and mana of any type can be spent to cast {pronoun}",
+                describe_player_filter(&grant_play_tagged.player),
+            );
+        }
         return format!(
             "{} may {verb} {object_text} {timing}",
             describe_player_filter(&grant_play_tagged.player),

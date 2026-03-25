@@ -629,8 +629,11 @@ pub(crate) fn is_untap_during_each_other_players_untap_step_words(words: &[&str]
     }
     words.windows(6).any(|window| {
         window == ["during", "each", "other", "player", "untap", "step"]
+            || window == ["during", "each", "other", "player's", "untap", "step"]
             || window == ["during", "each", "other", "players", "untap", "step"]
-    })
+    }) || words
+        .windows(7)
+        .any(|window| window == ["during", "each", "other", "player", "s", "untap", "step"])
 }
 
 pub(crate) fn map_span_to_original(

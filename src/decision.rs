@@ -9347,6 +9347,7 @@ mod tests {
 
         let creature = CardBuilder::new(CardId::from_raw(81), "Restriction Beast")
             .card_types(vec![CardType::Creature])
+            .mana_cost(ManaCost::new())
             .power_toughness(PowerToughness::fixed(2, 2))
             .build();
         let creature_id = game.create_object_from_card(&creature, alice, Zone::Hand);
@@ -9384,6 +9385,7 @@ mod tests {
 
         let nonartifact_spell = CardBuilder::new(CardId::from_raw(83), "Restriction Chant")
             .card_types(vec![CardType::Instant])
+            .mana_cost(ManaCost::new())
             .build();
         let nonartifact_spell_id =
             game.create_object_from_card(&nonartifact_spell, alice, Zone::Hand);
@@ -9425,6 +9427,7 @@ mod tests {
 
         let artifact_spell = CardBuilder::new(CardId::from_raw(85), "Restriction Relic")
             .card_types(vec![CardType::Artifact])
+            .mana_cost(ManaCost::new())
             .build();
         let artifact_spell_id = game.create_object_from_card(&artifact_spell, alice, Zone::Hand);
         let artifact_spell_obj = game
@@ -9461,6 +9464,7 @@ mod tests {
 
         let nonphyrexian_spell = CardBuilder::new(CardId::from_raw(87), "Restriction Spell")
             .card_types(vec![CardType::Creature])
+            .mana_cost(ManaCost::new())
             .subtypes(vec![Subtype::Elf])
             .power_toughness(PowerToughness::fixed(2, 2))
             .build();
@@ -9511,6 +9515,7 @@ mod tests {
 
         let phyrexian_spell = CardBuilder::new(CardId::from_raw(89), "Restriction Horror")
             .card_types(vec![CardType::Creature])
+            .mana_cost(ManaCost::new())
             .subtypes(vec![Subtype::Phyrexian])
             .power_toughness(PowerToughness::fixed(2, 2))
             .build();
@@ -9556,6 +9561,7 @@ mod tests {
 
         let sorcery = CardBuilder::new(CardId::from_raw(1200), "Threshold Flash Sorcery")
             .card_types(vec![CardType::Sorcery])
+            .mana_cost(ManaCost::new())
             .build();
         let spell_id = game.create_object_from_card(&sorcery, alice, Zone::Hand);
         let spec = crate::static_abilities::ConditionalSpellKeywordSpec {

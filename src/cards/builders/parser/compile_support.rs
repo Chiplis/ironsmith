@@ -158,6 +158,9 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         } => Trigger::player_loses_life_during_turn(player, during_turn),
         TriggerSpec::YouDrawCard => Trigger::you_draw_card(),
         TriggerSpec::PlayerDrawsCard(player) => Trigger::player_draws_card(player),
+        TriggerSpec::PlayerDrawsCardNotDuringTurn { player, during_turn } => {
+            Trigger::player_draws_card_not_during_turn(player, during_turn)
+        }
         TriggerSpec::PlayerDrawsNthCardEachTurn {
             player,
             card_number,
@@ -747,6 +750,7 @@ pub(crate) fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
         | TriggerSpec::PlayerLosesLife(_)
         | TriggerSpec::PlayerLosesLifeDuringTurn { .. }
         | TriggerSpec::PlayerDrawsCard(_)
+        | TriggerSpec::PlayerDrawsCardNotDuringTurn { .. }
         | TriggerSpec::PlayerDrawsNthCardEachTurn { .. }
         | TriggerSpec::PlayerDiscardsCard { .. }
         | TriggerSpec::PlayerPlaysLand { .. }
@@ -835,6 +839,7 @@ pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<Pl
         TriggerSpec::PlayerLosesLife(_) => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerLosesLifeDuringTurn { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerDrawsCard(_) => Some(PlayerFilter::IteratedPlayer),
+        TriggerSpec::PlayerDrawsCardNotDuringTurn { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerDrawsNthCardEachTurn { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerDiscardsCard { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerPlaysLand { .. } => Some(PlayerFilter::IteratedPlayer),
@@ -5149,6 +5154,7 @@ fn try_compile_timing_and_control_effect(
             player,
             allow_land,
             without_paying_mana_cost,
+            allow_any_color_for_cast,
         } => {
             let player_filter =
                 resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
@@ -5166,6 +5172,7 @@ fn try_compile_timing_and_control_effect(
                 player_filter.clone(),
                 crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn,
                 *allow_land,
+                *allow_any_color_for_cast,
             ))];
             if *without_paying_mana_cost {
                 effects.push(Effect::new(
@@ -5224,6 +5231,7 @@ fn try_compile_timing_and_control_effect(
                     player_filter,
                     crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd,
                     *allow_land,
+                    false,
                 ))],
                 Vec::new(),
             )
@@ -10923,6 +10931,7 @@ mod parse_compile_tests {
                 player: PlayerAst::You,
                 allow_land: false,
                 without_paying_mana_cost: false,
+                allow_any_color_for_cast: false,
             },
         ];
 

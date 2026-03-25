@@ -1820,6 +1820,19 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(PredicateAst::Unmodeled(filtered.join(" ")));
     }
 
+    if matches!(
+        filtered.as_slice(),
+        ["any", "of", "those", "cards", "remain", "exiled"]
+            | ["those", "cards", "remain", "exiled"]
+            | ["that", "card", "remains", "exiled"]
+            | ["it", "remains", "exiled"]
+    ) {
+        return Ok(PredicateAst::TaggedMatches(
+            TagKey::from(IT_TAG),
+            ObjectFilter::default().in_zone(Zone::Exile),
+        ));
+    }
+
     if filtered[0] == "its" {
         filtered[0] = "it";
     }

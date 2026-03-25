@@ -575,6 +575,8 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
             tail_words.contains(&"hand")
                 || tail_words.contains(&"hands")
                 || tail_words.contains(&"battlefield")
+                || tail_words.contains(&"graveyard")
+                || tail_words.contains(&"graveyards")
         })
         .ok_or_else(|| {
             CardTextError::ParseError(format!(
@@ -662,6 +664,8 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     }
     let is_hand = destination_words.contains(&"hand") || destination_words.contains(&"hands");
     let is_battlefield = destination_words.contains(&"battlefield");
+    let is_graveyard =
+        destination_words.contains(&"graveyard") || destination_words.contains(&"graveyards");
     let tapped = destination_words.contains(&"tapped");
     let transformed = destination_words_full.contains(&"transformed");
     let return_controller = if destination_words
@@ -692,7 +696,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
             words(tokens).join(" ")
         )));
     }
-    if !is_hand && !is_battlefield {
+    if !is_hand && !is_battlefield && !is_graveyard {
         return Err(CardTextError::ParseError(format!(
             "unsupported return destination (clause: '{}')",
             words(tokens).join(" ")
@@ -720,6 +724,15 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         let filter = parse_object_filter(target_tokens, false)?;
         let effect = if is_battlefield {
             EffectAst::ReturnAllToBattlefield { filter, tapped }
+        } else if is_graveyard {
+            EffectAst::MoveToZone {
+                target: TargetAst::Object(filter, None, None),
+                zone: Zone::Graveyard,
+                to_top: false,
+                battlefield_controller: ReturnControllerAst::Preserve,
+                battlefield_tapped: false,
+                attached_to: None,
+            }
         } else {
             EffectAst::ReturnAllToHand { filter }
         };
@@ -789,6 +802,15 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         }
         let effect = if is_battlefield {
             EffectAst::ReturnAllToBattlefield { filter, tapped }
+        } else if is_graveyard {
+            EffectAst::MoveToZone {
+                target: TargetAst::Object(filter, None, None),
+                zone: Zone::Graveyard,
+                to_top: false,
+                battlefield_controller: ReturnControllerAst::Preserve,
+                battlefield_tapped: false,
+                attached_to: None,
+            }
         } else {
             EffectAst::ReturnAllToHand { filter }
         };
@@ -801,13 +823,29 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         )));
     }
 
-    let target = parse_target_phrase(target_tokens)?;
+    let target = if matches!(
+        target_words.as_slice(),
+        ["it"] | ["them"] | ["that", "card"] | ["those", "cards"]
+    ) {
+        TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(target_tokens))
+    } else {
+        parse_target_phrase(target_tokens)?
+    };
     let effect = if is_battlefield {
         EffectAst::ReturnToBattlefield {
             target,
             tapped,
             transformed,
             controller: return_controller,
+        }
+    } else if is_graveyard {
+        EffectAst::MoveToZone {
+            target,
+            zone: Zone::Graveyard,
+            to_top: false,
+            battlefield_controller: ReturnControllerAst::Preserve,
+            battlefield_tapped: false,
+            attached_to: None,
         }
     } else {
         EffectAst::ReturnToHand { target, random }

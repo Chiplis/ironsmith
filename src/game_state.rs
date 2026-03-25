@@ -589,6 +589,16 @@ impl CantEffectTracker {
         !self.cant_untap.contains(&permanent)
     }
 
+    /// Check if a permanent can untap during the specified player's untap step.
+    pub fn can_untap_during_step(
+        &self,
+        permanent: ObjectId,
+        permanent_controller: PlayerId,
+        untap_player: PlayerId,
+    ) -> bool {
+        permanent_controller != untap_player || !self.cant_untap.contains(&permanent)
+    }
+
     /// Check if damage can be prevented.
     pub fn can_prevent_damage(&self) -> bool {
         !self.damage_cant_be_prevented
@@ -886,6 +896,16 @@ pub struct ManaSpendEffectTracker {
 pub struct ActiveManaSpendPermission {
     pub permission: crate::effect::ManaSpendPermission,
     pub controller: PlayerId,
+    pub source: ManaSpendPermissionSource,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ManaSpendPermissionSource {
+    StaticAbility,
+    Effect {
+        source_id: ObjectId,
+        expires_end_of_turn: u32,
+    },
 }
 
 impl ManaSpendEffectTracker {
@@ -896,10 +916,42 @@ impl ManaSpendEffectTracker {
     pub fn clear(&mut self) {
         self.permissions.clear();
     }
+
+    pub fn retain_effect_permissions(&mut self, current_turn: u32) {
+        self.permissions.retain(|permission| {
+            matches!(
+                permission.source,
+                ManaSpendPermissionSource::Effect {
+                    expires_end_of_turn,
+                    ..
+                } if current_turn <= expires_end_of_turn
+            )
+        });
+    }
+
+    pub fn cleanup_expired(&mut self, current_turn: u32) {
+        self.permissions.retain(|permission| match permission.source {
+            ManaSpendPermissionSource::StaticAbility => true,
+            ManaSpendPermissionSource::Effect {
+                expires_end_of_turn,
+                ..
+            } => current_turn <= expires_end_of_turn,
+        });
+    }
 }
 
 impl ActiveManaSpendPermission {
     pub fn allows(&self, game: &GameState, payer: PlayerId, source: Option<ObjectId>) -> bool {
+        if matches!(
+            self.source,
+            ManaSpendPermissionSource::Effect {
+                expires_end_of_turn,
+                ..
+            } if game.turn.turn_number > expires_end_of_turn
+        ) {
+            return false;
+        }
+
         let combat = game.combat.as_ref();
         if !crate::game_loop::player_matches_filter_with_combat(
             payer,
@@ -922,6 +974,15 @@ impl ActiveManaSpendPermission {
                 };
                 let filter_ctx = game.filter_context_for(self.controller, Some(source_id));
                 filter.matches(source_obj, &filter_ctx, game)
+            }
+            crate::effect::ManaSpendScope::CastingSpellsWithStableIds(stable_ids) => {
+                let Some(source_id) = source else {
+                    return false;
+                };
+                let Some(source_obj) = game.object(source_id) else {
+                    return false;
+                };
+                stable_ids.contains(&source_obj.stable_id)
             }
         }
     }
@@ -1890,6 +1951,10 @@ impl GameState {
             .retain(|grant| grant.expires_end_of_turn > current_turn);
     }
 
+    pub fn cleanup_mana_spend_permissions_end_of_turn(&mut self) {
+        self.mana_spend_effects.cleanup_expired(self.turn.turn_number);
+    }
+
     pub fn cleanup_temporary_spell_cost_reductions_end_of_turn(&mut self) {
         let current_turn = self.turn.turn_number;
         self.temporary_spell_cost_reductions
@@ -2022,6 +2087,14 @@ impl GameState {
     /// Can the permanent untap during untap step?
     pub fn can_untap(&self, permanent: ObjectId) -> bool {
         self.cant_effects.can_untap(permanent)
+    }
+
+    /// Can the permanent untap during the specified player's untap step?
+    pub fn can_untap_during_step(&self, permanent: ObjectId, untap_player: PlayerId) -> bool {
+        self.object(permanent).is_some_and(|object| {
+            self.cant_effects
+                .can_untap_during_step(permanent, object.controller, untap_player)
+        })
     }
 
     /// Can damage be prevented?
@@ -3554,7 +3627,8 @@ impl GameState {
 
         // Clear existing tracker
         self.cant_effects.clear();
-        self.mana_spend_effects.clear();
+        self.mana_spend_effects
+            .retain_effect_permissions(self.turn.turn_number);
         self.damage_persists.clear();
         for player in &mut self.players {
             player.max_hand_size = 7;
@@ -5962,6 +6036,7 @@ mod tests {
                     crate::target::ObjectFilter::creature().you_control(),
                 ),
                 controller: alice,
+                source: ManaSpendPermissionSource::StaticAbility,
             });
 
         assert!(game.can_spend_mana_as_any_color(alice, Some(alice_creature)));

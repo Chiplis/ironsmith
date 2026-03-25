@@ -182,6 +182,33 @@ impl StaticAbilityKind for DoesntUntap {
     }
 }
 
+/// "Untap all [matching permanents] during each other player's untap step."
+#[derive(Debug, Clone, PartialEq)]
+pub struct UntapDuringEachOtherPlayersUntapStep {
+    pub filter: ObjectFilter,
+    pub display: String,
+}
+
+impl UntapDuringEachOtherPlayersUntapStep {
+    pub fn new(filter: ObjectFilter, display: String) -> Self {
+        Self { filter, display }
+    }
+}
+
+impl StaticAbilityKind for UntapDuringEachOtherPlayersUntapStep {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::UntapDuringEachOtherPlayersUntapStep
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn untap_during_each_other_players_untap_step_filter(&self) -> Option<&ObjectFilter> {
+        Some(&self.filter)
+    }
+}
+
 /// "Creatures you control can boast twice during each of your turns rather than once."
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct BoastTwiceEachTurn;
@@ -1033,6 +1060,7 @@ impl StaticAbilityKind for ManaSpendPermissionAbility {
             .push(crate::game_state::ActiveManaSpendPermission {
                 permission: self.permission.clone(),
                 controller,
+                source: crate::game_state::ManaSpendPermissionSource::StaticAbility,
             });
     }
 }

@@ -1202,6 +1202,28 @@ fn parse_if_damage_would_be_dealt_put_counters_sentence(
 fn parse_effect_sentence_with_where_x_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    fn replace_search_filter_x(effect: &mut EffectAst, replacement: &Value) {
+        if let EffectAst::SearchLibrary { filter, .. } = effect
+            && let Some(mana_value) = filter.mana_value.as_mut()
+        {
+            use crate::filter::Comparison;
+
+            match mana_value {
+                Comparison::EqualExpr(value)
+                | Comparison::NotEqualExpr(value)
+                | Comparison::LessThanExpr(value)
+                | Comparison::LessThanOrEqualExpr(value)
+                | Comparison::GreaterThanExpr(value)
+                | Comparison::GreaterThanOrEqualExpr(value)
+                    if matches!(value.as_ref(), Value::X) =>
+                {
+                    **value = replacement.clone();
+                }
+                _ => {}
+            }
+        }
+    }
+
     let clause_word_view = LowercaseWordView::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
     let Some(where_idx) = clause_words
@@ -1301,6 +1323,19 @@ fn parse_effect_sentence_with_where_x_lexed(
                 crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG))
             }))
         }
+        Some(["2", "plus", "the", "sacrificed", "creature", "mana", "value", ..])
+        | Some(["2", "plus", "the", "sacrificed", "creatures", "mana", "value", ..])
+        | Some(["2", "plus", "sacrificed", "creature", "mana", "value", ..])
+        | Some(["2", "plus", "sacrificed", "creatures", "mana", "value", ..])
+        | Some(["two", "plus", "the", "sacrificed", "creature", "mana", "value", ..])
+        | Some(["two", "plus", "the", "sacrificed", "creatures", "mana", "value", ..])
+        | Some(["two", "plus", "sacrificed", "creature", "mana", "value", ..])
+        | Some(["two", "plus", "sacrificed", "creatures", "mana", "value", ..]) => Value::Add(
+            Box::new(Value::Fixed(2)),
+            Box::new(Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(
+                TagKey::from(IT_TAG),
+            )))),
+        ),
         _ => parse_where_x_value_clause_lexed(&primary_where_tokens).ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "unsupported where-x clause (clause: '{}')",
@@ -1311,6 +1346,9 @@ fn parse_effect_sentence_with_where_x_lexed(
 
     let mut effects = parse_effect_sentence_inner_lexed(&stripped)?;
     replace_unbound_x_in_effects_anywhere(&mut effects, &where_value, &clause_words.join(" "))?;
+    for effect in &mut effects {
+        replace_search_filter_x(effect, &where_value);
+    }
     if !trailing_after_where.is_empty() {
         let mut trailing_effects = parse_effect_sentence_lexed(&trailing_after_where)?;
         effects.append(&mut trailing_effects);

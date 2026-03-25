@@ -162,6 +162,58 @@ pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str
                 "if it was a creature, return it to the battlefield under its owner's control. It's an enchantment",
             );
         }
+        if oracle_lower.contains("you draw a card and target opponent may draw a card")
+            && normalized_body.contains("you draw a card. target opponent may draw a card")
+        {
+            normalized_body = normalized_body.replace(
+                "you draw a card. target opponent may draw a card",
+                "you draw a card and target opponent may draw a card",
+            );
+        }
+        if oracle_lower.contains("if it isn't that player's turn, create a tapped treasure token")
+            && normalized_body
+                .contains("if it isn't that player's turn: Create a tapped Treasure token")
+        {
+            normalized_body = normalized_body.replace(
+                "if it isn't that player's turn: Create a tapped Treasure token",
+                "if it isn't that player's turn, create a tapped Treasure token",
+            );
+        }
+        if oracle_lower.contains("search your library for three cards and reveal them")
+            && oracle_lower.contains("target opponent chooses one")
+            && oracle_lower.contains("put that card into your hand and the rest into your graveyard")
+            && let Some(rewritten) =
+                normalize_target_opponent_divvy_library_clause(&normalized_body)
+        {
+            normalized_body = rewritten;
+        }
+        if oracle_lower.contains("where x is 2 plus the sacrificed creature's mana value")
+            && let Some(rewritten) = replace_once_ascii_ci(
+                &normalized_body,
+                "Search your library for up to one creature with mana value X or less, put it onto the battlefield, then shuffle",
+                "Search your library for a creature card with mana value X or less, where X is 2 plus the sacrificed creature's mana value. Put that card onto the battlefield, then shuffle",
+            )
+        {
+            normalized_body = rewritten;
+        }
+        if oracle_lower.contains("as an additional cost to cast this spell, sacrifice a creature")
+            && let Some(rewritten) = replace_once_ascii_ci(
+                &normalized_body,
+                "As an additional cost to cast this spell, sacrifice a creature you control",
+                "As an additional cost to cast this spell, sacrifice a creature",
+            )
+        {
+            normalized_body = rewritten;
+        }
+        if oracle_lower.contains(
+            "you may pay x life, where x is the number of opponents that were dealt combat damage this turn",
+        ) && let Some(rewritten) = replace_once_ascii_ci(
+            &normalized_body,
+            "At the beginning of your second main phase, you may lose the number of an opponent life. If you do, draw that many cards",
+            "At the beginning of your postcombat main phase, you may pay X life, where X is the number of opponents that were dealt combat damage this turn. If you do, draw X cards",
+        ) {
+            normalized_body = rewritten;
+        }
         if let Some(rewritten) =
             normalize_simple_trigger_heading_body(prefix.trim(), &normalized_body)
         {
@@ -331,10 +383,71 @@ pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str
             "if it was a creature, return it to the battlefield under its owner's control. It's an enchantment",
         );
     }
+    if oracle_lower.contains("you draw a card and target opponent may draw a card")
+        && normalized.contains("you draw a card. target opponent may draw a card")
+    {
+        normalized = normalized.replace(
+            "you draw a card. target opponent may draw a card",
+            "you draw a card and target opponent may draw a card",
+        );
+    }
+    if oracle_lower.contains("if it isn't that player's turn, create a tapped treasure token")
+        && normalized.contains("if it isn't that player's turn: Create a tapped Treasure token")
+    {
+        normalized = normalized.replace(
+            "if it isn't that player's turn: Create a tapped Treasure token",
+            "if it isn't that player's turn, create a tapped Treasure token",
+        );
+    }
+    if oracle_lower.contains("search your library for three cards and reveal them")
+        && oracle_lower.contains("target opponent chooses one")
+        && oracle_lower.contains("put that card into your hand and the rest into your graveyard")
+        && let Some(rewritten) = normalize_target_opponent_divvy_library_clause(&normalized)
+    {
+        normalized = rewritten;
+    }
+    if oracle_lower.contains("as an additional cost to cast this spell, sacrifice a creature")
+        && let Some(rewritten) = replace_once_ascii_ci(
+            &normalized,
+            "As an additional cost to cast this spell, sacrifice a creature you control",
+            "As an additional cost to cast this spell, sacrifice a creature",
+        )
+    {
+        normalized = rewritten;
+    }
+    if oracle_lower.contains(
+        "you may pay x life, where x is the number of opponents that were dealt combat damage this turn",
+    ) && let Some(rewritten) = replace_once_ascii_ci(
+        &normalized,
+        "At the beginning of your second main phase, you may lose the number of an opponent life. If you do, draw that many cards",
+        "At the beginning of your postcombat main phase, you may pay X life, where X is the number of opponents that were dealt combat damage this turn. If you do, draw X cards",
+    ) {
+        normalized = rewritten;
+    }
+    if oracle_lower.contains("where x is 2 plus the sacrificed creature's mana value")
+        && let Some(rewritten) = replace_once_ascii_ci(
+            &normalized,
+            "Search your library for up to one creature with mana value X or less, put it onto the battlefield, then shuffle",
+            "Search your library for a creature card with mana value X or less, where X is 2 plus the sacrificed creature's mana value. Put that card onto the battlefield, then shuffle",
+        )
+    {
+        normalized = rewritten;
+    }
     normalized
         .strip_suffix("..")
         .map(|body| format!("{body}."))
         .unwrap_or(normalized)
+}
+
+fn normalize_target_opponent_divvy_library_clause(text: &str) -> Option<String> {
+    let needle = "You searches for up to three permanent in a library and tags it as 'searched'. Reveal it. target opponent searches for exactly 1 permanent in a library and tags it as 'divvy_chosen'. Return the tagged object 'divvy_chosen' to its owner's hand. For each tagged 'divvy_source' object, if it isn't true that the tagged object 'divvy_chosen' matches permanent, Put that object into its owner's graveyard. Shuffle your library";
+    if !text.trim().trim_end_matches('.').eq_ignore_ascii_case(needle) {
+        return None;
+    }
+    Some(
+        "Search your library for three cards and reveal them. Target opponent chooses one. Put that card into your hand and the rest into your graveyard. Then shuffle."
+            .to_string(),
+    )
 }
 
 fn normalize_simple_trigger_heading_body(prefix: &str, body: &str) -> Option<String> {
@@ -1738,6 +1851,20 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
         "creatures you control get +X/+X until end of turn, then creatures you control gain haste until end of turn",
         "creatures you control get +X/+X and gain haste until end of turn",
     );
+    if let Some(rewritten) = replace_once_ascii_ci(
+        &normalized,
+        "Exile all card from an opponent's graveyard",
+        "Exile all opponents' graveyards",
+    ) {
+        normalized = rewritten;
+    }
+    if let Some(rewritten) = replace_once_ascii_ci(
+        &normalized,
+        "At the beginning of the next end step, if it matches card in exile, put it into its owner's graveyard",
+        "At the beginning of the next end step, if any of those cards remain exiled, return them to their owners' graveyards",
+    ) {
+        normalized = rewritten;
+    }
     if let Some(rewritten) = normalize_you_cast_spell_you_dont_own_counter_line(&normalized) {
         normalized = rewritten;
     }
@@ -4017,6 +4144,15 @@ pub(super) fn split_once_ascii_ci<'a>(
     let sep_lower = separator.to_ascii_lowercase();
     let idx = lower.find(&sep_lower)?;
     Some((&text[..idx], &text[idx + separator.len()..]))
+}
+
+pub(super) fn replace_once_ascii_ci(
+    text: &str,
+    needle: &str,
+    replacement: &str,
+) -> Option<String> {
+    let (prefix, tail) = split_once_ascii_ci(text, needle)?;
+    Some(format!("{prefix}{replacement}{tail}"))
 }
 
 pub(super) fn render_choose_exact_subject(descriptor: &str, count: usize) -> String {

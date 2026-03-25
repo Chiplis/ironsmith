@@ -124,6 +124,7 @@ fn static_ability_rule_head_hints(rule_id: &'static str) -> &'static [&'static s
         "parse_double_damage_from_sources_you_control_of_chosen_type_line" => &["double"],
         "parse_source_can_attack_as_though_no_defender_as_long_as_line" => &["this"],
         "parse_no_maximum_hand_size_line" => &["you"],
+        "parse_untap_during_each_other_players_untap_step_line" => &["untap"],
         "parse_you_may_static_grant_line" => &["you"],
         "parse_you_may_look_top_card_any_time_line" => &["you"],
         "parse_additional_land_play_line" => &["you"],
@@ -674,6 +675,39 @@ fn parse_static_ability_ast_line_lexed_single(
         return Ok(Some(vec![
             StaticAbility::krrik_black_mana_may_be_paid_with_life().into(),
         ]));
+    }
+
+    if words.len() > 8
+        && words.first().copied() == Some("untap")
+        && words.get(1).copied() == Some("all")
+        && let Some(during_word_idx) = words.iter().position(|word| *word == "during")
+    {
+        let tail = &words[during_word_idx..];
+        let matches_tail = tail.starts_with(&[
+            "during", "each", "other", "player", "untap", "step",
+        ]) || tail.starts_with(&[
+            "during", "each", "other", "player's", "untap", "step",
+        ]) || tail.starts_with(&[
+            "during", "each", "other", "players", "untap", "step",
+        ]) || tail.starts_with(&[
+            "during", "each", "other", "player", "s", "untap", "step",
+        ]);
+        if matches_tail {
+            let subject_start = token_index_for_word_index(&lowered, 2).unwrap_or(lowered.len());
+            let subject_end =
+                token_index_for_word_index(&lowered, during_word_idx).unwrap_or(lowered.len());
+            let subject_tokens = trim_commas(&lowered[subject_start..subject_end]);
+            let filter = parse_object_filter(&subject_tokens, false)?;
+            let subject_text =
+                crate::cards::builders::parser::util::words(&subject_tokens).join(" ");
+            return Ok(Some(vec![
+                StaticAbility::untap_during_each_other_players_untap_step(
+                    filter,
+                    format!("Untap all {subject_text} during each other player's untap step"),
+                )
+                .into(),
+            ]));
+        }
     }
 
     if let Some(ability) = parse_activated_abilities_cant_be_activated_line_lexed(tokens)? {
@@ -5592,9 +5626,34 @@ pub(crate) fn parse_untap_during_each_other_players_untap_step_line(
     if !is_untap_during_each_other_players_untap_step_words(&line_words) {
         return Ok(None);
     }
-    Err(CardTextError::ParseError(format!(
-        "unsupported untap-during-each-other-players-untap-step clause (clause: '{}')",
-        line_words.join(" ")
+    let Some(during_word_idx) = line_words.iter().position(|word| *word == "during") else {
+        return Err(CardTextError::ParseError(format!(
+            "missing during-clause in other-players untap ability (clause: '{}')",
+            line_words.join(" ")
+        )));
+    };
+    if during_word_idx <= 2 || line_words.get(1) != Some(&"all") {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported subject in other-players untap ability (clause: '{}')",
+            line_words.join(" ")
+        )));
+    }
+
+    let subject_start = token_index_for_word_index(tokens, 2).unwrap_or(tokens.len());
+    let subject_end = token_index_for_word_index(tokens, during_word_idx).unwrap_or(tokens.len());
+    let subject_tokens = trim_commas(&tokens[subject_start..subject_end]);
+    if subject_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing subject in other-players untap ability (clause: '{}')",
+            line_words.join(" ")
+        )));
+    }
+
+    let filter = parse_object_filter(&subject_tokens, false)?;
+    let subject_text = words(&subject_tokens).join(" ");
+    Ok(Some(StaticAbility::untap_during_each_other_players_untap_step(
+        filter,
+        format!("Untap all {subject_text} during each other player's untap step"),
     )))
 }
 

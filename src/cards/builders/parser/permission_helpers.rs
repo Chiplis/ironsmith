@@ -41,6 +41,12 @@ fn is_until_end_of_turn(words: &[&str]) -> bool {
 }
 
 fn parse_tagged_cast_or_play_target(words: &[&str]) -> Option<(bool, usize)> {
+    if words.starts_with(&["spells", "from", "among", "those", "cards"]) {
+        return Some((false, 5));
+    }
+    if words.starts_with(&["spells", "from", "among", "them"]) {
+        return Some((false, 4));
+    }
     if words.starts_with(&["one", "of", "those", "cards"])
         || words.starts_with(&["one", "of", "those", "card"])
     {
@@ -631,6 +637,7 @@ pub(crate) fn parse_until_end_of_turn_may_play_tagged_clause(
             player,
             allow_land,
             without_paying_mana_cost,
+            allow_any_color_for_cast: false,
         })),
         _ => Ok(None),
     }
@@ -733,6 +740,33 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
         trimmed.remove(0);
     }
 
+    let any_color_suffixes: [&[&str]; 3] = [
+        &["and", "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "them"],
+        &[
+            "and", "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "it",
+        ],
+        &[
+            "and", "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "that",
+            "spell",
+        ],
+    ];
+    let mut allow_any_color_for_cast = false;
+    for suffix in any_color_suffixes {
+        let lowered = LowercaseWordView::new(&trimmed);
+        let clause_refs = lowered.to_word_refs();
+        if clause_refs.ends_with(suffix) {
+            allow_any_color_for_cast = true;
+            let kept_word_count = clause_refs.len() - suffix.len();
+            let Some(keep_until) = lowered.token_index_for_word_index(kept_word_count) else {
+                return Err(CardTextError::ParseError(
+                    "failed to split tagged cast clause before mana-spend suffix".to_string(),
+                ));
+            };
+            trimmed.truncate(keep_until);
+            break;
+        }
+    }
+
     let trimmed_words = LowercaseWordView::new(&trimmed);
     let clause_refs = trimmed_words.to_word_refs();
 
@@ -776,6 +810,7 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
                                 player: PlayerAst::Implicit,
                                 allow_land,
                                 without_paying_mana_cost,
+                                allow_any_color_for_cast,
                             }
                         };
                         EffectAst::Conditional {
@@ -828,6 +863,7 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
                 player: PlayerAst::Implicit,
                 allow_land,
                 without_paying_mana_cost,
+                allow_any_color_for_cast,
             }))
         }
         _ => Ok(conditional_tagged_permission),

@@ -26,6 +26,7 @@ pub struct GrantPlayTaggedEffect {
     pub player: PlayerFilter,
     pub duration: GrantPlayTaggedDuration,
     pub allow_land: bool,
+    pub allow_any_color_for_cast: bool,
 }
 
 impl GrantPlayTaggedEffect {
@@ -34,12 +35,14 @@ impl GrantPlayTaggedEffect {
         player: PlayerFilter,
         duration: GrantPlayTaggedDuration,
         allow_land: bool,
+        allow_any_color_for_cast: bool,
     ) -> Self {
         Self {
             tag: tag.into(),
             player,
             duration,
             allow_land,
+            allow_any_color_for_cast,
         }
     }
 
@@ -49,6 +52,7 @@ impl GrantPlayTaggedEffect {
             player,
             GrantPlayTaggedDuration::UntilYourNextTurnEnd,
             true,
+            false,
         )
     }
 
@@ -148,6 +152,7 @@ impl EffectExecutor for GrantPlayTaggedEffect {
         let expires_end_of_turn = self.expires_end_of_turn(game, player_id);
         let mut granted = 0usize;
         let mut seen = std::collections::HashSet::new();
+        let mut mana_permission_stable_ids = Vec::new();
         for snapshot in snapshots {
             let mut object_id = snapshot.object_id;
             if game.object(object_id).is_none() {
@@ -165,6 +170,10 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                 continue;
             }
 
+            if self.allow_any_color_for_cast && !object.is_land() {
+                mana_permission_stable_ids.push(object.stable_id);
+            }
+
             game.grant_registry.grant_to_card(
                 object_id,
                 object.zone,
@@ -176,6 +185,22 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                 },
             );
             granted += 1;
+        }
+
+        if self.allow_any_color_for_cast && !mana_permission_stable_ids.is_empty() {
+            game.mana_spend_effects
+                .permissions
+                .push(crate::game_state::ActiveManaSpendPermission {
+                    permission: crate::effect::ManaSpendPermission::any_color_for_casting_stable_ids(
+                        crate::target::PlayerFilter::You,
+                        mana_permission_stable_ids,
+                    ),
+                    controller: player_id,
+                    source: crate::game_state::ManaSpendPermissionSource::Effect {
+                        source_id: ctx.source,
+                        expires_end_of_turn,
+                    },
+                });
         }
 
         Ok(EffectOutcome::count(granted as i32))
@@ -293,6 +318,45 @@ mod tests {
         assert_eq!(
             expires_with_skip, 34,
             "skipped next turn should defer expiration to Alice's subsequent turn"
+        );
+    }
+
+    #[test]
+    fn grant_play_tagged_any_color_permission_survives_refresh_until_turn_ends() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let card = CardBuilder::new(CardId::from_raw(2), "Exiled Spell")
+            .card_types(vec![crate::types::CardType::Instant])
+            .build();
+        let exiled_id = game.create_object_from_card(&card, alice, Zone::Exile);
+        let snapshot =
+            ObjectSnapshot::from_object(game.object(exiled_id).expect("exiled spell"), &game);
+
+        let mut tags = std::collections::HashMap::new();
+        tags.insert(TagKey::from("it"), vec![snapshot]);
+
+        let mut dm = SelectFirstDecisionMaker;
+        let source = ObjectId::from_raw(101);
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm).with_tagged_objects(tags);
+
+        let effect = GrantPlayTaggedEffect::new(
+            "it",
+            PlayerFilter::You,
+            GrantPlayTaggedDuration::UntilEndOfTurn,
+            false,
+            true,
+        );
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("effect should resolve");
+
+        assert!(game.can_spend_mana_as_any_color(alice, Some(exiled_id)));
+
+        game.update_cant_effects();
+        assert!(
+            game.can_spend_mana_as_any_color(alice, Some(exiled_id)),
+            "temporary effect-sourced mana permission should survive tracker refreshes"
         );
     }
 }

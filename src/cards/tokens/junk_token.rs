@@ -42,6 +42,7 @@ pub fn junk_token_definition() -> CardDefinition {
                     PlayerFilter::You,
                     crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn,
                     true,
+                    false,
                 )),
             ]),
             choices: vec![],

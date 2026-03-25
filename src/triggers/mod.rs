@@ -696,6 +696,14 @@ impl Trigger {
         Self::new(PlayerDrawsCardTrigger::per_card(player))
     }
 
+    /// Create a "whenever [player] draws a card, if it isn't [turn player's] turn" trigger.
+    pub fn player_draws_card_not_during_turn(
+        player: PlayerFilter,
+        during_turn: PlayerFilter,
+    ) -> Self {
+        Self::new(PlayerDrawsCardTrigger::not_during_turn(player, during_turn))
+    }
+
     /// Create a "whenever a player draws one or more cards" trigger.
     pub fn player_draws_cards(player: PlayerFilter) -> Self {
         Self::new(PlayerDrawsCardTrigger::new(player))

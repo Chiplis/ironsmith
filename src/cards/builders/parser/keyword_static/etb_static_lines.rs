@@ -629,6 +629,10 @@ pub(crate) fn parse_where_x_value_clause(tokens: &[OwnedLexToken]) -> Option<Val
         return Some(value);
     }
 
+    if let Some(value) = parse_where_x_opponents_dealt_combat_damage_this_turn_value(tokens) {
+        return Some(value);
+    }
+
     if let Some(value) = parse_where_x_noncombat_damage_to_opponents_value(tokens) {
         return Some(value);
     }
@@ -658,6 +662,11 @@ pub(crate) fn parse_where_x_value_clause(tokens: &[OwnedLexToken]) -> Option<Val
 
     // where X is N plus the number of <objects>
     if let Some(value) = parse_where_x_is_fixed_plus_number_of_filter_value(tokens) {
+        return Some(value);
+    }
+
+    // where X is N plus the sacrificed creature's mana value / power / toughness
+    if let Some(value) = parse_where_x_is_fixed_plus_reference_value(tokens) {
         return Some(value);
     }
 
@@ -747,6 +756,78 @@ pub(crate) fn parse_where_x_source_stat_value(tokens: &[OwnedLexToken]) -> Optio
     }
 }
 
+pub(crate) fn parse_where_x_is_fixed_plus_reference_value(
+    tokens: &[OwnedLexToken],
+) -> Option<Value> {
+    let clause_words = words(tokens);
+    if !clause_words.starts_with(&["where", "x", "is"]) {
+        return None;
+    }
+
+    let fixed_value = parse_number_word_i32(*clause_words.get(3)?)?;
+    if fixed_value < 0 {
+        return None;
+    }
+    let plus_word_idx = 4usize;
+    if clause_words.get(plus_word_idx).copied() != Some("plus") {
+        return None;
+    }
+
+    let value_words = clause_words.get(plus_word_idx + 1..)?;
+    let reference_value =
+        if value_words.starts_with(&["the", "sacrificed", "creature", "power"])
+            || value_words.starts_with(&["the", "sacrificed", "creatures", "power"])
+            || value_words.starts_with(&["sacrificed", "creature", "power"])
+            || value_words.starts_with(&["sacrificed", "creatures", "power"])
+        {
+            Value::PowerOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))))
+        } else if value_words.starts_with(&["the", "sacrificed", "creature", "toughness"])
+            || value_words.starts_with(&["the", "sacrificed", "creatures", "toughness"])
+            || value_words.starts_with(&["sacrificed", "creature", "toughness"])
+            || value_words.starts_with(&["sacrificed", "creatures", "toughness"])
+        {
+            Value::ToughnessOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))))
+        } else if value_words.starts_with(&[
+            "the",
+            "mana",
+            "value",
+            "of",
+            "the",
+            "sacrificed",
+            "creature",
+        ]) || value_words.starts_with(&[
+            "the",
+            "mana",
+            "value",
+            "of",
+            "the",
+            "sacrificed",
+            "creatures",
+        ]) || value_words.starts_with(&["mana", "value", "of", "the", "sacrificed", "creature"])
+            || value_words.starts_with(&[
+                "mana",
+                "value",
+                "of",
+                "the",
+                "sacrificed",
+                "creatures",
+            ])
+            || value_words.starts_with(&["the", "sacrificed", "creature", "mana", "value"])
+            || value_words.starts_with(&["the", "sacrificed", "creatures", "mana", "value"])
+            || value_words.starts_with(&["sacrificed", "creature", "mana", "value"])
+            || value_words.starts_with(&["sacrificed", "creatures", "mana", "value"])
+        {
+            Value::ManaValueOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))))
+        } else {
+            return None;
+        };
+
+    Some(Value::Add(
+        Box::new(Value::Fixed(fixed_value)),
+        Box::new(reference_value),
+    ))
+}
+
 pub(crate) fn parse_where_x_life_gained_this_turn_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     let words = words(tokens);
     if !words.starts_with(&["where", "x", "is"]) {
@@ -818,6 +899,47 @@ pub(crate) fn parse_where_x_life_lost_this_turn_value(tokens: &[OwnedLexToken]) 
                 "turn",
             ],
         ) => Some(Value::LifeLostThisTurn(PlayerFilter::Opponent)),
+        _ => None,
+    }
+}
+
+pub(crate) fn parse_where_x_opponents_dealt_combat_damage_this_turn_value(
+    tokens: &[OwnedLexToken],
+) -> Option<Value> {
+    let words = words(tokens);
+    if !words.starts_with(&["where", "x", "is"]) {
+        return None;
+    }
+    match words.get(3..) {
+        Some(
+            [
+                "the",
+                "number",
+                "of",
+                "opponents",
+                "that",
+                "were",
+                "dealt",
+                "combat",
+                "damage",
+                "this",
+                "turn",
+            ],
+        )
+        | Some(
+            [
+                "number",
+                "of",
+                "opponents",
+                "that",
+                "were",
+                "dealt",
+                "combat",
+                "damage",
+                "this",
+                "turn",
+            ],
+        ) => Some(Value::CountPlayers(PlayerFilter::Opponent)),
         _ => None,
     }
 }

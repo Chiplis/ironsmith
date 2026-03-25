@@ -697,6 +697,22 @@ pub(crate) fn parse_sentence_sacrifice_it_next_end_step(
     }]))
 }
 
+pub(crate) fn parse_sentence_if_tagged_cards_remain_exiled(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let clause_words = words(tokens);
+    let matches_supported_prefix = clause_words.starts_with(&[
+        "if", "any", "of", "those", "cards", "remain", "exiled",
+    ]) || clause_words.starts_with(&["if", "those", "cards", "remain", "exiled"])
+        || clause_words.starts_with(&["if", "that", "card", "remains", "exiled"])
+        || clause_words.starts_with(&["if", "it", "remains", "exiled"]);
+    if !matches_supported_prefix {
+        return Ok(None);
+    }
+
+    super::conditionals::parse_conditional_sentence_lexed(tokens).map(Some)
+}
+
 pub(crate) fn parse_sentence_sacrifice_at_end_of_combat(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -5194,6 +5210,10 @@ pub(crate) const PRE_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
     SentencePrimitive {
         name: "fallback-mechanic-marker",
         parser: parse_sentence_fallback_mechanic_marker,
+    },
+    SentencePrimitive {
+        name: "if-tagged-cards-remain-exiled",
+        parser: parse_sentence_if_tagged_cards_remain_exiled,
     },
     SentencePrimitive {
         name: "if-enters-with-additional-counter",

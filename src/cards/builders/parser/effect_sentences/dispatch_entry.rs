@@ -422,6 +422,52 @@ fn try_parse_divvy_sentence_sequence(
         return Ok(Some(effects));
     }
 
+    if joined.contains("target opponent chooses one")
+        && joined.contains("put that card into your hand")
+        && joined.contains("the rest into your graveyard")
+    {
+        let mut effects = parse_effect_sentence_lexed(sentences[0].lowered())?;
+        effects.push(EffectAst::TagMatchingObjects {
+            filter: ObjectFilter::tagged(TagKey::from(IT_TAG)),
+            zones: vec![Zone::Library],
+            tag: TagKey::from("divvy_source"),
+        });
+        effects.push(EffectAst::ChooseObjectsAcrossZones {
+            filter: ObjectFilter::tagged(TagKey::from("divvy_source")),
+            count: ChoiceCount::exactly(1),
+            player: PlayerAst::TargetOpponent,
+            tag: TagKey::from("divvy_chosen"),
+            zones: vec![Zone::Library],
+        });
+        effects.push(EffectAst::MoveToZone {
+            target: TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
+            zone: Zone::Hand,
+            to_top: false,
+            battlefield_controller: ReturnControllerAst::Preserve,
+            battlefield_tapped: false,
+            attached_to: None,
+        });
+        effects.push(EffectAst::ForEachTagged {
+            tag: TagKey::from("divvy_source"),
+            effects: vec![EffectAst::Conditional {
+                predicate: membership_predicate_for_iterated_object("divvy_chosen"),
+                if_true: Vec::new(),
+                if_false: vec![EffectAst::MoveToZone {
+                    target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                    zone: Zone::Graveyard,
+                    to_top: false,
+                    battlefield_controller: ReturnControllerAst::Preserve,
+                    battlefield_tapped: false,
+                    attached_to: None,
+                }],
+            }],
+        });
+        effects.push(EffectAst::ShuffleLibrary {
+            player: PlayerAst::You,
+        });
+        return Ok(Some(effects));
+    }
+
     Ok(None)
 }
 
@@ -1186,6 +1232,7 @@ fn consult_cast_effects(
                     player: clause.caster,
                     allow_land: clause.allow_land,
                     without_paying_mana_cost,
+                    allow_any_color_for_cast: false,
                 }]
             } else {
                 vec![EffectAst::May {
@@ -1210,6 +1257,7 @@ fn consult_cast_effects(
                     player: clause.caster,
                     allow_land: false,
                     without_paying_mana_cost: false,
+                    allow_any_color_for_cast: false,
                 },
                 EffectAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn {
                     tag: match_tag.clone(),
@@ -4052,6 +4100,55 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
     replacement: &Value,
     clause: &str,
 ) -> Result<(), CardTextError> {
+    fn replace_in_comparison(
+        comparison: &mut crate::filter::Comparison,
+        replacement: &Value,
+        clause: &str,
+    ) -> Result<(), CardTextError> {
+        use crate::filter::Comparison;
+
+        let value = match comparison {
+            Comparison::EqualExpr(value)
+            | Comparison::NotEqualExpr(value)
+            | Comparison::LessThanExpr(value)
+            | Comparison::LessThanOrEqualExpr(value)
+            | Comparison::GreaterThanExpr(value)
+            | Comparison::GreaterThanOrEqualExpr(value) => value,
+            _ => return Ok(()),
+        };
+
+        if value_contains_unbound_x(value) {
+            **value = replace_unbound_x_with_value((**value).clone(), replacement, clause)?;
+        }
+        Ok(())
+    }
+
+    fn replace_in_filter(
+        filter: &mut ObjectFilter,
+        replacement: &Value,
+        clause: &str,
+    ) -> Result<(), CardTextError> {
+        if let Some(power) = filter.power.as_mut() {
+            replace_in_comparison(power, replacement, clause)?;
+        }
+        if let Some(toughness) = filter.toughness.as_mut() {
+            replace_in_comparison(toughness, replacement, clause)?;
+        }
+        if let Some(mana_value) = filter.mana_value.as_mut() {
+            replace_in_comparison(mana_value, replacement, clause)?;
+        }
+        if let Some(targets_object) = filter.targets_object.as_mut() {
+            replace_in_filter(targets_object, replacement, clause)?;
+        }
+        if let Some(targets_only_object) = filter.targets_only_object.as_mut() {
+            replace_in_filter(targets_only_object, replacement, clause)?;
+        }
+        for nested in &mut filter.any_of {
+            replace_in_filter(nested, replacement, clause)?;
+        }
+        Ok(())
+    }
+
     fn replace_value(
         value: &mut Value,
         replacement: &Value,
@@ -4131,6 +4228,9 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
         EffectAst::CreateTokenCopy { count, .. }
         | EffectAst::CreateTokenCopyFromSource { count, .. } => {
             replace_value(count, replacement, clause)?;
+        }
+        EffectAst::SearchLibrary { filter, .. } => {
+            replace_in_filter(filter, replacement, clause)?;
         }
         EffectAst::CreateTokenWithMods {
             count,

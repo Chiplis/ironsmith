@@ -10146,14 +10146,26 @@ fn parse_choose_not_to_untap_line_and_activated_line_without_spurious_untap_effe
 
 #[test]
 fn parse_untap_during_each_other_players_untap_step_as_static_ability() {
-    let err = CardDefinitionBuilder::new(CardId::new(), "Seedborn Variant")
+    let def = CardDefinitionBuilder::new(CardId::new(), "Seedborn Variant")
         .card_types(vec![CardType::Creature])
         .parse_text("Untap all permanents you control during each other player's untap step.")
-        .expect_err("unsupported each-other-player untap line should fail loudly");
-    let compiled = format!("{err:?}").to_ascii_lowercase();
+        .expect("Seedborn Muse untap static ability should parse");
+    let compiled = compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        compiled.contains("unsupported untap-during-each-other-players-untap-step clause"),
-        "expected strict each-other-player untap rejection, got {compiled}"
+        compiled.contains("untap all permanents you control during each other player's untap step"),
+        "expected supported each-other-player untap rendering, got {compiled}"
+    );
+    let static_ids = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        static_ids.contains(&StaticAbilityId::UntapDuringEachOtherPlayersUntapStep),
+        "expected dedicated untap-during-other-players-step static ability, got {static_ids:?}"
     );
 }
 
@@ -12350,7 +12362,7 @@ fn parse_search_its_controller_graveyard_hand_and_library_exiles_same_name_cards
     );
     assert!(
         joined.contains("search its controller's graveyard, hand, and library for all cards with the same name as that object and exile them")
-            && joined.contains("then that player shuffles"),
+            && joined.contains("that player shuffles"),
         "expected compact multi-zone search rendering, got {joined}"
     );
 
@@ -15825,6 +15837,37 @@ fn parse_existing_mana_spend_as_any_color_static_patterns() {
 }
 
 #[test]
+fn parse_mnemonic_betrayal_temporary_any_color_cast_permission() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Mnemonic Betrayal")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Exile all opponents' graveyards. You may cast spells from among those cards this turn, and mana of any type can be spent to cast them. At the beginning of the next end step, if any of those cards remain exiled, return them to their owners' graveyards.\nExile Mnemonic Betrayal.",
+        )
+        .expect("Mnemonic Betrayal text should parse");
+
+    let rendered = crate::compiled_text::canonical_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    let spell_debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        rendered.contains("you may cast spells from among those cards this turn")
+            && rendered.contains("mana of any type can be spent to cast them"),
+        "expected temporary cast permission with any-color mana spend text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("if any of those cards remain exiled")
+            && rendered.contains("their owners' graveyards"),
+        "expected delayed exiled-card return clause, got {rendered}\n{spell_debug}"
+    );
+    assert!(
+        spell_debug.contains("ConditionalEffect")
+            && spell_debug.contains("zone: Some(\n                                                                Exile")
+            && spell_debug.contains("MoveToZoneEffect"),
+        "expected delayed exile-check cleanup in compiled effects, got {spell_debug}"
+    );
+}
+
+#[test]
 fn parse_then_if_conditional_sentence_is_preserved() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Then If Variant")
         .parse_text(
@@ -16952,6 +16995,55 @@ fn parse_orcish_bowmasters_draw_exception_clause_compiles_noncustom_draw_trigger
 }
 
 #[test]
+fn parse_tataru_taru_off_turn_draw_trigger_is_typed_and_capped() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Tataru Taru Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "When this creature enters, you draw a card and target opponent may draw a card.\nScions' Secretary — Whenever an opponent draws a card, if it isn't that player's turn, create a tapped Treasure token. This ability triggers only once each turn.",
+        )
+        .expect("tataru taru-style trigger should parse");
+
+    let abilities_debug = format!("{:#?}", def.abilities);
+    assert!(
+        abilities_debug.contains("PlayerDrawsCardTrigger"),
+        "expected typed draw trigger matcher, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("not_during_turn: Some(")
+            || abilities_debug.contains("if it isn't that player's turn"),
+        "expected off-turn draw restriction in trigger matcher, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("MaxTimesEachTurn"),
+        "expected once-each-turn cap to survive lowering, got {abilities_debug}"
+    );
+}
+
+#[test]
+fn parse_intuition_target_opponent_divvy_bundle() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Intuition Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Search your library for three cards and reveal them. Target opponent chooses one. Put that card into your hand and the rest into your graveyard. Then shuffle.",
+        )
+        .expect("intuition-style divvy spell should parse");
+
+    let spell_debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        spell_debug.contains("divvy_chosen"),
+        "expected chosen-card tagging for opponent split, got {spell_debug}"
+    );
+    assert!(
+        spell_debug.contains("divvy_source"),
+        "expected original revealed set to stay tagged for rest-to-graveyard handling, got {spell_debug}"
+    );
+    assert!(
+        spell_debug.contains("ShuffleLibraryEffect"),
+        "expected shuffle to remain in spell effect bundle, got {spell_debug}"
+    );
+}
+
+#[test]
 fn parse_exile_top_card_of_target_library_preserves_top_card_selection() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Top Card Exile Variant")
         .card_types(vec![CardType::Creature])
@@ -17513,6 +17605,48 @@ fn parse_finale_of_devastation_x_threshold_spell() {
         rendered.contains("creatures you control get +x/+x")
             && rendered.contains("gain haste until end of turn"),
         "expected pump-and-haste clause to survive compilation, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_eldritch_evolution_sacrifice_scaled_where_x_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Eldritch Evolution")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "As an additional cost to cast this spell, sacrifice a creature.\nSearch your library for a creature card with mana value X or less, where X is 2 plus the sacrificed creature's mana value, put that card onto the battlefield, then shuffle.\nExile Eldritch Evolution.",
+        )
+        .expect("eldritch evolution should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("mana value x or less"),
+        "expected x-bounded creature search to survive compilation, got {rendered}"
+    );
+    assert!(
+        rendered.contains("where x is 2 plus the sacrificed creature's mana value"),
+        "expected where-x clause to survive rendered compilation, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_tymna_the_weaver_postcombat_where_x_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Tymna the Weaver")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Lifelink\nAt the beginning of your postcombat main phase, you may pay X life, where X is the number of opponents that were dealt combat damage this turn. If you do, draw X cards.\nPartner",
+        )
+        .expect("tymna should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("postcombat main phase"),
+        "expected postcombat main phase wording, got {rendered}"
+    );
+    assert!(
+        rendered.contains("pay x life")
+            && rendered.contains("number of opponents that were dealt combat damage this turn")
+            && rendered.contains("draw x cards"),
+        "expected tymna where-x draw clause to survive rendering, got {rendered}"
     );
 }
 

@@ -15,6 +15,7 @@ pub struct PlayerDrawsCardTrigger {
     pub player: PlayerFilter,
     /// If true, fires once per card drawn. If false, fires once per draw action.
     pub per_card: bool,
+    pub not_during_turn: Option<PlayerFilter>,
 }
 
 impl PlayerDrawsCardTrigger {
@@ -23,6 +24,7 @@ impl PlayerDrawsCardTrigger {
         Self {
             player,
             per_card: false,
+            not_during_turn: None,
         }
     }
 
@@ -31,6 +33,15 @@ impl PlayerDrawsCardTrigger {
         Self {
             player,
             per_card: true,
+            not_during_turn: None,
+        }
+    }
+
+    pub fn not_during_turn(player: PlayerFilter, during_turn: PlayerFilter) -> Self {
+        Self {
+            player,
+            per_card: true,
+            not_during_turn: Some(during_turn),
         }
     }
 }
@@ -43,12 +54,25 @@ impl TriggerMatcher for PlayerDrawsCardTrigger {
         let Some(e) = event.downcast::<CardsDrawnEvent>() else {
             return false;
         };
-        match &self.player {
+        (match &self.player {
             PlayerFilter::You => e.player == ctx.controller,
             PlayerFilter::Opponent => e.player != ctx.controller,
             PlayerFilter::Any => true,
             PlayerFilter::Specific(id) => e.player == *id,
             _ => true,
+        }) && if let Some(not_during_turn) = &self.not_during_turn {
+            let active_player = ctx.game.turn.active_player;
+            let turn_matches = match not_during_turn {
+                PlayerFilter::You => active_player == ctx.controller,
+                PlayerFilter::Opponent => active_player != ctx.controller,
+                PlayerFilter::Any | PlayerFilter::Active => true,
+                PlayerFilter::Specific(id) => active_player == *id,
+                PlayerFilter::IteratedPlayer => active_player == e.player,
+                _ => false,
+            };
+            !turn_matches
+        } else {
+            true
         }
     }
 
@@ -74,12 +98,42 @@ impl TriggerMatcher for PlayerDrawsCardTrigger {
             "draws one or more cards"
         };
         match &self.player {
-            PlayerFilter::You => format!("Whenever you {}", action),
-            _ => format!(
+            PlayerFilter::You => {
+                let base = format!("Whenever you {}", action);
+                if let Some(not_during_turn) = &self.not_during_turn {
+                    let suffix = match not_during_turn {
+                        PlayerFilter::You => ", if it isn't your turn",
+                        PlayerFilter::Opponent => ", if it isn't an opponent's turn",
+                        PlayerFilter::Specific(_) | PlayerFilter::IteratedPlayer => {
+                            ", if it isn't that player's turn"
+                        }
+                        _ => "",
+                    };
+                    format!("{base}{suffix}")
+                } else {
+                    base
+                }
+            }
+            _ => {
+                let base = format!(
                 "Whenever {} {}",
                 describe_player_filter_subject(&self.player),
                 action
-            ),
+                );
+                if let Some(not_during_turn) = &self.not_during_turn {
+                    let suffix = match not_during_turn {
+                        PlayerFilter::You => ", if it isn't your turn",
+                        PlayerFilter::Opponent => ", if it isn't an opponent's turn",
+                        PlayerFilter::Specific(_) | PlayerFilter::IteratedPlayer => {
+                            ", if it isn't that player's turn"
+                        }
+                        _ => "",
+                    };
+                    format!("{base}{suffix}")
+                } else {
+                    base
+                }
+            }
         }
     }
 }

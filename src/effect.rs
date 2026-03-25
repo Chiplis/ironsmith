@@ -1142,6 +1142,16 @@ impl ManaSpendPermission {
             scope: ManaSpendScope::ActivationCostsOf(filter),
         }
     }
+
+    pub fn any_color_for_casting_stable_ids(
+        player: PlayerFilter,
+        stable_ids: Vec<crate::ids::StableId>,
+    ) -> Self {
+        Self {
+            player,
+            scope: ManaSpendScope::CastingSpellsWithStableIds(stable_ids),
+        }
+    }
 }
 
 /// Scope for "spend mana as though it were mana of any color" permissions.
@@ -1151,6 +1161,8 @@ pub enum ManaSpendScope {
     AllCosts,
     /// Applies only while paying activation costs of abilities of matching objects.
     ActivationCostsOf(ObjectFilter),
+    /// Applies only while casting spells or playing cards with matching stable ids.
+    CastingSpellsWithStableIds(Vec<crate::ids::StableId>),
 }
 
 impl Restriction {

@@ -1065,6 +1065,10 @@ pub(crate) enum TriggerSpec {
     },
     YouDrawCard,
     PlayerDrawsCard(PlayerFilter),
+    PlayerDrawsCardNotDuringTurn {
+        player: PlayerFilter,
+        during_turn: PlayerFilter,
+    },
     PlayerDrawsNthCardEachTurn {
         player: PlayerFilter,
         card_number: u32,
@@ -1740,6 +1744,7 @@ pub(crate) enum EffectAst {
         player: PlayerAst,
         allow_land: bool,
         without_paying_mana_cost: bool,
+        allow_any_color_for_cast: bool,
     },
     GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn {
         tag: TagKey,
@@ -8636,7 +8641,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         let gated = lines
             .iter()
             .find(|line| {
-                line.contains("Lose 1 life")
+                line.contains("Pay 1 life")
                     && line.contains("Add one mana of any color")
                     && line.contains("Activate only if you control one or more artifacts")
             })
@@ -9640,6 +9645,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
         let def = CardDefinitionBuilder::new(CardId::new(), "Assassin's Blade Probe")
             .card_types(vec![CardType::Instant])
+            .mana_cost(ManaCost::new())
             .parse_text(
                 "Cast this spell only during the declare attackers step and only if you've been attacked this step.\nDraw a card.",
             )
@@ -9699,6 +9705,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
         let def = CardDefinitionBuilder::new(CardId::new(), "Panic Probe")
             .card_types(vec![CardType::Instant])
+            .mana_cost(ManaCost::new())
             .parse_text(
                 "Cast this spell only during combat before blockers are declared.\nDraw a card.",
             )
@@ -9749,6 +9756,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
         let def = CardDefinitionBuilder::new(CardId::new(), "Illusory Angel Probe")
             .card_types(vec![CardType::Instant])
+            .mana_cost(ManaCost::new())
             .parse_text(
                 "Cast this spell only if you've cast another spell this turn.\nDraw a card.",
             )
@@ -9803,6 +9811,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
         let def = CardDefinitionBuilder::new(CardId::new(), "Doctor Restriction Probe")
             .card_types(vec![CardType::Instant])
+            .mana_cost(ManaCost::new())
             .parse_text("Cast this spell only if you control two or more Doctors.\nDraw a card.")
             .expect("doctor subtype cast restriction should parse");
 

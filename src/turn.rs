@@ -285,8 +285,39 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
         game.phase_in(id);
     }
 
-    // Get all permanents controlled by active player
-    let permanents: Vec<_> = game.permanents_controlled_by(active_player);
+    // Get all permanents controlled by active player, plus any permanents that
+    // other players untap during this untap step (Seedborn Muse-style effects).
+    let mut permanents: std::collections::HashSet<_> = game
+        .permanents_controlled_by(active_player)
+        .into_iter()
+        .collect();
+    for source_id in game.battlefield.clone() {
+        let Some(source) = game.object(source_id) else {
+            continue;
+        };
+        if source.controller == active_player {
+            continue;
+        }
+        let source_controller = source.controller;
+        let filter_ctx = game.filter_context_for(source_controller, Some(source_id));
+        for ability in &source.abilities {
+            let AbilityKind::Static(static_ability) = &ability.kind else {
+                continue;
+            };
+            let Some(filter) = static_ability.untap_during_each_other_players_untap_step_filter()
+            else {
+                continue;
+            };
+            for &candidate_id in &game.battlefield {
+                if let Some(candidate) = game.object(candidate_id)
+                    && filter.matches(candidate, &filter_ctx, game)
+                {
+                    permanents.insert(candidate_id);
+                }
+            }
+        }
+    }
+    let permanents: Vec<_> = permanents.into_iter().collect();
 
     // First pass: collect which permanents should untap
     let should_untap: std::collections::HashSet<_> = permanents
@@ -294,14 +325,14 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
         .filter_map(|&id| {
             let obj = game.object(id)?;
             // Check if the permanent has "doesn't untap during your untap step"
-            let has_doesnt_untap = obj.abilities.iter().any(|ability| {
+            let has_doesnt_untap = obj.controller == active_player && obj.abilities.iter().any(|ability| {
                 if let AbilityKind::Static(s) = &ability.kind {
                     s.affects_untap()
                 } else {
                     false
                 }
             });
-            let has_optional_choice = obj.abilities.iter().any(|ability| {
+            let has_optional_choice = obj.controller == active_player && obj.abilities.iter().any(|ability| {
                 matches!(
                     &ability.kind,
                     AbilityKind::Static(static_ability)
@@ -309,7 +340,7 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
                             == StaticAbilityId::MayChooseNotToUntapDuringUntapStep
                 )
             });
-            let blocked_by_restriction = !game.can_untap(id);
+            let blocked_by_restriction = !game.can_untap_during_step(id, active_player);
             if has_doesnt_untap || blocked_by_restriction {
                 None
             } else if has_optional_choice && game.is_tapped(id) {
@@ -506,6 +537,7 @@ pub fn execute_cleanup_step(game: &mut GameState) {
         .cleanup_expired(turn_number, &battlefield);
 
     game.cleanup_restrictions_end_of_turn();
+    game.cleanup_mana_spend_permissions_end_of_turn();
     game.cleanup_granted_mana_abilities_end_of_turn();
     game.cleanup_temporary_spell_cost_reductions_end_of_turn();
     game.cleanup_temporary_spell_ability_grants_end_of_turn();
@@ -698,6 +730,76 @@ mod tests {
         assert!(
             game.is_tapped(cant_untap_artifact),
             "can't-untap restriction should prevent untapping"
+        );
+    }
+
+    #[test]
+    fn execute_untap_step_with_other_players_untap_support_untaps_matching_permanents() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        game.turn.active_player = bob;
+
+        let _seedborn_like = create_artifact(
+            &mut game,
+            "Seedborn Relic",
+            alice,
+            vec![StaticAbility::untap_during_each_other_players_untap_step(
+                crate::target::ObjectFilter::permanent().you_control(),
+                "Untap all permanents you control during each other player's untap step"
+                    .to_string(),
+            )],
+        );
+        let alices_artifact = create_artifact(&mut game, "Alice Relic", alice, vec![]);
+        game.tap(alices_artifact);
+
+        let mut dm = AlwaysYesDecisionMaker;
+        execute_untap_step_with(&mut game, &mut dm);
+
+        assert!(
+            !game.is_tapped(alices_artifact),
+            "matching permanent should untap during another player's untap step"
+        );
+    }
+
+    #[test]
+    fn execute_untap_step_with_other_players_untap_support_ignores_controller_only_untap_limits() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        game.turn.active_player = bob;
+
+        let _seedborn_like = create_artifact(
+            &mut game,
+            "Seedborn Relic",
+            alice,
+            vec![StaticAbility::untap_during_each_other_players_untap_step(
+                crate::target::ObjectFilter::permanent().you_control(),
+                "Untap all permanents you control during each other player's untap step"
+                    .to_string(),
+            )],
+        );
+        let doesnt_untap_artifact = create_artifact(
+            &mut game,
+            "Locked Relic",
+            alice,
+            vec![StaticAbility::doesnt_untap()],
+        );
+        let cant_untap_artifact = create_artifact(&mut game, "Frozen Relic", alice, vec![]);
+        game.tap(doesnt_untap_artifact);
+        game.tap(cant_untap_artifact);
+        game.cant_effects.add_cant_untap(cant_untap_artifact);
+
+        let mut dm = AlwaysYesDecisionMaker;
+        execute_untap_step_with(&mut game, &mut dm);
+
+        assert!(
+            !game.is_tapped(doesnt_untap_artifact),
+            "controller-only doesnt-untap ability should not block another player's untap step"
+        );
+        assert!(
+            !game.is_tapped(cant_untap_artifact),
+            "controller-only cant-untap restriction should not block another player's untap step"
         );
     }
 

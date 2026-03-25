@@ -796,6 +796,13 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         false
     }
 
+    /// Returns a filter of permanents that untap during each other player's untap step.
+    fn untap_during_each_other_players_untap_step_filter(
+        &self,
+    ) -> Option<&crate::target::ObjectFilter> {
+        None
+    }
+
     /// Returns true if this causes entering tapped.
     fn enters_tapped(&self) -> bool {
         false
@@ -1321,6 +1328,12 @@ impl StaticAbility {
 
     pub fn affects_untap(&self) -> bool {
         self.0.affects_untap()
+    }
+
+    pub fn untap_during_each_other_players_untap_step_filter(
+        &self,
+    ) -> Option<&crate::target::ObjectFilter> {
+        self.0.untap_during_each_other_players_untap_step_filter()
     }
 
     pub fn enters_tapped(&self) -> bool {
@@ -2313,6 +2326,13 @@ impl StaticAbility {
 
     pub fn restriction(restriction: crate::effect::Restriction, display: String) -> Self {
         Self::new(RuleRestriction::new(restriction, display))
+    }
+
+    pub fn untap_during_each_other_players_untap_step(
+        filter: crate::target::ObjectFilter,
+        display: String,
+    ) -> Self {
+        Self::new(UntapDuringEachOtherPlayersUntapStep::new(filter, display))
     }
 
     pub fn can_be_commander() -> Self {

@@ -35,6 +35,7 @@ use super::preprocess::{
     PreprocessedDocument, PreprocessedItem, PreprocessedLine, preprocess_document,
 };
 use super::util::{
+    is_untap_during_each_other_players_untap_step_words,
     parse_additional_cost_choice_options_lexed, parse_bestow_line_lexed, parse_buyback_line_lexed,
     parse_bargain_line_lexed,
     parse_cast_this_spell_only_line_lexed, parse_entwine_line_lexed, parse_escape_line_lexed,
@@ -230,6 +231,8 @@ fn parse_static_line_cst(line: &PreprocessedLine) -> Result<Option<StaticLineCst
             | "as long as this is untapped, each spell that would cost less than three mana to cast costs three mana to cast."
             | "players can't pay life or sacrifice nonland permanents to cast spells or activate abilities."
             | "creatures you control can boast twice during each of your turns rather than once."
+            | "untap all permanents you control during each other player's untap step."
+            | "untap all permanents you control during each other players untap step."
     ) {
         return Ok(Some(StaticLineCst {
             info: line.info.clone(),
@@ -253,6 +256,13 @@ fn parse_static_line_cst(line: &PreprocessedLine) -> Result<Option<StaticLineCst
     }
     let lexed_words = crate::cards::builders::parser::lexer::lexed_words(&lexed);
     if is_doesnt_untap_during_your_untap_step_words(lexed_words.as_slice()) {
+        return Ok(Some(StaticLineCst {
+            info: line.info.clone(),
+            text: normalized.to_string(),
+            chosen_option_label: None,
+        }));
+    }
+    if is_untap_during_each_other_players_untap_step_words(lexed_words.as_slice()) {
         return Ok(Some(StaticLineCst {
             info: line.info.clone(),
             text: normalized.to_string(),
@@ -565,6 +575,12 @@ fn parse_statement_line_cst(
             text: normalized.to_string(),
         }));
     }
+    if (normalized.contains("during each other player's untap step")
+        || normalized.contains("during each other players untap step"))
+        && normalized.starts_with("untap all ")
+    {
+        return Ok(None);
+    }
     let parse_text = rewrite_statement_parse_text(normalized);
     let lexed = lexed_tokens(parse_text.as_str(), line.info.line_index)?;
     let effects = match parse_effect_sentences_lexed(&lexed) {
@@ -630,6 +646,13 @@ fn parse_former_section9_unsupported_line_cst(
 fn looks_like_statement_line(normalized: &str) -> bool {
     if let Some((_, body)) = split_label_prefix(normalized) {
         return looks_like_statement_line(body);
+    }
+
+    if (normalized.contains("during each other player's untap step")
+        || normalized.contains("during each other players untap step"))
+        && normalized.starts_with("untap all ")
+    {
+        return false;
     }
 
     if (normalized.contains("during that player's next turn")
@@ -805,7 +828,10 @@ fn looks_like_activation_cost_prefix(raw: &str) -> bool {
 }
 
 fn looks_like_static_line(normalized: &str) -> bool {
-    normalized.starts_with("this ")
+    ((normalized.contains("during each other player's untap step")
+        || normalized.contains("during each other players untap step"))
+        && normalized.starts_with("untap all "))
+        || normalized.starts_with("this ")
         || normalized.starts_with("enchanted ")
         || normalized.starts_with("equipped ")
         || normalized.starts_with("fortified ")
@@ -1275,9 +1301,6 @@ fn diagnose_known_unsupported_rewrite_line(normalized: &str) -> Option<CardTextE
         "unsupported additional-land-play permission clause"
     } else if normalized == "target creature can block any number of creatures this turn." {
         "unsupported target-only restriction clause"
-    } else if normalized == "untap all permanents you control during each other player's untap step."
-    {
-        "unsupported untap-during-each-other-players-untap-step clause"
     } else if normalized == "equip costs you pay cost {1} less." {
         "unsupported activation cost modifier clause"
     } else if normalized == "unleash while" {

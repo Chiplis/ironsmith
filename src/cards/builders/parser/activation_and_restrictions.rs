@@ -7197,6 +7197,26 @@ pub(crate) fn parse_leading_or_more_quantifier(
 pub(crate) fn parse_trigger_clause_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<TriggerSpec, CardTextError> {
+    fn parse_not_during_turn_suffix(words: &[&str]) -> Option<PlayerFilter> {
+        match words {
+            ["a", "card", "if", "it", "isnt", "that", "players", "turn"]
+            | ["a", "card", "if", "its", "not", "that", "players", "turn"]
+            | ["a", "card", "if", "it", "isnt", "their", "turn"]
+            | ["a", "card", "if", "its", "not", "their", "turn"] => {
+                Some(PlayerFilter::IteratedPlayer)
+            }
+            ["a", "card", "if", "it", "isnt", "your", "turn"]
+            | ["a", "card", "if", "its", "not", "your", "turn"] => Some(PlayerFilter::You),
+            ["a", "card", "if", "it", "isnt", "an", "opponents", "turn"]
+            | ["a", "card", "if", "its", "not", "an", "opponents", "turn"]
+            | ["a", "card", "if", "it", "isnt", "opponents", "turn"]
+            | ["a", "card", "if", "its", "not", "opponents", "turn"] => {
+                Some(PlayerFilter::Opponent)
+            }
+            _ => None,
+        }
+    }
+
     fn parse_enters_origin_clause_lexed(words: &[&str]) -> Option<(Zone, Option<PlayerFilter>)> {
         let tail_words = words
             .iter()
@@ -8692,6 +8712,12 @@ pub(crate) fn parse_trigger_clause_lexed(
         let subject = &words[..draw_word_idx];
         if let Some(player) = parse_trigger_subject_player_filter(subject) {
             let tail = &words[draw_word_idx + 1..];
+            if let Some(during_turn) = parse_not_during_turn_suffix(tail) {
+                return Ok(TriggerSpec::PlayerDrawsCardNotDuringTurn {
+                    player,
+                    during_turn,
+                });
+            }
             if let Some(card_number) = parse_exact_draw_count_each_turn(tail) {
                 return Ok(TriggerSpec::PlayerDrawsNthCardEachTurn {
                     player,
