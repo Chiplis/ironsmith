@@ -174,10 +174,8 @@ mod tests {
         game.object_mut(source)
             .expect("source Aura should exist")
             .aura_attach_filter = Some(crate::target::PlayerFilter::Any.into());
-        let mut ctx =
-            ExecutionContext::new_default(source, alice).with_targets(vec![ResolvedTarget::Player(
-                bob,
-            )]);
+        let mut ctx = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![ResolvedTarget::Player(bob)]);
 
         let effect = AttachToEffect::new(ChooseSpec::target_player());
         effect.execute(&mut game, &mut ctx).unwrap();

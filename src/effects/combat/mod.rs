@@ -10,6 +10,7 @@
 //! - `GrantAbilitiesAllEffect` - Grant abilities to all creatures matching a filter
 
 mod enter_attacking;
+mod exchange_values;
 mod fight;
 mod goad;
 mod grant_abilities_all;
@@ -27,6 +28,7 @@ mod remove_from_combat;
 mod set_base_power_toughness;
 
 pub use enter_attacking::EnterAttackingEffect;
+pub use exchange_values::{ExchangeValueKind, ExchangeValueOperand, ExchangeValuesEffect};
 pub use fight::FightEffect;
 pub use goad::GoadEffect;
 pub use grant_abilities_all::GrantAbilitiesAllEffect;

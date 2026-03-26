@@ -233,6 +233,8 @@ pub enum Modification {
     // === Layer 3: Text ===
     /// Change text (e.g., "Swamp" becomes "Forest")
     ChangeText { from: String, to: String },
+    /// Replace an object's text box and the rules-text-derived abilities that go with it.
+    SetTextBox(TextBoxOverlay),
     /// Set a permanent's name.
     SetName(String),
 
@@ -363,7 +365,9 @@ impl Modification {
 
             Modification::ChangeController(_) => Layer::Control,
 
-            Modification::ChangeText { .. } | Modification::SetName(_) => Layer::Text,
+            Modification::ChangeText { .. }
+            | Modification::SetTextBox(_)
+            | Modification::SetName(_) => Layer::Text,
 
             Modification::AddCardTypes(_)
             | Modification::RemoveCardTypes(_)
@@ -421,6 +425,22 @@ impl Modification {
     }
 }
 
+/// A rules-text overlay used by text-changing effects such as text-box exchange.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TextBoxOverlay {
+    pub oracle_text: String,
+    pub abilities: Vec<Ability>,
+}
+
+impl TextBoxOverlay {
+    pub fn new(oracle_text: String, abilities: Vec<Ability>) -> Self {
+        Self {
+            oracle_text,
+            abilities,
+        }
+    }
+}
+
 /// Manages all continuous effects in the game.
 #[derive(Debug, Clone, Default)]
 pub struct ContinuousEffectManager {
@@ -437,6 +457,10 @@ pub struct ContinuousEffectManager {
 
     /// Current timestamp (for ordering)
     current_timestamp: u64,
+
+    /// Monotonic revision for effect-list changes that can invalidate cached
+    /// characteristic calculations.
+    revision: u64,
 
     // === Timestamp tracking per Rule 613.7 ===
     /// Timestamps for when objects entered their current zone.
@@ -470,23 +494,27 @@ impl ContinuousEffectManager {
         }
 
         self.effects.push(effect);
+        self.revision += 1;
         id
     }
 
     /// Remove an effect by ID.
     pub fn remove_effect(&mut self, id: ContinuousEffectId) {
         self.effects.retain(|e| e.id != id);
+        self.revision += 1;
     }
 
     /// Remove all effects from a specific source.
     pub fn remove_effects_from_source(&mut self, source: ObjectId) {
         self.effects.retain(|e| e.source != source);
+        self.revision += 1;
     }
 
     /// Remove all effects with duration UntilEndOfTurn.
     pub fn cleanup_end_of_turn(&mut self) {
         self.effects
             .retain(|e| !matches!(e.duration, Until::EndOfTurn));
+        self.revision += 1;
     }
 
     /// Get all effects that apply to a specific object.
@@ -545,6 +573,7 @@ impl ContinuousEffectManager {
     /// Per Rule 611.3a, static ability effects apply dynamically.
     pub fn set_static_ability_effects(&mut self, effects: Vec<ContinuousEffect>) {
         self.static_ability_effects = effects;
+        self.revision += 1;
     }
 
     /// Get the static ability effects (for iteration/inspection).
@@ -560,6 +589,10 @@ impl ContinuousEffectManager {
     /// Get the next effect id (for deterministic state hashing).
     pub fn next_id(&self) -> u64 {
         self.next_id
+    }
+
+    pub fn revision(&self) -> u64 {
+        self.revision
     }
 
     /// Get the next timestamp.
@@ -806,6 +839,7 @@ impl ContinuousEffect {
 #[derive(Debug, Clone)]
 pub struct CalculatedCharacteristics {
     pub name: String,
+    pub oracle_text: String,
     pub power: Option<i32>,
     pub toughness: Option<i32>,
     pub card_types: Vec<CardType>,
@@ -888,8 +922,15 @@ pub(crate) fn in_progress_characteristics(
 }
 
 fn initial_characteristics(object: &Object) -> CalculatedCharacteristics {
-    let mut chars = CalculatedCharacteristics {
+    let mut chars = initial_text_box_characteristics(object);
+    add_abilities_from_counters(object, &mut chars);
+    chars
+}
+
+fn initial_text_box_characteristics(object: &Object) -> CalculatedCharacteristics {
+    CalculatedCharacteristics {
         name: object.name.clone(),
+        oracle_text: object.oracle_text.clone(),
         power: object.base_power.as_ref().map(|p| p.base_value()),
         toughness: object.base_toughness.as_ref().map(|t| t.base_value()),
         card_types: object.card_types.clone(),
@@ -899,10 +940,7 @@ fn initial_characteristics(object: &Object) -> CalculatedCharacteristics {
         abilities: object.abilities.clone(),
         static_abilities: extract_static_abilities(&object.abilities),
         controller: object.controller,
-    };
-
-    add_abilities_from_counters(object, &mut chars);
-    chars
+    }
 }
 
 fn add_intrinsic_basic_land_mana_abilities(chars: &mut CalculatedCharacteristics) {
@@ -1012,6 +1050,149 @@ pub(crate) fn calculate_characteristics_with_effects_simple(
         game,
         DependencySortMode::Heuristic,
     ))
+}
+
+/// Calculate an object's effective text box after copy/control/text effects.
+///
+/// This stops before layers 4-7 so callers can inspect text-derived abilities
+/// without later grants/removals or P/T changes folded in.
+pub fn text_box_characteristics_with_effects(
+    object_id: ObjectId,
+    objects: &HashMap<ObjectId, Object>,
+    effects: &[ContinuousEffect],
+    battlefield: &[ObjectId],
+    commanders: &HashSet<ObjectId>,
+    game: &crate::game_state::GameState,
+) -> Option<CalculatedCharacteristics> {
+    if let Some(chars) = in_progress_characteristics(object_id) {
+        return Some(chars);
+    }
+    let object = objects.get(&object_id)?;
+
+    let mut chars = initial_text_box_characteristics(object);
+    let calc_guard = CharacteristicCalculationGuard::begin(object.id, &chars);
+
+    let mut effects_by_layer: HashMap<Layer, Vec<&ContinuousEffect>> = HashMap::with_capacity(3);
+    for effect in effects {
+        let layer = effect.modification.layer();
+        if matches!(layer, Layer::Copy | Layer::Control | Layer::Text) {
+            effects_by_layer.entry(layer).or_default().push(effect);
+        }
+    }
+
+    for layer in [Layer::Copy, Layer::Control, Layer::Text] {
+        let Some(layer_effects) = effects_by_layer.get(&layer) else {
+            continue;
+        };
+        let needs_source_tracking = layer_needs_source_activity_tracking(layer_effects);
+        let baseline =
+            crate::dependency::needs_baseline_dependency_sort(layer_effects).then(|| {
+                build_layer_baseline(objects, effects, battlefield, commanders, game, layer, None)
+            });
+        let tracked_source_ids =
+            needs_source_tracking.then(|| tracked_source_ids_for_layer(layer_effects));
+        let mut source_state = if needs_source_tracking {
+            build_object_baseline_for_ids(
+                objects,
+                effects,
+                battlefield,
+                commanders,
+                game,
+                layer,
+                None,
+                tracked_source_ids
+                    .as_ref()
+                    .expect("tracked sources should exist when source tracking is enabled"),
+            )
+        } else {
+            HashMap::new()
+        };
+
+        let sorted_effects = if let Some(baseline) = baseline.as_ref() {
+            crate::dependency::sort_layer_effects_with_baseline(
+                layer_effects,
+                baseline,
+                objects,
+                game,
+            )
+        } else {
+            crate::dependency::sort_layer_effects(layer_effects)
+        };
+
+        for effect in sorted_effects {
+            let effect_active = if needs_source_tracking {
+                effect_source_is_active(effect, &source_state)
+            } else {
+                true
+            };
+
+            if needs_source_tracking && effect_active {
+                advance_layer_source_state(
+                    &mut source_state,
+                    effect,
+                    objects,
+                    battlefield,
+                    commanders,
+                    game,
+                );
+            }
+
+            if !effect_active
+                || !effect_applies_to_direct(
+                    effect,
+                    object,
+                    &chars,
+                    objects,
+                    battlefield,
+                    commanders,
+                    game,
+                )
+            {
+                continue;
+            }
+
+            apply_text_box_modification_to_chars(&effect.modification, &mut chars, objects);
+            calc_guard.update(&chars);
+        }
+    }
+
+    Some(chars)
+}
+
+fn apply_text_box_modification_to_chars(
+    modification: &Modification,
+    chars: &mut CalculatedCharacteristics,
+    objects: &HashMap<ObjectId, Object>,
+) {
+    match modification {
+        Modification::CopyOf(target_id) => {
+            if let Some(target) = objects.get(target_id) {
+                chars.name = target.name.clone();
+                chars.oracle_text = target.oracle_text.clone();
+                chars.power = target.base_power.as_ref().map(|p| p.base_value());
+                chars.toughness = target.base_toughness.as_ref().map(|t| t.base_value());
+                chars.card_types = target.card_types.clone();
+                chars.subtypes = target.subtypes.clone();
+                chars.supertypes = target.supertypes.clone();
+                chars.colors = target.colors();
+                chars.abilities = target.abilities.clone();
+                chars.static_abilities = extract_static_abilities(&target.abilities);
+            }
+        }
+        Modification::ChangeController(new_controller) => {
+            chars.controller = *new_controller;
+        }
+        Modification::ChangeText { .. } => {}
+        Modification::SetTextBox(overlay) => {
+            chars.oracle_text = overlay.oracle_text.clone();
+            chars.abilities = overlay.abilities.clone();
+            chars.static_abilities = extract_static_abilities(&overlay.abilities);
+        }
+        Modification::SetName(name) => {
+            chars.name = name.clone();
+        }
+        _ => {}
+    }
 }
 
 /// Apply all layers to calculate final characteristics using provided effects.
@@ -1465,6 +1646,7 @@ fn apply_modification_to_chars(
         Modification::CopyOf(target_id) => {
             if let Some(target) = objects.get(target_id) {
                 chars.name = target.name.clone();
+                chars.oracle_text = target.oracle_text.clone();
                 chars.power = target.base_power.as_ref().map(|p| p.base_value());
                 chars.toughness = target.base_toughness.as_ref().map(|t| t.base_value());
                 chars.card_types = target.card_types.clone();
@@ -1473,6 +1655,7 @@ fn apply_modification_to_chars(
                 chars.colors = target.colors();
                 chars.abilities = target.abilities.clone();
                 chars.static_abilities = extract_static_abilities(&target.abilities);
+                add_abilities_from_counters(object, chars);
             }
         }
 
@@ -1482,6 +1665,12 @@ fn apply_modification_to_chars(
         }
         Modification::ChangeText { .. } => {
             // Text changes are handled separately.
+        }
+        Modification::SetTextBox(overlay) => {
+            chars.oracle_text = overlay.oracle_text.clone();
+            chars.abilities = overlay.abilities.clone();
+            chars.static_abilities = extract_static_abilities(&overlay.abilities);
+            add_abilities_from_counters(object, chars);
         }
         Modification::SetName(name) => {
             chars.name = name.clone();
@@ -1960,6 +2149,7 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
                     // It does NOT copy counters, damage, or other non-copiable state.
                     if let Some(target) = ctx.objects.get(target_id) {
                         chars.name = target.name.clone();
+                        chars.oracle_text = target.oracle_text.clone();
                         // Copy base characteristics from the target
                         chars.power = target.base_power.as_ref().map(|p| p.base_value());
                         chars.toughness = target.base_toughness.as_ref().map(|t| t.base_value());
@@ -1969,6 +2159,7 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
                         chars.colors = target.colors();
                         chars.abilities = target.abilities.clone();
                         chars.static_abilities = extract_static_abilities(&target.abilities);
+                        add_abilities_from_counters(object, &mut chars);
                         // Note: controller is NOT copied - that's determined by who cast the Clone
                     }
                 }
@@ -1979,6 +2170,12 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
                 }
                 Modification::ChangeText { .. } => {
                     // Text changes are handled separately.
+                }
+                Modification::SetTextBox(overlay) => {
+                    chars.oracle_text = overlay.oracle_text.clone();
+                    chars.abilities = overlay.abilities.clone();
+                    chars.static_abilities = extract_static_abilities(&overlay.abilities);
+                    add_abilities_from_counters(object, &mut chars);
                 }
                 Modification::SetName(name) => {
                     chars.name = name.clone();
@@ -2389,6 +2586,7 @@ fn apply_layer_7_effects(
             Modification::CopyOf(_)
             | Modification::ChangeController(_)
             | Modification::ChangeText { .. }
+            | Modification::SetTextBox(_)
             | Modification::SetName(_)
             | Modification::AddCardTypes(_)
             | Modification::RemoveCardTypes(_)
@@ -3377,6 +3575,7 @@ mod tests {
         // Calculate characteristics
         let mut chars = CalculatedCharacteristics {
             name: creature.name.clone(),
+            oracle_text: creature.oracle_text.clone(),
             power: creature.base_power.as_ref().map(|p| p.base_value()),
             toughness: creature.base_toughness.as_ref().map(|t| t.base_value()),
             card_types: creature.card_types.clone(),
@@ -3422,6 +3621,7 @@ mod tests {
 
         let mut chars = CalculatedCharacteristics {
             name: creature.name.clone(),
+            oracle_text: creature.oracle_text.clone(),
             power: None,
             toughness: None,
             card_types: creature.card_types.clone(),
@@ -3477,6 +3677,7 @@ mod tests {
         // Start with flying ability already present
         let mut chars = CalculatedCharacteristics {
             name: creature.name.clone(),
+            oracle_text: creature.oracle_text.clone(),
             power: None,
             toughness: None,
             card_types: creature.card_types.clone(),

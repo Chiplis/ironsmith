@@ -600,6 +600,56 @@ pub(super) fn extract_target_requirements_from_effect_internal(
     }
 }
 
+fn count_target_selection_slots_from_effect_internal(
+    effect: &Effect,
+    chosen_modes: Option<&[usize]>,
+    consumed_modal_selection: &mut bool,
+) -> usize {
+    if let Some(choose_mode) = effect.downcast_ref::<crate::effects::ChooseModeEffect>() {
+        let modes_for_this_choose_mode = if !*consumed_modal_selection {
+            *consumed_modal_selection = true;
+            chosen_modes
+        } else {
+            None
+        };
+
+        return modes_for_this_choose_mode
+            .into_iter()
+            .flatten()
+            .filter_map(|mode_idx| choose_mode.modes.get(*mode_idx))
+            .map(|mode| {
+                mode.effects
+                    .iter()
+                    .map(|inner| {
+                        count_target_selection_slots_from_effect_internal(
+                            inner,
+                            None,
+                            consumed_modal_selection,
+                        )
+                    })
+                    .sum::<usize>()
+            })
+            .sum();
+    }
+
+    extract_target_spec(effect)
+        .filter(|extracted| requires_target_selection(extracted.spec))
+        .map(|_| 1)
+        .unwrap_or(0)
+}
+
+pub(crate) fn count_target_selection_slots_for_effect(
+    effect: &Effect,
+    chosen_modes: Option<&[usize]>,
+    consumed_modal_selection: &mut bool,
+) -> usize {
+    count_target_selection_slots_from_effect_internal(
+        effect,
+        chosen_modes,
+        consumed_modal_selection,
+    )
+}
+
 pub(crate) fn extract_target_requirements_for_effect_with_state(
     game: &GameState,
     effect: &Effect,
@@ -850,6 +900,26 @@ pub fn compute_legal_targets_with_tagged_objects(
     )
 }
 
+pub(crate) fn compute_legal_targets_with_tagged_objects_and_view(
+    game: &GameState,
+    spec: &ChooseSpec,
+    caster: PlayerId,
+    source_id: Option<ObjectId>,
+    tagged_objects: Option<
+        &std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
+    >,
+    view: &crate::derived_view::DerivedGameView<'_>,
+) -> Vec<Target> {
+    crate::targeting::compute_legal_targets_with_tagged_objects_with_view(
+        game,
+        spec,
+        caster,
+        source_id,
+        tagged_objects,
+        view,
+    )
+}
+
 /// Check if a player matches a PlayerFilter with explicit combat context.
 pub fn player_matches_filter_with_combat(
     player_id: PlayerId,
@@ -997,6 +1067,19 @@ pub(super) fn validate_stack_entry_targets(
     Vec<crate::game_state::TargetAssignment>,
     bool,
 ) {
+    let view = crate::derived_view::DerivedGameView::new(game);
+    validate_stack_entry_targets_with_view(game, entry, &view)
+}
+
+pub(super) fn validate_stack_entry_targets_with_view(
+    game: &GameState,
+    entry: &StackEntry,
+    view: &crate::derived_view::DerivedGameView<'_>,
+) -> (
+    Vec<ResolvedTarget>,
+    Vec<crate::game_state::TargetAssignment>,
+    bool,
+) {
     if entry.targets.is_empty() {
         return (Vec::new(), Vec::new(), false);
     }
@@ -1007,7 +1090,7 @@ pub(super) fn validate_stack_entry_targets(
         let mut invalid_count = 0usize;
 
         for assignment in &entry.target_assignments {
-            let legal_targets = compute_legal_targets_with_tagged_objects(
+            let legal_targets = compute_legal_targets_with_tagged_objects_and_view(
                 game,
                 &assignment.spec,
                 entry.controller,
@@ -1017,6 +1100,7 @@ pub(super) fn validate_stack_entry_targets(
                 } else {
                     Some(&entry.tagged_objects)
                 },
+                view,
             );
 
             let start = valid_targets.len();
@@ -1044,7 +1128,16 @@ pub(super) fn validate_stack_entry_targets(
     let validation_specs = stack_entry_validation_target_specs(game, entry);
     let legal_target_sets: Vec<Vec<Target>> = validation_specs
         .iter()
-        .map(|spec| compute_legal_targets(game, spec, entry.controller, Some(entry.object_id)))
+        .map(|spec| {
+            compute_legal_targets_with_tagged_objects_and_view(
+                game,
+                spec,
+                entry.controller,
+                Some(entry.object_id),
+                None,
+                view,
+            )
+        })
         .collect();
 
     let mut valid_targets = Vec::new();

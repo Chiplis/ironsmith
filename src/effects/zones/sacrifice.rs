@@ -147,7 +147,7 @@ impl EffectExecutor for SacrificeEffect {
         for id in to_sacrifice {
             let pre_snapshot = game
                 .object(id)
-                .map(|obj| ObjectSnapshot::from_object(obj, game));
+                .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));
             let sacrificing_player = pre_snapshot.as_ref().map(|snapshot| snapshot.controller);
             let additional_effects = ctx.additional_replacement_effects_snapshot();
 
@@ -354,7 +354,7 @@ impl SacrificeTargetEffect {
 
         let pre_snapshot = game
             .object(object_id)
-            .map(|obj| ObjectSnapshot::from_object(obj, game));
+            .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));
         let sacrificing_player = pre_snapshot.as_ref().map(|snapshot| snapshot.controller);
         let additional_effects = ctx.additional_replacement_effects_snapshot();
 

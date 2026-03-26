@@ -1115,6 +1115,7 @@ pub(crate) fn apply_modification_to_chars_for_dependency(
             std::mem::swap(&mut chars.power, &mut chars.toughness);
         }
         Modification::ChangeText { .. }
+        | Modification::SetTextBox(_)
         | Modification::SetName(_)
         | Modification::CantBeBlocked
         | Modification::CantAttack
@@ -1360,9 +1361,10 @@ pub fn needs_baseline_dependency_sort(effects: &[&ContinuousEffect]) -> bool {
     }
 
     // For non-P/T layers we currently keep full baseline sorting when multiple
-    // effects are present.
+    // effects are present, except for simple object-isolated text effects whose
+    // applicability cannot change based on other effects in the same layer.
     if layer != Layer::PowerToughness {
-        return true;
+        return !non_pt_group_has_trivial_ordering(effects);
     }
 
     // Dependencies are only meaningful within the same P/T sublayer.
@@ -1385,6 +1387,24 @@ pub fn needs_baseline_dependency_sort(effects: &[&ContinuousEffect]) -> bool {
     }
 
     false
+}
+
+fn non_pt_group_has_trivial_ordering(effects: &[&ContinuousEffect]) -> bool {
+    effects.iter().all(|effect| {
+        effect.condition.is_none()
+            && effect.originating_static_ability.is_none()
+            && matches!(
+                effect.source_type,
+                EffectSourceType::Resolution { ref locked_targets } if locked_targets.len() <= 1
+            )
+            && matches!(effect.applies_to, EffectTarget::Specific(_))
+            && matches!(
+                effect.modification,
+                Modification::ChangeText { .. }
+                    | Modification::SetTextBox(_)
+                    | Modification::SetName(_)
+            )
+    })
 }
 
 fn sublayer_group_has_trivial_ordering(effects: &[&ContinuousEffect]) -> bool {
@@ -1810,6 +1830,7 @@ mod tests {
             object.id,
             CalculatedCharacteristics {
                 name: object.name.clone(),
+                oracle_text: object.oracle_text.clone(),
                 power: object.base_power.as_ref().map(|p| p.base_value()),
                 toughness: object.base_toughness.as_ref().map(|t| t.base_value()),
                 card_types: object.card_types.clone(),
@@ -1852,6 +1873,7 @@ mod tests {
             land.id,
             CalculatedCharacteristics {
                 name: land.name.clone(),
+                oracle_text: land.oracle_text.clone(),
                 power: land.base_power.as_ref().map(|p| p.base_value()),
                 toughness: land.base_toughness.as_ref().map(|t| t.base_value()),
                 card_types: land.card_types.clone(),
@@ -1953,6 +1975,7 @@ mod tests {
             land.id,
             CalculatedCharacteristics {
                 name: land.name.clone(),
+                oracle_text: land.oracle_text.clone(),
                 power: land.base_power.as_ref().map(|p| p.base_value()),
                 toughness: land.base_toughness.as_ref().map(|t| t.base_value()),
                 card_types: land.card_types.clone(),
@@ -2310,6 +2333,38 @@ mod tests {
         );
 
         let effects = vec![&cda, &modifier];
+        assert!(!needs_baseline_dependency_sort(&effects));
+    }
+
+    #[test]
+    fn test_needs_baseline_dependency_sort_skips_isolated_resolution_text_overlays() {
+        let mut first = create_test_effect(
+            1,
+            10,
+            Modification::SetTextBox(crate::continuous::TextBoxOverlay::new(
+                "Flying".to_string(),
+                Vec::new(),
+            )),
+        );
+        first.applies_to = EffectTarget::Specific(ObjectId::from_raw(101));
+        first.source_type = EffectSourceType::Resolution {
+            locked_targets: vec![ObjectId::from_raw(101)],
+        };
+
+        let mut second = create_test_effect(
+            2,
+            20,
+            Modification::SetTextBox(crate::continuous::TextBoxOverlay::new(
+                "Deathtouch".to_string(),
+                Vec::new(),
+            )),
+        );
+        second.applies_to = EffectTarget::Specific(ObjectId::from_raw(202));
+        second.source_type = EffectSourceType::Resolution {
+            locked_targets: vec![ObjectId::from_raw(202)],
+        };
+
+        let effects = vec![&first, &second];
         assert!(!needs_baseline_dependency_sort(&effects));
     }
 }

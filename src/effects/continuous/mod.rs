@@ -5,5 +5,7 @@
 //! registration boilerplate.
 
 mod apply_continuous;
+mod exchange_text_boxes;
 
 pub use apply_continuous::{ApplyContinuousEffect, RuntimeModification};
+pub use exchange_text_boxes::ExchangeTextBoxesEffect;

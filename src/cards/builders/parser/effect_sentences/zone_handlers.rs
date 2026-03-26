@@ -2,8 +2,9 @@
 
 #[allow(unused_imports)]
 use crate::cards::builders::{
-    CardTextError, EffectAst, IT_TAG, ObjectRefAst, OwnedLexToken, PlayerAst, PredicateAst,
-    ReturnControllerAst, SharedTypeConstraintAst, SubjectAst, TagKey, TargetAst,
+    CardTextError, EffectAst, ExchangeValueAst, ExchangeValueKindAst, IT_TAG, ObjectRefAst,
+    OwnedLexToken, PlayerAst, PredicateAst, ReturnControllerAst, SharedTypeConstraintAst,
+    SubjectAst, TagKey, TargetAst,
 };
 use crate::effect::{EventValueSpec, Until, Value};
 use crate::mana::{ManaCost, ManaSymbol};
@@ -901,6 +902,197 @@ fn parse_exchange_life_totals_player(tokens: &[OwnedLexToken]) -> Option<PlayerA
     }
 }
 
+fn parse_exchange_shared_type_clause(
+    tokens: &[OwnedLexToken],
+) -> Result<(&[OwnedLexToken], Option<SharedTypeConstraintAst>), CardTextError> {
+    let tail_words = words(tokens);
+    let Some(rel_word_idx) = tail_words
+        .windows(2)
+        .position(|window| window[0] == "that" && matches!(window[1], "share" | "shares"))
+    else {
+        return Ok((tokens, None));
+    };
+
+    let rel_token_idx = token_index_for_word_index(tokens, rel_word_idx).unwrap_or(tokens.len());
+    let (head, tail) = tokens.split_at(rel_token_idx);
+    let share_words = words(tail);
+    let share_head = if share_words.starts_with(&["that", "share"]) {
+        &share_words[2..]
+    } else if share_words.starts_with(&["that", "shares"]) {
+        &share_words[2..]
+    } else {
+        &share_words[..]
+    };
+    let share_head = if share_head.first().copied() == Some("a") {
+        &share_head[1..]
+    } else {
+        share_head
+    };
+
+    let shared_type = if share_head.starts_with(&["permanent", "type"])
+        || share_head.starts_with(&["one", "of", "those", "permanent", "types"])
+    {
+        SharedTypeConstraintAst::PermanentType
+    } else if share_head.starts_with(&["card", "type"])
+        || share_head.starts_with(&["one", "of", "those", "types"])
+    {
+        SharedTypeConstraintAst::CardType
+    } else {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported exchange share-type clause (clause: '{}')",
+            tail_words.join(" ")
+        )));
+    };
+
+    Ok((head, Some(shared_type)))
+}
+
+fn parse_exchange_zone_owner_prefix(words: &[&str]) -> Option<(PlayerAst, usize)> {
+    if words.starts_with(&["your"]) {
+        return Some((PlayerAst::You, 1));
+    }
+    if words.starts_with(&["target", "player"]) || words.starts_with(&["target", "players"]) {
+        return Some((PlayerAst::Target, 2));
+    }
+    if words.starts_with(&["target", "opponent"]) || words.starts_with(&["target", "opponents"]) {
+        return Some((PlayerAst::TargetOpponent, 2));
+    }
+    if words.starts_with(&["an", "opponent"])
+        || words.starts_with(&["opponent"])
+        || words.starts_with(&["opponents"])
+    {
+        return Some((PlayerAst::Opponent, if words[0] == "an" { 2 } else { 1 }));
+    }
+    None
+}
+
+fn parse_exchange_zones(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
+    let clause_words = words(tokens);
+    let (player, consumed) = parse_exchange_zone_owner_prefix(&clause_words)?;
+    let zone1 = parse_zone_word(*clause_words.get(consumed)?)?;
+    if clause_words.get(consumed + 1).copied() != Some("and") {
+        return None;
+    }
+    let zone2 = parse_zone_word(*clause_words.get(consumed + 2)?)?;
+    if consumed + 3 != clause_words.len() {
+        return None;
+    }
+    Some(EffectAst::ExchangeZones {
+        player,
+        zone1,
+        zone2,
+    })
+}
+
+fn parse_exchange_value_operand(tokens: &[OwnedLexToken]) -> Option<ExchangeValueAst> {
+    match words(tokens).as_slice() {
+        ["your", "life", "total"] => return Some(ExchangeValueAst::LifeTotal(PlayerAst::You)),
+        ["target", "player", "life", "total"]
+        | ["target", "players", "life", "total"]
+        | ["target", "player's", "life", "total"]
+        | ["target", "players'", "life", "total"] => {
+            return Some(ExchangeValueAst::LifeTotal(PlayerAst::Target));
+        }
+        ["target", "opponent", "life", "total"]
+        | ["target", "opponents", "life", "total"]
+        | ["target", "opponent's", "life", "total"]
+        | ["target", "opponents'", "life", "total"] => {
+            return Some(ExchangeValueAst::LifeTotal(PlayerAst::TargetOpponent));
+        }
+        ["an", "opponent", "life", "total"]
+        | ["opponent", "life", "total"]
+        | ["opponents", "life", "total"] => {
+            return Some(ExchangeValueAst::LifeTotal(PlayerAst::Opponent));
+        }
+        ["its", "power"]
+        | ["this", "power"]
+        | ["thiss", "power"]
+        | ["this's", "power"]
+        | ["this", "creature", "power"]
+        | ["this", "creature's", "power"]
+        | ["thiss", "creature", "power"]
+        | ["thiss", "creature's", "power"]
+        | ["this", "creatures", "power"]
+        | ["thiss", "creatures", "power"] => {
+            return Some(ExchangeValueAst::Stat {
+                target: TargetAst::Source(span_from_tokens(tokens)),
+                kind: ExchangeValueKindAst::Power,
+            });
+        }
+        ["its", "toughness"]
+        | ["this", "toughness"]
+        | ["thiss", "toughness"]
+        | ["this's", "toughness"]
+        | ["this", "creature", "toughness"]
+        | ["this", "creature's", "toughness"]
+        | ["thiss", "creature", "toughness"]
+        | ["thiss", "creature's", "toughness"]
+        | ["this", "creatures", "toughness"]
+        | ["thiss", "creatures", "toughness"] => {
+            return Some(ExchangeValueAst::Stat {
+                target: TargetAst::Source(span_from_tokens(tokens)),
+                kind: ExchangeValueKindAst::Toughness,
+            });
+        }
+        _ => {}
+    }
+
+    let power_prefix = if words(tokens).starts_with(&["the", "power", "of"]) {
+        Some((ExchangeValueKindAst::Power, 3))
+    } else if words(tokens).starts_with(&["power", "of"]) {
+        Some((ExchangeValueKindAst::Power, 2))
+    } else if words(tokens).starts_with(&["the", "toughness", "of"]) {
+        Some((ExchangeValueKindAst::Toughness, 3))
+    } else if words(tokens).starts_with(&["toughness", "of"]) {
+        Some((ExchangeValueKindAst::Toughness, 2))
+    } else {
+        None
+    }?;
+
+    let (kind, used) = power_prefix;
+    let target = parse_target_phrase(&tokens[used..]).ok()?;
+    Some(ExchangeValueAst::Stat { target, kind })
+}
+
+fn parse_exchange_values(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+    let (duration, remainder) =
+        if let Some((duration, remainder)) = parse_restriction_duration(tokens)? {
+            (duration, remainder)
+        } else {
+            (Until::Forever, trim_commas(tokens).to_vec())
+        };
+
+    let split_idx = remainder
+        .iter()
+        .position(|token| token.is_word("with") || token.is_word("and"))
+        .ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "unsupported exchange clause (clause: '{}')",
+                words(tokens).join(" ")
+            ))
+        })?;
+    let left_tokens = trim_commas(&remainder[..split_idx]);
+    let right_tokens = trim_commas(&remainder[split_idx + 1..]);
+    let left = parse_exchange_value_operand(&left_tokens).ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "unsupported exchange value operand (clause: '{}')",
+            words(&left_tokens).join(" ")
+        ))
+    })?;
+    let right = parse_exchange_value_operand(&right_tokens).ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "unsupported exchange value operand (clause: '{}')",
+            words(&right_tokens).join(" ")
+        ))
+    })?;
+
+    Ok(EffectAst::ExchangeValues {
+        left,
+        right,
+        duration,
+    })
+}
+
 fn parse_exchange_life_totals(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
@@ -940,6 +1132,29 @@ fn parse_exchange_life_totals(
     Ok(EffectAst::ExchangeLifeTotals { player1, player2 })
 }
 
+fn parse_exchange_text_boxes(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+    let clause_words = words(tokens);
+    let remainder = if clause_words.starts_with(&["the", "text", "boxes", "of"]) {
+        &tokens[4..]
+    } else if clause_words.starts_with(&["text", "boxes", "of"]) {
+        &tokens[3..]
+    } else {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported text-box exchange clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    };
+
+    let target = parse_target_phrase(remainder).map_err(|_| {
+        CardTextError::ParseError(format!(
+            "unsupported text-box exchange target (clause: '{}')",
+            clause_words.join(" ")
+        ))
+    })?;
+
+    Ok(EffectAst::ExchangeTextBoxes { target })
+}
+
 pub(crate) fn parse_exchange(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
@@ -948,30 +1163,37 @@ pub(crate) fn parse_exchange(
     if clause_words.starts_with(&["life", "totals"]) {
         return parse_exchange_life_totals(tokens, subject);
     }
+    if clause_words.starts_with(&["the", "text", "boxes", "of"])
+        || clause_words.starts_with(&["text", "boxes", "of"])
+    {
+        return parse_exchange_text_boxes(tokens);
+    }
+    if let Some(effect) = parse_exchange_zones(tokens) {
+        return Ok(effect);
+    }
     if !clause_words.starts_with(&["control", "of"]) {
+        if clause_words.contains(&"life")
+            || clause_words.contains(&"power")
+            || clause_words.contains(&"toughness")
+        {
+            return parse_exchange_values(tokens);
+        }
         return Err(CardTextError::ParseError(format!(
             "unsupported exchange clause (clause: '{}')",
             clause_words.join(" ")
         )));
     }
-    // Heterogeneous "exchange control of A and B" forms (e.g. "this artifact and target ...")
-    // cannot be represented by the current single-filter ExchangeControl primitive.
     if let Some(and_idx) = tokens.iter().position(|token| token.is_word("and")) {
-        let left_words = words(&tokens[..and_idx]);
-        let right_words = words(&tokens[and_idx + 1..]);
-        let left_mentions_this = left_words.contains(&"this");
-        let right_mentions_this = right_words.contains(&"this");
-        let left_mentions_target = left_words.contains(&"target");
-        let right_mentions_target = right_words.contains(&"target");
-        if left_mentions_this
-            || right_mentions_this
-            || left_mentions_target
-            || right_mentions_target
-        {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported heterogeneous exchange clause (clause: '{}')",
-                clause_words.join(" ")
-            )));
+        let left_target = parse_target_phrase(&tokens[2..and_idx]).ok();
+        let (right_tokens, shared_type) =
+            parse_exchange_shared_type_clause(&tokens[and_idx + 1..])?;
+        let right_target = parse_target_phrase(right_tokens).ok();
+        if let (Some(permanent1), Some(permanent2)) = (left_target, right_target) {
+            return Ok(EffectAst::ExchangeControlHeterogeneous {
+                permanent1,
+                permanent2,
+                shared_type,
+            });
         }
     }
 
@@ -990,42 +1212,7 @@ pub(crate) fn parse_exchange(
         ));
     }
 
-    let mut shared_type = None;
-    let mut filter_tokens = &tokens[idx..];
-    let tail_words = words(filter_tokens);
-    if let Some(rel_word_idx) = tail_words
-        .windows(2)
-        .position(|window| window[0] == "that" && matches!(window[1], "share" | "shares"))
-    {
-        let rel_token_idx =
-            token_index_for_word_index(filter_tokens, rel_word_idx).unwrap_or(filter_tokens.len());
-        let (head, tail) = filter_tokens.split_at(rel_token_idx);
-        filter_tokens = head;
-
-        let share_words = words(tail);
-        let share_head = if share_words.starts_with(&["that", "share"]) {
-            &share_words[2..]
-        } else if share_words.starts_with(&["that", "shares"]) {
-            &share_words[2..]
-        } else {
-            &share_words[..]
-        };
-        let share_head = if share_head.first().copied() == Some("a") {
-            &share_head[1..]
-        } else {
-            share_head
-        };
-        if share_head.starts_with(&["permanent", "type"]) {
-            shared_type = Some(SharedTypeConstraintAst::PermanentType);
-        } else if share_head.starts_with(&["card", "type"]) {
-            shared_type = Some(SharedTypeConstraintAst::CardType);
-        } else {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported exchange share-type clause (clause: '{}')",
-                clause_words.join(" ")
-            )));
-        }
-    }
+    let (filter_tokens, shared_type) = parse_exchange_shared_type_clause(&tokens[idx..])?;
 
     let filter = parse_object_filter(filter_tokens, false)?;
     Ok(EffectAst::ExchangeControl {

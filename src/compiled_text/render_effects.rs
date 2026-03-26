@@ -6723,6 +6723,22 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             describe_choose_spec(&exchange_control.permanent2)
         );
     }
+    if let Some(exchange_text_boxes) =
+        effect.downcast_ref::<crate::effects::ExchangeTextBoxesEffect>()
+    {
+        return format!(
+            "Exchange the text boxes of {}",
+            describe_choose_spec(&exchange_text_boxes.target)
+        );
+    }
+    if let Some(exchange_zones) = effect.downcast_ref::<crate::effects::ExchangeZonesEffect>() {
+        return format!(
+            "Exchange {} {} and {}",
+            describe_possessive_player_filter(&exchange_zones.player),
+            exchange_zones.zone1,
+            exchange_zones.zone2
+        );
+    }
     if let Some(transform) = effect.downcast_ref::<crate::effects::TransformEffect>() {
         return format!("Transform {}", describe_transform_target(&transform.target));
     }
@@ -8444,6 +8460,35 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             "Exchange life totals of {} and {}",
             describe_player_filter(&exchange_life.player1),
             describe_player_filter(&exchange_life.player2)
+        );
+    }
+    if let Some(exchange_values) = effect.downcast_ref::<crate::effects::ExchangeValuesEffect>() {
+        let describe_operand = |operand: &crate::effects::ExchangeValueOperand| match operand {
+            crate::effects::ExchangeValueOperand::LifeTotal(player) => {
+                format!("{} life total", describe_possessive_player_filter(player))
+            }
+            crate::effects::ExchangeValueOperand::Power(target)
+                if *target == crate::target::ChooseSpec::Source =>
+            {
+                "this creature's power".to_string()
+            }
+            crate::effects::ExchangeValueOperand::Toughness(target)
+                if *target == crate::target::ChooseSpec::Source =>
+            {
+                "this creature's toughness".to_string()
+            }
+            crate::effects::ExchangeValueOperand::Power(target) => {
+                format!("the power of {}", describe_choose_spec(target))
+            }
+            crate::effects::ExchangeValueOperand::Toughness(target) => {
+                format!("the toughness of {}", describe_choose_spec(target))
+            }
+        };
+        return format!(
+            "Exchange {} and {}{}",
+            describe_operand(&exchange_values.left),
+            describe_operand(&exchange_values.right),
+            describe_until(&exchange_values.duration)
         );
     }
     if let Some(exile_top) = effect.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>() {

@@ -1475,6 +1475,379 @@ fn test_extract_target_specs_target_player_sacrifice_choice_has_target_requireme
     );
 }
 
+fn run_exchange_of_words_swapped_myr_moonvessel_dies_trigger_stacks_when_ornithopter_is_sacrificed()
+{
+    use crate::ability::AbilityKind;
+    use crate::cards::builders::CardDefinitionBuilder;
+    use crate::events::zones::EnterBattlefieldEvent;
+    use crate::mana::ManaSymbol;
+    use crate::provenance::ProvNodeId;
+
+    #[derive(Debug)]
+    struct ExchangeTargetsDecisionMaker {
+        first: ObjectId,
+        second: ObjectId,
+    }
+
+    impl DecisionMaker for ExchangeTargetsDecisionMaker {
+        fn decide_targets(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::TargetsContext,
+        ) -> Vec<Target> {
+            let Some(requirement) = ctx.requirements.first() else {
+                return Vec::new();
+            };
+
+            [Target::Object(self.first), Target::Object(self.second)]
+                .into_iter()
+                .filter(|target| requirement.legal_targets.contains(target))
+                .collect()
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let exchange_def = CardDefinitionBuilder::new(CardId::from_raw(700_201), "Exchange of Words")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "When this enchantment enters, choose two target creatures. For as long as this enchantment remains on the battlefield, exchange the text boxes of those creatures.",
+        )
+        .expect("Exchange of Words should parse");
+    let myr_def = CardDefinitionBuilder::new(CardId::from_raw(700_202), "Myr Moonvessel")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .parse_text("When this creature dies, add {C}.")
+        .expect("Myr Moonvessel should parse");
+    let ornithopter_def = CardDefinitionBuilder::new(CardId::from_raw(700_203), "Ornithopter")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .power_toughness(PowerToughness::fixed(0, 2))
+        .parse_text("Flying")
+        .expect("Ornithopter should parse");
+    let sacrifice_def = CardDefinitionBuilder::new(CardId::from_raw(700_204), "Sacrifice Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Target player sacrifices a creature of their choice.")
+        .expect("targeted sacrifice spell should parse");
+
+    let exchange_trigger = exchange_def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered)
+                if format!("{:?}", triggered.effects).contains("ExchangeTextBoxesEffect") =>
+            {
+                Some(triggered.clone())
+            }
+            _ => None,
+        })
+        .expect("Exchange of Words should have an ETB text-box exchange trigger");
+
+    let exchange_id = game.create_object_from_definition(&exchange_def, alice, Zone::Battlefield);
+    let myr_id = game.create_object_from_definition(&myr_def, alice, Zone::Battlefield);
+    let ornithopter_id =
+        game.create_object_from_definition(&ornithopter_def, bob, Zone::Battlefield);
+
+    let mut trigger_queue = TriggerQueue::new();
+    let etb_event = TriggerEvent::new_with_provenance(
+        EnterBattlefieldEvent::new(exchange_id, Zone::Hand),
+        ProvNodeId::default(),
+    );
+    let exchange_stable_id = game
+        .object(exchange_id)
+        .expect("Exchange of Words should exist")
+        .stable_id;
+    trigger_queue.add(crate::triggers::TriggeredAbilityEntry {
+        source: exchange_id,
+        controller: alice,
+        x_value: None,
+        ability: exchange_trigger.clone(),
+        triggering_event: etb_event,
+        source_stable_id: exchange_stable_id,
+        source_name: "Exchange of Words".to_string(),
+        source_snapshot: None,
+        tagged_objects: std::collections::HashMap::new(),
+        trigger_identity: crate::triggers::compute_trigger_identity(&exchange_trigger),
+    });
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Exchange of Words should queue its ETB trigger"
+    );
+
+    let mut dm = ExchangeTargetsDecisionMaker {
+        first: myr_id,
+        second: ornithopter_id,
+    };
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Exchange of Words trigger should go on the stack");
+    resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+        .expect("Exchange of Words trigger should resolve");
+
+    game.refresh_continuous_state();
+
+    let ornithopter_chars = game
+        .calculated_characteristics(ornithopter_id)
+        .expect("Ornithopter should still have calculated characteristics after the exchange");
+    assert_eq!(
+        ornithopter_chars.oracle_text, myr_def.card.oracle_text,
+        "Ornithopter should now carry Myr Moonvessel's text box"
+    );
+    assert!(
+        ornithopter_chars
+            .abilities
+            .iter()
+            .any(|ability| matches!(ability.kind, AbilityKind::Triggered(_))),
+        "Ornithopter should gain the dies trigger from Myr Moonvessel"
+    );
+
+    let sacrifice_id = game.create_object_from_definition(&sacrifice_def, alice, Zone::Stack);
+    let (sacrifice_stable_id, sacrifice_name) = game
+        .object(sacrifice_id)
+        .map(|object| (object.stable_id, object.name.clone()))
+        .expect("Sacrifice spell object should exist");
+    game.push_to_stack(
+        StackEntry::new(sacrifice_id, alice)
+            .with_source_info(sacrifice_stable_id, sacrifice_name)
+            .with_targets(vec![Target::Player(bob)]),
+    );
+
+    resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+        .expect("sacrifice spell should resolve");
+
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "sacrificing the swapped Ornithopter should queue its borrowed dies trigger"
+    );
+
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("borrowed dies trigger should go on the stack");
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "Myr Moonvessel's borrowed dies trigger should use the stack"
+    );
+    assert_eq!(
+        game.stack
+            .last()
+            .and_then(|entry| entry.source_name.as_deref()),
+        Some("Ornithopter"),
+        "the stacked trigger should come from Ornithopter after the text-box exchange"
+    );
+
+    resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+        .expect("borrowed dies trigger should resolve");
+    assert_eq!(
+        game.player(bob)
+            .expect("Bob should exist")
+            .mana_pool
+            .amount(ManaSymbol::Colorless),
+        1,
+        "the Ornithopter controller should get {{C}} from the swapped Myr Moonvessel trigger"
+    );
+}
+
+#[test]
+fn test_exchange_of_words_swapped_myr_moonvessel_dies_trigger_stacks_when_ornithopter_is_sacrificed()
+ {
+    run_exchange_of_words_swapped_myr_moonvessel_dies_trigger_stacks_when_ornithopter_is_sacrificed(
+    );
+}
+
+#[test]
+#[ignore = "profiling helper"]
+fn profile_exchange_of_words_swapped_myr_moonvessel_dies_trigger_repeatedly() {
+    for _ in 0..1000 {
+        run_exchange_of_words_swapped_myr_moonvessel_dies_trigger_stacks_when_ornithopter_is_sacrificed();
+    }
+}
+
+fn run_exchange_of_words_cast_from_hand_swapping_alices_yawgmoth_and_ornithopter() {
+    use crate::ability::AbilityKind;
+    use crate::cards::builders::CardDefinitionBuilder;
+    use crate::cards::definitions::{ornithopter, yawgmoth_thran_physician};
+    use crate::mana::{ManaCost, ManaSymbol};
+    use std::sync::OnceLock;
+
+    #[derive(Debug)]
+    struct ExchangeTargetsDecisionMaker {
+        first: ObjectId,
+        second: ObjectId,
+    }
+
+    impl DecisionMaker for ExchangeTargetsDecisionMaker {
+        fn decide_targets(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::TargetsContext,
+        ) -> Vec<Target> {
+            let Some(requirement) = ctx.requirements.first() else {
+                return Vec::new();
+            };
+
+            [Target::Object(self.first), Target::Object(self.second)]
+                .into_iter()
+                .filter(|target| requirement.legal_targets.contains(target))
+                .collect()
+        }
+    }
+
+    #[derive(Clone)]
+    struct ExchangeOfWordsYawgmothFixture {
+        exchange: crate::cards::CardDefinition,
+        myr: crate::cards::CardDefinition,
+        ornithopter: crate::cards::CardDefinition,
+        yawgmoth: crate::cards::CardDefinition,
+        omniscience: crate::cards::CardDefinition,
+    }
+
+    fn exchange_of_words_yawgmoth_fixture() -> &'static ExchangeOfWordsYawgmothFixture {
+        static FIXTURE: OnceLock<ExchangeOfWordsYawgmothFixture> = OnceLock::new();
+        FIXTURE.get_or_init(|| ExchangeOfWordsYawgmothFixture {
+            exchange: CardDefinitionBuilder::new(CardId::from_raw(700_301), "Exchange of Words")
+                .mana_cost(ManaCost::from_pips(vec![
+                    vec![ManaSymbol::Generic(1)],
+                    vec![ManaSymbol::Blue],
+                    vec![ManaSymbol::Blue],
+                ]))
+                .card_types(vec![CardType::Enchantment])
+                .parse_text(
+                    "When this enchantment enters, choose two target creatures. For as long as this enchantment remains on the battlefield, exchange the text boxes of those creatures.",
+                )
+                .expect("Exchange of Words should parse"),
+            myr: CardDefinitionBuilder::new(CardId::from_raw(700_302), "Myr Moonvessel")
+                .card_types(vec![CardType::Artifact, CardType::Creature])
+                .power_toughness(PowerToughness::fixed(1, 1))
+                .parse_text("When this creature dies, add {C}.")
+                .expect("Myr Moonvessel should parse"),
+            ornithopter: ornithopter(),
+            yawgmoth: yawgmoth_thran_physician(),
+            omniscience: CardDefinitionBuilder::new(CardId::from_raw(700_303), "Omniscience")
+                .card_types(vec![CardType::Enchantment])
+                .parse_text("You may cast spells from your hand without paying their mana costs.")
+                .expect("Omniscience should parse"),
+        })
+    }
+
+    let mut game = GameState::new(
+        vec![
+            "Alice".to_string(),
+            "Bob".to_string(),
+            "Charlie".to_string(),
+            "Diana".to_string(),
+        ],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let fixture = exchange_of_words_yawgmoth_fixture();
+
+    for (idx, name) in [
+        "Forest",
+        "Island",
+        "Mountain",
+        "Plains",
+        "Swamp",
+        "Tropical Island",
+        "Volcanic Island",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let land = CardBuilder::new(CardId::from_raw(700_320 + idx as u32), name)
+            .card_types(vec![CardType::Land])
+            .build();
+        game.create_object_from_card(&land, alice, Zone::Battlefield);
+    }
+
+    game.create_object_from_definition(&fixture.myr, alice, Zone::Battlefield);
+    let ornithopter_id =
+        game.create_object_from_definition(&fixture.ornithopter, alice, Zone::Battlefield);
+    let yawgmoth_id =
+        game.create_object_from_definition(&fixture.yawgmoth, alice, Zone::Battlefield);
+    game.create_object_from_definition(&fixture.omniscience, alice, Zone::Battlefield);
+    let exchange_id = game.create_object_from_definition(&fixture.exchange, alice, Zone::Hand);
+
+    let stack_id = super::priority_mana::propose_spell_cast(
+        &mut game,
+        exchange_id,
+        Zone::Hand,
+        alice,
+        &CastingMethod::Normal,
+    )
+    .expect("Exchange of Words should move from hand to stack");
+    game.stack
+        .push(StackEntry::new(stack_id, alice).with_casting_method(CastingMethod::Normal));
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut dm = ExchangeTargetsDecisionMaker {
+        first: yawgmoth_id,
+        second: ornithopter_id,
+    };
+
+    resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+        .expect("Exchange of Words spell should resolve from the stack");
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Exchange of Words should queue exactly one ETB trigger after resolving"
+    );
+
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Exchange of Words ETB trigger should go on the stack");
+    resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+        .expect("Exchange of Words ETB trigger should resolve");
+
+    game.refresh_continuous_state();
+
+    let ornithopter_chars = game
+        .calculated_characteristics(ornithopter_id)
+        .expect("Ornithopter should still have calculated characteristics");
+    let yawgmoth_chars = game
+        .calculated_characteristics(yawgmoth_id)
+        .expect("Yawgmoth should still have calculated characteristics");
+
+    assert_eq!(
+        ornithopter_chars.oracle_text, fixture.yawgmoth.card.oracle_text,
+        "Ornithopter should pick up Yawgmoth's text box after the exchange"
+    );
+    assert_eq!(
+        yawgmoth_chars.oracle_text, fixture.ornithopter.card.oracle_text,
+        "Yawgmoth should pick up Ornithopter's text box after the exchange"
+    );
+    assert!(
+        ornithopter_chars
+            .abilities
+            .iter()
+            .any(|ability| matches!(ability.kind, AbilityKind::Activated(_))),
+        "Ornithopter should gain Yawgmoth's activated abilities after the exchange"
+    );
+}
+
+#[test]
+fn test_exchange_of_words_cast_from_hand_swaps_alices_yawgmoth_and_ornithopter() {
+    run_exchange_of_words_cast_from_hand_swapping_alices_yawgmoth_and_ornithopter();
+}
+
+#[test]
+#[ignore = "profiling helper"]
+fn profile_exchange_of_words_cast_from_hand_swapping_alices_yawgmoth_and_ornithopter_repeatedly() {
+    for _ in 0..3000 {
+        run_exchange_of_words_cast_from_hand_swapping_alices_yawgmoth_and_ornithopter();
+    }
+}
+
 #[test]
 fn test_extract_target_specs_two_distinct_targets_create_two_requirements() {
     use crate::cards::CardDefinitionBuilder;
@@ -2046,6 +2419,98 @@ fn test_spell_has_legal_targets_with_mode_preview_allows_partial_choose_two_sele
     assert!(
         spell_has_legal_targets_with_modes(&game, &effects, alice, None, Some(&counter_and_gain)),
         "final validation should accept a complete legal choose-two selection"
+    );
+}
+
+#[test]
+fn test_active_target_assignments_preserves_stored_target_slot_when_legality_changes() {
+    let game = setup_game();
+    let effects = vec![Effect::counter(ChooseSpec::spell())];
+    let assignment = crate::game_state::TargetAssignment {
+        spec: ChooseSpec::spell(),
+        range: 0..1,
+    };
+    let mut consumed_modal_selection = false;
+    let mut cursor = 0usize;
+
+    let active = super::stack_resolution::active_target_assignments_for_effect(
+        &effects[0],
+        None,
+        &mut consumed_modal_selection,
+        std::slice::from_ref(&assignment),
+        &mut cursor,
+    );
+
+    assert_eq!(
+        active,
+        vec![assignment],
+        "resolution should keep the stored target assignment even when no legal targets remain"
+    );
+    assert_eq!(
+        cursor, 1,
+        "target cursor should advance by the stored slot count"
+    );
+    assert!(
+        !spell_has_legal_targets(&game, &effects, PlayerId::from_index(0), None),
+        "sanity check: the same effect should currently have no legal targets"
+    );
+}
+
+#[test]
+fn test_active_target_assignments_modal_target_slot_tracks_chosen_mode_without_rechecking_legality()
+{
+    let effects = vec![Effect::choose_one(vec![
+        crate::effect::EffectMode {
+            description: "Counter target spell".to_string(),
+            effects: vec![Effect::counter(ChooseSpec::spell())],
+        },
+        crate::effect::EffectMode {
+            description: "Gain 3 life".to_string(),
+            effects: vec![Effect::gain_life(3)],
+        },
+    ])];
+    let assignment = crate::game_state::TargetAssignment {
+        spec: ChooseSpec::spell(),
+        range: 0..1,
+    };
+    let counter_mode = [0usize];
+    let gain_mode = [1usize];
+
+    let mut consumed_modal_selection = false;
+    let mut cursor = 0usize;
+    let active = super::stack_resolution::active_target_assignments_for_effect(
+        &effects[0],
+        Some(&counter_mode),
+        &mut consumed_modal_selection,
+        std::slice::from_ref(&assignment),
+        &mut cursor,
+    );
+    assert_eq!(
+        active,
+        vec![assignment.clone()],
+        "the chosen targeted mode should keep its stored target assignment at resolution"
+    );
+    assert_eq!(
+        cursor, 1,
+        "chosen targeted mode should consume one stored assignment"
+    );
+
+    let mut consumed_modal_selection = false;
+    let mut cursor = 0usize;
+    let inactive = super::stack_resolution::active_target_assignments_for_effect(
+        &effects[0],
+        Some(&gain_mode),
+        &mut consumed_modal_selection,
+        std::slice::from_ref(&assignment),
+        &mut cursor,
+    );
+    assert!(
+        inactive.is_empty(),
+        "non-targeting chosen mode should not consume unrelated stored assignments"
+    );
+    assert_eq!(
+        cursor, 0,
+        "non-targeting mode should leave the assignment cursor untouched"
     );
 }
 
@@ -5496,8 +5961,15 @@ fn test_nonactive_player_keeps_priority_after_activating_ability() {
         Some(alice),
         "the activating player should keep priority after activating a non-mana ability"
     );
-    assert_eq!(game.turn.active_player, bob, "it should still be bob's turn");
-    assert_eq!(game.stack.len(), 1, "the activated ability should be on the stack");
+    assert_eq!(
+        game.turn.active_player, bob,
+        "it should still be bob's turn"
+    );
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "the activated ability should be on the stack"
+    );
     assert!(game.stack[0].is_ability, "stack entry should be an ability");
     assert_eq!(
         game.stack[0].controller, alice,
@@ -7568,11 +8040,13 @@ fn test_illegal_equipment_becomes_unattached_instead_of_dying() {
         .build();
     let equipment = game.create_object_from_card(&equipment_card, alice, Zone::Battlefield);
 
-    assert!(crate::effects::permanents::attach_battlefield_object_to_target(
-        &mut game,
-        equipment,
-        crate::object::AttachmentTarget::Object(creature),
-    ));
+    assert!(
+        crate::effects::permanents::attach_battlefield_object_to_target(
+            &mut game,
+            equipment,
+            crate::object::AttachmentTarget::Object(creature),
+        )
+    );
 
     game.object_mut(creature)
         .expect("equipped creature should exist")

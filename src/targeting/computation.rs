@@ -462,7 +462,7 @@ fn compute_object_targets_with_view(
         let Some(object) = game.object(object_id) else {
             continue;
         };
-        if !filter.matches(object, &filter_ctx, game) {
+        if !filter.matches_with_view(object, &filter_ctx, game, view) {
             continue;
         }
 

@@ -2363,7 +2363,6 @@ fn rewrite_semantic_parse_keeps_triggered_triple_sweep_body() -> Result<(), Card
     Ok(())
 }
 
-
 #[test]
 fn rewrite_semantic_parse_marks_plumb_additional_cost_as_non_choice() -> Result<(), CardTextError> {
     let builder = CardDefinitionBuilder::new(CardId::new(), "Plumb Variant")

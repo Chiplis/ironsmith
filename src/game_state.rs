@@ -1,4 +1,4 @@
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 
@@ -8,7 +8,7 @@ use rand::{SeedableRng, rngs::StdRng};
 use crate::ability::{Ability, AbilityKind, ActivatedAbility};
 use crate::alternative_cast::CastingMethod;
 use crate::card::Card;
-use crate::continuous::{ContinuousEffect, ContinuousEffectManager};
+use crate::continuous::{CalculatedCharacteristics, ContinuousEffect, ContinuousEffectManager};
 use crate::cost::OptionalCostsPaid;
 use crate::decision::KeywordPaymentContribution;
 use crate::dungeon::ActiveDungeonProgress;
@@ -1604,6 +1604,15 @@ pub struct GameState {
 
     /// Monotonic counter incremented whenever gameplay consumes irreversible randomness.
     irreversible_random_count: Cell<u64>,
+
+    /// Whether the cached static-ability continuous effects snapshot may be stale.
+    continuous_state_dirty: Cell<bool>,
+
+    /// Final calculated characteristics for the current clean continuous-effects state.
+    calculated_characteristics_cache: RefCell<HashMap<ObjectId, Option<CalculatedCharacteristics>>>,
+
+    /// Continuous-effect revision the current characteristic cache was built against.
+    calculated_characteristics_cache_revision: Cell<u64>,
 }
 
 impl GameState {
@@ -1698,6 +1707,9 @@ impl GameState {
             next_linked_exile_group_id: 0,
             random_state: Cell::new(Self::normalize_random_seed(0)),
             irreversible_random_count: Cell::new(0),
+            continuous_state_dirty: Cell::new(true),
+            calculated_characteristics_cache: RefCell::new(HashMap::new()),
+            calculated_characteristics_cache_revision: Cell::new(0),
         }
     }
 
@@ -1718,6 +1730,19 @@ impl GameState {
         } else {
             seed
         }
+    }
+
+    fn mark_continuous_state_dirty(&self) {
+        self.continuous_state_dirty.set(true);
+        self.calculated_characteristics_cache.borrow_mut().clear();
+    }
+
+    fn mark_continuous_state_clean(&self) {
+        self.continuous_state_dirty.set(false);
+    }
+
+    pub(crate) fn continuous_state_is_clean(&self) -> bool {
+        !self.continuous_state_dirty.get()
     }
 
     /// Set the deterministic RNG seed for this match.
@@ -2231,6 +2256,7 @@ impl GameState {
 
     /// Adds an object to the game.
     pub fn add_object(&mut self, object: Object) {
+        self.mark_continuous_state_dirty();
         let zone = object.zone;
         let id = object.id;
         let owner = object.owner;
@@ -2386,10 +2412,9 @@ impl GameState {
     ) -> Option<ObjectId> {
         let was_face_down = self.is_face_down(old_id);
         // Capture a full pre-move snapshot for LKI-based trigger matching.
-        let pre_move_snapshot = self
-            .objects
-            .get(&old_id)
-            .map(|obj| crate::snapshot::ObjectSnapshot::from_object(obj, self));
+        let pre_move_snapshot = self.objects.get(&old_id).map(|obj| {
+            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(obj, self)
+        });
 
         let old_object = self.objects.remove(&old_id)?;
         self.stable_id_index.remove(&old_object.stable_id);
@@ -2858,7 +2883,9 @@ impl GameState {
                     let candidates = self
                         .players
                         .iter()
-                        .filter(|player| player.is_in_game() && filter.matches_player(player.id, &filter_ctx))
+                        .filter(|player| {
+                            player.is_in_game() && filter.matches_player(player.id, &filter_ctx)
+                        })
                         .map(|player| (player.id, player.name.clone()))
                         .collect::<Vec<_>>();
                     if candidates.is_empty() {
@@ -3154,7 +3181,12 @@ impl GameState {
 
     /// Gets a mutable reference to an object by ID.
     pub fn object_mut(&mut self, id: ObjectId) -> Option<&mut Object> {
+        self.mark_continuous_state_dirty();
         self.objects.get_mut(&id)
+    }
+
+    pub(crate) fn objects_map(&self) -> &HashMap<ObjectId, Object> {
+        &self.objects
     }
 
     pub fn attachment_target_exists_on_battlefield(&self, target: AttachmentTarget) -> bool {
@@ -3162,12 +3194,17 @@ impl GameState {
             AttachmentTarget::Object(id) => self
                 .object(id)
                 .is_some_and(|object| object.zone == Zone::Battlefield),
-            AttachmentTarget::Player(id) => self.player(id).is_some_and(|player| player.is_in_game()),
+            AttachmentTarget::Player(id) => {
+                self.player(id).is_some_and(|player| player.is_in_game())
+            }
         }
     }
 
     pub fn detach_object_from_current_target(&mut self, attachment_id: ObjectId) -> bool {
-        let Some(current_target) = self.object(attachment_id).and_then(|object| object.attached_to)
+        self.mark_continuous_state_dirty();
+        let Some(current_target) = self
+            .object(attachment_id)
+            .and_then(|object| object.attached_to)
         else {
             return false;
         };
@@ -3175,12 +3212,16 @@ impl GameState {
         match current_target {
             AttachmentTarget::Object(id) => {
                 if let Some(parent) = self.object_mut(id) {
-                    parent.attachments.retain(|existing| *existing != attachment_id);
+                    parent
+                        .attachments
+                        .retain(|existing| *existing != attachment_id);
                 }
             }
             AttachmentTarget::Player(id) => {
                 if let Some(player) = self.player_mut(id) {
-                    player.attachments.retain(|existing| *existing != attachment_id);
+                    player
+                        .attachments
+                        .retain(|existing| *existing != attachment_id);
                 }
             }
         }
@@ -3197,6 +3238,7 @@ impl GameState {
         attachment_id: ObjectId,
         target: AttachmentTarget,
     ) -> bool {
+        self.mark_continuous_state_dirty();
         if !self
             .object(attachment_id)
             .is_some_and(|object| object.zone == Zone::Battlefield)
@@ -3249,6 +3291,7 @@ impl GameState {
         counter_type: crate::object::CounterType,
         amount: u32,
     ) -> Option<crate::triggers::TriggerEvent> {
+        self.mark_continuous_state_dirty();
         let obj = self.object_mut(id)?;
         obj.add_counters(counter_type, amount);
 
@@ -3273,6 +3316,7 @@ impl GameState {
         source: Option<ObjectId>,
         source_controller: Option<PlayerId>,
     ) -> Option<(u32, crate::triggers::TriggerEvent)> {
+        self.mark_continuous_state_dirty();
         let obj = self.object_mut(id)?;
         let removed = obj.remove_counters(counter_type, amount);
 
@@ -3308,6 +3352,7 @@ impl GameState {
         source: Option<ObjectId>,
         source_controller: Option<PlayerId>,
     ) -> Option<crate::triggers::TriggerEvent> {
+        self.mark_continuous_state_dirty();
         if amount == 0 {
             return None;
         }
@@ -3453,6 +3498,9 @@ impl GameState {
     /// - Registered continuous effects (from resolved spells/abilities)
     /// - Static abilities on permanents (generated dynamically)
     pub fn all_continuous_effects(&self) -> Vec<ContinuousEffect> {
+        if !self.continuous_state_dirty.get() {
+            return self.cached_continuous_effects_snapshot();
+        }
         crate::static_ability_processor::get_all_continuous_effects(self)
     }
 
@@ -3508,8 +3556,29 @@ impl GameState {
         if let Some(chars) = crate::continuous::in_progress_characteristics(id) {
             return Some(chars);
         }
+        let effects_revision = self.continuous_effects.revision();
+        if !self.continuous_state_dirty.get() {
+            if self.calculated_characteristics_cache_revision.get() != effects_revision {
+                self.calculated_characteristics_cache.borrow_mut().clear();
+                self.calculated_characteristics_cache_revision
+                    .set(effects_revision);
+            }
+
+            if let Some(cached) = self.calculated_characteristics_cache.borrow().get(&id) {
+                return cached.clone();
+            }
+        }
+
         let all_effects = self.all_continuous_effects();
-        self.calculated_characteristics_with_effects(id, &all_effects)
+        let calculated = self.calculated_characteristics_with_effects(id, &all_effects);
+        if !self.continuous_state_dirty.get() {
+            self.calculated_characteristics_cache_revision
+                .set(effects_revision);
+            self.calculated_characteristics_cache
+                .borrow_mut()
+                .insert(id, calculated.clone());
+        }
+        calculated
     }
 
     /// Return the object's current name in its zone.
@@ -3887,6 +3956,7 @@ impl GameState {
 
         let effects = generate_continuous_effects_from_static_abilities(self);
         self.continuous_effects.set_static_ability_effects(effects);
+        self.mark_continuous_state_clean();
     }
 
     /// Update replacement effects from static abilities on the battlefield.
@@ -3919,6 +3989,10 @@ impl GameState {
     /// - Replacement effects from static abilities
     /// - "Can't" effect tracking
     pub fn refresh_continuous_state(&mut self) {
+        if !self.continuous_state_dirty.get() {
+            return;
+        }
+
         // Update continuous effects from static abilities
         self.update_static_ability_effects();
 
@@ -4241,6 +4315,7 @@ impl GameState {
 
     /// Gets a mutable reference to a player by ID.
     pub fn player_mut(&mut self, id: PlayerId) -> Option<&mut Player> {
+        self.mark_continuous_state_dirty();
         self.players.get_mut(id.index())
     }
 
@@ -5228,7 +5303,10 @@ impl GameState {
                                     vec![attached_snapshot.clone()],
                                 );
                             }
-                            if source_obj.subtypes.contains(&crate::types::Subtype::Equipment) {
+                            if source_obj
+                                .subtypes
+                                .contains(&crate::types::Subtype::Equipment)
+                            {
                                 tagged_objects.insert(
                                     crate::tag::TagKey::from("equipped"),
                                     vec![attached_snapshot],
@@ -5238,8 +5316,10 @@ impl GameState {
                     }
                     AttachmentTarget::Player(attached_player) => {
                         if source_obj.subtypes.contains(&crate::types::Subtype::Aura) {
-                            tagged_players
-                                .insert(crate::tag::TagKey::from("enchanted"), vec![attached_player]);
+                            tagged_players.insert(
+                                crate::tag::TagKey::from("enchanted"),
+                                vec![attached_player],
+                            );
                         }
                     }
                 }
@@ -5328,11 +5408,13 @@ impl GameState {
 
     /// Tap a permanent.
     pub fn tap(&mut self, id: ObjectId) {
+        self.mark_continuous_state_dirty();
         self.tapped_permanents.insert(id);
     }
 
     /// Untap a permanent.
     pub fn untap(&mut self, id: ObjectId) {
+        self.mark_continuous_state_dirty();
         self.tapped_permanents.remove(&id);
     }
 
@@ -5343,11 +5425,13 @@ impl GameState {
 
     /// Set summoning sickness on a creature.
     pub fn set_summoning_sick(&mut self, id: ObjectId) {
+        self.mark_continuous_state_dirty();
         self.summoning_sick.insert(id);
     }
 
     /// Remove summoning sickness from a creature (e.g., haste).
     pub fn remove_summoning_sickness(&mut self, id: ObjectId) {
+        self.mark_continuous_state_dirty();
         self.summoning_sick.remove(&id);
     }
 
@@ -5437,6 +5521,7 @@ impl GameState {
 
     /// Mark a creature as monstrous.
     pub fn set_monstrous(&mut self, id: ObjectId) {
+        self.mark_continuous_state_dirty();
         self.monstrous.insert(id);
     }
 
@@ -5457,6 +5542,7 @@ impl GameState {
 
     /// Mark a permanent as saddled until end of turn.
     pub fn set_saddled_until_end_of_turn(&mut self, id: ObjectId) {
+        self.mark_continuous_state_dirty();
         self.saddled_until_end_of_turn.insert(id);
     }
 
@@ -5467,6 +5553,7 @@ impl GameState {
 
     /// Flip a permanent.
     pub fn flip(&mut self, id: ObjectId) {
+        self.mark_continuous_state_dirty();
         self.flipped.insert(id);
     }
 
@@ -5477,11 +5564,13 @@ impl GameState {
 
     /// Set a permanent as face-down.
     pub fn set_face_down(&mut self, id: ObjectId) {
+        self.mark_continuous_state_dirty();
         self.face_down.insert(id);
     }
 
     /// Turn a permanent face-up.
     pub fn set_face_up(&mut self, id: ObjectId) {
+        self.mark_continuous_state_dirty();
         self.face_down.remove(&id);
     }
 
@@ -5492,11 +5581,13 @@ impl GameState {
 
     /// Phase out a permanent.
     pub fn phase_out(&mut self, id: ObjectId) {
+        self.mark_continuous_state_dirty();
         self.phased_out.insert(id);
     }
 
     /// Phase in a permanent.
     pub fn phase_in(&mut self, id: ObjectId) {
+        self.mark_continuous_state_dirty();
         self.phased_out.remove(&id);
     }
 
@@ -5592,6 +5683,7 @@ impl GameState {
 
     /// Designate an object as a commander.
     pub fn set_commander(&mut self, id: ObjectId) {
+        self.mark_continuous_state_dirty();
         self.commanders.insert(id);
     }
 
@@ -5688,6 +5780,7 @@ impl GameState {
 
     /// Record a chosen color for a permanent.
     pub fn set_chosen_color(&mut self, permanent_id: ObjectId, color: crate::color::Color) {
+        self.mark_continuous_state_dirty();
         self.chosen_colors.insert(permanent_id, color);
     }
 
@@ -5704,6 +5797,7 @@ impl GameState {
         permanent_id: ObjectId,
         subtype: crate::types::Subtype,
     ) {
+        self.mark_continuous_state_dirty();
         self.chosen_basic_land_types.insert(permanent_id, subtype);
     }
 
@@ -5716,6 +5810,7 @@ impl GameState {
 
     /// Record a chosen land type for a permanent.
     pub fn set_chosen_land_type(&mut self, permanent_id: ObjectId, subtype: crate::types::Subtype) {
+        self.mark_continuous_state_dirty();
         self.chosen_land_types.insert(permanent_id, subtype);
     }
 
@@ -5732,6 +5827,7 @@ impl GameState {
         permanent_id: ObjectId,
         subtype: crate::types::Subtype,
     ) {
+        self.mark_continuous_state_dirty();
         self.chosen_creature_types.insert(permanent_id, subtype);
     }
 
@@ -5744,6 +5840,7 @@ impl GameState {
 
     /// Record a chosen player for a permanent.
     pub fn set_chosen_player(&mut self, permanent_id: ObjectId, player: PlayerId) {
+        self.mark_continuous_state_dirty();
         self.chosen_players.insert(permanent_id, player);
     }
 
@@ -5756,6 +5853,7 @@ impl GameState {
 
     /// Record a chosen named option for a permanent.
     pub fn set_chosen_named_option(&mut self, permanent_id: ObjectId, option: String) {
+        self.mark_continuous_state_dirty();
         self.chosen_named_options.insert(permanent_id, option);
     }
 

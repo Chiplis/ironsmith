@@ -164,7 +164,9 @@ mod tests {
             ChooseSpec::target_permanent(),
         );
 
-        let result = effect.execute(&mut game, &mut ctx).expect("effect should resolve");
+        let result = effect
+            .execute(&mut game, &mut ctx)
+            .expect("effect should resolve");
 
         assert_eq!(result.count_or_zero(), 0);
         assert_eq!(
@@ -193,7 +195,9 @@ mod tests {
             ChooseSpec::target_creature(),
         );
 
-        let result = effect.execute(&mut game, &mut ctx).expect("effect should resolve");
+        let result = effect
+            .execute(&mut game, &mut ctx)
+            .expect("effect should resolve");
 
         assert_eq!(result.count_or_zero(), 0);
         assert_eq!(
@@ -202,7 +206,8 @@ mod tests {
             "objects that are not Auras, Equipment, or Fortifications should remain unattached"
         );
         assert!(
-            !game.object(creature)
+            !game
+                .object(creature)
                 .expect("creature should exist")
                 .attachments
                 .contains(&marker),
@@ -217,11 +222,13 @@ mod tests {
         let aura = create_aura(&mut game, "Pacifism", alice);
         let creature = create_creature(&mut game, "Bear", alice);
 
-        assert!(crate::effects::permanents::attach_battlefield_object_to_target(
-            &mut game,
-            aura,
-            AttachmentTarget::Object(creature),
-        ));
+        assert!(
+            crate::effects::permanents::attach_battlefield_object_to_target(
+                &mut game,
+                aura,
+                AttachmentTarget::Object(creature),
+            )
+        );
         let original_timestamp = game
             .continuous_effects
             .get_attachment_timestamp(aura)
@@ -234,7 +241,9 @@ mod tests {
             ChooseSpec::target_creature(),
         );
 
-        let result = effect.execute(&mut game, &mut ctx).expect("effect should resolve");
+        let result = effect
+            .execute(&mut game, &mut ctx)
+            .expect("effect should resolve");
 
         assert_eq!(result.count_or_zero(), 0);
         assert_eq!(
@@ -258,14 +267,16 @@ mod tests {
             .expect("aura should exist")
             .aura_attach_filter = Some(crate::target::PlayerFilter::Any.into());
 
-        let mut ctx =
-            ExecutionContext::new_default(aura, alice).with_targets(vec![ResolvedTarget::Player(
-                bob,
-            )]);
-        let effect =
-            AttachObjectsEffect::new(ChooseSpec::SpecificObject(aura), ChooseSpec::target_player());
+        let mut ctx = ExecutionContext::new_default(aura, alice)
+            .with_targets(vec![ResolvedTarget::Player(bob)]);
+        let effect = AttachObjectsEffect::new(
+            ChooseSpec::SpecificObject(aura),
+            ChooseSpec::target_player(),
+        );
 
-        let result = effect.execute(&mut game, &mut ctx).expect("effect should resolve");
+        let result = effect
+            .execute(&mut game, &mut ctx)
+            .expect("effect should resolve");
 
         assert_eq!(result.count_or_zero(), 1);
         assert_eq!(

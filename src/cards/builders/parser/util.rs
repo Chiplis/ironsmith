@@ -1636,9 +1636,10 @@ pub(crate) fn parse_subject(tokens: &[OwnedLexToken]) -> SubjectAst {
     {
         slice = &slice[1..];
     }
-    if slice.first().is_some_and(|word| {
-        parse_number_word_u32(word).is_some() || word.parse::<u32>().is_ok()
-    }) {
+    if slice
+        .first()
+        .is_some_and(|word| parse_number_word_u32(word).is_some() || word.parse::<u32>().is_ok())
+    {
         slice = &slice[1..];
     }
     if let Some(have_idx) = slice
@@ -2428,7 +2429,10 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
         || remaining_words.as_slice() == ["enchanted", "players"]
     {
         return Ok(wrap_target_count(
-            TargetAst::Player(PlayerFilter::TaggedPlayer(TagKey::from("enchanted")), target_span),
+            TargetAst::Player(
+                PlayerFilter::TaggedPlayer(TagKey::from("enchanted")),
+                target_span,
+            ),
             target_count,
         ));
     }

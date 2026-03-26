@@ -242,7 +242,10 @@ mod tests {
 
         assert_eq!(outcome.status, OutcomeStatus::Succeeded);
         assert!(
-            !game.stack.iter().any(|entry| entry.object_id == target_spell),
+            !game
+                .stack
+                .iter()
+                .any(|entry| entry.object_id == target_spell),
             "countered spell should leave the stack"
         );
 
@@ -269,11 +272,8 @@ mod tests {
             bob,
             Zone::Battlefield,
         );
-        game.stack.push(StackEntry::ability(
-            source,
-            bob,
-            vec![Effect::draw(1)],
-        ));
+        game.stack
+            .push(StackEntry::ability(source, bob, vec![Effect::draw(1)]));
 
         let counter_source = create_instant(&mut game, alice, Zone::Stack, "Counter Source");
         let mut dm = SelectFirstDecisionMaker;

@@ -13,6 +13,7 @@ use crate::zone::Zone;
 mod battlefield_entry;
 mod destroy;
 mod destroy_no_regen;
+mod exchange_zones;
 mod exile;
 mod exile_until_source_leaves;
 mod haunt_exile;
@@ -91,6 +92,7 @@ pub(crate) use battlefield_entry::{
 
 pub use destroy::DestroyEffect;
 pub use destroy_no_regen::DestroyNoRegenerationEffect;
+pub use exchange_zones::ExchangeZonesEffect;
 pub use exile::ExileEffect;
 pub use exile_until_source_leaves::{ExileUntilDuration, ExileUntilEffect};
 pub use haunt_exile::HauntExileEffect;

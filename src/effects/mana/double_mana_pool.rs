@@ -157,7 +157,10 @@ mod tests {
         assert_eq!(player.mana_pool.red, 4);
         assert_eq!(player.restricted_mana.len(), 2);
         assert!(
-            player.restricted_mana.iter().all(|unit| unit == &restricted),
+            player
+                .restricted_mana
+                .iter()
+                .all(|unit| unit == &restricted),
             "expected restricted mana copy to preserve restriction metadata"
         );
     }

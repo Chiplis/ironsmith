@@ -32,8 +32,73 @@
 //! effects which lock their targets at resolution time (Rule 611.2c).
 
 use crate::ability::AbilityKind;
-use crate::continuous::ContinuousEffect;
+use crate::continuous::{ContinuousEffect, EffectSourceType, EffectTarget, Layer, TextBoxOverlay};
 use crate::game_state::GameState;
+use crate::ids::ObjectId;
+use std::collections::HashMap;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum TextBoxQueryScope {
+    None,
+    Specific(Vec<ObjectId>),
+    AllBattlefield,
+}
+
+impl TextBoxQueryScope {
+    fn includes(&self, object_id: ObjectId) -> bool {
+        match self {
+            Self::None => false,
+            Self::Specific(ids) => ids.contains(&object_id),
+            Self::AllBattlefield => true,
+        }
+    }
+}
+
+fn text_box_query_scope(effects: &[ContinuousEffect]) -> TextBoxQueryScope {
+    let mut specific_ids = Vec::new();
+
+    for effect in effects {
+        if !matches!(
+            effect.modification.layer(),
+            Layer::Copy | Layer::Control | Layer::Text
+        ) {
+            continue;
+        }
+
+        if let EffectSourceType::Resolution { locked_targets } = &effect.source_type
+            && !locked_targets.is_empty()
+        {
+            for &id in locked_targets {
+                if !specific_ids.contains(&id) {
+                    specific_ids.push(id);
+                }
+            }
+            continue;
+        }
+
+        match &effect.applies_to {
+            EffectTarget::Specific(id) | EffectTarget::AttachedTo(id) => {
+                if !specific_ids.contains(id) {
+                    specific_ids.push(*id);
+                }
+            }
+            EffectTarget::Source => {
+                if !specific_ids.contains(&effect.source) {
+                    specific_ids.push(effect.source);
+                }
+            }
+            EffectTarget::Filter(_) | EffectTarget::AllPermanents | EffectTarget::AllCreatures => {
+                return TextBoxQueryScope::AllBattlefield;
+            }
+        }
+    }
+
+    if specific_ids.is_empty() {
+        TextBoxQueryScope::None
+    } else {
+        TextBoxQueryScope::Specific(specific_ids)
+    }
+}
 
 /// Generate all continuous effects from static abilities in zones where they function.
 ///
@@ -47,17 +112,40 @@ pub fn generate_continuous_effects_from_static_abilities(
     game: &GameState,
 ) -> Vec<ContinuousEffect> {
     let mut effects = Vec::new();
+    let registered_effects: Vec<ContinuousEffect> = game.continuous_effects.effects().to_vec();
+    let text_box_scope = text_box_query_scope(&registered_effects);
+    let mut text_box_cache: HashMap<ObjectId, TextBoxOverlay> = HashMap::new();
 
     let object_ids = game.object_ids_in_deterministic_order();
 
     // Iterate over all objects and apply static abilities only in zones where they function.
     for object_id in object_ids {
         if let Some(object) = game.object(object_id) {
-            let controller = object.controller;
             let zone = object.zone;
+            let (controller, abilities) = if zone == crate::zone::Zone::Battlefield
+                && text_box_scope.includes(object_id)
+            {
+                let overlay = text_box_cache.entry(object_id).or_insert_with(|| {
+                    crate::continuous::text_box_characteristics_with_effects(
+                        object_id,
+                        game.objects_map(),
+                        &registered_effects,
+                        &game.battlefield,
+                        &game.commanders,
+                        game,
+                    )
+                    .map(|chars| TextBoxOverlay::new(chars.oracle_text, chars.abilities))
+                    .unwrap_or_else(|| {
+                        TextBoxOverlay::new(object.oracle_text.clone(), object.abilities.clone())
+                    })
+                });
+                (object.controller, overlay.abilities.clone())
+            } else {
+                (object.controller, object.abilities.clone())
+            };
 
             // Process each static ability on the object
-            for ability in &object.abilities {
+            for ability in &abilities {
                 if let AbilityKind::Static(static_ability) = &ability.kind {
                     if !ability.functions_in(&zone) {
                         continue;
@@ -172,5 +260,43 @@ mod tests {
         assert_eq!(effects.len(), 1);
         let effect = &effects[0];
         assert!(matches!(effect.modification, Modification::AddAbility(_)));
+    }
+
+    #[test]
+    fn text_box_query_scope_uses_locked_targets_for_resolution_text_effects() {
+        let effects = vec![
+            ContinuousEffect::from_resolution(
+                ObjectId::from_raw(10),
+                PlayerId::from_index(0),
+                vec![ObjectId::from_raw(11)],
+                Modification::SetTextBox(TextBoxOverlay::new(String::new(), Vec::new())),
+            ),
+            ContinuousEffect::from_resolution(
+                ObjectId::from_raw(10),
+                PlayerId::from_index(0),
+                vec![ObjectId::from_raw(12)],
+                Modification::SetTextBox(TextBoxOverlay::new(String::new(), Vec::new())),
+            ),
+        ];
+
+        assert_eq!(
+            text_box_query_scope(&effects),
+            TextBoxQueryScope::Specific(vec![ObjectId::from_raw(11), ObjectId::from_raw(12)])
+        );
+    }
+
+    #[test]
+    fn text_box_query_scope_falls_back_to_battlefield_for_filter_based_text_effects() {
+        let effects = vec![ContinuousEffect::new(
+            ObjectId::from_raw(10),
+            PlayerId::from_index(0),
+            EffectTarget::Filter(ObjectFilter::creature()),
+            Modification::SetTextBox(TextBoxOverlay::new(String::new(), Vec::new())),
+        )];
+
+        assert_eq!(
+            text_box_query_scope(&effects),
+            TextBoxQueryScope::AllBattlefield
+        );
     }
 }

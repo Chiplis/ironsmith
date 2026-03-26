@@ -85,7 +85,9 @@ pub(crate) fn attach_battlefield_object_to_target(
         return false;
     }
 
-    let previous_parent = game.object(attachment_id).and_then(|object| object.attached_to);
+    let previous_parent = game
+        .object(attachment_id)
+        .and_then(|object| object.attached_to);
     if previous_parent == Some(target) {
         return false;
     }

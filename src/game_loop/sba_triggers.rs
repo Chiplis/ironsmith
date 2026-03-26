@@ -109,6 +109,8 @@ pub fn put_triggers_on_stack_with_dm(
     trigger_queue: &mut TriggerQueue,
     decision_maker: &mut dyn DecisionMaker,
 ) -> Result<(), GameLoopError> {
+    game.refresh_continuous_state();
+
     // Triggered mana abilities resolve immediately and never use the stack.
     // Flush them first so only non-mana triggers remain to be stacked.
     resolve_triggered_mana_abilities_with_dm(game, trigger_queue, decision_maker);
@@ -584,7 +586,8 @@ pub(super) fn create_triggered_stack_entry_with_targets(
     trigger: &TriggeredAbilityEntry,
     decision_maker: &mut dyn DecisionMaker,
 ) -> Option<StackEntry> {
-    let mut entry = triggered_to_stack_entry(game, trigger);
+    let effects = game.cached_continuous_effects_snapshot();
+    let mut entry = triggered_to_stack_entry_with_effects(game, trigger, &effects);
     if let Some(triggering_event) = entry.triggering_event.take() {
         let matched_node = game.provenance_graph.alloc_child(
             triggering_event.provenance(),
@@ -639,6 +642,7 @@ pub(super) fn create_triggered_stack_entry_with_targets(
     } else {
         Some(&tagged_objects)
     };
+    let view = crate::derived_view::DerivedGameView::from_refreshed_state(game);
 
     // Select targets for each target spec
     let mut chosen_targets = Vec::new();
@@ -647,12 +651,13 @@ pub(super) fn create_triggered_stack_entry_with_targets(
         let count = target_spec.count();
 
         // Compute legal targets for this spec
-        let legal_targets = compute_legal_targets_with_tagged_objects(
+        let legal_targets = compute_legal_targets_with_tagged_objects_and_view(
             game,
             target_spec,
             trigger.controller,
             Some(trigger.source),
             tagged_objects_ref,
+            &view,
         );
 
         if legal_targets.len() < count.min {
@@ -723,9 +728,10 @@ pub(super) fn create_triggered_stack_entry_with_targets(
 }
 
 /// Convert a triggered ability entry to a stack entry.
-pub(super) fn triggered_to_stack_entry(
+pub(super) fn triggered_to_stack_entry_with_effects(
     game: &GameState,
     trigger: &TriggeredAbilityEntry,
+    effects: &[crate::continuous::ContinuousEffect],
 ) -> StackEntry {
     use crate::events::EventKind;
     use crate::events::combat::{CreatureAttackedEvent, CreatureBecameBlockedEvent};
@@ -736,7 +742,11 @@ pub(super) fn triggered_to_stack_entry(
     // fall back to snapshot data from the triggering event (e.g. dies triggers).
     let source_snapshot = game
         .object(trigger.source)
-        .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game))
+        .map(|obj| {
+            ObjectSnapshot::from_object_with_calculated_characteristics_and_effects(
+                obj, game, effects,
+            )
+        })
         .or_else(|| trigger.source_snapshot.clone())
         .or_else(|| {
             trigger
@@ -748,7 +758,11 @@ pub(super) fn triggered_to_stack_entry(
         .or_else(|| {
             game.find_object_by_stable_id(trigger.source_stable_id)
                 .and_then(|id| game.object(id))
-                .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game))
+                .map(|obj| {
+                    ObjectSnapshot::from_object_with_calculated_characteristics_and_effects(
+                        obj, game, effects,
+                    )
+                })
         });
 
     // Create an ability stack entry with the effects from the triggered ability

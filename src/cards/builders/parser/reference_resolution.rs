@@ -330,6 +330,30 @@ fn advance_reference_frame_for_effect(
             track_effect_player(*player1, frame, true, true)?;
             track_effect_player(*player2, frame, true, true)?;
         }
+        EffectAst::ExchangeTextBoxes { target } => {
+            track_target_player(target, frame);
+        }
+        EffectAst::ExchangeZones { player, .. } => {
+            track_effect_player(*player, frame, true, true)?;
+        }
+        EffectAst::ExchangeValues { left, right, .. } => {
+            match left {
+                crate::cards::builders::ExchangeValueAst::LifeTotal(player) => {
+                    track_effect_player(*player, frame, true, true)?;
+                }
+                crate::cards::builders::ExchangeValueAst::Stat { target, .. } => {
+                    track_target_player(target, frame);
+                }
+            }
+            match right {
+                crate::cards::builders::ExchangeValueAst::LifeTotal(player) => {
+                    track_effect_player(*player, frame, true, true)?;
+                }
+                crate::cards::builders::ExchangeValueAst::Stat { target, .. } => {
+                    track_target_player(target, frame);
+                }
+            }
+        }
         EffectAst::Mill { player, .. } | EffectAst::Discover { player, .. } => {
             track_effect_player(*player, frame, true, true)?;
             maybe_tag_generated_object_results(effect, frame, id_gen);
@@ -711,6 +735,9 @@ fn advance_reference_frame_for_effect(
             track_target_player(target, frame);
         }
         EffectAst::ExchangeControl { .. } => {
+            frame.last_object_tag = Some(next_reference_tag(id_gen, "exchanged"));
+        }
+        EffectAst::ExchangeControlHeterogeneous { .. } => {
             frame.last_object_tag = Some(next_reference_tag(id_gen, "exchanged"));
         }
         EffectAst::May { effects }
@@ -1668,6 +1695,26 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
         | EffectAst::DestroyAllAttachedTo { filter, .. }
         | EffectAst::SearchLibrary { filter, .. } => bind_unresolved_it_in_filter(filter, seed_tag),
         EffectAst::ExchangeLifeTotals { .. } => 0,
+        EffectAst::ExchangeTextBoxes { target } => bind_unresolved_it_in_target(target, seed_tag),
+        EffectAst::ExchangeControlHeterogeneous {
+            permanent1,
+            permanent2,
+            ..
+        } => {
+            bind_unresolved_it_in_target(permanent1, seed_tag)
+                + bind_unresolved_it_in_target(permanent2, seed_tag)
+        }
+        EffectAst::ExchangeZones { .. } => 0,
+        EffectAst::ExchangeValues { left, right, .. } => {
+            let bind_operand =
+                |operand: &mut crate::cards::builders::ExchangeValueAst| match operand {
+                    crate::cards::builders::ExchangeValueAst::LifeTotal(_) => 0,
+                    crate::cards::builders::ExchangeValueAst::Stat { target, .. } => {
+                        bind_unresolved_it_in_target(target, seed_tag)
+                    }
+                };
+            bind_operand(left) + bind_operand(right)
+        }
         EffectAst::BecomeCopy { target, source, .. } => {
             bind_unresolved_it_in_target(target, seed_tag)
                 + bind_unresolved_it_in_target(source, seed_tag)

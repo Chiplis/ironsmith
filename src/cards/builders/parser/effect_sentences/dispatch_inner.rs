@@ -4392,7 +4392,8 @@ pub(crate) fn parse_scaled_target_power_sentence(
     if verb == "double"
         && let Some(life_total_idx) = words.iter().position(|word| *word == "life")
         && words.get(life_total_idx + 1) == Some(&"total")
-        && let Some((player, player_filter)) = parse_double_life_total_subject(&words[1..life_total_idx])
+        && let Some((player, player_filter)) =
+            parse_double_life_total_subject(&words[1..life_total_idx])
         && life_total_idx + 2 == words.len()
     {
         return Ok(Some(vec![EffectAst::SetLifeTotal {
@@ -4401,7 +4402,9 @@ pub(crate) fn parse_scaled_target_power_sentence(
         }]));
     }
 
-    let mana_prefix = ["double", "the", "amount", "of", "each", "type", "of", "unspent", "mana"];
+    let mana_prefix = [
+        "double", "the", "amount", "of", "each", "type", "of", "unspent", "mana",
+    ];
     if verb == "double"
         && words.starts_with(&mana_prefix)
         && let Some(player) = parse_double_mana_pool_subject(&words[mana_prefix.len()..])
@@ -4461,17 +4464,17 @@ pub(crate) fn parse_scaled_target_power_sentence(
         }
     }
 
-    let (include_power, include_toughness, characteristic_start) =
-        if subject_end >= 4 && words[subject_end - 3..subject_end] == ["power", "and", "toughness"]
-        {
-            (true, true, subject_end - 3)
-        } else if subject_end >= 1 && words[subject_end - 1] == "power" {
-            (true, false, subject_end - 1)
-        } else if subject_end >= 1 && words[subject_end - 1] == "toughness" {
-            (false, true, subject_end - 1)
-        } else {
-            return Ok(None);
-        };
+    let (include_power, include_toughness, characteristic_start) = if subject_end >= 4
+        && words[subject_end - 3..subject_end] == ["power", "and", "toughness"]
+    {
+        (true, true, subject_end - 3)
+    } else if subject_end >= 1 && words[subject_end - 1] == "power" {
+        (true, false, subject_end - 1)
+    } else if subject_end >= 1 && words[subject_end - 1] == "toughness" {
+        (false, true, subject_end - 1)
+    } else {
+        return Ok(None);
+    };
     if characteristic_start <= 1 {
         return Ok(None);
     }

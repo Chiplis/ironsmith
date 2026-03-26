@@ -540,8 +540,8 @@ mod tests {
     use crate::executor::ResolvedTarget;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
-    use crate::object::ObjectKind;
     use crate::object::CounterType;
+    use crate::object::ObjectKind;
     use crate::static_abilities::{StaticAbility, StaticAbilityId};
     use crate::target::ObjectFilter;
     use crate::types::CardType;

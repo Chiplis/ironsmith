@@ -3,24 +3,14 @@ use crate::executor::rebase_target_scope;
 use crate::triggers::Trigger;
 
 pub(super) fn active_target_assignments_for_effect(
-    game: &GameState,
     effect: &Effect,
-    controller: PlayerId,
-    source_id: ObjectId,
     chosen_modes: Option<&[usize]>,
     consumed_modal_selection: &mut bool,
     assignments: &[crate::game_state::TargetAssignment],
     cursor: &mut usize,
 ) -> Vec<crate::game_state::TargetAssignment> {
-    let requirements = extract_target_requirements_for_effect_with_state(
-        game,
-        effect,
-        controller,
-        Some(source_id),
-        chosen_modes,
-        consumed_modal_selection,
-    );
-    let count = requirements.len();
+    let count =
+        count_target_selection_slots_for_effect(effect, chosen_modes, consumed_modal_selection);
     let start = *cursor;
     let end = start.saturating_add(count).min(assignments.len());
     *cursor = end;
@@ -123,8 +113,8 @@ fn evaluate_self_replacement_branch(
 pub(crate) fn execute_resolution_program(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
-    controller: PlayerId,
-    source_id: ObjectId,
+    _controller: PlayerId,
+    _source_id: ObjectId,
     program: &crate::resolution::ResolutionProgram,
     chosen_modes: Option<&[usize]>,
     valid_target_assignments: &[crate::game_state::TargetAssignment],
@@ -153,10 +143,7 @@ pub(crate) fn execute_resolution_program(
                     let mut temp_cursor = assignment_cursor;
                     let mut temp_consumed_modal_selection = consumed_modal_selection;
                     active_target_assignments_for_effect(
-                        game,
                         effect,
-                        controller,
-                        source_id,
                         chosen_modes,
                         &mut temp_consumed_modal_selection,
                         valid_target_assignments,
@@ -199,10 +186,7 @@ pub(crate) fn execute_resolution_program(
         )> = None;
         for effect in &selected_effects {
             let effect_target_assignments = active_target_assignments_for_effect(
-                game,
                 effect,
-                controller,
-                source_id,
                 chosen_modes,
                 &mut consumed_modal_selection,
                 valid_target_assignments,
@@ -280,6 +264,7 @@ pub(super) fn resolve_stack_entry_full(
     decision_maker: &mut impl DecisionMaker,
     mut trigger_queue: Option<&mut TriggerQueue>,
 ) -> Result<(), GameLoopError> {
+    game.refresh_continuous_state();
     let entry = game
         .pop_from_stack()
         .ok_or_else(|| GameLoopError::InvalidState("Stack is empty".to_string()))?;
@@ -320,8 +305,9 @@ pub(super) fn resolve_stack_entry_full(
 
     // Convert targets and validate them
     // Per MTG Rule 608.2b, if ALL targets are now illegal, the spell/ability fizzles
+    let target_validation_view = crate::derived_view::DerivedGameView::from_refreshed_state(game);
     let (valid_targets, valid_target_assignments, all_targets_invalid) =
-        validate_stack_entry_targets(game, &entry);
+        validate_stack_entry_targets_with_view(game, &entry, &target_validation_view);
 
     // If the spell/ability had targets and ALL are now invalid, it fizzles
     if !entry.targets.is_empty() && all_targets_invalid {

@@ -3,7 +3,7 @@
 use super::super::clause_support::parse_ability_line_lexed;
 use super::super::keyword_static::parse_ability_line;
 use super::super::lexer::{OwnedLexToken, TokenKind, lexed_words, trim_lexed_commas};
-use super::super::util::{trim_commas, words};
+use super::super::util::{parse_zone_word, trim_commas, words};
 use super::chain_carry::{Verb, find_verb};
 use super::clause_pattern_helpers::{
     parse_can_attack_as_though_no_defender_clause, parse_prevent_all_damage_clause,
@@ -259,6 +259,21 @@ fn should_keep_and_for_steps_and_phases_end(
     current_words.ends_with(&["as", "steps"]) && remaining_words.starts_with(&["phases", "end"])
 }
 
+fn should_keep_and_for_exchange_zones(
+    current: &[OwnedLexToken],
+    remaining: &[OwnedLexToken],
+) -> bool {
+    let current_words = words(current);
+    let remaining_words = words(remaining);
+    current_words.first().copied() == Some("exchange")
+        && current_words
+            .iter()
+            .any(|word| parse_zone_word(word).is_some())
+        && remaining_words
+            .first()
+            .is_some_and(|word| parse_zone_word(word).is_some())
+}
+
 pub(crate) fn split_effect_chain_on_and(tokens: &[OwnedLexToken]) -> Vec<Vec<OwnedLexToken>> {
     let mut segments = Vec::new();
     let mut current = Vec::new();
@@ -276,6 +291,7 @@ pub(crate) fn split_effect_chain_on_and(tokens: &[OwnedLexToken]) -> Vec<Vec<Own
                 || should_keep_and_for_each_player_may_clause(&current, &tokens[idx + 1..])
                 || should_keep_and_for_put_rest_clause(&current, &tokens[idx + 1..])
                 || should_keep_and_for_steps_and_phases_end(&current, &tokens[idx + 1..])
+                || should_keep_and_for_exchange_zones(&current, &tokens[idx + 1..])
             {
                 current.push(token.clone());
                 continue;
@@ -480,6 +496,21 @@ fn should_keep_and_for_steps_and_phases_end_lexed(
     current_words.ends_with(&["as", "steps"]) && remaining_words.starts_with(&["phases", "end"])
 }
 
+fn should_keep_and_for_exchange_zones_lexed(
+    current: &[OwnedLexToken],
+    remaining: &[OwnedLexToken],
+) -> bool {
+    let current_words = lexed_words(current);
+    let remaining_words = lexed_words(remaining);
+    current_words.first().copied() == Some("exchange")
+        && current_words
+            .iter()
+            .any(|word| parse_zone_word(word).is_some())
+        && remaining_words
+            .first()
+            .is_some_and(|word| parse_zone_word(word).is_some())
+}
+
 fn is_prevent_next_damage_clause_words_lexed(words: &[&str]) -> bool {
     if words.first().copied() != Some("prevent") {
         return false;
@@ -610,6 +641,7 @@ pub(crate) fn split_effect_chain_on_and_lexed(tokens: &[OwnedLexToken]) -> Vec<&
             || should_keep_and_for_each_player_may_clause_lexed(current, remaining)
             || should_keep_and_for_put_rest_clause_lexed(current, remaining)
             || should_keep_and_for_steps_and_phases_end_lexed(current, remaining)
+            || should_keep_and_for_exchange_zones_lexed(current, remaining)
         {
             continue;
         }

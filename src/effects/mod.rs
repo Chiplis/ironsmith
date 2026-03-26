@@ -72,9 +72,9 @@ pub use cards::{
     ShuffleLibraryEffect, SurveilEffect,
 };
 pub use combat::{
-    EnterAttackingEffect, FightEffect, GoadEffect, GrantAbilitiesAllEffect,
-    GrantAbilitiesTargetEffect, MeleeEffect, ModifyPowerToughnessAllEffect,
-    ModifyPowerToughnessEffect, ModifyPowerToughnessForEachEffect,
+    EnterAttackingEffect, ExchangeValueKind, ExchangeValueOperand, ExchangeValuesEffect,
+    FightEffect, GoadEffect, GrantAbilitiesAllEffect, GrantAbilitiesTargetEffect, MeleeEffect,
+    ModifyPowerToughnessAllEffect, ModifyPowerToughnessEffect, ModifyPowerToughnessForEachEffect,
     PreventAllCombatDamageFromEffect, PreventAllDamageEffect, PreventAllDamageToTargetEffect,
     PreventDamageEffect, RemoveFromCombatEffect, SetBasePowerToughnessEffect,
 };
@@ -90,7 +90,7 @@ pub use composition::{
     TagTriggeringObjectEffect, TaggedEffect, TargetOnlyEffect, UnlessActionEffect,
     UnlessPaysEffect, VoteEffect, VoteOption, WithIdEffect,
 };
-pub use continuous::ApplyContinuousEffect;
+pub use continuous::{ApplyContinuousEffect, ExchangeTextBoxesEffect};
 pub use control::{ExchangeControlEffect, GainControlEffect, SharedTypeConstraint};
 pub use counters::{
     ForEachCounterKindPutOrRemoveEffect, MoveAllCountersEffect, MoveCountersEffect,
@@ -148,8 +148,8 @@ pub use tokens::{
     AmassEffect, CopyAttackTargetMode, CreateTokenCopyEffect, CreateTokenEffect, InvestigateEffect,
 };
 pub use zones::{
-    BattlefieldController, DestroyEffect, DestroyNoRegenerationEffect, ExileEffect,
-    ExileUntilDuration, ExileUntilEffect, HauntExileEffect, MayMoveToZoneEffect,
+    BattlefieldController, DestroyEffect, DestroyNoRegenerationEffect, ExchangeZonesEffect,
+    ExileEffect, ExileUntilDuration, ExileUntilEffect, HauntExileEffect, MayMoveToZoneEffect,
     MoveToLibraryNthFromTopEffect, MoveToZoneEffect, PutOntoBattlefieldEffect,
     ReorderGraveyardEffect, ReorderLibraryTopEffect, ReturnAllToBattlefieldEffect,
     ReturnFromGraveyardOrExileToBattlefieldEffect, ReturnFromGraveyardToBattlefieldEffect,

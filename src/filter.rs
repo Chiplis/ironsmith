@@ -2011,7 +2011,17 @@ impl ObjectFilter {
         ctx: &FilterContext,
         game: &crate::game_state::GameState,
     ) -> bool {
-        self.matches_internal(object, ctx, game, true)
+        self.matches_internal(object, ctx, game, true, None)
+    }
+
+    pub(crate) fn matches_with_view(
+        &self,
+        object: &Object,
+        ctx: &FilterContext,
+        game: &crate::game_state::GameState,
+        view: &crate::derived_view::DerivedGameView<'_>,
+    ) -> bool {
+        self.matches_internal(object, ctx, game, true, Some(view))
     }
 
     /// Check if an object matches this filter without consulting calculated characteristics.
@@ -2024,7 +2034,7 @@ impl ObjectFilter {
         ctx: &FilterContext,
         game: &crate::game_state::GameState,
     ) -> bool {
-        self.matches_internal(object, ctx, game, false)
+        self.matches_internal(object, ctx, game, false, None)
     }
 
     fn matches_shared_tail<S: TailMatchSubject>(
@@ -2256,6 +2266,7 @@ impl ObjectFilter {
         ctx: &FilterContext,
         game: &crate::game_state::GameState,
         allow_calculated_pt: bool,
+        view: Option<&crate::derived_view::DerivedGameView<'_>>,
     ) -> bool {
         // Specific object check
         if let Some(id) = self.specific
@@ -2272,7 +2283,7 @@ impl ObjectFilter {
             && !self
                 .any_of
                 .iter()
-                .any(|filter| filter.matches_internal(object, ctx, game, allow_calculated_pt))
+                .any(|filter| filter.matches_internal(object, ctx, game, allow_calculated_pt, view))
         {
             return false;
         }
@@ -2386,7 +2397,9 @@ impl ObjectFilter {
         let mut adjusted_object_storage = None;
         if allow_calculated_pt
             && object.zone == Zone::Battlefield
-            && let Some(chars) = game.calculated_characteristics(object.id)
+            && let Some(chars) = view
+                .and_then(|view| view.calculated_characteristics(object.id))
+                .or_else(|| game.calculated_characteristics(object.id))
         {
             let mut adjusted = object.clone();
             adjusted.name = chars.name;
@@ -2411,7 +2424,8 @@ impl ObjectFilter {
                 game.object(*attachment_id).is_some_and(|attachment| {
                     let attachment_subtypes =
                         if allow_calculated_pt && attachment.zone == Zone::Battlefield {
-                            game.calculated_subtypes(*attachment_id)
+                            view.map(|view| view.calculated_subtypes(*attachment_id))
+                                .unwrap_or_else(|| game.calculated_subtypes(*attachment_id))
                         } else {
                             attachment.subtypes.clone()
                         };
@@ -2423,7 +2437,8 @@ impl ObjectFilter {
                     game.object(*attachment_id).is_some_and(|attachment| {
                         let attachment_subtypes =
                             if allow_calculated_pt && attachment.zone == Zone::Battlefield {
-                                game.calculated_subtypes(*attachment_id)
+                                view.map(|view| view.calculated_subtypes(*attachment_id))
+                                    .unwrap_or_else(|| game.calculated_subtypes(*attachment_id))
                             } else {
                                 attachment.subtypes.clone()
                             };

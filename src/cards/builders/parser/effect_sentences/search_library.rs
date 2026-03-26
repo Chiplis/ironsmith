@@ -2263,6 +2263,16 @@ pub(crate) fn parse_restriction_duration(
         return Ok(Some((Until::YourNextTurn, trim_commas(remainder))));
     }
 
+    if all_words.starts_with(&["until", "end", "of", "combat"]) {
+        let comma_idx = tokens.iter().position(|token| token.is_comma());
+        let remainder = if let Some(idx) = comma_idx {
+            &tokens[idx + 1..]
+        } else {
+            &tokens[4..]
+        };
+        return Ok(Some((Until::EndOfCombat, trim_commas(remainder))));
+    }
+
     if all_words.starts_with(&["for", "as", "long", "as"]) {
         let as_long_duration = all_words.contains(&"you")
             && all_words.contains(&"control")
@@ -2290,6 +2300,15 @@ pub(crate) fn parse_restriction_duration(
             .unwrap_or(tokens.len());
         let remainder = trim_commas(&tokens[..end_idx]);
         return Ok(Some((Until::EndOfTurn, remainder)));
+    }
+
+    if all_words.ends_with(&["until", "end", "of", "combat"]) {
+        let end_idx = tokens
+            .iter()
+            .rposition(|token| token.is_word("until"))
+            .unwrap_or(tokens.len());
+        let remainder = trim_commas(&tokens[..end_idx]);
+        return Ok(Some((Until::EndOfCombat, remainder)));
     }
 
     if all_words.ends_with(&["until", "your", "next", "turn"])

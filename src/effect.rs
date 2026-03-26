@@ -2582,6 +2582,32 @@ impl Effect {
         Self::new(ExchangeLifeTotalsEffect::new(player1, player2))
     }
 
+    /// Create an "exchange text boxes" effect.
+    pub fn exchange_text_boxes(target: ChooseSpec) -> Self {
+        use crate::effects::ExchangeTextBoxesEffect;
+        Self::new(ExchangeTextBoxesEffect::new(target))
+    }
+
+    /// Create an "exchange zone contents" effect.
+    pub fn exchange_zones(
+        player: PlayerFilter,
+        zone1: crate::zone::Zone,
+        zone2: crate::zone::Zone,
+    ) -> Self {
+        use crate::effects::ExchangeZonesEffect;
+        Self::new(ExchangeZonesEffect::new(player, zone1, zone2))
+    }
+
+    /// Create an "exchange values" effect.
+    pub fn exchange_values(
+        left: crate::effects::ExchangeValueOperand,
+        right: crate::effects::ExchangeValueOperand,
+        duration: Until,
+    ) -> Self {
+        use crate::effects::ExchangeValuesEffect;
+        Self::new(ExchangeValuesEffect::new(left, right, duration))
+    }
+
     /// Create a "destroy target permanent" effect.
     pub fn destroy(choice: ChooseSpec) -> Self {
         use crate::effects::DestroyEffect;

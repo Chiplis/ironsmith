@@ -26,6 +26,7 @@ use crate::triggers::Trigger;
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
 
 #[cfg(test)]
 use crate::filter::TaggedOpbjectRelation;
@@ -447,6 +448,37 @@ fn finalize_definition(
     Ok(finalize_nonpermanent_delayed_triggered_abilities(
         definition,
     ))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct ParseCacheKey {
+    builder_context: String,
+    text: String,
+    allow_unsupported: bool,
+}
+
+type CachedParseResult = Result<(CardDefinition, ParseAnnotations), CardTextError>;
+
+fn parse_result_cache() -> &'static Mutex<HashMap<ParseCacheKey, CachedParseResult>> {
+    static PARSE_RESULT_CACHE: OnceLock<Mutex<HashMap<ParseCacheKey, CachedParseResult>>> =
+        OnceLock::new();
+    PARSE_RESULT_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn lookup_cached_parse(key: &ParseCacheKey) -> Option<CachedParseResult> {
+    parse_result_cache()
+        .lock()
+        .expect("parse result cache mutex poisoned")
+        .get(key)
+        .cloned()
+}
+
+fn store_cached_parse(key: ParseCacheKey, result: CachedParseResult) -> CachedParseResult {
+    parse_result_cache()
+        .lock()
+        .expect("parse result cache mutex poisoned")
+        .insert(key, result.clone());
+    result
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1419,6 +1451,21 @@ pub(crate) enum SharedTypeConstraintAst {
     PermanentType,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ExchangeValueKindAst {
+    Power,
+    Toughness,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum ExchangeValueAst {
+    LifeTotal(PlayerAst),
+    Stat {
+        target: TargetAst,
+        kind: ExchangeValueKindAst,
+    },
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum RetargetModeAst {
     All,
@@ -1993,9 +2040,27 @@ pub(crate) enum EffectAst {
         count: u32,
         shared_type: Option<SharedTypeConstraintAst>,
     },
+    ExchangeControlHeterogeneous {
+        permanent1: TargetAst,
+        permanent2: TargetAst,
+        shared_type: Option<SharedTypeConstraintAst>,
+    },
     ExchangeLifeTotals {
         player1: PlayerAst,
         player2: PlayerAst,
+    },
+    ExchangeTextBoxes {
+        target: TargetAst,
+    },
+    ExchangeZones {
+        player: PlayerAst,
+        zone1: Zone,
+        zone2: Zone,
+    },
+    ExchangeValues {
+        left: ExchangeValueAst,
+        right: ExchangeValueAst,
+        duration: Until,
     },
     RingTemptsYou {
         player: PlayerAst,
@@ -2544,6 +2609,34 @@ pub struct CardDefinitionBuilder {
 }
 
 impl CardDefinitionBuilder {
+    fn parse_cache_key(&self, text: &str, allow_unsupported: bool) -> ParseCacheKey {
+        ParseCacheKey {
+            builder_context: format!("{self:?}"),
+            text: text.to_string(),
+            allow_unsupported,
+        }
+    }
+
+    fn parse_text_with_annotations_cached(
+        self,
+        text: String,
+        allow_unsupported: bool,
+    ) -> Result<(CardDefinition, ParseAnnotations), CardTextError> {
+        let cache_key = self.parse_cache_key(&text, allow_unsupported);
+        if let Some(cached) = lookup_cached_parse(&cache_key) {
+            return cached;
+        }
+
+        let original_builder = self.clone();
+        let result = parser::parse_text_with_annotations(self, text.clone(), allow_unsupported)
+            .and_then(|(definition, annotations)| {
+                finalize_definition(definition, &original_builder, &text)
+                    .map(|definition| (definition, annotations))
+            });
+
+        store_cached_parse(cache_key, result)
+    }
+
     fn pt_value_text(value: PtValue) -> String {
         match value {
             PtValue::Fixed(n) => n.to_string(),
@@ -2975,12 +3068,7 @@ impl CardDefinitionBuilder {
         self,
         text: impl Into<String>,
     ) -> Result<(CardDefinition, ParseAnnotations), CardTextError> {
-        let text = text.into();
-        let original_builder = self.clone();
-        let (definition, annotations) =
-            parser::parse_text_with_annotations(self, text.clone(), false)?;
-        let definition = finalize_definition(definition, &original_builder, &text)?;
-        Ok((definition, annotations))
+        self.parse_text_with_annotations_cached(text.into(), false)
     }
 
     /// Build a CardDefinition from oracle text, returning parse annotations while
@@ -2989,12 +3077,7 @@ impl CardDefinitionBuilder {
         self,
         text: impl Into<String>,
     ) -> Result<(CardDefinition, ParseAnnotations), CardTextError> {
-        let text = text.into();
-        let original_builder = self.clone();
-        let (definition, annotations) =
-            parser::parse_text_with_annotations(self, text.clone(), true)?;
-        let definition = finalize_definition(definition, &original_builder, &text)?;
-        Ok((definition, annotations))
+        self.parse_text_with_annotations_cached(text.into(), true)
     }
 
     /// Build a CardDefinition from oracle text, prepending metadata lines
@@ -6047,12 +6130,13 @@ mod effect_parse_tests {
     use crate::effects::{
         AddManaOfAnyColorEffect, AddManaOfAnyOneColorEffect, AddManaOfLandProducedTypesEffect,
         AddScaledManaEffect, CreateTokenCopyEffect, DestroyEffect, DiscardEffect, DrawCardsEffect,
-        EnergyCountersEffect, ExchangeControlEffect, ExileInsteadOfGraveyardEffect, ForEachObject,
-        ForPlayersEffect, GrantBySpecEffect, LookAtHandEffect, ModifyPowerToughnessForEachEffect,
-        PutCountersEffect, RemoveCountersEffect, RemoveUpToAnyCountersEffect,
-        ReturnFromGraveyardToBattlefieldEffect, SacrificeEffect, SetBasePowerToughnessEffect,
-        SetLifeTotalEffect, SkipCombatPhasesEffect, SkipDrawStepEffect,
-        SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect, SurveilEffect, TapEffect,
+        EnergyCountersEffect, ExchangeControlEffect, ExchangeValuesEffect, ExchangeZonesEffect,
+        ExileInsteadOfGraveyardEffect, ForEachObject, ForPlayersEffect, GrantBySpecEffect,
+        LookAtHandEffect, ModifyPowerToughnessForEachEffect, PutCountersEffect,
+        RemoveCountersEffect, RemoveUpToAnyCountersEffect, ReturnFromGraveyardToBattlefieldEffect,
+        SacrificeEffect, SetBasePowerToughnessEffect, SetLifeTotalEffect, SkipCombatPhasesEffect,
+        SkipDrawStepEffect, SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect, SurveilEffect,
+        TapEffect,
     };
     use crate::ids::CardId;
     use crate::mana::{ManaCost, ManaSymbol};
@@ -7072,6 +7156,138 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_exchange_text_boxes_from_text() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Exchange of Words")
+            .card_types(vec![CardType::Enchantment])
+            .parse_text(
+                "When this enchantment enters, choose two target creatures. For as long as this enchantment remains on the battlefield, exchange the text boxes of those creatures.",
+            )
+            .expect("parse exchange text boxes");
+
+        let debug = format!("{:?}", def.abilities);
+        assert!(
+            debug.contains("ExchangeTextBoxesEffect"),
+            "should include exchange text boxes effect, got {debug}"
+        );
+        assert!(
+            debug.contains("exactly(2)") || debug.contains("min: 2"),
+            "expected two-creature exchange selection, got {debug}"
+        );
+        let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+        assert!(
+            !rendered.contains("unsupported effect"),
+            "expected compiled text to render exchange text boxes, got {rendered}"
+        );
+    }
+
+    #[test]
+    fn parse_exchange_control_heterogeneous_from_text() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Avarice Totem")
+            .parse_text("Exchange control of this artifact and target nonland permanent.")
+            .expect("parse heterogeneous exchange control");
+
+        let effects = def.spell_effect.as_ref().expect("spell effect");
+        let debug = format!("{effects:?}");
+        assert!(
+            effects
+                .iter()
+                .any(|e| e.downcast_ref::<ExchangeControlEffect>().is_some())
+                || debug.contains("ExchangeControlEffect"),
+            "should include exchange control effect, got {debug}"
+        );
+        assert!(
+            debug.contains("permanent1: Source") && debug.contains("excluded_card_types: [Land]"),
+            "expected source-plus-target exchange, got {debug}"
+        );
+    }
+
+    #[test]
+    fn parse_exchange_control_heterogeneous_with_relative_constraint_from_text() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Daring Thief")
+            .parse_text(
+                "Exchange control of target nonland permanent you control and target permanent an opponent controls that shares a card type with it.",
+            )
+            .expect("parse heterogeneous exchange control with relative constraint");
+
+        let effects = def.spell_effect.as_ref().expect("spell effect");
+        let debug = format!("{effects:?}");
+        assert!(
+            debug.contains("ExchangeControlEffect")
+                && debug.contains("shared_type: Some(CardType)"),
+            "expected shared card-type exchange control effect, got {debug}"
+        );
+    }
+
+    #[test]
+    fn parse_exchange_hand_and_graveyard_from_text() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Harness Infinity")
+            .parse_text("Exchange your hand and graveyard.")
+            .expect("parse zone exchange");
+
+        let effects = def.spell_effect.as_ref().expect("spell effect");
+        let debug = format!("{effects:?}");
+        assert!(
+            effects
+                .iter()
+                .any(|e| e.downcast_ref::<ExchangeZonesEffect>().is_some())
+                || debug.contains("ExchangeZonesEffect"),
+            "should include exchange zones effect, got {debug}"
+        );
+    }
+
+    #[test]
+    fn parse_exchange_hand_and_library_then_shuffle_from_text() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Mordenkainen Variant")
+            .parse_text("Exchange your hand and library, then shuffle.")
+            .expect("parse zone exchange followed by shuffle");
+
+        let effects = def.spell_effect.as_ref().expect("spell effect");
+        let debug = format!("{effects:?}");
+        assert!(
+            debug.contains("ExchangeZonesEffect") && debug.contains("ShuffleLibraryEffect"),
+            "expected exchange zones plus shuffle, got {debug}"
+        );
+    }
+
+    #[test]
+    fn parse_exchange_life_total_with_toughness_from_text() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Tree of Redemption")
+            .parse_text("Exchange your life total with this creature's toughness.")
+            .expect("parse life total to toughness exchange");
+
+        let effects = def.spell_effect.as_ref().expect("spell effect");
+        let debug = format!("{effects:?}");
+        assert!(
+            effects
+                .iter()
+                .any(|e| e.downcast_ref::<ExchangeValuesEffect>().is_some())
+                || debug.contains("ExchangeValuesEffect"),
+            "should include exchange values effect, got {debug}"
+        );
+    }
+
+    #[test]
+    fn parse_exchange_power_with_target_power_until_end_of_combat_from_text() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Serene Master")
+            .parse_text("Exchange its power and the power of target creature it's blocking until end of combat.")
+            .expect("parse power exchange until end of combat");
+
+        let effects = def.spell_effect.as_ref().expect("spell effect");
+        let debug = format!("{effects:?}");
+        assert!(
+            effects
+                .iter()
+                .any(|e| e.downcast_ref::<ExchangeValuesEffect>().is_some())
+                || debug.contains("ExchangeValuesEffect"),
+            "should include exchange values effect, got {debug}"
+        );
+        assert!(
+            debug.contains("EndOfCombat"),
+            "expected end-of-combat duration, got {debug}"
+        );
+    }
+
+    #[test]
     fn parse_draw_for_each_tapped_creature_target_opponent_controls() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Borrowing Arrows Variant")
             .parse_text("Draw a card for each tapped creature target opponent controls.")
@@ -7697,6 +7913,133 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         assert!(
             result.is_err(),
             "metadata parse should return an error instead of silent oracle-only fallback"
+        );
+    }
+
+    #[test]
+    fn repeated_parse_text_reuses_cached_definition() {
+        let builder = CardDefinitionBuilder::new(CardId::from_raw(910_001), "Cache Probe")
+            .card_types(vec![CardType::Creature]);
+        let cache_key = builder.parse_cache_key("Flying", false);
+
+        let first = builder
+            .clone()
+            .parse_text("Flying")
+            .expect("first parse should succeed");
+        assert!(
+            lookup_cached_parse(&cache_key).is_some(),
+            "first parse should populate the exact cache entry"
+        );
+
+        let second = builder
+            .parse_text("Flying")
+            .expect("second parse should also succeed");
+        assert!(
+            lookup_cached_parse(&cache_key).is_some(),
+            "cached entry should remain present"
+        );
+        assert_eq!(
+            format!("{first:?}"),
+            format!("{second:?}"),
+            "cached parse should preserve the compiled definition"
+        );
+    }
+
+    #[test]
+    fn parse_cache_separates_allow_unsupported_mode() {
+        let builder = CardDefinitionBuilder::new(CardId::from_raw(910_002), "Cache Unsupported");
+        let text = "This line should not parse and must stay unsupported.";
+        let strict_key = builder.parse_cache_key(text, false);
+        let permissive_key = builder.parse_cache_key(text, true);
+
+        let strict = builder.clone().parse_text(text);
+        assert!(
+            strict.is_err(),
+            "strict parse should fail for unsupported text"
+        );
+        assert!(
+            lookup_cached_parse(&strict_key).is_some(),
+            "strict parse result should populate its own cache entry"
+        );
+        assert!(
+            lookup_cached_parse(&permissive_key).is_none(),
+            "strict parse should not alias the permissive cache entry"
+        );
+
+        let permissive = builder
+            .clone()
+            .parse_text_allow_unsupported(text)
+            .expect("allow_unsupported parse should succeed");
+        assert!(
+            lookup_cached_parse(&strict_key).is_some(),
+            "strict parse cache entry should remain intact"
+        );
+        assert!(
+            lookup_cached_parse(&permissive_key).is_some(),
+            "allow_unsupported mode should use a distinct cache entry"
+        );
+
+        let permissive_repeat = builder
+            .parse_text_allow_unsupported(text)
+            .expect("repeated allow_unsupported parse should succeed");
+        assert!(
+            lookup_cached_parse(&permissive_key).is_some(),
+            "repeating the permissive parse should preserve its cache entry"
+        );
+        assert_eq!(
+            format!("{permissive:?}"),
+            format!("{permissive_repeat:?}"),
+            "cached permissive parse should preserve the compiled definition"
+        );
+    }
+
+    #[test]
+    fn metadata_parse_cache_stays_builder_context_aware() {
+        let first_source_builder =
+            CardDefinitionBuilder::new(CardId::from_raw(910_003), "Metadata Probe")
+                .card_types(vec![CardType::Creature])
+                .power_toughness(PowerToughness::fixed(2, 2));
+        let second_source_builder =
+            CardDefinitionBuilder::new(CardId::from_raw(910_003), "Metadata Probe")
+                .card_types(vec![CardType::Creature])
+                .power_toughness(PowerToughness::fixed(3, 3));
+
+        let first_text = first_source_builder.build_text_with_metadata("Flying");
+        let second_text = second_source_builder.build_text_with_metadata("Flying");
+        let mut first_parse_builder = first_source_builder.clone();
+        first_parse_builder.additional_cost = TotalCost::free();
+        let mut second_parse_builder = second_source_builder.clone();
+        second_parse_builder.additional_cost = TotalCost::free();
+
+        let first_key = first_parse_builder.parse_cache_key(&first_text, false);
+        let second_key = second_parse_builder.parse_cache_key(&second_text, false);
+        assert_ne!(
+            first_key, second_key,
+            "different builder metadata must produce distinct cache keys"
+        );
+
+        let first = first_source_builder
+            .from_text_with_metadata("Flying")
+            .expect("first metadata parse should succeed");
+        assert!(
+            lookup_cached_parse(&first_key).is_some(),
+            "first metadata parse should populate its cache entry"
+        );
+        assert!(
+            lookup_cached_parse(&second_key).is_none(),
+            "second metadata cache entry should not exist before that parse runs"
+        );
+
+        let second = second_source_builder
+            .from_text_with_metadata("Flying")
+            .expect("second metadata parse should succeed");
+        assert!(
+            lookup_cached_parse(&first_key).is_some() && lookup_cached_parse(&second_key).is_some(),
+            "different builder metadata should populate distinct cache entries"
+        );
+        assert_ne!(
+            first.card.power_toughness, second.card.power_toughness,
+            "metadata-aware parses should keep their distinct builder characteristics"
         );
     }
 

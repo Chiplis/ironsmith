@@ -2749,7 +2749,9 @@ fn test_parse_double_power_and_toughness_of_each_creature_you_control() {
 
     let debug = format!("{:?}", def);
     assert!(
-        debug.contains("ForEachObject") && debug.contains("PowerOf") && debug.contains("ToughnessOf"),
+        debug.contains("ForEachObject")
+            && debug.contains("PowerOf")
+            && debug.contains("ToughnessOf"),
         "expected per-creature dynamic double P/T effect, got {debug}"
     );
 
@@ -9740,7 +9742,9 @@ fn parse_birgi_front_face_support_lines() {
         "expected mana-retention text in render output, got {rendered}"
     );
     assert!(
-        rendered.contains("Creatures you control can boast twice during each of your turns rather than once"),
+        rendered.contains(
+            "Creatures you control can boast twice during each of your turns rather than once"
+        ),
         "expected boast-frequency text in render output, got {rendered}"
     );
     let debug = format!("{def:#?}").to_ascii_lowercase();
@@ -16017,7 +16021,9 @@ fn parse_mnemonic_betrayal_temporary_any_color_cast_permission() {
     );
     assert!(
         spell_debug.contains("ConditionalEffect")
-            && spell_debug.contains("zone: Some(\n                                                                Exile")
+            && spell_debug.contains(
+                "zone: Some(\n                                                                Exile"
+            )
             && spell_debug.contains("MoveToZoneEffect"),
         "expected delayed exile-check cleanup in compiled effects, got {spell_debug}"
     );
@@ -17723,7 +17729,9 @@ fn parse_veil_of_summer_full_spell() {
     let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
         rendered.contains("draw a card if an opponent has cast a blue or black spell this turn")
-            || rendered.contains("if an opponent has cast a blue or black spell this turn, you draw a card"),
+            || rendered.contains(
+                "if an opponent has cast a blue or black spell this turn, you draw a card"
+            ),
         "expected draw condition to survive compilation, got {rendered}"
     );
     assert!(

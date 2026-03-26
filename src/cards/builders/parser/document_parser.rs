@@ -682,6 +682,8 @@ fn looks_like_statement_line(normalized: &str) -> bool {
                 | "draws"
                 | "enchant"
                 | "enchants"
+                | "exchange"
+                | "exchanges"
                 | "exile"
                 | "exiles"
                 | "gain"
@@ -1107,11 +1109,15 @@ mod tests {
     #[test]
     fn strip_non_keyword_label_prefix_removes_chained_mode_name_and_cost() {
         assert_eq!(
-            strip_non_keyword_label_prefix("Meteor Strikes — {2} — Double target creature's power and toughness until end of turn."),
+            strip_non_keyword_label_prefix(
+                "Meteor Strikes — {2} — Double target creature's power and toughness until end of turn."
+            ),
             "Double target creature's power and toughness until end of turn."
         );
         assert_eq!(
-            strip_non_keyword_label_prefix("Final Heaven — {6}{G} — Triple target creature's power and toughness until end of turn."),
+            strip_non_keyword_label_prefix(
+                "Final Heaven — {6}{G} — Triple target creature's power and toughness until end of turn."
+            ),
             "Triple target creature's power and toughness until end of turn."
         );
     }

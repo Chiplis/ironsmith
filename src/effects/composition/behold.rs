@@ -88,8 +88,8 @@ impl EffectExecutor for BeholdEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        use crate::decisions::make_decision;
         use crate::decisions::context::ViewCardsContext;
+        use crate::decisions::make_decision;
         use crate::decisions::specs::ChooseObjectsSpec;
         use crate::effects::helpers::resolve_player_filter;
         use crate::zone::Zone;
@@ -288,13 +288,7 @@ mod tests {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
         let source = game.new_object_id();
-        let hand = simple_creature(
-            &mut game,
-            "Hand Dragon",
-            alice,
-            Subtype::Dragon,
-            Zone::Hand,
-        );
+        let hand = simple_creature(&mut game, "Hand Dragon", alice, Subtype::Dragon, Zone::Hand);
 
         let mut dm = CaptureViewDm::default();
         let mut ctx = ExecutionContext::new(source, alice, &mut dm)
@@ -304,7 +298,11 @@ mod tests {
             .execute(&mut game, &mut ctx)
             .expect("behold from hand should execute");
 
-        assert_eq!(dm.calls.len(), 2, "all players should see the revealed hand card");
+        assert_eq!(
+            dm.calls.len(),
+            2,
+            "all players should see the revealed hand card"
+        );
         assert!(dm.calls.iter().all(|(_, subject, zone, public, cards)| {
             *subject == alice && *zone == Zone::Hand && *public && cards == &vec![hand]
         }));

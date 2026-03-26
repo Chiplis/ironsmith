@@ -44,8 +44,10 @@ pub struct ExchangeLifeTotalsEffect {
 impl ExchangeLifeTotalsEffect {
     /// Create a new exchange life totals effect.
     pub fn new(player1: PlayerFilter, player2: PlayerFilter) -> Self {
-        let use_two_player_targets =
-            matches!((&player1, &player2), (PlayerFilter::Target(_), PlayerFilter::Target(_)));
+        let use_two_player_targets = matches!(
+            (&player1, &player2),
+            (PlayerFilter::Target(_), PlayerFilter::Target(_))
+        );
         let target_spec = if use_two_player_targets {
             Some(ChooseSpec::target_player().with_count(crate::effect::ChoiceCount::exactly(2)))
         } else {

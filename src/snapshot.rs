@@ -22,9 +22,9 @@ use crate::continuous::ContinuousEffect;
 use crate::ids::CardId;
 use crate::ids::{ObjectId, PlayerId, StableId};
 use crate::mana::ManaCost;
+use crate::object::AuraAttachmentFilter;
 use crate::object::{AttachmentTarget, CounterType, Object, ObjectKind};
 use crate::static_abilities::StaticAbilityId;
-use crate::object::AuraAttachmentFilter;
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 
@@ -236,14 +236,14 @@ impl ObjectSnapshot {
         // which include continuous effects like anthems, pumps, etc.
         if let Some(calculated) = game.calculated_characteristics_with_effects(obj.id, effects) {
             // Override with calculated values (these include continuous effects)
+            snapshot.oracle_text = calculated.oracle_text;
             snapshot.power = calculated.power;
             snapshot.toughness = calculated.toughness;
             snapshot.card_types = calculated.card_types;
             snapshot.subtypes = calculated.subtypes;
             snapshot.supertypes = calculated.supertypes;
             snapshot.colors = calculated.colors;
-            // Note: we keep the original abilities from obj since calculated.abilities
-            // may not include all the original ability definitions
+            snapshot.abilities = calculated.abilities;
         }
 
         snapshot

@@ -243,7 +243,11 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::ReturnAllToHandOfChosenColor { .. } => {}
         EffectAst::ReturnAllToBattlefield { .. } => {}
         EffectAst::ExchangeControl { .. } => {}
+        EffectAst::ExchangeControlHeterogeneous { .. } => {}
         EffectAst::ExchangeLifeTotals { .. } => {}
+        EffectAst::ExchangeTextBoxes { .. } => {}
+        EffectAst::ExchangeZones { .. } => {}
+        EffectAst::ExchangeValues { .. } => {}
         EffectAst::RingTemptsYou { .. } => {}
         EffectAst::VentureIntoDungeon { .. } => {}
         EffectAst::BecomeMonarch { .. } => {}

@@ -20,6 +20,7 @@ use crate::zone::Zone;
 pub(crate) struct DerivedGameView<'a> {
     game: &'a GameState,
     all_effects: Vec<ContinuousEffect>,
+    use_game_characteristics_cache: bool,
     characteristics: RefCell<HashMap<ObjectId, Option<CalculatedCharacteristics>>>,
     zone_candidates: RefCell<HashMap<Option<Zone>, Vec<ObjectId>>>,
     potential_mana: RefCell<HashMap<PlayerId, ManaPool>>,
@@ -27,7 +28,11 @@ pub(crate) struct DerivedGameView<'a> {
 
 impl<'a> DerivedGameView<'a> {
     pub(crate) fn new(game: &'a GameState) -> Self {
-        Self::from_effects(game, game.all_continuous_effects())
+        if game.continuous_state_is_clean() {
+            Self::from_refreshed_state(game)
+        } else {
+            Self::from_effects(game, game.all_continuous_effects())
+        }
     }
 
     /// Build a derived view from the state populated by `refresh_continuous_state`.
@@ -35,13 +40,21 @@ impl<'a> DerivedGameView<'a> {
     /// Callers should only use this when they know the cached static-ability
     /// effects on `GameState` are current for the state they are about to read.
     pub(crate) fn from_refreshed_state(game: &'a GameState) -> Self {
-        Self::from_effects(game, game.cached_continuous_effects_snapshot())
+        Self {
+            game,
+            all_effects: game.cached_continuous_effects_snapshot(),
+            use_game_characteristics_cache: true,
+            characteristics: RefCell::new(HashMap::new()),
+            zone_candidates: RefCell::new(HashMap::new()),
+            potential_mana: RefCell::new(HashMap::new()),
+        }
     }
 
     pub(crate) fn from_effects(game: &'a GameState, all_effects: Vec<ContinuousEffect>) -> Self {
         Self {
             game,
             all_effects,
+            use_game_characteristics_cache: false,
             characteristics: RefCell::new(HashMap::new()),
             zone_candidates: RefCell::new(HashMap::new()),
             potential_mana: RefCell::new(HashMap::new()),
@@ -60,9 +73,12 @@ impl<'a> DerivedGameView<'a> {
             return cached.clone();
         }
 
-        let calculated = self
-            .game
-            .calculated_characteristics_with_effects(object_id, &self.all_effects);
+        let calculated = if self.use_game_characteristics_cache {
+            self.game.calculated_characteristics(object_id)
+        } else {
+            self.game
+                .calculated_characteristics_with_effects(object_id, &self.all_effects)
+        };
         self.characteristics
             .borrow_mut()
             .insert(object_id, calculated.clone());

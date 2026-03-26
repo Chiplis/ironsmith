@@ -12,10 +12,11 @@ use crate::cards::CardDefinition;
 #[allow(unused_imports)]
 use crate::cards::builders::{
     CardDefinitionBuilder, CardTextError, ClashOpponentAst, ControlDurationAst, DamageBySpec,
-    EffectAst, EffectLoweringContext, ExtraTurnAnchorAst, GrantedAbilityAst, IT_TAG, IdGenContext,
-    IfResultPredicate, LineAst, LoweringFrame, NormalizedLine, ObjectRefAst, ParseAnnotations,
-    PlayerAst, PredicateAst, PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst,
-    RetargetModeAst, ReturnControllerAst, SharedTypeConstraintAst, TagKey, TargetAst, TriggerSpec,
+    EffectAst, EffectLoweringContext, ExchangeValueAst, ExchangeValueKindAst, ExtraTurnAnchorAst,
+    GrantedAbilityAst, IT_TAG, IdGenContext, IfResultPredicate, LineAst, LoweringFrame,
+    NormalizedLine, ObjectRefAst, ParseAnnotations, PlayerAst, PredicateAst,
+    PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst, RetargetModeAst,
+    ReturnControllerAst, SharedTypeConstraintAst, TagKey, TargetAst, TriggerSpec,
 };
 #[allow(unused_imports)]
 use crate::color::ColorSet;
@@ -3968,13 +3969,136 @@ fn compile_exchange_life_totals_effect(
         && choices1[0].base() == choices2[0].base()
         && choices1[0].is_target()
     {
-        push_choice(&mut choices, choices1[0].clone().with_count(ChoiceCount::exactly(2)));
+        push_choice(
+            &mut choices,
+            choices1[0].clone().with_count(ChoiceCount::exactly(2)),
+        );
     } else {
         for choice in choices1.into_iter().chain(choices2) {
             push_choice(&mut choices, choice);
         }
     }
 
+    let mut effects = Vec::new();
+    if effect.0.get_target_spec().is_none() {
+        for choice in &choices {
+            effects.push(Effect::new(crate::effects::TargetOnlyEffect::new(
+                choice.clone(),
+            )));
+        }
+    }
+    effects.push(effect);
+    Ok((effects, choices))
+}
+
+fn compile_exchange_control_heterogeneous_effect(
+    permanent1: &TargetAst,
+    permanent2: &TargetAst,
+    shared_type: Option<SharedTypeConstraintAst>,
+    ctx: &mut EffectLoweringContext,
+) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
+    let (spec1, mut choices) =
+        resolve_target_spec_with_choices(permanent1, &current_reference_env(ctx))?;
+    let reference_tag = ctx.next_tag("exchange_first");
+    let original_last_object_tag = ctx.last_object_tag.clone();
+    ctx.last_object_tag = Some(reference_tag.clone());
+    let (spec2, other_choices) =
+        resolve_target_spec_with_choices(permanent2, &current_reference_env(ctx))?;
+    ctx.last_object_tag = original_last_object_tag;
+    for choice in other_choices {
+        push_choice(&mut choices, choice);
+    }
+
+    let exchange = crate::effects::ExchangeControlEffect::new(spec1, spec2)
+        .with_permanent1_reference_tag(reference_tag);
+    let exchange = if let Some(shared_type) = shared_type {
+        let constraint = match shared_type {
+            SharedTypeConstraintAst::CardType => crate::effects::SharedTypeConstraint::CardType,
+            SharedTypeConstraintAst::PermanentType => {
+                crate::effects::SharedTypeConstraint::PermanentType
+            }
+        };
+        exchange.with_shared_type(constraint)
+    } else {
+        exchange
+    };
+
+    let mut effect = Effect::new(exchange);
+    let tag = ctx.next_tag("exchanged");
+    effect = effect.tag(tag.clone());
+    ctx.last_object_tag = Some(tag);
+    Ok((vec![effect], choices))
+}
+
+fn compile_exchange_zones_effect(
+    player: PlayerAst,
+    zone1: Zone,
+    zone2: Zone,
+    ctx: &mut EffectLoweringContext,
+) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
+    let (player_filter, choices) = resolve_effect_player_filter(player, ctx, true, true, true)?;
+    let effect = Effect::exchange_zones(player_filter, zone1, zone2);
+    let mut effects = Vec::new();
+    if effect.0.get_target_spec().is_none() {
+        for choice in &choices {
+            effects.push(Effect::new(crate::effects::TargetOnlyEffect::new(
+                choice.clone(),
+            )));
+        }
+    }
+    effects.push(effect);
+    Ok((effects, choices))
+}
+
+fn compile_exchange_text_boxes_effect(
+    target: &TargetAst,
+    ctx: &mut EffectLoweringContext,
+) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
+    let (spec, choices) = resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+    let effect = Effect::exchange_text_boxes(spec);
+    let tag = ctx.next_tag("exchanged");
+    ctx.last_object_tag = Some(tag.clone());
+    Ok((vec![effect.tag(tag)], choices))
+}
+
+fn compile_exchange_value_operand(
+    operand: &ExchangeValueAst,
+    ctx: &mut EffectLoweringContext,
+) -> Result<(crate::effects::ExchangeValueOperand, Vec<ChooseSpec>), CardTextError> {
+    match operand {
+        ExchangeValueAst::LifeTotal(player) => {
+            let (filter, choices) = resolve_effect_player_filter(*player, ctx, true, true, true)?;
+            Ok((
+                crate::effects::ExchangeValueOperand::LifeTotal(filter),
+                choices,
+            ))
+        }
+        ExchangeValueAst::Stat { target, kind } => {
+            let (spec, choices) =
+                resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            let operand = match kind {
+                ExchangeValueKindAst::Power => crate::effects::ExchangeValueOperand::Power(spec),
+                ExchangeValueKindAst::Toughness => {
+                    crate::effects::ExchangeValueOperand::Toughness(spec)
+                }
+            };
+            Ok((operand, choices))
+        }
+    }
+}
+
+fn compile_exchange_values_effect(
+    left: &ExchangeValueAst,
+    right: &ExchangeValueAst,
+    duration: Until,
+    ctx: &mut EffectLoweringContext,
+) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
+    let (left, mut choices) = compile_exchange_value_operand(left, ctx)?;
+    let (right, other_choices) = compile_exchange_value_operand(right, ctx)?;
+    for choice in other_choices {
+        push_choice(&mut choices, choice);
+    }
+    let effect = Effect::exchange_values(left, right, duration);
     let mut effects = Vec::new();
     if effect.0.get_target_spec().is_none() {
         for choice in &choices {
@@ -4424,7 +4548,9 @@ fn try_compile_board_state_effect(
             );
             (vec![effect], vec![spec])
         }
-        EffectAst::Behold { subtype, count } => (vec![Effect::behold(*subtype, *count)], Vec::new()),
+        EffectAst::Behold { subtype, count } => {
+            (vec![Effect::behold(*subtype, *count)], Vec::new())
+        }
         EffectAst::Explore { target } => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
@@ -8826,6 +8952,27 @@ fn try_compile_object_zone_and_exchange_effect(
             ctx.last_object_tag = Some(tag);
             (vec![effect], Vec::new())
         }
+        EffectAst::ExchangeControlHeterogeneous {
+            permanent1,
+            permanent2,
+            shared_type,
+        } => compile_exchange_control_heterogeneous_effect(
+            permanent1,
+            permanent2,
+            *shared_type,
+            ctx,
+        )?,
+        EffectAst::ExchangeTextBoxes { target } => compile_exchange_text_boxes_effect(target, ctx)?,
+        EffectAst::ExchangeZones {
+            player,
+            zone1,
+            zone2,
+        } => compile_exchange_zones_effect(*player, *zone1, *zone2, ctx)?,
+        EffectAst::ExchangeValues {
+            left,
+            right,
+            duration,
+        } => compile_exchange_values_effect(left, right, duration.clone(), ctx)?,
         _ => return Ok(None),
     };
 
