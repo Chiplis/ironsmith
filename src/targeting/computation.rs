@@ -61,9 +61,8 @@ pub(crate) fn can_target_object_with_view(
 
     // Get calculated abilities for the target (to account for effects like Humility)
     let target_abilities = view
-        .calculated_characteristics(target_id)
-        .map(|c| c.static_abilities)
-        .unwrap_or_else(|| extract_static_abilities(&target.abilities));
+        .static_abilities_rc(target_id)
+        .unwrap_or_else(|| std::rc::Rc::new(extract_static_abilities(&target.abilities)));
 
     // Check for shroud
     if target_abilities.iter().any(|a| a.has_shroud()) {
@@ -76,7 +75,7 @@ pub(crate) fn can_target_object_with_view(
     }
 
     // Check for HexproofFrom
-    for ability in &target_abilities {
+    for ability in target_abilities.iter() {
         if let Some(filter) = ability.hexproof_from_filter()
             && source_matches_hexproof_from(game, source_id, filter, caster)
         {
@@ -140,11 +139,10 @@ pub(crate) fn has_protection_from_source_with_view(
 
     // Get calculated abilities for the target
     let target_abilities = view
-        .calculated_characteristics(target_id)
-        .map(|c| c.static_abilities)
-        .unwrap_or_else(|| extract_static_abilities(&target.abilities));
+        .static_abilities_rc(target_id)
+        .unwrap_or_else(|| std::rc::Rc::new(extract_static_abilities(&target.abilities)));
 
-    for ability in target_abilities {
+    for ability in target_abilities.iter() {
         if ability.has_protection()
             && let Some(protection_from) = ability.protection_from()
         {
@@ -182,14 +180,7 @@ pub(crate) fn source_matches_protection_with_view(
     use crate::ability::ProtectionFrom;
 
     // Get calculated characteristics for the source
-    let source_colors = view
-        .calculated_characteristics(source.id)
-        .map(|c| c.colors)
-        .unwrap_or_else(|| source.colors());
-    let source_types = view
-        .calculated_characteristics(source.id)
-        .map(|c| c.card_types)
-        .unwrap_or_else(|| source.card_types.clone());
+    let source_colors = view.object_colors(source.id);
 
     match protection {
         // Protection from a color or set of colors
@@ -200,11 +191,11 @@ pub(crate) fn source_matches_protection_with_view(
         // Protection from all colors
         ProtectionFrom::AllColors => !source_colors.is_empty(),
         // Protection from creatures
-        ProtectionFrom::Creatures => source_types.contains(&CardType::Creature),
+        ProtectionFrom::Creatures => view.object_has_card_type(source.id, CardType::Creature),
         // Protection from the chosen player is target-specific and handled by the caller.
         ProtectionFrom::ChosenPlayer => false,
         // Protection from a card type
-        ProtectionFrom::CardType(card_type) => source_types.contains(card_type),
+        ProtectionFrom::CardType(card_type) => view.object_has_card_type(source.id, *card_type),
         // Protection from permanents matching a filter
         ProtectionFrom::Permanents(filter) => {
             // Use active player for context since we don't have a specific controller

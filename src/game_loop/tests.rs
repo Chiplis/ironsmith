@@ -1668,7 +1668,8 @@ fn profile_exchange_of_words_swapped_myr_moonvessel_dies_trigger_repeatedly() {
     }
 }
 
-fn run_exchange_of_words_cast_from_hand_swapping_alices_yawgmoth_and_ornithopter() {
+fn run_exchange_of_words_cast_from_hand_swapping_alices_yawgmoth_and_ornithopter()
+-> (GameState, ObjectId, ObjectId) {
     use crate::ability::AbilityKind;
     use crate::cards::builders::CardDefinitionBuilder;
     use crate::cards::definitions::{ornithopter, yawgmoth_thran_physician};
@@ -1705,6 +1706,8 @@ fn run_exchange_of_words_cast_from_hand_swapping_alices_yawgmoth_and_ornithopter
         ornithopter: crate::cards::CardDefinition,
         yawgmoth: crate::cards::CardDefinition,
         omniscience: crate::cards::CardDefinition,
+        divination: crate::cards::CardDefinition,
+        counterspell: crate::cards::CardDefinition,
     }
 
     fn exchange_of_words_yawgmoth_fixture() -> &'static ExchangeOfWordsYawgmothFixture {
@@ -1732,7 +1735,78 @@ fn run_exchange_of_words_cast_from_hand_swapping_alices_yawgmoth_and_ornithopter
                 .card_types(vec![CardType::Enchantment])
                 .parse_text("You may cast spells from your hand without paying their mana costs.")
                 .expect("Omniscience should parse"),
+            divination: CardDefinitionBuilder::new(CardId::from_raw(700_304), "Divination")
+                .mana_cost(ManaCost::from_pips(vec![
+                    vec![ManaSymbol::Generic(2)],
+                    vec![ManaSymbol::Blue],
+                ]))
+                .card_types(vec![CardType::Sorcery])
+                .parse_text("Draw two cards.")
+                .expect("Divination should parse"),
+            counterspell: CardDefinitionBuilder::new(CardId::from_raw(700_305), "Counterspell")
+                .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue], vec![ManaSymbol::Blue]]))
+                .card_types(vec![CardType::Instant])
+                .parse_text("Counter target spell.")
+                .expect("Counterspell should parse"),
         })
+    }
+
+    fn add_ui_opening_battlefield_preset(
+        game: &mut GameState,
+        player: PlayerId,
+        fixture: &ExchangeOfWordsYawgmothFixture,
+    ) -> (ObjectId, ObjectId) {
+        game.create_object_from_definition(&fixture.omniscience, player, Zone::Battlefield);
+
+        for (idx, name) in [
+            "Forest",
+            "Plains",
+            "Island",
+            "Mountain",
+            "Swamp",
+            "Tropical Island",
+            "Volcanic Island",
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let land = CardBuilder::new(CardId::from_raw(700_320 + idx as u32), name)
+                .card_types(vec![CardType::Land])
+                .build();
+            game.create_object_from_card(&land, player, Zone::Battlefield);
+        }
+
+        let yawgmoth_id =
+            game.create_object_from_definition(&fixture.yawgmoth, player, Zone::Battlefield);
+        let ornithopter_id =
+            game.create_object_from_definition(&fixture.ornithopter, player, Zone::Battlefield);
+        game.create_object_from_definition(&fixture.myr, player, Zone::Battlefield);
+
+        (ornithopter_id, yawgmoth_id)
+    }
+
+    fn add_ui_opening_hand_preset(
+        game: &mut GameState,
+        player: PlayerId,
+        fixture: &ExchangeOfWordsYawgmothFixture,
+    ) {
+        let plains = CardBuilder::new(CardId::from_raw(700_340), "Plains")
+            .card_types(vec![CardType::Land])
+            .build();
+        let swamp = CardBuilder::new(CardId::from_raw(700_341), "Swamp")
+            .card_types(vec![CardType::Land])
+            .build();
+        let mountain = CardBuilder::new(CardId::from_raw(700_342), "Mountain")
+            .card_types(vec![CardType::Land])
+            .build();
+
+        game.create_object_from_card(&plains, player, Zone::Hand);
+        game.create_object_from_definition(&fixture.divination, player, Zone::Hand);
+        game.create_object_from_card(&swamp, player, Zone::Hand);
+        game.create_object_from_definition(&fixture.counterspell, player, Zone::Hand);
+        game.create_object_from_definition(&fixture.divination, player, Zone::Hand);
+        game.create_object_from_card(&mountain, player, Zone::Hand);
+        game.create_object_from_card(&plains, player, Zone::Hand);
     }
 
     let mut game = GameState::new(
@@ -1745,6 +1819,7 @@ fn run_exchange_of_words_cast_from_hand_swapping_alices_yawgmoth_and_ornithopter
         20,
     );
     let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
 
     game.turn.phase = Phase::FirstMain;
     game.turn.step = None;
@@ -1752,43 +1827,37 @@ fn run_exchange_of_words_cast_from_hand_swapping_alices_yawgmoth_and_ornithopter
     game.turn.priority_player = Some(alice);
 
     let fixture = exchange_of_words_yawgmoth_fixture();
-
-    for (idx, name) in [
-        "Forest",
-        "Island",
-        "Mountain",
-        "Plains",
-        "Swamp",
-        "Tropical Island",
-        "Volcanic Island",
-    ]
-    .into_iter()
-    .enumerate()
-    {
-        let land = CardBuilder::new(CardId::from_raw(700_320 + idx as u32), name)
-            .card_types(vec![CardType::Land])
-            .build();
-        game.create_object_from_card(&land, alice, Zone::Battlefield);
-    }
-
-    game.create_object_from_definition(&fixture.myr, alice, Zone::Battlefield);
-    let ornithopter_id =
-        game.create_object_from_definition(&fixture.ornithopter, alice, Zone::Battlefield);
-    let yawgmoth_id =
-        game.create_object_from_definition(&fixture.yawgmoth, alice, Zone::Battlefield);
-    game.create_object_from_definition(&fixture.omniscience, alice, Zone::Battlefield);
+    let (ornithopter_id, yawgmoth_id) =
+        add_ui_opening_battlefield_preset(&mut game, alice, fixture);
+    let _ = add_ui_opening_battlefield_preset(&mut game, bob, fixture);
+    add_ui_opening_hand_preset(&mut game, alice, fixture);
     let exchange_id = game.create_object_from_definition(&fixture.exchange, alice, Zone::Hand);
+
+    let exchange_cast_method = crate::decision::compute_legal_actions(&game, alice)
+        .into_iter()
+        .find_map(|action| match action {
+            crate::decision::LegalAction::CastSpell {
+                spell_id,
+                from_zone: Zone::Hand,
+                casting_method,
+            } if spell_id == exchange_id && casting_method != CastingMethod::Normal => {
+                Some(casting_method)
+            }
+            _ => None,
+        })
+        .expect("Omniscience should offer a free cast for Exchange of Words");
 
     let stack_id = super::priority_mana::propose_spell_cast(
         &mut game,
         exchange_id,
         Zone::Hand,
         alice,
-        &CastingMethod::Normal,
+        &exchange_cast_method,
     )
     .expect("Exchange of Words should move from hand to stack");
-    game.stack
-        .push(StackEntry::new(stack_id, alice).with_casting_method(CastingMethod::Normal));
+    game.stack.push(
+        StackEntry::new(stack_id, alice).with_casting_method(exchange_cast_method.clone()),
+    );
 
     let mut trigger_queue = TriggerQueue::new();
     let mut dm = ExchangeTargetsDecisionMaker {
@@ -1833,18 +1902,143 @@ fn run_exchange_of_words_cast_from_hand_swapping_alices_yawgmoth_and_ornithopter
             .any(|ability| matches!(ability.kind, AbilityKind::Activated(_))),
         "Ornithopter should gain Yawgmoth's activated abilities after the exchange"
     );
+
+    (game, ornithopter_id, yawgmoth_id)
 }
 
 #[test]
 fn test_exchange_of_words_cast_from_hand_swaps_alices_yawgmoth_and_ornithopter() {
-    run_exchange_of_words_cast_from_hand_swapping_alices_yawgmoth_and_ornithopter();
+    let _ = run_exchange_of_words_cast_from_hand_swapping_alices_yawgmoth_and_ornithopter();
+}
+
+#[test]
+fn test_compute_legal_actions_after_exchange_of_words_sees_borrowed_activated_abilities() {
+    let (game, ornithopter_id, yawgmoth_id) =
+        run_exchange_of_words_cast_from_hand_swapping_alices_yawgmoth_and_ornithopter();
+    let alice = PlayerId::from_index(0);
+
+    let actions = crate::decision::compute_legal_actions(&game, alice);
+
+    assert!(
+        actions.iter().any(|action| {
+            matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, .. }
+                    if *source == ornithopter_id
+            )
+        }),
+        "Alice should see Ornithopter's borrowed Yawgmoth activation in legal actions after Exchange of Words"
+    );
+    assert!(
+        actions.iter().all(|action| {
+            !matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, .. }
+                    if *source == yawgmoth_id
+            )
+        }),
+        "Yawgmoth should no longer expose its old activated abilities after its text box is exchanged away"
+    );
+}
+
+fn run_double_exchange_of_words_cast_from_hand_on_alices_yawgmoth_and_ornithopter() -> GameState {
+    struct LocalExchangeTargetsDecisionMaker {
+        first: ObjectId,
+        second: ObjectId,
+    }
+
+    impl DecisionMaker for LocalExchangeTargetsDecisionMaker {
+        fn decide_targets(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::TargetsContext,
+        ) -> Vec<Target> {
+            let Some(requirement) = ctx.requirements.first() else {
+                return Vec::new();
+            };
+
+            [Target::Object(self.first), Target::Object(self.second)]
+                .into_iter()
+                .filter(|target| requirement.legal_targets.contains(target))
+                .collect()
+        }
+    }
+
+    let alice = PlayerId::from_index(0);
+    let (mut game, ornithopter_id, yawgmoth_id) =
+        run_exchange_of_words_cast_from_hand_swapping_alices_yawgmoth_and_ornithopter();
+    let exchange = CardDefinitionBuilder::new(CardId::from_raw(700_401), "Exchange of Words")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "When this enchantment enters, choose two target creatures. For as long as this enchantment remains on the battlefield, exchange the text boxes of those creatures.",
+        )
+        .expect("Exchange of Words should parse");
+    let second_exchange_id = game.create_object_from_definition(&exchange, alice, Zone::Hand);
+
+    let second_exchange_cast_method = crate::decision::compute_legal_actions(&game, alice)
+        .into_iter()
+        .find_map(|action| match action {
+            crate::decision::LegalAction::CastSpell {
+                spell_id,
+                from_zone: Zone::Hand,
+                casting_method,
+            } if spell_id == second_exchange_id && casting_method != CastingMethod::Normal => {
+                Some(casting_method)
+            }
+            _ => None,
+        })
+        .expect("Omniscience should offer a free cast for the second Exchange of Words");
+
+    let stack_id = super::priority_mana::propose_spell_cast(
+        &mut game,
+        second_exchange_id,
+        Zone::Hand,
+        alice,
+        &second_exchange_cast_method,
+    )
+    .expect("second Exchange of Words should move from hand to stack");
+    game.stack.push(
+        StackEntry::new(stack_id, alice).with_casting_method(second_exchange_cast_method.clone()),
+    );
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut dm = LocalExchangeTargetsDecisionMaker {
+        first: yawgmoth_id,
+        second: ornithopter_id,
+    };
+
+    resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+        .expect("second Exchange of Words spell should resolve from the stack");
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("second Exchange of Words ETB trigger should go on the stack");
+    resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+        .expect("second Exchange of Words ETB trigger should resolve");
+    game.refresh_continuous_state();
+    game
+}
+
+#[test]
+#[ignore = "profiling helper"]
+fn profile_compute_legal_actions_after_double_exchange_of_words() {
+    let game = run_double_exchange_of_words_cast_from_hand_on_alices_yawgmoth_and_ornithopter();
+    let alice = PlayerId::from_index(0);
+    let _actions = crate::decision::compute_legal_actions(&game, alice);
+    println!(
+        "compute legal actions perf: {:?}",
+        crate::decision::last_compute_legal_actions_perf()
+    );
 }
 
 #[test]
 #[ignore = "profiling helper"]
 fn profile_exchange_of_words_cast_from_hand_swapping_alices_yawgmoth_and_ornithopter_repeatedly() {
     for _ in 0..3000 {
-        run_exchange_of_words_cast_from_hand_swapping_alices_yawgmoth_and_ornithopter();
+        let _ = run_exchange_of_words_cast_from_hand_swapping_alices_yawgmoth_and_ornithopter();
     }
 }
 

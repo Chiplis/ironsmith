@@ -1,4 +1,5 @@
 use super::*;
+use crate::perf::PerfTimer;
 
 pub(super) fn stage_after_activation_announcements(pending: &PendingActivation) -> ActivationStage {
     if !pending.remaining_requirements.is_empty() {
@@ -45,6 +46,35 @@ fn build_target_assignments(
             range: (offset + range.start)..(offset + range.end),
         })
         .collect())
+}
+
+use serde::Serialize;
+use std::cell::RefCell;
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct PriorityActionPerfMetrics {
+    pub action_kind: String,
+    pub priority_result: String,
+    pub pass_priority_ms: f64,
+    pub advance_priority_ms: f64,
+    pub resolve_stack_entry_ms: f64,
+    pub reset_priority_ms: f64,
+    pub total_ms: f64,
+    pub nested_priority_advance: Option<crate::game_loop::PriorityAdvancePerfMetrics>,
+}
+
+thread_local! {
+    static LAST_PRIORITY_ACTION_PERF: RefCell<Option<PriorityActionPerfMetrics>> = const { RefCell::new(None) };
+}
+
+fn store_priority_action_perf(metrics: PriorityActionPerfMetrics) {
+    LAST_PRIORITY_ACTION_PERF.with(|slot| {
+        *slot.borrow_mut() = Some(metrics);
+    });
+}
+
+pub fn last_priority_action_perf() -> Option<PriorityActionPerfMetrics> {
+    LAST_PRIORITY_ACTION_PERF.with(|slot| slot.borrow().clone())
 }
 
 pub fn apply_priority_response_with_dm(
@@ -257,24 +287,50 @@ pub fn apply_priority_response_with_dm(
 
     match action {
         LegalAction::PassPriority => {
+            let total_started_at = PerfTimer::start();
+            let pass_started_at = PerfTimer::start();
             let result = pass_priority(game, &mut state.tracker);
+            let mut perf = PriorityActionPerfMetrics {
+                action_kind: "pass_priority".to_string(),
+                pass_priority_ms: pass_started_at.elapsed_ms(),
+                ..PriorityActionPerfMetrics::default()
+            };
 
             match result {
                 PriorityResult::Continue => {
                     // Next player gets priority, advance again
                     // Use decision maker for triggered ability targeting if available
-                    advance_priority_with_dm(game, trigger_queue, decision_maker)
+                    let advance_started_at = PerfTimer::start();
+                    let result = advance_priority_with_dm(game, trigger_queue, decision_maker);
+                    perf.advance_priority_ms = advance_started_at.elapsed_ms();
+                    perf.priority_result = "continue".to_string();
+                    perf.nested_priority_advance = crate::game_loop::last_priority_advance_perf();
+                    perf.total_ms = total_started_at.elapsed_ms();
+                    store_priority_action_perf(perf);
+                    result
                 }
                 PriorityResult::StackResolves => {
                     // Resolve top of stack, passing decision maker for ETB replacements, choices, etc.
+                    let resolve_started_at = PerfTimer::start();
                     resolve_stack_entry_with_dm_and_triggers(game, decision_maker, trigger_queue)?;
+                    perf.resolve_stack_entry_ms = resolve_started_at.elapsed_ms();
                     // Reset priority to active player
+                    let reset_started_at = PerfTimer::start();
                     reset_priority(game, &mut state.tracker);
+                    perf.reset_priority_ms = reset_started_at.elapsed_ms();
                     // Signal that stack resolved - outer loop will call advance_priority_with_dm
                     // with the proper decision maker for trigger target selection
+                    perf.priority_result = "stack_resolves".to_string();
+                    perf.total_ms = total_started_at.elapsed_ms();
+                    store_priority_action_perf(perf);
                     Ok(GameProgress::StackResolved)
                 }
-                PriorityResult::PhaseEnds => Ok(GameProgress::Continue),
+                PriorityResult::PhaseEnds => {
+                    perf.priority_result = "phase_ends".to_string();
+                    perf.total_ms = total_started_at.elapsed_ms();
+                    store_priority_action_perf(perf);
+                    Ok(GameProgress::Continue)
+                }
             }
         }
         LegalAction::KeepOpeningHand

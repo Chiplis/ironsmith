@@ -73,6 +73,10 @@ export class WasmGame {
      * Return whether the query resolves to a locally known card name.
      */
     isKnownCardName(query: string): boolean;
+    lastAdvanceUntilDecisionPerf(): any;
+    lastDispatchPerf(): any;
+    lastReplayExecutionPerf(): any;
+    lastSnapshotPerf(): any;
     /**
      * Load explicit decks by card name. JS format: `string[][]`.
      *
@@ -161,6 +165,10 @@ export interface InitOutput {
     readonly wasmgame_reset: (a: number, b: any, c: number) => [number, number];
     readonly wasmgame_startMatch: (a: number, b: any) => [number, number, number];
     readonly wasmgame_snapshot: (a: number) => [number, number, number];
+    readonly wasmgame_lastSnapshotPerf: (a: number) => [number, number, number];
+    readonly wasmgame_lastDispatchPerf: (a: number) => [number, number, number];
+    readonly wasmgame_lastReplayExecutionPerf: (a: number) => [number, number, number];
+    readonly wasmgame_lastAdvanceUntilDecisionPerf: (a: number) => [number, number, number];
     readonly wasmgame_registrySize: (a: number) => number;
     readonly wasmgame_preloadRegistryStatus: (a: number) => [number, number, number];
     readonly wasmgame_preloadRegistryChunk: (a: number, b: number) => [number, number, number];

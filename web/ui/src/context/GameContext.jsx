@@ -357,6 +357,23 @@ function summarizeDecision(decision) {
   return summary;
 }
 
+function readDispatchPerf(state) {
+  return state && typeof state === "object" && state.__perf ? state.__perf : null;
+}
+
+function recordPerfEvent(label, payload) {
+  if (typeof window === "undefined") return;
+  const bucket = Array.isArray(window.__ironsmithPerfEvents)
+    ? window.__ironsmithPerfEvents
+    : [];
+  bucket.push({
+    label,
+    payload,
+    recorded_at_ms: performance.now(),
+  });
+  window.__ironsmithPerfEvents = bucket.slice(-100);
+}
+
 function summarizeCommand(command) {
   if (!command || typeof command !== "object") return null;
 
@@ -664,16 +681,17 @@ export function GameProvider({ children }) {
   const settleLocalStackPriority = useCallback(
     async (currentGame, currentState) => {
       if (!currentState) {
-        return { state: currentState, autoPasses: 0, holdReason: null };
+        return { state: currentState, autoPasses: 0, holdReason: null, trace: [] };
       }
 
       if (multiplayerActiveRef.current || !autoPassEnabled) {
-        return { state: currentState, autoPasses: 0, holdReason: null };
+        return { state: currentState, autoPasses: 0, holdReason: null, trace: [] };
       }
 
       let st = currentState;
       let autoPasses = 0;
       let holdReason = null;
+      const trace = [];
 
       for (let i = 0; i < 4; i++) {
         if (!st?.decision || st.decision.kind !== "priority" || st.decision.player !== st.perspective) {
@@ -696,13 +714,27 @@ export function GameProvider({ children }) {
           break;
         }
 
+        const stepStartedAt = performance.now();
+        const decisionBefore = summarizeDecision(st?.decision || null);
         st = await currentGame.dispatch({ type: "priority_action", action_index: passAction.index });
         autoPasses += 1;
+        const elapsedMs = performance.now() - stepStartedAt;
+        const workerPerf = readDispatchPerf(st);
+        trace.push({
+          kind: "local_auto_pass",
+          iteration: i + 1,
+          elapsed_ms: elapsedMs,
+          decision_before: decisionBefore,
+          decision_after: summarizeDecision(st?.decision || null),
+          stack_size_after: st?.stack_size ?? null,
+          worker_round_trip_ms: workerPerf?.worker_round_trip_ms ?? null,
+          worker: workerPerf,
+        });
 
         if (Number(st?.stack_size || 0) <= 0) break;
       }
 
-      return { state: st, autoPasses, holdReason };
+      return { state: st, autoPasses, holdReason, trace };
     },
     [autoPassEnabled, localTurnHoldReason]
   );
@@ -710,11 +742,25 @@ export function GameProvider({ children }) {
   const settleOpponentPriority = useCallback(
     async (currentGame, currentState) => {
       if (!currentState) {
-        return { state: currentState, autoPasses: 0, autoDeclares: 0, phaseAdvances: 0, holdReason: null };
+        return {
+          state: currentState,
+          autoPasses: 0,
+          autoDeclares: 0,
+          phaseAdvances: 0,
+          holdReason: null,
+          trace: [],
+        };
       }
 
       if (multiplayerActiveRef.current || !autoPassEnabled) {
-        return { state: currentState, autoPasses: 0, autoDeclares: 0, phaseAdvances: 0, holdReason: null };
+        return {
+          state: currentState,
+          autoPasses: 0,
+          autoDeclares: 0,
+          phaseAdvances: 0,
+          holdReason: null,
+          trace: [],
+        };
       }
 
       let st = currentState;
@@ -722,6 +768,7 @@ export function GameProvider({ children }) {
       let autoDeclares = 0;
       let phaseAdvances = 0;
       let holdReason = null;
+      const trace = [];
 
       for (let i = 0; i < 24; i++) {
         while (
@@ -739,8 +786,21 @@ export function GameProvider({ children }) {
             const isCustomPassAction = !!passAction.label && passAction.label !== "Pass priority";
             if (!isLocalOffTurnPriority && isCustomPassAction) {
               if (autoPasses >= 80) { holdReason = "auto-pass safety limit reached"; break; }
+              const stepStartedAt = performance.now();
+              const decisionBefore = summarizeDecision(st?.decision || null);
               st = await currentGame.dispatch({ type: "priority_action", action_index: passAction.index });
               autoPasses += 1;
+              const elapsedMs = performance.now() - stepStartedAt;
+              const workerPerf = readDispatchPerf(st);
+              trace.push({
+                kind: "opponent_auto_pass_custom",
+                iteration: autoPasses,
+                elapsed_ms: elapsedMs,
+                decision_before: decisionBefore,
+                decision_after: summarizeDecision(st?.decision || null),
+                stack_size_after: st?.stack_size ?? null,
+                worker: workerPerf,
+              });
               continue;
             }
             holdReason = isLocalOffTurnPriority
@@ -752,20 +812,57 @@ export function GameProvider({ children }) {
               break;
             }
             if (autoPasses >= 80) { holdReason = "auto-pass safety limit reached"; break; }
+            const stepStartedAt = performance.now();
+            const decisionBefore = summarizeDecision(st?.decision || null);
             st = await currentGame.dispatch({ type: "priority_action", action_index: passAction.index });
             autoPasses += 1;
+            const elapsedMs = performance.now() - stepStartedAt;
+            const workerPerf = readDispatchPerf(st);
+            trace.push({
+              kind: isLocalOffTurnPriority ? "local_off_turn_auto_pass" : "opponent_auto_pass",
+              iteration: autoPasses,
+              elapsed_ms: elapsedMs,
+              decision_before: decisionBefore,
+              decision_after: summarizeDecision(st?.decision || null),
+              stack_size_after: st?.stack_size ?? null,
+              worker: workerPerf,
+            });
             continue;
           }
           if (autoDeclares >= 40) { holdReason = "auto-declare safety limit reached"; break; }
           if (st.decision.kind === "attackers") {
             const declarations = defaultOpponentAttackerDeclarations(st.decision);
+            const stepStartedAt = performance.now();
+            const decisionBefore = summarizeDecision(st?.decision || null);
             st = await currentGame.dispatch({ type: "declare_attackers", declarations });
             autoDeclares += 1;
+            const elapsedMs = performance.now() - stepStartedAt;
+            const workerPerf = readDispatchPerf(st);
+            trace.push({
+              kind: "auto_declare_attackers",
+              iteration: autoDeclares,
+              elapsed_ms: elapsedMs,
+              decision_before: decisionBefore,
+              decision_after: summarizeDecision(st?.decision || null),
+              worker: workerPerf,
+            });
             continue;
           }
           if (st.decision.kind === "blockers") {
+            const stepStartedAt = performance.now();
+            const decisionBefore = summarizeDecision(st?.decision || null);
             st = await currentGame.dispatch({ type: "declare_blockers", declarations: [] });
             autoDeclares += 1;
+            const elapsedMs = performance.now() - stepStartedAt;
+            const workerPerf = readDispatchPerf(st);
+            trace.push({
+              kind: "auto_declare_blockers",
+              iteration: autoDeclares,
+              elapsed_ms: elapsedMs,
+              decision_before: decisionBefore,
+              decision_after: summarizeDecision(st?.decision || null),
+              worker: workerPerf,
+            });
             continue;
           }
           holdReason = "opponent has non-priority decision";
@@ -775,14 +872,27 @@ export function GameProvider({ children }) {
         if (!st || st.game_over || st.decision) break;
         if (phaseAdvances >= 24) { holdReason = "phase auto-advance safety limit reached"; break; }
         const before = `${st.turn_number}|${st.phase}|${st.step}|${st.priority_player}|${st.stack_size}`;
+        const advanceStartedAt = performance.now();
         await currentGame.advancePhase();
+        const advancePhaseMs = performance.now() - advanceStartedAt;
         phaseAdvances += 1;
+        const uiStateStartedAt = performance.now();
         st = await currentGame.uiState();
+        const uiStateMs = performance.now() - uiStateStartedAt;
         const after = `${st.turn_number}|${st.phase}|${st.step}|${st.priority_player}|${st.stack_size}`;
+        trace.push({
+          kind: "phase_advance",
+          iteration: phaseAdvances,
+          advance_phase_ms: advancePhaseMs,
+          ui_state_ms: uiStateMs,
+          state_before: before,
+          state_after: after,
+          worker: readDispatchPerf(st),
+        });
         if (before === after) { holdReason = "advance phase made no progress"; break; }
       }
 
-      return { state: st, autoPasses, autoDeclares, phaseAdvances, holdReason };
+      return { state: st, autoPasses, autoDeclares, phaseAdvances, holdReason, trace };
     },
     [autoPassEnabled, localOffTurnHoldReason, opponentHoldReason]
   );
@@ -795,6 +905,10 @@ export function GameProvider({ children }) {
         ...opponentAutoResult,
         localAutoPasses: localAutoResult.autoPasses,
         localHoldReason: localAutoResult.holdReason,
+        trace: [
+          ...(localAutoResult.trace || []),
+          ...(opponentAutoResult.trace || []),
+        ],
       };
     },
     [settleLocalStackPriority, settleOpponentPriority]
@@ -804,20 +918,38 @@ export function GameProvider({ children }) {
     async (currentGame, currentState, settle) => {
       let resolved = 0;
       let st = currentState;
+      const trace = [];
       while (resolved < 50 && st && st.decision) {
         const auto = tryBuildAutoResolveCommand(st.decision);
         if (!auto) break;
         try {
+          const dispatchStartedAt = performance.now();
+          const decisionBefore = summarizeDecision(st?.decision || null);
           st = await currentGame.dispatch(auto.cmd);
           resolved++;
+          const dispatchMs = performance.now() - dispatchStartedAt;
+          const dispatchWorker = readDispatchPerf(st);
+          const settleStartedAt = performance.now();
           const settleResult = await settle(currentGame, st);
+          const settleMs = performance.now() - settleStartedAt;
           st = settleResult.state;
+          trace.push({
+            kind: "trivial_auto_resolve",
+            iteration: resolved,
+            label: auto.label,
+            dispatch_ms: dispatchMs,
+            settle_ms: settleMs,
+            decision_before: decisionBefore,
+            decision_after: summarizeDecision(st?.decision || null),
+            dispatch_worker: dispatchWorker,
+            settle_trace: settleResult.trace || [],
+          });
         } catch (err) {
           console.warn("Auto-resolve failed:", err);
           break;
         }
       }
-      return { state: st, resolved };
+      return { state: st, resolved, trace };
     },
     []
   );
@@ -830,6 +962,7 @@ export function GameProvider({ children }) {
     phaseAdvances: 0,
     localHoldReason: null,
     holdReason: null,
+    trace: [],
   }), []);
 
   const applyStickyViewedCards = useCallback((nextState, { clear = false } = {}) => {
@@ -862,22 +995,30 @@ export function GameProvider({ children }) {
         clearViewedCards = false,
       } = {}
     ) => {
+      const finalizeStartedAt = performance.now();
       let st = currentState;
+      const settleStartedAt = performance.now();
       const autoResult = allowOpponentAutomation
         ? await settlePriorityAutomation(currentGame, st)
         : await settleNoop(currentGame, st);
+      const settlePriorityMs = performance.now() - settleStartedAt;
       st = autoResult.state;
 
+      const trivialResolveStartedAt = performance.now();
       const autoResolved = allowTrivialAutomation
         ? await autoResolveTrivialDecisions(
             currentGame,
             st,
             allowOpponentAutomation ? settlePriorityAutomation : settleNoop
           )
-        : { state: st, resolved: 0 };
+        : { state: st, resolved: 0, trace: [] };
+      const trivialAutoResolveMs = performance.now() - trivialResolveStartedAt;
       st = autoResolved.state;
+      const stickyStartedAt = performance.now();
       st = applyStickyViewedCards(st, { clear: clearViewedCards });
-      console.debug("[ironsmith] finalize:state", {
+      const applyStickyViewedCardsMs = performance.now() - stickyStartedAt;
+      const totalFinalizeMs = performance.now() - finalizeStartedAt;
+      const finalizePerfPayload = {
         message,
         allow_opponent_automation: allowOpponentAutomation,
         allow_trivial_automation: allowTrivialAutomation,
@@ -888,8 +1029,10 @@ export function GameProvider({ children }) {
           phase_advances: autoResult.phaseAdvances,
           local_hold_reason: autoResult.localHoldReason,
           hold_reason: autoResult.holdReason,
+          trace: autoResult.trace || [],
         },
         auto_resolved: autoResolved.resolved,
+        auto_resolve_trace: autoResolved.trace || [],
         final_decision: summarizeDecision(st?.decision || null),
         final_stack_size: st?.stack_size ?? null,
         final_stack_preview: Array.isArray(st?.stack_preview) ? st.stack_preview.slice(0, 4) : null,
@@ -899,7 +1042,15 @@ export function GameProvider({ children }) {
               name: st.resolving_stack_object.name,
             }
           : null,
-      });
+        perf: {
+          settle_priority_ms: settlePriorityMs,
+          trivial_auto_resolve_ms: trivialAutoResolveMs,
+          apply_sticky_viewed_cards_ms: applyStickyViewedCardsMs,
+          total_finalize_ms: totalFinalizeMs,
+        },
+      };
+      console.info("[ironsmith] finalize:state", finalizePerfPayload);
+      recordPerfEvent("finalize:state", finalizePerfPayload);
       setState(st);
       stateRef.current = st;
 
@@ -952,6 +1103,7 @@ export function GameProvider({ children }) {
       const decisionBefore = summarizeDecision(stateRef.current?.decision || null);
       const resolvedCommand = resolveSyncedCommand(command, stateRef.current);
       const commandSummary = summarizeCommand(resolvedCommand);
+      const dispatchStartedAt = performance.now();
       console.debug("[ironsmith] synced dispatch:start", {
         command: commandSummary,
         decision: decisionBefore,
@@ -963,18 +1115,54 @@ export function GameProvider({ children }) {
         const st = resolvedCommand?.type === "cancel_decision"
           ? await currentGame.cancelDecision()
           : await currentGame.dispatch(resolvedCommand);
-        console.debug("[ironsmith] synced dispatch:success", {
+        const workerRoundTripMs = performance.now() - dispatchStartedAt;
+        const workerPerf = readDispatchPerf(st);
+        const syncedDispatchSuccessPayload = {
           command: commandSummary,
           decision_before: decisionBefore,
           decision_after: summarizeDecision(st?.decision || null),
           sync_context: syncContext,
-        });
-        return finalizeState(currentGame, st, {
+          perf: {
+            worker_round_trip_ms: workerRoundTripMs,
+            worker_to_main_transfer_ms: workerPerf
+              ? Math.max(0, workerRoundTripMs - Number(workerPerf.totalWorkerMs || 0))
+              : null,
+            worker: workerPerf,
+          },
+        };
+        console.info("[ironsmith] synced dispatch:success", syncedDispatchSuccessPayload);
+        recordPerfEvent("synced dispatch:success", syncedDispatchSuccessPayload);
+        const finalizeStartedAt = performance.now();
+        const finalized = await finalizeState(currentGame, st, {
           message: successMessage,
           allowOpponentAutomation: false,
           allowTrivialAutomation: false,
           clearViewedCards: true,
         });
+        const finalizeMs = performance.now() - finalizeStartedAt;
+        const syncedDispatchTimingPayload = {
+          command: commandSummary,
+          sync_context: syncContext,
+          worker_round_trip_ms: workerRoundTripMs,
+          finalize_ms: finalizeMs,
+          total_to_finalize_ms: performance.now() - dispatchStartedAt,
+        };
+        console.info("[ironsmith] synced dispatch:timing", syncedDispatchTimingPayload);
+        recordPerfEvent("synced dispatch:timing", syncedDispatchTimingPayload);
+        if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+          const paintRequestedAt = performance.now();
+          window.requestAnimationFrame(() => {
+            const syncedDispatchPaintPayload = {
+              command: commandSummary,
+              sync_context: syncContext,
+              post_finalize_to_next_paint_ms: performance.now() - paintRequestedAt,
+              total_to_next_paint_ms: performance.now() - dispatchStartedAt,
+            };
+            console.info("[ironsmith] synced dispatch:paint", syncedDispatchPaintPayload);
+            recordPerfEvent("synced dispatch:paint", syncedDispatchPaintPayload);
+          });
+        }
+        return finalized;
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : String(err);
         emitSyncFailureNotice("Sync failed", errorMessage);
@@ -1112,10 +1300,13 @@ export function GameProvider({ children }) {
           compatible: isDecisionCommandCompatible(stateRef.current?.decision || null, command),
         });
 
+        const dispatchStartedAt = performance.now();
         if (isTargetSubmit) armTargetSubmitDebounce();
         let st = await game.dispatch(command);
+        const workerRoundTripMs = performance.now() - dispatchStartedAt;
         if (isTargetSubmit) settleTargetSubmitDebounce();
-        console.debug("[ironsmith] dispatch:success", {
+        const workerPerf = readDispatchPerf(st);
+        const dispatchSuccessPayload = {
           command: commandSummary,
           decision_before: decisionBefore,
           decision_after: summarizeDecision(st?.decision || null),
@@ -1127,13 +1318,44 @@ export function GameProvider({ children }) {
               name: st.resolving_stack_object.name,
             }
             : null,
-        });
+          perf: {
+            worker_round_trip_ms: workerRoundTripMs,
+            worker_to_main_transfer_ms: workerPerf
+              ? Math.max(0, workerRoundTripMs - Number(workerPerf.totalWorkerMs || 0))
+              : null,
+            worker: workerPerf,
+          },
+        };
+        console.info("[ironsmith] dispatch:success", dispatchSuccessPayload);
+        recordPerfEvent("dispatch:success", dispatchSuccessPayload);
+        const finalizeStartedAt = performance.now();
         await finalizeState(game, st, {
           message: successMessage,
           allowOpponentAutomation: !stopAfterTriggerOrderingSubmit,
           allowTrivialAutomation: !stopAfterTriggerOrderingSubmit,
           clearViewedCards: true,
         });
+        const finalizeMs = performance.now() - finalizeStartedAt;
+        const dispatchTimingPayload = {
+          command: commandSummary,
+          worker_round_trip_ms: workerRoundTripMs,
+          finalize_ms: finalizeMs,
+          total_to_finalize_ms: performance.now() - dispatchStartedAt,
+        };
+        console.info("[ironsmith] dispatch:timing", dispatchTimingPayload);
+        recordPerfEvent("dispatch:timing", dispatchTimingPayload);
+        if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+          const paintRequestedAt = performance.now();
+          window.requestAnimationFrame(() => {
+            const dispatchPaintPayload = {
+              command: commandSummary,
+              post_finalize_to_next_paint_ms: performance.now() - paintRequestedAt,
+              total_to_next_paint_ms: performance.now() - dispatchStartedAt,
+            };
+            console.info("[ironsmith] dispatch:paint", dispatchPaintPayload);
+            recordPerfEvent("dispatch:paint", dispatchPaintPayload);
+          });
+        }
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : String(err);
         let decisionAfterError = null;

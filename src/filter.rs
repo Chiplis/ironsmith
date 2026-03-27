@@ -1328,6 +1328,56 @@ pub struct ObjectFilter {
 }
 
 impl ObjectFilter {
+    fn uses_power_or_toughness_characteristics(&self) -> bool {
+        self.power.is_some()
+            || self.power_parity.is_some()
+            || self.power_relative_to_source.is_some()
+            || self.power_greater_than_base_power
+            || self.toughness.is_some()
+            || self.any_of.iter().any(Self::uses_power_or_toughness_characteristics)
+    }
+
+    fn uses_non_pt_battlefield_characteristics(&self) -> bool {
+        self.controller.is_some()
+            || !self.card_types.is_empty()
+            || !self.all_card_types.is_empty()
+            || !self.excluded_card_types.is_empty()
+            || !self.subtypes.is_empty()
+            || self.type_or_subtype_union
+            || !self.excluded_subtypes.is_empty()
+            || !self.supertypes.is_empty()
+            || !self.excluded_supertypes.is_empty()
+            || self.colors.is_some()
+            || self.chosen_color
+            || self.chosen_creature_type
+            || self.excluded_chosen_creature_type
+            || !self.excluded_colors.is_empty()
+            || self.colorless
+            || self.multicolored
+            || self.monocolored
+            || self.all_colors.is_some()
+            || self.exactly_two_colors.is_some()
+            || self.historic
+            || self.nonhistoric
+            || self.modified
+            || self.mana_value.is_some()
+            || self.mana_value_parity.is_some()
+            || self.mana_value_eq_counters_on_source.is_some()
+            || self.has_mana_cost
+            || self.has_tap_activated_ability
+            || self.no_abilities
+            || self.no_x_in_cost
+            || self.name.is_some()
+            || self.excluded_name.is_some()
+            || self.alternative_cast.is_some()
+            || !self.static_abilities.is_empty()
+            || !self.excluded_static_abilities.is_empty()
+            || !self.ability_markers.is_empty()
+            || !self.excluded_ability_markers.is_empty()
+            || !self.tagged_constraints.is_empty()
+            || self.any_of.iter().any(Self::uses_non_pt_battlefield_characteristics)
+    }
+
     /// Create a filter for any permanent (on the battlefield).
     pub fn permanent() -> Self {
         Self {
@@ -2395,8 +2445,16 @@ impl ObjectFilter {
         }
 
         let mut adjusted_object_storage = None;
-        if allow_calculated_pt
-            && object.zone == Zone::Battlefield
+        let needs_pt = self.uses_power_or_toughness_characteristics();
+        let needs_non_pt = self.uses_non_pt_battlefield_characteristics();
+        let should_consider_adjusted_object =
+            allow_calculated_pt && object.zone == Zone::Battlefield && (needs_pt || needs_non_pt);
+        let should_calculate_chars = should_consider_adjusted_object
+            && match view {
+                Some(view) => needs_pt || view.requires_battlefield_characteristic_calculation(object.id),
+                None => true,
+            };
+        if should_calculate_chars
             && let Some(chars) = view
                 .and_then(|view| view.calculated_characteristics(object.id))
                 .or_else(|| game.calculated_characteristics(object.id))
@@ -2423,7 +2481,12 @@ impl ObjectFilter {
             let has_equipment = object.attachments.iter().any(|attachment_id| {
                 game.object(*attachment_id).is_some_and(|attachment| {
                     let attachment_subtypes =
-                        if allow_calculated_pt && attachment.zone == Zone::Battlefield {
+                        if allow_calculated_pt
+                            && attachment.zone == Zone::Battlefield
+                            && view.is_none_or(|view| {
+                                view.requires_battlefield_characteristic_calculation(*attachment_id)
+                            })
+                        {
                             view.map(|view| view.calculated_subtypes(*attachment_id))
                                 .unwrap_or_else(|| game.calculated_subtypes(*attachment_id))
                         } else {
@@ -2436,7 +2499,14 @@ impl ObjectFilter {
                 object.attachments.iter().any(|attachment_id| {
                     game.object(*attachment_id).is_some_and(|attachment| {
                         let attachment_subtypes =
-                            if allow_calculated_pt && attachment.zone == Zone::Battlefield {
+                            if allow_calculated_pt
+                                && attachment.zone == Zone::Battlefield
+                                && view.is_none_or(|view| {
+                                    view.requires_battlefield_characteristic_calculation(
+                                        *attachment_id,
+                                    )
+                                })
+                            {
                                 view.map(|view| view.calculated_subtypes(*attachment_id))
                                     .unwrap_or_else(|| game.calculated_subtypes(*attachment_id))
                             } else {

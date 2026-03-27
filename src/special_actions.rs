@@ -942,41 +942,148 @@ fn can_activate_mana_ability_check(
     permanent_id: ObjectId,
     ability_index: usize,
 ) -> Result<(), ActionError> {
-    use crate::costs::{
-        CostCheckContext, can_pay_with_check_context, can_potentially_pay_with_check_context,
-    };
-
-    can_activate_mana_ability_with_cost_checks(
+    let view = crate::derived_view::DerivedGameView::new(game);
+    let ability = game
+        .current_ability(permanent_id, ability_index)
+        .ok_or(ActionError::NoSuchAbility)?;
+    can_activate_mana_ability_check_with_view(
         game,
         player,
         permanent_id,
         ability_index,
-        |mana_ability| {
-            let total_cost = crate::decision::calculate_effective_activation_total_cost(
-                game,
-                player,
-                permanent_id,
-                &mana_ability.mana_cost,
-            );
-            // Check mana costs from TotalCost (for abilities like Blood Celebrant that cost {B})
-            let ctx = CostCheckContext::new(permanent_id, player)
-                .with_reason(crate::costs::PaymentReason::ActivateManaAbility);
-            for cost in total_cost.costs() {
-                game.validate_cost_for_payment_reason(player, permanent_id, cost, ctx.reason)
-                    .map_err(cost_error_to_action_error)?;
-                // For mana costs, use can_potentially_pay to show abilities that could
-                // be activated after tapping mana sources.
-                if cost.processing_mode().is_mana_payment() {
-                    can_potentially_pay_with_check_context(&*cost.0, game, &ctx)
-                        .map_err(cost_error_to_action_error)?;
-                } else {
-                    can_pay_with_check_context(&*cost.0, game, &ctx)
-                        .map_err(cost_error_to_action_error)?;
+        &ability,
+        &view,
+    )
+}
+
+pub(crate) fn can_activate_mana_ability_check_with_view(
+    game: &GameState,
+    player: PlayerId,
+    permanent_id: ObjectId,
+    ability_index: usize,
+    ability: &crate::ability::Ability,
+    view: &crate::derived_view::DerivedGameView<'_>,
+) -> Result<(), ActionError> {
+    use crate::costs::{
+        CostCheckContext, can_pay_with_check_context, can_potentially_pay_with_check_context,
+    };
+
+    let object = game
+        .object(permanent_id)
+        .ok_or(ActionError::ObjectNotFound)?;
+
+    if object.controller != player {
+        return Err(ActionError::InvalidTarget);
+    }
+
+    if !game.can_activate_abilities_of(permanent_id) {
+        return Err(ActionError::CantPayCost);
+    }
+
+    if !ability.is_mana_ability() {
+        return Err(ActionError::NoSuchAbility);
+    }
+
+    if !ability.functions_in(&object.zone) {
+        return Err(ActionError::WrongZone {
+            expected: Zone::Battlefield,
+            actual: object.zone,
+        });
+    }
+
+    let crate::ability::AbilityKind::Activated(mana_ability) = &ability.kind else {
+        return Err(ActionError::NoSuchAbility);
+    };
+    if !mana_ability.is_mana_ability() {
+        return Err(ActionError::NoSuchAbility);
+    }
+
+    if mana_ability.has_tap_cost() && !game.can_activate_tap_abilities_of(permanent_id) {
+        return Err(ActionError::CantPayCost);
+    }
+
+    let simple_taplike_costs_only = mana_ability
+        .mana_cost
+        .costs()
+        .iter()
+        .all(|cost| cost.requires_tap() || cost.requires_untap());
+    if simple_taplike_costs_only {
+        for cost in mana_ability.mana_cost.costs() {
+            if cost.requires_tap() {
+                if game.is_tapped(permanent_id) {
+                    return Err(ActionError::CantPayCost);
+                }
+                if view.object_has_card_type(permanent_id, CardType::Creature)
+                    && game.is_summoning_sick(permanent_id)
+                    && !view.object_has_static_ability_id(
+                        permanent_id,
+                        crate::static_abilities::StaticAbilityId::Haste,
+                    )
+                {
+                    return Err(ActionError::SummoningSickness);
                 }
             }
-            Ok(())
-        },
-    )
+            if cost.requires_untap() && !game.is_tapped(permanent_id) {
+                return Err(ActionError::CantPayCost);
+            }
+        }
+
+        if let Some(condition) = &mana_ability.activation_condition
+            && !check_mana_ability_condition(game, player, permanent_id, ability_index, condition)
+        {
+            return Err(ActionError::CantPayCost);
+        }
+
+        return Ok(());
+    }
+
+    let ctx = CostCheckContext::new(permanent_id, player)
+        .with_reason(crate::costs::PaymentReason::ActivateManaAbility);
+    let has_activation_cost_modifiers = !view
+        .activated_ability_cost_modifier_sources()
+        .is_empty();
+    let total_cost = if has_activation_cost_modifiers {
+        crate::decision::calculate_effective_activation_total_cost_with_view(
+            game,
+            player,
+            permanent_id,
+            &mana_ability.mana_cost,
+            &[],
+            view,
+        )
+    } else {
+        mana_ability.mana_cost.clone()
+    };
+    for cost in total_cost.costs() {
+        game.validate_cost_for_payment_reason(player, permanent_id, cost, ctx.reason)
+            .map_err(cost_error_to_action_error)?;
+        if cost.processing_mode().is_mana_payment() {
+            if let Some(mana_cost) = cost.mana_cost_ref() {
+                if !view.can_potentially_pay_with_reason(
+                    player,
+                    Some(permanent_id),
+                    mana_cost,
+                    0,
+                    crate::costs::PaymentReason::ActivateManaAbility,
+                ) {
+                    return Err(ActionError::CantPayCost);
+                }
+            } else {
+                can_potentially_pay_with_check_context(&*cost.0, game, &ctx)
+                    .map_err(cost_error_to_action_error)?;
+            }
+        } else {
+            can_pay_with_check_context(&*cost.0, game, &ctx).map_err(cost_error_to_action_error)?;
+        }
+    }
+
+    if let Some(condition) = &mana_ability.activation_condition
+        && !check_mana_ability_condition(game, player, permanent_id, ability_index, condition)
+    {
+        return Err(ActionError::CantPayCost);
+    }
+
+    Ok(())
 }
 
 /// Check if a mana ability's activation condition is met.

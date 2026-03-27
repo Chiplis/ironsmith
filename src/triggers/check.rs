@@ -5,6 +5,7 @@
 
 use std::collections::{HashSet, hash_map::DefaultHasher};
 use std::hash::{Hash, Hasher};
+use std::rc::Rc;
 
 use crate::Effect;
 use crate::ability::{AbilityKind, TriggeredAbility};
@@ -336,11 +337,11 @@ fn additional_trigger_copies_for_entry(
         let Some(obj) = game.object(obj_id) else {
             continue;
         };
-        let Some(static_abilities) = view.static_abilities(obj_id) else {
+        let Some(static_abilities) = view.static_abilities_rc(obj_id) else {
             continue;
         };
 
-        for static_ability in static_abilities {
+        for static_ability in static_abilities.iter() {
             let Some(spec) = static_ability.trigger_duplication_spec() else {
                 continue;
             };
@@ -371,11 +372,11 @@ fn trigger_is_suppressed(
         let Some(obj) = game.object(obj_id) else {
             continue;
         };
-        let Some(static_abilities) = view.static_abilities(obj_id) else {
+        let Some(static_abilities) = view.static_abilities_rc(obj_id) else {
             continue;
         };
 
-        for static_ability in static_abilities {
+        for static_ability in static_abilities.iter() {
             let Some(spec) = static_ability.trigger_suppression_spec() else {
                 continue;
             };
@@ -794,11 +795,11 @@ pub(crate) fn check_triggers_with_view(
 
         // Get calculated abilities (after continuous effects like Humility, Blood Moon)
         let calculated_abilities = view
-            .abilities(obj_id)
-            .unwrap_or_else(|| obj.abilities.clone());
+            .abilities_rc(obj_id)
+            .unwrap_or_else(|| Rc::new(obj.abilities.clone()));
 
         // Check each ability on the permanent
-        for ability in &calculated_abilities {
+        for ability in calculated_abilities.iter() {
             let AbilityKind::Triggered(trigger_ability) = &ability.kind else {
                 continue;
             };
@@ -1134,12 +1135,12 @@ pub fn check_state_triggers(
             continue;
         };
         let calculated_abilities = view
-            .abilities(obj_id)
-            .unwrap_or_else(|| obj.abilities.clone());
+            .abilities_rc(obj_id)
+            .unwrap_or_else(|| Rc::new(obj.abilities.clone()));
         collect_state_triggers_for_object(
             game,
             obj,
-            &calculated_abilities,
+            calculated_abilities.as_ref(),
             &mut triggered,
             &mut active,
         );

@@ -3498,7 +3498,7 @@ impl GameState {
     /// - Registered continuous effects (from resolved spells/abilities)
     /// - Static abilities on permanents (generated dynamically)
     pub fn all_continuous_effects(&self) -> Vec<ContinuousEffect> {
-        if !self.continuous_state_dirty.get() {
+        if self.continuous_state_is_clean() {
             return self.cached_continuous_effects_snapshot();
         }
         crate::static_ability_processor::get_all_continuous_effects(self)
@@ -3549,6 +3549,52 @@ impl GameState {
         )
     }
 
+    pub(crate) fn calculated_characteristics_batch_with_effects(
+        &self,
+        ids: &[ObjectId],
+        effects: &[ContinuousEffect],
+    ) -> HashMap<ObjectId, crate::continuous::CalculatedCharacteristics> {
+        crate::continuous::calculate_characteristics_batch_with_effects(
+            ids,
+            &self.objects,
+            effects,
+            &self.battlefield,
+            &self.commanders,
+            self,
+        )
+    }
+
+    pub(crate) fn prewarm_calculated_characteristics(&self, ids: &[ObjectId]) {
+        if !self.continuous_state_is_clean() {
+            return;
+        }
+
+        let effects_revision = self.continuous_effects.revision();
+        if self.calculated_characteristics_cache_revision.get() != effects_revision {
+            self.calculated_characteristics_cache.borrow_mut().clear();
+            self.calculated_characteristics_cache_revision
+                .set(effects_revision);
+        }
+
+        let missing: Vec<_> = {
+            let cache = self.calculated_characteristics_cache.borrow();
+            ids.iter()
+                .copied()
+                .filter(|id| !cache.contains_key(id))
+                .collect()
+        };
+        if missing.is_empty() {
+            return;
+        }
+
+        let effects = self.cached_continuous_effects_snapshot();
+        let calculated = self.calculated_characteristics_batch_with_effects(&missing, &effects);
+        let mut cache = self.calculated_characteristics_cache.borrow_mut();
+        for id in missing {
+            cache.insert(id, calculated.get(&id).cloned());
+        }
+    }
+
     pub fn calculated_characteristics(
         &self,
         id: ObjectId,
@@ -3557,7 +3603,7 @@ impl GameState {
             return Some(chars);
         }
         let effects_revision = self.continuous_effects.revision();
-        if !self.continuous_state_dirty.get() {
+        if self.continuous_state_is_clean() {
             if self.calculated_characteristics_cache_revision.get() != effects_revision {
                 self.calculated_characteristics_cache.borrow_mut().clear();
                 self.calculated_characteristics_cache_revision
@@ -3571,7 +3617,7 @@ impl GameState {
 
         let all_effects = self.all_continuous_effects();
         let calculated = self.calculated_characteristics_with_effects(id, &all_effects);
-        if !self.continuous_state_dirty.get() {
+        if self.continuous_state_is_clean() {
             self.calculated_characteristics_cache_revision
                 .set(effects_revision);
             self.calculated_characteristics_cache
@@ -3989,7 +4035,7 @@ impl GameState {
     /// - Replacement effects from static abilities
     /// - "Can't" effect tracking
     pub fn refresh_continuous_state(&mut self) {
-        if !self.continuous_state_dirty.get() {
+        if self.continuous_state_is_clean() {
             return;
         }
 

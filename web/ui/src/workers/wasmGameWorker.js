@@ -10,6 +10,38 @@ let backgroundCompileDone = false;
 let backgroundCompileTimer = null;
 let lastRegistryLoaded = -1;
 let lastRegistryTotal = -1;
+const SNAPSHOT_METHODS = new Set([
+  "advancePhase",
+  "cancelDecision",
+  "dispatch",
+  "snapshot",
+  "startMatch",
+  "switchPerspective",
+  "uiState",
+]);
+const DISPATCH_TRACE_METHODS = new Set([
+  "advancePhase",
+  "cancelDecision",
+  "dispatch",
+]);
+
+function nowMs() {
+  return performance.now();
+}
+
+function clampMs(value) {
+  return Number.isFinite(value) ? Math.max(0, value) : 0;
+}
+
+function decorateResultWithPerf(result, perf) {
+  if (!result || typeof result !== "object" || Array.isArray(result)) {
+    return result;
+  }
+  return {
+    ...result,
+    __perf: perf,
+  };
+}
 
 function serializeError(err) {
   if (err instanceof Error) {
@@ -192,19 +224,79 @@ function enqueueCall(task) {
 
 function handleCall(msg) {
   const { id, method, args = [] } = msg;
+  const enqueuedAt = nowMs();
   pendingCallCount += 1;
   enqueueCall(async () => {
     if (!game) throw new Error("Game is not initialized yet");
+    const startedAt = nowMs();
+    const queueWaitMs = startedAt - enqueuedAt;
     const fn = game[method];
     if (typeof fn !== "function") {
       throw new Error(`Unknown game method: ${method}`);
     }
+    const wasmStartedAt = nowMs();
     const result = await fn.apply(game, args);
+    const wasmCallMs = nowMs() - wasmStartedAt;
+    let snapshotPerf = null;
+    let snapshotPerfReadMs = 0;
+    let dispatchPerf = null;
+    let dispatchPerfReadMs = 0;
+    let replayExecutionPerf = null;
+    let replayExecutionPerfReadMs = 0;
+    let advanceUntilDecisionPerf = null;
+    let advanceUntilDecisionPerfReadMs = 0;
+    if (SNAPSHOT_METHODS.has(method)) {
+      const snapshotPerfStartedAt = nowMs();
+      snapshotPerf = typeof game.lastSnapshotPerf === "function"
+        ? await game.lastSnapshotPerf()
+        : null;
+      snapshotPerfReadMs = nowMs() - snapshotPerfStartedAt;
+    }
+    if (DISPATCH_TRACE_METHODS.has(method)) {
+      const dispatchPerfStartedAt = nowMs();
+      dispatchPerf = typeof game.lastDispatchPerf === "function"
+        ? await game.lastDispatchPerf()
+        : null;
+      dispatchPerfReadMs = nowMs() - dispatchPerfStartedAt;
+      const replayExecutionPerfStartedAt = nowMs();
+      replayExecutionPerf = typeof game.lastReplayExecutionPerf === "function"
+        ? await game.lastReplayExecutionPerf()
+        : null;
+      replayExecutionPerfReadMs = nowMs() - replayExecutionPerfStartedAt;
+      const advanceUntilDecisionPerfStartedAt = nowMs();
+      advanceUntilDecisionPerf = typeof game.lastAdvanceUntilDecisionPerf === "function"
+        ? await game.lastAdvanceUntilDecisionPerf()
+        : null;
+      advanceUntilDecisionPerfReadMs = nowMs() - advanceUntilDecisionPerfStartedAt;
+    }
+    const registryStatusStartedAt = nowMs();
     let registryStatus = null;
     if (typeof game.preloadRegistryStatus === "function") {
       registryStatus = await game.preloadRegistryStatus();
     }
-    return { result, registryStatus };
+    const registryStatusMs = nowMs() - registryStatusStartedAt;
+    const totalWorkerMs = nowMs() - enqueuedAt;
+    const snapshotTotalMs = Number(snapshotPerf?.totalSnapshotMs ?? 0);
+    const perf = {
+      method,
+      queueWaitMs: clampMs(queueWaitMs),
+      wasmCallMs: clampMs(wasmCallMs),
+      snapshotPerfReadMs: clampMs(snapshotPerfReadMs),
+      dispatchPerfReadMs: clampMs(dispatchPerfReadMs),
+      replayExecutionPerfReadMs: clampMs(replayExecutionPerfReadMs),
+      advanceUntilDecisionPerfReadMs: clampMs(advanceUntilDecisionPerfReadMs),
+      registryStatusMs: clampMs(registryStatusMs),
+      totalWorkerMs: clampMs(totalWorkerMs),
+      estimatedEngineMs: clampMs(wasmCallMs - snapshotTotalMs),
+      snapshot: snapshotPerf || null,
+      dispatch: dispatchPerf || null,
+      replayExecution: replayExecutionPerf || null,
+      advanceUntilDecision: advanceUntilDecisionPerf || null,
+    };
+    return {
+      result: decorateResultWithPerf(result, perf),
+      registryStatus,
+    };
   })
     .then(({ result, registryStatus }) => {
       if (registryStatus) {

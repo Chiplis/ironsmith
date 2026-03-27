@@ -21,12 +21,15 @@ use crate::decision::{
 };
 use crate::decisions::context::DecisionContext;
 use crate::game_loop::{
-    ActivationStage, CastStage, PendingPriorityContinuation, PriorityLoopState, PriorityResponse,
-    advance_priority_with_dm, apply_decision_context_with_dm, apply_priority_response_with_dm,
+    ActivationStage, CastStage, PendingPriorityContinuation, PriorityActionPerfMetrics,
+    PriorityAdvancePerfMetrics, PriorityLoopState, PriorityResponse, advance_priority_with_dm,
+    apply_decision_context_with_dm, apply_priority_response_with_dm, last_priority_action_perf,
+    last_priority_advance_perf,
 };
 use crate::game_state::{GameState, StackEntry, Target};
 use crate::ids::{CardId, ObjectId, PlayerId, restore_id_counters, snapshot_id_counters};
 use crate::mana::{ManaCost, ManaSymbol};
+use crate::perf::PerfTimer;
 use crate::targeting::{normalize_targets_for_requirements, validate_flat_target_assignment};
 use crate::triggers::TriggerQueue;
 use crate::types::{CardType, Subtype};
@@ -731,6 +734,66 @@ struct GameSnapshot {
     /// priority epoch. Only surfaced while the perspective player is back on
     /// priority and the tap can still be undone.
     undo_land_stable_id: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct SnapshotPerfMetrics {
+    snapshot_id: u64,
+    battlefield_transition_ms: f64,
+    snapshot_build_ms: f64,
+    pending_stack_insert_ms: f64,
+    snapshot_encode_ms: f64,
+    total_snapshot_ms: f64,
+    player_count: usize,
+    battlefield_size: usize,
+    stack_size: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct ReplayExecutionPerfMetrics {
+    root_kind: String,
+    restore_checkpoint_ms: f64,
+    root_execution_ms: f64,
+    decision_maker_finish_ms: f64,
+    total_ms: f64,
+    outcome_kind: String,
+    progress_kind: Option<String>,
+    priority_action: Option<PriorityActionPerfMetrics>,
+    priority_advance: Option<PriorityAdvancePerfMetrics>,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct AdvanceUntilDecisionPerfMetrics {
+    total_ms: f64,
+    iterations: usize,
+    pregame_normalize_ms: f64,
+    pregame_decision_build_ms: f64,
+    runner_advance_ms: f64,
+    auto_cleanup_discard_ms: f64,
+    replay_advance_ms: f64,
+    final_outcome: String,
+    replay_execution: Option<ReplayExecutionPerfMetrics>,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct DispatchPerfMetrics {
+    command_kind: String,
+    pending_decision_kind: String,
+    route_kind: String,
+    command_decode_ms: f64,
+    command_to_response_ms: f64,
+    checkpoint_capture_ms: f64,
+    execute_with_replay_ms: f64,
+    apply_progress_ms: f64,
+    total_dispatch_ms: f64,
+    outcome_kind: String,
+    replay_execution: Option<ReplayExecutionPerfMetrics>,
+    advance_until_decision: Option<AdvanceUntilDecisionPerfMetrics>,
+    snapshot: Option<SnapshotPerfMetrics>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -2098,6 +2161,43 @@ enum ReplayOutcome {
     Complete(GameProgress),
 }
 
+fn ui_command_kind(command: &UiCommand) -> &'static str {
+    match command {
+        UiCommand::PriorityAction { .. } => "priority_action",
+        UiCommand::SelectTargets { .. } => "select_targets",
+        UiCommand::SelectOptions { .. } => "select_options",
+        UiCommand::SelectObjects { .. } => "select_objects",
+        UiCommand::NumberChoice { .. } => "number_choice",
+        UiCommand::TextChoice { .. } => "text_choice",
+        UiCommand::DeclareAttackers { .. } => "declare_attackers",
+        UiCommand::DeclareBlockers { .. } => "declare_blockers",
+    }
+}
+
+fn replay_root_kind(root: &ReplayRoot) -> &'static str {
+    match root {
+        ReplayRoot::Response(_) => "response",
+        ReplayRoot::Advance => "advance",
+        ReplayRoot::AddCardToZone { .. } => "add_card_to_zone",
+    }
+}
+
+fn game_progress_kind(progress: &GameProgress) -> &'static str {
+    match progress {
+        GameProgress::NeedsDecisionCtx(_) => "needs_decision",
+        GameProgress::Continue => "continue",
+        GameProgress::GameOver(_) => "game_over",
+        GameProgress::StackResolved => "stack_resolved",
+    }
+}
+
+fn replay_outcome_kind(outcome: &ReplayOutcome) -> &'static str {
+    match outcome {
+        ReplayOutcome::NeedsDecision(_) => "needs_decision",
+        ReplayOutcome::Complete(_) => "complete",
+    }
+}
+
 #[derive(Debug)]
 struct WasmReplayDecisionMaker {
     answers: VecDeque<ReplayDecisionAnswer>,
@@ -2524,6 +2624,14 @@ pub struct WasmGame {
     active_resolving_stack_object: Option<StackObjectSnapshot>,
     /// Last decklists loaded into the current session, indexed by player.
     loaded_decks: Vec<Vec<String>>,
+    /// Timing breakdown for the most recent snapshot build/encode pass.
+    last_snapshot_perf: Option<SnapshotPerfMetrics>,
+    /// Timing breakdown for the most recent replay execution inside dispatch.
+    last_replay_execution_perf: Option<ReplayExecutionPerfMetrics>,
+    /// Timing breakdown for the most recent `advance_until_decision` pass.
+    last_advance_until_decision_perf: Option<AdvanceUntilDecisionPerfMetrics>,
+    /// Timing breakdown for the most recent dispatch-like engine call.
+    last_dispatch_perf: Option<DispatchPerfMetrics>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -2757,6 +2865,23 @@ pub fn wasm_start() {
 
 #[wasm_bindgen]
 impl WasmGame {
+    fn finish_dispatch_with_snapshot(
+        &mut self,
+        started_at: PerfTimer,
+        mut perf: DispatchPerfMetrics,
+    ) -> Result<JsValue, JsValue> {
+        let snapshot = self.snapshot();
+        perf.snapshot = self.last_snapshot_perf.clone();
+        perf.total_dispatch_ms = started_at.elapsed_ms();
+        self.last_dispatch_perf = Some(perf);
+        snapshot
+    }
+
+    fn store_dispatch_perf(&mut self, started_at: PerfTimer, mut perf: DispatchPerfMetrics) {
+        perf.total_dispatch_ms = started_at.elapsed_ms();
+        self.last_dispatch_perf = Some(perf);
+    }
+
     fn current_mana_payment_view(&self) -> Option<ManaPaymentView> {
         if let Some(pending) = self.priority_state.pending_cast.as_ref()
             && let Some(view) = mana_payment_view_from_pending_cast(&self.game, pending)
@@ -2864,6 +2989,10 @@ impl WasmGame {
             active_viewed_cards: None,
             active_resolving_stack_object: None,
             loaded_decks: Vec::new(),
+            last_snapshot_perf: None,
+            last_replay_execution_perf: None,
+            last_advance_until_decision_perf: None,
+            last_dispatch_perf: None,
         }
     }
 
@@ -2949,6 +3078,7 @@ impl WasmGame {
     /// Return a JS object snapshot of public game state.
     #[wasm_bindgen]
     pub fn snapshot(&mut self) -> Result<JsValue, JsValue> {
+        let snapshot_started_at = PerfTimer::start();
         let pending_cast_stack_id = self
             .priority_state
             .pending_cast
@@ -2958,6 +3088,7 @@ impl WasmGame {
         let undo_land_stable_id = self.visible_undo_land_stable_id(cancelable);
         self.snapshot_serial = self.snapshot_serial.saturating_add(1);
         let snapshot_id = self.snapshot_serial;
+        let transitions_started_at = PerfTimer::start();
         let battlefield_transitions = self
             .game
             .take_ui_battlefield_transitions()
@@ -2980,6 +3111,8 @@ impl WasmGame {
                 },
             })
             .collect();
+        let battlefield_transition_ms = transitions_started_at.elapsed_ms();
+        let build_started_at = PerfTimer::start();
         let mut snap = GameSnapshot::from_game(
             &self.game,
             self.perspective,
@@ -2994,15 +3127,61 @@ impl WasmGame {
             undo_land_stable_id,
             snapshot_id,
         );
+        let snapshot_build_ms = build_started_at.elapsed_ms();
+        let pending_insert_started_at = PerfTimer::start();
         insert_pending_stack_object_snapshots(&mut snap, self.pending_trigger_stack_objects());
-        serde_wasm_bindgen::to_value(&snap)
-            .map_err(|e| JsValue::from_str(&format!("snapshot encode failed: {e}")))
+        let pending_stack_insert_ms = pending_insert_started_at.elapsed_ms();
+        let player_count = snap.players.len();
+        let battlefield_size = snap.battlefield_size;
+        let stack_size = snap.stack_size;
+        let encode_started_at = PerfTimer::start();
+        let encoded = serde_wasm_bindgen::to_value(&snap)
+            .map_err(|e| JsValue::from_str(&format!("snapshot encode failed: {e}")))?;
+        let snapshot_encode_ms = encode_started_at.elapsed_ms();
+        let total_snapshot_ms = snapshot_started_at.elapsed_ms();
+        self.last_snapshot_perf = Some(SnapshotPerfMetrics {
+            snapshot_id,
+            battlefield_transition_ms,
+            snapshot_build_ms,
+            pending_stack_insert_ms,
+            snapshot_encode_ms,
+            total_snapshot_ms,
+            player_count,
+            battlefield_size,
+            stack_size,
+        });
+        Ok(encoded)
     }
 
     /// Return the current UI state from the selected player perspective.
     #[wasm_bindgen(js_name = uiState)]
     pub fn ui_state(&mut self) -> Result<JsValue, JsValue> {
         self.snapshot()
+    }
+
+    #[wasm_bindgen(js_name = lastSnapshotPerf)]
+    pub fn last_snapshot_perf_js(&self) -> Result<JsValue, JsValue> {
+        serde_wasm_bindgen::to_value(&self.last_snapshot_perf)
+            .map_err(|e| JsValue::from_str(&format!("lastSnapshotPerf encode failed: {e}")))
+    }
+
+    #[wasm_bindgen(js_name = lastDispatchPerf)]
+    pub fn last_dispatch_perf_js(&self) -> Result<JsValue, JsValue> {
+        serde_wasm_bindgen::to_value(&self.last_dispatch_perf)
+            .map_err(|e| JsValue::from_str(&format!("lastDispatchPerf encode failed: {e}")))
+    }
+
+    #[wasm_bindgen(js_name = lastReplayExecutionPerf)]
+    pub fn last_replay_execution_perf_js(&self) -> Result<JsValue, JsValue> {
+        serde_wasm_bindgen::to_value(&self.last_replay_execution_perf)
+            .map_err(|e| JsValue::from_str(&format!("lastReplayExecutionPerf encode failed: {e}")))
+    }
+
+    #[wasm_bindgen(js_name = lastAdvanceUntilDecisionPerf)]
+    pub fn last_advance_until_decision_perf_js(&self) -> Result<JsValue, JsValue> {
+        serde_wasm_bindgen::to_value(&self.last_advance_until_decision_perf).map_err(|e| {
+            JsValue::from_str(&format!("lastAdvanceUntilDecisionPerf encode failed: {e}"))
+        })
     }
 
     /// Number of cards currently available in the registry.
@@ -3691,14 +3870,24 @@ impl WasmGame {
     /// Apply a player command for the currently pending decision.
     #[wasm_bindgen]
     pub fn dispatch(&mut self, command: JsValue) -> Result<JsValue, JsValue> {
+        let dispatch_started_at = PerfTimer::start();
+        self.last_dispatch_perf = None;
+        let command_decode_started_at = PerfTimer::start();
         let command: UiCommand = serde_wasm_bindgen::from_value(command)
             .map_err(|e| JsValue::from_str(&format!("invalid command payload: {e}")))?;
+        let command_decode_ms = command_decode_started_at.elapsed_ms();
         self.clear_active_resolving_stack_object();
 
         let pending_ctx = self
             .pending_decision
             .take()
             .ok_or_else(|| JsValue::from_str("no pending decision to dispatch"))?;
+        let mut dispatch_perf = DispatchPerfMetrics {
+            command_kind: ui_command_kind(&command).to_string(),
+            pending_decision_kind: decision_context_kind(&pending_ctx).to_string(),
+            command_decode_ms,
+            ..DispatchPerfMetrics::default()
+        };
 
         if self.pregame.is_some() {
             return self.dispatch_pregame_decision(pending_ctx, command);
@@ -3858,26 +4047,40 @@ impl WasmGame {
                 }
             }
         } else {
+            dispatch_perf.route_kind = "fresh_response".to_string();
+            let command_to_response_started_at = PerfTimer::start();
             let response = match self.command_to_response(&pending_ctx, command) {
                 Ok(response) => response,
                 Err(err) => {
                     self.pending_decision = Some(pending_ctx);
+                    dispatch_perf.outcome_kind = "command_to_response_error".to_string();
+                    self.store_dispatch_perf(dispatch_started_at, dispatch_perf);
                     return Err(err);
                 }
             };
+            dispatch_perf.command_to_response_ms = command_to_response_started_at.elapsed_ms();
 
+            let checkpoint_started_at = PerfTimer::start();
             let checkpoint = self.capture_replay_checkpoint();
+            dispatch_perf.checkpoint_capture_ms = checkpoint_started_at.elapsed_ms();
             let should_track_action_checkpoint = self.pending_action_checkpoint.is_none()
                 && Self::response_starts_cancelable_action_chain(&response);
             let root = ReplayRoot::Response(response);
+            let execute_started_at = PerfTimer::start();
             let outcome = match self.execute_with_replay(&checkpoint, &root, &[]) {
                 Ok(outcome) => outcome,
                 Err(err) => {
                     self.pending_decision = Some(pending_ctx);
                     self.pending_replay_action = None;
+                    dispatch_perf.execute_with_replay_ms = execute_started_at.elapsed_ms();
+                    dispatch_perf.replay_execution = self.last_replay_execution_perf.clone();
+                    dispatch_perf.outcome_kind = "execute_with_replay_error".to_string();
+                    self.store_dispatch_perf(dispatch_started_at, dispatch_perf);
                     return Err(err);
                 }
             };
+            dispatch_perf.execute_with_replay_ms = execute_started_at.elapsed_ms();
+            dispatch_perf.replay_execution = self.last_replay_execution_perf.clone();
             match outcome {
                 ReplayOutcome::NeedsDecision(next_ctx) => {
                     self.sync_active_resolving_stack_object_for_prompt(Some(&checkpoint));
@@ -3890,7 +4093,8 @@ impl WasmGame {
                         root,
                         nested_answers: Vec::new(),
                     });
-                    self.snapshot()
+                    dispatch_perf.outcome_kind = "needs_decision".to_string();
+                    self.finish_dispatch_with_snapshot(dispatch_started_at, dispatch_perf)
                 }
                 ReplayOutcome::Complete(progress) => {
                     match progress {
@@ -3906,7 +4110,12 @@ impl WasmGame {
                                     root,
                                     nested_answers: Vec::new(),
                                 });
-                                return self.snapshot();
+                                dispatch_perf.outcome_kind =
+                                    "complete_pending_needs_decision".to_string();
+                                return self.finish_dispatch_with_snapshot(
+                                    dispatch_started_at,
+                                    dispatch_perf,
+                                );
                             }
 
                             // The spell/ability is now committed. Follow-up prompts
@@ -3919,7 +4128,8 @@ impl WasmGame {
                                 root,
                                 nested_answers: Vec::new(),
                             });
-                            self.snapshot()
+                            dispatch_perf.outcome_kind = "complete_resolution_prompt".to_string();
+                            self.finish_dispatch_with_snapshot(dispatch_started_at, dispatch_perf)
                         }
                         progress => {
                             self.clear_active_resolving_stack_object();
@@ -3938,8 +4148,14 @@ impl WasmGame {
                                 self.committed_undo_land_stable_id(&checkpoint, &root);
                             self.pending_action_checkpoint = None;
                             self.pending_replay_action = None;
+                            let apply_progress_started_at = PerfTimer::start();
                             self.apply_progress(progress)?;
-                            self.snapshot()
+                            dispatch_perf.apply_progress_ms =
+                                apply_progress_started_at.elapsed_ms();
+                            dispatch_perf.advance_until_decision =
+                                self.last_advance_until_decision_perf.clone();
+                            dispatch_perf.outcome_kind = "complete_progress".to_string();
+                            self.finish_dispatch_with_snapshot(dispatch_started_at, dispatch_perf)
                         }
                     }
                 }
@@ -6094,6 +6310,10 @@ impl WasmGame {
         self.active_viewed_cards = None;
         self.clear_active_resolving_stack_object();
         self.game_over = None;
+        self.last_snapshot_perf = None;
+        self.last_replay_execution_perf = None;
+        self.last_advance_until_decision_perf = None;
+        self.last_dispatch_perf = None;
         self.runner = None;
         self.runner_awaiting_priority = false;
         self.runner_pending_decision = false;
@@ -6136,14 +6356,27 @@ impl WasmGame {
     fn advance_until_decision(&mut self) -> Result<(), JsValue> {
         use crate::turn_runner::TurnAction;
 
+        let total_started_at = PerfTimer::start();
+        let mut perf = AdvanceUntilDecisionPerfMetrics::default();
+        self.last_advance_until_decision_perf = None;
+
         if self.pregame.is_some() {
             for _ in 0..64 {
+                perf.iterations += 1;
+                let normalize_started_at = PerfTimer::start();
                 self.normalize_pregame_state()?;
+                perf.pregame_normalize_ms += normalize_started_at.elapsed_ms();
+                let build_started_at = PerfTimer::start();
                 if let Some(ctx) = self.build_pregame_decision()? {
+                    perf.pregame_decision_build_ms += build_started_at.elapsed_ms();
                     self.pending_decision = Some(ctx);
                     self.runner_pending_decision = false;
+                    perf.total_ms = total_started_at.elapsed_ms();
+                    perf.final_outcome = "pregame_decision".to_string();
+                    self.last_advance_until_decision_perf = Some(perf);
                     return Ok(());
                 }
+                perf.pregame_decision_build_ms += build_started_at.elapsed_ms();
                 if self.pregame.is_none() {
                     break;
                 }
@@ -6157,14 +6390,17 @@ impl WasmGame {
         }
 
         for _ in 0..192 {
+            perf.iterations += 1;
             // If we're NOT currently inside a priority loop, advance the TurnRunner
             if !self.runner_awaiting_priority {
+                let runner_advance_started_at = PerfTimer::start();
                 let action = {
                     let runner = self.runner.as_mut().unwrap();
                     runner
                         .advance(&mut self.game, &mut self.trigger_queue)
                         .map_err(|e| JsValue::from_str(&format!("{e}")))?
                 };
+                perf.runner_advance_ms += runner_advance_started_at.elapsed_ms();
 
                 match action {
                     TurnAction::Continue => continue,
@@ -6175,6 +6411,7 @@ impl WasmGame {
                         if self.should_auto_resolve_cleanup_discard(&ctx)
                             && let DecisionContext::SelectObjects(ref obj) = ctx
                         {
+                            let auto_cleanup_started_at = PerfTimer::start();
                             let mut ids: Vec<_> = obj
                                 .candidates
                                 .iter()
@@ -6184,10 +6421,14 @@ impl WasmGame {
                             self.game.shuffle_slice(&mut ids);
                             ids.truncate(obj.min);
                             self.runner.as_mut().unwrap().respond_discard(ids);
+                            perf.auto_cleanup_discard_ms += auto_cleanup_started_at.elapsed_ms();
                             continue;
                         }
                         self.pending_decision = Some(ctx);
                         self.runner_pending_decision = true;
+                        perf.total_ms = total_started_at.elapsed_ms();
+                        perf.final_outcome = "runner_decision".to_string();
+                        self.last_advance_until_decision_perf = Some(perf);
                         return Ok(());
                     }
 
@@ -6223,6 +6464,9 @@ impl WasmGame {
 
                     TurnAction::GameOver(result) => {
                         self.game_over = Some(result);
+                        perf.total_ms = total_started_at.elapsed_ms();
+                        perf.final_outcome = "runner_game_over".to_string();
+                        self.last_advance_until_decision_perf = Some(perf);
                         return Ok(());
                     }
                 }
@@ -6236,7 +6480,10 @@ impl WasmGame {
                 self.priority_epoch_undo_land_stable_id = None;
             }
             let checkpoint = self.capture_replay_checkpoint();
+            let replay_started_at = PerfTimer::start();
             let outcome = self.execute_with_replay(&checkpoint, &ReplayRoot::Advance, &[])?;
+            perf.replay_advance_ms += replay_started_at.elapsed_ms();
+            perf.replay_execution = self.last_replay_execution_perf.clone();
 
             match outcome {
                 ReplayOutcome::NeedsDecision(ctx) => {
@@ -6247,6 +6494,9 @@ impl WasmGame {
                         root: ReplayRoot::Advance,
                         nested_answers: Vec::new(),
                     });
+                    perf.total_ms = total_started_at.elapsed_ms();
+                    perf.final_outcome = "replay_needs_decision".to_string();
+                    self.last_advance_until_decision_perf = Some(perf);
                     return Ok(());
                 }
                 ReplayOutcome::Complete(progress) => match progress {
@@ -6254,6 +6504,9 @@ impl WasmGame {
                         self.clear_active_resolving_stack_object();
                         self.pending_decision = Some(ctx);
                         self.runner_pending_decision = false;
+                        perf.total_ms = total_started_at.elapsed_ms();
+                        perf.final_outcome = "progress_needs_decision".to_string();
+                        self.last_advance_until_decision_perf = Some(perf);
                         return Ok(());
                     }
                     GameProgress::Continue => {
@@ -6284,12 +6537,18 @@ impl WasmGame {
                         self.pending_decision = None;
                         self.clear_active_resolving_stack_object();
                         self.game_over = Some(result);
+                        perf.total_ms = total_started_at.elapsed_ms();
+                        perf.final_outcome = "progress_game_over".to_string();
+                        self.last_advance_until_decision_perf = Some(perf);
                         return Ok(());
                     }
                 },
             }
         }
 
+        perf.total_ms = total_started_at.elapsed_ms();
+        perf.final_outcome = "iteration_budget_exceeded".to_string();
+        self.last_advance_until_decision_perf = Some(perf);
         Err(JsValue::from_str(
             "advance loop exceeded iteration budget (possible infinite loop)",
         ))
@@ -6778,12 +7037,22 @@ impl WasmGame {
         root: &ReplayRoot,
         nested_answers: &[ReplayDecisionAnswer],
     ) -> Result<ReplayOutcome, JsValue> {
+        let total_started_at = PerfTimer::start();
+        let mut perf = ReplayExecutionPerfMetrics {
+            root_kind: replay_root_kind(root).to_string(),
+            ..ReplayExecutionPerfMetrics::default()
+        };
+        self.last_replay_execution_perf = None;
+
+        let restore_started_at = PerfTimer::start();
         self.restore_replay_checkpoint(checkpoint);
+        perf.restore_checkpoint_ms = restore_started_at.elapsed_ms();
         self.active_viewed_cards = None;
         self.clear_active_resolving_stack_object();
 
         let mut replay_dm = WasmReplayDecisionMaker::new(nested_answers);
 
+        let root_execution_started_at = PerfTimer::start();
         let result = match root {
             ReplayRoot::Response(response) => apply_priority_response_with_dm(
                 &mut self.game,
@@ -6824,13 +7093,22 @@ impl WasmGame {
                 }
             }
         };
+        perf.root_execution_ms = root_execution_started_at.elapsed_ms();
+        perf.priority_action = last_priority_action_perf();
+        perf.priority_advance = last_priority_advance_perf();
 
+        let finish_started_at = PerfTimer::start();
         let (pending_context, viewed_cards) = replay_dm.finish();
+        perf.decision_maker_finish_ms = finish_started_at.elapsed_ms();
         self.active_viewed_cards = viewed_cards;
 
         if let Some(next_ctx) = pending_context {
             self.sync_active_resolving_stack_object_for_prompt(Some(checkpoint));
-            return Ok(ReplayOutcome::NeedsDecision(next_ctx));
+            let outcome = ReplayOutcome::NeedsDecision(next_ctx);
+            perf.outcome_kind = replay_outcome_kind(&outcome).to_string();
+            perf.total_ms = total_started_at.elapsed_ms();
+            self.last_replay_execution_perf = Some(perf);
+            return Ok(outcome);
         }
 
         match result {
@@ -6840,12 +7118,22 @@ impl WasmGame {
                 } else {
                     self.clear_active_resolving_stack_object();
                 }
-                Ok(ReplayOutcome::Complete(progress))
+                let outcome = ReplayOutcome::Complete(progress);
+                perf.outcome_kind = replay_outcome_kind(&outcome).to_string();
+                if let ReplayOutcome::Complete(progress) = &outcome {
+                    perf.progress_kind = Some(game_progress_kind(progress).to_string());
+                }
+                perf.total_ms = total_started_at.elapsed_ms();
+                self.last_replay_execution_perf = Some(perf);
+                Ok(outcome)
             }
             Err(e) => {
                 self.active_viewed_cards = None;
                 self.clear_active_resolving_stack_object();
                 self.restore_replay_checkpoint(checkpoint);
+                perf.outcome_kind = "error".to_string();
+                perf.total_ms = total_started_at.elapsed_ms();
+                self.last_replay_execution_perf = Some(perf);
                 Err(JsValue::from_str(&format!("dispatch failed: {e}")))
             }
         }

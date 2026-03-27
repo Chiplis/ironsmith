@@ -31,6 +31,7 @@ pub mod mana;
 pub mod marker;
 pub mod object;
 pub(crate) mod object_query;
+pub(crate) mod perf;
 pub mod player;
 pub mod prevention;
 pub mod provenance;

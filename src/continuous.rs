@@ -1028,6 +1028,48 @@ pub fn calculate_characteristics_with_effects(
     ))
 }
 
+pub(crate) fn calculate_characteristics_batch_with_effects(
+    ids: &[ObjectId],
+    objects: &HashMap<ObjectId, Object>,
+    effects: &[ContinuousEffect],
+    battlefield: &[ObjectId],
+    commanders: &HashSet<ObjectId>,
+    game: &crate::game_state::GameState,
+) -> HashMap<ObjectId, CalculatedCharacteristics> {
+    let mut calculated = HashMap::with_capacity(ids.len());
+    let prepared = PreparedDirectCalculation::new(
+        objects,
+        effects,
+        battlefield,
+        commanders,
+        game,
+        DependencySortMode::Baseline,
+    );
+
+    for &id in ids {
+        if let Some(chars) = in_progress_characteristics(id) {
+            calculated.insert(id, chars);
+            continue;
+        }
+        let Some(object) = objects.get(&id) else {
+            continue;
+        };
+        calculated.insert(
+            id,
+            calculate_with_prepared_layers_for_object(
+                object,
+                &prepared,
+                objects,
+                battlefield,
+                commanders,
+                game,
+            ),
+        );
+    }
+
+    calculated
+}
+
 pub(crate) fn calculate_characteristics_with_effects_simple(
     object_id: ObjectId,
     objects: &HashMap<ObjectId, Object>,
@@ -1404,6 +1446,247 @@ fn calculate_with_layers_direct_internal(
     }
 
     // Apply counter modifications for Layer 7c (after other 7c effects by timestamp)
+    apply_counter_modifications(object, &mut chars.power, &mut chars.toughness);
+    calc_guard.update(&chars);
+
+    add_intrinsic_basic_land_mana_abilities(&mut chars);
+    calc_guard.update(&chars);
+
+    chars
+}
+
+struct PreparedLayerEffects<'a> {
+    sorted_effects: Vec<&'a ContinuousEffect>,
+}
+
+struct PreparedDirectCalculation<'a> {
+    layers_1_to_6: HashMap<Layer, PreparedLayerEffects<'a>>,
+    layer_7: Option<PreparedLayerEffects<'a>>,
+}
+
+impl<'a> PreparedDirectCalculation<'a> {
+    fn new(
+        objects: &HashMap<ObjectId, Object>,
+        effects: &'a [ContinuousEffect],
+        battlefield: &[ObjectId],
+        commanders: &HashSet<ObjectId>,
+        game: &crate::game_state::GameState,
+        sort_mode: DependencySortMode,
+    ) -> Self {
+        use crate::dependency::needs_baseline_dependency_sort;
+        use crate::dependency::sort_layer_effects;
+        use crate::dependency::sort_layer_effects_with_baseline;
+
+        let mut effects_by_layer: HashMap<Layer, Vec<&ContinuousEffect>> =
+            HashMap::with_capacity(7);
+        for effect in effects {
+            effects_by_layer
+                .entry(effect.modification.layer())
+                .or_default()
+                .push(effect);
+        }
+
+        let mut prepared_layers = HashMap::with_capacity(6);
+        for layer in [
+            Layer::Copy,
+            Layer::Control,
+            Layer::Text,
+            Layer::Type,
+            Layer::Color,
+            Layer::Ability,
+        ] {
+            let Some(layer_effects) = effects_by_layer.get(&layer) else {
+                continue;
+            };
+            let needs_sort_baseline = matches!(sort_mode, DependencySortMode::Baseline)
+                && needs_baseline_dependency_sort(layer_effects);
+            let baseline = needs_sort_baseline.then(|| {
+                build_layer_baseline(objects, effects, battlefield, commanders, game, layer, None)
+            });
+            let sorted_effects = match sort_mode {
+                DependencySortMode::Heuristic => sort_layer_effects(layer_effects),
+                DependencySortMode::Baseline => {
+                    if needs_sort_baseline {
+                        let baseline = baseline
+                            .as_ref()
+                            .expect("baseline should exist when dependency sorting needs it");
+                        sort_layer_effects_with_baseline(layer_effects, baseline, objects, game)
+                    } else {
+                        sort_layer_effects(layer_effects)
+                    }
+                }
+            };
+
+            let filtered_effects = if layer_needs_source_activity_tracking(layer_effects) {
+                let tracked_source_ids = tracked_source_ids_for_layer(layer_effects);
+                let mut source_state = build_object_baseline_for_ids(
+                    objects,
+                    effects,
+                    battlefield,
+                    commanders,
+                    game,
+                    layer,
+                    None,
+                    &tracked_source_ids,
+                );
+                let mut active_effects = Vec::with_capacity(sorted_effects.len());
+                for effect in sorted_effects {
+                    let effect_active = effect_source_is_active(effect, &source_state);
+                    if effect_active {
+                        advance_layer_source_state(
+                            &mut source_state,
+                            effect,
+                            objects,
+                            battlefield,
+                            commanders,
+                            game,
+                        );
+                        active_effects.push(effect);
+                    }
+                }
+                active_effects
+            } else {
+                sorted_effects
+            };
+
+            prepared_layers.insert(
+                layer,
+                PreparedLayerEffects {
+                    sorted_effects: filtered_effects,
+                },
+            );
+        }
+
+        let layer_7 = effects_by_layer
+            .get(&Layer::PowerToughness)
+            .map(|pt_effects| {
+                let sorted_effects = match sort_mode {
+                    DependencySortMode::Heuristic => sort_layer_effects(pt_effects),
+                    DependencySortMode::Baseline => {
+                        if needs_baseline_dependency_sort(pt_effects) {
+                            let baseline = build_layer_baseline(
+                                objects,
+                                effects,
+                                battlefield,
+                                commanders,
+                                game,
+                                Layer::PowerToughness,
+                                None,
+                            );
+                            sort_layer_effects_with_baseline(pt_effects, &baseline, objects, game)
+                        } else {
+                            sort_layer_effects(pt_effects)
+                        }
+                    }
+                };
+                PreparedLayerEffects { sorted_effects }
+            });
+
+        Self {
+            layers_1_to_6: prepared_layers,
+            layer_7,
+        }
+    }
+}
+
+fn calculate_with_prepared_layers_for_object(
+    object: &Object,
+    prepared: &PreparedDirectCalculation<'_>,
+    objects: &HashMap<ObjectId, Object>,
+    battlefield: &[ObjectId],
+    commanders: &HashSet<ObjectId>,
+    game: &crate::game_state::GameState,
+) -> CalculatedCharacteristics {
+    let mut chars = initial_characteristics(object);
+    let calc_guard = CharacteristicCalculationGuard::begin(object.id, &chars);
+
+    let mut abilities_removed = false;
+
+    for layer in [
+        Layer::Copy,
+        Layer::Control,
+        Layer::Text,
+        Layer::Type,
+        Layer::Color,
+        Layer::Ability,
+    ] {
+        let Some(layer_effects) = prepared.layers_1_to_6.get(&layer) else {
+            continue;
+        };
+
+        for effect in &layer_effects.sorted_effects {
+            if !effect_applies_to_direct(
+                effect,
+                object,
+                &chars,
+                objects,
+                battlefield,
+                commanders,
+                game,
+            ) {
+                continue;
+            }
+
+            apply_modification_to_chars(
+                &effect.modification,
+                &mut chars,
+                objects,
+                &mut abilities_removed,
+                effect.controller,
+                effect.source,
+                object,
+                battlefield,
+                game,
+            );
+            calc_guard.update(&chars);
+        }
+    }
+
+    if !abilities_removed {
+        if let Some((lp, lt)) = get_level_ability_pt(object) {
+            chars.power = Some(lp);
+            chars.toughness = Some(lt);
+            calc_guard.update(&chars);
+        }
+        let level_abilities = get_level_granted_abilities(object);
+        for ability in level_abilities {
+            chars
+                .abilities
+                .push(Ability::static_ability(ability.clone()));
+            chars.static_abilities.push(ability);
+        }
+        calc_guard.update(&chars);
+    }
+
+    if let Some(layer_7) = prepared.layer_7.as_ref() {
+        for effect in &layer_7.sorted_effects {
+            if !effect_applies_to_direct(
+                effect,
+                object,
+                &chars,
+                objects,
+                battlefield,
+                commanders,
+                game,
+            ) {
+                continue;
+            }
+
+            apply_modification_to_chars(
+                &effect.modification,
+                &mut chars,
+                objects,
+                &mut abilities_removed,
+                effect.controller,
+                effect.source,
+                object,
+                battlefield,
+                game,
+            );
+            calc_guard.update(&chars);
+        }
+    }
+
     apply_counter_modifications(object, &mut chars.power, &mut chars.toughness);
     calc_guard.update(&chars);
 

@@ -206,6 +206,46 @@ export class WasmGame {
         return ret !== 0;
     }
     /**
+     * @returns {any}
+     */
+    lastAdvanceUntilDecisionPerf() {
+        const ret = wasm.wasmgame_lastAdvanceUntilDecisionPerf(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * @returns {any}
+     */
+    lastDispatchPerf() {
+        const ret = wasm.wasmgame_lastDispatchPerf(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * @returns {any}
+     */
+    lastReplayExecutionPerf() {
+        const ret = wasm.wasmgame_lastReplayExecutionPerf(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * @returns {any}
+     */
+    lastSnapshotPerf() {
+        const ret = wasm.wasmgame_lastSnapshotPerf(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
      * Load explicit decks by card name. JS format: `string[][]`.
      *
      * Deck list index maps to player index.
@@ -618,6 +658,10 @@ function __wbg_get_imports() {
         }, arguments); },
         __wbg_next_418f80d8f5303233: function(arg0) {
             const ret = arg0.next;
+            return ret;
+        },
+        __wbg_now_a3af9a2f4bbaa4d1: function() {
+            const ret = Date.now();
             return ret;
         },
         __wbg_prototypesetcall_bdcdcc5842e4d77d: function(arg0, arg1, arg2) {
