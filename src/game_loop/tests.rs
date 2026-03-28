@@ -1855,9 +1855,8 @@ fn run_exchange_of_words_cast_from_hand_swapping_alices_yawgmoth_and_ornithopter
         &exchange_cast_method,
     )
     .expect("Exchange of Words should move from hand to stack");
-    game.stack.push(
-        StackEntry::new(stack_id, alice).with_casting_method(exchange_cast_method.clone()),
-    );
+    game.stack
+        .push(StackEntry::new(stack_id, alice).with_casting_method(exchange_cast_method.clone()));
 
     let mut trigger_queue = TriggerQueue::new();
     let mut dm = ExchangeTargetsDecisionMaker {

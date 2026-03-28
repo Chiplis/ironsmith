@@ -1039,9 +1039,7 @@ pub(crate) fn can_activate_mana_ability_check_with_view(
 
     let ctx = CostCheckContext::new(permanent_id, player)
         .with_reason(crate::costs::PaymentReason::ActivateManaAbility);
-    let has_activation_cost_modifiers = !view
-        .activated_ability_cost_modifier_sources()
-        .is_empty();
+    let has_activation_cost_modifiers = !view.activated_ability_cost_modifier_sources().is_empty();
     let total_cost = if has_activation_cost_modifiers {
         crate::decision::calculate_effective_activation_total_cost_with_view(
             game,

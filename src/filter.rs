@@ -1334,7 +1334,10 @@ impl ObjectFilter {
             || self.power_relative_to_source.is_some()
             || self.power_greater_than_base_power
             || self.toughness.is_some()
-            || self.any_of.iter().any(Self::uses_power_or_toughness_characteristics)
+            || self
+                .any_of
+                .iter()
+                .any(Self::uses_power_or_toughness_characteristics)
     }
 
     fn uses_non_pt_battlefield_characteristics(&self) -> bool {
@@ -1375,7 +1378,10 @@ impl ObjectFilter {
             || !self.ability_markers.is_empty()
             || !self.excluded_ability_markers.is_empty()
             || !self.tagged_constraints.is_empty()
-            || self.any_of.iter().any(Self::uses_non_pt_battlefield_characteristics)
+            || self
+                .any_of
+                .iter()
+                .any(Self::uses_non_pt_battlefield_characteristics)
     }
 
     /// Create a filter for any permanent (on the battlefield).
@@ -2451,7 +2457,9 @@ impl ObjectFilter {
             allow_calculated_pt && object.zone == Zone::Battlefield && (needs_pt || needs_non_pt);
         let should_calculate_chars = should_consider_adjusted_object
             && match view {
-                Some(view) => needs_pt || view.requires_battlefield_characteristic_calculation(object.id),
+                Some(view) => {
+                    needs_pt || view.requires_battlefield_characteristic_calculation(object.id)
+                }
                 None => true,
             };
         if should_calculate_chars
@@ -2480,38 +2488,32 @@ impl ObjectFilter {
             let has_counters = object.counters.values().any(|count| *count > 0);
             let has_equipment = object.attachments.iter().any(|attachment_id| {
                 game.object(*attachment_id).is_some_and(|attachment| {
-                    let attachment_subtypes =
-                        if allow_calculated_pt
-                            && attachment.zone == Zone::Battlefield
-                            && view.is_none_or(|view| {
-                                view.requires_battlefield_characteristic_calculation(*attachment_id)
-                            })
-                        {
-                            view.map(|view| view.calculated_subtypes(*attachment_id))
-                                .unwrap_or_else(|| game.calculated_subtypes(*attachment_id))
-                        } else {
-                            attachment.subtypes.clone()
-                        };
+                    let attachment_subtypes = if allow_calculated_pt
+                        && attachment.zone == Zone::Battlefield
+                        && view.is_none_or(|view| {
+                            view.requires_battlefield_characteristic_calculation(*attachment_id)
+                        }) {
+                        view.map(|view| view.calculated_subtypes(*attachment_id))
+                            .unwrap_or_else(|| game.calculated_subtypes(*attachment_id))
+                    } else {
+                        attachment.subtypes.clone()
+                    };
                     attachment_subtypes.contains(&Subtype::Equipment)
                 })
             });
             let has_controlled_aura = ctx.you.is_some_and(|you| {
                 object.attachments.iter().any(|attachment_id| {
                     game.object(*attachment_id).is_some_and(|attachment| {
-                        let attachment_subtypes =
-                            if allow_calculated_pt
-                                && attachment.zone == Zone::Battlefield
-                                && view.is_none_or(|view| {
-                                    view.requires_battlefield_characteristic_calculation(
-                                        *attachment_id,
-                                    )
-                                })
-                            {
-                                view.map(|view| view.calculated_subtypes(*attachment_id))
-                                    .unwrap_or_else(|| game.calculated_subtypes(*attachment_id))
-                            } else {
-                                attachment.subtypes.clone()
-                            };
+                        let attachment_subtypes = if allow_calculated_pt
+                            && attachment.zone == Zone::Battlefield
+                            && view.is_none_or(|view| {
+                                view.requires_battlefield_characteristic_calculation(*attachment_id)
+                            }) {
+                            view.map(|view| view.calculated_subtypes(*attachment_id))
+                                .unwrap_or_else(|| game.calculated_subtypes(*attachment_id))
+                        } else {
+                            attachment.subtypes.clone()
+                        };
                         attachment.controller == you && attachment_subtypes.contains(&Subtype::Aura)
                     })
                 })

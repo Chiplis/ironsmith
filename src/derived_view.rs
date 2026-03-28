@@ -36,13 +36,21 @@ pub(crate) struct DerivedGameView<'a> {
     granted_alternative_casts:
         RefCell<HashMap<(ObjectId, Zone, PlayerId), Vec<GrantedAlternativeCast>>>,
     granted_play_from: RefCell<HashMap<(ObjectId, Zone, PlayerId), Vec<GrantedPlayFrom>>>,
-    granted_static_ability_presence:
-        RefCell<HashMap<(ObjectId, Zone, PlayerId, crate::static_abilities::StaticAbilityId), bool>>,
-    active_grants: RefCell<Option<Vec<Grant>>>,
+    granted_static_ability_presence: RefCell<
+        HashMap<
+            (
+                ObjectId,
+                Zone,
+                PlayerId,
+                crate::static_abilities::StaticAbilityId,
+            ),
+            bool,
+        >,
+    >,
+    active_grants: RefCell<Option<Rc<Vec<Grant>>>>,
     battlefield_spell_cost_modifier_sources: RefCell<Option<Vec<ObjectId>>>,
     activated_ability_cost_modifier_sources: RefCell<Option<Vec<ObjectId>>>,
-    simple_battlefield_mana_analysis:
-        RefCell<HashMap<PlayerId, Rc<SimpleBattlefieldManaAnalysis>>>,
+    simple_battlefield_mana_analysis: RefCell<HashMap<PlayerId, Rc<SimpleBattlefieldManaAnalysis>>>,
     spell_target_legality: RefCell<HashMap<SpellTargetLegalityKey, bool>>,
 }
 
@@ -92,18 +100,26 @@ impl BattlefieldCharacteristicScope {
     }
 }
 
-fn battlefield_characteristic_scope(effects: &[ContinuousEffect]) -> BattlefieldCharacteristicScope {
+fn battlefield_characteristic_scope(
+    effects: &[ContinuousEffect],
+) -> BattlefieldCharacteristicScope {
     let mut specific_ids = Vec::new();
 
     for effect in effects {
         if !matches!(
             effect.modification.layer(),
-            Layer::Copy | Layer::Control | Layer::Text | Layer::Type | Layer::Color | Layer::Ability
+            Layer::Copy
+                | Layer::Control
+                | Layer::Text
+                | Layer::Type
+                | Layer::Color
+                | Layer::Ability
         ) {
             continue;
         }
 
-        if let crate::continuous::EffectSourceType::Resolution { locked_targets } = &effect.source_type
+        if let crate::continuous::EffectSourceType::Resolution { locked_targets } =
+            &effect.source_type
             && !locked_targets.is_empty()
         {
             for &id in locked_targets {
@@ -297,7 +313,8 @@ impl<'a> DerivedGameView<'a> {
     }
 
     pub(crate) fn abilities(&self, object_id: ObjectId) -> Option<Vec<crate::ability::Ability>> {
-        self.abilities_rc(object_id).map(|abilities| abilities.as_ref().clone())
+        self.abilities_rc(object_id)
+            .map(|abilities| abilities.as_ref().clone())
     }
 
     pub(crate) fn static_abilities_rc(
@@ -365,12 +382,13 @@ impl<'a> DerivedGameView<'a> {
             });
         }
 
-        self.calculated_characteristics(object_id).is_some_and(|chars| {
-            chars
-                .static_abilities
-                .iter()
-                .any(|ability| ability.id() == ability_id)
-        })
+        self.calculated_characteristics(object_id)
+            .is_some_and(|chars| {
+                chars
+                    .static_abilities
+                    .iter()
+                    .any(|ability| ability.id() == ability_id)
+            })
     }
 
     pub(crate) fn candidate_ids_for_zone(&self, zone: Option<Zone>) -> Vec<ObjectId> {
@@ -515,15 +533,18 @@ impl<'a> DerivedGameView<'a> {
             return cached.clone();
         }
 
-        let grants = self.active_grants_for_card(card_id, zone, player);
         let Some(card) = self.game.object(card_id) else {
             return Vec::new();
         };
+        let ctx = self.game.filter_context_for(player, None);
+        let grants = self.active_grants();
         let grants: Vec<_> = grants
-            .into_iter()
-            .filter_map(|grant| match grant.grantable {
+            .iter()
+            .filter(|grant| grant.player == player && grant.zone == zone)
+            .filter(|grant| grant_applies_to_card(grant, card_id, card, &ctx, self.game))
+            .filter_map(|grant| match &grant.grantable {
                 Grantable::AlternativeCast(method) => Some(GrantedAlternativeCast {
-                    method,
+                    method: method.clone(),
                     source_id: grant.source.source_id(),
                     zone: grant.zone,
                 }),
@@ -556,10 +577,16 @@ impl<'a> DerivedGameView<'a> {
             return cached.clone();
         }
 
-        let grants: Vec<_> = self
-            .active_grants_for_card(card_id, zone, player)
-            .into_iter()
-            .filter_map(|grant| match grant.grantable {
+        let Some(card) = self.game.object(card_id) else {
+            return Vec::new();
+        };
+        let ctx = self.game.filter_context_for(player, None);
+        let grants = self.active_grants();
+        let grants: Vec<_> = grants
+            .iter()
+            .filter(|grant| grant.player == player && grant.zone == zone)
+            .filter(|grant| grant_applies_to_card(grant, card_id, card, &ctx, self.game))
+            .filter_map(|grant| match &grant.grantable {
                 Grantable::PlayFrom => Some(GrantedPlayFrom {
                     source_id: grant.source.source_id(),
                     zone: grant.zone,
@@ -587,15 +614,20 @@ impl<'a> DerivedGameView<'a> {
             return *cached;
         }
 
-        let has_ability = self
-            .active_grants_for_card(card_id, zone, player)
-            .into_iter()
-            .any(|grant| {
-                matches!(
-                    grant.grantable,
-                    Grantable::Ability(ref ability) if ability.id() == ability_id
+        let Some(card) = self.game.object(card_id) else {
+            return false;
+        };
+        let ctx = self.game.filter_context_for(player, None);
+        let grants = self.active_grants();
+        let has_ability = grants.iter().any(|grant| {
+            grant.player == player
+                && grant.zone == zone
+                && grant_applies_to_card(grant, card_id, card, &ctx, self.game)
+                && matches!(
+                    &grant.grantable,
+                    Grantable::Ability(ability) if ability.id() == ability_id
                 )
-            });
+        });
         self.granted_static_ability_presence
             .borrow_mut()
             .insert(key, has_ability);
@@ -671,26 +703,14 @@ impl<'a> DerivedGameView<'a> {
         result
     }
 
-    fn active_grants(&self) -> Vec<Grant> {
+    fn active_grants(&self) -> Rc<Vec<Grant>> {
         if let Some(cached) = self.active_grants.borrow().as_ref() {
-            return cached.clone();
+            return Rc::clone(cached);
         }
 
-        let grants = self.game.grant_registry.active_grants(self.game);
-        *self.active_grants.borrow_mut() = Some(grants.clone());
+        let grants = Rc::new(self.game.grant_registry.active_grants(self.game));
+        *self.active_grants.borrow_mut() = Some(Rc::clone(&grants));
         grants
-    }
-
-    fn active_grants_for_card(&self, card_id: ObjectId, zone: Zone, player: PlayerId) -> Vec<Grant> {
-        let Some(card) = self.game.object(card_id) else {
-            return Vec::new();
-        };
-        let ctx = self.game.filter_context_for(player, None);
-        self.active_grants()
-            .into_iter()
-            .filter(|grant| grant.player == player && grant.zone == zone)
-            .filter(|grant| grant_applies_to_card(grant, card_id, card, &ctx, self.game))
-            .collect()
     }
 
     fn permanent_has_spell_cost_modifiers(&self, permanent_id: ObjectId) -> bool {
@@ -712,7 +732,10 @@ impl<'a> DerivedGameView<'a> {
             .any(|static_ability| static_ability.activated_ability_cost_reduction().is_some())
     }
 
-    pub(crate) fn requires_battlefield_characteristic_calculation(&self, object_id: ObjectId) -> bool {
+    pub(crate) fn requires_battlefield_characteristic_calculation(
+        &self,
+        object_id: ObjectId,
+    ) -> bool {
         let Some(object) = self.game.object(object_id) else {
             return true;
         };
@@ -745,7 +768,7 @@ fn grant_applies_to_card(
 
 fn materialize_derived_alternative_cast(
     card: &crate::object::Object,
-    spec: DerivedAlternativeCast,
+    spec: &DerivedAlternativeCast,
 ) -> Option<crate::alternative_cast::AlternativeCastingMethod> {
     spec.materialize_for(card)
 }
@@ -759,13 +782,15 @@ mod tests {
 
     #[test]
     fn battlefield_characteristic_scope_uses_locked_targets_for_resolution_effects() {
-        let effects = vec![ContinuousEffect::from_resolution(
-            ObjectId::from_raw(10),
-            PlayerId::from_index(0),
-            vec![ObjectId::from_raw(2)],
-            Modification::SetTextBox(TextBoxOverlay::new(String::new(), Vec::new())),
-        )
-        .until(Until::EndOfTurn)];
+        let effects = vec![
+            ContinuousEffect::from_resolution(
+                ObjectId::from_raw(10),
+                PlayerId::from_index(0),
+                vec![ObjectId::from_raw(2)],
+                Modification::SetTextBox(TextBoxOverlay::new(String::new(), Vec::new())),
+            )
+            .until(Until::EndOfTurn),
+        ];
 
         assert_eq!(
             battlefield_characteristic_scope(&effects),
