@@ -448,7 +448,7 @@ fn compute_object_targets_with_view(
         filter_ctx = filter_ctx.with_tagged_objects(tagged);
     }
 
-    let candidate_ids = view.candidate_ids_for_filter(filter);
+    let candidate_ids = view.candidate_ids_for_filter_with_context(filter, &filter_ctx);
     for object_id in candidate_ids {
         let Some(object) = game.object(object_id) else {
             continue;

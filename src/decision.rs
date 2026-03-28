@@ -30,11 +30,20 @@ pub struct ComputeLegalActionsPerfMetrics {
     pub prewarm_ms: f64,
     pub lands_ms: f64,
     pub hand_casts_ms: f64,
+    pub hand_casts_timing_ms: f64,
+    pub hand_casts_restrictions_ms: f64,
+    pub hand_casts_target_legality_ms: f64,
+    pub hand_casts_cost_adjustment_ms: f64,
+    pub hand_casts_affordability_ms: f64,
     pub hand_special_actions_ms: f64,
     pub graveyard_casts_ms: f64,
     pub exile_casts_ms: f64,
     pub hand_alternatives_ms: f64,
     pub battlefield_abilities_ms: f64,
+    pub battlefield_ability_precheck_ms: f64,
+    pub battlefield_ability_target_legality_ms: f64,
+    pub battlefield_ability_cost_build_ms: f64,
+    pub battlefield_ability_affordability_ms: f64,
     pub non_battlefield_abilities_ms: f64,
     pub total_ms: f64,
     pub action_count: usize,
@@ -366,6 +375,167 @@ pub struct KeywordPaymentContribution {
     pub effect: AlternativePaymentEffect,
 }
 
+#[derive(Clone, Copy)]
+struct HandCardSummary<'a> {
+    card_id: ObjectId,
+    card: &'a crate::object::Object,
+    is_land: bool,
+    has_normal_mana_cost: bool,
+    has_foretell: bool,
+    has_suspend: bool,
+    has_plot: bool,
+    can_cast_face_down: bool,
+    has_split_other_half: bool,
+    has_fuse: bool,
+    has_hand_native_alternatives: bool,
+}
+
+impl<'a> HandCardSummary<'a> {
+    fn has_any_hand_special_action(&self) -> bool {
+        self.has_foretell || self.has_suspend || self.has_plot
+    }
+
+    fn has_any_alternative_branch(&self, has_hand_grants: bool) -> bool {
+        self.can_cast_face_down
+            || self.has_split_other_half
+            || self.has_fuse
+            || self.has_hand_native_alternatives
+            || has_hand_grants
+    }
+}
+
+fn spell_has_intrinsic_cost_adjustments(spell: &crate::object::Object) -> bool {
+    use crate::ability::AbilityKind;
+
+    spell.abilities.iter().any(|ability| {
+        let AbilityKind::Static(static_ability) = &ability.kind else {
+            return false;
+        };
+        static_ability.has_affinity()
+            || static_ability.has_delve()
+            || static_ability.has_convoke()
+            || static_ability.has_improvise()
+            || static_ability.this_spell_cost_reduction().is_some()
+            || static_ability.this_spell_cost_reduction_mana_cost().is_some()
+            || static_ability.cost_reduction().is_some()
+            || static_ability.cost_increase().is_some()
+            || static_ability.cost_reduction_mana_cost().is_some()
+            || static_ability.cost_increase_mana_cost().is_some()
+            || static_ability.cost_increase_per_additional_target().is_some()
+    })
+}
+
+#[derive(Clone, Default)]
+struct CastLegalityPerfBreakdown {
+    timing_ms: f64,
+    restrictions_ms: f64,
+    target_legality_ms: f64,
+    cost_adjustment_ms: f64,
+    affordability_ms: f64,
+}
+
+struct CastLegalityContext<'a> {
+    game: &'a GameState,
+    player: PlayerId,
+    view: &'a DerivedGameView<'a>,
+    has_battlefield_spell_cost_modifiers: bool,
+    has_temporary_spell_cost_reductions: bool,
+    perf: RefCell<CastLegalityPerfBreakdown>,
+}
+
+impl<'a> CastLegalityContext<'a> {
+    fn new(game: &'a GameState, player: PlayerId, view: &'a DerivedGameView<'a>) -> Self {
+        Self {
+            game,
+            player,
+            view,
+            has_battlefield_spell_cost_modifiers: view.has_battlefield_spell_cost_modifiers(),
+            has_temporary_spell_cost_reductions: game
+                .temporary_spell_cost_reductions
+                .iter()
+                .any(|effect| effect.player == player && !effect.is_expired(game.turn.turn_number)),
+            perf: RefCell::new(CastLegalityPerfBreakdown::default()),
+        }
+    }
+
+    fn snapshot_perf(&self) -> CastLegalityPerfBreakdown {
+        self.perf.borrow().clone()
+    }
+
+    fn add_timing_ms(&self, elapsed_ms: f64) {
+        self.perf.borrow_mut().timing_ms += elapsed_ms;
+    }
+
+    fn add_restrictions_ms(&self, elapsed_ms: f64) {
+        self.perf.borrow_mut().restrictions_ms += elapsed_ms;
+    }
+
+    fn add_target_legality_ms(&self, elapsed_ms: f64) {
+        self.perf.borrow_mut().target_legality_ms += elapsed_ms;
+    }
+
+    fn add_cost_adjustment_ms(&self, elapsed_ms: f64) {
+        self.perf.borrow_mut().cost_adjustment_ms += elapsed_ms;
+    }
+
+    fn add_affordability_ms(&self, elapsed_ms: f64) {
+        self.perf.borrow_mut().affordability_ms += elapsed_ms;
+    }
+
+    fn spell_cost_needs_adjustment(&self, has_intrinsic_cost_adjustments: bool) -> bool {
+        has_intrinsic_cost_adjustments
+            || self.has_battlefield_spell_cost_modifiers
+            || self.has_temporary_spell_cost_reductions
+            || self.game.minimum_total_spell_mana_payment().is_some()
+    }
+}
+
+#[derive(Clone, Default)]
+struct BattlefieldAbilityPerfBreakdown {
+    precheck_ms: f64,
+    target_legality_ms: f64,
+    cost_build_ms: f64,
+    affordability_ms: f64,
+}
+
+pub(crate) struct BattlefieldAbilityContext {
+    perf: RefCell<BattlefieldAbilityPerfBreakdown>,
+    has_activation_cost_modifiers: bool,
+}
+
+impl BattlefieldAbilityContext {
+    pub(crate) fn new(view: &DerivedGameView<'_>) -> Self {
+        Self {
+            perf: RefCell::new(BattlefieldAbilityPerfBreakdown::default()),
+            has_activation_cost_modifiers: view.has_activated_ability_cost_modifiers(),
+        }
+    }
+
+    fn snapshot_perf(&self) -> BattlefieldAbilityPerfBreakdown {
+        self.perf.borrow().clone()
+    }
+
+    pub(crate) fn add_precheck_ms(&self, elapsed_ms: f64) {
+        self.perf.borrow_mut().precheck_ms += elapsed_ms;
+    }
+
+    pub(crate) fn add_target_legality_ms(&self, elapsed_ms: f64) {
+        self.perf.borrow_mut().target_legality_ms += elapsed_ms;
+    }
+
+    pub(crate) fn add_cost_build_ms(&self, elapsed_ms: f64) {
+        self.perf.borrow_mut().cost_build_ms += elapsed_ms;
+    }
+
+    pub(crate) fn add_affordability_ms(&self, elapsed_ms: f64) {
+        self.perf.borrow_mut().affordability_ms += elapsed_ms;
+    }
+
+    pub(crate) fn has_activation_cost_modifiers(&self) -> bool {
+        self.has_activation_cost_modifiers
+    }
+}
+
 // ============================================================================
 // Game Progress
 // ============================================================================
@@ -637,18 +807,21 @@ fn append_cast_actions_from_zone_for_card(
     card: &crate::object::Object,
     from_zone: Zone,
     view: &DerivedGameView<'_>,
+    zone_has_active_grants: bool,
 ) {
     append_native_alternative_cast_actions_for_card_from_zone(
         game, actions, player, card_id, card, from_zone, view,
     );
-    if from_zone == Zone::Graveyard {
+    if zone_has_active_grants && from_zone == Zone::Graveyard {
         append_graveyard_granted_alternative_cast_actions_for_card(
             game, actions, player, card_id, card, view,
         );
     }
-    append_granted_play_from_actions_for_card(
-        game, actions, player, card_id, card, from_zone, view,
-    );
+    if zone_has_active_grants {
+        append_granted_play_from_actions_for_card(
+            game, actions, player, card_id, card, from_zone, view,
+        );
+    }
 }
 
 /// Compute legal actions for a player who has priority.
@@ -675,6 +848,53 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
     );
     let mut hand_cards_with_normal_cast = HashSet::new();
     let view = DerivedGameView::new(game);
+    let cast_ctx = CastLegalityContext::new(game, player, &view);
+    let battlefield_ability_ctx = BattlefieldAbilityContext::new(&view);
+    let hand_has_active_grants = view.player_has_active_grants_for_zone(player, Zone::Hand);
+    let graveyard_has_active_grants =
+        view.player_has_active_grants_for_zone(player, Zone::Graveyard);
+    let exile_has_active_grants = view.player_has_active_grants_for_zone(player, Zone::Exile);
+    let hand_summaries: Vec<_> = hand
+        .iter()
+        .filter_map(|&card_id| {
+            let card = game.object(card_id)?;
+            let mut has_foretell = false;
+            let mut has_suspend = false;
+            let mut has_plot = false;
+            let mut has_hand_native_alternatives = false;
+            for method in &card.alternative_casts {
+                match method {
+                    crate::alternative_cast::AlternativeCastingMethod::Foretell { .. } => {
+                        has_foretell = true;
+                    }
+                    crate::alternative_cast::AlternativeCastingMethod::Suspend { .. } => {
+                        has_suspend = true;
+                    }
+                    crate::alternative_cast::AlternativeCastingMethod::Plot { .. } => {
+                        has_plot = true;
+                    }
+                    _ => {}
+                }
+                if method.cast_from_zone() == Zone::Hand {
+                    has_hand_native_alternatives = true;
+                }
+            }
+            Some(HandCardSummary {
+                card_id,
+                card,
+                is_land: card.is_land(),
+                has_normal_mana_cost: card.mana_cost.is_some(),
+                has_foretell,
+                has_suspend,
+                has_plot,
+                can_cast_face_down: spell_can_be_cast_face_down(card),
+                has_split_other_half: card.linked_face_layout
+                    == crate::card::LinkedFaceLayout::Split,
+                has_fuse: card.has_fuse,
+                has_hand_native_alternatives,
+            })
+        })
+        .collect();
     let controlled_battlefield: Vec<_> = game
         .battlefield
         .iter()
@@ -693,17 +913,22 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
 
     // Check for lands that can be played - validate each using special_actions::can_perform_check
     let lands_started_at = PerfTimer::start();
-    for &card_id in hand {
-        if let Some(card) = game.object(card_id)
-            && card.is_land()
-        {
-            let action = SpecialAction::PlayLand { card_id };
+    for summary in &hand_summaries {
+        if summary.is_land {
+            let action = SpecialAction::PlayLand {
+                card_id: summary.card_id,
+            };
             if can_perform_check(&action, game, player).is_ok() {
-                actions.push(LegalAction::PlayLand { land_id: card_id });
+                actions.push(LegalAction::PlayLand {
+                    land_id: summary.card_id,
+                });
             }
         }
     }
     for &card_id in &game.exile {
+        if !exile_has_active_grants {
+            break;
+        }
         let Some(card) = game.object(card_id) else {
             continue;
         };
@@ -725,47 +950,52 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
 
     // Check for spells that can be cast from hand
     let hand_casts_started_at = PerfTimer::start();
-    for &card_id in hand {
-        if let Some(card) = game.object(card_id) {
-            if card.is_land() {
-                continue;
-            }
-            let can_cast_normal =
-                can_cast_spell_with_view(game, player, card, &CastingMethod::Normal, &view);
-            if can_cast_normal {
-                actions.push(LegalAction::CastSpell {
-                    spell_id: card_id,
-                    from_zone: Zone::Hand,
-                    casting_method: CastingMethod::Normal,
-                });
-                hand_cards_with_normal_cast.insert(card_id);
-            }
+    for summary in &hand_summaries {
+        if summary.is_land || !summary.has_normal_mana_cost {
+            continue;
+        }
+        let can_cast_normal =
+            can_cast_spell_with_context(summary.card, &CastingMethod::Normal, &cast_ctx);
+        if can_cast_normal {
+            actions.push(LegalAction::CastSpell {
+                spell_id: summary.card_id,
+                from_zone: Zone::Hand,
+                casting_method: CastingMethod::Normal,
+            });
+            hand_cards_with_normal_cast.insert(summary.card_id);
         }
     }
     perf.hand_casts_ms = hand_casts_started_at.elapsed_ms();
 
     // Check for foretell special actions from hand.
     let hand_special_actions_started_at = PerfTimer::start();
-    for &card_id in hand {
-        let action = SpecialAction::Foretell { card_id };
-        if can_perform_check(&action, game, player).is_ok() {
-            actions.push(LegalAction::SpecialAction(action));
+    for summary in &hand_summaries {
+        if !summary.has_any_hand_special_action() {
+            continue;
         }
-    }
-
-    // Check for suspend special actions from hand.
-    for &card_id in hand {
-        let action = SpecialAction::Suspend { card_id };
-        if can_perform_check(&action, game, player).is_ok() {
-            actions.push(LegalAction::SpecialAction(action));
+        if summary.has_foretell {
+            let action = SpecialAction::Foretell {
+                card_id: summary.card_id,
+            };
+            if can_perform_check(&action, game, player).is_ok() {
+                actions.push(LegalAction::SpecialAction(action));
+            }
         }
-    }
-
-    // Check for plot special actions from hand.
-    for &card_id in hand {
-        let action = SpecialAction::Plot { card_id };
-        if can_perform_check(&action, game, player).is_ok() {
-            actions.push(LegalAction::SpecialAction(action));
+        if summary.has_suspend {
+            let action = SpecialAction::Suspend {
+                card_id: summary.card_id,
+            };
+            if can_perform_check(&action, game, player).is_ok() {
+                actions.push(LegalAction::SpecialAction(action));
+            }
+        }
+        if summary.has_plot {
+            let action = SpecialAction::Plot {
+                card_id: summary.card_id,
+            };
+            if can_perform_check(&action, game, player).is_ok() {
+                actions.push(LegalAction::SpecialAction(action));
+            }
         }
     }
     perf.hand_special_actions_ms = hand_special_actions_started_at.elapsed_ms();
@@ -783,6 +1013,7 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
                 card,
                 Zone::Graveyard,
                 &view,
+                graveyard_has_active_grants,
             );
         }
     }
@@ -802,6 +1033,7 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
             card,
             Zone::Exile,
             &view,
+            exile_has_active_grants,
         );
     }
     perf.exile_casts_ms = exile_casts_started_at.elapsed_ms();
@@ -810,66 +1042,69 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
     // Only add these if the Normal method is NOT available for this spell.
     // When both are available, the game will prompt for method selection via ChooseCastingMethod.
     let hand_alternatives_started_at = PerfTimer::start();
-    for &card_id in hand {
-        if let Some(card) = game.object(card_id) {
-            // Only add alternative casts if Normal is not available
-            if !hand_cards_with_normal_cast.contains(&card_id) {
-                if card.is_land() {
-                    continue;
-                }
-                if can_cast_spell_with_view(game, player, card, &CastingMethod::FaceDown, &view) {
+    for summary in &hand_summaries {
+        // Only add alternative casts if Normal is not available
+        if hand_cards_with_normal_cast.contains(&summary.card_id)
+            || summary.is_land
+            || !summary.has_any_alternative_branch(hand_has_active_grants)
+        {
+            continue;
+        }
+        if summary.can_cast_face_down
+            && can_cast_spell_with_context(summary.card, &CastingMethod::FaceDown, &cast_ctx)
+        {
+            actions.push(LegalAction::CastSpell {
+                spell_id: summary.card_id,
+                from_zone: Zone::Hand,
+                casting_method: CastingMethod::FaceDown,
+            });
+        }
+        if summary.has_split_other_half
+            && can_cast_spell_with_context(summary.card, &CastingMethod::SplitOtherHalf, &cast_ctx)
+        {
+            actions.push(LegalAction::CastSpell {
+                spell_id: summary.card_id,
+                from_zone: Zone::Hand,
+                casting_method: CastingMethod::SplitOtherHalf,
+            });
+        }
+        if summary.has_split_other_half
+            && summary.has_fuse
+            && can_cast_spell_with_context(summary.card, &CastingMethod::Fuse, &cast_ctx)
+        {
+            actions.push(LegalAction::CastSpell {
+                spell_id: summary.card_id,
+                from_zone: Zone::Hand,
+                casting_method: CastingMethod::Fuse,
+            });
+        }
+        if summary.has_hand_native_alternatives {
+            for (idx, alt_cast) in summary.card.alternative_casts.iter().enumerate() {
+                if alt_cast.cast_from_zone() == Zone::Hand
+                    && can_cast_with_alternative_from_hand_with_context(
+                        summary.card,
+                        summary.card_id,
+                        alt_cast,
+                        &cast_ctx,
+                    )
+                {
                     actions.push(LegalAction::CastSpell {
-                        spell_id: card_id,
+                        spell_id: summary.card_id,
                         from_zone: Zone::Hand,
-                        casting_method: CastingMethod::FaceDown,
+                        casting_method: CastingMethod::Alternative(idx),
                     });
                 }
-                if card.linked_face_layout == crate::card::LinkedFaceLayout::Split {
-                    if can_cast_spell_with_view(
-                        game,
-                        player,
-                        card,
-                        &CastingMethod::SplitOtherHalf,
-                        &view,
-                    ) {
-                        actions.push(LegalAction::CastSpell {
-                            spell_id: card_id,
-                            from_zone: Zone::Hand,
-                            casting_method: CastingMethod::SplitOtherHalf,
-                        });
-                    }
-                    if card.has_fuse
-                        && can_cast_spell_with_view(game, player, card, &CastingMethod::Fuse, &view)
-                    {
-                        actions.push(LegalAction::CastSpell {
-                            spell_id: card_id,
-                            from_zone: Zone::Hand,
-                            casting_method: CastingMethod::Fuse,
-                        });
-                    }
-                }
-                for (idx, alt_cast) in card.alternative_casts.iter().enumerate() {
-                    if alt_cast.cast_from_zone() == Zone::Hand
-                        && can_cast_with_alternative_from_hand_with_view(
-                            game, player, card, card_id, alt_cast, &view,
-                        )
-                    {
-                        actions.push(LegalAction::CastSpell {
-                            spell_id: card_id,
-                            from_zone: Zone::Hand,
-                            casting_method: CastingMethod::Alternative(idx),
-                        });
-                    }
-                }
-                append_hand_granted_alternative_cast_actions_for_card(
-                    game,
-                    &mut actions,
-                    player,
-                    card_id,
-                    card,
-                    &view,
-                );
             }
+        }
+        if hand_has_active_grants {
+            append_hand_granted_alternative_cast_actions_for_card(
+                game,
+                &mut actions,
+                player,
+                summary.card_id,
+                summary.card,
+                &view,
+            );
         }
     }
     perf.hand_alternatives_ms = hand_alternatives_started_at.elapsed_ms();
@@ -896,46 +1131,62 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
 
             let cached_abilities = view.abilities_rc(perm_id);
             let abilities = cached_abilities.as_deref().unwrap_or(&perm.abilities);
-            for (i, ability) in abilities.iter().enumerate() {
-                if !ability.functions_in(&perm.zone) {
+            let Some(ability_summary) = view.ability_index_summary(perm_id) else {
+                continue;
+            };
+            if !ability_summary.has_any_relevant_abilities() {
+                continue;
+            }
+
+            for &ability_index in ability_summary.mana_ability_indices() {
+                let Some(ability) = abilities.get(ability_index) else {
                     continue;
-                }
-
-                // Check mana abilities
-                if ability.is_mana_ability() {
-                    if simple_mana_analysis
-                        .activatable_indices_for(perm_id)
-                        .contains(&i)
-                    {
-                        actions.push(LegalAction::ActivateManaAbility {
-                            source: perm_id,
-                            ability_index: i,
-                        });
-                    } else if can_activate_mana_ability_check_with_view(
-                        game, player, perm_id, i, ability, &view,
-                    )
-                    .is_ok()
-                    {
-                        actions.push(LegalAction::ActivateManaAbility {
-                            source: perm_id,
-                            ability_index: i,
-                        });
-                    }
-                }
-
-                // Check activated abilities (non-mana)
-                if let crate::ability::AbilityKind::Activated(activated) = &ability.kind
-                    && !activated.is_mana_ability()
+                };
+                if simple_mana_analysis
+                    .activatable_indices_for(perm_id)
+                    .contains(&ability_index)
                 {
-                    if !game.can_activate_non_mana_abilities(player) {
+                    actions.push(LegalAction::ActivateManaAbility {
+                        source: perm_id,
+                        ability_index,
+                    });
+                } else if can_activate_mana_ability_check_with_view(
+                    game,
+                    player,
+                    perm_id,
+                    ability_index,
+                    ability,
+                    &view,
+                    Some(&battlefield_ability_ctx),
+                )
+                .is_ok()
+                {
+                    actions.push(LegalAction::ActivateManaAbility {
+                        source: perm_id,
+                        ability_index,
+                    });
+                }
+            }
+
+            if game.can_activate_non_mana_abilities(player) {
+                for &ability_index in ability_summary.activated_ability_indices() {
+                    let Some(ability) = abilities.get(ability_index) else {
                         continue;
-                    }
+                    };
+                    let crate::ability::AbilityKind::Activated(activated) = &ability.kind else {
+                        continue;
+                    };
                     if can_activate_ability_with_restrictions_with_view(
-                        game, perm_id, i, activated, &view,
+                        game,
+                        perm_id,
+                        ability_index,
+                        activated,
+                        &view,
+                        Some(&battlefield_ability_ctx),
                     ) {
                         actions.push(LegalAction::ActivateAbility {
                             source: perm_id,
-                            ability_index: i,
+                            ability_index,
                         });
                     }
                 }
@@ -943,6 +1194,11 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
         }
     }
     perf.battlefield_abilities_ms = battlefield_abilities_started_at.elapsed_ms();
+    let battlefield_breakdown = battlefield_ability_ctx.snapshot_perf();
+    perf.battlefield_ability_precheck_ms = battlefield_breakdown.precheck_ms;
+    perf.battlefield_ability_target_legality_ms = battlefield_breakdown.target_legality_ms;
+    perf.battlefield_ability_cost_build_ms = battlefield_breakdown.cost_build_ms;
+    perf.battlefield_ability_affordability_ms = battlefield_breakdown.affordability_ms;
 
     // Check for activated abilities that function outside the battlefield
     // (e.g., Unearth from graveyard, Cycling/Ninjutsu from hand).
@@ -975,37 +1231,46 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
             continue;
         }
 
-        for (i, ability) in obj.abilities.iter().enumerate() {
-            if !ability.functions_in(&obj.zone) {
-                continue;
-            }
+        let Some(ability_summary) = view.ability_index_summary(source_id) else {
+            continue;
+        };
+        if !ability_summary.has_any_relevant_abilities() {
+            continue;
+        }
 
+        for &ability_index in ability_summary.mana_ability_indices() {
             // Mana abilities from non-battlefield zones (e.g. Simian Spirit Guide)
-            if ability.is_mana_ability() {
-                let action = SpecialAction::ActivateManaAbility {
-                    permanent_id: source_id,
-                    ability_index: i,
-                };
-                if can_perform_check(&action, game, player).is_ok() {
-                    actions.push(LegalAction::ActivateManaAbility {
-                        source: source_id,
-                        ability_index: i,
-                    });
-                }
+            let action = SpecialAction::ActivateManaAbility {
+                permanent_id: source_id,
+                ability_index,
+            };
+            if can_perform_check(&action, game, player).is_ok() {
+                actions.push(LegalAction::ActivateManaAbility {
+                    source: source_id,
+                    ability_index,
+                });
             }
+        }
 
-            if let crate::ability::AbilityKind::Activated(activated) = &ability.kind
-                && !activated.is_mana_ability()
-            {
-                if !game.can_activate_non_mana_abilities(player) {
+        if game.can_activate_non_mana_abilities(player) {
+            for &ability_index in ability_summary.activated_ability_indices() {
+                let Some(ability) = obj.abilities.get(ability_index) else {
                     continue;
-                }
+                };
+                let crate::ability::AbilityKind::Activated(activated) = &ability.kind else {
+                    continue;
+                };
                 if can_activate_ability_with_restrictions_with_view(
-                    game, source_id, i, activated, &view,
+                    game,
+                    source_id,
+                    ability_index,
+                    activated,
+                    &view,
+                    None,
                 ) {
                     actions.push(LegalAction::ActivateAbility {
                         source: source_id,
-                        ability_index: i,
+                        ability_index,
                     });
                 }
             }
@@ -1013,6 +1278,12 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
     }
 
     perf.non_battlefield_abilities_ms = non_battlefield_abilities_started_at.elapsed_ms();
+    let cast_breakdown = cast_ctx.snapshot_perf();
+    perf.hand_casts_timing_ms = cast_breakdown.timing_ms;
+    perf.hand_casts_restrictions_ms = cast_breakdown.restrictions_ms;
+    perf.hand_casts_target_legality_ms = cast_breakdown.target_legality_ms;
+    perf.hand_casts_cost_adjustment_ms = cast_breakdown.cost_adjustment_ms;
+    perf.hand_casts_affordability_ms = cast_breakdown.affordability_ms;
     perf.total_ms = total_started_at.elapsed_ms();
     perf.action_count = actions.len();
     store_compute_legal_actions_perf(perf);
@@ -1028,16 +1299,125 @@ pub(crate) fn can_activate_ability_with_restrictions(
     activated: &crate::ability::ActivatedAbility,
 ) -> bool {
     let view = DerivedGameView::new(game);
-    can_activate_ability_with_restrictions_with_view(game, source, ability_index, activated, &view)
+    can_activate_ability_with_restrictions_with_view(
+        game,
+        source,
+        ability_index,
+        activated,
+        &view,
+        None,
+    )
 }
 
-pub(crate) fn can_activate_ability_with_restrictions_with_view(
+fn activated_ability_has_legal_targets_with_view(
+    activated: &crate::ability::ActivatedAbility,
+    controller: PlayerId,
+    source: ObjectId,
+    view: &DerivedGameView<'_>,
+) -> bool {
+    let effects = activated.effects.flattened_default_effects();
+    effects.is_empty() || view.spell_has_legal_targets(effects, controller, Some(source), None)
+}
+
+fn activation_timing_allows(
+    game: &GameState,
+    controller: PlayerId,
+    source: ObjectId,
+    ability_index: usize,
+    timing: &crate::ability::ActivationTiming,
+) -> bool {
+    match timing {
+        crate::ability::ActivationTiming::AnyTime => true,
+        crate::ability::ActivationTiming::DuringCombat => matches!(game.turn.phase, Phase::Combat),
+        crate::ability::ActivationTiming::SorcerySpeed => {
+            game.turn.active_player == controller
+                && matches!(game.turn.phase, Phase::FirstMain | Phase::NextMain)
+                && game.stack_is_empty()
+        }
+        crate::ability::ActivationTiming::OncePerTurn => {
+            game.ability_activation_count_this_turn(source, ability_index) == 0
+        }
+        crate::ability::ActivationTiming::DuringYourTurn => game.turn.active_player == controller,
+        crate::ability::ActivationTiming::DuringOpponentsTurn => {
+            game.turn.active_player != controller
+        }
+    }
+}
+
+fn activation_cost_has_valid_sacrifice_target_with_view(
+    game: &GameState,
+    controller: PlayerId,
+    source: ObjectId,
+    filter: &crate::filter::ObjectFilter,
+    view: &DerivedGameView<'_>,
+) -> bool {
+    let mut battlefield_filter = filter.clone();
+    if battlefield_filter.zone.is_none() {
+        battlefield_filter.zone = Some(Zone::Battlefield);
+    }
+    let opponents = game
+        .turn_order
+        .iter()
+        .copied()
+        .filter(|player| *player != controller)
+        .collect::<Vec<_>>();
+    let filter_ctx = crate::filter::FilterContext::new(controller)
+        .with_source(source)
+        .with_active_player(game.turn.active_player)
+        .with_opponents(opponents);
+
+    view.candidate_ids_for_filter_with_context(&battlefield_filter, &filter_ctx)
+        .into_iter()
+        .filter_map(|object_id| game.object(object_id))
+        .any(|object| battlefield_filter.matches(object, &filter_ctx, game))
+}
+
+fn activation_cost_component_precheck_with_view(
+    game: &GameState,
+    controller: PlayerId,
+    source: ObjectId,
+    cost: &crate::costs::Cost,
+    reason: crate::costs::PaymentReason,
+    view: &DerivedGameView<'_>,
+) -> bool {
+    if let Some(amount) = cost.life_amount() {
+        return game.can_pay_life_with_reason(controller, amount, reason);
+    }
+
+    if let Some(filter) = cost.sacrifice_filter() {
+        return activation_cost_has_valid_sacrifice_target_with_view(
+            game, controller, source, filter, view,
+        );
+    }
+
+    if let Some((count, card_type)) = cost.discard_details() {
+        let Some(player) = game.player(controller) else {
+            return false;
+        };
+        let available = player
+            .hand
+            .iter()
+            .filter_map(|object_id| game.object(*object_id))
+            .filter(|object| {
+                card_type.is_none_or(|required_type| object.card_types.contains(&required_type))
+            })
+            .count();
+        return available >= count as usize;
+    }
+
+    game.validate_cost_for_payment_reason(controller, source, cost, reason)
+        .is_ok()
+}
+
+fn activation_precheck_with_view(
     game: &GameState,
     source: ObjectId,
     ability_index: usize,
     activated: &crate::ability::ActivatedAbility,
     view: &DerivedGameView<'_>,
-) -> bool {
+    perf_ctx: Option<&BattlefieldAbilityContext>,
+) -> Option<PlayerId> {
+    let started_at = PerfTimer::start();
     let controller = game
         .object(source)
         .map(|obj| obj.controller)
@@ -1057,18 +1437,39 @@ pub(crate) fn can_activate_ability_with_restrictions_with_view(
     if let Some(obj) = game.object(source)
         && !game.can_activate_non_mana_abilities(obj.controller)
     {
-        return false;
+        if let Some(perf_ctx) = perf_ctx {
+            perf_ctx.add_precheck_ms(started_at.elapsed_ms());
+        }
+        return None;
     }
 
-    // Object-scoped "can't activate" restrictions (Collector Ouphe / Damping Matrix style).
     if !game.can_activate_abilities_of(source) {
-        return false;
+        if let Some(perf_ctx) = perf_ctx {
+            perf_ctx.add_precheck_ms(started_at.elapsed_ms());
+        }
+        return None;
     }
     if activated.has_tap_cost() && !game.can_activate_tap_abilities_of(source) {
-        return false;
+        if let Some(perf_ctx) = perf_ctx {
+            perf_ctx.add_precheck_ms(started_at.elapsed_ms());
+        }
+        return None;
     }
     if activated.has_tap_cost() && game.is_tapped(source) {
-        return false;
+        if let Some(perf_ctx) = perf_ctx {
+            perf_ctx.add_precheck_ms(started_at.elapsed_ms());
+        }
+        return None;
+    }
+    if activated.has_tap_cost()
+        && view.object_has_card_type(source, crate::types::CardType::Creature)
+        && game.is_summoning_sick(source)
+        && !view.object_has_static_ability_id(source, crate::static_abilities::StaticAbilityId::Haste)
+    {
+        if let Some(perf_ctx) = perf_ctx {
+            perf_ctx.add_precheck_ms(started_at.elapsed_ms());
+        }
+        return None;
     }
     if activated
         .mana_cost
@@ -1077,59 +1478,68 @@ pub(crate) fn can_activate_ability_with_restrictions_with_view(
         .any(|cost| cost.requires_untap())
         && !game.is_tapped(source)
     {
-        return false;
+        if let Some(perf_ctx) = perf_ctx {
+            perf_ctx.add_precheck_ms(started_at.elapsed_ms());
+        }
+        return None;
     }
     if !activated.is_mana_ability() && !game.can_activate_non_mana_abilities_of(source) {
-        return false;
+        if let Some(perf_ctx) = perf_ctx {
+            perf_ctx.add_precheck_ms(started_at.elapsed_ms());
+        }
+        return None;
     }
 
-    if !crate::condition_eval::evaluate_condition_external(
-        game,
-        &crate::effect::Condition::ActivationTiming(activated.timing.clone()),
-        &eval_ctx,
-    ) {
-        return false;
+    if !activation_timing_allows(game, controller, source, ability_index, &activated.timing) {
+        if let Some(perf_ctx) = perf_ctx {
+            perf_ctx.add_precheck_ms(started_at.elapsed_ms());
+        }
+        return None;
     }
 
-    let max_activations_per_turn = activated.max_activations_per_turn();
-    let activation_count = game.ability_activation_count_this_turn(source, ability_index);
-    if let Some(max_activations) = max_activations_per_turn
-        && activation_count >= max_activations
+    if !matches!(
+        activated.timing,
+        crate::ability::ActivationTiming::OncePerTurn
+    ) && let Some(max_activations) = activated.max_activations_per_turn()
+        && game.ability_activation_count_this_turn(source, ability_index) >= max_activations
     {
-        return false;
+        if let Some(perf_ctx) = perf_ctx {
+            perf_ctx.add_precheck_ms(started_at.elapsed_ms());
+        }
+        return None;
     }
 
     if let Some(condition) = &activated.activation_condition
         && !crate::condition_eval::evaluate_condition_external(game, condition, &eval_ctx)
     {
-        return false;
+        if let Some(perf_ctx) = perf_ctx {
+            perf_ctx.add_precheck_ms(started_at.elapsed_ms());
+        }
+        return None;
     }
 
-    let total_cost = calculate_effective_activation_total_cost_with_view(
-        game,
-        controller,
-        source,
-        &activated.mana_cost,
-        &[],
-        view,
-    );
-    for cost in total_cost.costs() {
-        if game
-            .validate_cost_for_payment_reason(
-                controller,
-                source,
-                cost,
-                crate::costs::PaymentReason::ActivateAbility,
-            )
-            .is_err()
-        {
-            return false;
+    for cost in activated.mana_cost.costs() {
+        if !activation_cost_component_precheck_with_view(
+            game,
+            controller,
+            source,
+            cost,
+            crate::costs::PaymentReason::ActivateAbility,
+            view,
+        ) {
+            if let Some(perf_ctx) = perf_ctx {
+                perf_ctx.add_precheck_ms(started_at.elapsed_ms());
+            }
+            return None;
         }
     }
 
     for condition in &activated.activation_restrictions {
         if !crate::condition_eval::evaluate_condition_external(game, condition, &eval_ctx) {
-            return false;
+            if let Some(perf_ctx) = perf_ctx {
+                perf_ctx.add_precheck_ms(started_at.elapsed_ms());
+            }
+            return None;
         }
     }
 
@@ -1142,6 +1552,72 @@ pub(crate) fn can_activate_ability_with_restrictions_with_view(
                 choose_mode.modes.len(),
                 choose_mode.disallow_previously_chosen_modes_this_turn,
             )
+        {
+            if let Some(perf_ctx) = perf_ctx {
+                perf_ctx.add_precheck_ms(started_at.elapsed_ms());
+            }
+            return None;
+        }
+    }
+
+    if let Some(perf_ctx) = perf_ctx {
+        perf_ctx.add_precheck_ms(started_at.elapsed_ms());
+    }
+    Some(eval_ctx.controller)
+}
+
+pub(crate) fn can_activate_ability_with_restrictions_with_view(
+    game: &GameState,
+    source: ObjectId,
+    ability_index: usize,
+    activated: &crate::ability::ActivatedAbility,
+    view: &DerivedGameView<'_>,
+    perf_ctx: Option<&BattlefieldAbilityContext>,
+) -> bool {
+    let Some(controller) =
+        activation_precheck_with_view(game, source, ability_index, activated, view, perf_ctx)
+    else {
+        return false;
+    };
+
+    let target_started_at = PerfTimer::start();
+    let has_legal_targets =
+        activated_ability_has_legal_targets_with_view(activated, controller, source, view);
+    if let Some(perf_ctx) = perf_ctx {
+        perf_ctx.add_target_legality_ms(target_started_at.elapsed_ms());
+    }
+    if !has_legal_targets {
+        return false;
+    }
+
+    let cost_started_at = PerfTimer::start();
+    let has_activation_cost_modifiers = perf_ctx
+        .map(BattlefieldAbilityContext::has_activation_cost_modifiers)
+        .unwrap_or_else(|| view.has_activated_ability_cost_modifiers());
+    let total_cost = if !has_activation_cost_modifiers {
+        activated.mana_cost.clone()
+    } else {
+        calculate_effective_activation_total_cost_with_view(
+            game,
+            controller,
+            source,
+            &activated.mana_cost,
+            &[],
+            view,
+        )
+    };
+    if let Some(perf_ctx) = perf_ctx {
+        perf_ctx.add_cost_build_ms(cost_started_at.elapsed_ms());
+    }
+    for cost in total_cost.costs() {
+        if game
+            .validate_cost_for_payment_reason(
+                controller,
+                source,
+                cost,
+                crate::costs::PaymentReason::ActivateAbility,
+            )
+            .is_err()
         {
             return false;
         }
@@ -1966,13 +2442,41 @@ pub fn can_begin_to_cast_from_hand_for_suspend(
     spell_cast_restrictions_allow(game, player, spell)
 }
 
-fn can_cast_spell_with_view(
-    game: &GameState,
-    player: PlayerId,
+fn spell_has_legal_targets_for_cast_with_view(
     spell: &crate::object::Object,
-    casting_method: &CastingMethod,
+    spell_id: ObjectId,
+    effects_override: Option<&[crate::effect::Effect]>,
+    player: PlayerId,
     view: &DerivedGameView<'_>,
 ) -> bool {
+    let synthesized_aura_effects = if effects_override.is_none()
+        && spell.spell_effect.is_none()
+        && spell.subtypes.contains(&crate::types::Subtype::Aura)
+    {
+        spell
+            .aura_attach_filter
+            .clone()
+            .map(|filter| vec![crate::effect::Effect::attach_to(filter.target_spec())])
+    } else {
+        None
+    };
+    let effects = effects_override.unwrap_or_else(|| {
+        synthesized_aura_effects
+            .as_deref()
+            .or(spell.spell_effect.as_deref())
+            .unwrap_or(&[])
+    });
+    effects.is_empty() || view.spell_has_legal_targets(effects, player, Some(spell_id), None)
+}
+
+fn can_cast_spell_with_context(
+    spell: &crate::object::Object,
+    casting_method: &CastingMethod,
+    ctx: &CastLegalityContext<'_>,
+) -> bool {
+    let game = ctx.game;
+    let player = ctx.player;
+    let view = ctx.view;
     let split_view = match casting_method {
         CastingMethod::FaceDown => {
             if !spell_can_be_cast_face_down(spell) {
@@ -1992,30 +2496,32 @@ fn can_cast_spell_with_view(
     };
     let spell_for_checks = split_view.as_ref().unwrap_or(spell);
 
-    // Check "can't cast [matching] spells" style restrictions.
+    let restrictions_started_at = PerfTimer::start();
     if violates_any_cant_cast_restriction(game, player, spell_for_checks) {
+        ctx.add_restrictions_ms(restrictions_started_at.elapsed_ms());
         return false;
     }
-
-    // Check "can't cast more than one [matching] spell each turn" style restrictions.
     if violates_any_cast_limit(game, player, spell_for_checks) {
+        ctx.add_restrictions_ms(restrictions_started_at.elapsed_ms());
         return false;
     }
-
-    // Lands cannot be cast - they are played as a special action
     if spell_for_checks.is_land() {
+        ctx.add_restrictions_ms(restrictions_started_at.elapsed_ms());
         return false;
     }
-
-    if !has_valid_spell_timing_with_view(game, player, spell_for_checks, spell.id, view) {
-        return false;
-    }
-
     if !spell_cast_restrictions_allow(game, player, spell_for_checks) {
+        ctx.add_restrictions_ms(restrictions_started_at.elapsed_ms());
         return false;
     }
+    ctx.add_restrictions_ms(restrictions_started_at.elapsed_ms());
 
-    // Determine which mana cost to check based on casting method.
+    let timing_started_at = PerfTimer::start();
+    if !has_valid_spell_timing_with_view(game, player, spell_for_checks, spell.id, view) {
+        ctx.add_timing_ms(timing_started_at.elapsed_ms());
+        return false;
+    }
+    ctx.add_timing_ms(timing_started_at.elapsed_ms());
+
     let base_mana_cost = spell_mana_cost_for_cast(game, player, spell, casting_method, spell.zone);
     if base_mana_cost.is_none()
         && casting_method_requires_printed_mana_cost(game, player, spell, casting_method)
@@ -2023,20 +2529,39 @@ fn can_cast_spell_with_view(
         return false;
     }
 
-    // Check mana availability with cost reductions applied
-    if let Some(base_cost) = base_mana_cost.as_ref() {
-        // Calculate effective cost after applying cost reductions (Affinity, etc.)
-        let effective_cost = calculate_effective_mana_cost_with_view(
-            game,
-            player,
-            spell_for_checks,
-            base_cost,
-            view,
-        );
+    let target_started_at = PerfTimer::start();
+    let effects = split_view
+        .as_ref()
+        .and_then(|view| view.spell_effect.as_deref())
+        .or(spell.spell_effect.as_deref());
+    let has_legal_targets =
+        spell_has_legal_targets_for_cast_with_view(spell_for_checks, spell.id, effects, player, view);
+    ctx.add_target_legality_ms(target_started_at.elapsed_ms());
+    if !has_legal_targets {
+        return false;
+    }
 
-        // For X spells, check if they can pay at least X=0
-        // For non-X spells, check if they can pay the full cost (x_value=0)
-        // Use potential mana (current pool + untapped mana sources)
+    if let Some(base_cost) = base_mana_cost.as_ref() {
+        let cost_started_at = PerfTimer::start();
+        let effective_cost = if ctx
+            .spell_cost_needs_adjustment(spell_has_intrinsic_cost_adjustments(spell_for_checks))
+        {
+            calculate_effective_mana_cost_with_view(game, player, spell_for_checks, base_cost, view)
+        } else {
+            apply_minimum_spell_total_mana(
+                game,
+                &apply_payment_reason_mana_adjustments(
+                    game,
+                    player,
+                    Some(spell.id),
+                    base_cost,
+                    crate::costs::PaymentReason::CastSpell,
+                ),
+            )
+        };
+        ctx.add_cost_adjustment_ms(cost_started_at.elapsed_ms());
+
+        let affordability_started_at = PerfTimer::start();
         if !view.can_potentially_pay_with_reason(
             player,
             Some(spell.id),
@@ -2044,21 +2569,24 @@ fn can_cast_spell_with_view(
             0,
             crate::costs::PaymentReason::CastSpell,
         ) {
+            ctx.add_affordability_ms(affordability_started_at.elapsed_ms());
             return false;
         }
-    }
-
-    // Check if legal targets exist for targeted spells
-    let effects = split_view
-        .as_ref()
-        .and_then(|view| view.spell_effect.as_deref())
-        .or(spell.spell_effect.as_deref())
-        .unwrap_or(&[]);
-    if !view.spell_has_legal_targets(effects, player, Some(spell.id), None) {
-        return false;
+        ctx.add_affordability_ms(affordability_started_at.elapsed_ms());
     }
 
     true
+}
+
+fn can_cast_spell_with_view(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    casting_method: &CastingMethod,
+    view: &DerivedGameView<'_>,
+) -> bool {
+    let ctx = CastLegalityContext::new(game, player, view);
+    can_cast_spell_with_context(spell, casting_method, &ctx)
 }
 
 // ============================================================================
@@ -2089,63 +2617,71 @@ fn can_cast_with_cost_with_view(
     requirements: &AdditionalCastRequirements,
     view: &DerivedGameView<'_>,
 ) -> bool {
+    let ctx = CastLegalityContext::new(game, player, view);
+    can_cast_with_cost_with_context(
+        spell,
+        spell_id,
+        mana_cost,
+        effects_override,
+        requirements,
+        &ctx,
+    )
+}
+
+fn can_cast_with_cost_with_context(
+    spell: &crate::object::Object,
+    spell_id: crate::ids::ObjectId,
+    mana_cost: Option<&crate::mana::ManaCost>,
+    effects_override: Option<&[crate::effect::Effect]>,
+    requirements: &AdditionalCastRequirements,
+    ctx: &CastLegalityContext<'_>,
+) -> bool {
     use crate::types::CardType;
+    let game = ctx.game;
+    let player = ctx.player;
+    let view = ctx.view;
 
-    // Check "can't cast [matching] spells" style restrictions.
+    let restrictions_started_at = PerfTimer::start();
     if violates_any_cant_cast_restriction(game, player, spell) {
+        ctx.add_restrictions_ms(restrictions_started_at.elapsed_ms());
         return false;
     }
-
-    // Check "can't cast more than one [matching] spell each turn" restrictions.
     if violates_any_cast_limit(game, player, spell) {
+        ctx.add_restrictions_ms(restrictions_started_at.elapsed_ms());
         return false;
     }
-
-    // Lands cannot be cast
     if spell.is_land() {
+        ctx.add_restrictions_ms(restrictions_started_at.elapsed_ms());
         return false;
     }
-
-    // Check type restriction if required
     if requirements.must_be_instant_or_sorcery
         && !spell.has_card_type(CardType::Instant)
         && !spell.has_card_type(CardType::Sorcery)
     {
+        ctx.add_restrictions_ms(restrictions_started_at.elapsed_ms());
         return false;
     }
-
-    if !has_valid_spell_timing_with_view(game, player, spell, spell_id, view) {
-        return false;
-    }
-
     if !spell_cast_restrictions_allow(game, player, spell) {
+        ctx.add_restrictions_ms(restrictions_started_at.elapsed_ms());
+        return false;
+    }
+    ctx.add_restrictions_ms(restrictions_started_at.elapsed_ms());
+
+    let timing_started_at = PerfTimer::start();
+    if !has_valid_spell_timing_with_view(game, player, spell, spell_id, view) {
+        ctx.add_timing_ms(timing_started_at.elapsed_ms());
+        return false;
+    }
+    ctx.add_timing_ms(timing_started_at.elapsed_ms());
+
+    let target_started_at = PerfTimer::start();
+    let has_legal_targets =
+        spell_has_legal_targets_for_cast_with_view(spell, spell_id, effects_override, player, view);
+    ctx.add_target_legality_ms(target_started_at.elapsed_ms());
+    if !has_legal_targets {
         return false;
     }
 
-    // Check mana availability (using potential mana from untapped sources)
-    if let Some(cost) = mana_cost {
-        let adjusted = apply_minimum_spell_total_mana(
-            game,
-            &apply_payment_reason_mana_adjustments(
-                game,
-                player,
-                Some(spell_id),
-                cost,
-                crate::costs::PaymentReason::CastSpell,
-            ),
-        );
-        if !view.can_potentially_pay_with_reason(
-            player,
-            Some(spell_id),
-            &adjusted,
-            0,
-            crate::costs::PaymentReason::CastSpell,
-        ) {
-            return false;
-        }
-    }
-
-    // Check additional cost requirements
     let Some(player_obj) = game.player(player) else {
         return false;
     };
@@ -2179,27 +2715,37 @@ fn can_cast_with_cost_with_view(
         }
     }
 
-    // Check if legal targets exist. Aura spells often only carry an attach filter
-    // on their definition, so synthesize the cast-time attach effect when needed.
-    let synthesized_aura_effects = if effects_override.is_none()
-        && spell.spell_effect.is_none()
-        && spell.subtypes.contains(&crate::types::Subtype::Aura)
-    {
-        spell
-            .aura_attach_filter
-            .clone()
-            .map(|filter| vec![crate::effect::Effect::attach_to(filter.target_spec())])
-    } else {
-        None
-    };
-    let effects = effects_override.unwrap_or_else(|| {
-        synthesized_aura_effects
-            .as_deref()
-            .or(spell.spell_effect.as_deref())
-            .unwrap_or(&[])
-    });
-    if !view.spell_has_legal_targets(effects, player, Some(spell_id), None) {
-        return false;
+    if let Some(cost) = mana_cost {
+        let cost_started_at = PerfTimer::start();
+        let adjusted = if ctx.spell_cost_needs_adjustment(spell_has_intrinsic_cost_adjustments(spell))
+        {
+            calculate_effective_mana_cost_with_view(game, player, spell, cost, view)
+        } else {
+            apply_minimum_spell_total_mana(
+                game,
+                &apply_payment_reason_mana_adjustments(
+                    game,
+                    player,
+                    Some(spell_id),
+                    cost,
+                    crate::costs::PaymentReason::CastSpell,
+                ),
+            )
+        };
+        ctx.add_cost_adjustment_ms(cost_started_at.elapsed_ms());
+
+        let affordability_started_at = PerfTimer::start();
+        if !view.can_potentially_pay_with_reason(
+            player,
+            Some(spell_id),
+            &adjusted,
+            0,
+            crate::costs::PaymentReason::CastSpell,
+        ) {
+            ctx.add_affordability_ms(affordability_started_at.elapsed_ms());
+            return false;
+        }
+        ctx.add_affordability_ms(affordability_started_at.elapsed_ms());
     }
 
     true
@@ -2287,7 +2833,18 @@ fn can_cast_with_alternative_with_view(
     method: &crate::alternative_cast::AlternativeCastingMethod,
     view: &DerivedGameView<'_>,
 ) -> bool {
+    let ctx = CastLegalityContext::new(game, player, view);
+    can_cast_with_alternative_with_context(spell, method, &ctx)
+}
+
+fn can_cast_with_alternative_with_context(
+    spell: &crate::object::Object,
+    method: &crate::alternative_cast::AlternativeCastingMethod,
+    ctx: &CastLegalityContext<'_>,
+) -> bool {
     use crate::alternative_cast::AlternativeCastingMethod;
+    let game = ctx.game;
+    let player = ctx.player;
 
     let disturbed_view = match method {
         AlternativeCastingMethod::Disturb { .. } => match spell_view_for_disturb_cast(spell) {
@@ -2333,15 +2890,13 @@ fn can_cast_with_alternative_with_view(
     }
 
     let requirements = build_requirements_for_method(method);
-    if !can_cast_with_cost_with_view(
-        game,
-        player,
+    if !can_cast_with_cost_with_context(
         spell_for_checks,
         spell.id,
         mana_cost,
         effects_override,
         &requirements,
-        view,
+        ctx,
     ) {
         return false;
     }
@@ -2383,7 +2938,19 @@ fn can_cast_with_alternative_from_hand_with_view(
     method: &crate::alternative_cast::AlternativeCastingMethod,
     view: &DerivedGameView<'_>,
 ) -> bool {
+    let ctx = CastLegalityContext::new(game, player, view);
+    can_cast_with_alternative_from_hand_with_context(spell, spell_id, method, &ctx)
+}
+
+fn can_cast_with_alternative_from_hand_with_context(
+    spell: &crate::object::Object,
+    spell_id: crate::ids::ObjectId,
+    method: &crate::alternative_cast::AlternativeCastingMethod,
+    ctx: &CastLegalityContext<'_>,
+) -> bool {
     use crate::alternative_cast::AlternativeCastingMethod;
+    let game = ctx.game;
+    let player = ctx.player;
 
     match method {
         method if method.is_composed_cost() => {
@@ -2399,15 +2966,13 @@ fn can_cast_with_alternative_from_hand_with_view(
                 return false;
             }
 
-            if !can_cast_with_cost_with_view(
-                game,
-                player,
+            if !can_cast_with_cost_with_context(
                 spell,
                 spell_id,
                 method.mana_cost().or(Some(&zero_cost)),
                 None,
                 &AdditionalCastRequirements::default(),
-                view,
+                ctx,
             ) {
                 return false;
             }
@@ -2432,15 +2997,13 @@ fn can_cast_with_alternative_from_hand_with_view(
                 return false;
             };
 
-            if !can_cast_with_cost_with_view(
-                game,
-                player,
+            if !can_cast_with_cost_with_context(
                 spell,
                 spell_id,
                 Some(cost),
                 None,
                 &AdditionalCastRequirements::default(),
-                view,
+                ctx,
             ) {
                 return false;
             }
@@ -2467,7 +3030,7 @@ fn can_cast_with_alternative_from_hand_with_view(
                     player,
                     Some(spell_id),
                     None,
-                    view,
+                    ctx.view,
                 );
             !bestow_targets.is_empty()
         }
@@ -2479,18 +3042,16 @@ fn can_cast_with_alternative_from_hand_with_view(
                 return false;
             }
             // Check if player can pay the trap cost (usually {0})
-            can_cast_with_cost_with_view(
-                game,
-                player,
+            can_cast_with_cost_with_context(
                 spell,
                 spell_id,
                 Some(cost),
                 None,
                 &AdditionalCastRequirements::default(),
-                view,
+                ctx,
             )
         }
-        _ => can_cast_with_alternative_with_view(game, player, spell, method, view),
+        _ => can_cast_with_alternative_with_context(spell, method, ctx),
     }
 }
 
@@ -3465,91 +4026,95 @@ pub(crate) fn compute_potential_mana_with_view(
 
         let cached_abilities = view.abilities_rc(perm_id);
         let abilities = cached_abilities.as_deref().unwrap_or(&perm.abilities);
-        for (ability_idx, ability) in abilities.iter().enumerate() {
-            if let AbilityKind::Activated(mana_ability) = &ability.kind
-                && mana_ability.is_mana_ability()
-            {
-                if mana_ability.has_tap_cost() && !game.can_activate_tap_abilities_of(perm_id) {
-                    continue;
-                }
-                // Do a simple non-recursive check for whether this mana ability
-                // could be activated. We intentionally skip mana cost checks here
-                // to avoid infinite recursion (mana ability with mana cost would
-                // call compute_potential_mana again).
-                let simple_taplike_costs_only = mana_ability.mana_cost.costs().iter().all(|cost| {
-                    cost.processing_mode().is_mana_payment()
-                        || cost.requires_tap()
-                        || cost.requires_untap()
+        let Some(ability_summary) = view.ability_index_summary(perm_id) else {
+            continue;
+        };
+        for &ability_idx in ability_summary.mana_ability_indices() {
+            let Some(ability) = abilities.get(ability_idx) else {
+                continue;
+            };
+            let AbilityKind::Activated(mana_ability) = &ability.kind else {
+                continue;
+            };
+            if !mana_ability.is_mana_ability() {
+                continue;
+            }
+            if mana_ability.has_tap_cost() && !game.can_activate_tap_abilities_of(perm_id) {
+                continue;
+            }
+            // Do a simple non-recursive check for whether this mana ability
+            // could be activated. We intentionally skip mana cost checks here
+            // to avoid infinite recursion (mana ability with mana cost would
+            // call compute_potential_mana again).
+            let simple_taplike_costs_only = mana_ability.mana_cost.costs().iter().all(|cost| {
+                cost.processing_mode().is_mana_payment()
+                    || cost.requires_tap()
+                    || cost.requires_untap()
+            });
+
+            let can_activate = if simple_taplike_costs_only {
+                mana_ability.mana_cost.costs().iter().all(|cost| {
+                    if cost.requires_tap() {
+                        return !game.is_tapped(perm_id)
+                            && (!view
+                                .object_has_card_type(perm_id, crate::types::CardType::Creature)
+                                || !game.is_summoning_sick(perm_id)
+                                || view.object_has_static_ability_id(
+                                    perm_id,
+                                    crate::static_abilities::StaticAbilityId::Haste,
+                                ));
+                    }
+                    if cost.requires_untap() {
+                        return game.is_tapped(perm_id);
+                    }
+                    true
+                })
+            } else {
+                let ctx = CostCheckContext::new(perm_id, player)
+                    .with_reason(crate::costs::PaymentReason::ActivateManaAbility);
+                mana_ability.mana_cost.costs().iter().all(|cost| {
+                    // Skip mana cost check to avoid recursion - we only check
+                    // non-mana costs like tap, life, sacrifice
+                    if cost.processing_mode().is_mana_payment() {
+                        // Assume mana costs could be paid from other sources
+                        // This is an approximation but prevents infinite recursion
+                        true
+                    } else {
+                        if game
+                            .validate_cost_for_payment_reason(player, perm_id, cost, ctx.reason)
+                            .is_err()
+                        {
+                            return false;
+                        }
+                        can_pay_with_check_context(&*cost.0, game, &ctx).is_ok()
+                    }
+                })
+            };
+
+            // Also check activation condition if present
+            let condition_met = mana_ability
+                .activation_condition
+                .as_ref()
+                .is_none_or(|cond| {
+                    check_mana_ability_condition_for_potential(
+                        game,
+                        player,
+                        perm_id,
+                        ability_idx,
+                        cond,
+                    )
                 });
 
-                let can_activate = if simple_taplike_costs_only {
-                    mana_ability.mana_cost.costs().iter().all(|cost| {
-                        if cost.requires_tap() {
-                            return !game.is_tapped(perm_id)
-                                && (!view.object_has_card_type(
-                                    perm_id,
-                                    crate::types::CardType::Creature,
-                                ) || !game.is_summoning_sick(perm_id)
-                                    || view.object_has_static_ability_id(
-                                        perm_id,
-                                        crate::static_abilities::StaticAbilityId::Haste,
-                                    ));
-                        }
-                        if cost.requires_untap() {
-                            return game.is_tapped(perm_id);
-                        }
-                        true
-                    })
-                } else {
-                    let ctx = CostCheckContext::new(perm_id, player)
-                        .with_reason(crate::costs::PaymentReason::ActivateManaAbility);
-                    mana_ability.mana_cost.costs().iter().all(|cost| {
-                        // Skip mana cost check to avoid recursion - we only check
-                        // non-mana costs like tap, life, sacrifice
-                        if cost.processing_mode().is_mana_payment() {
-                            // Assume mana costs could be paid from other sources
-                            // This is an approximation but prevents infinite recursion
-                            true
-                        } else {
-                            if game
-                                .validate_cost_for_payment_reason(player, perm_id, cost, ctx.reason)
-                                .is_err()
-                            {
-                                return false;
-                            }
-                            can_pay_with_check_context(&*cost.0, game, &ctx).is_ok()
-                        }
-                    })
-                };
-
-                // Also check activation condition if present
-                let condition_met = mana_ability
-                    .activation_condition
-                    .as_ref()
-                    .is_none_or(|cond| {
-                        check_mana_ability_condition_for_potential(
-                            game,
-                            player,
-                            perm_id,
-                            ability_idx,
-                            cond,
-                        )
-                    });
-
-                if can_activate && condition_met {
-                    // Add the mana this ability could produce, preserving
-                    // multiplicity for effects like Black Lotus.
-                    for mana in inferred_potential_mana_symbols_for_ability(
-                        game,
-                        perm_id,
-                        player,
-                        mana_ability,
-                    ) {
-                        potential.add(mana, 1);
-                    }
-                    // Only count one mana ability per permanent (can only tap once)
-                    break;
+            if can_activate && condition_met {
+                // Add the mana this ability could produce, preserving
+                // multiplicity for effects like Black Lotus.
+                for mana in
+                    inferred_potential_mana_symbols_for_ability(game, perm_id, player, mana_ability)
+                {
+                    potential.add(mana, 1);
                 }
+                // Only count one mana ability per permanent (can only tap once)
+                break;
             }
         }
     }

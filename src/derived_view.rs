@@ -29,9 +29,16 @@ pub(crate) struct DerivedGameView<'a> {
     use_game_characteristics_cache: bool,
     characteristics: RefCell<HashMap<ObjectId, Option<CalculatedCharacteristics>>>,
     abilities_cache: RefCell<HashMap<ObjectId, Rc<Vec<Ability>>>>,
+    ability_index_summary_cache: RefCell<HashMap<ObjectId, Rc<AbilityIndexSummary>>>,
     static_abilities_cache:
         RefCell<HashMap<ObjectId, Rc<Vec<crate::static_abilities::StaticAbility>>>>,
     zone_candidates: RefCell<HashMap<Option<Zone>, Vec<ObjectId>>>,
+    battlefield_creatures: RefCell<Option<Vec<ObjectId>>>,
+    battlefield_noncreatures: RefCell<Option<Vec<ObjectId>>>,
+    battlefield_controlled: RefCell<HashMap<PlayerId, Vec<ObjectId>>>,
+    battlefield_controlled_creatures: RefCell<HashMap<PlayerId, Vec<ObjectId>>>,
+    battlefield_opponents: RefCell<HashMap<PlayerId, Vec<ObjectId>>>,
+    battlefield_opponent_creatures: RefCell<HashMap<PlayerId, Vec<ObjectId>>>,
     potential_mana: RefCell<HashMap<PlayerId, ManaPool>>,
     granted_alternative_casts:
         RefCell<HashMap<(ObjectId, Zone, PlayerId), Vec<GrantedAlternativeCast>>>,
@@ -48,8 +55,11 @@ pub(crate) struct DerivedGameView<'a> {
         >,
     >,
     active_grants: RefCell<Option<Rc<Vec<Grant>>>>,
+    active_grant_zone_presence: RefCell<HashMap<(PlayerId, Zone), bool>>,
     battlefield_spell_cost_modifier_sources: RefCell<Option<Vec<ObjectId>>>,
     activated_ability_cost_modifier_sources: RefCell<Option<Vec<ObjectId>>>,
+    has_battlefield_spell_cost_modifiers: RefCell<Option<bool>>,
+    has_activated_ability_cost_modifiers: RefCell<Option<bool>>,
     simple_battlefield_mana_analysis: RefCell<HashMap<PlayerId, Rc<SimpleBattlefieldManaAnalysis>>>,
     spell_target_legality: RefCell<HashMap<SpellTargetLegalityKey, bool>>,
 }
@@ -80,6 +90,26 @@ impl SimpleBattlefieldManaAnalysis {
         self.first_output_by_permanent
             .get(&object_id)
             .map(Vec::as_slice)
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct AbilityIndexSummary {
+    mana_ability_indices: Vec<usize>,
+    activated_ability_indices: Vec<usize>,
+}
+
+impl AbilityIndexSummary {
+    pub(crate) fn mana_ability_indices(&self) -> &[usize] {
+        &self.mana_ability_indices
+    }
+
+    pub(crate) fn activated_ability_indices(&self) -> &[usize] {
+        &self.activated_ability_indices
+    }
+
+    pub(crate) fn has_any_relevant_abilities(&self) -> bool {
+        !self.mana_ability_indices.is_empty() || !self.activated_ability_indices.is_empty()
     }
 }
 
@@ -176,15 +206,25 @@ impl<'a> DerivedGameView<'a> {
             use_game_characteristics_cache: true,
             characteristics: RefCell::new(HashMap::new()),
             abilities_cache: RefCell::new(HashMap::new()),
+            ability_index_summary_cache: RefCell::new(HashMap::new()),
             static_abilities_cache: RefCell::new(HashMap::new()),
             zone_candidates: RefCell::new(HashMap::new()),
+            battlefield_creatures: RefCell::new(None),
+            battlefield_noncreatures: RefCell::new(None),
+            battlefield_controlled: RefCell::new(HashMap::new()),
+            battlefield_controlled_creatures: RefCell::new(HashMap::new()),
+            battlefield_opponents: RefCell::new(HashMap::new()),
+            battlefield_opponent_creatures: RefCell::new(HashMap::new()),
             potential_mana: RefCell::new(HashMap::new()),
             granted_alternative_casts: RefCell::new(HashMap::new()),
             granted_play_from: RefCell::new(HashMap::new()),
             granted_static_ability_presence: RefCell::new(HashMap::new()),
             active_grants: RefCell::new(None),
+            active_grant_zone_presence: RefCell::new(HashMap::new()),
             battlefield_spell_cost_modifier_sources: RefCell::new(None),
             activated_ability_cost_modifier_sources: RefCell::new(None),
+            has_battlefield_spell_cost_modifiers: RefCell::new(None),
+            has_activated_ability_cost_modifiers: RefCell::new(None),
             simple_battlefield_mana_analysis: RefCell::new(HashMap::new()),
             spell_target_legality: RefCell::new(HashMap::new()),
         }
@@ -198,15 +238,25 @@ impl<'a> DerivedGameView<'a> {
             use_game_characteristics_cache: false,
             characteristics: RefCell::new(HashMap::new()),
             abilities_cache: RefCell::new(HashMap::new()),
+            ability_index_summary_cache: RefCell::new(HashMap::new()),
             static_abilities_cache: RefCell::new(HashMap::new()),
             zone_candidates: RefCell::new(HashMap::new()),
+            battlefield_creatures: RefCell::new(None),
+            battlefield_noncreatures: RefCell::new(None),
+            battlefield_controlled: RefCell::new(HashMap::new()),
+            battlefield_controlled_creatures: RefCell::new(HashMap::new()),
+            battlefield_opponents: RefCell::new(HashMap::new()),
+            battlefield_opponent_creatures: RefCell::new(HashMap::new()),
             potential_mana: RefCell::new(HashMap::new()),
             granted_alternative_casts: RefCell::new(HashMap::new()),
             granted_play_from: RefCell::new(HashMap::new()),
             granted_static_ability_presence: RefCell::new(HashMap::new()),
             active_grants: RefCell::new(None),
+            active_grant_zone_presence: RefCell::new(HashMap::new()),
             battlefield_spell_cost_modifier_sources: RefCell::new(None),
             activated_ability_cost_modifier_sources: RefCell::new(None),
+            has_battlefield_spell_cost_modifiers: RefCell::new(None),
+            has_activated_ability_cost_modifiers: RefCell::new(None),
             simple_battlefield_mana_analysis: RefCell::new(HashMap::new()),
             spell_target_legality: RefCell::new(HashMap::new()),
         }
@@ -315,6 +365,38 @@ impl<'a> DerivedGameView<'a> {
     pub(crate) fn abilities(&self, object_id: ObjectId) -> Option<Vec<crate::ability::Ability>> {
         self.abilities_rc(object_id)
             .map(|abilities| abilities.as_ref().clone())
+    }
+
+    pub(crate) fn ability_index_summary(
+        &self,
+        object_id: ObjectId,
+    ) -> Option<Rc<AbilityIndexSummary>> {
+        if let Some(cached) = self.ability_index_summary_cache.borrow().get(&object_id) {
+            return Some(Rc::clone(cached));
+        }
+
+        let object = self.game.object(object_id)?;
+        let cached_abilities = self.abilities_rc(object_id);
+        let abilities = cached_abilities.as_deref().unwrap_or(&object.abilities);
+        let mut summary = AbilityIndexSummary::default();
+        for (ability_index, ability) in abilities.iter().enumerate() {
+            if !ability.functions_in(&object.zone) {
+                continue;
+            }
+            if ability.is_mana_ability() {
+                summary.mana_ability_indices.push(ability_index);
+            }
+            if matches!(&ability.kind, AbilityKind::Activated(activated) if !activated.is_mana_ability())
+            {
+                summary.activated_ability_indices.push(ability_index);
+            }
+        }
+
+        let summary = Rc::new(summary);
+        self.ability_index_summary_cache
+            .borrow_mut()
+            .insert(object_id, Rc::clone(&summary));
+        Some(summary)
     }
 
     pub(crate) fn static_abilities_rc(
@@ -426,6 +508,18 @@ impl<'a> DerivedGameView<'a> {
         }
     }
 
+    pub(crate) fn candidate_ids_for_filter_with_context(
+        &self,
+        filter: &ObjectFilter,
+        filter_ctx: &crate::filter::FilterContext,
+    ) -> Vec<ObjectId> {
+        if let Some(ids) = self.narrow_battlefield_candidates(filter, filter_ctx) {
+            return ids;
+        }
+
+        self.candidate_ids_for_filter(filter)
+    }
+
     pub(crate) fn potential_mana(&self, player: PlayerId) -> ManaPool {
         if let Some(cached) = self.potential_mana.borrow().get(&player) {
             return cached.clone();
@@ -485,10 +579,16 @@ impl<'a> DerivedGameView<'a> {
             let abilities = self
                 .abilities_rc(perm_id)
                 .unwrap_or_else(|| Rc::new(perm.abilities.clone()));
+            let Some(ability_summary) = self.ability_index_summary(perm_id) else {
+                continue;
+            };
             let mut activatable_indices = Vec::new();
             let mut first_output = None;
 
-            for (ability_index, ability) in abilities.iter().enumerate() {
+            for &ability_index in ability_summary.mana_ability_indices() {
+                let Some(ability) = abilities.get(ability_index) else {
+                    continue;
+                };
                 let Some(output) = crate::decision::simple_battlefield_mana_ability_output(
                     self.game,
                     player,
@@ -634,6 +734,22 @@ impl<'a> DerivedGameView<'a> {
         has_ability
     }
 
+    pub(crate) fn player_has_active_grants_for_zone(&self, player: PlayerId, zone: Zone) -> bool {
+        let key = (player, zone);
+        if let Some(cached) = self.active_grant_zone_presence.borrow().get(&key) {
+            return *cached;
+        }
+
+        let has_grants = self
+            .active_grants()
+            .iter()
+            .any(|grant| grant.player == player && grant.zone == zone);
+        self.active_grant_zone_presence
+            .borrow_mut()
+            .insert(key, has_grants);
+        has_grants
+    }
+
     pub(crate) fn battlefield_spell_cost_modifier_sources(&self) -> Vec<ObjectId> {
         if let Some(cached) = self
             .battlefield_spell_cost_modifier_sources
@@ -650,8 +766,24 @@ impl<'a> DerivedGameView<'a> {
             .copied()
             .filter(|&perm_id| self.permanent_has_spell_cost_modifiers(perm_id))
             .collect();
+        *self.has_battlefield_spell_cost_modifiers.borrow_mut() = Some(!sources.is_empty());
         *self.battlefield_spell_cost_modifier_sources.borrow_mut() = Some(sources.clone());
         sources
+    }
+
+    pub(crate) fn has_battlefield_spell_cost_modifiers(&self) -> bool {
+        if let Some(cached) = *self.has_battlefield_spell_cost_modifiers.borrow() {
+            return cached;
+        }
+
+        let has_modifiers = self
+            .game
+            .battlefield
+            .iter()
+            .copied()
+            .any(|perm_id| self.permanent_has_spell_cost_modifiers(perm_id));
+        *self.has_battlefield_spell_cost_modifiers.borrow_mut() = Some(has_modifiers);
+        has_modifiers
     }
 
     pub(crate) fn activated_ability_cost_modifier_sources(&self) -> Vec<ObjectId> {
@@ -670,8 +802,24 @@ impl<'a> DerivedGameView<'a> {
             .copied()
             .filter(|&perm_id| self.permanent_has_activated_ability_cost_modifiers(perm_id))
             .collect();
+        *self.has_activated_ability_cost_modifiers.borrow_mut() = Some(!sources.is_empty());
         *self.activated_ability_cost_modifier_sources.borrow_mut() = Some(sources.clone());
         sources
+    }
+
+    pub(crate) fn has_activated_ability_cost_modifiers(&self) -> bool {
+        if let Some(cached) = *self.has_activated_ability_cost_modifiers.borrow() {
+            return cached;
+        }
+
+        let has_modifiers = self
+            .game
+            .battlefield
+            .iter()
+            .copied()
+            .any(|perm_id| self.permanent_has_activated_ability_cost_modifiers(perm_id));
+        *self.has_activated_ability_cost_modifiers.borrow_mut() = Some(has_modifiers);
+        has_modifiers
     }
 
     pub(crate) fn spell_has_legal_targets(
@@ -730,6 +878,174 @@ impl<'a> DerivedGameView<'a> {
             .unwrap_or_default()
             .iter()
             .any(|static_ability| static_ability.activated_ability_cost_reduction().is_some())
+    }
+
+    fn narrow_battlefield_candidates(
+        &self,
+        filter: &ObjectFilter,
+        filter_ctx: &crate::filter::FilterContext,
+    ) -> Option<Vec<ObjectId>> {
+        use crate::target::PlayerFilter;
+        use crate::types::CardType;
+
+        if filter.zone != Some(Zone::Battlefield) || !filter.any_of.is_empty() {
+            return None;
+        }
+
+        if let Some(id) = filter.specific {
+            return Some(vec![id]);
+        }
+
+        let uses_creature_subset = filter.card_types.contains(&CardType::Creature)
+            || filter.all_card_types.contains(&CardType::Creature);
+        let uses_noncreature_subset = !uses_creature_subset
+            && filter.excluded_card_types.contains(&CardType::Creature);
+
+        let base = if uses_creature_subset {
+            self.battlefield_creature_candidates()
+        } else if uses_noncreature_subset {
+            self.battlefield_noncreature_candidates()
+        } else {
+            self.candidate_ids_for_zone(Some(Zone::Battlefield))
+        };
+
+        match filter.controller.as_ref() {
+            Some(PlayerFilter::You) => filter_ctx.you.map(|player| {
+                if uses_creature_subset {
+                    self.battlefield_controlled_creature_candidates(player)
+                } else if !uses_noncreature_subset {
+                    self.battlefield_controlled_candidates(player)
+                } else {
+                    self.filter_candidates_by_controller(base, &[player])
+                }
+            }),
+            Some(PlayerFilter::Specific(player)) => Some(if uses_creature_subset {
+                self.battlefield_controlled_creature_candidates(*player)
+            } else if !uses_noncreature_subset {
+                self.battlefield_controlled_candidates(*player)
+            } else {
+                self.filter_candidates_by_controller(base, &[*player])
+            }),
+            Some(PlayerFilter::Opponent) | Some(PlayerFilter::NotYou) => filter_ctx.you.map(|player| {
+                if uses_creature_subset {
+                    self.battlefield_opponent_creature_candidates(player)
+                } else {
+                    self.battlefield_opponent_candidates(player)
+                }
+            }),
+            _ => Some(base),
+        }
+    }
+
+    fn battlefield_creature_candidates(&self) -> Vec<ObjectId> {
+        if let Some(cached) = self.battlefield_creatures.borrow().as_ref() {
+            return cached.clone();
+        }
+
+        let ids: Vec<_> = self
+            .game
+            .battlefield
+            .iter()
+            .copied()
+            .filter(|&id| self.object_has_card_type(id, CardType::Creature))
+            .collect();
+        *self.battlefield_creatures.borrow_mut() = Some(ids.clone());
+        ids
+    }
+
+    fn battlefield_noncreature_candidates(&self) -> Vec<ObjectId> {
+        if let Some(cached) = self.battlefield_noncreatures.borrow().as_ref() {
+            return cached.clone();
+        }
+
+        let ids: Vec<_> = self
+            .game
+            .battlefield
+            .iter()
+            .copied()
+            .filter(|&id| !self.object_has_card_type(id, CardType::Creature))
+            .collect();
+        *self.battlefield_noncreatures.borrow_mut() = Some(ids.clone());
+        ids
+    }
+
+    fn battlefield_controlled_candidates(&self, player: PlayerId) -> Vec<ObjectId> {
+        if let Some(cached) = self.battlefield_controlled.borrow().get(&player) {
+            return cached.clone();
+        }
+
+        let ids = self.filter_candidates_by_controller(
+            self.candidate_ids_for_zone(Some(Zone::Battlefield)),
+            &[player],
+        );
+        self.battlefield_controlled.borrow_mut().insert(player, ids.clone());
+        ids
+    }
+
+    fn battlefield_controlled_creature_candidates(&self, player: PlayerId) -> Vec<ObjectId> {
+        if let Some(cached) = self.battlefield_controlled_creatures.borrow().get(&player) {
+            return cached.clone();
+        }
+
+        let ids =
+            self.filter_candidates_by_controller(self.battlefield_creature_candidates(), &[player]);
+        self.battlefield_controlled_creatures
+            .borrow_mut()
+            .insert(player, ids.clone());
+        ids
+    }
+
+    fn battlefield_opponent_candidates(&self, player: PlayerId) -> Vec<ObjectId> {
+        if let Some(cached) = self.battlefield_opponents.borrow().get(&player) {
+            return cached.clone();
+        }
+
+        let ids: Vec<_> = self
+            .candidate_ids_for_zone(Some(Zone::Battlefield))
+            .into_iter()
+            .filter(|id| {
+                self.game
+                    .object(*id)
+                    .is_some_and(|object| object.controller != player)
+            })
+            .collect();
+        self.battlefield_opponents.borrow_mut().insert(player, ids.clone());
+        ids
+    }
+
+    fn battlefield_opponent_creature_candidates(&self, player: PlayerId) -> Vec<ObjectId> {
+        if let Some(cached) = self.battlefield_opponent_creatures.borrow().get(&player) {
+            return cached.clone();
+        }
+
+        let ids: Vec<_> = self
+            .battlefield_creature_candidates()
+            .into_iter()
+            .filter(|id| {
+                self.game
+                    .object(*id)
+                    .is_some_and(|object| object.controller != player)
+            })
+            .collect();
+        self.battlefield_opponent_creatures
+            .borrow_mut()
+            .insert(player, ids.clone());
+        ids
+    }
+
+    fn filter_candidates_by_controller(
+        &self,
+        candidates: Vec<ObjectId>,
+        controllers: &[PlayerId],
+    ) -> Vec<ObjectId> {
+        candidates
+            .into_iter()
+            .filter(|id| {
+                self.game
+                    .object(*id)
+                    .is_some_and(|object| controllers.contains(&object.controller))
+            })
+            .collect()
     }
 
     pub(crate) fn requires_battlefield_characteristic_calculation(

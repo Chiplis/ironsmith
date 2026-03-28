@@ -953,6 +953,7 @@ fn can_activate_mana_ability_check(
         ability_index,
         &ability,
         &view,
+        None,
     )
 }
 
@@ -963,6 +964,7 @@ pub(crate) fn can_activate_mana_ability_check_with_view(
     ability_index: usize,
     ability: &crate::ability::Ability,
     view: &crate::derived_view::DerivedGameView<'_>,
+    perf_ctx: Option<&crate::decision::BattlefieldAbilityContext>,
 ) -> Result<(), ActionError> {
     use crate::costs::{
         CostCheckContext, can_pay_with_check_context, can_potentially_pay_with_check_context,
@@ -976,15 +978,25 @@ pub(crate) fn can_activate_mana_ability_check_with_view(
         return Err(ActionError::InvalidTarget);
     }
 
+    let precheck_started_at = crate::perf::PerfTimer::start();
     if !game.can_activate_abilities_of(permanent_id) {
+        if let Some(perf_ctx) = perf_ctx {
+            perf_ctx.add_precheck_ms(precheck_started_at.elapsed_ms());
+        }
         return Err(ActionError::CantPayCost);
     }
 
     if !ability.is_mana_ability() {
+        if let Some(perf_ctx) = perf_ctx {
+            perf_ctx.add_precheck_ms(precheck_started_at.elapsed_ms());
+        }
         return Err(ActionError::NoSuchAbility);
     }
 
     if !ability.functions_in(&object.zone) {
+        if let Some(perf_ctx) = perf_ctx {
+            perf_ctx.add_precheck_ms(precheck_started_at.elapsed_ms());
+        }
         return Err(ActionError::WrongZone {
             expected: Zone::Battlefield,
             actual: object.zone,
@@ -995,10 +1007,16 @@ pub(crate) fn can_activate_mana_ability_check_with_view(
         return Err(ActionError::NoSuchAbility);
     };
     if !mana_ability.is_mana_ability() {
+        if let Some(perf_ctx) = perf_ctx {
+            perf_ctx.add_precheck_ms(precheck_started_at.elapsed_ms());
+        }
         return Err(ActionError::NoSuchAbility);
     }
 
     if mana_ability.has_tap_cost() && !game.can_activate_tap_abilities_of(permanent_id) {
+        if let Some(perf_ctx) = perf_ctx {
+            perf_ctx.add_precheck_ms(precheck_started_at.elapsed_ms());
+        }
         return Err(ActionError::CantPayCost);
     }
 
@@ -1011,6 +1029,9 @@ pub(crate) fn can_activate_mana_ability_check_with_view(
         for cost in mana_ability.mana_cost.costs() {
             if cost.requires_tap() {
                 if game.is_tapped(permanent_id) {
+                    if let Some(perf_ctx) = perf_ctx {
+                        perf_ctx.add_precheck_ms(precheck_started_at.elapsed_ms());
+                    }
                     return Err(ActionError::CantPayCost);
                 }
                 if view.object_has_card_type(permanent_id, CardType::Creature)
@@ -1020,10 +1041,16 @@ pub(crate) fn can_activate_mana_ability_check_with_view(
                         crate::static_abilities::StaticAbilityId::Haste,
                     )
                 {
+                    if let Some(perf_ctx) = perf_ctx {
+                        perf_ctx.add_precheck_ms(precheck_started_at.elapsed_ms());
+                    }
                     return Err(ActionError::SummoningSickness);
                 }
             }
             if cost.requires_untap() && !game.is_tapped(permanent_id) {
+                if let Some(perf_ctx) = perf_ctx {
+                    perf_ctx.add_precheck_ms(precheck_started_at.elapsed_ms());
+                }
                 return Err(ActionError::CantPayCost);
             }
         }
@@ -1031,15 +1058,27 @@ pub(crate) fn can_activate_mana_ability_check_with_view(
         if let Some(condition) = &mana_ability.activation_condition
             && !check_mana_ability_condition(game, player, permanent_id, ability_index, condition)
         {
+            if let Some(perf_ctx) = perf_ctx {
+                perf_ctx.add_precheck_ms(precheck_started_at.elapsed_ms());
+            }
             return Err(ActionError::CantPayCost);
         }
 
+        if let Some(perf_ctx) = perf_ctx {
+            perf_ctx.add_precheck_ms(precheck_started_at.elapsed_ms());
+        }
         return Ok(());
+    }
+    if let Some(perf_ctx) = perf_ctx {
+        perf_ctx.add_precheck_ms(precheck_started_at.elapsed_ms());
     }
 
     let ctx = CostCheckContext::new(permanent_id, player)
         .with_reason(crate::costs::PaymentReason::ActivateManaAbility);
-    let has_activation_cost_modifiers = !view.activated_ability_cost_modifier_sources().is_empty();
+    let has_activation_cost_modifiers = perf_ctx
+        .map(crate::decision::BattlefieldAbilityContext::has_activation_cost_modifiers)
+        .unwrap_or_else(|| view.has_activated_ability_cost_modifiers());
+    let cost_started_at = crate::perf::PerfTimer::start();
     let total_cost = if has_activation_cost_modifiers {
         crate::decision::calculate_effective_activation_total_cost_with_view(
             game,
@@ -1052,6 +1091,10 @@ pub(crate) fn can_activate_mana_ability_check_with_view(
     } else {
         mana_ability.mana_cost.clone()
     };
+    if let Some(perf_ctx) = perf_ctx {
+        perf_ctx.add_cost_build_ms(cost_started_at.elapsed_ms());
+    }
+    let affordability_started_at = crate::perf::PerfTimer::start();
     for cost in total_cost.costs() {
         game.validate_cost_for_payment_reason(player, permanent_id, cost, ctx.reason)
             .map_err(cost_error_to_action_error)?;
@@ -1073,6 +1116,9 @@ pub(crate) fn can_activate_mana_ability_check_with_view(
         } else {
             can_pay_with_check_context(&*cost.0, game, &ctx).map_err(cost_error_to_action_error)?;
         }
+    }
+    if let Some(perf_ctx) = perf_ctx {
+        perf_ctx.add_affordability_ms(affordability_started_at.elapsed_ms());
     }
 
     if let Some(condition) = &mana_ability.activation_condition

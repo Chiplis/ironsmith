@@ -14734,6 +14734,50 @@ fn test_valley_floodcaller_only_grants_to_controller() {
 }
 
 #[test]
+fn test_compute_legal_actions_respects_valley_floodcaller_flash_grant_on_opponents_turn() {
+    use crate::cards::definitions::valley_floodcaller;
+    use crate::decision::compute_legal_actions;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.active_player = bob;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(Step::DeclareBlockers);
+
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(crate::mana::ManaSymbol::Blue, 2);
+
+    let floodcaller_def = valley_floodcaller();
+    let _floodcaller_id =
+        game.create_object_from_definition(&floodcaller_def, alice, Zone::Battlefield);
+
+    let sorcery = CardBuilder::new(CardId::from_raw(102), "Opponent Turn Sorcery")
+        .card_types(vec![CardType::Sorcery])
+        .mana_cost(crate::mana::ManaCost::from_pips(vec![vec![
+            crate::mana::ManaSymbol::Blue,
+        ]]))
+        .build();
+    let sorcery_id = game.create_object_from_card(&sorcery, alice, Zone::Hand);
+
+    let actions = compute_legal_actions(&game, alice);
+    assert!(
+        actions.iter().any(|action| {
+            matches!(
+                action,
+                LegalAction::CastSpell { spell_id, from_zone, .. }
+                    if *spell_id == sorcery_id && *from_zone == Zone::Hand
+            )
+        }),
+        "Valley Floodcaller should still let Alice cast sorceries at flash timing on Bob's turn"
+    );
+}
+
+#[test]
 fn test_gift_given_event_queues_opponent_gives_gift_trigger() {
     let mut game = setup_game();
     let mut trigger_queue = TriggerQueue::new();
