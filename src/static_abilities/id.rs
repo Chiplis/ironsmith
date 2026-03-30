@@ -193,6 +193,7 @@ pub enum StaticAbilityId {
     NoMaximumHandSize,
     ReduceMaximumHandSize,
     MaximumHandSizeSevenMinusYourGraveyardCardTypes,
+    RevealFirstCardYouDrawEachTurn,
     LibraryOfLengDiscardReplacement,
     DrawReplacementExileTopFaceDown,
     ExileToCounteredExileInsteadOfGraveyard,
@@ -421,6 +422,7 @@ impl StaticAbilityId {
             | NoMaximumHandSize
             | ReduceMaximumHandSize
             | MaximumHandSizeSevenMinusYourGraveyardCardTypes
+            | RevealFirstCardYouDrawEachTurn
             | LibraryOfLengDiscardReplacement
             | DrawReplacementExileTopFaceDown
             | ExileToCounteredExileInsteadOfGraveyard

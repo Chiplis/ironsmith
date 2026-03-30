@@ -3219,6 +3219,130 @@ fn test_goaded_creature_cant_attack_goader_when_other_player_available() {
 }
 
 #[test]
+fn test_goaded_creature_may_attack_goader_if_other_player_attack_cost_is_unpayable() {
+    let mut game = GameState::new(
+        vec![
+            "Alice".to_string(),
+            "Bob".to_string(),
+            "Charlie".to_string(),
+        ],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+
+    let bears_def = grizzly_bears();
+    let creature_id = game.create_object_from_definition(&bears_def, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(creature_id);
+
+    let source = game.create_object_from_definition(&bears_def, bob, Zone::Battlefield);
+    game.add_goad_effect(creature_id, bob, Until::YourNextTurn, source);
+
+    let ghostly_prison =
+        CardDefinitionBuilder::new(CardId::new(), "Ghostly Prison Variant")
+            .card_types(vec![CardType::Enchantment])
+            .parse_text(
+                "Creatures can't attack you unless their controller pays {2} for each creature they control that's attacking you.",
+            )
+            .expect("fixed attack-tax line should parse");
+    game.create_object_from_definition(&ghostly_prison, charlie, Zone::Battlefield);
+
+    let combat = new_combat();
+    let options = crate::decision::compute_legal_attackers(&game, &combat);
+    let attacker = options
+        .iter()
+        .find(|option| option.creature == creature_id)
+        .expect("expected goaded creature to be attack-capable");
+    assert!(
+        attacker.valid_targets.contains(&AttackTarget::Player(bob)),
+        "goaded creature should be allowed to attack the goader when the only other player is not attackable after costs"
+    );
+    assert!(
+        !attacker
+            .valid_targets
+            .contains(&AttackTarget::Player(charlie)),
+        "unpayable taxed attack should not remain a legal target"
+    );
+}
+
+#[test]
+fn test_creature_goaded_by_multiple_players_only_attacks_non_goader_if_possible() {
+    let mut game = GameState::new(
+        vec![
+            "Alice".to_string(),
+            "Bob".to_string(),
+            "Charlie".to_string(),
+            "Diana".to_string(),
+        ],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    let diana = PlayerId::from_index(3);
+
+    let bears_def = grizzly_bears();
+    let creature_id = game.create_object_from_definition(&bears_def, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(creature_id);
+
+    let bob_source = game.create_object_from_definition(&bears_def, bob, Zone::Battlefield);
+    let charlie_source = game.create_object_from_definition(&bears_def, charlie, Zone::Battlefield);
+    game.add_goad_effect(creature_id, bob, Until::YourNextTurn, bob_source);
+    game.add_goad_effect(creature_id, charlie, Until::YourNextTurn, charlie_source);
+
+    let combat = new_combat();
+    let options = crate::decision::compute_legal_attackers(&game, &combat);
+    let attacker = options
+        .iter()
+        .find(|option| option.creature == creature_id)
+        .expect("expected goaded creature to be attack-capable");
+
+    assert_eq!(
+        attacker.valid_targets,
+        vec![AttackTarget::Player(diana)],
+        "multiple goaders should create cumulative attack requirements"
+    );
+}
+
+#[test]
+fn test_same_player_goading_again_does_not_refresh_duration() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.active_player = bob;
+    game.turn.turn_number = 1;
+
+    let bears_def = grizzly_bears();
+    let creature_id = game.create_object_from_definition(&bears_def, alice, Zone::Battlefield);
+    let first_source = game.create_object_from_definition(&bears_def, bob, Zone::Battlefield);
+    let second_source = game.create_object_from_definition(&bears_def, bob, Zone::Battlefield);
+
+    game.add_goad_effect(creature_id, bob, Until::YourNextTurn, first_source);
+    assert_eq!(game.goad_effects.len(), 1, "first goad should be recorded");
+
+    game.next_turn();
+    game.add_goad_effect(creature_id, bob, Until::YourNextTurn, second_source);
+
+    assert_eq!(
+        game.goad_effects.len(),
+        1,
+        "same player goading the same creature again before the effect expires should have no effect"
+    );
+    assert!(
+        game.is_goaded(creature_id),
+        "creature should still be goaded until Bob's next turn begins"
+    );
+
+    game.next_turn();
+    assert!(
+        !game.is_goaded(creature_id),
+        "same-player re-goad should not refresh the duration past Bob's next turn"
+    );
+}
+
+#[test]
 fn test_collective_restraint_attack_tax_blocks_unpaid_attack() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);

@@ -5,7 +5,7 @@
 //! - Target validation
 //! - Effect execution with proper game state mutations
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::color::Color;
 use crate::cost::OptionalCostsPaid;
@@ -162,6 +162,9 @@ pub struct ExecutionContext<'a> {
     /// For triggered abilities, tags are populated from the triggering event (e.g.,
     /// PlayersFinishedVotingEvent provides "voted_with_you", "voted_against_you", etc.).
     pub tagged_players: HashMap<TagKey, Vec<PlayerId>>,
+    /// Players who may continue to inspect specific hidden cards if they become
+    /// exiled face down later in the same resolution.
+    pub face_down_exile_viewers: HashMap<ObjectId, HashSet<PlayerId>>,
     /// The event that triggered this ability (for triggered abilities).
     /// Contains information about what caused the trigger (e.g., which object entered the battlefield).
     pub triggering_event: Option<crate::triggers::TriggerEvent>,
@@ -210,6 +213,7 @@ impl std::fmt::Debug for ExecutionContext<'_> {
                 "tagged_players",
                 &self.tagged_players.keys().collect::<Vec<_>>(),
             )
+            .field("face_down_exile_viewers", &self.face_down_exile_viewers)
             .field("triggering_event", &self.triggering_event)
             .field("cause", &self.cause)
             .field("provenance", &self.provenance)
@@ -253,6 +257,7 @@ impl<'a> ExecutionContext<'a> {
             source_snapshot: None,
             tagged_objects: HashMap::new(),
             tagged_players: HashMap::new(),
+            face_down_exile_viewers: HashMap::new(),
             triggering_event: None,
             chosen_modes: None,
             cause: EventCause::from_effect(source, controller),
@@ -296,6 +301,7 @@ impl<'a> ExecutionContext<'a> {
             source_snapshot: None,
             tagged_objects: HashMap::new(),
             tagged_players: HashMap::new(),
+            face_down_exile_viewers: HashMap::new(),
             triggering_event: None,
             chosen_modes: None,
             cause: EventCause::from_effect(source, controller),
@@ -329,6 +335,7 @@ impl<'a> ExecutionContext<'a> {
             source_snapshot: self.source_snapshot,
             tagged_objects: self.tagged_objects,
             tagged_players: self.tagged_players,
+            face_down_exile_viewers: self.face_down_exile_viewers,
             triggering_event: self.triggering_event,
             chosen_modes: self.chosen_modes,
             cause: self.cause,
@@ -410,6 +417,22 @@ impl<'a> ExecutionContext<'a> {
     pub fn with_x(mut self, x: u32) -> Self {
         self.x_value = Some(x);
         self
+    }
+
+    /// Remember that `viewer` may continue to inspect these cards if they later
+    /// become exiled face down during the current resolution.
+    pub fn remember_face_down_exile_viewers(&mut self, cards: &[ObjectId], viewer: PlayerId) {
+        for &card in cards {
+            self.face_down_exile_viewers
+                .entry(card)
+                .or_default()
+                .insert(viewer);
+        }
+    }
+
+    /// Return the players remembered for a hidden card during this resolution.
+    pub fn face_down_exile_viewers_for(&self, card: ObjectId) -> Option<&HashSet<PlayerId>> {
+        self.face_down_exile_viewers.get(&card)
     }
 
     /// Set resolved targets.

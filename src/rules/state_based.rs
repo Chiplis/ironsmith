@@ -636,23 +636,26 @@ fn apply_single_sba_with_snapshots(
 ) {
     match action {
         StateBasedAction::ObjectDies(obj_id) => {
-            // Determine if this is from lethal damage (destruction) or 0 toughness.
+            // Determine if this is from destruction (lethal damage or deathtouch)
+            // or from 0 toughness.
             // Per MTG rules:
             // - Rule 704.5f: 0 toughness -> put into graveyard directly, regeneration can't help
-            // - Rule 704.5g: Lethal damage -> destroyed, regeneration CAN replace this
-            let is_lethal_damage = game
+            // - Rules 704.5g-h: lethal damage or deathtouch damage -> destroyed,
+            //   regeneration CAN replace this
+            let is_destroyed_by_damage_sba = game
                 .object(obj_id)
                 .map(|obj| {
                     let toughness = game.calculated_toughness(obj_id).unwrap_or(0);
                     let damage = game.damage_on(obj_id);
-                    // It's lethal damage if toughness > 0 and damage >= toughness
-                    toughness > 0 && obj.has_lethal_damage(damage)
+                    toughness > 0
+                        && (obj.has_lethal_damage(damage)
+                            || game.has_deathtouch_damage_since_sba(obj_id))
                 })
                 .unwrap_or(false);
 
-            if is_lethal_damage {
-                // Lethal damage is destruction - process through event system
-                // to allow replacement effects like regeneration
+            if is_destroyed_by_damage_sba {
+                // Damage-based SBAs are destruction, so process through the event
+                // system to allow replacement effects like regeneration.
                 use crate::event_processor::process_destroy;
                 let _ = process_destroy(game, obj_id, None, decision_maker);
             } else {

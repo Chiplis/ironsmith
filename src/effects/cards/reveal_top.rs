@@ -47,10 +47,12 @@ impl EffectExecutor for RevealTopEffect {
             return Ok(EffectOutcome::count(0));
         };
 
-        if let Some(obj) = game.object(card_id)
+        let snapshot = game
+            .object(card_id)
+            .map(|obj| ObjectSnapshot::from_object(obj, game));
+        if let Some(snapshot) = snapshot.clone()
             && let Some(tag) = &self.tag
         {
-            let snapshot = ObjectSnapshot::from_object(obj, game);
             ctx.set_tagged_objects(tag.clone(), vec![snapshot]);
         }
 
@@ -68,7 +70,18 @@ impl EffectExecutor for RevealTopEffect {
                 .view_cards(game, viewer, &[card_id], &view_ctx);
         }
 
-        Ok(EffectOutcome::count(1))
+        Ok(EffectOutcome::count(1).with_event(
+            crate::triggers::TriggerEvent::new_with_provenance(
+                crate::events::CardRevealedEvent::new(
+                    player_id,
+                    card_id,
+                    crate::zone::Zone::Library,
+                    Some(ctx.source),
+                    snapshot,
+                ),
+                ctx.provenance,
+            ),
+        ))
     }
 }
 
@@ -76,9 +89,11 @@ impl EffectExecutor for RevealTopEffect {
 mod tests {
     use super::*;
     use crate::card::CardBuilder;
+    use crate::cards::CardDefinitionBuilder;
     use crate::decision::DecisionMaker;
     use crate::executor::ExecutionContext;
     use crate::ids::{CardId, PlayerId};
+    use crate::tag::TagKey;
     use crate::types::CardType;
     use crate::zone::Zone;
 
@@ -127,5 +142,38 @@ mod tests {
         assert!(dm.calls.iter().all(|(_, subject, zone, public, cards)| {
             *subject == bob && *zone == Zone::Library && *public && cards.len() == 1
         }));
+    }
+
+    #[test]
+    fn reveal_top_emits_card_revealed_event_that_triggers_reveal_abilities() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let watcher = CardDefinitionBuilder::new(CardId::from_raw(301), "Reveal Watcher")
+            .card_types(vec![CardType::Enchantment])
+            .parse_text("Whenever you reveal a creature card, draw a card.")
+            .expect("watcher should parse");
+        game.create_object_from_definition(&watcher, alice, Zone::Battlefield);
+
+        let creature = CardBuilder::new(CardId::from_raw(302), "Creature Reveal")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let revealed_id = game.create_object_from_card(&creature, alice, Zone::Library);
+
+        let mut dm = CaptureViewDm::default();
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+        let outcome = RevealTopEffect::new(PlayerFilter::You, None)
+            .execute(&mut game, &mut ctx)
+            .expect("reveal top");
+
+        let reveal_event = outcome.events.first().expect("reveal event");
+        let triggered = crate::triggers::check::check_triggers(&game, reveal_event);
+        assert_eq!(triggered.len(), 1);
+        let revealed = triggered[0]
+            .tagged_objects
+            .get(&TagKey::from(crate::effects::PUBLIC_REVEALED_TAG))
+            .expect("triggered reveal should preserve public-revealed tag");
+        assert_eq!(revealed.len(), 1);
+        assert_eq!(revealed[0].object_id, revealed_id);
     }
 }

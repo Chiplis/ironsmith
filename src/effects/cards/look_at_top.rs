@@ -69,6 +69,7 @@ impl EffectExecutor for LookAtTopCardsEffect {
         );
         ctx.decision_maker
             .view_cards(game, ctx.controller, &top_cards, &view_ctx);
+        ctx.remember_face_down_exile_viewers(&top_cards, ctx.controller);
         Ok(EffectOutcome::count(snapshots.len() as i32))
     }
 }

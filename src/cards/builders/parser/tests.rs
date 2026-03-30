@@ -1835,6 +1835,19 @@ fn rewrite_lexed_effect_sequence_parses_consult_dynamic_mana_value_gate() {
 }
 
 #[test]
+fn rewrite_lexed_effect_sequence_parses_copy_cast_cost_reduction_followup() {
+    let text = "Copy that card and you may cast the copy. That copy costs {2} less to cast.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify copy-cast reduction text");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed).expect("sequence");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("CastTagged"), "{debug}");
+    assert!(debug.contains("as_copy: true"), "{debug}");
+    assert!(debug.contains("cost_reduction: Some"), "{debug}");
+}
+
+#[test]
 fn rewrite_lexed_effect_sequence_parses_tainted_pact_loop() {
     let text = "Exile the top card of your library. You may put that card into your hand unless it has the same name as another card exiled this way. Repeat this process until you put a card into your hand or you exile two cards with the same name, whichever comes first.";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify tainted pact text");

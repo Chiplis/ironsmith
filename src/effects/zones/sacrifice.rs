@@ -10,13 +10,78 @@ use crate::event_processor::EventOutcome;
 use crate::events::permanents::SacrificeEvent;
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
-use crate::ids::ObjectId;
+use crate::ids::{ObjectId, PlayerId};
 use crate::snapshot::ObjectSnapshot;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 
 use super::apply_zone_change_with_additional_effects;
+
+fn players_in_turn_order(game: &GameState) -> Vec<PlayerId> {
+    if game.turn_order.is_empty() {
+        return Vec::new();
+    }
+
+    let start = game
+        .turn_order
+        .iter()
+        .position(|&player_id| player_id == game.turn.active_player)
+        .unwrap_or(0);
+
+    (0..game.turn_order.len())
+        .filter_map(|offset| {
+            let player_id = game.turn_order[(start + offset) % game.turn_order.len()];
+            game.player(player_id)
+                .filter(|player| player.is_in_game())
+                .map(|_| player_id)
+        })
+        .collect()
+}
+
+fn choose_objects_to_sacrifice(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    player_id: PlayerId,
+    filter: &ObjectFilter,
+    count: usize,
+) -> Result<Vec<ObjectId>, ExecutionError> {
+    use crate::decisions::make_decision;
+    use crate::decisions::specs::ChooseObjectsSpec;
+
+    let filter_ctx = ctx.filter_context(game);
+    let matching: Vec<ObjectId> = game
+        .battlefield
+        .iter()
+        .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
+        .filter(|(id, obj)| {
+            obj.controller == player_id
+                && filter.matches(obj, &filter_ctx, game)
+                && game.can_be_sacrificed(*id)
+        })
+        .map(|(id, _)| id)
+        .collect();
+
+    let required = count.min(matching.len());
+    if required == 0 {
+        return Ok(Vec::new());
+    }
+
+    let chosen = if required == matching.len() {
+        matching.clone()
+    } else {
+        let spec = ChooseObjectsSpec::new(
+            ctx.source,
+            format!("Choose {} {} to sacrifice", required, filter.description()),
+            matching.clone(),
+            required,
+            Some(required),
+        );
+        make_decision(game, ctx.decision_maker, player_id, Some(ctx.source), spec)
+    };
+
+    Ok(normalize_object_selection(chosen, &matching, required))
+}
 
 /// Effect that makes a player sacrifice permanents.
 ///
@@ -87,27 +152,8 @@ impl EffectExecutor for SacrificeEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        use crate::decisions::make_decision;
-        use crate::decisions::specs::ChooseObjectsSpec;
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
         let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
-        let filter_ctx = ctx.filter_context(game);
-
-        // Find permanents the player controls that match the filter
-        // Also filter out permanents that can't be sacrificed (Sigarda, Tajuru Preserver effects)
-        let matching: Vec<ObjectId> = game
-            .battlefield
-            .iter()
-            .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
-            .filter(|(id, obj)| {
-                obj.controller == player_id
-                    && self.filter.matches(obj, &filter_ctx, game)
-                    && game.can_be_sacrificed(*id)
-            })
-            .map(|(id, _)| id)
-            .collect();
-
-        let required = count.min(matching.len());
         let explicit_targets: Vec<ObjectId> = ctx
             .targets
             .iter()
@@ -116,28 +162,25 @@ impl EffectExecutor for SacrificeEffect {
                 crate::executor::ResolvedTarget::Player(_) => None,
             })
             .collect();
-        let to_sacrifice = if required == 0 {
+        let to_sacrifice = if count == 0 {
             Vec::new()
         } else if !explicit_targets.is_empty() {
+            let filter_ctx = ctx.filter_context(game);
+            let matching: Vec<ObjectId> = game
+                .battlefield
+                .iter()
+                .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
+                .filter(|(id, obj)| {
+                    obj.controller == player_id
+                        && self.filter.matches(obj, &filter_ctx, game)
+                        && game.can_be_sacrificed(*id)
+                })
+                .map(|(id, _)| id)
+                .collect();
+            let required = count.min(matching.len());
             normalize_object_selection(explicit_targets, &matching, required)
-        } else if required == matching.len() {
-            // No choice remains: all matching permanents must be sacrificed.
-            matching.clone()
         } else {
-            let spec = ChooseObjectsSpec::new(
-                ctx.source,
-                format!(
-                    "Choose {} {} to sacrifice",
-                    required,
-                    self.filter.description()
-                ),
-                matching.clone(),
-                required,
-                Some(required),
-            );
-            let chosen: Vec<_> =
-                make_decision(game, ctx.decision_maker, player_id, Some(ctx.source), spec);
-            normalize_object_selection(chosen, &matching, required)
+            choose_objects_to_sacrifice(game, ctx, player_id, &self.filter, count)?
         };
         let chosen_to_sacrifice = to_sacrifice.clone();
         let mut sacrificed_count = 0;
@@ -305,6 +348,116 @@ impl CostExecutableEffect for SacrificeEffect {
             return Err(crate::effects::CostValidationError::CannotSacrifice);
         }
         Ok(())
+    }
+}
+
+/// Effect that makes each player sacrifice permanents simultaneously.
+///
+/// Players choose in turn order starting with the active player, then the chosen
+/// permanents are sacrificed after all choices are locked in.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EachPlayerSacrificesEffect {
+    /// Which permanents can be sacrificed.
+    pub filter: ObjectFilter,
+    /// How many permanents each player sacrifices.
+    pub count: Value,
+    /// Which players are included.
+    pub player_filter: PlayerFilter,
+}
+
+impl EachPlayerSacrificesEffect {
+    pub fn new(
+        filter: ObjectFilter,
+        count: impl Into<Value>,
+        player_filter: PlayerFilter,
+    ) -> Self {
+        Self {
+            filter,
+            count: count.into(),
+            player_filter,
+        }
+    }
+}
+
+impl EffectExecutor for EachPlayerSacrificesEffect {
+    fn clone_box(&self) -> Box<dyn EffectExecutor> {
+        Box::new(self.clone())
+    }
+
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
+        if count == 0 {
+            return Ok(EffectOutcome::count(0));
+        }
+
+        let filter_ctx = ctx.filter_context(game);
+        let players: Vec<PlayerId> = players_in_turn_order(game)
+            .into_iter()
+            .filter(|player_id| self.player_filter.matches_player(*player_id, &filter_ctx))
+            .collect();
+        if players.is_empty() {
+            return Ok(EffectOutcome::count(0));
+        }
+
+        let mut chosen_by_player = Vec::new();
+        let mut all_chosen = Vec::new();
+        for player_id in players {
+            let chosen = ctx.with_temp_iterated_player(Some(player_id), |ctx| {
+                choose_objects_to_sacrifice(game, ctx, player_id, &self.filter, count)
+            })?;
+            all_chosen.extend(chosen.iter().copied());
+            chosen_by_player.push((player_id, chosen));
+        }
+
+        let additional_effects = ctx.additional_replacement_effects_snapshot();
+        let mut sacrificed_count = 0;
+        let mut sacrificed_objects = Vec::new();
+        let mut sacrifice_events = Vec::new();
+
+        for (_player_id, chosen) in chosen_by_player {
+            for id in chosen {
+                let pre_snapshot = game.object(id).map(|obj| {
+                    ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
+                });
+                let sacrificing_player = pre_snapshot.as_ref().map(|snapshot| snapshot.controller);
+
+                let result = apply_zone_change_with_additional_effects(
+                    game,
+                    id,
+                    Zone::Battlefield,
+                    Zone::Graveyard,
+                    ctx.cause.clone(),
+                    &mut *ctx.decision_maker,
+                    &additional_effects,
+                );
+
+                match result {
+                    EventOutcome::Prevented | EventOutcome::NotApplicable => continue,
+                    EventOutcome::Proceed(_) | EventOutcome::Replaced => {
+                        sacrificed_count += 1;
+                        sacrificed_objects.push(id);
+                        sacrifice_events.push(TriggerEvent::new_with_provenance(
+                            SacrificeEvent::new(id, Some(ctx.source))
+                                .with_snapshot(pre_snapshot, sacrificing_player),
+                            ctx.provenance,
+                        ));
+                    }
+                }
+            }
+        }
+
+        let mut outcome = EffectOutcome::count(sacrificed_count)
+            .with_events(sacrifice_events)
+            .with_execution_fact(ExecutionFact::ChosenObjects(all_chosen));
+        if !sacrificed_objects.is_empty() {
+            outcome =
+                outcome.with_execution_fact(ExecutionFact::AffectedObjects(sacrificed_objects));
+        }
+        Ok(outcome)
     }
 }
 
@@ -478,9 +631,11 @@ impl CostExecutableEffect for SacrificeTargetEffect {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ability::Ability;
     use crate::card::{CardBuilder, PowerToughness};
+    use crate::cards::CardDefinitionBuilder;
     use crate::cards::definitions::basic_mountain;
-    use crate::effect::Effect;
+    use crate::effect::{Effect, Restriction};
     use crate::effect::ExecutionFact;
     use crate::effects::CostExecutableEffect;
     use crate::effects::EarthbendEffect;
@@ -488,6 +643,7 @@ mod tests {
     use crate::ids::{CardId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::Object;
+    use crate::static_abilities::StaticAbility;
     use crate::target::ChooseSpec;
     use crate::types::CardType;
 
@@ -512,6 +668,19 @@ mod tests {
         let object = Object::from_card(id, &card, controller, Zone::Battlefield);
         game.add_object(object);
         id
+    }
+
+    fn create_indestructible_creature_on_battlefield(
+        game: &mut GameState,
+        name: &str,
+        controller: PlayerId,
+    ) -> ObjectId {
+        let definition = CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .with_ability(crate::ability::indestructible())
+            .build();
+        game.create_object_from_definition(&definition, controller, Zone::Battlefield)
     }
 
     #[test]
@@ -561,5 +730,109 @@ mod tests {
             Ok(()),
             "animated lands should satisfy creature sacrifice costs"
         );
+    }
+
+    #[test]
+    fn sacrifice_ignores_indestructible() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let creature_id =
+            create_indestructible_creature_on_battlefield(&mut game, "Darksteel Test", alice);
+
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let result = SacrificeEffect::you_creature(1)
+            .execute(&mut game, &mut ctx)
+            .expect("sacrifice should resolve");
+
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(1));
+        assert!(!game.battlefield.contains(&creature_id));
+        assert_eq!(game.players[0].graveyard.len(), 1);
+        let graveyard_object = game
+            .player(alice)
+            .and_then(|player| player.graveyard.first().copied())
+            .and_then(|id| game.object(id));
+        assert_eq!(
+            graveyard_object.map(|object| object.name.as_str()),
+            Some("Darksteel Test")
+        );
+    }
+
+    #[test]
+    fn sacrifice_moves_controlled_permanent_to_owners_graveyard() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = game.new_object_id();
+        let creature_id = create_creature_on_battlefield(&mut game, "Borrowed Bear", alice);
+        game.object_mut(creature_id)
+            .expect("borrowed creature should exist")
+            .controller = bob;
+
+        let mut ctx = ExecutionContext::new_default(source, bob);
+        let result = SacrificeEffect::player(ObjectFilter::creature(), 1, PlayerFilter::You)
+            .execute(&mut game, &mut ctx)
+            .expect("sacrifice should resolve");
+
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(1));
+        assert!(!game.battlefield.contains(&creature_id));
+        assert_eq!(game.players[0].graveyard.len(), 1);
+        assert_eq!(game.players[1].graveyard.len(), 0);
+        let graveyard_object = game
+            .player(alice)
+            .and_then(|player| player.graveyard.first().copied())
+            .and_then(|id| game.object(id));
+        assert_eq!(
+            graveyard_object.map(|object| (object.name.as_str(), object.owner, object.controller)),
+            Some(("Borrowed Bear", alice, bob)),
+            "sacrificed permanents should go to their owner's graveyard"
+        );
+    }
+
+    #[test]
+    fn each_player_sacrifices_locks_choices_before_any_permanent_leaves() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        game.turn.active_player = alice;
+
+        let restrictor = CardDefinitionBuilder::new(CardId::new(), "Sacrifice Lock")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .with_ability(Ability::static_ability(StaticAbility::restriction(
+                Restriction::be_sacrificed(
+                    ObjectFilter::creature().controlled_by(PlayerFilter::Opponent),
+                ),
+                "Creatures your opponents control can't be sacrificed".to_string(),
+            )))
+            .build();
+        let bob_creature = CardDefinitionBuilder::new(CardId::new(), "Bob Bear")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+
+        let restrictor_id =
+            game.create_object_from_definition(&restrictor, alice, Zone::Battlefield);
+        let bob_creature_id =
+            game.create_object_from_definition(&bob_creature, bob, Zone::Battlefield);
+        game.update_cant_effects();
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let result = EachPlayerSacrificesEffect::new(ObjectFilter::creature(), 1, PlayerFilter::Any)
+            .execute(&mut game, &mut ctx)
+            .expect("each-player sacrifice should resolve");
+
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(1));
+        assert!(
+            !game.battlefield.contains(&restrictor_id),
+            "the active player's chosen creature should be sacrificed"
+        );
+        assert!(
+            game.battlefield.contains(&bob_creature_id),
+            "the nonactive player should not gain a new sacrifice option after the first sacrifice happens"
+        );
+        assert_eq!(game.players[0].graveyard.len(), 1);
+        assert_eq!(game.players[1].graveyard.len(), 0);
     }
 }

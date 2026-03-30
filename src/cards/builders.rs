@@ -1043,6 +1043,7 @@ pub(crate) enum TriggerSpec {
     Blocks(ObjectFilter),
     ThisBecomesBlocked,
     ThisDies,
+    ThisDiesOrIsExiled,
     ThisLeavesBattlefield,
     ThisBecomesMonstrous,
     ThisBecomesTapped,
@@ -1077,6 +1078,11 @@ pub(crate) enum TriggerSpec {
     },
     PlayerGivesGift(PlayerFilter),
     PlayerSearchesLibrary(PlayerFilter),
+    PlayerShufflesLibrary {
+        player: PlayerFilter,
+        caused_by_effect: bool,
+        source_controller_shuffles: bool,
+    },
     PlayerTapsForMana {
         player: PlayerFilter,
         filter: ObjectFilter,
@@ -1108,6 +1114,11 @@ pub(crate) enum TriggerSpec {
     PlayerDiscardsCard {
         player: PlayerFilter,
         filter: Option<ObjectFilter>,
+    },
+    PlayerRevealsCard {
+        player: PlayerFilter,
+        filter: ObjectFilter,
+        from_source: bool,
     },
     PlayerSacrifices {
         player: PlayerFilter,
@@ -1811,6 +1822,7 @@ pub(crate) enum EffectAst {
         allow_land: bool,
         as_copy: bool,
         without_paying_mana_cost: bool,
+        cost_reduction: Option<ManaCost>,
     },
     RegisterZoneReplacement {
         target: TargetAst,
@@ -1960,6 +1972,7 @@ pub(crate) enum EffectAst {
         player: PlayerAst,
         tag: TagKey,
         zones: Vec<Zone>,
+        search_mode: Option<crate::effect::SearchSelectionMode>,
     },
     Sacrifice {
         filter: ObjectFilter,
@@ -2020,6 +2033,10 @@ pub(crate) enum EffectAst {
         battlefield_controller: ReturnControllerAst,
         battlefield_tapped: bool,
         attached_to: Option<TargetAst>,
+    },
+    ShuffleObjectsIntoLibrary {
+        target: TargetAst,
+        player: PlayerAst,
     },
     MoveToLibraryNthFromTop {
         target: TargetAst,
@@ -2489,6 +2506,7 @@ pub(crate) enum EffectAst {
         destination: Zone,
         chooser: PlayerAst,
         player: PlayerAst,
+        search_mode: crate::effect::SearchSelectionMode,
         reveal: bool,
         shuffle: bool,
         count: ChoiceCount,
@@ -9233,12 +9251,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         let effects = def.spell_effect.expect("spell effects");
         let debug = format!("{effects:?}");
         assert!(
-            debug.contains("MoveToZoneEffect"),
-            "expected move-to-library effect, got {debug}"
-        );
-        assert!(
-            debug.contains("ShuffleLibraryEffect"),
-            "expected shuffle-library effect, got {debug}"
+            debug.contains("ShuffleObjectsIntoLibraryEffect"),
+            "expected shuffle-objects-into-library effect, got {debug}"
         );
         assert!(
             debug.contains("OwnerOf("),
@@ -10786,13 +10800,27 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
-    fn parse_rejects_investigate_for_each_clause() {
-        let result = CardDefinitionBuilder::new(CardId::new(), "Declaration Variant").parse_text(
-            "Exile target creature and all other creatures its controller controls with the same name as that creature. That player investigates for each nontoken creature exiled this way.",
-        );
-        assert!(
-            result.is_err(),
-            "unsupported investigate-for-each clause should fail parse instead of collapsing to a single investigate"
+    fn parse_investigate_for_each_clause_uses_prior_effect_count() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Declaration Variant")
+            .parse_text(
+                "Exile target creature and all other creatures its controller controls with the same name as that creature. That player investigates for each nontoken creature exiled this way.",
+            )
+            .expect("investigate-for-each clause should parse");
+
+        let effects = def.spell_effect.expect("spell effect");
+        let investigate = effects
+            .iter()
+            .find_map(|effect| {
+                effect
+                    .downcast_ref::<crate::effects::InvestigateEffect>()
+                    .cloned()
+            })
+            .expect("should include investigate effect");
+
+        assert_eq!(
+            investigate.count,
+            Value::EffectValue(EffectId(0)),
+            "investigate count should follow the previous exile effect's amount"
         );
     }
 

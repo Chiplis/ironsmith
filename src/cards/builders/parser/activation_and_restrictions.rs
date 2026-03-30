@@ -7725,6 +7725,33 @@ pub(crate) fn parse_trigger_clause_lexed(
         }
     }
 
+    if let Some(shuffle_idx) = tokens
+        .iter()
+        .position(|token| token.is_word("shuffle") || token.is_word("shuffles"))
+    {
+        let subject_tokens = &tokens[..shuffle_idx];
+        let subject_word_view = LowercaseWordView::new(subject_tokens);
+        let subject_words = subject_word_view.to_word_refs();
+        let shuffled_tokens = trim_commas(&tokens[shuffle_idx + 1..]);
+        let shuffled_word_view = LowercaseWordView::new(&shuffled_tokens);
+        let shuffled_words = shuffled_word_view.to_word_refs();
+        if shuffled_words.starts_with(&["their", "library"])
+            || shuffled_words.starts_with(&["your", "library"])
+            || shuffled_words.starts_with(&["a", "library"])
+            || shuffled_words.starts_with(&["that", "players", "library"])
+        {
+            if let Some((player, caused_by_effect, source_controller_shuffles)) =
+                parse_shuffle_trigger_subject(&subject_words)
+            {
+                return Ok(TriggerSpec::PlayerShufflesLibrary {
+                    player,
+                    caused_by_effect,
+                    source_controller_shuffles,
+                });
+            }
+        }
+    }
+
     if let Some(give_idx) = tokens
         .iter()
         .position(|token| token.is_word("give") || token.is_word("gives"))
@@ -7890,6 +7917,20 @@ pub(crate) fn parse_trigger_clause_lexed(
             && words.get(4).copied() == Some("battlefield"))
     {
         return Ok(TriggerSpec::ThisLeavesBattlefield);
+    }
+
+    if let Some(dies_word_idx) = words.iter().position(|word| *word == "dies") {
+        let dies_token_idx = word_view
+            .token_index_for_word_index(dies_word_idx)
+            .unwrap_or(tokens.len());
+        let subject_tokens = &tokens[..dies_token_idx];
+        let subject_word_view = LowercaseWordView::new(subject_tokens);
+        let subject_words = subject_word_view.to_word_refs();
+        if is_source_reference_words(&subject_words)
+            && words.get(dies_word_idx + 1..) == Some(&["or", "is", "put", "into", "exile", "from", "the", "battlefield"][..])
+        {
+            return Ok(TriggerSpec::ThisDiesOrIsExiled);
+        }
     }
 
     if let Some(enters_word_idx) = words
@@ -8753,6 +8794,37 @@ pub(crate) fn parse_trigger_clause_lexed(
         }
     }
 
+    if let Some(reveal_word_idx) = words
+        .iter()
+        .position(|word| *word == "reveal" || *word == "reveals")
+        && let Some(player) = parse_trigger_subject_player_filter(&words[..reveal_word_idx])
+    {
+        let mut tail_tokens = trim_commas(
+            &tokens[LowercaseWordView::new(tokens)
+                .token_index_for_word_index(reveal_word_idx + 1)
+                .unwrap_or(tokens.len())..],
+        );
+        let tail_view = LowercaseWordView::new(&tail_tokens);
+        let tail_words = tail_view.to_word_refs();
+        let from_source = tail_words.ends_with(&["this", "way"]);
+        if from_source {
+            let cutoff = LowercaseWordView::new(&tail_tokens)
+                .token_index_for_word_index(tail_words.len().saturating_sub(2))
+                .unwrap_or(tail_tokens.len());
+            tail_tokens = trim_commas(&tail_tokens[..cutoff]);
+        }
+        if !tail_tokens.is_empty()
+            && let Ok(mut filter) = parse_object_filter_lexed(&tail_tokens, false)
+        {
+            filter.zone = None;
+            return Ok(TriggerSpec::PlayerRevealsCard {
+                player,
+                filter,
+                from_source,
+            });
+        }
+    }
+
     if let Some(sacrifice_word_idx) = words
         .iter()
         .position(|word| *word == "sacrifice" || *word == "sacrifices")
@@ -9429,6 +9501,26 @@ pub(crate) fn parse_trigger_subject_player_filter(subject: &[&str]) -> Option<Pl
         return Some(PlayerFilter::You);
     }
     None
+}
+
+fn parse_shuffle_trigger_subject(subject: &[&str]) -> Option<(PlayerFilter, bool, bool)> {
+    if let Some(player) = parse_trigger_subject_player_filter(subject) {
+        return Some((player, false, false));
+    }
+
+    if !(subject.starts_with(&["a", "spell", "or", "ability", "causes"])
+        && subject.last().copied() == Some("to")
+        && subject.len() > 6)
+    {
+        return None;
+    }
+
+    let caused_player_words = &subject[5..subject.len() - 1];
+    if caused_player_words == ["its", "controller"] {
+        return Some((PlayerFilter::Any, true, true));
+    }
+
+    parse_trigger_subject_player_filter(caused_player_words).map(|player| (player, true, false))
 }
 
 pub(crate) fn parse_spell_or_ability_controller_tail(words: &[&str]) -> Option<PlayerFilter> {
@@ -10211,6 +10303,7 @@ pub(crate) struct MayCastTaggedSpec {
     pub(crate) as_copy: bool,
     pub(crate) without_paying_mana_cost: bool,
     pub(crate) predicate: Option<PredicateAst>,
+    pub(crate) cost_reduction: Option<ManaCost>,
 }
 
 pub(crate) fn parse_may_cast_it_sentence(tokens: &[OwnedLexToken]) -> Option<MayCastTaggedSpec> {
@@ -10261,6 +10354,7 @@ pub(crate) fn parse_may_cast_it_sentence(tokens: &[OwnedLexToken]) -> Option<May
             as_copy,
             without_paying_mana_cost: false,
             predicate: None,
+            cost_reduction: None,
         });
     }
     if tail == ["without", "paying", "its", "mana", "cost"] {
@@ -10269,6 +10363,7 @@ pub(crate) fn parse_may_cast_it_sentence(tokens: &[OwnedLexToken]) -> Option<May
             as_copy,
             without_paying_mana_cost: true,
             predicate: None,
+            cost_reduction: None,
         });
     }
     if let [
@@ -10297,9 +10392,44 @@ pub(crate) fn parse_may_cast_it_sentence(tokens: &[OwnedLexToken]) -> Option<May
             predicate: Some(PredicateAst::ItMatches(
                 ObjectFilter::default().with_mana_value_parity(parity),
             )),
+            cost_reduction: None,
         });
     }
     None
+}
+
+pub(crate) fn parse_copy_reference_cost_reduction_sentence(
+    tokens: &[OwnedLexToken],
+) -> Option<ManaCost> {
+    let clause_words = words(tokens);
+    if clause_words.len() < 6 {
+        return None;
+    }
+    if !(clause_words.starts_with(&["that", "copy", "costs"])
+        || clause_words.starts_with(&["the", "copy", "costs"])
+        || clause_words.starts_with(&["a", "copy", "costs"]))
+    {
+        return None;
+    }
+
+    let less_idx = clause_words.iter().position(|word| *word == "less")?;
+    if clause_words.get(less_idx + 1).copied() != Some("to")
+        || clause_words.get(less_idx + 2).copied() != Some("cast")
+    {
+        return None;
+    }
+
+    let costs_token_idx = tokens.iter().position(|token| token.is_word("costs"))?;
+    let less_token_idx = tokens.iter().position(|token| token.is_word("less"))?;
+    if less_token_idx <= costs_token_idx + 1 {
+        return None;
+    }
+    let reduction_tokens = trim_commas(&tokens[costs_token_idx + 1..less_token_idx]).to_vec();
+    let (reduction, consumed) = parse_cost_modifier_mana_cost(&reduction_tokens)?;
+    if consumed != reduction_tokens.len() {
+        return None;
+    }
+    Some(reduction)
 }
 
 pub(crate) fn build_may_cast_tagged_effect(spec: &MayCastTaggedSpec) -> EffectAst {
@@ -10308,6 +10438,7 @@ pub(crate) fn build_may_cast_tagged_effect(spec: &MayCastTaggedSpec) -> EffectAs
         allow_land: matches!(spec.verb, MayCastItVerb::Play),
         as_copy: spec.as_copy,
         without_paying_mana_cost: spec.without_paying_mana_cost,
+        cost_reduction: spec.cost_reduction.clone(),
     };
     let may = EffectAst::May {
         effects: vec![cast],

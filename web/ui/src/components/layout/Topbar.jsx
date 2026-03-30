@@ -38,7 +38,7 @@ export default function Topbar({
   onOpenLobby,
   deckLoadingMode,
   puzzleSetupMode = false,
-  onAddCardFailure,
+  onAddCardNotice,
   mobileOpponentIndex = 0,
   setMobileOpponentIndex,
   mobileOverlay = false,
@@ -217,7 +217,7 @@ export default function Topbar({
              onOpenLobby={onOpenLobby}
              deckLoadingMode={deckLoadingMode}
              puzzleSetupMode={puzzleSetupMode}
-             onAddCardFailure={onAddCardFailure}
+             onAddCardNotice={onAddCardNotice}
              triggerIcon="menu"
              showQuickActions
           />
@@ -360,7 +360,7 @@ export default function Topbar({
             onOpenLobby={onOpenLobby}
             deckLoadingMode={deckLoadingMode}
             puzzleSetupMode={puzzleSetupMode}
-            onAddCardFailure={onAddCardFailure}
+            onAddCardNotice={onAddCardNotice}
             triggerIcon={nonDesktopViewport ? "menu" : "settings"}
             showQuickActions={nonDesktopViewport}
           />

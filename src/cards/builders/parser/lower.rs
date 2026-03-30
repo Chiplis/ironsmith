@@ -1823,6 +1823,7 @@ fn lower_rewrite_divvy_statement_to_chunk(
                     player: PlayerAst::Opponent,
                     tag: TagKey::from("divvy_chosen"),
                     zones: vec![Zone::Exile],
+                    search_mode: None,
                 },
                 EffectAst::ReturnToHand {
                     target: TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
@@ -1867,6 +1868,7 @@ fn lower_rewrite_divvy_statement_to_chunk(
                     player: PlayerAst::Opponent,
                     tag: TagKey::from("divvy_chosen"),
                     zones: vec![Zone::Exile],
+                    search_mode: None,
                 },
                 EffectAst::MoveToZone {
                     target: TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
@@ -1913,6 +1915,7 @@ fn lower_rewrite_divvy_statement_to_chunk(
             player: PlayerAst::Opponent,
             tag: TagKey::from("divvy_chosen"),
             zones: vec![Zone::Library, Zone::Graveyard],
+            search_mode: None,
         });
         effects.push(EffectAst::MoveToZone {
             target: TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
@@ -2138,6 +2141,7 @@ fn lower_special_rewrite_triggered_chunk(
             player: PlayerAst::Opponent,
             tag: TagKey::from("divvy_chosen"),
             zones: vec![Zone::Library],
+            search_mode: None,
         });
         effects.push(EffectAst::MoveToZone {
             target: TargetAst::Tagged(TagKey::from("divvy_chosen"), None),

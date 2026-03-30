@@ -64,6 +64,17 @@ pub struct ChoiceCount {
     pub random: bool,
 }
 
+/// Distinguishes exact, optional, and "all matching" search instructions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SearchSelectionMode {
+    /// "a card", "three cards", or other exact-count search phrasing.
+    Exact,
+    /// "up to N", "any number", or otherwise optional search phrasing.
+    Optional,
+    /// "all cards ..." search phrasing.
+    AllMatching,
+}
+
 impl Default for ChoiceCount {
     fn default() -> Self {
         Self::exactly(1)
@@ -2709,24 +2720,26 @@ impl Effect {
     }
 
     /// Create an "each player sacrifices permanents matching filter" effect.
-    ///
-    /// This is a composed effect using `for_players` with `sacrifice_player`.
     pub fn each_player_sacrifices(filter: ObjectFilter, count: impl Into<Value>) -> Self {
-        let count_value = count.into();
-        Self::for_players(
+        use crate::effects::EachPlayerSacrificesEffect;
+        Self::new(EachPlayerSacrificesEffect::new(
+            filter,
+            count.into(),
             PlayerFilter::Any,
-            vec![Self::sacrifice_player(
-                filter,
-                count_value,
-                PlayerFilter::IteratedPlayer,
-            )],
-        )
+        ))
     }
 
     /// Create a "move target to zone" effect.
     pub fn move_to_zone(target: ChooseSpec, zone: Zone, to_top: bool) -> Self {
         use crate::effects::MoveToZoneEffect;
         Self::new(MoveToZoneEffect::new(target, zone, to_top))
+    }
+
+    /// Create an effect that shuffles specific objects into a library and
+    /// still shuffles that library even if none of those objects move.
+    pub fn shuffle_objects_into_library(target: ChooseSpec, player: PlayerFilter) -> Self {
+        use crate::effects::ShuffleObjectsIntoLibraryEffect;
+        Self::new(ShuffleObjectsIntoLibraryEffect::new(target, player))
     }
 
     pub fn may_move_to_zone(target: ChooseSpec, zone: Zone, decider: PlayerFilter) -> Self {
@@ -4440,6 +4453,7 @@ impl Effect {
         allow_land: bool,
         as_copy: bool,
         without_paying_mana_cost: bool,
+        cost_reduction: Option<crate::mana::ManaCost>,
     ) -> Self {
         use crate::effects::CastTaggedEffect;
         let effect = CastTaggedEffect::new(tag);
@@ -4451,6 +4465,11 @@ impl Effect {
         let effect = if as_copy { effect.as_copy() } else { effect };
         let effect = if without_paying_mana_cost {
             effect.without_paying_mana_cost()
+        } else {
+            effect
+        };
+        let effect = if let Some(cost_reduction) = cost_reduction {
+            effect.cost_reduction(cost_reduction)
         } else {
             effect
         };

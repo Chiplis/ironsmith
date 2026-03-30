@@ -2,7 +2,7 @@
 
 use crate::decisions::make_decision;
 use crate::decisions::specs::ChooseObjectsSpec;
-use crate::effect::{ChoiceCount, EffectOutcome, ExecutionFact};
+use crate::effect::{ChoiceCount, EffectOutcome, ExecutionFact, SearchSelectionMode};
 use crate::effects::helpers::{resolve_player_filter, resolve_player_filter_to_list};
 use crate::events::SearchLibraryEvent;
 use crate::executor::{ExecutionContext, ExecutionError};
@@ -368,6 +368,13 @@ fn compute_choice_bounds(count: ChoiceCount, candidate_count: usize) -> (usize, 
     (min, max)
 }
 
+fn compute_search_required_count(mode: SearchSelectionMode, max: usize) -> usize {
+    match mode {
+        SearchSelectionMode::Exact => max,
+        SearchSelectionMode::Optional | SearchSelectionMode::AllMatching => 0,
+    }
+}
+
 fn normalize_chosen_objects(
     mut chosen: Vec<ObjectId>,
     candidates: &[ObjectId],
@@ -391,6 +398,54 @@ fn normalize_chosen_objects(
     }
 
     chosen
+}
+
+fn public_search_candidates(game: &GameState, candidates: &[ObjectId]) -> Vec<ObjectId> {
+    candidates
+        .iter()
+        .copied()
+        .filter(|id| game.object(*id).is_some_and(|obj| !obj.zone.is_hidden()))
+        .collect()
+}
+
+fn enforce_public_search_choice_constraint(
+    game: &GameState,
+    candidates: &[ObjectId],
+    chosen: Vec<ObjectId>,
+    required_public_count: usize,
+    max: usize,
+) -> Vec<ObjectId> {
+    if required_public_count == 0 {
+        return chosen;
+    }
+
+    let public_candidates = public_search_candidates(game, candidates);
+    let mut chosen_public: Vec<ObjectId> = public_candidates
+        .iter()
+        .copied()
+        .filter(|id| chosen.contains(id))
+        .collect();
+    let mut chosen_hidden: Vec<ObjectId> = candidates
+        .iter()
+        .copied()
+        .filter(|id| !public_candidates.contains(id) && chosen.contains(id))
+        .collect();
+
+    for id in &public_candidates {
+        if chosen_public.len() >= required_public_count {
+            break;
+        }
+        if !chosen_public.contains(id) {
+            chosen_public.push(*id);
+        }
+    }
+
+    let max_hidden = max.saturating_sub(chosen_public.len());
+    chosen_hidden.truncate(max_hidden);
+
+    let mut normalized = chosen_public;
+    normalized.extend(chosen_hidden);
+    normalized
 }
 
 fn enforce_single_graveyard_choice_constraint(
@@ -513,7 +568,7 @@ pub(crate) fn run_choose_objects(
         });
     }
 
-    let (min, max) = if effect.count.dynamic_x {
+    let (base_min, max) = if effect.count.dynamic_x {
         let x = ctx
             .x_value
             .ok_or_else(|| ExecutionError::UnresolvableValue("X value not set".to_string()))?
@@ -543,6 +598,31 @@ pub(crate) fn run_choose_objects(
         });
     }
 
+    let has_hidden_search_zones = effect.is_search && search_zones.iter().any(Zone::is_hidden);
+    let has_search_stated_quality = effect.filter.has_search_stated_quality();
+    let search_required_count = compute_search_required_count(effect.search_mode, max);
+    let allow_hidden_partial =
+        effect.is_search && has_hidden_search_zones && has_search_stated_quality;
+    let min = if effect.is_search {
+        if allow_hidden_partial {
+            0
+        } else {
+            search_required_count.max(base_min)
+        }
+    } else {
+        base_min
+    };
+    let required_public_count = if allow_hidden_partial {
+        let public_count = public_search_candidates(game, &candidates).len();
+        match effect.search_mode {
+            SearchSelectionMode::Exact => search_required_count.min(public_count),
+            SearchSelectionMode::Optional => 0,
+            SearchSelectionMode::AllMatching => public_count,
+        }
+    } else {
+        0
+    };
+
     let description = if effect.description == "Choose" {
         let tag_str = effect.tag.as_str();
         let verb = if tag_str.starts_with("sacrificed") {
@@ -566,7 +646,7 @@ pub(crate) fn run_choose_objects(
         } else {
             let mut spec =
                 ChooseObjectsSpec::new(ctx.source, description, candidates.clone(), min, Some(max));
-            if effect.is_search {
+            if allow_hidden_partial {
                 spec = spec.allow_partial_completion();
             }
             make_decision(game, ctx.decision_maker, chooser_id, Some(ctx.source), spec)
@@ -580,9 +660,14 @@ pub(crate) fn run_choose_objects(
             outcome
         });
     }
-    let chosen = normalize_chosen_objects(chosen, &candidates, min, max, !effect.is_search);
+    let chosen = normalize_chosen_objects(chosen, &candidates, min, max, !allow_hidden_partial);
+    let chosen =
+        enforce_public_search_choice_constraint(game, &candidates, chosen, required_public_count, max);
     let chosen =
         enforce_single_graveyard_choice_constraint(effect, game, &candidates, chosen, min, max);
+    if search_zones.iter().any(Zone::is_hidden) {
+        ctx.remember_face_down_exile_viewers(&chosen, chooser_id);
+    }
 
     let snapshots = snapshot_chosen_objects(game, &chosen);
     if !snapshots.is_empty() {
@@ -694,7 +779,7 @@ mod tests {
     }
 
     #[test]
-    fn test_search_with_single_candidate_can_fail_to_find() {
+    fn test_stated_quality_search_with_single_candidate_can_fail_to_find() {
         struct FailToFindDecisionMaker;
 
         impl DecisionMaker for FailToFindDecisionMaker {
@@ -718,8 +803,11 @@ mod tests {
         let mut dm = FailToFindDecisionMaker;
         let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
 
-        let filter = ObjectFilter::default().in_zone(Zone::Library);
-        let effect = ChooseObjectsEffect::new(filter, 1, PlayerFilter::You, "chosen")
+        let filter = ObjectFilter::default()
+            .in_zone(Zone::Library)
+            .with_type(CardType::Creature);
+        let effect =
+            ChooseObjectsEffect::new(filter, ChoiceCount::up_to(1), PlayerFilter::You, "chosen")
             .in_zone(Zone::Library)
             .as_search();
         let outcome = run_choose_objects(&effect, &mut game, &mut ctx).expect("search resolves");
@@ -734,7 +822,7 @@ mod tests {
     }
 
     #[test]
-    fn test_search_exact_count_can_partially_complete() {
+    fn test_stated_quality_exact_search_can_partially_complete() {
         struct ChooseOneDecisionMaker;
 
         impl DecisionMaker for ChooseOneDecisionMaker {
@@ -743,7 +831,6 @@ mod tests {
                 _game: &GameState,
                 ctx: &crate::decisions::context::SelectObjectsContext,
             ) -> Vec<ObjectId> {
-                assert_eq!(ctx.min, 2, "exact-count search should still describe count");
                 assert!(
                     ctx.allow_partial_completion,
                     "exact-count searches should still allow stopping early"
@@ -765,8 +852,11 @@ mod tests {
         let mut dm = ChooseOneDecisionMaker;
         let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
 
-        let filter = ObjectFilter::default().in_zone(Zone::Library);
-        let effect = ChooseObjectsEffect::new(filter, 2, PlayerFilter::You, "chosen")
+        let filter = ObjectFilter::default()
+            .in_zone(Zone::Library)
+            .with_type(CardType::Creature);
+        let effect =
+            ChooseObjectsEffect::new(filter, ChoiceCount::up_to(2), PlayerFilter::You, "chosen")
             .in_zone(Zone::Library)
             .as_search();
         let outcome = run_choose_objects(&effect, &mut game, &mut ctx).expect("search resolves");
@@ -775,6 +865,122 @@ mod tests {
             panic!("expected object selection result");
         };
         assert_eq!(chosen, vec![first]);
+    }
+
+    #[test]
+    fn test_quantity_only_search_with_single_candidate_cannot_fail_to_find() {
+        struct FailToFindDecisionMaker;
+
+        impl DecisionMaker for FailToFindDecisionMaker {
+            fn decide_objects(
+                &mut self,
+                _game: &GameState,
+                ctx: &crate::decisions::context::SelectObjectsContext,
+            ) -> Vec<ObjectId> {
+                assert!(
+                    !ctx.allow_partial_completion,
+                    "quantity-only searches should not allow partial completion"
+                );
+                Vec::new()
+            }
+        }
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let only = create_library_card(&mut game, "Only Match", alice);
+        let source = game.new_object_id();
+        let mut dm = FailToFindDecisionMaker;
+        let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
+
+        let filter = ObjectFilter::default().in_zone(Zone::Library);
+        let effect =
+            ChooseObjectsEffect::new(filter, ChoiceCount::up_to(1), PlayerFilter::You, "chosen")
+                .in_zone(Zone::Library)
+                .as_search();
+        let outcome = run_choose_objects(&effect, &mut game, &mut ctx).expect("search resolves");
+
+        let crate::effect::OutcomeValue::Objects(chosen) = outcome.value else {
+            panic!("expected object selection result");
+        };
+        assert_eq!(chosen, vec![only]);
+    }
+
+    #[test]
+    fn test_mixed_public_and_hidden_exact_search_requires_public_match() {
+        struct FailToFindDecisionMaker;
+
+        impl DecisionMaker for FailToFindDecisionMaker {
+            fn decide_objects(
+                &mut self,
+                _game: &GameState,
+                ctx: &crate::decisions::context::SelectObjectsContext,
+            ) -> Vec<ObjectId> {
+                assert!(
+                    ctx.allow_partial_completion,
+                    "mixed hidden/public stated-quality searches should still allow hidden misses"
+                );
+                Vec::new()
+            }
+        }
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let graveyard_match = create_graveyard_card(&mut game, "Public Match", alice);
+        let _library_match = create_library_card(&mut game, "Hidden Match", alice);
+        let source = game.new_object_id();
+        let mut dm = FailToFindDecisionMaker;
+        let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
+
+        let filter = ObjectFilter::default().with_type(CardType::Creature);
+        let effect =
+            ChooseObjectsEffect::new(filter, ChoiceCount::up_to(1), PlayerFilter::You, "chosen")
+                .in_zones(vec![Zone::Graveyard, Zone::Library])
+                .as_search();
+        let outcome = run_choose_objects(&effect, &mut game, &mut ctx).expect("search resolves");
+
+        let crate::effect::OutcomeValue::Objects(chosen) = outcome.value else {
+            panic!("expected object selection result");
+        };
+        assert_eq!(chosen, vec![graveyard_match]);
+    }
+
+    #[test]
+    fn test_all_matching_search_auto_includes_public_matches() {
+        struct FailToFindDecisionMaker;
+
+        impl DecisionMaker for FailToFindDecisionMaker {
+            fn decide_objects(
+                &mut self,
+                _game: &GameState,
+                ctx: &crate::decisions::context::SelectObjectsContext,
+            ) -> Vec<ObjectId> {
+                assert!(
+                    ctx.allow_partial_completion,
+                    "all-matching hidden searches should still allow hidden misses"
+                );
+                Vec::new()
+            }
+        }
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let graveyard_match = create_graveyard_card(&mut game, "Public Match", alice);
+        let _library_match = create_library_card(&mut game, "Hidden Match", alice);
+        let source = game.new_object_id();
+        let mut dm = FailToFindDecisionMaker;
+        let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
+
+        let filter = ObjectFilter::default().with_type(CardType::Creature);
+        let effect =
+            ChooseObjectsEffect::new(filter, ChoiceCount::any_number(), PlayerFilter::You, "chosen")
+                .in_zones(vec![Zone::Graveyard, Zone::Library])
+                .as_all_matching_search();
+        let outcome = run_choose_objects(&effect, &mut game, &mut ctx).expect("search resolves");
+
+        let crate::effect::OutcomeValue::Objects(chosen) = outcome.value else {
+            panic!("expected object selection result");
+        };
+        assert_eq!(chosen, vec![graveyard_match]);
     }
 
     #[test]

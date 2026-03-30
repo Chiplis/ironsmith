@@ -6411,6 +6411,28 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             subject, verb, possessive, possessive
         );
     }
+    if let Some(shuffle_objects) =
+        effect.downcast_ref::<crate::effects::ShuffleObjectsIntoLibraryEffect>()
+    {
+        if matches!(&shuffle_objects.target, ChooseSpec::Source)
+            && matches!(&shuffle_objects.player, PlayerFilter::You)
+        {
+            return "Shuffle it into its owner's library".to_string();
+        }
+        if let (
+            ChooseSpec::Tagged(target_tag),
+            PlayerFilter::OwnerOf(crate::filter::ObjectRef::Tagged(owner_tag)),
+        ) = (&shuffle_objects.target, &shuffle_objects.player)
+            && target_tag == owner_tag
+        {
+            return "Shuffle it into its owner's library".to_string();
+        }
+        return format!(
+            "Shuffle {} into {} library",
+            describe_choose_spec(&shuffle_objects.target),
+            describe_possessive_player_filter(&shuffle_objects.player)
+        );
+    }
     if let Some(reorder_gy) = effect.downcast_ref::<crate::effects::ReorderGraveyardEffect>() {
         return format!(
             "Reorder {} graveyard as you choose",
@@ -6908,6 +6930,17 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         let mut text = format!("{verb} {target}");
         if cast_tagged.without_paying_mana_cost {
             text.push_str(" without paying its mana cost");
+        }
+        if let Some(reduction) = cast_tagged.cost_reduction.as_ref() {
+            let copy_ref = if cast_tagged.as_copy {
+                "That copy"
+            } else {
+                "That spell"
+            };
+            text.push_str(&format!(
+                ". {copy_ref} costs {} less to cast",
+                reduction.to_oracle()
+            ));
         }
         return text;
     }
@@ -7430,6 +7463,21 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             return format!("Fateseal {}", describe_value(&scry.count));
         }
         let player = describe_player_filter(&scry.player);
+        return format!(
+            "{} {} {}",
+            player,
+            player_verb(&player, "scry", "scries"),
+            describe_value(&scry.count)
+        );
+    }
+    if let Some(scry) = effect.downcast_ref::<crate::effects::EachPlayerScryEffect>() {
+        if scry.player_filter == PlayerFilter::Any {
+            return format!("Each player scries {}", describe_value(&scry.count));
+        }
+        if scry.player_filter == PlayerFilter::Opponent {
+            return format!("Each opponent scries {}", describe_value(&scry.count));
+        }
+        let player = describe_player_filter(&scry.player_filter);
         return format!(
             "{} {} {}",
             player,

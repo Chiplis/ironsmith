@@ -14,7 +14,7 @@ const selectPill = "stone-select rounded-none px-2.5 py-0.5 text-[13px] font-med
 export default function AddCardBar({
   zoneViews = ["battlefield"],
   setZoneViews,
-  onAddCardFailure,
+  onAddCardNotice,
   onEnterDeckLoading,
   onOpenPuzzleSetup,
   onOpenLobby,
@@ -59,7 +59,7 @@ export default function AddCardBar({
     <div className="add-card-toolbar table-toolbar table-toolbar--secondary rounded-none px-3 py-2">
       <div className="add-card-toolbar-left">
         <AddCardSheet
-          onAddCardFailure={onAddCardFailure}
+          onAddCardNotice={onAddCardNotice}
           trigger={(
             <button
               type="button"

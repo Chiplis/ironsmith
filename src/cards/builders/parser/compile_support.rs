@@ -103,6 +103,7 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::Blocks(filter) => Trigger::blocks(filter),
         TriggerSpec::ThisBecomesBlocked => Trigger::this_becomes_blocked(),
         TriggerSpec::ThisDies => Trigger::this_dies(),
+        TriggerSpec::ThisDiesOrIsExiled => Trigger::this_dies_or_is_exiled(),
         TriggerSpec::ThisLeavesBattlefield => Trigger::this_leaves_battlefield(),
         TriggerSpec::ThisBecomesMonstrous => Trigger::this_becomes_monstrous(),
         TriggerSpec::ThisBecomesTapped => Trigger::becomes_tapped(),
@@ -138,6 +139,15 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         }
         TriggerSpec::PlayerGivesGift(player) => Trigger::player_gives_gift(player),
         TriggerSpec::PlayerSearchesLibrary(player) => Trigger::player_searches_library(player),
+        TriggerSpec::PlayerShufflesLibrary {
+            player,
+            caused_by_effect,
+            source_controller_shuffles,
+        } => Trigger::player_shuffles_library(
+            player,
+            caused_by_effect,
+            source_controller_shuffles,
+        ),
         TriggerSpec::PlayerTapsForMana { player, filter } => {
             Trigger::player_taps_for_mana(player, filter)
         }
@@ -170,6 +180,11 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::PlayerDiscardsCard { player, filter } => {
             Trigger::player_discards_card(player, filter)
         }
+        TriggerSpec::PlayerRevealsCard {
+            player,
+            filter,
+            from_source,
+        } => Trigger::player_reveals_card(player, filter, from_source),
         TriggerSpec::PlayerSacrifices { player, filter } => {
             Trigger::player_sacrifices(player, filter)
         }
@@ -755,9 +770,11 @@ pub(crate) fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
         | TriggerSpec::PlayerDrawsCardNotDuringTurn { .. }
         | TriggerSpec::PlayerDrawsNthCardEachTurn { .. }
         | TriggerSpec::PlayerDiscardsCard { .. }
+        | TriggerSpec::PlayerRevealsCard { .. }
         | TriggerSpec::PlayerPlaysLand { .. }
         | TriggerSpec::PlayerGivesGift(_)
         | TriggerSpec::PlayerSearchesLibrary(_)
+        | TriggerSpec::PlayerShufflesLibrary { .. }
         | TriggerSpec::PlayerTapsForMana { .. }
         | TriggerSpec::PlayerSacrifices { .. }
         | TriggerSpec::BeginningOfUpkeep(_)
@@ -844,9 +861,11 @@ pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<Pl
         TriggerSpec::PlayerDrawsCardNotDuringTurn { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerDrawsNthCardEachTurn { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerDiscardsCard { .. } => Some(PlayerFilter::IteratedPlayer),
+        TriggerSpec::PlayerRevealsCard { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerPlaysLand { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerGivesGift(_) => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerSearchesLibrary(_) => Some(PlayerFilter::IteratedPlayer),
+        TriggerSpec::PlayerShufflesLibrary { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerTapsForMana { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::AbilityActivated { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerSacrifices { .. } => Some(PlayerFilter::IteratedPlayer),
@@ -3880,6 +3899,23 @@ where
     Ok((effects, choices))
 }
 
+fn try_compile_simultaneous_each_player_scry(
+    player_filter: PlayerFilter,
+    inner_effects: &[Effect],
+) -> Option<Effect> {
+    if inner_effects.len() != 1 {
+        return None;
+    }
+    let scry = inner_effects[0].downcast_ref::<crate::effects::ScryEffect>()?;
+    if scry.player != PlayerFilter::IteratedPlayer {
+        return None;
+    }
+    Some(Effect::new(crate::effects::EachPlayerScryEffect::new(
+        scry.count.clone(),
+        player_filter,
+    )))
+}
+
 fn compile_emblem_description_from_text(text: &str) -> Result<EmblemDescription, CardTextError> {
     let definition =
         CardDefinitionBuilder::new(CardId::new(), "Emblem").parse_text(text.to_string())?;
@@ -5416,6 +5452,7 @@ fn try_compile_timing_and_control_effect(
             allow_land,
             as_copy,
             without_paying_mana_cost,
+            cost_reduction,
         } => {
             let resolved_tag = if tag.as_str() == IT_TAG {
                 TagKey::from(ctx.last_object_tag.clone().ok_or_else(|| {
@@ -5431,6 +5468,7 @@ fn try_compile_timing_and_control_effect(
                 *allow_land,
                 *as_copy,
                 *without_paying_mana_cost,
+                cost_reduction.clone(),
             );
             (vec![effect], Vec::new())
         }
@@ -5910,13 +5948,16 @@ fn try_compile_flow_and_iteration_effect(
         EffectAst::ForEachPlayersFiltered { filter, effects } => {
             let (inner_effects, inner_choices) =
                 compile_effects_in_iterated_player_context(effects, ctx, None)?;
-            let effect = Effect::for_players(filter.clone(), inner_effects);
+            let effect = try_compile_simultaneous_each_player_scry(filter.clone(), &inner_effects)
+                .unwrap_or_else(|| Effect::for_players(filter.clone(), inner_effects));
             (vec![effect], inner_choices)
         }
         EffectAst::ForEachPlayer { effects } => {
             let (inner_effects, inner_choices) =
                 compile_effects_in_iterated_player_context(effects, ctx, None)?;
-            let effect = Effect::for_players(PlayerFilter::Any, inner_effects);
+            let effect =
+                try_compile_simultaneous_each_player_scry(PlayerFilter::Any, &inner_effects)
+                    .unwrap_or_else(|| Effect::for_players(PlayerFilter::Any, inner_effects));
             (vec![effect], inner_choices)
         }
         EffectAst::ForEachTargetPlayers { count, effects } => {
@@ -5926,7 +5967,11 @@ fn try_compile_flow_and_iteration_effect(
                 ChooseSpec::target(ChooseSpec::Player(PlayerFilter::Any)).with_count(*count);
             let choose_targets =
                 Effect::new(crate::effects::TargetOnlyEffect::new(target_spec.clone()));
-            let effect = Effect::for_players(PlayerFilter::target_player(), inner_effects);
+            let effect = try_compile_simultaneous_each_player_scry(
+                PlayerFilter::target_player(),
+                &inner_effects,
+            )
+            .unwrap_or_else(|| Effect::for_players(PlayerFilter::target_player(), inner_effects));
             let mut choices = vec![target_spec];
             for choice in inner_choices {
                 push_choice(&mut choices, choice);
@@ -8037,6 +8082,7 @@ fn try_compile_search_and_reorder_effect(
             destination,
             chooser,
             player,
+            search_mode,
             reveal,
             shuffle,
             count,
@@ -8065,13 +8111,14 @@ fn try_compile_search_and_reorder_effect(
                 && count.max == Some(1)
                 && *destination != Zone::Battlefield;
             if use_search_effect {
-                let mut effect = Effect::search_library_as(
+                let mut effect = Effect::new(crate::effects::SearchLibraryEffect::new(
                     filter,
                     *destination,
                     chooser_filter.clone(),
                     player_filter.clone(),
                     *reveal,
-                );
+                )
+                .with_search_mode(*search_mode));
                 if ctx.auto_tag_object_targets {
                     let tag = ctx.next_tag("searched");
                     ctx.last_object_tag = Some(tag.clone());
@@ -8102,8 +8149,14 @@ fn try_compile_search_and_reorder_effect(
                     tag.clone(),
                 )
                 .in_zone(Zone::Library)
-                .with_description(choose_description)
-                .as_search();
+                .with_description(choose_description);
+                let choose = match search_mode {
+                    crate::effect::SearchSelectionMode::Exact => choose.as_search(),
+                    crate::effect::SearchSelectionMode::Optional => choose.as_optional_search(),
+                    crate::effect::SearchSelectionMode::AllMatching => {
+                        choose.as_all_matching_search()
+                    }
+                };
                 let choose = if *reveal { choose.reveal() } else { choose };
 
                 let to_top = matches!(destination, Zone::Library);
@@ -8276,6 +8329,7 @@ fn try_compile_object_zone_and_exchange_effect(
             player,
             tag,
             zones,
+            search_mode,
         } => {
             let (chooser, choices) = resolve_effect_player_filter(*player, ctx, true, true, false)?;
             let references_revealed_hand = filter.zone == Some(Zone::Hand)
@@ -8308,7 +8362,17 @@ fn try_compile_object_zone_and_exchange_effect(
                 tag.clone(),
             )
             .in_zones(zones.clone());
-            if zones.contains(&Zone::Library) {
+            if let Some(search_mode) = search_mode {
+                choose_effect = match search_mode {
+                    crate::effect::SearchSelectionMode::Exact => choose_effect.as_search(),
+                    crate::effect::SearchSelectionMode::Optional => {
+                        choose_effect.as_optional_search()
+                    }
+                    crate::effect::SearchSelectionMode::AllMatching => {
+                        choose_effect.as_all_matching_search()
+                    }
+                };
+            } else if zones.contains(&Zone::Library) {
                 choose_effect = choose_effect.as_search();
             }
             let effect = Effect::new(choose_effect);
@@ -8872,6 +8936,22 @@ fn try_compile_object_zone_and_exchange_effect(
                 )));
             }
 
+            (vec![effect], choices)
+        }
+        EffectAst::ShuffleObjectsIntoLibrary { target, player } => {
+            let (spec, mut choices) =
+                resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            let (player_filter, player_choices) =
+                resolve_effect_player_filter(*player, ctx, true, true, true)?;
+            for choice in player_choices {
+                push_choice(&mut choices, choice);
+            }
+            let mut effect = Effect::shuffle_objects_into_library(spec.clone(), player_filter);
+            if choose_spec_targets_object(&spec) && ctx.auto_tag_object_targets {
+                let tag = ctx.next_tag("moved");
+                ctx.last_object_tag = Some(tag.clone());
+                effect = effect.tag(tag);
+            }
             (vec![effect], choices)
         }
         EffectAst::ReturnAllToHand { filter } => {

@@ -3,7 +3,7 @@
 //! This effect allows a player to choose objects matching a filter and tag them
 //! for reference by subsequent effects in the same spell/ability.
 
-use crate::effect::{ChoiceCount, EffectOutcome};
+use crate::effect::{ChoiceCount, EffectOutcome, SearchSelectionMode};
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::filter::Comparison;
@@ -67,6 +67,8 @@ pub struct ChooseObjectsEffect {
     pub is_search: bool,
     /// Whether chosen cards should be revealed.
     pub reveal: bool,
+    /// Search phrasing that determines fail-to-find behavior.
+    pub search_mode: SearchSelectionMode,
     /// Restrict selection to top-most matching objects in ordered zones.
     pub top_only: bool,
     /// Replace any prior snapshots stored under `tag` instead of accumulating.
@@ -91,6 +93,7 @@ impl ChooseObjectsEffect {
             description: "Choose",
             is_search: false,
             reveal: false,
+            search_mode: SearchSelectionMode::Exact,
             top_only: false,
             replace_tagged_objects: false,
         }
@@ -125,6 +128,21 @@ impl ChooseObjectsEffect {
     /// Mark this choice as a library search (respects search restrictions).
     pub fn as_search(mut self) -> Self {
         self.is_search = true;
+        self.search_mode = SearchSelectionMode::Exact;
+        self
+    }
+
+    /// Mark this choice as an optional search ("up to", "any number").
+    pub fn as_optional_search(mut self) -> Self {
+        self.is_search = true;
+        self.search_mode = SearchSelectionMode::Optional;
+        self
+    }
+
+    /// Mark this choice as an "all matching" search.
+    pub fn as_all_matching_search(mut self) -> Self {
+        self.is_search = true;
+        self.search_mode = SearchSelectionMode::AllMatching;
         self
     }
 

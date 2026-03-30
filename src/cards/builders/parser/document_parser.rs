@@ -1227,6 +1227,38 @@ fn split_trigger_sentence_chunks_rewrite(text: &str, line_index: usize) -> Vec<S
     chunks
 }
 
+fn split_reveal_first_draw_line_rewrite(text: &str) -> Option<Vec<String>> {
+    let sentences = text
+        .split('.')
+        .map(str::trim)
+        .filter(|sentence| !sentence.is_empty())
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    if sentences.len() <= 1 {
+        return None;
+    }
+
+    let first = sentences.first()?.to_ascii_lowercase();
+    let first_is_reveal_first_draw = matches!(
+        first.as_str(),
+        "reveal the first card you draw each turn"
+            | "reveal the first card you draw on each of your turns"
+            | "you may reveal the first card you draw each turn as you draw it"
+            | "you may reveal the first card you draw on each of your turns as you draw it"
+    );
+    if !first_is_reveal_first_draw {
+        return None;
+    }
+
+    let tail = sentences[1..].join(". ");
+    let tail_lower = tail.to_ascii_lowercase();
+    if !tail_lower.starts_with("whenever you reveal ") {
+        return None;
+    }
+
+    Some(vec![sentences[0].clone(), tail])
+}
+
 fn sentence_starts_with_trigger_intro_rewrite(sentence: &str, line_index: usize) -> bool {
     let Ok(tokens) = lexed_tokens(sentence, line_index) else {
         return false;
@@ -1540,6 +1572,32 @@ pub(crate) fn parse_document_cst(
                 }
 
                 let normalized = line.info.normalized.normalized.as_str();
+                if let Some(chunks) = split_reveal_first_draw_line_rewrite(normalized) {
+                    for chunk in chunks {
+                        let chunk_line = rewrite_line_normalized(line, chunk.as_str())?;
+                        if parse_trigger_intro(normalized_first_word(&chunk)).is_some() {
+                            for trigger_chunk in split_trigger_sentence_chunks_rewrite(
+                                &chunk_line.info.normalized.normalized,
+                                chunk_line.info.line_index,
+                            ) {
+                                let trigger_line =
+                                    rewrite_line_normalized(&chunk_line, trigger_chunk.as_str())?;
+                                lines.push(RewriteLineCst::Triggered(parse_triggered_line_cst(
+                                    &trigger_line,
+                                )?));
+                            }
+                        } else if let Some(static_line) = parse_static_line_cst(&chunk_line)? {
+                            lines.push(RewriteLineCst::Static(static_line));
+                        } else {
+                            return Err(CardTextError::ParseError(format!(
+                                "parser could not split reveal-first-draw line family: '{}'",
+                                line.info.raw_line
+                            )));
+                        }
+                    }
+                    idx += 1;
+                    continue;
+                }
                 if let Some(unsupported) = parse_former_section9_unsupported_line_cst(line) {
                     lines.push(RewriteLineCst::Unsupported(unsupported));
                     idx += 1;

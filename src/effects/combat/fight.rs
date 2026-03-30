@@ -81,6 +81,14 @@ impl EffectExecutor for FightEffect {
         let Some((creature1_id, creature2_id)) = ctx.resolve_two_object_targets() else {
             return Ok(EffectOutcome::target_invalid());
         };
+        let both_valid_fighters = [creature1_id, creature2_id].into_iter().all(|id| {
+            game.object(id)
+                .is_some_and(|object| object.zone == crate::zone::Zone::Battlefield)
+                && game.current_is_creature(id)
+        });
+        if !both_valid_fighters {
+            return Ok(EffectOutcome::count(0));
+        }
 
         // Use calculated power so continuous effects (pumps/shrinks) are respected.
         let power1 = game.calculated_power(creature1_id).unwrap_or(0).max(0) as u32;
@@ -378,5 +386,76 @@ mod tests {
         );
         assert_eq!(game.damage_on(blocker), 0);
         assert_eq!(game.damage_on(infector), 3);
+    }
+
+    #[test]
+    fn test_fight_does_nothing_if_one_fighter_left_battlefield() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let bear = create_creature(&mut game, "Bear", 3, 3, alice);
+        let goblin = create_creature(&mut game, "Goblin", 2, 2, bob);
+        let source = game.new_object_id();
+        let goblin_graveyard_id = game
+            .move_object_by_effect(goblin, Zone::Graveyard)
+            .expect("goblin should move to graveyard");
+
+        let mut ctx = ExecutionContext::new_default(source, alice).with_targets(vec![
+            ResolvedTarget::Object(bear),
+            ResolvedTarget::Object(goblin_graveyard_id),
+        ]);
+
+        let effect = FightEffect::you_vs_opponent();
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(0));
+        assert_eq!(game.damage_on(bear), 0);
+        assert_eq!(game.damage_on(goblin_graveyard_id), 0);
+    }
+
+    #[test]
+    fn test_fight_does_nothing_if_one_fighter_is_no_longer_a_creature() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let bear = create_creature(&mut game, "Bear", 3, 3, alice);
+        let mimic = create_creature(&mut game, "Mimic", 2, 2, bob);
+        let source = game.new_object_id();
+        game.object_mut(mimic)
+            .expect("mimic should exist")
+            .card_types = vec![CardType::Artifact];
+
+        let mut ctx = ExecutionContext::new_default(source, alice).with_targets(vec![
+            ResolvedTarget::Object(bear),
+            ResolvedTarget::Object(mimic),
+        ]);
+
+        let effect = FightEffect::you_vs_opponent();
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(0));
+        assert_eq!(game.damage_on(bear), 0);
+        assert_eq!(game.damage_on(mimic), 0);
+    }
+
+    #[test]
+    fn test_fight_with_itself_deals_double_damage_to_itself() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let fighter = create_creature(&mut game, "Solo Fighter", 3, 3, alice);
+        let source = game.new_object_id();
+
+        let mut ctx = ExecutionContext::new_default(source, alice).with_targets(vec![
+            ResolvedTarget::Object(fighter),
+            ResolvedTarget::Object(fighter),
+        ]);
+
+        let effect = FightEffect::you_vs_opponent();
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(6));
+        assert_eq!(game.damage_on(fighter), 6);
     }
 }

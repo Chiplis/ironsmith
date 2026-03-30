@@ -872,6 +872,11 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
     fn pregame_action_kind(&self) -> Option<PregameActionKind> {
         None
     }
+
+    /// Return a draw-reveal descriptor, if this ability reveals one of the cards you draw.
+    fn reveal_drawn_card_spec(&self) -> Option<RevealDrawnCardSpec> {
+        None
+    }
 }
 
 /// Spec for "as this enters, choose a color" abilities.
@@ -925,6 +930,14 @@ pub struct TriggerDuplicationSpec {
 pub struct TriggerSuppressionSpec {
     pub source_filter: Option<crate::target::ObjectFilter>,
     pub event_matcher: Option<crate::triggers::Trigger>,
+}
+
+/// Spec for static abilities that reveal a card as part of a draw.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RevealDrawnCardSpec {
+    pub card_number: u32,
+    pub optional: bool,
+    pub your_turns_only: bool,
 }
 
 // Implement Clone for Box<dyn StaticAbilityKind>
@@ -1009,6 +1022,10 @@ impl StaticAbility {
 
     pub fn pregame_action_kind(&self) -> Option<PregameActionKind> {
         self.0.pregame_action_kind()
+    }
+
+    pub fn reveal_drawn_card_spec(&self) -> Option<RevealDrawnCardSpec> {
+        self.0.reveal_drawn_card_spec()
     }
 
     /// Get the display text for this ability.
@@ -2272,6 +2289,13 @@ impl StaticAbility {
 
     pub fn draw_replacement_exile_top_face_down() -> Self {
         Self::new(DrawReplacementExileTopFaceDown)
+    }
+
+    pub fn reveal_first_card_you_draw_each_turn(optional: bool, your_turns_only: bool) -> Self {
+        Self::new(RevealFirstCardYouDrawEachTurn::new(
+            optional,
+            your_turns_only,
+        ))
     }
 
     pub fn exile_to_countered_exile_instead_of_graveyard(

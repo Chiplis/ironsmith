@@ -58,7 +58,7 @@ export default function TopbarMenuSheet({
   onOpenLobby,
   deckLoadingMode,
   puzzleSetupMode = false,
-  onAddCardFailure,
+  onAddCardNotice,
   triggerIcon = "settings",
   showQuickActions = false,
 }) {
@@ -177,7 +177,7 @@ export default function TopbarMenuSheet({
             >
               <div className="grid gap-2 sm:grid-cols-2">
                 <AddCardSheet
-                  onAddCardFailure={onAddCardFailure}
+                  onAddCardNotice={onAddCardNotice}
                   trigger={(
                     <Button
                       variant="secondary"

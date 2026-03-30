@@ -423,7 +423,7 @@ export default function Shell() {
           setLobbyOpen(true);
         }}
         deckLoadingMode={deckLoadingMode}
-        onAddCardFailure={pushNotice}
+        onAddCardNotice={pushNotice}
         mobileOpponentIndex={mobileOpponentIndex}
         setMobileOpponentIndex={setMobileOpponentIndex}
         mobileOverlay={landscapeMobileViewport}
@@ -432,7 +432,7 @@ export default function Shell() {
         <AddCardBar
           zoneViews={zoneViews}
           setZoneViews={setZoneViews}
-          onAddCardFailure={pushNotice}
+          onAddCardNotice={pushNotice}
           onEnterDeckLoading={() => {
             setPuzzleSetupMode(false);
             setDeckLoadingMode((mode) => !mode);

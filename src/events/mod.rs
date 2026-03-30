@@ -101,10 +101,12 @@ pub use combat::{
     CreatureBecameBlockedEvent, CreatureBlockedEvent,
 };
 pub use other::{
-    BecameMonstrousEvent, CardDiscardedEvent, CardsDrawnEvent, CounterPlacedEvent, GiftGivenEvent,
-    KeywordActionEvent, KeywordActionKind, LandPlayedEvent, MarkerChangeType, MarkersChangedEvent,
-    PermanentTappedEvent, PermanentUntappedEvent, PlayerVote, PlayersFinishedVotingEvent,
-    SearchLibraryEvent, StateTriggerEvent, TransformedEvent, TurnedFaceUpEvent,
+    BecameMonstrousEvent, CardDiscardedEvent, CardRevealedEvent, CardsDrawnEvent,
+    CounterPlacedEvent, GiftGivenEvent, KeywordActionEvent, KeywordActionKind, LandPlayedEvent,
+    MarkerChangeType, MarkersChangedEvent, PermanentTappedEvent, PermanentUntappedEvent,
+    PlayerVote, PlayersFinishedVotingEvent, SearchLibraryEvent, ShuffleLibraryEvent,
+    StateTriggerEvent,
+    TransformedEvent, TurnedFaceUpEvent,
 };
 pub use phase::{
     BeginningOfCombatEvent, BeginningOfDrawStepEvent, BeginningOfEndStepEvent,

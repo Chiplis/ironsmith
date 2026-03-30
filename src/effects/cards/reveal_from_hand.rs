@@ -9,11 +9,13 @@ use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::ObjectId;
+use crate::snapshot::ObjectSnapshot;
+use crate::tag::TagKey;
 use crate::types::CardType;
 
 /// Effect that reveals cards from the controller's hand.
 ///
-/// Revealing is informational only in this engine model.
+/// Revealing is primarily a visibility action in this engine model.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RevealFromHandEffect {
     pub count: u32,
@@ -126,7 +128,48 @@ impl EffectExecutor for RevealFromHandEffect {
                 .view_cards(game, viewer, &cards_to_reveal, &view_ctx);
         }
 
-        Ok(EffectOutcome::count(cards_to_reveal.len() as i32))
+        let revealed_snapshots: Vec<_> = cards_to_reveal
+            .iter()
+            .filter_map(|&id| {
+                game.object(id)
+                    .map(|obj| ObjectSnapshot::from_object(obj, game))
+            })
+            .collect();
+        if !revealed_snapshots.is_empty() {
+            let entry = ctx
+                .tagged_objects
+                .entry(TagKey::from(crate::effects::PUBLIC_REVEALED_TAG))
+                .or_default();
+            for snapshot in revealed_snapshots {
+                if !entry
+                    .iter()
+                    .any(|existing| existing.object_id == snapshot.object_id)
+                {
+                    entry.push(snapshot);
+                }
+            }
+        }
+
+        let reveal_events = cards_to_reveal
+            .iter()
+            .filter_map(|&id| {
+                let snapshot = game
+                    .object(id)
+                    .map(|obj| ObjectSnapshot::from_object(obj, game))?;
+                Some(crate::triggers::TriggerEvent::new_with_provenance(
+                    crate::events::CardRevealedEvent::new(
+                        ctx.controller,
+                        id,
+                        crate::zone::Zone::Hand,
+                        Some(ctx.source),
+                        Some(snapshot),
+                    ),
+                    ctx.provenance,
+                ))
+            })
+            .collect::<Vec<_>>();
+
+        Ok(EffectOutcome::count(cards_to_reveal.len() as i32).with_events(reveal_events))
     }
 
     fn cost_description(&self) -> Option<String> {
@@ -233,5 +276,29 @@ mod tests {
         assert!(dm.calls.iter().all(|(_, subject, zone, public, cards)| {
             *subject == alice && *zone == Zone::Hand && *public && cards == &vec![id1]
         }));
+    }
+
+    #[test]
+    fn reveal_from_hand_records_public_reveal_tag_for_stack_lifetime() {
+        let mut game = create_test_game();
+        let alice = PlayerId::from_index(0);
+        let source = ObjectId::from_raw(1000);
+        let id1 = game.create_object_from_card(&simple_card("Card 1", 3), alice, Zone::Hand);
+
+        let mut dm = CaptureViewDm::default();
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm)
+            .with_targets(vec![ResolvedTarget::Object(id1)]);
+
+        RevealFromHandEffect::new(1, None)
+            .execute(&mut game, &mut ctx)
+            .expect("reveal from hand");
+
+        let revealed = ctx
+            .tagged_objects
+            .get(&TagKey::from(crate::effects::PUBLIC_REVEALED_TAG))
+            .expect("reveal should record the public reveal tag");
+        assert_eq!(revealed.len(), 1);
+        assert_eq!(revealed[0].object_id, id1);
+        assert_eq!(revealed[0].zone, Zone::Hand);
     }
 }

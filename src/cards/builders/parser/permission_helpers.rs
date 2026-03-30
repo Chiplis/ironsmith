@@ -800,6 +800,7 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
                                     allow_land,
                                     as_copy,
                                     without_paying_mana_cost,
+                                    cost_reduction: None,
                                 }
                             } else {
                                 EffectAst::GrantPlayTaggedUntilEndOfTurn {
@@ -846,6 +847,7 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
                 allow_land,
                 as_copy,
                 without_paying_mana_cost,
+                cost_reduction: None,
             }))
         }
         Some(PermissionClauseSpec::Tagged {

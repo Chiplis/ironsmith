@@ -51,9 +51,39 @@ function formatCardLoadDiagnosticsClipboard(diagnostics, fallbackName, fallbackE
     .join("\n\n");
 }
 
+function buildLowFidelityNotice(diagnostics, fallbackName, zone, includeDebug = false) {
+  const semanticScore = Number(diagnostics?.semanticScore);
+  const thresholdPercent = Number(diagnostics?.thresholdPercent);
+  if (!Number.isFinite(semanticScore) || !Number.isFinite(thresholdPercent)) {
+    return null;
+  }
+
+  const fidelityPercent = semanticScore * 100;
+  if (fidelityPercent >= thresholdPercent) {
+    return null;
+  }
+
+  const canonicalName = diagnostics?.canonicalName || fallbackName;
+  const warningMessage =
+    `Added ${canonicalName} to ${zone} at ${fidelityPercent.toFixed(1)}% fidelity, below the current ${thresholdPercent.toFixed(0)}% threshold.`;
+
+  return {
+    tone: "warning",
+    title: `Added ${canonicalName} below threshold`,
+    body: `Fidelity ${fidelityPercent.toFixed(1)}% is below the current ${thresholdPercent.toFixed(0)}% threshold. Click to copy diagnostics.`,
+    copyText: formatCardLoadDiagnosticsClipboard(
+      diagnostics,
+      canonicalName,
+      warningMessage,
+      includeDebug
+    ),
+    copyStatusMessage: `Copied diagnostics for ${canonicalName}`,
+  };
+}
+
 export default function AddCardSheet({
   trigger,
-  onAddCardFailure,
+  onAddCardNotice,
   triggerClassName = "",
 }) {
   const {
@@ -163,16 +193,28 @@ export default function AddCardSheet({
     }
     try {
       await game.addCardToZone(selectedPlayer, name, zone, skipTriggers);
+      let lowFidelityNotice = null;
+      if (game && typeof game.cardLoadDiagnostics === "function") {
+        try {
+          const diagnostics = await game.cardLoadDiagnostics(name);
+          lowFidelityNotice = buildLowFidelityNotice(diagnostics, name, zone, inspectorDebug);
+        } catch (diagnosticsError) {
+          console.warn("cardLoadDiagnostics failed:", diagnosticsError);
+        }
+      }
       setCardName("");
       setAutocompleteOptions([]);
       setAutocompleteOpen(false);
       setAutocompleteIndex(-1);
       closeSheet();
       await refresh(`Added ${name} to ${zone}`);
+      if (lowFidelityNotice && typeof onAddCardNotice === "function") {
+        onAddCardNotice(lowFidelityNotice);
+      }
     } catch (err) {
       const errMsg = String(err?.message || err);
       setStatus(`Add card failed: ${errMsg}`, true);
-      if (typeof onAddCardFailure === "function") {
+      if (typeof onAddCardNotice === "function") {
         let copyText = `Card: ${name}\n\nError: ${errMsg}`;
         if (game && typeof game.cardLoadDiagnostics === "function") {
           try {
@@ -183,7 +225,7 @@ export default function AddCardSheet({
           }
         }
 
-        onAddCardFailure({
+        onAddCardNotice({
           tone: "error",
           title: `Could not add ${name}`,
           body: `${errMsg} Click to copy diagnostics.`,
@@ -198,7 +240,7 @@ export default function AddCardSheet({
     closeSheet,
     game,
     inspectorDebug,
-    onAddCardFailure,
+    onAddCardNotice,
     refresh,
     selectedPlayer,
     setStatus,

@@ -351,10 +351,11 @@ pub(crate) fn parse_copy_spell_clause(
     let tail = &tokens[copy_idx + 1..];
     let split_idx = find_choose_new_targets_split_idx(tail);
     let simple_copy_reference = copy_idx == 0
-        && matches!(
+        && (matches!(
             clause_words.get(1).copied(),
             Some("it") | Some("this") | Some("that")
-        );
+        ) || clause_words.as_slice() == ["copy", "that", "card"]
+            || clause_words.as_slice() == ["copy", "the", "exiled", "card"]);
     if simple_copy_reference {
         if let Some(then_idx) = tokens.iter().position(|token| token.is_word("then")) {
             let tail_tokens = trim_commas(&tokens[then_idx + 1..]);

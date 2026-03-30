@@ -29,6 +29,7 @@ mod return_from_graveyard_to_battlefield;
 mod return_from_graveyard_to_hand;
 mod return_to_hand;
 mod sacrifice;
+mod shuffle_objects_into_library;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct AppliedZoneChange {
@@ -107,4 +108,5 @@ pub use return_from_graveyard_or_exile_to_battlefield::ReturnFromGraveyardOrExil
 pub use return_from_graveyard_to_battlefield::ReturnFromGraveyardToBattlefieldEffect;
 pub use return_from_graveyard_to_hand::ReturnFromGraveyardToHandEffect;
 pub use return_to_hand::ReturnToHandEffect;
-pub use sacrifice::{SacrificeEffect, SacrificeTargetEffect};
+pub use sacrifice::{EachPlayerSacrificesEffect, SacrificeEffect, SacrificeTargetEffect};
+pub use shuffle_objects_into_library::ShuffleObjectsIntoLibraryEffect;

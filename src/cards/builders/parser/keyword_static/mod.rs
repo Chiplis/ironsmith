@@ -550,6 +550,64 @@ fn parse_static_ability_ast_line_lexed_single(
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let lowered = lowercase_word_tokens(tokens);
     let words = words(&lowered);
+    if matches!(
+        words.as_slice(),
+        ["reveal", "the", "first", "card", "you", "draw", "each", "turn"]
+            | [
+                "reveal",
+                "the",
+                "first",
+                "card",
+                "you",
+                "draw",
+                "on",
+                "each",
+                "of",
+                "your",
+                "turns",
+            ]
+            | [
+                "you",
+                "may",
+                "reveal",
+                "the",
+                "first",
+                "card",
+                "you",
+                "draw",
+                "each",
+                "turn",
+                "as",
+                "you",
+                "draw",
+                "it",
+            ]
+            | [
+                "you",
+                "may",
+                "reveal",
+                "the",
+                "first",
+                "card",
+                "you",
+                "draw",
+                "on",
+                "each",
+                "of",
+                "your",
+                "turns",
+                "as",
+                "you",
+                "draw",
+                "it",
+            ]
+    ) {
+        let optional = words.starts_with(&["you", "may"]);
+        let your_turns_only = words.contains(&"turns");
+        return Ok(Some(vec![
+            StaticAbility::reveal_first_card_you_draw_each_turn(optional, your_turns_only).into(),
+        ]));
+    }
     if words.starts_with(&["craft", "with"]) {
         let mut text = String::new();
         for token in tokens {

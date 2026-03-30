@@ -14,6 +14,7 @@ use crate::cards::builders::{
     LibraryConsultModeAst, LibraryConsultStopRuleAst, PlayerAst, ReturnControllerAst, SubjectAst,
     TagKey, TargetAst, TextSpan,
 };
+use crate::effect::SearchSelectionMode;
 use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
@@ -913,6 +914,7 @@ pub(crate) fn parse_search_library_sentence(
 
     let count_tokens = &search_tokens[for_idx + 1..filter_end];
     let mut count = ChoiceCount::up_to(1);
+    let mut search_mode = SearchSelectionMode::Exact;
     let mut count_used = 0usize;
 
     if count_tokens.len() >= 2
@@ -920,6 +922,7 @@ pub(crate) fn parse_search_library_sentence(
         && count_tokens[1].is_word("number")
     {
         count = ChoiceCount::any_number();
+        search_mode = SearchSelectionMode::Optional;
         count_used = 2;
     } else if count_tokens
         .first()
@@ -927,6 +930,7 @@ pub(crate) fn parse_search_library_sentence(
     {
         if let Some((value, used)) = parse_number(&count_tokens[1..]) {
             count = ChoiceCount::up_to(value as usize);
+            search_mode = SearchSelectionMode::Optional;
             count_used = 1 + used;
         }
     } else if count_tokens.len() >= 2
@@ -940,6 +944,7 @@ pub(crate) fn parse_search_library_sentence(
         .is_some_and(|token| token.is_word("all"))
     {
         count = ChoiceCount::any_number();
+        search_mode = SearchSelectionMode::AllMatching;
         count_used = 1;
     } else if count_tokens.len() >= 2
         && count_tokens[0].is_word("up")
@@ -947,9 +952,11 @@ pub(crate) fn parse_search_library_sentence(
     {
         if count_tokens.get(2).is_some_and(|token| token.is_word("x")) {
             count = ChoiceCount::dynamic_x();
+            search_mode = SearchSelectionMode::Optional;
             count_used = 3;
         } else if let Some((value, used)) = parse_number(&count_tokens[2..]) {
             count = ChoiceCount::up_to(value as usize);
+            search_mode = SearchSelectionMode::Optional;
             count_used = 2 + used;
         }
     } else if count_tokens.first().is_some_and(|token| token.is_word("x")) {
@@ -1219,6 +1226,7 @@ pub(crate) fn parse_search_library_sentence(
             player: chooser,
             tag: chosen_tag.clone(),
             zones: search_zones_override.unwrap_or_else(|| vec![Zone::Library]),
+            search_mode: Some(search_mode),
         }];
         if reveal {
             sequence.push(EffectAst::RevealTagged {
@@ -1239,6 +1247,7 @@ pub(crate) fn parse_search_library_sentence(
             player: chooser,
             tag: chosen_tag.clone(),
             zones: search_zones.clone(),
+            search_mode: Some(search_mode),
         }];
         if reveal {
             sequence.push(EffectAst::RevealTagged {
@@ -1275,6 +1284,7 @@ pub(crate) fn parse_search_library_sentence(
                 destination: Zone::Battlefield,
                 chooser,
                 player,
+                search_mode,
                 reveal,
                 shuffle: false,
                 count: ChoiceCount::up_to(1),
@@ -1285,6 +1295,7 @@ pub(crate) fn parse_search_library_sentence(
                 destination: Zone::Hand,
                 chooser,
                 player,
+                search_mode,
                 reveal,
                 shuffle,
                 count: ChoiceCount::up_to(1),
@@ -1300,6 +1311,7 @@ pub(crate) fn parse_search_library_sentence(
                 player: chooser,
                 tag: searched_tag.clone(),
                 zones: vec![Zone::Library],
+                search_mode: Some(search_mode),
             },
             EffectAst::Exile {
                 target: TargetAst::Tagged(searched_tag, span_from_tokens(tokens)),
@@ -1317,6 +1329,7 @@ pub(crate) fn parse_search_library_sentence(
             destination,
             chooser,
             player,
+            search_mode,
             reveal,
             shuffle,
             count,
@@ -1584,17 +1597,7 @@ pub(crate) fn parse_shuffle_graveyard_into_library_sentence(
     let mut target = parse_target_phrase(&target_tokens)?;
     apply_shuffle_subject_graveyard_owner_context(&mut target, subject);
 
-    append_trailing(vec![
-        EffectAst::MoveToZone {
-            target,
-            zone: Zone::Library,
-            to_top: false,
-            battlefield_controller: ReturnControllerAst::Preserve,
-            battlefield_tapped: false,
-            attached_to: None,
-        },
-        EffectAst::ShuffleLibrary { player },
-    ])
+    append_trailing(vec![EffectAst::ShuffleObjectsIntoLibrary { target, player }])
 }
 
 pub(crate) fn parse_shuffle_object_into_library_sentence(
@@ -1692,17 +1695,10 @@ pub(crate) fn parse_shuffle_object_into_library_sentence(
     }
     let target = parse_target_phrase(&target_tokens)?;
 
-    Ok(Some(vec![
-        EffectAst::MoveToZone {
-            target,
-            zone: Zone::Library,
-            to_top: false,
-            battlefield_controller: ReturnControllerAst::Preserve,
-            battlefield_tapped: false,
-            attached_to: None,
-        },
-        EffectAst::ShuffleLibrary { player },
-    ]))
+    Ok(Some(vec![EffectAst::ShuffleObjectsIntoLibrary {
+        target,
+        player,
+    }]))
 }
 
 pub(crate) fn parse_exile_hand_and_graveyard_bundle_sentence(

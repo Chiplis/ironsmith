@@ -1559,6 +1559,9 @@ pub struct GameState {
     /// Face-down permanents (for morph, manifest, etc.).
     pub face_down: HashSet<ObjectId>,
 
+    /// Which players may inspect a face-down card in exile.
+    pub face_down_exile_viewers: HashMap<ObjectId, HashSet<PlayerId>>,
+
     /// Phased-out permanents.
     pub phased_out: HashSet<ObjectId>,
 
@@ -1693,6 +1696,7 @@ impl GameState {
             renowned: HashSet::new(),
             flipped: HashSet::new(),
             face_down: HashSet::new(),
+            face_down_exile_viewers: HashMap::new(),
             phased_out: HashSet::new(),
             madness_exiled: HashSet::new(),
             foretold_cards: HashSet::new(),
@@ -1831,6 +1835,15 @@ impl GameState {
         duration: crate::effect::Until,
         source: ObjectId,
     ) {
+        let current_turn = self.turn.turn_number;
+        if self.goad_effects.iter().any(|effect| {
+            effect.creature == creature
+                && effect.goaded_by == goaded_by
+                && effect.is_active(self, current_turn)
+        }) {
+            return;
+        }
+
         let expires_end_of_turn = match duration {
             crate::effect::Until::EndOfTurn => self.turn.turn_number,
             crate::effect::Until::Forever => u32::MAX,
@@ -2411,6 +2424,15 @@ impl GameState {
         cause: crate::events::cause::EventCause,
     ) -> Option<ObjectId> {
         let was_face_down = self.is_face_down(old_id);
+        let preserved_exile_viewers = if self
+            .objects
+            .get(&old_id)
+            .is_some_and(|obj| obj.zone == Zone::Exile)
+        {
+            self.face_down_exile_viewers.remove(&old_id)
+        } else {
+            None
+        };
         // Capture a full pre-move snapshot for LKI-based trigger matching.
         let pre_move_snapshot = self.objects.get(&old_id).map(|obj| {
             crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(obj, self)
@@ -2476,6 +2498,14 @@ impl GameState {
 
         if old_zone == Zone::Stack && new_zone == Zone::Battlefield && was_face_down {
             self.set_face_down(new_id);
+        }
+        if old_zone == Zone::Exile && new_zone == Zone::Exile && was_face_down {
+            self.set_face_down(new_id);
+            if let Some(viewers) = preserved_exile_viewers {
+                for viewer in viewers {
+                    self.grant_face_down_exile_view(new_id, viewer);
+                }
+            }
         }
 
         // Record entry timestamp per Rule 613.7d when entering the battlefield
@@ -5819,7 +5849,23 @@ impl GameState {
         self.madness_exiled.remove(&id);
         self.foretold_cards.remove(&id);
         self.plotted_cards.remove(&id);
+        self.face_down_exile_viewers.remove(&id);
         self.remove_exiled_with_source_link(id);
+    }
+
+    /// Allow a player to keep looking at a face-down exiled card.
+    pub fn grant_face_down_exile_view(&mut self, id: ObjectId, viewer: PlayerId) {
+        self.face_down_exile_viewers
+            .entry(id)
+            .or_default()
+            .insert(viewer);
+    }
+
+    /// Check whether a player may inspect a face-down exiled card.
+    pub fn can_player_look_at_face_down_exiled_card(&self, id: ObjectId, viewer: PlayerId) -> bool {
+        self.face_down_exile_viewers
+            .get(&id)
+            .is_some_and(|viewers| viewers.contains(&viewer))
     }
 
     // === Chosen color helpers ===

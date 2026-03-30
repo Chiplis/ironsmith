@@ -9781,11 +9781,94 @@ fn parse_phyrexian_metamorph_style_enter_as_copy_with_added_card_type() {
 
 #[test]
 fn parse_reveal_card_this_way_trigger_clause() {
-    CardDefinitionBuilder::new(CardId::new(), "Primitive Etchings Variant")
+    let def = CardDefinitionBuilder::new(CardId::new(), "Primitive Etchings Variant")
         .parse_text(
             "Reveal the first card you draw each turn. Whenever you reveal a creature card this way, draw a card.",
         )
         .expect("reveal-card-this-way trigger clause should parse");
+
+    assert!(def.spell_effect.is_none());
+    assert!(def.abilities.iter().any(|ability| matches!(
+        &ability.kind,
+        AbilityKind::Static(static_ability)
+            if static_ability.id() == StaticAbilityId::RevealFirstCardYouDrawEachTurn
+    )));
+    assert!(def
+        .abilities
+        .iter()
+        .any(|ability| matches!(&ability.kind, AbilityKind::Triggered(_))));
+}
+
+#[test]
+fn parse_optional_reveal_first_draw_trigger_clause() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Kefnet Variant")
+        .parse_text(
+            "You may reveal the first card you draw each turn as you draw it. Whenever you reveal a creature card this way, draw a card.",
+        )
+        .expect("optional reveal-first-draw trigger clause should parse");
+
+    assert!(def.spell_effect.is_none());
+    assert!(def.abilities.iter().any(|ability| matches!(
+        &ability.kind,
+        AbilityKind::Static(static_ability)
+            if static_ability.id() == StaticAbilityId::RevealFirstCardYouDrawEachTurn
+    )));
+    assert!(def
+        .abilities
+        .iter()
+        .any(|ability| matches!(&ability.kind, AbilityKind::Triggered(_))));
+}
+
+#[test]
+fn parse_god_eternal_kefnet_reveal_copy_cost_reduction_clause() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "God-Eternal Kefnet Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Flying\nYou may reveal the first card you draw each turn as you draw it. Whenever you reveal an instant or sorcery card this way, copy that card and you may cast the copy. That copy costs {2} less to cast.",
+        )
+        .expect("god-eternal kefnet reveal trigger should parse");
+
+    let abilities_debug = format!("{:#?}", def.abilities);
+    assert!(
+        abilities_debug.contains("PlayerRevealsCardTrigger"),
+        "expected reveal trigger lowering, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("CastTaggedEffect"),
+        "expected immediate cast-the-copy lowering, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("cost_reduction: Some"),
+        "expected inline copy cost reduction, got {abilities_debug}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("That copy costs {2} less to cast"),
+        "expected compiled text to preserve Kefnet copy reduction, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_full_god_eternal_kefnet_oracle() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "God-Eternal Kefnet")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Flying\nYou may reveal the first card you draw each turn as you draw it. Whenever you reveal an instant or sorcery card this way, copy that card and you may cast the copy. That copy costs {2} less to cast.\nWhen God-Eternal Kefnet dies or is put into exile from the battlefield, you may put it into its owner's library third from the top.",
+        )
+        .expect("full god-eternal kefnet oracle should parse");
+
+    let abilities_debug = format!("{:#?}", def.abilities);
+    assert!(
+        abilities_debug.contains("OrTrigger") && abilities_debug.contains("MoveToLibraryNthFromTopEffect"),
+        "expected dies-or-exiled trigger with third-from-top move, got {abilities_debug}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("third from the top"),
+        "expected third-from-top library wording, got {rendered}"
+    );
 }
 
 #[test]
@@ -18551,6 +18634,45 @@ fn parse_oracle_smothering_tithe_player_doesnt_regression() {
     assert!(
         rendered.contains("If the player doesn't, you create a Treasure token"),
         "expected Smothering Tithe to keep the Treasure creation clause, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_shuffle_trigger_regressions() {
+    let cosi = parse_oracle_card_definition("Cosi's Trickster");
+    let cosi_raw = format!("{cosi:#?}");
+    assert!(
+        cosi_raw.contains("PlayerShufflesLibraryTrigger")
+            && cosi_raw.contains("player: Opponent")
+            && cosi_raw.contains("caused_by_effect: false"),
+        "expected Cosi's Trickster to compile as an opponent-shuffle trigger, got {cosi_raw}"
+    );
+
+    let probe = parse_oracle_card_definition("Psychogenic Probe");
+    let probe_raw = format!("{probe:#?}");
+    assert!(
+        probe_raw.contains("PlayerShufflesLibraryTrigger")
+            && probe_raw.contains("player: Any")
+            && probe_raw.contains("caused_by_effect: true")
+            && probe_raw.contains("source_controller_shuffles: false"),
+        "expected Psychogenic Probe to compile as an effect-caused shuffle trigger, got {probe_raw}"
+    );
+
+    let panic = parse_oracle_card_definition("Widespread Panic");
+    let panic_raw = format!("{panic:#?}");
+    assert!(
+        panic_raw.contains("PlayerShufflesLibraryTrigger")
+            && panic_raw.contains("caused_by_effect: true")
+            && panic_raw.contains("source_controller_shuffles: true"),
+        "expected Widespread Panic to compile as a controller-shuffles trigger, got {panic_raw}"
+    );
+
+    let rendered = compiled_lines(&panic).join(" ");
+    assert!(
+        rendered.contains(
+            "Whenever a spell or ability causes its controller to shuffle their library"
+        ),
+        "expected Widespread Panic compiled text to preserve its shuffle-trigger wording, got {rendered}"
     );
 }
 

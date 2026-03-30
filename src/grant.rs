@@ -210,7 +210,7 @@ impl GrantSpec {
     pub fn play_lands_from_graveyard() -> Self {
         Self::new(
             Grantable::play_from(),
-            ObjectFilter::land(),
+            ObjectFilter::default().with_type(CardType::Land),
             Zone::Graveyard,
         )
     }
@@ -517,6 +517,18 @@ mod tests {
             spec.display(),
             "You may play lands and cast spells from your graveyard"
         );
+    }
+
+    #[test]
+    fn test_grant_spec_play_lands_from_graveyard_uses_nonbattlefield_land_filter() {
+        let spec = GrantSpec::play_lands_from_graveyard();
+        assert_eq!(spec.zone, Zone::Graveyard);
+        assert_eq!(spec.filter.card_types, vec![CardType::Land]);
+        assert_eq!(
+            spec.filter.zone, None,
+            "grant zone already scopes graveyard land permissions"
+        );
+        assert_eq!(spec.display(), "You may play lands from your graveyard");
     }
 
     #[test]

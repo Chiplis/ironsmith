@@ -224,6 +224,50 @@ impl StaticAbilityKind for BoastTwiceEachTurn {
     }
 }
 
+/// "Reveal the first card you draw each turn/on each of your turns."
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RevealFirstCardYouDrawEachTurn {
+    pub optional: bool,
+    pub your_turns_only: bool,
+}
+
+impl RevealFirstCardYouDrawEachTurn {
+    pub fn new(optional: bool, your_turns_only: bool) -> Self {
+        Self {
+            optional,
+            your_turns_only,
+        }
+    }
+}
+
+impl StaticAbilityKind for RevealFirstCardYouDrawEachTurn {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::RevealFirstCardYouDrawEachTurn
+    }
+
+    fn display(&self) -> String {
+        match (self.optional, self.your_turns_only) {
+            (false, false) => "Reveal the first card you draw each turn.".to_string(),
+            (false, true) => "Reveal the first card you draw on each of your turns.".to_string(),
+            (true, false) => {
+                "You may reveal the first card you draw each turn as you draw it.".to_string()
+            }
+            (true, true) => {
+                "You may reveal the first card you draw on each of your turns as you draw it."
+                    .to_string()
+            }
+        }
+    }
+
+    fn reveal_drawn_card_spec(&self) -> Option<crate::static_abilities::RevealDrawnCardSpec> {
+        Some(crate::static_abilities::RevealDrawnCardSpec {
+            card_number: 1,
+            optional: self.optional,
+            your_turns_only: self.your_turns_only,
+        })
+    }
+}
+
 /// "You may choose not to untap ... during your untap step."
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MayChooseNotToUntapDuringUntapStep {

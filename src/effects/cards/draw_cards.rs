@@ -1,13 +1,155 @@
 //! DrawCards effect implementation.
 
+use crate::decision::DecisionMaker;
+use crate::decisions::context::{BooleanContext, ViewCardsContext};
 use crate::effect::{EffectOutcome, Value};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
-use crate::events::CardsDrawnEvent;
+use crate::events::{CardRevealedEvent, CardsDrawnEvent};
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
+use crate::ids::{ObjectId, PlayerId};
+use crate::provenance::ProvNodeId;
+use crate::snapshot::ObjectSnapshot;
 use crate::target::PlayerFilter;
 use crate::triggers::TriggerEvent;
+use crate::zone::Zone;
+
+#[derive(Debug, Clone)]
+pub(crate) struct AutomaticDrawRevealCandidate {
+    pub source_id: ObjectId,
+    pub source_name: String,
+    pub player_id: PlayerId,
+    pub card_id: ObjectId,
+    pub zone: Zone,
+    pub optional: bool,
+    pub snapshot: Option<ObjectSnapshot>,
+}
+
+pub(crate) fn automatic_draw_reveal_boolean_context(
+    candidate: &AutomaticDrawRevealCandidate,
+) -> BooleanContext {
+    BooleanContext::new(
+        candidate.player_id,
+        Some(candidate.source_id),
+        "reveal the first card you draw",
+    )
+    .with_source_name(candidate.source_name.clone())
+}
+
+pub(crate) fn collect_automatic_draw_reveal_candidates(
+    game: &GameState,
+    player_id: PlayerId,
+    drawn: &[ObjectId],
+    draws_before: u32,
+) -> Vec<AutomaticDrawRevealCandidate> {
+    let view = crate::derived_view::DerivedGameView::from_refreshed_state(game);
+    let mut candidates = Vec::new();
+    let draws_after = draws_before + drawn.len() as u32;
+
+    for &source_id in &game.battlefield {
+        let Some(source_obj) = game.object(source_id) else {
+            continue;
+        };
+        if source_obj.controller != player_id {
+            continue;
+        }
+        let Some(static_abilities) = view.static_abilities_rc(source_id) else {
+            continue;
+        };
+        for static_ability in static_abilities.iter() {
+            let Some(spec) = static_ability.reveal_drawn_card_spec() else {
+                continue;
+            };
+            if spec.your_turns_only && game.turn.active_player != player_id {
+                continue;
+            }
+            let draw_number = spec.card_number;
+            if draw_number == 0 || draws_before >= draw_number || draw_number > draws_after {
+                continue;
+            }
+
+            let drawn_index = (draw_number - draws_before - 1) as usize;
+            let Some(&card_id) = drawn.get(drawn_index) else {
+                continue;
+            };
+
+            let snapshot = game
+                .object(card_id)
+                .map(|obj| ObjectSnapshot::from_object(obj, game));
+            candidates.push(AutomaticDrawRevealCandidate {
+                source_id,
+                source_name: source_obj.name.clone(),
+                player_id,
+                card_id,
+                zone: Zone::Hand,
+                optional: spec.optional,
+                snapshot,
+            });
+        }
+    }
+
+    candidates
+}
+
+pub(crate) fn emit_automatic_draw_reveal_event(
+    game: &GameState,
+    decision_maker: &mut (impl DecisionMaker + ?Sized),
+    candidate: &AutomaticDrawRevealCandidate,
+    provenance: ProvNodeId,
+) -> TriggerEvent {
+    for viewer_idx in 0..game.players.len() {
+        let viewer = crate::ids::PlayerId::from_index(viewer_idx as u8);
+        let view_ctx = ViewCardsContext::new(
+            viewer,
+            candidate.player_id,
+            Some(candidate.source_id),
+            candidate.zone,
+            "Reveal drawn card",
+        )
+        .with_public(true);
+        decision_maker.view_cards(game, viewer, &[candidate.card_id], &view_ctx);
+    }
+
+    TriggerEvent::new_with_provenance(
+        CardRevealedEvent::new(
+            candidate.player_id,
+            candidate.card_id,
+            candidate.zone,
+            Some(candidate.source_id),
+            candidate.snapshot.clone(),
+        ),
+        provenance,
+    )
+}
+
+pub(crate) fn automatic_reveal_events_for_draw(
+    game: &GameState,
+    player_id: PlayerId,
+    drawn: &[ObjectId],
+    draws_before: u32,
+    decision_maker: &mut (impl DecisionMaker + ?Sized),
+    provenance: ProvNodeId,
+) -> Vec<TriggerEvent> {
+    let mut reveal_events = Vec::new();
+
+    for candidate in collect_automatic_draw_reveal_candidates(game, player_id, drawn, draws_before) {
+        if candidate.optional
+            && !decision_maker.decide_boolean(game, &automatic_draw_reveal_boolean_context(&candidate))
+        {
+            continue;
+        }
+
+        reveal_events.push(emit_automatic_draw_reveal_event(
+            game,
+            decision_maker,
+            &candidate,
+            provenance,
+        ));
+    }
+
+    reveal_events
+}
 
 /// Effect that causes a player to draw cards.
 ///
@@ -102,8 +244,23 @@ impl EffectExecutor for DrawCardsEffect {
                     CardsDrawnEvent::new(player_id, drawn, is_first),
                     ctx.provenance,
                 );
+                let reveal_events = automatic_reveal_events_for_draw(
+                    game,
+                    player_id,
+                    event
+                        .downcast::<CardsDrawnEvent>()
+                        .map(|drawn_event| drawn_event.cards.as_slice())
+                        .unwrap_or(&[]),
+                    current_draws,
+                    &mut *ctx.decision_maker,
+                    ctx.provenance,
+                );
 
-                Ok(EffectOutcome::count(count).with_event(event))
+                let mut outcome = EffectOutcome::count(count).with_event(event);
+                for reveal_event in reveal_events {
+                    outcome = outcome.with_event(reveal_event);
+                }
+                Ok(outcome)
             }
             EventOutcome::Replaced => {
                 // Replacement effects already executed by process_draw

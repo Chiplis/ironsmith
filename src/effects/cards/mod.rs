@@ -46,9 +46,15 @@ pub use rearrange_looked_cards_in_library::RearrangeLookedCardsInLibraryEffect;
 pub use reveal_from_hand::RevealFromHandEffect;
 pub use reveal_tagged::RevealTaggedEffect;
 pub use reveal_top::RevealTopEffect;
-pub use scry::ScryEffect;
+pub use scry::{EachPlayerScryEffect, ScryEffect};
 pub use search_library::SearchLibraryEffect;
 pub use search_library_slots::{SearchLibrarySlot, SearchLibrarySlotsEffect};
 pub use shuffle_graveyard_into_library::ShuffleGraveyardIntoLibraryEffect;
 pub use shuffle_library::ShuffleLibraryEffect;
 pub use surveil::SurveilEffect;
+
+pub(crate) use draw_cards::{
+    AutomaticDrawRevealCandidate, automatic_draw_reveal_boolean_context,
+    automatic_reveal_events_for_draw, collect_automatic_draw_reveal_candidates,
+    emit_automatic_draw_reveal_event,
+};

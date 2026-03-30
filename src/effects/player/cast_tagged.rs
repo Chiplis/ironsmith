@@ -12,6 +12,7 @@ use crate::effects::zones::{
 };
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::{GameState, StackEntry};
+use crate::mana::ManaCost;
 use crate::tag::TagKey;
 use crate::zone::Zone;
 
@@ -24,6 +25,7 @@ pub struct CastTaggedEffect {
     pub allow_land: bool,
     pub as_copy: bool,
     pub without_paying_mana_cost: bool,
+    pub cost_reduction: Option<ManaCost>,
 }
 
 impl CastTaggedEffect {
@@ -34,6 +36,7 @@ impl CastTaggedEffect {
             allow_land: false,
             as_copy: false,
             without_paying_mana_cost: false,
+            cost_reduction: None,
         }
     }
 
@@ -52,6 +55,12 @@ impl CastTaggedEffect {
     /// Cast without paying mana cost.
     pub fn without_paying_mana_cost(mut self) -> Self {
         self.without_paying_mana_cost = true;
+        self
+    }
+
+    /// Reduce the generated spell's mana cost during this immediate cast.
+    pub fn cost_reduction(mut self, reduction: ManaCost) -> Self {
+        self.cost_reduction = Some(reduction);
         self
     }
 }
@@ -132,8 +141,11 @@ impl EffectExecutor for CastTaggedEffect {
             if !self.without_paying_mana_cost
                 && let Some(cost) = mana_cost.as_ref()
             {
-                let effective_cost =
+                let mut effective_cost =
                     crate::decision::calculate_effective_mana_cost(game, caster, &copy_obj, cost);
+                if let Some(reduction) = self.cost_reduction.as_ref() {
+                    effective_cost = crate::decision::reduce_mana_cost(&effective_cost, reduction);
+                }
                 if !game.try_pay_mana_cost_with_reason(
                     caster,
                     Some(copy_id),
@@ -263,6 +275,7 @@ mod tests {
     use crate::card::CardBuilder;
     use crate::decision::SelectFirstDecisionMaker;
     use crate::ids::{CardId, PlayerId};
+    use crate::mana::{ManaCost, ManaSymbol};
     use crate::snapshot::ObjectSnapshot;
     use crate::tag::TagKey;
     use crate::types::CardType;
@@ -385,5 +398,46 @@ mod tests {
         assert_eq!(outcome.status, crate::effect::OutcomeStatus::TargetInvalid);
         assert!(game.stack.is_empty());
         assert!(!game.battlefield.contains(&exiled_id));
+    }
+
+    #[test]
+    fn cast_tagged_copy_applies_inline_cost_reduction() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        game.player_mut(alice)
+            .expect("alice exists")
+            .mana_pool
+            .add(ManaSymbol::Blue, 2);
+
+        let card = CardBuilder::new(CardId::new(), "Reduced Copy Spell")
+            .card_types(vec![CardType::Instant])
+            .mana_cost(ManaCost::from_symbols(vec![
+                ManaSymbol::Generic(3),
+                ManaSymbol::Blue,
+            ]))
+            .build();
+        let hand_id = game.create_object_from_card(&card, alice, Zone::Hand);
+        let snapshot =
+            ObjectSnapshot::from_object(game.object(hand_id).expect("tagged card"), &game);
+        let mut tags = std::collections::HashMap::new();
+        tags.insert(TagKey::from("it"), vec![snapshot]);
+
+        let source = game.new_object_id();
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm).with_tagged_objects(tags);
+
+        let outcome = CastTaggedEffect::new("it")
+            .as_copy()
+            .cost_reduction(ManaCost::from_symbols(vec![ManaSymbol::Generic(2)]))
+            .execute(&mut game, &mut ctx)
+            .expect("cast tagged should resolve");
+
+        assert!(outcome.status.is_success(), "expected reduced copy cast to succeed");
+        assert_eq!(
+            game.player(alice).expect("alice exists").mana_pool.blue,
+            0,
+            "expected the reduced cost to spend exactly the available mana"
+        );
+        assert_eq!(game.stack.len(), 1, "expected the copied spell on the stack");
     }
 }

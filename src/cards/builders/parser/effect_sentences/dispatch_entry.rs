@@ -53,6 +53,77 @@ fn membership_predicate_for_iterated_object(tag: &str) -> PredicateAst {
     )
 }
 
+fn attach_copy_cost_reduction_to_effect(
+    effect: &mut EffectAst,
+    reduction: &crate::mana::ManaCost,
+) -> bool {
+    match effect {
+        EffectAst::CastTagged {
+            as_copy,
+            cost_reduction,
+            ..
+        } if *as_copy => {
+            *cost_reduction = Some(reduction.clone());
+            true
+        }
+        _ => {
+            let mut attached = false;
+            for_each_nested_effects_mut(effect, true, |nested| {
+                if attached {
+                    return;
+                }
+                for nested_effect in nested.iter_mut().rev() {
+                    if attach_copy_cost_reduction_to_effect(nested_effect, reduction) {
+                        attached = true;
+                        break;
+                    }
+                }
+            });
+            attached
+        }
+    }
+}
+
+fn attach_copy_cost_reduction_to_effects(
+    effects: &mut [EffectAst],
+    reduction: &crate::mana::ManaCost,
+) -> bool {
+    for effect in effects.iter_mut().rev() {
+        if attach_copy_cost_reduction_to_effect(effect, reduction) {
+            return true;
+        }
+    }
+    false
+}
+
+fn parse_same_sentence_copy_and_may_cast_copy(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<(Vec<EffectAst>, crate::cards::builders::parser::activation_and_restrictions::MayCastTaggedSpec)>, CardTextError>
+{
+    let Some(split_idx) = tokens
+        .iter()
+        .position(|token| token.is_word("and") || token.is_word("then"))
+    else {
+        return Ok(None);
+    };
+
+    let copy_tokens = trim_commas(&tokens[..split_idx]).to_vec();
+    if !is_simple_copy_reference_sentence(&copy_tokens) {
+        return Ok(None);
+    }
+
+    let tail_tokens = trim_commas(&tokens[split_idx + 1..]).to_vec();
+    let Some(spec) = parse_may_cast_it_sentence(&tail_tokens) else {
+        return Ok(None);
+    };
+    if !spec.as_copy {
+        return Ok(None);
+    }
+
+    let copy_effects = parse_effect_sentence_lexed(&copy_tokens)?;
+    Ok(Some((copy_effects, spec)))
+}
+
 fn parse_single_effect_sentence(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     parse_effect_sentence_lexed(tokens)?
         .into_iter()
@@ -254,6 +325,7 @@ fn try_parse_divvy_sentence_sequence(
                 player: PlayerAst::Opponent,
                 tag: TagKey::from("divvy_chosen"),
                 zones: vec![Zone::Exile],
+                search_mode: None,
             },
             EffectAst::ReturnToHand {
                 target: TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
@@ -293,6 +365,7 @@ fn try_parse_divvy_sentence_sequence(
                 player: PlayerAst::Opponent,
                 tag: TagKey::from("divvy_chosen"),
                 zones: vec![Zone::Exile],
+                search_mode: None,
             },
             EffectAst::MoveToZone {
                 target: TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
@@ -339,6 +412,7 @@ fn try_parse_divvy_sentence_sequence(
                 player: PlayerAst::Opponent,
                 tag: TagKey::from("divvy_chosen"),
                 zones: vec![Zone::Library, Zone::Graveyard],
+                search_mode: None,
             },
             EffectAst::MoveToZone {
                 target: TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
@@ -392,6 +466,7 @@ fn try_parse_divvy_sentence_sequence(
             player: PlayerAst::Opponent,
             tag: TagKey::from("divvy_chosen"),
             zones: vec![Zone::Library],
+            search_mode: None,
         });
         effects.push(EffectAst::MoveToZone {
             target: TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
@@ -438,6 +513,7 @@ fn try_parse_divvy_sentence_sequence(
             player: PlayerAst::TargetOpponent,
             tag: TagKey::from("divvy_chosen"),
             zones: vec![Zone::Library],
+            search_mode: None,
         });
         effects.push(EffectAst::MoveToZone {
             target: TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
@@ -1239,6 +1315,7 @@ fn consult_cast_effects(
                         allow_land: false,
                         as_copy: false,
                         without_paying_mana_cost,
+                        cost_reduction: None,
                     }],
                 }]
             }
@@ -3131,6 +3208,7 @@ fn parse_search_face_down_exile_conditional_cast_else_hand(
                     allow_land: false,
                     as_copy: false,
                     without_paying_mana_cost: true,
+                    cost_reduction: None,
                 }],
             },
             EffectAst::IfResult {
@@ -3580,6 +3658,19 @@ fn parse_effect_sentences_from_sentence_inputs(
             )));
         }
 
+        if let Some((mut copy_effects, spec)) =
+            parse_same_sentence_copy_and_may_cast_copy(&sentence_tokens)?
+        {
+            parser_trace(
+                "parse_effect_sentences:copy-reference-same-sentence-may-cast-copy",
+                &sentence_tokens,
+            );
+            effects.append(&mut copy_effects);
+            effects.push(build_may_cast_tagged_effect(&spec));
+            sentence_idx += 1;
+            continue;
+        }
+
         if sentence_idx + 1 < sentences.len() && is_simple_copy_reference_sentence(&sentence_tokens)
         {
             let next_tokens =
@@ -3591,10 +3682,30 @@ fn parse_effect_sentences_from_sentence_inputs(
                     "parse_effect_sentences:copy-reference-next-may-cast-copy",
                     &sentence_tokens,
                 );
+                effects.extend(parse_effect_sentence_lexed(&sentence_tokens)?);
                 effects.push(build_may_cast_tagged_effect(&spec));
                 sentence_idx += 2;
                 continue;
             }
+        }
+
+        if let Some(reduction) =
+            super::super::activation_and_restrictions::parse_copy_reference_cost_reduction_sentence(
+                &sentence_tokens,
+            )
+        {
+            if attach_copy_cost_reduction_to_effects(&mut effects, &reduction) {
+                parser_trace(
+                    "parse_effect_sentences:copy-reference-cost-reduction-followup",
+                    &sentence_tokens,
+                );
+                sentence_idx += 1;
+                continue;
+            }
+            return Err(CardTextError::ParseError(format!(
+                "unsupported standalone copy cost-reduction clause (clause: '{}')",
+                words(&sentence_tokens).join(" ")
+            )));
         }
 
         if let Some(spec) = parse_may_cast_it_sentence(&sentence_tokens) {

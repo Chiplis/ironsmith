@@ -211,6 +211,7 @@ pub use events::{
     ReplacementPriority as NewReplacementPriority,
     SacrificeEvent,
     SearchLibraryEvent,
+    ShuffleLibraryEvent,
     TapEvent,
     ThisWouldBeDestroyedMatcher,
     ThisWouldDieMatcher,

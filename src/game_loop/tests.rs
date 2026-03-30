@@ -12458,6 +12458,60 @@ fn test_search_library_fail_to_find() {
 }
 
 #[test]
+fn test_search_library_for_card_cannot_fail_to_find() {
+    use crate::cards::definitions::the_birth_of_meletis;
+    use crate::decision::DecisionMaker;
+    use crate::effect::Effect;
+    use crate::executor::ExecutionContext;
+
+    struct FailToFindDecisionMaker;
+    impl DecisionMaker for FailToFindDecisionMaker {
+        fn decide_objects(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            assert!(
+                !ctx.allow_partial_completion,
+                "quantity-only library searches should not allow failing to find"
+            );
+            Vec::new()
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let card = CardBuilder::new(CardId::new(), "Tutor Target")
+        .card_types(vec![CardType::Creature])
+        .build();
+    game.create_object_from_card(&card, alice, Zone::Library);
+
+    let source = the_birth_of_meletis();
+    let source_id = game.create_object_from_definition(&source, alice, Zone::Battlefield);
+
+    let mut dm = FailToFindDecisionMaker;
+    let mut ctx = ExecutionContext::new_default(source_id, alice).with_decision_maker(&mut dm);
+
+    let search_effect = Effect::search_library(
+        crate::target::ObjectFilter::default(),
+        Zone::Hand,
+        crate::target::PlayerFilter::You,
+        false,
+    );
+
+    let result = execute_effect(&mut game, &search_effect, &mut ctx);
+    assert!(result.is_ok(), "Search should succeed");
+
+    let hand = &game.player(alice).expect("alice").hand;
+    assert!(
+        hand.iter()
+            .any(|&id| game.object(id).is_some_and(|obj| obj.name == "Tutor Target")),
+        "search for a card should put the searched card into hand"
+    );
+}
+
+#[test]
 fn test_search_library_selects_specific_card() {
     use crate::cards::definitions::{basic_island, basic_plains, the_birth_of_meletis};
     use crate::decision::DecisionMaker;

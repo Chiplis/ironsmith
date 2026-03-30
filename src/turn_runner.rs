@@ -5,7 +5,7 @@
 //! provide player input (sync or async) and re-enter.
 
 use crate::combat_state::CombatState;
-use crate::decision::{AttackerDeclaration, BlockerDeclaration, GameResult};
+use crate::decision::{AttackerDeclaration, AutoPassDecisionMaker, BlockerDeclaration, GameResult};
 use crate::decisions::context::{BooleanContext, DecisionContext};
 use crate::game_loop::{
     GameLoopError, apply_attacker_declarations, apply_blocker_declarations,
@@ -92,6 +92,17 @@ enum PendingCommanderChoice {
     StateBasedReturn { object_id: ObjectId },
 }
 
+#[derive(Debug, Clone)]
+struct PendingDrawRevealChoice {
+    active_player: PlayerId,
+    drawn: Vec<ObjectId>,
+    is_first_draw: bool,
+    draw_event_provenance: crate::provenance::ProvNodeId,
+    candidates: Vec<crate::effects::cards::AutomaticDrawRevealCandidate>,
+    next_candidate_index: usize,
+    reveal_events: Vec<crate::triggers::TriggerEvent>,
+}
+
 enum RunnerProgress<T> {
     Complete(T),
     NeedsDecision(DecisionContext),
@@ -113,6 +124,8 @@ pub struct TurnRunner {
     pending_discard: Option<Vec<ObjectId>>,
     /// Pending yes/no response for runner-driven boolean decisions.
     pending_boolean: Option<bool>,
+    /// Pending first-draw reveal decisions that pause the draw step.
+    pending_draw_reveal: Option<PendingDrawRevealChoice>,
     /// Commander-specific choice that paused the runner.
     pending_commander_choice: Option<PendingCommanderChoice>,
     /// Defending player for the current combat.
@@ -130,6 +143,7 @@ impl TurnRunner {
             pending_blockers: None,
             pending_discard: None,
             pending_boolean: None,
+            pending_draw_reveal: None,
             pending_commander_choice: None,
             defending_player: None,
         }
@@ -593,10 +607,10 @@ impl TurnRunner {
         &mut self,
         game: &mut GameState,
     ) -> RunnerProgress<Vec<crate::triggers::TriggerEvent>> {
-        use crate::events::other::CardsDrawnEvent;
-        use crate::triggers::TriggerEvent;
-
         let active_player = game.turn.active_player;
+        if let Some(pending) = self.pending_draw_reveal.take() {
+            return self.finish_pending_draw_reveal_choices(game, pending);
+        }
         if game.skip_next_draw_step.remove(&active_player) {
             game.turn.priority_player = Some(active_player);
             return RunnerProgress::Complete(Vec::new());
@@ -662,18 +676,82 @@ impl TurnRunner {
             }
         }
 
-        let mut draw_events = Vec::new();
         if !drawn.is_empty() {
             let draw_event_provenance = game
                 .provenance_graph
                 .alloc_root_event(crate::events::EventKind::CardsDrawn);
-            let event = CardsDrawnEvent::new(active_player, drawn, is_first_draw);
-            let event = TriggerEvent::new_with_provenance(event, draw_event_provenance);
-            game.stage_turn_history_event(&event);
-            draw_events.push(event);
+            let candidates = crate::effects::cards::collect_automatic_draw_reveal_candidates(
+                game,
+                active_player,
+                &drawn,
+                current_draws,
+            );
+            return self.finish_pending_draw_reveal_choices(
+                game,
+                PendingDrawRevealChoice {
+                    active_player,
+                    drawn,
+                    is_first_draw,
+                    draw_event_provenance,
+                    candidates,
+                    next_candidate_index: 0,
+                    reveal_events: Vec::new(),
+                },
+            );
         }
 
         game.turn.priority_player = Some(active_player);
+        RunnerProgress::Complete(Vec::new())
+    }
+
+    fn finish_pending_draw_reveal_choices(
+        &mut self,
+        game: &mut GameState,
+        mut pending: PendingDrawRevealChoice,
+    ) -> RunnerProgress<Vec<crate::triggers::TriggerEvent>> {
+        use crate::events::other::CardsDrawnEvent;
+        use crate::triggers::TriggerEvent;
+
+        while let Some(candidate) = pending.candidates.get(pending.next_candidate_index).cloned() {
+            let should_reveal = if candidate.optional {
+                if let Some(answer) = self.pending_boolean.take() {
+                    answer
+                } else {
+                    self.pending_draw_reveal = Some(pending);
+                    return RunnerProgress::NeedsDecision(DecisionContext::Boolean(
+                        crate::effects::cards::automatic_draw_reveal_boolean_context(&candidate),
+                    ));
+                }
+            } else {
+                true
+            };
+
+            if should_reveal {
+                let mut dm = AutoPassDecisionMaker;
+                pending
+                    .reveal_events
+                    .push(crate::effects::cards::emit_automatic_draw_reveal_event(
+                        game,
+                        &mut dm,
+                        &candidate,
+                        pending.draw_event_provenance,
+                    ));
+            }
+            pending.next_candidate_index += 1;
+        }
+
+        let event = TriggerEvent::new_with_provenance(
+            CardsDrawnEvent::new(pending.active_player, pending.drawn, pending.is_first_draw),
+            pending.draw_event_provenance,
+        );
+        game.stage_turn_history_event(&event);
+        let mut draw_events = vec![event];
+        for reveal_event in pending.reveal_events {
+            game.stage_turn_history_event(&reveal_event);
+            draw_events.push(reveal_event);
+        }
+
+        game.turn.priority_player = Some(pending.active_player);
         RunnerProgress::Complete(draw_events)
     }
 
@@ -803,10 +881,12 @@ fn check_first_strike(game: &GameState, combat: &CombatState) -> bool {
 mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
+    use crate::cards::CardDefinitionBuilder;
     use crate::combat_state::{AttackTarget, AttackerInfo};
     use crate::game_state::GameState;
     use crate::ids::{CardId, PlayerId};
     use crate::object::Object;
+    use crate::tag::TagKey;
     use crate::triggers::TriggerQueue;
     use crate::types::CardType;
     use crate::zone::Zone;
@@ -999,6 +1079,55 @@ mod tests {
         let action = runner.advance(&mut game, &mut tq).unwrap();
         assert!(matches!(action, TurnAction::RunPriority));
         assert_eq!(game.objects_in_zone(crate::zone::Zone::Command).len(), 1);
+    }
+
+    #[test]
+    fn test_turn_runner_pauses_for_optional_reveal_first_draw_and_queues_trigger() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        game.turn.turn_number = 2;
+        let revealer =
+            CardDefinitionBuilder::new(crate::ids::CardId::from_raw(9103), "Reveal Oracle")
+                .card_types(vec![crate::types::CardType::Enchantment])
+                .parse_text(
+                    "You may reveal the first card you draw each turn as you draw it. Whenever you reveal a creature card this way, draw a card.",
+                )
+                .expect("reveal oracle should parse");
+        game.create_object_from_definition(&revealer, alice, crate::zone::Zone::Battlefield);
+
+        let creature =
+            crate::card::CardBuilder::new(crate::ids::CardId::from_raw(9104), "Drawn Creature")
+                .card_types(vec![crate::types::CardType::Creature])
+                .build();
+        game.create_object_from_card(&creature, alice, crate::zone::Zone::Library);
+
+        let mut tq = TriggerQueue::new();
+        let mut runner = TurnRunner::new();
+        runner.state = TurnState::Draw;
+
+        let action = runner.advance(&mut game, &mut tq).unwrap();
+        assert!(matches!(
+            action,
+            TurnAction::Decision(DecisionContext::Boolean(_))
+        ));
+
+        runner.respond_boolean(true);
+        let action = runner.advance(&mut game, &mut tq).unwrap();
+        assert!(matches!(action, TurnAction::RunPriority));
+        assert_eq!(game.player(alice).expect("alice exists").hand.len(), 1);
+        assert_eq!(tq.entries.len(), 1);
+        let drawn = *game
+            .player(alice)
+            .expect("alice exists")
+            .hand
+            .last()
+            .expect("drawn card should be in hand");
+        let revealed = tq.entries[0]
+            .tagged_objects
+            .get(&TagKey::from(crate::effects::PUBLIC_REVEALED_TAG))
+            .expect("queued trigger should preserve revealed card");
+        assert_eq!(revealed.len(), 1);
+        assert_eq!(revealed[0].object_id, drawn);
     }
 
     #[test]

@@ -97,8 +97,9 @@ impl EffectExecutor for RegenerateEffect {
             let replacement_effects = vec![
                 Effect::tap(ChooseSpec::SpecificObject(target_id)),
                 Effect::clear_damage(ChooseSpec::SpecificObject(target_id)),
-                // Removing from combat is intentionally omitted until combat-state
-                // tracking for regenerated permanents is wired in.
+                Effect::new(crate::effects::RemoveFromCombatEffect::with_spec(
+                    ChooseSpec::SpecificObject(target_id),
+                )),
             ];
 
             let matcher = RegenerationShieldMatcher::new(target_id);

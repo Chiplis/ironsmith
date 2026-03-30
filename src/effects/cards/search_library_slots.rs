@@ -10,7 +10,7 @@ use crate::effects::helpers::resolve_player_filter;
 use crate::effects::zones::{
     BattlefieldEntryOptions, BattlefieldEntryOutcome, move_to_battlefield_with_options,
 };
-use crate::events::SearchLibraryEvent;
+use crate::events::{SearchLibraryEvent, ShuffleLibraryEvent};
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::ObjectId;
@@ -103,6 +103,10 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
 
         let search_event = TriggerEvent::new_with_provenance(
             SearchLibraryEvent::new(chooser_id, Some(player_id)),
+            ctx.provenance,
+        );
+        let shuffle_event = TriggerEvent::new_with_provenance(
+            ShuffleLibraryEvent::new(player_id, ctx.cause.clone()),
             ctx.provenance,
         );
 
@@ -224,9 +228,9 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
         ctx.clear_object_tag(self.progress_tag.as_str());
 
         if moved_ids.is_empty() {
-            Ok(EffectOutcome::count(0).with_event(search_event))
+            Ok(EffectOutcome::count(0).with_events([search_event, shuffle_event]))
         } else {
-            Ok(EffectOutcome::with_objects(moved_ids).with_event(search_event))
+            Ok(EffectOutcome::with_objects(moved_ids).with_events([search_event, shuffle_event]))
         }
     }
 }

@@ -58,6 +58,9 @@ pub mod stack;
 pub mod tokens;
 pub mod zones;
 
+/// Reserved tag used to carry public reveal visibility across stack lifetime.
+pub const PUBLIC_REVEALED_TAG: &str = "__public_revealed";
+
 // Re-export the traits, modal spec, and cost validation error
 pub use executor_trait::{CostExecutableEffect, CostValidationError, EffectExecutor, ModalSpec};
 
@@ -67,7 +70,8 @@ pub use cards::{
     DiscardEffect, DiscardHandEffect, DrawCardsEffect, DrawForEachTaggedMatchingEffect,
     ExileTopOfLibraryEffect, ExileUntilMatchEffect, LookAtHandEffect, LookAtTopCardsEffect,
     MillEffect, PutTaggedRemainderOnLibraryBottomEffect, RearrangeLookedCardsInLibraryEffect,
-    RevealFromHandEffect, RevealTaggedEffect, RevealTopEffect, ScryEffect, SearchLibraryEffect,
+    RevealFromHandEffect, RevealTaggedEffect, RevealTopEffect, EachPlayerScryEffect, ScryEffect,
+    SearchLibraryEffect,
     SearchLibrarySlot, SearchLibrarySlotsEffect, ShuffleGraveyardIntoLibraryEffect,
     ShuffleLibraryEffect, SurveilEffect,
 };
@@ -153,5 +157,6 @@ pub use zones::{
     MoveToLibraryNthFromTopEffect, MoveToZoneEffect, PutOntoBattlefieldEffect,
     ReorderGraveyardEffect, ReorderLibraryTopEffect, ReturnAllToBattlefieldEffect,
     ReturnFromGraveyardOrExileToBattlefieldEffect, ReturnFromGraveyardToBattlefieldEffect,
-    ReturnFromGraveyardToHandEffect, ReturnToHandEffect, SacrificeEffect, SacrificeTargetEffect,
+    ReturnFromGraveyardToHandEffect, ReturnToHandEffect, ShuffleObjectsIntoLibraryEffect, EachPlayerSacrificesEffect,
+    SacrificeEffect, SacrificeTargetEffect,
 };

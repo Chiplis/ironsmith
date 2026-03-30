@@ -1,4 +1,5 @@
 use super::*;
+use crate::derived_view::DerivedGameView;
 
 // ============================================================================
 // Combat Decision Handling
@@ -110,6 +111,56 @@ pub(super) fn generic_attack_tax_per_attacker_against_player(
     tax
 }
 
+fn required_attack_cost_message_for_unpreviewed_attack(
+    game: &GameState,
+    all_effects: &[crate::continuous::ContinuousEffect],
+    creature_id: ObjectId,
+    target: &AttackTarget,
+) -> Option<String> {
+    let creature = game.object(creature_id)?;
+    let defending_player = match target {
+        AttackTarget::Player(player_id) => Some(*player_id),
+        AttackTarget::Planeswalker(object_id) => game.object(*object_id).map(|obj| obj.controller),
+    }?;
+    let view = DerivedGameView::new(game);
+    if !crate::rules::combat::can_attack_defending_player_with_view(
+        creature,
+        defending_player,
+        game,
+        &view,
+    ) {
+        return None;
+    }
+
+    let abilities = static_abilities_for_object_with_effects(game, creature.id, all_effects);
+    if abilities.iter().any(|ability| {
+        ability
+            .can_pay_attack_cost(game, creature.id, creature.controller)
+            .is_some_and(|can_pay| !can_pay)
+    }) {
+        return Some("Cannot pay required attack cost".to_string());
+    }
+
+    let total_generic_attack_mana_cost = abilities.iter().fold(
+        generic_attack_tax_per_attacker_against_player(game, defending_player, all_effects),
+        |acc, ability| {
+            acc.saturating_add(
+                ability
+                    .generic_attack_mana_cost_for_source(game, creature.id, creature.controller)
+                    .unwrap_or(0),
+            )
+        },
+    );
+
+    if total_generic_attack_mana_cost == 0 {
+        return None;
+    }
+
+    Some(format!(
+        "Cannot pay required attack cost of {{{total_generic_attack_mana_cost}}}"
+    ))
+}
+
 /// Apply attacker declarations to the combat state.
 pub fn apply_attacker_declarations(
     game: &mut GameState,
@@ -152,6 +203,14 @@ pub fn apply_attacker_declarations(
             .iter()
             .find(|option| option.creature == decl.creature)
         else {
+            if let Some(msg) = required_attack_cost_message_for_unpreviewed_attack(
+                game,
+                &all_effects,
+                decl.creature,
+                &decl.target,
+            ) {
+                return Err(ResponseError::InvalidAttackers(msg).into());
+            }
             return Err(
                 ResponseError::InvalidAttackers("Creature cannot attack".to_string()).into(),
             );

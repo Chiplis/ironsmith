@@ -48,14 +48,18 @@ fn undead_creature_filter() -> ObjectFilter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ability::AbilityKind;
+    use crate::ability::{Ability, AbilityKind};
     use crate::card::PowerToughness;
+    use crate::combat_state::{AttackTarget, AttackerInfo, is_attacking, is_blocking};
     use crate::effect::{Effect, Until};
     use crate::executor::{ExecutionContext, ResolvedTarget, execute_effect};
+    use crate::game_loop::check_and_apply_sbas;
     use crate::game_state::GameState;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::ManaSymbol;
+    use crate::static_abilities::StaticAbility;
     use crate::target::ChooseSpec;
+    use crate::triggers::TriggerQueue;
 
     /// Helper to create a basic game state for testing.
     fn setup_game() -> GameState {
@@ -321,6 +325,163 @@ mod tests {
             game.damage_on(zombie_id),
             0,
             "Damage should be cleared after regeneration"
+        );
+    }
+
+    #[test]
+    fn test_regeneration_shield_works_with_deathtouch_damage() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let attacker_id =
+            create_undead_creature(&mut game, alice, "Deadly Zombie", Subtype::Zombie);
+        if let Some(obj) = game.object_mut(attacker_id) {
+            obj.abilities
+                .push(Ability::static_ability(StaticAbility::deathtouch()));
+        }
+        let victim_id = create_undead_creature(&mut game, bob, "Shielded Spirit", Subtype::Spirit);
+
+        let regenerate_effect =
+            Effect::regenerate(ChooseSpec::SpecificObject(victim_id), Until::EndOfTurn);
+        let mut regen_ctx = ExecutionContext::new_default(victim_id, bob);
+        execute_effect(&mut game, &regenerate_effect, &mut regen_ctx).unwrap();
+
+        let keywords = crate::rules::damage::source_damage_keywords(&game, attacker_id, None);
+        let applied = crate::rules::damage::apply_processed_damage_assignment(
+            &mut game,
+            attacker_id,
+            crate::game_event::DamageTarget::Object(victim_id),
+            1,
+            keywords,
+            crate::events::cause::EventCause::effect(),
+        );
+        assert!(applied.applied, "damage should be applied to the victim");
+
+        let mut trigger_queue = TriggerQueue::new();
+        check_and_apply_sbas(&mut game, &mut trigger_queue).unwrap();
+
+        assert!(
+            game.battlefield.contains(&victim_id),
+            "deathtouch destruction should be replaceable by regeneration"
+        );
+        assert!(
+            game.is_tapped(victim_id),
+            "regenerated creature should be tapped after deathtouch SBA"
+        );
+        assert_eq!(
+            game.damage_on(victim_id),
+            0,
+            "damage should be cleared after deathtouch regeneration"
+        );
+        assert_eq!(
+            game.replacement_effects
+                .count_one_shot_effects_from_source(victim_id),
+            0,
+            "regeneration shield should be consumed by deathtouch SBA"
+        );
+    }
+
+    #[test]
+    fn test_regeneration_removes_attacker_from_combat() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let attacker_id =
+            create_undead_creature(&mut game, alice, "Attacking Zombie", Subtype::Zombie);
+        let defender_id =
+            create_undead_creature(&mut game, bob, "Defending Spirit", Subtype::Spirit);
+
+        let mut combat = crate::combat_state::CombatState::default();
+        combat.attackers.push(AttackerInfo {
+            creature: attacker_id,
+            target: AttackTarget::Player(bob),
+        });
+        combat.blockers.insert(attacker_id, vec![defender_id]);
+        combat
+            .damage_assignment_order
+            .insert(attacker_id, vec![defender_id]);
+        game.combat = Some(combat);
+
+        let regenerate_effect =
+            Effect::regenerate(ChooseSpec::SpecificObject(attacker_id), Until::EndOfTurn);
+        let mut regen_ctx = ExecutionContext::new_default(attacker_id, alice);
+        execute_effect(&mut game, &regenerate_effect, &mut regen_ctx).unwrap();
+
+        let destroy_effect = Effect::destroy(ChooseSpec::SpecificObject(attacker_id));
+        let mut destroy_ctx = ExecutionContext::new_default(defender_id, bob)
+            .with_targets(vec![ResolvedTarget::Object(attacker_id)]);
+        execute_effect(&mut game, &destroy_effect, &mut destroy_ctx).unwrap();
+
+        assert!(
+            game.battlefield.contains(&attacker_id),
+            "regenerated attacker should remain on the battlefield"
+        );
+        assert!(
+            !is_attacking(game.combat.as_ref().expect("combat"), attacker_id),
+            "regenerated attacker should be removed from combat"
+        );
+        assert!(
+            game.combat
+                .as_ref()
+                .expect("combat")
+                .blockers
+                .get(&attacker_id)
+                .is_none(),
+            "attacker should no longer have blockers assigned after regeneration"
+        );
+    }
+
+    #[test]
+    fn test_regeneration_removes_blocker_from_combat() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let attacker_id =
+            create_undead_creature(&mut game, alice, "Attacking Zombie", Subtype::Zombie);
+        let blocker_id = create_undead_creature(&mut game, bob, "Blocking Spirit", Subtype::Spirit);
+
+        let mut combat = crate::combat_state::CombatState::default();
+        combat.attackers.push(AttackerInfo {
+            creature: attacker_id,
+            target: AttackTarget::Player(bob),
+        });
+        combat.blockers.insert(attacker_id, vec![blocker_id]);
+        combat
+            .damage_assignment_order
+            .insert(attacker_id, vec![blocker_id]);
+        game.combat = Some(combat);
+
+        let regenerate_effect =
+            Effect::regenerate(ChooseSpec::SpecificObject(blocker_id), Until::EndOfTurn);
+        let mut regen_ctx = ExecutionContext::new_default(blocker_id, bob);
+        execute_effect(&mut game, &regenerate_effect, &mut regen_ctx).unwrap();
+
+        let destroy_effect = Effect::destroy(ChooseSpec::SpecificObject(blocker_id));
+        let mut destroy_ctx = ExecutionContext::new_default(attacker_id, alice)
+            .with_targets(vec![ResolvedTarget::Object(blocker_id)]);
+        execute_effect(&mut game, &destroy_effect, &mut destroy_ctx).unwrap();
+
+        assert!(
+            game.battlefield.contains(&blocker_id),
+            "regenerated blocker should remain on the battlefield"
+        );
+        assert!(
+            !is_blocking(game.combat.as_ref().expect("combat"), blocker_id),
+            "regenerated blocker should be removed from combat"
+        );
+        assert_eq!(
+            game.combat
+                .as_ref()
+                .expect("combat")
+                .damage_assignment_order
+                .get(&attacker_id)
+                .cloned()
+                .unwrap_or_default(),
+            Vec::<ObjectId>::new(),
+            "damage assignment order should no longer include the blocker"
         );
     }
 

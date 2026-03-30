@@ -286,10 +286,6 @@ sentence_unsupported_adapters_lexed!(
         sentence_has_phase_out_until_leaves_clause
     ),
     (
-        sentence_has_unsupported_investigate_for_each_clause_rule_lexed,
-        sentence_has_unsupported_investigate_for_each_clause
-    ),
-    (
         sentence_has_same_name_as_another_in_hand_clause_rule_lexed,
         sentence_has_same_name_as_another_in_hand_clause
     ),
@@ -367,7 +363,7 @@ sentence_unsupported_adapters_lexed!(
     ),
 );
 
-const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 32] = [
+const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 31] = [
     LexUnsupportedRuleDef {
         id: "enters-as-copy",
         priority: 20,
@@ -465,16 +461,8 @@ const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 32] = [
         predicate: sentence_has_phase_out_until_leaves_clause_rule_lexed,
     },
     LexUnsupportedRuleDef {
-        id: "investigate-for-each",
-        priority: 200,
-        heads: &["investigate", "for"],
-        shape_mask: 0,
-        message: "unsupported investigate-for-each clause",
-        predicate: sentence_has_unsupported_investigate_for_each_clause_rule_lexed,
-    },
-    LexUnsupportedRuleDef {
         id: "same-name-as-another-in-hand",
-        priority: 210,
+        priority: 200,
         heads: &["target", "choose", "discard"],
         shape_mask: 0,
         message: "unsupported same-name-as-another-in-hand discard clause",
@@ -482,7 +470,7 @@ const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 32] = [
     },
     LexUnsupportedRuleDef {
         id: "for-each-mana-from-spent",
-        priority: 220,
+        priority: 210,
         heads: &["for"],
         shape_mask: 0,
         message: "unsupported for-each-mana-from-spent clause",
@@ -932,22 +920,6 @@ fn sentence_has_phase_out_until_leaves_clause(words: &[&str], _: &[OwnedLexToken
         && words
             .windows(3)
             .any(|window| window == ["leaves", "the", "battlefield"])
-}
-
-fn sentence_has_unsupported_investigate_for_each_clause(
-    words: &[&str],
-    _: &[OwnedLexToken],
-) -> bool {
-    let is_for_each_vote_investigate = words.starts_with(&["for", "each"])
-        && words.iter().any(|word| *word == "vote" || *word == "votes")
-        && words
-            .iter()
-            .any(|word| *word == "investigate" || *word == "investigates");
-    !is_for_each_vote_investigate
-        && words
-            .iter()
-            .any(|word| *word == "investigate" || *word == "investigates")
-        && words.windows(2).any(|window| window == ["for", "each"])
 }
 
 fn sentence_has_same_name_as_another_in_hand_clause(words: &[&str], _: &[OwnedLexToken]) -> bool {

@@ -1108,6 +1108,8 @@ export default function Workspace({
               ? "workspace-notice workspace-notice--success"
               : notice.tone === "error"
                 ? "workspace-notice workspace-notice--error"
+                : notice.tone === "warning"
+                  ? "workspace-notice workspace-notice--warning"
                 : "workspace-notice workspace-notice--info";
             const actions = Array.isArray(notice.actions)
               ? notice.actions.filter((action) => action?.copyText)

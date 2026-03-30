@@ -445,6 +445,22 @@ pub fn execute_draw_step_with(
             let event = TriggerEvent::new_with_provenance(event, draw_event_provenance);
             game.stage_turn_history_event(&event);
             draw_events.push(event);
+            let cards = draw_events
+                .last()
+                .and_then(|evt| evt.downcast::<CardsDrawnEvent>())
+                .map(|evt| evt.cards.clone())
+                .unwrap_or_default();
+            for reveal_event in crate::effects::cards::automatic_reveal_events_for_draw(
+                game,
+                active_player,
+                &cards,
+                current_draws,
+                decision_maker,
+                draw_event_provenance,
+            ) {
+                game.stage_turn_history_event(&reveal_event);
+                draw_events.push(reveal_event);
+            }
         }
     }
 

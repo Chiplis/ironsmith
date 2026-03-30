@@ -323,7 +323,8 @@ fn advance_reference_frame_for_effect(
         | EffectAst::SkipDrawStep { player }
         | EffectAst::ShuffleGraveyardIntoLibrary { player }
         | EffectAst::ReorderGraveyard { player }
-        | EffectAst::ShuffleLibrary { player } => {
+        | EffectAst::ShuffleLibrary { player }
+        | EffectAst::ShuffleObjectsIntoLibrary { player, .. } => {
             track_effect_player(player.clone(), frame, true, true)?;
         }
         EffectAst::ExchangeLifeTotals { player1, player2 } => {

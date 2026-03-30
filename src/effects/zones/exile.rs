@@ -131,6 +131,11 @@ impl ExileEffect {
                     {
                         if face_down {
                             game.set_face_down(new_id);
+                            if let Some(viewers) = ctx.face_down_exile_viewers_for(object_id) {
+                                for &viewer in viewers {
+                                    game.grant_face_down_exile_view(new_id, viewer);
+                                }
+                            }
                         }
                         game.add_exiled_with_source_link(ctx.source, new_id);
                     }
@@ -283,6 +288,11 @@ impl EffectExecutor for ExileEffect {
                         if let Some(new_id) = result.new_object_id {
                             if self.face_down && result.final_zone == Zone::Exile {
                                 game.set_face_down(new_id);
+                                if let Some(viewers) = ctx.face_down_exile_viewers_for(object_id) {
+                                    for &viewer in viewers {
+                                        game.grant_face_down_exile_view(new_id, viewer);
+                                    }
+                                }
                             }
                             if result.final_zone == Zone::Exile {
                                 game.add_exiled_with_source_link(ctx.source, new_id);
@@ -422,9 +432,14 @@ mod tests {
     use super::*;
     use crate::card::{Card, CardBuilder};
     use crate::effect::ChoiceCount;
+    use crate::effects::ChooseObjectsEffect;
+    use crate::effects::LookAtTopCardsEffect;
+    use crate::executor::{ExecutionContext, ResolvedTarget};
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::Object;
+    use crate::tag::TagKey;
+    use crate::target::PlayerFilter;
     use crate::types::CardType;
 
     fn setup_game() -> GameState {
@@ -529,5 +544,116 @@ mod tests {
         let result = effect.execute(&mut game, &mut ctx).unwrap();
         assert_eq!(result.value, crate::effect::OutcomeValue::Count(1));
         assert_eq!(game.exile.len(), 1);
+    }
+
+    #[test]
+    fn choose_from_library_then_exile_face_down_grants_searcher_visibility() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = game.new_object_id();
+        let card_id = add_card_to_zone(
+            &mut game,
+            bob,
+            Zone::Library,
+            "Hidden Trophy",
+            vec![ManaSymbol::Generic(2)],
+            CardType::Artifact,
+        );
+
+        let choose = ChooseObjectsEffect::new(
+            ObjectFilter::default()
+                .in_zone(Zone::Library)
+                .owned_by(PlayerFilter::Specific(bob)),
+            1,
+            PlayerFilter::Specific(alice),
+            "chosen",
+        )
+        .in_zone(Zone::Library)
+        .as_search();
+        let exile =
+            ExileEffect::with_spec(ChooseSpec::Tagged(TagKey::from("chosen"))).with_face_down(true);
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        choose
+            .execute(&mut game, &mut ctx)
+            .expect("choose should resolve");
+        exile
+            .execute(&mut game, &mut ctx)
+            .expect("exile should resolve");
+
+        let exiled_id = *game.exile.last().expect("card should be in exile");
+        assert_ne!(exiled_id, card_id, "exiled card should be a new object");
+        assert!(game.is_face_down(exiled_id));
+        assert!(
+            game.can_player_look_at_face_down_exiled_card(exiled_id, alice),
+            "searcher should keep access to the chosen face-down exiled card"
+        );
+        assert!(
+            !game.can_player_look_at_face_down_exiled_card(exiled_id, bob),
+            "library owner should not automatically gain access to an opponent-chosen face-down exiled card"
+        );
+    }
+
+    #[test]
+    fn look_at_top_then_exile_face_down_grants_viewer_visibility() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let card_id = add_card_to_zone(
+            &mut game,
+            alice,
+            Zone::Library,
+            "Hidden Insight",
+            vec![ManaSymbol::Blue],
+            CardType::Instant,
+        );
+
+        let look = LookAtTopCardsEffect::new(PlayerFilter::You, 1, "looked");
+        let exile =
+            ExileEffect::with_spec(ChooseSpec::Tagged(TagKey::from("looked"))).with_face_down(true);
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        look.execute(&mut game, &mut ctx)
+            .expect("look should resolve");
+        exile
+            .execute(&mut game, &mut ctx)
+            .expect("exile should resolve");
+
+        let exiled_id = *game.exile.last().expect("card should be in exile");
+        assert_ne!(exiled_id, card_id, "exiled card should be a new object");
+        assert!(game.is_face_down(exiled_id));
+        assert!(
+            game.can_player_look_at_face_down_exiled_card(exiled_id, alice),
+            "player who looked at the card should keep access after it is exiled face down"
+        );
+    }
+
+    #[test]
+    fn reexiling_face_down_card_in_exile_preserves_face_down_and_visibility() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let card_id = add_card_to_zone(
+            &mut game,
+            alice,
+            Zone::Exile,
+            "Still Hidden",
+            vec![ManaSymbol::Generic(1)],
+            CardType::Artifact,
+        );
+        game.set_face_down(card_id);
+        game.grant_face_down_exile_view(card_id, alice);
+
+        let new_id = game
+            .move_object_by_effect(card_id, Zone::Exile)
+            .expect("re-exile should create a new object");
+
+        assert_ne!(new_id, card_id);
+        assert!(game.is_face_down(new_id));
+        assert!(
+            game.can_player_look_at_face_down_exiled_card(new_id, alice),
+            "re-exiled face-down cards should keep their existing look permission"
+        );
+        assert!(game.object(card_id).is_none(), "old object should be gone");
     }
 }

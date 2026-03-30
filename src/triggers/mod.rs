@@ -649,6 +649,27 @@ impl Trigger {
         Self::new(PlayerSearchesLibraryTrigger::new(player))
     }
 
+    /// Create a "whenever [player] shuffles their library" trigger.
+    pub fn player_shuffles_library(
+        player: PlayerFilter,
+        caused_by_effect: bool,
+        source_controller_shuffles: bool,
+    ) -> Self {
+        Self::new(PlayerShufflesLibraryTrigger::new(
+            player,
+            caused_by_effect,
+            source_controller_shuffles,
+        ))
+    }
+
+    pub fn player_reveals_card(
+        player: PlayerFilter,
+        filter: ObjectFilter,
+        from_source: bool,
+    ) -> Self {
+        Self::new(PlayerRevealsCardTrigger::new(player, filter, from_source))
+    }
+
     /// Create a "whenever [player] gives a gift" trigger.
     pub fn player_gives_gift(player: PlayerFilter) -> Self {
         Self::new(PlayerGivesGiftTrigger::new(player))

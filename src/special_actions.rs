@@ -724,6 +724,7 @@ fn perform_foretell(
 
     // Mark as face-down (foretold)
     game.set_face_down(new_id);
+    game.grant_face_down_exile_view(new_id, player);
     game.set_foretold(new_id);
     game.record_foretell_action(player);
 
@@ -1096,8 +1097,10 @@ pub(crate) fn can_activate_mana_ability_check_with_view(
     }
     let affordability_started_at = crate::perf::PerfTimer::start();
     for cost in total_cost.costs() {
-        game.validate_cost_for_payment_reason(player, permanent_id, cost, ctx.reason)
-            .map_err(cost_error_to_action_error)?;
+        if has_activation_cost_modifiers {
+            game.validate_cost_for_payment_reason(player, permanent_id, cost, ctx.reason)
+                .map_err(cost_error_to_action_error)?;
+        }
         if cost.processing_mode().is_mana_payment() {
             if let Some(mana_cost) = cost.mana_cost_ref() {
                 if !view.can_potentially_pay_with_reason(
@@ -1742,6 +1745,7 @@ mod tests {
     use crate::cards::definitions::blood_celebrant;
     use crate::decision::SelectFirstDecisionMaker;
     use crate::game_state::Phase;
+    use crate::grant::Grantable;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::static_abilities::StaticAbility;
@@ -1883,6 +1887,56 @@ mod tests {
         assert_eq!(
             can_activate_mana_ability_check(&game, alice, celebrant_id, ability_index),
             Err(ActionError::CantPayCost)
+        );
+    }
+
+    #[test]
+    fn play_land_from_graveyard_grant_moves_land_to_battlefield_and_uses_land_play() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = None;
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+
+        let land = CardBuilder::new(CardId::from_raw(71_021), "Dakmor Salvage")
+            .card_types(vec![CardType::Land])
+            .build();
+        let land_id = game.create_object_from_card(&land, alice, Zone::Graveyard);
+
+        let source_id = game.new_object_id();
+        game.grant_registry.grant_to_filter_until_end_of_turn(
+            crate::target::ObjectFilter::default().with_type(CardType::Land),
+            Zone::Graveyard,
+            alice,
+            Grantable::play_from(),
+            source_id,
+            game.turn.turn_number,
+        );
+
+        let action = SpecialAction::PlayLand { card_id: land_id };
+        assert!(
+            can_perform_check(&action, &game, alice).is_ok(),
+            "granted graveyard land should be legal to play"
+        );
+
+        let mut dm = SelectFirstDecisionMaker;
+        perform(action, &mut game, alice, &mut dm).expect("playing land from graveyard succeeds");
+
+        let played_land = game
+            .battlefield
+            .iter()
+            .find_map(|&id| game.object(id).filter(|obj| obj.name == "Dakmor Salvage"))
+            .expect("played land should be on the battlefield");
+        assert_eq!(played_land.controller, alice);
+        assert_eq!(played_land.zone, Zone::Battlefield);
+        assert!(
+            !game
+                .player(alice)
+                .expect("alice should exist")
+                .can_play_land(),
+            "playing a granted graveyard land should consume the turn's land play"
         );
     }
 }

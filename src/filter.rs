@@ -1560,6 +1560,18 @@ impl ObjectFilter {
         *self.zone.get_or_insert(zone)
     }
 
+    /// Returns whether this search filter names a stated card quality instead of
+    /// just "a card/cards" in a searched zone.
+    pub fn has_search_stated_quality(&self) -> bool {
+        let mut generic = Self::default();
+        generic.zone = self.zone;
+        generic.owner = self.owner.clone();
+        generic.controller = self.controller.clone();
+        generic.cast_by = self.cast_by.clone();
+        generic.single_graveyard = self.single_graveyard;
+        self != &generic
+    }
+
     /// Require the object to be a spell/ability on the stack targeting a player
     /// and/or object matching the provided filters.
     ///

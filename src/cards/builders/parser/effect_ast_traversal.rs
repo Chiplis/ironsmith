@@ -238,6 +238,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::ReturnToHand { .. } => {}
         EffectAst::ReturnToBattlefield { .. } => {}
         EffectAst::MoveToZone { .. } => {}
+        EffectAst::ShuffleObjectsIntoLibrary { .. } => {}
         EffectAst::MoveToLibraryNthFromTop { .. } => {}
         EffectAst::ReturnAllToHand { .. } => {}
         EffectAst::ReturnAllToHandOfChosenColor { .. } => {}

@@ -96,4 +96,47 @@ mod tests {
             .count();
         assert_eq!(investigate_events, 2);
     }
+
+    #[test]
+    fn investigate_creates_runtime_clue_with_expected_properties() {
+        let mut game = setup_game();
+        let alice = crate::ids::PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        InvestigateEffect::new(1)
+            .execute(&mut game, &mut ctx)
+            .expect("investigate resolves");
+
+        let clue_id = *game
+            .battlefield
+            .first()
+            .expect("investigate should create a clue token");
+        let clue = game.object(clue_id).expect("clue should exist");
+        assert_eq!(clue.name, "Clue");
+        assert!(
+            game.object_has_card_type(clue_id, crate::types::CardType::Artifact),
+            "Clue should be an artifact token"
+        );
+        assert!(
+            game.calculated_subtypes(clue_id)
+                .contains(&crate::types::Subtype::Clue),
+            "Clue should have the Clue subtype"
+        );
+        assert!(
+            game.current_colors(clue_id)
+                .is_some_and(|colors| colors.is_empty()),
+            "Clue should be colorless"
+        );
+        assert_eq!(
+            clue.abilities.len(),
+            1,
+            "Clue should have one activated ability"
+        );
+        assert_eq!(
+            clue.abilities[0].text.as_deref(),
+            Some("{2}, Sacrifice this artifact: Draw a card."),
+            "Clue should carry the predefined draw ability"
+        );
+    }
 }

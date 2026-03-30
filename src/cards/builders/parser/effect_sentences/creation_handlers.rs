@@ -1040,6 +1040,31 @@ pub(crate) fn parse_investigate(tokens: &[OwnedLexToken]) -> Result<EffectAst, C
         });
     }
 
+    if tokens.first().is_some_and(|token| token.is_word("for"))
+        && tokens.get(1).is_some_and(|token| token.is_word("each"))
+    {
+        let filter_tokens = &tokens[2..];
+        if filter_tokens.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "missing filter after 'for each' in investigate clause (clause: '{}')",
+                words(tokens).join(" ")
+            )));
+        }
+
+        let count = if words(filter_tokens)
+            .windows(2)
+            .any(|window| window == ["this", "way"])
+        {
+            Value::EventValue(EventValueSpec::Amount)
+        } else if let Some(dynamic) = parse_create_for_each_dynamic_count(filter_tokens) {
+            dynamic
+        } else {
+            Value::Count(parse_object_filter(filter_tokens, false)?)
+        };
+
+        return Ok(EffectAst::Investigate { count });
+    }
+
     let (count, used) = if let Some(first) = tokens.first().and_then(OwnedLexToken::as_word) {
         match first {
             "once" => (Value::Fixed(1), 1),

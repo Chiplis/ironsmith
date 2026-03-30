@@ -3,9 +3,11 @@
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
+use crate::events::ShuffleLibraryEvent;
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::PlayerFilter;
+use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 
 /// Effect that moves all cards from a player's graveyard to their library, then shuffles.
@@ -46,6 +48,9 @@ impl EffectExecutor for ShuffleGraveyardIntoLibraryEffect {
 
         game.shuffle_player_library(player_id);
 
-        Ok(EffectOutcome::resolved())
+        Ok(EffectOutcome::resolved().with_event(TriggerEvent::new_with_provenance(
+            ShuffleLibraryEvent::new(player_id, ctx.cause.clone()),
+            ctx.provenance,
+        )))
     }
 }

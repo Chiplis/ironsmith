@@ -40,6 +40,7 @@ pub(crate) struct DerivedGameView<'a> {
     battlefield_opponents: RefCell<HashMap<PlayerId, Vec<ObjectId>>>,
     battlefield_opponent_creatures: RefCell<HashMap<PlayerId, Vec<ObjectId>>>,
     potential_mana: RefCell<HashMap<PlayerId, ManaPool>>,
+    potential_mana_compute_ms: RefCell<f64>,
     granted_alternative_casts:
         RefCell<HashMap<(ObjectId, Zone, PlayerId), Vec<GrantedAlternativeCast>>>,
     granted_play_from: RefCell<HashMap<(ObjectId, Zone, PlayerId), Vec<GrantedPlayFrom>>>,
@@ -74,13 +75,39 @@ struct SpellTargetLegalityKey {
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct SimpleBattlefieldManaAnalysis {
+    relevant_source_ids: Vec<ObjectId>,
+    mana_source_ids: Vec<ObjectId>,
     activatable_indices: HashMap<ObjectId, Vec<usize>>,
+    mana_ability_indices: HashMap<ObjectId, Vec<usize>>,
+    activated_ability_indices: HashMap<ObjectId, Vec<usize>>,
     first_output_by_permanent: HashMap<ObjectId, Vec<ManaSymbol>>,
 }
 
 impl SimpleBattlefieldManaAnalysis {
+    pub(crate) fn relevant_source_ids(&self) -> &[ObjectId] {
+        &self.relevant_source_ids
+    }
+
+    pub(crate) fn mana_source_ids(&self) -> &[ObjectId] {
+        &self.mana_source_ids
+    }
+
     pub(crate) fn activatable_indices_for(&self, object_id: ObjectId) -> &[usize] {
         self.activatable_indices
+            .get(&object_id)
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
+    }
+
+    pub(crate) fn mana_ability_indices_for(&self, object_id: ObjectId) -> &[usize] {
+        self.mana_ability_indices
+            .get(&object_id)
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
+    }
+
+    pub(crate) fn activated_ability_indices_for(&self, object_id: ObjectId) -> &[usize] {
+        self.activated_ability_indices
             .get(&object_id)
             .map(Vec::as_slice)
             .unwrap_or(&[])
@@ -216,6 +243,7 @@ impl<'a> DerivedGameView<'a> {
             battlefield_opponents: RefCell::new(HashMap::new()),
             battlefield_opponent_creatures: RefCell::new(HashMap::new()),
             potential_mana: RefCell::new(HashMap::new()),
+            potential_mana_compute_ms: RefCell::new(0.0),
             granted_alternative_casts: RefCell::new(HashMap::new()),
             granted_play_from: RefCell::new(HashMap::new()),
             granted_static_ability_presence: RefCell::new(HashMap::new()),
@@ -248,6 +276,7 @@ impl<'a> DerivedGameView<'a> {
             battlefield_opponents: RefCell::new(HashMap::new()),
             battlefield_opponent_creatures: RefCell::new(HashMap::new()),
             potential_mana: RefCell::new(HashMap::new()),
+            potential_mana_compute_ms: RefCell::new(0.0),
             granted_alternative_casts: RefCell::new(HashMap::new()),
             granted_play_from: RefCell::new(HashMap::new()),
             granted_static_ability_presence: RefCell::new(HashMap::new()),
@@ -362,11 +391,6 @@ impl<'a> DerivedGameView<'a> {
         Some(abilities)
     }
 
-    pub(crate) fn abilities(&self, object_id: ObjectId) -> Option<Vec<crate::ability::Ability>> {
-        self.abilities_rc(object_id)
-            .map(|abilities| abilities.as_ref().clone())
-    }
-
     pub(crate) fn ability_index_summary(
         &self,
         object_id: ObjectId,
@@ -427,14 +451,6 @@ impl<'a> DerivedGameView<'a> {
             .borrow_mut()
             .insert(object_id, Rc::clone(&static_abilities));
         Some(static_abilities)
-    }
-
-    pub(crate) fn static_abilities(
-        &self,
-        object_id: ObjectId,
-    ) -> Option<Vec<crate::static_abilities::StaticAbility>> {
-        self.static_abilities_rc(object_id)
-            .map(|static_abilities| static_abilities.as_ref().clone())
     }
 
     pub(crate) fn object_has_card_type(&self, object_id: ObjectId, card_type: CardType) -> bool {
@@ -525,11 +541,17 @@ impl<'a> DerivedGameView<'a> {
             return cached.clone();
         }
 
+        let started_at = crate::perf::PerfTimer::start();
         let pool = crate::decision::compute_potential_mana_with_view(self.game, player, self);
         self.potential_mana
             .borrow_mut()
             .insert(player, pool.clone());
+        *self.potential_mana_compute_ms.borrow_mut() += started_at.elapsed_ms();
         pool
+    }
+
+    pub(crate) fn potential_mana_compute_ms(&self) -> f64 {
+        *self.potential_mana_compute_ms.borrow()
     }
 
     pub(crate) fn can_potentially_pay_with_reason(
@@ -582,6 +604,24 @@ impl<'a> DerivedGameView<'a> {
             let Some(ability_summary) = self.ability_index_summary(perm_id) else {
                 continue;
             };
+            if !ability_summary.has_any_relevant_abilities() {
+                continue;
+            }
+
+            analysis.relevant_source_ids.push(perm_id);
+            if !ability_summary.mana_ability_indices().is_empty() {
+                analysis.mana_source_ids.push(perm_id);
+                analysis
+                    .mana_ability_indices
+                    .insert(perm_id, ability_summary.mana_ability_indices().to_vec());
+            }
+            if !ability_summary.activated_ability_indices().is_empty() {
+                analysis.activated_ability_indices.insert(
+                    perm_id,
+                    ability_summary.activated_ability_indices().to_vec(),
+                );
+            }
+
             let mut activatable_indices = Vec::new();
             let mut first_output = None;
 
@@ -898,8 +938,8 @@ impl<'a> DerivedGameView<'a> {
 
         let uses_creature_subset = filter.card_types.contains(&CardType::Creature)
             || filter.all_card_types.contains(&CardType::Creature);
-        let uses_noncreature_subset = !uses_creature_subset
-            && filter.excluded_card_types.contains(&CardType::Creature);
+        let uses_noncreature_subset =
+            !uses_creature_subset && filter.excluded_card_types.contains(&CardType::Creature);
 
         let base = if uses_creature_subset {
             self.battlefield_creature_candidates()
@@ -926,13 +966,15 @@ impl<'a> DerivedGameView<'a> {
             } else {
                 self.filter_candidates_by_controller(base, &[*player])
             }),
-            Some(PlayerFilter::Opponent) | Some(PlayerFilter::NotYou) => filter_ctx.you.map(|player| {
-                if uses_creature_subset {
-                    self.battlefield_opponent_creature_candidates(player)
-                } else {
-                    self.battlefield_opponent_candidates(player)
-                }
-            }),
+            Some(PlayerFilter::Opponent) | Some(PlayerFilter::NotYou) => {
+                filter_ctx.you.map(|player| {
+                    if uses_creature_subset {
+                        self.battlefield_opponent_creature_candidates(player)
+                    } else {
+                        self.battlefield_opponent_candidates(player)
+                    }
+                })
+            }
             _ => Some(base),
         }
     }
@@ -978,7 +1020,9 @@ impl<'a> DerivedGameView<'a> {
             self.candidate_ids_for_zone(Some(Zone::Battlefield)),
             &[player],
         );
-        self.battlefield_controlled.borrow_mut().insert(player, ids.clone());
+        self.battlefield_controlled
+            .borrow_mut()
+            .insert(player, ids.clone());
         ids
     }
 
@@ -1009,7 +1053,9 @@ impl<'a> DerivedGameView<'a> {
                     .is_some_and(|object| object.controller != player)
             })
             .collect();
-        self.battlefield_opponents.borrow_mut().insert(player, ids.clone());
+        self.battlefield_opponents
+            .borrow_mut()
+            .insert(player, ids.clone());
         ids
     }
 

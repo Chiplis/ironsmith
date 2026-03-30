@@ -3,7 +3,7 @@
 //! This module contains the `check_triggers()` function that scans all permanents
 //! for triggered abilities that match a game event.
 
-use std::collections::{HashSet, hash_map::DefaultHasher};
+use std::collections::{HashMap, HashSet, hash_map::DefaultHasher};
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
@@ -774,6 +774,21 @@ fn for_each_hidden_trigger_object_id(game: &GameState, mut visit: impl FnMut(Obj
     }
 }
 
+fn tagged_objects_for_trigger_event(
+    trigger_event: &TriggerEvent,
+) -> HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>> {
+    let mut tagged = HashMap::new();
+    if let Some(revealed) = trigger_event.downcast::<crate::events::CardRevealedEvent>()
+        && let Some(snapshot) = revealed.snapshot.clone()
+    {
+        tagged.insert(
+            crate::tag::TagKey::from(crate::effects::PUBLIC_REVEALED_TAG),
+            vec![snapshot],
+        );
+    }
+    tagged
+}
+
 pub(crate) fn check_triggers_with_view(
     game: &GameState,
     trigger_event: &TriggerEvent,
@@ -841,7 +856,7 @@ pub(crate) fn check_triggers_with_view(
                     source_stable_id: obj.stable_id,
                     source_name: obj.name.clone(),
                     source_snapshot: None,
-                    tagged_objects: std::collections::HashMap::new(),
+                    tagged_objects: tagged_objects_for_trigger_event(trigger_event),
                     trigger_identity,
                 };
                 for _ in 0..trigger_count {
@@ -905,7 +920,7 @@ pub(crate) fn check_triggers_with_view(
                         source_stable_id: snapshot.stable_id,
                         source_name: snapshot.name.clone(),
                         source_snapshot: Some(snapshot.clone()),
-                        tagged_objects: std::collections::HashMap::new(),
+                        tagged_objects: tagged_objects_for_trigger_event(trigger_event),
                         trigger_identity,
                     };
                     for _ in 0..trigger_count {
@@ -989,7 +1004,7 @@ pub(crate) fn check_triggers_with_view(
                     source_stable_id: obj.stable_id,
                     source_name: obj.name.clone(),
                     source_snapshot: None,
-                    tagged_objects: std::collections::HashMap::new(),
+                    tagged_objects: tagged_objects_for_trigger_event(trigger_event),
                     trigger_identity,
                 });
             }
@@ -1032,7 +1047,7 @@ pub(crate) fn check_triggers_with_view(
                 source_stable_id: obj.stable_id,
                 source_name: obj.name.clone(),
                 source_snapshot: None,
-                tagged_objects: std::collections::HashMap::new(),
+                tagged_objects: tagged_objects_for_trigger_event(trigger_event),
                 trigger_identity,
             });
         }
@@ -1101,6 +1116,7 @@ fn collect_state_triggers_for_object(
             continue;
         }
 
+        let tagged_objects = tagged_objects_for_trigger_event(&trigger_event);
         triggered.push(TriggeredAbilityEntry {
             source: obj.id,
             controller: obj.controller,
@@ -1115,7 +1131,7 @@ fn collect_state_triggers_for_object(
             source_stable_id: obj.stable_id,
             source_name: obj.name.clone(),
             source_snapshot: None,
-            tagged_objects: std::collections::HashMap::new(),
+            tagged_objects,
             trigger_identity,
         });
     }
@@ -1273,7 +1289,13 @@ pub fn check_delayed_triggers(
                 source_stable_id,
                 source_name,
                 source_snapshot: delayed.ability_source_snapshot.clone(),
-                tagged_objects: delayed.tagged_objects.clone(),
+                tagged_objects: {
+                    let mut tagged = delayed.tagged_objects.clone();
+                    for (tag, snapshots) in tagged_objects_for_trigger_event(trigger_event) {
+                        tagged.entry(tag).or_default().extend(snapshots);
+                    }
+                    tagged
+                },
                 trigger_identity,
             });
 
@@ -1362,7 +1384,7 @@ fn check_triggers_in_zone(
                 source_stable_id: obj.stable_id,
                 source_name: obj.name.clone(),
                 source_snapshot: None,
-                tagged_objects: std::collections::HashMap::new(),
+                tagged_objects: tagged_objects_for_trigger_event(trigger_event),
                 trigger_identity,
             };
             for _ in 0..trigger_count {

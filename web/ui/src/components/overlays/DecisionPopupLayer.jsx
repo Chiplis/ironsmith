@@ -13,6 +13,10 @@ import { nextPriorityAdvanceLabel } from "@/lib/constants";
 import HighlightedDecisionText from "@/components/decisions/HighlightedDecisionText";
 import { getPlayerAccent } from "@/lib/player-colors";
 import {
+  collectSelectedPriorityActionIndices,
+  filterPriorityActionGroups,
+} from "@/lib/priority-action-filter";
+import {
   buildObjectControllerById,
   buildObjectNameById,
 } from "@/lib/decision-object-meta";
@@ -307,18 +311,6 @@ function formatPriorityInlineActionLabel(action) {
   }
 
   return label;
-}
-
-function actionTargetsObjectName(action, lowerName) {
-  if (!lowerName) return false;
-  const label = String(action?.label || "").trim().toLowerCase();
-  if (!label) return false;
-  return (
-    label.startsWith(`activate ${lowerName}:`)
-    || label.startsWith(`cast ${lowerName}`)
-    || label.startsWith(`play ${lowerName}`)
-    || label.startsWith(`tap ${lowerName}:`)
-  );
 }
 
 function buildBattlefieldFamilies(players) {
@@ -1587,6 +1579,22 @@ function MobileBattleDecisionLayer({
     () => buildPriorityActionGroups(otherActions, battlefieldFamilies),
     [otherActions, battlefieldFamilies]
   );
+  const selectedObjectFamilyIds = useMemo(
+    () => buildObjectFamilyIds(state?.players, selectedObjectId),
+    [state?.players, selectedObjectId]
+  );
+  const selectedActionIndices = useMemo(() => {
+    if (selectedObjectId == null) return new Set();
+    return collectSelectedPriorityActionIndices(otherActions, selectedObjectFamilyIds);
+  }, [otherActions, selectedObjectFamilyIds, selectedObjectId]);
+  const visibleActionGroups = useMemo(() => {
+    if (selectedObjectId == null) return actionGroups;
+    return filterPriorityActionGroups(
+      actionGroups,
+      selectedObjectFamilyIds,
+      selectedActionIndices,
+    );
+  }, [actionGroups, selectedActionIndices, selectedObjectFamilyIds, selectedObjectId]);
   const showPriorityAdvanceButton = !!passAction;
   const hasCustomPassLabel = !!passAction?.label && passAction.label !== "Pass priority";
   const passLabel = showPriorityAdvanceButton
@@ -1595,7 +1603,7 @@ function MobileBattleDecisionLayer({
         ? passAction.label
         : nextPriorityAdvanceLabel(state?.phase, state?.step, stackSize)
     )
-    : (actionGroups[0]?.label || "Continue");
+    : (visibleActionGroups[0]?.label || "Continue");
   const objectNameById = useMemo(
     () => buildObjectNameById(state),
     [state]
@@ -1766,9 +1774,9 @@ function MobileBattleDecisionLayer({
     }
 
     const dockTitle = canAct ? "Your Action" : "Opponent Action";
-    const singleActionGroup = actionGroups.length === 1 ? actionGroups[0] : null;
+    const singleActionGroup = visibleActionGroups.length === 1 ? visibleActionGroups[0] : null;
     const secondaryAction = showPriorityAdvanceButton
-      ? (actionGroups.length > 1
+      ? (visibleActionGroups.length > 1
         ? {
           label: "Actions",
           disabled: !canAct,
@@ -1787,7 +1795,7 @@ function MobileBattleDecisionLayer({
               onClick: () => cancelDecision(),
             }
             : null))
-      : (actionGroups.length > 1
+      : (visibleActionGroups.length > 1
         ? {
           label: "Actions",
           disabled: !canAct,
@@ -1800,7 +1808,7 @@ function MobileBattleDecisionLayer({
             onClick: () => cancelDecision(),
           }
           : null));
-    const primaryDisabled = !canAct || (!showPriorityAdvanceButton && actionGroups.length === 0);
+    const primaryDisabled = !canAct || (!showPriorityAdvanceButton && visibleActionGroups.length === 0);
     const resolvedDockSubtitle = decisionTextMatches(mobileDockSubtitle, passLabel)
       ? ""
       : mobileDockSubtitle;
@@ -1809,8 +1817,8 @@ function MobileBattleDecisionLayer({
         triggerPriorityAction(passAction);
         return;
       }
-      if (actionGroups[0]?.firstAction) {
-        triggerPriorityAction(actionGroups[0].firstAction);
+      if (visibleActionGroups[0]?.firstAction) {
+        triggerPriorityAction(visibleActionGroups[0].firstAction);
       }
     };
 
@@ -1833,7 +1841,7 @@ function MobileBattleDecisionLayer({
           <MobileDecisionSheet
             eyebrow={dockTitle}
             title="Available Actions"
-            subtitle={`${actionGroups.length} action${actionGroups.length === 1 ? "" : "s"}`}
+            subtitle={`${visibleActionGroups.length} action${visibleActionGroups.length === 1 ? "" : "s"}`}
             onBackdropClick={() => setActionsSheetState({ key: decisionIdentity, open: false })}
             onClose={() => setActionsSheetState({ key: decisionIdentity, open: false })}
             closeLabel="Close available actions"
@@ -2236,37 +2244,18 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
     () => buildObjectFamilyIds(state?.players, selectedObjectId),
     [state?.players, selectedObjectId]
   );
-  const selectedObjectNameLower = useMemo(() => {
-    if (selectedObjectId == null) return "";
-    return String(objectNameById.get(String(selectedObjectId)) || "").trim().toLowerCase();
-  }, [selectedObjectId, objectNameById]);
   const selectedActionIndices = useMemo(() => {
-    const ids = new Set();
-    if (selectedObjectId == null && !selectedObjectNameLower) return ids;
-    for (const action of otherActions) {
-      const actionObjectId = action?.object_id != null ? String(action.object_id) : null;
-      if (actionObjectId != null && selectedObjectFamilyIds.has(actionObjectId)) {
-        ids.add(action.index);
-        continue;
-      }
-      if (actionTargetsObjectName(action, selectedObjectNameLower)) {
-        ids.add(action.index);
-      }
-    }
-    return ids;
-  }, [otherActions, selectedObjectFamilyIds, selectedObjectId, selectedObjectNameLower]);
+    if (selectedObjectId == null) return new Set();
+    return collectSelectedPriorityActionIndices(otherActions, selectedObjectFamilyIds);
+  }, [otherActions, selectedObjectFamilyIds, selectedObjectId]);
   const visibleActionGroups = useMemo(() => {
-    if (selectedObjectId == null && !selectedObjectNameLower) return actionGroups;
-    return actionGroups.filter((group) => {
-      for (const linkedObjectId of group.linkedObjectIds) {
-        if (selectedObjectFamilyIds.has(linkedObjectId)) return true;
-      }
-      for (const actionIndex of group.actionIndices) {
-        if (selectedActionIndices.has(actionIndex)) return true;
-      }
-      return false;
-    });
-  }, [actionGroups, selectedActionIndices, selectedObjectFamilyIds, selectedObjectId, selectedObjectNameLower]);
+    if (selectedObjectId == null) return actionGroups;
+    return filterPriorityActionGroups(
+      actionGroups,
+      selectedObjectFamilyIds,
+      selectedActionIndices,
+    );
+  }, [actionGroups, selectedActionIndices, selectedObjectFamilyIds, selectedObjectId]);
   const priorityActionCount = visibleActionGroups.length;
   const triggerPriorityAction = useCallback(
     (action) => {

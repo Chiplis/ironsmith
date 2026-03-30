@@ -1,7 +1,7 @@
 //! Reveal tagged cards effect implementation.
 //!
-//! The engine does not fully model hidden information; "reveal" is treated as a
-//! semantic no-op that can still be referenced by compiled text and auditing.
+//! Reveals currently update player-facing visibility and carry that visibility
+//! through tagged contexts when later stack objects still need it.
 
 use crate::decisions::context::ViewCardsContext;
 use crate::effect::EffectOutcome;
@@ -52,7 +52,37 @@ impl EffectExecutor for RevealTaggedEffect {
                     .view_cards(game, viewer, &card_ids, &view_ctx);
             }
         }
-        Ok(EffectOutcome::count(count as i32))
+        if !tagged.is_empty() {
+            let entry = ctx
+                .tagged_objects
+                .entry(TagKey::from(crate::effects::PUBLIC_REVEALED_TAG))
+                .or_default();
+            for snapshot in tagged.iter().cloned() {
+                if !entry
+                    .iter()
+                    .any(|existing| existing.object_id == snapshot.object_id)
+                {
+                    entry.push(snapshot);
+                }
+            }
+        }
+        let reveal_events = tagged
+            .iter()
+            .map(|snapshot| {
+                crate::triggers::TriggerEvent::new_with_provenance(
+                    crate::events::CardRevealedEvent::new(
+                        snapshot.owner,
+                        snapshot.object_id,
+                        snapshot.zone,
+                        Some(ctx.source),
+                        Some(snapshot.clone()),
+                    ),
+                    ctx.provenance,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        Ok(EffectOutcome::count(count as i32).with_events(reveal_events))
     }
 }
 

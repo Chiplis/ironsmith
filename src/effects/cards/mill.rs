@@ -106,7 +106,7 @@ impl EffectExecutor for MillEffect {
                 &additional_effects,
             ) {
                 EventOutcome::Proceed(change) => {
-                    if change.final_zone == Zone::Graveyard
+                    if change.final_zone.is_public()
                         && let Some(new_id) = change.new_object_id
                     {
                         milled.push(new_id);
@@ -241,5 +241,88 @@ mod tests {
         assert_eq!(tagged.len(), 1);
         assert_eq!(tagged[0].object_id, milled_ids[0]);
         assert_eq!(tagged[0].zone, Zone::Graveyard);
+    }
+
+    #[test]
+    fn mill_mills_as_many_cards_as_possible() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        add_cards_to_library(&mut game, alice, 1);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let outcome = MillEffect::you(3)
+            .execute(&mut game, &mut ctx)
+            .expect("mill resolves");
+        let crate::effect::OutcomeValue::Objects(milled_ids) = outcome.value else {
+            panic!("expected mill to return moved object ids");
+        };
+
+        assert_eq!(
+            milled_ids.len(),
+            1,
+            "mill should move the only available card"
+        );
+        assert!(
+            game.player(alice)
+                .expect("alice should exist")
+                .library
+                .is_empty(),
+            "library should be emptied when milling more cards than are available"
+        );
+        assert_eq!(
+            game.player(alice).expect("alice should exist").graveyard,
+            milled_ids,
+            "the available top card should end up in the graveyard"
+        );
+    }
+
+    #[test]
+    fn mill_tracks_replaced_public_zone_cards_as_milled() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        add_cards_to_library(&mut game, alice, 1);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        execute_effect(
+            &mut game,
+            &Effect::new(crate::effects::ExileInsteadOfGraveyardEffect::you()),
+            &mut ctx,
+        )
+        .expect("replacement effect should resolve");
+
+        let outcome = execute_effect(&mut game, &Effect::mill(1).tag("milled"), &mut ctx)
+            .expect("execute tagged mill");
+        let crate::effect::OutcomeValue::Objects(milled_ids) = outcome.value else {
+            panic!("expected tagged mill to return milled object ids");
+        };
+
+        assert_eq!(
+            milled_ids.len(),
+            1,
+            "replacement mill should still report the moved card"
+        );
+        let milled_id = milled_ids[0];
+        let milled = game
+            .object(milled_id)
+            .expect("milled card should still exist");
+        assert_eq!(
+            milled.zone,
+            Zone::Exile,
+            "replacement should move the milled card to exile"
+        );
+
+        let tagged = ctx
+            .tagged_objects
+            .get(&TagKey::from("milled"))
+            .expect("milled tag should exist");
+        assert_eq!(tagged.len(), 1);
+        assert_eq!(tagged[0].object_id, milled_id);
+        assert_eq!(
+            tagged[0].zone,
+            Zone::Exile,
+            "milled tags should follow the card into a replaced public zone"
+        );
     }
 }

@@ -1,4 +1,4 @@
-//! Remove attacker from combat effect implementation.
+//! Remove creature from combat effect implementation.
 
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
@@ -7,7 +7,7 @@ use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
 
-/// Effect that removes attacking creatures from combat.
+/// Effect that removes creatures from combat.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RemoveFromCombatEffect {
     pub spec: ChooseSpec,
@@ -48,14 +48,27 @@ impl EffectExecutor for RemoveFromCombatEffect {
                         .attackers
                         .iter()
                         .any(|info| info.creature == object_id);
-                    if !was_attacking {
-                        false
-                    } else {
+                    let was_blocking = combat
+                        .blockers
+                        .values()
+                        .any(|blockers| blockers.contains(&object_id));
+
+                    if was_attacking {
                         combat.attackers.retain(|info| info.creature != object_id);
                         combat.blockers.remove(&object_id);
                         combat.damage_assignment_order.remove(&object_id);
-                        true
                     }
+
+                    if was_attacking || was_blocking {
+                        for blockers in combat.blockers.values_mut() {
+                            blockers.retain(|id| *id != object_id);
+                        }
+                        for order in combat.damage_assignment_order.values_mut() {
+                            order.retain(|id| *id != object_id);
+                        }
+                    }
+
+                    was_attacking || was_blocking
                 } else {
                     false
                 };
@@ -88,7 +101,7 @@ impl EffectExecutor for RemoveFromCombatEffect {
     }
 
     fn target_description(&self) -> &'static str {
-        "attacking creature to remove from combat"
+        "creature to remove from combat"
     }
 }
 
@@ -96,7 +109,7 @@ impl EffectExecutor for RemoveFromCombatEffect {
 mod tests {
     use super::*;
     use crate::card::CardBuilder;
-    use crate::combat_state::{AttackTarget, AttackerInfo, is_attacking};
+    use crate::combat_state::{AttackTarget, AttackerInfo, is_attacking, is_blocking};
     use crate::executor::ResolvedTarget;
     use crate::ids::{CardId, PlayerId};
     use crate::types::CardType;
@@ -161,5 +174,55 @@ mod tests {
             .execute(&mut game, &mut ctx)
             .expect("effect should resolve");
         assert_eq!(outcome.status, crate::effect::OutcomeStatus::Succeeded);
+    }
+
+    #[test]
+    fn remove_from_combat_removes_blocker() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let attacker =
+            game.create_object_from_card(&creature_card(3, "Attacker"), alice, Zone::Battlefield);
+        let blocker =
+            game.create_object_from_card(&creature_card(4, "Blocker"), bob, Zone::Battlefield);
+
+        let mut combat = crate::combat_state::CombatState::default();
+        combat.attackers.push(AttackerInfo {
+            creature: attacker,
+            target: AttackTarget::Player(bob),
+        });
+        combat.blockers.insert(attacker, vec![blocker]);
+        combat
+            .damage_assignment_order
+            .insert(attacker, vec![blocker]);
+        game.combat = Some(combat);
+
+        assert!(
+            is_blocking(game.combat.as_ref().expect("combat"), blocker),
+            "blocker should start in combat"
+        );
+
+        let mut ctx = ExecutionContext::new_default(game.new_object_id(), bob);
+        let effect = RemoveFromCombatEffect::with_spec(ChooseSpec::SpecificObject(blocker));
+        let outcome = effect
+            .execute(&mut game, &mut ctx)
+            .expect("effect should resolve");
+        assert_eq!(outcome.value, crate::effect::OutcomeValue::Count(1));
+        assert!(
+            !is_blocking(game.combat.as_ref().expect("combat"), blocker),
+            "blocker should be removed from combat"
+        );
+        assert_eq!(
+            game.combat
+                .as_ref()
+                .expect("combat")
+                .damage_assignment_order
+                .get(&attacker)
+                .cloned()
+                .unwrap_or_default(),
+            Vec::<crate::ids::ObjectId>::new(),
+            "blocker should also be removed from damage assignment order"
+        );
     }
 }

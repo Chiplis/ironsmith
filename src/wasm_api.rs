@@ -405,30 +405,46 @@ fn pseudo_hand_glow_kind_for_zone_card(
 fn build_zone_card_snapshot(
     game: &GameState,
     perspective: PlayerId,
+    viewed_cards: Option<&ActiveViewedCards>,
     object: &crate::object::Object,
     zone: Zone,
 ) -> ZoneCardSnapshot {
-    let pseudo_hand_glow_kind =
-        pseudo_hand_glow_kind_for_zone_card(game, perspective, object, zone).map(str::to_string);
-    let power_toughness = match (object.power(), object.toughness()) {
-        (Some(power), Some(toughness)) => Some(format!("{power}/{toughness}")),
-        _ => None,
-    };
+    let visible = object_visible_to_perspective(game, perspective, viewed_cards, object.id);
+    let pseudo_hand_glow_kind = visible
+        .then(|| pseudo_hand_glow_kind_for_zone_card(game, perspective, object, zone))
+        .flatten()
+        .map(str::to_string);
+    let power_toughness = visible
+        .then(|| match (object.power(), object.toughness()) {
+            (Some(power), Some(toughness)) => Some(format!("{power}/{toughness}")),
+            _ => None,
+        })
+        .flatten();
 
     ZoneCardSnapshot {
         id: object.id.0,
         stable_id: object.stable_id.0.0,
-        name: object.name.clone(),
-        mana_cost: object.mana_cost.as_ref().map(|mc| mc.to_oracle()),
+        name: if visible {
+            object.name.clone()
+        } else {
+            hidden_object_label()
+        },
+        mana_cost: visible
+            .then(|| object.mana_cost.as_ref().map(|mc| mc.to_oracle()))
+            .flatten(),
         power_toughness,
-        loyalty: object.loyalty(),
-        defense: object.defense(),
-        card_types: object
-            .card_types
-            .iter()
-            .map(|ct| ct.name().to_string())
-            .collect(),
-        show_in_pseudo_hand: pseudo_hand_glow_kind.is_some(),
+        loyalty: visible.then(|| object.loyalty()).flatten(),
+        defense: visible.then(|| object.defense()).flatten(),
+        card_types: if visible {
+            object
+                .card_types
+                .iter()
+                .map(|ct| ct.name().to_string())
+                .collect()
+        } else {
+            Vec::new()
+        },
+        show_in_pseudo_hand: visible && pseudo_hand_glow_kind.is_some(),
         pseudo_hand_glow_kind,
     }
 }
@@ -941,6 +957,66 @@ fn merge_active_viewed_cards(
     });
 }
 
+fn stack_revealed_view(game: &GameState) -> Option<ActiveViewedCards> {
+    for entry in game.stack.iter().rev() {
+        if let Some(source_snapshot) = entry
+            .source_snapshot
+            .as_ref()
+            .filter(|snapshot| snapshot.zone.is_hidden())
+        {
+            return Some(ActiveViewedCards {
+                viewer: entry.controller,
+                subject: source_snapshot.owner,
+                zone: source_snapshot.zone,
+                cards: vec![source_snapshot.object_id],
+                public: true,
+                source: Some(entry.object_id),
+                description: "Revealed while on the stack".to_string(),
+            });
+        }
+
+        let Some(revealed) = entry.tagged_objects.get(&crate::tag::TagKey::from(
+            crate::effects::PUBLIC_REVEALED_TAG,
+        )) else {
+            continue;
+        };
+        let hidden: Vec<_> = revealed
+            .iter()
+            .filter(|snapshot| snapshot.zone.is_hidden())
+            .cloned()
+            .collect();
+        let Some(first) = hidden.first() else {
+            continue;
+        };
+        let first_owner = first.owner;
+        let first_zone = first.zone;
+
+        let mut cards = Vec::new();
+        for snapshot in hidden {
+            if snapshot.owner == first_owner
+                && snapshot.zone == first_zone
+                && !cards.contains(&snapshot.object_id)
+            {
+                cards.push(snapshot.object_id);
+            }
+        }
+
+        if !cards.is_empty() {
+            return Some(ActiveViewedCards {
+                viewer: entry.controller,
+                subject: first_owner,
+                zone: first_zone,
+                cards,
+                public: true,
+                source: Some(entry.object_id),
+                description: "Revealed while on the stack".to_string(),
+            });
+        }
+    }
+
+    None
+}
+
 fn normalize_stack_display_text(text: &str) -> Option<String> {
     let trimmed = text.trim();
     if trimmed.is_empty() {
@@ -1049,6 +1125,8 @@ impl GameSnapshot {
         undo_land_stable_id: Option<u64>,
         snapshot_id: u64,
     ) -> Self {
+        let stack_viewed_cards = stack_revealed_view(game);
+        let viewed_cards = viewed_cards.or(stack_viewed_cards.as_ref());
         let protected_ids = protected_object_ids_for_decision(decision);
         let players = game
             .players
@@ -1108,7 +1186,15 @@ impl GameSnapshot {
                         .iter()
                         .rev()
                         .filter_map(|id| game.object(*id))
-                        .map(|o| build_zone_card_snapshot(game, perspective, o, Zone::Graveyard))
+                        .map(|o| {
+                            build_zone_card_snapshot(
+                                game,
+                                perspective,
+                                viewed_cards,
+                                o,
+                                Zone::Graveyard,
+                            )
+                        })
                         .collect(),
                     exile_cards: game
                         .exile
@@ -1116,7 +1202,15 @@ impl GameSnapshot {
                         .rev()
                         .filter_map(|id| game.object(*id))
                         .filter(|o| o.owner == p.id)
-                        .map(|o| build_zone_card_snapshot(game, perspective, o, Zone::Exile))
+                        .map(|o| {
+                            build_zone_card_snapshot(
+                                game,
+                                perspective,
+                                viewed_cards,
+                                o,
+                                Zone::Exile,
+                            )
+                        })
                         .collect(),
                     command_cards: game
                         .command_zone
@@ -1124,7 +1218,15 @@ impl GameSnapshot {
                         .rev()
                         .filter_map(|id| game.object(*id))
                         .filter(|o| o.owner == p.id)
-                        .map(|o| build_zone_card_snapshot(game, perspective, o, Zone::Command))
+                        .map(|o| {
+                            build_zone_card_snapshot(
+                                game,
+                                perspective,
+                                viewed_cards,
+                                o,
+                                Zone::Command,
+                            )
+                        })
                         .collect(),
                     library_top: p
                         .library
@@ -3523,18 +3625,6 @@ impl WasmGame {
 
         self.registry.ensure_cards_loaded([query]);
         let definition = self.load_compilable_card_definition(query)?;
-
-        if self.semantic_threshold > 0.0
-            && let Some(score) = Self::semantic_score_for_name(definition.name())
-            && score < self.semantic_threshold
-        {
-            return Err(JsValue::from_str(&format!(
-                "Card '{}' has fidelity {:.0}%, below threshold {:.0}%",
-                definition.name(),
-                score * 100.0,
-                self.semantic_threshold * 100.0,
-            )));
-        }
 
         if zone == Zone::Battlefield && !skip_triggers {
             let checkpoint = self.capture_replay_checkpoint();
@@ -8319,12 +8409,19 @@ fn object_visible_to_perspective(
         return false;
     };
 
+    let visible_via_view_effect = viewed_cards.is_some_and(|view| {
+        (view.public || view.viewer == perspective) && view.cards.contains(&id)
+    });
+    if obj.zone == Zone::Exile && game.is_face_down(id) {
+        return game.can_player_look_at_face_down_exiled_card(id, perspective)
+            || visible_via_view_effect;
+    }
+
     if !obj.zone.is_hidden() || obj.owner == perspective {
         return true;
     }
 
-    viewed_cards
-        .is_some_and(|view| (view.public || view.viewer == perspective) && view.cards.contains(&id))
+    visible_via_view_effect
 }
 
 fn redacted_action_label(action: &LegalAction) -> String {
@@ -8966,13 +9063,13 @@ mod tests {
     use super::{
         CustomCardFaceInput, CustomCardInput, CustomCardLayoutInput, GameSnapshot,
         MatchFormatInput, PendingReplayAction, PregameState, ReplayOutcome, ReplayRoot,
-        TargetChoiceView, TargetInput, WasmGame, battlefield_lane_for_object,
+        TargetChoiceView, TargetInput, WasmGame, action_drag_metadata, battlefield_lane_for_object,
         build_object_details_snapshot, build_stack_object_snapshot, convert_and_validate_targets,
         grouped_battlefield_for_player,
     };
     use crate::ability::Ability;
     use crate::alternative_cast::CastingMethod;
-    use crate::card::CardBuilder;
+    use crate::card::{CardBuilder, PowerToughness};
     use crate::cards::CardRegistry;
     use crate::cards::builders::CardDefinitionBuilder;
     use crate::cards::definitions::{
@@ -8996,6 +9093,7 @@ mod tests {
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::CounterType;
     use crate::provenance::ProvNodeId;
+    use crate::snapshot::ObjectSnapshot;
     use crate::triggers::{Trigger, TriggerEvent, check_triggers};
     use crate::types::{CardType, Subtype};
     use crate::wasm_api::colors_for_context;
@@ -9144,8 +9242,7 @@ mod tests {
     fn battlefield_lane_prefers_creature_over_artifact() {
         let artifact_creature = CardBuilder::new(CardId::from_raw(70_103), "Ornithopter")
             .card_types(vec![CardType::Artifact, CardType::Creature])
-            .power(0)
-            .toughness(2)
+            .power_toughness(PowerToughness::fixed(0, 2))
             .build();
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
         let alice = PlayerId::from_index(0);
@@ -9164,13 +9261,11 @@ mod tests {
     fn battlefield_lane_prefers_enchantment_over_creature_and_sorts_after_creatures() {
         let creature = CardBuilder::new(CardId::from_raw(70_101), "Grizzly Bears")
             .card_types(vec![CardType::Creature])
-            .power(2)
-            .toughness(2)
+            .power_toughness(PowerToughness::fixed(2, 2))
             .build();
         let enchantment_creature = CardBuilder::new(CardId::from_raw(70_102), "Nyxborn Wolf")
             .card_types(vec![CardType::Enchantment, CardType::Creature])
-            .power(3)
-            .toughness(1)
+            .power_toughness(PowerToughness::fixed(3, 1))
             .build();
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
         let alice = PlayerId::from_index(0);
@@ -9554,6 +9649,35 @@ mod tests {
 
     #[cfg(feature = "generated-registry")]
     #[test]
+    fn add_card_to_zone_allows_below_threshold_cards_for_manual_injection() {
+        let mut wasm = WasmGame::new();
+        let (below_threshold_name, below_threshold_score) =
+            CardRegistry::generated_parser_card_names()
+                .into_iter()
+                .find_map(|name| {
+                    let score = WasmGame::semantic_score_for_name(name.as_str())?;
+                    if score >= 1.0 || CardRegistry::try_compile_card(name.as_str()).is_err() {
+                        return None;
+                    }
+                    Some((name, score))
+                })
+                .expect("expected a compilable generated card below 100% fidelity");
+        let threshold_percent = ((below_threshold_score * 100.0) + 0.5).clamp(1.0, 100.0);
+        wasm.set_semantic_threshold(threshold_percent);
+
+        let object_id = wasm
+            .add_card_to_zone(0, below_threshold_name.clone(), "hand".to_string(), true)
+            .expect("manual card injection should allow below-threshold cards");
+
+        let added = wasm
+            .game
+            .object(ObjectId::from_raw(object_id))
+            .expect("added object should exist");
+        assert_eq!(added.name, below_threshold_name);
+    }
+
+    #[cfg(feature = "generated-registry")]
+    #[test]
     fn load_decks_accepts_alternative_card_names() {
         #[derive(Debug, Deserialize)]
         #[serde(rename_all = "camelCase")]
@@ -9894,7 +10018,7 @@ mod tests {
             mana_cost: ManaCost::new(),
             other_costs: Vec::new(),
             mana_to_add: vec![ManaSymbol::Green],
-            effects: Vec::new(),
+            effects: crate::resolution::ResolutionProgram::default(),
             undo_locked_by_mana: true,
         });
         wasm.pending_decision = Some(DecisionContext::Boolean(BooleanContext::new(
@@ -9922,7 +10046,7 @@ mod tests {
             mana_cost: ManaCost::new(),
             other_costs: Vec::new(),
             mana_to_add: vec![ManaSymbol::Green],
-            effects: Vec::new(),
+            effects: crate::resolution::ResolutionProgram::default(),
             undo_locked_by_mana: false,
         });
 
@@ -11462,6 +11586,125 @@ mod tests {
     }
 
     #[test]
+    fn stack_snapshot_keeps_reveal_cost_card_visible_while_spell_is_on_stack() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let revealed = CardBuilder::new(CardId::from_raw(701), "Merfolk Scout")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let revealed_id = game.create_object_from_card(&revealed, bob, Zone::Hand);
+
+        let spell = CardBuilder::new(CardId::from_raw(702), "Silvergill Variant")
+            .card_types(vec![CardType::Sorcery])
+            .build();
+        let spell_id = game.create_object_from_card(&spell, bob, Zone::Stack);
+
+        let snapshot = {
+            let obj = game.object(revealed_id).expect("revealed hand card");
+            ObjectSnapshot::from_object(obj, &game)
+        };
+        let mut tagged = std::collections::HashMap::new();
+        tagged.insert(
+            crate::tag::TagKey::from(crate::effects::PUBLIC_REVEALED_TAG),
+            vec![snapshot],
+        );
+        game.push_to_stack(StackEntry::new(spell_id, bob).with_tagged_objects(tagged));
+
+        let snapshot = GameSnapshot::from_game(
+            &game,
+            alice,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Vec::new(),
+            None,
+            false,
+            None,
+            0,
+        );
+
+        let bob_snapshot = snapshot
+            .players
+            .iter()
+            .find(|player| player.id == bob.0)
+            .expect("snapshot should include Bob");
+        assert!(bob_snapshot.can_view_hand);
+        assert!(
+            bob_snapshot
+                .hand_cards
+                .iter()
+                .any(|card| card.id == revealed_id.0),
+            "revealed cost card should stay visible while the spell is on the stack"
+        );
+
+        let viewed = snapshot
+            .viewed_cards
+            .as_ref()
+            .expect("stack reveal should populate viewed cards");
+        assert_eq!(viewed.visibility, "public");
+        assert_eq!(viewed.subject, bob.0);
+        assert_eq!(viewed.card_ids, vec![revealed_id.0]);
+    }
+
+    #[test]
+    fn stack_snapshot_keeps_hidden_zone_activation_source_visible() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let source = CardBuilder::new(CardId::from_raw(703), "Street Wraith Variant")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let source_id = game.create_object_from_card(&source, bob, Zone::Hand);
+        let source_snapshot = {
+            let obj = game.object(source_id).expect("hidden-zone source");
+            ObjectSnapshot::from_object(obj, &game)
+        };
+
+        let entry = StackEntry::ability(
+            source_id,
+            bob,
+            crate::resolution::ResolutionProgram::default(),
+        )
+        .with_source_info(source_snapshot.stable_id, source_snapshot.name.clone())
+        .with_source_snapshot(source_snapshot);
+        game.push_to_stack(entry);
+
+        let snapshot = GameSnapshot::from_game(
+            &game,
+            alice,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Vec::new(),
+            None,
+            false,
+            None,
+            0,
+        );
+
+        let bob_snapshot = snapshot
+            .players
+            .iter()
+            .find(|player| player.id == bob.0)
+            .expect("snapshot should include Bob");
+        assert!(bob_snapshot.can_view_hand);
+        assert!(
+            bob_snapshot
+                .hand_cards
+                .iter()
+                .any(|card| card.id == source_id.0),
+            "the source of an ability activated from hand should stay revealed on the stack"
+        );
+    }
+
+    #[test]
     fn tayam_black_lotus_color_choice_keeps_paid_mana_state() {
         let mut wasm = WasmGame::new();
         let alice = PlayerId::from_index(0);
@@ -12594,7 +12837,8 @@ mod tests {
                 .create_object_from_definition(&grizzly_bears(), alice, Zone::Battlefield);
         let victim_snapshot = wasm
             .game
-            .snapshot_object(victim_id)
+            .object(victim_id)
+            .map(|object| crate::snapshot::ObjectSnapshot::from_object(object, &wasm.game))
             .expect("victim snapshot should exist");
         let dies_event = TriggerEvent::new_with_provenance(
             crate::events::ZoneChangeEvent::with_cause(
@@ -14224,5 +14468,144 @@ mod tests {
         )
         .expect("linked custom back face should resolve at runtime");
         assert_eq!(linked.name(), "Forge Howler");
+    }
+
+    #[test]
+    fn snapshot_shows_foretold_card_only_to_the_player_allowed_to_look() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = None;
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+        game.player_mut(alice)
+            .expect("alice exists")
+            .mana_pool
+            .add(ManaSymbol::Blue, 2);
+
+        let def = CardDefinitionBuilder::new(CardId::from_raw(50_001), "Foretell Snapshot Probe")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+            .card_types(vec![CardType::Instant])
+            .with_spell_effect(vec![Effect::gain_life(1)])
+            .foretell(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(1)],
+                vec![ManaSymbol::Blue],
+            ]))
+            .build();
+        let card_id = game.create_object_from_definition(&def, alice, Zone::Hand);
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+        crate::special_actions::perform(
+            crate::special_actions::SpecialAction::Foretell { card_id },
+            &mut game,
+            alice,
+            &mut dm,
+        )
+        .expect("foretell should succeed");
+
+        let alice_snapshot = GameSnapshot::from_game(
+            &game,
+            alice,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Vec::new(),
+            None,
+            false,
+            None,
+            0,
+        );
+        let bob_snapshot = GameSnapshot::from_game(
+            &game,
+            bob,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Vec::new(),
+            None,
+            false,
+            None,
+            0,
+        );
+
+        let alice_view = alice_snapshot
+            .players
+            .iter()
+            .find(|player| player.id == alice.0)
+            .expect("alice snapshot should exist");
+        let bob_view_of_alice = bob_snapshot
+            .players
+            .iter()
+            .find(|player| player.id == alice.0)
+            .expect("alice zone snapshot should exist for bob");
+
+        assert_eq!(alice_view.exile_cards.len(), 1);
+        assert_eq!(alice_view.exile_cards[0].name, "Foretell Snapshot Probe");
+        assert_eq!(bob_view_of_alice.exile_cards.len(), 1);
+        assert_eq!(bob_view_of_alice.exile_cards[0].name, "Hidden card");
+        assert!(
+            bob_view_of_alice.exile_cards[0].card_types.is_empty(),
+            "unauthorized players should not learn the face-down exiled card's characteristics"
+        );
+    }
+
+    #[test]
+    fn snapshot_uses_exile_look_permissions_instead_of_card_ownership() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let card_id = game.create_object_from_definition(&ornithopter(), bob, Zone::Exile);
+        game.set_face_down(card_id);
+        game.grant_face_down_exile_view(card_id, alice);
+
+        let alice_snapshot = GameSnapshot::from_game(
+            &game,
+            alice,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Vec::new(),
+            None,
+            false,
+            None,
+            0,
+        );
+        let bob_snapshot = GameSnapshot::from_game(
+            &game,
+            bob,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Vec::new(),
+            None,
+            false,
+            None,
+            0,
+        );
+
+        let alice_view_of_bob = alice_snapshot
+            .players
+            .iter()
+            .find(|player| player.id == bob.0)
+            .expect("bob snapshot should exist for alice");
+        let bob_view = bob_snapshot
+            .players
+            .iter()
+            .find(|player| player.id == bob.0)
+            .expect("bob snapshot should exist");
+
+        assert_eq!(alice_view_of_bob.exile_cards.len(), 1);
+        assert_eq!(alice_view_of_bob.exile_cards[0].name, "Ornithopter");
+        assert_eq!(bob_view.exile_cards.len(), 1);
+        assert_eq!(bob_view.exile_cards[0].name, "Hidden card");
     }
 }

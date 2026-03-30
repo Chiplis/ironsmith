@@ -6291,6 +6291,10 @@ textarea,
   border-color: rgba(137, 88, 74, 0.74) !important;
 }
 
+.workspace-notice--warning {
+  border-color: rgba(186, 142, 66, 0.78) !important;
+}
+
 .workspace-notice--info {
   border-color: rgba(154, 127, 88, 0.7) !important;
 }
