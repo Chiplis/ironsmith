@@ -3138,6 +3138,7 @@ fn resolve_value_with_context(
         }
 
         Value::X => 0, // X is 0 unless specified (resolved at cast time, not layer time)
+        Value::VoteCount(_) => 0,
 
         Value::Count(filter) => {
             let filter_ctx = continuous_filter_context(controller, source);

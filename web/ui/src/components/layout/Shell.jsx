@@ -3,6 +3,7 @@ import { useGame } from "@/context/GameContext";
 import { parseNames } from "@/lib/constants";
 import { UI_NOTICE_EVENT } from "@/lib/ui-notices";
 import { decodeBase64UrlUtf8, normalizePuzzlePayload, PUZZLE_ZONE_ORDER } from "@/lib/puzzles";
+import { MATCH_FORMAT_COMMANDER, MATCH_FORMAT_NORMAL } from "@/lib/decklists";
 import useViewportLayout from "@/hooks/useViewportLayout";
 import Topbar from "./Topbar";
 import LobbyOverlay from "./LobbyOverlay";
@@ -40,6 +41,9 @@ export default function Shell() {
   const autoLoadAttemptedPuzzleRef = useRef(false);
   const initialLobbyQueryRef = useRef(readLobbyQueryParams());
   const initialPuzzleQueryRef = useRef(readPuzzleQueryParams());
+  const [lobbyOverlayInitial, setLobbyOverlayInitial] = useState(() => (
+    buildLobbyOverlayInitialState(initialLobbyQueryRef.current)
+  ));
   const borderlessPreview = (
     typeof window !== "undefined"
     && (
@@ -128,12 +132,23 @@ export default function Shell() {
     if (!lobbyCode || autoJoinAttemptedLobbyRef.current === lobbyCode) return;
 
     autoJoinAttemptedLobbyRef.current = lobbyCode;
+    setLobbyOverlayInitial(buildLobbyOverlayInitialState(queryLobby, "join"));
     setLobbyOpen(true);
     joinLobby({
       name: queryLobby.name || parseNames(playerNames)[0] || "Player",
       lobbyId: lobbyCode,
       deckText: queryLobby.deckText,
       commanderText: queryLobby.commanderText,
+      onUnavailable: () => {
+        const createPrefill = {
+          ...queryLobby,
+          lobbyId: "",
+        };
+        initialLobbyQueryRef.current = createPrefill;
+        stripLobbyCodeFromUrl();
+        setLobbyOverlayInitial(buildLobbyOverlayInitialState(createPrefill, "create"));
+        setLobbyOpen(true);
+      },
     });
   }, [joinLobby, loading, multiplayer.mode, playerNames, state, wasmError]);
 
@@ -466,14 +481,19 @@ export default function Shell() {
       <LogDrawer open={logOpen} onOpenChange={setLogOpen} />
       {lobbyOpen ? (
         <LobbyOverlay
+          key={lobbyOverlayInitial.mode}
           onClose={() => setLobbyOpen(false)}
           defaultName={parseNames(playerNames)[0] || "Player"}
           defaultStartingLife={startingLife}
-          initialMode={initialLobbyQueryRef.current.lobbyId ? "join" : "create"}
-          initialJoinCode={initialLobbyQueryRef.current.lobbyId}
-          initialJoinName={initialLobbyQueryRef.current.name}
-          initialJoinDeckText={initialLobbyQueryRef.current.deckText}
-          initialJoinCommanderText={initialLobbyQueryRef.current.commanderText}
+          initialMode={lobbyOverlayInitial.mode}
+          initialCreateFormat={lobbyOverlayInitial.createFormat}
+          initialCreateName={lobbyOverlayInitial.createName}
+          initialCreateDeckText={lobbyOverlayInitial.createDeckText}
+          initialCreateCommanderText={lobbyOverlayInitial.createCommanderText}
+          initialJoinCode={lobbyOverlayInitial.joinCode}
+          initialJoinName={lobbyOverlayInitial.joinName}
+          initialJoinDeckText={lobbyOverlayInitial.joinDeckText}
+          initialJoinCommanderText={lobbyOverlayInitial.joinCommanderText}
         />
       ) : null}
     </div>
@@ -518,20 +538,39 @@ function readLobbyQueryParams() {
 
   const params = new URLSearchParams(window.location.search);
   const lobbyId = String(params.get("lobby") || "").trim();
-  if (!lobbyId) {
-    return {
-      lobbyId: "",
-      name: "",
-      deckText: "",
-      commanderText: "",
-    };
-  }
-
   return {
     lobbyId,
     name: String(params.get("name") || "").trim(),
     deckText: decodeBase64UrlUtf8(params.get("deck")),
     commanderText: decodeBase64UrlUtf8(params.get("commander")),
+  };
+}
+
+function stripLobbyCodeFromUrl() {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  url.searchParams.delete("lobby");
+  window.history.replaceState({}, "", url.toString());
+}
+
+function inferCreateFormatFromLobbyQuery(query) {
+  return String(query?.commanderText || "").trim()
+    ? MATCH_FORMAT_COMMANDER
+    : MATCH_FORMAT_NORMAL;
+}
+
+function buildLobbyOverlayInitialState(query, mode = null) {
+  const nextMode = mode || (query?.lobbyId ? "join" : "create");
+  return {
+    mode: nextMode === "join" ? "join" : "create",
+    createFormat: inferCreateFormatFromLobbyQuery(query),
+    createName: String(query?.name || "").trim(),
+    createDeckText: String(query?.deckText || ""),
+    createCommanderText: String(query?.commanderText || ""),
+    joinCode: String(query?.lobbyId || "").trim(),
+    joinName: String(query?.name || "").trim(),
+    joinDeckText: String(query?.deckText || ""),
+    joinCommanderText: String(query?.commanderText || ""),
   };
 }
 

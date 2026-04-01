@@ -226,7 +226,8 @@ pub(crate) fn parse_verb_first_clause(
         "untap" => Verb::Untap,
         "scry" => Verb::Scry,
         "discard" => Verb::Discard,
-        "transform" | "convert" => Verb::Transform,
+        "transform" => Verb::Transform,
+        "convert" => Verb::Convert,
         "regenerate" => Verb::Regenerate,
         "mill" => Verb::Mill,
         "get" => Verb::Get,
@@ -238,6 +239,7 @@ pub(crate) fn parse_verb_first_clause(
         "surveil" => Verb::Surveil,
         "shuffle" => Verb::Shuffle,
         "pay" => Verb::Pay,
+        "detain" => Verb::Detain,
         "goad" => Verb::Goad,
         "look" => Verb::Look,
         _ => return Ok(None),
@@ -1554,6 +1556,99 @@ pub(crate) fn parse_keyword_mechanic_clause(
         return Ok(Some(EffectAst::ManifestDread));
     }
 
+    if clause_words == ["manifest", "the", "top", "card", "of", "your", "library"] {
+        return Ok(Some(EffectAst::ManifestTopCardOfLibrary {
+            player: PlayerAst::You,
+        }));
+    }
+
+    if clause_words
+        == [
+            "manifest", "the", "top", "card", "of", "that", "player's", "library",
+        ]
+    {
+        return Ok(Some(EffectAst::ManifestTopCardOfLibrary {
+            player: PlayerAst::ThatPlayerOrTargetController,
+        }));
+    }
+
+    if clause_words.first() == Some(&"populate") {
+        if clause_words.len() == 1 {
+            return Ok(Some(EffectAst::Populate {
+                count: Value::Fixed(1),
+                enters_tapped: false,
+                enters_attacking: false,
+                has_haste: false,
+                sacrifice_at_next_end_step: false,
+                exile_at_next_end_step: false,
+                exile_at_end_of_combat: false,
+                sacrifice_at_end_of_combat: false,
+            }));
+        }
+
+        if clause_words.get(1) == Some(&"twice") && clause_words.len() == 2 {
+            return Ok(Some(EffectAst::Populate {
+                count: Value::Fixed(2),
+                enters_tapped: false,
+                enters_attacking: false,
+                has_haste: false,
+                sacrifice_at_next_end_step: false,
+                exile_at_next_end_step: false,
+                exile_at_end_of_combat: false,
+                sacrifice_at_end_of_combat: false,
+            }));
+        }
+
+        let (count, used) = parse_value(&clause_tokens[1..]).ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "missing amount for populate clause (clause: '{}')",
+                clause_words.join(" ")
+            ))
+        })?;
+        let trailing = &clause_words[1 + used..];
+        if !matches!(trailing, ["time"] | ["times"]) {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported trailing populate clause (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+
+        return Ok(Some(EffectAst::Populate {
+            count,
+            enters_tapped: false,
+            enters_attacking: false,
+            has_haste: false,
+            sacrifice_at_next_end_step: false,
+            exile_at_next_end_step: false,
+            exile_at_end_of_combat: false,
+            sacrifice_at_end_of_combat: false,
+        }));
+    }
+
+    if clause_words.first() == Some(&"meld")
+        && let Some(into_idx) = clause_words.iter().position(|word| *word == "into")
+    {
+        let subject_words = &clause_words[1..into_idx];
+        if !matches!(subject_words, ["them"] | ["those", "cards"]) {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported meld subject (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+        if into_idx + 1 >= clause_words.len() {
+            return Err(CardTextError::ParseError(format!(
+                "missing meld result name (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+        let result_name = clause_words[into_idx + 1..].join(" ");
+        return Ok(Some(EffectAst::Meld {
+            result_name,
+            enters_tapped: false,
+            enters_attacking: false,
+        }));
+    }
+
     if matches!(
         clause_words.first().copied(),
         Some("bolster" | "support" | "adapt")
@@ -1593,9 +1688,9 @@ pub(crate) fn parse_keyword_mechanic_clause(
                 clause_words.join(" ")
             )));
         }
-        return Ok(Some(EffectAst::Scry {
+        return Ok(Some(EffectAst::Fateseal {
             count,
-            player: PlayerAst::Opponent,
+            player: PlayerAst::You,
         }));
     }
 

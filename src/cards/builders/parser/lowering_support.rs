@@ -173,10 +173,10 @@ pub(crate) fn rewrite_prepare_effects_with_trigger_context_for_lowering(
 }
 
 pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
-    trigger: &TriggerSpec,
+    trigger: TriggerSpec,
     effects: &[EffectAst],
     imports: impl Into<ReferenceImports>,
-) -> Result<PreparedTriggeredEffectsForLowering, CardTextError> {
+) -> Result<(TriggerSpec, PreparedTriggeredEffectsForLowering), CardTextError> {
     fn merge_intervening_predicates(
         left: Option<PredicateAst>,
         right: Option<PredicateAst>,
@@ -189,12 +189,32 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
         }
     }
 
+    fn extract_exact_other_attack_predicate(
+        predicate: PredicateAst,
+    ) -> (Option<u32>, Option<PredicateAst>) {
+        match predicate {
+            PredicateAst::YouAttackedWithExactlyNOtherCreaturesThisCombat(count) => {
+                (Some(count), None)
+            }
+            PredicateAst::And(left, right) => {
+                let (left_count, left_remainder) = extract_exact_other_attack_predicate(*left);
+                let (right_count, right_remainder) = extract_exact_other_attack_predicate(*right);
+                (
+                    left_count.or(right_count),
+                    merge_intervening_predicates(left_remainder, right_remainder),
+                )
+            }
+            other => (None, Some(other)),
+        }
+    }
+
     let imports = imports.into();
-    ensure_concrete_trigger_spec(trigger)?;
+    let mut trigger = trigger;
+    ensure_concrete_trigger_spec(&trigger)?;
 
     let normalized = normalize_effects_ast(effects);
     let mut body_effects = normalized.clone();
-    let mut intervening_if = match trigger {
+    let mut intervening_if = match &trigger {
         TriggerSpec::StateBased { condition, .. } => Some(condition.clone()),
         _ => None,
     };
@@ -211,19 +231,25 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
         intervening_if = merge_intervening_predicates(intervening_if, Some(predicate.clone()));
     }
 
-    let prepared = rewrite_prepare_effects_from_normalized(
-        body_effects,
-        &normalized,
-        imports,
-        EffectReferenceResolutionConfig {
-            allow_life_event_value: trigger_supports_event_value(trigger, &EventValueSpec::Amount),
-            ..Default::default()
-        },
-        inferred_trigger_player_filter(trigger),
+    if matches!(trigger, TriggerSpec::ThisAttacks)
+        && let Some(predicate) = intervening_if.take()
+    {
+        let (exact_other_count, remainder) = extract_exact_other_attack_predicate(predicate);
+        intervening_if = remainder;
+        if let Some(other_count) = exact_other_count {
+            trigger = TriggerSpec::ThisAttacksWithExactlyNOthers(other_count);
+        }
+    }
+
+    let default_last_object_tag =
         if effects_reference_it_tag(&normalized) || effects_reference_its_controller(&normalized) {
             Some(crate::cards::builders::TagKey::from(
-                if matches!(
-                    trigger,
+                if matches!(&trigger, TriggerSpec::ThisAttacksWithExactlyNOthers(1)) {
+                    // Exact single-partner attack triggers can bind "that creature"
+                    // to the other attacker snapshot captured at trigger time.
+                    "other_attacker"
+                } else if matches!(
+                    &trigger,
                     TriggerSpec::ThisDealsDamageTo(_)
                         | TriggerSpec::ThisDealsCombatDamageTo(_)
                         | TriggerSpec::DealsCombatDamageTo { .. }
@@ -235,7 +261,18 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
             ))
         } else {
             None
+        };
+
+    let prepared = rewrite_prepare_effects_from_normalized(
+        body_effects,
+        &normalized,
+        imports,
+        EffectReferenceResolutionConfig {
+            allow_life_event_value: trigger_supports_event_value(&trigger, &EventValueSpec::Amount),
+            ..Default::default()
         },
+        inferred_trigger_player_filter(&trigger),
+        default_last_object_tag,
         true,
     )?;
 
@@ -245,10 +282,13 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
         saved_last_object_tag: prepared.imports.last_object_tag.clone(),
     });
 
-    Ok(PreparedTriggeredEffectsForLowering {
-        prepared,
-        intervening_if,
-    })
+    Ok((
+        trigger,
+        PreparedTriggeredEffectsForLowering {
+            prepared,
+            intervening_if,
+        },
+    ))
 }
 
 pub(crate) fn rewrite_lower_prepared_statement_effects(
@@ -298,14 +338,14 @@ fn rewrite_prepare_parsed_ability_payload(
     }
 
     Ok(match (&parsed.ability.kind, parsed.trigger_spec.as_ref()) {
-        (AbilityKind::Triggered(_), Some(trigger)) => Some(NormalizedPreparedAbility::Triggered {
-            trigger: trigger.clone(),
-            prepared: rewrite_prepare_triggered_effects_for_lowering(
-                trigger,
+        (AbilityKind::Triggered(_), Some(trigger)) => {
+            let (trigger, prepared) = rewrite_prepare_triggered_effects_for_lowering(
+                trigger.clone(),
                 effects_ast,
                 parsed.reference_imports.clone(),
-            )?,
-        }),
+            )?;
+            Some(NormalizedPreparedAbility::Triggered { trigger, prepared })
+        }
         (AbilityKind::Activated(_), _) => Some(NormalizedPreparedAbility::Activated(
             rewrite_prepare_effects_with_trigger_context_for_lowering(
                 None,
@@ -1051,12 +1091,14 @@ fn rewrite_validate_effect_for_iterated_player(
         return Ok(());
     }
     if let Some(vote) = effect.downcast_ref::<crate::effects::VoteEffect>() {
-        for option in &vote.options {
-            rewrite_validate_effects_for_iterated_player(
-                &option.effects_per_vote,
-                iterated_player_bound,
-                context,
-            )?;
+        if let crate::effects::VoteChoice::NamedOptions(options) = &vote.choice {
+            for option in options {
+                rewrite_validate_effects_for_iterated_player(
+                    &option.effects_per_vote,
+                    true,
+                    context,
+                )?;
+            }
         }
         return Ok(());
     }

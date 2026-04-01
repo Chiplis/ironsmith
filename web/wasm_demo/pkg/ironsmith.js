@@ -458,6 +458,17 @@ export class WasmGame {
         }
         return takeFromExternrefTable0(ret[0]);
     }
+    /**
+     * @param {any} config
+     * @returns {any}
+     */
+    validateMatchConfig(config) {
+        const ret = wasm.wasmgame_validateMatchConfig(this.__wbg_ptr, config);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
 }
 if (Symbol.dispose) WasmGame.prototype[Symbol.dispose] = WasmGame.prototype.free;
 

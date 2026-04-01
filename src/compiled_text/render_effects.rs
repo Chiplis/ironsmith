@@ -5886,6 +5886,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             gain.amount,
             Value::Add(_, _)
                 | Value::CountScaled(_, _)
+                | Value::TotalPower(_)
+                | Value::TotalToughness(_)
+                | Value::TotalManaValue(_)
+                | Value::GreatestPower(_)
+                | Value::GreatestToughness(_)
+                | Value::GreatestManaValue(_)
                 | Value::SourcePower
                 | Value::SourceToughness
                 | Value::PowerOf(_)
@@ -6764,6 +6770,16 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(transform) = effect.downcast_ref::<crate::effects::TransformEffect>() {
         return format!("Transform {}", describe_transform_target(&transform.target));
     }
+    if let Some(meld) = effect.downcast_ref::<crate::effects::MeldEffect>() {
+        let mut text = format!("Meld them into {}", meld.result_name);
+        if meld.enters_tapped && meld.enters_attacking {
+            text.push_str(". It enters tapped and attacking");
+        }
+        return text;
+    }
+    if let Some(convert) = effect.downcast_ref::<crate::effects::ConvertEffect>() {
+        return format!("Convert {}", describe_transform_target(&convert.target));
+    }
     if let Some(flip) = effect.downcast_ref::<crate::effects::FlipEffect>() {
         return format!("Flip {}", describe_flip_target(&flip.target));
     }
@@ -7387,6 +7403,42 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     {
         return "Manifest dread".to_string();
     }
+    if let Some(manifest) = effect.downcast_ref::<crate::effects::ManifestTopCardOfLibraryEffect>()
+    {
+        let owner = match manifest.player {
+            crate::filter::PlayerFilter::TargetPlayerOrControllerOfTarget => {
+                "that player's".to_string()
+            }
+            _ => describe_possessive_player_filter(&manifest.player),
+        };
+        return format!("Manifest the top card of {owner} library");
+    }
+    if let Some(populate) = effect.downcast_ref::<crate::effects::PopulateEffect>() {
+        let mut text = match &populate.count {
+            Value::Fixed(1) => "Populate".to_string(),
+            Value::Fixed(2) => "Populate twice".to_string(),
+            count => format!("Populate {} times", describe_value(count)),
+        };
+        if populate.enters_tapped && populate.enters_attacking {
+            text.push_str(". The token created this way enters tapped and attacking");
+        }
+        if populate.has_haste {
+            text.push_str(". The token created this way gains haste");
+        }
+        if populate.sacrifice_at_next_end_step {
+            text.push_str(". Sacrifice it at the beginning of the next end step");
+        }
+        if populate.exile_at_next_end_step {
+            text.push_str(". Exile it at the beginning of the next end step");
+        }
+        if populate.exile_at_end_of_combat {
+            text.push_str(". Exile it at end of combat");
+        }
+        if populate.sacrifice_at_end_of_combat {
+            text.push_str(". Sacrifice it at end of combat");
+        };
+        return text;
+    }
     if effect
         .downcast_ref::<crate::effects::CipherEffect>()
         .is_some()
@@ -7455,12 +7507,21 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             describe_value(&surveil.count)
         );
     }
+    if let Some(fateseal) = effect.downcast_ref::<crate::effects::FatesealEffect>() {
+        if fateseal.player == PlayerFilter::You {
+            return format!("Fateseal {}", describe_value(&fateseal.count));
+        }
+        let player = describe_player_filter(&fateseal.player);
+        return format!(
+            "{} {} {}",
+            player,
+            player_verb(&player, "fateseal", "fateseals"),
+            describe_value(&fateseal.count)
+        );
+    }
     if let Some(scry) = effect.downcast_ref::<crate::effects::ScryEffect>() {
         if scry.player == PlayerFilter::You {
             return format!("Scry {}", describe_value(&scry.count));
-        }
-        if scry.player == PlayerFilter::Opponent {
-            return format!("Fateseal {}", describe_value(&scry.count));
         }
         let player = describe_player_filter(&scry.player);
         return format!(
@@ -7668,6 +7729,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     }
     if let Some(connive) = effect.downcast_ref::<crate::effects::ConniveEffect>() {
         return format!("{} connives", describe_choose_spec(&connive.target));
+    }
+    if let Some(detain) = effect.downcast_ref::<crate::effects::DetainEffect>() {
+        return format!("Detain {}", describe_choose_spec(&detain.target));
     }
     if let Some(goad) = effect.downcast_ref::<crate::effects::GoadEffect>() {
         return format!("Goad {}", describe_goad_target(&goad.target));
@@ -8467,11 +8531,16 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         }
         return parts.join(" ");
     }
-    if effect
-        .downcast_ref::<crate::effects::ClashEffect>()
-        .is_some()
-    {
-        return "Clash with an opponent".to_string();
+    if let Some(clash) = effect.downcast_ref::<crate::effects::ClashEffect>() {
+        return match clash.opponent_mode() {
+            crate::effects::ClashOpponentMode::AnyOpponent => "Clash with an opponent".to_string(),
+            crate::effects::ClashOpponentMode::TargetOpponent => {
+                "Clash with target opponent".to_string()
+            }
+            crate::effects::ClashOpponentMode::DefendingPlayer => {
+                "Clash with defending player".to_string()
+            }
+        };
     }
     if let Some(clear_damage) = effect.downcast_ref::<crate::effects::ClearDamageEffect>() {
         return format!(
@@ -8865,11 +8934,25 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         );
     }
     if let Some(vote) = effect.downcast_ref::<crate::effects::VoteEffect>() {
-        let choices = vote
-            .options
-            .iter()
-            .map(|option| option.name.to_ascii_lowercase())
-            .collect::<Vec<_>>();
+        let choices = match &vote.choice {
+            crate::effects::VoteChoice::NamedOptions(options) => join_with_or(
+                &options
+                    .iter()
+                    .map(|option| option.name.to_ascii_lowercase())
+                    .collect::<Vec<_>>(),
+            ),
+            crate::effects::VoteChoice::Objects { filter, count } => match (count.min, count.max) {
+                (1, Some(1)) => filter.description(),
+                (0, Some(1)) => {
+                    format!("up to one {}", strip_leading_article(&filter.description()))
+                }
+                _ => format!(
+                    "{} {}",
+                    describe_choice_count(count),
+                    pluralize_noun_phrase(&strip_leading_article(&filter.description()))
+                ),
+            },
+        };
         let mut suffix = String::new();
         if vote.controller_extra_votes > 0 {
             suffix.push_str(&format!(
@@ -8893,7 +8976,27 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 }
             ));
         }
-        return format!("Each player votes for {}{}", join_with_or(&choices), suffix);
+        return format!("Each player votes for {}{}", choices, suffix);
+    }
+    if let Some(repeat) = effect.downcast_ref::<crate::effects::RepeatEffectsEffect>() {
+        let repeated = describe_effect_list(&repeat.effects);
+        let repeated = repeated.trim();
+        if repeated.is_empty() {
+            return String::new();
+        }
+        let repeated = lowercase_first(repeated.trim_end_matches('.'));
+        if let Value::VoteCount(option) = &repeat.count {
+            return format!(
+                "For each {} vote, {}",
+                option.to_ascii_lowercase(),
+                repeated
+            );
+        }
+        return format!(
+            "Repeat {} {} times",
+            repeated,
+            describe_value(&repeat.count)
+        );
     }
     if effect
         .downcast_ref::<crate::effects::EmitKeywordActionEffect>()

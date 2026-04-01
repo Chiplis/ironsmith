@@ -468,6 +468,7 @@ export function GameProvider({ children }) {
   const stateRef = useRef(state);
   const multiplayerActiveRef = useRef(false);
   const stickyViewedCardsRef = useRef(null);
+  const queuedSyncedCancelRef = useRef(false);
   const recentTargetSubmitRef = useRef({
     inFlight: false,
     expiresAt: -Infinity,
@@ -1186,6 +1187,7 @@ export function GameProvider({ children }) {
           ),
         });
 
+        let rollbackApplied = false;
         try {
           const rollbackState = await currentGame.cancelDecision();
           await finalizeState(currentGame, rollbackState, {
@@ -1193,11 +1195,16 @@ export function GameProvider({ children }) {
             allowTrivialAutomation: false,
             clearViewedCards: true,
           });
+          rollbackApplied = true;
         } catch {
           // Keep the original sync failure.
         }
 
-        throw err;
+        const errorToThrow = err && typeof err === "object"
+          ? err
+          : new Error(String(err));
+        errorToThrow.syncedRollbackApplied = rollbackApplied;
+        throw errorToThrow;
       }
     },
     [finalizeState]
@@ -1222,6 +1229,38 @@ export function GameProvider({ children }) {
   useEffect(() => {
     multiplayerActiveRef.current = multiplayer.matchStarted;
   }, [multiplayer.matchStarted]);
+
+  useEffect(() => {
+    if (!multiplayer.matchStarted) {
+      queuedSyncedCancelRef.current = false;
+      return;
+    }
+    if (!queuedSyncedCancelRef.current || multiplayer.submittingAction) {
+      return;
+    }
+
+    const currentState = stateRef.current;
+    const currentDecision = currentState?.decision || null;
+    if (
+      !currentDecision
+      || currentDecision.player !== currentState?.perspective
+      || !currentState?.cancelable
+      || currentDecision.kind === "priority"
+    ) {
+      queuedSyncedCancelRef.current = false;
+      return;
+    }
+
+    queuedSyncedCancelRef.current = false;
+    submitMultiplayerCommand({ type: "cancel_decision" }, "Decision cancelled").catch((err) => {
+      emitSyncFailureNotice(
+        "Sync failed",
+        err instanceof Error ? err.message : String(err)
+      );
+      setStatus(`Cancel failed: ${err}`, true);
+      console.error(err);
+    });
+  }, [multiplayer.matchStarted, multiplayer.submittingAction, setStatus, submitMultiplayerCommand]);
 
   useEffect(() => {
     if (!game || typeof game.setAutoCleanupDiscard !== "function") return;
@@ -1408,9 +1447,6 @@ export function GameProvider({ children }) {
   const cancelDecision = useCallback(
     async () => {
       if (!game) return;
-      if (shouldSuppressImmediateCancel()) {
-        return;
-      }
       if (multiplayer.matchStarted) {
         const currentState = stateRef.current;
         if (!currentState?.decision) {
@@ -1421,7 +1457,13 @@ export function GameProvider({ children }) {
           setStatus("Waiting for the active player");
           return;
         }
+        if (multiplayer.submittingAction || shouldSuppressImmediateCancel()) {
+          queuedSyncedCancelRef.current = true;
+          setStatus("Cancel queued while the current action syncs");
+          return;
+        }
         try {
+          queuedSyncedCancelRef.current = false;
           await submitMultiplayerCommand({ type: "cancel_decision" }, "Decision cancelled");
         } catch (err) {
           emitSyncFailureNotice(
@@ -1431,6 +1473,9 @@ export function GameProvider({ children }) {
           setStatus(`Cancel failed: ${err}`, true);
           console.error(err);
         }
+        return;
+      }
+      if (shouldSuppressImmediateCancel()) {
         return;
       }
       try {
@@ -1450,6 +1495,7 @@ export function GameProvider({ children }) {
       finalizeState,
       game,
       multiplayer.matchStarted,
+      multiplayer.submittingAction,
       setStatus,
       shouldSuppressImmediateCancel,
       submitMultiplayerCommand,

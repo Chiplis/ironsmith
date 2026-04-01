@@ -25,6 +25,13 @@ use super::Trigger;
 use super::TriggerEvent;
 use super::matcher_trait::TriggerContext;
 
+fn trigger_entry_x_value(trigger_event: &TriggerEvent, fallback: Option<u32>) -> Option<u32> {
+    trigger_event
+        .downcast::<crate::events::other::BecameMonstrousEvent>()
+        .map(|event| event.n)
+        .or(fallback)
+}
+
 /// Stable, structural identity for a trigger definition.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TriggerIdentity(pub u64);
@@ -775,6 +782,7 @@ fn for_each_hidden_trigger_object_id(game: &GameState, mut visit: impl FnMut(Obj
 }
 
 fn tagged_objects_for_trigger_event(
+    game: &GameState,
     trigger_event: &TriggerEvent,
 ) -> HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>> {
     let mut tagged = HashMap::new();
@@ -785,6 +793,24 @@ fn tagged_objects_for_trigger_event(
             crate::tag::TagKey::from(crate::effects::PUBLIC_REVEALED_TAG),
             vec![snapshot],
         );
+    }
+    if let Some(attacked) = trigger_event.downcast::<crate::events::combat::CreatureAttackedEvent>()
+        && attacked.total_attackers >= 2
+    {
+        let other_attackers: Vec<_> = game
+            .combat
+            .as_ref()
+            .into_iter()
+            .flat_map(|combat| combat.attackers.iter())
+            .filter(|info| info.creature != attacked.attacker)
+            .filter_map(|info| {
+                game.object(info.creature)
+                    .map(|obj| ObjectSnapshot::from_object(obj, game))
+            })
+            .collect();
+        if !other_attackers.is_empty() {
+            tagged.insert(crate::tag::TagKey::from("other_attacker"), other_attackers);
+        }
     }
     tagged
 }
@@ -845,7 +871,7 @@ pub(crate) fn check_triggers_with_view(
                 let entry = TriggeredAbilityEntry {
                     source: obj_id,
                     controller: obj.controller,
-                    x_value: obj.x_value,
+                    x_value: trigger_entry_x_value(trigger_event, obj.x_value),
                     ability: TriggeredAbility {
                         trigger: trigger_ability.trigger.clone(),
                         effects: trigger_ability.effects.clone(),
@@ -856,7 +882,7 @@ pub(crate) fn check_triggers_with_view(
                     source_stable_id: obj.stable_id,
                     source_name: obj.name.clone(),
                     source_snapshot: None,
-                    tagged_objects: tagged_objects_for_trigger_event(trigger_event),
+                    tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
                     trigger_identity,
                 };
                 for _ in 0..trigger_count {
@@ -909,7 +935,7 @@ pub(crate) fn check_triggers_with_view(
                     let entry = TriggeredAbilityEntry {
                         source: snapshot.object_id,
                         controller: snapshot.controller,
-                        x_value: snapshot.x_value,
+                        x_value: trigger_entry_x_value(trigger_event, snapshot.x_value),
                         ability: TriggeredAbility {
                             trigger: trigger_ability.trigger.clone(),
                             effects: trigger_ability.effects.clone(),
@@ -920,7 +946,7 @@ pub(crate) fn check_triggers_with_view(
                         source_stable_id: snapshot.stable_id,
                         source_name: snapshot.name.clone(),
                         source_snapshot: Some(snapshot.clone()),
-                        tagged_objects: tagged_objects_for_trigger_event(trigger_event),
+                        tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
                         trigger_identity,
                     };
                     for _ in 0..trigger_count {
@@ -1004,7 +1030,7 @@ pub(crate) fn check_triggers_with_view(
                     source_stable_id: obj.stable_id,
                     source_name: obj.name.clone(),
                     source_snapshot: None,
-                    tagged_objects: tagged_objects_for_trigger_event(trigger_event),
+                    tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
                     trigger_identity,
                 });
             }
@@ -1047,7 +1073,7 @@ pub(crate) fn check_triggers_with_view(
                 source_stable_id: obj.stable_id,
                 source_name: obj.name.clone(),
                 source_snapshot: None,
-                tagged_objects: tagged_objects_for_trigger_event(trigger_event),
+                tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
                 trigger_identity,
             });
         }
@@ -1116,11 +1142,11 @@ fn collect_state_triggers_for_object(
             continue;
         }
 
-        let tagged_objects = tagged_objects_for_trigger_event(&trigger_event);
+        let tagged_objects = tagged_objects_for_trigger_event(game, &trigger_event);
         triggered.push(TriggeredAbilityEntry {
             source: obj.id,
             controller: obj.controller,
-            x_value: obj.x_value,
+            x_value: trigger_entry_x_value(&trigger_event, obj.x_value),
             ability: TriggeredAbility {
                 trigger: trigger_ability.trigger.clone(),
                 effects: trigger_ability.effects.clone(),
@@ -1291,7 +1317,7 @@ pub fn check_delayed_triggers(
                 source_snapshot: delayed.ability_source_snapshot.clone(),
                 tagged_objects: {
                     let mut tagged = delayed.tagged_objects.clone();
-                    for (tag, snapshots) in tagged_objects_for_trigger_event(trigger_event) {
+                    for (tag, snapshots) in tagged_objects_for_trigger_event(game, trigger_event) {
                         tagged.entry(tag).or_default().extend(snapshots);
                     }
                     tagged
@@ -1373,7 +1399,7 @@ fn check_triggers_in_zone(
             let entry = TriggeredAbilityEntry {
                 source: obj_id,
                 controller: obj.controller,
-                x_value: obj.x_value,
+                x_value: trigger_entry_x_value(trigger_event, obj.x_value),
                 ability: TriggeredAbility {
                     trigger: trigger_ability.trigger.clone(),
                     effects: trigger_ability.effects.clone(),
@@ -1384,7 +1410,7 @@ fn check_triggers_in_zone(
                 source_stable_id: obj.stable_id,
                 source_name: obj.name.clone(),
                 source_snapshot: None,
-                tagged_objects: tagged_objects_for_trigger_event(trigger_event),
+                tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
                 trigger_identity,
             };
             for _ in 0..trigger_count {
@@ -1545,13 +1571,17 @@ mod tests {
     use super::*;
     use crate::card::CardBuilder;
     use crate::card::PowerToughness;
+    use crate::cards::CardDefinitionBuilder;
+    use crate::combat_state::AttackTarget;
     use crate::events::DamageEvent;
     use crate::events::cause::EventCause;
     use crate::events::combat::{AttackEventTarget, CreatureAttackedEvent, CreatureBlockedEvent};
+    use crate::events::other::BecameMonstrousEvent;
     use crate::events::spells::SpellCastEvent;
     use crate::game_event::DamageTarget;
     use crate::ids::{CardId, PlayerId};
     use crate::static_abilities::StaticAbility;
+    use crate::target::ChooseSpec;
     use crate::types::CardType;
     use crate::zone::Zone;
 
@@ -1638,6 +1668,37 @@ mod tests {
     }
 
     #[test]
+    fn creature_attacked_event_captures_other_attackers_tag() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = make_battlefield_creature(&mut game, alice, "Creepy Puppeteer");
+        let partner = make_battlefield_creature(&mut game, alice, "Backup Attacker");
+
+        let combat = game.combat.get_or_insert_with(Default::default);
+        combat.attackers.push(crate::combat_state::AttackerInfo {
+            creature: source,
+            target: AttackTarget::Player(bob),
+        });
+        combat.attackers.push(crate::combat_state::AttackerInfo {
+            creature: partner,
+            target: AttackTarget::Player(bob),
+        });
+
+        let trigger_event = TriggerEvent::new_with_provenance(
+            CreatureAttackedEvent::with_total_attackers(source, AttackEventTarget::Player(bob), 2),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let tagged = tagged_objects_for_trigger_event(&game, &trigger_event);
+        let other_attackers = tagged
+            .get(&crate::tag::TagKey::from("other_attacker"))
+            .expect("expected other_attacker tag for exact partner attack event");
+
+        assert_eq!(other_attackers.len(), 1);
+        assert_eq!(other_attackers[0].object_id, partner);
+    }
+
+    #[test]
     fn ring_designation_block_trigger_schedules_end_of_combat_sacrifice() {
         let mut game = crate::tests::test_helpers::setup_two_player_game();
         let alice = PlayerId::from_index(0);
@@ -1717,6 +1778,44 @@ mod tests {
                 .any(|effect| effect
                     .downcast_ref::<crate::effects::ForPlayersEffect>()
                     .is_some())
+        );
+    }
+
+    #[test]
+    fn became_monstrous_trigger_uses_event_n_as_x_value() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+
+        let def = CardDefinitionBuilder::new(CardId::new(), "Vitality Hunter")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(3, 4))
+            .parse_text(
+                "Lifelink\n{X}{W}{W}: Monstrosity X. (If this creature isn't monstrous, put X +1/+1 counters on it and it becomes monstrous.)\nWhen this creature becomes monstrous, put a lifelink counter on each of up to X target creatures.",
+            )
+            .expect("parse Vitality Hunter text");
+        let hunter_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+        let triggered = check_triggers(
+            &game,
+            &TriggerEvent::new_with_provenance(
+                BecameMonstrousEvent::new(hunter_id, alice, 4),
+                crate::provenance::ProvNodeId::default(),
+            ),
+        );
+
+        assert_eq!(triggered.len(), 1, "expected one becomes-monstrous trigger");
+        assert_eq!(
+            triggered[0].x_value,
+            Some(4),
+            "trigger should remember the monstrosity value as X"
+        );
+        assert!(
+            matches!(
+                triggered[0].ability.choices.first(),
+                Some(ChooseSpec::WithCount(_, count)) if count.is_up_to_dynamic_x()
+            ),
+            "expected up-to-X target choice on Vitality Hunter trigger, got {:?}",
+            triggered[0].ability.choices
         );
     }
 }

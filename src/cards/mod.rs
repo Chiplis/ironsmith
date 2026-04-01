@@ -19,6 +19,10 @@ mod generated_registry {
     include!(concat!(env!("OUT_DIR"), "/generated_registry.rs"));
 }
 
+mod generated_meld_counterparts {
+    include!(concat!(env!("OUT_DIR"), "/generated_meld_counterparts.rs"));
+}
+
 use crate::ability::{Ability, AbilityKind};
 use crate::alternative_cast::AlternativeCastingMethod;
 use crate::card::Card;
@@ -694,6 +698,24 @@ fn normalize_card_lookup_name(name: &str) -> String {
     name.trim().to_lowercase()
 }
 
+fn normalize_card_loose_lookup_name(name: &str) -> String {
+    name.chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .map(|ch| ch.to_ascii_lowercase())
+        .collect()
+}
+
+fn loose_name_match<'a>(registry: &'a CardRegistry, requested: &str) -> Option<&'a CardDefinition> {
+    let requested_key = normalize_card_loose_lookup_name(requested);
+    if requested_key.is_empty() {
+        return None;
+    }
+
+    registry.cards.iter().find_map(|(name, definition)| {
+        (normalize_card_loose_lookup_name(name) == requested_key).then_some(definition)
+    })
+}
+
 /// A lazily-constructed singleton registry for effect/runtime lookups.
 ///
 /// Most engine logic avoids needing the registry at runtime, but mechanics like
@@ -736,6 +758,12 @@ pub fn linked_face_definition_by_name_or_id(
         {
             return Some(definition);
         }
+
+        if let Some(face_name) = name
+            && let Some(definition) = loose_name_match(&registry, face_name).cloned()
+        {
+            return Some(definition);
+        }
     }
 
     if let Some(name) = name
@@ -744,7 +772,21 @@ pub fn linked_face_definition_by_name_or_id(
         return Some(definition);
     }
 
+    if let Some(face_name) = name
+        && let Some(definition) = loose_name_match(builtin_registry(), face_name).cloned()
+    {
+        return Some(definition);
+    }
+
     id.and_then(|card_id| builtin_registry().get_by_id(card_id).cloned())
+}
+
+pub fn meld_counterpart_name(name: &str) -> Option<&'static str> {
+    generated_meld_counterparts::GENERATED_MELD_COUNTERPARTS
+        .iter()
+        .find_map(|(candidate, counterpart)| {
+            candidate.eq_ignore_ascii_case(name).then_some(*counterpart)
+        })
 }
 
 const UNSUPPORTED_PARSER_LINE_FALLBACK_PREFIX: &str = "Unsupported parser line fallback:";
@@ -1151,6 +1193,19 @@ mod tests {
             registry.get("The Fourteenth Doctor").is_none(),
             "unsupported generated fallback definitions should not be registered"
         );
+    }
+
+    #[test]
+    fn meld_counterpart_name_uses_generated_pairs() {
+        assert_eq!(
+            meld_counterpart_name("Graf Rats"),
+            Some("Midnight Scavengers")
+        );
+        assert_eq!(
+            meld_counterpart_name("Midnight Scavengers"),
+            Some("Graf Rats")
+        );
+        assert_eq!(meld_counterpart_name("Chittering Host"), None);
     }
 
     #[test]

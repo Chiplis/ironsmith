@@ -1724,7 +1724,30 @@ pub fn process_destroy(
                             stable_id,
                         );
                     }
-                    game.move_object(permanent, final_zone, cause);
+                    let moved_id = game.move_object(permanent, final_zone, cause.clone());
+                    if final_zone == Zone::Graveyard {
+                        let mut moved_ids = game.take_zone_change_results(permanent);
+                        if moved_ids.is_empty()
+                            && let Some(id) = moved_id
+                        {
+                            moved_ids.push(id);
+                        }
+                        let mut applied = crate::effects::zones::AppliedZoneChange {
+                            final_zone,
+                            new_object_id: moved_ids.first().copied(),
+                            new_object_ids: moved_ids,
+                        };
+                        crate::effects::zones::maybe_prompt_for_split_result_order(
+                            game,
+                            dm,
+                            final_zone,
+                            &cause,
+                            &mut applied,
+                        );
+                        if !applied.new_object_ids.is_empty() {
+                            game.record_zone_change_results(permanent, applied.new_object_ids);
+                        }
+                    }
                     EventOutcome::Proceed(final_zone)
                 }
                 EventOutcome::Replaced => EventOutcome::Replaced,

@@ -9,7 +9,7 @@ use crate::game_state::GameState;
 use crate::target::ChooseSpec;
 use crate::zone::Zone;
 
-use super::apply_zone_change_with_additional_effects;
+use super::{apply_zone_change_with_additional_effects, maybe_prompt_for_split_result_order};
 
 /// "Put target [object] into its owner's library Nth from the top."
 #[derive(Debug, Clone, PartialEq)]
@@ -62,21 +62,40 @@ impl EffectExecutor for MoveToLibraryNthFromTopEffect {
                 EventOutcome::Prevented => {
                     return Ok(EffectOutcome::prevented());
                 }
-                EventOutcome::Proceed(result) => {
-                    if let Some(new_id) = result.new_object_id {
+                EventOutcome::Proceed(mut result) => {
+                    if !result.new_object_ids.is_empty() {
                         if result.final_zone == Zone::Exile {
-                            game.add_exiled_with_source_link(ctx.source, new_id);
-                        } else if result.final_zone == Zone::Library
-                            && let Some(owner) = game.object(new_id).map(|o| o.owner)
-                            && let Some(player) = game.player_mut(owner)
-                            && let Some(current_idx) =
-                                player.library.iter().position(|id| *id == new_id)
-                        {
-                            player.library.remove(current_idx);
-                            let insert_idx = player.library.len().saturating_sub(position - 1);
-                            player.library.insert(insert_idx, new_id);
+                            for &new_id in &result.new_object_ids {
+                                game.add_exiled_with_source_link(ctx.source, new_id);
+                            }
+                        } else if result.final_zone == Zone::Library {
+                            for &new_id in &result.new_object_ids {
+                                if let Some(owner) = game.object(new_id).map(|o| o.owner)
+                                    && let Some(player) = game.player_mut(owner)
+                                    && let Some(current_idx) =
+                                        player.library.iter().position(|id| *id == new_id)
+                                {
+                                    player.library.remove(current_idx);
+                                    let insert_idx =
+                                        player.library.len().saturating_sub(position - 1);
+                                    player.library.insert(insert_idx, new_id);
+                                }
+                            }
+                            if from_zone == Zone::Battlefield {
+                                maybe_prompt_for_split_result_order(
+                                    game,
+                                    &mut ctx.decision_maker,
+                                    result.final_zone,
+                                    &ctx.cause,
+                                    &mut result,
+                                );
+                                game.record_zone_change_results(
+                                    object_id,
+                                    result.new_object_ids.clone(),
+                                );
+                            }
                         }
-                        moved_ids.push(new_id);
+                        moved_ids.extend(result.new_object_ids.iter().copied());
                     }
                 }
                 EventOutcome::Replaced => {

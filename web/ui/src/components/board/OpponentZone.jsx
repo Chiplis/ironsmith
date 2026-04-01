@@ -491,7 +491,6 @@ function OpponentSlot({
                       onMobileCardLongPress={mobileBattleScene ? onMobileCardLongPress : null}
                       activatableMap={activatableMap}
                       legalTargetObjectIds={legalTargetObjectIds}
-                      allowVerticalScroll
                       forceSingleColumn
                     />
                   </div>

@@ -60,10 +60,12 @@ impl EffectExecutor for ShuffleLibraryEffect {
 
         game.shuffle_player_library(player_id);
 
-        Ok(EffectOutcome::resolved().with_event(TriggerEvent::new_with_provenance(
-            ShuffleLibraryEvent::new(player_id, ctx.cause.clone()),
-            ctx.provenance,
-        )))
+        Ok(
+            EffectOutcome::resolved().with_event(TriggerEvent::new_with_provenance(
+                ShuffleLibraryEvent::new(player_id, ctx.cause.clone()),
+                ctx.provenance,
+            )),
+        )
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
@@ -105,12 +107,9 @@ mod tests {
             .expect("shuffle should resolve");
 
         assert!(
-            outcome
-                .events
-                .iter()
-                .any(|event| event.downcast::<ShuffleLibraryEvent>().is_some_and(|shuffle| {
-                    shuffle.player == alice
-                })),
+            outcome.events.iter().any(|event| event
+                .downcast::<ShuffleLibraryEvent>()
+                .is_some_and(|shuffle| { shuffle.player == alice })),
             "single-card library shuffles should still emit a shuffle event"
         );
     }

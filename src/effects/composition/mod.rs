@@ -32,6 +32,7 @@ mod local_rewrite;
 mod may;
 mod mechanic_actions;
 mod reflexive_trigger;
+mod repeat_effects;
 mod repeat_process;
 mod repeat_process_prompt;
 mod sequence;
@@ -66,10 +67,11 @@ pub use local_rewrite::LocalRewriteEffect;
 pub use may::MayEffect;
 pub use mechanic_actions::{
     AdaptEffect, BackupEffect, BolsterEffect, CastEncodedCardCopyEffect, CipherEffect,
-    CounterAbilityEffect, DevourEffect, ExploreEffect, ManifestDreadEffect, OpenAttractionEffect,
-    SupportEffect,
+    CounterAbilityEffect, DevourEffect, ExploreEffect, ManifestDreadEffect,
+    ManifestTopCardOfLibraryEffect, OpenAttractionEffect, PopulateEffect, SupportEffect,
 };
 pub use reflexive_trigger::ReflexiveTriggerEffect;
+pub use repeat_effects::RepeatEffectsEffect;
 pub use repeat_process::RepeatProcessEffect;
 pub use repeat_process_prompt::RepeatProcessPromptEffect;
 pub use sequence::SequenceEffect;
@@ -81,5 +83,7 @@ pub use tagged::{TagAllEffect, TaggedEffect};
 pub use target_only::TargetOnlyEffect;
 pub use unless_action::UnlessActionEffect;
 pub use unless_pays::UnlessPaysEffect;
-pub use vote::{VoteEffect, VoteOption};
+pub use vote::{
+    VOTE_WINNERS_TAG, VOTED_OBJECTS_TAG, VoteChoice, VoteEffect, VoteOption, VoteResult,
+};
 pub use with_id::WithIdEffect;

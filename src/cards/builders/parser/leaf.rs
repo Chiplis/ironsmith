@@ -87,6 +87,9 @@ pub(crate) enum ActivationCostSegmentCst {
         count: u32,
         filter_text: String,
     },
+    ExertSelf {
+        display_text: String,
+    },
     PutCounters {
         counter_type: CounterType,
         count: u32,
@@ -957,6 +960,25 @@ fn parse_return_segment_rewrite(raw: &str) -> Result<ActivationCostSegmentCst, C
     Ok(ActivationCostSegmentCst::ReturnChosenToHand { count, filter_text })
 }
 
+fn parse_exert_segment_rewrite(raw: &str) -> Result<ActivationCostSegmentCst, CardTextError> {
+    let trimmed = raw.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    let Some(rest) = lower.strip_prefix("exert ") else {
+        return Err(CardTextError::ParseError(
+            "rewrite exert-cost parser expected leading 'exert'".to_string(),
+        ));
+    };
+    if rest.trim().is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "rewrite exert-cost parser missing exerted object in '{raw}'"
+        )));
+    }
+
+    Ok(ActivationCostSegmentCst::ExertSelf {
+        display_text: trimmed.to_string(),
+    })
+}
+
 fn parse_put_counter_segment_rewrite(raw: &str) -> Result<ActivationCostSegmentCst, CardTextError> {
     let trimmed = raw.trim();
     let lower = trimmed.to_ascii_lowercase();
@@ -1481,6 +1503,8 @@ pub(crate) fn parse_activation_cost_rewrite(raw: &str) -> Result<ActivationCostC
                 parse_pay_energy_segment_rewrite(normalized_segment.as_str())
             } else if normalized_segment.starts_with("return ") {
                 parse_return_segment_rewrite(normalized_segment.as_str())
+            } else if normalized_segment.starts_with("exert ") {
+                parse_exert_segment_rewrite(segment)
             } else if normalized_segment.starts_with("discard ") {
                 parse_discard_segment_rewrite(normalized_segment.as_str())
             } else if normalized_segment.starts_with("sacrifice ") {
@@ -1794,6 +1818,12 @@ pub(crate) fn lower_activation_cost_cst(
                         ObjectFilter::tagged(tag),
                     )));
                 }
+            }
+            ActivationCostSegmentCst::ExertSelf { display_text } => {
+                flush_pending_mana(&mut costs, &mut pending_mana_pips);
+                costs.push(Cost::effect(crate::effects::ExertCostEffect::new(
+                    display_text.clone(),
+                )));
             }
             ActivationCostSegmentCst::PutCounters {
                 counter_type,

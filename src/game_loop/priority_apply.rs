@@ -91,7 +91,13 @@ pub fn apply_priority_response_with_dm(
             ));
         }
         let mut combat = game.combat.take().unwrap_or_default();
-        let result = apply_attacker_declarations(game, &mut combat, trigger_queue, declarations);
+        let result = apply_attacker_declarations_with_dm(
+            game,
+            &mut combat,
+            trigger_queue,
+            declarations,
+            decision_maker,
+        );
         game.combat = Some(combat);
         result?;
         reset_priority(game, &mut state.tracker);
@@ -979,7 +985,10 @@ pub fn apply_priority_response_with_dm(
             // Player retains priority after activating mana ability
             advance_priority_with_dm(game, trigger_queue, decision_maker)
         }
-        LegalAction::TurnFaceUp { creature_id } => {
+        LegalAction::TurnFaceUp {
+            creature_id,
+            method,
+        } => {
             let player = game
                 .turn
                 .priority_player
@@ -987,6 +996,7 @@ pub fn apply_priority_response_with_dm(
 
             let action = crate::special_actions::SpecialAction::TurnFaceUp {
                 permanent_id: *creature_id,
+                method: *method,
             };
             crate::special_actions::can_perform(&action, game, player, &mut *decision_maker)
                 .map_err(|e| GameLoopError::InvalidState(format!("Cannot turn face up: {e}")))?;

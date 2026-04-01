@@ -1,8 +1,8 @@
 //! Shuffle specific objects into a library, then shuffle that library.
 
 use crate::effect::EffectOutcome;
-use crate::effects::helpers::{resolve_objects_for_effect, resolve_player_filter};
 use crate::effects::EffectExecutor;
+use crate::effects::helpers::{resolve_objects_for_effect, resolve_player_filter};
 use crate::event_processor::{EventOutcome, process_zone_change_with_additional_effects};
 use crate::events::ShuffleLibraryEvent;
 use crate::executor::{ExecutionContext, ExecutionError};
@@ -11,7 +11,7 @@ use crate::target::{ChooseSpec, PlayerFilter};
 use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 
-use super::finalize_zone_change_move;
+use super::{finalize_zone_change_move, maybe_prompt_for_split_result_order};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ShuffleObjectsIntoLibraryEffect {
@@ -82,24 +82,38 @@ impl EffectExecutor for ShuffleObjectsIntoLibraryEffect {
                     if final_zone != Zone::Library {
                         continue;
                     }
-                    let result =
+                    let mut result =
                         finalize_zone_change_move(game, object_id, final_zone, ctx.cause.clone());
-                    if let Some(new_id) = result.new_object_id {
-                        if let Some(moved) = game.object(new_id) {
-                            if let Some(player) = game.player_mut(moved.owner) {
-                                if let Some(pos) = player.library.iter().position(|id| *id == new_id)
-                                {
-                                    player.library.remove(pos);
-                                    player.library.insert(0, new_id);
+                    if !result.new_object_ids.is_empty() {
+                        for &new_id in &result.new_object_ids {
+                            if let Some(moved) = game.object(new_id) {
+                                if let Some(player) = game.player_mut(moved.owner) {
+                                    if let Some(pos) =
+                                        player.library.iter().position(|id| *id == new_id)
+                                    {
+                                        player.library.remove(pos);
+                                        player.library.insert(0, new_id);
+                                    }
                                 }
                             }
                         }
-                        moved_ids.push(new_id);
+                        if from_zone == Zone::Battlefield {
+                            maybe_prompt_for_split_result_order(
+                                game,
+                                &mut *ctx.decision_maker,
+                                final_zone,
+                                &ctx.cause,
+                                &mut result,
+                            );
+                            game.record_zone_change_results(
+                                object_id,
+                                result.new_object_ids.clone(),
+                            );
+                        }
+                        moved_ids.extend(result.new_object_ids.iter().copied());
                     }
                 }
-                EventOutcome::Prevented
-                | EventOutcome::Replaced
-                | EventOutcome::NotApplicable => {}
+                EventOutcome::Prevented | EventOutcome::Replaced | EventOutcome::NotApplicable => {}
             }
         }
 
@@ -216,12 +230,9 @@ mod tests {
             "library should still shuffle when the object left the expected zone"
         );
         assert!(
-            outcome
-                .events
-                .iter()
-                .any(|event| event.downcast::<ShuffleLibraryEvent>().is_some_and(|shuffle| {
-                    shuffle.player == alice
-                })),
+            outcome.events.iter().any(|event| event
+                .downcast::<ShuffleLibraryEvent>()
+                .is_some_and(|shuffle| { shuffle.player == alice })),
             "shuffle-into-library effects should emit a shuffle event even if nothing moves"
         );
         assert_eq!(

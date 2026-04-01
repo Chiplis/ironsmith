@@ -429,16 +429,23 @@ impl TriggerMatcher for ZoneChangeTrigger {
                     PlayerRelation::Any => true,
                 }
             } else {
-                // Check the first object in game state
-                zc.objects
-                    .first()
-                    .and_then(|&id| ctx.game.object(id))
-                    .map(|obj| match &self.player {
-                        PlayerRelation::You => obj.controller == ctx.controller,
-                        PlayerRelation::Opponent => obj.controller != ctx.controller,
-                        PlayerRelation::Any => true,
-                    })
-                    .unwrap_or(false)
+                zc.destination_objects().iter().any(|&id| {
+                    if let Some(obj) = ctx.game.object(id) {
+                        match &self.player {
+                            PlayerRelation::You => obj.controller == ctx.controller,
+                            PlayerRelation::Opponent => obj.controller != ctx.controller,
+                            PlayerRelation::Any => true,
+                        }
+                    } else if let Some(snapshot) = zc.snapshot.as_ref() {
+                        match &self.player {
+                            PlayerRelation::You => snapshot.controller == ctx.controller,
+                            PlayerRelation::Opponent => snapshot.controller != ctx.controller,
+                            PlayerRelation::Any => true,
+                        }
+                    } else {
+                        false
+                    }
+                })
             };
 
             if !player_matches {
@@ -457,13 +464,22 @@ impl TriggerMatcher for ZoneChangeTrigger {
                 return false;
             }
         } else {
-            // Check filter against live object (for ETB triggers, etc.)
-            let filter_matches = zc
-                .objects
-                .first()
-                .and_then(|&id| ctx.game.object(id))
-                .map(|obj| self.object_filter.matches(obj, &ctx.filter_ctx, ctx.game))
-                .unwrap_or(true); // If no object, allow (conservative)
+            // Check the post-change object(s) for ETB and destination-zone triggers.
+            let filter_matches = if zc.destination_objects().is_empty() {
+                true
+            } else {
+                zc.destination_objects().iter().any(|&id| {
+                    if let Some(obj) = ctx.game.object(id) {
+                        self.object_filter.matches(obj, &ctx.filter_ctx, ctx.game)
+                    } else if let Some(snapshot) = zc.snapshot.as_ref() {
+                        snapshot_matches_filter(snapshot, &self.object_filter, ctx)
+                    } else if self.object_filter == ObjectFilter::default() {
+                        true
+                    } else {
+                        false
+                    }
+                })
+            };
 
             if !filter_matches {
                 return false;
@@ -498,7 +514,12 @@ impl TriggerMatcher for ZoneChangeTrigger {
             CountMode::OneOrMore => 1,
             CountMode::Each => {
                 if let Some(zc) = event.downcast::<ZoneChangeEvent>() {
-                    zc.count() as u32
+                    let use_snapshot = self.uses_snapshot() && zc.snapshot.is_some();
+                    if use_snapshot {
+                        zc.count() as u32
+                    } else {
+                        zc.destination_objects().len() as u32
+                    }
                 } else {
                     1
                 }
@@ -539,6 +560,14 @@ mod tests {
         ObjectSnapshot::for_testing(object_id, controller, name)
             .with_card_types(vec![CardType::Creature])
             .with_pt(2, 2)
+    }
+
+    fn create_creature_in_zone(game: &mut GameState, owner: PlayerId, zone: Zone) -> ObjectId {
+        let card = CardBuilder::new(CardId::new(), "Trigger Test Creature")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        game.create_object_from_card(&card, owner, zone)
     }
 
     #[test]
@@ -767,6 +796,36 @@ mod tests {
         let batch_trigger =
             ZoneChangeTrigger::dies(ObjectFilter::creature()).count(CountMode::OneOrMore);
         assert_eq!(batch_trigger.trigger_count(&event), 1);
+    }
+
+    #[test]
+    fn test_meld_leave_counts_one_dies_trigger_and_two_cards_to_destination() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        let first = create_creature_in_zone(&mut game, alice, Zone::Graveyard);
+        let second = create_creature_in_zone(&mut game, alice, Zone::Graveyard);
+        let melded_id = ObjectId::from_raw(99);
+        let snapshot = make_creature_snapshot(melded_id, alice, "Chittering Host");
+        let event = TriggerEvent::new_with_provenance(
+            ZoneChangeEvent::with_results(
+                melded_id,
+                vec![first, second],
+                Zone::Battlefield,
+                Zone::Graveyard,
+                EventCause::from_sba(),
+                Some(snapshot),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+
+        let dies_trigger = ZoneChangeTrigger::dies(ObjectFilter::creature());
+        assert_eq!(dies_trigger.trigger_count(&event), 1);
+
+        let card_to_graveyard_trigger = ZoneChangeTrigger::new()
+            .to(Zone::Graveyard)
+            .count(CountMode::Each);
+        assert_eq!(card_to_graveyard_trigger.trigger_count(&event), 2);
     }
 
     #[test]

@@ -32,7 +32,7 @@ use super::conditionals::parse_predicate;
 use super::creation_handlers::{parse_create, parse_investigate};
 use super::for_each_helpers::parse_who_did_this_way_predicate;
 use super::sentence_primitives::try_build_unless;
-use super::zone_counter_helpers::{parse_put_counters, parse_transform};
+use super::zone_counter_helpers::{parse_convert, parse_put_counters, parse_transform};
 use super::zone_handlers::{
     DelayedReturnTimingAst, parse_become, parse_delayed_return_timing_words, parse_destroy,
     parse_discard, parse_equal_to_aggregate_filter_value,
@@ -101,6 +101,7 @@ pub(crate) fn parse_effect_with_verb(
         Verb::Scry => parse_scry(tokens, subject),
         Verb::Discard => parse_discard(tokens, subject),
         Verb::Transform => parse_transform(tokens),
+        Verb::Convert => parse_convert(tokens),
         Verb::Flip => parse_flip(tokens),
         Verb::Regenerate => parse_regenerate(tokens),
         Verb::Mill => parse_mill(tokens, subject),
@@ -115,6 +116,7 @@ pub(crate) fn parse_effect_with_verb(
         Verb::Shuffle => parse_shuffle(tokens, subject),
         Verb::Reorder => parse_reorder(tokens, subject),
         Verb::Pay => parse_pay(tokens, subject),
+        Verb::Detain => parse_detain(tokens),
         Verb::Goad => parse_goad(tokens),
     }
 }
@@ -677,6 +679,26 @@ pub(crate) fn parse_goad(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardText
     }
 
     Ok(EffectAst::Goad { target })
+}
+
+pub(crate) fn parse_detain(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+    let target_tokens = trim_commas(tokens);
+    if target_tokens.is_empty() {
+        return Err(CardTextError::ParseError(
+            "missing detain target".to_string(),
+        ));
+    }
+
+    let target_words = words(&target_tokens);
+    if matches!(target_words.as_slice(), ["it"] | ["them"]) {
+        return Ok(EffectAst::Detain {
+            target: TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&target_tokens)),
+        });
+    }
+
+    Ok(EffectAst::Detain {
+        target: parse_target_phrase(&target_tokens)?,
+    })
 }
 
 pub(crate) fn parse_attach_object_phrase(
@@ -1652,40 +1674,184 @@ pub(crate) fn parse_draw(
         if !((parsed_that_many_minus_one && tail_words.as_slice() == ["minus", "one"])
             || (parsed_that_many_plus_one && tail_words.as_slice() == ["plus", "one"]))
         {
-            let has_for_each = tail
-                .windows(2)
-                .any(|window| window[0].is_word("for") && window[1].is_word("each"));
-            if has_for_each {
-                let dynamic = parse_dynamic_cost_modifier_value(&tail)?.ok_or_else(|| {
-                    CardTextError::ParseError(format!(
-                        "unsupported draw for-each clause (clause: '{}')",
-                        words(tokens).join(" ")
-                    ))
-                })?;
-                match count {
-                    Value::Fixed(1) => count = dynamic,
-                    _ => {
-                        return Err(CardTextError::ParseError(format!(
-                            "unsupported multiplied draw count (clause: '{}')",
-                            words(tokens).join(" ")
-                        )));
-                    }
-                }
-                effect = EffectAst::Draw {
-                    count: count.clone(),
-                    player,
-                };
-            } else if let Some(parsed) = parse_draw_trailing_clause(&tail, effect.clone())? {
+            if let Some(parsed) = parse_draw_for_each_player_condition(&tail, effect.clone())? {
                 effect = parsed;
             } else {
-                return Err(CardTextError::ParseError(format!(
-                    "unsupported trailing draw clause (clause: '{}')",
-                    clause_words.join(" ")
-                )));
+                let has_for_each = tail
+                    .windows(2)
+                    .any(|window| window[0].is_word("for") && window[1].is_word("each"));
+                if has_for_each {
+                    let dynamic = parse_dynamic_cost_modifier_value(&tail)?.ok_or_else(|| {
+                        CardTextError::ParseError(format!(
+                            "unsupported draw for-each clause (clause: '{}')",
+                            words(tokens).join(" ")
+                        ))
+                    })?;
+                    match count {
+                        Value::Fixed(1) => count = dynamic,
+                        _ => {
+                            return Err(CardTextError::ParseError(format!(
+                                "unsupported multiplied draw count (clause: '{}')",
+                                words(tokens).join(" ")
+                            )));
+                        }
+                    }
+                    effect = EffectAst::Draw {
+                        count: count.clone(),
+                        player,
+                    };
+                } else if let Some(parsed) = parse_draw_trailing_clause(&tail, effect.clone())? {
+                    effect = parsed;
+                } else {
+                    return Err(CardTextError::ParseError(format!(
+                        "unsupported trailing draw clause (clause: '{}')",
+                        clause_words.join(" ")
+                    )));
+                }
             }
         }
     }
     Ok(effect)
+}
+
+fn parse_draw_for_each_player_condition(
+    tokens: &[OwnedLexToken],
+    draw_effect: EffectAst,
+) -> Result<Option<EffectAst>, CardTextError> {
+    fn bind_loop_player_predicate(predicate: PredicateAst) -> PredicateAst {
+        match predicate {
+            PredicateAst::And(left, right) => PredicateAst::And(
+                Box::new(bind_loop_player_predicate(*left)),
+                Box::new(bind_loop_player_predicate(*right)),
+            ),
+            PredicateAst::Not(inner) => {
+                PredicateAst::Not(Box::new(bind_loop_player_predicate(*inner)))
+            }
+            PredicateAst::PlayerControls { player, filter } if player == PlayerAst::That => {
+                PredicateAst::PlayerControls {
+                    player: PlayerAst::Implicit,
+                    filter,
+                }
+            }
+            PredicateAst::PlayerControlsAtLeast {
+                player,
+                filter,
+                count,
+            } if player == PlayerAst::That => PredicateAst::PlayerControlsAtLeast {
+                player: PlayerAst::Implicit,
+                filter,
+                count,
+            },
+            PredicateAst::PlayerControlsExactly {
+                player,
+                filter,
+                count,
+            } if player == PlayerAst::That => PredicateAst::PlayerControlsExactly {
+                player: PlayerAst::Implicit,
+                filter,
+                count,
+            },
+            PredicateAst::PlayerControlsMost { player, filter } if player == PlayerAst::That => {
+                PredicateAst::PlayerControlsMost {
+                    player: PlayerAst::Implicit,
+                    filter,
+                }
+            }
+            PredicateAst::PlayerControlsMoreThanYou { player, filter }
+                if player == PlayerAst::That =>
+            {
+                PredicateAst::PlayerControlsMoreThanYou {
+                    player: PlayerAst::Implicit,
+                    filter,
+                }
+            }
+            PredicateAst::PlayerHasLessLifeThanYou { player } if player == PlayerAst::That => {
+                PredicateAst::PlayerHasLessLifeThanYou {
+                    player: PlayerAst::Implicit,
+                }
+            }
+            PredicateAst::PlayerHasMoreLifeThanYou { player } if player == PlayerAst::That => {
+                PredicateAst::PlayerHasMoreLifeThanYou {
+                    player: PlayerAst::Implicit,
+                }
+            }
+            PredicateAst::PlayerHasMoreCardsInHandThanYou { player }
+                if player == PlayerAst::That =>
+            {
+                PredicateAst::PlayerHasMoreCardsInHandThanYou {
+                    player: PlayerAst::Implicit,
+                }
+            }
+            PredicateAst::PlayerTappedLandForManaThisTurn { player }
+                if player == PlayerAst::That =>
+            {
+                PredicateAst::PlayerTappedLandForManaThisTurn {
+                    player: PlayerAst::Implicit,
+                }
+            }
+            PredicateAst::PlayerHadLandEnterBattlefieldThisTurn { player }
+                if player == PlayerAst::That =>
+            {
+                PredicateAst::PlayerHadLandEnterBattlefieldThisTurn {
+                    player: PlayerAst::Implicit,
+                }
+            }
+            other => other,
+        }
+    }
+
+    let clause_words = words(tokens);
+    let (start, opponents_only) = if clause_words.starts_with(&["for", "each", "opponent", "who"])
+        || clause_words.starts_with(&["for", "each", "opponents", "who"])
+    {
+        (3usize, true)
+    } else if clause_words.starts_with(&["for", "each", "player", "who"])
+        || clause_words.starts_with(&["for", "each", "players", "who"])
+    {
+        (3usize, false)
+    } else if clause_words.starts_with(&["each", "opponent", "who"])
+        || clause_words.starts_with(&["each", "opponents", "who"])
+    {
+        (2usize, true)
+    } else if clause_words.starts_with(&["each", "player", "who"])
+        || clause_words.starts_with(&["each", "players", "who"])
+    {
+        (2usize, false)
+    } else {
+        return Ok(None);
+    };
+
+    let inner_tokens = trim_commas(&tokens[start..]);
+    let inner_words = words(&inner_tokens);
+    if inner_words.first().copied() != Some("who") {
+        return Ok(None);
+    }
+
+    let predicate_tail = trim_commas(&inner_tokens[1..]);
+    if predicate_tail.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing predicate in draw for-each clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+
+    let mut predicate_tokens = vec![
+        OwnedLexToken::word("that".to_string(), TextSpan::synthetic()),
+        OwnedLexToken::word("player".to_string(), TextSpan::synthetic()),
+    ];
+    predicate_tokens.extend(predicate_tail.iter().cloned());
+    let predicate = bind_loop_player_predicate(parse_predicate(&predicate_tokens)?);
+
+    let effects = vec![EffectAst::Conditional {
+        predicate,
+        if_true: vec![draw_effect],
+        if_false: Vec::new(),
+    }];
+    Ok(Some(if opponents_only {
+        EffectAst::ForEachOpponent { effects }
+    } else {
+        EffectAst::ForEachPlayer { effects }
+    }))
 }
 
 pub(crate) fn parse_half_rounded_down_draw_count_words(words: &[&str]) -> Option<(Value, usize)> {
@@ -2633,6 +2799,9 @@ pub(crate) fn parse_life_equal_to_value(
     if let Some(value) = parse_equal_to_number_of_filter_value(amount_tokens) {
         return Ok(Some(value));
     }
+    if let Some(value) = parse_equal_to_aggregate_filter_value(amount_tokens) {
+        return Ok(Some(value));
+    }
     if matches!(
         amount_words.as_slice(),
         ["equal", "to", "the", "life", "lost", "this", "way"]
@@ -2764,6 +2933,15 @@ pub(crate) fn parse_lose_life(
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
 
     let clause_words = words(tokens);
+    if clause_words.len() == 2
+        && clause_words[1] == "life"
+        && let Some((amount, _)) = parse_number(tokens)
+    {
+        return Ok(EffectAst::LoseLife {
+            amount: Value::Fixed(amount as i32),
+            player,
+        });
+    }
     if let Some(mut amount) = parse_life_equal_to_value(tokens)? {
         if matches!(player, PlayerAst::ItsController | PlayerAst::ItsOwner)
             && (clause_words

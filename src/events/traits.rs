@@ -103,6 +103,8 @@ pub enum EventKind {
     PlayersFinishedVoting,
     /// A permanent transformed
     Transformed,
+    /// A permanent converted
+    Converted,
     /// A permanent was turned face up
     TurnedFaceUp,
     /// A card was revealed

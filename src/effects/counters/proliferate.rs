@@ -1,5 +1,7 @@
 //! Proliferate effect implementation.
 
+use crate::decision::FallbackStrategy;
+use crate::decisions::{ProliferateSpec, make_decision_with_fallback};
 use crate::effect::{EffectOutcome, Value};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_value;
@@ -58,7 +60,7 @@ impl EffectExecutor for ProliferateEffect {
         for _ in 0..count {
             let mut proliferated_count = 0;
 
-            let permanents_with_counters: Vec<(crate::ids::ObjectId, Vec<CounterType>)> = game
+            let eligible_permanents: Vec<crate::ids::ObjectId> = game
                 .battlefield
                 .iter()
                 .filter_map(|&perm_id| {
@@ -66,13 +68,55 @@ impl EffectExecutor for ProliferateEffect {
                         if obj.counters.is_empty() {
                             None
                         } else {
-                            Some((perm_id, obj.counters.keys().copied().collect()))
+                            Some(perm_id)
                         }
                     })
                 })
                 .collect();
 
-            for (perm_id, counter_types) in permanents_with_counters {
+            let eligible_players: Vec<crate::ids::PlayerId> = game
+                .players
+                .iter()
+                .filter_map(|p| {
+                    let has_counters =
+                        p.poison_counters > 0 || p.energy_counters > 0 || p.experience_counters > 0;
+                    has_counters.then_some(p.id)
+                })
+                .collect();
+
+            let selections = make_decision_with_fallback(
+                game,
+                &mut ctx.decision_maker,
+                ctx.controller,
+                Some(ctx.source),
+                ProliferateSpec::new(
+                    ctx.source,
+                    eligible_permanents.clone(),
+                    eligible_players.clone(),
+                ),
+                FallbackStrategy::Maximum,
+            );
+
+            let chosen_permanents: Vec<_> = selections
+                .permanents
+                .into_iter()
+                .filter(|perm_id| eligible_permanents.contains(perm_id))
+                .collect();
+            let chosen_players: Vec<_> = selections
+                .players
+                .into_iter()
+                .filter(|player_id| eligible_players.contains(player_id))
+                .collect();
+
+            for perm_id in chosen_permanents {
+                let Some(counter_types): Option<Vec<CounterType>> =
+                    game.object(perm_id).and_then(|obj| {
+                        (!obj.counters.is_empty()).then(|| obj.counters.keys().copied().collect())
+                    })
+                else {
+                    continue;
+                };
+
                 for ct in counter_types {
                     if let Some(event) = game.add_counters_with_source(
                         perm_id,
@@ -87,10 +131,8 @@ impl EffectExecutor for ProliferateEffect {
                 proliferated_count += 1;
             }
 
-            let players_with_counters: Vec<(crate::ids::PlayerId, Vec<CounterType>)> = game
-                .players
-                .iter()
-                .map(|p| {
+            for player_id in chosen_players {
+                let Some(counters) = game.player(player_id).map(|p| {
                     let mut counters = Vec::new();
                     if p.poison_counters > 0 {
                         counters.push(CounterType::Poison);
@@ -101,12 +143,14 @@ impl EffectExecutor for ProliferateEffect {
                     if p.experience_counters > 0 {
                         counters.push(CounterType::Experience);
                     }
-                    (p.id, counters)
-                })
-                .filter(|(_, counters)| !counters.is_empty())
-                .collect();
+                    counters
+                }) else {
+                    continue;
+                };
+                if counters.is_empty() {
+                    continue;
+                }
 
-            for (player_id, counters) in players_with_counters {
                 for counter_type in counters {
                     if let Some(event) = game.add_player_counters_with_source(
                         player_id,
@@ -142,11 +186,15 @@ impl EffectExecutor for ProliferateEffect {
 mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
+    use crate::decision::DecisionMaker;
+    use crate::decisions::specs::ProliferateResponse;
+    use crate::events::EventKind;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::Object;
     use crate::types::CardType;
     use crate::zone::Zone;
+    use std::collections::VecDeque;
 
     fn setup_game() -> GameState {
         crate::tests::test_helpers::setup_two_player_game()
@@ -176,6 +224,20 @@ mod tests {
         obj.counters.insert(counter_type, count);
         game.add_object(obj);
         id
+    }
+
+    struct ScriptedProliferateDecisionMaker {
+        responses: VecDeque<ProliferateResponse>,
+    }
+
+    impl DecisionMaker for ScriptedProliferateDecisionMaker {
+        fn decide_proliferate(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::ProliferateContext,
+        ) -> ProliferateResponse {
+            self.responses.pop_front().unwrap_or_default()
+        }
     }
 
     #[test]
@@ -343,5 +405,147 @@ mod tests {
         assert_eq!(result.value, crate::effect::OutcomeValue::Count(2));
         let obj = game.object(creature_id).unwrap();
         assert_eq!(obj.counters.get(&CounterType::PlusOnePlusOne), Some(&5));
+    }
+
+    #[test]
+    fn test_proliferate_can_choose_subset_of_eligible_permanents_and_players() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let untouched = create_creature_with_counters(
+            &mut game,
+            "Untouched",
+            alice,
+            CounterType::PlusOnePlusOne,
+            2,
+        );
+        let chosen =
+            create_creature_with_counters(&mut game, "Chosen", bob, CounterType::Charge, 1);
+        game.players[0].poison_counters = 2;
+        game.players[0].energy_counters = 3;
+        game.players[1].experience_counters = 1;
+
+        let source = game.new_object_id();
+        let mut decision_maker = ScriptedProliferateDecisionMaker {
+            responses: VecDeque::from([ProliferateResponse {
+                permanents: vec![chosen],
+                players: vec![alice],
+            }]),
+        };
+        let mut ctx = ExecutionContext::new(source, alice, &mut decision_maker);
+
+        let result = ProliferateEffect::new(1)
+            .execute(&mut game, &mut ctx)
+            .expect("subset proliferate should resolve");
+
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(2));
+        assert_eq!(
+            game.object(untouched)
+                .and_then(|obj| obj.counters.get(&CounterType::PlusOnePlusOne).copied()),
+            Some(2)
+        );
+        assert_eq!(
+            game.object(chosen)
+                .and_then(|obj| obj.counters.get(&CounterType::Charge).copied()),
+            Some(2)
+        );
+        assert_eq!(game.players[0].poison_counters, 3);
+        assert_eq!(game.players[0].energy_counters, 4);
+        assert_eq!(game.players[1].experience_counters, 1);
+    }
+
+    #[test]
+    fn test_proliferate_can_choose_nothing_and_still_perform_keyword_action() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        let creature_id = create_creature_with_counters(
+            &mut game,
+            "Hangarback Walker",
+            alice,
+            CounterType::PlusOnePlusOne,
+            3,
+        );
+        game.players[0].poison_counters = 4;
+
+        let source = game.new_object_id();
+        let mut decision_maker = ScriptedProliferateDecisionMaker {
+            responses: VecDeque::from([ProliferateResponse::default()]),
+        };
+        let mut ctx = ExecutionContext::new(source, alice, &mut decision_maker);
+
+        let result = ProliferateEffect::new(1)
+            .execute(&mut game, &mut ctx)
+            .expect("empty proliferate choice should resolve");
+
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(0));
+        assert_eq!(
+            game.object(creature_id)
+                .and_then(|obj| obj.counters.get(&CounterType::PlusOnePlusOne).copied()),
+            Some(3)
+        );
+        assert_eq!(game.players[0].poison_counters, 4);
+        assert_eq!(result.events.len(), 1);
+        assert_eq!(result.events[0].kind(), EventKind::KeywordAction);
+        let keyword = result.events[0]
+            .inner()
+            .as_any()
+            .downcast_ref::<KeywordActionEvent>()
+            .expect("expected keyword action event");
+        assert_eq!(keyword.action, KeywordActionKind::Proliferate);
+        assert_eq!(keyword.player, alice);
+        assert_eq!(keyword.amount, 1);
+    }
+
+    #[test]
+    fn test_proliferate_twice_rechooses_targets_each_time() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let creature_id = create_creature_with_counters(
+            &mut game,
+            "Hangarback Walker",
+            alice,
+            CounterType::PlusOnePlusOne,
+            1,
+        );
+        game.players[1].poison_counters = 2;
+
+        let source = game.new_object_id();
+        let mut decision_maker = ScriptedProliferateDecisionMaker {
+            responses: VecDeque::from([
+                ProliferateResponse {
+                    permanents: vec![creature_id],
+                    players: Vec::new(),
+                },
+                ProliferateResponse {
+                    permanents: Vec::new(),
+                    players: vec![bob],
+                },
+            ]),
+        };
+        let mut ctx = ExecutionContext::new(source, alice, &mut decision_maker);
+
+        let result = ProliferateEffect::new(2)
+            .execute(&mut game, &mut ctx)
+            .expect("proliferate twice should resolve");
+
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(2));
+        assert_eq!(
+            game.object(creature_id)
+                .and_then(|obj| obj.counters.get(&CounterType::PlusOnePlusOne).copied()),
+            Some(2)
+        );
+        assert_eq!(game.players[1].poison_counters, 3);
+        assert_eq!(
+            result
+                .events
+                .iter()
+                .filter(|event| event.kind() == EventKind::KeywordAction)
+                .count(),
+            2
+        );
     }
 }

@@ -183,10 +183,8 @@ impl EffectExecutor for SearchLibraryEffect {
                     if let Some(p) = game.player_mut(player_id) {
                         p.library.push(card_id);
                     }
-                    return Ok(EffectOutcome::with_objects(vec![card_id]).with_events([
-                        search_event.clone(),
-                        shuffle_event.clone(),
-                    ]));
+                    return Ok(EffectOutcome::with_objects(vec![card_id])
+                        .with_events([search_event.clone(), shuffle_event.clone()]));
                 }
 
                 // For other destinations, move then shuffle
@@ -207,10 +205,8 @@ impl EffectExecutor for SearchLibraryEffect {
                 if let Some(new_id) = new_id {
                     // Shuffle the library after searching
                     game.shuffle_player_library(player_id);
-                    return Ok(EffectOutcome::with_objects(vec![new_id]).with_events([
-                        search_event.clone(),
-                        shuffle_event.clone(),
-                    ]));
+                    return Ok(EffectOutcome::with_objects(vec![new_id])
+                        .with_events([search_event.clone(), shuffle_event.clone()]));
                 }
             }
         }

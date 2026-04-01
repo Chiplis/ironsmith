@@ -366,11 +366,7 @@ pub struct EachPlayerSacrificesEffect {
 }
 
 impl EachPlayerSacrificesEffect {
-    pub fn new(
-        filter: ObjectFilter,
-        count: impl Into<Value>,
-        player_filter: PlayerFilter,
-    ) -> Self {
+    pub fn new(filter: ObjectFilter, count: impl Into<Value>, player_filter: PlayerFilter) -> Self {
         Self {
             filter,
             count: count.into(),
@@ -635,8 +631,8 @@ mod tests {
     use crate::card::{CardBuilder, PowerToughness};
     use crate::cards::CardDefinitionBuilder;
     use crate::cards::definitions::basic_mountain;
-    use crate::effect::{Effect, Restriction};
     use crate::effect::ExecutionFact;
+    use crate::effect::{Effect, Restriction};
     use crate::effects::CostExecutableEffect;
     use crate::effects::EarthbendEffect;
     use crate::executor::{ExecutionContext, execute_effect};
@@ -819,9 +815,10 @@ mod tests {
         let source = game.new_object_id();
         let mut ctx = ExecutionContext::new_default(source, alice);
 
-        let result = EachPlayerSacrificesEffect::new(ObjectFilter::creature(), 1, PlayerFilter::Any)
-            .execute(&mut game, &mut ctx)
-            .expect("each-player sacrifice should resolve");
+        let result =
+            EachPlayerSacrificesEffect::new(ObjectFilter::creature(), 1, PlayerFilter::Any)
+                .execute(&mut game, &mut ctx)
+                .expect("each-player sacrifice should resolve");
 
         assert_eq!(result.value, crate::effect::OutcomeValue::Count(1));
         assert!(

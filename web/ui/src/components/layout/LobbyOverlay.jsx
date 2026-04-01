@@ -76,6 +76,10 @@ export default function LobbyOverlay({
   defaultName = "Player",
   defaultStartingLife = 20,
   initialMode = "create",
+  initialCreateFormat = MATCH_FORMAT_NORMAL,
+  initialCreateName = "",
+  initialCreateDeckText = "",
+  initialCreateCommanderText = "",
   initialJoinCode = "",
   initialJoinName = "",
   initialJoinDeckText = "",
@@ -95,15 +99,31 @@ export default function LobbyOverlay({
   const [mode, setMode] = useState(
     initialMode === "join" ? "join" : "create"
   );
-  const [createFormat, setCreateFormat] = useState(MATCH_FORMAT_NORMAL);
-  const [createName, setCreateName] = useState(defaultName);
+  const [createFormat, setCreateFormat] = useState(
+    normalizeMatchFormat(initialCreateFormat)
+  );
+  const [createName, setCreateName] = useState(
+    String(initialCreateName || defaultName)
+  );
   const [joinName, setJoinName] = useState(String(initialJoinName || defaultName));
   const [joinCode, setJoinCode] = useState(String(initialJoinCode || ""));
   const [desiredPlayers, setDesiredPlayers] = useState(2);
-  const [startingLife, setStartingLife] = useState(defaultStartingLife);
-  const [createDeckText, setCreateDeckText] = useState("");
+  const [startingLife, setStartingLife] = useState(() => {
+    const initialLife = Math.max(1, Number(defaultStartingLife) || 20);
+    const normalizedFormat = normalizeMatchFormat(initialCreateFormat);
+    if (normalizedFormat === MATCH_FORMAT_COMMANDER && initialLife === 20) {
+      return 40;
+    }
+    if (normalizedFormat === MATCH_FORMAT_NORMAL && initialLife === 40) {
+      return 20;
+    }
+    return initialLife;
+  });
+  const [createDeckText, setCreateDeckText] = useState(String(initialCreateDeckText || ""));
   const [joinDeckText, setJoinDeckText] = useState(String(initialJoinDeckText || ""));
-  const [createCommanderText, setCreateCommanderText] = useState("");
+  const [createCommanderText, setCreateCommanderText] = useState(
+    String(initialCreateCommanderText || "")
+  );
   const [joinCommanderText, setJoinCommanderText] = useState(String(initialJoinCommanderText || ""));
   const [inviteName, setInviteName] = useState("");
   const [inviteDeckText, setInviteDeckText] = useState("");

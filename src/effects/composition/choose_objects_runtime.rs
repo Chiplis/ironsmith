@@ -661,8 +661,13 @@ pub(crate) fn run_choose_objects(
         });
     }
     let chosen = normalize_chosen_objects(chosen, &candidates, min, max, !allow_hidden_partial);
-    let chosen =
-        enforce_public_search_choice_constraint(game, &candidates, chosen, required_public_count, max);
+    let chosen = enforce_public_search_choice_constraint(
+        game,
+        &candidates,
+        chosen,
+        required_public_count,
+        max,
+    );
     let chosen =
         enforce_single_graveyard_choice_constraint(effect, game, &candidates, chosen, min, max);
     if search_zones.iter().any(Zone::is_hidden) {
@@ -808,8 +813,8 @@ mod tests {
             .with_type(CardType::Creature);
         let effect =
             ChooseObjectsEffect::new(filter, ChoiceCount::up_to(1), PlayerFilter::You, "chosen")
-            .in_zone(Zone::Library)
-            .as_search();
+                .in_zone(Zone::Library)
+                .as_search();
         let outcome = run_choose_objects(&effect, &mut game, &mut ctx).expect("search resolves");
 
         let crate::effect::OutcomeValue::Objects(chosen) = outcome.value else {
@@ -857,8 +862,8 @@ mod tests {
             .with_type(CardType::Creature);
         let effect =
             ChooseObjectsEffect::new(filter, ChoiceCount::up_to(2), PlayerFilter::You, "chosen")
-            .in_zone(Zone::Library)
-            .as_search();
+                .in_zone(Zone::Library)
+                .as_search();
         let outcome = run_choose_objects(&effect, &mut game, &mut ctx).expect("search resolves");
 
         let crate::effect::OutcomeValue::Objects(chosen) = outcome.value else {
@@ -971,10 +976,14 @@ mod tests {
         let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
 
         let filter = ObjectFilter::default().with_type(CardType::Creature);
-        let effect =
-            ChooseObjectsEffect::new(filter, ChoiceCount::any_number(), PlayerFilter::You, "chosen")
-                .in_zones(vec![Zone::Graveyard, Zone::Library])
-                .as_all_matching_search();
+        let effect = ChooseObjectsEffect::new(
+            filter,
+            ChoiceCount::any_number(),
+            PlayerFilter::You,
+            "chosen",
+        )
+        .in_zones(vec![Zone::Graveyard, Zone::Library])
+        .as_all_matching_search();
         let outcome = run_choose_objects(&effect, &mut game, &mut ctx).expect("search resolves");
 
         let crate::effect::OutcomeValue::Objects(chosen) = outcome.value else {

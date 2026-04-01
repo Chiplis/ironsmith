@@ -58,6 +58,7 @@ pub(crate) enum KeywordLineKindCst {
     CastThisSpellOnly,
     Gift,
     Warp,
+    ExertAttack,
 }
 
 #[derive(Debug, Clone)]

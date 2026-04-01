@@ -133,9 +133,11 @@ pub(crate) fn automatic_reveal_events_for_draw(
 ) -> Vec<TriggerEvent> {
     let mut reveal_events = Vec::new();
 
-    for candidate in collect_automatic_draw_reveal_candidates(game, player_id, drawn, draws_before) {
+    for candidate in collect_automatic_draw_reveal_candidates(game, player_id, drawn, draws_before)
+    {
         if candidate.optional
-            && !decision_maker.decide_boolean(game, &automatic_draw_reveal_boolean_context(&candidate))
+            && !decision_maker
+                .decide_boolean(game, &automatic_draw_reveal_boolean_context(&candidate))
         {
             continue;
         }

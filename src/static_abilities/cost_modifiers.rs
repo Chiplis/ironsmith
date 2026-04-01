@@ -269,6 +269,9 @@ fn describe_cost_modifier_condition_prefix(condition: &crate::ConditionExpr) -> 
         crate::ConditionExpr::SourceIsEnchanted => {
             "As long as this permanent is enchanted".to_string()
         }
+        crate::ConditionExpr::SourceIsMonstrous => {
+            "As long as this permanent is monstrous".to_string()
+        }
         _ => "As long as the stated condition is true".to_string(),
     }
 }

@@ -107,6 +107,8 @@ pub struct ObjectSnapshot {
     pub flipped: bool,
     /// Whether the object was face-down.
     pub face_down: bool,
+    /// How many times the permanent had transformed in its current battlefield life.
+    pub transform_count: u64,
     /// What the object was attached to (for Auras/Equipment).
     pub attached_to: Option<AttachmentTarget>,
     /// What was attached to the object.
@@ -167,6 +169,7 @@ impl ObjectSnapshot {
             tapped: game.is_tapped(obj.id),
             flipped: game.is_flipped(obj.id),
             face_down: game.is_face_down(obj.id),
+            transform_count: game.transform_count(obj.id),
             attached_to: obj.attached_to,
             attachments: obj.attachments.clone(),
             was_enchanted: false, // Set later via with_enchantment_check if needed
@@ -454,6 +457,7 @@ impl ObjectSnapshot {
             tapped: false,
             flipped: false,
             face_down: false,
+            transform_count: 0,
             attached_to: None,
             attachments: vec![],
             was_enchanted: false,

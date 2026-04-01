@@ -298,6 +298,7 @@ fn advance_reference_frame_for_effect(
         | EffectAst::PoisonCounters { player, .. }
         | EffectAst::EnergyCounters { player, .. }
         | EffectAst::Scry { player, .. }
+        | EffectAst::Fateseal { player, .. }
         | EffectAst::Surveil { player, .. }
         | EffectAst::PayMana { player, .. }
         | EffectAst::PayEnergy { player, .. }
@@ -399,6 +400,7 @@ fn advance_reference_frame_for_effect(
         | EffectAst::RedirectNextDamageFromSourceToTarget { target, .. }
         | EffectAst::RedirectNextTimeDamageToSource { target, .. }
         | EffectAst::Transform { target }
+        | EffectAst::Convert { target }
         | EffectAst::Flip { target } => {
             maybe_tag_target(&target, frame, id_gen, "targeted")?;
         }
@@ -450,6 +452,9 @@ fn advance_reference_frame_for_effect(
         }
         EffectAst::Connive { target } => {
             maybe_tag_target(&target, frame, id_gen, "connived")?;
+        }
+        EffectAst::Detain { target } => {
+            maybe_tag_target(&target, frame, id_gen, "detained")?;
         }
         EffectAst::Goad { target } => {
             maybe_tag_target(&target, frame, id_gen, "goaded")?;
@@ -646,6 +651,11 @@ fn advance_reference_frame_for_effect(
         EffectAst::CreateTokenCopy { player, .. }
         | EffectAst::CreateTokenCopyFromSource { player, .. } => {
             track_effect_player(player.clone(), frame, true, true)?;
+            if frame.auto_tag_object_targets {
+                frame.last_object_tag = Some(next_reference_tag(id_gen, "created"));
+            }
+        }
+        EffectAst::Populate { .. } => {
             if frame.auto_tag_object_targets {
                 frame.last_object_tag = Some(next_reference_tag(id_gen, "created"));
             }
@@ -849,6 +859,7 @@ fn advance_reference_frame_for_effect(
         | EffectAst::Earthbend { .. }
         | EffectAst::Behold { .. }
         | EffectAst::OpenAttraction
+        | EffectAst::ManifestTopCardOfLibrary { .. }
         | EffectAst::ManifestDread
         | EffectAst::Bolster { .. }
         | EffectAst::Support { .. }
@@ -900,8 +911,10 @@ fn advance_reference_frame_for_effect(
         | EffectAst::GrantAbilitiesChoiceAll { .. }
         | EffectAst::GrantBySpec { .. }
         | EffectAst::GrantAbilityToSource { .. }
+        | EffectAst::Meld { .. }
         | EffectAst::ReorderTopOfLibrary { .. }
         | EffectAst::VoteStart { .. }
+        | EffectAst::VoteStartObjects { .. }
         | EffectAst::VoteOption { .. }
         | EffectAst::VoteExtra { .. }
         | EffectAst::ReturnAllToHand { .. }
@@ -1230,6 +1243,7 @@ fn resolve_effect_result_values_in_fields(
         | EffectAst::LookAtTopCards { count: amount, .. }
         | EffectAst::CopySpell { count: amount, .. }
         | EffectAst::Investigate { count: amount }
+        | EffectAst::Populate { count: amount, .. }
         | EffectAst::Proliferate { count: amount }
         | EffectAst::CreateTokenCopy { count: amount, .. }
         | EffectAst::CreateTokenCopyFromSource { count: amount, .. }
@@ -1457,8 +1471,10 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
         | EffectAst::RemoveFromCombat { target }
         | EffectAst::TapOrUntap { target }
         | EffectAst::Connive { target }
+        | EffectAst::Detain { target }
         | EffectAst::Goad { target }
         | EffectAst::Transform { target }
+        | EffectAst::Convert { target }
         | EffectAst::Flip { target }
         | EffectAst::Regenerate { target }
         | EffectAst::ReturnToHand { target, .. }
@@ -1508,6 +1524,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             ..
         }
         | EffectAst::ForEachObject { filter, .. } => bind_unresolved_it_in_filter(filter, seed_tag),
+        EffectAst::Meld { .. } => 0,
         EffectAst::Enchant {
             filter: crate::object::AuraAttachmentFilter::Object(filter),
         } => bind_unresolved_it_in_filter(filter, seed_tag),
@@ -1739,9 +1756,9 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             replacements
         }
         EffectAst::MayMoveToZone { target, .. } => bind_unresolved_it_in_target(target, seed_tag),
-        EffectAst::Investigate { count } | EffectAst::Proliferate { count } => {
-            bind_unresolved_it_in_value(count, seed_tag)
-        }
+        EffectAst::Investigate { count }
+        | EffectAst::Populate { count, .. }
+        | EffectAst::Proliferate { count } => bind_unresolved_it_in_value(count, seed_tag),
         EffectAst::CreateTokenCopy { object, count, .. } => {
             bind_unresolved_it_in_object_ref_ast(object, seed_tag)
                 + bind_unresolved_it_in_value(count, seed_tag)

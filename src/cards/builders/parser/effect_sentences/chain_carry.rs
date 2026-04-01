@@ -70,11 +70,29 @@ pub(crate) fn looks_like_multi_create_chain_lexed(tokens: &[OwnedLexToken]) -> b
 pub(crate) fn parse_effect_chain_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    let clause_words = crate::cards::builders::parser::lexed_words(tokens);
+    if clause_words.starts_with(&["exile", "them"])
+        && let Some(meld_idx) = clause_words
+            .windows(4)
+            .position(|window| window == ["then", "meld", "them", "into"])
+    {
+        let result_words = &clause_words[meld_idx + 4..];
+        if result_words.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "missing meld result name (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+        return Ok(vec![EffectAst::Meld {
+            result_name: result_words.join(" "),
+            enters_tapped: false,
+            enters_attacking: false,
+        }]);
+    }
+
     if let Some(stripped) = strip_leading_instead_prefix_lexed(tokens) {
         return parse_effect_chain_lexed(stripped);
     }
-
-    let clause_words = crate::cards::builders::parser::lexed_words(tokens);
     let starts_with_each_opponent = clause_words.starts_with(&["each", "opponent"])
         || clause_words.starts_with(&["each", "opponents"]);
     let starts_with_each_player = clause_words.starts_with(&["each", "player"])
@@ -1656,6 +1674,7 @@ pub(crate) enum Verb {
     Scry,
     Discard,
     Transform,
+    Convert,
     Flip,
     Regenerate,
     Mill,
@@ -1681,5 +1700,6 @@ pub(crate) enum Verb {
     Shuffle,
     Reorder,
     Pay,
+    Detain,
     Goad,
 }

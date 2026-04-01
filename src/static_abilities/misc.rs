@@ -224,6 +224,42 @@ impl StaticAbilityKind for BoastTwiceEachTurn {
     }
 }
 
+/// "While voting, you may vote an additional time."
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct VoteAdditionalTimeWhileVoting;
+
+impl StaticAbilityKind for VoteAdditionalTimeWhileVoting {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::VoteAdditionalTimeWhileVoting
+    }
+
+    fn display(&self) -> String {
+        "While voting, you may vote an additional time.".to_string()
+    }
+
+    fn optional_additional_votes_while_voting(&self) -> u32 {
+        1
+    }
+}
+
+/// "While voting, you get an additional vote."
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct VoteAdditionalVoteWhileVoting;
+
+impl StaticAbilityKind for VoteAdditionalVoteWhileVoting {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::VoteAdditionalVoteWhileVoting
+    }
+
+    fn display(&self) -> String {
+        "While voting, you get an additional vote.".to_string()
+    }
+
+    fn additional_votes_while_voting(&self) -> u32 {
+        1
+    }
+}
+
 /// "Reveal the first card you draw each turn/on each of your turns."
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RevealFirstCardYouDrawEachTurn {

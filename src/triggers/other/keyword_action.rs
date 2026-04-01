@@ -2,6 +2,7 @@
 
 use crate::events::EventKind;
 use crate::events::other::{KeywordActionEvent, KeywordActionKind};
+use crate::target::ObjectFilter;
 use crate::target::PlayerFilter;
 use crate::triggers::TriggerEvent;
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
@@ -11,6 +12,7 @@ pub struct KeywordActionTrigger {
     pub action: KeywordActionKind,
     pub player: PlayerFilter,
     pub source_must_match: bool,
+    pub source_filter: Option<ObjectFilter>,
 }
 
 impl KeywordActionTrigger {
@@ -19,6 +21,7 @@ impl KeywordActionTrigger {
             action,
             player,
             source_must_match: false,
+            source_filter: None,
         }
     }
 
@@ -27,6 +30,20 @@ impl KeywordActionTrigger {
             action,
             player,
             source_must_match: true,
+            source_filter: None,
+        }
+    }
+
+    pub fn matching_object(
+        action: KeywordActionKind,
+        player: PlayerFilter,
+        source_filter: ObjectFilter,
+    ) -> Self {
+        Self {
+            action,
+            player,
+            source_must_match: false,
+            source_filter: Some(source_filter),
         }
     }
 }
@@ -52,6 +69,15 @@ impl TriggerMatcher for KeywordActionTrigger {
                 .map(|obj| obj.stable_id.object_id())
                 .unwrap_or(ctx.source_id);
             if e.source != ctx.source_id && e.source != ctx_stable_source {
+                return false;
+            }
+        }
+
+        if let Some(source_filter) = &self.source_filter {
+            let Some(source_object) = ctx.game.object(e.source) else {
+                return false;
+            };
+            if !source_filter.matches(source_object, &ctx.filter_ctx, ctx.game) {
                 return false;
             }
         }
@@ -92,6 +118,23 @@ impl TriggerMatcher for KeywordActionTrigger {
                 PlayerFilter::Opponent => "Whenever the Ring tempts an opponent".to_string(),
                 PlayerFilter::Any => "Whenever the Ring tempts a player".to_string(),
                 _ => "Whenever the Ring tempts a player".to_string(),
+            };
+        }
+        if self.action == KeywordActionKind::Exert
+            && let Some(source_filter) = &self.source_filter
+        {
+            return match &self.player {
+                PlayerFilter::You => {
+                    format!("Whenever you exert {}", source_filter.description())
+                }
+                PlayerFilter::Opponent => format!(
+                    "Whenever an opponent exerts {}",
+                    source_filter.description()
+                ),
+                PlayerFilter::Any => {
+                    format!("Whenever a player exerts {}", source_filter.description())
+                }
+                _ => format!("Whenever a player exerts {}", source_filter.description()),
             };
         }
 
@@ -204,5 +247,49 @@ mod tests {
         let trigger =
             KeywordActionTrigger::new(KeywordActionKind::RingTemptsYou, PlayerFilter::You);
         assert_eq!(trigger.display(), "Whenever the Ring tempts you");
+    }
+
+    #[test]
+    fn keyword_action_matching_object_rejects_land_exert_for_creature_trigger() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let creature_card =
+            crate::card::CardBuilder::new(crate::ids::CardId::from_raw(1), "Runner")
+                .card_types(vec![crate::types::CardType::Creature])
+                .build();
+        let creature_id =
+            game.create_object_from_card(&creature_card, alice, crate::zone::Zone::Battlefield);
+
+        let land_card = crate::card::CardBuilder::new(crate::ids::CardId::from_raw(2), "Arena")
+            .card_types(vec![crate::types::CardType::Land])
+            .build();
+        let land_id =
+            game.create_object_from_card(&land_card, alice, crate::zone::Zone::Battlefield);
+
+        let trigger = KeywordActionTrigger::matching_object(
+            KeywordActionKind::Exert,
+            PlayerFilter::You,
+            ObjectFilter::creature(),
+        );
+        let ctx = TriggerContext::for_source(creature_id, alice, &game);
+
+        let creature_event = TriggerEvent::new_with_provenance(
+            KeywordActionEvent::new(KeywordActionKind::Exert, alice, creature_id, 1),
+            crate::provenance::ProvNodeId::default(),
+        );
+        assert!(
+            trigger.matches(&creature_event, &ctx),
+            "creature exert should satisfy the creature-only exert trigger"
+        );
+
+        let land_event = TriggerEvent::new_with_provenance(
+            KeywordActionEvent::new(KeywordActionKind::Exert, alice, land_id, 1),
+            crate::provenance::ProvNodeId::default(),
+        );
+        assert!(
+            !trigger.matches(&land_event, &ctx),
+            "land exert should not satisfy a trigger that asks for exerting a creature"
+        );
     }
 }

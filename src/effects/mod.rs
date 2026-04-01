@@ -66,12 +66,12 @@ pub use executor_trait::{CostExecutableEffect, CostValidationError, EffectExecut
 
 // Re-export effect implementations
 pub use cards::{
-    ClashEffect, ConniveEffect, ConsultTopOfLibraryEffect, ConsultTopOfLibraryStopRule,
-    DiscardEffect, DiscardHandEffect, DrawCardsEffect, DrawForEachTaggedMatchingEffect,
-    ExileTopOfLibraryEffect, ExileUntilMatchEffect, LookAtHandEffect, LookAtTopCardsEffect,
-    MillEffect, PutTaggedRemainderOnLibraryBottomEffect, RearrangeLookedCardsInLibraryEffect,
-    RevealFromHandEffect, RevealTaggedEffect, RevealTopEffect, EachPlayerScryEffect, ScryEffect,
-    SearchLibraryEffect,
+    ClashEffect, ClashOpponentMode, ConniveEffect, ConsultTopOfLibraryEffect,
+    ConsultTopOfLibraryStopRule, DiscardEffect, DiscardHandEffect, DrawCardsEffect,
+    DrawForEachTaggedMatchingEffect, EachPlayerScryEffect, ExileTopOfLibraryEffect,
+    ExileUntilMatchEffect, FatesealEffect, LookAtHandEffect, LookAtTopCardsEffect, MillEffect,
+    PutTaggedRemainderOnLibraryBottomEffect, RearrangeLookedCardsInLibraryEffect,
+    RevealFromHandEffect, RevealTaggedEffect, RevealTopEffect, ScryEffect, SearchLibraryEffect,
     SearchLibrarySlot, SearchLibrarySlotsEffect, ShuffleGraveyardIntoLibraryEffect,
     ShuffleLibraryEffect, SurveilEffect,
 };
@@ -88,11 +88,13 @@ pub use composition::{
     ConditionalEffect, CounterAbilityEffect, DevourEffect, EmitGiftGivenEffect,
     EmitKeywordActionEffect, ExploreEffect, ForEachControllerOfTaggedEffect, ForEachObject,
     ForEachTaggedEffect, ForEachTaggedPlayerEffect, ForPlayersEffect, IfEffect, LocalRewriteEffect,
-    ManifestDreadEffect, MayEffect, OpenAttractionEffect, ReflexiveTriggerEffect,
-    RepeatProcessEffect, RepeatProcessPromptEffect, SequenceEffect, SupportEffect, TagAllEffect,
+    ManifestDreadEffect, ManifestTopCardOfLibraryEffect, MayEffect, OpenAttractionEffect,
+    PopulateEffect, ReflexiveTriggerEffect, RepeatEffectsEffect, RepeatProcessEffect,
+    RepeatProcessPromptEffect, SequenceEffect, SupportEffect, TagAllEffect,
     TagAttachedToSourceEffect, TagMatchingObjectsEffect, TagTriggeringDamageTargetEffect,
     TagTriggeringObjectEffect, TaggedEffect, TargetOnlyEffect, UnlessActionEffect,
-    UnlessPaysEffect, VoteEffect, VoteOption, WithIdEffect,
+    UnlessPaysEffect, VOTE_WINNERS_TAG, VOTED_OBJECTS_TAG, VoteChoice, VoteEffect, VoteOption,
+    VoteResult, WithIdEffect,
 };
 pub use continuous::{ApplyContinuousEffect, ExchangeTextBoxesEffect};
 pub use control::{ExchangeControlEffect, GainControlEffect, SharedTypeConstraint};
@@ -120,11 +122,11 @@ pub use mana::{
 };
 pub use permanents::{
     AttachObjectsEffect, AttachToEffect, BecomeBasicLandTypeChoiceEffect, BecomeColorChoiceEffect,
-    BecomeCreatureTypeChoiceEffect, BecomeSaddledUntilEotEffect, CrewCostEffect, EarthbendEffect,
-    EvolveEffect, FlipEffect, GrantObjectAbilityEffect, HanweirBattlementsMeldEffect,
-    MonstrosityEffect, NinjutsuCostEffect, NinjutsuEffect, PhaseOutEffect, RegenerateEffect,
-    RenownEffect, SaddleCostEffect, SoulbondPairEffect, TapEffect, TransformEffect,
-    UmbraArmorEffect, UnearthEffect, UntapEffect,
+    BecomeCreatureTypeChoiceEffect, BecomeSaddledUntilEotEffect, ConvertEffect, CrewCostEffect,
+    DetainEffect, EarthbendEffect, EvolveEffect, ExertCostEffect, FlipEffect,
+    GrantObjectAbilityEffect, MeldEffect, MonstrosityEffect, NinjutsuCostEffect, NinjutsuEffect,
+    PhaseOutEffect, RegenerateEffect, RenownEffect, SaddleCostEffect, SoulbondPairEffect,
+    TapEffect, TransformEffect, UmbraArmorEffect, UnearthEffect, UntapEffect,
 };
 pub use player::{
     AdditionalLandPlaysEffect, BecomeMonarchEffect, CascadeEffect, CastSourceEffect,
@@ -152,11 +154,11 @@ pub use tokens::{
     AmassEffect, CopyAttackTargetMode, CreateTokenCopyEffect, CreateTokenEffect, InvestigateEffect,
 };
 pub use zones::{
-    BattlefieldController, DestroyEffect, DestroyNoRegenerationEffect, ExchangeZonesEffect,
-    ExileEffect, ExileUntilDuration, ExileUntilEffect, HauntExileEffect, MayMoveToZoneEffect,
-    MoveToLibraryNthFromTopEffect, MoveToZoneEffect, PutOntoBattlefieldEffect,
+    BattlefieldController, DestroyEffect, DestroyNoRegenerationEffect, EachPlayerSacrificesEffect,
+    ExchangeZonesEffect, ExileEffect, ExileUntilDuration, ExileUntilEffect, HauntExileEffect,
+    MayMoveToZoneEffect, MoveToLibraryNthFromTopEffect, MoveToZoneEffect, PutOntoBattlefieldEffect,
     ReorderGraveyardEffect, ReorderLibraryTopEffect, ReturnAllToBattlefieldEffect,
     ReturnFromGraveyardOrExileToBattlefieldEffect, ReturnFromGraveyardToBattlefieldEffect,
-    ReturnFromGraveyardToHandEffect, ReturnToHandEffect, ShuffleObjectsIntoLibraryEffect, EachPlayerSacrificesEffect,
-    SacrificeEffect, SacrificeTargetEffect,
+    ReturnFromGraveyardToHandEffect, ReturnToHandEffect, SacrificeEffect, SacrificeTargetEffect,
+    ShuffleObjectsIntoLibraryEffect,
 };

@@ -18,6 +18,13 @@ pub struct ZoneChangeEvent {
     /// The objects changing zones. Usually one, but can be multiple for batch
     /// operations like "discard your hand" or "mill 3".
     pub objects: Vec<ObjectId>,
+    /// The destination-zone objects created by the zone change, if different
+    /// from `objects`.
+    ///
+    /// This is used for leave-the-battlefield moves, where the triggering
+    /// event needs to remember both the old permanent that left and the new
+    /// card objects that now exist in the destination zone.
+    pub result_objects: Vec<ObjectId>,
     /// The zone the objects are leaving
     pub from: Zone,
     /// The zone the objects are entering
@@ -40,6 +47,26 @@ impl ZoneChangeEvent {
     ) -> Self {
         Self {
             objects: vec![object],
+            result_objects: Vec::new(),
+            from,
+            to,
+            cause,
+            snapshot,
+        }
+    }
+
+    /// Create a zone change event with explicit destination objects.
+    pub fn with_results(
+        object: ObjectId,
+        result_objects: Vec<ObjectId>,
+        from: Zone,
+        to: Zone,
+        cause: EventCause,
+        snapshot: Option<ObjectSnapshot>,
+    ) -> Self {
+        Self {
+            objects: vec![object],
+            result_objects,
             from,
             to,
             cause,
@@ -51,10 +78,20 @@ impl ZoneChangeEvent {
     pub fn batch(objects: Vec<ObjectId>, from: Zone, to: Zone, cause: EventCause) -> Self {
         Self {
             objects,
+            result_objects: Vec::new(),
             from,
             to,
             cause,
             snapshot: None,
+        }
+    }
+
+    /// The destination-zone objects represented by this event.
+    pub fn destination_objects(&self) -> &[ObjectId] {
+        if self.result_objects.is_empty() {
+            &self.objects
+        } else {
+            &self.result_objects
         }
     }
 
@@ -110,11 +147,23 @@ impl GameEventType for ZoneChangeEvent {
     }
 
     fn affected_player(&self, game: &GameState) -> PlayerId {
-        // Use the first object's controller, or fall back to active player
-        self.objects
-            .first()
-            .and_then(|&id| game.object(id))
-            .map(|o| o.controller)
+        // Prefer the pre-change snapshot for LTB-style events, then the
+        // destination object, then the event object.
+        self.snapshot
+            .as_ref()
+            .map(|snapshot| snapshot.controller)
+            .or_else(|| {
+                self.destination_objects()
+                    .first()
+                    .and_then(|&id| game.object(id))
+                    .map(|o| o.controller)
+            })
+            .or_else(|| {
+                self.objects
+                    .first()
+                    .and_then(|&id| game.object(id))
+                    .map(|o| o.controller)
+            })
             .unwrap_or(game.turn.active_player)
     }
 

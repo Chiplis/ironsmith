@@ -5624,6 +5624,7 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 format!("{factor}*X")
             }
         }
+        Value::VoteCount(option) => format!("the number of {} votes", option.to_ascii_lowercase()),
         Value::Count(filter) => {
             format!(
                 "the number of {}",
@@ -7161,6 +7162,13 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 noun
             )
         }
+        Condition::VoteOptionGetsMoreVotes(option) => {
+            format!("{} gets more votes", option.to_ascii_lowercase())
+        }
+        Condition::VoteOptionGetsMoreVotesOrTied(option) => format!(
+            "{} gets more votes or the vote is tied",
+            option.to_ascii_lowercase()
+        ),
         Condition::PlayerControlsExactly {
             player,
             filter,
@@ -7622,11 +7630,19 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
 	                    return is_clause(&noun_phrase);
 	                }
 
-	                let stripped = strip_leading_article(&desc).to_ascii_lowercase();
-	                if stripped == "land" {
-	                    let noun = if card_context { "land card" } else { "land" };
-	                    return is_clause(noun);
-	                }
+                let stripped = strip_leading_article(&desc).to_ascii_lowercase();
+                if let Some((_, rest)) = stripped.split_once(" with mana value ") {
+                    let possessive = if subject == "it" {
+                        "its"
+                    } else {
+                        "that object's"
+                    };
+                    return format!("{possessive} mana value is {}", rest.trim());
+                }
+                if stripped == "land" {
+                    let noun = if card_context { "land card" } else { "land" };
+                    return is_clause(noun);
+                }
 	                if stripped == "creature" {
 	                    let noun = if card_context {
 	                        "creature card"
@@ -7774,6 +7790,7 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         }
         Condition::SourceIsEquipped => "this permanent is equipped".to_string(),
         Condition::SourceIsEnchanted => "this permanent is enchanted".to_string(),
+        Condition::SourceIsMonstrous => "this permanent is monstrous".to_string(),
         Condition::EnchantedPermanentIsCreature => {
             "enchanted permanent is a creature".to_string()
         }

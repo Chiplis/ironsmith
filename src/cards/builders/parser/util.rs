@@ -1636,6 +1636,9 @@ pub(crate) fn parse_subject(tokens: &[OwnedLexToken]) -> SubjectAst {
     {
         slice = &slice[1..];
     }
+    while slice.first().is_some_and(|word| *word == "each") {
+        slice = &slice[1..];
+    }
     if slice
         .first()
         .is_some_and(|word| parse_number_word_u32(word).is_some() || word.parse::<u32>().is_ok())
@@ -1681,6 +1684,10 @@ pub(crate) fn parse_subject(tokens: &[OwnedLexToken]) -> SubjectAst {
     }
 
     if slice.starts_with(&["that", "player"]) || slice.starts_with(&["the", "player"]) {
+        return SubjectAst::Player(PlayerAst::That);
+    }
+
+    if slice.starts_with(&["the", "voter"]) || slice.starts_with(&["voter"]) {
         return SubjectAst::Player(PlayerAst::That);
     }
 
@@ -2618,6 +2625,18 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
             .skip(1)
             .all(|word| *word == "instead" || *word == "this" || *word == "way")
     {
+        return Ok(wrap_target_count(
+            TargetAst::Tagged(TagKey::from(IT_TAG), span),
+            target_count,
+        ));
+    }
+    if matches!(
+        remaining_words.as_slice(),
+        ["token", "created", "this", "way"]
+            | ["tokens", "created", "this", "way"]
+            | ["that", "token", "created", "this", "way"]
+            | ["those", "tokens", "created", "this", "way"]
+    ) {
         return Ok(wrap_target_count(
             TargetAst::Tagged(TagKey::from(IT_TAG), span),
             target_count,

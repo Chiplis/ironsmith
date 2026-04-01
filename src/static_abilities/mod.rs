@@ -496,6 +496,27 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// Optional attack-cost prompt for abilities like Exert.
+    fn optional_attack_cost_prompt(
+        &self,
+        _game: &GameState,
+        _source: ObjectId,
+        _controller: PlayerId,
+    ) -> Option<crate::decisions::context::BooleanContext> {
+        None
+    }
+
+    /// Pays an optional non-mana attack cost after the player accepted it.
+    fn pay_optional_attack_cost(
+        &self,
+        _game: &mut GameState,
+        _source: ObjectId,
+        _controller: PlayerId,
+        _trigger_queue: &mut crate::triggers::TriggerQueue,
+    ) -> Option<Result<(), String>> {
+        None
+    }
+
     /// Returns the generic mana tax per attacking creature required to attack this ability's
     /// controller directly.
     fn generic_attack_tax_per_attacker_against_you(
@@ -806,6 +827,16 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
     /// Returns true if this causes entering tapped.
     fn enters_tapped(&self) -> bool {
         false
+    }
+
+    /// Returns the number of mandatory additional votes this ability grants while voting.
+    fn additional_votes_while_voting(&self) -> u32 {
+        0
+    }
+
+    /// Returns the number of optional additional votes this ability grants while voting.
+    fn optional_additional_votes_while_voting(&self) -> u32 {
+        0
     }
 
     /// Returns true if this is changeling (all creature types).
@@ -1150,6 +1181,26 @@ impl StaticAbility {
         self.0.pay_non_mana_attack_cost(game, source, controller)
     }
 
+    pub fn optional_attack_cost_prompt(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<crate::decisions::context::BooleanContext> {
+        self.0.optional_attack_cost_prompt(game, source, controller)
+    }
+
+    pub fn pay_optional_attack_cost(
+        &self,
+        game: &mut GameState,
+        source: ObjectId,
+        controller: PlayerId,
+        trigger_queue: &mut crate::triggers::TriggerQueue,
+    ) -> Option<Result<(), String>> {
+        self.0
+            .pay_optional_attack_cost(game, source, controller, trigger_queue)
+    }
+
     pub fn landwalk_kind(&self) -> Option<crate::static_abilities::LandwalkKind> {
         self.0.landwalk_kind()
     }
@@ -1357,6 +1408,14 @@ impl StaticAbility {
         self.0.enters_tapped()
     }
 
+    pub fn additional_votes_while_voting(&self) -> u32 {
+        self.0.additional_votes_while_voting()
+    }
+
+    pub fn optional_additional_votes_while_voting(&self) -> u32 {
+        self.0.optional_additional_votes_while_voting()
+    }
+
     pub fn is_changeling(&self) -> bool {
         self.0.is_changeling()
     }
@@ -1538,6 +1597,10 @@ impl StaticAbility {
         Self::new(CantAttack)
     }
 
+    pub fn cant_attack_its_owner() -> Self {
+        Self::new(CantAttackItsOwner)
+    }
+
     pub fn cant_attack_unless_controller_cast_creature_spell_this_turn() -> Self {
         Self::new(CantAttackUnlessControllerCastCreatureSpellThisTurn)
     }
@@ -1552,6 +1615,18 @@ impl StaticAbility {
 
     pub fn must_attack() -> Self {
         Self::new(MustAttack)
+    }
+
+    pub fn exert_attack(
+        only_if_not_exerted_this_turn: bool,
+        linked_trigger: Option<crate::ability::TriggeredAbility>,
+        display: impl Into<String>,
+    ) -> Self {
+        Self::new(ExertAttack::new(
+            only_if_not_exerted_this_turn,
+            linked_trigger,
+            display,
+        ))
     }
 
     pub fn cant_attack_unless_defending_player_controls_land_subtype(
@@ -1701,6 +1776,14 @@ impl StaticAbility {
 
     pub fn boast_twice_each_turn() -> Self {
         Self::new(BoastTwiceEachTurn)
+    }
+
+    pub fn vote_additional_time_while_voting() -> Self {
+        Self::new(VoteAdditionalTimeWhileVoting)
+    }
+
+    pub fn vote_additional_vote_while_voting() -> Self {
+        Self::new(VoteAdditionalVoteWhileVoting)
     }
 
     pub fn may_choose_not_to_untap_during_untap_step(subject: impl Into<String>) -> Self {

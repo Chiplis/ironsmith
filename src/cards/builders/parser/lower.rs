@@ -30,6 +30,7 @@ use super::clause_support::{
 };
 use super::compile_support::{
     collect_tag_spans_from_effects_with_context,
+    materialize_prepared_effects_with_trigger_context,
     trigger_binds_player_reference_context as rewrite_trigger_binds_player_reference_context,
 };
 use super::effect_pipeline::{
@@ -1354,14 +1355,12 @@ fn normalize_rewrite_parsed_ability(
         }
         Some(effects_ast) => match (&parsed.ability.kind, parsed.trigger_spec.as_ref()) {
             (AbilityKind::Triggered(_), Some(trigger)) => {
-                Some(NormalizedPreparedAbility::Triggered {
-                    trigger: trigger.clone(),
-                    prepared: rewrite_prepare_triggered_effects_for_lowering(
-                        trigger,
-                        effects_ast,
-                        parsed.reference_imports.clone(),
-                    )?,
-                })
+                let (trigger, prepared) = rewrite_prepare_triggered_effects_for_lowering(
+                    trigger.clone(),
+                    effects_ast,
+                    parsed.reference_imports.clone(),
+                )?;
+                Some(NormalizedPreparedAbility::Triggered { trigger, prepared })
             }
             (AbilityKind::Activated(_), _) => Some(NormalizedPreparedAbility::Activated(
                 rewrite_prepare_effects_with_trigger_context_for_lowering(
@@ -1397,8 +1396,8 @@ fn normalize_rewrite_line_ast(
                 effects,
                 max_triggers_per_turn,
             } => {
-                let prepared = rewrite_prepare_triggered_effects_for_lowering(
-                    &trigger,
+                let (trigger, prepared) = rewrite_prepare_triggered_effects_for_lowering(
+                    trigger,
                     &effects,
                     ReferenceImports::default(),
                 )?;
@@ -2268,6 +2267,18 @@ fn lower_rewrite_static_to_chunk_impl(
             chosen_option_label,
         );
     }
+    if line.text == "while voting, you may vote an additional time." {
+        return wrap_chosen_option_static_chunk(
+            LineAst::StaticAbility(StaticAbility::vote_additional_time_while_voting().into()),
+            chosen_option_label,
+        );
+    }
+    if line.text == "while voting, you get an additional vote." {
+        return wrap_chosen_option_static_chunk(
+            LineAst::StaticAbility(StaticAbility::vote_additional_vote_while_voting().into()),
+            chosen_option_label,
+        );
+    }
 
     let static_parse_text = rewrite_keyword_dash_parse_text_for_lowering(line.text.as_str());
     let lexed = lexed_tokens(static_parse_text.as_str(), line.info.line_index)?;
@@ -2543,6 +2554,14 @@ fn rewrite_keyword_dash_parse_text_for_lowering(text: &str) -> String {
     if let Some((label, body)) = trimmed.split_once('—') {
         let label = label.trim();
         let body = body.trim();
+        let normalized_label = label.to_ascii_lowercase();
+        if matches!(
+            normalized_label.as_str(),
+            "will of the council" | "council's dilemma" | "councils dilemma" | "secret council"
+        ) && !body.is_empty()
+        {
+            return body.to_string();
+        }
         if !label.is_empty() && preserve_keyword_prefix_for_parse(label) && !body.is_empty() {
             return format!("{label} {body}");
         }
@@ -2792,7 +2811,113 @@ fn lower_rewrite_keyword_to_chunk_impl(
                     line.info.raw_line
                 ))
             }),
+        super::RewriteKeywordLineKind::ExertAttack => lower_exert_attack_keyword_to_chunk(line),
     }
+}
+
+fn strip_exert_reminder_suffix_for_lowering(text: &str) -> &str {
+    let trimmed = text.trim();
+    for suffix in [
+        " (an exerted creature won't untap during your next untap step.)",
+        " (an exerted permanent won't untap during your next untap step.)",
+        " (it won't untap during your next untap step.)",
+    ] {
+        if let Some(stripped) = trimmed.strip_suffix(suffix) {
+            return stripped.trim_end();
+        }
+    }
+    trimmed
+}
+
+fn normalize_exert_followup_source_references(source_ref: &str, followup: &str) -> String {
+    let trimmed = followup.trim();
+    let lower = trimmed.to_ascii_lowercase();
+
+    for pronoun in ["he ", "she ", "they "] {
+        if let Some(rest) = lower.strip_prefix(pronoun) {
+            return format!("this creature {}", rest.trim_start());
+        }
+    }
+
+    let normalized_source = source_ref.trim().to_ascii_lowercase();
+    if !normalized_source.is_empty()
+        && let Some(rest) = lower.strip_prefix(&(normalized_source + " "))
+    {
+        return format!("this creature {}", rest.trim_start());
+    }
+
+    trimmed.to_string()
+}
+
+fn lower_exert_attack_keyword_to_chunk(
+    line: &super::RewriteKeywordLine,
+) -> Result<LineAst, CardTextError> {
+    let normalized = strip_exert_reminder_suffix_for_lowering(line.text.as_str());
+    let normalized = normalized.trim_end_matches('.');
+    let (only_if_not_exerted_this_turn, body) = if let Some(rest) = normalized
+        .strip_prefix("if this creature hasn't been exerted this turn, ")
+    {
+        (true, rest)
+    } else {
+        (false, normalized)
+    };
+
+    let Some(body) = body.strip_prefix("you may exert ") else {
+        return Err(CardTextError::ParseError(format!(
+            "rewrite keyword lowering could not parse exert attack line '{}'",
+            line.info.raw_line
+        )));
+    };
+
+    let (head, followup_text) = if let Some((head, followup)) = body.split_once(". when you do, ") {
+        (head, Some(followup.trim()))
+    } else {
+        (body.trim(), None)
+    };
+
+    let Some((source_ref, attack_clause)) = head.split_once(" as ") else {
+        return Err(CardTextError::ParseError(format!(
+            "rewrite keyword lowering could not parse exert attack head '{}'",
+            line.info.raw_line
+        )));
+    };
+    let attack_clause = attack_clause.trim();
+    if !(attack_clause.ends_with(" attack") || attack_clause.ends_with(" attacks")) {
+        return Err(CardTextError::ParseError(format!(
+            "rewrite keyword lowering expected attack clause in '{}'",
+            line.info.raw_line
+        )));
+    }
+
+    let linked_trigger = if let Some(followup_text) = followup_text {
+        let normalized_followup =
+            normalize_exert_followup_source_references(source_ref, followup_text);
+        let effects_ast =
+            parse_effect_sentences_from_text(normalized_followup.as_str(), line.info.line_index)?;
+        let prepared = rewrite_prepare_effects_with_trigger_context_for_lowering(
+            None,
+            &effects_ast,
+            ReferenceImports::default(),
+        )?;
+        let lowered = materialize_prepared_effects_with_trigger_context(&prepared)?;
+        Some(crate::ability::TriggeredAbility {
+            trigger: crate::triggers::Trigger::state_based("When you do"),
+            effects: lowered.effects,
+            choices: lowered.choices,
+            intervening_if: None,
+        })
+    } else {
+        None
+    };
+
+    Ok(LineAst::StaticAbility(
+        StaticAbility::exert_attack(
+            only_if_not_exerted_this_turn,
+            linked_trigger,
+            line.info.raw_line.clone(),
+        )
+        .into(),
+    ))
 }
 
 fn rewrite_copy_count_to_times_paid_label_rewrite(effects: &mut [EffectAst], label: &str) {

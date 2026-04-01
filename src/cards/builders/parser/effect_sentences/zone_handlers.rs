@@ -98,6 +98,35 @@ fn split_chosen_creature_type_qualifier(
     None
 }
 
+fn split_chosen_this_way_qualifier(tokens: &[OwnedLexToken]) -> Option<(Vec<OwnedLexToken>, bool)> {
+    let words = words(tokens);
+    let suffixes: [(&[&str], bool); 7] = [
+        (&["not", "chosen", "this", "way"], true),
+        (&["that", "weren't", "chosen", "this", "way"], true),
+        (&["that", "werent", "chosen", "this", "way"], true),
+        (&["that", "were", "not", "chosen", "this", "way"], true),
+        (&["chosen", "this", "way"], false),
+        (&["that", "were", "chosen", "this", "way"], false),
+        (&["that", "was", "chosen", "this", "way"], false),
+    ];
+
+    for (suffix, excluded) in suffixes {
+        if words.len() < suffix.len() || &words[words.len() - suffix.len()..] != suffix {
+            continue;
+        }
+        let cutoff = words.len() - suffix.len();
+        let token_cutoff = if cutoff == 0 {
+            0
+        } else {
+            token_index_for_word_index(tokens, cutoff).unwrap_or(tokens.len())
+        };
+        let base_tokens = trim_commas(&tokens[..token_cutoff]).to_vec();
+        return Some((base_tokens, excluded));
+    }
+
+    None
+}
+
 pub(crate) fn parse_tap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     if tokens.is_empty() {
         return Err(CardTextError::ParseError(
@@ -669,6 +698,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         destination_words.contains(&"graveyard") || destination_words.contains(&"graveyards");
     let tapped = destination_words.contains(&"tapped");
     let transformed = destination_words_full.contains(&"transformed");
+    let converted = destination_words_full.contains(&"converted");
     let return_controller = if destination_words
         .windows(3)
         .any(|window| window == ["under", "your", "control"])
@@ -785,13 +815,21 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
                 delayed_timing,
             ));
         }
+        let (return_filter_tokens, chosen_this_way_excluded) =
+            if let Some((base_tokens, excluded)) =
+                split_chosen_this_way_qualifier(return_filter_tokens)
+            {
+                (base_tokens, Some(excluded))
+            } else {
+                (return_filter_tokens.to_vec(), None)
+            };
         let (base_filter_tokens, chosen_creature_type, excluded_chosen_creature_type) =
             if let Some((base_tokens, chosen_type, excluded_chosen_type)) =
-                split_chosen_creature_type_qualifier(return_filter_tokens)
+                split_chosen_creature_type_qualifier(&return_filter_tokens)
             {
                 (base_tokens, chosen_type, excluded_chosen_type)
             } else {
-                (return_filter_tokens.to_vec(), false, false)
+                (return_filter_tokens, false, false)
             };
         let mut filter = parse_object_filter(&base_filter_tokens, false)?;
         filter.chosen_creature_type |= chosen_creature_type;
@@ -800,6 +838,13 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
             if !filter.excluded_subtypes.contains(&subtype) {
                 filter.excluded_subtypes.push(subtype);
             }
+        }
+        if let Some(excluded) = chosen_this_way_excluded {
+            filter = if excluded {
+                filter.not_tagged(TagKey::from(IT_TAG))
+            } else {
+                filter.match_tagged(TagKey::from(IT_TAG), TaggedOpbjectRelation::IsTaggedObject)
+            };
         }
         let effect = if is_battlefield {
             EffectAst::ReturnAllToBattlefield { filter, tapped }
@@ -837,6 +882,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
             target,
             tapped,
             transformed,
+            converted,
             controller: return_controller,
         }
     } else if is_graveyard {
@@ -1555,6 +1601,41 @@ pub(crate) fn parse_transform(tokens: &[OwnedLexToken]) -> Result<EffectAst, Car
         Err(err) => return Err(err),
     };
     Ok(EffectAst::Transform { target })
+}
+
+pub(crate) fn parse_convert(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+    if tokens.is_empty() {
+        return Ok(EffectAst::Convert {
+            target: TargetAst::Source(None),
+        });
+    }
+    let target_words = words(tokens);
+    if target_words == ["it"]
+        || target_words == ["this"]
+        || target_words == ["this", "creature"]
+        || target_words == ["this", "land"]
+        || target_words == ["this", "permanent"]
+    {
+        return Ok(EffectAst::Convert {
+            target: TargetAst::Source(span_from_tokens(tokens)),
+        });
+    }
+    let target = match parse_target_phrase(tokens) {
+        Ok(target) => target,
+        Err(_)
+            if target_words.len() <= 3
+                && !target_words.iter().any(|word| {
+                    matches!(
+                        *word,
+                        "target" | "another" | "other" | "each" | "all" | "that" | "those"
+                    )
+                }) =>
+        {
+            TargetAst::Source(span_from_tokens(tokens))
+        }
+        Err(err) => return Err(err),
+    };
+    Ok(EffectAst::Convert { target })
 }
 
 pub(crate) fn parse_flip(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {

@@ -15,6 +15,7 @@ mod player_sacrifices;
 mod player_searches_library;
 mod player_shuffles_library;
 mod transforms;
+mod wins_clash;
 
 pub use becomes_tapped::BecomesTappedTrigger;
 pub use becomes_untapped::BecomesUntappedTrigger;
@@ -31,3 +32,4 @@ pub use player_sacrifices::PlayerSacrificesTrigger;
 pub use player_searches_library::PlayerSearchesLibraryTrigger;
 pub use player_shuffles_library::PlayerShufflesLibraryTrigger;
 pub use transforms::TransformsTrigger;
+pub use wins_clash::WinsClashTrigger;

@@ -281,6 +281,7 @@ pub fn execute_untap_step(game: &mut GameState) {
 pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl DecisionMaker) {
     use crate::ability::AbilityKind;
     use crate::decisions::context::BooleanContext;
+    use crate::effect::{Restriction, Until};
     use crate::static_abilities::StaticAbilityId;
 
     let active_player = game.turn.active_player;
@@ -382,6 +383,35 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
         }
         // Always remove summoning sickness at untap step
         game.remove_summoning_sickness(id);
+    }
+
+    let mut consumed_next_untap_objects = std::collections::HashSet::new();
+    for effect in &mut game.restriction_effects {
+        if matches!(effect.duration, Until::ControllersNextUntapStep)
+            && effect.controller == active_player
+        {
+            effect.consumed_next_untap = true;
+            if let Restriction::Untap(filter) = &effect.restriction
+                && let Some(object_id) = filter.specific
+            {
+                consumed_next_untap_objects.insert(object_id);
+            }
+        }
+    }
+    let current_turn = game.turn.turn_number;
+    game.restriction_effects
+        .retain(|effect| !effect.is_expired(current_turn));
+    for object_id in consumed_next_untap_objects {
+        let still_blocked_by_restriction = game.restriction_effects.iter().any(|effect| {
+            effect.is_active(game, current_turn)
+                && matches!(
+                    &effect.restriction,
+                    Restriction::Untap(filter) if filter.specific == Some(object_id)
+                )
+        });
+        if !still_blocked_by_restriction {
+            game.cant_effects.cant_untap.remove(&object_id);
+        }
     }
 
     // No priority during untap step
@@ -627,9 +657,11 @@ mod tests {
     use super::*;
     use crate::ability::Ability;
     use crate::card::CardBuilder;
+    use crate::effect::{Restriction, Until};
     use crate::ids::{CardId, ObjectId};
     use crate::object::Object;
     use crate::static_abilities::StaticAbility;
+    use crate::target::ObjectFilter;
     use crate::types::CardType;
     use crate::zone::Zone;
 
@@ -832,6 +864,50 @@ mod tests {
         assert!(
             !game.is_tapped(cant_untap_artifact),
             "controller-only cant-untap restriction should not block another player's untap step"
+        );
+    }
+
+    #[test]
+    fn execute_untap_step_consumes_controllers_next_untap_restriction_once() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let relic = create_artifact(&mut game, "Exerted Relic", alice, vec![]);
+        game.tap(relic);
+        game.add_restriction_effect(
+            Restriction::untap(ObjectFilter::specific(relic)),
+            Until::ControllersNextUntapStep,
+            relic,
+            alice,
+        );
+        game.update_cant_effects();
+
+        let mut dm = AlwaysYesDecisionMaker;
+
+        game.turn.active_player = bob;
+        game.turn.phase = Phase::Beginning;
+        game.turn.step = Some(Step::Untap);
+        execute_untap_step_with(&mut game, &mut dm);
+        assert!(
+            game.is_tapped(relic),
+            "another player's untap step should not untap Alice's tapped artifact"
+        );
+
+        game.next_turn();
+        execute_untap_step_with(&mut game, &mut dm);
+        assert!(
+            game.is_tapped(relic),
+            "controller's next untap step should keep the artifact tapped once"
+        );
+
+        game.next_turn();
+        execute_untap_step_with(&mut game, &mut dm);
+
+        game.next_turn();
+        execute_untap_step_with(&mut game, &mut dm);
+        assert!(
+            !game.is_tapped(relic),
+            "the restriction should be consumed after that untap step"
         );
     }
 

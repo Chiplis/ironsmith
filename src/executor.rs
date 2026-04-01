@@ -11,6 +11,7 @@ use crate::color::Color;
 use crate::cost::OptionalCostsPaid;
 use crate::decision::DecisionMaker;
 use crate::effect::{Effect, EffectId, EffectOutcome, Value};
+use crate::effects::VoteResult;
 use crate::events::cause::EventCause;
 use crate::game_state::{GameState, TargetAssignment};
 use crate::ids::{ObjectId, PlayerId};
@@ -122,6 +123,8 @@ pub struct ExecutionContext<'a> {
     pub x_value: Option<u32>,
     /// Outcomes of previously executed effects (for WithId/If).
     pub effect_outcomes: HashMap<EffectId, EffectOutcome>,
+    /// The most recent vote result(s) available to this resolution path.
+    pub vote_results: HashMap<ObjectId, VoteResult>,
     /// Current player in a ForEachOpponent/ForEachPlayer iteration.
     pub iterated_player: Option<PlayerId>,
     /// Current object in a ForEach iteration.
@@ -245,6 +248,7 @@ impl<'a> ExecutionContext<'a> {
             target_assignments: Vec::new(),
             x_value: None,
             effect_outcomes: HashMap::new(),
+            vote_results: HashMap::new(),
             iterated_player: None,
             iterated_object: None,
             decision_maker,
@@ -289,6 +293,7 @@ impl<'a> ExecutionContext<'a> {
             target_assignments: Vec::new(),
             x_value: None,
             effect_outcomes: HashMap::new(),
+            vote_results: HashMap::new(),
             iterated_player: None,
             iterated_object: None,
             decision_maker: dm,
@@ -323,6 +328,7 @@ impl<'a> ExecutionContext<'a> {
             target_assignments: self.target_assignments,
             x_value: self.x_value,
             effect_outcomes: self.effect_outcomes,
+            vote_results: self.vote_results,
             iterated_player: self.iterated_player,
             iterated_object: self.iterated_object,
             decision_maker: dm,

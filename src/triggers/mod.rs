@@ -395,6 +395,11 @@ impl Trigger {
         Self::new(ThisAttacksWithNOthersTrigger::new(other_count))
     }
 
+    /// Create a "when this creature and exactly N other creatures attack" trigger.
+    pub fn this_attacks_with_exact_n_others(other_count: usize) -> Self {
+        Self::new(ThisAttacksWithNOthersTrigger::exact(other_count))
+    }
+
     /// Create a "when [filter] attacks" trigger.
     pub fn attacks(filter: ObjectFilter) -> Self {
         Self::new(AttacksTrigger::new(filter))
@@ -838,6 +843,15 @@ impl Trigger {
         Self::new(KeywordActionTrigger::new(action, player))
     }
 
+    /// Create a "whenever [player] [keyword action] [matching object]" trigger.
+    pub fn keyword_action_matching_object(
+        action: crate::events::KeywordActionKind,
+        player: PlayerFilter,
+        filter: ObjectFilter,
+    ) -> Self {
+        Self::new(KeywordActionTrigger::matching_object(action, player, filter))
+    }
+
     /// Create a "whenever [player] [keyword action] this card" trigger.
     pub fn keyword_action_from_source(
         action: crate::events::KeywordActionKind,
@@ -849,6 +863,11 @@ impl Trigger {
     /// Create a "whenever [player] expend N" trigger.
     pub fn expend(amount: u32, player: PlayerFilter) -> Self {
         Self::new(ExpendTrigger::new(player, amount))
+    }
+
+    /// Create a "whenever [player] win a clash" trigger.
+    pub fn wins_clash(player: PlayerFilter) -> Self {
+        Self::new(WinsClashTrigger::new(player))
     }
 
     // === Special Triggers ===

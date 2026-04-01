@@ -98,8 +98,13 @@ fn attach_copy_cost_reduction_to_effects(
 
 fn parse_same_sentence_copy_and_may_cast_copy(
     tokens: &[OwnedLexToken],
-) -> Result<Option<(Vec<EffectAst>, crate::cards::builders::parser::activation_and_restrictions::MayCastTaggedSpec)>, CardTextError>
-{
+) -> Result<
+    Option<(
+        Vec<EffectAst>,
+        crate::cards::builders::parser::activation_and_restrictions::MayCastTaggedSpec,
+    )>,
+    CardTextError,
+> {
     let Some(split_idx) = tokens
         .iter()
         .position(|token| token.is_word("and") || token.is_word("then"))
@@ -4066,6 +4071,7 @@ pub(crate) fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst
         | EffectAst::CounterUnlessPays { target, .. }
         | EffectAst::Explore { target }
         | EffectAst::Connive { target }
+        | EffectAst::Detain { target }
         | EffectAst::Goad { target }
         | EffectAst::Tap { target }
         | EffectAst::Untap { target }
@@ -4079,6 +4085,7 @@ pub(crate) fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst
         | EffectAst::ExileUntilSourceLeaves { target, .. }
         | EffectAst::LookAtHand { target }
         | EffectAst::Transform { target }
+        | EffectAst::Convert { target }
         | EffectAst::Flip { target }
         | EffectAst::Regenerate { target }
         | EffectAst::PhaseOut { target }
@@ -4449,6 +4456,9 @@ pub(crate) fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
         | EffectAst::Connive {
             target: effect_target,
         }
+        | EffectAst::Detain {
+            target: effect_target,
+        }
         | EffectAst::Goad {
             target: effect_target,
         }
@@ -4491,6 +4501,9 @@ pub(crate) fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
             target: effect_target,
         }
         | EffectAst::Transform {
+            target: effect_target,
+        }
+        | EffectAst::Convert {
             target: effect_target,
         }
         | EffectAst::Flip {
@@ -4868,6 +4881,11 @@ fn apply_unapplied_token_copy_followup(
             abilities: vec![GrantedAbilityAst::KeywordAction(KeywordAction::Haste)],
             duration: Until::EndOfTurn,
         }],
+        TokenCopyFollowup::EnterTappedAndAttacking => {
+            return Err(CardTextError::ParseError(
+                "standalone 'enters tapped and attacking' follow-up requires a preceding token-copy, populate, or meld effect".to_string(),
+            ));
+        }
         TokenCopyFollowup::SacrificeAtNextEndStep => vec![EffectAst::DelayedUntilNextEndStep {
             player: PlayerFilter::Any,
             effects: vec![EffectAst::Sacrifice {
@@ -4911,6 +4929,8 @@ pub(crate) fn try_apply_token_copy_followup(
     match last {
         EffectAst::CreateTokenCopy {
             has_haste,
+            enters_tapped,
+            enters_attacking,
             exile_at_end_of_combat,
             sacrifice_at_next_end_step,
             exile_at_next_end_step,
@@ -4918,6 +4938,17 @@ pub(crate) fn try_apply_token_copy_followup(
         }
         | EffectAst::CreateTokenCopyFromSource {
             has_haste,
+            enters_tapped,
+            enters_attacking,
+            exile_at_end_of_combat,
+            sacrifice_at_next_end_step,
+            exile_at_next_end_step,
+            ..
+        }
+        | EffectAst::Populate {
+            has_haste,
+            enters_tapped,
+            enters_attacking,
             exile_at_end_of_combat,
             sacrifice_at_next_end_step,
             exile_at_next_end_step,
@@ -4925,6 +4956,10 @@ pub(crate) fn try_apply_token_copy_followup(
         } => {
             match followup {
                 TokenCopyFollowup::HasHaste => *has_haste = true,
+                TokenCopyFollowup::EnterTappedAndAttacking => {
+                    *enters_tapped = true;
+                    *enters_attacking = true;
+                }
                 TokenCopyFollowup::SacrificeAtNextEndStep => *sacrifice_at_next_end_step = true,
                 TokenCopyFollowup::ExileAtNextEndStep => *exile_at_next_end_step = true,
                 TokenCopyFollowup::ExileAtEndOfCombat => *exile_at_end_of_combat = true,
@@ -4932,6 +4967,32 @@ pub(crate) fn try_apply_token_copy_followup(
                 | TokenCopyFollowup::SacrificeAtEndOfCombat => return Ok(false),
             }
             Ok(true)
+        }
+        EffectAst::Meld {
+            enters_tapped,
+            enters_attacking,
+            ..
+        } => match followup {
+            TokenCopyFollowup::EnterTappedAndAttacking => {
+                *enters_tapped = true;
+                *enters_attacking = true;
+                Ok(true)
+            }
+            _ => Ok(false),
+        },
+        EffectAst::Conditional {
+            if_true, if_false, ..
+        }
+        | EffectAst::SelfReplacement {
+            if_true, if_false, ..
+        } => {
+            if try_apply_token_copy_followup(if_true.as_mut_slice(), followup)? {
+                return Ok(true);
+            }
+            if try_apply_token_copy_followup(if_false.as_mut_slice(), followup)? {
+                return Ok(true);
+            }
+            Ok(false)
         }
         EffectAst::CreateTokenWithMods {
             exile_at_end_of_combat,
@@ -4942,6 +5003,7 @@ pub(crate) fn try_apply_token_copy_followup(
                 TokenCopyFollowup::ExileAtEndOfCombat => *exile_at_end_of_combat = true,
                 TokenCopyFollowup::SacrificeAtEndOfCombat => *sacrifice_at_end_of_combat = true,
                 TokenCopyFollowup::HasHaste
+                | TokenCopyFollowup::EnterTappedAndAttacking
                 | TokenCopyFollowup::GainHasteUntilEndOfTurn
                 | TokenCopyFollowup::SacrificeAtNextEndStep
                 | TokenCopyFollowup::ExileAtNextEndStep => return Ok(false),

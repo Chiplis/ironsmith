@@ -11,7 +11,7 @@ use crate::zone::Zone;
 
 use super::{
     BattlefieldEntryOptions, BattlefieldEntryOutcome, finalize_zone_change_move,
-    move_to_battlefield_with_options,
+    maybe_prompt_for_split_result_order, move_to_battlefield_with_options,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -162,25 +162,40 @@ impl EffectExecutor for MoveToZoneEffect {
                         continue;
                     }
 
-                    let result =
+                    let mut result =
                         finalize_zone_change_move(game, object_id, final_zone, ctx.cause.clone());
-                    if let Some(new_id) = result.new_object_id {
-                        if final_zone == Zone::Exile {
-                            game.add_exiled_with_source_link(ctx.source, new_id);
-                        }
-                        if final_zone == Zone::Library && !self.to_top {
-                            if let Some(obj) = game.object(new_id) {
-                                if let Some(player) = game.player_mut(obj.owner) {
-                                    if let Some(pos) =
-                                        player.library.iter().position(|id| *id == new_id)
-                                    {
-                                        player.library.remove(pos);
-                                        player.library.insert(0, new_id);
+                    if !result.new_object_ids.is_empty() {
+                        for &new_id in &result.new_object_ids {
+                            if final_zone == Zone::Exile {
+                                game.add_exiled_with_source_link(ctx.source, new_id);
+                            }
+                            if final_zone == Zone::Library && !self.to_top {
+                                if let Some(obj) = game.object(new_id) {
+                                    if let Some(player) = game.player_mut(obj.owner) {
+                                        if let Some(pos) =
+                                            player.library.iter().position(|id| *id == new_id)
+                                        {
+                                            player.library.remove(pos);
+                                            player.library.insert(0, new_id);
+                                        }
                                     }
                                 }
                             }
                         }
-                        moved_ids.push(new_id);
+                        if final_zone == Zone::Library && from_zone == Zone::Battlefield {
+                            maybe_prompt_for_split_result_order(
+                                game,
+                                &mut ctx.decision_maker,
+                                final_zone,
+                                &ctx.cause,
+                                &mut result,
+                            );
+                            game.record_zone_change_results(
+                                object_id,
+                                result.new_object_ids.clone(),
+                            );
+                        }
+                        moved_ids.extend(result.new_object_ids.iter().copied());
                         continue;
                     }
 

@@ -126,18 +126,18 @@ impl ExileEffect {
                     return Ok(Some(crate::effect::OutcomeStatus::Prevented));
                 }
                 EventOutcome::Proceed(result) => {
-                    if let Some(new_id) = result.new_object_id
-                        && result.final_zone == Zone::Exile
-                    {
-                        if face_down {
-                            game.set_face_down(new_id);
-                            if let Some(viewers) = ctx.face_down_exile_viewers_for(object_id) {
-                                for &viewer in viewers {
-                                    game.grant_face_down_exile_view(new_id, viewer);
+                    if result.final_zone == Zone::Exile {
+                        for &new_id in &result.new_object_ids {
+                            if face_down {
+                                game.set_face_down(new_id);
+                                if let Some(viewers) = ctx.face_down_exile_viewers_for(object_id) {
+                                    for &viewer in viewers {
+                                        game.grant_face_down_exile_view(new_id, viewer);
+                                    }
                                 }
                             }
+                            game.add_exiled_with_source_link(ctx.source, new_id);
                         }
-                        game.add_exiled_with_source_link(ctx.source, new_id);
                     }
                     return Ok(None); // Successfully exiled
                 }
@@ -285,17 +285,21 @@ impl EffectExecutor for ExileEffect {
                     &additional_effects,
                 ) {
                     EventOutcome::Proceed(result) => {
-                        if let Some(new_id) = result.new_object_id {
-                            if self.face_down && result.final_zone == Zone::Exile {
-                                game.set_face_down(new_id);
-                                if let Some(viewers) = ctx.face_down_exile_viewers_for(object_id) {
-                                    for &viewer in viewers {
-                                        game.grant_face_down_exile_view(new_id, viewer);
+                        if !result.new_object_ids.is_empty() {
+                            for &new_id in &result.new_object_ids {
+                                if self.face_down && result.final_zone == Zone::Exile {
+                                    game.set_face_down(new_id);
+                                    if let Some(viewers) =
+                                        ctx.face_down_exile_viewers_for(object_id)
+                                    {
+                                        for &viewer in viewers {
+                                            game.grant_face_down_exile_view(new_id, viewer);
+                                        }
                                     }
                                 }
-                            }
-                            if result.final_zone == Zone::Exile {
-                                game.add_exiled_with_source_link(ctx.source, new_id);
+                                if result.final_zone == Zone::Exile {
+                                    game.add_exiled_with_source_link(ctx.source, new_id);
+                                }
                             }
                             Ok(true)
                         } else {

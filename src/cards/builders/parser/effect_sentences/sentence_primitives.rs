@@ -10,6 +10,7 @@ use super::super::util::{
 use super::super::util::{parse_target_phrase, parse_value, span_from_tokens};
 use super::sentence_helpers::*;
 use super::verb_handlers::parse_half_rounded_down_draw_count_words;
+use super::zone_counter_helpers::parse_convert;
 #[allow(unused_imports)]
 use super::{
     bind_implicit_player_context, parse_after_turn_sentence, parse_become_clause,
@@ -68,6 +69,9 @@ pub(crate) struct SentencePrimitiveIndex {
 }
 
 fn sentence_primitive_head_hints(name: &'static str) -> Vec<&'static str> {
+    if name == "transform-with-followup" {
+        return vec!["transform", "convert"];
+    }
     if name == "shared-color-target-fanout" {
         return vec!["target", "radiance"];
     }
@@ -1273,6 +1277,7 @@ pub(crate) fn parse_return_with_counters_on_it_sentence(
         target: parse_target_phrase(&target_tokens)?,
         tapped,
         transformed: false,
+        converted: false,
         controller: battlefield_controller,
     }];
     let tagged_target = TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens));
@@ -1473,6 +1478,7 @@ pub(crate) fn clone_return_effect_with_subtype(
             target,
             tapped,
             transformed,
+            converted,
             controller,
         } => {
             let mut cloned_target = target.clone();
@@ -1481,6 +1487,7 @@ pub(crate) fn clone_return_effect_with_subtype(
                     target: cloned_target,
                     tapped: *tapped,
                     transformed: *transformed,
+                    converted: *converted,
                     controller: *controller,
                 },
             )
@@ -3026,6 +3033,7 @@ pub(crate) fn parse_sentence_return_multiple_targets(
                     target,
                     tapped,
                     transformed: false,
+                    converted: false,
                     controller: ReturnControllerAst::Preserve,
                 });
             } else {
@@ -3224,10 +3232,12 @@ pub(crate) fn parse_sentence_earthbend(
 pub(crate) fn parse_sentence_transform_with_followup(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if !tokens
-        .first()
-        .is_some_and(|token| token.is_word("transform"))
-    {
+    let Some(first) = tokens.first() else {
+        return Ok(None);
+    };
+    let is_transform = first.is_word("transform");
+    let is_convert = first.is_word("convert");
+    if !is_transform && !is_convert {
         return Ok(None);
     }
 
@@ -3245,7 +3255,11 @@ pub(crate) fn parse_sentence_transform_with_followup(
     }
 
     let target_tokens = trim_commas(&head_tokens[1..]);
-    let transform = parse_transform(&target_tokens)?;
+    let transform = if is_transform {
+        parse_transform(&target_tokens)?
+    } else {
+        parse_convert(&target_tokens)?
+    };
     if tail_tokens.is_empty() {
         return Ok(Some(vec![transform]));
     }
@@ -4905,7 +4919,6 @@ pub(crate) fn parse_sentence_fallback_mechanic_marker(
 
     let is_match = clause_words.as_slice() == ["its", "still", "a", "land"]
         || clause_words.as_slice() == ["it", "still", "a", "land"]
-        || clause_words.starts_with(&["manifest", "the", "top", "card", "of", "your", "library"])
         || clause_words.starts_with(&["you", "choose", "one", "of", "them"])
         || clause_words.starts_with(&[
             "you", "may", "put", "a", "land", "card", "from", "among", "them", "into", "your",

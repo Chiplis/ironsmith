@@ -29,6 +29,7 @@ use crate::zone::Zone;
 pub(crate) enum TokenCopyFollowup {
     HasHaste,
     GainHasteUntilEndOfTurn,
+    EnterTappedAndAttacking,
     SacrificeAtNextEndStep,
     ExileAtNextEndStep,
     ExileAtEndOfCombat,

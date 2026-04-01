@@ -1,13 +1,8 @@
 //! Hanweir Battlements card definition.
 
 use super::CardDefinitionBuilder;
-use crate::ability::{Ability, AbilityKind, ActivatedAbility, ActivationTiming};
 use crate::cards::CardDefinition;
-use crate::cost::TotalCost;
-use crate::costs::Cost;
-use crate::effect::Effect;
 use crate::ids::CardId;
-use crate::mana::{ManaCost, ManaSymbol};
 use crate::types::CardType;
 
 /// Hanweir Battlements
@@ -17,54 +12,25 @@ use crate::types::CardType;
 /// {3}{R}{R}, {T}: If you both own and control this land and a creature named
 /// Hanweir Garrison, exile them, then meld them into Hanweir, the Writhing Township.
 pub fn hanweir_battlements() -> CardDefinition {
-    let mut definition = CardDefinitionBuilder::new(CardId::new(), "Hanweir Battlements")
+    CardDefinitionBuilder::new(CardId::new(), "Hanweir Battlements")
         .card_types(vec![CardType::Land])
-        .parse_text("{T}: Add {C}.\n{R}, {T}: Target creature gains haste until end of turn.")
-        .expect("Card text should be supported");
-
-    definition.abilities.push(Ability {
-        kind: AbilityKind::Activated(ActivatedAbility {
-            mana_cost: TotalCost::from_costs(vec![
-                Cost::mana(ManaCost::from_pips(vec![
-                    vec![ManaSymbol::Generic(3)],
-                    vec![ManaSymbol::Red],
-                    vec![ManaSymbol::Red],
-                ])),
-                Cost::tap(),
-            ]),
-            effects: crate::resolution::ResolutionProgram::from_effects(vec![
-                Effect::hanweir_battlements_meld(),
-            ]),
-            choices: vec![],
-            timing: ActivationTiming::AnyTime,
-            additional_restrictions: vec![],
-            activation_restrictions: vec![],
-            mana_output: None,
-            activation_condition: None,
-            mana_usage_restrictions: vec![],
-        }),
-        functional_zones: vec![crate::zone::Zone::Battlefield],
-        text: Some(
-            "{3}{R}{R}, {T}: If you both own and control this land and a creature named \
-                 Hanweir Garrison, exile them, then meld them into Hanweir, the Writhing Township."
-                .to_string(),
-        ),
-    });
-    definition.card.oracle_text =
-        "{T}: Add {C}.\n{R}, {T}: Target creature gains haste until end of turn.\n{3}{R}{R}, {T}: If you both own and control this land and a creature named Hanweir Garrison, exile them, then meld them into Hanweir, the Writhing Township.".to_string();
-
-    definition
+        .parse_text(
+            "{T}: Add {C}.\n{R}, {T}: Target creature gains haste until end of turn.\n{3}{R}{R}, {T}: If you both own and control this land and a creature named Hanweir Garrison, exile them, then meld them into Hanweir, the Writhing Township.",
+        )
+        .expect("Card text should be supported")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ability::AbilityKind;
     use crate::card::{CardBuilder, PowerToughness};
     use crate::decision::AutoPassDecisionMaker;
     use crate::events::EventKind;
     use crate::executor::{ExecutionContext, ResolvedTarget, execute_effect};
     use crate::game_state::GameState;
     use crate::ids::{CardId, ObjectId, PlayerId};
+    use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::Object;
     use crate::target::ChooseSpec;
     use crate::types::Subtype;

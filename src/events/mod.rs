@@ -101,12 +101,11 @@ pub use combat::{
     CreatureBecameBlockedEvent, CreatureBlockedEvent,
 };
 pub use other::{
-    BecameMonstrousEvent, CardDiscardedEvent, CardRevealedEvent, CardsDrawnEvent,
+    BecameMonstrousEvent, CardDiscardedEvent, CardRevealedEvent, CardsDrawnEvent, ConvertedEvent,
     CounterPlacedEvent, GiftGivenEvent, KeywordActionEvent, KeywordActionKind, LandPlayedEvent,
     MarkerChangeType, MarkersChangedEvent, PermanentTappedEvent, PermanentUntappedEvent,
     PlayerVote, PlayersFinishedVotingEvent, SearchLibraryEvent, ShuffleLibraryEvent,
-    StateTriggerEvent,
-    TransformedEvent, TurnedFaceUpEvent,
+    StateTriggerEvent, TransformedEvent, TurnedFaceUpEvent,
 };
 pub use phase::{
     BeginningOfCombatEvent, BeginningOfDrawStepEvent, BeginningOfEndStepEvent,
@@ -258,6 +257,21 @@ impl Event {
     ) -> Self {
         Self::new_with_provenance(
             ZoneChangeEvent::with_cause(object, from, to, cause, snapshot),
+            ProvNodeId::default(),
+        )
+    }
+
+    /// Create a zone change event with explicit destination objects.
+    pub fn zone_change_with_results(
+        object: ObjectId,
+        result_objects: Vec<ObjectId>,
+        from: Zone,
+        to: Zone,
+        cause: EventCause,
+        snapshot: Option<ObjectSnapshot>,
+    ) -> Self {
+        Self::new_with_provenance(
+            ZoneChangeEvent::with_results(object, result_objects, from, to, cause, snapshot),
             ProvNodeId::default(),
         )
     }

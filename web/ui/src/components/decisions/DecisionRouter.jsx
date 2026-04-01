@@ -6,6 +6,7 @@ import SelectObjectsDecision from "./SelectObjectsDecision";
 import SelectOptionsDecision from "./SelectOptionsDecision";
 import NumberDecision from "./NumberDecision";
 import TextInputDecision from "./TextInputDecision";
+import { useGame } from "@/context/GameContext";
 import { decisionKey } from "@/lib/decision-key";
 
 export default function DecisionRouter({
@@ -21,9 +22,11 @@ export default function DecisionRouter({
   showStripSummary = true,
   onCombatActionChange = null,
 }) {
+  const { state } = useGame();
   if (!decision) return null;
 
   const key = decisionKey(decision);
+  const combatKey = `${key}|${state?.snapshot_id ?? ""}`;
 
   switch (decision.kind) {
     case "priority":
@@ -45,7 +48,7 @@ export default function DecisionRouter({
     case "attackers":
       return (
         <AttackersDecision
-          key={key}
+          key={combatKey}
           decision={decision}
           canAct={canAct}
           compact={combatInline}
@@ -55,7 +58,7 @@ export default function DecisionRouter({
     case "blockers":
       return (
         <BlockersDecision
-          key={key}
+          key={combatKey}
           decision={decision}
           canAct={canAct}
           compact={combatInline}

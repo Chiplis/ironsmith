@@ -1,12 +1,12 @@
-//! Scry effect implementation.
+//! Scry and fateseal effect implementation.
 
-use crate::decisions::{ScrySpec, make_decision};
+use crate::decisions::{ScrySpec, ask_choose_one, make_decision};
 use crate::effect::{EffectOutcome, Value};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
 use crate::events::{KeywordActionEvent, KeywordActionKind};
-use crate::filter::FilterContext;
 use crate::executor::{ExecutionContext, ExecutionError};
+use crate::filter::FilterContext;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::target::PlayerFilter;
@@ -77,12 +77,47 @@ fn reorder_cards_top_to_bottom(
             (id, name)
         })
         .collect();
-    let order_ctx =
-        crate::decisions::context::OrderContext::new(player_id, Some(ctx.source), description, items);
+    let order_ctx = crate::decisions::context::OrderContext::new(
+        player_id,
+        Some(ctx.source),
+        description,
+        items,
+    );
     normalize_order_response(
         ctx.decision_maker.decide_order(game, &order_ctx),
         cards_top_to_bottom,
     )
+}
+
+fn choose_fateseal_opponent(
+    game: &GameState,
+    ctx: &mut ExecutionContext,
+    fatesealer: PlayerId,
+) -> Option<PlayerId> {
+    let opponents: Vec<PlayerId> = players_in_turn_order(game)
+        .into_iter()
+        .filter(|player_id| *player_id != fatesealer)
+        .collect();
+    match opponents.len() {
+        0 => None,
+        1 => opponents.first().copied(),
+        _ => {
+            let options: Vec<(String, PlayerId)> = opponents
+                .iter()
+                .filter_map(|player_id| {
+                    game.player(*player_id)
+                        .map(|player| (player.name.clone(), *player_id))
+                })
+                .collect();
+            ask_choose_one(
+                game,
+                &mut ctx.decision_maker,
+                fatesealer,
+                ctx.source,
+                &options,
+            )
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -238,14 +273,84 @@ impl EffectExecutor for ScryEffect {
         Ok(
             EffectOutcome::count(arrangement.total_looked as i32).with_event(
                 TriggerEvent::new_with_provenance(
-                KeywordActionEvent::new(
-                    KeywordActionKind::Scry,
-                    player_id,
-                    ctx.source,
-                    arrangement.total_looked as u32,
+                    KeywordActionEvent::new(
+                        KeywordActionKind::Scry,
+                        player_id,
+                        ctx.source,
+                        arrangement.total_looked as u32,
+                    ),
+                    ctx.provenance,
                 ),
-                ctx.provenance,
-            )),
+            ),
+        )
+    }
+}
+
+/// Effect that lets a player fateseal N cards.
+///
+/// Per rule 701.29a, the player looks at the top N cards of an opponent's
+/// library, then puts any number of them on the bottom of that library and the
+/// rest on top in any order.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FatesealEffect {
+    /// Number of cards to fateseal.
+    pub count: Value,
+    /// The player who fateseals.
+    pub player: PlayerFilter,
+}
+
+impl FatesealEffect {
+    /// Create a new fateseal effect.
+    pub fn new(count: impl Into<Value>, player: PlayerFilter) -> Self {
+        Self {
+            count: count.into(),
+            player,
+        }
+    }
+
+    /// The controller fateseals N.
+    pub fn you(count: impl Into<Value>) -> Self {
+        Self::new(count, PlayerFilter::You)
+    }
+}
+
+impl EffectExecutor for FatesealEffect {
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        let fatesealer = resolve_player_filter(game, &self.player, ctx)?;
+        let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
+
+        if count == 0 {
+            return Ok(EffectOutcome::count(0));
+        }
+        let Some(opponent) = choose_fateseal_opponent(game, ctx, fatesealer) else {
+            return Ok(EffectOutcome::count(0));
+        };
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
+
+        let arrangement = choose_scry_arrangement(game, ctx, opponent, count);
+        if arrangement.total_looked == 0 {
+            return Ok(EffectOutcome::count(0));
+        }
+        apply_scry_arrangement(game, &arrangement);
+
+        Ok(
+            EffectOutcome::count(arrangement.total_looked as i32).with_event(
+                TriggerEvent::new_with_provenance(
+                    KeywordActionEvent::new(
+                        KeywordActionKind::Fateseal,
+                        fatesealer,
+                        ctx.source,
+                        arrangement.total_looked as u32,
+                    ),
+                    ctx.provenance,
+                ),
+            ),
         )
     }
 }
@@ -338,11 +443,18 @@ mod tests {
         crate::tests::test_helpers::setup_two_player_game()
     }
 
-    fn add_library_card(
-        game: &mut GameState,
-        owner: PlayerId,
-        name: &str,
-    ) -> ObjectId {
+    fn setup_three_player_game() -> GameState {
+        GameState::new(
+            vec![
+                "Alice".to_string(),
+                "Bob".to_string(),
+                "Charlie".to_string(),
+            ],
+            20,
+        )
+    }
+
+    fn add_library_card(game: &mut GameState, owner: PlayerId, name: &str) -> ObjectId {
         let id = game.new_object_id();
         let card = crate::card::CardBuilder::new(CardId::from_raw(id.0 as u32), name)
             .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
@@ -366,6 +478,7 @@ mod tests {
         partitions: std::collections::HashMap<PlayerId, Vec<ObjectId>>,
         top_orders: std::collections::HashMap<PlayerId, Vec<ObjectId>>,
         bottom_orders: std::collections::HashMap<PlayerId, Vec<ObjectId>>,
+        option_choices: std::collections::HashMap<PlayerId, Vec<usize>>,
         partition_calls: Vec<PlayerId>,
     }
 
@@ -375,6 +488,7 @@ mod tests {
                 partitions: std::collections::HashMap::new(),
                 top_orders: std::collections::HashMap::new(),
                 bottom_orders: std::collections::HashMap::new(),
+                option_choices: std::collections::HashMap::new(),
                 partition_calls: Vec::new(),
             }
         }
@@ -411,6 +525,24 @@ mod tests {
                 .cloned()
                 .unwrap_or_else(|| ctx.items.iter().map(|(id, _)| *id).collect())
         }
+
+        fn decide_options(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            self.option_choices
+                .get(&ctx.player)
+                .cloned()
+                .unwrap_or_else(|| {
+                    ctx.options
+                        .iter()
+                        .filter(|option| option.legal)
+                        .map(|option| option.index)
+                        .take(ctx.min)
+                        .collect()
+                })
+        }
     }
 
     #[test]
@@ -427,13 +559,11 @@ mod tests {
 
         assert_eq!(outcome.value, crate::effect::OutcomeValue::Count(0));
         assert!(outcome.events.is_empty());
-        assert_eq!(library_names_bottom_to_top(&game, alice), vec!["A".to_string()]);
-        assert!(
-            game.player(alice)
-                .expect("alice")
-                .library
-                .contains(&a)
+        assert_eq!(
+            library_names_bottom_to_top(&game, alice),
+            vec!["A".to_string()]
         );
+        assert!(game.player(alice).expect("alice").library.contains(&a));
     }
 
     #[test]
@@ -491,6 +621,90 @@ mod tests {
             top_library_cards_top_to_bottom(&game, alice, 3),
             vec![a, c, b]
         );
+    }
+
+    #[test]
+    fn fateseal_reorders_opponents_library_and_emits_fateseal_event() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let a = add_library_card(&mut game, bob, "A");
+        let b = add_library_card(&mut game, bob, "B");
+        let c = add_library_card(&mut game, bob, "C");
+        let source = game.new_object_id();
+        let mut decision_maker = ScriptedScryDecisionMaker::new();
+        decision_maker.partitions.insert(bob, vec![c]);
+        decision_maker.top_orders.insert(bob, vec![b]);
+        decision_maker.bottom_orders.insert(bob, vec![c]);
+
+        let outcome = {
+            let mut ctx = ExecutionContext::new(source, alice, &mut decision_maker);
+            FatesealEffect::you(2)
+                .execute(&mut game, &mut ctx)
+                .expect("fateseal should resolve")
+        };
+
+        assert_eq!(outcome.value, crate::effect::OutcomeValue::Count(2));
+        assert_eq!(
+            library_names_bottom_to_top(&game, bob),
+            vec!["C".to_string(), "A".to_string(), "B".to_string()]
+        );
+        assert_eq!(
+            top_library_cards_top_to_bottom(&game, bob, 3),
+            vec![b, a, c]
+        );
+        assert_eq!(outcome.events.len(), 1);
+        let event = outcome.events[0]
+            .downcast::<KeywordActionEvent>()
+            .expect("expected keyword action event");
+        assert_eq!(event.action, KeywordActionKind::Fateseal);
+        assert_eq!(event.player, alice);
+        assert_eq!(event.source, source);
+        assert_eq!(event.amount, 2);
+        assert!(game.player(bob).expect("bob").library.contains(&a));
+    }
+
+    #[test]
+    fn fateseal_multiplayer_chooses_an_opponent_without_targeting() {
+        let mut game = setup_three_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let charlie = PlayerId::from_index(2);
+        let _b1 = add_library_card(&mut game, bob, "B1");
+        let b2 = add_library_card(&mut game, bob, "B2");
+        let c1 = add_library_card(&mut game, charlie, "C1");
+        let _c2 = add_library_card(&mut game, charlie, "C2");
+        let source = game.new_object_id();
+        let mut decision_maker = ScriptedScryDecisionMaker::new();
+        decision_maker.option_choices.insert(alice, vec![1]);
+        decision_maker.partitions.insert(charlie, vec![c1]);
+        decision_maker.bottom_orders.insert(charlie, vec![c1]);
+
+        let outcome = {
+            let mut ctx = ExecutionContext::new(source, alice, &mut decision_maker);
+            FatesealEffect::you(2)
+                .execute(&mut game, &mut ctx)
+                .expect("fateseal should resolve in multiplayer")
+        };
+
+        assert_eq!(outcome.value, crate::effect::OutcomeValue::Count(2));
+        assert_eq!(
+            library_names_bottom_to_top(&game, bob),
+            vec!["B1".to_string(), "B2".to_string()]
+        );
+        assert_eq!(
+            library_names_bottom_to_top(&game, charlie),
+            vec!["C1".to_string(), "C2".to_string()]
+        );
+        assert_eq!(
+            top_library_cards_top_to_bottom(&game, bob, 2),
+            vec![b2, _b1]
+        );
+        assert_eq!(
+            top_library_cards_top_to_bottom(&game, charlie, 2),
+            vec![_c2, c1]
+        );
+        assert_eq!(decision_maker.partition_calls, vec![charlie]);
     }
 
     #[test]

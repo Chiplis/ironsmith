@@ -48,9 +48,11 @@ impl EffectExecutor for ShuffleGraveyardIntoLibraryEffect {
 
         game.shuffle_player_library(player_id);
 
-        Ok(EffectOutcome::resolved().with_event(TriggerEvent::new_with_provenance(
-            ShuffleLibraryEvent::new(player_id, ctx.cause.clone()),
-            ctx.provenance,
-        )))
+        Ok(
+            EffectOutcome::resolved().with_event(TriggerEvent::new_with_provenance(
+                ShuffleLibraryEvent::new(player_id, ctx.cause.clone()),
+                ctx.provenance,
+            )),
+        )
     }
 }

@@ -1025,6 +1025,7 @@ pub(crate) enum TriggerSpec {
         display: String,
     },
     ThisAttacks,
+    ThisAttacksWithExactlyNOthers(u32),
     ThisAttacksAndIsntBlocked,
     ThisAttacksWhileSaddled,
     Attacks(ObjectFilter),
@@ -1188,9 +1189,13 @@ pub(crate) enum TriggerSpec {
     KeywordAction {
         action: crate::events::KeywordActionKind,
         player: PlayerFilter,
+        source_filter: Option<ObjectFilter>,
     },
     KeywordActionFromSource {
         action: crate::events::KeywordActionKind,
+        player: PlayerFilter,
+    },
+    WinsClash {
         player: PlayerFilter,
     },
     Expend {
@@ -1380,6 +1385,15 @@ pub(crate) enum PredicateAst {
     PlayerHasMoreCardsInHandThanYou {
         player: PlayerAst,
     },
+    VoteOptionGetsMoreVotes {
+        option: String,
+    },
+    VoteOptionGetsMoreVotesOrTied {
+        option: String,
+    },
+    NoVoteObjectsMatched {
+        filter: ObjectFilter,
+    },
     PlayerCastSpellsThisTurnOrMore {
         player: PlayerAst,
         count: u32,
@@ -1398,6 +1412,7 @@ pub(crate) enum PredicateAst {
     SourceAttackedOrBlockedThisTurn,
     SourceIsInZone(Zone),
     YourTurn,
+    YouAttackedWithExactlyNOtherCreaturesThisCombat(u32),
     CreatureDiedThisTurn,
     CreatureDiedThisTurnOrMore(u32),
     PermanentLeftBattlefieldUnderYourControlThisTurn,
@@ -1681,7 +1696,20 @@ pub(crate) enum EffectAst {
         target: TargetAst,
     },
     OpenAttraction,
+    ManifestTopCardOfLibrary {
+        player: PlayerAst,
+    },
     ManifestDread,
+    Populate {
+        count: Value,
+        enters_tapped: bool,
+        enters_attacking: bool,
+        has_haste: bool,
+        sacrifice_at_next_end_step: bool,
+        exile_at_next_end_step: bool,
+        exile_at_end_of_combat: bool,
+        sacrifice_at_end_of_combat: bool,
+    },
     Bolster {
         amount: u32,
     },
@@ -1727,6 +1755,10 @@ pub(crate) enum EffectAst {
     },
     AddManaImprintedColors,
     Scry {
+        count: Value,
+        player: PlayerAst,
+    },
+    Fateseal {
         count: Value,
         player: PlayerAst,
     },
@@ -1997,10 +2029,21 @@ pub(crate) enum EffectAst {
         target: TargetAst,
     },
     ConniveIterated,
+    Detain {
+        target: TargetAst,
+    },
     Goad {
         target: TargetAst,
     },
     Transform {
+        target: TargetAst,
+    },
+    Meld {
+        result_name: String,
+        enters_tapped: bool,
+        enters_attacking: bool,
+    },
+    Convert {
         target: TargetAst,
     },
     Flip {
@@ -2024,6 +2067,7 @@ pub(crate) enum EffectAst {
         target: TargetAst,
         tapped: bool,
         transformed: bool,
+        converted: bool,
         controller: ReturnControllerAst,
     },
     MoveToZone {
@@ -2538,6 +2582,10 @@ pub(crate) enum EffectAst {
     },
     VoteStart {
         options: Vec<String>,
+    },
+    VoteStartObjects {
+        filter: ObjectFilter,
+        count: ChoiceCount,
     },
     VoteOption {
         option: String,
@@ -6149,8 +6197,8 @@ mod effect_parse_tests {
         AddManaOfAnyColorEffect, AddManaOfAnyOneColorEffect, AddManaOfLandProducedTypesEffect,
         AddScaledManaEffect, CreateTokenCopyEffect, DestroyEffect, DiscardEffect, DrawCardsEffect,
         EnergyCountersEffect, ExchangeControlEffect, ExchangeValuesEffect, ExchangeZonesEffect,
-        ExileInsteadOfGraveyardEffect, ForEachObject, ForPlayersEffect, GrantBySpecEffect,
-        LookAtHandEffect, ModifyPowerToughnessForEachEffect, PutCountersEffect,
+        ExileInsteadOfGraveyardEffect, FatesealEffect, ForEachObject, ForPlayersEffect,
+        GrantBySpecEffect, LookAtHandEffect, ModifyPowerToughnessForEachEffect, PutCountersEffect,
         RemoveCountersEffect, RemoveUpToAnyCountersEffect, ReturnFromGraveyardToBattlefieldEffect,
         SacrificeEffect, SetBasePowerToughnessEffect, SetLifeTotalEffect, SkipCombatPhasesEffect,
         SkipDrawStepEffect, SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect, SurveilEffect,
@@ -7311,7 +7359,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .parse_text("Draw a card for each tapped creature target opponent controls.")
             .expect("draw-for-each clause should parse");
 
-        let effects = def.spell_effect.expect("spell effect");
+        let effects = def.spell_effect.as_ref().expect("spell effect");
         let draw = effects
             .iter()
             .find_map(|effect| effect.downcast_ref::<DrawCardsEffect>())
@@ -7814,6 +7862,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         use crate::executor::{ExecutionContext, execute_effect};
         use crate::ids::PlayerId;
 
+        crate::cards::clear_runtime_custom_cards();
+
         let def = CardDefinitionBuilder::new(CardId::new(), "Daybound Runtime Probe")
             .card_types(vec![CardType::Creature])
             .power_toughness(PowerToughness::fixed(2, 2))
@@ -7832,11 +7882,29 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         let mut game =
             crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
         let alice = PlayerId::from_index(0);
-        let source_card = crate::card::CardBuilder::new(CardId::from_raw(70140), "Werewolf")
-            .card_types(vec![CardType::Creature])
-            .power_toughness(PowerToughness::fixed(2, 2))
-            .build();
-        let source = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+        let mut back_def =
+            CardDefinitionBuilder::new(CardId::from_raw(70141), "Nightbound Runtime Probe")
+                .card_types(vec![CardType::Creature])
+                .subtypes(vec![Subtype::Werewolf])
+                .power_toughness(PowerToughness::fixed(4, 4))
+                .parse_text("Trample")
+                .expect("night face should parse");
+        back_def.card.other_face = Some(CardId::from_raw(70140));
+        back_def.card.other_face_name = Some("Daybound Runtime Probe".to_string());
+        back_def.card.linked_face_layout = LinkedFaceLayout::TransformLike;
+        crate::cards::register_runtime_custom_card(back_def);
+        let mut source_def =
+            CardDefinitionBuilder::new(CardId::from_raw(70140), "Daybound Runtime Probe")
+                .card_types(vec![CardType::Creature])
+                .subtypes(vec![Subtype::Human, Subtype::Werewolf])
+                .power_toughness(PowerToughness::fixed(2, 2))
+                .parse_text("Daybound")
+                .expect("day face should parse");
+        source_def.card.other_face = Some(CardId::from_raw(70141));
+        source_def.card.other_face_name = Some("Nightbound Runtime Probe".to_string());
+        source_def.card.linked_face_layout = LinkedFaceLayout::TransformLike;
+        crate::cards::register_runtime_custom_card(source_def.clone());
+        let source = game.create_object_from_definition(&source_def, alice, Zone::Battlefield);
 
         // Day side: no spells last turn transforms to night side.
         let mut exec_ctx = ExecutionContext::new_default(source, alice);
@@ -7847,6 +7915,12 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         assert!(
             game.is_face_down(source),
             "daybound runtime should transform the source permanent"
+        );
+        assert_eq!(
+            game.object(source)
+                .expect("transformed source should exist")
+                .name,
+            "Nightbound Runtime Probe"
         );
 
         // Night side: one spell does not transform back.
@@ -7860,6 +7934,12 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             game.is_face_down(source),
             "night side should stay transformed when fewer than two spells were cast last turn"
         );
+        assert_eq!(
+            game.object(source)
+                .expect("night source should still exist")
+                .name,
+            "Nightbound Runtime Probe"
+        );
 
         // Night side: two spells last turn transforms back to day side.
         game.spells_cast_last_turn_total = 2;
@@ -7871,6 +7951,12 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         assert!(
             !game.is_face_down(source),
             "night side should transform back when two or more spells were cast last turn"
+        );
+        assert_eq!(
+            game.object(source)
+                .expect("returned source should exist")
+                .name,
+            "Daybound Runtime Probe"
         );
     }
 
@@ -11052,11 +11138,207 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .parse_text("Transform this creature.")
             .expect("parse transform");
 
-        let effects = def.spell_effect.expect("spell effect");
+        let effects = def.spell_effect.as_ref().expect("spell effect");
         let debug = format!("{effects:?}");
         assert!(
             debug.contains("TransformEffect"),
             "should include transform effect, got {debug}"
+        );
+    }
+
+    #[test]
+    fn parse_convert_from_text() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Autobot Shift")
+            .parse_text("Convert this creature.")
+            .expect("parse convert");
+
+        let effects = def.spell_effect.as_ref().expect("spell effect");
+        let debug = format!("{effects:?}");
+        assert!(
+            debug.contains("ConvertEffect"),
+            "should include convert effect, got {debug}"
+        );
+    }
+
+    #[test]
+    fn parse_meld_from_text() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Meld Variant")
+            .parse_text(
+                "If you both own and control this creature and a creature named Midnight Scavengers, exile them, then meld them into Chittering Host. It enters tapped and attacking.",
+            )
+            .expect("parse meld");
+
+        let effects = def.spell_effect.as_ref().expect("spell effect");
+        let debug = format!("{effects:?}");
+        assert!(
+            debug.contains("MeldEffect"),
+            "should include meld effect, got {debug}"
+        );
+
+        let rendered = crate::compiled_text::compiled_lines(&def)
+            .join(" ")
+            .to_ascii_lowercase();
+        assert!(
+            rendered.contains("meld them into chittering host")
+                && rendered.contains("it enters tapped and attacking"),
+            "expected meld rendering with combat followup, got {rendered}"
+        );
+    }
+
+    #[test]
+    fn parse_populate_from_text() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Wake Variant")
+            .parse_text("Populate.")
+            .expect("parse populate");
+
+        assert!(
+            crate::compiled_text::compiled_lines(&def)
+                .join(" ")
+                .contains("Populate"),
+            "expected compiled text to retain populate"
+        );
+    }
+
+    #[test]
+    fn parse_populate_x_times_from_text() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Flowering Variant")
+            .parse_text("Populate X times.")
+            .expect("parse populate x times");
+
+        let rendered = crate::compiled_text::compiled_lines(&def).join(" ");
+        assert!(
+            rendered.contains("Populate X times"),
+            "expected populate x rendering, got {rendered}"
+        );
+    }
+
+    #[test]
+    fn parse_monstrosity_static_designation_from_text() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Fleecemane Variant")
+            .parse_text(
+                "{3}{G}{W}: Monstrosity 1.\nAs long as this creature is monstrous, it has hexproof and indestructible.",
+            )
+            .expect("parse monstrous static designation");
+
+        let rendered = crate::compiled_text::compiled_lines(&def).join(" ");
+        assert!(
+            rendered.contains("Monstrosity 1")
+                && rendered.contains("as long as this creature is monstrous"),
+            "expected compiled text to preserve monstrous condition, got {rendered}"
+        );
+
+        let abilities_debug = format!("{:?}", def.abilities);
+        assert!(
+            abilities_debug.contains("SourceIsMonstrous")
+                && abilities_debug.contains("Hexproof")
+                && abilities_debug.contains("Indestructible"),
+            "expected monstrous-conditioned hexproof and indestructible grants, got {abilities_debug}"
+        );
+    }
+
+    #[test]
+    fn parse_monstrosity_trigger_with_up_to_x_targets_from_text() {
+        use crate::ability::AbilityKind;
+
+        let def = CardDefinitionBuilder::new(CardId::new(), "Vitality Variant")
+            .parse_text(
+                "{X}{W}{W}: Monstrosity X.\nWhen this creature becomes monstrous, put a lifelink counter on each of up to X target creatures.",
+            )
+            .expect("parse monstrosity x trigger");
+
+        let triggered = def
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Triggered(triggered) => Some(triggered),
+                _ => None,
+            })
+            .expect("expected becomes monstrous trigger");
+
+        assert!(
+            triggered.trigger.display().contains("becomes monstrous"),
+            "expected becomes monstrous trigger, got {}",
+            triggered.trigger.display()
+        );
+        assert!(
+            triggered
+                .choices
+                .first()
+                .is_some_and(|choice| choice.count().is_up_to_dynamic_x()),
+            "expected trigger to carry an up-to-X target choice, got {:?}",
+            triggered.choices
+        );
+    }
+
+    #[test]
+    fn parse_populate_created_this_way_followups_from_text() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Iteration Variant")
+            .parse_text(
+                "At the beginning of combat on your turn, populate. The token created this way gains haste. Sacrifice it at the beginning of the next end step.",
+            )
+            .expect("parse populate followups");
+
+        let rendered = crate::compiled_text::compiled_lines(&def)
+            .join(" ")
+            .to_ascii_lowercase();
+        assert!(
+            rendered.contains("populate")
+                && rendered.contains("gains haste")
+                && rendered.contains("sacrifice it at the beginning of the next end step"),
+            "expected populate followup rendering, got {rendered}"
+        );
+    }
+
+    #[test]
+    fn parse_populate_enters_tapped_and_attacking_from_text() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Ghired Variant")
+            .parse_text(
+                "Whenever this creature attacks, populate. The token enters tapped and attacking.",
+            )
+            .expect("parse populate enters attacking followup");
+
+        let rendered = crate::compiled_text::compiled_lines(&def)
+            .join(" ")
+            .to_ascii_lowercase();
+        assert!(
+            rendered.contains("populate") && rendered.contains("enters tapped and attacking"),
+            "expected populate combat followup rendering, got {rendered}"
+        );
+    }
+
+    #[test]
+    fn parse_detain_from_text() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Azorius Arrest Variant")
+            .parse_text("Detain target creature an opponent controls.")
+            .expect("parse detain");
+
+        let effects = def.spell_effect.expect("spell effect");
+        let debug = format!("{effects:?}");
+        assert!(
+            debug.contains("DetainEffect"),
+            "should include detain effect, got {debug}"
+        );
+    }
+
+    #[test]
+    fn parse_detain_each_nonland_permanent_from_text() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Lavinia Variant")
+            .parse_text(
+                "Detain each nonland permanent your opponents control with mana value 4 or less.",
+            )
+            .expect("parse detain each");
+
+        let effects = def.spell_effect.as_ref().expect("spell effect");
+        let debug = format!("{effects:?}");
+        assert!(
+            debug.contains("DetainEffect"),
+            "should include detain effect, got {debug}"
+        );
+
+        let rendered = crate::compiled_text::compiled_lines(&def).join(" ");
+        assert!(
+            rendered.contains("Detain all opponent's nonland permanents with mana value 4 or less"),
+            "expected detain each rendering, got {rendered}"
         );
     }
 
@@ -13050,22 +13332,96 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
-    fn parse_spin_into_myth_fateseal_appends_scry_effect() {
+    fn parse_spin_into_myth_fateseal_appends_fateseal_effect() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Spin into Myth Variant")
             .parse_text("Put target creature on top of its owner's library, then fateseal 2.")
             .expect("fateseal tail should parse");
 
         let effects = def.spell_effect.as_ref().expect("spell effects");
         let debug = format!("{effects:?}");
+        let rendered = compiled_lines(&def).join(" ");
         assert!(
             debug.contains("MoveToZoneEffect"),
             "expected move-to-library effect, got {debug}"
         );
         assert!(
-            debug.contains("ScryEffect")
-                && debug.contains("player: Opponent")
-                && debug.contains("count: Fixed(2)"),
-            "expected opponent scry-2 tail for fateseal, got {debug}"
+            debug.contains("FatesealEffect") && debug.contains("count: Fixed(2)"),
+            "expected fateseal-2 tail, got {debug}"
+        );
+        assert!(
+            effects
+                .iter()
+                .any(|effect| effect.downcast_ref::<FatesealEffect>().is_some()),
+            "expected concrete FatesealEffect lowering, got {debug}"
+        );
+        assert!(
+            rendered.contains("Fateseal 2"),
+            "expected compiled text to preserve fateseal wording, got {rendered}"
+        );
+    }
+
+    #[test]
+    fn parse_mesmeric_sliver_retains_fateseal_keyword_action() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Mesmeric Sliver Variant")
+            .card_types(vec![CardType::Creature])
+            .parse_text("All Slivers have \"When this permanent enters, you may fateseal 1.\"")
+            .expect("mesmeric sliver text should parse");
+
+        let debug = format!("{def:?}");
+        let rendered = compiled_lines(&def).join(" ");
+        assert!(
+            debug.contains("FatesealEffect")
+                && rendered.to_ascii_lowercase().contains("fateseal 1"),
+            "expected fateseal trigger lowering and rendering, got debug={debug} rendered={rendered}"
+        );
+    }
+
+    #[test]
+    fn parse_adder_staff_boggart_clash_followup_stays_conditional() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Adder-Staff Boggart Variant")
+            .card_types(vec![CardType::Creature])
+            .parse_text(
+                "When this creature enters, clash with an opponent. If you win, put a +1/+1 counter on this creature.",
+            )
+            .expect("clash trigger should parse");
+
+        let debug = format!("{def:?}");
+        assert!(
+            debug.contains("ClashEffect") && debug.contains("IfEffect"),
+            "expected clash effect with conditional follow-up, got {debug}"
+        );
+    }
+
+    #[test]
+    fn parse_marvo_supports_defending_player_clash_and_win_trigger() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Marvo Variant")
+            .card_types(vec![CardType::Creature])
+            .parse_text(
+                "Whenever this creature attacks, clash with defending player.\nWhenever you win a clash, draw a card.",
+            )
+            .expect("marvo-style clash text should parse");
+
+        let debug = format!("{def:?}");
+        let rendered = compiled_lines(&def).join(" ");
+        assert!(
+            debug.contains("WinsClashTrigger")
+                && rendered
+                    .to_ascii_lowercase()
+                    .contains("clash with defending player"),
+            "expected defending-player clash support and win-a-clash trigger, got debug={debug} rendered={rendered}"
+        );
+        assert!(
+            def.abilities
+                .iter()
+                .any(|ability| { format!("{ability:?}").contains("WinsClashTrigger") }),
+            "expected a dedicated wins-clash trigger, got {debug}"
+        );
+        assert!(
+            def.abilities.iter().any(|ability| {
+                format!("{ability:?}").contains("ClashEffect")
+                    && format!("{ability:?}").contains("DefendingPlayer")
+            }),
+            "expected defending-player clash lowering, got {debug}"
         );
     }
 

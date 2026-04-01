@@ -117,11 +117,13 @@ mod tests {
                 player: alice,
                 option_index: 0,
                 option_name: "evidence".to_string(),
+                object_vote: None,
             },
             PlayerVote {
                 player: bob,
                 option_index: 0,
                 option_name: "evidence".to_string(),
+                object_vote: None,
             },
         ];
 
@@ -218,16 +220,19 @@ mod tests {
                 player: alice,
                 option_index: 0,
                 option_name: "evidence".to_string(),
+                object_vote: None,
             },
             PlayerVote {
                 player: bob,
                 option_index: 0,
                 option_name: "evidence".to_string(),
+                object_vote: None,
             },
             PlayerVote {
                 player: charlie,
                 option_index: 1,
                 option_name: "bribery".to_string(),
+                object_vote: None,
             },
         ];
 

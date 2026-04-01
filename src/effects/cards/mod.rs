@@ -28,7 +28,7 @@ mod shuffle_graveyard_into_library;
 mod shuffle_library;
 mod surveil;
 
-pub use clash::ClashEffect;
+pub use clash::{ClashEffect, ClashOpponentMode};
 pub use connive::ConniveEffect;
 pub use consult_top_of_library::{ConsultTopOfLibraryEffect, ConsultTopOfLibraryStopRule};
 pub use discard::DiscardEffect;
@@ -46,7 +46,7 @@ pub use rearrange_looked_cards_in_library::RearrangeLookedCardsInLibraryEffect;
 pub use reveal_from_hand::RevealFromHandEffect;
 pub use reveal_tagged::RevealTaggedEffect;
 pub use reveal_top::RevealTopEffect;
-pub use scry::{EachPlayerScryEffect, ScryEffect};
+pub use scry::{EachPlayerScryEffect, FatesealEffect, ScryEffect};
 pub use search_library::SearchLibraryEffect;
 pub use search_library_slots::{SearchLibrarySlot, SearchLibrarySlotsEffect};
 pub use shuffle_graveyard_into_library::ShuffleGraveyardIntoLibraryEffect;

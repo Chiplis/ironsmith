@@ -91,6 +91,7 @@ impl ChooseCardNameEffect {
             tapped: false,
             flipped: false,
             face_down: false,
+            transform_count: 0,
             attached_to: None,
             attachments: Vec::new(),
             was_enchanted: false,

@@ -122,6 +122,24 @@ fn starts_with_inline_token_rules_continuation(words: &[&str]) -> bool {
     )
 }
 
+fn starts_with_nonverb_effect_head(words: &[&str]) -> bool {
+    words.first().is_some_and(|word| {
+        matches!(
+            *word,
+            "double"
+                | "distribute"
+                | "support"
+                | "bolster"
+                | "adapt"
+                | "open"
+                | "manifest"
+                | "populate"
+                | "connive"
+                | "earthbend"
+        )
+    })
+}
+
 pub(crate) fn is_token_creation_context(words: &[&str]) -> bool {
     words.first().copied() == Some("create")
         && words.iter().any(|word| matches!(*word, "token" | "tokens"))
@@ -349,7 +367,8 @@ pub(crate) fn find_verb_lexed(tokens: &[OwnedLexToken]) -> Option<(Verb, usize)>
             "untaps" | "untap" => Verb::Untap,
             "scries" | "scry" => Verb::Scry,
             "discards" | "discard" => Verb::Discard,
-            "transforms" | "transform" | "converts" | "convert" => Verb::Transform,
+            "transforms" | "transform" => Verb::Transform,
+            "converts" | "convert" => Verb::Convert,
             "flips" | "flip" => Verb::Flip,
             "regenerates" | "regenerate" => Verb::Regenerate,
             "mills" | "mill" => Verb::Mill,
@@ -364,6 +383,7 @@ pub(crate) fn find_verb_lexed(tokens: &[OwnedLexToken]) -> Option<(Verb, usize)>
             "shuffles" | "shuffle" => Verb::Shuffle,
             "reorders" | "reorder" => Verb::Reorder,
             "pays" | "pay" => Verb::Pay,
+            "detains" | "detain" => Verb::Detain,
             "goads" | "goad" => Verb::Goad,
             _ => continue,
         };
@@ -668,6 +688,10 @@ pub(crate) fn has_effect_head_without_verb(tokens: &[OwnedLexToken]) -> bool {
         return true;
     }
 
+    if starts_with_nonverb_effect_head(&token_words) {
+        return true;
+    }
+
     parse_prevent_next_damage_clause(tokens)
         .ok()
         .flatten()
@@ -700,6 +724,10 @@ pub(crate) fn has_effect_head_without_verb_lexed(tokens: &[OwnedLexToken]) -> bo
         token_words.as_slice(),
         ["repeat", "this", "process"] | ["and", "repeat", "this", "process"]
     ) {
+        return true;
+    }
+
+    if starts_with_nonverb_effect_head(&token_words) {
         return true;
     }
 

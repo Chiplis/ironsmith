@@ -18,6 +18,8 @@ pub struct PlayerVote {
     pub option_index: usize,
     /// The name of the option they voted for
     pub option_name: String,
+    /// The object that player voted for, if this was an object vote.
+    pub object_vote: Option<ObjectId>,
 }
 
 /// Event emitted when players finish voting (council's dilemma, etc.).
@@ -207,11 +209,13 @@ mod tests {
                 player: alice,
                 option_index: 0,
                 option_name: "evidence".to_string(),
+                object_vote: None,
             },
             PlayerVote {
                 player: bob,
                 option_index: 1,
                 option_name: "bribery".to_string(),
+                object_vote: None,
             },
         ];
 
@@ -244,16 +248,19 @@ mod tests {
                 player: alice,
                 option_index: 0,
                 option_name: "evidence".to_string(),
+                object_vote: None,
             },
             PlayerVote {
                 player: bob,
                 option_index: 0,
                 option_name: "evidence".to_string(),
+                object_vote: None,
             },
             PlayerVote {
                 player: charlie,
                 option_index: 1,
                 option_name: "bribery".to_string(),
+                object_vote: None,
             },
         ];
 
@@ -291,16 +298,19 @@ mod tests {
                 player: alice,
                 option_index: 0,
                 option_name: "evidence".to_string(),
+                object_vote: None,
             },
             PlayerVote {
                 player: bob,
                 option_index: 0,
                 option_name: "evidence".to_string(),
+                object_vote: None,
             },
             PlayerVote {
                 player: charlie,
                 option_index: 1,
                 option_name: "bribery".to_string(),
+                object_vote: None,
             },
         ];
 
@@ -348,16 +358,19 @@ mod tests {
                 player: alice,
                 option_index: 0,
                 option_name: "evidence".to_string(),
+                object_vote: None,
             },
             PlayerVote {
                 player: bob,
                 option_index: 0,
                 option_name: "evidence".to_string(),
+                object_vote: None,
             },
             PlayerVote {
                 player: charlie,
                 option_index: 1,
                 option_name: "bribery".to_string(),
+                object_vote: None,
             },
         ];
 
@@ -397,21 +410,25 @@ mod tests {
                 player: alice,
                 option_index: 0,
                 option_name: "evidence".to_string(),
+                object_vote: None,
             },
             PlayerVote {
                 player: alice,
                 option_index: 1,
                 option_name: "bribery".to_string(),
+                object_vote: None,
             },
             PlayerVote {
                 player: bob,
                 option_index: 0,
                 option_name: "evidence".to_string(),
+                object_vote: None,
             },
             PlayerVote {
                 player: charlie,
                 option_index: 1,
                 option_name: "bribery".to_string(),
+                object_vote: None,
             },
         ];
 

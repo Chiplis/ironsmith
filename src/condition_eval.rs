@@ -300,6 +300,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::TargetManaValueLteColorsSpentToCastThisSpell => {}
         Condition::SourceIsTapped => {}
         Condition::SourceIsSaddled => {}
+        Condition::SourceIsMonstrous => {}
         Condition::SourceIsFaceDown => {}
         Condition::SourceHasNoCounter(..) => {}
         Condition::SourceHasCounterAtLeast { .. } => {}
@@ -327,6 +328,8 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::MaxActivationsPerTurn(..) => {}
         Condition::SourceIsEquipped => {}
         Condition::SourceIsEnchanted => {}
+        Condition::VoteOptionGetsMoreVotes(..) => {}
+        Condition::VoteOptionGetsMoreVotesOrTied(..) => {}
         Condition::EnchantedPermanentIsCreature => {}
         Condition::EnchantedPermanentIsEquipment => {}
         Condition::EnchantedPermanentIsVehicle => {}
@@ -1016,6 +1019,7 @@ pub fn evaluate_condition_external(
         }
         Condition::SourceIsTapped => game.is_tapped(ctx.source),
         Condition::SourceIsSaddled => game.is_saddled(ctx.source),
+        Condition::SourceIsMonstrous => game.is_monstrous(ctx.source),
         Condition::SourceIsFaceDown => game.is_face_down(ctx.source),
         Condition::SourcePowerAtLeast(min_power) => game
             .calculated_power(ctx.source)
@@ -1048,7 +1052,9 @@ pub fn evaluate_condition_external(
         | Condition::TargetSpellManaSpentToCastAtLeast { .. }
         | Condition::YouControlMoreCreaturesThanTargetSpellController
         | Condition::TargetHasGreatestPowerAmongCreatures
-        | Condition::TargetManaValueLteColorsSpentToCastThisSpell => false,
+        | Condition::TargetManaValueLteColorsSpentToCastThisSpell
+        | Condition::VoteOptionGetsMoreVotes(_)
+        | Condition::VoteOptionGetsMoreVotesOrTied(_) => false,
         Condition::Custom(_)
         | Condition::Unmodeled(_)
         | Condition::LifeTotalOrLess(_)
@@ -1669,6 +1675,8 @@ fn evaluate_condition_simple(
         | Condition::SourceIsAttacking
         | Condition::SourceIsBlocking
         | Condition::SourceIsSoulbondPaired
+        | Condition::VoteOptionGetsMoreVotes(_)
+        | Condition::VoteOptionGetsMoreVotesOrTied(_)
         | Condition::XValueAtLeast(_) => false,
         Condition::TaggedObjectMatches(_, _) => false,
         Condition::TaggedObjectIsSoulbondPaired(_) => false,
@@ -1690,6 +1698,7 @@ fn evaluate_condition_simple(
         | Condition::TargetManaValueLteColorsSpentToCastThisSpell
         | Condition::SourceIsTapped
         | Condition::SourceIsSaddled
+        | Condition::SourceIsMonstrous
         | Condition::SourceIsFaceDown
         | Condition::SourcePowerAtLeast(_) => false,
         Condition::Custom(_)
@@ -2327,6 +2336,7 @@ fn evaluate_condition(
         }
         Condition::SourceIsTapped => Ok(game.is_tapped(ctx.source)),
         Condition::SourceIsSaddled => Ok(game.is_saddled(ctx.source)),
+        Condition::SourceIsMonstrous => Ok(game.is_monstrous(ctx.source)),
         Condition::SourceIsFaceDown => Ok(game.is_face_down(ctx.source)),
         Condition::SourcePowerAtLeast(min_power) => Ok(game
             .calculated_power(ctx.source)
@@ -2547,6 +2557,14 @@ fn evaluate_condition(
         Condition::SourceChosenOption(expected) => Ok(game
             .chosen_named_option(ctx.source)
             .is_some_and(|chosen| chosen.eq_ignore_ascii_case(expected))),
+        Condition::VoteOptionGetsMoreVotes(option) => Ok(ctx
+            .vote_results
+            .get(&ctx.source)
+            .is_some_and(|result| result.option_gets_more_votes(option))),
+        Condition::VoteOptionGetsMoreVotesOrTied(option) => Ok(ctx
+            .vote_results
+            .get(&ctx.source)
+            .is_some_and(|result| result.option_gets_more_votes_or_tied(option))),
         Condition::CountComparison {
             count, comparison, ..
         } => Ok(

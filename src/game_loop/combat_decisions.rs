@@ -161,33 +161,35 @@ fn required_attack_cost_message_for_unpreviewed_attack(
     ))
 }
 
-/// Apply attacker declarations to the combat state.
-pub fn apply_attacker_declarations(
-    game: &mut GameState,
-    combat: &mut CombatState,
-    trigger_queue: &mut TriggerQueue,
+#[derive(Debug, Clone)]
+struct PreparedAttackerDeclaration {
+    declaration: AttackerDeclaration,
+    controller: PlayerId,
+    abilities: Vec<crate::static_abilities::StaticAbility>,
+}
+
+#[derive(Debug, Clone)]
+struct PreparedAttackDeclarations {
+    declarations: Vec<PreparedAttackerDeclaration>,
+    total_generic_attack_mana_cost: u32,
+}
+
+fn prepare_attacker_declarations(
+    game: &GameState,
+    combat: &CombatState,
     declarations: &[AttackerDeclaration],
-) -> Result<(), GameLoopError> {
-    use crate::combat_state::AttackerInfo;
-    use crate::triggers::AttackEventTarget;
+) -> Result<PreparedAttackDeclarations, GameLoopError> {
     use std::collections::{HashMap, HashSet};
 
     let all_effects = game.all_continuous_effects();
 
-    // Validate that all creatures with "must attack if able" are declared
+    // Validate that all creatures with "must attack if able" are declared.
     let legal_attackers = compute_legal_attackers(game, combat);
     let declared_creatures: HashSet<ObjectId> = declarations.iter().map(|d| d.creature).collect();
     let attacking_creatures: Vec<ObjectId> = declarations.iter().map(|d| d.creature).collect();
-    let mut attacker_static_abilities: HashMap<
-        ObjectId,
-        Vec<crate::static_abilities::StaticAbility>,
-    > = HashMap::new();
 
     if declarations.len() == 1 && !game.can_attack_alone(declarations[0].creature) {
-        return Err(ResponseError::InvalidAttackers(
-            "This creature can't attack alone".to_string(),
-        )
-        .into());
+        return Err(ResponseError::InvalidAttackers("This creature can't attack alone".to_string()).into());
     }
 
     for attacker in &legal_attackers {
@@ -198,6 +200,8 @@ pub fn apply_attacker_declarations(
 
     let mut attackers_per_defending_player: HashMap<PlayerId, u32> = HashMap::new();
     let mut additional_attack_mana_cost = 0u32;
+    let mut prepared = Vec::with_capacity(declarations.len());
+
     for decl in declarations {
         let Some(legal_option) = legal_attackers
             .iter()
@@ -266,7 +270,12 @@ pub fn apply_attacker_declarations(
                 additional_attack_mana_cost = additional_attack_mana_cost.saturating_add(cost);
             }
         }
-        attacker_static_abilities.insert(creature.id, abilities);
+
+        prepared.push(PreparedAttackerDeclaration {
+            declaration: decl.clone(),
+            controller: creature.controller,
+            abilities,
+        });
 
         if let AttackTarget::Player(defending_player) = &decl.target {
             *attackers_per_defending_player
@@ -286,24 +295,62 @@ pub fn apply_attacker_declarations(
             acc.saturating_add(per_attacker_tax.saturating_mul(attackers))
         },
     );
-    let total_generic_attack_mana_cost =
-        total_attack_tax.saturating_add(additional_attack_mana_cost);
 
-    for decl in declarations {
-        let Some(creature) = game.object(decl.creature) else {
-            return Err(
-                ResponseError::InvalidAttackers("Creature cannot attack".to_string()).into(),
-            );
-        };
-        let creature_source = creature.id;
-        let creature_controller = creature.controller;
-        let abilities = attacker_static_abilities
-            .get(&creature_source)
-            .cloned()
-            .unwrap_or_else(|| {
-                static_abilities_for_object_with_effects(game, creature_source, &all_effects)
-            });
-        for ability in abilities {
+    Ok(PreparedAttackDeclarations {
+        declarations: prepared,
+        total_generic_attack_mana_cost: total_attack_tax.saturating_add(additional_attack_mana_cost),
+    })
+}
+
+fn collect_optional_attack_cost_prompts(
+    game: &GameState,
+    prepared: &PreparedAttackDeclarations,
+) -> Vec<crate::decisions::context::BooleanContext> {
+    let mut prompts = Vec::new();
+    for prepared_decl in &prepared.declarations {
+        for ability in &prepared_decl.abilities {
+            if let Some(prompt) = ability.optional_attack_cost_prompt(
+                game,
+                prepared_decl.declaration.creature,
+                prepared_decl.controller,
+            ) {
+                prompts.push(prompt);
+            }
+        }
+    }
+    prompts
+}
+
+pub fn preview_optional_attack_cost_prompts(
+    game: &GameState,
+    combat: &CombatState,
+    declarations: &[AttackerDeclaration],
+) -> Result<Vec<crate::decisions::context::BooleanContext>, GameLoopError> {
+    let prepared = prepare_attacker_declarations(game, combat, declarations)?;
+    Ok(collect_optional_attack_cost_prompts(game, &prepared))
+}
+
+fn apply_prepared_attacker_declarations_with_dm(
+    game: &mut GameState,
+    combat: &mut CombatState,
+    trigger_queue: &mut TriggerQueue,
+    prepared: PreparedAttackDeclarations,
+    decision_maker: &mut impl DecisionMaker,
+) -> Result<(), GameLoopError> {
+    use crate::combat_state::AttackerInfo;
+    use crate::triggers::AttackEventTarget;
+
+    let declarations: Vec<AttackerDeclaration> = prepared
+        .declarations
+        .iter()
+        .map(|prepared_decl| prepared_decl.declaration.clone())
+        .collect();
+
+    for prepared_decl in &prepared.declarations {
+        let creature_source = prepared_decl.declaration.creature;
+        let creature_controller = prepared_decl.controller;
+
+        for ability in &prepared_decl.abilities {
             if let Some(result) =
                 ability.pay_non_mana_attack_cost(game, creature_source, creature_controller)
             {
@@ -312,25 +359,46 @@ pub fn apply_attacker_declarations(
                 }
             }
         }
+        for ability in &prepared_decl.abilities {
+            let Some(prompt) =
+                ability.optional_attack_cost_prompt(game, creature_source, creature_controller)
+            else {
+                continue;
+            };
+            if !decision_maker.decide_boolean(game, &prompt) {
+                continue;
+            }
+            if let Some(result) = ability.pay_optional_attack_cost(
+                game,
+                creature_source,
+                creature_controller,
+                trigger_queue,
+            ) && let Err(msg) = result
+            {
+                return Err(ResponseError::InvalidAttackers(msg).into());
+            }
+        }
     }
 
-    if total_generic_attack_mana_cost > 0 {
-        let tax_cost = generic_mana_cost(total_generic_attack_mana_cost);
+    if prepared.total_generic_attack_mana_cost > 0 {
+        let tax_cost = generic_mana_cost(prepared.total_generic_attack_mana_cost);
         if !game.can_pay_mana_cost(game.turn.active_player, None, &tax_cost, 0) {
             return Err(ResponseError::InvalidAttackers(format!(
-                "Cannot pay required attack cost of {{{total_generic_attack_mana_cost}}}"
+                "Cannot pay required attack cost of {{{}}}",
+                prepared.total_generic_attack_mana_cost
             ))
             .into());
         }
         if !game.try_pay_mana_cost(game.turn.active_player, None, &tax_cost, 0) {
             return Err(ResponseError::InvalidAttackers(format!(
-                "Failed to pay required attack cost of {{{total_generic_attack_mana_cost}}}"
+                "Failed to pay required attack cost of {{{}}}",
+                prepared.total_generic_attack_mana_cost
             ))
             .into());
         }
     }
 
-    // Clear any existing attackers
+    // Clear any existing attackers.
     combat.attackers.clear();
     if !declarations.is_empty() {
         game.turn_history
@@ -338,27 +406,24 @@ pub fn apply_attacker_declarations(
             .insert(game.turn.active_player);
     }
 
-    for decl in declarations {
+    for decl in &declarations {
         let Some(creature) = game.object(decl.creature) else {
             return Err(
                 ResponseError::InvalidAttackers("Creature cannot attack".to_string()).into(),
             );
         };
 
-        // Add to combat state
         combat.attackers.push(AttackerInfo {
             creature: decl.creature,
             target: decl.target.clone(),
         });
 
-        // Tap the creature (unless it has vigilance)
         if !crate::rules::combat::has_vigilance(creature) {
             tap_permanent_with_trigger(game, trigger_queue, decl.creature);
         }
 
         game.mark_creature_attacked_this_turn(decl.creature);
 
-        // Generate attack trigger
         let event_target = match &decl.target {
             AttackTarget::Player(pid) => AttackEventTarget::Player(*pid),
             AttackTarget::Planeswalker(oid) => AttackEventTarget::Planeswalker(*oid),
@@ -379,6 +444,35 @@ pub fn apply_attacker_declarations(
     }
 
     Ok(())
+}
+
+/// Apply attacker declarations to the combat state.
+pub fn apply_attacker_declarations(
+    game: &mut GameState,
+    combat: &mut CombatState,
+    trigger_queue: &mut TriggerQueue,
+    declarations: &[AttackerDeclaration],
+) -> Result<(), GameLoopError> {
+    let mut decision_maker = crate::decision::AutoPassDecisionMaker;
+    apply_attacker_declarations_with_dm(
+        game,
+        combat,
+        trigger_queue,
+        declarations,
+        &mut decision_maker,
+    )
+}
+
+/// Apply attacker declarations to the combat state using the provided decision maker.
+pub fn apply_attacker_declarations_with_dm(
+    game: &mut GameState,
+    combat: &mut CombatState,
+    trigger_queue: &mut TriggerQueue,
+    declarations: &[AttackerDeclaration],
+    decision_maker: &mut impl DecisionMaker,
+) -> Result<(), GameLoopError> {
+    let prepared = prepare_attacker_declarations(game, combat, declarations)?;
+    apply_prepared_attacker_declarations_with_dm(game, combat, trigger_queue, prepared, decision_maker)
 }
 
 /// Get a decision context for declaring blockers.

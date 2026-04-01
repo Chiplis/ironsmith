@@ -14,6 +14,8 @@ use crate::tag::TagKey;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum KeywordActionKind {
     Amass,
+    Bolster,
+    Clash,
     CommitCrime,
     Cycle,
     Convoke,
@@ -21,14 +23,19 @@ pub enum KeywordActionKind {
     CompleteDungeon,
     Evolve,
     Earthbend,
+    Exert,
     Expend,
+    Fateseal,
     Improvise,
     Investigate,
+    Manifest,
     NameSticker,
+    Populate,
     RingTemptsYou,
     Renown,
     Connive,
     Proliferate,
+    Support,
     Scry,
     Surveil,
     Train,
@@ -41,6 +48,8 @@ impl KeywordActionKind {
     pub fn from_trigger_word(word: &str) -> Option<Self> {
         match word {
             "amass" | "amasses" | "amassed" | "amassing" => Some(Self::Amass),
+            "bolster" | "bolsters" | "bolstered" | "bolstering" => Some(Self::Bolster),
+            "clash" | "clashes" | "clashed" | "clashing" => Some(Self::Clash),
             "crime" | "crimes" => Some(Self::CommitCrime),
             "cycle" | "cycles" | "cycled" | "cycling" => Some(Self::Cycle),
             "convoke" | "convokes" | "convoked" => Some(Self::Convoke),
@@ -48,13 +57,18 @@ impl KeywordActionKind {
             "complete" | "completes" | "completed" | "completing" => Some(Self::CompleteDungeon),
             "evolve" | "evolves" | "evolved" | "evolving" => Some(Self::Evolve),
             "earthbend" | "earthbends" => Some(Self::Earthbend),
+            "exert" | "exerts" | "exerted" | "exerting" => Some(Self::Exert),
             "expend" | "expends" | "expended" => Some(Self::Expend),
+            "fateseal" | "fateseals" | "fatesealed" | "fatesealing" => Some(Self::Fateseal),
             "improvise" | "improvises" | "improvised" => Some(Self::Improvise),
             "investigate" | "investigates" => Some(Self::Investigate),
+            "manifest" | "manifests" | "manifested" | "manifesting" => Some(Self::Manifest),
+            "populate" | "populates" | "populated" | "populating" => Some(Self::Populate),
             "sticker" | "stickers" | "stickered" => Some(Self::NameSticker),
             "renown" | "renowned" => Some(Self::Renown),
             "connive" | "connives" | "connived" => Some(Self::Connive),
             "proliferate" | "proliferates" => Some(Self::Proliferate),
+            "support" | "supports" | "supported" | "supporting" => Some(Self::Support),
             "scry" | "scries" => Some(Self::Scry),
             "surveil" | "surveils" => Some(Self::Surveil),
             "train" | "trains" | "trained" | "training" => Some(Self::Train),
@@ -67,6 +81,8 @@ impl KeywordActionKind {
     pub fn infinitive(self) -> &'static str {
         match self {
             Self::Amass => "amass",
+            Self::Bolster => "bolster",
+            Self::Clash => "clash",
             Self::CommitCrime => "commit a crime",
             Self::Cycle => "cycle",
             Self::Convoke => "convoke",
@@ -74,14 +90,19 @@ impl KeywordActionKind {
             Self::CompleteDungeon => "complete a dungeon",
             Self::Evolve => "evolve",
             Self::Earthbend => "earthbend",
+            Self::Exert => "exert",
             Self::Expend => "expend",
+            Self::Fateseal => "fateseal",
             Self::Improvise => "improvise",
             Self::Investigate => "investigate",
+            Self::Manifest => "manifest",
+            Self::Populate => "populate",
             Self::NameSticker => "put a name sticker",
             Self::RingTemptsYou => "have the Ring tempt you",
             Self::Renown => "become renowned",
             Self::Connive => "connive",
             Self::Proliferate => "proliferate",
+            Self::Support => "support",
             Self::Scry => "scry",
             Self::Surveil => "surveil",
             Self::Train => "train",
@@ -93,6 +114,8 @@ impl KeywordActionKind {
     pub fn third_person(self) -> &'static str {
         match self {
             Self::Amass => "amasses",
+            Self::Bolster => "bolsters",
+            Self::Clash => "clashes",
             Self::CommitCrime => "commits a crime",
             Self::Cycle => "cycles",
             Self::Convoke => "convokes",
@@ -100,14 +123,19 @@ impl KeywordActionKind {
             Self::CompleteDungeon => "completes a dungeon",
             Self::Evolve => "evolves",
             Self::Earthbend => "earthbends",
+            Self::Exert => "exerts",
             Self::Expend => "expends",
+            Self::Fateseal => "fateseals",
             Self::Improvise => "improvises",
             Self::Investigate => "investigates",
+            Self::Manifest => "manifests",
+            Self::Populate => "populates",
             Self::NameSticker => "puts a name sticker",
             Self::RingTemptsYou => "has the Ring tempt them",
             Self::Renown => "becomes renowned",
             Self::Connive => "connives",
             Self::Proliferate => "proliferates",
+            Self::Support => "supports",
             Self::Scry => "scries",
             Self::Surveil => "surveils",
             Self::Train => "trains",
@@ -214,8 +242,32 @@ mod tests {
             Some(KeywordActionKind::Amass)
         );
         assert_eq!(
+            KeywordActionKind::from_trigger_word("bolstered"),
+            Some(KeywordActionKind::Bolster)
+        );
+        assert_eq!(
+            KeywordActionKind::from_trigger_word("clashed"),
+            Some(KeywordActionKind::Clash)
+        );
+        assert_eq!(
             KeywordActionKind::from_trigger_word("earthbends"),
             Some(KeywordActionKind::Earthbend)
+        );
+        assert_eq!(
+            KeywordActionKind::from_trigger_word("fatesealed"),
+            Some(KeywordActionKind::Fateseal)
+        );
+        assert_eq!(
+            KeywordActionKind::from_trigger_word("manifested"),
+            Some(KeywordActionKind::Manifest)
+        );
+        assert_eq!(
+            KeywordActionKind::from_trigger_word("populate"),
+            Some(KeywordActionKind::Populate)
+        );
+        assert_eq!(
+            KeywordActionKind::from_trigger_word("supported"),
+            Some(KeywordActionKind::Support)
         );
         assert_eq!(
             KeywordActionKind::from_trigger_word("surveil"),

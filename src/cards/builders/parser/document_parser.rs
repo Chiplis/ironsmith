@@ -230,6 +230,8 @@ fn parse_static_line_cst(line: &PreprocessedLine) -> Result<Option<StaticLineCst
             | "as long as this is untapped, each spell that would cost less than three mana to cast costs three mana to cast."
             | "players can't pay life or sacrifice nonland permanents to cast spells or activate abilities."
             | "creatures you control can boast twice during each of your turns rather than once."
+            | "while voting, you may vote an additional time."
+            | "while voting, you get an additional vote."
             | "untap all permanents you control during each other player's untap step."
             | "untap all permanents you control during each other players untap step."
     ) {
@@ -441,6 +443,8 @@ fn parse_keyword_line_cst(
         Some(KeywordLineKindCst::Gift)
     } else if parse_warp_line_lexed(&tokens)?.is_some() {
         Some(KeywordLineKindCst::Warp)
+    } else if is_exert_attack_keyword_line(normalized) {
+        Some(KeywordLineKindCst::ExertAttack)
     } else {
         None
     };
@@ -450,6 +454,26 @@ fn parse_keyword_line_cst(
         text: normalized.to_string(),
         kind,
     }))
+}
+
+fn is_exert_attack_keyword_line(text: &str) -> bool {
+    let trimmed = strip_exert_reminder_suffix(text);
+    trimmed.starts_with("you may exert ")
+        || trimmed.starts_with("if this creature hasn't been exerted this turn, you may exert ")
+}
+
+fn strip_exert_reminder_suffix(text: &str) -> &str {
+    let trimmed = text.trim();
+    for suffix in [
+        " (an exerted creature won't untap during your next untap step.)",
+        " (an exerted permanent won't untap during your next untap step.)",
+        " (it won't untap during your next untap step.)",
+    ] {
+        if let Some(stripped) = trimmed.strip_suffix(suffix) {
+            return stripped.trim_end();
+        }
+    }
+    trimmed
 }
 
 fn is_standard_gift_keyword_line(text: &str) -> bool {
@@ -722,6 +746,14 @@ fn looks_like_statement_line(normalized: &str) -> bool {
         words.as_slice(),
         ["each", "player", third, ..] if is_statement_verb(third)
     );
+    let starts_with_vote_statement = matches!(
+        words.as_slice(),
+        ["starting", "with", ..]
+            | ["each", "player", "votes", ..]
+            | ["each", "player", "secretly", "votes", ..]
+    ) && words
+        .iter()
+        .any(|word| matches!(*word, "vote" | "votes" | "voting"));
     let starts_with_quantified_target_player_statement = matches!(
         words.as_slice(),
         [_, "target", "player", fourth, ..] | [_, "target", "players", fourth, ..]
@@ -729,6 +761,7 @@ fn looks_like_statement_line(normalized: &str) -> bool {
     );
 
     starts_with_each_player_statement
+        || starts_with_vote_statement
         || starts_with_quantified_target_player_statement
         || is_statement_verb(words[0])
         || matches!(words.as_slice(), ["this", "spell", third, ..] if is_statement_verb(third))
@@ -864,6 +897,15 @@ fn looks_like_pact_next_upkeep_line(normalized: &str) -> bool {
 
 fn rewrite_keyword_dash_parse_text(text: &str) -> String {
     let trimmed = text.trim();
+    if let Some((label, body)) = split_label_prefix(trimmed) {
+        let normalized_label = label.to_ascii_lowercase();
+        if matches!(
+            normalized_label.as_str(),
+            "will of the council" | "council's dilemma" | "councils dilemma" | "secret council"
+        ) {
+            return body.trim().to_string();
+        }
+    }
     if let Some((label, body)) = split_label_prefix(trimmed)
         && preserve_keyword_prefix_for_parse(label)
     {
@@ -1104,7 +1146,7 @@ fn strip_non_keyword_label_prefix(text: &str) -> &str {
 
 #[cfg(test)]
 mod tests {
-    use super::strip_non_keyword_label_prefix;
+    use super::{looks_like_statement_line, strip_non_keyword_label_prefix};
 
     #[test]
     fn strip_non_keyword_label_prefix_removes_chained_mode_name_and_cost() {
@@ -1120,6 +1162,19 @@ mod tests {
             ),
             "Triple target creature's power and toughness until end of turn."
         );
+    }
+
+    #[test]
+    fn looks_like_statement_line_recognizes_vote_leads() {
+        for text in [
+            "Starting with you, each player votes for death or torture. If death gets more votes, each opponent sacrifices a creature of their choice. If torture gets more votes or the vote is tied, each opponent loses 4 life.",
+            "Secret council — Each player secretly votes for truth or consequences, then those votes are revealed. For each truth vote, draw a card. Then choose an opponent at random. For each consequences vote, Truth or Consequences deals 3 damage to that player.",
+        ] {
+            assert!(
+                looks_like_statement_line(text.to_ascii_lowercase().as_str()),
+                "expected vote line to classify as a statement: {text}"
+            );
+        }
     }
 }
 
@@ -2035,6 +2090,7 @@ fn lower_document_cst(
                     }
                     KeywordLineKindCst::Gift => RewriteKeywordLineKind::Gift,
                     KeywordLineKindCst::Warp => RewriteKeywordLineKind::Warp,
+                    KeywordLineKindCst::ExertAttack => RewriteKeywordLineKind::ExertAttack,
                 };
                 let parsed =
                     lower_rewrite_keyword_to_chunk(keyword.info.clone(), &keyword.text, kind)?;

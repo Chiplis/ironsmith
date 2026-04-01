@@ -106,11 +106,7 @@ mod tests {
             CardRevealedEvent::new(alice, card_id, Zone::Hand, Some(source), Some(snapshot)),
             crate::provenance::ProvNodeId::default(),
         );
-        let trigger = PlayerRevealsCardTrigger::new(
-            PlayerFilter::You,
-            ObjectFilter::land(),
-            true,
-        );
+        let trigger = PlayerRevealsCardTrigger::new(PlayerFilter::You, ObjectFilter::land(), true);
         let ctx = TriggerContext::for_source(source, alice, &game);
 
         assert!(trigger.matches(&event, &ctx));

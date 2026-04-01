@@ -132,6 +132,92 @@ fn test_monarch_end_step_draws_a_card() {
 }
 
 #[test]
+fn exert_attack_choice_draws_card_and_skips_only_next_untap() {
+    #[derive(Default)]
+    struct AcceptBooleanDecisionMaker;
+
+    impl DecisionMaker for AcceptBooleanDecisionMaker {
+        fn decide_boolean(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            true
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let exert_probe = CardDefinitionBuilder::new(CardId::new(), "Exert Probe")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text("You may exert this creature as it attacks. When you do, draw a card.")
+        .expect("exert attack line should parse");
+    let source_id = game.create_object_from_definition(&exert_probe, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(source_id);
+
+    let library_card = CardBuilder::new(CardId::from_raw(71_001), "Draw Target")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    game.create_object_from_card(&library_card, alice, Zone::Library);
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+
+    let hand_before = game.player(alice).expect("alice exists").hand.len();
+    let mut combat = CombatState::default();
+    let mut trigger_queue = TriggerQueue::new();
+    let declarations = vec![AttackerDeclaration {
+        creature: source_id,
+        target: AttackTarget::Player(bob),
+    }];
+
+    let mut dm = AcceptBooleanDecisionMaker;
+    apply_attacker_declarations_with_dm(
+        &mut game,
+        &mut combat,
+        &mut trigger_queue,
+        &declarations,
+        &mut dm,
+    )
+    .expect("declaring an exert attacker should succeed");
+    assert!(game.is_tapped(source_id), "attacking should tap the creature");
+
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("exert follow-up trigger should go on the stack");
+    assert_eq!(game.stack.len(), 1, "exert should queue exactly one linked trigger");
+    resolve_stack_entry(&mut game).expect("exert follow-up trigger should resolve");
+    assert_eq!(
+        game.player(alice).expect("alice exists").hand.len(),
+        hand_before + 1,
+        "accepting the exert prompt should resolve the linked draw trigger"
+    );
+
+    game.next_turn();
+    crate::turn::execute_untap_step_with(&mut game, &mut dm);
+
+    game.next_turn();
+    crate::turn::execute_untap_step_with(&mut game, &mut dm);
+    assert!(
+        game.is_tapped(source_id),
+        "the exerted attacker should stay tapped during its controller's next untap step"
+    );
+
+    game.next_turn();
+    crate::turn::execute_untap_step_with(&mut game, &mut dm);
+
+    game.next_turn();
+    crate::turn::execute_untap_step_with(&mut game, &mut dm);
+    assert!(
+        !game.is_tapped(source_id),
+        "the exert restriction should wear off after that untap step"
+    );
+}
+
+#[test]
 fn test_monarch_changes_when_creature_deals_combat_damage_to_monarch() {
     let mut game = setup_game();
     let mut trigger_queue = TriggerQueue::new();
@@ -1324,7 +1410,10 @@ fn test_turn_face_up_action_puts_turned_face_up_trigger_on_stack() {
     let mut trigger_queue = TriggerQueue::new();
     let mut state = PriorityLoopState::new(game.players_in_game());
     let mut dm = SelectFirstDecisionMaker;
-    let response = PriorityResponse::PriorityAction(LegalAction::TurnFaceUp { creature_id });
+    let response = PriorityResponse::PriorityAction(LegalAction::TurnFaceUp {
+        creature_id,
+        method: crate::special_actions::TurnFaceUpMethod::TurnFaceUpAbility,
+    });
     let result = apply_priority_response_with_dm(
         &mut game,
         &mut trigger_queue,
@@ -5392,6 +5481,43 @@ fn test_stormbreath_dragon_becomes_monstrous_trigger_fires() {
     assert_eq!(triggers[0].controller, alice);
 }
 
+#[test]
+fn test_fleecemane_lion_gains_keywords_when_monstrous() {
+    use crate::card::PowerToughness;
+    use crate::cards::CardDefinitionBuilder;
+    use crate::effect::Effect;
+    use crate::executor::{ExecutionContext, execute_effect};
+    use crate::static_abilities::StaticAbilityId;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let def = CardDefinitionBuilder::new(CardId::new(), "Fleecemane Lion")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .parse_text(
+            "{3}{G}{W}: Monstrosity 1. (If this creature isn't monstrous, put a +1/+1 counter on it and it becomes monstrous.)\nAs long as this creature is monstrous, it has hexproof and indestructible.",
+        )
+        .expect("parse Fleecemane Lion text");
+    let lion_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    assert!(
+        !game.object_has_static_ability_id(lion_id, StaticAbilityId::Hexproof)
+            && !game.object_has_static_ability_id(lion_id, StaticAbilityId::Indestructible),
+        "Fleecemane Lion should not have monstrous-only keywords before monstrosity"
+    );
+
+    let mut ctx = ExecutionContext::new_default(lion_id, alice);
+    execute_effect(&mut game, &Effect::monstrosity(1), &mut ctx).expect("resolve monstrosity");
+
+    assert!(game.is_monstrous(lion_id), "lion should become monstrous");
+    assert!(
+        game.object_has_static_ability_id(lion_id, StaticAbilityId::Hexproof)
+            && game.object_has_static_ability_id(lion_id, StaticAbilityId::Indestructible),
+        "Fleecemane Lion should gain hexproof and indestructible once monstrous"
+    );
+}
+
 // =========================================================================
 // Integration Tests for New Features
 // =========================================================================
@@ -7985,7 +8111,7 @@ fn test_face_down_cast_matches_panoptic_filter_and_enters_battlefield_face_down(
     assert!(
         actions.iter().any(|action| matches!(
             action,
-            LegalAction::TurnFaceUp { creature_id } if *creature_id == battlefield_id
+            LegalAction::TurnFaceUp { creature_id, .. } if *creature_id == battlefield_id
         )),
         "resolved face-down morph permanent should still be turnable face up"
     );
@@ -12505,8 +12631,9 @@ fn test_search_library_for_card_cannot_fail_to_find() {
 
     let hand = &game.player(alice).expect("alice").hand;
     assert!(
-        hand.iter()
-            .any(|&id| game.object(id).is_some_and(|obj| obj.name == "Tutor Target")),
+        hand.iter().any(|&id| game
+            .object(id)
+            .is_some_and(|obj| obj.name == "Tutor Target")),
         "search for a card should put the searched card into hand"
     );
 }

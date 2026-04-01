@@ -432,12 +432,19 @@ mod tests {
             .execute(&mut game, &mut ctx)
             .expect("cast tagged should resolve");
 
-        assert!(outcome.status.is_success(), "expected reduced copy cast to succeed");
+        assert!(
+            outcome.status.is_success(),
+            "expected reduced copy cast to succeed"
+        );
         assert_eq!(
             game.player(alice).expect("alice exists").mana_pool.blue,
             0,
             "expected the reduced cost to spend exactly the available mana"
         );
-        assert_eq!(game.stack.len(), 1, "expected the copied spell on the stack");
+        assert_eq!(
+            game.stack.len(),
+            1,
+            "expected the copied spell on the stack"
+        );
     }
 }

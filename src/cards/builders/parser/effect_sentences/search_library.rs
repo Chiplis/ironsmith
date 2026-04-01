@@ -1597,7 +1597,10 @@ pub(crate) fn parse_shuffle_graveyard_into_library_sentence(
     let mut target = parse_target_phrase(&target_tokens)?;
     apply_shuffle_subject_graveyard_owner_context(&mut target, subject);
 
-    append_trailing(vec![EffectAst::ShuffleObjectsIntoLibrary { target, player }])
+    append_trailing(vec![EffectAst::ShuffleObjectsIntoLibrary {
+        target,
+        player,
+    }])
 }
 
 pub(crate) fn parse_shuffle_object_into_library_sentence(

@@ -4493,6 +4493,63 @@ mod tests {
     }
 
     #[test]
+    fn compiled_line_post_pass_normalizes_consuming_tide_surface() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Consuming Tide")
+            .oracle_text("Each player chooses a nonland permanent they control. Return all nonland permanents not chosen this way to their owners' hands. Then you draw a card for each opponent who has more cards in their hand than you.")
+            .build();
+        let normalized = normalize_compiled_line_post_pass(
+            &def,
+            "Spell effects: For each player, you choose exactly 1 a nonland permanent that player controls in the battlefield. Return all other nonland permanents to their owners' hands. For each opponent, if that player has more cards in hand than you, you draw a card.",
+        );
+        assert_eq!(
+            normalized,
+            "Spell effects: Each player chooses a nonland permanent they control. Return all nonland permanents not chosen this way to their owners' hands. Then you draw a card for each opponent who has more cards in their hand than you."
+        );
+    }
+
+    #[test]
+    fn compiled_line_post_pass_normalizes_creepy_puppeteer_surface() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Creepy Puppeteer")
+            .oracle_text("Haste\nWhenever this creature attacks, if you attacked with exactly one other creature this combat, you may have that creature's base power and toughness become 4/3 until end of turn.")
+            .build();
+        let normalized = normalize_compiled_line_post_pass(
+            &def,
+            "Triggered ability 2: Whenever this creature and exactly 1 other creature attack, you may each creature has base power and toughness 4/3 until end of turn.",
+        );
+        assert_eq!(
+            normalized,
+            "Triggered ability 2: Whenever this creature attacks, if you attacked with exactly one other creature this combat, you may have that creature's base power and toughness become 4/3 until end of turn."
+        );
+    }
+
+    #[test]
+    fn compiled_line_post_pass_skips_prefix_until_modal_base_pt_surface() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Skinshifter")
+            .oracle_text(
+                "{G}: Choose one. Activate only once each turn.\n• Until end of turn, this creature becomes a Rhino with base power and toughness 4/4 and gains trample.\n• Until end of turn, this creature becomes a Bird with base power and toughness 2/2 and gains flying.\n• Until end of turn, this creature becomes a Plant with base power and toughness 0/8.",
+            )
+            .build();
+        let line = "Activated ability 1: Choose one —\n• Until end of turn, this creature becomes a Rhino with base power and toughness 4/4 and gains trample.\n• Until end of turn, this creature becomes a Bird with base power and toughness 2/2 and gains flying.\n• Until end of turn, this creature becomes a Plant with base power and toughness 0/8.";
+        let normalized = normalize_compiled_line_post_pass(&def, line);
+        assert_eq!(normalized, line);
+    }
+
+    #[test]
+    fn compiled_line_post_pass_normalizes_thundering_raiju_surface() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Thundering Raiju")
+            .oracle_text("Haste\nWhenever this creature attacks, put a +1/+1 counter on target creature you control. Then this creature deals X damage to each opponent, where X is the number of modified creatures you control other than this creature. (Equipment, Auras you control, and counters are modifications.)")
+            .build();
+        let normalized = normalize_compiled_line_post_pass(
+            &def,
+            "Triggered ability 2: Whenever this creature attacks, put a +1/+1 counter on target creature you control. Deal the number of another modified creatures you control damage to each opponent.",
+        );
+        assert_eq!(
+            normalized,
+            "Triggered ability 2: Whenever this creature attacks, put a +1/+1 counter on target creature you control. This creature deals X damage to each opponent, where X is the number of modified creatures you control other than this creature."
+        );
+    }
+
+    #[test]
     fn post_pass_normalizes_remaining_it_tag_choice_clause() {
         let normalized = normalize_compiled_post_pass_effect(
             "For each player, you choose up to one creature card from that player's graveyard and tags it as '__it__'. Put it onto the battlefield under your control.",

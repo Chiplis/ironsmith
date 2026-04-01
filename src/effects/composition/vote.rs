@@ -1,9 +1,14 @@
 //! Vote effect implementation for council's dilemma and similar mechanics.
 
+use std::collections::HashMap;
+
+use crate::effect::ChoiceCount;
 use crate::effect::{Effect, EffectOutcome};
 use crate::effects::EffectExecutor;
 use crate::executor::{ExecutionContext, ExecutionError};
+use crate::filter::ObjectFilter;
 use crate::game_state::GameState;
+use crate::ids::ObjectId;
 use crate::target::ChooseSpec;
 
 /// A vote option with a name and effects to execute per vote.
@@ -26,6 +31,55 @@ impl VoteOption {
     }
 }
 
+/// Stores the resolved outcome of a vote for later conditions and follow-up effects.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct VoteResult {
+    pub option_counts: HashMap<String, usize>,
+    pub object_counts: HashMap<ObjectId, usize>,
+    pub total_votes: usize,
+}
+
+impl VoteResult {
+    pub fn count_for_option(&self, option: &str) -> usize {
+        self.option_counts
+            .iter()
+            .find_map(|(name, count)| name.eq_ignore_ascii_case(option).then_some(*count))
+            .unwrap_or(0)
+    }
+
+    pub fn option_gets_more_votes(&self, option: &str) -> bool {
+        let current = self.count_for_option(option);
+        current > 0
+            && self
+                .option_counts
+                .iter()
+                .filter(|(name, _)| !name.eq_ignore_ascii_case(option))
+                .all(|(_, count)| current > *count)
+    }
+
+    pub fn option_gets_more_votes_or_tied(&self, option: &str) -> bool {
+        let current = self.count_for_option(option);
+        current > 0
+            && self
+                .option_counts
+                .iter()
+                .filter(|(name, _)| !name.eq_ignore_ascii_case(option))
+                .all(|(_, count)| current >= *count)
+    }
+}
+
+pub const VOTE_WINNERS_TAG: &str = "__vote_winners__";
+pub const VOTED_OBJECTS_TAG: &str = "__voted_objects__";
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum VoteChoice {
+    NamedOptions(Vec<VoteOption>),
+    Objects {
+        filter: ObjectFilter,
+        count: ChoiceCount,
+    },
+}
+
 /// Effect that implements council's dilemma and similar voting mechanics.
 ///
 /// Each player votes for one of the options. The controller can get extra votes.
@@ -45,8 +99,8 @@ impl VoteOption {
 /// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct VoteEffect {
-    /// Available vote options.
-    pub options: Vec<VoteOption>,
+    /// Available vote choices.
+    pub choice: VoteChoice,
     /// Mandatory extra votes for the controller.
     pub controller_extra_votes: u32,
     /// Optional extra votes for the controller (e.g., "you may vote an additional time" = 1).
@@ -57,7 +111,7 @@ impl VoteEffect {
     /// Create a new vote effect.
     pub fn new(options: Vec<VoteOption>, controller_extra_votes: u32) -> Self {
         Self {
-            options,
+            choice: VoteChoice::NamedOptions(options),
             controller_extra_votes,
             controller_optional_extra_votes: 0,
         }
@@ -70,7 +124,34 @@ impl VoteEffect {
         controller_optional_extra_votes: u32,
     ) -> Self {
         Self {
-            options,
+            choice: VoteChoice::NamedOptions(options),
+            controller_extra_votes,
+            controller_optional_extra_votes,
+        }
+    }
+
+    /// Create an object-vote effect.
+    pub fn vote_objects(
+        filter: ObjectFilter,
+        count: ChoiceCount,
+        controller_extra_votes: u32,
+    ) -> Self {
+        Self {
+            choice: VoteChoice::Objects { filter, count },
+            controller_extra_votes,
+            controller_optional_extra_votes: 0,
+        }
+    }
+
+    /// Create an object-vote effect with optional extra votes.
+    pub fn vote_objects_with_optional_extra(
+        filter: ObjectFilter,
+        count: ChoiceCount,
+        controller_extra_votes: u32,
+        controller_optional_extra_votes: u32,
+    ) -> Self {
+        Self {
+            choice: VoteChoice::Objects { filter, count },
             controller_extra_votes,
             controller_optional_extra_votes,
         }
@@ -101,8 +182,10 @@ impl EffectExecutor for VoteEffect {
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
-        let groups: Vec<&[Effect]> = self
-            .options
+        let VoteChoice::NamedOptions(options) = &self.choice else {
+            return None;
+        };
+        let groups: Vec<&[Effect]> = options
             .iter()
             .map(|option| option.effects_per_vote.as_slice())
             .collect();
@@ -110,8 +193,10 @@ impl EffectExecutor for VoteEffect {
     }
 
     fn target_description(&self) -> &'static str {
-        let groups: Vec<&[Effect]> = self
-            .options
+        let VoteChoice::NamedOptions(options) = &self.choice else {
+            return "target";
+        };
+        let groups: Vec<&[Effect]> = options
             .iter()
             .map(|option| option.effects_per_vote.as_slice())
             .collect();
@@ -119,8 +204,10 @@ impl EffectExecutor for VoteEffect {
     }
 
     fn get_target_count(&self) -> Option<crate::effect::ChoiceCount> {
-        let groups: Vec<&[Effect]> = self
-            .options
+        let VoteChoice::NamedOptions(options) = &self.choice else {
+            return None;
+        };
+        let groups: Vec<&[Effect]> = options
             .iter()
             .map(|option| option.effects_per_vote.as_slice())
             .collect();

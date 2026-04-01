@@ -66,6 +66,11 @@ pub(crate) fn can_block_with_view(
         return false;
     }
 
+    // Tapped creatures can't block.
+    if game.is_tapped(blocker.id) {
+        return false;
+    }
+
     // Get calculated abilities for both creatures (includes continuous effects)
     // Fall back to the object's base abilities if not in game state (for unit tests)
     let attacker_chars = view.calculated_characteristics(attacker.id);
@@ -717,6 +722,18 @@ mod tests {
         add_ability(&mut blocker, StaticAbility::reach());
 
         assert!(can_block(&attacker, &blocker, &game));
+    }
+
+    #[test]
+    fn test_tapped_creatures_cannot_block() {
+        let mut game = test_game_state();
+        let attacker = make_creature("Attacker", 2, 2);
+        let blocker = make_creature("Blocker", 2, 2);
+
+        assert!(can_block(&attacker, &blocker, &game));
+
+        game.tap(blocker.id);
+        assert!(!can_block(&attacker, &blocker, &game));
     }
 
     #[test]

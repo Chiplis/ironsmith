@@ -152,6 +152,7 @@ export class WasmGame {
      * Return the current UI state from the selected player perspective.
      */
     uiState(): any;
+    validateMatchConfig(config: any): any;
 }
 
 export function wasm_start(): void;
@@ -164,6 +165,7 @@ export interface InitOutput {
     readonly wasmgame_new: () => number;
     readonly wasmgame_reset: (a: number, b: any, c: number) => [number, number];
     readonly wasmgame_startMatch: (a: number, b: any) => [number, number, number];
+    readonly wasmgame_validateMatchConfig: (a: number, b: any) => [number, number, number];
     readonly wasmgame_snapshot: (a: number) => [number, number, number];
     readonly wasmgame_lastSnapshotPerf: (a: number) => [number, number, number];
     readonly wasmgame_lastDispatchPerf: (a: number) => [number, number, number];
@@ -198,8 +200,8 @@ export interface InitOutput {
     readonly wasmgame_setPerspective: (a: number, b: number) => [number, number];
     readonly wasmgame_cancelDecision: (a: number) => [number, number, number];
     readonly wasmgame_dispatch: (a: number, b: any) => [number, number, number];
-    readonly wasmgame_uiState: (a: number) => [number, number, number];
     readonly wasm_start: () => void;
+    readonly wasmgame_uiState: (a: number) => [number, number, number];
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_exn_store: (a: number) => void;

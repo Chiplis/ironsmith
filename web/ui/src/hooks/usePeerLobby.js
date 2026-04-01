@@ -43,6 +43,11 @@ function createEmptyState() {
   };
 }
 
+function toErrorMessage(err, fallback = "Action rejected") {
+  const message = String(err?.message || err || "").trim();
+  return message || fallback;
+}
+
 function sanitizePlayerName(raw, fallback = "Player") {
   const trimmed = String(raw || "").trim();
   return trimmed || fallback;
@@ -293,6 +298,62 @@ function canHostedMatchStart(session) {
     session.players.length > 0 &&
     session.players.every((player) => player.ready)
   );
+}
+
+function compactMatchValidationError(error) {
+  return String(error || "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function summarizeMatchValidationIssues(issues) {
+  const entries = Array.isArray(issues)
+    ? issues.filter((issue) => issue && typeof issue === "object")
+    : [];
+
+  if (entries.length === 0) {
+    return {
+      status: "Match start blocked: submitted decks contain invalid cards.",
+      notice: "Submitted decks contain invalid cards.",
+    };
+  }
+
+  const first = entries[0];
+  const playerName = String(first.playerName || "").trim()
+    || `Player ${Number(first.playerIndex || 0) + 1}`;
+  const section = String(first.section || "deck").trim();
+  const cardName = String(first.cardName || "").trim() || "Unknown card";
+  const reason = compactMatchValidationError(first.error) || "could not be loaded";
+  const extraCount = entries.length - 1;
+
+  const status = [
+    `Match start blocked: ${playerName} ${section} includes "${cardName}"`,
+    `(${reason})`,
+    extraCount > 0 ? `+${extraCount} more issue${extraCount === 1 ? "" : "s"}.` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const lines = entries.slice(0, 8).map((issue) => {
+    const issuePlayerName = String(issue.playerName || "").trim()
+      || `Player ${Number(issue.playerIndex || 0) + 1}`;
+    const issueSection = String(issue.section || "deck").trim();
+    const issueCardName = String(issue.cardName || "").trim() || "Unknown card";
+    const issueReason = compactMatchValidationError(issue.error) || "could not be loaded";
+    return `- ${issuePlayerName} ${issueSection}: ${issueCardName} (${issueReason})`;
+  });
+  if (entries.length > lines.length) {
+    const hiddenCount = entries.length - lines.length;
+    lines.push(`- ${hiddenCount} more issue${hiddenCount === 1 ? "" : "s"}`);
+  }
+
+  return {
+    status,
+    notice: [
+      "Submitted decks contain cards the engine cannot start with:",
+      ...lines,
+    ].join("\n"),
+  };
 }
 
 export function usePeerLobby({ game, setState, setStatus, applySyncedCommand }) {
@@ -548,6 +609,11 @@ export function usePeerLobby({ game, setState, setStatus, applySyncedCommand }) 
   const startHostedMatch = useCallback(async () => {
     const session = multiplayerRef.current;
     if (!canHostedMatchStart(session)) return;
+    const currentGame = gameRef.current;
+    if (!currentGame || typeof currentGame.startMatch !== "function") {
+      setStatus("Game engine is not ready for multiplayer", true);
+      return;
+    }
 
     const players = reindexPlayers(session.players);
 
@@ -575,9 +641,32 @@ export function usePeerLobby({ game, setState, setStatus, applySyncedCommand }) 
     updateMultiplayer((prev) => ({ ...prev, mode: "starting", players }));
 
     try {
+      if (typeof currentGame.validateMatchConfig === "function") {
+        const validation = await currentGame.validateMatchConfig({
+          playerNames: payload.players.map((player) => player.name),
+          startingLife: payload.startingLife,
+          seed: payload.seed,
+          format: payload.format,
+          decks: payload.decks,
+          commanders: payload.commanders,
+          openingHandSize: payload.openingHandSize ?? DEFAULT_OPENING_HAND_SIZE,
+        });
+        if (validation?.valid === false) {
+          const summary = summarizeMatchValidationIssues(validation.issues);
+          emitSyncFailureNotice("Match start blocked", summary.notice);
+          updateMultiplayer((prev) => ({ ...prev, mode: "lobby" }));
+          setStatus(summary.status, true);
+          return;
+        }
+      }
+
       await applyMatchStart(payload);
       broadcastToClients(payload);
     } catch (err) {
+      emitSyncFailureNotice(
+        "Match start failed",
+        err instanceof Error ? err.message : String(err)
+      );
       updateMultiplayer((prev) => ({ ...prev, mode: "lobby" }));
       setStatus(`Match start failed: ${err}`, true);
     }
@@ -626,6 +715,12 @@ export function usePeerLobby({ game, setState, setStatus, applySyncedCommand }) 
           return;
         case "action_error":
           updateMultiplayer((prev) => ({ ...prev, submittingAction: false }));
+          if (message.rollbackSynced) {
+            const reason = message.reason || "Host rejected the local action";
+            emitSyncFailureNotice("Action failed", reason);
+            setStatus(reason, true);
+            return;
+          }
           reportSyncFailure(
             message.reason || "Action rejected by multiplayer host",
             "Host rejected the local action. Resyncing with host...",
@@ -758,32 +853,65 @@ export function usePeerLobby({ game, setState, setStatus, applySyncedCommand }) 
       }
 
       const nextSequence = session.lastAppliedSequence + 1;
-      await applySyncedCommand(command, label || "", {
-        actorIndex,
-        sequence: nextSequence,
-      });
-      actionHistoryRef.current = [
-        ...actionHistoryRef.current,
-        {
+      try {
+        await applySyncedCommand(command, label || "", {
+          actorIndex,
+          sequence: nextSequence,
+        });
+        actionHistoryRef.current = [
+          ...actionHistoryRef.current,
+          {
+            seq: nextSequence,
+            actorIndex: Number(actorIndex),
+            command: cloneMultiplayerPayload(command),
+            label: String(label || ""),
+          },
+        ];
+        updateMultiplayer((prev) => ({
+          ...prev,
+          lastAppliedSequence: nextSequence,
+          submittingAction: false,
+        }));
+        broadcastToClients({
+          type: "apply_action",
+          protocolVersion: PROTOCOL_VERSION,
           seq: nextSequence,
-          actorIndex: Number(actorIndex),
-          command: cloneMultiplayerPayload(command),
-          label: String(label || ""),
-        },
-      ];
-      updateMultiplayer((prev) => ({
-        ...prev,
-        lastAppliedSequence: nextSequence,
-        submittingAction: false,
-      }));
-      broadcastToClients({
-        type: "apply_action",
-        protocolVersion: PROTOCOL_VERSION,
-        seq: nextSequence,
-        actorIndex,
-        command,
-        label: label || "",
-      });
+          actorIndex,
+          command,
+          label: label || "",
+        });
+      } catch (err) {
+        if (err?.syncedRollbackApplied) {
+          const rollbackCommand = { type: "cancel_decision" };
+          actionHistoryRef.current = [
+            ...actionHistoryRef.current,
+            {
+              seq: nextSequence,
+              actorIndex: Number(actorIndex),
+              command: rollbackCommand,
+              label: "",
+            },
+          ];
+          updateMultiplayer((prev) => ({
+            ...prev,
+            lastAppliedSequence: nextSequence,
+            submittingAction: false,
+          }));
+          broadcastToClients({
+            type: "apply_action",
+            protocolVersion: PROTOCOL_VERSION,
+            seq: nextSequence,
+            actorIndex,
+            command: rollbackCommand,
+            label: "",
+          });
+          if (err && typeof err === "object") {
+            err.syncedRollbackBroadcast = true;
+            err.syncedRollbackSequence = nextSequence;
+          }
+        }
+        throw err;
+      }
     },
     [applySyncedCommand, broadcastToClients, updateMultiplayer]
   );
@@ -979,7 +1107,10 @@ export function usePeerLobby({ game, setState, setStatus, applySyncedCommand }) 
           safeSend(conn, {
             type: "action_error",
             protocolVersion: PROTOCOL_VERSION,
-            reason: String(err),
+            reason: toErrorMessage(err),
+            rollbackSynced: Boolean(err?.syncedRollbackBroadcast),
+            rollbackSequence:
+              err?.syncedRollbackSequence == null ? null : Number(err.syncedRollbackSequence),
           });
         });
       });
@@ -1138,7 +1269,7 @@ export function usePeerLobby({ game, setState, setStatus, applySyncedCommand }) 
   );
 
   const joinLobby = useCallback(
-    ({ name, lobbyId, deckText = "", commanderText = "" }) => {
+    ({ name, lobbyId, deckText = "", commanderText = "", onUnavailable = null }) => {
       teardownPeer();
       const localName = sanitizePlayerName(name, "Guest");
       const targetLobby = String(lobbyId || "").trim();
@@ -1382,7 +1513,17 @@ export function usePeerLobby({ game, setState, setStatus, applySyncedCommand }) 
           scheduleReconnect(formatPeerError(err, "Lost lobby signaling"));
           return;
         }
-        setStatus(formatPeerError(err, "Lobby error"), true);
+        const errorMessage = formatPeerError(err, "Lobby error");
+        if (String(err?.type || "").trim() === "peer-unavailable") {
+          onUnavailable?.({
+            reason: errorMessage,
+            lobbyId: targetLobby,
+            name: localName,
+            deckText: String(deckText || ""),
+            commanderText: String(commanderText || ""),
+          });
+        }
+        setStatus(errorMessage, true);
         leaveLobby("");
       });
       peer.on("disconnected", () => {

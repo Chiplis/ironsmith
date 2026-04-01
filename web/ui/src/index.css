@@ -4917,15 +4917,37 @@ body {
   min-height: 0;
   padding-top: 6px;
   height: 100%;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
 }
 
 .battlefield-overlay-zone .battlefield-row {
   min-height: 0;
-  height: 100%;
-  max-height: 100%;
+  height: auto;
+  min-height: 100%;
+  max-height: none;
   justify-items: center;
   padding: 10px 10px 12px;
+}
+
+.battlefield-overlay-zone-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.battlefield-overlay-zone-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.battlefield-overlay-zone-body::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(189, 161, 114, 0.34);
+}
+
+.battlefield-overlay-zone-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(212, 183, 132, 0.52);
 }
 
 .deck-zone-pile {

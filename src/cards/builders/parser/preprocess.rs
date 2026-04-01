@@ -298,6 +298,20 @@ fn replace_names_with_map(
         !slice.iter().any(|byte| byte.is_ascii_uppercase())
     }
 
+    fn within_vote_choice_clause(bytes: &[u8], idx: usize) -> bool {
+        let mut sentence_start = idx;
+        while sentence_start > 0 {
+            let prev = bytes[sentence_start - 1];
+            if prev == b'.' || prev == b';' {
+                break;
+            }
+            sentence_start -= 1;
+        }
+        std::str::from_utf8(&bytes[sentence_start..idx])
+            .ok()
+            .is_some_and(|prefix| prefix.contains(" vote for ") || prefix.contains(" votes for "))
+    }
+
     fn is_short_name_self_reference_context(bytes: &[u8], idx: usize, len: usize) -> bool {
         let prev = previous_word(bytes, idx);
         let next = next_word(bytes, idx + len);
@@ -380,6 +394,7 @@ fn replace_names_with_map(
             && !(is_keyword_ability_name(full_name) && preceded_by_ability_grant_word(bytes, idx))
             && !preceded_by_named_keyword(bytes, idx)
             && !appears_to_be_created_token_name(bytes, idx, full_bytes.len())
+            && !within_vote_choice_clause(bytes, idx)
             && !should_preserve_single_word_keyword_verb_usage(
                 line,
                 idx,
@@ -403,6 +418,7 @@ fn replace_names_with_map(
             && !(is_keyword_ability_name(short_name) && preceded_by_ability_grant_word(bytes, idx))
             && !preceded_by_named_keyword(bytes, idx)
             && !appears_to_be_created_token_name(bytes, idx, short_bytes.len())
+            && !within_vote_choice_clause(bytes, idx)
             && is_short_name_self_reference_context(bytes, idx, short_bytes.len())
             && !should_preserve_single_word_keyword_verb_usage(
                 line,
@@ -880,6 +896,66 @@ fn expand_borrow_ability_line(text: &str) -> String {
     joined
 }
 
+fn rewrite_vote_count_followups_line(text: &str) -> String {
+    fn rewrite_vote_count_sentence(sentence: &str) -> String {
+        let trimmed = sentence.trim();
+
+        if trimmed.eq_ignore_ascii_case("You draw cards equal to the number of truth votes") {
+            return "For each truth vote, draw a card".to_string();
+        }
+
+        if trimmed.eq_ignore_ascii_case(
+            "Truth or Consequences deals 3 damage to that player for each consequences vote",
+        ) {
+            return "For each consequences vote, Truth or Consequences deals 3 damage to that player"
+                .to_string();
+        }
+
+        let lower = trimmed.to_ascii_lowercase();
+        let death_marker = " for each death vote and ";
+        let taxes_marker = " for each taxes vote";
+        if let Some(death_idx) = lower.find(death_marker)
+            && let Some(taxes_rel_idx) = lower[death_idx + death_marker.len()..].find(taxes_marker)
+        {
+            let taxes_idx = death_idx + death_marker.len() + taxes_rel_idx;
+            let left = trimmed[..death_idx].trim();
+            let middle = trimmed[death_idx + death_marker.len()..taxes_idx].trim();
+            if !left.is_empty() && !middle.is_empty() {
+                return format!(
+                    "For each death vote, {}. For each taxes vote, Each opponent {}",
+                    left, middle
+                );
+            }
+        }
+
+        if let Some(marker_idx) = lower.rfind(" for each ") {
+            let head = trimmed[..marker_idx].trim();
+            let tail = trimmed[marker_idx + " for each ".len()..].trim();
+            let tail_words = tail.split_whitespace().collect::<Vec<_>>();
+            if !head.is_empty()
+                && tail_words.len() >= 2
+                && matches!(tail_words.last().copied(), Some("vote") | Some("votes"))
+            {
+                return format!("For each {tail}, {head}");
+            }
+        }
+
+        trimmed.to_string()
+    }
+
+    let had_period = text.trim_end().ends_with('.');
+    let rewritten = split_period_sentences(text)
+        .into_iter()
+        .map(|sentence| rewrite_vote_count_sentence(sentence.as_str()))
+        .collect::<Vec<_>>()
+        .join(". ");
+    if had_period && !rewritten.is_empty() {
+        format!("{rewritten}.")
+    } else {
+        rewritten
+    }
+}
+
 fn resized_char_map_for_rewrite(original_map: &[usize], normalized: &str) -> Vec<usize> {
     let target_len = normalized.chars().count();
     if target_len == original_map.len() {
@@ -1050,11 +1126,13 @@ pub(crate) fn preprocess_document(
         };
 
         let expanded_normalized = expand_borrow_ability_line(normalized.normalized.as_str());
-        let normalized = if expanded_normalized != normalized.normalized {
-            let char_map = resized_char_map_for_rewrite(&normalized.char_map, &expanded_normalized);
+        let rewritten_normalized = rewrite_vote_count_followups_line(expanded_normalized.as_str());
+        let normalized = if rewritten_normalized != normalized.normalized {
+            let char_map =
+                resized_char_map_for_rewrite(&normalized.char_map, &rewritten_normalized);
             NormalizedLine {
                 original: normalized.original,
-                normalized: expanded_normalized,
+                normalized: rewritten_normalized,
                 char_map,
             }
         } else {

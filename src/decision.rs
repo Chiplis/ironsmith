@@ -288,8 +288,11 @@ pub enum LegalAction {
         ability_index: usize,
     },
 
-    /// Turn a face-down creature face up (e.g., morph/megamorph).
-    TurnFaceUp { creature_id: ObjectId },
+    /// Turn a face-down creature face up (e.g., morph/megamorph/manifest).
+    TurnFaceUp {
+        creature_id: ObjectId,
+        method: crate::special_actions::TurnFaceUpMethod,
+    },
 
     /// Special action (suspend, foretell, etc.).
     SpecialAction(SpecialAction),
@@ -1426,13 +1429,17 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
     let battlefield_abilities_started_at = PerfTimer::start();
     for &perm_id in &controlled_battlefield {
         if game.is_face_down(perm_id) {
-            let action = SpecialAction::TurnFaceUp {
-                permanent_id: perm_id,
-            };
-            if can_perform_check(&action, game, player).is_ok() {
-                actions.push(LegalAction::TurnFaceUp {
-                    creature_id: perm_id,
-                });
+            for method in crate::special_actions::available_turn_face_up_methods(game, perm_id) {
+                let action = SpecialAction::TurnFaceUp {
+                    permanent_id: perm_id,
+                    method,
+                };
+                if can_perform_check(&action, game, player).is_ok() {
+                    actions.push(LegalAction::TurnFaceUp {
+                        creature_id: perm_id,
+                        method,
+                    });
+                }
             }
         }
     }
@@ -1741,7 +1748,12 @@ fn activation_precheck_with_view(
         }
         return None;
     }
-    if activated.has_tap_cost()
+    let has_untap_cost = activated
+        .mana_cost
+        .costs()
+        .iter()
+        .any(|cost| cost.requires_untap());
+    if (activated.has_tap_cost() || has_untap_cost)
         && source_facts.is_creature
         && source_facts.is_summoning_sick
         && !source_facts.has_haste
@@ -4465,7 +4477,14 @@ pub(crate) fn compute_potential_mana_with_view(
                                 ));
                     }
                     if cost.requires_untap() {
-                        return game.is_tapped(perm_id);
+                        return game.is_tapped(perm_id)
+                            && (!view
+                                .object_has_card_type(perm_id, crate::types::CardType::Creature)
+                                || !game.is_summoning_sick(perm_id)
+                                || view.object_has_static_ability_id(
+                                    perm_id,
+                                    crate::static_abilities::StaticAbilityId::Haste,
+                                ));
                     }
                     true
                 })
@@ -4575,6 +4594,16 @@ pub(crate) fn simple_battlefield_mana_ability_output(
             }
         }
         if cost.requires_untap() && !game.is_tapped(permanent_id) {
+            return None;
+        }
+        if cost.requires_untap()
+            && view.object_has_card_type(permanent_id, crate::types::CardType::Creature)
+            && game.is_summoning_sick(permanent_id)
+            && !view.object_has_static_ability_id(
+                permanent_id,
+                crate::static_abilities::StaticAbilityId::Haste,
+            )
+        {
             return None;
         }
     }
@@ -7732,16 +7761,21 @@ pub(crate) fn format_action_short(game: &GameState, action: &LegalAction) -> Str
                 format!("Tap {}", name)
             }
         }
-        LegalAction::TurnFaceUp { creature_id } => {
+        LegalAction::TurnFaceUp {
+            creature_id,
+            method,
+        } => {
             let name = game
                 .object(*creature_id)
                 .map(|o| o.name.as_str())
                 .unwrap_or("?");
-            format!("Flip {}", name)
+            format!("Turn face up {} for its {}", name, method.description())
         }
         LegalAction::SpecialAction(special) => match special {
             crate::special_actions::SpecialAction::PlayLand { .. } => "Play land".to_string(),
-            crate::special_actions::SpecialAction::TurnFaceUp { .. } => "Turn face up".to_string(),
+            crate::special_actions::SpecialAction::TurnFaceUp { method, .. } => {
+                format!("Turn face up for its {}", method.description())
+            }
             crate::special_actions::SpecialAction::Suspend { .. } => "Suspend".to_string(),
             crate::special_actions::SpecialAction::Foretell { .. } => "Foretell".to_string(),
             crate::special_actions::SpecialAction::Plot { .. } => "Plot".to_string(),
@@ -9498,6 +9532,37 @@ mod tests {
         assert!(
             options[0].valid_blockers.is_empty(),
             "single creature with can't-block-alone should not be a legal blocker, got {options:?}"
+        );
+    }
+
+    #[test]
+    fn test_compute_legal_blockers_excludes_tapped_creatures() {
+        use crate::cards::definitions::grizzly_bears;
+        use crate::combat_state::AttackerInfo;
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let blocker_def = grizzly_bears();
+        let blocker_id = game.create_object_from_definition(&blocker_def, alice, Zone::Battlefield);
+        game.tap(blocker_id);
+
+        let attacker_def = grizzly_bears();
+        let attacker_id = game.create_object_from_definition(&attacker_def, bob, Zone::Battlefield);
+        game.remove_summoning_sickness(attacker_id);
+
+        let mut combat = CombatState::default();
+        combat.attackers.push(AttackerInfo {
+            creature: attacker_id,
+            target: AttackTarget::Player(alice),
+        });
+
+        let options = compute_legal_blockers(&game, &combat, alice);
+        assert_eq!(options.len(), 1, "expected one attacker option");
+        assert!(
+            options[0].valid_blockers.is_empty(),
+            "tapped creature should not be a legal blocker, got {options:?}"
         );
     }
 
@@ -11771,7 +11836,7 @@ mod tests {
         let actions = compute_legal_actions(&game, alice);
         assert!(
             actions.iter().any(
-                |a| matches!(a, LegalAction::TurnFaceUp { creature_id: id } if *id == creature_id)
+                |a| matches!(a, LegalAction::TurnFaceUp { creature_id: id, .. } if *id == creature_id)
             ),
             "face-down creature with payable morph cost should have TurnFaceUp legal action"
         );
@@ -12093,6 +12158,57 @@ mod tests {
                 LegalAction::ActivateAbility { source, .. } if *source == source_id
             )),
             "tapped permanents should not expose non-mana tap abilities as legal actions"
+        );
+    }
+
+    #[test]
+    fn test_compute_legal_actions_excludes_summoning_sick_non_mana_untap_ability() {
+        use crate::cost::TotalCost;
+        use crate::costs::Cost;
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = None;
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+
+        let source_id = game.create_object_from_card(
+            &CardBuilder::new(CardId::from_raw(782), "Untap Ability Probe")
+                .card_types(vec![CardType::Creature])
+                .power_toughness(PowerToughness::fixed(1, 1))
+                .build(),
+            alice,
+            Zone::Battlefield,
+        );
+        game.object_mut(source_id)
+            .expect("probe should exist")
+            .abilities
+            .push(Ability::activated_with_costs(
+                TotalCost::free(),
+                vec![Cost::untap()],
+                vec![Effect::gain_life(1)],
+            ));
+        game.tap(source_id);
+        game.set_summoning_sick(source_id);
+
+        let actions = compute_legal_actions(&game, alice);
+        assert!(
+            !actions.iter().any(|action| matches!(
+                action,
+                LegalAction::ActivateAbility { source, .. } if *source == source_id
+            )),
+            "summoning-sick creatures should not expose non-mana untap abilities as legal actions"
+        );
+
+        game.remove_summoning_sickness(source_id);
+        let actions = compute_legal_actions(&game, alice);
+        assert!(
+            actions.iter().any(|action| matches!(
+                action,
+                LegalAction::ActivateAbility { source, .. } if *source == source_id
+            )),
+            "once summoning sickness is removed, the untap ability should become legal"
         );
     }
 

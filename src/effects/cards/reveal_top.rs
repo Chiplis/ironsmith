@@ -70,8 +70,8 @@ impl EffectExecutor for RevealTopEffect {
                 .view_cards(game, viewer, &[card_id], &view_ctx);
         }
 
-        Ok(EffectOutcome::count(1).with_event(
-            crate::triggers::TriggerEvent::new_with_provenance(
+        Ok(
+            EffectOutcome::count(1).with_event(crate::triggers::TriggerEvent::new_with_provenance(
                 crate::events::CardRevealedEvent::new(
                     player_id,
                     card_id,
@@ -80,8 +80,8 @@ impl EffectExecutor for RevealTopEffect {
                     snapshot,
                 ),
                 ctx.provenance,
-            ),
-        ))
+            )),
+        )
     }
 }
 

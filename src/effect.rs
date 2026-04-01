@@ -1060,6 +1060,9 @@ pub enum Value {
     /// ])
     /// ```
     TaggedCount,
+
+    /// The number of votes cast for a named vote option during the current resolution.
+    VoteCount(String),
 }
 
 /// Event payload fields that can be referenced by [`Value::EventValue`].
@@ -2172,6 +2175,8 @@ pub enum Condition {
     SourceIsTapped,
     /// Source object is saddled
     SourceIsSaddled,
+    /// Source object is monstrous.
+    SourceIsMonstrous,
     /// Source object is currently on its back face (face down in engine state)
     SourceIsFaceDown,
 
@@ -2304,6 +2309,12 @@ pub enum Condition {
     /// Static condition: the source permanent's chosen named option matches.
     SourceChosenOption(String),
 
+    /// The named vote option got more votes than every other option.
+    VoteOptionGetsMoreVotes(String),
+
+    /// The named vote option got the most votes, including ties.
+    VoteOptionGetsMoreVotesOrTied(String),
+
     /// Static count-based condition ("as long as you control three or more artifacts", etc.)
     CountComparison {
         count: crate::static_abilities::AnthemCountExpression,
@@ -2413,6 +2424,12 @@ impl Effect {
         Self::new(GoadEffect::new(target))
     }
 
+    /// Create a "detain target permanent" effect.
+    pub fn detain(target: ChooseSpec) -> Self {
+        use crate::effects::DetainEffect;
+        Self::new(DetainEffect::new(target))
+    }
+
     /// Create an "explore" effect for a chosen object.
     pub fn explore(target: ChooseSpec) -> Self {
         use crate::effects::ExploreEffect;
@@ -2429,6 +2446,18 @@ impl Effect {
     pub fn manifest_dread() -> Self {
         use crate::effects::ManifestDreadEffect;
         Self::new(ManifestDreadEffect::new())
+    }
+
+    /// Create a "manifest the top card of [library]" effect.
+    pub fn manifest_top_card_of_library(player: crate::filter::PlayerFilter) -> Self {
+        use crate::effects::ManifestTopCardOfLibraryEffect;
+        Self::new(ManifestTopCardOfLibraryEffect::new(player))
+    }
+
+    /// Create a "populate" effect.
+    pub fn populate(count: impl Into<Value>) -> Self {
+        use crate::effects::PopulateEffect;
+        Self::new(PopulateEffect::new(count))
     }
 
     /// Create a "behold" effect.
@@ -3384,10 +3413,16 @@ impl Effect {
         Self::new(TransformEffect::new(target))
     }
 
-    /// Create the Hanweir Battlements meld effect.
-    pub fn hanweir_battlements_meld() -> Self {
-        use crate::effects::HanweirBattlementsMeldEffect;
-        Self::new(HanweirBattlementsMeldEffect::new())
+    /// Create a "meld" effect for meld pairs.
+    pub fn meld(result_name: impl Into<String>) -> Self {
+        use crate::effects::MeldEffect;
+        Self::new(MeldEffect::new(result_name))
+    }
+
+    /// Create a "convert" effect for double-faced cards.
+    pub fn convert(target: ChooseSpec) -> Self {
+        use crate::effects::ConvertEffect;
+        Self::new(ConvertEffect::new(target))
     }
 
     /// Create a "flip" effect for flip cards.
@@ -3737,6 +3772,12 @@ impl Effect {
     ) -> Self {
         use crate::effects::RepeatProcessEffect;
         Self::new(RepeatProcessEffect::new(effects, condition, predicate))
+    }
+
+    /// Repeat a compiled sequence a resolved number of times.
+    pub fn repeat_effects(count: Value, effects: Vec<Effect>) -> Self {
+        use crate::effects::RepeatEffectsEffect;
+        Self::new(RepeatEffectsEffect::new(count, effects))
     }
 
     /// Create a "for each object matching filter" effect.
@@ -4238,6 +4279,18 @@ impl Effect {
         Self::new(ScryEffect::new(count, player))
     }
 
+    /// Create a "fateseal" effect.
+    pub fn fateseal(count: impl Into<Value>) -> Self {
+        use crate::effects::FatesealEffect;
+        Self::new(FatesealEffect::you(count))
+    }
+
+    /// Create a "fateseal" effect for a specific player.
+    pub fn fateseal_player(count: impl Into<Value>, player: PlayerFilter) -> Self {
+        use crate::effects::FatesealEffect;
+        Self::new(FatesealEffect::new(count, player))
+    }
+
     /// Create a "discover N" effect.
     pub fn discover(count: impl Into<Value>) -> Self {
         use crate::effects::DiscoverEffect;
@@ -4515,6 +4568,36 @@ impl Effect {
         use crate::effects::VoteEffect;
         Self::new(VoteEffect::with_optional_extra(
             options,
+            controller_extra_votes,
+            controller_optional_extra_votes,
+        ))
+    }
+
+    /// Create an object-vote effect.
+    pub fn vote_objects(
+        filter: crate::filter::ObjectFilter,
+        count: crate::effect::ChoiceCount,
+        controller_extra_votes: u32,
+    ) -> Self {
+        use crate::effects::VoteEffect;
+        Self::new(VoteEffect::vote_objects(
+            filter,
+            count,
+            controller_extra_votes,
+        ))
+    }
+
+    /// Create an object-vote effect with optional extra votes.
+    pub fn vote_objects_with_optional_extra(
+        filter: crate::filter::ObjectFilter,
+        count: crate::effect::ChoiceCount,
+        controller_extra_votes: u32,
+        controller_optional_extra_votes: u32,
+    ) -> Self {
+        use crate::effects::VoteEffect;
+        Self::new(VoteEffect::vote_objects_with_optional_extra(
+            filter,
+            count,
             controller_extra_votes,
             controller_optional_extra_votes,
         ))

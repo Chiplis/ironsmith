@@ -259,14 +259,6 @@ export default function BlockersDecision({
     });
   }, [canAct, compact, declarations, dispatch, onCompactActionChange]);
 
-  const blockerNameById = useMemo(() => {
-    const map = new Map();
-    for (const opt of blockerOptions) {
-      map.set(Number(opt.blocker), opt.name || `Creature ${Number(opt.blocker)}`);
-    }
-    return map;
-  }, [blockerOptions]);
-
   const attackerNameById = useMemo(() => {
     const map = new Map();
     for (const opt of attackerOptions) {

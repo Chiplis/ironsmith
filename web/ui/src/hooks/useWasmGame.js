@@ -34,6 +34,7 @@ const WORKER_METHODS = [
   "startMatch",
   "switchPerspective",
   "uiState",
+  "validateMatchConfig",
 ];
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));

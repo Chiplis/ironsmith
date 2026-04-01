@@ -1121,6 +1121,57 @@ fn rewrite_lexed_triggered_line_supports_tivit_vote_trigger_body() {
 }
 
 #[test]
+fn rewrite_lexed_vote_start_sentence_supports_object_votes() {
+    let tokens = lex_line(
+        "Starting with you, each player votes for a nonland permanent you don't control.",
+        0,
+    )
+    .expect("rewrite lexer should classify council vote probe");
+
+    let parsed = parse_effect_sentence_lexed(&tokens);
+    assert!(parsed.is_ok(), "{parsed:?}");
+}
+
+#[test]
+fn rewrite_lexed_vote_followups_support_vote_conditions_and_winner_filters() {
+    for text in [
+        "If death gets more votes, each opponent sacrifices a creature of their choice.",
+        "If torture gets more votes or the vote is tied, each opponent loses 4 life.",
+        "Exile each permanent with the most votes or tied for most votes.",
+    ] {
+        let tokens = lex_line(text, 0).expect("rewrite lexer should classify vote follow-up probe");
+        let parsed = parse_effect_sentence_lexed(&tokens);
+        assert!(parsed.is_ok(), "{text}: {parsed:?}");
+    }
+}
+
+#[test]
+fn rewrite_lexed_vote_sentence_sequences_support_representative_line_families() {
+    for text in [
+        "Starting with you, each player votes for death or torture. If death gets more votes, each opponent sacrifices a creature of their choice. If torture gets more votes or the vote is tied, each opponent loses 4 life.",
+        "Each player secretly votes for truth or consequences, then those votes are revealed. For each truth vote, draw a card. Then choose an opponent at random. For each consequences vote, Truth or Consequences deals 3 damage to that player.",
+        "Starting with you, each player votes for death or taxes. For each death vote, each opponent sacrifices a creature of their choice. For each taxes vote, Each opponent discards a card.",
+    ] {
+        let tokens = lex_line(text, 0).expect("rewrite lexer should classify vote sequence probe");
+        let parsed = super::clause_support::parse_effect_sentences_lexed(&tokens);
+        assert!(parsed.is_ok(), "{text}: {parsed:?}");
+    }
+}
+
+#[test]
+fn rewrite_lexed_vote_sentence_sequences_keep_elrond_vote_branches() {
+    let text = "Each player secretly votes for fellowship or aid, then those votes are revealed. For each fellowship vote, the voter chooses a creature they control. You gain control of each creature chosen this way, and they gain \"This creature can't attack its owner.\" Then for each aid vote, put a +1/+1 counter on each creature you control.";
+    let tokens = lex_line(text, 0).expect("rewrite lexer should classify elrond vote probe");
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&tokens)
+        .expect("elrond vote sequence should parse");
+    let debug = format!("{parsed:#?}");
+    assert!(debug.contains("VoteStart"), "{debug}");
+    assert!(debug.contains("VoteOption"), "{debug}");
+    assert!(debug.contains("fellowship"), "{debug}");
+    assert!(debug.contains("aid"), "{debug}");
+}
+
+#[test]
 fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
     let dies_tokens = lex_line("another creature dies", 0)
         .expect("rewrite lexer should classify dies trigger probe");
@@ -1845,6 +1896,18 @@ fn rewrite_lexed_effect_sequence_parses_copy_cast_cost_reduction_followup() {
     assert!(debug.contains("CastTagged"), "{debug}");
     assert!(debug.contains("as_copy: true"), "{debug}");
     assert!(debug.contains("cost_reduction: Some"), "{debug}");
+}
+
+#[test]
+fn rewrite_lexed_return_all_not_chosen_this_way_tracks_it_tag_exclusion() {
+    let text = "Return all nonland permanents not chosen this way to their owners' hands.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify chosen-this-way return");
+
+    let parsed = parse_effect_sentence_lexed(&lexed).expect("return-all sentence");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("ReturnAllToHand"), "{debug}");
+    assert!(debug.contains("IsNotTaggedObject"), "{debug}");
 }
 
 #[test]

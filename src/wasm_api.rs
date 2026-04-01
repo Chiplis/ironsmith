@@ -1412,6 +1412,7 @@ enum PriorityActionRef {
     },
     TurnFaceUp {
         creature_id: u64,
+        method: String,
     },
     SpecialAction {
         action: SpecialActionRef,
@@ -1426,6 +1427,7 @@ enum SpecialActionRef {
     },
     TurnFaceUp {
         permanent_id: u64,
+        method: String,
     },
     Suspend {
         card_id: u64,
@@ -2892,6 +2894,23 @@ struct MatchSetupInput {
     opening_hand_size: Option<usize>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MatchValidationIssue {
+    player_index: usize,
+    player_name: String,
+    section: String,
+    card_name: String,
+    error: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MatchValidationResult {
+    valid: bool,
+    issues: Vec<MatchValidationIssue>,
+}
+
 #[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 enum MatchFormatInput {
@@ -3175,6 +3194,15 @@ impl WasmGame {
 
         self.finish_match_setup(opening_hand_size)?;
         self.snapshot()
+    }
+
+    #[wasm_bindgen(js_name = validateMatchConfig)]
+    pub fn validate_match_config(&mut self, config: JsValue) -> Result<JsValue, JsValue> {
+        let config: MatchSetupInput = serde_wasm_bindgen::from_value(config)
+            .map_err(|e| JsValue::from_str(&format!("invalid match config: {e}")))?;
+        let validation = self.validate_match_setup_input(&config)?;
+        serde_wasm_bindgen::to_value(&validation)
+            .map_err(|e| JsValue::from_str(&format!("failed to serialize match validation: {e}")))
     }
 
     /// Return a JS object snapshot of public game state.
@@ -5580,6 +5608,152 @@ impl WasmGame {
             compiled_abilities,
             semantic_score,
             threshold_percent,
+        }
+    }
+
+    fn validate_match_setup_input(
+        &mut self,
+        config: &MatchSetupInput,
+    ) -> Result<MatchValidationResult, JsValue> {
+        let player_count = config.player_names.len();
+        if player_count == 0 {
+            return Err(JsValue::from_str("player_names cannot be empty"));
+        }
+
+        let decks = config.decks.as_ref();
+        let commanders = config.commanders.as_ref();
+
+        if let Some(decks) = decks
+            && decks.len() != player_count
+        {
+            return Err(JsValue::from_str(
+                "deck count must match number of players in game",
+            ));
+        }
+        if let Some(commanders) = commanders
+            && commanders.len() != player_count
+        {
+            return Err(JsValue::from_str(
+                "commander count must match number of players in game",
+            ));
+        }
+
+        if let MatchFormatInput::Commander = config.format {
+            let Some(decks) = decks else {
+                return Err(JsValue::from_str(
+                    "commander matches require explicit decklists",
+                ));
+            };
+            let Some(commanders) = commanders else {
+                return Err(JsValue::from_str(
+                    "commander matches require commander lists",
+                ));
+            };
+
+            for (deck, commander_list) in decks.iter().zip(commanders.iter()) {
+                if !(commander_list.len() == 1 || commander_list.len() == 2) {
+                    return Err(JsValue::from_str(
+                        "commander matches require exactly 1 or 2 commanders per player",
+                    ));
+                }
+
+                let expected_deck_size = if commander_list.len() == 2 { 98 } else { 99 };
+                if deck.len() != expected_deck_size {
+                    return Err(JsValue::from_str(&format!(
+                        "commander main decks must contain {expected_deck_size} cards for {count} commander(s)",
+                        count = commander_list.len()
+                    )));
+                }
+            }
+        }
+
+        let mut cache = HashMap::<String, Option<String>>::new();
+        let mut issues = Vec::new();
+
+        if let Some(decks) = decks {
+            for (player_index, deck) in decks.iter().enumerate() {
+                self.collect_match_validation_issues(
+                    player_index,
+                    &config.player_names[player_index],
+                    "deck",
+                    deck,
+                    &mut cache,
+                    &mut issues,
+                );
+            }
+        }
+
+        if let Some(commanders) = commanders {
+            for (player_index, commander_list) in commanders.iter().enumerate() {
+                self.collect_match_validation_issues(
+                    player_index,
+                    &config.player_names[player_index],
+                    "commander",
+                    commander_list,
+                    &mut cache,
+                    &mut issues,
+                );
+            }
+        }
+
+        Ok(MatchValidationResult {
+            valid: issues.is_empty(),
+            issues,
+        })
+    }
+
+    fn collect_match_validation_issues(
+        &mut self,
+        player_index: usize,
+        player_name: &str,
+        section: &str,
+        cards: &[String],
+        cache: &mut HashMap<String, Option<String>>,
+        issues: &mut Vec<MatchValidationIssue>,
+    ) {
+        let mut seen = HashSet::new();
+
+        for card_name in cards {
+            let trimmed = card_name.trim();
+            let cache_key = trimmed.to_ascii_lowercase();
+            if !seen.insert(cache_key.clone()) {
+                continue;
+            }
+
+            let error = if let Some(existing) = cache.get(&cache_key) {
+                existing.clone()
+            } else {
+                let computed = self.validate_match_card_name(trimmed);
+                cache.insert(cache_key, computed.clone());
+                computed
+            };
+
+            if let Some(error) = error {
+                issues.push(MatchValidationIssue {
+                    player_index,
+                    player_name: player_name.to_string(),
+                    section: section.to_string(),
+                    card_name: trimmed.to_string(),
+                    error,
+                });
+            }
+        }
+    }
+
+    fn validate_match_card_name(&mut self, query: &str) -> Option<String> {
+        let trimmed = query.trim();
+        if trimmed.is_empty() {
+            return Some("card name cannot be empty".to_string());
+        }
+
+        self.registry.ensure_cards_loaded([trimmed]);
+        if let Some(definition) = self.find_card_definition(trimmed).cloned() {
+            return crate::cards::unsupported_generated_definition_error(&definition);
+        }
+
+        match crate::cards::CardRegistry::try_compile_card(trimmed) {
+            Ok(_) => Some(format!("unknown card name: {trimmed}")),
+            Err(err) => Some(err),
         }
     }
 
@@ -8104,7 +8278,10 @@ fn action_drag_metadata(
             Some(zone_name(Zone::Battlefield)),
             None,
         ),
-        LegalAction::TurnFaceUp { creature_id } => (
+        LegalAction::TurnFaceUp {
+            creature_id,
+            method,
+        } => (
             "turn_face_up",
             Some(creature_id.0),
             None,
@@ -8119,7 +8296,7 @@ fn action_drag_metadata(
                 Some(zone_name(Zone::Hand)),
                 Some(zone_name(Zone::Battlefield)),
             ),
-            crate::special_actions::SpecialAction::TurnFaceUp { permanent_id } => (
+            crate::special_actions::SpecialAction::TurnFaceUp { permanent_id, .. } => (
                 "special_action",
                 Some(permanent_id.0),
                 None,
@@ -8278,15 +8455,29 @@ fn describe_action(game: &GameState, action: &LegalAction) -> String {
                 ),
             }
         }
-        LegalAction::TurnFaceUp { creature_id } => {
-            format!("Turn face up {}", object_name(game, *creature_id))
+        LegalAction::TurnFaceUp {
+            creature_id,
+            method,
+        } => {
+            format!(
+                "Turn face up {} for its {}",
+                object_name(game, *creature_id),
+                method.description()
+            )
         }
         LegalAction::SpecialAction(action) => match action {
             crate::special_actions::SpecialAction::PlayLand { card_id } => {
                 format!("Play {}", object_name(game, *card_id))
             }
-            crate::special_actions::SpecialAction::TurnFaceUp { permanent_id } => {
-                format!("Turn face up {}", object_name(game, *permanent_id))
+            crate::special_actions::SpecialAction::TurnFaceUp {
+                permanent_id,
+                method,
+            } => {
+                format!(
+                    "Turn face up {} for its {}",
+                    object_name(game, *permanent_id),
+                    method.description()
+                )
             }
             crate::special_actions::SpecialAction::Suspend { card_id } => {
                 format!("Suspend {}", object_name(game, *card_id))
@@ -8497,8 +8688,12 @@ fn priority_action_ref(action: &LegalAction) -> PriorityActionRef {
             source: source.0,
             ability_index: *ability_index,
         },
-        LegalAction::TurnFaceUp { creature_id } => PriorityActionRef::TurnFaceUp {
+        LegalAction::TurnFaceUp {
+            creature_id,
+            method,
+        } => PriorityActionRef::TurnFaceUp {
             creature_id: creature_id.0,
+            method: method.description().to_string(),
         },
         LegalAction::SpecialAction(action) => PriorityActionRef::SpecialAction {
             action: special_action_ref(action),
@@ -8511,11 +8706,13 @@ fn special_action_ref(action: &crate::special_actions::SpecialAction) -> Special
         crate::special_actions::SpecialAction::PlayLand { card_id } => {
             SpecialActionRef::PlayLand { card_id: card_id.0 }
         }
-        crate::special_actions::SpecialAction::TurnFaceUp { permanent_id } => {
-            SpecialActionRef::TurnFaceUp {
-                permanent_id: permanent_id.0,
-            }
-        }
+        crate::special_actions::SpecialAction::TurnFaceUp {
+            permanent_id,
+            method,
+        } => SpecialActionRef::TurnFaceUp {
+            permanent_id: permanent_id.0,
+            method: method.description().to_string(),
+        },
         crate::special_actions::SpecialAction::Suspend { card_id } => {
             SpecialActionRef::Suspend { card_id: card_id.0 }
         }
@@ -9062,10 +9259,10 @@ fn convert_and_validate_targets(
 mod tests {
     use super::{
         CustomCardFaceInput, CustomCardInput, CustomCardLayoutInput, GameSnapshot,
-        MatchFormatInput, PendingReplayAction, PregameState, ReplayOutcome, ReplayRoot,
-        TargetChoiceView, TargetInput, WasmGame, action_drag_metadata, battlefield_lane_for_object,
-        build_object_details_snapshot, build_stack_object_snapshot, convert_and_validate_targets,
-        grouped_battlefield_for_player,
+        MatchFormatInput, MatchSetupInput, PendingReplayAction, PregameState, ReplayOutcome,
+        ReplayRoot, TargetChoiceView, TargetInput, WasmGame, action_drag_metadata,
+        battlefield_lane_for_object, build_object_details_snapshot, build_stack_object_snapshot,
+        convert_and_validate_targets, grouped_battlefield_for_player,
     };
     use crate::ability::Ability;
     use crate::alternative_cast::CastingMethod;
@@ -9120,6 +9317,72 @@ mod tests {
                     .create_object_from_definition(&ornithopter(), player, zone)
             })
             .collect()
+    }
+
+    #[test]
+    fn validate_match_setup_accepts_loadable_normal_decks() {
+        let mut wasm = WasmGame::new();
+        let config = MatchSetupInput {
+            player_names: vec!["Alice".to_string(), "Bob".to_string()],
+            starting_life: 20,
+            seed: 1,
+            format: MatchFormatInput::Normal,
+            decks: Some(vec![
+                vec!["Lightning Bolt".to_string()],
+                vec!["Ornithopter".to_string()],
+            ]),
+            commanders: None,
+            opening_hand_size: Some(7),
+        };
+
+        let validation = wasm
+            .validate_match_setup_input(&config)
+            .expect("validation should succeed");
+        assert!(validation.valid, "loadable normal decks should validate");
+        assert!(
+            validation.issues.is_empty(),
+            "valid decks should not surface issues: {:?}",
+            validation.issues
+        );
+    }
+
+    #[test]
+    fn validate_match_setup_reports_invalid_cards() {
+        let mut wasm = WasmGame::new();
+        let config = MatchSetupInput {
+            player_names: vec!["Alice".to_string(), "Bob".to_string()],
+            starting_life: 20,
+            seed: 1,
+            format: MatchFormatInput::Normal,
+            decks: Some(vec![
+                vec!["Definitely Not A Real Card".to_string()],
+                vec!["Ornithopter".to_string()],
+            ]),
+            commanders: None,
+            opening_hand_size: Some(7),
+        };
+
+        let validation = wasm
+            .validate_match_setup_input(&config)
+            .expect("validation should succeed");
+        assert!(
+            !validation.valid,
+            "invalid decks should block match start validation"
+        );
+        assert_eq!(
+            validation.issues.len(),
+            1,
+            "expected one invalid card issue"
+        );
+        let issue = &validation.issues[0];
+        assert_eq!(issue.player_index, 0);
+        assert_eq!(issue.player_name, "Alice");
+        assert_eq!(issue.section, "deck");
+        assert_eq!(issue.card_name, "Definitely Not A Real Card");
+        assert!(
+            !issue.error.is_empty(),
+            "invalid card should surface a specific error"
+        );
     }
 
     #[test]

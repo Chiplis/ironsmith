@@ -898,6 +898,11 @@ pub fn resolve_value(
                 ));
             }
         }
+        Value::VoteCount(option) => Ok(ctx
+            .vote_results
+            .get(&ctx.source)
+            .map(|result| result.count_for_option(option) as i32)
+            .unwrap_or(0)),
     }
 }
 

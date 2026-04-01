@@ -20,12 +20,31 @@ use crate::zone::Zone;
 
 #[derive(Debug, Clone, PartialEq)]
 struct TurnFaceUpSpec {
+    method: TurnFaceUpMethod,
     cost: crate::cost::TotalCost,
+    description: &'static str,
     megamorph: bool,
 }
 
-fn turn_face_up_spec(object: &crate::object::Object) -> Option<TurnFaceUpSpec> {
-    let mut chosen: Option<TurnFaceUpSpec> = None;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TurnFaceUpMethod {
+    TurnFaceUpAbility,
+    MegamorphAbility,
+    PrintedManaCost,
+}
+
+impl TurnFaceUpMethod {
+    pub fn description(self) -> &'static str {
+        match self {
+            Self::TurnFaceUpAbility => "turn-face-up cost",
+            Self::MegamorphAbility => "megamorph cost",
+            Self::PrintedManaCost => "mana cost",
+        }
+    }
+}
+
+fn turn_face_up_specs(game: &GameState, object: &crate::object::Object) -> Vec<TurnFaceUpSpec> {
+    let mut specs = Vec::new();
     for ability in &object.abilities {
         if !ability.functions_in(&Zone::Battlefield) {
             continue;
@@ -37,17 +56,60 @@ fn turn_face_up_spec(object: &crate::object::Object) -> Option<TurnFaceUpSpec> {
             continue;
         };
         let candidate = TurnFaceUpSpec {
+            method: if static_ability.is_megamorph() {
+                TurnFaceUpMethod::MegamorphAbility
+            } else {
+                TurnFaceUpMethod::TurnFaceUpAbility
+            },
             cost: crate::cost::TotalCost::mana(cost.clone()),
+            description: if static_ability.is_megamorph() {
+                TurnFaceUpMethod::MegamorphAbility.description()
+            } else {
+                TurnFaceUpMethod::TurnFaceUpAbility.description()
+            },
             megamorph: static_ability.is_megamorph(),
         };
-        if chosen
-            .as_ref()
-            .is_none_or(|current| !current.megamorph && candidate.megamorph)
-        {
-            chosen = Some(candidate);
-        }
+        specs.push(candidate);
     }
-    chosen
+
+    if game.is_manifested(object.id)
+        && let Some(restore) = object.face_down_cast_state.as_ref()
+        && restore.card_types.contains(&CardType::Creature)
+        && let Some(cost) = restore.mana_cost.clone()
+    {
+        specs.push(TurnFaceUpSpec {
+            method: TurnFaceUpMethod::PrintedManaCost,
+            cost: crate::cost::TotalCost::mana(cost),
+            description: TurnFaceUpMethod::PrintedManaCost.description(),
+            megamorph: false,
+        });
+    }
+
+    specs
+}
+
+pub(crate) fn available_turn_face_up_methods(
+    game: &GameState,
+    permanent_id: ObjectId,
+) -> Vec<TurnFaceUpMethod> {
+    game.object(permanent_id)
+        .map(|object| {
+            turn_face_up_specs(game, object)
+                .into_iter()
+                .map(|spec| spec.method)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn turn_face_up_spec(
+    game: &GameState,
+    object: &crate::object::Object,
+    method: TurnFaceUpMethod,
+) -> Option<TurnFaceUpSpec> {
+    turn_face_up_specs(game, object)
+        .into_iter()
+        .find(|spec| spec.method == method)
 }
 
 fn foretell_cost(object: &crate::object::Object) -> Option<crate::mana::ManaCost> {
@@ -132,7 +194,10 @@ pub enum SpecialAction {
     PlayLand { card_id: ObjectId },
 
     /// Turn a face-down permanent face up via a turn-face-up special action.
-    TurnFaceUp { permanent_id: ObjectId },
+    TurnFaceUp {
+        permanent_id: ObjectId,
+        method: TurnFaceUpMethod,
+    },
 
     /// Suspend a card from hand (pay suspend cost, exile with time counters).
     Suspend { card_id: ObjectId },
@@ -256,7 +321,10 @@ pub fn can_perform(
 ) -> Result<(), ActionError> {
     match action {
         SpecialAction::PlayLand { card_id } => can_play_land(game, player, *card_id),
-        SpecialAction::TurnFaceUp { permanent_id } => can_turn_face_up(game, player, *permanent_id),
+        SpecialAction::TurnFaceUp {
+            permanent_id,
+            method,
+        } => can_turn_face_up_with_method(game, player, *permanent_id, *method),
         SpecialAction::Suspend { card_id } => can_suspend(game, player, *card_id),
         SpecialAction::Foretell { card_id } => can_foretell(game, player, *card_id),
         SpecialAction::Plot { card_id } => can_plot(game, player, *card_id),
@@ -279,7 +347,10 @@ pub fn can_perform_check(
 ) -> Result<(), ActionError> {
     match action {
         SpecialAction::PlayLand { card_id } => can_play_land(game, player, *card_id),
-        SpecialAction::TurnFaceUp { permanent_id } => can_turn_face_up(game, player, *permanent_id),
+        SpecialAction::TurnFaceUp {
+            permanent_id,
+            method,
+        } => can_turn_face_up_with_method(game, player, *permanent_id, *method),
         SpecialAction::Suspend { card_id } => can_suspend(game, player, *card_id),
         SpecialAction::Foretell { card_id } => can_foretell(game, player, *card_id),
         SpecialAction::Plot { card_id } => can_plot(game, player, *card_id),
@@ -304,9 +375,10 @@ pub fn perform(
         SpecialAction::PlayLand { card_id } => {
             perform_play_land(game, player, card_id, decision_maker)
         }
-        SpecialAction::TurnFaceUp { permanent_id } => {
-            perform_turn_face_up(game, player, permanent_id, &mut *decision_maker)
-        }
+        SpecialAction::TurnFaceUp {
+            permanent_id,
+            method,
+        } => perform_turn_face_up(game, player, permanent_id, method, &mut *decision_maker),
         SpecialAction::Suspend { card_id } => perform_suspend(game, player, card_id),
         SpecialAction::Foretell { card_id } => perform_foretell(game, player, card_id),
         SpecialAction::Plot { card_id } => perform_plot(game, player, card_id),
@@ -418,13 +490,32 @@ fn perform_play_land(
 
 // === Turn Face Up ===
 
+#[cfg(test)]
 fn can_turn_face_up(
     game: &GameState,
     player: PlayerId,
     permanent_id: ObjectId,
 ) -> Result<(), ActionError> {
-    use crate::costs::{CostCheckContext, can_pay_with_check_context};
+    let object = validate_turn_face_up_common(game, player, permanent_id)?;
+    let specs = turn_face_up_specs(game, object);
+    if specs.is_empty() {
+        return Err(ActionError::NoSuchAbility);
+    }
+    let mut last_error = ActionError::CantPayCost;
+    for spec in &specs {
+        match can_pay_turn_face_up_spec(game, player, permanent_id, spec) {
+            Ok(()) => return Ok(()),
+            Err(err) => last_error = err,
+        }
+    }
+    Err(last_error)
+}
 
+fn validate_turn_face_up_common<'a>(
+    game: &'a GameState,
+    player: PlayerId,
+    permanent_id: ObjectId,
+) -> Result<&'a crate::object::Object, ActionError> {
     // Must have priority to take a special action.
     if game.turn.priority_player != Some(player) {
         return Err(ActionError::NotYourPriority);
@@ -451,9 +542,16 @@ fn can_turn_face_up(
         return Err(ActionError::InvalidTarget);
     }
 
-    let Some(spec) = turn_face_up_spec(object) else {
-        return Err(ActionError::NoSuchAbility);
-    };
+    Ok(object)
+}
+
+fn can_pay_turn_face_up_spec(
+    game: &GameState,
+    player: PlayerId,
+    permanent_id: ObjectId,
+    spec: &TurnFaceUpSpec,
+) -> Result<(), ActionError> {
+    use crate::costs::{CostCheckContext, can_pay_with_check_context};
 
     // Check whether the player can currently pay the turn-face-up cost.
     // (Unlike spell casting, this path currently doesn't open a mana-payment subflow.)
@@ -476,16 +574,33 @@ fn can_turn_face_up(
     Ok(())
 }
 
+fn can_turn_face_up_with_method(
+    game: &GameState,
+    player: PlayerId,
+    permanent_id: ObjectId,
+    method: TurnFaceUpMethod,
+) -> Result<(), ActionError> {
+    let object = validate_turn_face_up_common(game, player, permanent_id)?;
+    let Some(spec) = turn_face_up_spec(game, object, method) else {
+        return Err(ActionError::NoSuchAbility);
+    };
+    can_pay_turn_face_up_spec(game, player, permanent_id, &spec)
+}
+
 fn perform_turn_face_up(
     game: &mut GameState,
     player: PlayerId,
     permanent_id: ObjectId,
+    method: TurnFaceUpMethod,
     decision_maker: &mut impl crate::decision::DecisionMaker,
 ) -> Result<(), ActionError> {
+    validate_turn_face_up_common(game, player, permanent_id)?;
     let spec = game
         .object(permanent_id)
         .ok_or(ActionError::ObjectNotFound)
-        .and_then(|object| turn_face_up_spec(object).ok_or(ActionError::NoSuchAbility))?;
+        .and_then(|object| {
+            turn_face_up_spec(game, object, method).ok_or(ActionError::NoSuchAbility)
+        })?;
 
     // Pay the morph/megamorph turn-face-up cost.
     let action_provenance =
@@ -1053,6 +1168,19 @@ pub(crate) fn can_activate_mana_ability_check_with_view(
                     perf_ctx.add_precheck_ms(precheck_started_at.elapsed_ms());
                 }
                 return Err(ActionError::CantPayCost);
+            }
+            if cost.requires_untap()
+                && view.object_has_card_type(permanent_id, CardType::Creature)
+                && game.is_summoning_sick(permanent_id)
+                && !view.object_has_static_ability_id(
+                    permanent_id,
+                    crate::static_abilities::StaticAbilityId::Haste,
+                )
+            {
+                if let Some(perf_ctx) = perf_ctx {
+                    perf_ctx.add_precheck_ms(precheck_started_at.elapsed_ms());
+                }
+                return Err(ActionError::SummoningSickness);
             }
         }
 
@@ -1815,11 +1943,200 @@ mod tests {
         );
 
         let mut dm = SelectFirstDecisionMaker;
-        perform_turn_face_up(&mut game, alice, morph_id, &mut dm)
-            .expect("turning face up should succeed");
+        perform_turn_face_up(
+            &mut game,
+            alice,
+            morph_id,
+            TurnFaceUpMethod::TurnFaceUpAbility,
+            &mut dm,
+        )
+        .expect("turning face up should succeed");
 
         assert!(!game.is_face_down(morph_id));
         assert_eq!(game.player(alice).expect("alice exists").life, 18);
+    }
+
+    #[test]
+    fn manifested_creature_can_turn_face_up_for_mana_cost() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = None;
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+
+        let card = CardBuilder::new(CardId::new(), "Manifested Bear")
+            .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Green]))
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(3, 3))
+            .build();
+        let permanent_id = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        game.object_mut(permanent_id)
+            .expect("manifested permanent should exist")
+            .apply_face_down_cast_overlay();
+        game.set_face_down(permanent_id);
+        game.set_manifested(permanent_id);
+        game.player_mut(alice)
+            .expect("alice exists")
+            .mana_pool
+            .add(ManaSymbol::Green, 1);
+
+        assert!(
+            can_turn_face_up(&game, alice, permanent_id).is_ok(),
+            "manifested creature should be turnable face up for its mana cost"
+        );
+
+        let mut dm = SelectFirstDecisionMaker;
+        perform_turn_face_up(
+            &mut game,
+            alice,
+            permanent_id,
+            TurnFaceUpMethod::PrintedManaCost,
+            &mut dm,
+        )
+        .expect("turning manifested creature face up should succeed");
+
+        assert!(!game.is_face_down(permanent_id));
+        assert!(!game.is_manifested(permanent_id));
+        let object = game
+            .object(permanent_id)
+            .expect("face-up creature should exist");
+        assert_eq!(object.name, "Manifested Bear");
+        assert_eq!(game.calculated_power(permanent_id), Some(3));
+        assert_eq!(game.calculated_toughness(permanent_id), Some(3));
+    }
+
+    #[test]
+    fn manifested_noncreature_cant_turn_face_up_for_mana_cost() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = None;
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+
+        let card = CardBuilder::new(CardId::new(), "Manifested Spell")
+            .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Blue]))
+            .card_types(vec![CardType::Sorcery])
+            .build();
+        let permanent_id = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        game.object_mut(permanent_id)
+            .expect("manifested permanent should exist")
+            .apply_face_down_cast_overlay();
+        game.set_face_down(permanent_id);
+        game.set_manifested(permanent_id);
+        game.player_mut(alice)
+            .expect("alice exists")
+            .mana_pool
+            .add(ManaSymbol::Blue, 1);
+
+        let error = can_turn_face_up(&game, alice, permanent_id)
+            .expect_err("manifested noncreature should not be turnable face up");
+        assert_eq!(error, ActionError::NoSuchAbility);
+    }
+
+    #[test]
+    fn manifested_megamorph_creature_can_use_mana_cost_or_megamorph_cost() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = None;
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+
+        let card = CardBuilder::new(CardId::new(), "Manifested Adept")
+            .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Green]))
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+
+        let mana_cost_id = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        game.object_mut(mana_cost_id)
+            .expect("manifested permanent should exist")
+            .abilities
+            .push(crate::ability::Ability::static_ability(
+                crate::static_abilities::StaticAbility::megamorph(ManaCost::from_symbols(vec![
+                    ManaSymbol::Generic(3),
+                    ManaSymbol::Green,
+                ])),
+            ));
+        game.object_mut(mana_cost_id)
+            .expect("manifested permanent should exist")
+            .apply_face_down_cast_overlay();
+        game.set_face_down(mana_cost_id);
+        game.set_manifested(mana_cost_id);
+
+        let megamorph_id = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        game.object_mut(megamorph_id)
+            .expect("manifested permanent should exist")
+            .abilities
+            .push(crate::ability::Ability::static_ability(
+                crate::static_abilities::StaticAbility::megamorph(ManaCost::from_symbols(vec![
+                    ManaSymbol::Generic(3),
+                    ManaSymbol::Green,
+                ])),
+            ));
+        game.object_mut(megamorph_id)
+            .expect("manifested permanent should exist")
+            .apply_face_down_cast_overlay();
+        game.set_face_down(megamorph_id);
+        game.set_manifested(megamorph_id);
+
+        let alice_player = game.player_mut(alice).expect("alice exists");
+        alice_player.mana_pool.add(ManaSymbol::Green, 5);
+
+        assert!(
+            can_turn_face_up_with_method(
+                &game,
+                alice,
+                mana_cost_id,
+                TurnFaceUpMethod::PrintedManaCost,
+            )
+            .is_ok(),
+            "manifested creature should be turnable face up for its mana cost"
+        );
+        assert!(
+            can_turn_face_up_with_method(
+                &game,
+                alice,
+                mana_cost_id,
+                TurnFaceUpMethod::MegamorphAbility,
+            )
+            .is_ok(),
+            "manifested creature should also be turnable face up for its megamorph cost"
+        );
+
+        let mut dm = SelectFirstDecisionMaker;
+        perform_turn_face_up(
+            &mut game,
+            alice,
+            mana_cost_id,
+            TurnFaceUpMethod::PrintedManaCost,
+            &mut dm,
+        )
+        .expect("turning manifested creature face up for its mana cost should succeed");
+        perform_turn_face_up(
+            &mut game,
+            alice,
+            megamorph_id,
+            TurnFaceUpMethod::MegamorphAbility,
+            &mut dm,
+        )
+        .expect("turning manifested creature face up for its megamorph cost should succeed");
+
+        assert_eq!(
+            game.counter_count(mana_cost_id, crate::object::CounterType::PlusOnePlusOne),
+            0,
+            "turning face up for mana cost should not add a megamorph counter"
+        );
+        assert_eq!(
+            game.counter_count(megamorph_id, crate::object::CounterType::PlusOnePlusOne),
+            1,
+            "turning face up for megamorph should add a +1/+1 counter"
+        );
     }
 
     #[test]

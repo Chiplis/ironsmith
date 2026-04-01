@@ -59,22 +59,24 @@ impl EffectExecutor for ExileThenGrantPlayEffect {
         if result.final_zone != Zone::Exile {
             return Ok(EffectOutcome::count(0));
         }
-        let Some(exiled_id) = result.new_object_id else {
+        if result.new_object_ids.is_empty() {
             return Ok(EffectOutcome::count(0));
-        };
+        }
 
-        game.grant_registry.grant_to_card(
-            exiled_id,
-            Zone::Exile,
-            player,
-            Grantable::PlayFrom,
-            GrantSource::Effect {
-                source_id: ctx.source,
-                expires_end_of_turn: expires,
-            },
-        );
+        for &exiled_id in &result.new_object_ids {
+            game.grant_registry.grant_to_card(
+                exiled_id,
+                Zone::Exile,
+                player,
+                Grantable::PlayFrom,
+                GrantSource::Effect {
+                    source_id: ctx.source,
+                    expires_end_of_turn: expires,
+                },
+            );
+        }
 
-        Ok(EffectOutcome::with_objects(vec![exiled_id]))
+        Ok(EffectOutcome::with_objects(result.new_object_ids))
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

@@ -12,7 +12,7 @@ use crate::continuous::{CalculatedCharacteristics, ContinuousEffect, ContinuousE
 use crate::cost::OptionalCostsPaid;
 use crate::decision::KeywordPaymentContribution;
 use crate::dungeon::ActiveDungeonProgress;
-use crate::events::{Event, EventKind};
+use crate::events::{Event, EventKind, KeywordActionKind};
 use crate::ids::{ObjectId, PlayerId, StableId, reset_runtime_id_counters};
 use crate::object::{AttachmentTarget, AuraAttachmentFilter, Object};
 use crate::player::Player;
@@ -61,6 +61,20 @@ pub struct LinkedExileGroup {
     pub return_zone: Zone,
     /// If returning to the battlefield, reset controller to owner.
     pub return_under_owner_control: bool,
+}
+
+/// Stored front-face identity for a melded permanent's component card.
+#[derive(Debug, Clone)]
+pub struct MeldComponentState {
+    pub stable_id: StableId,
+    pub owner: PlayerId,
+    pub name: String,
+}
+
+/// Battlefield metadata for a melded permanent.
+#[derive(Debug, Clone)]
+pub struct MeldedPermanentState {
+    pub components: Vec<MeldComponentState>,
 }
 
 /// One-shot battlefield transition hints for the UI animation layer.
@@ -308,10 +322,16 @@ pub struct RestrictionEffectInstance {
     pub source: ObjectId,
     pub duration: crate::effect::Until,
     pub expires_end_of_turn: u32,
+    pub consumed_next_untap: bool,
 }
 
 impl RestrictionEffectInstance {
     pub fn is_expired(&self, current_turn: u32) -> bool {
+        if matches!(self.duration, crate::effect::Until::ControllersNextUntapStep)
+            && self.consumed_next_untap
+        {
+            return true;
+        }
         matches!(self.duration, crate::effect::Until::EndOfTurn)
             && current_turn > self.expires_end_of_turn
     }
@@ -1559,6 +1579,14 @@ pub struct GameState {
     /// Face-down permanents (for morph, manifest, etc.).
     pub face_down: HashSet<ObjectId>,
 
+    /// Face-down permanents created via manifest.
+    pub manifested: HashSet<ObjectId>,
+
+    /// Number of times each battlefield permanent has transformed.
+    ///
+    /// Used to enforce CR 701.27f for abilities that try to transform their source.
+    pub transform_count: HashMap<ObjectId, u64>,
+
     /// Which players may inspect a face-down card in exile.
     pub face_down_exile_viewers: HashMap<ObjectId, HashSet<PlayerId>>,
 
@@ -1601,6 +1629,14 @@ pub struct GameState {
 
     /// Monotonic ID generator for linked exile groups.
     pub next_linked_exile_group_id: u64,
+
+    /// Component-card identity for battlefield melded permanents, keyed by the
+    /// melded permanent's stable ID.
+    pub melded_permanents: HashMap<StableId, MeldedPermanentState>,
+
+    /// The full set of destination object IDs created by the most recent move
+    /// of a given source object.
+    pub zone_change_result_objects: HashMap<ObjectId, Vec<ObjectId>>,
 
     /// Deterministic match RNG state used for shuffles and other random gameplay effects.
     random_state: Cell<u64>,
@@ -1696,6 +1732,8 @@ impl GameState {
             renowned: HashSet::new(),
             flipped: HashSet::new(),
             face_down: HashSet::new(),
+            manifested: HashSet::new(),
+            transform_count: HashMap::new(),
             face_down_exile_viewers: HashMap::new(),
             phased_out: HashSet::new(),
             madness_exiled: HashSet::new(),
@@ -1709,6 +1747,8 @@ impl GameState {
             exiled_with_source: HashMap::new(),
             linked_exile_groups: HashMap::new(),
             next_linked_exile_group_id: 0,
+            melded_permanents: HashMap::new(),
+            zone_change_result_objects: HashMap::new(),
             random_state: Cell::new(Self::normalize_random_seed(0)),
             irreversible_random_count: Cell::new(0),
             continuous_state_dirty: Cell::new(true),
@@ -1825,6 +1865,7 @@ impl GameState {
             source,
             duration,
             expires_end_of_turn,
+            consumed_next_untap: false,
         });
     }
 
@@ -2417,6 +2458,20 @@ impl GameState {
     /// Moves an object to a new zone.
     /// Per MTG rule 400.7, this creates a new object (new ID).
     /// Returns the new ObjectId.
+    fn create_meld_component_object(
+        &mut self,
+        component: &MeldComponentState,
+        zone: Zone,
+    ) -> Option<ObjectId> {
+        let def = crate::cards::linked_face_definition_by_name_or_id(Some(&component.name), None)?;
+        let new_id = self.new_object_id();
+        let mut object =
+            crate::object::Object::from_card_definition(new_id, &def, component.owner, zone);
+        object.stable_id = component.stable_id;
+        self.add_object(object);
+        Some(new_id)
+    }
+
     pub fn move_object(
         &mut self,
         old_id: ObjectId,
@@ -2471,6 +2526,45 @@ impl GameState {
             self.clear_exile_state(old_id);
         }
 
+        if old_zone == Zone::Battlefield
+            && new_zone != Zone::Battlefield
+            && let Some(melded) = self.melded_permanent(old_object.stable_id).cloned()
+        {
+            let mut result_object_ids = Vec::with_capacity(melded.components.len());
+            for component in &melded.components {
+                let new_component_id = self.create_meld_component_object(component, new_zone)?;
+                result_object_ids.push(new_component_id);
+            }
+            self.melded_permanents.remove(&old_object.stable_id);
+
+            use crate::events::zones::ZoneChangeEvent;
+            use crate::triggers::TriggerEvent;
+
+            let event = ZoneChangeEvent::with_results(
+                old_id,
+                result_object_ids.clone(),
+                old_zone,
+                new_zone,
+                cause,
+                pre_move_snapshot,
+            );
+            let event_provenance = self
+                .provenance_graph
+                .alloc_root_event(crate::events::EventKind::ZoneChange);
+            self.queue_trigger_event(
+                event_provenance,
+                TriggerEvent::new_with_provenance(event, event_provenance),
+            );
+            self.record_zone_change_results(old_id, result_object_ids.clone());
+
+            #[cfg(debug_assertions)]
+            self.debug_assert_zone_consistency();
+
+            self.reconcile_ring_bearers();
+
+            return result_object_ids.first().copied();
+        }
+
         // Create new object with new ID (zone change = new object per rule 400.7)
         let new_id = self.new_object_id();
         let mut new_object = old_object;
@@ -2482,7 +2576,11 @@ impl GameState {
         new_object.attachments.clear();
         // Casting-contribution state should not persist across arbitrary zone changes.
         // Preserve it only for Stack -> Battlefield (a spell resolving into a permanent).
-        if !(old_zone == Zone::Stack && new_zone == Zone::Battlefield) {
+        let preserve_face_down_overlay =
+            new_zone == Zone::Battlefield && new_object.face_down_cast_state.is_some();
+        let preserve_bestow_overlay =
+            new_zone == Zone::Battlefield && new_object.bestow_cast_state.is_some();
+        if !preserve_face_down_overlay && !preserve_bestow_overlay {
             new_object.keyword_payment_contributions_to_cast.clear();
             new_object.x_value = None;
             new_object.bestow_cast_state = None;
@@ -2496,7 +2594,12 @@ impl GameState {
 
         self.add_object(new_object);
 
-        if old_zone == Zone::Stack && new_zone == Zone::Battlefield && was_face_down {
+        if new_zone == Zone::Battlefield
+            && (was_face_down
+                || self
+                    .object(new_id)
+                    .is_some_and(|obj| obj.face_down_cast_state.is_some()))
+        {
             self.set_face_down(new_id);
         }
         if old_zone == Zone::Exile && new_zone == Zone::Exile && was_face_down {
@@ -2532,6 +2635,10 @@ impl GameState {
                 cause,
                 pre_move_snapshot,
             );
+            let mut event = event;
+            if old_zone == Zone::Battlefield {
+                event.result_objects = vec![new_id];
+            }
             let event_provenance = self
                 .provenance_graph
                 .alloc_root_event(crate::events::EventKind::ZoneChange);
@@ -2540,6 +2647,7 @@ impl GameState {
                 TriggerEvent::new_with_provenance(event, event_provenance),
             );
         }
+        self.record_zone_change_results(old_id, vec![new_id]);
 
         // Validate zone consistency in debug builds
         #[cfg(debug_assertions)]
@@ -2984,6 +3092,7 @@ impl GameState {
                 }
             }
             self.stable_id_index.remove(&obj.stable_id);
+            self.melded_permanents.remove(&obj.stable_id);
             self.declined_commander_command_zone_moves.remove(&id);
             self.remove_from_zone_index(id, obj.zone, obj.owner);
         }
@@ -5029,6 +5138,32 @@ impl GameState {
             .contains(&creature)
     }
 
+    /// Check whether an object performed a specific keyword action this turn.
+    pub fn object_performed_keyword_action_this_turn(
+        &self,
+        object_id: ObjectId,
+        action: KeywordActionKind,
+    ) -> bool {
+        let stable_id = self
+            .object(object_id)
+            .map(|object| object.stable_id.object_id())
+            .unwrap_or(object_id);
+
+        self.turn_history
+            .event_records
+            .iter()
+            .chain(self.turn_history.staged_event_records.iter())
+            .filter_map(|record| record.event.downcast::<crate::events::KeywordActionEvent>())
+            .any(|event| {
+                event.action == action && (event.source == object_id || event.source == stable_id)
+            })
+    }
+
+    /// Check whether an object was exerted this turn.
+    pub fn object_exerted_this_turn(&self, object_id: ObjectId) -> bool {
+        self.object_performed_keyword_action_this_turn(object_id, KeywordActionKind::Exert)
+    }
+
     pub fn creature_blocked_this_turn(&self, creature: ObjectId) -> bool {
         self.turn_history.creature_blocked_this_turn(creature)
     }
@@ -5644,10 +5779,40 @@ impl GameState {
         self.face_down.insert(id);
     }
 
+    /// Mark a face-down permanent as manifested.
+    pub fn set_manifested(&mut self, id: ObjectId) {
+        self.mark_continuous_state_dirty();
+        self.manifested.insert(id);
+    }
+
+    /// Check if a permanent is manifested.
+    pub fn is_manifested(&self, id: ObjectId) -> bool {
+        self.manifested.contains(&id)
+    }
+
     /// Turn a permanent face-up.
     pub fn set_face_up(&mut self, id: ObjectId) {
         self.mark_continuous_state_dirty();
         self.face_down.remove(&id);
+        self.manifested.remove(&id);
+    }
+
+    /// Return how many times a permanent has transformed since it entered the battlefield.
+    pub fn transform_count(&self, id: ObjectId) -> u64 {
+        self.transform_count.get(&id).copied().unwrap_or(0)
+    }
+
+    /// Record that a permanent transformed and refresh its timestamp per CR 613.7g.
+    pub fn mark_transformed(&mut self, id: ObjectId) {
+        self.mark_continuous_state_dirty();
+        let next = self
+            .transform_count
+            .get(&id)
+            .copied()
+            .unwrap_or(0)
+            .saturating_add(1);
+        self.transform_count.insert(id, next);
+        self.continuous_effects.record_entry(id);
     }
 
     /// Check if a permanent is phased out.
@@ -5775,6 +5940,8 @@ impl GameState {
         self.renowned.remove(&id);
         self.flipped.remove(&id);
         self.face_down.remove(&id);
+        self.manifested.remove(&id);
+        self.transform_count.remove(&id);
         self.phased_out.remove(&id);
         self.imprinted_cards.remove(&id);
         self.chosen_colors.remove(&id);
@@ -6009,6 +6176,42 @@ impl GameState {
             linked.retain(|id| *id != exiled_card_id);
             !linked.is_empty()
         });
+    }
+
+    /// Record the component-card identity for a melded permanent.
+    pub fn set_melded_permanent(
+        &mut self,
+        permanent_id: ObjectId,
+        components: Vec<MeldComponentState>,
+    ) {
+        let Some(permanent) = self.object(permanent_id) else {
+            return;
+        };
+        self.melded_permanents
+            .insert(permanent.stable_id, MeldedPermanentState { components });
+    }
+
+    /// Get meld metadata for a permanent by its stable ID.
+    pub fn melded_permanent(&self, stable_id: StableId) -> Option<&MeldedPermanentState> {
+        self.melded_permanents.get(&stable_id)
+    }
+
+    /// Remove and return meld metadata for a permanent by stable ID.
+    pub fn take_melded_permanent(&mut self, stable_id: StableId) -> Option<MeldedPermanentState> {
+        self.melded_permanents.remove(&stable_id)
+    }
+
+    /// Record the destination objects created by a zone change.
+    pub fn record_zone_change_results(&mut self, source_id: ObjectId, result_ids: Vec<ObjectId>) {
+        self.zone_change_result_objects
+            .insert(source_id, result_ids);
+    }
+
+    /// Take the destination objects created by a zone change.
+    pub fn take_zone_change_results(&mut self, source_id: ObjectId) -> Vec<ObjectId> {
+        self.zone_change_result_objects
+            .remove(&source_id)
+            .unwrap_or_default()
     }
 
     /// Create a linked exile group and return its generated group ID.

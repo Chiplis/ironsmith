@@ -226,14 +226,12 @@ mod tests {
         });
         let triggered = triggered.expect("Should have triggered ability");
 
-        // Should have exactly one effect (the vote)
-        assert_eq!(triggered.effects.len(), 1);
-
-        // Check it's a vote effect
-        let debug_str = format!("{:?}", &triggered.effects[0]);
+        let debug_str = format!("{:?}", &triggered.effects);
         assert!(
-            debug_str.contains("VoteEffect"),
-            "Effect should be VoteEffect"
+            debug_str.contains("VoteEffect")
+                && debug_str.contains("VoteCount(\"evidence\")")
+                && debug_str.contains("VoteCount(\"bribery\")"),
+            "Triggered effects should contain the vote plus both vote-count follow-ups: {debug_str}"
         );
     }
 

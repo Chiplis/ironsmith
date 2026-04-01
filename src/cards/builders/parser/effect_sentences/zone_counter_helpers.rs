@@ -732,6 +732,17 @@ pub(crate) fn parse_counter_target_count_prefix(
         return Ok(Some((ChoiceCount::dynamic_x(), idx + 1)));
     }
 
+    if each_prefix
+        && tokens.get(idx).is_some_and(|token| token.is_word("up"))
+        && tokens.get(idx + 1).is_some_and(|token| token.is_word("to"))
+        && tokens.get(idx + 2).is_some_and(|token| token.is_word("x"))
+        && tokens
+            .get(idx + 3)
+            .is_some_and(|token| token.is_word("target"))
+    {
+        return Ok(Some((ChoiceCount::up_to_dynamic_x(), idx + 3)));
+    }
+
     if each_prefix && tokens.get(idx).is_some_and(|token| token.is_word("target")) {
         return Ok(Some((ChoiceCount::any_number(), idx)));
     }
@@ -987,11 +998,12 @@ pub(crate) fn parse_half_starting_life_total_value(
     None
 }
 
-pub(crate) fn parse_transform(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+fn parse_transform_like(
+    tokens: &[OwnedLexToken],
+    action: fn(TargetAst) -> EffectAst,
+) -> Result<EffectAst, CardTextError> {
     if tokens.is_empty() {
-        return Ok(EffectAst::Transform {
-            target: TargetAst::Source(None),
-        });
+        return Ok(action(TargetAst::Source(None)));
     }
     let target_words = words(tokens);
     if target_words == ["it"]
@@ -1000,9 +1012,7 @@ pub(crate) fn parse_transform(tokens: &[OwnedLexToken]) -> Result<EffectAst, Car
         || target_words == ["this", "land"]
         || target_words == ["this", "permanent"]
     {
-        return Ok(EffectAst::Transform {
-            target: TargetAst::Source(span_from_tokens(tokens)),
-        });
+        return Ok(action(TargetAst::Source(span_from_tokens(tokens))));
     }
     let target = match parse_target_phrase(tokens) {
         Ok(target) => target,
@@ -1019,7 +1029,15 @@ pub(crate) fn parse_transform(tokens: &[OwnedLexToken]) -> Result<EffectAst, Car
         }
         Err(err) => return Err(err),
     };
-    Ok(EffectAst::Transform { target })
+    Ok(action(target))
+}
+
+pub(crate) fn parse_transform(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+    parse_transform_like(tokens, |target| EffectAst::Transform { target })
+}
+
+pub(crate) fn parse_convert(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+    parse_transform_like(tokens, |target| EffectAst::Convert { target })
 }
 
 fn exile_subject_owner_filter(subject: Option<SubjectAst>) -> Option<PlayerFilter> {

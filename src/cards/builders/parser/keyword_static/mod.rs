@@ -552,55 +552,17 @@ fn parse_static_ability_ast_line_lexed_single(
     let words = words(&lowered);
     if matches!(
         words.as_slice(),
-        ["reveal", "the", "first", "card", "you", "draw", "each", "turn"]
-            | [
-                "reveal",
-                "the",
-                "first",
-                "card",
-                "you",
-                "draw",
-                "on",
-                "each",
-                "of",
-                "your",
-                "turns",
-            ]
-            | [
-                "you",
-                "may",
-                "reveal",
-                "the",
-                "first",
-                "card",
-                "you",
-                "draw",
-                "each",
-                "turn",
-                "as",
-                "you",
-                "draw",
-                "it",
-            ]
-            | [
-                "you",
-                "may",
-                "reveal",
-                "the",
-                "first",
-                "card",
-                "you",
-                "draw",
-                "on",
-                "each",
-                "of",
-                "your",
-                "turns",
-                "as",
-                "you",
-                "draw",
-                "it",
-            ]
+        [
+            "reveal", "the", "first", "card", "you", "draw", "each", "turn"
+        ] | [
+            "reveal", "the", "first", "card", "you", "draw", "on", "each", "of", "your", "turns",
+        ] | [
+            "you", "may", "reveal", "the", "first", "card", "you", "draw", "each", "turn", "as",
+            "you", "draw", "it",
+        ] | [
+            "you", "may", "reveal", "the", "first", "card", "you", "draw", "on", "each", "of",
+            "your", "turns", "as", "you", "draw", "it",
+        ]
     ) {
         let optional = words.starts_with(&["you", "may"]);
         let your_turns_only = words.contains(&"turns");
@@ -1563,7 +1525,11 @@ pub(crate) fn parse_static_text_marker_line(tokens: &[OwnedLexToken]) -> Option<
         ));
     }
 
-    if words == ["creatures", "without", "flying", "cant", "attack"] {
+    if matches!(
+        words.as_slice(),
+        ["creatures", "without", "flying", "cant", "attack"]
+            | ["creatures", "without", "flying", "can't", "attack"]
+    ) {
         return Some(StaticAbility::restriction(
             crate::effect::Restriction::attack(
                 ObjectFilter::creature()
@@ -1573,11 +1539,23 @@ pub(crate) fn parse_static_text_marker_line(tokens: &[OwnedLexToken]) -> Option<
         ));
     }
 
-    if words == ["this", "creature", "cant", "attack", "alone"] {
+    if matches!(
+        words.as_slice(),
+        ["this", "creature", "cant", "attack", "alone"]
+            | ["this", "creature", "can't", "attack", "alone"]
+    ) {
         return Some(StaticAbility::restriction(
             crate::effect::Restriction::attack_alone(ObjectFilter::source()),
             "This creature can't attack alone".to_string(),
         ));
+    }
+
+    if matches!(
+        words.as_slice(),
+        ["this", "creature", "cant", "attack", "its", "owner"]
+            | ["this", "creature", "can't", "attack", "its", "owner"]
+    ) {
+        return Some(StaticAbility::cant_attack_its_owner());
     }
 
     if words.len() == 4

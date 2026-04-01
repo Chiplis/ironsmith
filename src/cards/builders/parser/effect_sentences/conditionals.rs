@@ -4,9 +4,9 @@ use super::super::modal_helpers::parse_if_result_predicate_lexed;
 use super::super::native_tokens::LowercaseWordView;
 use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed};
 use super::super::util::{
-    is_article, is_permanent_type, parse_card_type, parse_counter_type_word,
-    parse_mana_symbol_word_flexible, parse_number, parse_target_phrase, parse_zone_word,
-    span_from_tokens, token_index_for_word_index, trim_commas, words,
+    is_article, is_permanent_type, is_source_reference_words, parse_card_type,
+    parse_counter_type_word, parse_mana_symbol_word_flexible, parse_number, parse_target_phrase,
+    parse_zone_word, span_from_tokens, token_index_for_word_index, trim_commas, words,
 };
 use super::super::value_helpers::parse_filter_comparison_tokens;
 use super::{parse_effect_chain, parse_effect_chain_inner, parse_effect_chain_lexed};
@@ -16,7 +16,7 @@ use crate::cards::builders::{
     CardTextError, EffectAst, ExtraTurnAnchorAst, IT_TAG, IfResultPredicate, PlayerAst,
     PredicateAst, TagKey, TargetAst, TextSpan,
 };
-use crate::effect::Value;
+use crate::effect::{ChoiceCount, Value};
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::target::{ObjectFilter, PlayerFilter, TaggedOpbjectRelation};
 use crate::types::{CardType, Subtype, Supertype};
@@ -96,6 +96,62 @@ pub(crate) fn parse_mana_symbol(part: &str) -> Result<ManaSymbol, CardTextError>
             "unsupported mana symbol '{part}'"
         ))),
     }
+}
+
+fn synth_words_as_tokens(words: &[&str]) -> Vec<OwnedLexToken> {
+    words
+        .iter()
+        .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+        .collect()
+}
+
+fn parse_meld_subject_filter(words: &[&str]) -> Result<ObjectFilter, CardTextError> {
+    if words.is_empty() {
+        return Err(CardTextError::ParseError(
+            "missing meld predicate subject".to_string(),
+        ));
+    }
+    if is_source_reference_words(words) {
+        return Ok(ObjectFilter::source());
+    }
+
+    let tokens = synth_words_as_tokens(words);
+    parse_object_filter(&tokens, false)
+        .or_else(|_| Ok(ObjectFilter::default().named(words.join(" "))))
+}
+
+fn is_plausible_meld_subject_start(word: &str) -> bool {
+    matches!(
+        word,
+        "a" | "an"
+            | "another"
+            | "this"
+            | "that"
+            | "source"
+            | "artifact"
+            | "battle"
+            | "card"
+            | "creature"
+            | "enchantment"
+            | "land"
+            | "nonland"
+            | "permanent"
+            | "planeswalker"
+    )
+}
+
+fn find_meld_subject_split(words: &[&str]) -> Option<usize> {
+    words
+        .iter()
+        .enumerate()
+        .find_map(|(idx, word)| {
+            (*word == "and"
+                && words
+                    .get(idx + 1)
+                    .is_some_and(|next| is_plausible_meld_subject_start(next)))
+            .then_some(idx)
+        })
+        .or_else(|| words.iter().position(|word| *word == "and"))
 }
 
 pub(crate) fn parse_type_line(
@@ -620,23 +676,23 @@ fn parse_negated_who_this_way_predicate(
 pub(crate) fn parse_vote_start_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let words = words(tokens);
-    let vote_idx = words
+    let clause_words = words(tokens);
+    let vote_idx = clause_words
         .iter()
         .position(|word| *word == "vote" || *word == "votes");
     let Some(vote_idx) = vote_idx else {
         return Ok(None);
     };
 
-    let has_each = words[..vote_idx].contains(&"each");
-    let has_player = words[..vote_idx]
+    let has_each = clause_words[..vote_idx].contains(&"each");
+    let has_player = clause_words[..vote_idx]
         .iter()
         .any(|word| *word == "player" || *word == "players");
     if !has_each || !has_player {
         return Ok(None);
     }
 
-    let for_idx = words
+    let for_idx = clause_words
         .iter()
         .position(|word| *word == "for")
         .ok_or_else(|| CardTextError::ParseError("missing 'for' in vote clause".to_string()))?;
@@ -644,10 +700,46 @@ pub(crate) fn parse_vote_start_sentence(
         return Ok(None);
     }
 
-    let option_words = &words[for_idx + 1..];
+    let mut option_words = clause_words[for_idx + 1..].to_vec();
+    if let Some(reveal_idx) = option_words
+        .windows(4)
+        .position(|window| window == ["then", "those", "votes", "are"])
+    {
+        option_words.truncate(reveal_idx);
+    }
+    let option_tokens = option_words
+        .iter()
+        .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+        .collect::<Vec<_>>();
+    if let Ok(target) = parse_target_phrase(&option_tokens) {
+        match target {
+            TargetAst::Object(filter, _, _) => {
+                return Ok(Some(EffectAst::VoteStartObjects {
+                    filter,
+                    count: ChoiceCount::exactly(1),
+                }));
+            }
+            TargetAst::WithCount(inner, count) => {
+                if let TargetAst::Object(filter, _, _) = *inner {
+                    return Ok(Some(EffectAst::VoteStartObjects { filter, count }));
+                }
+            }
+            _ => {}
+        }
+    }
+    if let Ok(filter) = parse_object_filter_lexed(&option_tokens, false)
+        && filter != ObjectFilter::default()
+    {
+        return Ok(Some(EffectAst::VoteStartObjects {
+            filter,
+            count: ChoiceCount::exactly(1),
+        }));
+    }
+
+    let option_words = option_words;
     let mut options = Vec::new();
     let mut current: Vec<&str> = Vec::new();
-    for word in option_words {
+    for word in &option_words {
         if *word == "or" {
             if !current.is_empty() {
                 options.push(current.join(" "));
@@ -795,6 +887,40 @@ pub(crate) fn parse_after_turn_sentence(
 pub(crate) fn parse_conditional_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    let token_words = words(tokens);
+    if let Some(effect_word_idx) = token_words
+        .windows(6)
+        .position(|window| window == ["exile", "them", "then", "meld", "them", "into"])
+        && let Some(effect_token_idx) = token_index_for_word_index(tokens, effect_word_idx)
+    {
+        let predicate_tokens = trim_commas(&tokens[1..effect_token_idx]);
+        let predicate_tokens_without_commas = predicate_tokens
+            .iter()
+            .filter(|token| !token.is_comma())
+            .cloned()
+            .collect::<Vec<_>>();
+        let effect_tokens = &tokens[effect_token_idx..];
+        if !predicate_tokens_without_commas.is_empty()
+            && let Ok(predicate) = parse_predicate_lexed(&predicate_tokens_without_commas)
+            && let Ok(effects) = parse_effect_chain_lexed(effect_tokens)
+            && !effects.is_empty()
+        {
+            return Ok(vec![EffectAst::Conditional {
+                predicate,
+                if_true: effects,
+                if_false: Vec::new(),
+            }]);
+        }
+        if !predicate_tokens_without_commas.is_empty()
+            && let Some(predicate) =
+                parse_if_result_predicate_lexed(&predicate_tokens_without_commas)
+            && let Ok(effects) = parse_effect_chain_lexed(effect_tokens)
+            && !effects.is_empty()
+        {
+            return Ok(vec![EffectAst::IfResult { predicate, effects }]);
+        }
+    }
+
     let comma_indices = tokens
         .iter()
         .enumerate()
@@ -999,37 +1125,110 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
+    if let Some(gets_idx) = filtered.iter().position(|word| *word == "gets")
+        && gets_idx > 0
+        && filtered[gets_idx + 1..] == ["more", "votes"]
+    {
+        return Ok(PredicateAst::VoteOptionGetsMoreVotes {
+            option: filtered[..gets_idx].join(" "),
+        });
+    }
+
+    if let Some(gets_idx) = filtered.iter().position(|word| *word == "gets")
+        && gets_idx > 0
+        && filtered[gets_idx + 1..] == ["more", "votes", "or", "vote", "is", "tied"]
+    {
+        return Ok(PredicateAst::VoteOptionGetsMoreVotesOrTied {
+            option: filtered[..gets_idx].join(" "),
+        });
+    }
+
+    if filtered.len() >= 4
+        && filtered[0] == "no"
+        && filtered[filtered.len() - 2..] == ["got", "votes"]
+    {
+        let filter_tokens = filtered[1..filtered.len() - 2]
+            .iter()
+            .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+            .collect::<Vec<_>>();
+        let filter = parse_object_filter(&filter_tokens, false)?;
+        return Ok(PredicateAst::NoVoteObjectsMatched { filter });
+    }
+
+    if let Some(attacking_idx) = filtered.windows(9).position(|window| {
+        window
+            == [
+                "are",
+                "attacking",
+                "and",
+                "you",
+                "both",
+                "own",
+                "and",
+                "control",
+                "them",
+            ]
+    }) && let Some(and_idx) = find_meld_subject_split(&filtered[..attacking_idx])
+    {
+        let left_words = &filtered[..and_idx];
+        let right_words = &filtered[and_idx + 1..attacking_idx];
+        if !left_words.is_empty() && !right_words.is_empty() {
+            let mut left_filter = parse_meld_subject_filter(left_words).map_err(|_| {
+                CardTextError::ParseError(format!(
+                    "unsupported attacking meld predicate subject (predicate: '{}')",
+                    filtered.join(" ")
+                ))
+            })?;
+            left_filter.controller = Some(PlayerFilter::You);
+            left_filter.attacking = true;
+
+            let mut right_filter = parse_meld_subject_filter(right_words).map_err(|_| {
+                CardTextError::ParseError(format!(
+                    "unsupported attacking meld predicate tail (predicate: '{}')",
+                    filtered.join(" ")
+                ))
+            })?;
+            right_filter.controller = Some(PlayerFilter::You);
+            right_filter.attacking = true;
+
+            return Ok(PredicateAst::And(
+                Box::new(PredicateAst::PlayerControls {
+                    player: PlayerAst::You,
+                    filter: left_filter,
+                }),
+                Box::new(PredicateAst::PlayerControls {
+                    player: PlayerAst::You,
+                    filter: right_filter,
+                }),
+            ));
+        }
+    }
+
     if filtered.len() >= 8
         && filtered[0] == "you"
         && filtered[1] == "both"
         && filtered[2] == "own"
         && filtered[3] == "and"
         && (filtered[4] == "control" || filtered[4] == "controls")
-        && let Some(and_idx) = filtered[5..].iter().rposition(|word| *word == "and")
+        && let Some(and_idx) = find_meld_subject_split(&filtered[5..])
     {
         let and_idx = 5 + and_idx;
-        let left_tokens = filtered[5..and_idx]
-            .iter()
-            .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
-            .collect::<Vec<_>>();
-        let right_tokens = filtered[and_idx + 1..]
-            .iter()
-            .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
-            .collect::<Vec<_>>();
-        if !left_tokens.is_empty() && !right_tokens.is_empty() {
-            let mut left_filter = parse_object_filter(&left_tokens, false).map_err(|_| {
-                CardTextError::ParseError(format!(
-                    "unsupported own-and-control predicate subject (predicate: '{}')",
-                    filtered.join(" ")
-                ))
-            })?;
+        if and_idx > 5 && and_idx + 1 < filtered.len() {
+            let mut left_filter =
+                parse_meld_subject_filter(&filtered[5..and_idx]).map_err(|_| {
+                    CardTextError::ParseError(format!(
+                        "unsupported own-and-control predicate subject (predicate: '{}')",
+                        filtered.join(" ")
+                    ))
+                })?;
             left_filter.controller = Some(PlayerFilter::You);
-            let mut right_filter = parse_object_filter(&right_tokens, false).map_err(|_| {
-                CardTextError::ParseError(format!(
-                    "unsupported own-and-control predicate tail (predicate: '{}')",
-                    filtered.join(" ")
-                ))
-            })?;
+            let mut right_filter =
+                parse_meld_subject_filter(&filtered[and_idx + 1..]).map_err(|_| {
+                    CardTextError::ParseError(format!(
+                        "unsupported own-and-control predicate tail (predicate: '{}')",
+                        filtered.join(" ")
+                    ))
+                })?;
             right_filter.controller = Some(PlayerFilter::You);
             return Ok(PredicateAst::And(
                 Box::new(PredicateAst::PlayerControls {
@@ -1454,8 +1653,12 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             &filtered[subject_len + 1..],
             ["more", "card", "in", "hand", "than", "you"]
                 | ["more", "cards", "in", "hand", "than", "you"]
+                | ["more", "card", "in", "their", "hand", "than", "you"]
+                | ["more", "cards", "in", "their", "hand", "than", "you"]
                 | ["more", "card", "in", "hand", "than", "you", "do"]
                 | ["more", "cards", "in", "hand", "than", "you", "do"]
+                | ["more", "card", "in", "their", "hand", "than", "you", "do"]
+                | ["more", "cards", "in", "their", "hand", "than", "you", "do"]
         )
     {
         return Ok(PredicateAst::PlayerHasMoreCardsInHandThanYou { player });
@@ -1607,6 +1810,20 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
 
     if filtered.as_slice() == ["you", "attacked", "this", "turn"] {
         return Ok(PredicateAst::YouAttackedThisTurn);
+    }
+
+    if filtered.len() == 9
+        && filtered[0] == "you"
+        && filtered[1] == "attacked"
+        && filtered[2] == "with"
+        && filtered[3] == "exactly"
+        && matches!(filtered[5], "other" | "others")
+        && matches!(filtered[6], "creature" | "creatures")
+        && filtered[7] == "this"
+        && filtered[8] == "combat"
+        && let Some(count) = parse_named_number(filtered[4])
+    {
+        return Ok(PredicateAst::YouAttackedWithExactlyNOtherCreaturesThisCombat(count));
     }
 
     if matches!(
@@ -1955,7 +2172,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         if filtered.len() >= 3 && filtered[1] == "mana" && filtered[2] == "value" {
             let mana_value_tail = if filtered
                 .get(3)
-                .is_some_and(|word| *word == "is" || *word == "are")
+                .is_some_and(|word| matches!(*word, "is" | "are" | "was" | "were"))
             {
                 &filtered[4..]
             } else {

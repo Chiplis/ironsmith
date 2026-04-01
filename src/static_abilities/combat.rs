@@ -5,14 +5,16 @@
 
 use super::{StaticAbilityId, StaticAbilityKind};
 use crate::effect::Restriction;
+use crate::effects::EffectExecutor;
 use crate::event_processor::{EventOutcome, process_zone_change};
 use crate::events::permanents::SacrificeEvent;
+use crate::events::{EventKind, KeywordActionEvent};
 use crate::game_state::{CantEffectTracker, GameState};
 use crate::ids::{ObjectId, PlayerId};
 use crate::object::CounterType;
 use crate::snapshot::ObjectSnapshot;
 use crate::target::ObjectFilter;
-use crate::triggers::TriggerEvent;
+use crate::triggers::{TriggerEvent, TriggeredAbilityEntry};
 use crate::zone::Zone;
 
 /// Macro to define simple combat abilities.
@@ -123,6 +125,116 @@ impl StaticAbilityKind for CanBlockOnlyFlying {
 
     fn display(&self) -> String {
         "Can block only creatures with flying".to_string()
+    }
+}
+
+/// "You may exert this creature as it attacks. When you do, ..."
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExertAttack {
+    pub only_if_not_exerted_this_turn: bool,
+    pub linked_trigger: Option<crate::ability::TriggeredAbility>,
+    pub display_text: String,
+}
+
+impl ExertAttack {
+    pub fn new(
+        only_if_not_exerted_this_turn: bool,
+        linked_trigger: Option<crate::ability::TriggeredAbility>,
+        display_text: impl Into<String>,
+    ) -> Self {
+        Self {
+            only_if_not_exerted_this_turn,
+            linked_trigger,
+            display_text: display_text.into(),
+        }
+    }
+
+    fn is_available(&self, game: &GameState, source: ObjectId) -> bool {
+        !self.only_if_not_exerted_this_turn || !game.object_exerted_this_turn(source)
+    }
+}
+
+impl StaticAbilityKind for ExertAttack {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::ExertAttack
+    }
+
+    fn display(&self) -> String {
+        self.display_text.clone()
+    }
+
+    fn optional_attack_cost_prompt(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<crate::decisions::context::BooleanContext> {
+        if !self.is_available(game, source) {
+            return None;
+        }
+        let source_name = game.object(source).map(|object| object.name.clone())?;
+        Some(
+            crate::decisions::context::BooleanContext::new(
+                controller,
+                Some(source),
+                "Exert this creature as it attacks",
+            )
+            .with_source_name(source_name)
+            .with_consequence_text("It won't untap during your next untap step."),
+        )
+    }
+
+    fn pay_optional_attack_cost(
+        &self,
+        game: &mut GameState,
+        source: ObjectId,
+        controller: PlayerId,
+        trigger_queue: &mut crate::triggers::TriggerQueue,
+    ) -> Option<Result<(), String>> {
+        if !self.is_available(game, source) {
+            return Some(Ok(()));
+        }
+
+        let event_provenance = game.provenance_graph.alloc_root_event(EventKind::KeywordAction);
+        let mut ctx = crate::executor::ExecutionContext::new_default(source, controller)
+            .with_cause(crate::events::cause::EventCause::from_cost(source, controller))
+            .with_provenance(event_provenance);
+        let outcome = crate::effects::ExertCostEffect::new("Exert this creature")
+            .execute(game, &mut ctx)
+            .map_err(|err| format!("{err:?}"));
+
+        Some(outcome.and_then(|outcome| {
+            let exert_event = outcome
+                .events
+                .iter()
+                .find(|event| event.downcast::<KeywordActionEvent>().is_some())
+                .cloned()
+                .ok_or_else(|| "Exert cost didn't emit a keyword action event".to_string())?;
+
+            for event in outcome.events {
+                game.queue_trigger_event(event_provenance, event);
+            }
+
+            if let Some(linked_trigger) = &self.linked_trigger {
+                let Some(source_object) = game.object(source) else {
+                    return Err("Exert source left the battlefield".to_string());
+                };
+                trigger_queue.add(TriggeredAbilityEntry {
+                    source,
+                    controller,
+                    x_value: source_object.x_value,
+                    ability: linked_trigger.clone(),
+                    triggering_event: exert_event,
+                    source_stable_id: source_object.stable_id,
+                    source_name: source_object.name.clone(),
+                    source_snapshot: None,
+                    tagged_objects: Default::default(),
+                    trigger_identity: crate::triggers::compute_trigger_identity(linked_trigger),
+                });
+            }
+
+            Ok(())
+        }))
     }
 }
 
@@ -1413,6 +1525,31 @@ impl StaticAbilityKind for CantAttack {
             Some(source),
         );
         game.cant_effects.merge(tracker);
+    }
+}
+
+/// Can't attack its owner.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct CantAttackItsOwner;
+
+impl StaticAbilityKind for CantAttackItsOwner {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::CantAttackItsOwner
+    }
+
+    fn display(&self) -> String {
+        "This creature can't attack its owner.".to_string()
+    }
+
+    fn can_attack_specific_defender(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        _controller: PlayerId,
+        defending_player: PlayerId,
+    ) -> Option<bool> {
+        let owner = game.object(source)?.owner;
+        Some(defending_player != owner)
     }
 }
 

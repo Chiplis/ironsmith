@@ -70,8 +70,10 @@ pub enum StaticAbilityId {
     CantBeBlockedByMoreThan,
     CanAttackAsThoughNoDefender,
     MustAttack,
+    ExertAttack,
     MustBlock,
     CantAttack,
+    CantAttackItsOwner,
     CantAttackUnlessControllerCastCreatureSpellThisTurn,
     CantAttackUnlessControllerCastNonCreatureSpellThisTurn,
     CantAttackUnlessCondition,
@@ -157,6 +159,8 @@ pub enum StaticAbilityId {
     ChooseLandTypeAsEnters,
     ChooseNamedOptionAsEnters,
     BoastTwiceEachTurn,
+    VoteAdditionalTimeWhileVoting,
+    VoteAdditionalVoteWhileVoting,
     EnchantedLandIsChosenType,
     AddChosenCreatureType,
     SetChosenColor,
@@ -307,8 +311,10 @@ impl StaticAbilityId {
             | CantBeBlockedByMoreThan
             | CanAttackAsThoughNoDefender
             | MustAttack
+            | ExertAttack
             | MustBlock
             | CantAttack
+            | CantAttackItsOwner
             | CantAttackUnlessControllerCastCreatureSpellThisTurn
             | CantAttackUnlessControllerCastNonCreatureSpellThisTurn
             | CantAttackUnlessCondition
@@ -386,6 +392,8 @@ impl StaticAbilityId {
             | ChooseLandTypeAsEnters
             | ChooseNamedOptionAsEnters
             | BoastTwiceEachTurn
+            | VoteAdditionalTimeWhileVoting
+            | VoteAdditionalVoteWhileVoting
             | EnchantedLandIsChosenType
             | AddChosenCreatureType
             | SetChosenColor
@@ -563,6 +571,7 @@ impl StaticAbilityId {
                 | MustAttack
                 | MustBlock
                 | CantAttack
+                | CantAttackItsOwner
                 | CantAttackUnlessControllerCastCreatureSpellThisTurn
                 | CantAttackUnlessControllerCastNonCreatureSpellThisTurn
                 | CantAttackUnlessCondition

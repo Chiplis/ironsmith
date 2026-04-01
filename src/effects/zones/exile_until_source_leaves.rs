@@ -84,14 +84,15 @@ impl EffectExecutor for ExileUntilEffect {
             );
 
             if let EventOutcome::Proceed(result) = result
-                && let Some(new_id) = result.new_object_id
                 && result.final_zone == Zone::Exile
             {
-                if self.face_down {
-                    game.set_face_down(new_id);
+                for &new_id in &result.new_object_ids {
+                    if self.face_down {
+                        game.set_face_down(new_id);
+                    }
+                    game.add_exiled_with_source_link(ctx.source, new_id);
+                    exiled_count += 1;
                 }
-                game.add_exiled_with_source_link(ctx.source, new_id);
-                exiled_count += 1;
             }
         }
         Ok(EffectOutcome::count(exiled_count))

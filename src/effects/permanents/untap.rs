@@ -142,8 +142,21 @@ impl CostExecutableEffect for UntapEffect {
         source: crate::ids::ObjectId,
         _controller: crate::ids::PlayerId,
     ) -> Result<(), crate::effects::CostValidationError> {
-        if matches!(self.spec, ChooseSpec::Source) && !game.is_tapped(source) {
-            return Err(crate::effects::CostValidationError::AlreadyUntapped);
+        if matches!(self.spec, ChooseSpec::Source) {
+            if !game.is_tapped(source) {
+                return Err(crate::effects::CostValidationError::AlreadyUntapped);
+            }
+
+            if game.object(source).is_some()
+                && game.current_is_creature(source)
+                && game.is_summoning_sick(source)
+                && !game.current_has_static_ability_id(
+                    source,
+                    crate::static_abilities::StaticAbilityId::Haste,
+                )
+            {
+                return Err(crate::effects::CostValidationError::SummoningSickness);
+            }
         }
         Ok(())
     }
@@ -152,11 +165,13 @@ impl CostExecutableEffect for UntapEffect {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ability::Ability;
     use crate::card::{CardBuilder, PowerToughness};
     use crate::executor::ResolvedTarget;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::Object;
+    use crate::static_abilities::StaticAbility;
     use crate::types::CardType;
     use crate::zone::Zone;
 
@@ -291,6 +306,43 @@ mod tests {
         );
         assert!(effect.is_untap_source_cost());
         assert_eq!(effect.cost_description().as_deref(), Some("{Q}"));
+    }
+
+    #[test]
+    fn test_untap_source_cost_validation_respects_summoning_sickness() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let creature_id = create_creature(&mut game, "Bear", alice, true);
+        let effect = UntapEffect::with_spec(ChooseSpec::Source);
+        game.set_summoning_sick(creature_id);
+
+        assert_eq!(
+            crate::effects::EffectExecutor::can_execute_as_cost(&effect, &game, creature_id, alice),
+            Err(crate::effects::CostValidationError::SummoningSickness)
+        );
+    }
+
+    #[test]
+    fn test_untap_source_cost_validation_allows_haste_creatures() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let creature_id = create_creature(&mut game, "Bear", alice, true);
+        let effect = UntapEffect::with_spec(ChooseSpec::Source);
+        game.set_summoning_sick(creature_id);
+        game.object_mut(creature_id)
+            .expect("creature should exist")
+            .abilities
+            .push(Ability::static_ability(StaticAbility::haste()));
+
+        assert!(
+            crate::effects::EffectExecutor::can_execute_as_cost(
+                &effect,
+                &game,
+                creature_id,
+                alice,
+            )
+            .is_ok()
+        );
     }
 
     #[test]

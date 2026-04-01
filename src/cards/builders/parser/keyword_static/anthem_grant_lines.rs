@@ -1401,6 +1401,14 @@ pub(crate) fn parse_static_condition_clause(
     {
         return Ok(crate::ConditionExpr::SourceIsTapped);
     }
+    if clause_words == ["this", "creature", "is", "monstrous"]
+        || clause_words == ["this", "permanent", "is", "monstrous"]
+        || clause_words == ["this", "is", "monstrous"]
+        || clause_words == ["it", "is", "monstrous"]
+        || clause_words == ["its", "monstrous"]
+    {
+        return Ok(crate::ConditionExpr::SourceIsMonstrous);
+    }
     if clause_words == ["this", "is", "paired", "with", "another", "creature"]
         || clause_words
             == [

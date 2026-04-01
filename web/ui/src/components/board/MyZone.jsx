@@ -649,7 +649,6 @@ export default function MyZone({
                       onMobileCardLongPress={onMobileCardLongPress}
                       activatableMap={activatableMap}
                       legalTargetObjectIds={legalTargetObjectIds}
-                      allowVerticalScroll
                       forceSingleColumn
                     />
                   </div>

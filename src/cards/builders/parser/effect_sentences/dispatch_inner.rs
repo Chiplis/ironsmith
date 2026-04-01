@@ -1104,6 +1104,9 @@ fn sentence_has_unsupported_negated_untap_clause(words: &[&str], _: &[OwnedLexTo
 pub(crate) fn parse_effect_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(meld_effect) = parse_exile_then_meld_sentence(tokens)? {
+        return Ok(vec![meld_effect]);
+    }
     if let Some(effect) = parse_if_damage_would_be_dealt_put_counters_sentence(tokens)? {
         return Ok(vec![effect]);
     }
@@ -1119,6 +1122,33 @@ pub(crate) fn parse_effect_sentence_lexed(
         return parse_effect_sentence_with_where_x_lexed(tokens);
     }
     parse_effect_sentence_inner_lexed(tokens)
+}
+
+fn parse_exile_then_meld_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let clause_words = words(tokens);
+    if !clause_words.starts_with(&["exile", "them"]) {
+        return Ok(None);
+    }
+    let Some(meld_idx) = clause_words
+        .windows(4)
+        .position(|window| window == ["then", "meld", "them", "into"])
+    else {
+        return Ok(None);
+    };
+    let result_words = &clause_words[meld_idx + 4..];
+    if result_words.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing meld result name (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+    Ok(Some(EffectAst::Meld {
+        result_name: result_words.join(" "),
+        enters_tapped: false,
+        enters_attacking: false,
+    }))
 }
 
 fn parse_if_damage_would_be_dealt_put_counters_sentence(
@@ -1402,6 +1432,13 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
     }
     if let Some(stripped) = strip_labeled_conditional_prefix_lexed(tokens) {
         return parse_conditional_sentence_lexed(stripped);
+    }
+    if tokens.first().is_some_and(|token| token.is_word("if"))
+        && sentence_words
+            .windows(6)
+            .any(|window| window == ["exile", "them", "then", "meld", "them", "into"])
+    {
+        return parse_conditional_sentence_lexed(tokens);
     }
     if tokens.first().is_some_and(|token| token.is_word("if"))
         && let Some(mut effects) = run_sentence_primitives_lexed(
@@ -1704,10 +1741,46 @@ pub(crate) fn parse_token_copy_modifier_sentence(
 
     let is_has_haste = matches!(
         filtered.as_slice(),
-        ["it", "has", "haste"] | ["they", "have", "haste"]
+        ["it", "has", "haste"]
+            | ["they", "have", "haste"]
+            | ["token", "created", "this", "way", "has", "haste"]
+            | ["tokens", "created", "this", "way", "have", "haste"]
+            | ["token", "created", "this", "way", "gains", "haste"]
+            | ["tokens", "created", "this", "way", "gain", "haste"]
     );
     if is_has_haste {
         return Some(TokenCopyFollowup::HasHaste);
+    }
+
+    let enters_tapped_and_attacking = matches!(
+        filtered.as_slice(),
+        ["it", "enters", "tapped", "and", "attacking"]
+            | ["they", "enter", "tapped", "and", "attacking"]
+            | ["token", "enters", "tapped", "and", "attacking"]
+            | ["tokens", "enter", "tapped", "and", "attacking"]
+            | [
+                "token",
+                "created",
+                "this",
+                "way",
+                "enters",
+                "tapped",
+                "and",
+                "attacking"
+            ]
+            | [
+                "tokens",
+                "created",
+                "this",
+                "way",
+                "enter",
+                "tapped",
+                "and",
+                "attacking"
+            ]
+    );
+    if enters_tapped_and_attacking {
+        return Some(TokenCopyFollowup::EnterTappedAndAttacking);
     }
 
     if filtered.starts_with(&["sacrifice", "it"])
@@ -1818,10 +1891,44 @@ pub(crate) fn parse_token_copy_modifier_sentence_lexed(
 
     let is_has_haste = matches!(
         filtered.as_slice(),
-        ["it", "has", "haste"] | ["they", "have", "haste"]
+        ["it", "has", "haste"]
+            | ["they", "have", "haste"]
+            | ["token", "created", "this", "way", "has", "haste"]
+            | ["tokens", "created", "this", "way", "have", "haste"]
+            | ["token", "created", "this", "way", "gains", "haste"]
+            | ["tokens", "created", "this", "way", "gain", "haste"]
     );
     if is_has_haste {
         return Some(TokenCopyFollowup::HasHaste);
+    }
+
+    let enters_tapped_and_attacking = matches!(
+        filtered.as_slice(),
+        ["token", "enters", "tapped", "and", "attacking"]
+            | ["tokens", "enter", "tapped", "and", "attacking"]
+            | [
+                "token",
+                "created",
+                "this",
+                "way",
+                "enters",
+                "tapped",
+                "and",
+                "attacking"
+            ]
+            | [
+                "tokens",
+                "created",
+                "this",
+                "way",
+                "enter",
+                "tapped",
+                "and",
+                "attacking"
+            ]
+    );
+    if enters_tapped_and_attacking {
+        return Some(TokenCopyFollowup::EnterTappedAndAttacking);
     }
 
     if filtered.starts_with(&["sacrifice", "it"])
@@ -3928,6 +4035,7 @@ pub(crate) fn parse_exile_then_return_same_object_sentence(
                 target,
                 tapped: _,
                 transformed: _,
+                converted: _,
                 controller: _,
             } if target_references_it_tag(target) => {
                 *target = TargetAst::Tagged(TagKey::from(IT_TAG), None);

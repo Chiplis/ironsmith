@@ -1,4 +1,5 @@
 use crate::cards::builders::{CardTextError, IT_TAG};
+use crate::effects::VOTE_WINNERS_TAG;
 use crate::filter::ParityRequirement;
 use crate::{
     CardType, Color, ColorSet, ObjectFilter, PlayerFilter, Supertype, TagKey,
@@ -35,6 +36,23 @@ fn normalized_token_index_after_words(
 
 fn lower_words_end_with(words: &[&str], suffix: &[&str]) -> bool {
     words.len() >= suffix.len() && words[words.len() - suffix.len()..] == *suffix
+}
+
+fn trim_vote_winner_suffix(tokens: &[OwnedLexToken]) -> (Vec<OwnedLexToken>, bool) {
+    let word_view = LowercaseWordView::new(tokens);
+    let words = word_view.to_word_refs();
+    let suffix = [
+        "with", "most", "votes", "or", "tied", "for", "most", "votes",
+    ];
+    if words.len() < suffix.len() || words[words.len() - suffix.len()..] != suffix {
+        return (tokens.to_vec(), false);
+    }
+
+    let Some(token_end) = normalized_token_index_for_word_index(tokens, words.len() - suffix.len())
+    else {
+        return (tokens.to_vec(), false);
+    };
+    (trim_commas(&tokens[..token_end]), true)
 }
 
 fn parse_parity_word(word: &str) -> Option<ParityRequirement> {
@@ -469,6 +487,7 @@ pub(crate) fn parse_object_filter(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    let (tokens, vote_winners_only) = trim_vote_winner_suffix(tokens);
     let mut filter = ObjectFilter::default();
     if other {
         filter.other = true;
@@ -3071,6 +3090,13 @@ pub(crate) fn parse_object_filter(
         )));
     }
 
+    if vote_winners_only {
+        filter = filter.match_tagged(
+            TagKey::from(VOTE_WINNERS_TAG),
+            TaggedOpbjectRelation::IsTaggedObject,
+        );
+    }
+
     Ok(filter)
 }
 
@@ -3215,10 +3241,17 @@ pub(crate) fn parse_object_filter_lexed(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
-    if let Some(filter) = parse_simple_object_filter_lexed(tokens, other) {
+    let (trimmed_tokens, vote_winners_only) = trim_vote_winner_suffix(tokens);
+    if let Some(mut filter) = parse_simple_object_filter_lexed(&trimmed_tokens, other) {
+        if vote_winners_only {
+            filter = filter.match_tagged(
+                TagKey::from(VOTE_WINNERS_TAG),
+                TaggedOpbjectRelation::IsTaggedObject,
+            );
+        }
         return Ok(filter);
     }
-    parse_object_filter(tokens, other)
+    parse_object_filter(&trimmed_tokens, other)
 }
 
 pub(crate) fn parse_spell_filter_lexed(tokens: &[OwnedLexToken]) -> ObjectFilter {

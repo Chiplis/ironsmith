@@ -5,12 +5,15 @@
 //! provide player input (sync or async) and re-enter.
 
 use crate::combat_state::CombatState;
-use crate::decision::{AttackerDeclaration, AutoPassDecisionMaker, BlockerDeclaration, GameResult};
+use crate::decision::{
+    AttackerDeclaration, AutoPassDecisionMaker, BlockerDeclaration, DecisionMaker, GameResult,
+};
 use crate::decisions::context::{BooleanContext, DecisionContext};
 use crate::game_loop::{
-    GameLoopError, apply_attacker_declarations, apply_blocker_declarations,
-    execute_combat_damage_step, generate_and_queue_step_triggers, get_declare_attackers_decision,
-    get_declare_blockers_decision, put_triggers_on_stack, queue_combat_damage_triggers,
+    GameLoopError, apply_attacker_declarations, apply_attacker_declarations_with_dm,
+    apply_blocker_declarations, execute_combat_damage_step, generate_and_queue_step_triggers,
+    get_declare_attackers_decision, get_declare_blockers_decision,
+    preview_optional_attack_cost_prompts, put_triggers_on_stack, queue_combat_damage_triggers,
 };
 use crate::game_state::{GameState, Phase, Step};
 use crate::ids::{ObjectId, PlayerId};
@@ -103,9 +106,40 @@ struct PendingDrawRevealChoice {
     reveal_events: Vec<crate::triggers::TriggerEvent>,
 }
 
+#[derive(Debug, Clone)]
+struct PendingAttackerOptionalCosts {
+    declarations: Vec<AttackerDeclaration>,
+    prompts: Vec<BooleanContext>,
+    answers: Vec<bool>,
+}
+
 enum RunnerProgress<T> {
     Complete(T),
     NeedsDecision(DecisionContext),
+}
+
+#[derive(Debug, Clone)]
+struct QueuedBooleanDecisionMaker {
+    answers: Vec<bool>,
+    next: usize,
+}
+
+impl QueuedBooleanDecisionMaker {
+    fn new(answers: Vec<bool>) -> Self {
+        Self { answers, next: 0 }
+    }
+}
+
+impl DecisionMaker for QueuedBooleanDecisionMaker {
+    fn decide_boolean(
+        &mut self,
+        _game: &GameState,
+        _ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        let answer = self.answers.get(self.next).copied().unwrap_or(false);
+        self.next += 1;
+        answer
+    }
 }
 
 /// Drives a single turn as a state machine.
@@ -118,6 +152,8 @@ pub struct TurnRunner {
     has_first_strike: bool,
     /// Pending attacker declarations from the caller.
     pending_attackers: Option<Vec<AttackerDeclaration>>,
+    /// Pending attacker-cost prompts and their collected answers.
+    pending_attacker_optional_costs: Option<PendingAttackerOptionalCosts>,
     /// Pending blocker declarations from the caller.
     pending_blockers: Option<(Vec<BlockerDeclaration>, PlayerId)>,
     /// Pending discard selection from the caller.
@@ -140,6 +176,7 @@ impl TurnRunner {
             combat: CombatState::default(),
             has_first_strike: false,
             pending_attackers: None,
+            pending_attacker_optional_costs: None,
             pending_blockers: None,
             pending_discard: None,
             pending_boolean: None,
@@ -273,6 +310,8 @@ impl TurnRunner {
             TurnState::DeclareAttackersDecision => {
                 game.turn.step = Some(Step::DeclareAttackers);
                 game.turn.priority_player = Some(game.turn.active_player);
+                self.pending_attacker_optional_costs = None;
+                self.pending_boolean = None;
 
                 let ctx = get_declare_attackers_decision(game, &self.combat);
                 self.state = TurnState::DeclareAttackersApply;
@@ -280,8 +319,42 @@ impl TurnRunner {
             }
 
             TurnState::DeclareAttackersApply => {
-                let declarations = self.pending_attackers.take().unwrap_or_default();
-                apply_attacker_declarations(game, &mut self.combat, tq, &declarations)?;
+                if let Some(pending) = self.pending_attacker_optional_costs.as_mut() {
+                    if let Some(answer) = self.pending_boolean.take() {
+                        pending.answers.push(answer);
+                    }
+                    if pending.answers.len() < pending.prompts.len() {
+                        return Ok(TurnAction::Decision(DecisionContext::Boolean(
+                            pending.prompts[pending.answers.len()].clone(),
+                        )));
+                    }
+
+                    let pending = self
+                        .pending_attacker_optional_costs
+                        .take()
+                        .expect("pending attacker optional costs should still exist");
+                    let mut dm = QueuedBooleanDecisionMaker::new(pending.answers);
+                    apply_attacker_declarations_with_dm(
+                        game,
+                        &mut self.combat,
+                        tq,
+                        &pending.declarations,
+                        &mut dm,
+                    )?;
+                } else {
+                    let declarations = self.pending_attackers.take().unwrap_or_default();
+                    let prompts =
+                        preview_optional_attack_cost_prompts(game, &self.combat, &declarations)?;
+                    if let Some(first_prompt) = prompts.first().cloned() {
+                        self.pending_attacker_optional_costs = Some(PendingAttackerOptionalCosts {
+                            declarations,
+                            prompts,
+                            answers: Vec::new(),
+                        });
+                        return Ok(TurnAction::Decision(DecisionContext::Boolean(first_prompt)));
+                    }
+                    apply_attacker_declarations(game, &mut self.combat, tq, &declarations)?;
+                }
                 put_triggers_on_stack(game, tq)?;
 
                 // Also sync game.combat for anything that reads it
@@ -520,6 +593,8 @@ impl TurnRunner {
     /// Provide attacker declarations in response to a `Decision(Attackers(...))`.
     pub fn respond_attackers(&mut self, declarations: Vec<AttackerDeclaration>) {
         self.pending_attackers = Some(declarations);
+        self.pending_attacker_optional_costs = None;
+        self.pending_boolean = None;
     }
 
     /// Provide blocker declarations in response to a `Decision(Blockers(...))`.
@@ -712,7 +787,11 @@ impl TurnRunner {
         use crate::events::other::CardsDrawnEvent;
         use crate::triggers::TriggerEvent;
 
-        while let Some(candidate) = pending.candidates.get(pending.next_candidate_index).cloned() {
+        while let Some(candidate) = pending
+            .candidates
+            .get(pending.next_candidate_index)
+            .cloned()
+        {
             let should_reveal = if candidate.optional {
                 if let Some(answer) = self.pending_boolean.take() {
                     answer
@@ -728,14 +807,14 @@ impl TurnRunner {
 
             if should_reveal {
                 let mut dm = AutoPassDecisionMaker;
-                pending
-                    .reveal_events
-                    .push(crate::effects::cards::emit_automatic_draw_reveal_event(
+                pending.reveal_events.push(
+                    crate::effects::cards::emit_automatic_draw_reveal_event(
                         game,
                         &mut dm,
                         &candidate,
                         pending.draw_event_provenance,
-                    ));
+                    ),
+                );
             }
             pending.next_candidate_index += 1;
         }
@@ -1050,6 +1129,66 @@ mod tests {
                 .expect("combat should still exist")
                 .attackers
                 .is_empty()
+        );
+    }
+
+    #[test]
+    fn test_turn_runner_pauses_for_exert_attack_choice_before_applying_attackers() {
+        let mut game = setup_game();
+        let mut tq = TriggerQueue::new();
+        let mut runner = TurnRunner::new();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let exert_probe =
+            CardDefinitionBuilder::new(crate::ids::CardId::from_raw(9105), "Runner Exert Probe")
+                .card_types(vec![crate::types::CardType::Creature])
+                .power_toughness(PowerToughness::fixed(2, 2))
+                .parse_text("You may exert this creature as it attacks. When you do, draw a card.")
+                .expect("runner exert probe should parse");
+        let attacker = game.create_object_from_definition(&exert_probe, alice, Zone::Battlefield);
+
+        game.turn.phase = Phase::Combat;
+        game.turn.step = Some(Step::DeclareAttackers);
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+
+        runner.state = TurnState::DeclareAttackersApply;
+        runner.pending_attackers = Some(vec![AttackerDeclaration {
+            creature: attacker,
+            target: AttackTarget::Player(bob),
+        }]);
+
+        let action = runner.advance(&mut game, &mut tq).unwrap();
+        assert!(matches!(
+            action,
+            TurnAction::Decision(DecisionContext::Boolean(_))
+        ));
+        assert!(
+            runner.combat.attackers.is_empty(),
+            "attacker should not be committed before the exert prompt is answered"
+        );
+        assert!(
+            game.stack.is_empty(),
+            "linked exert trigger should not be created before the choice is made"
+        );
+        assert!(
+            !game.is_tapped(attacker),
+            "attacker should remain untapped while the exert prompt is pending"
+        );
+
+        runner.respond_boolean(true);
+        let action = runner.advance(&mut game, &mut tq).unwrap();
+        assert!(matches!(action, TurnAction::RunPriority));
+        assert_eq!(runner.combat.attackers.len(), 1);
+        assert!(
+            game.is_tapped(attacker),
+            "attacker should be tapped after the attack is applied"
+        );
+        assert_eq!(
+            game.stack.len(),
+            1,
+            "accepting exert should queue the linked trigger onto the stack"
         );
     }
 

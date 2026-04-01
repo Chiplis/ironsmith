@@ -23,12 +23,53 @@ pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str
         normalized_body = normalize_cost_subject_for_card(def, &normalized_body);
         normalized_body = normalize_spell_self_exile(def, &normalized_body);
         normalized_body = normalize_for_each_clause_surface(normalized_body);
+        if let Some(rewritten) =
+            normalize_not_chosen_this_way_surface(&oracle_lower, &normalized_body)
+        {
+            normalized_body = rewritten;
+        }
+        if let Some(rewritten) =
+            normalize_exactly_one_other_attacker_base_pt_surface(&oracle_lower, &normalized_body)
+        {
+            normalized_body = rewritten;
+        }
+        if let Some(rewritten) =
+            normalize_self_damage_each_opponent_count_surface(&oracle_lower, &normalized_body)
+        {
+            normalized_body = rewritten;
+        }
         normalized_body = normalize_known_low_tail_phrase(&normalized_body);
         normalized_body = normalize_each_opponent_dynamic_life_exchange(&normalized_body);
         normalized_body = normalize_triggered_self_deals_damage_phrase(def, &normalized_body);
         normalized_body = normalize_gain_life_plus_phrase(&normalized_body);
         normalized_body = normalize_gift_if_otherwise_surface(&normalized_body);
         normalized_body = normalize_strip_standard_gift_surface(def, &normalized_body);
+        if let Some(rewritten) =
+            normalize_creature_becomes_base_pt_surface(&normalized_body, &oracle_lower)
+        {
+            normalized_body = rewritten;
+        }
+        if oracle_lower.contains("mana value was") && normalized_body.contains("its mana value is ")
+        {
+            normalized_body = normalized_body.replace("its mana value is ", "its mana value was ");
+        }
+        if oracle_lower.contains("would die this turn, exile it instead")
+            && let Some(prefix) = strip_suffix_ascii_ci(
+                &normalized_body,
+                ". if it would go from battlefield into graveyard this turn, it goes to exile instead.",
+            )
+            .or_else(|| {
+                strip_suffix_ascii_ci(
+                    &normalized_body,
+                    ". if it would go from battlefield into graveyard this turn, it goes to exile instead",
+                )
+            })
+        {
+            normalized_body = format!(
+                "{}. If that creature would die this turn, exile it instead.",
+                prefix.trim_end_matches('.')
+            );
+        }
         if oracle_lower.contains("with an additional +1/+1 counter on it")
             && normalized_body.contains("with a +1/+1 counter on it")
         {
@@ -1053,6 +1094,109 @@ pub(super) fn normalize_each_opponent_life_exchange_clause(
     Some(format!(
         "each opponent loses X life and you gain X life, where X is the number of {}",
         count_subject
+    ))
+}
+
+fn normalize_not_chosen_this_way_surface(oracle_lower: &str, text: &str) -> Option<String> {
+    if !oracle_lower.contains("not chosen this way") {
+        return None;
+    }
+
+    let head = strip_prefix_ascii_ci(text, "For each player, you choose exactly 1 ")?;
+    let (descriptor_raw, rest) = split_once_ascii_ci(
+        head,
+        " that player controls in the battlefield. Return all other ",
+    )?;
+    let (return_subject_raw, after_return) = split_once_ascii_ci(rest, " to their owners' hands")?;
+    let descriptor_raw = descriptor_raw.trim();
+    let return_subject_raw = return_subject_raw.trim();
+    let expected_return_subject = pluralize_choice_descriptor(descriptor_raw);
+    if !return_subject_raw.eq_ignore_ascii_case(&expected_return_subject) {
+        return None;
+    }
+
+    let mut rewritten = format!(
+        "Each player chooses {descriptor_raw} they control. Return all {expected_return_subject} not chosen this way to their owners' hands"
+    );
+
+    let trimmed_tail = after_return.trim_start();
+    if let Some(rest) = strip_prefix_ascii_ci(trimmed_tail, ". For each opponent, if that player ")
+        && let Some((condition_raw, tail)) = split_once_ascii_ci(rest, ", you draw a card")
+    {
+        let condition = if condition_raw
+            .trim()
+            .eq_ignore_ascii_case("has more cards in hand than you")
+        {
+            "has more cards in their hand than you".to_string()
+        } else {
+            condition_raw.trim().to_string()
+        };
+        rewritten.push_str(&format!(
+            ". Then you draw a card for each opponent who {}{}",
+            condition,
+            if tail.trim().is_empty() { "." } else { tail }
+        ));
+    } else if !trimmed_tail.is_empty() {
+        rewritten.push_str(trimmed_tail);
+    }
+
+    Some(rewritten)
+}
+
+fn normalize_exactly_one_other_attacker_base_pt_surface(
+    oracle_lower: &str,
+    text: &str,
+) -> Option<String> {
+    if !oracle_lower.contains("attacked with exactly one other creature this combat")
+        || !oracle_lower.contains("base power and toughness become")
+    {
+        return None;
+    }
+
+    let rest = strip_prefix_ascii_ci(
+        text,
+        "Whenever this creature and exactly 1 other creature attack, you may each creature has base power and toughness ",
+    )?;
+    let pt = rest
+        .trim()
+        .strip_suffix(" until end of turn.")
+        .or_else(|| rest.trim().strip_suffix(" until end of turn"))?;
+    Some(format!(
+        "Whenever this creature attacks, if you attacked with exactly one other creature this combat, you may have that creature's base power and toughness become {} until end of turn.",
+        pt.trim()
+    ))
+}
+
+fn normalize_self_damage_each_opponent_count_surface(
+    oracle_lower: &str,
+    text: &str,
+) -> Option<String> {
+    if !oracle_lower.contains("deals x damage to each opponent")
+        || !oracle_lower.contains("where x is the number of")
+    {
+        return None;
+    }
+
+    let (prefix, rest) = split_once_ascii_ci(text, ". Deal the number of ")?;
+    let (count_subject_raw, tail) = split_once_ascii_ci(rest, " damage to each opponent")?;
+    let mut count_subject = count_subject_raw.trim().to_string();
+
+    if let Some(rest) = count_subject.strip_prefix("another ") {
+        count_subject = rest.trim().to_string();
+        if let Some(base) = count_subject.strip_suffix(" you control") {
+            count_subject = format!("{} you control other than this creature", base.trim());
+        } else {
+            count_subject = format!("{count_subject} other than this creature");
+        }
+    }
+
+    let suffix = if tail.trim().is_empty() {
+        ".".to_string()
+    } else {
+        tail.to_string()
+    };
+    Some(format!(
+        "{prefix}. This creature deals X damage to each opponent, where X is the number of {count_subject}{suffix}"
     ))
 }
 
@@ -2661,6 +2805,29 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
         return format!(
             "Counter target spell. This spell deals {amount} damage to that spell's controller."
         );
+    }
+    if let Some((first_clause, rest)) = split_once_ascii_ci(&normalized, ". Deal ")
+        && let Some((controller_damage, tail)) =
+            split_once_ascii_ci(rest, " damage to that object's controller.")
+    {
+        let controller_subject = if first_clause
+            .to_ascii_lowercase()
+            .ends_with("damage to target creature")
+        {
+            "that creature's controller"
+        } else {
+            "that object's controller"
+        };
+        let combined = format!(
+            "{} and {} damage to {}.",
+            first_clause.trim(),
+            controller_damage.trim(),
+            controller_subject
+        );
+        if tail.trim().is_empty() {
+            return combined;
+        }
+        return format!("{combined}{}", tail);
     }
     if let Some((prefix, tail)) = split_once_ascii_ci(
         &normalized,
@@ -6061,4 +6228,41 @@ pub(super) fn merge_static_legendary_gets_then_has_block(
     let verb = have_verb_for_subject(subject);
     let merged = format!("{subject} is legendary, gets {gets_tail}, and {verb} {keyword_list}.");
     Some((merged, idx - start_idx))
+}
+
+fn normalize_creature_becomes_base_pt_surface(text: &str, oracle_lower: &str) -> Option<String> {
+    if !oracle_lower.contains("with base power and toughness") {
+        return None;
+    }
+
+    let trimmed = text.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    let becomes_idx = lower.find(" becomes a ")?;
+    let body_start = becomes_idx + " becomes a ".len();
+    let until_idx = lower[body_start..]
+        .find(" until end of turn")
+        .map(|idx| body_start + idx)?;
+    let subject = trimmed[..becomes_idx].trim_end();
+    if !subject.to_ascii_lowercase().ends_with("creature") {
+        return None;
+    }
+
+    let body = &trimmed[body_start..until_idx];
+    let body_lower = body.to_ascii_lowercase();
+    let creature_suffix_idx = body_lower.rfind(" creature")?;
+    if creature_suffix_idx + " creature".len() != body.len() {
+        return None;
+    }
+
+    let descriptor_with_pt = body[..creature_suffix_idx].trim();
+    let (pt, descriptor) = descriptor_with_pt.split_once(' ')?;
+    if !pt.contains('/') || descriptor.trim().is_empty() {
+        return None;
+    }
+
+    Some(format!(
+        "{subject} becomes a {} with base power and toughness {pt}{}",
+        descriptor.trim(),
+        &trimmed[until_idx..]
+    ))
 }

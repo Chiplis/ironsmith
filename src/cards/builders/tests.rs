@@ -1782,6 +1782,25 @@ fn test_parse_keyword_action_trigger_any_player() {
 }
 
 #[test]
+fn test_parse_keyword_action_trigger_you_surveil() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Surveil Watcher")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text("Whenever you surveil, draw a card.")
+        .expect("parse surveil trigger");
+
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|a| match &a.kind {
+            AbilityKind::Triggered(t) => Some(t),
+            _ => None,
+        })
+        .expect("expected triggered ability");
+
+    assert_eq!(triggered.trigger.display(), "Whenever you surveil");
+}
+
+#[test]
 fn test_parse_keyword_action_trigger_players_finish_voting() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Vote Watcher")
         .card_types(vec![CardType::Enchantment])
@@ -4365,6 +4384,70 @@ fn test_parse_manifest_dread_trigger_without_fallback_marker() {
 }
 
 #[test]
+fn test_parse_manifest_top_card_of_your_library_without_fallback_marker() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Manifest Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "When this creature dies, manifest the top card of your library. (Put that card onto the battlefield face down as a 2/2 creature. Turn it face up any time for its mana cost if it's a creature card.)",
+        )
+        .expect("manifest trigger should parse as an explicit mechanic effect");
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("manifest the top card of your library"),
+        "expected manifest text in oracle-like output, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("unsupported parser line fallback"),
+        "manifest trigger should not rely on unsupported fallback marker: {rendered}"
+    );
+}
+
+#[test]
+fn test_parse_manifest_top_card_of_that_players_library_without_fallback_marker() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Manifest Theft Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Whenever this creature deals combat damage to a player, manifest the top card of that player's library. (Put that card onto the battlefield face down as a 2/2 creature. Turn it face up any time for its mana cost if it's a creature card.)",
+        )
+        .expect("manifest that-player trigger should parse as an explicit mechanic effect");
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("manifest the top card of that player's library"),
+        "expected manifest-that-player text in oracle-like output, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("unsupported parser line fallback"),
+        "manifest that-player trigger should not rely on unsupported fallback marker: {rendered}"
+    );
+}
+
+#[test]
+fn test_parse_manifest_chain_after_create_token_keeps_both_effects() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Orochi Manifest Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Whenever one or more creatures you control deal combat damage to a player, create a Treasure token and manifest the top card of that player's library. (Put that card onto the battlefield face down as a 2/2 creature. Turn it face up any time for its mana cost if it's a creature card.)",
+        )
+        .expect("create-plus-manifest trigger should keep the full effect chain");
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("create a treasure token"),
+        "expected Treasure creation in oracle-like output, got {rendered}"
+    );
+    assert!(
+        rendered.contains("manifest the top card of that player's library"),
+        "expected manifest tail in oracle-like output, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("unsupported parser line fallback"),
+        "create-plus-manifest trigger should not rely on unsupported fallback marker: {rendered}"
+    );
+}
+
+#[test]
 fn parse_manifest_dread_then_multi_counter_followup_keeps_full_chain() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Manifest Door Probe")
         .card_types(vec![CardType::Enchantment])
@@ -4459,6 +4542,26 @@ fn test_parse_bolster_trigger_without_fallback_marker() {
 }
 
 #[test]
+fn test_parse_bolster_spell_clause_without_fallback_marker() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Bolster Spell Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Target player sacrifices an enchantment of their choice. Bolster 1. (Choose a creature with the least toughness among creatures you control and put a +1/+1 counter on it.)",
+        )
+        .expect("bolster spell clause should parse as an explicit mechanic effect");
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("bolster 1"),
+        "expected bolster text in oracle-like output, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("unsupported parser line fallback"),
+        "bolster spell clause should not rely on unsupported fallback marker: {rendered}"
+    );
+}
+
+#[test]
 fn test_parse_support_trigger_without_fallback_marker() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Support Trigger Probe")
         .card_types(vec![CardType::Creature])
@@ -4475,6 +4578,26 @@ fn test_parse_support_trigger_without_fallback_marker() {
     assert!(
         !rendered.contains("unsupported parser line fallback"),
         "support trigger should not rely on unsupported fallback marker: {rendered}"
+    );
+}
+
+#[test]
+fn test_parse_support_spell_clause_without_fallback_marker() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Support Spell Probe")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Support 2. (Put a +1/+1 counter on each of up to two target creatures.) Draw a card.",
+        )
+        .expect("support spell clause should parse as an explicit mechanic effect");
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("support 2"),
+        "expected support text in oracle-like output, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("unsupported parser line fallback"),
+        "support spell clause should not rely on unsupported fallback marker: {rendered}"
     );
 }
 
@@ -7737,14 +7860,15 @@ fn render_tap_x_artifacts_creatures_and_lands_preserves_and_or_list() {
 }
 
 #[test]
-fn parse_destroy_then_populate_requires_supported_followup_clause() {
-    let err = CardDefinitionBuilder::new(CardId::new(), "Sundering Growth Variant")
+fn parse_destroy_then_populate_compiles_followup_clause() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Sundering Growth Variant")
         .parse_text("Destroy target artifact or enchantment, then populate.")
-        .expect_err("destroy-then-populate should fail until populate effect support exists");
-    let message = format!("{err:?}");
+        .expect("destroy-then-populate should parse");
+    let rendered = compiled_lines(&def).join(" ");
     assert!(
-        message.contains("populate") || message.contains("could not find verb"),
-        "expected actionable populate parse error, got {message}"
+        rendered.contains("Destroy target artifact or enchantment")
+            && rendered.contains("Populate"),
+        "expected destroy then populate rendering, got {rendered}"
     );
 }
 
@@ -9441,8 +9565,21 @@ fn parse_damage_to_that_creatures_controller_targets_player() {
 
     let rendered = compiled_lines(&def).join(" ");
     assert!(
-        rendered.contains("that object's controller"),
+        rendered.contains("that object's controller")
+            || rendered.contains("that creature's controller"),
         "expected controller-target damage wording, got {rendered}"
+    );
+}
+
+#[test]
+fn burn_the_accursed_regression_uses_oracle_like_damage_and_die_replacement_text() {
+    let def = parse_oracle_card_definition("Burn the Accursed");
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains(
+            "deal 5 damage to target creature and 2 damage to that creature's controller"
+        ) && rendered.contains("if that creature would die this turn, exile it instead"),
+        "expected Burn the Accursed to keep its linked damage and die-replacement wording, got {rendered}"
     );
 }
 
@@ -9793,10 +9930,11 @@ fn parse_reveal_card_this_way_trigger_clause() {
         AbilityKind::Static(static_ability)
             if static_ability.id() == StaticAbilityId::RevealFirstCardYouDrawEachTurn
     )));
-    assert!(def
-        .abilities
-        .iter()
-        .any(|ability| matches!(&ability.kind, AbilityKind::Triggered(_))));
+    assert!(
+        def.abilities
+            .iter()
+            .any(|ability| matches!(&ability.kind, AbilityKind::Triggered(_)))
+    );
 }
 
 #[test]
@@ -9813,10 +9951,11 @@ fn parse_optional_reveal_first_draw_trigger_clause() {
         AbilityKind::Static(static_ability)
             if static_ability.id() == StaticAbilityId::RevealFirstCardYouDrawEachTurn
     )));
-    assert!(def
-        .abilities
-        .iter()
-        .any(|ability| matches!(&ability.kind, AbilityKind::Triggered(_))));
+    assert!(
+        def.abilities
+            .iter()
+            .any(|ability| matches!(&ability.kind, AbilityKind::Triggered(_)))
+    );
 }
 
 #[test]
@@ -9860,7 +9999,8 @@ fn parse_full_god_eternal_kefnet_oracle() {
 
     let abilities_debug = format!("{:#?}", def.abilities);
     assert!(
-        abilities_debug.contains("OrTrigger") && abilities_debug.contains("MoveToLibraryNthFromTopEffect"),
+        abilities_debug.contains("OrTrigger")
+            && abilities_debug.contains("MoveToLibraryNthFromTopEffect"),
         "expected dies-or-exiled trigger with third-from-top move, got {abilities_debug}"
     );
 
@@ -10754,6 +10894,21 @@ fn parse_cant_attack_unless_control_more_creatures_than_defending_player_line() 
 }
 
 #[test]
+fn parse_cant_attack_or_block_unless_you_control_seven_or_more_lands_line() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Topiary Stomper Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("This creature can't attack or block unless you control seven or more lands.")
+        .expect("cant-attack-or-block-unless-control-seven-lands should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("can't attack or block unless you control seven or more lands")
+            || rendered.contains("cant attack or block unless you control seven or more lands"),
+        "expected conditioned attack/block restriction text, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_cant_attack_unless_defending_player_is_poisoned_line() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Skullsnatcher Variant")
         .card_types(vec![CardType::Creature])
@@ -11342,6 +11497,23 @@ fn parse_return_transformed_clause_uses_shared_return_and_transform() {
             || rendered.contains("put that card onto the battlefield under your control"))
             && rendered.contains("transform"),
         "expected shared return plus transform lowering, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_return_converted_clause_uses_shared_return_and_convert() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Converted Return Variant")
+        .parse_text(
+            "When this creature dies, return it to the battlefield converted under your control.",
+        )
+        .expect("converted return should parse through shared return path");
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        (rendered.contains("return")
+            || rendered.contains("put that card onto the battlefield under your control"))
+            && rendered.contains("convert")
+            && !rendered.contains("transform"),
+        "expected shared return plus convert lowering, got {rendered}"
     );
 }
 
@@ -14447,7 +14619,8 @@ fn parse_conditional_create_token_with_quoted_comma_uses_first_comma_split() {
         lower.contains("if it matches permanent with mana value 2 or less")
             || lower.contains(
                 "if the tagged object 'destroyed_0' matches permanent with mana value 2 or less"
-            ),
+            )
+            || lower.contains("if its mana value is 2 or less"),
         "expected mana value predicate to stay on destroyed target, got {joined}"
     );
     assert!(
@@ -14457,6 +14630,26 @@ fn parse_conditional_create_token_with_quoted_comma_uses_first_comma_split() {
     assert!(
         lower.contains("when this token dies, you gain 1 life"),
         "expected pest dies trigger text to be preserved, got {joined}"
+    );
+}
+
+#[test]
+fn parse_fading_hope_uses_past_tense_mana_value_predicate() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Fading Hope")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Return target creature to its owner's hand. If its mana value was 3 or less, scry 1.",
+        )
+        .expect("Fading Hope-style past-tense mana-value predicate should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("return target creature to its owner's hand"),
+        "expected bounce clause to survive rendering, got {rendered}"
+    );
+    assert!(
+        rendered.contains("if its mana value was 3 or less, scry 1"),
+        "expected oracle-like past-tense mana-value wording, got {rendered}"
     );
 }
 
@@ -14477,11 +14670,13 @@ fn parse_fatal_push_revolt_clause_keeps_permanent_left_gate() {
 
     let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        rendered.contains("mana value 4 or less"),
+        rendered.contains("mana value 4 or less")
+            || rendered.contains("mana value is 4 or less"),
         "expected revolt branch to preserve the mana value 4 threshold, got {rendered}"
     );
     assert!(
-        rendered.contains("mana value 2 or less"),
+        rendered.contains("mana value 2 or less")
+            || rendered.contains("mana value is 2 or less"),
         "expected base branch to preserve the mana value 2 threshold, got {rendered}"
     );
 }
@@ -18669,9 +18864,8 @@ fn parse_oracle_shuffle_trigger_regressions() {
 
     let rendered = compiled_lines(&panic).join(" ");
     assert!(
-        rendered.contains(
-            "Whenever a spell or ability causes its controller to shuffle their library"
-        ),
+        rendered
+            .contains("Whenever a spell or ability causes its controller to shuffle their library"),
         "expected Widespread Panic compiled text to preserve its shuffle-trigger wording, got {rendered}"
     );
 }
@@ -19933,9 +20127,201 @@ fn strict_parse_shared_parser_regression_cards() {
         "Loran of the Third Path",
         "Phelia, Exuberant Shepherd",
         "Sage of the Skies",
+        "Creepy Puppeteer",
+        "Serpentine Ambush",
     ] {
         assert_oracle_card_parses_strict(name);
     }
+}
+
+#[test]
+fn creepy_puppeteer_regression_renders_base_power_toughness_followup() {
+    let def = parse_oracle_card_definition("Creepy Puppeteer");
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        rendered.contains("base power and toughness become 4/3")
+            && rendered.contains("until end of turn"),
+        "expected Creepy Puppeteer to keep its temporary base power/toughness setting, got {rendered}"
+    );
+    assert!(
+        debug.contains("other_attacker"),
+        "expected Creepy Puppeteer to bind the exact other attacker, got {debug}"
+    );
+}
+
+#[test]
+fn serpentine_ambush_regression_renders_color_subtype_and_base_pt() {
+    let def = parse_oracle_card_definition("Serpentine Ambush");
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("blue serpent with base power and toughness 5/5")
+            && rendered.contains("until end of turn"),
+        "expected Serpentine Ambush to keep oracle-style base power/toughness wording, got {rendered}"
+    );
+}
+
+#[test]
+fn consuming_tide_regression_draws_for_each_opponent_who_is_ahead_on_cards() {
+    let def = parse_oracle_card_definition("Consuming Tide");
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("return all nonland permanents not chosen this way")
+            && rendered.contains("more cards in their hand than you")
+            && rendered.contains("draw a card"),
+        "expected Consuming Tide to keep its per-opponent card-draw rider, got {rendered}"
+    );
+}
+
+#[test]
+fn thundering_raiju_regression_keeps_each_opponent_damage_target() {
+    let def = parse_oracle_card_definition("Thundering Raiju");
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        !rendered.contains("damage to you") && rendered.contains("each opponent"),
+        "expected Thundering Raiju to keep damage pointed at opponents, got {rendered}"
+    );
+    assert!(
+        debug.contains("DealDamageEffect") && debug.contains("IteratedPlayer"),
+        "expected Thundering Raiju damage target to stay bound to the per-opponent loop, got {debug}"
+    );
+}
+
+#[test]
+fn strict_parse_vote_regression_cards() {
+    for name in [
+        "Council's Judgment",
+        "Tyrant's Choice",
+        "Truth or Consequences",
+        "Ballot Broker",
+        "Brago's Representative",
+        "Tivit, Seller of Secrets",
+        "Elrond of the White Council",
+    ] {
+        assert_oracle_card_parses_strict(name);
+    }
+}
+
+#[test]
+fn strict_parse_meld_regression_cards() {
+    for name in [
+        "Graf Rats",
+        "Gisela, the Broken Blade",
+        "Hanweir Battlements",
+        "Mishra, Claimed by Gix",
+        "Titania, Voice of Gaea",
+        "Urza, Lord Protector",
+        "Vanille, Cheerful l'Cie",
+    ] {
+        assert_oracle_card_parses_strict(name);
+    }
+}
+
+#[test]
+fn strict_parse_exert_regression_cards() {
+    for name in [
+        "Glory-Bound Initiate",
+        "Combat Celebrant",
+        "Hope Tender",
+        "Vizier of the True",
+        "Themberchaud",
+    ] {
+        assert_oracle_card_parses_strict(name);
+    }
+}
+
+#[test]
+fn exert_regression_cards_lower_to_runtime_support_without_fallbacks() {
+    let combat_celebrant = parse_oracle_card_definition("Combat Celebrant");
+    let combat_celebrant_debug = format!("{:#?}", combat_celebrant.abilities);
+    assert!(
+        combat_celebrant_debug.contains("ExertAttack"),
+        "expected Combat Celebrant to lower to the exert-attack static ability, got {combat_celebrant_debug}"
+    );
+
+    let hope_tender = parse_oracle_card_definition("Hope Tender");
+    let hope_tender_debug = format!("{:#?}", hope_tender.abilities);
+    assert!(
+        hope_tender_debug.contains("ExertCostEffect"),
+        "expected Hope Tender to lower exert as an activated cost, got {hope_tender_debug}"
+    );
+
+    let vizier = parse_oracle_card_definition("Vizier of the True");
+    let vizier_debug = format!("{:#?}", vizier.abilities);
+    assert!(
+        vizier_debug.contains("source_filter: Some"),
+        "expected Vizier of the True to keep its creature-only exert trigger filter, got {vizier_debug}"
+    );
+
+    let themberchaud = parse_oracle_card_definition("Themberchaud");
+    let themberchaud_rendered = oracle_like_lines(&themberchaud).join(" ");
+    let themberchaud_lowered = themberchaud_rendered.to_ascii_lowercase();
+    assert!(
+        themberchaud_lowered.contains("you may exert themberchaud as he attacks"),
+        "expected Themberchaud to preserve its named-source exert wording, got {themberchaud_rendered}"
+    );
+    assert!(
+        !themberchaud_lowered.contains("unsupported"),
+        "expected Themberchaud to render without unsupported exert placeholders, got {themberchaud_rendered}"
+    );
+}
+
+#[test]
+fn exert_land_activation_cost_lowers_to_exert_runtime_cost() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Exert Land Probe")
+        .card_types(vec![CardType::Land])
+        .parse_text("{R}, {T}, Exert this land: Add {R}{R}.")
+        .expect("land exert activation should parse");
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("ExertCostEffect"),
+        "expected land exert activation to lower to the shared exert cost effect, got {debug}"
+    );
+}
+
+#[test]
+fn vote_regression_truth_or_consequences_keeps_random_choice_before_consequences_loop() {
+    let def = parse_oracle_card_definition("Truth or Consequences");
+    let rendered = compiled_lines(&def).join(" ");
+    assert!(
+        !rendered.contains("Unsupported effect"),
+        "expected vote repeat effects to render cleanly, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.spell_effect);
+    let truth_idx = debug
+        .find("VoteCount(\"truth\")")
+        .expect("truth repeat should be present");
+    let choose_idx = debug
+        .find("ChoosePlayerEffect")
+        .expect("random opponent choice should be present");
+    let consequences_idx = debug
+        .find("VoteCount(\"consequences\")")
+        .expect("consequences repeat should be present");
+    assert!(
+        truth_idx < choose_idx && choose_idx < consequences_idx,
+        "expected random opponent choice to stay between the truth and consequences loops, got {debug}"
+    );
+}
+
+#[test]
+fn vote_regression_elrond_preserves_voter_choice_branch_and_owner_attack_restriction() {
+    let def = parse_oracle_card_definition("Elrond of the White Council");
+    let rendered = compiled_lines(&def).join(" ");
+    assert!(
+        !rendered.contains("Unsupported effect"),
+        "expected Elrond vote branch to render without unsupported placeholders, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("name: \"fellowship\"")
+            && debug.contains("chooser: IteratedPlayer")
+            && debug.contains("CantAttackItsOwner")
+            && debug.contains("VoteCount(\"aid\")"),
+        "expected Elrond to keep the fellowship voter choice branch, the owner-attack restriction, and the aid vote loop, got {debug}"
+    );
 }
 
 #[test]
@@ -20778,6 +21164,24 @@ fn parse_last_march_of_the_ents_draws_greatest_toughness() {
 }
 
 #[test]
+fn parse_flourishing_hunter_gains_life_equal_to_greatest_toughness() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Flourishing Hunter")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "When this creature enters, you gain life equal to the greatest toughness among other creatures you control.",
+        )
+        .expect("Flourishing Hunter-style greatest-toughness life gain should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains(
+            "gain life equal to the greatest toughness among other creatures you control"
+        ),
+        "expected greatest-toughness life-gain text to survive rendering, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_search_target_opponents_library_face_down_exile_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Praetor's Grasp Variant")
         .card_types(vec![CardType::Sorcery])
@@ -21083,9 +21487,25 @@ fn parse_megatron_life_lost_turn_mana_clause() {
     let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
         rendered.contains("during combat")
+            && rendered.contains("convert")
+            && !rendered.contains("transform")
             && rendered.contains("add {c} for each 1 life your opponents have lost this turn")
             && !rendered.contains("time(s)"),
         "expected megatron silence and mana text, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_convert_with_followup_sentence_preserves_convert_action() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Jetfire Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Convert this creature, then adapt 3.")
+        .expect("convert with followup should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("convert this creature") && rendered.contains("adapt 3"),
+        "expected convert and followup text to survive compilation, got {rendered}"
     );
 }
 

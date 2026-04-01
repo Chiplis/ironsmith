@@ -4456,6 +4456,50 @@ pub(crate) fn parse_cant_clause(
         )));
     }
 
+    if (normalized.starts_with(&[
+        "this", "creature", "cant", "attack", "or", "block", "unless",
+    ]) || normalized.starts_with(&["this", "cant", "attack", "or", "block", "unless"]))
+        && let tail = if normalized.starts_with(&[
+            "this", "creature", "cant", "attack", "or", "block", "unless",
+        ]) {
+            &normalized[7..]
+        } else {
+            &normalized[6..]
+        }
+        && let ["you", "control", amount, "or", "more", rest @ ..] = tail
+        && !rest.is_empty()
+        && let Some(count) = parse_cardinal_u32(amount)
+    {
+        let filter_tokens = rest
+            .iter()
+            .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+            .collect::<Vec<_>>();
+        if let Ok(mut filter) = parse_object_filter(&filter_tokens, false) {
+            if filter.zone.is_none() {
+                filter.zone = Some(Zone::Battlefield);
+            }
+            let condition =
+                crate::ConditionExpr::Not(Box::new(crate::ConditionExpr::PlayerControlsAtLeast {
+                    player: PlayerFilter::You,
+                    filter,
+                    count,
+                }));
+            return Ok(Some(
+                StaticAbility::restriction(
+                    crate::effect::Restriction::attack_or_block(ObjectFilter::source()),
+                    format_negated_restriction_display(tokens),
+                )
+                .with_condition(condition)
+                .unwrap_or_else(|| {
+                    StaticAbility::restriction(
+                        crate::effect::Restriction::attack_or_block(ObjectFilter::source()),
+                        format_negated_restriction_display(tokens),
+                    )
+                }),
+            ));
+        }
+    }
+
     if normalized.starts_with(&["if", "source", "you", "control", "with"])
         && normalized.contains(&"mana")
         && normalized.contains(&"value")
@@ -4525,6 +4569,9 @@ pub(crate) fn parse_cant_clause(
         }
         ["this", "spell", "cant", "be", "countered"] => StaticAbility::cant_be_countered_ability(),
         ["this", "creature", "cant", "attack"] => StaticAbility::cant_attack(),
+        ["this", "creature", "cant", "attack", "its", "owner"] => {
+            StaticAbility::cant_attack_its_owner()
+        }
         ["this", "creature", "cant", "block"] => StaticAbility::cant_block(),
         ["this", "creature", "cant", "attack", "alone"] => StaticAbility::restriction(
             crate::effect::Restriction::attack_alone(ObjectFilter::source()),
@@ -6065,7 +6112,6 @@ pub(crate) fn parse_single_word_keyword_action(word: &str) -> Option<KeywordActi
         "training" => Some(KeywordAction::Training),
         "myriad" => Some(KeywordAction::Myriad),
         "partner" => Some(KeywordAction::Partner),
-        "populate" => Some(KeywordAction::Marker("populate")),
         "provoke" => Some(KeywordAction::Provoke),
         "ravenous" => Some(KeywordAction::Ravenous),
         "riot" => Some(KeywordAction::Riot),
@@ -7927,7 +7973,19 @@ pub(crate) fn parse_trigger_clause_lexed(
         let subject_word_view = LowercaseWordView::new(subject_tokens);
         let subject_words = subject_word_view.to_word_refs();
         if is_source_reference_words(&subject_words)
-            && words.get(dies_word_idx + 1..) == Some(&["or", "is", "put", "into", "exile", "from", "the", "battlefield"][..])
+            && words.get(dies_word_idx + 1..)
+                == Some(
+                    &[
+                        "or",
+                        "is",
+                        "put",
+                        "into",
+                        "exile",
+                        "from",
+                        "the",
+                        "battlefield",
+                    ][..],
+                )
         {
             return Ok(TriggerSpec::ThisDiesOrIsExiled);
         }
@@ -8355,6 +8413,7 @@ pub(crate) fn parse_trigger_clause_lexed(
         return Ok(TriggerSpec::KeywordAction {
             action: crate::events::KeywordActionKind::Vote,
             player: PlayerFilter::Any,
+            source_filter: None,
         });
     }
 
@@ -8374,6 +8433,7 @@ pub(crate) fn parse_trigger_clause_lexed(
             Box::new(TriggerSpec::KeywordAction {
                 action: crate::events::KeywordActionKind::Cycle,
                 player: PlayerFilter::You,
+                source_filter: None,
             }),
             Box::new(TriggerSpec::PlayerDiscardsCard {
                 player: PlayerFilter::You,
@@ -8386,6 +8446,7 @@ pub(crate) fn parse_trigger_clause_lexed(
         return Ok(TriggerSpec::KeywordAction {
             action: crate::events::KeywordActionKind::CommitCrime,
             player: PlayerFilter::You,
+            source_filter: None,
         });
     }
 
@@ -8396,6 +8457,7 @@ pub(crate) fn parse_trigger_clause_lexed(
         return Ok(TriggerSpec::KeywordAction {
             action: crate::events::KeywordActionKind::CommitCrime,
             player: PlayerFilter::Opponent,
+            source_filter: None,
         });
     }
 
@@ -8405,6 +8467,7 @@ pub(crate) fn parse_trigger_clause_lexed(
         return Ok(TriggerSpec::KeywordAction {
             action: crate::events::KeywordActionKind::CommitCrime,
             player: PlayerFilter::Any,
+            source_filter: None,
         });
     }
 
@@ -8454,6 +8517,7 @@ pub(crate) fn parse_trigger_clause_lexed(
         return Ok(TriggerSpec::KeywordAction {
             action: crate::events::KeywordActionKind::RingTemptsYou,
             player: PlayerFilter::You,
+            source_filter: None,
         });
     }
 
@@ -8470,6 +8534,26 @@ pub(crate) fn parse_trigger_clause_lexed(
                 return Ok(TriggerSpec::KeywordAction {
                     action: crate::events::KeywordActionKind::Cycle,
                     player,
+                    source_filter: None,
+                });
+            }
+        }
+    }
+
+    if let Some(exert_word_idx) = words.iter().position(|word| {
+        matches!(
+            crate::events::KeywordActionKind::from_trigger_word(word),
+            Some(crate::events::KeywordActionKind::Exert)
+        )
+    }) {
+        let subject = &words[..exert_word_idx];
+        if let Some(player) = parse_trigger_subject_player_filter(subject) {
+            let tail = &words[exert_word_idx + 1..];
+            if tail == ["a", "creature"] || tail == ["creature"] {
+                return Ok(TriggerSpec::KeywordAction {
+                    action: crate::events::KeywordActionKind::Exert,
+                    player,
+                    source_filter: Some(ObjectFilter::creature()),
                 });
             }
         }
@@ -8488,6 +8572,7 @@ pub(crate) fn parse_trigger_clause_lexed(
                 return Ok(TriggerSpec::KeywordAction {
                     action: crate::events::KeywordActionKind::NameSticker,
                     player,
+                    source_filter: None,
                 });
             }
         }
@@ -8518,6 +8603,14 @@ pub(crate) fn parse_trigger_clause_lexed(
         || words.as_slice() == ["becomes", "untapped"]
     {
         return Ok(TriggerSpec::ThisBecomesUntapped);
+    }
+
+    if words.as_slice() == ["this", "creature", "becomes", "monstrous"]
+        || words.as_slice() == ["this", "permanent", "becomes", "monstrous"]
+        || words.as_slice() == ["this", "becomes", "monstrous"]
+        || words.as_slice() == ["becomes", "monstrous"]
+    {
+        return Ok(TriggerSpec::ThisBecomesMonstrous);
     }
 
     if words.as_slice() == ["this", "creature", "is", "turned", "face", "up"]
@@ -8905,7 +8998,11 @@ pub(crate) fn parse_trigger_clause_lexed(
             }
         }
         if let Some(player) = parse_trigger_subject_player_filter(subject) {
-            return Ok(TriggerSpec::KeywordAction { action, player });
+            return Ok(TriggerSpec::KeywordAction {
+                action,
+                player,
+                source_filter: None,
+            });
         }
     }
 
@@ -8916,7 +9013,18 @@ pub(crate) fn parse_trigger_clause_lexed(
         return Ok(TriggerSpec::KeywordAction {
             action: crate::events::KeywordActionKind::CompleteDungeon,
             player: PlayerFilter::You,
+            source_filter: None,
         });
+    }
+
+    if words.ends_with(&["win", "a", "clash"])
+        || words.ends_with(&["wins", "a", "clash"])
+        || words.ends_with(&["won", "a", "clash"])
+    {
+        let subject = &words[..words.len().saturating_sub(3)];
+        if let Some(player) = parse_trigger_subject_player_filter(subject) {
+            return Ok(TriggerSpec::WinsClash { player });
+        }
     }
 
     if let Some(counter_word_idx) = words
@@ -10490,7 +10598,8 @@ pub(crate) fn effect_creates_any_token(effect: &EffectAst) -> bool {
     match effect {
         EffectAst::CreateTokenWithMods { .. }
         | EffectAst::CreateTokenCopy { .. }
-        | EffectAst::CreateTokenCopyFromSource { .. } => true,
+        | EffectAst::CreateTokenCopyFromSource { .. }
+        | EffectAst::Populate { .. } => true,
         _ => {
             let mut found = false;
             for_each_nested_effects(effect, false, |nested| {
@@ -10731,6 +10840,13 @@ pub(crate) fn append_token_reminder_to_effect(
             sacrifice_at_next_end_step,
             exile_at_next_end_step,
             ..
+        }
+        | EffectAst::Populate {
+            has_haste,
+            exile_at_end_of_combat,
+            sacrifice_at_next_end_step,
+            exile_at_next_end_step,
+            ..
         } => {
             if reminder_words == ["haste"] {
                 *has_haste = true;
@@ -10823,6 +10939,12 @@ pub(crate) fn parse_target_player_choose_objects_clause(
         } else if clause_words.len() >= 4
             && clause_words.first().copied() == Some("that")
             && matches!(clause_words.get(1).copied(), Some("player" | "players"))
+            && matches!(clause_words.get(2).copied(), Some("choose" | "chooses"))
+        {
+            (PlayerAst::That, 3usize)
+        } else if clause_words.len() >= 4
+            && clause_words.first().copied() == Some("the")
+            && matches!(clause_words.get(1).copied(), Some("voter"))
             && matches!(clause_words.get(2).copied(), Some("choose" | "chooses"))
         {
             (PlayerAst::That, 3usize)

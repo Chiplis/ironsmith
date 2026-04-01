@@ -1157,6 +1157,7 @@ fn value_references_pt(value: &Value) -> bool {
         Value::Fixed(_)
         | Value::X
         | Value::XTimes(_)
+        | Value::VoteCount(_)
         | Value::Count(_)
         | Value::CountScaled(_, _)
         | Value::TotalManaValue(_)

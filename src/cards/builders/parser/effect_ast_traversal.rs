@@ -154,7 +154,8 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::Behold { .. } => {}
         EffectAst::Explore { .. } => {}
         EffectAst::OpenAttraction => {}
-        EffectAst::ManifestDread => {}
+        EffectAst::ManifestTopCardOfLibrary { .. } | EffectAst::ManifestDread => {}
+        EffectAst::Populate { .. } => {}
         EffectAst::Bolster { .. } => {}
         EffectAst::Support { .. } => {}
         EffectAst::Adapt { .. } => {}
@@ -167,6 +168,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::AddManaCommanderIdentity { .. } => {}
         EffectAst::AddManaImprintedColors => {}
         EffectAst::Scry { .. } => {}
+        EffectAst::Fateseal { .. } => {}
         EffectAst::Discover { .. } => {}
         EffectAst::ConsultTopOfLibrary { .. } => {}
         EffectAst::PutTaggedRemainderOnBottomOfLibrary { .. } => {}
@@ -229,8 +231,11 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::Discard { .. } => {}
         EffectAst::Connive { .. } => {}
         EffectAst::ConniveIterated => {}
+        EffectAst::Detain { .. } => {}
         EffectAst::Goad { .. } => {}
         EffectAst::Transform { .. } => {}
+        EffectAst::Meld { .. } => {}
+        EffectAst::Convert { .. } => {}
         EffectAst::Flip { .. } => {}
         EffectAst::Regenerate { .. } => {}
         EffectAst::RegenerateAll { .. } => {}
@@ -342,6 +347,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::ReorderTopOfLibrary { .. } => {}
         EffectAst::ShuffleLibrary { .. } => {}
         EffectAst::VoteStart { .. } => {}
+        EffectAst::VoteStartObjects { .. } => {}
         EffectAst::VoteOption { .. } => {}
         EffectAst::VoteExtra { .. } => {}
     }

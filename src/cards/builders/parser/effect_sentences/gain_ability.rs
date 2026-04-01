@@ -1,8 +1,12 @@
 use super::super::activation_and_restrictions::parse_single_word_keyword_action;
-use super::super::clause_support::parse_triggered_line_lexed;
+use super::super::clause_support::{
+    parse_static_ability_ast_line_lexed, parse_triggered_line_lexed,
+};
 use super::super::compile_support::compile_statement_effects;
 use super::super::lexer::{OwnedLexToken, TokenKind, trim_lexed_commas};
-use super::super::lowering_support::rewrite_parsed_triggered_ability as parsed_triggered_ability;
+use super::super::lowering_support::{
+    rewrite_lower_static_ability_ast, rewrite_parsed_triggered_ability as parsed_triggered_ability,
+};
 use super::super::native_tokens::LowercaseWordView;
 use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed, split_on_or};
 use super::super::util::{
@@ -14,9 +18,10 @@ use super::lex_chain_helpers::find_verb_lexed;
 use super::sentence_helpers::*;
 #[allow(unused_imports)]
 use super::{Verb, find_verb, parse_effect_chain};
+use crate::ability::Ability;
 use crate::cards::builders::{
-    CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, KeywordAction, LineAst, ReferenceImports,
-    TagKey, TargetAst, TextSpan,
+    CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, KeywordAction, LineAst, ParsedAbility,
+    ReferenceImports, TagKey, TargetAst, TextSpan,
 };
 use crate::effect::Until;
 use crate::mana::ManaCost;
@@ -76,6 +81,28 @@ fn grants_protection_from_everything(ability: &GrantedAbilityAst) -> bool {
         ability,
         GrantedAbilityAst::KeywordAction(KeywordAction::ProtectionFromEverything)
     )
+}
+
+fn parsed_static_granted_abilities(
+    ability_tokens: &[OwnedLexToken],
+    abilities: Vec<crate::cards::builders::StaticAbilityAst>,
+) -> Result<Vec<GrantedAbilityAst>, CardTextError> {
+    let display = display_text_for_tokens(ability_tokens);
+    abilities
+        .into_iter()
+        .map(|ability| {
+            let static_ability = rewrite_lower_static_ability_ast(ability)?;
+            Ok(GrantedAbilityAst::ParsedObjectAbility {
+                ability: ParsedAbility {
+                    ability: Ability::static_ability(static_ability).with_text(&display),
+                    effects_ast: None,
+                    reference_imports: ReferenceImports::default(),
+                    trigger_spec: None,
+                },
+                display: display.clone(),
+            })
+        })
+        .collect()
 }
 
 fn player_gain_effects_for_abilities(
@@ -154,6 +181,13 @@ fn parse_granted_ability_component_for_gain(
         return Ok(Some(
             actions.into_iter().map(GrantedAbilityAst::from).collect(),
         ));
+    }
+
+    if let Some(abilities) = parse_static_ability_ast_line_lexed(&ability_tokens)? {
+        return Ok(Some(parsed_static_granted_abilities(
+            &ability_tokens,
+            abilities,
+        )?));
     }
 
     if let Some(action) = ability_tokens

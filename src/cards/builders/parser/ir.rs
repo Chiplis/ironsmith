@@ -65,6 +65,7 @@ pub(crate) enum RewriteKeywordLineKind {
     CastThisSpellOnly,
     Gift,
     Warp,
+    ExertAttack,
 }
 
 #[derive(Debug, Clone)]
