@@ -1,4 +1,4 @@
-use crate::cards::builders::{CardDefinitionBuilder, CardTextError};
+use crate::cards::builders::{CardDefinitionBuilder, CardTextError, ChoiceCount};
 use crate::ids::CardId;
 use crate::mana::ManaSymbol;
 use crate::object::CounterType;
@@ -32,6 +32,14 @@ fn rewrite_line_info(text: &str) -> super::LineInfo {
     }
 }
 
+fn parse_error_message<T>(result: Result<T, CardTextError>) -> String {
+    match result {
+        Ok(_) => panic!("expected parse error"),
+        Err(CardTextError::ParseError(message)) => message,
+        Err(other) => panic!("expected parse error, got {other:?}"),
+    }
+}
+
 #[test]
 fn rewrite_lexer_tracks_spans_for_activation_lines() {
     let tokens = lex_line("{T}, Sacrifice a creature: Add {B}{B}.", 3)
@@ -48,6 +56,27 @@ fn rewrite_lexer_accepts_plus_prefixed_counter_words() {
     let tokens = lex_line("Put a +1/+1 counter on target creature.", 0)
         .expect("rewrite lexer should accept +1/+1 words");
     assert!(tokens.iter().any(|token| token.slice == "+1/+1"));
+}
+
+#[test]
+fn rewrite_lexer_reports_line_and_span_for_unknown_tokens() {
+    let error = parse_error_message(lex_line("@", 2));
+    assert!(
+        error.contains("unsupported token"),
+        "expected unsupported-token context, got {error}"
+    );
+    assert!(
+        error.contains("\"@\""),
+        "expected offending token in lexer error, got {error}"
+    );
+    assert!(
+        error.contains("line 3"),
+        "expected human-readable line number in lexer error, got {error}"
+    );
+    assert!(
+        error.contains("0..1"),
+        "expected lexer span in error, got {error}"
+    );
 }
 
 #[test]
@@ -270,10 +299,12 @@ fn rewrite_restriction_support_preserves_text_only_attack_conditions() {
         attacked_ability.additional_restrictions,
         vec!["only if this creature attacked this turn".to_string()]
     );
-    assert!(attacked_ability
-        .activation_restrictions
-        .iter()
-        .any(|condition| matches!(condition, crate::ConditionExpr::SourceAttackedThisTurn)));
+    assert!(
+        attacked_ability
+            .activation_restrictions
+            .iter()
+            .any(|condition| matches!(condition, crate::ConditionExpr::SourceAttackedThisTurn))
+    );
 
     let mut didnt_attack_ability = crate::ability::ActivatedAbility {
         mana_cost: crate::cost::TotalCost::default(),
@@ -299,14 +330,16 @@ fn rewrite_restriction_support_preserves_text_only_attack_conditions() {
         didnt_attack_ability.additional_restrictions,
         vec!["activate only if it didn't attack this turn".to_string()]
     );
-    assert!(didnt_attack_ability
-        .activation_restrictions
-        .iter()
-        .any(|condition| matches!(
-            condition,
-            crate::ConditionExpr::Not(inner)
-                if matches!(inner.as_ref(), crate::ConditionExpr::SourceAttackedThisTurn)
-        )));
+    assert!(
+        didnt_attack_ability
+            .activation_restrictions
+            .iter()
+            .any(|condition| matches!(
+                condition,
+                crate::ConditionExpr::Not(inner)
+                    if matches!(inner.as_ref(), crate::ConditionExpr::SourceAttackedThisTurn)
+            ))
+    );
 }
 
 #[test]
@@ -317,8 +350,8 @@ fn rewrite_zone_counter_helpers_parse_put_or_remove_counter_modes() {
     )
     .expect("rewrite lexer should classify put-or-remove counter clause");
 
-    let parsed =
-        super::parse_effect_sentence_lexed(&tokens).expect("put-or-remove counter clause should parse");
+    let parsed = super::parse_effect_sentence_lexed(&tokens)
+        .expect("put-or-remove counter clause should parse");
     let debug = format!("{parsed:?}");
 
     assert!(debug.contains("UnlessAction"), "{debug}");
@@ -329,8 +362,11 @@ fn rewrite_zone_counter_helpers_parse_put_or_remove_counter_modes() {
 
 #[test]
 fn rewrite_zone_counter_helpers_parse_multiple_counter_sentence() {
-    let tokens = lex_line("Put a +1/+1 counter and a flying counter on target creature", 0)
-        .expect("rewrite lexer should classify multi-counter clause");
+    let tokens = lex_line(
+        "Put a +1/+1 counter and a flying counter on target creature",
+        0,
+    )
+    .expect("rewrite lexer should classify multi-counter clause");
 
     let parsed = super::parse_sentence_put_multiple_counters_on_target(&tokens)
         .expect("multi-counter clause should parse");
@@ -2370,14 +2406,8 @@ fn rewrite_lexed_effect_sequence_parses_consult_dynamic_mana_value_gate() {
     let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed).expect("sequence");
     let debug = format!("{parsed:?}");
 
-    assert!(
-        debug.contains("Conditional"),
-        "{debug}"
-    );
-    assert!(
-        debug.contains("ManaValueOf(Tagged("),
-        "{debug}"
-    );
+    assert!(debug.contains("Conditional"), "{debug}");
+    assert!(debug.contains("ManaValueOf(Tagged("), "{debug}");
     assert!(debug.contains("SourcePower"), "{debug}");
     assert!(debug.contains("CastTagged"), "{debug}");
     assert!(
@@ -2819,6 +2849,32 @@ fn rewrite_shared_scryfall_mana_cost_parser_uses_lexed_mana_groups() {
 }
 
 #[test]
+fn rewrite_mana_symbol_group_error_mentions_mana_symbol() {
+    let error = parse_error_message(parse_mana_symbol_group_rewrite("{Q}"));
+    assert!(
+        error.contains("mana-group"),
+        "expected grouped mana parser context, got {error}"
+    );
+    assert!(
+        error.contains("mana symbol"),
+        "expected mana symbol context, got {error}"
+    );
+}
+
+#[test]
+fn rewrite_type_line_error_mentions_type_line_subtypes_after_dash() {
+    let error = parse_error_message(parse_type_line_rewrite("Legendary Creature — !"));
+    assert!(
+        error.contains("type-line"),
+        "expected type-line context, got {error}"
+    );
+    assert!(
+        error.contains("subtype"),
+        "expected subtype context after em dash, got {error}"
+    );
+}
+
+#[test]
 fn rewrite_activation_cost_parses_sacrifice_segments() {
     let cst = parse_activation_cost_rewrite("Sacrifice a creature")
         .expect("rewrite activation-cost parser should parse sacrifice segments");
@@ -2837,6 +2893,28 @@ fn rewrite_activation_cost_parses_sacrifice_segments() {
     assert!(
         rendered.contains("other: true"),
         "expected rewrite sacrifice CST to preserve 'another', got {rendered}"
+    );
+}
+
+#[test]
+fn rewrite_discard_cost_error_mentions_discard_segment() {
+    let error = parse_error_message(parse_activation_cost_rewrite("Discard"));
+    assert!(
+        error.contains("discard"),
+        "expected discard context, got {error}"
+    );
+}
+
+#[test]
+fn rewrite_sacrifice_cost_error_mentions_missing_filter() {
+    let error = parse_error_message(parse_activation_cost_rewrite("Sacrifice"));
+    assert!(
+        error.contains("sacrifice"),
+        "expected sacrifice context, got {error}"
+    );
+    assert!(
+        error.contains("filter"),
+        "expected missing filter context, got {error}"
     );
 }
 
@@ -2885,6 +2963,54 @@ fn rewrite_activation_cost_parses_energy_and_counter_variants() {
 }
 
 #[test]
+fn rewrite_activation_cost_parses_pay_mana_life_exert_and_bare_symbols() {
+    let pay_life = parse_activation_cost_rewrite("Pay 3 life")
+        .expect("rewrite activation-cost parser should parse life payment");
+    let pay_mana = parse_activation_cost_rewrite("Pay {W}{U}")
+        .expect("rewrite activation-cost parser should parse mana payment");
+    let bare_mana = parse_activation_cost_rewrite("{W}{U}")
+        .expect("rewrite activation-cost parser should parse bare mana payment");
+    let tap = parse_activation_cost_rewrite("{T}")
+        .expect("rewrite activation-cost parser should parse tap symbol");
+    let untap = parse_activation_cost_rewrite("{Q}")
+        .expect("rewrite activation-cost parser should parse untap symbol");
+    let exert = parse_activation_cost_rewrite("Exert this creature")
+        .expect("rewrite activation-cost parser should parse exert costs");
+
+    assert!(matches!(
+        pay_life.segments.as_slice(),
+        [super::ActivationCostSegmentCst::Life(3)]
+    ));
+    match pay_mana.segments.as_slice() {
+        [super::ActivationCostSegmentCst::Mana(cost)] => assert_eq!(
+            cost.pips(),
+            vec![vec![ManaSymbol::White], vec![ManaSymbol::Blue]]
+        ),
+        other => panic!("expected mana payment, got {other:?}"),
+    }
+    match bare_mana.segments.as_slice() {
+        [super::ActivationCostSegmentCst::Mana(cost)] => assert_eq!(
+            cost.pips(),
+            vec![vec![ManaSymbol::White], vec![ManaSymbol::Blue]]
+        ),
+        other => panic!("expected bare mana payment, got {other:?}"),
+    }
+    assert!(matches!(
+        tap.segments.as_slice(),
+        [super::ActivationCostSegmentCst::Tap]
+    ));
+    assert!(matches!(
+        untap.segments.as_slice(),
+        [super::ActivationCostSegmentCst::Untap]
+    ));
+    assert!(matches!(
+        exert.segments.as_slice(),
+        [super::ActivationCostSegmentCst::ExertSelf { display_text }]
+            if display_text == "Exert this creature"
+    ));
+}
+
+#[test]
 fn rewrite_activation_cost_parses_loyalty_shorthand_without_wrapper_escape_hatch() {
     let plus = parse_activation_cost_rewrite("+1")
         .expect("rewrite activation-cost parser should parse +1 loyalty shorthand");
@@ -2928,6 +3054,57 @@ fn rewrite_activation_cost_parses_loyalty_shorthand_without_wrapper_escape_hatch
 }
 
 #[test]
+fn rewrite_activation_cost_token_entrypoint_parses_pay_bare_symbol_and_exert_variants() {
+    let pay_energy_tokens =
+        lex_line("Pay two {E}", 0).expect("lexer should classify counted-energy activation cost");
+    let pay_energy_cst = parse_activation_cost_tokens_rewrite(&pay_energy_tokens)
+        .expect("token activation-cost parser should parse counted-energy costs");
+    assert!(matches!(
+        pay_energy_cst.segments.as_slice(),
+        [super::ActivationCostSegmentCst::Energy(2)]
+    ));
+
+    let pay_mana_tokens =
+        lex_line("Pay {W}{U}", 0).expect("lexer should classify mana-payment activation cost");
+    let pay_mana_cst = parse_activation_cost_tokens_rewrite(&pay_mana_tokens)
+        .expect("token activation-cost parser should parse mana-payment costs");
+    match pay_mana_cst.segments.as_slice() {
+        [super::ActivationCostSegmentCst::Mana(cost)] => assert_eq!(
+            cost.pips(),
+            vec![vec![ManaSymbol::White], vec![ManaSymbol::Blue]]
+        ),
+        other => panic!("expected mana payment, got {other:?}"),
+    }
+
+    let tap_tokens = lex_line("{T}", 0).expect("lexer should classify tap-symbol activation cost");
+    let tap_cst = parse_activation_cost_tokens_rewrite(&tap_tokens)
+        .expect("token activation-cost parser should parse tap-symbol costs");
+    assert!(matches!(
+        tap_cst.segments.as_slice(),
+        [super::ActivationCostSegmentCst::Tap]
+    ));
+
+    let untap_tokens =
+        lex_line("{Q}", 0).expect("lexer should classify untap-symbol activation cost");
+    let untap_cst = parse_activation_cost_tokens_rewrite(&untap_tokens)
+        .expect("token activation-cost parser should parse untap-symbol costs");
+    assert!(matches!(
+        untap_cst.segments.as_slice(),
+        [super::ActivationCostSegmentCst::Untap]
+    ));
+
+    let exert_tokens =
+        lex_line("Exert this creature", 0).expect("lexer should classify exert activation cost");
+    let exert_cst = parse_activation_cost_tokens_rewrite(&exert_tokens)
+        .expect("token activation-cost parser should parse exert costs");
+    assert!(matches!(
+        exert_cst.segments.as_slice(),
+        [super::ActivationCostSegmentCst::ExertSelf { display_text }]
+            if display_text == "Exert this creature"
+    ));
+}
+
+#[test]
 fn rewrite_activation_cost_token_entrypoint_preserves_named_card_commas() {
     let tokens = lex_line("Discard a card named Mishra, Lost to Phyrexia", 0)
         .expect("lexer should preserve punctuation in named-card costs");
@@ -2940,6 +3117,87 @@ fn rewrite_activation_cost_token_entrypoint_preserves_named_card_commas() {
             name: Some(name),
             ..
         }] if name == "mishra, lost to phyrexia"
+    ));
+}
+
+#[test]
+fn rewrite_activation_cost_token_entrypoint_parses_tap_return_and_exile_variants() {
+    let tap_tokens = lex_line("Tap another untapped creature you control", 0)
+        .expect("lexer should classify tap-chosen activation cost");
+    let tap_cst = parse_activation_cost_tokens_rewrite(&tap_tokens)
+        .expect("token activation-cost parser should parse tap-chosen costs");
+    assert!(matches!(
+        tap_cst.segments.as_slice(),
+        [super::ActivationCostSegmentCst::TapChosen {
+            count: 1,
+            filter_text,
+            other: true,
+        }] if filter_text == "creature you control"
+    ));
+
+    let return_tokens = lex_line("Return a creature you control to its owner's hand", 0)
+        .expect("lexer should classify return-to-hand activation cost");
+    let return_cst = parse_activation_cost_tokens_rewrite(&return_tokens)
+        .expect("token activation-cost parser should parse return-to-hand costs");
+    assert!(matches!(
+        return_cst.segments.as_slice(),
+        [super::ActivationCostSegmentCst::ReturnChosenToHand { count: 1, filter_text }]
+            if filter_text == "creature you control"
+    ));
+
+    let exile_tokens = lex_line("Exile one or more cards from your graveyard", 0)
+        .expect("lexer should classify exile-from-graveyard activation cost");
+    let exile_cst = parse_activation_cost_tokens_rewrite(&exile_tokens)
+        .expect("token activation-cost parser should parse exile-from-graveyard costs");
+    assert!(matches!(
+        exile_cst.segments.as_slice(),
+        [super::ActivationCostSegmentCst::ExileChosen {
+            choice_count,
+            filter_text,
+        }] if *choice_count == ChoiceCount::at_least(1)
+            && filter_text == "cards from your graveyard"
+    ));
+
+    let top_library_tokens = lex_line("Exile the top two cards of your library", 0)
+        .expect("lexer should classify exile-top-library activation cost");
+    let top_library_cst = parse_activation_cost_tokens_rewrite(&top_library_tokens)
+        .expect("token activation-cost parser should parse exile-top-library costs");
+    assert!(matches!(
+        top_library_cst.segments.as_slice(),
+        [super::ActivationCostSegmentCst::ExileTopLibrary { count: 2 }]
+    ));
+}
+
+#[test]
+fn rewrite_activation_cost_token_entrypoint_parses_counter_variants() {
+    let put_tokens = lex_line("Put a +1/+1 counter on a creature you control", 0)
+        .expect("lexer should classify put-counter activation cost");
+    let put_cst = parse_activation_cost_tokens_rewrite(&put_tokens)
+        .expect("token activation-cost parser should parse put-counter costs");
+    assert!(matches!(
+        put_cst.segments.as_slice(),
+        [super::ActivationCostSegmentCst::PutCountersChosen {
+            counter_type: CounterType::PlusOnePlusOne,
+            count: 1,
+            filter_text,
+        }] if filter_text == "a creature you control"
+    ));
+
+    let remove_tokens = lex_line(
+        "Remove any number of charge counters from among artifacts you control",
+        0,
+    )
+    .expect("lexer should classify remove-counter activation cost");
+    let remove_cst = parse_activation_cost_tokens_rewrite(&remove_tokens)
+        .expect("token activation-cost parser should parse remove-counter costs");
+    assert!(matches!(
+        remove_cst.segments.as_slice(),
+        [super::ActivationCostSegmentCst::RemoveCountersAmong {
+            counter_type: Some(CounterType::Charge),
+            count: 0,
+            filter_text,
+            display_x: false,
+        }] if filter_text == "artifacts you control"
     ));
 }
 
@@ -2962,6 +3220,31 @@ fn rewrite_activation_cost_shared_parser_supports_behold_costs() {
     assert!(
         !lowered.is_free(),
         "behold costs should survive lowering as a non-free activation cost"
+    );
+}
+
+#[test]
+fn rewrite_activation_cost_shared_parser_supports_mill_costs() {
+    let cst = parse_activation_cost_rewrite("Mill two cards")
+        .expect("shared activation-cost parser should support mill costs");
+    assert!(matches!(
+        cst.segments.as_slice(),
+        [super::ActivationCostSegmentCst::Mill(2)]
+    ));
+
+    let tokens = lex_line("Mill two cards", 0).expect("lexer should classify mill activation cost");
+    let token_cst = parse_activation_cost_tokens_rewrite(&tokens)
+        .expect("token activation-cost parser should support mill costs");
+    assert!(matches!(
+        token_cst.segments.as_slice(),
+        [super::ActivationCostSegmentCst::Mill(2)]
+    ));
+
+    let lowered = super::parse_activation_cost(&tokens)
+        .expect("activated ability entrypoint should use shared mill cost parser");
+    assert!(
+        !lowered.is_free(),
+        "mill costs should survive lowering as a non-free activation cost"
     );
 }
 
@@ -3053,6 +3336,43 @@ fn rewrite_semantic_parse_keeps_triggered_triple_sweep_body() -> Result<(), Card
             let debug = format!("{:?}", triggered.parsed);
             assert!(debug.contains("ScalePowerToughnessAll"), "{debug}");
             assert!(debug.contains("multiplier: 2"), "{debug}");
+        }
+        other => panic!("expected one triggered semantic item, got {other:?}"),
+    }
+
+    Ok(())
+}
+
+#[test]
+fn rewrite_semantic_parse_keeps_trigger_trigger_caps_and_first_time_suffixes()
+-> Result<(), CardTextError> {
+    let (capped_doc, _) = parse_text_to_semantic_document(
+        CardDefinitionBuilder::new(CardId::new(), "Capped Trigger Variant")
+            .card_types(vec![CardType::Enchantment]),
+        "Whenever one or more creatures attack you, draw a card. This ability triggers only once each turn.".to_string(),
+        false,
+    )?;
+
+    match capped_doc.items.as_slice() {
+        [RewriteSemanticItem::Triggered(triggered)] => {
+            assert_eq!(triggered.max_triggers_per_turn, Some(1));
+        }
+        other => panic!("expected one triggered semantic item, got {other:?}"),
+    }
+
+    let (first_time_doc, _) = parse_text_to_semantic_document(
+        CardDefinitionBuilder::new(CardId::new(), "First Time Trigger Variant")
+            .card_types(vec![CardType::Enchantment]),
+        "Whenever one or more creatures attack you for the first time each turn, draw a card."
+            .to_string(),
+        false,
+    )?;
+
+    match first_time_doc.items.as_slice() {
+        [RewriteSemanticItem::Triggered(triggered)] => {
+            assert_eq!(triggered.max_triggers_per_turn, Some(1));
+            assert_eq!(triggered.trigger_text, "one or more creatures attack you");
+            assert_eq!(triggered.effect_text, "draw a card.");
         }
         other => panic!("expected one triggered semantic item, got {other:?}"),
     }

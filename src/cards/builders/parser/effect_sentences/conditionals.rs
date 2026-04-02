@@ -12,14 +12,14 @@ use super::super::util::{
 use super::super::value_helpers::parse_filter_comparison_tokens;
 use super::{parse_effect_chain, parse_effect_chain_inner, parse_effect_chain_lexed};
 use crate::card::{PowerToughness, PtValue};
+use crate::cards::builders::scan_helpers::{
+    contains_window, find_index, find_window_index, rfind_index, slice_contains, slice_ends_with,
+    slice_starts_with, slice_strip_prefix, str_strip_prefix, str_strip_suffix,
+};
 #[allow(unused_imports)]
 use crate::cards::builders::{
     CardTextError, EffectAst, ExtraTurnAnchorAst, IT_TAG, IfResultPredicate, PlayerAst,
     PredicateAst, TagKey, TargetAst, TextSpan,
-};
-use crate::cards::builders::scan_helpers::{
-    contains_window, find_index, find_window_index, rfind_index, slice_contains, slice_ends_with,
-    slice_starts_with, slice_strip_prefix, str_strip_prefix, str_strip_suffix,
 };
 use crate::effect::{ChoiceCount, Value};
 use crate::mana::{ManaCost, ManaSymbol};
@@ -440,7 +440,9 @@ pub(crate) fn parse_for_each_opponent_doesnt(
         return Ok(None);
     }
 
-    let effect_token_start = if let Some(comma_idx) = find_index(&inner_tokens, |token| token.is_comma()) {
+    let effect_token_start = if let Some(comma_idx) =
+        find_index(&inner_tokens, |token| token.is_comma())
+    {
         comma_idx + 1
     } else if let Some(this_way_idx) = find_window_index(&inner_words, &["this", "way"]) {
         token_index_for_word_index(&inner_tokens, this_way_idx + 2).unwrap_or(inner_tokens.len())
@@ -499,7 +501,9 @@ pub(crate) fn parse_for_each_player_doesnt(
         return Ok(None);
     }
 
-    let effect_token_start = if let Some(comma_idx) = find_index(&inner_tokens, |token| token.is_comma()) {
+    let effect_token_start = if let Some(comma_idx) =
+        find_index(&inner_tokens, |token| token.is_comma())
+    {
         comma_idx + 1
     } else if let Some(this_way_idx) = find_window_index(&inner_words, &["this", "way"]) {
         token_index_for_word_index(&inner_tokens, this_way_idx + 2).unwrap_or(inner_tokens.len())
@@ -699,10 +703,9 @@ pub(crate) fn parse_for_each_vote_clause(
     }
     let option = option_words.join(" ");
 
-    let comma_idx = find_index(tokens, |token| token.is_comma())
-        .ok_or_else(|| {
-            CardTextError::ParseError("missing comma in for each vote clause".to_string())
-        })?;
+    let comma_idx = find_index(tokens, |token| token.is_comma()).ok_or_else(|| {
+        CardTextError::ParseError("missing comma in for each vote clause".to_string())
+    })?;
 
     let effect_tokens = &tokens[comma_idx + 1..];
     let effects = parse_effect_chain(effect_tokens)?;
@@ -787,8 +790,7 @@ pub(crate) fn parse_conditional_sentence_lexed(
     if let Some(effect_word_idx) = find_window_index(
         &token_words,
         &["exile", "them", "then", "meld", "them", "into"],
-    )
-        && let Some(effect_token_idx) = token_index_for_word_index(tokens, effect_word_idx)
+    ) && let Some(effect_token_idx) = token_index_for_word_index(tokens, effect_word_idx)
     {
         let predicate_tokens = trim_commas(&tokens[1..effect_token_idx]);
         let predicate_tokens_without_commas = predicate_tokens
@@ -1248,18 +1250,18 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(PredicateAst::SourceHasNoCounter(counter_type));
     }
 
-    let triggering_object_had_no_counter_prefix_len = if slice_starts_with(&raw_words, &["it", "had", "no"])
-    {
-        Some(3)
-    } else if slice_starts_with(&raw_words, &["this", "creature", "had", "no"])
-        || slice_starts_with(&raw_words, &["that", "creature", "had", "no"])
-        || slice_starts_with(&raw_words, &["this", "permanent", "had", "no"])
-        || slice_starts_with(&raw_words, &["that", "permanent", "had", "no"])
-    {
-        Some(4)
-    } else {
-        None
-    };
+    let triggering_object_had_no_counter_prefix_len =
+        if slice_starts_with(&raw_words, &["it", "had", "no"]) {
+            Some(3)
+        } else if slice_starts_with(&raw_words, &["this", "creature", "had", "no"])
+            || slice_starts_with(&raw_words, &["that", "creature", "had", "no"])
+            || slice_starts_with(&raw_words, &["this", "permanent", "had", "no"])
+            || slice_starts_with(&raw_words, &["that", "permanent", "had", "no"])
+        {
+            Some(4)
+        } else {
+            None
+        };
     if let Some(prefix_len) = triggering_object_had_no_counter_prefix_len
         && raw_words.len() >= prefix_len + 4
         && let Some(counter_type) = parse_counter_type_word(raw_words[prefix_len])
@@ -1510,8 +1512,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             Some("control" | "controls")
         )
         && filtered.get(subject_len + 1).copied() == Some("more")
-        && let Some(than_offset) =
-            find_index(&filtered[subject_len + 2..], |word| *word == "than")
+        && let Some(than_offset) = find_index(&filtered[subject_len + 2..], |word| *word == "than")
     {
         let than_idx = subject_len + 2 + than_offset;
         let tail = &filtered[than_idx..];
@@ -2024,9 +2025,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     let onto_battlefield_idx = find_window_index(&filtered, &["onto", "battlefield"])
-        .or_else(|| {
-            find_window_index(&filtered, &["onto", "the", "battlefield"])
-        });
+        .or_else(|| find_window_index(&filtered, &["onto", "the", "battlefield"]));
     if filtered.len() >= 7
         && filtered[0] == "you"
         && filtered[1] == "put"
@@ -2445,8 +2444,14 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
 
     if filtered.as_slice() == ["you", "have", "citys", "blessing"]
         || filtered.as_slice() == ["you", "have", "city", "blessing"]
-        || slice_starts_with(&filtered, &["you", "have", "citys", "blessing", "for", "each"])
-        || slice_starts_with(&filtered, &["you", "have", "city", "blessing", "for", "each"])
+        || slice_starts_with(
+            &filtered,
+            &["you", "have", "citys", "blessing", "for", "each"],
+        )
+        || slice_starts_with(
+            &filtered,
+            &["you", "have", "city", "blessing", "for", "each"],
+        )
     {
         return Ok(PredicateAst::PlayerHasCitysBlessing {
             player: PlayerAst::You,
@@ -2496,7 +2501,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     if (slice_starts_with(&filtered, &["you", "havent", "completed"]) && filtered.len() > 3)
-        || (slice_starts_with(&filtered, &["you", "have", "not", "completed"]) && filtered.len() > 4)
+        || (slice_starts_with(&filtered, &["you", "have", "not", "completed"])
+            && filtered.len() > 4)
     {
         let name_start = if filtered[1] == "have" { 4 } else { 3 };
         let dungeon_name = filtered[name_start..]

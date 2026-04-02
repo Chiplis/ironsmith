@@ -19,6 +19,11 @@ use super::sentence_helpers::*;
 #[allow(unused_imports)]
 use super::{Verb, find_verb, parse_effect_chain};
 use crate::ability::Ability;
+use crate::cards::builders::scan_helpers::{
+    find_str_by as find_word_index_by, find_window_index as find_word_sequence_index,
+    slice_contains_str as word_slice_contains, slice_starts_with as word_slice_starts_with,
+    str_contains as string_contains,
+};
 use crate::cards::builders::{
     CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, KeywordAction, LineAst, ParsedAbility,
     ReferenceImports, TagKey, TargetAst, TextSpan,
@@ -144,60 +149,6 @@ fn player_gain_effects_for_abilities(
     Some(effects)
 }
 
-fn word_slice_starts_with(words: &[&str], prefix: &[&str]) -> bool {
-    if prefix.len() > words.len() {
-        return false;
-    }
-
-    for (idx, expected) in prefix.iter().enumerate() {
-        if words[idx] != *expected {
-            return false;
-        }
-    }
-
-    true
-}
-
-fn word_slice_contains(words: &[&str], needle: &str) -> bool {
-    for word in words {
-        if *word == needle {
-            return true;
-        }
-    }
-    false
-}
-
-fn find_word_sequence_index(words: &[&str], phrase: &[&str]) -> Option<usize> {
-    if phrase.is_empty() || phrase.len() > words.len() {
-        return None;
-    }
-
-    for start in 0..=words.len() - phrase.len() {
-        let mut matched = true;
-        for (offset, expected) in phrase.iter().enumerate() {
-            if words[start + offset] != *expected {
-                matched = false;
-                break;
-            }
-        }
-        if matched {
-            return Some(start);
-        }
-    }
-
-    None
-}
-
-fn find_word_index_by(words: &[&str], mut predicate: impl FnMut(&str) -> bool) -> Option<usize> {
-    for (idx, word) in words.iter().enumerate() {
-        if predicate(word) {
-            return Some(idx);
-        }
-    }
-
-    None
-}
-
 fn render_lower_words(tokens: &[OwnedLexToken]) -> String {
     let word_view = LowercaseWordView::new(tokens);
     word_view.to_word_refs().join(" ")
@@ -210,14 +161,6 @@ fn push_unique_keyword_action(actions: &mut Vec<KeywordAction>, action: KeywordA
         }
     }
     actions.push(action);
-}
-
-fn string_contains(haystack: &str, needle: &str) -> bool {
-    if needle.is_empty() {
-        return true;
-    }
-
-    haystack.match_indices(needle).next().is_some()
 }
 
 fn parse_granted_ability_component_for_gain(
@@ -315,12 +258,13 @@ fn parse_granted_abilities_for_gain_clause(
 pub(crate) fn parse_simple_ability_duration(
     words_after_verb: &[&str],
 ) -> Option<(usize, usize, Until)> {
-    if let Some(idx) = find_word_sequence_index(words_after_verb, &["until", "end", "of", "turn"])
-    {
+    if let Some(idx) = find_word_sequence_index(words_after_verb, &["until", "end", "of", "turn"]) {
         return Some((idx, 4, Until::EndOfTurn));
     }
-    if let Some(idx) = find_word_sequence_index(words_after_verb, &["until", "your", "next", "turn"])
-        .or_else(|| find_word_sequence_index(words_after_verb, &["until", "your", "next", "upkeep"]))
+    if let Some(idx) =
+        find_word_sequence_index(words_after_verb, &["until", "your", "next", "turn"]).or_else(
+            || find_word_sequence_index(words_after_verb, &["until", "your", "next", "upkeep"]),
+        )
     {
         return Some((idx, 4, Until::YourNextTurn));
     }
@@ -329,13 +273,17 @@ pub(crate) fn parse_simple_ability_duration(
         &["until", "your", "next", "untap", "step"],
     )
     .or_else(|| {
-        find_word_sequence_index(words_after_verb, &["during", "your", "next", "untap", "step"])
+        find_word_sequence_index(
+            words_after_verb,
+            &["during", "your", "next", "untap", "step"],
+        )
     }) {
         return Some((idx, 5, Until::YourNextTurn));
     }
-    if let Some(idx) =
-        find_word_sequence_index(words_after_verb, &["for", "as", "long", "as", "you", "control"])
-    {
+    if let Some(idx) = find_word_sequence_index(
+        words_after_verb,
+        &["for", "as", "long", "as", "you", "control"],
+    ) {
         return Some((
             idx,
             words_after_verb.len().saturating_sub(idx),
@@ -583,7 +531,8 @@ pub(crate) fn parse_simple_ability_modifier_clause(
     {
         let subject_words = LowercaseWordView::new(&subject_tokens);
         let subject_word_refs = subject_words.to_word_refs();
-        let target_phrase_with_controller_tail = subject_word_refs.first().copied() == Some("target")
+        let target_phrase_with_controller_tail = subject_word_refs.first().copied()
+            == Some("target")
             && (word_slice_contains(&subject_word_refs, "control")
                 || word_slice_contains(&subject_word_refs, "controls"));
         if !target_phrase_with_controller_tail {
@@ -1521,8 +1470,10 @@ mod tests {
             .join(" ")
             .to_ascii_lowercase();
         assert!(
-            string_contains(&rendered, "target creature you control gains indestructible")
-                && string_contains(&rendered, "whenever this creature is dealt damage")
+            string_contains(
+                &rendered,
+                "target creature you control gains indestructible"
+            ) && string_contains(&rendered, "whenever this creature is dealt damage")
                 && string_contains(&rendered, "put that many +1/+1 counters on it"),
             "grant should stay targeted in compiled text: {rendered}"
         );

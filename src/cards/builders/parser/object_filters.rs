@@ -54,7 +54,10 @@ fn lower_words_contains(words: &[&str], expected: &str) -> bool {
     words.iter().any(|word| *word == expected)
 }
 
-fn lower_words_find_index(words: &[&str], mut predicate: impl FnMut(&str) -> bool) -> Option<usize> {
+fn lower_words_find_index(
+    words: &[&str],
+    mut predicate: impl FnMut(&str) -> bool,
+) -> Option<usize> {
     for (idx, word) in words.iter().enumerate() {
         if predicate(word) {
             return Some(idx);
@@ -224,7 +227,9 @@ fn apply_parity_filter_phrases(words: &[&str], filter: &mut ObjectFilter) {
     let mut idx = 0usize;
     while idx + 1 < words.len() {
         let window = &words[idx..idx + 2];
-        if let Some(parity) = parse_parity_word(window[0]) && window[1] == "power" {
+        if let Some(parity) = parse_parity_word(window[0])
+            && window[1] == "power"
+        {
             filter.power_parity = Some(parity);
         }
         idx += 1;
@@ -1034,9 +1039,9 @@ pub(crate) fn parse_object_filter(
             && window[6] == "turn"
     }) {
         let controller = match all_words[idx + 3] {
-                "your" => Some(PlayerFilter::You),
-                "opponent" | "opponents" => Some(PlayerFilter::Opponent),
-                _ => None,
+            "your" => Some(PlayerFilter::You),
+            "opponent" | "opponents" => Some(PlayerFilter::Opponent),
+            _ => None,
         };
         entered_battlefield_match = Some((idx, 7, controller));
     }
@@ -1299,10 +1304,9 @@ pub(crate) fn parse_object_filter(
         all_words.drain(idx..idx + 3);
     }
 
-    if let Some(idx) = lower_words_find_sequence(
-        &all_words,
-        &["that", "isnt", "exactly", "two", "colors"],
-    ) {
+    if let Some(idx) =
+        lower_words_find_sequence(&all_words, &["that", "isnt", "exactly", "two", "colors"])
+    {
         filter.exactly_two_colors = Some(false);
         all_words.drain(idx..idx + 5);
     } else if let Some(idx) =
@@ -1347,9 +1351,10 @@ pub(crate) fn parse_object_filter(
     ) {
         filter.entered_since_your_last_turn_ended = true;
         all_words.drain(idx..idx + 7);
-    } else if let Some(idx) =
-        lower_words_find_sequence(&all_words, &["entered", "since", "your", "last", "turn", "ended"])
-    {
+    } else if let Some(idx) = lower_words_find_sequence(
+        &all_words,
+        &["entered", "since", "your", "last", "turn", "ended"],
+    ) {
         filter.entered_since_your_last_turn_ended = true;
         all_words.drain(idx..idx + 6);
     }
@@ -1381,7 +1386,9 @@ pub(crate) fn parse_object_filter(
         face_state_idx += 1;
     }
 
-    if lower_words_has_window(&all_words, 3, |window| window == ["entered", "this", "turn"]) {
+    if lower_words_has_window(&all_words, 3, |window| {
+        window == ["entered", "this", "turn"]
+    }) {
         return Err(CardTextError::ParseError(format!(
             "unsupported entered-this-turn object filter (clause: '{}')",
             all_words.join(" ")
@@ -1578,7 +1585,9 @@ pub(crate) fn parse_object_filter(
         filter.source = true;
     }
 
-    if let Some(its_attached_idx) = lower_words_find_sequence(&all_words, &["its", "attached", "to"]) {
+    if let Some(its_attached_idx) =
+        lower_words_find_sequence(&all_words, &["its", "attached", "to"])
+    {
         // Oracle often writes "the creature it's attached to"; tokenizer
         // normalization yields "its attached to", so restore the object-link
         // form parse_object_filter already understands.
@@ -1671,11 +1680,9 @@ pub(crate) fn parse_object_filter(
                 all_words.drain(exiled_with_idx + 1..reference_end);
             }
         }
-        if let Some(exiled_with_idx) =
-            token_find_window(&segment_tokens, 2, |window| {
-                window[0].is_word("exiled") && window[1].is_word("with")
-            })
-        {
+        if let Some(exiled_with_idx) = token_find_window(&segment_tokens, 2, |window| {
+            window[0].is_word("exiled") && window[1].is_word("with")
+        }) {
             let mut reference_end = exiled_with_idx + 2;
             if segment_tokens.get(reference_end).is_some_and(|token| {
                 token.is_word("this")
@@ -1725,8 +1732,9 @@ pub(crate) fn parse_object_filter(
     let has_share_color = lower_words_contains(&all_words, "shares")
         && lower_words_contains(&all_words, "color")
         && lower_words_contains(&all_words, "it");
-    let has_same_mana_value =
-        lower_words_has_window(&all_words, 4, |window| window == ["same", "mana", "value", "as"]);
+    let has_same_mana_value = lower_words_has_window(&all_words, 4, |window| {
+        window == ["same", "mana", "value", "as"]
+    });
     let has_equal_or_lesser_mana_value = lower_words_has_window(&all_words, 5, |window| {
         window == ["equal", "or", "lesser", "mana", "value"]
     });
@@ -1753,9 +1761,9 @@ pub(crate) fn parse_object_filter(
             ]
         )
     }) || has_equal_or_lesser_mana_value;
-    let has_lt_mana_value_as_tagged =
-        lower_words_has_window(&all_words, 3, |window| window == ["lesser", "mana", "value"])
-        && !has_equal_or_lesser_mana_value;
+    let has_lt_mana_value_as_tagged = lower_words_has_window(&all_words, 3, |window| {
+        window == ["lesser", "mana", "value"]
+    }) && !has_equal_or_lesser_mana_value;
     let references_sacrifice_cost_object = lower_words_has_window(&all_words, 3, |window| {
         matches!(
             window,
@@ -1850,8 +1858,7 @@ pub(crate) fn parse_object_filter(
     }
     if lower_words_has_window(&all_words, 5, |window| {
         window == ["that", "crewed", "it", "this", "turn"]
-    })
-    {
+    }) {
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: TagKey::from("crewed_it_this_turn"),
             relation: TaggedOpbjectRelation::IsTaggedObject,
@@ -1859,8 +1866,7 @@ pub(crate) fn parse_object_filter(
     }
     if lower_words_has_window(&all_words, 5, |window| {
         window == ["that", "saddled", "it", "this", "turn"]
-    })
-    {
+    }) {
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: TagKey::from("saddled_it_this_turn"),
             relation: TaggedOpbjectRelation::IsTaggedObject,

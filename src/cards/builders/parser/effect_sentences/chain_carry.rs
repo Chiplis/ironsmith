@@ -24,6 +24,11 @@ use super::{
     parse_simple_lose_ability_clause_lexed, parse_token_copy_followup_sentence_lexed,
     split_leading_result_prefix_lexed, try_apply_token_copy_followup,
 };
+use crate::cards::builders::scan_helpers::{
+    find_window_index as find_word_sequence_index, rfind_index as find_last_token_index,
+    slice_contains_str as word_slice_contains, slice_starts_with as word_slice_starts_with,
+    str_contains as string_contains,
+};
 #[allow(unused_imports)]
 use crate::cards::builders::{
     CardTextError, EffectAst, PlayerAst, PredicateAst, TargetAst, TextSpan,
@@ -40,92 +45,12 @@ fn synthetic_lexed_word(word: &str) -> OwnedLexToken {
     }
 }
 
-fn word_slice_starts_with(words: &[&str], expected: &[&str]) -> bool {
-    if words.len() < expected.len() {
-        return false;
-    }
-
-    let mut idx = 0usize;
-    while idx < expected.len() {
-        if words[idx] != expected[idx] {
-            return false;
-        }
-        idx += 1;
-    }
-
-    true
-}
-
-fn word_slice_contains(words: &[&str], expected: &str) -> bool {
-    let mut idx = 0usize;
-    while idx < words.len() {
-        if words[idx] == expected {
-            return true;
-        }
-        idx += 1;
-    }
-
-    false
-}
-
-fn find_word_sequence_index(words: &[&str], expected: &[&str]) -> Option<usize> {
-    if expected.is_empty() || words.len() < expected.len() {
-        return None;
-    }
-
-    let mut start = 0usize;
-    while start + expected.len() <= words.len() {
-        if word_slice_starts_with(&words[start..], expected) {
-            return Some(start);
-        }
-        start += 1;
-    }
-
-    None
-}
-
 fn contains_char(text: &str, expected: char) -> bool {
     let mut chars = text.chars();
     while let Some(ch) = chars.next() {
         if ch == expected {
             return true;
         }
-    }
-
-    false
-}
-
-fn find_last_token_index(
-    tokens: &[OwnedLexToken],
-    mut predicate: impl FnMut(&OwnedLexToken) -> bool,
-) -> Option<usize> {
-    let mut idx = tokens.len();
-    while idx > 0 {
-        idx -= 1;
-        if predicate(&tokens[idx]) {
-            return Some(idx);
-        }
-    }
-
-    None
-}
-
-fn string_contains(text: &str, expected: &str) -> bool {
-    let text_bytes = text.as_bytes();
-    let expected_bytes = expected.as_bytes();
-    if expected_bytes.is_empty() {
-        return true;
-    }
-    if expected_bytes.len() > text_bytes.len() {
-        return false;
-    }
-
-    let mut idx = 0usize;
-    while idx + expected_bytes.len() <= text_bytes.len() {
-        if &text_bytes[idx..idx + expected_bytes.len()] == expected_bytes {
-            return true;
-        }
-        idx += 1;
     }
 
     false
@@ -163,7 +88,8 @@ pub(crate) fn parse_effect_chain_lexed(
 ) -> Result<Vec<EffectAst>, CardTextError> {
     let clause_words = crate::cards::builders::parser::lexed_words(tokens);
     if word_slice_starts_with(&clause_words, &["exile", "them"])
-        && let Some(meld_idx) = find_word_sequence_index(&clause_words, &["then", "meld", "them", "into"])
+        && let Some(meld_idx) =
+            find_word_sequence_index(&clause_words, &["then", "meld", "them", "into"])
     {
         let result_words = &clause_words[meld_idx + 4..];
         if result_words.is_empty() {
@@ -915,14 +841,15 @@ pub(crate) fn expand_segments_with_multi_create_clauses_lexed(
             continue;
         };
         let segment_words = lexed_words(&segment);
-        let has_token_rules_tail = find_word_sequence_index(&segment_words, &["when", "this", "token"])
-            .is_some()
-            || find_word_sequence_index(&segment_words, &["whenever", "this", "token"]).is_some()
-            || find_word_sequence_index(&segment_words, &["this", "token"]).is_some()
-            || find_word_sequence_index(&segment_words, &["that", "token"]).is_some()
-            || find_word_sequence_index(&segment_words, &["those", "tokens"]).is_some()
-            || find_word_sequence_index(&segment_words, &["it", "has"]).is_some()
-            || find_word_sequence_index(&segment_words, &["they", "have"]).is_some();
+        let has_token_rules_tail =
+            find_word_sequence_index(&segment_words, &["when", "this", "token"]).is_some()
+                || find_word_sequence_index(&segment_words, &["whenever", "this", "token"])
+                    .is_some()
+                || find_word_sequence_index(&segment_words, &["this", "token"]).is_some()
+                || find_word_sequence_index(&segment_words, &["that", "token"]).is_some()
+                || find_word_sequence_index(&segment_words, &["those", "tokens"]).is_some()
+                || find_word_sequence_index(&segment_words, &["it", "has"]).is_some()
+                || find_word_sequence_index(&segment_words, &["they", "have"]).is_some();
         if has_token_rules_tail {
             expanded.push(segment);
             continue;

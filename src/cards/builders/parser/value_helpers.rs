@@ -772,8 +772,7 @@ pub(crate) fn parse_filter_comparison_tokens(
         return Ok(None);
     }
 
-    if matches!(axis, "power" | "toughness")
-        && matches!(tokens, ["or", "power" | "toughness", ..])
+    if matches!(axis, "power" | "toughness") && matches!(tokens, ["or", "power" | "toughness", ..])
     {
         return Ok(None);
     }

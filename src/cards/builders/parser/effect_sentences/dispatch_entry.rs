@@ -19,16 +19,16 @@ use super::{
     find_verb, parse_effect_sentence_lexed, parse_search_library_disjunction_filter,
     parse_token_copy_modifier_sentence, trim_edge_punctuation,
 };
+use crate::cards::builders::scan_helpers::{
+    find_index, find_window_by, find_window_index, slice_contains, slice_ends_with,
+    slice_starts_with, str_contains, str_ends_with, str_starts_with,
+};
 #[allow(unused_imports)]
 use crate::cards::builders::{
     CardTextError, CarryContext, EffectAst, GrantedAbilityAst, IT_TAG, IfResultPredicate,
     InsteadSemantics, KeywordAction, LibraryBottomOrderAst, LibraryConsultModeAst,
     LibraryConsultStopRuleAst, PlayerAst, PredicateAst, ReturnControllerAst, SubjectAst, TagKey,
     TargetAst, TextSpan, TokenCopyFollowup, ZoneReplacementDurationAst,
-};
-use crate::cards::builders::scan_helpers::{
-    find_index, find_window_by, find_window_index, slice_contains, slice_ends_with,
-    slice_starts_with, str_contains, str_ends_with, str_starts_with,
 };
 use crate::effect::{ChoiceCount, Until, Value};
 use crate::filter::Comparison;
@@ -115,8 +115,7 @@ fn parse_same_sentence_copy_and_may_cast_copy(
 > {
     let Some(split_idx) = find_index(tokens, |token: &OwnedLexToken| {
         token.is_word("and") || token.is_word("then")
-    })
-    else {
+    }) else {
         return Ok(None);
     };
 
@@ -233,8 +232,7 @@ fn try_parse_divvy_sentence_sequence(
     ) && str_contains(
         &joined,
         "that player sacrifices all permanents in the pile of their choice",
-    )
-    {
+    ) {
         return Ok(Some(vec![
             EffectAst::ChooseObjects {
                 filter: ObjectFilter::permanent().controlled_by(PlayerFilter::target_player()),
@@ -280,8 +278,7 @@ fn try_parse_divvy_sentence_sequence(
     ) && str_contains(
         &joined,
         "only creatures in the pile of their choice can attack this turn",
-    )
-    {
+    ) {
         return Ok(Some(vec![
             EffectAst::ChooseObjects {
                 filter: ObjectFilter::creature().controlled_by(PlayerFilter::IteratedPlayer),
@@ -802,8 +799,9 @@ fn parse_consult_traversal_sentence(
     let mut prefix_effects = Vec::new();
     let mut prefix_tokens: Vec<OwnedLexToken> = Vec::new();
     let consult_tokens = if let Some(then_idx) =
-        find_index(&sentence_tokens, |token: &OwnedLexToken| token.is_word("then"))
-    {
+        find_index(&sentence_tokens, |token: &OwnedLexToken| {
+            token.is_word("then")
+        }) {
         prefix_tokens = trim_commas(&sentence_tokens[..then_idx]);
         if prefix_tokens.is_empty() {
             return Ok(None);
@@ -847,19 +845,21 @@ fn parse_consult_traversal_sentence(
         LibraryConsultModeAst::Exile
     };
 
-    let Some(until_idx) =
-        find_index(&consult_tokens, |token: &OwnedLexToken| token.is_word("until"))
-    else {
+    let Some(until_idx) = find_index(&consult_tokens, |token: &OwnedLexToken| {
+        token.is_word("until")
+    }) else {
         return Ok(None);
     };
     if until_idx <= consult_verb_idx + 1 {
         return Ok(None);
     }
 
-    let prefix_words: Vec<&str> = crate::cards::builders::parser::lexed_words(&consult_tokens[consult_verb_idx + 1..until_idx])
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect();
+    let prefix_words: Vec<&str> = crate::cards::builders::parser::lexed_words(
+        &consult_tokens[consult_verb_idx + 1..until_idx],
+    )
+    .into_iter()
+    .filter(|word| !is_article(word))
+    .collect();
     if !slice_starts_with(&prefix_words, &["cards", "from", "top", "of"])
         || !slice_ends_with(&prefix_words, &["library"])
     {
@@ -977,7 +977,8 @@ fn parse_consult_condition_value(tokens: &[&str]) -> Option<Value> {
         return Some(value);
     }
 
-    let (filter_tokens, had_number_prefix) = if slice_starts_with(tokens, &["the", "number", "of"]) {
+    let (filter_tokens, had_number_prefix) = if slice_starts_with(tokens, &["the", "number", "of"])
+    {
         (&tokens[3..], true)
     } else if slice_starts_with(tokens, &["number", "of"]) {
         (&tokens[2..], true)
@@ -1177,69 +1178,119 @@ fn parse_if_declined_put_match_into_hand(
             == [
                 "put", "it", "into", "your", "hand", "if", "it", "wasn't", "cast", "this", "way",
             ]
-        || slice_starts_with(&clause_words, &[
-            "if", "you", "dont", "put", "that", "card", "into", "your", "hand",
-        ])
-        || slice_starts_with(&clause_words, &[
-            "if", "you", "dont", "put", "the", "exiled", "card", "into", "your", "hand",
-        ])
+        || slice_starts_with(
+            &clause_words,
+            &[
+                "if", "you", "dont", "put", "that", "card", "into", "your", "hand",
+            ],
+        )
+        || slice_starts_with(
+            &clause_words,
+            &[
+                "if", "you", "dont", "put", "the", "exiled", "card", "into", "your", "hand",
+            ],
+        )
         || slice_starts_with(
             &clause_words,
             &["if", "you", "dont", "put", "it", "into", "your", "hand"],
         )
-        || slice_starts_with(&clause_words, &[
-            "if", "you", "don't", "put", "that", "card", "into", "your", "hand",
-        ])
-        || slice_starts_with(&clause_words, &[
-            "if", "you", "don't", "put", "the", "exiled", "card", "into", "your", "hand",
-        ])
+        || slice_starts_with(
+            &clause_words,
+            &[
+                "if", "you", "don't", "put", "that", "card", "into", "your", "hand",
+            ],
+        )
+        || slice_starts_with(
+            &clause_words,
+            &[
+                "if", "you", "don't", "put", "the", "exiled", "card", "into", "your", "hand",
+            ],
+        )
         || slice_starts_with(
             &clause_words,
             &["if", "you", "don't", "put", "it", "into", "your", "hand"],
         )
-        || slice_starts_with(&clause_words, &[
-            "if", "you", "do", "not", "put", "that", "card", "into", "your", "hand",
-        ])
-        || slice_starts_with(&clause_words, &[
-            "if", "you", "do", "not", "put", "the", "exiled", "card", "into", "your", "hand",
-        ])
-        || slice_starts_with(&clause_words, &[
-            "if", "you", "do", "not", "put", "it", "into", "your", "hand",
-        ])
-        || slice_starts_with(&clause_words, &[
-            "if", "you", "dont", "cast", "that", "card", "this", "way", "put", "it", "into",
-            "your", "hand",
-        ])
-        || slice_starts_with(&clause_words, &[
-            "if", "you", "dont", "cast", "the", "exiled", "card", "this", "way", "put", "it",
-            "into", "your", "hand",
-        ])
-        || slice_starts_with(&clause_words, &[
-            "if", "you", "don't", "cast", "that", "card", "this", "way", "put", "it", "into",
-            "your", "hand",
-        ])
-        || slice_starts_with(&clause_words, &[
-            "if", "you", "don't", "cast", "the", "exiled", "card", "this", "way", "put", "it",
-            "into", "your", "hand",
-        ])
-        || slice_starts_with(&clause_words, &[
-            "if", "you", "do", "not", "cast", "that", "card", "this", "way", "put", "it", "into",
-            "your", "hand",
-        ])
-        || slice_starts_with(&clause_words, &[
-            "if", "you", "do", "not", "cast", "the", "exiled", "card", "this", "way", "put", "it",
-            "into", "your", "hand",
-        ])
-        || slice_starts_with(&clause_words, &[
-            "if", "you", "dont", "cast", "it", "this", "way", "put", "it", "into", "your", "hand",
-        ])
-        || slice_starts_with(&clause_words, &[
-            "if", "you", "don't", "cast", "it", "this", "way", "put", "it", "into", "your", "hand",
-        ])
-        || slice_starts_with(&clause_words, &[
-            "if", "you", "do", "not", "cast", "it", "this", "way", "put", "it", "into", "your",
-            "hand",
-        ]);
+        || slice_starts_with(
+            &clause_words,
+            &[
+                "if", "you", "do", "not", "put", "that", "card", "into", "your", "hand",
+            ],
+        )
+        || slice_starts_with(
+            &clause_words,
+            &[
+                "if", "you", "do", "not", "put", "the", "exiled", "card", "into", "your", "hand",
+            ],
+        )
+        || slice_starts_with(
+            &clause_words,
+            &[
+                "if", "you", "do", "not", "put", "it", "into", "your", "hand",
+            ],
+        )
+        || slice_starts_with(
+            &clause_words,
+            &[
+                "if", "you", "dont", "cast", "that", "card", "this", "way", "put", "it", "into",
+                "your", "hand",
+            ],
+        )
+        || slice_starts_with(
+            &clause_words,
+            &[
+                "if", "you", "dont", "cast", "the", "exiled", "card", "this", "way", "put", "it",
+                "into", "your", "hand",
+            ],
+        )
+        || slice_starts_with(
+            &clause_words,
+            &[
+                "if", "you", "don't", "cast", "that", "card", "this", "way", "put", "it", "into",
+                "your", "hand",
+            ],
+        )
+        || slice_starts_with(
+            &clause_words,
+            &[
+                "if", "you", "don't", "cast", "the", "exiled", "card", "this", "way", "put", "it",
+                "into", "your", "hand",
+            ],
+        )
+        || slice_starts_with(
+            &clause_words,
+            &[
+                "if", "you", "do", "not", "cast", "that", "card", "this", "way", "put", "it",
+                "into", "your", "hand",
+            ],
+        )
+        || slice_starts_with(
+            &clause_words,
+            &[
+                "if", "you", "do", "not", "cast", "the", "exiled", "card", "this", "way", "put",
+                "it", "into", "your", "hand",
+            ],
+        )
+        || slice_starts_with(
+            &clause_words,
+            &[
+                "if", "you", "dont", "cast", "it", "this", "way", "put", "it", "into", "your",
+                "hand",
+            ],
+        )
+        || slice_starts_with(
+            &clause_words,
+            &[
+                "if", "you", "don't", "cast", "it", "this", "way", "put", "it", "into", "your",
+                "hand",
+            ],
+        )
+        || slice_starts_with(
+            &clause_words,
+            &[
+                "if", "you", "do", "not", "cast", "it", "this", "way", "put", "it", "into", "your",
+                "hand",
+            ],
+        );
     if !moves_to_hand {
         return None;
     }
@@ -1338,25 +1389,41 @@ fn parse_consult_match_move_and_bottom_remainder(
     let (zone, battlefield_tapped) = if slice_starts_with(
         &second_words,
         &["put", "that", "card", "into", "your", "hand"],
-    ) || slice_starts_with(&second_words, &["put", "it", "into", "your", "hand"])
-    {
+    ) || slice_starts_with(
+        &second_words,
+        &["put", "it", "into", "your", "hand"],
+    ) {
         (Zone::Hand, false)
-    } else if slice_starts_with(&second_words, &[
-        "put",
-        "that",
-        "card",
-        "onto",
-        "the",
-        "battlefield",
-        "tapped",
-    ]) || slice_starts_with(&second_words, &["put", "it", "onto", "the", "battlefield", "tapped"])
-        || slice_starts_with(&second_words, &["put", "that", "card", "onto", "battlefield", "tapped"])
-        || slice_starts_with(&second_words, &["put", "it", "onto", "battlefield", "tapped"])
-    {
+    } else if slice_starts_with(
+        &second_words,
+        &[
+            "put",
+            "that",
+            "card",
+            "onto",
+            "the",
+            "battlefield",
+            "tapped",
+        ],
+    ) || slice_starts_with(
+        &second_words,
+        &["put", "it", "onto", "the", "battlefield", "tapped"],
+    ) || slice_starts_with(
+        &second_words,
+        &["put", "that", "card", "onto", "battlefield", "tapped"],
+    ) || slice_starts_with(
+        &second_words,
+        &["put", "it", "onto", "battlefield", "tapped"],
+    ) {
         (Zone::Battlefield, true)
-    } else if slice_starts_with(&second_words, &["put", "that", "card", "onto", "the", "battlefield"])
-        || slice_starts_with(&second_words, &["put", "it", "onto", "the", "battlefield"])
-        || slice_starts_with(&second_words, &["put", "that", "card", "onto", "battlefield"])
+    } else if slice_starts_with(
+        &second_words,
+        &["put", "that", "card", "onto", "the", "battlefield"],
+    ) || slice_starts_with(&second_words, &["put", "it", "onto", "the", "battlefield"])
+        || slice_starts_with(
+            &second_words,
+            &["put", "that", "card", "onto", "battlefield"],
+        )
         || slice_starts_with(&second_words, &["put", "it", "onto", "battlefield"])
     {
         (Zone::Battlefield, false)
@@ -1408,8 +1475,11 @@ fn parse_consult_match_into_hand_exile_others(
 
     let second_tokens = trim_commas(second);
     let second_words = crate::cards::builders::parser::lexed_words(&second_tokens);
-    let moves_to_hand = slice_starts_with(&second_words, &["put", "that", "card", "into", "your", "hand"])
-        || slice_starts_with(&second_words, &["put", "it", "into", "your", "hand"]);
+    let moves_to_hand =
+        slice_starts_with(
+            &second_words,
+            &["put", "that", "card", "into", "your", "hand"],
+        ) || slice_starts_with(&second_words, &["put", "it", "into", "your", "hand"]);
     let exiles_rest = slice_contains(&second_words, &"exile")
         && slice_contains(&second_words, &"other")
         && slice_contains(&second_words, &"cards");
@@ -1789,12 +1859,14 @@ fn parse_delayed_dies_exile_top_power_choose_play(
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let first_tokens = trim_commas(first);
     let first_words = crate::cards::builders::parser::lexed_words(&first_tokens);
-    if !slice_starts_with(&first_words, &["when", "that", "creature", "dies", "this", "turn"]) {
+    if !slice_starts_with(
+        &first_words,
+        &["when", "that", "creature", "dies", "this", "turn"],
+    ) {
         return Ok(None);
     }
 
-    let Some(comma_idx) =
-        find_index(&first_tokens, |token: &OwnedLexToken| token.is_comma())
+    let Some(comma_idx) = find_index(&first_tokens, |token: &OwnedLexToken| token.is_comma())
     else {
         return Ok(None);
     };
@@ -1803,10 +1875,13 @@ fn parse_delayed_dies_exile_top_power_choose_play(
         .into_iter()
         .filter(|word| !is_article(word))
         .collect();
-    let starts_with_exile_top_power = slice_starts_with(&action_words, &[
-        "exile", "number", "of", "cards", "from", "top", "of", "your", "library", "equal", "to",
-        "its", "power",
-    ]);
+    let starts_with_exile_top_power = slice_starts_with(
+        &action_words,
+        &[
+            "exile", "number", "of", "cards", "from", "top", "of", "your", "library", "equal",
+            "to", "its", "power",
+        ],
+    );
     let ends_with_choose_exiled =
         slice_ends_with(&action_words, &["choose", "card", "exiled", "this", "way"]);
     if !starts_with_exile_top_power || !ends_with_choose_exiled {
@@ -1958,8 +2033,10 @@ fn parse_damage_prevention_then_put_counters(
         .into_iter()
         .filter(|word| !is_article(word))
         .collect();
-    if !slice_starts_with(&second_words, &["for", "each", "1", "damage", "prevented", "this", "way"])
-        || !slice_contains(&second_words, &"put")
+    if !slice_starts_with(
+        &second_words,
+        &["for", "each", "1", "damage", "prevented", "this", "way"],
+    ) || !slice_contains(&second_words, &"put")
         || !slice_contains(&second_words, &"+1/+1")
         || !slice_contains(&second_words, &"counter")
         || !slice_contains(&second_words, &"on")
@@ -2063,16 +2140,16 @@ fn parse_tap_all_then_they_dont_untap_while_source_tapped(
     let starts_with_supported_pronoun_clause =
         slice_starts_with(&second_words, &["they", "dont", "untap", "during"])
             || slice_starts_with(&second_words, &["they", "do", "not", "untap", "during"]);
-    let has_source_tapped_duration =
-        find_window_index(&second_words, &["for", "as", "long", "as"]).is_some()
-            && slice_contains(&second_words, &"remains")
-            && slice_contains(&second_words, &"tapped")
-            && (slice_contains(&second_words, &"this")
-                || slice_contains(&second_words, &"thiss")
-                || slice_contains(&second_words, &"source")
-                || slice_contains(&second_words, &"artifact")
-                || slice_contains(&second_words, &"creature")
-                || slice_contains(&second_words, &"permanent"));
+    let has_source_tapped_duration = find_window_index(&second_words, &["for", "as", "long", "as"])
+        .is_some()
+        && slice_contains(&second_words, &"remains")
+        && slice_contains(&second_words, &"tapped")
+        && (slice_contains(&second_words, &"this")
+            || slice_contains(&second_words, &"thiss")
+            || slice_contains(&second_words, &"source")
+            || slice_contains(&second_words, &"artifact")
+            || slice_contains(&second_words, &"creature")
+            || slice_contains(&second_words, &"permanent"));
     if !starts_with_supported_pronoun_clause || !has_source_tapped_duration {
         return Ok(None);
     }
@@ -2144,7 +2221,8 @@ fn parse_look_at_top_reveal_match_put_rest_bottom(
         return Ok(None);
     }
 
-    let (chooser, reveal_word_idx) = if slice_starts_with(&second_words, &["you", "may", "reveal"]) {
+    let (chooser, reveal_word_idx) = if slice_starts_with(&second_words, &["you", "may", "reveal"])
+    {
         (PlayerAst::You, 2usize)
     } else if slice_starts_with(&second_words, &["that", "player", "may", "reveal"]) {
         (PlayerAst::That, 3usize)
@@ -2183,11 +2261,12 @@ fn parse_look_at_top_reveal_match_put_rest_bottom(
     normalize_search_library_filter(&mut filter);
     filter.zone = None;
 
-    let after_from_word_idx = if find_window_index(&second_words, &["from", "among", "those", "cards"]).is_some() {
-        from_among_word_idx + 4
-    } else {
-        from_among_word_idx + 3
-    };
+    let after_from_word_idx =
+        if find_window_index(&second_words, &["from", "among", "those", "cards"]).is_some() {
+            from_among_word_idx + 4
+        } else {
+            from_among_word_idx + 3
+        };
     let after_from_words = &second_words[after_from_word_idx..];
     let puts_into_hand = (slice_starts_with(after_from_words, &["and", "put", "it", "into"])
         || slice_starts_with(after_from_words, &["put", "it", "into"]))
@@ -2228,17 +2307,18 @@ fn parse_top_cards_view_sentence(tokens: &[OwnedLexToken]) -> Option<(PlayerAst,
         return None;
     }
 
-    let (count_word_idx, revealed) = if slice_starts_with(&clause_words, &["look", "at", "the", "top"]) {
-        (4usize, false)
-    } else if slice_starts_with(&clause_words, &["look", "at", "top"]) {
-        (3usize, false)
-    } else if slice_starts_with(&clause_words, &["reveal", "the", "top"]) {
-        (3usize, true)
-    } else if slice_starts_with(&clause_words, &["reveal", "top"]) {
-        (2usize, true)
-    } else {
-        return None;
-    };
+    let (count_word_idx, revealed) =
+        if slice_starts_with(&clause_words, &["look", "at", "the", "top"]) {
+            (4usize, false)
+        } else if slice_starts_with(&clause_words, &["look", "at", "top"]) {
+            (3usize, false)
+        } else if slice_starts_with(&clause_words, &["reveal", "the", "top"]) {
+            (3usize, true)
+        } else if slice_starts_with(&clause_words, &["reveal", "top"]) {
+            (2usize, true)
+        } else {
+            return None;
+        };
 
     let count_start = token_index_for_word_index(&tokens, count_word_idx)?;
     let count_tokens = &tokens[count_start..];
@@ -2361,10 +2441,10 @@ fn parse_may_put_filtered_looked_card_onto_battlefield(
 
     let after_from_word_idx =
         if find_window_index(&sentence_words, &["from", "among", "those", "cards"]).is_some() {
-        from_among_word_idx + 4
-    } else {
-        from_among_word_idx + 3
-    };
+            from_among_word_idx + 4
+        } else {
+            from_among_word_idx + 3
+        };
     let after_from_words = &sentence_words[after_from_word_idx..];
     let tapped = match after_from_words {
         ["onto", "the", "battlefield"] | ["onto", "battlefield"] => false,
@@ -2434,9 +2514,9 @@ fn parse_look_at_top_put_counted_into_hand_rest_bottom_with_kicker_override(
         return Ok(None);
     };
 
-    let Some(base_count) =
-        parse_counted_looked_cards_into_your_hand_words(&crate::cards::builders::parser::lexed_words(&trim_commas(second)))
-    else {
+    let Some(base_count) = parse_counted_looked_cards_into_your_hand_words(
+        &crate::cards::builders::parser::lexed_words(&trim_commas(second)),
+    ) else {
         return Ok(None);
     };
     let Some(kicked_count) = parse_if_this_spell_was_kicked_counted_looked_cards_into_hand(third)
@@ -2565,10 +2645,10 @@ fn parse_top_cards_put_match_into_hand_rest_graveyard(
 
     let after_from_word_idx =
         if find_window_index(&second_words, &["from", "among", "those", "cards"]).is_some() {
-        from_among_word_idx + 4
-    } else {
-        from_among_word_idx + 3
-    };
+            from_among_word_idx + 4
+        } else {
+            from_among_word_idx + 3
+        };
     let after_from_words = &second_words[after_from_word_idx..];
     let moves_into_hand = if reveal_chosen {
         (slice_starts_with(after_from_words, &["and", "put", "it", "into"])
@@ -2952,10 +3032,10 @@ fn parse_may_put_filtered_card_from_among_into_hand(
 
     let after_from_word_idx =
         if find_window_index(&sentence_words, &["from", "among", "those", "cards"]).is_some() {
-        from_among_word_idx + 4
-    } else {
-        from_among_word_idx + 3
-    };
+            from_among_word_idx + 4
+        } else {
+            from_among_word_idx + 3
+        };
     let after_from_words = &sentence_words[after_from_word_idx..];
     let moves_into_hand =
         slice_starts_with(after_from_words, &["into"]) && slice_contains(after_from_words, &"hand");
@@ -3162,7 +3242,10 @@ fn parse_face_down_search_cast_mana_value_gate(
         return None;
     };
 
-    if !slice_starts_with(remainder, &["without", "paying", "its", "mana", "cost", "if"]) {
+    if !slice_starts_with(
+        remainder,
+        &["without", "paying", "its", "mana", "cost", "if"],
+    ) {
         return None;
     }
     let condition = &remainder[5..];
@@ -3178,11 +3261,17 @@ fn parse_face_down_search_cast_mana_value_gate(
             Value::Fixed(value),
         ));
     }
-    if (slice_starts_with(condition, &[
-        "if", "that", "spell's", "mana", "value", "is", "less", "than", "or", "equal", "to",
-    ]) || slice_starts_with(condition, &[
-        "if", "that", "spells", "mana", "value", "is", "less", "than", "or", "equal", "to",
-    ])) && condition.len() == 12
+    if (slice_starts_with(
+        condition,
+        &[
+            "if", "that", "spell's", "mana", "value", "is", "less", "than", "or", "equal", "to",
+        ],
+    ) || slice_starts_with(
+        condition,
+        &[
+            "if", "that", "spells", "mana", "value", "is", "less", "than", "or", "equal", "to",
+        ],
+    )) && condition.len() == 12
     {
         let value = condition[11].parse::<i32>().ok()?;
         return Some((
@@ -3200,33 +3289,40 @@ fn parse_search_then_delayed_next_upkeep_unless_pays_lose_game(
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let first_effects = parse_effect_chain(first)?;
     let first_words = crate::cards::builders::parser::lexed_words(first);
-    if first_effects.is_empty() || !slice_starts_with(&first_words, &["search", "your", "library"]) {
+    if first_effects.is_empty() || !slice_starts_with(&first_words, &["search", "your", "library"])
+    {
         return Ok(None);
     }
 
     let upkeep_tokens = trim_commas(second);
     let upkeep_words = crate::cards::builders::parser::lexed_words(&upkeep_tokens);
-    let pay_idx = if slice_starts_with(&upkeep_words, &[
-        "at",
-        "the",
-        "beginning",
-        "of",
-        "your",
-        "next",
-        "upkeep",
-        "pay",
-    ]) {
+    let pay_idx = if slice_starts_with(
+        &upkeep_words,
+        &[
+            "at",
+            "the",
+            "beginning",
+            "of",
+            "your",
+            "next",
+            "upkeep",
+            "pay",
+        ],
+    ) {
         7usize
-    } else if slice_starts_with(&upkeep_words, &[
-        "at",
-        "the",
-        "beginning",
-        "of",
-        "the",
-        "next",
-        "upkeep",
-        "pay",
-    ]) {
+    } else if slice_starts_with(
+        &upkeep_words,
+        &[
+            "at",
+            "the",
+            "beginning",
+            "of",
+            "the",
+            "next",
+            "upkeep",
+            "pay",
+        ],
+    ) {
         7usize
     } else {
         return Ok(None);
@@ -3289,13 +3385,22 @@ fn parse_if_no_card_into_hand_this_way_sentence(
         .filter(|word| !is_article(word))
         .collect();
 
-    let has_expected_prefix = slice_starts_with(&words, &[
-        "if", "you", "didnt", "put", "card", "into", "your", "hand", "this", "way",
-    ]) || slice_starts_with(&words, &[
-        "if", "you", "didn't", "put", "card", "into", "your", "hand", "this", "way",
-    ]) || slice_starts_with(&words, &[
-        "if", "you", "did", "not", "put", "card", "into", "your", "hand", "this", "way",
-    ]);
+    let has_expected_prefix = slice_starts_with(
+        &words,
+        &[
+            "if", "you", "didnt", "put", "card", "into", "your", "hand", "this", "way",
+        ],
+    ) || slice_starts_with(
+        &words,
+        &[
+            "if", "you", "didn't", "put", "card", "into", "your", "hand", "this", "way",
+        ],
+    ) || slice_starts_with(
+        &words,
+        &[
+            "if", "you", "did", "not", "put", "card", "into", "your", "hand", "this", "way",
+        ],
+    );
     if !has_expected_prefix {
         return Ok(None);
     }
@@ -3426,8 +3531,7 @@ fn parse_effect_sentences_from_sentence_inputs(
         if matches!(
             effect,
             EffectAst::ChooseObjectsAcrossZones { zones, .. } if slice_contains(zones, &Zone::Library)
-        )
-        {
+        ) {
             return true;
         }
 
@@ -3504,7 +3608,9 @@ fn parse_effect_sentences_from_sentence_inputs(
         }
         let mut sentence_tokens = strip_embedded_token_rules_text(sentence);
         sentence_tokens = trim_edge_punctuation(&sentence_tokens);
-        if sentence_tokens.is_empty() || crate::cards::builders::parser::lexed_words(&sentence_tokens).is_empty() {
+        if sentence_tokens.is_empty()
+            || crate::cards::builders::parser::lexed_words(&sentence_tokens).is_empty()
+        {
             sentence_idx += 1;
             continue;
         }
@@ -3768,7 +3874,11 @@ fn parse_effect_sentences_from_sentence_inputs(
                 effects: sentence_effects,
             }];
         }
-        if crate::cards::builders::parser::lexed_words(&sentence_tokens).first().copied() == Some("you") {
+        if crate::cards::builders::parser::lexed_words(&sentence_tokens)
+            .first()
+            .copied()
+            == Some("you")
+        {
             carried_context = None;
         }
         if sentence_effects.is_empty()
@@ -4537,25 +4647,31 @@ pub(crate) fn target_references_it(target: &TargetAst) -> bool {
 
 pub(crate) fn is_that_turn_end_step_sentence(tokens: &[OwnedLexToken]) -> bool {
     let clause_words = crate::cards::builders::parser::lexed_words(tokens);
-    slice_starts_with(&clause_words, &[
-        "at",
-        "the",
-        "beginning",
-        "of",
-        "that",
-        "turn",
-        "end",
-        "step",
-    ]) || slice_starts_with(&clause_words, &[
-        "at",
-        "the",
-        "beginning",
-        "of",
-        "that",
-        "turns",
-        "end",
-        "step",
-    ])
+    slice_starts_with(
+        &clause_words,
+        &[
+            "at",
+            "the",
+            "beginning",
+            "of",
+            "that",
+            "turn",
+            "end",
+            "step",
+        ],
+    ) || slice_starts_with(
+        &clause_words,
+        &[
+            "at",
+            "the",
+            "beginning",
+            "of",
+            "that",
+            "turns",
+            "end",
+            "step",
+        ],
+    )
 }
 
 pub(crate) fn most_recent_extra_turn_player(effects: &[EffectAst]) -> Option<PlayerAst> {

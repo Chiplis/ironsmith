@@ -13,6 +13,14 @@ use super::sentence_helpers::*;
 use super::{
     find_verb, parse_effect_chain, parse_effect_chain_with_sentence_primitives, parse_effect_clause,
 };
+use crate::cards::builders::scan_helpers::{
+    contains_window as word_slice_contains_sequence, find_any_str_index as word_slice_find_any,
+    find_index as find_token_index, find_str_index as word_slice_find,
+    find_window_index as word_slice_find_sequence, rfind_index as rfind_token_index,
+    slice_contains_all as word_slice_has_all, slice_contains_any as word_slice_contains_any,
+    slice_contains_str as word_slice_contains, slice_ends_with as word_slice_ends_with,
+    slice_starts_with as word_slice_starts_with,
+};
 use crate::cards::builders::{
     CardTextError, CarryContext, ChoiceCount, EffectAst, IT_TAG, LibraryBottomOrderAst,
     LibraryConsultModeAst, LibraryConsultStopRuleAst, PlayerAst, ReturnControllerAst, SubjectAst,
@@ -33,17 +41,6 @@ enum SearchLibraryManaConstraint {
     OneOf(Vec<u32>),
 }
 
-fn word_view_contains(words: &LowercaseWordView, expected: &str) -> bool {
-    let mut idx = 0usize;
-    while idx < words.len() {
-        if words.get(idx) == Some(expected) {
-            return true;
-        }
-        idx += 1;
-    }
-    false
-}
-
 fn token_words<'a>(tokens: &'a [OwnedLexToken]) -> Vec<&'a str> {
     lexed_words(tokens)
 }
@@ -52,78 +49,10 @@ fn joined_token_words(tokens: &[OwnedLexToken]) -> String {
     token_words(tokens).join(" ")
 }
 
-fn word_slice_starts_with(words: &[&str], prefix: &[&str]) -> bool {
-    words.len() >= prefix.len() && words[..prefix.len()] == *prefix
-}
-
-fn word_slice_ends_with(words: &[&str], suffix: &[&str]) -> bool {
-    words.len() >= suffix.len() && words[words.len() - suffix.len()..] == *suffix
-}
-
-fn word_slice_contains(words: &[&str], expected: &str) -> bool {
-    words.iter().any(|word| *word == expected)
-}
-
-fn word_slice_has_all(words: &[&str], expected: &[&str]) -> bool {
-    expected
-        .iter()
-        .all(|candidate| word_slice_contains(words, candidate))
-}
-
-fn word_slice_contains_any(words: &[&str], expected: &[&str]) -> bool {
-    words
-        .iter()
-        .any(|word| expected.iter().any(|candidate| *word == *candidate))
-}
-
 fn word_slice_starts_with_any(words: &[&str], prefixes: &[&[&str]]) -> bool {
     prefixes
         .iter()
         .any(|prefix| word_slice_starts_with(words, prefix))
-}
-
-fn word_slice_find(words: &[&str], expected: &str) -> Option<usize> {
-    let mut idx = 0usize;
-    while idx < words.len() {
-        if words[idx] == expected {
-            return Some(idx);
-        }
-        idx += 1;
-    }
-
-    None
-}
-
-fn word_slice_find_any(words: &[&str], expected: &[&str]) -> Option<usize> {
-    let mut idx = 0usize;
-    while idx < words.len() {
-        if expected.iter().any(|candidate| words[idx] == *candidate) {
-            return Some(idx);
-        }
-        idx += 1;
-    }
-
-    None
-}
-
-fn word_slice_find_sequence(words: &[&str], phrase: &[&str]) -> Option<usize> {
-    if phrase.is_empty() || words.len() < phrase.len() {
-        return None;
-    }
-
-    let mut idx = 0usize;
-    while idx + phrase.len() <= words.len() {
-        if word_slice_starts_with(&words[idx..], phrase) {
-            return Some(idx);
-        }
-        idx += 1;
-    }
-
-    None
-}
-
-fn word_slice_contains_sequence(words: &[&str], phrase: &[&str]) -> bool {
-    word_slice_find_sequence(words, phrase).is_some()
 }
 
 fn word_slice_mentions_nth_from_top(words: &[&str]) -> bool {
@@ -137,89 +66,25 @@ fn word_slice_mentions_nth_from_top(words: &[&str]) -> bool {
     false
 }
 
-fn word_view_contains_any(words: &LowercaseWordView, expected: &[&str]) -> bool {
-    let mut idx = 0usize;
-    while idx < words.len() {
-        if let Some(word) = words.get(idx)
-            && expected.iter().any(|candidate| *candidate == word)
-        {
-            return true;
-        }
-        idx += 1;
-    }
-    false
-}
-
-fn find_word_phrase_index(words: &LowercaseWordView, phrase: &[&str]) -> Option<usize> {
-    if phrase.is_empty() || words.len() < phrase.len() {
-        return None;
-    }
-
-    let mut idx = 0usize;
-    while idx + phrase.len() <= words.len() {
-        if words.slice_eq(idx, phrase) {
-            return Some(idx);
-        }
-        idx += 1;
-    }
-
-    None
-}
-
-fn find_token_index(
-    tokens: &[OwnedLexToken],
-    mut predicate: impl FnMut(&OwnedLexToken) -> bool,
-) -> Option<usize> {
-    let mut idx = 0usize;
-    while idx < tokens.len() {
-        if predicate(&tokens[idx]) {
-            return Some(idx);
-        }
-        idx += 1;
-    }
-
-    None
-}
-
-fn rfind_token_index(
-    tokens: &[OwnedLexToken],
-    mut predicate: impl FnMut(&OwnedLexToken) -> bool,
-) -> Option<usize> {
-    let mut idx = tokens.len();
-    while idx > 0 {
-        idx -= 1;
-        if predicate(&tokens[idx]) {
-            return Some(idx);
-        }
-    }
-
-    None
-}
-
 fn is_source_reference_duration_words(words: &LowercaseWordView) -> bool {
-    word_view_contains_any(
-        words,
-        &[
-            "this",
-            "thiss",
-            "source",
-            "artifact",
-            "creature",
-            "permanent",
-        ],
-    )
+    words.contains_any(&[
+        "this",
+        "thiss",
+        "source",
+        "artifact",
+        "creature",
+        "permanent",
+    ])
 }
 
 fn is_as_long_as_you_control_duration_words(words: &LowercaseWordView) -> bool {
-    word_view_contains(words, "you")
-        && word_view_contains(words, "control")
-        && is_source_reference_duration_words(words)
+    words.contains("you") && words.contains("control") && is_source_reference_duration_words(words)
 }
 
 fn is_source_remains_tapped_duration_words(words: &LowercaseWordView) -> bool {
     words.contains_sequence(&["for", "as", "long", "as"])
-        && word_view_contains(words, "remains")
-        && word_view_contains(words, "tapped")
+        && words.contains("remains")
+        && words.contains("tapped")
         && is_source_reference_duration_words(words)
 }
 
@@ -490,7 +355,7 @@ pub(crate) fn parse_restriction_duration_lexed(
         }
     }
 
-    if let Some(word_idx) = find_word_phrase_index(&words, &["for", "as", "long", "as"]) {
+    if let Some(word_idx) = words.find_sequence(&["for", "as", "long", "as"]) {
         let token_idx = words
             .token_index_for_word_index(word_idx)
             .unwrap_or(tokens.len());
@@ -520,8 +385,9 @@ fn extract_search_library_mana_constraint(
     filter_tokens: &[OwnedLexToken],
 ) -> Option<(Vec<OwnedLexToken>, SearchLibraryManaConstraint)> {
     let filter_word_view = LowercaseWordView::new(filter_tokens);
-    let with_idx = find_word_phrase_index(&filter_word_view, &["with", "mana", "cost"])
-        .or_else(|| find_word_phrase_index(&filter_word_view, &["with", "mana", "value"]))?;
+    let with_idx = filter_word_view
+        .find_sequence(&["with", "mana", "cost"])
+        .or_else(|| filter_word_view.find_sequence(&["with", "mana", "value"]))?;
     let clause_word_start = with_idx + 3;
     let clause_token_start = filter_word_view.token_index_for_word_index(with_idx)?;
     let clause_token_end = filter_word_view

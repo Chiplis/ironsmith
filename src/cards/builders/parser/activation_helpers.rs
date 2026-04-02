@@ -455,8 +455,8 @@ pub(crate) fn parse_add_mana(
                 player,
             });
         }
-        let trailing_word_view = last_mana_idx
-            .map(|last_idx| LowercaseWordView::new(&tokens[last_idx + 1..]));
+        let trailing_word_view =
+            last_mana_idx.map(|last_idx| LowercaseWordView::new(&tokens[last_idx + 1..]));
         let trailing_words = trailing_word_view
             .as_ref()
             .map(LowercaseWordView::to_word_refs)
@@ -587,7 +587,9 @@ pub(crate) fn parse_any_combination_mana_colors(
 ) -> Result<Option<Vec<crate::color::Color>>, CardTextError> {
     let clause_word_view = LowercaseWordView::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
-    let Some(combination_idx) = find_word_sequence_index(&clause_words, &["any", "combination", "of"]) else {
+    let Some(combination_idx) =
+        find_word_sequence_index(&clause_words, &["any", "combination", "of"])
+    else {
         return Ok(None);
     };
 
@@ -673,35 +675,36 @@ pub(crate) fn parse_land_could_produce_filter(
         return Ok(None);
     }
 
-    let marker_word_idx = if let Some(could_idx) = find_word_sequence_index(&words, &["could", "produce"]) {
-        if could_idx + 2 != words.len() {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported trailing mana clause (tail: '{}')",
-                words.join(" ")
-            )));
-        }
-        could_idx
-    } else {
-        let mut produced_idx = None;
-        let mut idx = 0usize;
-        while idx < words.len() {
-            if words[idx] == "produced" {
-                produced_idx = Some(idx);
-                break;
+    let marker_word_idx =
+        if let Some(could_idx) = find_word_sequence_index(&words, &["could", "produce"]) {
+            if could_idx + 2 != words.len() {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported trailing mana clause (tail: '{}')",
+                    words.join(" ")
+                )));
             }
-            idx += 1;
-        }
-        let Some(produced_idx) = produced_idx else {
-            return Ok(None);
+            could_idx
+        } else {
+            let mut produced_idx = None;
+            let mut idx = 0usize;
+            while idx < words.len() {
+                if words[idx] == "produced" {
+                    produced_idx = Some(idx);
+                    break;
+                }
+                idx += 1;
+            }
+            let Some(produced_idx) = produced_idx else {
+                return Ok(None);
+            };
+            if produced_idx + 1 != words.len() {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported trailing mana clause (tail: '{}')",
+                    words.join(" ")
+                )));
+            }
+            produced_idx
         };
-        if produced_idx + 1 != words.len() {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported trailing mana clause (tail: '{}')",
-                words.join(" ")
-            )));
-        }
-        produced_idx
-    };
 
     let marker_token_idx = word_view
         .token_index_for_word_index(marker_word_idx)

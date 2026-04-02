@@ -78,7 +78,10 @@ fn find_word_sequence_index(words: &[&str], expected: &[&str]) -> Option<usize> 
     None
 }
 
-fn find_token_index(tokens: &[OwnedLexToken], mut predicate: impl FnMut(&OwnedLexToken) -> bool) -> Option<usize> {
+fn find_token_index(
+    tokens: &[OwnedLexToken],
+    mut predicate: impl FnMut(&OwnedLexToken) -> bool,
+) -> Option<usize> {
     let mut idx = 0usize;
     while idx < tokens.len() {
         if predicate(&tokens[idx]) {
@@ -132,7 +135,11 @@ fn trim_plural_s(word: &str) -> Option<&str> {
 fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
     let words_view = LowercaseWordView::new(tokens);
     let words = words_view.to_word_refs();
-    let first_word_idx = if words.first().copied() == Some("and") { 1 } else { 0 };
+    let first_word_idx = if words.first().copied() == Some("and") {
+        1
+    } else {
+        0
+    };
     if words.len().saturating_sub(first_word_idx) < 3 {
         return None;
     }
@@ -372,7 +379,11 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
     fn parse_protection_chain_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
         let words_view = LowercaseWordView::new(tokens);
         let words = words_view.to_word_refs();
-        let first_word_idx = if words.first().copied() == Some("and") { 1 } else { 0 };
+        let first_word_idx = if words.first().copied() == Some("and") {
+            1
+        } else {
+            0
+        };
         if words.len().saturating_sub(first_word_idx) < 3
             || words.get(first_word_idx).copied() != Some("protection")
             || words.get(first_word_idx + 1).copied() != Some("from")
@@ -818,13 +829,12 @@ pub(crate) fn parse_triggered_line_lexed(
             &trigger_body_words,
             &["this", "creature", "becomes", "blocked"],
         ) {
-                Some(4usize)
-            } else if word_slice_starts_with(&trigger_body_words, &["this", "becomes", "blocked"])
-            {
-                Some(3usize)
-            } else {
-                None
-            };
+            Some(4usize)
+        } else if word_slice_starts_with(&trigger_body_words, &["this", "becomes", "blocked"]) {
+            Some(3usize)
+        } else {
+            None
+        };
         if let Some(prefix_len) = blocked_prefix_len
             && let Some(effect_start_rel) =
                 token_index_after_word_count(&trigger_body_view, prefix_len, trigger_body.len())
@@ -846,15 +856,15 @@ pub(crate) fn parse_triggered_line_lexed(
             &trigger_body_words,
             &["this", "leaves", "the", "battlefield"],
         ) {
-                Some(4usize)
-            } else if word_slice_starts_with(
-                &trigger_body_words,
-                &["this", "creature", "leaves", "the", "battlefield"],
-            ) {
-                Some(5usize)
-            } else {
-                None
-            };
+            Some(4usize)
+        } else if word_slice_starts_with(
+            &trigger_body_words,
+            &["this", "creature", "leaves", "the", "battlefield"],
+        ) {
+            Some(5usize)
+        } else {
+            None
+        };
         if let Some(prefix_len) = leaves_prefix_len
             && let Some(effect_start_rel) =
                 token_index_after_word_count(&trigger_body_view, prefix_len, trigger_body.len())

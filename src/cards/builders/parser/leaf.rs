@@ -1,8 +1,10 @@
 #![allow(dead_code)]
 
 use winnow::ascii::{digit1, multispace0, multispace1};
-use winnow::combinator::{alt, delimited, opt, preceded, terminated};
-use winnow::error::{ContextError, Result as WResult};
+use winnow::combinator::{alt, cut_err, delimited, opt, preceded, terminated};
+use winnow::error::{
+    ContextError, ErrMode, ModalResult as WResult, ParserError, StrContext, StrContextValue,
+};
 use winnow::prelude::*;
 use winnow::token::take_while;
 
@@ -20,6 +22,7 @@ use crate::types::{CardType, Subtype, Supertype};
 
 use super::effect_sentences::parse_subtype_word;
 use super::lexer::{OwnedLexToken, TokenKind, lex_line, render_lexed_tokens};
+use super::native_tokens::LowercaseWordView;
 use super::object_filters::parse_object_filter_lexed;
 use super::token_primitives::{
     parse_mana_cost_inner, parse_mana_symbol, parse_mana_symbol_group, parse_type_line_with,
@@ -126,6 +129,8 @@ fn parse_word<'a>(input: &mut &'a str) -> WResult<&'a str> {
     take_while(1.., |ch: char| {
         ch.is_ascii_alphabetic() || ch == '\'' || ch == '-'
     })
+    .context(StrContext::Label("word"))
+    .context(StrContext::Expected(StrContextValue::Description("word")))
     .parse_next(input)
 }
 
@@ -134,9 +139,9 @@ fn parse_filter_text(text: &str, other: bool) -> Result<ObjectFilter, CardTextEr
     parse_object_filter_lexed(&tokens, other)
 }
 
-fn spaced<'a, O, P>(parser: P) -> impl Parser<&'a str, O, ContextError>
+fn spaced<'a, O, P>(parser: P) -> impl Parser<&'a str, O, ErrMode<ContextError>>
 where
-    P: Parser<&'a str, O, ContextError>,
+    P: Parser<&'a str, O, ErrMode<ContextError>>,
 {
     delimited(multispace0, parser, multispace0)
 }
@@ -284,6 +289,115 @@ fn first_non_comma_token(tokens: &[OwnedLexToken]) -> Option<&OwnedLexToken> {
     None
 }
 
+fn first_non_comma_token_index(tokens: &[OwnedLexToken]) -> Option<usize> {
+    for (idx, token) in tokens.iter().enumerate() {
+        if !token.is_comma() {
+            return Some(idx);
+        }
+    }
+    None
+}
+
+fn trim_activation_cost_segment_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+    let mut start = first_non_comma_token_index(tokens).unwrap_or(tokens.len());
+    let mut end = tokens.len();
+
+    if tokens.get(start).is_some_and(|token| token.is_word("and")) {
+        start += 1;
+        while start < end && tokens[start].is_comma() {
+            start += 1;
+        }
+    }
+
+    if tokens
+        .get(start)
+        .is_some_and(|token| token.is_word("waterbend"))
+    {
+        start += 1;
+        while start < end && tokens[start].is_comma() {
+            start += 1;
+        }
+    }
+
+    while end > start && (tokens[end - 1].is_period() || tokens[end - 1].is_comma()) {
+        end -= 1;
+    }
+
+    &tokens[start..end]
+}
+
+fn render_trimmed_lexed_tokens(tokens: &[OwnedLexToken]) -> String {
+    render_lexed_tokens(tokens).trim().to_string()
+}
+
+fn render_lower_lexed_tokens(tokens: &[OwnedLexToken]) -> String {
+    render_trimmed_lexed_tokens(tokens).to_ascii_lowercase()
+}
+
+fn word_slice_ends_with(words: &[&str], suffix: &[&str]) -> bool {
+    words.len() >= suffix.len() && words[words.len() - suffix.len()..] == *suffix
+}
+
+fn words_match_any(words: &[&str], patterns: &[&[&str]]) -> bool {
+    patterns.iter().any(|pattern| words == *pattern)
+}
+
+fn words_start_with_any(words: &[&str], patterns: &[&[&str]]) -> bool {
+    patterns
+        .iter()
+        .any(|pattern| word_slice_starts_with(words, pattern))
+}
+
+fn parse_count_prefix_words(words: &[&str]) -> Option<(u32, usize)> {
+    let first = words.first().copied()?;
+    if let Some(parsed) = count_word_value(first) {
+        return Some((parsed, 1));
+    }
+    first.parse::<u32>().ok().map(|parsed| (parsed, 1))
+}
+
+fn skip_articles(words: &[&str], mut idx: usize) -> usize {
+    while words
+        .get(idx)
+        .is_some_and(|word| matches!(*word, "a" | "an" | "the"))
+    {
+        idx += 1;
+    }
+    idx
+}
+
+fn token_slice_from_word_index<'a>(
+    tokens: &'a [OwnedLexToken],
+    words: &LowercaseWordView,
+    word_idx: usize,
+) -> Option<&'a [OwnedLexToken]> {
+    let token_start = if word_idx == 0 {
+        0
+    } else {
+        words.token_index_for_word_index(word_idx)?
+    };
+    Some(&tokens[token_start..])
+}
+
+fn token_slice_for_word_range<'a>(
+    tokens: &'a [OwnedLexToken],
+    words: &LowercaseWordView,
+    word_start: usize,
+    word_end: usize,
+) -> Option<&'a [OwnedLexToken]> {
+    let token_start = if word_start == 0 {
+        0
+    } else {
+        words.token_index_for_word_index(word_start)?
+    };
+    let token_end = if word_end == word_start {
+        token_start
+    } else {
+        words.token_index_after_words(word_end)?
+    };
+    Some(&tokens[token_start..token_end])
+}
+
 fn intern_counter_name(word: &str) -> &'static str {
     use std::collections::HashMap;
     use std::sync::{Mutex, OnceLock};
@@ -347,24 +461,34 @@ fn parse_count_inner(input: &mut &str) -> WResult<u32> {
         digit1.try_map(str::parse::<u32>),
         parse_word.verify_map(count_word_value),
     ))
+    .context(StrContext::Label("count"))
+    .context(StrContext::Expected(StrContextValue::Description(
+        "numeric or counted quantity",
+    )))
     .parse_next(input)
 }
 
 fn parse_discard_segment_inner(input: &mut &str) -> WResult<ActivationCostSegmentCst> {
     preceded(
         spaced("discard"),
-        alt((
-            spaced("this card").value(ActivationCostSegmentCst::DiscardSource),
-            (
-                opt(terminated(parse_count_inner, multispace1)),
-                opt(spaced(alt(("a", "an")))),
-                spaced(alt(("card", "cards"))),
-            )
-                .map(|(count, _article, _)| {
-                    ActivationCostSegmentCst::DiscardCard(count.unwrap_or(1))
-                }),
-        )),
+        cut_err(
+            alt((
+                spaced("this card").value(ActivationCostSegmentCst::DiscardSource),
+                (
+                    opt(terminated(parse_count_inner, multispace1)),
+                    opt(spaced(alt(("a", "an")))),
+                    spaced(alt(("card", "cards"))),
+                )
+                    .map(|(count, _article, _)| {
+                        ActivationCostSegmentCst::DiscardCard(count.unwrap_or(1))
+                    }),
+            ))
+            .context(StrContext::Expected(StrContextValue::Description(
+                "discard cost",
+            ))),
+        ),
     )
+    .context(StrContext::Label("discard segment"))
     .parse_next(input)
 }
 
@@ -381,21 +505,26 @@ fn parse_sacrifice_segment_inner(input: &mut &str) -> WResult<ActivationCostSegm
     let original = *input;
     if let Ok(parsed) = preceded(
         spaced("sacrifice"),
-        alt((
-            spaced(alt((
-                "this creature",
-                "this artifact",
-                "this aura",
-                "this enchantment",
-                "this equipment",
-                "this fortification",
-                "this land",
-                "this permanent",
-                "this card",
-            )))
-            .value(ActivationCostSegmentCst::SacrificeSelf),
-            spaced("a creature").value(ActivationCostSegmentCst::SacrificeCreature),
-        )),
+        cut_err(
+            alt((
+                spaced(alt((
+                    "this creature",
+                    "this artifact",
+                    "this aura",
+                    "this enchantment",
+                    "this equipment",
+                    "this fortification",
+                    "this land",
+                    "this permanent",
+                    "this card",
+                )))
+                .value(ActivationCostSegmentCst::SacrificeSelf),
+                spaced("a creature").value(ActivationCostSegmentCst::SacrificeCreature),
+            ))
+            .context(StrContext::Expected(StrContextValue::Description(
+                "sacrifice cost",
+            ))),
+        ),
     )
     .parse_next(input)
     {
@@ -415,7 +544,12 @@ fn parse_sacrifice_segment_inner(input: &mut &str) -> WResult<ActivationCostSegm
     multispace0.parse_next(input)?;
     let filter_text = input.trim().to_string();
     if filter_text.is_empty() {
-        return Err(ContextError::new());
+        let mut err = ContextError::new();
+        err.push(StrContext::Label("sacrifice segment"));
+        err.push(StrContext::Expected(StrContextValue::Description(
+            "sacrifice filter",
+        )));
+        return Err(ErrMode::Cut(err));
     }
     *input = "";
     Ok(ActivationCostSegmentCst::SacrificeChosen {
@@ -428,7 +562,11 @@ fn parse_sacrifice_segment_inner(input: &mut &str) -> WResult<ActivationCostSegm
 fn parse_sacrifice_segment_rewrite(raw: &str) -> Result<ActivationCostSegmentCst, CardTextError> {
     let trimmed = raw.trim();
     let lower = trimmed.to_ascii_lowercase();
-    let Some(rest) = str_strip_prefix(lower.as_str(), "sacrifice ") else {
+    let rest = if lower == "sacrifice" {
+        ""
+    } else if let Some(rest) = str_strip_prefix(lower.as_str(), "sacrifice ") {
+        rest
+    } else {
         return Err(CardTextError::ParseError(
             "rewrite sacrifice parser expected leading 'sacrifice'".to_string(),
         ));
@@ -490,6 +628,10 @@ fn parse_sacrifice_segment_rewrite(raw: &str) -> Result<ActivationCostSegmentCst
 
 fn parse_tap_segment_inner(input: &mut &str) -> WResult<ActivationCostSegmentCst> {
     alt((spaced("{t}"), spaced("t")))
+        .context(StrContext::Label("tap segment"))
+        .context(StrContext::Expected(StrContextValue::Description(
+            "tap symbol",
+        )))
         .value(ActivationCostSegmentCst::Tap)
         .parse_next(input)
 }
@@ -548,6 +690,10 @@ fn parse_tap_chosen_segment_rewrite(raw: &str) -> Result<ActivationCostSegmentCs
 
 fn parse_untap_segment_inner(input: &mut &str) -> WResult<ActivationCostSegmentCst> {
     alt((spaced("{q}"), spaced("q")))
+        .context(StrContext::Label("untap segment"))
+        .context(StrContext::Expected(StrContextValue::Description(
+            "untap symbol",
+        )))
         .value(ActivationCostSegmentCst::Untap)
         .parse_next(input)
 }
@@ -568,31 +714,51 @@ fn parse_pay_energy_segment_inner(input: &mut &str) -> WResult<ActivationCostSeg
     }
 
     if count == 0 {
-        return Err(ContextError::new());
+        let mut err = ContextError::new();
+        err.push(StrContext::Label("pay energy segment"));
+        err.push(StrContext::Expected(StrContextValue::Description(
+            "energy symbols",
+        )));
+        return Err(ErrMode::Backtrack(err));
     }
     Ok(ActivationCostSegmentCst::Energy(count))
 }
 
 fn parse_mill_segment_inner(input: &mut &str) -> WResult<ActivationCostSegmentCst> {
-    "mill".parse_next(input)?;
-    multispace1.parse_next(input)?;
-    let count = alt((parse_count_inner, alt(("a", "an")).value(1))).parse_next(input)?;
-    multispace1.parse_next(input)?;
-    alt(("card", "cards")).parse_next(input)?;
-    Ok(ActivationCostSegmentCst::Mill(count))
+    preceded(
+        ("mill", multispace1),
+        cut_err((
+            alt((parse_count_inner, alt(("a", "an")).value(1))),
+            multispace1,
+            alt(("card", "cards")),
+        )),
+    )
+    .context(StrContext::Label("mill segment"))
+    .context(StrContext::Expected(StrContextValue::Description(
+        "mill cost",
+    )))
+    .map(|(count, _, _)| ActivationCostSegmentCst::Mill(count))
+    .parse_next(input)
 }
 
 fn parse_behold_segment_inner(input: &mut &str) -> WResult<ActivationCostSegmentCst> {
-    "behold".parse_next(input)?;
-    multispace1.parse_next(input)?;
-    let count = alt((parse_count_inner, alt(("a", "an")).value(1))).parse_next(input)?;
-    multispace1.parse_next(input)?;
-    let subtype = parse_word
-        .verify_map(|word| {
-            parse_subtype_word(word).or_else(|| trim_plural_s(word).and_then(parse_subtype_word))
-        })
-        .parse_next(input)?;
-    Ok(ActivationCostSegmentCst::Behold { subtype, count })
+    preceded(
+        ("behold", multispace1),
+        cut_err((
+            alt((parse_count_inner, alt(("a", "an")).value(1))),
+            multispace1,
+            parse_word.verify_map(|word| {
+                parse_subtype_word(word)
+                    .or_else(|| trim_plural_s(word).and_then(parse_subtype_word))
+            }),
+        )),
+    )
+    .context(StrContext::Label("behold segment"))
+    .context(StrContext::Expected(StrContextValue::Description(
+        "behold cost",
+    )))
+    .map(|(count, _, subtype)| ActivationCostSegmentCst::Behold { subtype, count })
+    .parse_next(input)
 }
 
 fn parse_counter_type_descriptor(raw: &str) -> Result<CounterType, CardTextError> {
@@ -1033,25 +1199,6 @@ fn parse_return_segment_rewrite(raw: &str) -> Result<ActivationCostSegmentCst, C
     Ok(ActivationCostSegmentCst::ReturnChosenToHand { count, filter_text })
 }
 
-fn parse_exert_segment_rewrite(raw: &str) -> Result<ActivationCostSegmentCst, CardTextError> {
-    let trimmed = raw.trim();
-    let lower = trimmed.to_ascii_lowercase();
-    let Some(rest) = str_strip_prefix(lower.as_str(), "exert ") else {
-        return Err(CardTextError::ParseError(
-            "rewrite exert-cost parser expected leading 'exert'".to_string(),
-        ));
-    };
-    if rest.trim().is_empty() {
-        return Err(CardTextError::ParseError(format!(
-            "rewrite exert-cost parser missing exerted object in '{raw}'"
-        )));
-    }
-
-    Ok(ActivationCostSegmentCst::ExertSelf {
-        display_text: trimmed.to_string(),
-    })
-}
-
 fn parse_put_counter_segment_rewrite(raw: &str) -> Result<ActivationCostSegmentCst, CardTextError> {
     let trimmed = raw.trim();
     let lower = trimmed.to_ascii_lowercase();
@@ -1284,99 +1431,921 @@ fn parse_generic_choice_prefix(raw: &str) -> Option<(ChoiceCount, String)> {
     (!filter_text.is_empty()).then_some((ChoiceCount::exactly(count as usize), filter_text))
 }
 
-fn parse_pay_energy_segment_rewrite(raw: &str) -> Result<ActivationCostSegmentCst, CardTextError> {
-    let trimmed = raw.trim();
-    let lower = trimmed.to_ascii_lowercase();
-    let Some(rest) = str_strip_prefix(lower.as_str(), "pay ") else {
-        return Err(CardTextError::ParseError(
-            "rewrite energy parser expected leading 'pay'".to_string(),
-        ));
+fn parse_generic_choice_prefix_tokens<'a>(
+    tokens: &'a [OwnedLexToken],
+) -> Option<(ChoiceCount, &'a [OwnedLexToken])> {
+    let words = LowercaseWordView::new(tokens);
+    let lowered = words.to_word_refs();
+    if lowered.is_empty() {
+        return None;
+    }
+
+    let (choice_count, consumed_words) =
+        if word_slice_starts_with(lowered.as_slice(), &["one", "or", "more"]) {
+            (ChoiceCount::at_least(1), 3)
+        } else if word_slice_starts_with(lowered.as_slice(), &["any", "number", "of"]) {
+            (ChoiceCount::any_number(), 3)
+        } else if lowered.first() == Some(&"x") {
+            (ChoiceCount::dynamic_x(), 1)
+        } else if let Some((count, consumed_words)) = parse_count_prefix_words(lowered.as_slice()) {
+            (ChoiceCount::exactly(count as usize), consumed_words)
+        } else if lowered
+            .first()
+            .is_some_and(|word| matches!(*word, "a" | "an" | "the"))
+        {
+            (ChoiceCount::exactly(1), 1)
+        } else {
+            (ChoiceCount::exactly(1), 0)
+        };
+
+    let remainder = if consumed_words == 0 {
+        tokens
+    } else {
+        let token_start = words.token_index_after_words(consumed_words)?;
+        &tokens[token_start..]
     };
-    let rest = rest.trim();
-    if rest.chars().all(|ch| matches!(ch, '{' | '}' | 'e' | ' ')) {
-        let count = rest.matches("{e}").count();
-        if count > 0 {
-            return Ok(ActivationCostSegmentCst::Energy(count as u32));
-        }
+    Some((choice_count, remainder))
+}
+
+fn parse_discard_segment_tokens(
+    tokens: &[OwnedLexToken],
+) -> Result<ActivationCostSegmentCst, CardTextError> {
+    let raw = render_lower_lexed_tokens(tokens);
+    let words = LowercaseWordView::new(tokens);
+    let lowered = words.to_word_refs();
+    let tail = lowered.get(1..).unwrap_or_default();
+
+    if tail == ["your", "hand"] {
+        return Ok(ActivationCostSegmentCst::DiscardHand);
     }
-    if rest == "{e}" || rest == "e" {
-        return Ok(ActivationCostSegmentCst::Energy(1));
+    if tail == ["this", "card"] {
+        return Ok(ActivationCostSegmentCst::DiscardSource);
     }
-    let Some(count_text) = str_strip_suffix(rest, " {e}")
-        .or_else(|| str_strip_suffix(rest, " e"))
-    else {
+    if tail.is_empty() {
         return Err(CardTextError::ParseError(format!(
-            "rewrite energy parser expected energy symbol in '{raw}'"
+            "rewrite discard parser expected selector in '{raw}'"
+        )));
+    }
+
+    let mut idx = 0usize;
+    let mut count = 1u32;
+    if let Some((parsed, consumed_words)) = parse_count_prefix_words(tail) {
+        count = parsed;
+        idx = consumed_words;
+    }
+
+    let mut other = false;
+    if tail
+        .get(idx)
+        .is_some_and(|word| matches!(*word, "another" | "other"))
+    {
+        other = true;
+        idx += 1;
+    }
+
+    while tail
+        .get(idx)
+        .is_some_and(|word| matches!(*word, "a" | "an"))
+    {
+        idx += 1;
+    }
+
+    if tail.get(idx) == Some(&"card") && tail.get(idx + 1) == Some(&"named") {
+        let Some(name_tokens) = token_slice_from_word_index(tokens, &words, idx + 3) else {
+            return Err(CardTextError::ParseError(format!(
+                "rewrite discard parser expected card name in '{raw}'"
+            )));
+        };
+        let name = render_lower_lexed_tokens(name_tokens);
+        if name.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "rewrite discard parser expected card name in '{raw}'"
+            )));
+        }
+        return Ok(ActivationCostSegmentCst::DiscardFiltered {
+            count,
+            card_types: Vec::new(),
+            random: false,
+            name: Some(name),
+            other,
+        });
+    }
+
+    let mut card_types = Vec::new();
+    while let Some(word) = tail.get(idx).copied() {
+        if matches!(word, "card" | "cards") {
+            break;
+        }
+        if matches!(word, "and" | "or" | "a" | "an") {
+            idx += 1;
+            continue;
+        }
+        let Some(card_type) = parse_card_type_word(word) else {
+            return Err(CardTextError::ParseError(format!(
+                "rewrite discard parser does not yet support selector '{raw}'"
+            )));
+        };
+        push_unique_card_type(&mut card_types, card_type);
+        idx += 1;
+    }
+
+    if !tail
+        .get(idx)
+        .is_some_and(|word| matches!(*word, "card" | "cards"))
+    {
+        return Err(CardTextError::ParseError(format!(
+            "rewrite discard parser expected card selector in '{raw}'"
+        )));
+    }
+    idx += 1;
+
+    let random = match tail.get(idx..) {
+        None | Some([]) => false,
+        Some(["at", "random"]) => true,
+        _ => {
+            return Err(CardTextError::ParseError(format!(
+                "rewrite discard parser does not yet support trailing clause in '{raw}'"
+            )));
+        }
+    };
+
+    if card_types.is_empty() && !random {
+        return Ok(ActivationCostSegmentCst::DiscardCard(count));
+    }
+
+    Ok(ActivationCostSegmentCst::DiscardFiltered {
+        count,
+        card_types,
+        random,
+        name: None,
+        other,
+    })
+}
+
+fn parse_sacrifice_segment_tokens(
+    tokens: &[OwnedLexToken],
+) -> Result<ActivationCostSegmentCst, CardTextError> {
+    let raw = render_lower_lexed_tokens(tokens);
+    let words = LowercaseWordView::new(tokens);
+    let lowered = words.to_word_refs();
+    let tail = lowered.get(1..).unwrap_or_default();
+
+    if words_match_any(
+        tail,
+        &[
+            &["it"],
+            &["this"],
+            &["this", "creature"],
+            &["this", "artifact"],
+            &["this", "aura"],
+            &["this", "enchantment"],
+            &["this", "equipment"],
+            &["this", "fortification"],
+            &["this", "land"],
+            &["this", "permanent"],
+            &["this", "card"],
+        ],
+    ) {
+        return Ok(ActivationCostSegmentCst::SacrificeSelf);
+    }
+    if tail == ["a", "creature"] {
+        return Ok(ActivationCostSegmentCst::SacrificeCreature);
+    }
+
+    let mut idx = 0usize;
+    let mut count = 1u32;
+    if let Some((parsed, consumed_words)) = parse_count_prefix_words(tail) {
+        count = parsed;
+        idx = consumed_words;
+    } else if tail.first().is_some_and(|word| matches!(*word, "a" | "an")) {
+        idx = 1;
+    }
+
+    let mut other = false;
+    if tail.get(idx) == Some(&"another") {
+        other = true;
+        idx += 1;
+    }
+
+    let Some(filter_tokens) = token_slice_from_word_index(tokens, &words, idx + 1) else {
+        return Err(CardTextError::ParseError(format!(
+            "rewrite sacrifice parser missing filter in '{raw}'"
         )));
     };
-    Ok(ActivationCostSegmentCst::Energy(parse_count_word_rewrite(
-        count_text.trim(),
-    )?))
-}
-
-fn parse_bare_energy_segment_rewrite(raw: &str) -> Option<ActivationCostSegmentCst> {
-    let trimmed = raw.trim().to_ascii_lowercase();
-    if trimmed.is_empty() {
-        return None;
+    let filter_text = render_lower_lexed_tokens(filter_tokens);
+    if filter_text.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "rewrite sacrifice parser missing filter in '{raw}'"
+        )));
     }
 
-    let mut rest = trimmed.as_str();
+    Ok(ActivationCostSegmentCst::SacrificeChosen {
+        count,
+        filter_text,
+        other,
+    })
+}
+
+fn parse_tap_chosen_segment_tokens(
+    tokens: &[OwnedLexToken],
+) -> Result<ActivationCostSegmentCst, CardTextError> {
+    let raw = render_lower_lexed_tokens(tokens);
+    let words = LowercaseWordView::new(tokens);
+    let lowered = words.to_word_refs();
+    let tail = lowered.get(1..).unwrap_or_default();
+
+    let mut idx = 0usize;
+    let mut count = 1u32;
+    let mut other = false;
+
+    if let Some((parsed, consumed_words)) = parse_count_prefix_words(tail) {
+        count = parsed;
+        idx = consumed_words;
+    } else if tail.first().is_some_and(|word| matches!(*word, "a" | "an")) {
+        idx = 1;
+    }
+
+    if tail.get(idx) == Some(&"another") {
+        other = true;
+        idx += 1;
+    }
+
+    if tail.get(idx) != Some(&"untapped") {
+        return Err(CardTextError::ParseError(format!(
+            "rewrite tap-cost parser expected untapped selector in '{raw}'"
+        )));
+    }
+    idx += 1;
+
+    let Some(filter_tokens) = token_slice_from_word_index(tokens, &words, idx + 1) else {
+        return Err(CardTextError::ParseError(format!(
+            "rewrite tap-cost parser missing tap filter in '{raw}'"
+        )));
+    };
+    let filter_text = render_lower_lexed_tokens(filter_tokens);
+    if filter_text.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "rewrite tap-cost parser missing tap filter in '{raw}'"
+        )));
+    }
+
+    Ok(ActivationCostSegmentCst::TapChosen {
+        count,
+        filter_text,
+        other,
+    })
+}
+
+fn parse_exile_segment_tokens(
+    tokens: &[OwnedLexToken],
+) -> Result<ActivationCostSegmentCst, CardTextError> {
+    let raw = render_lower_lexed_tokens(tokens);
+    let words = LowercaseWordView::new(tokens);
+    let lowered = words.to_word_refs();
+    let tail = lowered.get(1..).unwrap_or_default();
+
+    if word_slice_starts_with(tail, &["target"]) {
+        return Err(CardTextError::ParseError(
+            "unsupported targeted exile cost segment".to_string(),
+        ));
+    }
+
+    if words_match_any(
+        tail,
+        &[
+            &["this"],
+            &["this", "card"],
+            &["this", "spell"],
+            &["this", "permanent"],
+            &["this", "creature"],
+            &["this", "artifact"],
+            &["this", "enchantment"],
+            &["this", "land"],
+            &["this", "aura"],
+            &["this", "vehicle"],
+        ],
+    ) || words_start_with_any(
+        tail,
+        &[
+            &["this", "card", "from", "your"],
+            &["this", "spell", "from", "your"],
+            &["this", "creature", "from", "your"],
+            &["this", "artifact", "from", "your"],
+            &["this", "enchantment", "from", "your"],
+            &["this", "land", "from", "your"],
+            &["this", "aura", "from", "your"],
+            &["this", "vehicle", "from", "your"],
+        ],
+    ) {
+        if tail
+            .windows(3)
+            .any(|window| window == ["from", "your", "graveyard"])
+        {
+            return Ok(ActivationCostSegmentCst::ExileSelfFromGraveyard);
+        }
+        return Ok(ActivationCostSegmentCst::ExileSelf);
+    }
+
+    if word_slice_starts_with(tail, &["the", "top"])
+        && (word_slice_ends_with(tail, &["cards", "of", "your", "library"])
+            || word_slice_ends_with(tail, &["card", "of", "your", "library"]))
+    {
+        let count_words = &tail[2..tail.len().saturating_sub(4)];
+        let count = parse_count_word_rewrite(&count_words.join(" "))?;
+        return Ok(ActivationCostSegmentCst::ExileTopLibrary { count });
+    }
+
+    if word_slice_ends_with(tail, &["from", "your", "hand"]) {
+        let subject = &tail[..tail.len() - 3];
+        if subject.is_empty() {
+            return Err(CardTextError::ParseError(
+                "rewrite exile-from-hand parser found empty selector".to_string(),
+            ));
+        }
+
+        let mut idx = 0usize;
+        let mut count = 1u32;
+        if let Some((parsed, consumed_words)) = parse_count_prefix_words(subject) {
+            count = parsed;
+            idx = consumed_words;
+        }
+        idx = skip_articles(subject, idx);
+
+        let mut color_filter = None;
+        if let Some(word) = subject.get(idx).copied()
+            && let Some(color) = parse_color_word(word)
+        {
+            color_filter = Some(color);
+            idx += 1;
+        }
+
+        if !subject
+            .get(idx)
+            .is_some_and(|word| matches!(*word, "card" | "cards"))
+        {
+            return Err(CardTextError::ParseError(format!(
+                "rewrite exile-from-hand parser expected card selector in '{raw}'"
+            )));
+        }
+
+        return Ok(ActivationCostSegmentCst::ExileFromHand {
+            count,
+            color_filter,
+        });
+    }
+
+    if word_slice_ends_with(tail, &["from", "your", "graveyard"]) {
+        let Some(subject_tokens) =
+            token_slice_for_word_range(tokens, &words, 1, lowered.len().saturating_sub(3))
+        else {
+            return Err(CardTextError::ParseError(
+                "rewrite exile-from-graveyard parser found empty selector".to_string(),
+            ));
+        };
+        let (choice_count, filter_tokens) = parse_generic_choice_prefix_tokens(subject_tokens)
+            .ok_or_else(|| {
+                CardTextError::ParseError(
+                    "rewrite exile-from-graveyard parser found empty selector".to_string(),
+                )
+            })?;
+        let filter_text = render_lower_lexed_tokens(filter_tokens);
+        return Ok(ActivationCostSegmentCst::ExileChosen {
+            choice_count,
+            filter_text: format!("{filter_text} from your graveyard"),
+        });
+    }
+
+    let Some(subject_tokens) = token_slice_from_word_index(tokens, &words, 1) else {
+        return Err(CardTextError::ParseError(format!(
+            "rewrite exile parser does not yet support '{raw}'"
+        )));
+    };
+    let (choice_count, filter_tokens) = parse_generic_choice_prefix_tokens(subject_tokens)
+        .ok_or_else(|| {
+            CardTextError::ParseError(format!("rewrite exile parser does not yet support '{raw}'"))
+        })?;
+    let mut filter_text = render_lower_lexed_tokens(filter_tokens);
+    if str_ends_with(filter_text.as_str(), " from a single graveyard") {
+        filter_text = filter_text.replace(" from a single graveyard", " from a graveyard");
+    }
+    Ok(ActivationCostSegmentCst::ExileChosen {
+        choice_count,
+        filter_text,
+    })
+}
+
+fn parse_return_segment_tokens(
+    tokens: &[OwnedLexToken],
+) -> Result<ActivationCostSegmentCst, CardTextError> {
+    let raw = render_lower_lexed_tokens(tokens);
+    let words = LowercaseWordView::new(tokens);
+    let lowered = words.to_word_refs();
+    let suffix_len = if word_slice_ends_with(lowered.as_slice(), &["to", "its", "owners", "hand"]) {
+        4
+    } else if word_slice_ends_with(lowered.as_slice(), &["to", "their", "owners", "hand"]) {
+        4
+    } else {
+        return Err(CardTextError::ParseError(format!(
+            "rewrite return-cost parser expected owner-hand suffix in '{raw}'"
+        )));
+    };
+
+    let target = &lowered[1..lowered.len() - suffix_len];
+    if words_match_any(
+        target,
+        &[
+            &["it"],
+            &["this"],
+            &["this", "card"],
+            &["this", "permanent"],
+            &["this", "creature"],
+            &["this", "artifact"],
+            &["this", "enchantment"],
+            &["this", "land"],
+        ],
+    ) {
+        return Ok(ActivationCostSegmentCst::ReturnSelfToHand);
+    }
+
+    let mut idx = 0usize;
+    let mut count = 1u32;
+    if let Some((parsed, consumed_words)) = parse_count_prefix_words(target) {
+        count = parsed;
+        idx = consumed_words;
+    }
+    idx = skip_articles(target, idx);
+
+    let Some(filter_tokens) =
+        token_slice_for_word_range(tokens, &words, idx + 1, lowered.len() - suffix_len)
+    else {
+        return Err(CardTextError::ParseError(format!(
+            "rewrite return-cost parser missing target filter in '{raw}'"
+        )));
+    };
+    let filter_text = render_lower_lexed_tokens(filter_tokens);
+    if filter_text.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "rewrite return-cost parser missing target filter in '{raw}'"
+        )));
+    }
+
+    Ok(ActivationCostSegmentCst::ReturnChosenToHand { count, filter_text })
+}
+
+fn parse_put_counter_segment_tokens(
+    tokens: &[OwnedLexToken],
+) -> Result<ActivationCostSegmentCst, CardTextError> {
+    let raw = render_lower_lexed_tokens(tokens);
+    let words = LowercaseWordView::new(tokens);
+    let lowered = words.to_word_refs();
+    let Some(on_word_idx) = find_word_index(lowered.as_slice(), |word| word == "on") else {
+        return Err(CardTextError::ParseError(format!(
+            "rewrite put-counter parser missing 'on' in '{raw}'"
+        )));
+    };
+
+    let descriptor = &lowered[1..on_word_idx];
+    let target = &lowered[on_word_idx + 1..];
+    let mut idx = 0usize;
+    let mut count = 1u32;
+    if let Some((parsed, consumed_words)) = parse_count_prefix_words(descriptor) {
+        count = parsed;
+        idx = consumed_words;
+    }
+    idx = skip_articles(descriptor, idx);
+
+    let Some(counter_tokens) = token_slice_for_word_range(tokens, &words, idx + 1, on_word_idx)
+    else {
+        return Err(CardTextError::ParseError(format!(
+            "rewrite put-counter parser missing counter description in '{raw}'"
+        )));
+    };
+    let counter_descriptor = render_lower_lexed_tokens(counter_tokens);
+    let counter_type = parse_counter_type_descriptor(counter_descriptor.as_str())?;
+
+    if words_match_any(
+        target,
+        &[
+            &["this"],
+            &["this", "creature"],
+            &["this", "permanent"],
+            &["this", "artifact"],
+            &["this", "aura"],
+            &["this", "card"],
+            &["this", "land"],
+        ],
+    ) {
+        return Ok(ActivationCostSegmentCst::PutCounters {
+            counter_type,
+            count,
+        });
+    }
+
+    let Some(filter_tokens) = token_slice_from_word_index(tokens, &words, on_word_idx + 1) else {
+        return Err(CardTextError::ParseError(format!(
+            "rewrite put-counter parser missing target filter in '{raw}'"
+        )));
+    };
+    Ok(ActivationCostSegmentCst::PutCountersChosen {
+        counter_type,
+        count,
+        filter_text: render_lower_lexed_tokens(filter_tokens),
+    })
+}
+
+fn parse_remove_counter_segment_tokens(
+    tokens: &[OwnedLexToken],
+) -> Result<ActivationCostSegmentCst, CardTextError> {
+    let raw = render_lower_lexed_tokens(tokens);
+    let words = LowercaseWordView::new(tokens);
+    let lowered = words.to_word_refs();
+    let Some(from_word_idx) = find_word_index(lowered.as_slice(), |word| word == "from") else {
+        return Err(CardTextError::ParseError(format!(
+            "rewrite remove-counter parser missing 'from' in '{raw}'"
+        )));
+    };
+
+    let descriptor = &lowered[1..from_word_idx];
+    let target = &lowered[from_word_idx + 1..];
+    let target_among = word_slice_starts_with(target, &["among"]);
+    let target_filter_tokens = if target_among {
+        token_slice_from_word_index(tokens, &words, from_word_idx + 2)
+    } else {
+        token_slice_from_word_index(tokens, &words, from_word_idx + 1)
+    };
+    let target_filter_text = target_filter_tokens
+        .map(render_lower_lexed_tokens)
+        .unwrap_or_default();
+
+    if word_slice_starts_with(descriptor, &["x"]) {
+        let counter_type = if descriptor.len() <= 1 {
+            None
+        } else {
+            let counter_tokens =
+                token_slice_for_word_range(tokens, &words, 2, from_word_idx).unwrap_or(&[]);
+            let counter_descriptor = render_lower_lexed_tokens(counter_tokens);
+            (!counter_descriptor.is_empty())
+                .then(|| parse_counter_type_descriptor(counter_descriptor.as_str()))
+                .transpose()?
+        };
+        return if target_among {
+            Ok(ActivationCostSegmentCst::RemoveCountersAmong {
+                counter_type,
+                count: 0,
+                filter_text: target_filter_text,
+                display_x: true,
+            })
+        } else {
+            Ok(ActivationCostSegmentCst::RemoveCountersDynamic {
+                counter_type,
+                display_x: true,
+            })
+        };
+    }
+
+    if word_slice_starts_with(descriptor, &["any", "number", "of"]) {
+        let counter_type = if descriptor.len() <= 3 {
+            None
+        } else {
+            let counter_tokens =
+                token_slice_for_word_range(tokens, &words, 4, from_word_idx).unwrap_or(&[]);
+            let counter_descriptor = render_lower_lexed_tokens(counter_tokens);
+            (!counter_descriptor.is_empty()
+                && counter_descriptor != "counter"
+                && counter_descriptor != "counters")
+                .then(|| parse_counter_type_descriptor(counter_descriptor.as_str()))
+                .transpose()?
+        };
+        return if target_among {
+            Ok(ActivationCostSegmentCst::RemoveCountersAmong {
+                counter_type,
+                count: 0,
+                filter_text: target_filter_text,
+                display_x: false,
+            })
+        } else {
+            Ok(ActivationCostSegmentCst::RemoveCountersDynamic {
+                counter_type,
+                display_x: false,
+            })
+        };
+    }
+
+    let mut idx = 0usize;
+    let mut count = 1u32;
+    if let Some((parsed, consumed_words)) = parse_count_prefix_words(descriptor) {
+        count = parsed;
+        idx = consumed_words;
+    }
+    idx = skip_articles(descriptor, idx);
+
+    let counter_type = if idx >= descriptor.len() {
+        None
+    } else {
+        let counter_tokens =
+            token_slice_for_word_range(tokens, &words, idx + 1, from_word_idx).unwrap_or(&[]);
+        let counter_descriptor = render_lower_lexed_tokens(counter_tokens);
+        (!counter_descriptor.is_empty()
+            && counter_descriptor != "counter"
+            && counter_descriptor != "counters")
+            .then(|| parse_counter_type_descriptor(counter_descriptor.as_str()))
+            .transpose()?
+    };
+
+    if target_among {
+        return Ok(ActivationCostSegmentCst::RemoveCountersAmong {
+            counter_type,
+            count,
+            filter_text: target_filter_text,
+            display_x: false,
+        });
+    }
+
+    if !words_match_any(
+        target,
+        &[
+            &["this"],
+            &["this", "creature"],
+            &["this", "permanent"],
+            &["this", "artifact"],
+            &["this", "enchantment"],
+            &["this", "card"],
+            &["this", "land"],
+            &["it"],
+        ],
+    ) {
+        return Ok(ActivationCostSegmentCst::RemoveCountersAmong {
+            counter_type,
+            count,
+            filter_text: target_filter_text,
+            display_x: false,
+        });
+    }
+
+    let counter_type = counter_type.ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "rewrite remove-counter parser missing counter type in '{raw}'"
+        ))
+    })?;
+    Ok(ActivationCostSegmentCst::RemoveCounters {
+        counter_type,
+        count,
+    })
+}
+
+fn parse_activation_cost_segment_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<Result<ActivationCostSegmentCst, CardTextError>> {
+    let words = LowercaseWordView::new(tokens);
+    let lowered = words.to_word_refs();
+    let first = lowered.first().copied()?;
+
+    match first {
+        "pay" => Some(parse_pay_segment_tokens(tokens)),
+        "discard" => Some(parse_discard_segment_tokens(tokens)),
+        "mill" => Some(parse_mill_segment_tokens(tokens)),
+        "sacrifice" => Some(parse_sacrifice_segment_tokens(tokens)),
+        "tap" if lowered.iter().any(|word| *word == "untapped") => {
+            Some(parse_tap_chosen_segment_tokens(tokens))
+        }
+        "behold" => Some(parse_behold_segment_tokens(tokens)),
+        "exile" => Some(parse_exile_segment_tokens(tokens)),
+        "return" => Some(parse_return_segment_tokens(tokens)),
+        "exert" => Some(parse_exert_segment_tokens(tokens)),
+        "put" => Some(parse_put_counter_segment_tokens(tokens)),
+        "remove" => Some(parse_remove_counter_segment_tokens(tokens)),
+        _ => parse_bare_symbol_segment_tokens(tokens).map(Ok),
+    }
+}
+
+fn parse_energy_symbol_count_tokens(tokens: &[OwnedLexToken]) -> Option<u32> {
     let mut count = 0u32;
-    while let Some(next) = str_strip_prefix(rest, "{e}") {
-        count += 1;
-        rest = next.trim_start();
-    }
-
-    (count > 0 && rest.is_empty()).then_some(ActivationCostSegmentCst::Energy(count))
-}
-
-fn parse_bare_symbol_segment_rewrite(raw: &str) -> Option<ActivationCostSegmentCst> {
-    let words = raw
-        .split_whitespace()
-        .map(|word| word.trim_matches(|ch: char| ch == ',' || ch == '.'))
-        .filter(|word| !word.is_empty())
-        .collect::<Vec<_>>();
-    if words.is_empty() {
-        return None;
-    }
-
-    if words.len() == 1 {
-        match words[0] {
-            "t" => return Some(ActivationCostSegmentCst::Tap),
-            "q" => return Some(ActivationCostSegmentCst::Untap),
-            _ => {}
+    for token in tokens {
+        match token.kind {
+            TokenKind::ManaGroup if token.slice.eq_ignore_ascii_case("{e}") => count += 1,
+            TokenKind::Word if token.is_word("e") => count += 1,
+            _ => return None,
         }
     }
 
-    if words.iter().all(|word| word.eq_ignore_ascii_case("e")) {
-        return Some(ActivationCostSegmentCst::Energy(words.len() as u32));
+    (count > 0).then_some(count)
+}
+
+fn parse_bare_symbol_segment_tokens(tokens: &[OwnedLexToken]) -> Option<ActivationCostSegmentCst> {
+    if tokens.is_empty() {
+        return None;
+    }
+
+    if tokens.len() == 1 {
+        let token = &tokens[0];
+        if token.is_word("t") || token.slice.eq_ignore_ascii_case("{t}") {
+            return Some(ActivationCostSegmentCst::Tap);
+        }
+        if token.is_word("q") || token.slice.eq_ignore_ascii_case("{q}") {
+            return Some(ActivationCostSegmentCst::Untap);
+        }
+    }
+
+    if let Some(count) = parse_energy_symbol_count_tokens(tokens) {
+        return Some(ActivationCostSegmentCst::Energy(count));
     }
 
     let mut pips = Vec::new();
-    for word in words {
-        if word.eq_ignore_ascii_case("e")
-            || word.eq_ignore_ascii_case("t")
-            || word.eq_ignore_ascii_case("q")
-        {
-            return None;
+    for token in tokens {
+        match token.kind {
+            TokenKind::ManaGroup => {
+                let slice = token.slice.as_str();
+                if slice.eq_ignore_ascii_case("{e}")
+                    || slice.eq_ignore_ascii_case("{t}")
+                    || slice.eq_ignore_ascii_case("{q}")
+                {
+                    return None;
+                }
+                let group = parse_mana_symbol_group(slice).ok()?;
+                pips.push(group);
+            }
+            TokenKind::Word => {
+                let word = token.as_word()?;
+                if word.eq_ignore_ascii_case("e")
+                    || word.eq_ignore_ascii_case("t")
+                    || word.eq_ignore_ascii_case("q")
+                {
+                    return None;
+                }
+                if let Ok(group) = parse_mana_symbol_group(word) {
+                    pips.push(group);
+                    continue;
+                }
+                let symbol = parse_mana_symbol(word).ok()?;
+                pips.push(vec![symbol]);
+            }
+            _ => return None,
         }
-        if let Ok(group) = parse_mana_symbol_group(word) {
-            pips.push(group);
-            continue;
-        }
-        let symbol = parse_mana_symbol(word).ok()?;
-        pips.push(vec![symbol]);
     }
 
     (!pips.is_empty()).then(|| ActivationCostSegmentCst::Mana(ManaCost::from_pips(pips)))
 }
 
-fn parse_pay_mana_segment_rewrite(raw: &str) -> Option<ActivationCostSegmentCst> {
-    let rest = str_strip_prefix(raw.trim(), "pay ")?.trim();
-    match parse_bare_symbol_segment_rewrite(rest)? {
-        ActivationCostSegmentCst::Mana(cost) => Some(ActivationCostSegmentCst::Mana(cost)),
-        _ => None,
+fn parse_pay_segment_tokens(
+    tokens: &[OwnedLexToken],
+) -> Result<ActivationCostSegmentCst, CardTextError> {
+    let raw = render_trimmed_lexed_tokens(tokens);
+    let words = LowercaseWordView::new(tokens);
+    let lowered = words.to_word_refs();
+    if lowered.first().copied() != Some("pay") {
+        return Err(CardTextError::ParseError(
+            "rewrite pay-cost parser expected leading 'pay'".to_string(),
+        ));
     }
+
+    let Some(rest_tokens) = token_slice_from_word_index(tokens, &words, 1) else {
+        return Err(CardTextError::ParseError(format!(
+            "rewrite pay-cost parser missing payment in '{raw}'"
+        )));
+    };
+    let rest_words = LowercaseWordView::new(rest_tokens);
+    let lowered_rest = rest_words.to_word_refs();
+    if lowered_rest.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "rewrite pay-cost parser missing payment in '{raw}'"
+        )));
+    }
+
+    if matches!(lowered_rest.last(), Some(&"life") | Some(&"lives")) {
+        let count_words = &lowered_rest[..lowered_rest.len() - 1];
+        if let Some((amount, consumed_words)) = parse_count_prefix_words(count_words)
+            && consumed_words == count_words.len()
+        {
+            return Ok(ActivationCostSegmentCst::Life(amount));
+        }
+    }
+
+    if let Some(count) = parse_energy_symbol_count_tokens(rest_tokens) {
+        return Ok(ActivationCostSegmentCst::Energy(count));
+    }
+
+    if let Some((count, consumed_words)) = parse_count_prefix_words(lowered_rest.as_slice())
+        && let Some(energy_tokens) =
+            token_slice_from_word_index(rest_tokens, &rest_words, consumed_words)
+        && parse_energy_symbol_count_tokens(energy_tokens) == Some(1)
+    {
+        return Ok(ActivationCostSegmentCst::Energy(count));
+    }
+
+    if let Some(ActivationCostSegmentCst::Mana(cost)) =
+        parse_bare_symbol_segment_tokens(rest_tokens)
+    {
+        return Ok(ActivationCostSegmentCst::Mana(cost));
+    }
+
+    Err(CardTextError::ParseError(format!(
+        "rewrite pay-cost parser does not yet support '{raw}'"
+    )))
+}
+
+fn parse_exert_segment_tokens(
+    tokens: &[OwnedLexToken],
+) -> Result<ActivationCostSegmentCst, CardTextError> {
+    let raw = render_trimmed_lexed_tokens(tokens);
+    let words = LowercaseWordView::new(tokens);
+    let lowered = words.to_word_refs();
+    if lowered.first().copied() != Some("exert") {
+        return Err(CardTextError::ParseError(
+            "rewrite exert-cost parser expected leading 'exert'".to_string(),
+        ));
+    }
+    let missing_object = match token_slice_from_word_index(tokens, &words, 1) {
+        None => true,
+        Some(rest) => LowercaseWordView::new(rest).is_empty(),
+    };
+    if missing_object {
+        return Err(CardTextError::ParseError(format!(
+            "rewrite exert-cost parser missing exerted object in '{raw}'"
+        )));
+    }
+
+    Ok(ActivationCostSegmentCst::ExertSelf { display_text: raw })
+}
+
+fn parse_mill_segment_tokens(
+    tokens: &[OwnedLexToken],
+) -> Result<ActivationCostSegmentCst, CardTextError> {
+    let raw = render_lower_lexed_tokens(tokens);
+    let words = LowercaseWordView::new(tokens);
+    let lowered = words.to_word_refs();
+    if lowered.first().copied() != Some("mill") {
+        return Err(CardTextError::ParseError(
+            "rewrite mill parser expected leading 'mill'".to_string(),
+        ));
+    }
+
+    let tail = lowered.get(1..).unwrap_or_default();
+    let (count, consumed_words) =
+        if let Some((count, consumed_words)) = parse_count_prefix_words(tail) {
+            (count, consumed_words)
+        } else if tail.first().is_some_and(|word| matches!(*word, "a" | "an")) {
+            (1, 1)
+        } else {
+            return Err(CardTextError::ParseError(format!(
+                "rewrite mill parser expected card count in '{raw}'"
+            )));
+        };
+
+    let has_card_word = tail
+        .get(consumed_words)
+        .is_some_and(|word| matches!(*word, "card" | "cards"));
+    if !has_card_word || consumed_words + 1 != tail.len() {
+        return Err(CardTextError::ParseError(format!(
+            "rewrite mill parser expected trailing card selector in '{raw}'"
+        )));
+    }
+
+    Ok(ActivationCostSegmentCst::Mill(count))
+}
+
+fn parse_behold_segment_tokens(
+    tokens: &[OwnedLexToken],
+) -> Result<ActivationCostSegmentCst, CardTextError> {
+    let raw = render_lower_lexed_tokens(tokens);
+    let words = LowercaseWordView::new(tokens);
+    let lowered = words.to_word_refs();
+    if lowered.first().copied() != Some("behold") {
+        return Err(CardTextError::ParseError(
+            "rewrite behold parser expected leading 'behold'".to_string(),
+        ));
+    }
+
+    let tail = lowered.get(1..).unwrap_or_default();
+    let (count, consumed_words) =
+        if let Some((count, consumed_words)) = parse_count_prefix_words(tail) {
+            (count, consumed_words)
+        } else if tail.first().is_some_and(|word| matches!(*word, "a" | "an")) {
+            (1, 1)
+        } else {
+            return Err(CardTextError::ParseError(format!(
+                "rewrite behold parser expected subtype count in '{raw}'"
+            )));
+        };
+
+    let Some(subtype_word) = tail.get(consumed_words).copied() else {
+        return Err(CardTextError::ParseError(format!(
+            "rewrite behold parser expected subtype in '{raw}'"
+        )));
+    };
+    let Some(subtype) = parse_subtype_word(subtype_word)
+        .or_else(|| trim_plural_s(subtype_word).and_then(parse_subtype_word))
+    else {
+        return Err(CardTextError::ParseError(format!(
+            "rewrite behold parser expected subtype in '{raw}'"
+        )));
+    };
+    if consumed_words + 1 != tail.len() {
+        return Err(CardTextError::ParseError(format!(
+            "rewrite behold parser does not yet support trailing clause in '{raw}'"
+        )));
+    }
+
+    Ok(ActivationCostSegmentCst::Behold { subtype, count })
 }
 
 fn parse_activation_cost_segment_inner(input: &mut &str) -> WResult<ActivationCostSegmentCst> {
@@ -1391,14 +2360,21 @@ fn parse_activation_cost_segment_inner(input: &mut &str) -> WResult<ActivationCo
         parse_sacrifice_segment_inner,
         parse_mana_cost_inner.map(ActivationCostSegmentCst::Mana),
     ))
+    .context(StrContext::Label("activation cost segment"))
+    .context(StrContext::Expected(StrContextValue::Description(
+        "activation cost segment",
+    )))
     .parse_next(input)
 }
 
-fn finish_parse<'a, O>(
+fn finish_parse<'a, O, E>(
     raw: &'a str,
-    mut parser: impl Parser<&'a str, O, ContextError>,
+    mut parser: impl Parser<&'a str, O, E>,
     label: &str,
-) -> Result<O, CardTextError> {
+) -> Result<O, CardTextError>
+where
+    E: std::fmt::Display,
+{
     let mut input = raw.trim();
     let parsed = parser
         .parse_next(&mut input)
@@ -1547,7 +2523,7 @@ fn split_activation_cost_segments_tokens(tokens: &[OwnedLexToken]) -> Vec<Vec<Ow
     segments
 }
 
-fn parse_activation_cost_tokens_impl(
+fn parse_activation_cost_cst_tokens(
     tokens: &[OwnedLexToken],
     raw: &str,
 ) -> Result<ActivationCostCst, CardTextError> {
@@ -1571,63 +2547,25 @@ fn parse_activation_cost_tokens_impl(
 
     let mut segments = Vec::new();
     for segment_tokens in split_activation_cost_segments_tokens(tokens) {
-        let segment_text = render_lexed_tokens(&segment_tokens);
-        let segment = segment_text
-            .trim()
-            .trim_start_matches("and ")
-            .trim()
-            .trim_end_matches('.')
-            .trim();
-        if segment.is_empty() {
+        let segment_tokens = trim_activation_cost_segment_tokens(&segment_tokens);
+        if segment_tokens.is_empty() {
             continue;
         }
 
-        let mut normalized_segment = segment.to_ascii_lowercase();
-        if let Some(rest) = str_strip_prefix(normalized_segment.as_str(), "waterbend ") {
-            normalized_segment = rest.trim().to_string();
-        }
-
-        let parsed = if str_starts_with(normalized_segment.as_str(), "exile ") {
-            parse_exile_segment_rewrite(normalized_segment.as_str())
-        } else if let Some(parsed) = parse_bare_energy_segment_rewrite(normalized_segment.as_str())
-        {
-            Ok(parsed)
-        } else if let Some(parsed) = parse_bare_symbol_segment_rewrite(normalized_segment.as_str())
-        {
-            Ok(parsed)
-        } else if let Some(parsed) = parse_pay_mana_segment_rewrite(normalized_segment.as_str()) {
-            Ok(parsed)
-        } else if str_starts_with(normalized_segment.as_str(), "pay ")
-            && (str_contains(normalized_segment.as_str(), "{e}")
-                || str_ends_with(normalized_segment.as_str(), " e"))
-        {
-            parse_pay_energy_segment_rewrite(normalized_segment.as_str())
-        } else if str_starts_with(normalized_segment.as_str(), "return ") {
-            parse_return_segment_rewrite(normalized_segment.as_str())
-        } else if str_starts_with(normalized_segment.as_str(), "exert ") {
-            parse_exert_segment_rewrite(segment)
-        } else if str_starts_with(normalized_segment.as_str(), "discard ") {
-            parse_discard_segment_rewrite(normalized_segment.as_str())
-        } else if str_starts_with(normalized_segment.as_str(), "sacrifice ") {
-            parse_sacrifice_segment_rewrite(normalized_segment.as_str())
-        } else if str_starts_with(normalized_segment.as_str(), "tap ")
-            && str_contains(normalized_segment.as_str(), " untapped ")
-        {
-            parse_tap_chosen_segment_rewrite(normalized_segment.as_str())
-        } else if str_starts_with(normalized_segment.as_str(), "put ") {
-            parse_put_counter_segment_rewrite(normalized_segment.as_str())
-        } else if str_starts_with(normalized_segment.as_str(), "remove ") {
-            parse_remove_counter_segment_rewrite(normalized_segment.as_str())
+        let segment = render_trimmed_lexed_tokens(segment_tokens);
+        let normalized_segment = segment.to_ascii_lowercase();
+        let parsed = if let Some(parsed) = parse_activation_cost_segment_tokens(segment_tokens) {
+            parsed
         } else {
             finish_parse(
                 normalized_segment.as_str(),
                 spaced(parse_activation_cost_segment_inner),
                 "activation-cost-segment",
             )
-            .map_err(|_| {
+            .map_err(|err| {
                 CardTextError::ParseError(format!(
-                    "unsupported activation cost segment (clause: '{}')",
-                    segment
+                    "unsupported activation cost segment (clause: '{}'): {err}",
+                    segment,
                 ))
             })
         }?;
@@ -1649,12 +2587,12 @@ fn parse_activation_cost_tokens_impl(
 pub(crate) fn parse_activation_cost_tokens_rewrite(
     tokens: &[OwnedLexToken],
 ) -> Result<ActivationCostCst, CardTextError> {
-    parse_activation_cost_tokens_impl(tokens, &render_lexed_tokens(tokens))
+    parse_activation_cost_cst_tokens(tokens, &render_lexed_tokens(tokens))
 }
 
 pub(crate) fn parse_activation_cost_rewrite(raw: &str) -> Result<ActivationCostCst, CardTextError> {
     let tokens = lex_line(raw.trim(), 0)?;
-    parse_activation_cost_tokens_impl(&tokens, raw)
+    parse_activation_cost_cst_tokens(&tokens, raw)
 }
 
 pub(crate) fn lower_activation_cost_cst(

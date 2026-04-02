@@ -8,6 +8,10 @@ use crate::ability::{Ability, AbilityKind, ActivatedAbility, ActivationTiming, T
 use crate::card::PowerToughness;
 #[allow(unused_imports)]
 use crate::cards::CardDefinition;
+use crate::cards::builders::scan_helpers::{
+    find_index, find_window_by, find_window_index, slice_contains, str_contains, str_find,
+    str_split_once, str_split_once_char, str_starts_with, str_strip_suffix,
+};
 #[allow(unused_imports)]
 #[allow(unused_imports)]
 use crate::cards::builders::{
@@ -17,10 +21,6 @@ use crate::cards::builders::{
     NormalizedLine, ObjectRefAst, ParseAnnotations, PlayerAst, PredicateAst,
     PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst, RetargetModeAst,
     ReturnControllerAst, SharedTypeConstraintAst, TagKey, TargetAst, TriggerSpec,
-};
-use crate::cards::builders::scan_helpers::{
-    find_index, find_window_by, find_window_index, slice_contains, str_contains, str_find,
-    str_split_once, str_split_once_char, str_starts_with, str_strip_suffix,
 };
 #[allow(unused_imports)]
 use crate::color::ColorSet;
@@ -9529,15 +9529,14 @@ pub(crate) fn token_inline_noncreature_spell_each_opponent_damage_amount(
         })
         .filter(|word| !word.is_empty())
         .collect();
-    let has_noncreature_cast_trigger =
-        find_window_by(&words, 6, |window| {
-            window == ["whenever", "you", "cast", "a", "noncreature", "spell"]
+    let has_noncreature_cast_trigger = find_window_by(&words, 6, |window| {
+        window == ["whenever", "you", "cast", "a", "noncreature", "spell"]
+    })
+    .is_some()
+        || find_window_by(&words, 5, |window| {
+            window == ["whenever", "you", "cast", "noncreature", "spell"]
         })
-        .is_some()
-            || find_window_by(&words, 5, |window| {
-                window == ["whenever", "you", "cast", "noncreature", "spell"]
-            })
-            .is_some();
+        .is_some();
     if !has_noncreature_cast_trigger {
         return None;
     }
@@ -10405,7 +10404,8 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
     let has_phrase = |phrase: &[&str]| find_window_index(words.as_slice(), phrase).is_some();
     let has_text = |needle: &str| str_contains(lower.as_str(), needle);
     let has_explicit_pt = words.iter().any(|word| parse_token_pt(word).is_some());
-    let has_equipment_rules_subject = has_word("equipment") && has_phrase(&["equipped", "creature"]);
+    let has_equipment_rules_subject =
+        has_word("equipment") && has_phrase(&["equipped", "creature"]);
 
     if has_word("treasure") && !has_word("creature") {
         return Some(crate::cards::tokens::treasure_token_definition());
@@ -10597,8 +10597,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
             "deals",
             "damage",
             "target",
-        ])
-            && let Some(amount) = parse_deals_damage_amount(&words)
+        ]) && let Some(amount) = parse_deals_damage_amount(&words)
         {
             builder = builder.with_ability(token_leaves_deals_damage_any_target_ability(amount));
         }
@@ -10614,11 +10613,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
             .flying();
         return Some(builder.build());
     }
-    if has_word("wall")
-        && has_text("0/4")
-        && has_text("artifact")
-        && has_text("creature")
-    {
+    if has_word("wall") && has_text("0/4") && has_text("artifact") && has_text("creature") {
         let builder = CardDefinitionBuilder::new(CardId::new(), "Wall")
             .token()
             .card_types(vec![CardType::Artifact, CardType::Creature])
@@ -10639,7 +10634,9 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
     let is_dragon_egg_death_spawn_pattern = has_word("dragon")
         && has_word("egg")
         && has_text("0/2")
-        && has_words(&["when", "token", "dies", "create", "2/2", "flying", "r", "+1/+0"]);
+        && has_words(&[
+            "when", "token", "dies", "create", "2/2", "flying", "r", "+1/+0",
+        ]);
     if is_dragon_egg_death_spawn_pattern {
         let builder = CardDefinitionBuilder::new(CardId::new(), "Dragon Egg")
             .token()
@@ -10660,8 +10657,15 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
             .power_toughness(PowerToughness::fixed(3, 3));
         return Some(builder.build());
     }
-    let has_construct_cda_words =
-        has_words(&["power", "toughness", "equal", "number", "artifacts", "you", "control"]);
+    let has_construct_cda_words = has_words(&[
+        "power",
+        "toughness",
+        "equal",
+        "number",
+        "artifacts",
+        "you",
+        "control",
+    ]);
     let has_construct_plus_words =
         has_words(&["gets", "+1/+1", "for", "each", "artifact", "you", "control"]);
     let is_zero_zero_construct = has_word("construct") && has_text("0/0");
@@ -10696,11 +10700,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
         }
         return Some(builder.build());
     }
-    if has_word("astartes")
-        && has_word("warrior")
-        && has_text("2/2")
-        && has_text("white")
-    {
+    if has_word("astartes") && has_word("warrior") && has_text("2/2") && has_text("white") {
         let mut builder = CardDefinitionBuilder::new(CardId::new(), "Astartes Warrior")
             .token()
             .card_types(vec![CardType::Creature])
@@ -10729,9 +10729,8 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
         let (power, toughness) = words.iter().find_map(|word| parse_token_pt(word))?;
 
         let mut subtypes = Vec::new();
-        let subtype_scan_end =
-            find_index(words.as_slice(), |word| parse_card_type(word).is_some())
-                .unwrap_or(words.len());
+        let subtype_scan_end = find_index(words.as_slice(), |word| parse_card_type(word).is_some())
+            .unwrap_or(words.len());
         for word in &words[..subtype_scan_end] {
             if let Some(subtype) = parse_subtype_word(word)
                 .or_else(|| str_strip_suffix(word, "s").and_then(parse_subtype_word))
@@ -10864,8 +10863,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
             "named",
             "graveyard",
             "battlefield",
-        ])
-            && !has_word("beginning")
+        ]) && !has_word("beginning")
             && let Some(card_name) = extract_named_card_name(&words, lower.as_str())
             && let Some(sacrifice_idx) = find_index(words.as_slice(), |word| *word == "sacrifice")
         {
@@ -10915,7 +10913,9 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
         {
             builder = builder.with_ability(token_dies_deals_damage_any_target_ability(amount));
         }
-        if has_words(&["when", "token", "dies", "target", "creature", "gets", "-1/-1"]) {
+        if has_words(&[
+            "when", "token", "dies", "target", "creature", "gets", "-1/-1",
+        ]) {
             builder =
                 builder.with_ability(token_dies_target_creature_gets_minus_one_minus_one_ability());
         }
@@ -10930,8 +10930,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
             "each",
             "creature",
             "control",
-        ])
-            && let Some(amount) = parse_deals_damage_amount(&words)
+        ]) && let Some(amount) = parse_deals_damage_amount(&words)
         {
             let ability = Ability {
                 kind: AbilityKind::Triggered(crate::ability::TriggeredAbility {
@@ -10976,45 +10975,35 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
                 builder.with_ability(token_noncreature_spell_each_opponent_damage_ability(amount));
         }
         if has_words(&[
-            "whenever",
-            "token",
-            "becomes",
-            "tapped",
-            "deals",
-            "damage",
-            "target",
-            "player",
-        ])
-            && let Some(amount) = parse_deals_damage_amount(&words)
+            "whenever", "token", "becomes", "tapped", "deals", "damage", "target", "player",
+        ]) && let Some(amount) = parse_deals_damage_amount(&words)
         {
             builder = builder.with_ability(
                 token_becomes_tapped_deals_damage_target_player_ability(amount),
             );
         }
         if has_words(&[
-            "whenever",
-            "token",
-            "deals",
-            "combat",
-            "damage",
-            "player",
-            "gain",
-            "control",
+            "whenever", "token", "deals", "combat", "damage", "player", "gain", "control",
             "artifact",
         ]) {
             builder =
                 builder.with_ability(token_combat_damage_gain_control_target_artifact_ability());
         }
-        if has_words(&["when", "leaves", "battlefield", "return", "named", "graveyard", "hand"])
-            && let Some(card_name) = extract_named_card_name(&words, lower.as_str())
+        if has_words(&[
+            "when",
+            "leaves",
+            "battlefield",
+            "return",
+            "named",
+            "graveyard",
+            "hand",
+        ]) && let Some(card_name) = extract_named_card_name(&words, lower.as_str())
         {
             builder = builder.with_ability(
                 token_leaves_return_named_from_graveyard_to_hand_ability(&card_name),
             );
         }
-        if has_word("pest")
-            && has_words(&["when", "token", "dies", "gain", "1", "life"])
-        {
+        if has_word("pest") && has_words(&["when", "token", "dies", "gain", "1", "life"]) {
             let ability = Ability {
                 kind: AbilityKind::Triggered(crate::ability::TriggeredAbility {
                     trigger: Trigger::this_dies(),
@@ -11035,9 +11024,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
         if has_words(&["double", "strike"]) {
             builder = builder.double_strike();
         }
-        if has_word("mercenary")
-            && has_words(&["creature", "1/1", "red"])
-        {
+        if has_word("mercenary") && has_words(&["creature", "1/1", "red"]) {
             let target =
                 ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature().you_control()));
             let ability = Ability {
@@ -11125,8 +11112,9 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
         if has_word("changeling") {
             builder = builder.with_ability(Ability::static_ability(StaticAbility::changeling()));
         }
-        if has_words(&["this", "token", "gets", "+1/+1", "for", "each", "card", "named"])
-            && has_any_word(&["graveyard", "graveyards"])
+        if has_words(&[
+            "this", "token", "gets", "+1/+1", "for", "each", "card", "named",
+        ]) && has_any_word(&["graveyard", "graveyards"])
         {
             let card_name = find_window_index(words.as_slice(), &["card", "named"])
                 .and_then(|named_card_idx| {
@@ -11134,7 +11122,13 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
                     let end = find_index(&words[start..], |word| {
                         matches!(
                             *word,
-                            "in" | "from" | "and" | "or" | "with" | "that" | "where" | "when"
+                            "in" | "from"
+                                | "and"
+                                | "or"
+                                | "with"
+                                | "that"
+                                | "where"
+                                | "when"
                                 | "whenever"
                         )
                     })
@@ -11166,9 +11160,9 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
         // Final Fantasy "Chocobo" token text: a Bird token with a quoted landfall-ish pump ability.
         // Example: Create a 2/2 green Bird creature token with
         // "Whenever a land you control enters, this token gets +1/+0 until end of turn."
-        let is_land_you_control_enters_pump_token =
-            has_words(&["whenever", "land", "control", "enters", "this", "token", "gets", "+1/+0"])
-            && contains_until_end_of_turn(&words);
+        let is_land_you_control_enters_pump_token = has_words(&[
+            "whenever", "land", "control", "enters", "this", "token", "gets", "+1/+0",
+        ]) && contains_until_end_of_turn(&words);
         if is_land_you_control_enters_pump_token {
             let ability = Ability {
                 kind: AbilityKind::Triggered(crate::ability::TriggeredAbility {

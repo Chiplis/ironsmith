@@ -18,15 +18,15 @@ use super::util::{
 use crate::ability::{Ability, AbilityKind, TriggeredAbility};
 #[allow(unused_imports)]
 use crate::alternative_cast::AlternativeCastingMethod;
+use crate::cards::builders::scan_helpers::{
+    contains_window, find_index, find_window_by, find_window_index, rfind_index, slice_contains,
+    slice_ends_with, slice_starts_with, slice_strip_prefix, slice_strip_suffix, str_strip_prefix,
+    str_strip_suffix,
+};
 #[allow(unused_imports)]
 use crate::cards::builders::{
     CardTextError, GrantedAbilityAst, IT_TAG, KeywordAction, LineAst, ParsedAbility,
     ReferenceImports, StaticAbilityAst, TagKey, TextSpan,
-};
-use crate::cards::builders::scan_helpers::{
-    contains_window, find_index, find_window_by, find_window_index, rfind_index,
-    slice_contains, slice_ends_with, slice_starts_with, slice_strip_prefix,
-    slice_strip_suffix, str_strip_prefix, str_strip_suffix,
 };
 #[allow(unused_imports)]
 use crate::color::ColorSet;
@@ -438,7 +438,10 @@ fn parse_static_ability_ast_line_lowered(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let rules = static_ability_ast_line_rules();
-    let head = crate::cards::builders::parser::lexed_words(tokens).first().copied().unwrap_or("");
+    let head = crate::cards::builders::parser::lexed_words(tokens)
+        .first()
+        .copied()
+        .unwrap_or("");
     let mut tried = vec![false; rules.len()];
     let mut deferred_error: Option<CardTextError> = None;
 
@@ -479,8 +482,10 @@ pub(crate) fn parse_damage_doubling_mana_value_marker_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let clause_words = crate::cards::builders::parser::lexed_words(tokens);
-    if !slice_starts_with(&clause_words, &["if", "a", "source", "you", "control", "with"])
-        || !slice_contains(&clause_words, &"mana")
+    if !slice_starts_with(
+        &clause_words,
+        &["if", "a", "source", "you", "control", "with"],
+    ) || !slice_contains(&clause_words, &"mana")
         || !slice_contains(&clause_words, &"value")
         || find_window_by(&clause_words, 5, |window| {
             window == ["would", "deal", "damage", "to", "a"]
@@ -702,10 +707,16 @@ fn parse_static_ability_ast_line_lexed_single(
         let matches_tail = slice_starts_with(
             &tail,
             &["during", "each", "other", "player", "untap", "step"],
-        )
-            || slice_starts_with(&tail, &["during", "each", "other", "player's", "untap", "step"])
-            || slice_starts_with(&tail, &["during", "each", "other", "players", "untap", "step"])
-            || slice_starts_with(&tail, &["during", "each", "other", "player", "s", "untap", "step"]);
+        ) || slice_starts_with(
+            &tail,
+            &["during", "each", "other", "player's", "untap", "step"],
+        ) || slice_starts_with(
+            &tail,
+            &["during", "each", "other", "players", "untap", "step"],
+        ) || slice_starts_with(
+            &tail,
+            &["during", "each", "other", "player", "s", "untap", "step"],
+        );
         if matches_tail {
             let subject_start = token_index_for_word_index(&lowered, 2).unwrap_or(lowered.len());
             let subject_end =
@@ -791,8 +802,7 @@ pub(crate) fn parse_activated_abilities_cant_be_activated_line(
         parse_object_filter(&subject_tokens, false)?
     };
 
-    let non_mana_only =
-        contains_window(&normalized, &["unless", "theyre", "mana", "abilities"]);
+    let non_mana_only = contains_window(&normalized, &["unless", "theyre", "mana", "abilities"]);
 
     let restriction = if non_mana_only {
         Restriction::activate_non_mana_abilities_of(filter)
@@ -830,7 +840,10 @@ pub(crate) fn parse_activated_abilities_cant_be_activated_line_lexed(
         return Ok(None);
     }
 
-    if !slice_starts_with(&normalized_words[cant_word_idx..], &["cant", "be", "activated"]) {
+    if !slice_starts_with(
+        &normalized_words[cant_word_idx..],
+        &["cant", "be", "activated"],
+    ) {
         return Ok(None);
     }
 
@@ -874,8 +887,10 @@ pub(crate) fn parse_activated_abilities_cant_be_activated_line_lexed(
         parse_object_filter_lexed(subject_tokens, false)?
     };
 
-    let non_mana_only =
-        contains_window(&normalized_words, &["unless", "theyre", "mana", "abilities"]);
+    let non_mana_only = contains_window(
+        &normalized_words,
+        &["unless", "theyre", "mana", "abilities"],
+    );
 
     let restriction = if non_mana_only {
         Restriction::activate_non_mana_abilities_of(filter)
@@ -903,7 +918,10 @@ pub(crate) fn parse_pregame_begin_on_battlefield_line(
         || contains_window(&clause_words, &["your", "opening", "hand"]);
     if clause_words.first().copied() != Some("if")
         || !mentions_opening_hand
-        || !contains_window(&clause_words, &["you", "may", "begin", "the", "game", "with"])
+        || !contains_window(
+            &clause_words,
+            &["you", "may", "begin", "the", "game", "with"],
+        )
         || !contains_window(&clause_words, &["on", "the", "battlefield"])
     {
         return Ok(None);
@@ -919,8 +937,14 @@ pub(crate) fn parse_pregame_begin_on_battlefield_line(
             || contains_window(&clause_words, &["you're", "not", "playing", "first"])
             || contains_window(&clause_words, &["you", "re", "not", "playing", "first"])
             || contains_window(&clause_words, &["you", "are", "not", "playing", "first"])
-            || contains_window(&clause_words, &["youre", "not", "the", "starting", "player"])
-            || contains_window(&clause_words, &["you're", "not", "the", "starting", "player"])
+            || contains_window(
+                &clause_words,
+                &["youre", "not", "the", "starting", "player"],
+            )
+            || contains_window(
+                &clause_words,
+                &["you're", "not", "the", "starting", "player"],
+            )
             || contains_window(
                 &clause_words,
                 &["you", "re", "not", "the", "starting", "player"],
@@ -931,8 +955,14 @@ pub(crate) fn parse_pregame_begin_on_battlefield_line(
             )
             || contains_window(&clause_words, &["youre", "not", "starting", "the", "game"])
             || contains_window(&clause_words, &["you're", "not", "starting", "the", "game"])
-            || contains_window(&clause_words, &["you", "re", "not", "starting", "the", "game"])
-            || contains_window(&clause_words, &["you", "are", "not", "starting", "the", "game"]);
+            || contains_window(
+                &clause_words,
+                &["you", "re", "not", "starting", "the", "game"],
+            )
+            || contains_window(
+                &clause_words,
+                &["you", "are", "not", "starting", "the", "game"],
+            );
 
     let battlefield_end_word_idx = clause_words
         .iter()
@@ -989,13 +1019,14 @@ pub(crate) fn parse_pregame_begin_on_battlefield_line(
         let counter_word_idx = find_index(after_with, |token| {
             token.is_word("counter") || token.is_word("counters")
         })
-            .ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "missing counter keyword in pregame line (clause: '{}')",
-                    clause_words.join(" ")
-                ))
-            })?;
-        let trailing = crate::cards::builders::parser::lexed_words(&after_with[counter_word_idx + 1..]);
+        .ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "missing counter keyword in pregame line (clause: '{}')",
+                clause_words.join(" ")
+            ))
+        })?;
+        let trailing =
+            crate::cards::builders::parser::lexed_words(&after_with[counter_word_idx + 1..]);
         if trailing.as_slice() != ["on", "it"] {
             return Err(CardTextError::ParseError(format!(
                 "unsupported counter placement tail in pregame line (clause: '{}')",
@@ -1395,21 +1426,20 @@ pub(crate) fn parse_static_text_marker_line(tokens: &[OwnedLexToken]) -> Option<
         StaticAbility::keyword_marker(text.trim().to_string())
     };
 
-    let is_once_each_turn_play_from_exile = slice_starts_with(
-        &words,
-        &["once", "each", "turn", "you", "may", "play"],
-    )
-        && slice_contains(&words, &"from")
-        && slice_contains(&words, &"exile")
-        && slice_contains(&words, &"cast")
-        && contains_window(&words, &["spend", "mana"])
-        && contains_window(&words, &["as", "though", "it", "were"])
-        && contains_window(&words, &["any", "color", "to"]);
+    let is_once_each_turn_play_from_exile =
+        slice_starts_with(&words, &["once", "each", "turn", "you", "may", "play"])
+            && slice_contains(&words, &"from")
+            && slice_contains(&words, &"exile")
+            && slice_contains(&words, &"cast")
+            && contains_window(&words, &["spend", "mana"])
+            && contains_window(&words, &["as", "though", "it", "were"])
+            && contains_window(&words, &["any", "color", "to"]);
     if is_once_each_turn_play_from_exile {
         return None;
     }
 
-    if slice_starts_with(&words, &["doctors", "companion"]) || slice_starts_with(&words, &["doctor's", "companion"])
+    if slice_starts_with(&words, &["doctors", "companion"])
+        || slice_starts_with(&words, &["doctor's", "companion"])
     {
         return Some(StaticAbility::doctors_companion());
     }
@@ -1471,14 +1501,20 @@ pub(crate) fn parse_static_text_marker_line(tokens: &[OwnedLexToken]) -> Option<
         return Some(marker_text());
     }
 
-    if slice_starts_with(&words, &[
-        "this", "creature", "can", "attack", "as", "though", "it", "had", "haste",
-    ]) && slice_ends_with(&words, &["unless", "it", "entered", "this", "turn"])
+    if slice_starts_with(
+        &words,
+        &[
+            "this", "creature", "can", "attack", "as", "though", "it", "had", "haste",
+        ],
+    ) && slice_ends_with(&words, &["unless", "it", "entered", "this", "turn"])
     {
         return Some(marker_text());
     }
 
-    if slice_starts_with(&words, &["sab-sunen", "cant", "attack", "or", "block", "unless"]) {
+    if slice_starts_with(
+        &words,
+        &["sab-sunen", "cant", "attack", "or", "block", "unless"],
+    ) {
         return Some(marker_text());
     }
 
@@ -1534,15 +1570,18 @@ pub(crate) fn parse_static_text_marker_line(tokens: &[OwnedLexToken]) -> Option<
         )));
     }
 
-    if slice_starts_with(&words, &[
-        "lands",
-        "dont",
-        "untap",
-        "during",
-        "their",
-        "controllers",
-        "untap",
-    ]) && matches!(words.last(), Some(&"step") | Some(&"steps"))
+    if slice_starts_with(
+        &words,
+        &[
+            "lands",
+            "dont",
+            "untap",
+            "during",
+            "their",
+            "controllers",
+            "untap",
+        ],
+    ) && matches!(words.last(), Some(&"step") | Some(&"steps"))
     {
         return Some(StaticAbility::restriction(
             crate::effect::Restriction::untap(ObjectFilter::land()),
@@ -1566,9 +1605,10 @@ pub(crate) fn parse_filter_dont_untap_during_controllers_untap_steps_line(
     }
 
     let tail = line_words.get(dont_word_idx + 2..).unwrap_or_default();
-    let has_supported_tail = (slice_starts_with(&tail, &["during", "their", "controllers", "untap"])
-        || slice_starts_with(&tail, &["during", "its", "controllers", "untap"]))
-        && matches!(tail.last(), Some(&"step") | Some(&"steps"));
+    let has_supported_tail =
+        (slice_starts_with(&tail, &["during", "their", "controllers", "untap"])
+            || slice_starts_with(&tail, &["during", "its", "controllers", "untap"]))
+            && matches!(tail.last(), Some(&"step") | Some(&"steps"));
     if !has_supported_tail {
         return Ok(None);
     }
@@ -1614,7 +1654,9 @@ fn parse_graveyard_metric_threshold_condition(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(crate::static_abilities::GraveyardCountMetric, u32)>, CardTextError> {
     let words_all = crate::cards::builders::parser::lexed_words(tokens);
-    if !slice_starts_with(&words_all, &["there", "are"]) && !slice_starts_with(&words_all, &["there", "is"]) {
+    if !slice_starts_with(&words_all, &["there", "are"])
+        && !slice_starts_with(&words_all, &["there", "is"])
+    {
         return Ok(None);
     }
 
@@ -1729,13 +1771,12 @@ pub(crate) fn parse_enters_tapped_with_choose_color_line(
     {
         return Ok(None);
     }
-    let tapped_word_idx = find_index(&clause_words, |word| *word == "tapped")
-        .ok_or_else(|| {
-            CardTextError::ParseError(format!(
-                "missing tapped keyword in enters-tapped clause (clause: '{}')",
-                clause_words.join(" ")
-            ))
-        })?;
+    let tapped_word_idx = find_index(&clause_words, |word| *word == "tapped").ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "missing tapped keyword in enters-tapped clause (clause: '{}')",
+            clause_words.join(" ")
+        ))
+    })?;
     let tapped_token_idx =
         token_index_for_word_index(tokens, tapped_word_idx).ok_or_else(|| {
             CardTextError::ParseError(format!(
@@ -1791,9 +1832,9 @@ fn parse_as_enters_choice_subject_words<'a>(
     let mut idx = 1usize;
     let display_subject = if words.get(idx) == Some(&"this") {
         idx += 1;
-        if let Some(pair_idx) =
-            find_index(this_kind_display_pairs, |(kind, _)| words.get(idx) == Some(kind))
-        {
+        if let Some(pair_idx) = find_index(this_kind_display_pairs, |(kind, _)| {
+            words.get(idx) == Some(kind)
+        }) {
             let (_, display) = this_kind_display_pairs[pair_idx];
             idx += 1;
             display
@@ -2084,7 +2125,9 @@ fn parse_trigger_duplication_event_matcher(
         parse_object_filter(&trim_edge_punctuation(subject_tokens), false)
     };
 
-    if slice_starts_with(&phrase_words, &["turning"]) && slice_ends_with(&phrase_words, &["face", "up"]) {
+    if slice_starts_with(&phrase_words, &["turning"])
+        && slice_ends_with(&phrase_words, &["face", "up"])
+    {
         if tokens.len() <= 3 {
             return Err(CardTextError::ParseError(format!(
                 "missing turned-face-up subject in trigger-duplication clause (clause: '{}')",
@@ -3193,7 +3236,10 @@ pub(crate) fn parse_spell_cost_increase_per_target_beyond_first_line(
     if !slice_starts_with(&words, &["this", "spell", "costs"]) {
         return Ok(None);
     }
-    if !slice_contains(&words, &"more") || !slice_contains(&words, &"target") || !slice_contains(&words, &"beyond") {
+    if !slice_contains(&words, &"more")
+        || !slice_contains(&words, &"target")
+        || !slice_contains(&words, &"beyond")
+    {
         return Ok(None);
     }
 
@@ -3255,7 +3301,8 @@ pub(crate) fn parse_if_this_spell_costs_less_to_cast_line(
             "missing cost modifier amount".to_string(),
         ));
     };
-    let remaining_words = crate::cards::builders::parser::lexed_words(amount_tokens.get(used..).unwrap_or_default());
+    let remaining_words =
+        crate::cards::builders::parser::lexed_words(amount_tokens.get(used..).unwrap_or_default());
     if !slice_contains(&remaining_words, &"less") || !slice_contains(&remaining_words, &"cast") {
         return Ok(None);
     }
@@ -3314,7 +3361,8 @@ pub(crate) fn parse_if_this_spell_costs_less_to_cast_line_lexed(
             "missing cost modifier amount".to_string(),
         ));
     };
-    let remaining_words = crate::cards::builders::parser::lexed_words(lowered_amount.get(used..).unwrap_or_default());
+    let remaining_words =
+        crate::cards::builders::parser::lexed_words(lowered_amount.get(used..).unwrap_or_default());
     if !slice_contains(&remaining_words, &"less") || !slice_contains(&remaining_words, &"cast") {
         return Ok(None);
     }
@@ -3351,12 +3399,16 @@ pub(crate) fn parse_this_spell_target_condition(
     if slice_starts_with(&target_words, &["you"]) {
         return Some(ThisSpellCostCondition::TargetsPlayer(PlayerFilter::You));
     }
-    if slice_starts_with(&target_words, &["an", "opponent"]) || slice_starts_with(&target_words, &["opponent"]) {
+    if slice_starts_with(&target_words, &["an", "opponent"])
+        || slice_starts_with(&target_words, &["opponent"])
+    {
         return Some(ThisSpellCostCondition::TargetsPlayer(
             PlayerFilter::Opponent,
         ));
     }
-    if slice_starts_with(&target_words, &["a", "player"]) || slice_starts_with(&target_words, &["player"]) {
+    if slice_starts_with(&target_words, &["a", "player"])
+        || slice_starts_with(&target_words, &["player"])
+    {
         return Some(ThisSpellCostCondition::TargetsPlayer(PlayerFilter::Any));
     }
     parse_object_filter(&target_tokens, false)
@@ -3460,7 +3512,8 @@ pub(crate) fn parse_this_spell_cost_condition(
     {
         return Some(ThisSpellCostCondition::CreatureLeftBattlefieldUnderYourControlThisTurn);
     }
-    if (slice_starts_with(&w, &["youve", "cast", "another"]) || slice_starts_with(&w, &["you", "cast", "another"]))
+    if (slice_starts_with(&w, &["youve", "cast", "another"])
+        || slice_starts_with(&w, &["you", "cast", "another"]))
         && slice_ends_with(&w, &["this", "turn"])
     {
         if slice_contains(&w, &"instant") || slice_contains(&w, &"sorcery") {
@@ -3575,7 +3628,9 @@ pub(crate) fn parse_this_spell_cost_condition(
         }
     }
 
-    if slice_starts_with(&w, &["there", "are", "no"]) && slice_ends_with(&w, &["in", "your", "hand"]) {
+    if slice_starts_with(&w, &["there", "are", "no"])
+        && slice_ends_with(&w, &["in", "your", "hand"])
+    {
         let filter_tokens = trim_commas(tokens.get(3..).unwrap_or_default());
         if let Ok(filter) = parse_object_filter(&filter_tokens, false) {
             return Some(ThisSpellCostCondition::NoCardsInHandMatching {
@@ -3586,9 +3641,12 @@ pub(crate) fn parse_this_spell_cost_condition(
     }
     if ((slice_starts_with(&w, &["you", "have", "no", "other", "creature", "cards"])
         && contains_window(&w, &["or", "if"]))
-        || slice_starts_with(&w, &[
-            "the", "only", "other", "creature", "cards", "in", "your", "hand", "are", "named",
-        ]))
+        || slice_starts_with(
+            &w,
+            &[
+                "the", "only", "other", "creature", "cards", "in", "your", "hand", "are", "named",
+            ],
+        ))
         && let Some(named_idx) = find_index(&w, |word| *word == "named")
         && named_idx + 1 < w.len()
     {
@@ -3598,7 +3656,8 @@ pub(crate) fn parse_this_spell_cost_condition(
         }
     }
 
-    if slice_starts_with(&w, &["there", "is"]) && slice_ends_with(&w, &["in", "your", "graveyard"]) {
+    if slice_starts_with(&w, &["there", "is"]) && slice_ends_with(&w, &["in", "your", "graveyard"])
+    {
         let filter_tokens = trim_commas(tokens.get(2..).unwrap_or_default());
         if let Ok(filter) = parse_object_filter(&filter_tokens, false) {
             return Some(ThisSpellCostCondition::CardInYourGraveyardMatching {
@@ -3888,9 +3947,9 @@ pub(crate) fn parse_spells_cost_modifier_line(
         return Ok(None);
     }
 
-    let Some(spells_token_idx) =
-        find_index(tokens, |token| token.is_word("spell") || token.is_word("spells"))
-    else {
+    let Some(spells_token_idx) = find_index(tokens, |token| {
+        token.is_word("spell") || token.is_word("spells")
+    }) else {
         return Ok(None);
     };
 
@@ -4068,8 +4127,8 @@ pub(crate) fn parse_spells_cost_modifier_line(
     // "This spell costs {X} less to cast, where X is the number of differently named lands you control."
     if contains_window(&remaining_words, &["where", "x", "is"]) {
         let clause = clause_words.join(" ");
-        let where_word_idx = find_window_index(&remaining_words, &["where", "x", "is"])
-            .unwrap_or(0);
+        let where_word_idx =
+            find_window_index(&remaining_words, &["where", "x", "is"]).unwrap_or(0);
         let where_token_idx = token_index_for_word_index(remaining_tokens, where_word_idx)
             .ok_or_else(|| {
                 CardTextError::ParseError(format!(
@@ -4231,12 +4290,16 @@ pub(crate) fn parse_trailing_targets_condition_in_cost_modifier(
         filter.targets_object = None;
         return Ok(());
     }
-    if slice_starts_with(&target_words, &["opponent"]) || slice_starts_with(&target_words, &["opponents"]) {
+    if slice_starts_with(&target_words, &["opponent"])
+        || slice_starts_with(&target_words, &["opponents"])
+    {
         filter.targets_player = Some(PlayerFilter::Opponent);
         filter.targets_object = None;
         return Ok(());
     }
-    if slice_starts_with(&target_words, &["player"]) || slice_starts_with(&target_words, &["players"]) {
+    if slice_starts_with(&target_words, &["player"])
+        || slice_starts_with(&target_words, &["players"])
+    {
         filter.targets_player = Some(PlayerFilter::Any);
         filter.targets_object = None;
         return Ok(());
@@ -4254,7 +4317,9 @@ pub(crate) fn parse_flashback_cost_modifier_line(
     if clause_words.len() < 6 || clause_words.first().copied() != Some("flashback") {
         return Ok(None);
     }
-    let cost_idx = rfind_index(tokens, |token| token.is_word("cost") || token.is_word("costs"));
+    let cost_idx = rfind_index(tokens, |token| {
+        token.is_word("cost") || token.is_word("costs")
+    });
     let Some(cost_idx) = cost_idx else {
         return Ok(None);
     };
@@ -4307,7 +4372,10 @@ pub(crate) fn parse_foretelling_cards_cost_modifier_line(
     if clause_words.len() < 7 {
         return Ok(None);
     }
-    if !slice_starts_with(&clause_words, &["foretelling", "cards", "from", "your", "hand", "costs"]) {
+    if !slice_starts_with(
+        &clause_words,
+        &["foretelling", "cards", "from", "your", "hand", "costs"],
+    ) {
         return Ok(None);
     }
 
@@ -4413,35 +4481,44 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
         return Ok(None);
     }
     if slice_starts_with(&filter_words, &["creature", "that", "died", "this", "turn"])
-        || slice_starts_with(&filter_words, &["creatures", "that", "died", "this", "turn"])
+        || slice_starts_with(
+            &filter_words,
+            &["creatures", "that", "died", "this", "turn"],
+        )
     {
         return Ok(Some(Value::CreaturesDiedThisTurn));
     }
-    if slice_starts_with(&filter_words, &[
-        "1",
-        "life",
-        "your",
-        "opponents",
-        "have",
-        "lost",
-        "this",
-        "turn",
-    ]) || slice_starts_with(&filter_words, &[
-        "life",
-        "your",
-        "opponents",
-        "have",
-        "lost",
-        "this",
-        "turn",
-    ]) || slice_starts_with(&filter_words, &["1", "life", "opponents", "have", "lost", "this", "turn"])
-        || slice_starts_with(&filter_words, &["life", "opponents", "have", "lost", "this", "turn"])
-    {
+    if slice_starts_with(
+        &filter_words,
+        &[
+            "1",
+            "life",
+            "your",
+            "opponents",
+            "have",
+            "lost",
+            "this",
+            "turn",
+        ],
+    ) || slice_starts_with(
+        &filter_words,
+        &["life", "your", "opponents", "have", "lost", "this", "turn"],
+    ) || slice_starts_with(
+        &filter_words,
+        &["1", "life", "opponents", "have", "lost", "this", "turn"],
+    ) || slice_starts_with(
+        &filter_words,
+        &["life", "opponents", "have", "lost", "this", "turn"],
+    ) {
         return Ok(Some(Value::LifeLostThisTurn(PlayerFilter::Opponent)));
     }
-    if slice_starts_with(&filter_words, &["creature", "that", "died", "under", "your", "control"])
-        || slice_starts_with(&filter_words, &["creatures", "that", "died", "under", "your", "control"])
-    {
+    if slice_starts_with(
+        &filter_words,
+        &["creature", "that", "died", "under", "your", "control"],
+    ) || slice_starts_with(
+        &filter_words,
+        &["creatures", "that", "died", "under", "your", "control"],
+    ) {
         if slice_contains(&filter_words, &"this") && slice_contains(&filter_words, &"turn") {
             return Ok(Some(Value::CreaturesDiedThisTurnControlledBy(
                 PlayerFilter::You,
@@ -4449,7 +4526,8 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
         }
     }
     // "for each spell you've cast this turn" (and limited variants like "instant and sorcery spell")
-    let has_spell_cast_turn = (slice_contains(&filter_words, &"spell") || slice_contains(&filter_words, &"spells"))
+    let has_spell_cast_turn = (slice_contains(&filter_words, &"spell")
+        || slice_contains(&filter_words, &"spells"))
         && (slice_contains(&filter_words, &"cast") || slice_contains(&filter_words, &"casts"))
         && slice_contains(&filter_words, &"this")
         && slice_contains(&filter_words, &"turn");
@@ -4512,8 +4590,7 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
     if contains_window(&filter_words, &["card", "type"])
         && slice_contains(&filter_words, &"graveyard")
     {
-        let player = if contains_window(&filter_words, &["your", "graveyard"])
-        {
+        let player = if contains_window(&filter_words, &["your", "graveyard"]) {
             PlayerFilter::You
         } else if find_window_by(&filter_words, 2, |pair| {
             pair == ["opponents", "graveyard"] || pair == ["opponent", "graveyard"]
@@ -4527,17 +4604,25 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
         return Ok(Some(Value::CardTypesInGraveyard(player)));
     }
 
-    if slice_starts_with(&filter_words, &[
-        "color", "of", "mana", "spent", "to", "cast", "this", "spell",
-    ]) || slice_starts_with(&filter_words, &[
-        "colors", "of", "mana", "spent", "to", "cast", "this", "spell",
-    ]) || slice_starts_with(&filter_words, &[
-        "color", "of", "mana", "used", "to", "cast", "this", "spell",
-    ])
-        || slice_starts_with(&filter_words, &[
+    if slice_starts_with(
+        &filter_words,
+        &[
+            "color", "of", "mana", "spent", "to", "cast", "this", "spell",
+        ],
+    ) || slice_starts_with(
+        &filter_words,
+        &[
+            "colors", "of", "mana", "spent", "to", "cast", "this", "spell",
+        ],
+    ) || slice_starts_with(
+        &filter_words,
+        &["color", "of", "mana", "used", "to", "cast", "this", "spell"],
+    ) || slice_starts_with(
+        &filter_words,
+        &[
             "colors", "of", "mana", "used", "to", "cast", "this", "spell",
-        ])
-    {
+        ],
+    ) {
         return Ok(Some(Value::ColorsOfManaSpentToCastThisSpell));
     }
     if slice_starts_with(&filter_words, &["creature", "in", "your", "party"])
@@ -4685,42 +4770,78 @@ pub(crate) fn parse_add_mana_equal_amount_value(tokens: &[OwnedLexToken]) -> Opt
             || slice_starts_with(&segment, &["that", "spells", "mana", "value"])
             || slice_starts_with(&segment, &["that", "card", "mana", "value"])
             || slice_starts_with(&segment, &["that", "cards", "mana", "value"])
-            || slice_starts_with(&segment, &[
-                "the",
-                "mana",
-                "value",
-                "of",
-                "the",
-                "sacrificed",
-                "creature",
-            ])
-            || slice_starts_with(&segment, &[
-                "the",
-                "mana",
-                "value",
-                "of",
-                "the",
-                "sacrificed",
-                "artifact",
-            ])
-            || slice_starts_with(&segment, &[
-                "the",
-                "mana",
-                "value",
-                "of",
-                "the",
-                "sacrificed",
-                "permanent",
-            ])
-            || slice_starts_with(&segment, &["mana", "value", "of", "the", "sacrificed", "creature"])
-            || slice_starts_with(&segment, &["mana", "value", "of", "the", "sacrificed", "artifact"])
-            || slice_starts_with(&segment, &["mana", "value", "of", "the", "sacrificed", "permanent"])
-            || slice_starts_with(&segment, &["the", "sacrificed", "creature", "mana", "value"])
-            || slice_starts_with(&segment, &["the", "sacrificed", "artifact", "mana", "value"])
-            || slice_starts_with(&segment, &["the", "sacrificed", "permanent", "mana", "value"])
-            || slice_starts_with(&segment, &["the", "sacrificed", "creatures", "mana", "value"])
-            || slice_starts_with(&segment, &["the", "sacrificed", "artifacts", "mana", "value"])
-            || slice_starts_with(&segment, &["the", "sacrificed", "permanents", "mana", "value"])
+            || slice_starts_with(
+                &segment,
+                &[
+                    "the",
+                    "mana",
+                    "value",
+                    "of",
+                    "the",
+                    "sacrificed",
+                    "creature",
+                ],
+            )
+            || slice_starts_with(
+                &segment,
+                &[
+                    "the",
+                    "mana",
+                    "value",
+                    "of",
+                    "the",
+                    "sacrificed",
+                    "artifact",
+                ],
+            )
+            || slice_starts_with(
+                &segment,
+                &[
+                    "the",
+                    "mana",
+                    "value",
+                    "of",
+                    "the",
+                    "sacrificed",
+                    "permanent",
+                ],
+            )
+            || slice_starts_with(
+                &segment,
+                &["mana", "value", "of", "the", "sacrificed", "creature"],
+            )
+            || slice_starts_with(
+                &segment,
+                &["mana", "value", "of", "the", "sacrificed", "artifact"],
+            )
+            || slice_starts_with(
+                &segment,
+                &["mana", "value", "of", "the", "sacrificed", "permanent"],
+            )
+            || slice_starts_with(
+                &segment,
+                &["the", "sacrificed", "creature", "mana", "value"],
+            )
+            || slice_starts_with(
+                &segment,
+                &["the", "sacrificed", "artifact", "mana", "value"],
+            )
+            || slice_starts_with(
+                &segment,
+                &["the", "sacrificed", "permanent", "mana", "value"],
+            )
+            || slice_starts_with(
+                &segment,
+                &["the", "sacrificed", "creatures", "mana", "value"],
+            )
+            || slice_starts_with(
+                &segment,
+                &["the", "sacrificed", "artifacts", "mana", "value"],
+            )
+            || slice_starts_with(
+                &segment,
+                &["the", "sacrificed", "permanents", "mana", "value"],
+            )
             || slice_starts_with(&segment, &["sacrificed", "creature", "mana", "value"])
             || slice_starts_with(&segment, &["sacrificed", "artifact", "mana", "value"])
             || slice_starts_with(&segment, &["sacrificed", "permanent", "mana", "value"])
@@ -4808,36 +4929,54 @@ pub(crate) fn parse_add_mana_equal_amount_value(tokens: &[OwnedLexToken]) -> Opt
         || slice_starts_with(&tail, &["that", "spells", "mana", "value"])
         || slice_starts_with(&tail, &["that", "card", "mana", "value"])
         || slice_starts_with(&tail, &["that", "cards", "mana", "value"])
-        || slice_starts_with(&tail, &[
-            "the",
-            "mana",
-            "value",
-            "of",
-            "the",
-            "sacrificed",
-            "creature",
-        ])
-        || slice_starts_with(&tail, &[
-            "the",
-            "mana",
-            "value",
-            "of",
-            "the",
-            "sacrificed",
-            "artifact",
-        ])
-        || slice_starts_with(&tail, &[
-            "the",
-            "mana",
-            "value",
-            "of",
-            "the",
-            "sacrificed",
-            "permanent",
-        ])
-        || slice_starts_with(&tail, &["mana", "value", "of", "the", "sacrificed", "creature"])
-        || slice_starts_with(&tail, &["mana", "value", "of", "the", "sacrificed", "artifact"])
-        || slice_starts_with(&tail, &["mana", "value", "of", "the", "sacrificed", "permanent"])
+        || slice_starts_with(
+            &tail,
+            &[
+                "the",
+                "mana",
+                "value",
+                "of",
+                "the",
+                "sacrificed",
+                "creature",
+            ],
+        )
+        || slice_starts_with(
+            &tail,
+            &[
+                "the",
+                "mana",
+                "value",
+                "of",
+                "the",
+                "sacrificed",
+                "artifact",
+            ],
+        )
+        || slice_starts_with(
+            &tail,
+            &[
+                "the",
+                "mana",
+                "value",
+                "of",
+                "the",
+                "sacrificed",
+                "permanent",
+            ],
+        )
+        || slice_starts_with(
+            &tail,
+            &["mana", "value", "of", "the", "sacrificed", "creature"],
+        )
+        || slice_starts_with(
+            &tail,
+            &["mana", "value", "of", "the", "sacrificed", "artifact"],
+        )
+        || slice_starts_with(
+            &tail,
+            &["mana", "value", "of", "the", "sacrificed", "permanent"],
+        )
         || slice_starts_with(&tail, &["the", "sacrificed", "creature", "mana", "value"])
         || slice_starts_with(&tail, &["the", "sacrificed", "artifact", "mana", "value"])
         || slice_starts_with(&tail, &["the", "sacrificed", "permanent", "mana", "value"])
@@ -4891,7 +5030,10 @@ pub(crate) fn parse_legend_rule_doesnt_apply_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = crate::cards::builders::parser::lexed_words(tokens);
-    if slice_contains(&words, &"legend") && slice_contains(&words, &"rule") && slice_contains(&words, &"doesnt") {
+    if slice_contains(&words, &"legend")
+        && slice_contains(&words, &"rule")
+        && slice_contains(&words, &"doesnt")
+    {
         return Ok(Some(StaticAbility::legend_rule_doesnt_apply()));
     }
     Ok(None)
@@ -5666,8 +5808,10 @@ pub(crate) fn parse_doesnt_untap_during_untap_step_line(
         ]
         .as_slice(),
     ];
-    let prefix_len = find_index(&prefixes, |pattern| slice_starts_with(&clause_words, pattern))
-        .map(|idx| prefixes[idx].len());
+    let prefix_len = find_index(&prefixes, |pattern| {
+        slice_starts_with(&clause_words, pattern)
+    })
+    .map(|idx| prefixes[idx].len());
 
     if let Some(prefix_len) = prefix_len {
         let tail_tokens = trim_commas(&tokens[prefix_len..]);
@@ -6211,13 +6355,17 @@ pub(crate) fn parse_reduced_maximum_hand_size_line(
             Some(1)
         } else if slice_starts_with(&tail, &["opponent", "s"]) {
             Some(2)
-        } else if slice_starts_with(&tail, &["opponent"]) || slice_starts_with(&tail, &["opponents"]) {
+        } else if slice_starts_with(&tail, &["opponent"])
+            || slice_starts_with(&tail, &["opponents"])
+        {
             Some(1)
         } else if slice_starts_with(&tail, &["each", "player's"]) {
             Some(2)
         } else if slice_starts_with(&tail, &["each", "player", "s"]) {
             Some(3)
-        } else if slice_starts_with(&tail, &["each", "player"]) || slice_starts_with(&tail, &["each", "players"]) {
+        } else if slice_starts_with(&tail, &["each", "player"])
+            || slice_starts_with(&tail, &["each", "players"])
+        {
             Some(2)
         } else if slice_starts_with(&tail, &["player's"]) {
             Some(1)
@@ -6290,68 +6438,68 @@ pub(crate) fn parse_reduced_maximum_hand_size_line(
         return Ok(None);
     }
 
-    let (player, mut idx) = if slice_starts_with(&line_words, &["your"]) || slice_starts_with(&line_words, &["you"])
-    {
-        (crate::target::PlayerFilter::You, 1usize)
-    } else if slice_starts_with(&line_words, &["each", "opponent's"]) {
-        (crate::target::PlayerFilter::Opponent, 2usize)
-    } else if slice_starts_with(&line_words, &["each", "opponent"])
-        || slice_starts_with(&line_words, &["each", "opponents"])
-        || slice_starts_with(&line_words, &["each", "opponent", "s"])
-    {
-        (
-            crate::target::PlayerFilter::Opponent,
-            if slice_starts_with(&line_words, &["each", "opponent", "s"]) {
-                3usize
-            } else {
-                2usize
-            },
-        )
-    } else if slice_starts_with(&line_words, &["opponent's"]) {
-        (crate::target::PlayerFilter::Opponent, 1usize)
-    } else if slice_starts_with(&line_words, &["opponent"])
-        || slice_starts_with(&line_words, &["opponents"])
-        || slice_starts_with(&line_words, &["opponent", "s"])
-    {
-        (
-            crate::target::PlayerFilter::Opponent,
-            if slice_starts_with(&line_words, &["opponent", "s"]) {
-                2usize
-            } else {
-                1usize
-            },
-        )
-    } else if slice_starts_with(&line_words, &["each", "player's"]) {
-        (crate::target::PlayerFilter::Any, 2usize)
-    } else if slice_starts_with(&line_words, &["each", "player"])
-        || slice_starts_with(&line_words, &["each", "players"])
-        || slice_starts_with(&line_words, &["each", "player", "s"])
-    {
-        (
-            crate::target::PlayerFilter::Any,
-            if slice_starts_with(&line_words, &["each", "player", "s"]) {
-                3usize
-            } else {
-                2usize
-            },
-        )
-    } else if slice_starts_with(&line_words, &["player's"]) {
-        (crate::target::PlayerFilter::Any, 1usize)
-    } else if slice_starts_with(&line_words, &["player"])
-        || slice_starts_with(&line_words, &["players"])
-        || slice_starts_with(&line_words, &["player", "s"])
-    {
-        (
-            crate::target::PlayerFilter::Any,
-            if slice_starts_with(&line_words, &["player", "s"]) {
-                2usize
-            } else {
-                1usize
-            },
-        )
-    } else {
-        return Ok(None);
-    };
+    let (player, mut idx) =
+        if slice_starts_with(&line_words, &["your"]) || slice_starts_with(&line_words, &["you"]) {
+            (crate::target::PlayerFilter::You, 1usize)
+        } else if slice_starts_with(&line_words, &["each", "opponent's"]) {
+            (crate::target::PlayerFilter::Opponent, 2usize)
+        } else if slice_starts_with(&line_words, &["each", "opponent"])
+            || slice_starts_with(&line_words, &["each", "opponents"])
+            || slice_starts_with(&line_words, &["each", "opponent", "s"])
+        {
+            (
+                crate::target::PlayerFilter::Opponent,
+                if slice_starts_with(&line_words, &["each", "opponent", "s"]) {
+                    3usize
+                } else {
+                    2usize
+                },
+            )
+        } else if slice_starts_with(&line_words, &["opponent's"]) {
+            (crate::target::PlayerFilter::Opponent, 1usize)
+        } else if slice_starts_with(&line_words, &["opponent"])
+            || slice_starts_with(&line_words, &["opponents"])
+            || slice_starts_with(&line_words, &["opponent", "s"])
+        {
+            (
+                crate::target::PlayerFilter::Opponent,
+                if slice_starts_with(&line_words, &["opponent", "s"]) {
+                    2usize
+                } else {
+                    1usize
+                },
+            )
+        } else if slice_starts_with(&line_words, &["each", "player's"]) {
+            (crate::target::PlayerFilter::Any, 2usize)
+        } else if slice_starts_with(&line_words, &["each", "player"])
+            || slice_starts_with(&line_words, &["each", "players"])
+            || slice_starts_with(&line_words, &["each", "player", "s"])
+        {
+            (
+                crate::target::PlayerFilter::Any,
+                if slice_starts_with(&line_words, &["each", "player", "s"]) {
+                    3usize
+                } else {
+                    2usize
+                },
+            )
+        } else if slice_starts_with(&line_words, &["player's"]) {
+            (crate::target::PlayerFilter::Any, 1usize)
+        } else if slice_starts_with(&line_words, &["player"])
+            || slice_starts_with(&line_words, &["players"])
+            || slice_starts_with(&line_words, &["player", "s"])
+        {
+            (
+                crate::target::PlayerFilter::Any,
+                if slice_starts_with(&line_words, &["player", "s"]) {
+                    2usize
+                } else {
+                    1usize
+                },
+            )
+        } else {
+            return Ok(None);
+        };
 
     if line_words.get(idx..idx + 5) == Some(["maximum", "hand", "size", "is", "reduced"].as_slice())
     {
@@ -6507,8 +6655,8 @@ pub(crate) fn parse_exile_to_countered_exile_instead_of_graveyard_line(
 
     let has_would_put = contains_window(&words, &["would", "be", "put", "into"]);
     let has_from_anywhere = contains_window(&words, &["from", "anywhere"]);
-    let has_instead_exile = contains_window(&words, &["instead", "exile"])
-        || slice_contains(&words, &"exile");
+    let has_instead_exile =
+        contains_window(&words, &["instead", "exile"]) || slice_contains(&words, &"exile");
     if !has_would_put || !has_from_anywhere || !has_instead_exile {
         return Ok(None);
     }
@@ -6651,13 +6799,12 @@ pub(crate) fn parse_pay_life_or_enter_tapped_line(
         )));
     };
 
-    let if_dont_idx = find_window_index(&words, &["if", "you", "dont"])
-        .ok_or_else(|| {
-            CardTextError::ParseError(format!(
-                "unsupported pay-life ETB trailing clause (expected 'if you don't ...') (clause: '{}')",
-                words.join(" ")
-            ))
-        })?;
+    let if_dont_idx = find_window_index(&words, &["if", "you", "dont"]).ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "unsupported pay-life ETB trailing clause (expected 'if you don't ...') (clause: '{}')",
+            words.join(" ")
+        ))
+    })?;
 
     let trailing = &words[if_dont_idx + 3..];
     let valid_trailing = slice_starts_with(&trailing, &["it", "enters", "tapped"])
@@ -6776,18 +6923,25 @@ pub(crate) fn parse_spend_mana_as_any_color_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     let clause_words = crate::cards::builders::parser::lexed_words(tokens);
-    let (player, tail_start, display) = if slice_starts_with(&clause_words, &[
-        "players", "may", "spend", "mana", "as", "though", "it", "were", "mana", "of", "any",
-        "color",
-    ]) {
+    let (player, tail_start, display) = if slice_starts_with(
+        &clause_words,
+        &[
+            "players", "may", "spend", "mana", "as", "though", "it", "were", "mana", "of", "any",
+            "color",
+        ],
+    ) {
         (
             PlayerFilter::Any,
             12usize,
             "Players may spend mana as though it were mana of any color".to_string(),
         )
-    } else if slice_starts_with(&clause_words, &[
-        "you", "may", "spend", "mana", "as", "though", "it", "were", "mana", "of", "any", "color",
-    ]) {
+    } else if slice_starts_with(
+        &clause_words,
+        &[
+            "you", "may", "spend", "mana", "as", "though", "it", "were", "mana", "of", "any",
+            "color",
+        ],
+    ) {
         (PlayerFilter::You, 12usize, clause_words.join(" "))
     } else {
         return Ok(None);
@@ -6798,7 +6952,10 @@ pub(crate) fn parse_spend_mana_as_any_color_line(
         crate::effect::ManaSpendPermission::any_color(player)
     } else {
         let tail_words = crate::cards::builders::parser::lexed_words(&tail_tokens);
-        if slice_starts_with(&tail_words, &["to", "pay", "the", "activation", "costs", "of"]) {
+        if slice_starts_with(
+            &tail_words,
+            &["to", "pay", "the", "activation", "costs", "of"],
+        ) {
             let ability_words = crate::cards::builders::parser::lexed_words(&tail_tokens[6..]);
             if !ability_words
                 .iter()

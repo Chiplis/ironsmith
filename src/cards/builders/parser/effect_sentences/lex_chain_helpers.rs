@@ -12,6 +12,11 @@ use super::clause_primitives::{
     parse_attack_or_block_this_turn_if_able_clause, parse_attack_this_turn_if_able_clause,
     parse_must_block_if_able_clause,
 };
+use crate::cards::builders::scan_helpers::{
+    contains_window as word_slice_contains_sequence, find_str_by as find_word_index,
+    slice_contains_str as word_slice_contains, slice_ends_with as word_slice_ends_with,
+    slice_starts_with as word_slice_starts_with,
+};
 
 pub(crate) fn strip_leading_instead_prefix(tokens: &[OwnedLexToken]) -> Option<Vec<OwnedLexToken>> {
     if !tokens.first().is_some_and(|token| token.is_word("instead"))
@@ -54,71 +59,6 @@ fn is_basic_color_word(word: &str) -> bool {
         word,
         "white" | "blue" | "black" | "red" | "green" | "colorless"
     )
-}
-
-fn word_slice_starts_with(words: &[&str], prefix: &[&str]) -> bool {
-    if prefix.len() > words.len() {
-        return false;
-    }
-    for (idx, expected) in prefix.iter().enumerate() {
-        if words[idx] != *expected {
-            return false;
-        }
-    }
-    true
-}
-
-fn word_slice_ends_with(words: &[&str], suffix: &[&str]) -> bool {
-    if suffix.len() > words.len() {
-        return false;
-    }
-    let start = words.len() - suffix.len();
-    for (offset, expected) in suffix.iter().enumerate() {
-        if words[start + offset] != *expected {
-            return false;
-        }
-    }
-    true
-}
-
-fn word_slice_contains(words: &[&str], expected: &str) -> bool {
-    for word in words {
-        if *word == expected {
-            return true;
-        }
-    }
-    false
-}
-
-fn word_slice_contains_sequence(words: &[&str], sequence: &[&str]) -> bool {
-    if sequence.is_empty() {
-        return true;
-    }
-    if sequence.len() > words.len() {
-        return false;
-    }
-    for start in 0..=words.len() - sequence.len() {
-        let mut matches = true;
-        for (offset, expected) in sequence.iter().enumerate() {
-            if words[start + offset] != *expected {
-                matches = false;
-                break;
-            }
-        }
-        if matches {
-            return true;
-        }
-    }
-    false
-}
-
-fn find_word_index(words: &[&str], mut predicate: impl FnMut(&str) -> bool) -> Option<usize> {
-    for (idx, word) in words.iter().enumerate() {
-        if predicate(word) {
-            return Some(idx);
-        }
-    }
-    None
 }
 
 fn starts_with_each_player_or_opponent(words: &[&str]) -> bool {
@@ -590,8 +530,7 @@ fn is_must_block_if_able_clause_words_lexed(words: &[&str]) -> bool {
         return true;
     }
 
-    let Some(block_idx) = find_word_index(words, |word| matches!(word, "block" | "blocks"))
-    else {
+    let Some(block_idx) = find_word_index(words, |word| matches!(word, "block" | "blocks")) else {
         return false;
     };
     if block_idx == 0 || block_idx + 1 >= words.len() {

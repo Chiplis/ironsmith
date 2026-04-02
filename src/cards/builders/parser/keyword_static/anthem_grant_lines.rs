@@ -41,15 +41,6 @@ fn anthem_word_slice_contains_any(words: &[&str], expected: &[&str]) -> bool {
     false
 }
 
-fn anthem_word_slice_contains_all(words: &[&str], expected: &[&str]) -> bool {
-    for word in expected {
-        if !anthem_word_slice_contains(words, word) {
-            return false;
-        }
-    }
-    true
-}
-
 fn anthem_find_word_index(
     words: &[&str],
     mut predicate: impl FnMut(&str) -> bool,
@@ -140,7 +131,8 @@ pub(crate) fn parse_subject_cant_be_blocked_line(
         .iter()
         .map(String::as_str)
         .collect::<Vec<_>>();
-    if normalized.len() < 4 || !anthem_word_slice_ends_with(&normalized, &["cant", "be", "blocked"]) {
+    if normalized.len() < 4 || !anthem_word_slice_ends_with(&normalized, &["cant", "be", "blocked"])
+    {
         return Ok(None);
     }
 
@@ -214,7 +206,8 @@ pub(crate) fn parse_subject_cant_be_blocked_as_long_as_condition_line(
         .map(String::as_str)
         .collect::<Vec<_>>();
 
-    let Some(cant_idx) = anthem_find_word_sequence_index(&normalized, &["cant", "be", "blocked"]) else {
+    let Some(cant_idx) = anthem_find_word_sequence_index(&normalized, &["cant", "be", "blocked"])
+    else {
         return Ok(None);
     };
 
@@ -270,7 +263,8 @@ pub(crate) fn parse_subject_cant_be_blocked_as_long_as_defending_player_controls
         .map(String::as_str)
         .collect::<Vec<_>>();
 
-    let Some(cant_idx) = anthem_find_word_sequence_index(&normalized, &["cant", "be", "blocked"]) else {
+    let Some(cant_idx) = anthem_find_word_sequence_index(&normalized, &["cant", "be", "blocked"])
+    else {
         return Ok(None);
     };
 
@@ -411,7 +405,9 @@ pub(crate) fn parse_granted_keyword_static_line(
                 trailing_words.join(" ")
             )));
         };
-        let tail = crate::cards::builders::parser::lexed_words(exile_tokens.get(1 + used..).unwrap_or_default());
+        let tail = crate::cards::builders::parser::lexed_words(
+            exile_tokens.get(1 + used..).unwrap_or_default(),
+        );
         if tail.as_slice() != ["other", "cards", "from", "your", "graveyard"]
             && tail.as_slice() != ["other", "card", "from", "your", "graveyard"]
         {
@@ -491,7 +487,7 @@ pub(crate) fn parse_granted_keyword_static_line(
     let have_token_idx = anthem_rfind_token_index(tokens, |token| {
         token.is_word("have") || token.is_word("has")
     })
-        .ok_or_else(|| CardTextError::ParseError("missing granted-keyword verb".to_string()))?;
+    .ok_or_else(|| CardTextError::ParseError("missing granted-keyword verb".to_string()))?;
     if crate::cards::builders::parser::lexed_words(&tokens[..have_token_idx])
         .iter()
         .any(|word| *word == "get" || *word == "gets")
@@ -578,8 +574,7 @@ pub(crate) fn parse_granted_keyword_static_line(
     if let Some(idx) = anthem_find_word_sequence_index(
         &crate::cards::builders::parser::lexed_words(&tail_tokens),
         &["as", "long", "as"],
-    )
-    {
+    ) {
         if idx + 3 >= tail_tokens.len() {
             return Err(CardTextError::ParseError(format!(
                 "missing condition after trailing 'as long as' clause (clause: '{}')",
@@ -607,8 +602,7 @@ pub(crate) fn parse_granted_keyword_static_line(
             &keyword_words,
             &["and", "attacks", "each", "combat", "if", "able"],
         )
-    })
-    {
+    }) {
         keyword_tokens = trim_commas(&keyword_tokens[..and_idx]);
         grants_must_attack = true;
     }
@@ -730,7 +724,8 @@ pub(crate) fn parse_each_creature_cant_be_blocked_by_more_than_line(
     if clause_words.len() < 10 {
         return Ok(None);
     }
-    let Some(cant_idx) = anthem_find_word_sequence_index(&clause_words, &["cant", "be", "blocked"]) else {
+    let Some(cant_idx) = anthem_find_word_sequence_index(&clause_words, &["cant", "be", "blocked"])
+    else {
         return Ok(None);
     };
     if cant_idx < 2 || !anthem_word_slice_starts_with(&clause_words, &["each", "creature"]) {
@@ -794,21 +789,22 @@ pub(crate) fn parse_each_creature_can_block_additional_creature_each_combat_line
     if clause_words.len() < 9 {
         return Ok(None);
     }
-    let (_subject_len, you_control) =
-        if anthem_word_slice_starts_with(
-            &clause_words,
-            &["each", "creature", "you", "control", "can", "block"],
-        ) {
-            (4usize, true)
-        } else if anthem_word_slice_starts_with(&clause_words, &["each", "creature", "can", "block"]) {
-            (2usize, false)
-        } else {
-            return Ok(None);
-        };
+    let (_subject_len, you_control) = if anthem_word_slice_starts_with(
+        &clause_words,
+        &["each", "creature", "you", "control", "can", "block"],
+    ) {
+        (4usize, true)
+    } else if anthem_word_slice_starts_with(&clause_words, &["each", "creature", "can", "block"]) {
+        (2usize, false)
+    } else {
+        return Ok(None);
+    };
     if !anthem_word_slice_ends_with(&clause_words, &["each", "combat"]) {
         return Ok(None);
     }
-    let Some(additional_word_idx) = anthem_find_word_index(&clause_words, |word| word == "additional") else {
+    let Some(additional_word_idx) =
+        anthem_find_word_index(&clause_words, |word| word == "additional")
+    else {
         return Ok(None);
     };
     if additional_word_idx == 0 {
@@ -894,8 +890,7 @@ pub(crate) fn parse_lose_all_abilities_and_transform_base_pt_line(
     }
 
     let subject_end = is_idx.min(
-        anthem_find_word_index(&words, |word| matches!(word, "lose" | "loses"))
-            .unwrap_or(is_idx),
+        anthem_find_word_index(&words, |word| matches!(word, "lose" | "loses")).unwrap_or(is_idx),
     );
     if subject_end == 0 {
         return Ok(None);
@@ -942,7 +937,10 @@ pub(crate) fn parse_lose_all_abilities_and_transform_base_pt_line(
             continue;
         }
         if let Some(subtype) = parse_subtype_flexible(descriptor) {
-            if !creature_subtypes.iter().any(|existing| *existing == subtype) {
+            if !creature_subtypes
+                .iter()
+                .any(|existing| *existing == subtype)
+            {
                 creature_subtypes.push(subtype);
             }
             continue;
@@ -955,7 +953,9 @@ pub(crate) fn parse_lose_all_abilities_and_transform_base_pt_line(
     }
 
     if !creature_subtypes.is_empty()
-        && !set_card_types.iter().any(|existing| *existing == CardType::Creature)
+        && !set_card_types
+            .iter()
+            .any(|existing| *existing == CardType::Creature)
     {
         set_card_types.push(CardType::Creature);
     }
@@ -964,10 +964,13 @@ pub(crate) fn parse_lose_all_abilities_and_transform_base_pt_line(
     let tail_words = &words[with_idx + 6..];
     if let Some(named_idx) = anthem_find_word_index(tail_words, |word| word == "named") {
         let end_idx = anthem_find_word_index(&tail_words[named_idx + 1..], |word| {
-            matches!(word, "and" | "lose" | "loses" | "with" | "it" | "that" | "those" | "this")
+            matches!(
+                word,
+                "and" | "lose" | "loses" | "with" | "it" | "that" | "those" | "this"
+            )
         })
-            .map(|idx| named_idx + 1 + idx)
-            .unwrap_or(tail_words.len());
+        .map(|idx| named_idx + 1 + idx)
+        .unwrap_or(tail_words.len());
         if end_idx > named_idx + 1 {
             set_name = Some(title_case_words(&tail_words[named_idx + 1..end_idx]));
         }
@@ -1075,7 +1078,7 @@ pub(crate) fn parse_all_have_indestructible_line(
     let have_token_idx = anthem_find_token_index(tokens, |token| {
         token.is_word("have") || token.is_word("has")
     })
-        .ok_or_else(|| CardTextError::ParseError("missing granted-keyword verb".to_string()))?;
+    .ok_or_else(|| CardTextError::ParseError("missing granted-keyword verb".to_string()))?;
     let tail = trim_commas(&tokens[have_token_idx + 1..]);
     let Some(actions) = parse_ability_line(&tail) else {
         return Ok(None);
@@ -1112,7 +1115,10 @@ pub(crate) struct ParsedAnthemClause {
 }
 
 pub(crate) fn words_start_with(tokens: &[OwnedLexToken], expected: &[&str]) -> bool {
-    anthem_word_slice_starts_with(&crate::cards::builders::parser::lexed_words(tokens), expected)
+    anthem_word_slice_starts_with(
+        &crate::cards::builders::parser::lexed_words(tokens),
+        expected,
+    )
 }
 
 pub(crate) fn find_source_reference_start(tokens: &[OwnedLexToken]) -> Option<usize> {
@@ -1581,12 +1587,16 @@ pub(crate) fn parse_static_condition_clause(
     if clause_words == ["thiss", "power", "is", "even"]
         || clause_words == ["this", "power", "is", "even"]
     {
-        return Ok(crate::ConditionExpr::Unmodeled("thiss power is even".to_string()));
+        return Ok(crate::ConditionExpr::Unmodeled(
+            "thiss power is even".to_string(),
+        ));
     }
     if clause_words == ["thiss", "power", "is", "odd"]
         || clause_words == ["this", "power", "is", "odd"]
     {
-        return Ok(crate::ConditionExpr::Unmodeled("thiss power is odd".to_string()));
+        return Ok(crate::ConditionExpr::Unmodeled(
+            "thiss power is odd".to_string(),
+        ));
     }
     if clause_words == ["it", "is", "not", "your", "turn"]
         || clause_words == ["its", "not", "your", "turn"]
@@ -1632,28 +1642,19 @@ pub(crate) fn parse_static_condition_clause(
     }
     if clause_words
         == [
-            "your",
-            "life",
-            "total",
-            "is",
-            "less",
-            "than",
-            "or",
-            "equal",
-            "to",
-            "half",
-            "your",
-            "starting",
-            "life",
-            "total",
+            "your", "life", "total", "is", "less", "than", "or", "equal", "to", "half", "your",
+            "starting", "life", "total",
         ]
     {
-        return Ok(crate::ConditionExpr::PlayerLifeAtMostHalfStartingLifeTotal {
-            player: PlayerFilter::You,
-        });
+        return Ok(
+            crate::ConditionExpr::PlayerLifeAtMostHalfStartingLifeTotal {
+                player: PlayerFilter::You,
+            },
+        );
     }
 
-    if let Some(is_idx) = anthem_find_word_index(&clause_words, |word| matches!(word, "is" | "are")) {
+    if let Some(is_idx) = anthem_find_word_index(&clause_words, |word| matches!(word, "is" | "are"))
+    {
         let subject_words = &clause_words[..is_idx];
         let source_pronoun_subject = matches!(subject_words, ["it"] | ["its"]);
         if !subject_words.is_empty()
@@ -1710,18 +1711,26 @@ pub(crate) fn parse_static_condition_clause(
         }
 
         let filter_words = crate::cards::builders::parser::lexed_words(filter_tokens);
-        let filter = if let Some(in_idx) = anthem_find_word_index(&filter_words, |word| word == "in") {
-            let subject_words = &filter_words[..in_idx];
-            let zone_tail = &filter_words[in_idx..];
-            if is_source_reference_words(subject_words)
-                && matches!(
-                    zone_tail,
-                    ["in", "your", "graveyard"] | ["in", "graveyard"]
-                )
-            {
-                let mut filter = ObjectFilter::source();
-                filter.zone = Some(Zone::Graveyard);
-                filter
+        let filter =
+            if let Some(in_idx) = anthem_find_word_index(&filter_words, |word| word == "in") {
+                let subject_words = &filter_words[..in_idx];
+                let zone_tail = &filter_words[in_idx..];
+                if is_source_reference_words(subject_words)
+                    && matches!(zone_tail, ["in", "your", "graveyard"] | ["in", "graveyard"])
+                {
+                    let mut filter = ObjectFilter::source();
+                    filter.zone = Some(Zone::Graveyard);
+                    filter
+                } else {
+                    parse_permanent_card_count_filter(filter_tokens)
+                    .or_else(|| parse_object_filter(filter_tokens, false).ok())
+                    .ok_or_else(|| {
+                        CardTextError::ParseError(format!(
+                            "unsupported counted object phrase in static condition (clause: '{}')",
+                            clause_words.join(" ")
+                        ))
+                    })?
+                }
             } else {
                 parse_permanent_card_count_filter(filter_tokens)
                     .or_else(|| parse_object_filter(filter_tokens, false).ok())
@@ -1731,17 +1740,7 @@ pub(crate) fn parse_static_condition_clause(
                             clause_words.join(" ")
                         ))
                     })?
-            }
-        } else {
-            parse_permanent_card_count_filter(filter_tokens)
-                .or_else(|| parse_object_filter(filter_tokens, false).ok())
-                .ok_or_else(|| {
-                    CardTextError::ParseError(format!(
-                        "unsupported counted object phrase in static condition (clause: '{}')",
-                        clause_words.join(" ")
-                    ))
-                })?
-        };
+            };
         return Ok(crate::ConditionExpr::CountComparison {
             count: AnthemCountExpression::MatchingFilter(filter),
             comparison,
@@ -1834,7 +1833,8 @@ pub(crate) fn parse_static_condition_clause(
         || anthem_has_word_sequence(&clause_words, &["on", "him"])
         || anthem_has_word_sequence(&clause_words, &["on", "her"]);
     if has_counter_on_source
-        && let Some(has_idx) = anthem_find_word_index(&clause_words, |word| matches!(word, "has" | "have"))
+        && let Some(has_idx) =
+            anthem_find_word_index(&clause_words, |word| matches!(word, "has" | "have"))
     {
         let subject_words = &clause_words[..has_idx];
         let source_pronoun_subject = matches!(subject_words, ["it"] | ["its"]);
@@ -1847,8 +1847,7 @@ pub(crate) fn parse_static_condition_clause(
             let counter_words = crate::cards::builders::parser::lexed_words(counter_tokens);
             let Some(counter_word_idx) = anthem_find_word_index(&counter_words, |word| {
                 matches!(word, "counter" | "counters")
-            })
-            else {
+            }) else {
                 return Err(CardTextError::ParseError(format!(
                     "missing counter phrase in static condition (clause: '{}')",
                     clause_words.join(" ")
@@ -2429,10 +2428,11 @@ pub(crate) fn parse_soulbond_shared_line(
         return Ok(None);
     }
 
-    let Some(paired_word_idx) =
-        anthem_find_word_sequence_index(&clause_words, &["is", "paired", "with", "another", "creature"])
-            .filter(|idx| *idx >= 3)
-    else {
+    let Some(paired_word_idx) = anthem_find_word_sequence_index(
+        &clause_words,
+        &["is", "paired", "with", "another", "creature"],
+    )
+    .filter(|idx| *idx >= 3) else {
         return Ok(None);
     };
 
@@ -2465,13 +2465,17 @@ pub(crate) fn parse_soulbond_shared_line(
     }
 
     let rest_words = crate::cards::builders::parser::lexed_words(&rest);
-    let pt_modifier_idx = if anthem_word_slice_starts_with(&rest_words, &["both", "creatures", "get"]) {
-        Some(3usize)
-    } else if anthem_word_slice_starts_with(&rest_words, &["each", "of", "those", "creatures", "gets"]) {
-        Some(5usize)
-    } else {
-        None
-    };
+    let pt_modifier_idx =
+        if anthem_word_slice_starts_with(&rest_words, &["both", "creatures", "get"]) {
+            Some(3usize)
+        } else if anthem_word_slice_starts_with(
+            &rest_words,
+            &["each", "of", "those", "creatures", "gets"],
+        ) {
+            Some(5usize)
+        } else {
+            None
+        };
     if let Some(modifier_idx) = pt_modifier_idx {
         let modifier = *rest_words.get(modifier_idx).ok_or_else(|| {
             CardTextError::ParseError(format!(
@@ -2490,13 +2494,17 @@ pub(crate) fn parse_soulbond_shared_line(
         ]));
     }
 
-    let ability_start = if anthem_word_slice_starts_with(&rest_words, &["both", "creatures", "have"]) {
-        Some(3usize)
-    } else if anthem_word_slice_starts_with(&rest_words, &["each", "of", "those", "creatures", "has"]) {
-        Some(5usize)
-    } else {
-        None
-    };
+    let ability_start =
+        if anthem_word_slice_starts_with(&rest_words, &["both", "creatures", "have"]) {
+            Some(3usize)
+        } else if anthem_word_slice_starts_with(
+            &rest_words,
+            &["each", "of", "those", "creatures", "has"],
+        ) {
+            Some(5usize)
+        } else {
+            None
+        };
     if let Some(ability_start) = ability_start {
         let mut ability_tokens = trim_commas(&rest[ability_start..]);
         ability_tokens = trim_edge_punctuation(&ability_tokens);
@@ -2648,8 +2656,7 @@ pub(crate) fn parse_anthem_and_keyword_line(
     if let Some(as_long_idx) = anthem_find_word_sequence_index(
         &crate::cards::builders::parser::lexed_words(&ability_tokens),
         &["as", "long", "as"],
-    )
-    {
+    ) {
         let as_token_idx =
             token_index_for_word_index(&ability_tokens, as_long_idx).ok_or_else(|| {
                 CardTextError::ParseError(format!(
@@ -2709,8 +2716,9 @@ pub(crate) fn parse_anthem_and_keyword_line(
         if !ability_tail_tokens.is_empty() {
             let mut handled_split_keyword_activation = false;
             if ability_tail_tokens.iter().any(|token| token.is_colon()) {
-                let colon_idx = anthem_find_token_index(&ability_tail_tokens, |token| token.is_colon())
-                    .expect("validated colon");
+                let colon_idx =
+                    anthem_find_token_index(&ability_tail_tokens, |token| token.is_colon())
+                        .expect("validated colon");
                 if let Some(split_and_idx) =
                     anthem_rfind_index(colon_idx, |idx| ability_tail_tokens[idx].is_word("and"))
                 {
@@ -2762,7 +2770,8 @@ pub(crate) fn parse_anthem_and_keyword_line(
             }
         }
     } else if ability_tokens.iter().any(|token| token.is_colon()) {
-        let Some(colon_idx) = anthem_find_token_index(&ability_tokens, |token| token.is_colon()) else {
+        let Some(colon_idx) = anthem_find_token_index(&ability_tokens, |token| token.is_colon())
+        else {
             return Ok(None);
         };
         let Some(and_idx) = anthem_rfind_index(colon_idx, |idx| ability_tokens[idx].is_word("and"))
@@ -3029,24 +3038,23 @@ fn parse_triggered_granted_ability(
         return Ok(None);
     }
 
-    let ability =
-        match crate::cards::builders::parser::clause_support::parse_triggered_line_lexed(
-            &trigger_tokens,
-        )? {
-            LineAst::Triggered {
-                trigger,
-                effects,
-                max_triggers_per_turn,
-            } => parsed_triggered_ability(
-                trigger,
-                effects,
-                vec![Zone::Battlefield],
-                Some(crate::cards::builders::parser::lexed_words(&trigger_tokens).join(" ")),
-                max_triggers_per_turn.map(crate::ConditionExpr::MaxTimesEachTurn),
-                ReferenceImports::default(),
-            ),
-            _ => return Ok(None),
-        };
+    let ability = match crate::cards::builders::parser::clause_support::parse_triggered_line_lexed(
+        &trigger_tokens,
+    )? {
+        LineAst::Triggered {
+            trigger,
+            effects,
+            max_triggers_per_turn,
+        } => parsed_triggered_ability(
+            trigger,
+            effects,
+            vec![Zone::Battlefield],
+            Some(crate::cards::builders::parser::lexed_words(&trigger_tokens).join(" ")),
+            max_triggers_per_turn.map(crate::ConditionExpr::MaxTimesEachTurn),
+            ReferenceImports::default(),
+        ),
+        _ => return Ok(None),
+    };
     if parsed_triggered_ability_is_empty(&ability) {
         return Err(CardTextError::ParseError(format!(
             "unsupported empty triggered granted ability clause (clause: '{}')",
@@ -3115,8 +3123,7 @@ pub(crate) fn parse_anthem_with_trailing_segments_line(
 
     let Some(get_idx) = anthem_find_token_index(tokens, |token| {
         token.is_word("get") || token.is_word("gets")
-    })
-    else {
+    }) else {
         return Ok(None);
     };
 
@@ -3172,7 +3179,10 @@ pub(crate) fn parse_anthem_with_trailing_segments_line(
             extras.push(grant_for_anthem_subject(&clause, StaticAbility::must_attack()).into());
             continue;
         }
-        if anthem_word_slice_starts_with(&segment_words, &["cant", "be", "blocked", "by", "more", "than"]) {
+        if anthem_word_slice_starts_with(
+            &segment_words,
+            &["cant", "be", "blocked", "by", "more", "than"],
+        ) {
             let count_tokens = &segment[6..];
             let Some((count, used)) = parse_number(count_tokens) else {
                 return Ok(None);
@@ -3291,7 +3301,8 @@ pub(crate) fn parse_anthem_with_trailing_segments_line(
                 else {
                     return Ok(None);
                 };
-                let and_idx = anthem_rfind_index(colon_idx, |idx| ability_tokens[idx].is_word("and"));
+                let and_idx =
+                    anthem_rfind_index(colon_idx, |idx| ability_tokens[idx].is_word("and"));
                 if let Some(and_idx) = and_idx {
                     let keyword_head = trim_edge_punctuation(&ability_tokens[..and_idx]);
                     let activated_tail = trim_edge_punctuation(&ability_tokens[and_idx + 1..]);
@@ -3340,7 +3351,8 @@ pub(crate) fn parse_anthem_with_trailing_segments_line(
                 else {
                     return Ok(None);
                 };
-                let and_idx = anthem_rfind_index(colon_idx, |idx| ability_tokens[idx].is_word("and"));
+                let and_idx =
+                    anthem_rfind_index(colon_idx, |idx| ability_tokens[idx].is_word("and"));
                 let Some(and_idx) = and_idx else {
                     return Ok(None);
                 };
@@ -3527,8 +3539,7 @@ pub(crate) fn parse_source_can_attack_as_though_no_defender_as_long_as_line(
     let Some(can_idx) = anthem_find_word_sequence_index(
         &normalized,
         &[
-            "can", "attack", "as", "though", "it", "didnt", "have", "defender", "as", "long",
-            "as",
+            "can", "attack", "as", "though", "it", "didnt", "have", "defender", "as", "long", "as",
         ],
     ) else {
         return Ok(None);
@@ -3592,7 +3603,9 @@ pub(crate) fn parse_as_long_as_condition_can_attack_as_though_no_defender_line(
 
     let Some(can_idx) = anthem_find_word_sequence_index(
         &normalized,
-        &["can", "attack", "as", "though", "it", "didnt", "have", "defender"],
+        &[
+            "can", "attack", "as", "though", "it", "didnt", "have", "defender",
+        ],
     ) else {
         return Ok(None);
     };
@@ -3641,8 +3654,7 @@ pub(crate) fn parse_gets_and_attacks_each_combat_if_able_line(
     let clause_words = crate::cards::builders::parser::lexed_words(tokens);
     let Some(get_idx) = anthem_find_token_index(tokens, |token| {
         token.is_word("get") || token.is_word("gets")
-    })
-    else {
+    }) else {
         return Ok(None);
     };
     let Some(and_idx) = tokens
@@ -3692,8 +3704,7 @@ pub(crate) fn parse_anthem_and_granted_ability_line(
 
     let Some(get_idx) = anthem_find_token_index(tokens, |token| {
         token.is_word("get") || token.is_word("gets")
-    })
-    else {
+    }) else {
         return Ok(None);
     };
     let Some(and_idx) = tokens
@@ -3710,7 +3721,10 @@ pub(crate) fn parse_anthem_and_granted_ability_line(
     let mut result = vec![build_anthem_static_ability(&clause).into()];
     match tail_words.as_slice() {
         ["cant", "be", "blocked"] | ["cannot", "be", "blocked"] => {
-            result.push(grant_for_anthem_subject(&clause, StaticAbility::unblockable()));
+            result.push(grant_for_anthem_subject(
+                &clause,
+                StaticAbility::unblockable(),
+            ));
         }
         ["is", rest @ ..] | ["are", rest @ ..] => {
             let Some(family) = parse_every_subtype_family_tail(rest) else {
@@ -3780,9 +3794,7 @@ pub(crate) fn parse_subject_is_every_subtype_family_line(
 
     let subject = parse_anthem_subject(&subject_tokens)?;
     Ok(Some(every_subtype_family_for_subject(
-        &subject,
-        family,
-        condition,
+        &subject, family, condition,
     )))
 }
 
@@ -3814,7 +3826,8 @@ pub(crate) fn parse_has_base_power_toughness_static_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words_all = crate::cards::builders::parser::lexed_words(tokens);
-    let Some(has_idx) = anthem_find_word_index(&words_all, |word| matches!(word, "has" | "have")) else {
+    let Some(has_idx) = anthem_find_word_index(&words_all, |word| matches!(word, "has" | "have"))
+    else {
         return Ok(None);
     };
     let subject_tokens = trim_commas(&tokens[..has_idx]);
@@ -3975,8 +3988,7 @@ pub(crate) fn parse_has_base_power_toughness_and_granted_keywords_static_line(
 
     let Some(has_idx) = anthem_find_token_index(tokens, |token| {
         token.is_word("has") || token.is_word("have")
-    })
-    else {
+    }) else {
         return Ok(None);
     };
     if has_idx == 0 || has_idx + 1 >= tokens.len() {
@@ -4081,8 +4093,7 @@ pub(crate) fn parse_filter_has_granted_ability_line(
 
     let Some(has_idx) = anthem_rfind_token_index(tokens, |token| {
         token.is_word("has") || token.is_word("have")
-    })
-    else {
+    }) else {
         return Ok(None);
     };
     if has_idx == 0 || has_idx + 1 >= tokens.len() {

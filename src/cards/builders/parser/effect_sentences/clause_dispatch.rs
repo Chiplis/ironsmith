@@ -37,111 +37,16 @@ use super::{
     parse_simple_gain_ability_clause, parse_simple_lose_ability_clause, parse_subtype_word,
 };
 use crate::TagKey;
+use crate::cards::builders::scan_helpers::{
+    find_index as find_token_index, find_str_by as find_word_index_by,
+    find_str_index as find_word_index, find_window_index as find_word_sequence_index,
+    slice_contains_any as word_slice_contains_any, slice_contains_str as word_slice_contains,
+    slice_ends_with as word_slice_ends_with, slice_starts_with as word_slice_starts_with,
+};
 use crate::cards::builders::{CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, TargetAst};
 use crate::effect::{Until, Value};
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype};
-
-fn word_slice_starts_with(words: &[&str], prefix: &[&str]) -> bool {
-    if prefix.len() > words.len() {
-        return false;
-    }
-
-    for (idx, expected) in prefix.iter().enumerate() {
-        if words[idx] != *expected {
-            return false;
-        }
-    }
-
-    true
-}
-
-fn word_slice_ends_with(words: &[&str], suffix: &[&str]) -> bool {
-    if suffix.len() > words.len() {
-        return false;
-    }
-
-    let start = words.len() - suffix.len();
-    for (offset, expected) in suffix.iter().enumerate() {
-        if words[start + offset] != *expected {
-            return false;
-        }
-    }
-
-    true
-}
-
-fn word_slice_contains(words: &[&str], needle: &str) -> bool {
-    for word in words {
-        if *word == needle {
-            return true;
-        }
-    }
-    false
-}
-
-fn word_slice_contains_any(words: &[&str], needles: &[&str]) -> bool {
-    for needle in needles {
-        if word_slice_contains(words, needle) {
-            return true;
-        }
-    }
-    false
-}
-
-fn find_word_sequence_index(words: &[&str], phrase: &[&str]) -> Option<usize> {
-    if phrase.is_empty() || phrase.len() > words.len() {
-        return None;
-    }
-
-    for start in 0..=words.len() - phrase.len() {
-        let mut matched = true;
-        for (offset, expected) in phrase.iter().enumerate() {
-            if words[start + offset] != *expected {
-                matched = false;
-                break;
-            }
-        }
-        if matched {
-            return Some(start);
-        }
-    }
-
-    None
-}
-
-fn find_word_index(words: &[&str], needle: &str) -> Option<usize> {
-    for (idx, word) in words.iter().enumerate() {
-        if *word == needle {
-            return Some(idx);
-        }
-    }
-
-    None
-}
-
-fn find_word_index_by(words: &[&str], mut predicate: impl FnMut(&str) -> bool) -> Option<usize> {
-    for (idx, word) in words.iter().enumerate() {
-        if predicate(word) {
-            return Some(idx);
-        }
-    }
-
-    None
-}
-
-fn find_token_index(
-    tokens: &[OwnedLexToken],
-    mut predicate: impl FnMut(&OwnedLexToken) -> bool,
-) -> Option<usize> {
-    for (idx, token) in tokens.iter().enumerate() {
-        if predicate(token) {
-            return Some(idx);
-        }
-    }
-
-    None
-}
 
 fn render_lower_words(tokens: &[OwnedLexToken]) -> String {
     let word_view = LowercaseWordView::new(tokens);
@@ -507,7 +412,9 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         let looks_like_restriction_clause = find_negation_span(tokens).is_some()
             || word_slice_contains_any(
                 &clause_words,
-                &["blocked", "except", "unless", "attack", "attacks", "block", "blocks"],
+                &[
+                    "blocked", "except", "unless", "attack", "attacks", "block", "blocks",
+                ],
             );
         if looks_like_restriction_clause {
             return Err(CardTextError::ParseError(format!(
@@ -1070,9 +977,9 @@ pub(crate) fn parse_become_clause(
                 duration,
             });
         }
-        if let Some(creature_idx) =
-            find_word_index_by(become_words, |word| matches!(word, "creature" | "creatures"))
-        {
+        if let Some(creature_idx) = find_word_index_by(become_words, |word| {
+            matches!(word, "creature" | "creatures")
+        }) {
             let mut card_types = vec![CardType::Creature];
             let mut subtypes = Vec::new();
             let mut colors = crate::color::ColorSet::new();
@@ -1169,24 +1076,29 @@ pub(crate) fn parse_become_clause(
         });
     }
 
-    let addition_tail_len =
-        if word_slice_ends_with(become_words, &["in", "addition", "to", "its", "other", "types"]) {
-            Some(6usize)
-        } else if word_slice_ends_with(
-            become_words,
-            &["in", "addition", "to", "their", "other", "types"],
-        ) {
-            Some(6usize)
-        } else if word_slice_ends_with(become_words, &["in", "addition", "to", "its", "other", "type"]) {
-            Some(6usize)
-        } else if word_slice_ends_with(
-            become_words,
-            &["in", "addition", "to", "their", "other", "type"],
-        ) {
-            Some(6usize)
-        } else {
-            None
-        };
+    let addition_tail_len = if word_slice_ends_with(
+        become_words,
+        &["in", "addition", "to", "its", "other", "types"],
+    ) {
+        Some(6usize)
+    } else if word_slice_ends_with(
+        become_words,
+        &["in", "addition", "to", "their", "other", "types"],
+    ) {
+        Some(6usize)
+    } else if word_slice_ends_with(
+        become_words,
+        &["in", "addition", "to", "its", "other", "type"],
+    ) {
+        Some(6usize)
+    } else if word_slice_ends_with(
+        become_words,
+        &["in", "addition", "to", "their", "other", "type"],
+    ) {
+        Some(6usize)
+    } else {
+        None
+    };
     let card_type_words = if let Some(tail_len) = addition_tail_len {
         &become_words[..become_words.len().saturating_sub(tail_len)]
     } else {

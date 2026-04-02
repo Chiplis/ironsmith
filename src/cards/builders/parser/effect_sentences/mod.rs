@@ -74,8 +74,8 @@ pub(crate) use dispatch_entry::*;
 pub(crate) use dispatch_inner::*;
 pub(crate) use gain_ability::*;
 pub(crate) use search_library::*;
-pub(crate) use sentence_primitives::*;
 #[cfg(test)]
 pub(crate) use sentence_helpers::{
     parse_half_starting_life_total_value, parse_sentence_put_multiple_counters_on_target,
 };
+pub(crate) use sentence_primitives::*;

@@ -1,4 +1,9 @@
 use crate::cards::TextSpan;
+use crate::cards::builders::scan_helpers::{
+    find_index as find_token_index, find_window_index as find_word_sequence_index,
+    rfind_index as find_last_token_index, slice_contains_str as word_slice_contains,
+    slice_ends_with as word_slice_ends_with, slice_starts_with as word_slice_starts_with,
+};
 use crate::cards::builders::{
     CardTextError, ChoiceCount, EffectAst, IT_TAG, OwnedLexToken, PlayerAst, PredicateAst,
     SubjectAst, TargetAst,
@@ -27,107 +32,20 @@ fn render_clause_words(tokens: &[OwnedLexToken]) -> String {
     LowercaseWordView::new(tokens).to_word_refs().join(" ")
 }
 
-fn word_slice_starts_with(words: &[&str], expected: &[&str]) -> bool {
-    if words.len() < expected.len() {
-        return false;
-    }
-
-    let mut idx = 0usize;
-    while idx < expected.len() {
-        if words[idx] != expected[idx] {
-            return false;
-        }
-        idx += 1;
-    }
-
-    true
-}
-
-fn word_slice_ends_with(words: &[&str], expected: &[&str]) -> bool {
-    if words.len() < expected.len() {
-        return false;
-    }
-
-    let start = words.len() - expected.len();
-    let mut idx = 0usize;
-    while idx < expected.len() {
-        if words[start + idx] != expected[idx] {
-            return false;
-        }
-        idx += 1;
-    }
-
-    true
-}
-
-fn word_slice_contains(words: &[&str], expected: &str) -> bool {
-    let mut idx = 0usize;
-    while idx < words.len() {
-        if words[idx] == expected {
-            return true;
-        }
-        idx += 1;
-    }
-
-    false
-}
-
-fn find_word_sequence_index(words: &[&str], expected: &[&str]) -> Option<usize> {
-    if expected.is_empty() || words.len() < expected.len() {
-        return None;
-    }
-
-    let mut start = 0usize;
-    while start + expected.len() <= words.len() {
-        if word_slice_starts_with(&words[start..], expected) {
-            return Some(start);
-        }
-        start += 1;
-    }
-
-    None
-}
-
-fn find_token_index(
-    tokens: &[OwnedLexToken],
-    mut predicate: impl FnMut(&OwnedLexToken) -> bool,
-) -> Option<usize> {
-    let mut idx = 0usize;
-    while idx < tokens.len() {
-        if predicate(&tokens[idx]) {
-            return Some(idx);
-        }
-        idx += 1;
-    }
-
-    None
-}
-
-fn find_last_token_index(
-    tokens: &[OwnedLexToken],
-    mut predicate: impl FnMut(&OwnedLexToken) -> bool,
-) -> Option<usize> {
-    let mut idx = tokens.len();
-    while idx > 0 {
-        idx -= 1;
-        if predicate(&tokens[idx]) {
-            return Some(idx);
-        }
-    }
-
-    None
-}
-
 fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> Option<Value> {
     let clause_word_view = LowercaseWordView::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
     if word_slice_starts_with(&clause_words, &["creature", "that", "died", "this", "turn"])
-        || word_slice_starts_with(&clause_words, &["creatures", "that", "died", "this", "turn"])
+        || word_slice_starts_with(
+            &clause_words,
+            &["creatures", "that", "died", "this", "turn"],
+        )
     {
         return Some(Value::CreaturesDiedThisTurn);
     }
     if (word_slice_contains(&clause_words, "spell") || word_slice_contains(&clause_words, "spells"))
-        && (word_slice_contains(&clause_words, "cast") || word_slice_contains(&clause_words, "casts"))
+        && (word_slice_contains(&clause_words, "cast")
+            || word_slice_contains(&clause_words, "casts"))
         && word_slice_contains(&clause_words, "turn")
     {
         let player = if clause_words
@@ -159,18 +77,23 @@ fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> Option<Value
     }
     if word_slice_starts_with(
         &clause_words,
-        &["color", "of", "mana", "spent", "to", "cast", "this", "spell"],
+        &[
+            "color", "of", "mana", "spent", "to", "cast", "this", "spell",
+        ],
     ) || word_slice_starts_with(
         &clause_words,
-        &["colors", "of", "mana", "spent", "to", "cast", "this", "spell"],
+        &[
+            "colors", "of", "mana", "spent", "to", "cast", "this", "spell",
+        ],
     ) || word_slice_starts_with(
         &clause_words,
         &["color", "of", "mana", "used", "to", "cast", "this", "spell"],
     ) || word_slice_starts_with(
         &clause_words,
-        &["colors", "of", "mana", "used", "to", "cast", "this", "spell"],
-    )
-    {
+        &[
+            "colors", "of", "mana", "used", "to", "cast", "this", "spell",
+        ],
+    ) {
         return Some(Value::ColorsOfManaSpentToCastThisSpell);
     }
     if word_slice_starts_with(
@@ -181,12 +104,15 @@ fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> Option<Value
         &["basic", "land", "types", "among", "lands", "you", "control"],
     ) || word_slice_starts_with(
         &clause_words,
-        &["basic", "land", "type", "among", "the", "lands", "you", "control"],
+        &[
+            "basic", "land", "type", "among", "the", "lands", "you", "control",
+        ],
     ) || word_slice_starts_with(
         &clause_words,
-        &["basic", "land", "types", "among", "the", "lands", "you", "control"],
-    )
-    {
+        &[
+            "basic", "land", "types", "among", "the", "lands", "you", "control",
+        ],
+    ) {
         return Some(Value::BasicLandTypesAmong(
             ObjectFilter::land().you_control(),
         ));
@@ -255,16 +181,17 @@ fn parse_referential_counter_count_value(tokens: &[OwnedLexToken]) -> Option<(Va
         return None;
     }
 
-    let (source_spec, mut idx): (ChooseSpec, usize) = if word_slice_starts_with(&words_all, &["its"])
-        || word_slice_starts_with(&words_all, &["those"])
-        || word_slice_starts_with(&words_all, &["thiss"])
-    {
-        (ChooseSpec::Tagged(TagKey::from(IT_TAG)), 1)
-    } else if word_slice_starts_with(&words_all, &["this"]) {
-        (ChooseSpec::Source, 1)
-    } else {
-        return None;
-    };
+    let (source_spec, mut idx): (ChooseSpec, usize) =
+        if word_slice_starts_with(&words_all, &["its"])
+            || word_slice_starts_with(&words_all, &["those"])
+            || word_slice_starts_with(&words_all, &["thiss"])
+        {
+            (ChooseSpec::Tagged(TagKey::from(IT_TAG)), 1)
+        } else if word_slice_starts_with(&words_all, &["this"]) {
+            (ChooseSpec::Source, 1)
+        } else {
+            return None;
+        };
 
     let Some(word) = words_all.get(idx).copied() else {
         return None;
@@ -395,11 +322,11 @@ pub(crate) fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, 
     let rest = &tokens[used..];
     let clause_text = render_clause_words(tokens);
     let on_idx = find_token_index(rest, |token| token.is_word("on")).ok_or_else(|| {
-            CardTextError::ParseError(format!(
-                "missing counter target (clause: '{}')",
-                clause_text
-            ))
-        })?;
+        CardTextError::ParseError(format!(
+            "missing counter target (clause: '{}')",
+            clause_text
+        ))
+    })?;
 
     let mut target_tokens = rest[on_idx + 1..].to_vec();
     if let Some(equal_idx) = find_token_index(&target_tokens, |token| token.is_word("equal"))
@@ -541,8 +468,7 @@ pub(crate) fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, 
         }
         idx += 1;
     }
-    if let Some(for_each_idx) = for_each_idx
-    {
+    if let Some(for_each_idx) = for_each_idx {
         let base_target_tokens = trim_commas(&target_tokens[..for_each_idx]);
         let count_filter_tokens = trim_commas(&target_tokens[for_each_idx + 2..]);
         if !base_target_tokens.is_empty() && !count_filter_tokens.is_empty() {
@@ -722,8 +648,7 @@ fn parse_put_or_remove_counter_choice(
         }
         idx += 1;
     }
-    let Some(or_idx) = or_idx
-    else {
+    let Some(or_idx) = or_idx else {
         return Ok(None);
     };
 

@@ -10,6 +10,22 @@ pub(crate) fn slice_contains<T: PartialEq>(items: &[T], expected: &T) -> bool {
     items.iter().any(|item| item == expected)
 }
 
+pub(crate) fn slice_contains_str(items: &[&str], expected: &str) -> bool {
+    items.iter().any(|item| *item == expected)
+}
+
+pub(crate) fn slice_contains_any<T: PartialEq>(items: &[T], expected: &[T]) -> bool {
+    expected
+        .iter()
+        .any(|candidate| slice_contains(items, candidate))
+}
+
+pub(crate) fn slice_contains_all<T: PartialEq>(items: &[T], expected: &[T]) -> bool {
+    expected
+        .iter()
+        .all(|candidate| slice_contains(items, candidate))
+}
+
 pub(crate) fn iter_contains<I, T>(items: I, expected: &T) -> bool
 where
     I: IntoIterator,
@@ -42,24 +58,29 @@ pub(crate) fn find_index<T>(items: &[T], mut predicate: impl FnMut(&T) -> bool) 
     None
 }
 
-pub(crate) fn find_in_iter<I, T>(items: I, mut predicate: impl FnMut(&T) -> bool) -> Option<usize>
-where
-    I: IntoIterator,
-    I::Item: Borrow<T>,
-    T: ?Sized,
-{
-    for (idx, item) in items.into_iter().enumerate() {
-        if predicate(item.borrow()) {
+pub(crate) fn find_str_index(items: &[&str], expected: &str) -> Option<usize> {
+    find_index(items, |item| *item == expected)
+}
+
+pub(crate) fn find_str_by(
+    items: &[&str],
+    mut predicate: impl FnMut(&str) -> bool,
+) -> Option<usize> {
+    for (idx, item) in items.iter().enumerate() {
+        if predicate(item) {
             return Some(idx);
         }
     }
     None
 }
 
-pub(crate) fn rfind_index<T>(
-    items: &[T],
-    mut predicate: impl FnMut(&T) -> bool,
-) -> Option<usize> {
+pub(crate) fn find_any_str_index(items: &[&str], expected: &[&str]) -> Option<usize> {
+    find_index(items, |item| {
+        expected.iter().any(|candidate| *item == *candidate)
+    })
+}
+
+pub(crate) fn rfind_index<T>(items: &[T], mut predicate: impl FnMut(&T) -> bool) -> Option<usize> {
     for (idx, item) in items.iter().enumerate().rev() {
         if predicate(item) {
             return Some(idx);
@@ -68,22 +89,16 @@ pub(crate) fn rfind_index<T>(
     None
 }
 
-pub(crate) fn rfind_in_iter<I, T>(
-    items: I,
-    mut predicate: impl FnMut(&T) -> bool,
-) -> Option<usize>
-where
-    I: IntoIterator,
-    I::Item: Borrow<T>,
-    T: ?Sized,
-{
-    let mut last = None;
-    for (idx, item) in items.into_iter().enumerate() {
-        if predicate(item.borrow()) {
-            last = Some(idx);
+pub(crate) fn rfind_str_by(
+    items: &[&str],
+    mut predicate: impl FnMut(&str) -> bool,
+) -> Option<usize> {
+    for (idx, item) in items.iter().enumerate().rev() {
+        if predicate(item) {
+            return Some(idx);
         }
     }
-    last
+    None
 }
 
 pub(crate) fn find_window_index<T: PartialEq>(items: &[T], window: &[T]) -> Option<usize> {
@@ -136,11 +151,23 @@ pub(crate) fn str_starts_with(text: &str, prefix: &str) -> bool {
     text.starts_with(prefix)
 }
 
+pub(crate) fn str_starts_with_char(text: &str, expected: char) -> bool {
+    text.starts_with(expected)
+}
+
 pub(crate) fn str_ends_with(text: &str, suffix: &str) -> bool {
     text.ends_with(suffix)
 }
 
+pub(crate) fn str_ends_with_char(text: &str, expected: char) -> bool {
+    text.ends_with(expected)
+}
+
 pub(crate) fn str_find(text: &str, needle: &str) -> Option<usize> {
+    text.find(needle)
+}
+
+pub(crate) fn str_find_char(text: &str, needle: char) -> Option<usize> {
     text.find(needle)
 }
 
@@ -156,10 +183,7 @@ pub(crate) fn str_split_once<'a>(text: &'a str, needle: &str) -> Option<(&'a str
     text.split_once(needle)
 }
 
-pub(crate) fn str_split_once_char<'a>(
-    text: &'a str,
-    needle: char,
-) -> Option<(&'a str, &'a str)> {
+pub(crate) fn str_split_once_char<'a>(text: &'a str, needle: char) -> Option<(&'a str, &'a str)> {
     text.split_once(needle)
 }
 use std::borrow::Borrow;

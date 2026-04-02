@@ -1,3 +1,7 @@
+use crate::cards::builders::scan_helpers::{
+    str_contains, str_ends_with, str_ends_with_char, str_find, str_find_char, str_split_once,
+    str_split_once_char, str_starts_with, str_starts_with_char, str_strip_prefix, str_strip_suffix,
+};
 use crate::cards::builders::{
     CardDefinitionBuilder, CardTextError, LineInfo, MetadataLine, NormalizedLine, OwnedLexToken,
     ParseAnnotations,
@@ -32,68 +36,6 @@ pub(crate) struct PreprocessedMetadataLine {
 pub(crate) struct PreprocessedLine {
     pub(crate) info: LineInfo,
     pub(crate) tokens: Vec<OwnedLexToken>,
-}
-
-fn str_starts_with(text: &str, prefix: &str) -> bool {
-    text.get(..prefix.len()) == Some(prefix)
-}
-
-fn str_starts_with_char(text: &str, expected: char) -> bool {
-    text.chars().next().is_some_and(|ch| ch == expected)
-}
-
-fn str_ends_with(text: &str, suffix: &str) -> bool {
-    if suffix.len() > text.len() {
-        return false;
-    }
-    text.get(text.len() - suffix.len()..) == Some(suffix)
-}
-
-fn str_ends_with_char(text: &str, expected: char) -> bool {
-    text.chars().next_back().is_some_and(|ch| ch == expected)
-}
-
-fn str_contains(text: &str, needle: &str) -> bool {
-    if needle.is_empty() {
-        return true;
-    }
-    text.match_indices(needle).next().is_some()
-}
-
-fn str_strip_prefix<'a>(text: &'a str, prefix: &str) -> Option<&'a str> {
-    str_starts_with(text, prefix).then(|| &text[prefix.len()..])
-}
-
-fn str_strip_suffix<'a>(text: &'a str, suffix: &str) -> Option<&'a str> {
-    str_ends_with(text, suffix).then(|| &text[..text.len().saturating_sub(suffix.len())])
-}
-
-fn str_find(text: &str, needle: &str) -> Option<usize> {
-    text.match_indices(needle).next().map(|(idx, _)| idx)
-}
-
-fn str_find_char(text: &str, needle: char) -> Option<usize> {
-    for (idx, ch) in text.char_indices() {
-        if ch == needle {
-            return Some(idx);
-        }
-    }
-    None
-}
-
-fn str_split_once<'a>(text: &'a str, needle: &str) -> Option<(&'a str, &'a str)> {
-    let (idx, matched) = text.match_indices(needle).next()?;
-    Some((&text[..idx], &text[idx + matched.len()..]))
-}
-
-fn str_split_once_char(text: &str, needle: char) -> Option<(&str, &str)> {
-    for (idx, ch) in text.char_indices() {
-        if ch == needle {
-            let len = ch.len_utf8();
-            return Some((&text[..idx], &text[idx + len..]));
-        }
-    }
-    None
 }
 
 fn byte_slice_starts_with(slice: &[u8], prefix: &[u8]) -> bool {
@@ -159,7 +101,8 @@ fn split_parse_line_variants(line: &str) -> Vec<String> {
 
     let marker = ". when you spend this mana to cast ";
     let marker_compact = ".when you spend this mana to cast ";
-    let split_at = str_find(lower.as_str(), marker).or_else(|| str_find(lower.as_str(), marker_compact));
+    let split_at =
+        str_find(lower.as_str(), marker).or_else(|| str_find(lower.as_str(), marker_compact));
     if let Some(idx) = split_at {
         let first = line[..=idx].trim();
         let second = line[idx + 1..].trim();

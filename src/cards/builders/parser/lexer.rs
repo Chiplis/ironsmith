@@ -5,8 +5,22 @@ use winnow::stream::{Location, TokenSlice};
 
 use crate::cards::builders::{CardTextError, TextSpan};
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum LexerError {
+    #[default]
+    InvalidToken,
+}
+
+impl std::fmt::Display for LexerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LexerError::InvalidToken => f.write_str("encountered an unsupported token"),
+        }
+    }
+}
+
 #[derive(Logos, Debug, Clone, Copy, PartialEq, Eq)]
-#[logos(skip r"[ \t\r\n\f]+")]
+#[logos(skip r"[ \t\r\n\f]+", error = LexerError)]
 pub(crate) enum TokenKind {
     #[token("!")]
     Bang,
@@ -319,9 +333,9 @@ pub(crate) fn lex_line(line: &str, line_index: usize) -> Result<Vec<OwnedLexToke
         };
 
         let Ok(kind) = kind_result else {
+            let display_line = line_index + 1;
             return Err(CardTextError::ParseError(format!(
-                "rewrite lexer could not classify token '{}' at {}..{}",
-                slice, start, end
+                "rewrite lexer encountered an unsupported token {slice:?} on line {display_line} at {start}..{end}",
             )));
         };
 

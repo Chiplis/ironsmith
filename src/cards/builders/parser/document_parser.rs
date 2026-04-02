@@ -1,5 +1,10 @@
 use crate::PtValue;
 use crate::ability::ActivationTiming;
+use crate::cards::builders::scan_helpers::{
+    find_index as find_token_index, slice_ends_with as word_slice_ends_with, str_contains,
+    str_ends_with, str_ends_with_char, str_split_once, str_split_once_char, str_starts_with,
+    str_starts_with_char, str_strip_prefix, str_strip_suffix,
+};
 use crate::cards::builders::{
     CardDefinitionBuilder, CardTextError, LineAst, ParseAnnotations, ParsedLevelAbilityItemAst,
 };
@@ -34,6 +39,7 @@ use super::lower::{
 use super::preprocess::{
     PreprocessedDocument, PreprocessedItem, PreprocessedLine, preprocess_document,
 };
+use super::token_primitives::strip_lexed_suffix_phrase;
 use super::util::{
     is_untap_during_each_other_players_untap_step_words,
     parse_additional_cost_choice_options_lexed, parse_bargain_line_lexed, parse_bestow_line_lexed,
@@ -52,80 +58,6 @@ fn lexed_tokens(text: &str, line_index: usize) -> Result<Vec<OwnedLexToken>, Car
     lex_line(text, line_index)
 }
 
-fn str_starts_with(text: &str, prefix: &str) -> bool {
-    text.get(..prefix.len()) == Some(prefix)
-}
-
-fn str_starts_with_char(text: &str, expected: char) -> bool {
-    text.chars().next().is_some_and(|ch| ch == expected)
-}
-
-fn str_ends_with(text: &str, suffix: &str) -> bool {
-    if suffix.len() > text.len() {
-        return false;
-    }
-    text.get(text.len() - suffix.len()..) == Some(suffix)
-}
-
-fn str_ends_with_char(text: &str, expected: char) -> bool {
-    text.chars().next_back().is_some_and(|ch| ch == expected)
-}
-
-fn str_contains(text: &str, needle: &str) -> bool {
-    if needle.is_empty() {
-        return true;
-    }
-    text.match_indices(needle).next().is_some()
-}
-
-fn str_strip_prefix<'a>(text: &'a str, prefix: &str) -> Option<&'a str> {
-    str_starts_with(text, prefix).then(|| &text[prefix.len()..])
-}
-
-fn str_strip_suffix<'a>(text: &'a str, suffix: &str) -> Option<&'a str> {
-    str_ends_with(text, suffix).then(|| &text[..text.len().saturating_sub(suffix.len())])
-}
-
-fn str_split_once<'a>(text: &'a str, needle: &str) -> Option<(&'a str, &'a str)> {
-    let (idx, matched) = text.match_indices(needle).next()?;
-    Some((&text[..idx], &text[idx + matched.len()..]))
-}
-
-fn str_split_once_char(text: &str, needle: char) -> Option<(&str, &str)> {
-    for (idx, ch) in text.char_indices() {
-        if ch == needle {
-            let len = ch.len_utf8();
-            return Some((&text[..idx], &text[idx + len..]));
-        }
-    }
-    None
-}
-
-fn word_slice_ends_with(words: &[&str], suffix: &[&str]) -> bool {
-    if suffix.len() > words.len() {
-        return false;
-    }
-    let start = words.len() - suffix.len();
-    for (offset, expected) in suffix.iter().enumerate() {
-        if words[start + offset] != *expected {
-            return false;
-        }
-    }
-    true
-}
-
-fn find_token_index(
-    tokens: &[OwnedLexToken],
-    mut predicate: impl FnMut(&OwnedLexToken) -> bool,
-) -> Option<usize> {
-    for (idx, token) in tokens.iter().enumerate() {
-        if predicate(token) {
-            return Some(idx);
-        }
-    }
-    None
-}
-
 fn is_bullet_line(line: &str) -> bool {
     let trimmed = line.trim_start();
     if str_starts_with_char(trimmed, '•') || str_starts_with_char(trimmed, '*') {
@@ -141,40 +73,70 @@ fn is_bullet_line(line: &str) -> bool {
     false
 }
 
-fn parse_trigger_intro(word: &str) -> Option<TriggerIntroCst> {
-    match word {
-        "when" => Some(TriggerIntroCst::When),
-        "whenever" => Some(TriggerIntroCst::Whenever),
-        "at" => Some(TriggerIntroCst::At),
-        _ => None,
+fn parse_trigger_intro_tokens(tokens: &[OwnedLexToken]) -> Option<TriggerIntroCst> {
+    if tokens.first().is_some_and(|token| token.is_word("when")) {
+        Some(TriggerIntroCst::When)
+    } else if tokens
+        .first()
+        .is_some_and(|token| token.is_word("whenever"))
+    {
+        Some(TriggerIntroCst::Whenever)
+    } else if super::parser_support::is_at_trigger_intro_lexed(tokens, 0) {
+        Some(TriggerIntroCst::At)
+    } else {
+        None
     }
 }
 
-fn split_trigger_frequency_suffix(trigger_text: &str) -> (String, Option<u32>) {
-    for suffix in [
-        " for the first time each turn",
-        " for the first time this turn",
+fn split_trigger_frequency_suffix_tokens(tokens: &[OwnedLexToken]) -> (String, Option<u32>) {
+    for phrase in [
+        &["for", "the", "first", "time", "each", "turn"][..],
+        &["for", "the", "first", "time", "this", "turn"][..],
     ] {
-        if let Some(trimmed) = str_strip_suffix(trigger_text, suffix) {
-            return (trimmed.trim().to_string(), Some(1));
+        if let Some(rest) = strip_lexed_suffix_phrase(tokens, phrase) {
+            return (render_lexed_tokens(rest).trim().to_string(), Some(1));
         }
     }
-    (trigger_text.trim().to_string(), None)
+
+    (render_lexed_tokens(tokens).trim().to_string(), None)
 }
 
-fn split_trailing_trigger_cap_suffix(text: &str) -> (String, Option<u32>) {
-    let trimmed = text.trim();
-    for (suffix, count) in [
-        (". this ability triggers only once each turn.", 1),
-        (". this ability triggers only once each turn", 1),
-        (". this ability triggers only twice each turn.", 2),
-        (". this ability triggers only twice each turn", 2),
+fn split_trailing_trigger_cap_suffix_tokens(tokens: &[OwnedLexToken]) -> (String, Option<u32>) {
+    for (phrase, count) in [
+        (
+            &[
+                "this", "ability", "triggers", "only", "once", "each", "turn",
+            ][..],
+            1,
+        ),
+        (
+            &[
+                "this", "ability", "triggers", "only", "twice", "each", "turn",
+            ][..],
+            2,
+        ),
     ] {
-        if let Some(head) = str_strip_suffix(trimmed, suffix) {
-            return (head.trim().to_string(), Some(count));
+        let Some(head) = strip_lexed_suffix_phrase(tokens, phrase) else {
+            continue;
+        };
+        if !head.last().is_some_and(|token| token.is_period()) {
+            continue;
         }
+        let head = &head[..head.len() - 1];
+        return (render_lexed_tokens(head).trim().to_string(), Some(count));
     }
-    (trimmed.to_string(), None)
+
+    (render_lexed_tokens(tokens).trim().to_string(), None)
+}
+
+fn line_starts_with_trigger_intro_rewrite(text: &str, line_index: usize) -> bool {
+    let Ok(tokens) = lexed_tokens(text, line_index) else {
+        return false;
+    };
+    if super::parser_support::looks_like_spell_resolution_followup_intro_lexed(&tokens) {
+        return false;
+    }
+    parse_trigger_intro_tokens(&tokens).is_some()
 }
 
 fn parse_triggered_line_cst(line: &PreprocessedLine) -> Result<TriggeredLineCst, CardTextError> {
@@ -184,7 +146,7 @@ fn parse_triggered_line_cst(line: &PreprocessedLine) -> Result<TriggeredLineCst,
             line.info.raw_line
         )));
     };
-    let Some(_intro) = parse_trigger_intro(first_token.slice.as_str()) else {
+    let Some(_intro) = parse_trigger_intro_tokens(&line.tokens) else {
         return Err(CardTextError::ParseError(format!(
             "rewrite triggered parser expected trigger intro for '{}'",
             line.info.raw_line
@@ -196,14 +158,15 @@ fn parse_triggered_line_cst(line: &PreprocessedLine) -> Result<TriggeredLineCst,
             line.info.raw_line
         )));
     };
-    let (normalized, trailing_cap) =
-        split_trailing_trigger_cap_suffix(line.info.normalized.normalized.as_str());
+    let (normalized, trailing_cap) = split_trailing_trigger_cap_suffix_tokens(&line.tokens);
     if let Some(err) = diagnose_known_unsupported_rewrite_line(normalized.as_str()) {
         return Err(err);
     }
 
-    if str_starts_with(normalized.as_str(), "at the beginning of each combat, unless you pay ")
-        && let Some((_, nested_trigger)) = str_split_once(normalized.as_str(), ", whenever ")
+    if str_starts_with(
+        normalized.as_str(),
+        "at the beginning of each combat, unless you pay ",
+    ) && let Some((_, nested_trigger)) = str_split_once(normalized.as_str(), ", whenever ")
     {
         let nested_text = format!("whenever {nested_trigger}");
         let nested_line = rewrite_line_normalized(line, nested_text.as_str())?;
@@ -226,8 +189,9 @@ fn parse_triggered_line_cst(line: &PreprocessedLine) -> Result<TriggeredLineCst,
             continue;
         }
 
+        let trigger_tokens = lexed_tokens(trigger_candidate, line.info.line_index)?;
         let (trigger_text, max_triggers_per_turn) =
-            split_trigger_frequency_suffix(trigger_candidate);
+            split_trigger_frequency_suffix_tokens(&trigger_tokens);
         let max_triggers_per_turn = max_triggers_per_turn.or(trailing_cap);
         if trigger_text.is_empty() {
             continue;
@@ -503,7 +467,8 @@ fn parse_keyword_line_cst(
         Some(KeywordLineKindCst::Madness)
     } else if parse_escape_line_lexed(&tokens)?.is_some() {
         Some(KeywordLineKindCst::Escape)
-    } else if str_starts_with(normalized, "morph—") || str_starts_with(normalized, "megamorph—") {
+    } else if str_starts_with(normalized, "morph—") || str_starts_with(normalized, "megamorph—")
+    {
         None
     } else if parse_morph_keyword_line_lexed(&tokens)?.is_some() {
         Some(KeywordLineKindCst::Morph)
@@ -533,7 +498,10 @@ fn parse_keyword_line_cst(
 fn is_exert_attack_keyword_line(text: &str) -> bool {
     let trimmed = strip_exert_reminder_suffix(text);
     str_starts_with(trimmed, "you may exert ")
-        || str_starts_with(trimmed, "if this creature hasn't been exerted this turn, you may exert ")
+        || str_starts_with(
+            trimmed,
+            "if this creature hasn't been exerted this turn, you may exert ",
+        )
 }
 
 fn strip_exert_reminder_suffix(text: &str) -> &str {
@@ -555,8 +523,10 @@ fn is_standard_gift_keyword_line(text: &str) -> bool {
     if !str_starts_with(trimmed.as_str(), "gift ") {
         return false;
     }
-    if !str_contains(trimmed.as_str(), "you may promise an opponent a gift as you cast this spell")
-        || !str_contains(trimmed.as_str(), "if you do")
+    if !str_contains(
+        trimmed.as_str(),
+        "you may promise an opponent a gift as you cast this spell",
+    ) || !str_contains(trimmed.as_str(), "if you do")
     {
         return false;
     }
@@ -653,8 +623,7 @@ fn parse_statement_line_cst(
     if str_contains(
         normalized,
         "ask a person outside the game to rate its new art on a scale from 1 to 5",
-    )
-    {
+    ) {
         return Ok(Some(StatementLineCst {
             info: line.info.clone(),
             text: normalized.to_string(),
@@ -848,7 +817,8 @@ fn looks_like_statement_line(normalized: &str) -> bool {
 
 fn should_skip_keyword_action_static_probe(normalized: &str) -> bool {
     let normalized = normalized.trim();
-    (str_ends_with(normalized, "can't be blocked.") || str_ends_with(normalized, "can't be blocked"))
+    (str_ends_with(normalized, "can't be blocked.")
+        || str_ends_with(normalized, "can't be blocked"))
         && !str_starts_with(normalized, "this ")
         && !str_starts_with(normalized, "it ")
 }
@@ -1404,16 +1374,7 @@ fn split_reveal_first_draw_line_rewrite(text: &str) -> Option<Vec<String>> {
 }
 
 fn sentence_starts_with_trigger_intro_rewrite(sentence: &str, line_index: usize) -> bool {
-    let Ok(tokens) = lexed_tokens(sentence, line_index) else {
-        return false;
-    };
-    if super::parser_support::looks_like_spell_resolution_followup_intro_lexed(&tokens) {
-        return false;
-    }
-    tokens
-        .first()
-        .is_some_and(|token| token.is_word("when") || token.is_word("whenever"))
-        || super::parser_support::is_at_trigger_intro_lexed(&tokens, 0)
+    line_starts_with_trigger_intro_rewrite(sentence, line_index)
 }
 
 fn classify_unsupported_line_reason(line: &PreprocessedLine) -> &'static str {
@@ -1422,7 +1383,7 @@ fn classify_unsupported_line_reason(line: &PreprocessedLine) -> &'static str {
     if is_bullet_line(line.info.raw_line.as_str()) {
         return "bullet-line-without-modal-header";
     }
-    if parse_trigger_intro(normalized_first_word(normalized)).is_some() {
+    if line_starts_with_trigger_intro_rewrite(normalized, line.info.line_index) {
         return "triggered-line-not-yet-supported";
     }
     if split_once_outside_quotes(normalized, ':').is_some() {
@@ -1450,7 +1411,10 @@ fn diagnose_known_unsupported_rewrite_line(normalized: &str) -> Option<CardTextE
         "unsupported same-name-as-another-in-hand discard clause"
     } else if str_starts_with(normalized, "partner with ") {
         "unsupported partner-with keyword line [rule=partner-with-keyword-line]"
-    } else if str_starts_with(normalized, "the first creature spell you cast each turn costs ") {
+    } else if str_starts_with(
+        normalized,
+        "the first creature spell you cast each turn costs ",
+    ) {
         "unsupported first-spell cost modifier mechanic"
     } else if str_contains(normalized, "loses all abilities and becomes") {
         if str_starts_with(normalized, "until end of turn,") {
@@ -1458,7 +1422,10 @@ fn diagnose_known_unsupported_rewrite_line(normalized: &str) -> Option<CardTextE
         } else {
             "unsupported lose-all-abilities static becomes clause"
         }
-    } else if str_contains(normalized, "enters tapped and doesn't untap during your untap step") {
+    } else if str_contains(
+        normalized,
+        "enters tapped and doesn't untap during your untap step",
+    ) {
         "unsupported mixed enters-tapped and negated-untap clause"
     } else if str_starts_with(normalized, "once each turn, you may play a card from exile") {
         "unsupported static clause"
@@ -1472,10 +1439,15 @@ fn diagnose_known_unsupported_rewrite_line(normalized: &str) -> Option<CardTextE
         "prevent the next 1 damage that would be dealt to any target this turn by red sources",
     ) {
         "unsupported trailing prevent-next damage clause"
-    } else if str_contains(normalized, "put one of them into your hand and the rest into your graveyard")
-    {
+    } else if str_contains(
+        normalized,
+        "put one of them into your hand and the rest into your graveyard",
+    ) {
         "unsupported multi-destination put clause"
-    } else if str_contains(normalized, "assigns no combat damage this turn and defending player loses") {
+    } else if str_contains(
+        normalized,
+        "assigns no combat damage this turn and defending player loses",
+    ) {
         "unsupported assigns-no-combat-damage clause"
     } else if str_contains(normalized, "of defending player's choice") {
         "unsupported defending-players-choice clause"
@@ -1492,16 +1464,19 @@ fn diagnose_known_unsupported_rewrite_line(normalized: &str) -> Option<CardTextE
         "unsupported spent-to-cast conditional clause"
     } else if str_contains(normalized, "if you sacrifice an island this way") {
         "unsupported if-you-sacrifice-an-island-this-way clause"
-    } else if str_contains(normalized, "create a token that's a copy of that aura attached to that creature")
-    {
+    } else if str_contains(
+        normalized,
+        "create a token that's a copy of that aura attached to that creature",
+    ) {
         "unsupported aura-copy attachment fanout clause"
     } else if str_contains(normalized, "target face-down creature") {
         "unsupported face-down clause"
-    } else if normalized == "creatures you control have haste and attack each combat if able."
-    {
+    } else if normalized == "creatures you control have haste and attack each combat if able." {
         "unsupported anthem subject"
-    } else if str_contains(normalized, "with islandwalk can be blocked as though they didn't have islandwalk")
-    {
+    } else if str_contains(
+        normalized,
+        "with islandwalk can be blocked as though they didn't have islandwalk",
+    ) {
         "unsupported landwalk override clause"
     } else if normalized == "you may play any number of lands on each of your turns." {
         "unsupported additional-land-play permission clause"
@@ -1511,33 +1486,54 @@ fn diagnose_known_unsupported_rewrite_line(normalized: &str) -> Option<CardTextE
         "unsupported activation cost modifier clause"
     } else if normalized == "unleash while" {
         "unsupported line"
-    } else if str_contains(normalized, "for each odd result") && str_contains(normalized, "for each even result")
+    } else if str_contains(normalized, "for each odd result")
+        && str_contains(normalized, "for each even result")
     {
         "unsupported odd-or-even die-result clause"
-    } else if str_contains(normalized, "for as long as that card remains exiled, its owner may play it")
-        && !str_contains(normalized, "a spell cast by an opponent this way costs")
+    } else if str_contains(
+        normalized,
+        "for as long as that card remains exiled, its owner may play it",
+    ) && !str_contains(normalized, "a spell cast by an opponent this way costs")
         && !str_contains(normalized, "a spell cast this way costs")
     {
         "unsupported for-as-long-as play/cast permission clause"
-    } else if str_contains(normalized, "with power or toughness 1 or less can't be blocked") {
+    } else if str_contains(
+        normalized,
+        "with power or toughness 1 or less can't be blocked",
+    ) {
         "unsupported power-or-toughness cant-be-blocked subject"
-    } else if str_contains(normalized, "discard up to two permanents, then draw that many cards") {
+    } else if str_contains(
+        normalized,
+        "discard up to two permanents, then draw that many cards",
+    ) {
         "unsupported discard qualifier clause"
-    } else if str_contains(normalized, "if your life total is less than or equal to half your starting life total plus one")
-    {
+    } else if str_contains(
+        normalized,
+        "if your life total is less than or equal to half your starting life total plus one",
+    ) {
         "unsupported predicate"
-    } else if str_contains(normalized, "then sacrifices all creatures they control, then puts all cards they exiled this way onto the battlefield")
-    {
+    } else if str_contains(
+        normalized,
+        "then sacrifices all creatures they control, then puts all cards they exiled this way onto the battlefield",
+    ) {
         "unsupported each-player exile/sacrifice/return-this-way clause"
-    } else if str_contains(normalized, "each player loses x life, discards x cards, sacrifices x creatures")
-        && str_contains(normalized, "then sacrifices x lands")
+    } else if str_contains(
+        normalized,
+        "each player loses x life, discards x cards, sacrifices x creatures",
+    ) && str_contains(normalized, "then sacrifices x lands")
     {
         "unsupported multi-step each-player clause with 'then'"
     } else if str_contains(normalized, "if this creature isn't saddled this turn") {
         "unsupported saddled conditional tail"
-    } else if str_contains(normalized, "put a card from among them into your hand this turn") {
+    } else if str_contains(
+        normalized,
+        "put a card from among them into your hand this turn",
+    ) {
         "unsupported looked-card fallback tail"
-    } else if str_contains(normalized, "if the sacrificed creature was a hamster this turn") {
+    } else if str_contains(
+        normalized,
+        "if the sacrificed creature was a hamster this turn",
+    ) {
         "unsupported predicate"
     } else {
         return None;
@@ -1752,7 +1748,10 @@ pub(crate) fn parse_document_cst(
                 if let Some(chunks) = split_reveal_first_draw_line_rewrite(normalized) {
                     for chunk in chunks {
                         let chunk_line = rewrite_line_normalized(line, chunk.as_str())?;
-                        if parse_trigger_intro(normalized_first_word(&chunk)).is_some() {
+                        if line_starts_with_trigger_intro_rewrite(
+                            &chunk,
+                            chunk_line.info.line_index,
+                        ) {
                             for trigger_chunk in split_trigger_sentence_chunks_rewrite(
                                 &chunk_line.info.normalized.normalized,
                                 chunk_line.info.line_index,
@@ -1858,7 +1857,7 @@ pub(crate) fn parse_document_cst(
                         labeled_choice_block_has_peer(&preprocessed.items, idx);
                     if !preserve_keyword_prefix_for_parse(label) {
                         let body_line = rewrite_line_normalized(line, body)?;
-                        if parse_trigger_intro(normalized_first_word(body)).is_some() {
+                        if line_starts_with_trigger_intro_rewrite(body, body_line.info.line_index) {
                             if let Ok(mut triggered) = parse_triggered_line_cst(&body_line) {
                                 if preserve_as_choice_label {
                                     triggered.chosen_option_label =
@@ -1955,9 +1954,10 @@ pub(crate) fn parse_document_cst(
                     }
                 }
 
-                if parse_trigger_intro(normalized_first_word(&line.info.normalized.normalized))
-                    .is_some()
-                {
+                if line_starts_with_trigger_intro_rewrite(
+                    &line.info.normalized.normalized,
+                    line.info.line_index,
+                ) {
                     let trigger_chunks = split_trigger_sentence_chunks_rewrite(
                         &line.info.normalized.normalized,
                         line.info.line_index,
@@ -2090,21 +2090,30 @@ pub(crate) fn parse_document_cst(
 
                 if let Some(PreprocessedItem::Line(next_line)) = preprocessed.items.get(idx + 1) {
                     let normalized_next = next_line.info.normalized.normalized.as_str();
-                    let should_try_combined_static = (str_starts_with(normalized, "as this land enters")
-                        && str_contains(normalized, "you may reveal")
-                        && str_contains(normalized, "from your hand")
-                        && (str_starts_with(normalized_next, "if you dont, this land enters tapped")
-                            || str_starts_with(
+                    let should_try_combined_static =
+                        (str_starts_with(normalized, "as this land enters")
+                            && str_contains(normalized, "you may reveal")
+                            && str_contains(normalized, "from your hand")
+                            && (str_starts_with(
+                                normalized_next,
+                                "if you dont, this land enters tapped",
+                            ) || str_starts_with(
                                 normalized_next,
                                 "if you don't, this land enters tapped",
-                            )
-                            || str_starts_with(normalized_next, "if you dont, it enters tapped")
-                            || str_starts_with(normalized_next, "if you don't, it enters tapped")))
-                        || (str_starts_with(normalized, "if this card is in your opening hand")
-                            && str_contains(normalized, "you may begin the game with")
-                            && str_contains(normalized, "on the battlefield")
-                            && (str_starts_with(normalized_next, "if you do, exile ")
-                                || str_starts_with(normalized_next, "if you do exile ")));
+                            ) || str_starts_with(
+                                normalized_next,
+                                "if you dont, it enters tapped",
+                            ) || str_starts_with(
+                                normalized_next,
+                                "if you don't, it enters tapped",
+                            )))
+                            || (str_starts_with(
+                                normalized,
+                                "if this card is in your opening hand",
+                            ) && str_contains(normalized, "you may begin the game with")
+                                && str_contains(normalized, "on the battlefield")
+                                && (str_starts_with(normalized_next, "if you do, exile ")
+                                    || str_starts_with(normalized_next, "if you do exile ")));
 
                     if should_try_combined_static {
                         let combined_text = format!(
@@ -2416,8 +2425,4 @@ pub(crate) fn metadata_line_cst(
 ) -> Result<MetadataLineCst, CardTextError> {
     let _ = info;
     Ok(MetadataLineCst { value })
-}
-
-fn normalized_first_word(line: &str) -> &str {
-    line.split_whitespace().next().unwrap_or("")
 }

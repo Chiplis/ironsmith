@@ -1,6 +1,8 @@
 use winnow::ascii::{digit1, multispace0};
-use winnow::combinator::{alt, delimited, opt, preceded, repeat, separated};
-use winnow::error::{ContextError, Result as WResult};
+use winnow::combinator::{alt, cut_err, delimited, opt, preceded, repeat, separated, terminated};
+use winnow::error::{
+    ContextError, ErrMode, ModalResult as WResult, ParserError, StrContext, StrContextValue,
+};
 use winnow::prelude::*;
 use winnow::stream::TokenSlice;
 use winnow::token::{any, literal, one_of};
@@ -29,18 +31,22 @@ fn until_from_turn_duration_phrase(duration: TurnDurationPhrase) -> Until {
     }
 }
 
-fn spaced<'a, O, P>(parser: P) -> impl Parser<&'a str, O, ContextError>
+fn spaced<'a, O, E, P>(parser: P) -> impl Parser<&'a str, O, E>
 where
-    P: Parser<&'a str, O, ContextError>,
+    P: Parser<&'a str, O, E>,
+    E: ParserError<&'a str>,
 {
     delimited(multispace0, parser, multispace0)
 }
 
-fn finish_text_parse<'a, O>(
+fn finish_text_parse<'a, O, E>(
     raw: &'a str,
-    mut parser: impl Parser<&'a str, O, ContextError>,
+    mut parser: impl Parser<&'a str, O, E>,
     label: &str,
-) -> Result<O, CardTextError> {
+) -> Result<O, CardTextError>
+where
+    E: std::fmt::Display,
+{
     let mut input = raw.trim();
     let parsed = parser
         .parse_next(&mut input)
@@ -54,11 +60,14 @@ fn finish_text_parse<'a, O>(
     Ok(parsed)
 }
 
-fn finish_lexed_parse<'a, O>(
+fn finish_lexed_parse<'a, O, E>(
     tokens: &'a [OwnedLexToken],
-    mut parser: impl Parser<LexedInput<'a>, O, ContextError>,
+    mut parser: impl Parser<LexedInput<'a>, O, E>,
     label: &str,
-) -> Result<O, CardTextError> {
+) -> Result<O, CardTextError>
+where
+    E: std::fmt::Display,
+{
     let mut input = TokenSlice::new(tokens);
     let parsed = parser
         .parse_next(&mut input)
@@ -78,7 +87,7 @@ fn finish_lexed_parse<'a, O>(
 
 pub(crate) fn parse_lexed_prefix<'a, O>(
     tokens: &'a [OwnedLexToken],
-    mut parser: impl Parser<LexedInput<'a>, O, ContextError>,
+    mut parser: impl Parser<LexedInput<'a>, O, ErrMode<ContextError>>,
 ) -> Option<(O, &'a [OwnedLexToken])> {
     let mut input = TokenSlice::new(tokens);
     let parsed = parser.parse_next(&mut input).ok()?;
@@ -87,14 +96,14 @@ pub(crate) fn parse_lexed_prefix<'a, O>(
     Some((parsed, remainder))
 }
 
-fn strip_lexed_prefix_phrase<'a>(
+pub(crate) fn strip_lexed_prefix_phrase<'a>(
     tokens: &'a [OwnedLexToken],
     phrase: &'static [&'static str],
 ) -> Option<&'a [OwnedLexToken]> {
     parse_lexed_prefix(tokens, parse_word_phrase(phrase)).map(|(_, rest)| rest)
 }
 
-fn strip_lexed_suffix_phrase<'a>(
+pub(crate) fn strip_lexed_suffix_phrase<'a>(
     tokens: &'a [OwnedLexToken],
     phrase: &[&str],
 ) -> Option<&'a [OwnedLexToken]> {
@@ -138,6 +147,10 @@ pub(crate) fn parse_mana_symbol_inner(input: &mut &str) -> WResult<ManaSymbol> {
             _ => unreachable!("one_of constrains supported mana-symbol letters"),
         }),
     ))
+    .context(StrContext::Label("mana symbol"))
+    .context(StrContext::Expected(StrContextValue::Description(
+        "mana symbol",
+    )))
     .parse_next(input)
 }
 
@@ -146,7 +159,12 @@ pub(crate) fn parse_mana_symbol(raw: &str) -> Result<ManaSymbol, CardTextError> 
 }
 
 pub(crate) fn parse_mana_symbol_group_inner(input: &mut &str) -> WResult<Vec<ManaSymbol>> {
-    separated(1.., parse_mana_symbol_inner, spaced('/')).parse_next(input)
+    separated(1.., parse_mana_symbol_inner, spaced('/'))
+        .context(StrContext::Label("mana symbol group"))
+        .context(StrContext::Expected(StrContextValue::Description(
+            "slash-delimited mana symbols",
+        )))
+        .parse_next(input)
 }
 
 pub(crate) fn parse_mana_symbol_group(raw: &str) -> Result<Vec<ManaSymbol>, CardTextError> {
@@ -155,17 +173,29 @@ pub(crate) fn parse_mana_symbol_group(raw: &str) -> Result<Vec<ManaSymbol>, Card
 }
 
 fn parse_mana_group_inner(input: &mut &str) -> WResult<Vec<ManaSymbol>> {
-    delimited(
+    preceded(
         spaced("{"),
-        separated(1.., parse_mana_symbol_inner, spaced('/')),
-        spaced("}"),
+        cut_err(terminated(
+            separated(1.., parse_mana_symbol_inner, spaced('/')).context(StrContext::Expected(
+                StrContextValue::Description("mana symbols"),
+            )),
+            spaced("}").context(StrContext::Expected('}'.into())),
+        )),
     )
+    .context(StrContext::Label("mana group"))
+    .context(StrContext::Expected(StrContextValue::Description(
+        "braced mana symbols",
+    )))
     .parse_next(input)
 }
 
 pub(crate) fn parse_mana_cost_inner(input: &mut &str) -> WResult<ManaCost> {
     repeat(1.., parse_mana_group_inner)
         .map(ManaCost::from_pips)
+        .context(StrContext::Label("mana cost"))
+        .context(StrContext::Expected(StrContextValue::Description(
+            "mana group",
+        )))
         .parse_next(input)
 }
 
@@ -174,15 +204,33 @@ fn parse_mana_group_token<'a>(input: &mut LexedInput<'a>) -> WResult<Vec<ManaSym
     match token.kind {
         TokenKind::ManaGroup => {
             let inner = token.slice.trim_start_matches('{').trim_end_matches('}');
-            parse_mana_symbol_group(inner).map_err(|_| ContextError::new())
+            parse_mana_symbol_group(inner).map_err(|_| {
+                let mut err = ContextError::new();
+                err.push(StrContext::Label("mana group token"));
+                err.push(StrContext::Expected(StrContextValue::Description(
+                    "mana symbol group",
+                )));
+                ErrMode::Backtrack(err)
+            })
         }
-        _ => Err(ContextError::new()),
+        _ => {
+            let mut err = ContextError::new();
+            err.push(StrContext::Label("mana group token"));
+            err.push(StrContext::Expected(StrContextValue::Description(
+                "mana group token",
+            )));
+            Err(ErrMode::Backtrack(err))
+        }
     }
 }
 
 fn parse_mana_cost_tokens<'a>(input: &mut LexedInput<'a>) -> WResult<ManaCost> {
     repeat(1.., parse_mana_group_token)
         .map(ManaCost::from_pips)
+        .context(StrContext::Label("mana cost"))
+        .context(StrContext::Expected(StrContextValue::Description(
+            "mana group token",
+        )))
         .parse_next(input)
 }
 
@@ -198,32 +246,38 @@ pub(crate) fn parse_scryfall_mana_cost(raw: &str) -> Result<ManaCost, CardTextEr
 
 fn parse_token_kind<'a>(
     expected: TokenKind,
-) -> impl Parser<LexedInput<'a>, &'a OwnedLexToken, ContextError> {
+) -> impl Parser<LexedInput<'a>, &'a OwnedLexToken, ErrMode<ContextError>> {
     literal(expected).map(|tokens: &'a [OwnedLexToken]| &tokens[0])
 }
 
 pub(crate) fn parse_word_token<'a>(input: &mut LexedInput<'a>) -> WResult<&'a str> {
     let token: &'a OwnedLexToken = any.parse_next(input)?;
-    token.as_word().ok_or(ContextError::new())
+    token.as_word().ok_or_else(|| {
+        let mut err = ContextError::new();
+        err.push(StrContext::Label("word"));
+        err.push(StrContext::Expected(StrContextValue::Description("word")));
+        ErrMode::Backtrack(err)
+    })
 }
 
 pub(crate) fn parse_word_eq<'a>(
     expected: &'static str,
-) -> impl Parser<LexedInput<'a>, (), ContextError> {
+) -> impl Parser<LexedInput<'a>, (), ErrMode<ContextError>> {
     parse_word_token
         .verify(move |word: &&str| word.eq_ignore_ascii_case(expected))
+        .context(StrContext::Expected(expected.into()))
         .map(|_| ())
 }
 
 pub(crate) fn parse_word_phrase<'a>(
     expected: &'static [&'static str],
-) -> impl Parser<LexedInput<'a>, (), ContextError> {
+) -> impl Parser<LexedInput<'a>, (), ErrMode<ContextError>> {
     move |input: &mut LexedInput<'a>| {
         let checkpoint = input.checkpoint();
         for word in expected {
             if parse_word_eq(*word).parse_next(input).is_err() {
                 input.reset(&checkpoint);
-                return Err(ContextError::new());
+                return Err(ErrMode::Backtrack(ContextError::new()));
             }
         }
         Ok(())
@@ -232,7 +286,14 @@ pub(crate) fn parse_word_phrase<'a>(
 
 pub(crate) fn parse_i32_word_token<'a>(input: &mut LexedInput<'a>) -> WResult<i32> {
     let word = parse_word_token.parse_next(input)?;
-    word.parse::<i32>().map_err(|_| ContextError::new())
+    word.parse::<i32>().map_err(|_| {
+        let mut err = ContextError::new();
+        err.push(StrContext::Label("integer word"));
+        err.push(StrContext::Expected(StrContextValue::Description(
+            "integer",
+        )));
+        ErrMode::Backtrack(err)
+    })
 }
 
 pub(crate) fn parse_turn_duration_prefix<'a>(
@@ -391,7 +452,7 @@ fn parse_modal_value_token<'a>(input: &mut LexedInput<'a>) -> WResult<Value> {
         "eight" => 8,
         "nine" => 9,
         "ten" => 10,
-        _ => return Err(ContextError::new()),
+        _ => return Err(ErrMode::Backtrack(ContextError::new())),
     };
 
     Ok(Value::Fixed(value))
@@ -510,11 +571,24 @@ pub(crate) fn parse_value_comparison_tokens<'a>(
 }
 
 fn parse_type_line_tokens<'a>(input: &mut LexedInput<'a>) -> WResult<(Vec<&'a str>, Vec<&'a str>)> {
-    let left = repeat(1.., parse_word_token).parse_next(input)?;
+    let left = repeat(1.., parse_word_token)
+        .context(StrContext::Expected(StrContextValue::Description(
+            "type-line words",
+        )))
+        .parse_next(input)?;
     let right = opt(preceded(
-        parse_token_kind(TokenKind::EmDash),
-        repeat(0.., parse_word_token),
+        parse_token_kind(TokenKind::EmDash).context(StrContext::Expected(
+            StrContextValue::Description("em dash"),
+        )),
+        cut_err(
+            repeat(1.., parse_word_token)
+                .context(StrContext::Label("type-line subtype section"))
+                .context(StrContext::Expected(StrContextValue::Description(
+                    "subtype words",
+                ))),
+        ),
     ))
+    .context(StrContext::Label("type-line"))
     .parse_next(input)?
     .unwrap_or_default();
     Ok((left, right))

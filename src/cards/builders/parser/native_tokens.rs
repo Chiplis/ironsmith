@@ -158,11 +158,15 @@ impl LowercaseWordView {
             })
     }
 
-    pub(crate) fn contains_sequence(&self, expected: &[&str]) -> bool {
+    pub(crate) fn find_sequence(&self, expected: &[&str]) -> Option<usize> {
         if expected.is_empty() || self.lower_words.len() < expected.len() {
-            return false;
+            return None;
         }
-        (0..=self.lower_words.len() - expected.len()).any(|idx| self.slice_eq(idx, expected))
+        (0..=self.lower_words.len() - expected.len()).find(|idx| self.slice_eq(*idx, expected))
+    }
+
+    pub(crate) fn contains_sequence(&self, expected: &[&str]) -> bool {
+        self.find_sequence(expected).is_some()
     }
 
     pub(crate) fn find(&self, expected: &str) -> Option<usize> {
@@ -175,6 +179,14 @@ impl LowercaseWordView {
         }
 
         None
+    }
+
+    pub(crate) fn contains(&self, expected: &str) -> bool {
+        self.find(expected).is_some()
+    }
+
+    pub(crate) fn contains_any(&self, expected: &[&str]) -> bool {
+        expected.iter().any(|candidate| self.contains(candidate))
     }
 
     pub(crate) fn to_word_refs(&self) -> Vec<&str> {

@@ -1,3 +1,8 @@
+use crate::cards::builders::scan_helpers::{
+    contains_window as word_slice_has_sequence, find_index as find_token_index,
+    slice_contains as word_slice_has, slice_ends_with as word_slice_has_suffix,
+    slice_starts_with as word_slice_has_prefix,
+};
 use crate::cards::builders::{CardTextError, EffectAst, IT_TAG, PlayerAst, PredicateAst, TagKey};
 use crate::effect::{Until, Value, ValueComparisonOperator};
 use crate::target::ObjectFilter;
@@ -10,7 +15,9 @@ use super::object_filters::{
 };
 use super::token_primitives::{
     TurnDurationPhrase, parse_i32_word_token, parse_lexed_prefix, parse_turn_duration_prefix,
-    parse_turn_duration_suffix, parse_value_comparison_tokens, parse_word_phrase,
+    parse_turn_duration_suffix, parse_value_comparison_tokens,
+    strip_lexed_prefix_phrase as strip_prefix_phrase,
+    strip_lexed_suffix_phrase as strip_suffix_phrase,
 };
 use super::util::trim_commas;
 use super::value_helpers::parse_value_from_lexed;
@@ -44,87 +51,6 @@ pub(crate) enum PermissionClauseSpec {
 struct PermissionLead {
     player: PlayerAst,
     allow_land: bool,
-}
-
-fn word_slice_has_prefix(words: &[&str], prefix: &[&str]) -> bool {
-    words.len() >= prefix.len() && words[..prefix.len()] == *prefix
-}
-
-fn word_slice_has_suffix(words: &[&str], suffix: &[&str]) -> bool {
-    words.len() >= suffix.len() && words[words.len() - suffix.len()..] == *suffix
-}
-
-fn word_slice_has(words: &[&str], expected: &str) -> bool {
-    words.iter().any(|word| *word == expected)
-}
-
-fn word_slice_has_sequence(words: &[&str], phrase: &[&str]) -> bool {
-    if phrase.is_empty() || words.len() < phrase.len() {
-        return false;
-    }
-
-    let mut idx = 0usize;
-    while idx + phrase.len() <= words.len() {
-        if word_slice_has_prefix(&words[idx..], phrase) {
-            return true;
-        }
-        idx += 1;
-    }
-
-    false
-}
-
-fn find_word_index(words: &LowercaseWordView, expected: &str) -> Option<usize> {
-    let mut idx = 0usize;
-    while idx < words.len() {
-        if words.get(idx) == Some(expected) {
-            return Some(idx);
-        }
-        idx += 1;
-    }
-
-    None
-}
-
-fn find_token_index(
-    tokens: &[OwnedLexToken],
-    mut predicate: impl FnMut(&OwnedLexToken) -> bool,
-) -> Option<usize> {
-    let mut idx = 0usize;
-    while idx < tokens.len() {
-        if predicate(&tokens[idx]) {
-            return Some(idx);
-        }
-        idx += 1;
-    }
-
-    None
-}
-
-fn strip_prefix_phrase<'a>(
-    tokens: &'a [OwnedLexToken],
-    phrase: &'static [&'static str],
-) -> Option<&'a [OwnedLexToken]> {
-    parse_lexed_prefix(tokens, parse_word_phrase(phrase)).map(|(_, rest)| rest)
-}
-
-fn strip_suffix_phrase<'a>(
-    tokens: &'a [OwnedLexToken],
-    phrase: &[&str],
-) -> Option<&'a [OwnedLexToken]> {
-    let lowered = LowercaseWordView::new(tokens);
-    let words = lowered.to_word_refs();
-    if !word_slice_has_suffix(&words, phrase) {
-        return None;
-    }
-
-    let keep_word_count = words.len().checked_sub(phrase.len())?;
-    let keep_until = if keep_word_count == 0 {
-        0
-    } else {
-        lowered.token_index_for_word_index(keep_word_count)?
-    };
-    Some(&tokens[..keep_until])
 }
 
 fn is_without_paying_mana_cost_tail(words: &[&str]) -> bool {
@@ -320,7 +246,7 @@ fn parse_permission_subject_filter_tokens_lexed(
 
     let filter_words = LowercaseWordView::new(filter_tokens);
     for separator in ["and", "or"] {
-        let Some(split_idx) = find_word_index(&filter_words, separator) else {
+        let Some(split_idx) = filter_words.find(separator) else {
             continue;
         };
         let Some(split_token_idx) = filter_words.token_index_for_word_index(split_idx) else {
@@ -669,7 +595,7 @@ pub(crate) fn parse_unsupported_play_cast_permission_clause_lexed(
     if word_slice_has_prefix(
         &clause_refs,
         &["once", "during", "each", "of", "your", "turns"],
-    ) && word_slice_has(&clause_refs, "graveyard")
+    ) && word_slice_has(&clause_refs, &"graveyard")
         && (word_slice_has_sequence(&clause_refs, &["may", "play"])
             || word_slice_has_sequence(&clause_refs, &["may", "cast"]))
     {
