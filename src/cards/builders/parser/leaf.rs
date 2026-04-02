@@ -1737,11 +1737,12 @@ fn parse_exile_segment_tokens(
             &["this", "vehicle", "from", "your"],
         ],
     ) {
-        if tail
-            .windows(3)
-            .any(|window| window == ["from", "your", "graveyard"])
-        {
-            return Ok(ActivationCostSegmentCst::ExileSelfFromGraveyard);
+        let mut idx = 0usize;
+        while idx + 2 < tail.len() {
+            if tail[idx] == "from" && tail[idx + 1] == "your" && tail[idx + 2] == "graveyard" {
+                return Ok(ActivationCostSegmentCst::ExileSelfFromGraveyard);
+            }
+            idx += 1;
         }
         return Ok(ActivationCostSegmentCst::ExileSelf);
     }

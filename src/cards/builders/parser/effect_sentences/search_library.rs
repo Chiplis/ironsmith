@@ -67,7 +67,7 @@ fn word_slice_mentions_nth_from_top(words: &[&str]) -> bool {
 }
 
 fn is_source_reference_duration_words(words: &LowercaseWordView) -> bool {
-    words.contains_any(&[
+    words.has_any_word(&[
         "this",
         "thiss",
         "source",
@@ -78,13 +78,13 @@ fn is_source_reference_duration_words(words: &LowercaseWordView) -> bool {
 }
 
 fn is_as_long_as_you_control_duration_words(words: &LowercaseWordView) -> bool {
-    words.contains("you") && words.contains("control") && is_source_reference_duration_words(words)
+    words.has_word("you") && words.has_word("control") && is_source_reference_duration_words(words)
 }
 
 fn is_source_remains_tapped_duration_words(words: &LowercaseWordView) -> bool {
-    words.contains_sequence(&["for", "as", "long", "as"])
-        && words.contains("remains")
-        && words.contains("tapped")
+    words.has_phrase(&["for", "as", "long", "as"])
+        && words.has_word("remains")
+        && words.has_word("tapped")
         && is_source_reference_duration_words(words)
 }
 
@@ -355,7 +355,7 @@ pub(crate) fn parse_restriction_duration_lexed(
         }
     }
 
-    if let Some(word_idx) = words.find_sequence(&["for", "as", "long", "as"]) {
+    if let Some(word_idx) = words.find_phrase_start(&["for", "as", "long", "as"]) {
         let token_idx = words
             .token_index_for_word_index(word_idx)
             .unwrap_or(tokens.len());
@@ -370,7 +370,7 @@ pub(crate) fn parse_restriction_duration_lexed(
         }
     }
 
-    if words.contains_sequence(&["this", "turn"]) {
+    if words.has_phrase(&["this", "turn"]) {
         let cleaned = remove_this_turn_tokens(tokens);
         let remainder = trim_lexed_commas(&cleaned).to_vec();
         if !remainder.is_empty() {
@@ -386,8 +386,8 @@ fn extract_search_library_mana_constraint(
 ) -> Option<(Vec<OwnedLexToken>, SearchLibraryManaConstraint)> {
     let filter_word_view = LowercaseWordView::new(filter_tokens);
     let with_idx = filter_word_view
-        .find_sequence(&["with", "mana", "cost"])
-        .or_else(|| filter_word_view.find_sequence(&["with", "mana", "value"]))?;
+        .find_phrase_start(&["with", "mana", "cost"])
+        .or_else(|| filter_word_view.find_phrase_start(&["with", "mana", "value"]))?;
     let clause_word_start = with_idx + 3;
     let clause_token_start = filter_word_view.token_index_for_word_index(with_idx)?;
     let clause_token_end = filter_word_view

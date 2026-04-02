@@ -737,17 +737,17 @@ pub(crate) fn parse_activate_only_timing_lexed(
         return Some(ActivationTiming::SorcerySpeed);
     }
     if words.slice_eq(0, &["activate", "only", "once", "each", "turn"])
-        || words.contains_sequence(&["once", "each", "turn"])
+        || words.has_phrase(&["once", "each", "turn"])
     {
         return Some(ActivationTiming::OncePerTurn);
     }
     if words.slice_eq(0, &["activate", "only", "during", "combat"])
-        || words.contains_sequence(&["during", "combat"])
+        || words.has_phrase(&["during", "combat"])
     {
         return Some(ActivationTiming::DuringCombat);
     }
     if words.slice_eq(0, &["activate", "only", "during", "your", "turn"])
-        || words.contains_sequence(&["during", "your", "turn"])
+        || words.has_phrase(&["during", "your", "turn"])
     {
         return Some(ActivationTiming::DuringYourTurn);
     }
@@ -755,8 +755,8 @@ pub(crate) fn parse_activate_only_timing_lexed(
         0,
         &["activate", "only", "during", "an", "opponents", "turn"],
     ) || words.slice_eq(0, &["activate", "only", "during", "opponents", "turn"])
-        || words.contains_sequence(&["during", "an", "opponents", "turn"])
-        || words.contains_sequence(&["during", "opponents", "turn"])
+        || words.has_phrase(&["during", "an", "opponents", "turn"])
+        || words.has_phrase(&["during", "opponents", "turn"])
     {
         return Some(ActivationTiming::DuringOpponentsTurn);
     }

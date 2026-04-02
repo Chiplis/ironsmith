@@ -88,20 +88,24 @@ fn parse_trigger_intro_tokens(tokens: &[OwnedLexToken]) -> Option<TriggerIntroCs
     }
 }
 
-fn split_trigger_frequency_suffix_tokens(tokens: &[OwnedLexToken]) -> (String, Option<u32>) {
+fn strip_trigger_frequency_suffix_tokens(
+    tokens: &[OwnedLexToken],
+) -> (&[OwnedLexToken], Option<u32>) {
     for phrase in [
         &["for", "the", "first", "time", "each", "turn"][..],
         &["for", "the", "first", "time", "this", "turn"][..],
     ] {
         if let Some(rest) = strip_lexed_suffix_phrase(tokens, phrase) {
-            return (render_lexed_tokens(rest).trim().to_string(), Some(1));
+            return (rest, Some(1));
         }
     }
 
-    (render_lexed_tokens(tokens).trim().to_string(), None)
+    (tokens, None)
 }
 
-fn split_trailing_trigger_cap_suffix_tokens(tokens: &[OwnedLexToken]) -> (String, Option<u32>) {
+fn strip_trailing_trigger_cap_suffix_tokens(
+    tokens: &[OwnedLexToken],
+) -> (&[OwnedLexToken], Option<u32>) {
     for (phrase, count) in [
         (
             &[
@@ -122,18 +126,17 @@ fn split_trailing_trigger_cap_suffix_tokens(tokens: &[OwnedLexToken]) -> (String
         if !head.last().is_some_and(|token| token.is_period()) {
             continue;
         }
-        let head = &head[..head.len() - 1];
-        return (render_lexed_tokens(head).trim().to_string(), Some(count));
+        return (&head[..head.len() - 1], Some(count));
     }
 
-    (render_lexed_tokens(tokens).trim().to_string(), None)
+    (tokens, None)
 }
 
 fn line_starts_with_trigger_intro_rewrite(text: &str, line_index: usize) -> bool {
     let Ok(tokens) = lexed_tokens(text, line_index) else {
         return false;
     };
-    if super::parser_support::looks_like_spell_resolution_followup_intro_lexed(&tokens) {
+    if super::parser_support::looks_like_reflexive_followup_intro_lexed(&tokens) {
         return false;
     }
     parse_trigger_intro_tokens(&tokens).is_some()
@@ -152,13 +155,20 @@ fn parse_triggered_line_cst(line: &PreprocessedLine) -> Result<TriggeredLineCst,
             line.info.raw_line
         )));
     };
-    let Some(condition_start) = line.tokens.get(1).map(|token| token.span.start) else {
+    let (tokens_without_cap, trailing_cap) = strip_trailing_trigger_cap_suffix_tokens(&line.tokens);
+    let Some(condition_tokens) = tokens_without_cap.get(1..) else {
         return Err(CardTextError::ParseError(format!(
             "rewrite triggered line is missing trigger body: '{}'",
             line.info.raw_line
         )));
     };
-    let (normalized, trailing_cap) = split_trailing_trigger_cap_suffix_tokens(&line.tokens);
+    if condition_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "rewrite triggered line is missing trigger body: '{}'",
+            line.info.raw_line
+        )));
+    }
+    let normalized = render_lexed_tokens(tokens_without_cap).trim().to_string();
     if let Some(err) = diagnose_known_unsupported_rewrite_line(normalized.as_str()) {
         return Err(err);
     }
@@ -178,29 +188,30 @@ fn parse_triggered_line_cst(line: &PreprocessedLine) -> Result<TriggeredLineCst,
     let mut best_supported_split = None;
     let mut best_fallback_split = None;
 
-    for separator in line
-        .tokens
-        .iter()
-        .filter(|token| token.kind == TokenKind::Comma)
-    {
-        let trigger_candidate = normalized[condition_start..separator.span.start].trim();
-        let effect_candidate = normalized[separator.span.end..].trim();
-        if trigger_candidate.is_empty() || effect_candidate.is_empty() {
+    for (separator_idx, separator) in tokens_without_cap.iter().enumerate() {
+        if separator.kind != TokenKind::Comma || separator_idx <= 1 {
             continue;
         }
 
-        let trigger_tokens = lexed_tokens(trigger_candidate, line.info.line_index)?;
-        let (trigger_text, max_triggers_per_turn) =
-            split_trigger_frequency_suffix_tokens(&trigger_tokens);
+        let trigger_candidate_tokens = trim_lexed_commas(&tokens_without_cap[1..separator_idx]);
+        let effect_candidate_tokens = trim_lexed_commas(&tokens_without_cap[separator_idx + 1..]);
+        if trigger_candidate_tokens.is_empty() || effect_candidate_tokens.is_empty() {
+            continue;
+        }
+
+        let (trigger_tokens, max_triggers_per_turn) =
+            strip_trigger_frequency_suffix_tokens(trigger_candidate_tokens);
         let max_triggers_per_turn = max_triggers_per_turn.or(trailing_cap);
+        let trigger_text = render_lexed_tokens(trigger_tokens).trim().to_string();
+        let effect_candidate = render_lexed_tokens(effect_candidate_tokens)
+            .trim()
+            .to_string();
         if trigger_text.is_empty() {
             continue;
         }
 
-        let trigger_probe = lexed_tokens(trigger_text.as_str(), line.info.line_index)
-            .and_then(|tokens| parse_trigger_clause_lexed(&tokens));
-        let effect_probe = lexed_tokens(effect_candidate, line.info.line_index)
-            .and_then(|tokens| parse_effect_sentences_lexed(&tokens));
+        let trigger_probe = parse_trigger_clause_lexed(trigger_tokens);
+        let effect_probe = parse_effect_sentences_lexed(effect_candidate_tokens);
         let trigger_is_supported = trigger_probe.is_ok();
         if trigger_is_supported && effect_probe.is_ok() {
             if best_supported_split.is_none() {
@@ -225,15 +236,14 @@ fn parse_triggered_line_cst(line: &PreprocessedLine) -> Result<TriggeredLineCst,
             "{} {}, {}",
             first_token.slice.as_str(),
             trigger_text,
-            effect_candidate
+            effect_candidate.as_str()
         );
-        let full_tokens = lexed_tokens(full_text.as_str(), line.info.line_index)?;
-        if parse_triggered_line_lexed(&full_tokens).is_ok() && best_fallback_split.is_none() {
+        if parse_triggered_line_lexed(tokens_without_cap).is_ok() && best_fallback_split.is_none() {
             best_fallback_split = Some(TriggeredLineCst {
                 info: line.info.clone(),
                 full_text,
                 trigger_text,
-                effect_text: effect_candidate.to_string(),
+                effect_text: effect_candidate,
                 max_triggers_per_turn,
                 chosen_option_label: None,
             });
@@ -244,12 +254,11 @@ fn parse_triggered_line_cst(line: &PreprocessedLine) -> Result<TriggeredLineCst,
         return Ok(split);
     }
 
-    let full_tokens = lexed_tokens(&normalized, line.info.line_index)?;
-    match parse_triggered_line_lexed(&full_tokens) {
+    match parse_triggered_line_lexed(tokens_without_cap) {
         Ok(_) => Ok(TriggeredLineCst {
             info: line.info.clone(),
             full_text: normalized.to_string(),
-            trigger_text: normalized[condition_start..].trim().to_string(),
+            trigger_text: render_lexed_tokens(condition_tokens).trim().to_string(),
             effect_text: String::new(),
             max_triggers_per_turn: trailing_cap,
             chosen_option_label: None,

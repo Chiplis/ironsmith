@@ -189,7 +189,7 @@ fn rewrite_lowercase_word_view_caches_lower_words_and_word_token_indices() {
     assert_eq!(words.get(3), Some("your"));
     assert_eq!(words.token_index_for_word_index(4), Some(4));
     assert!(words.starts_with(&["activate", "only"]));
-    assert!(words.contains_sequence(&["during", "your", "turn"]));
+    assert!(words.has_phrase(&["during", "your", "turn"]));
 }
 
 #[test]
@@ -221,9 +221,9 @@ fn rewrite_lowercase_word_view_find_preserves_word_indices() {
         .expect("rewrite lexer should classify followup text");
     let words = LowercaseWordView::new(&tokens);
 
-    assert_eq!(words.find("whenever"), Some(0));
-    assert_eq!(words.find("this"), Some(7));
-    assert_eq!(words.find("way"), Some(8));
+    assert_eq!(words.find_word("whenever"), Some(0));
+    assert_eq!(words.find_word("this"), Some(7));
+    assert_eq!(words.find_word("way"), Some(8));
 }
 
 #[test]
@@ -238,6 +238,19 @@ fn rewrite_parser_support_detects_this_way_followup_intro() {
     ));
     assert!(!super::looks_like_spell_resolution_followup_intro_lexed(
         &plain_tokens
+    ));
+}
+
+#[test]
+fn rewrite_parser_support_detects_when_you_do_followup_intro() {
+    let tokens = lex_line("When you do, exile target creature.", 0)
+        .expect("rewrite lexer should classify reflexive followup text");
+    let delayed_tokens = lex_line("At the beginning of the next end step, draw a card.", 0)
+        .expect("rewrite lexer should classify delayed trigger text");
+
+    assert!(super::looks_like_reflexive_followup_intro_lexed(&tokens));
+    assert!(!super::looks_like_reflexive_followup_intro_lexed(
+        &delayed_tokens
     ));
 }
 

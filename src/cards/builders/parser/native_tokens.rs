@@ -158,18 +158,26 @@ impl LowercaseWordView {
             })
     }
 
-    pub(crate) fn find_sequence(&self, expected: &[&str]) -> Option<usize> {
+    pub(crate) fn find_phrase_start(&self, expected: &[&str]) -> Option<usize> {
         if expected.is_empty() || self.lower_words.len() < expected.len() {
             return None;
         }
-        (0..=self.lower_words.len() - expected.len()).find(|idx| self.slice_eq(*idx, expected))
+        let mut idx = 0usize;
+        let last_start = self.lower_words.len() - expected.len();
+        while idx <= last_start {
+            if self.slice_eq(idx, expected) {
+                return Some(idx);
+            }
+            idx += 1;
+        }
+        None
     }
 
-    pub(crate) fn contains_sequence(&self, expected: &[&str]) -> bool {
-        self.find_sequence(expected).is_some()
+    pub(crate) fn has_phrase(&self, expected: &[&str]) -> bool {
+        self.find_phrase_start(expected).is_some()
     }
 
-    pub(crate) fn find(&self, expected: &str) -> Option<usize> {
+    pub(crate) fn find_word(&self, expected: &str) -> Option<usize> {
         let mut idx = 0usize;
         while idx < self.lower_words.len() {
             if self.lower_words[idx] == expected {
@@ -181,12 +189,19 @@ impl LowercaseWordView {
         None
     }
 
-    pub(crate) fn contains(&self, expected: &str) -> bool {
-        self.find(expected).is_some()
+    pub(crate) fn has_word(&self, expected: &str) -> bool {
+        self.find_word(expected).is_some()
     }
 
-    pub(crate) fn contains_any(&self, expected: &[&str]) -> bool {
-        expected.iter().any(|candidate| self.contains(candidate))
+    pub(crate) fn has_any_word(&self, expected: &[&str]) -> bool {
+        let mut idx = 0usize;
+        while idx < expected.len() {
+            if self.has_word(expected[idx]) {
+                return true;
+            }
+            idx += 1;
+        }
+        false
     }
 
     pub(crate) fn to_word_refs(&self) -> Vec<&str> {

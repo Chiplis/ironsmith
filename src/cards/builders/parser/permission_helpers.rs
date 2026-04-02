@@ -246,7 +246,7 @@ fn parse_permission_subject_filter_tokens_lexed(
 
     let filter_words = LowercaseWordView::new(filter_tokens);
     for separator in ["and", "or"] {
-        let Some(split_idx) = filter_words.find(separator) else {
+        let Some(split_idx) = filter_words.find_word(separator) else {
             continue;
         };
         let Some(split_token_idx) = filter_words.token_index_for_word_index(split_idx) else {

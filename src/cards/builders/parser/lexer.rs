@@ -230,9 +230,13 @@ pub(crate) fn lexed_words(tokens: &[OwnedLexToken]) -> Vec<&str> {
 }
 
 pub(crate) fn render_lexed_tokens(tokens: &[OwnedLexToken]) -> String {
-    fn needs_space(prev: TokenKind, current: TokenKind) -> bool {
+    fn needs_space(prev: &OwnedLexToken, current: &OwnedLexToken) -> bool {
+        if prev.span.end == current.span.start {
+            return false;
+        }
+
         if matches!(
-            current,
+            current.kind,
             TokenKind::Comma
                 | TokenKind::Period
                 | TokenKind::Colon
@@ -245,22 +249,22 @@ pub(crate) fn render_lexed_tokens(tokens: &[OwnedLexToken]) -> String {
         }
 
         !matches!(
-            prev,
+            prev.kind,
             TokenKind::LBracket | TokenKind::Quote | TokenKind::Plus | TokenKind::Dash
         )
     }
 
     let mut rendered = String::new();
-    let mut previous_kind = None;
+    let mut previous_token = None;
 
     for token in tokens {
-        if let Some(previous_kind) = previous_kind
-            && needs_space(previous_kind, token.kind)
+        if let Some(previous_token) = previous_token
+            && needs_space(previous_token, token)
         {
             rendered.push(' ');
         }
         rendered.push_str(&token.slice);
-        previous_kind = Some(token.kind);
+        previous_token = Some(token);
     }
 
     rendered
