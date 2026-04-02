@@ -8,7 +8,7 @@ use crate::effects::helpers::resolve_player_filter;
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::{ChooseSpec, PlayerFilter};
-use crate::types::Subtype;
+use crate::types::{Subtype, SubtypeFamily};
 
 /// Effect: target object(s) become a chosen creature type.
 #[derive(Debug, Clone, PartialEq)]
@@ -278,7 +278,7 @@ impl EffectExecutor for BecomeCreatureTypeChoiceEffect {
 
         let mut apply = crate::effects::ApplyContinuousEffect::with_spec(
             self.target.clone(),
-            Modification::RemoveAllCreatureTypes,
+            Modification::RemoveAllSubtypesOfFamily(SubtypeFamily::Creature),
             self.until.clone(),
         );
         apply = apply.with_additional_modification(Modification::AddSubtypes(vec![chosen_subtype]));

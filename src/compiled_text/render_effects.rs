@@ -5366,6 +5366,48 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         }
         return format!("Destroy {}", describe_choose_spec(&destroy.spec));
     }
+    if let Some(with_source) = effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>() {
+        if let Some(deal_damage) = with_source
+            .effect
+            .downcast_ref::<crate::effects::DealDamageEffect>()
+        {
+            let mut subject = describe_choose_spec(&with_source.source);
+            if subject == "this source" {
+                subject = "this creature".to_string();
+            } else if subject == "it" {
+                subject = "that creature".to_string();
+            }
+            let mut target = describe_choose_spec(&deal_damage.target);
+            if target == "this source" {
+                target = "this creature".to_string();
+            } else if target == "it" {
+                target = "that creature".to_string();
+            }
+
+            if let Value::PowerOf(_) | Value::ToughnessOf(_) = &deal_damage.amount {
+                let stat = if matches!(&deal_damage.amount, Value::ToughnessOf(_)) {
+                    "toughness"
+                } else {
+                    "power"
+                };
+                if subject.eq_ignore_ascii_case(&target) {
+                    return format!("{subject} deals damage to itself equal to its {stat}");
+                }
+                let verb = if choose_spec_is_plural(&with_source.source) {
+                    "deal"
+                } else {
+                    "deals"
+                };
+                return format!("{subject} {verb} damage equal to its {stat} to {target}");
+            }
+
+            return format!(
+                "{subject} deals {} damage to {target}",
+                describe_value(&deal_damage.amount)
+            );
+        }
+        return describe_effect(&with_source.effect);
+    }
     if let Some(deal_damage) = effect.downcast_ref::<crate::effects::DealDamageEffect>() {
         if let Value::PowerOf(source) | Value::ToughnessOf(source) = &deal_damage.amount {
             let mut subject = describe_choose_spec(source);

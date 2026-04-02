@@ -23,6 +23,7 @@ pub enum KeywordActionKind {
     CompleteDungeon,
     Evolve,
     Earthbend,
+    Explore,
     Exert,
     Expend,
     Fateseal,
@@ -57,6 +58,7 @@ impl KeywordActionKind {
             "complete" | "completes" | "completed" | "completing" => Some(Self::CompleteDungeon),
             "evolve" | "evolves" | "evolved" | "evolving" => Some(Self::Evolve),
             "earthbend" | "earthbends" => Some(Self::Earthbend),
+            "explore" | "explores" | "explored" | "exploring" => Some(Self::Explore),
             "exert" | "exerts" | "exerted" | "exerting" => Some(Self::Exert),
             "expend" | "expends" | "expended" => Some(Self::Expend),
             "fateseal" | "fateseals" | "fatesealed" | "fatesealing" => Some(Self::Fateseal),
@@ -90,6 +92,7 @@ impl KeywordActionKind {
             Self::CompleteDungeon => "complete a dungeon",
             Self::Evolve => "evolve",
             Self::Earthbend => "earthbend",
+            Self::Explore => "explore",
             Self::Exert => "exert",
             Self::Expend => "expend",
             Self::Fateseal => "fateseal",
@@ -123,6 +126,7 @@ impl KeywordActionKind {
             Self::CompleteDungeon => "completes a dungeon",
             Self::Evolve => "evolves",
             Self::Earthbend => "earthbends",
+            Self::Explore => "explores",
             Self::Exert => "exerts",
             Self::Expend => "expends",
             Self::Fateseal => "fateseals",
@@ -158,6 +162,8 @@ pub struct KeywordActionEvent {
     pub amount: u32,
     /// Optional vote records for "vote" keyword actions.
     pub votes: Option<Vec<PlayerVote>>,
+    /// Snapshot of the object performing the action, when relevant.
+    pub snapshot: Option<ObjectSnapshot>,
     /// Optional tagged players attached to the action event.
     pub player_tags: HashMap<TagKey, Vec<PlayerId>>,
 }
@@ -170,12 +176,18 @@ impl KeywordActionEvent {
             source,
             amount,
             votes: None,
+            snapshot: None,
             player_tags: HashMap::new(),
         }
     }
 
     pub fn with_votes(mut self, votes: Vec<PlayerVote>) -> Self {
         self.votes = Some(votes);
+        self
+    }
+
+    pub fn with_snapshot(mut self, snapshot: Option<ObjectSnapshot>) -> Self {
+        self.snapshot = snapshot;
         self
     }
 
@@ -215,7 +227,7 @@ impl GameEventType for KeywordActionEvent {
     }
 
     fn snapshot(&self) -> Option<&ObjectSnapshot> {
-        None
+        self.snapshot.as_ref()
     }
 
     fn display(&self) -> String {
@@ -252,6 +264,10 @@ mod tests {
         assert_eq!(
             KeywordActionKind::from_trigger_word("earthbends"),
             Some(KeywordActionKind::Earthbend)
+        );
+        assert_eq!(
+            KeywordActionKind::from_trigger_word("explores"),
+            Some(KeywordActionKind::Explore)
         );
         assert_eq!(
             KeywordActionKind::from_trigger_word("fatesealed"),

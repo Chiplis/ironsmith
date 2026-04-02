@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use logos::Logos;
+use winnow::stream::{Location, TokenSlice};
 
 use crate::cards::builders::{CardTextError, TextSpan};
 
@@ -52,6 +53,22 @@ pub(crate) struct OwnedLexToken {
     pub(crate) kind: TokenKind,
     pub(crate) slice: String,
     pub(crate) span: TextSpan,
+}
+
+impl PartialEq<TokenKind> for OwnedLexToken {
+    fn eq(&self, other: &TokenKind) -> bool {
+        self.kind == *other
+    }
+}
+
+impl Location for OwnedLexToken {
+    fn previous_token_end(&self) -> usize {
+        self.span.end
+    }
+
+    fn current_token_start(&self) -> usize {
+        self.span.start
+    }
 }
 
 impl OwnedLexToken {
@@ -164,6 +181,8 @@ pub(crate) struct LexCursor<'a> {
     pos: usize,
 }
 
+pub(crate) type LexStream<'a> = TokenSlice<'a, OwnedLexToken>;
+
 impl<'a> LexCursor<'a> {
     pub(crate) fn new(tokens: &'a [OwnedLexToken]) -> Self {
         Self { tokens, pos: 0 }
@@ -194,6 +213,43 @@ impl<'a> LexCursor<'a> {
 
 pub(crate) fn lexed_words(tokens: &[OwnedLexToken]) -> Vec<&str> {
     tokens.iter().filter_map(OwnedLexToken::as_word).collect()
+}
+
+pub(crate) fn render_lexed_tokens(tokens: &[OwnedLexToken]) -> String {
+    fn needs_space(prev: TokenKind, current: TokenKind) -> bool {
+        if matches!(
+            current,
+            TokenKind::Comma
+                | TokenKind::Period
+                | TokenKind::Colon
+                | TokenKind::Semicolon
+                | TokenKind::Question
+                | TokenKind::Bang
+                | TokenKind::RBracket
+        ) {
+            return false;
+        }
+
+        !matches!(
+            prev,
+            TokenKind::LBracket | TokenKind::Quote | TokenKind::Plus | TokenKind::Dash
+        )
+    }
+
+    let mut rendered = String::new();
+    let mut previous_kind = None;
+
+    for token in tokens {
+        if let Some(previous_kind) = previous_kind
+            && needs_space(previous_kind, token.kind)
+        {
+            rendered.push(' ');
+        }
+        rendered.push_str(&token.slice);
+        previous_kind = Some(token.kind);
+    }
+
+    rendered
 }
 
 #[allow(dead_code)]
@@ -250,11 +306,9 @@ pub(crate) fn split_lexed_sentences(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexT
 }
 
 pub(crate) fn lex_line(line: &str, line_index: usize) -> Result<Vec<OwnedLexToken>, CardTextError> {
-    let mut lexer = TokenKind::lexer(line);
     let mut tokens = Vec::new();
 
-    while let Some(kind_result) = lexer.next() {
-        let span = lexer.span();
+    for (kind_result, span) in TokenKind::lexer(line).spanned() {
         let start = span.start;
         let end = span.end;
         let slice = &line[start..end];

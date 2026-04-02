@@ -327,8 +327,10 @@ pub struct RestrictionEffectInstance {
 
 impl RestrictionEffectInstance {
     pub fn is_expired(&self, current_turn: u32) -> bool {
-        if matches!(self.duration, crate::effect::Until::ControllersNextUntapStep)
-            && self.consumed_next_untap
+        if matches!(
+            self.duration,
+            crate::effect::Until::ControllersNextUntapStep
+        ) && self.consumed_next_untap
         {
             return true;
         }
@@ -3766,120 +3768,100 @@ impl GameState {
         calculated
     }
 
-    /// Return the object's current name in its zone.
+    /// Return the object's current characteristics in its zone.
     ///
-    /// Battlefield objects use calculated characteristics so continuous effects
-    /// that change names are reflected consistently. Other zones use the stored
-    /// object name.
-    pub fn current_name(&self, id: ObjectId) -> Option<String> {
+    /// This view reflects continuous effects across all zones and expands
+    /// semantic subtype implications like changeling.
+    pub fn current_characteristics(&self, id: ObjectId) -> Option<CalculatedCharacteristics> {
         let object = self.object(id)?;
-        if object.zone == Zone::Battlefield {
-            return self
-                .calculated_characteristics(id)
-                .map(|chars| chars.name)
-                .or_else(|| Some(object.name.clone()));
+        let mut chars =
+            self.calculated_characteristics(id)
+                .unwrap_or_else(|| CalculatedCharacteristics {
+                    name: object.name.clone(),
+                    oracle_text: object.oracle_text.clone(),
+                    power: object.power(),
+                    toughness: object.toughness(),
+                    card_types: object.card_types.clone(),
+                    subtypes: object.subtypes.clone(),
+                    supertypes: object.supertypes.clone(),
+                    colors: object.colors(),
+                    abilities: object.abilities.clone(),
+                    static_abilities: object
+                        .abilities
+                        .iter()
+                        .filter_map(|ability| match &ability.kind {
+                            AbilityKind::Static(static_ability) => Some(static_ability.clone()),
+                            _ => None,
+                        })
+                        .chain(object.level_granted_abilities().iter().cloned())
+                        .collect(),
+                    controller: object.controller,
+                });
+
+        let has_changeling = chars
+            .static_abilities
+            .iter()
+            .any(|ability| ability.id() == crate::static_abilities::StaticAbilityId::Changeling);
+        let can_have_creature_subtypes = chars.card_types.iter().any(|card_type| {
+            matches!(
+                card_type,
+                crate::types::CardType::Creature | crate::types::CardType::Kindred
+            )
+        });
+        if has_changeling && can_have_creature_subtypes {
+            for subtype in crate::types::Subtype::all_creature_types() {
+                if !chars.subtypes.contains(subtype) {
+                    chars.subtypes.push(*subtype);
+                }
+            }
         }
-        Some(object.name.clone())
+
+        Some(chars)
+    }
+
+    /// Return the object's current name in its zone.
+    pub fn current_name(&self, id: ObjectId) -> Option<String> {
+        Some(self.current_characteristics(id)?.name)
     }
 
     /// Return the object's current controller in its zone.
     pub fn current_controller(&self, id: ObjectId) -> Option<PlayerId> {
-        let object = self.object(id)?;
-        if object.zone == Zone::Battlefield {
-            return self
-                .calculated_characteristics(id)
-                .map(|chars| chars.controller)
-                .or_else(|| Some(object.controller));
-        }
-        Some(object.controller)
+        Some(self.current_characteristics(id)?.controller)
     }
 
     /// Return the object's current card types in its zone.
     pub fn current_card_types(&self, id: ObjectId) -> Option<Vec<crate::types::CardType>> {
-        let object = self.object(id)?;
-        if object.zone == Zone::Battlefield {
-            return self
-                .calculated_characteristics(id)
-                .map(|chars| chars.card_types)
-                .or_else(|| Some(object.card_types.clone()));
-        }
-        Some(object.card_types.clone())
+        Some(self.current_characteristics(id)?.card_types)
     }
 
     /// Return the object's current subtypes in its zone.
     pub fn current_subtypes(&self, id: ObjectId) -> Option<Vec<crate::types::Subtype>> {
-        let object = self.object(id)?;
-        if object.zone == Zone::Battlefield {
-            return self
-                .calculated_characteristics(id)
-                .map(|chars| chars.subtypes)
-                .or_else(|| Some(object.subtypes.clone()));
-        }
-        Some(object.subtypes.clone())
+        Some(self.current_characteristics(id)?.subtypes)
     }
 
     /// Return the object's current supertypes in its zone.
     pub fn current_supertypes(&self, id: ObjectId) -> Option<Vec<crate::types::Supertype>> {
-        let object = self.object(id)?;
-        if object.zone == Zone::Battlefield {
-            return self
-                .calculated_characteristics(id)
-                .map(|chars| chars.supertypes)
-                .or_else(|| Some(object.supertypes.clone()));
-        }
-        Some(object.supertypes.clone())
+        Some(self.current_characteristics(id)?.supertypes)
     }
 
     /// Return the object's current colors in its zone.
     pub fn current_colors(&self, id: ObjectId) -> Option<crate::color::ColorSet> {
-        let object = self.object(id)?;
-        if object.zone == Zone::Battlefield {
-            return self
-                .calculated_characteristics(id)
-                .map(|chars| chars.colors)
-                .or_else(|| Some(object.colors()));
-        }
-        Some(object.colors())
+        Some(self.current_characteristics(id)?.colors)
     }
 
     /// Return the object's current power in its zone, if any.
     pub fn current_power(&self, id: ObjectId) -> Option<i32> {
-        let object = self.object(id)?;
-        if object.zone == Zone::Battlefield {
-            return self
-                .calculated_characteristics(id)
-                .and_then(|chars| chars.power)
-                .or_else(|| object.power());
-        }
-        object.power()
+        self.current_characteristics(id)?.power
     }
 
     /// Return the object's current toughness in its zone, if any.
     pub fn current_toughness(&self, id: ObjectId) -> Option<i32> {
-        let object = self.object(id)?;
-        if object.zone == Zone::Battlefield {
-            return self
-                .calculated_characteristics(id)
-                .and_then(|chars| chars.toughness)
-                .or_else(|| object.toughness());
-        }
-        object.toughness()
+        self.current_characteristics(id)?.toughness
     }
 
     /// Return the abilities an object currently has in its zone.
-    ///
-    /// Battlefield objects use calculated characteristics so continuous effects
-    /// like Blood Moon, Humility, and subtype-granted basic land mana abilities
-    /// are reflected consistently. Other zones use the printed/intrinsic list.
     pub fn current_abilities(&self, id: ObjectId) -> Option<Vec<Ability>> {
-        let object = self.object(id)?;
-        if object.zone == Zone::Battlefield {
-            return self
-                .calculated_characteristics(id)
-                .map(|chars| chars.abilities)
-                .or_else(|| Some(object.abilities.clone()));
-        }
-        Some(object.abilities.clone())
+        Some(self.current_characteristics(id)?.abilities)
     }
 
     /// Return a specific current ability by index.
@@ -4009,9 +3991,26 @@ impl GameState {
             .is_some_and(|card_types| card_types.contains(&card_type))
     }
 
+    /// Check if an object currently has a specific card type.
+    pub fn current_has_card_type(&self, id: ObjectId, card_type: crate::types::CardType) -> bool {
+        self.object_has_card_type(id, card_type)
+    }
+
+    /// Check if an object currently has a specific subtype.
+    pub fn current_has_subtype(&self, id: ObjectId, subtype: crate::types::Subtype) -> bool {
+        self.current_subtypes(id)
+            .is_some_and(|subtypes| subtypes.contains(&subtype))
+    }
+
+    /// Check if an object currently has a specific supertype.
+    pub fn current_has_supertype(&self, id: ObjectId, supertype: crate::types::Supertype) -> bool {
+        self.current_supertypes(id)
+            .is_some_and(|supertypes| supertypes.contains(&supertype))
+    }
+
     /// Check if an object is currently a creature.
     pub fn current_is_creature(&self, id: ObjectId) -> bool {
-        self.object_has_card_type(id, crate::types::CardType::Creature)
+        self.current_has_card_type(id, crate::types::CardType::Creature)
     }
 
     // =========================================================================
@@ -6520,6 +6519,65 @@ mod tests {
         assert_eq!(game.current_power(land_id), Some(8));
         assert_eq!(game.current_toughness(land_id), Some(8));
         assert!(game.current_has_static_ability_id(land_id, StaticAbilityId::Haste));
+    }
+
+    #[test]
+    fn current_subtypes_reflect_graveyard_effects_and_changeling() {
+        use crate::ability::Ability;
+        use crate::card::{CardBuilder, PowerToughness};
+        use crate::static_abilities::StaticAbility;
+        use crate::target::{ObjectFilter, PlayerFilter};
+        use crate::types::Subtype;
+        use crate::zone::Zone;
+
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let _beacon_id = game.create_object_from_definition(
+            &CardDefinitionBuilder::new(CardId::from_raw(202), "Graveyard Beacon")
+                .card_types(vec![CardType::Artifact])
+                .with_ability(Ability::static_ability(StaticAbility::add_subtypes(
+                    ObjectFilter::default()
+                        .in_zone(Zone::Graveyard)
+                        .owned_by(PlayerFilter::You)
+                        .with_type(CardType::Creature),
+                    vec![Subtype::Wizard],
+                )))
+                .build(),
+            alice,
+            Zone::Battlefield,
+        );
+
+        let graveyard_creature_id = game.create_object_from_card(
+            &CardBuilder::new(CardId::from_raw(203), "Vanilla Bear")
+                .card_types(vec![CardType::Creature])
+                .power_toughness(PowerToughness::fixed(2, 2))
+                .build(),
+            alice,
+            Zone::Graveyard,
+        );
+
+        assert!(game.current_has_subtype(graveyard_creature_id, Subtype::Wizard));
+        assert!(
+            game.current_subtypes(graveyard_creature_id)
+                .is_some_and(|subtypes| subtypes.contains(&Subtype::Wizard))
+        );
+
+        let changeling_spell_id = game.create_object_from_definition(
+            &CardDefinitionBuilder::new(CardId::from_raw(204), "Velis Probe")
+                .card_types(vec![CardType::Kindred, CardType::Instant])
+                .with_ability(Ability::static_ability(StaticAbility::changeling()))
+                .build(),
+            alice,
+            Zone::Graveyard,
+        );
+
+        assert!(game.current_has_subtype(changeling_spell_id, Subtype::Wizard));
+        assert!(game.current_has_subtype(changeling_spell_id, Subtype::Elf));
+        assert!(
+            game.current_subtypes(changeling_spell_id)
+                .is_some_and(|subtypes| subtypes.contains(&Subtype::Wizard))
+        );
     }
 
     #[test]

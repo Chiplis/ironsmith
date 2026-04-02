@@ -11,7 +11,7 @@ use super::super::native_tokens::LowercaseWordView;
 use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed, split_on_or};
 use super::super::util::{
     is_article, is_source_reference_words, parse_mana_symbol, parse_target_phrase,
-    span_from_tokens, split_on_and, token_index_for_word_index, trim_commas, words,
+    span_from_tokens, split_on_and, token_index_for_word_index, trim_commas,
 };
 use super::dispatch_inner::trim_edge_punctuation;
 use super::lex_chain_helpers::find_verb_lexed;
@@ -144,6 +144,82 @@ fn player_gain_effects_for_abilities(
     Some(effects)
 }
 
+fn word_slice_starts_with(words: &[&str], prefix: &[&str]) -> bool {
+    if prefix.len() > words.len() {
+        return false;
+    }
+
+    for (idx, expected) in prefix.iter().enumerate() {
+        if words[idx] != *expected {
+            return false;
+        }
+    }
+
+    true
+}
+
+fn word_slice_contains(words: &[&str], needle: &str) -> bool {
+    for word in words {
+        if *word == needle {
+            return true;
+        }
+    }
+    false
+}
+
+fn find_word_sequence_index(words: &[&str], phrase: &[&str]) -> Option<usize> {
+    if phrase.is_empty() || phrase.len() > words.len() {
+        return None;
+    }
+
+    for start in 0..=words.len() - phrase.len() {
+        let mut matched = true;
+        for (offset, expected) in phrase.iter().enumerate() {
+            if words[start + offset] != *expected {
+                matched = false;
+                break;
+            }
+        }
+        if matched {
+            return Some(start);
+        }
+    }
+
+    None
+}
+
+fn find_word_index_by(words: &[&str], mut predicate: impl FnMut(&str) -> bool) -> Option<usize> {
+    for (idx, word) in words.iter().enumerate() {
+        if predicate(word) {
+            return Some(idx);
+        }
+    }
+
+    None
+}
+
+fn render_lower_words(tokens: &[OwnedLexToken]) -> String {
+    let word_view = LowercaseWordView::new(tokens);
+    word_view.to_word_refs().join(" ")
+}
+
+fn push_unique_keyword_action(actions: &mut Vec<KeywordAction>, action: KeywordAction) {
+    for existing in actions.iter() {
+        if *existing == action {
+            return;
+        }
+    }
+    actions.push(action);
+}
+
+fn string_contains(haystack: &str, needle: &str) -> bool {
+    if needle.is_empty() {
+        return true;
+    }
+
+    haystack.match_indices(needle).next().is_some()
+}
+
 fn parse_granted_ability_component_for_gain(
     ability_tokens: &[OwnedLexToken],
     clause_words: &[&str],
@@ -155,7 +231,7 @@ fn parse_granted_ability_component_for_gain(
 
     let ability_word_view = LowercaseWordView::new(&ability_tokens);
     let ability_words = ability_word_view.to_word_refs();
-    if ability_words.starts_with(&["hexproof", "from"]) {
+    if word_slice_starts_with(&ability_words, &["hexproof", "from"]) {
         let filter_tokens = ability_tokens[2..]
             .iter()
             .filter(|token| !token.is_word("and") && !token.is_word("from"))
@@ -239,23 +315,26 @@ fn parse_granted_abilities_for_gain_clause(
 pub(crate) fn parse_simple_ability_duration(
     words_after_verb: &[&str],
 ) -> Option<(usize, usize, Until)> {
-    if let Some(idx) = words_after_verb.windows(4).position(is_until_end_of_turn) {
+    if let Some(idx) = find_word_sequence_index(words_after_verb, &["until", "end", "of", "turn"])
+    {
         return Some((idx, 4, Until::EndOfTurn));
     }
-    if let Some(idx) = words_after_verb.windows(4).position(|window| {
-        window == ["until", "your", "next", "turn"] || window == ["until", "your", "next", "upkeep"]
-    }) {
+    if let Some(idx) = find_word_sequence_index(words_after_verb, &["until", "your", "next", "turn"])
+        .or_else(|| find_word_sequence_index(words_after_verb, &["until", "your", "next", "upkeep"]))
+    {
         return Some((idx, 4, Until::YourNextTurn));
     }
-    if let Some(idx) = words_after_verb.windows(5).position(|window| {
-        window == ["until", "your", "next", "untap", "step"]
-            || window == ["during", "your", "next", "untap", "step"]
+    if let Some(idx) = find_word_sequence_index(
+        words_after_verb,
+        &["until", "your", "next", "untap", "step"],
+    )
+    .or_else(|| {
+        find_word_sequence_index(words_after_verb, &["during", "your", "next", "untap", "step"])
     }) {
         return Some((idx, 5, Until::YourNextTurn));
     }
-    if let Some(idx) = words_after_verb
-        .windows(6)
-        .position(|window| window == ["for", "as", "long", "as", "you", "control"])
+    if let Some(idx) =
+        find_word_sequence_index(words_after_verb, &["for", "as", "long", "as", "you", "control"])
     {
         return Some((
             idx,
@@ -299,11 +378,11 @@ fn parse_simple_ability_modifier_clause_lexed(
 ) -> Result<Option<EffectAst>, CardTextError> {
     let clause_word_view = LowercaseWordView::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
-    let verb_idx = clause_words.iter().position(|word| {
+    let verb_idx = find_word_index_by(&clause_words, |word| {
         if losing {
-            matches!(*word, "lose" | "loses")
+            matches!(word, "lose" | "loses")
         } else {
-            matches!(*word, "gain" | "gains")
+            matches!(word, "gain" | "gains")
         }
     });
     let Some(verb_idx) = verb_idx else {
@@ -336,11 +415,12 @@ fn parse_simple_ability_modifier_clause_lexed(
         && let Some((subject_verb, _)) = find_verb_lexed(subject_tokens)
         && subject_verb != Verb::Get
     {
-        let subject_words = LowercaseWordView::new(subject_tokens);
+        let subject_words = LowercaseWordView::new(&subject_tokens);
         let subject_word_refs = subject_words.to_word_refs();
         let target_phrase_with_controller_tail = subject_word_refs.first().copied()
             == Some("target")
-            && (subject_word_refs.contains(&"control") || subject_word_refs.contains(&"controls"));
+            && (word_slice_contains(&subject_word_refs, "control")
+                || word_slice_contains(&subject_word_refs, "controls"));
         if !target_phrase_with_controller_tail {
             return Ok(None);
         }
@@ -409,7 +489,7 @@ fn parse_simple_ability_modifier_clause_lexed(
     let is_demonstrative_subject = subject_words
         .first()
         .is_some_and(|word| word == "that" || word == "those");
-    if is_demonstrative_subject || subject_words.find("target").is_some() {
+    if is_demonstrative_subject || word_slice_contains(&subject_word_refs, "target") {
         let target = parse_target_phrase(subject_tokens)?;
         if losing {
             return Ok(Some(EffectAst::RemoveAbilitiesFromTarget {
@@ -464,11 +544,11 @@ pub(crate) fn parse_simple_ability_modifier_clause(
 ) -> Result<Option<EffectAst>, CardTextError> {
     let clause_word_view = LowercaseWordView::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
-    let verb_idx = clause_words.iter().position(|word| {
+    let verb_idx = find_word_index_by(&clause_words, |word| {
         if losing {
-            matches!(*word, "lose" | "loses")
+            matches!(word, "lose" | "loses")
         } else {
-            matches!(*word, "gain" | "gains")
+            matches!(word, "gain" | "gains")
         }
     });
     let Some(verb_idx) = verb_idx else {
@@ -501,10 +581,11 @@ pub(crate) fn parse_simple_ability_modifier_clause(
         && let Some((subject_verb, _)) = find_verb(&subject_tokens)
         && subject_verb != Verb::Get
     {
-        let subject_words = words(&subject_tokens);
-        let target_phrase_with_controller_tail = subject_words.first().copied() == Some("target")
-            && subject_words.contains(&"control")
-            || subject_words.contains(&"controls");
+        let subject_words = LowercaseWordView::new(&subject_tokens);
+        let subject_word_refs = subject_words.to_word_refs();
+        let target_phrase_with_controller_tail = subject_word_refs.first().copied() == Some("target")
+            && (word_slice_contains(&subject_word_refs, "control")
+                || word_slice_contains(&subject_word_refs, "controls"));
         if !target_phrase_with_controller_tail {
             return Ok(None);
         }
@@ -572,7 +653,7 @@ pub(crate) fn parse_simple_ability_modifier_clause(
     let is_demonstrative_subject = subject_word_refs
         .first()
         .is_some_and(|word| *word == "that" || *word == "those");
-    if is_demonstrative_subject || subject_word_refs.contains(&"target") {
+    if is_demonstrative_subject || word_slice_contains(&subject_word_refs, "target") {
         let target = parse_target_phrase(&subject_tokens)?;
         if losing {
             return Ok(Some(EffectAst::RemoveAbilitiesFromTarget {
@@ -612,21 +693,18 @@ pub(crate) fn parse_simple_ability_modifier_clause(
 pub(crate) fn parse_gain_ability_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let word_view = LowercaseWordView::new(tokens);
+    let word_view = LowercaseWordView::new(&tokens);
     let word_list = word_view.to_word_refs();
-    let looks_like_can_attack_no_defender = word_list
-        .windows(2)
-        .any(|window| window == ["can", "attack"])
-        && word_list
-            .windows(2)
-            .any(|window| window == ["as", "though"])
-        && word_list.contains(&"defender");
+    let looks_like_can_attack_no_defender =
+        find_word_sequence_index(&word_list, &["can", "attack"]).is_some()
+            && find_word_sequence_index(&word_list, &["as", "though"]).is_some()
+            && word_slice_contains(&word_list, "defender");
     if looks_like_can_attack_no_defender {
         return Ok(None);
     }
-    let gain_idx = word_list
-        .iter()
-        .position(|word| matches!(*word, "gain" | "gains" | "has" | "have" | "lose" | "loses"));
+    let gain_idx = find_word_index_by(&word_list, |word| {
+        matches!(word, "gain" | "gains" | "has" | "have" | "lose" | "loses")
+    });
     let Some(gain_idx) = gain_idx else {
         return Ok(None);
     };
@@ -646,12 +724,12 @@ pub(crate) fn parse_gain_ability_sentence(
 
     let leading_duration_phrase = if starts_with_until_end_of_turn(&word_list) {
         Some((4usize, Until::EndOfTurn))
-    } else if word_list.starts_with(&["until", "your", "next", "turn"])
-        || word_list.starts_with(&["until", "your", "next", "upkeep"])
+    } else if word_slice_starts_with(&word_list, &["until", "your", "next", "turn"])
+        || word_slice_starts_with(&word_list, &["until", "your", "next", "upkeep"])
     {
         Some((4usize, Until::YourNextTurn))
-    } else if word_list.starts_with(&["until", "your", "next", "untap", "step"])
-        || word_list.starts_with(&["during", "your", "next", "untap", "step"])
+    } else if word_slice_starts_with(&word_list, &["until", "your", "next", "untap", "step"])
+        || word_slice_starts_with(&word_list, &["during", "your", "next", "untap", "step"])
     {
         Some((5usize, Until::YourNextTurn))
     } else {
@@ -675,30 +753,7 @@ pub(crate) fn parse_gain_ability_sentence(
         return Ok(None);
     }
 
-    let duration_phrase = if let Some(idx) = after_gain.windows(4).position(is_until_end_of_turn) {
-        Some((idx, 4usize, Until::EndOfTurn))
-    } else if let Some(idx) = after_gain.windows(4).position(|window| {
-        window == ["until", "your", "next", "turn"] || window == ["until", "your", "next", "upkeep"]
-    }) {
-        Some((idx, 4usize, Until::YourNextTurn))
-    } else if let Some(idx) = after_gain.windows(5).position(|window| {
-        window == ["until", "your", "next", "untap", "step"]
-            || window == ["during", "your", "next", "untap", "step"]
-    }) {
-        Some((idx, 5usize, Until::YourNextTurn))
-    } else if let Some(idx) = after_gain
-        .windows(6)
-        .position(|window| window == ["for", "as", "long", "as", "you", "control"])
-    {
-        // Consume the remainder of the phrase as the duration clause.
-        Some((
-            idx,
-            after_gain.len().saturating_sub(idx),
-            Until::YouStopControllingThis,
-        ))
-    } else {
-        None
-    };
+    let duration_phrase = parse_simple_ability_duration(after_gain);
     let duration = duration_phrase
         .as_ref()
         .map(|(_, _, duration)| duration.clone())
@@ -768,7 +823,7 @@ pub(crate) fn parse_gain_ability_sentence(
     // Check for "gets +X/+Y and gains/has/loses ..." patterns - if there's a pump
     // modifier before the ability verb, extract it as a separate Pump/PumpAll effect.
     let before_gain = &word_list[subject_start_word_idx..gain_idx];
-    let get_idx = before_gain.iter().position(|w| *w == "get" || *w == "gets");
+    let get_idx = find_word_index_by(before_gain, |word| matches!(word, "get" | "gets"));
     let pump_effect = if let Some(gi) = get_idx {
         let mod_word = before_gain.get(gi + 1).copied().unwrap_or("");
         if let Ok((power, toughness)) = parse_pt_modifier_values(mod_word) {
@@ -876,7 +931,7 @@ pub(crate) fn parse_gain_ability_sentence(
         return Ok(Some(effects));
     }
 
-    if before_gain.contains(&"target") {
+    if word_slice_contains(before_gain, "target") {
         let has_pump_effect = pump_effect.is_some();
         let target = parse_target_phrase(&real_subject_tokens)?;
         if let Some((power, toughness, _)) = pump_effect {
@@ -1071,7 +1126,7 @@ pub(crate) fn append_gain_ability_trailing_effects(
         }
         return Err(CardTextError::ParseError(format!(
             "unsupported trailing unless gain-ability clause (clause: '{}')",
-            words(&trimmed).join(" ")
+            render_lower_words(&trimmed)
         )));
     }
 
@@ -1085,15 +1140,16 @@ pub(crate) fn append_gain_ability_trailing_effects(
 
 pub(crate) fn parse_choice_of_abilities(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
     let tokens = trim_commas(tokens);
-    let words = words(&tokens);
-    let prefix_words = if words.starts_with(&["your", "choice", "of"]) {
+    let word_view = LowercaseWordView::new(&tokens);
+    let word_list = word_view.to_word_refs();
+    let prefix_words = if word_slice_starts_with(&word_list, &["your", "choice", "of"]) {
         3usize
-    } else if words.starts_with(&["your", "choice", "from"]) {
+    } else if word_slice_starts_with(&word_list, &["your", "choice", "from"]) {
         3usize
     } else {
         return None;
     };
-    if words.len() <= prefix_words + 1 {
+    if word_list.len() <= prefix_words + 1 {
         return None;
     }
 
@@ -1110,9 +1166,7 @@ pub(crate) fn parse_choice_of_abilities(tokens: &[OwnedLexToken]) -> Option<Vec<
             continue;
         }
         let action = parse_ability_phrase(&segment)?;
-        if !actions.contains(&action) {
-            actions.push(action);
-        }
+        push_unique_keyword_action(&mut actions, action);
     }
 
     if actions.len() < 2 {
@@ -1124,16 +1178,20 @@ pub(crate) fn parse_choice_of_abilities(tokens: &[OwnedLexToken]) -> Option<Vec<
 pub(crate) fn parse_gain_ability_to_source_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let clause_words = words(tokens);
-    let gain_idx = clause_words
-        .iter()
-        .position(|word| *word == "gain" || *word == "gains");
+    let clause_word_view = LowercaseWordView::new(tokens);
+    let clause_words = clause_word_view.to_word_refs();
+    let gain_idx = find_word_index_by(&clause_words, |word| matches!(word, "gain" | "gains"));
     let Some(gain_idx) = gain_idx else {
         return Ok(None);
     };
 
-    let subject_tokens = &tokens[..gain_idx];
-    let subject_words: Vec<&str> = words(subject_tokens)
+    let Some(gain_token_idx) = token_index_for_word_index(tokens, gain_idx) else {
+        return Ok(None);
+    };
+    let subject_tokens = &tokens[..gain_token_idx];
+    let subject_word_view = LowercaseWordView::new(subject_tokens);
+    let subject_words: Vec<&str> = subject_word_view
+        .to_word_refs()
         .into_iter()
         .filter(|word| !is_article(word))
         .collect();
@@ -1141,7 +1199,7 @@ pub(crate) fn parse_gain_ability_to_source_sentence(
         return Ok(None);
     }
 
-    let ability_tokens = trim_edge_punctuation(&tokens[gain_idx + 1..]);
+    let ability_tokens = trim_edge_punctuation(&tokens[gain_token_idx + 1..]);
     if let Some(parsed) = parse_activated_line(&ability_tokens)? {
         return Ok(Some(EffectAst::GrantAbilityToSource { ability: parsed }));
     }
@@ -1167,19 +1225,20 @@ mod tests {
 
         let debug = format!("{effect:?}");
         assert!(
-            debug.contains("GrantAbilityToSource"),
+            string_contains(&debug, "GrantAbilityToSource"),
             "expected source grant effect, got {debug}"
         );
         assert!(
-            debug.contains("effects_ast: Some"),
+            string_contains(&debug, "effects_ast: Some"),
             "expected parsed ability to remain unlowered in the AST, got {debug}"
         );
 
         let compiled =
             compile_statement_effects(&[effect]).expect("grant-to-source effect should lower");
+        let compiled_debug = format!("{compiled:?}");
         assert!(
-            format!("{compiled:?}").contains("GrantObjectAbilityEffect"),
-            "expected source grant effect after lowering, got {compiled:?}"
+            string_contains(&compiled_debug, "GrantObjectAbilityEffect"),
+            "expected source grant effect after lowering, got {compiled_debug}"
         );
     }
 
@@ -1195,11 +1254,11 @@ mod tests {
 
         let debug = format!("{effect:?}");
         assert!(
-            debug.contains("ParsedObjectAbility"),
+            string_contains(&debug, "ParsedObjectAbility"),
             "expected parsed granted ability in AST, got {debug}"
         );
         assert!(
-            debug.contains("effects_ast: Some"),
+            string_contains(&debug, "effects_ast: Some"),
             "expected granted ability to remain unlowered in AST, got {debug}"
         );
 
@@ -1207,9 +1266,9 @@ mod tests {
             compile_statement_effects(&[effect]).expect("target gain clause should lower");
         let compiled_debug = format!("{compiled:?}");
         assert!(
-            compiled_debug.contains("ApplyContinuousEffect")
-                && (compiled_debug.contains("AddAbilityGeneric")
-                    || compiled_debug.contains("GrantObjectAbilityForFilter")),
+            string_contains(&compiled_debug, "ApplyContinuousEffect")
+                && (string_contains(&compiled_debug, "AddAbilityGeneric")
+                    || string_contains(&compiled_debug, "GrantObjectAbilityForFilter")),
             "expected lowered granted ability effect, got {compiled_debug}"
         );
     }
@@ -1226,11 +1285,11 @@ mod tests {
 
         let debug = format!("{effect:?}");
         assert!(
-            debug.contains("ParsedObjectAbility"),
+            string_contains(&debug, "ParsedObjectAbility"),
             "expected parsed removed ability in AST, got {debug}"
         );
         assert!(
-            debug.contains("effects_ast: Some"),
+            string_contains(&debug, "effects_ast: Some"),
             "expected removed ability to remain unlowered in AST, got {debug}"
         );
 
@@ -1238,11 +1297,11 @@ mod tests {
             compile_statement_effects(&[effect]).expect("target lose clause should lower");
         let compiled_debug = format!("{compiled:?}");
         assert!(
-            compiled_debug.contains("RemoveAbility"),
+            string_contains(&compiled_debug, "RemoveAbility"),
             "expected lowered remove-ability effect, got {compiled_debug}"
         );
         assert!(
-            compiled_debug.contains("GrantObjectAbilityForFilter"),
+            string_contains(&compiled_debug, "GrantObjectAbilityForFilter"),
             "expected removed granted object ability after lowering, got {compiled_debug}"
         );
     }
@@ -1295,7 +1354,7 @@ mod tests {
 
         let debug = format!("{effects:?}");
         assert!(
-            debug.contains("Pump") && debug.contains("RemoveAbilitiesFromTarget"),
+            string_contains(&debug, "Pump") && string_contains(&debug, "RemoveAbilitiesFromTarget"),
             "expected pump plus remove-ability effects, got {debug}"
         );
         assert!(
@@ -1316,12 +1375,12 @@ mod tests {
 
         let debug = format!("{effects:?}");
         assert!(
-            debug.contains("GrantAbilitiesToTarget"),
+            string_contains(&debug, "GrantAbilitiesToTarget"),
             "expected target ability grant, got {debug}"
         );
         assert!(
-            debug.contains("Landwalk(Subtype { subtype: Forest, snow: false })")
-                && debug.contains("YourNextTurn"),
+            string_contains(&debug, "Landwalk(Subtype { subtype: Forest, snow: false })")
+                && string_contains(&debug, "YourNextTurn"),
             "expected forestwalk grant to keep next-upkeep duration, got {debug}"
         );
     }
@@ -1344,12 +1403,12 @@ mod tests {
 
         let debug = format!("{effects:?}");
         assert!(
-            debug.contains("GrantAbilitiesToTarget"),
+            string_contains(&debug, "GrantAbilitiesToTarget"),
             "expected target ability grant, got {debug}"
         );
         assert!(
-            debug.contains("Landwalk(Subtype { subtype: Forest, snow: false })")
-                && debug.contains("YourNextTurn"),
+            string_contains(&debug, "Landwalk(Subtype { subtype: Forest, snow: false })")
+                && string_contains(&debug, "YourNextTurn"),
             "expected forestwalk grant to keep next-upkeep duration, got {debug}"
         );
     }
@@ -1372,15 +1431,15 @@ mod tests {
 
         let debug = format!("{effects:?}");
         assert!(
-            debug.contains("GrantAbilitiesAll"),
+            string_contains(&debug, "GrantAbilitiesAll"),
             "expected a global grant effect, got {debug}"
         );
         assert!(
-            debug.contains("ParsedObjectAbility"),
+            string_contains(&debug, "ParsedObjectAbility"),
             "expected parsed granted ability payload, got {debug}"
         );
         assert!(
-            debug.contains("LoseLife"),
+            string_contains(&debug, "LoseLife"),
             "expected lose-life text to remain inside the granted ability payload, got {debug}"
         );
     }
@@ -1435,7 +1494,7 @@ mod tests {
 
         let trigger_debug = format!("{:?}", triggered.trigger);
         assert!(
-            trigger_debug.contains("damaged_player: Some("),
+            string_contains(&trigger_debug, "damaged_player: Some("),
             "granted trigger should constrain the damaged player: {trigger_debug}"
         );
     }
@@ -1450,11 +1509,11 @@ mod tests {
 
         let debug = format!("{:?}", def.spell_effect);
         assert!(
-            debug.contains("Indestructible"),
+            string_contains(&debug, "Indestructible"),
             "grant should keep the keyword ability: {debug}"
         );
         assert!(
-            debug.contains("TriggeredAbility"),
+            string_contains(&debug, "TriggeredAbility"),
             "grant should keep the quoted triggered ability: {debug}"
         );
 
@@ -1462,9 +1521,9 @@ mod tests {
             .join(" ")
             .to_ascii_lowercase();
         assert!(
-            rendered.contains("target creature you control gains indestructible")
-                && rendered.contains("whenever this creature is dealt damage")
-                && rendered.contains("put that many +1/+1 counters on it"),
+            string_contains(&rendered, "target creature you control gains indestructible")
+                && string_contains(&rendered, "whenever this creature is dealt damage")
+                && string_contains(&rendered, "put that many +1/+1 counters on it"),
             "grant should stay targeted in compiled text: {rendered}"
         );
     }

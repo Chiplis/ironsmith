@@ -1,0 +1,5 @@
+# Format: kind|path|max_hits|remove_when
+# This is a baseline allowlist for the parser migration audit.
+# Entries should be removed as files migrate to token-first parsers.
+# All temporary baseline entries were removed on 2026-04-02 after the parser migration audit
+# reached 0 manual-scan files / 0 hits and 0 raw-string-after-lex files / 0 hits.

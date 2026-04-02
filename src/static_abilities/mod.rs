@@ -1977,6 +1977,13 @@ impl StaticAbility {
         Self::new(AddSubtypesForFilter::new(filter, subtypes))
     }
 
+    pub fn add_all_subtypes_of_family(
+        filter: crate::target::ObjectFilter,
+        family: crate::types::SubtypeFamily,
+    ) -> Self {
+        Self::new(AddAllSubtypesOfFamilyForFilter::new(filter, family))
+    }
+
     pub fn set_creature_subtypes(
         filter: crate::target::ObjectFilter,
         subtypes: Vec<crate::types::Subtype>,

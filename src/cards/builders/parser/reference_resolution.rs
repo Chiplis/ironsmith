@@ -12,6 +12,8 @@ use crate::TagKey;
 use crate::cards::builders::{
     ObjectRefAst, PredicateAst, PreventNextTimeDamageSourceAst, RetargetModeAst,
 };
+#[cfg(test)]
+use crate::types::Subtype;
 
 use super::compile_support::{
     effect_references_event_derived_amount, effects_reference_it_tag,
@@ -632,6 +634,11 @@ fn advance_reference_frame_for_effect(
         EffectAst::DrawForEachTaggedMatching { player, .. } => {
             track_effect_player(*player, frame, true, true)?;
         }
+        EffectAst::Amass { .. } => {
+            if frame.auto_tag_object_targets {
+                frame.last_object_tag = Some(next_reference_tag(id_gen, "amassed"));
+            }
+        }
         EffectAst::SearchLibrary { player, .. } => {
             track_effect_player(player.clone(), frame, true, true)?;
             if frame.auto_tag_object_targets {
@@ -899,7 +906,6 @@ fn advance_reference_frame_for_effect(
         | EffectAst::Enchant { .. }
         | EffectAst::Attach { .. }
         | EffectAst::Investigate { .. }
-        | EffectAst::Amass { .. }
         | EffectAst::Monstrosity { .. }
         | EffectAst::ConniveIterated
         | EffectAst::RemoveCountersAll { .. }
@@ -2250,6 +2256,36 @@ mod tests {
         assert_eq!(
             annotated.effects[1].in_env.last_object_tag,
             RefState::Known(TagKey::from("destroyed_0"))
+        );
+    }
+
+    #[test]
+    fn annotate_effect_sequence_sets_followup_in_env_from_amassed_tag() {
+        let effects = vec![
+            EffectAst::Amass {
+                subtype: Some(Subtype::Orc),
+                amount: 2,
+            },
+            EffectAst::GrantPlayTaggedUntilEndOfTurn {
+                tag: TagKey::from(IT_TAG),
+                player: PlayerAst::You,
+                allow_land: false,
+                without_paying_mana_cost: false,
+                allow_any_color_for_cast: false,
+            },
+        ];
+
+        let annotated = annotate_effect_sequence(
+            &effects,
+            &ReferenceImports::default(),
+            EffectReferenceResolutionConfig::default(),
+            IdGenContext::default(),
+        )
+        .expect("annotate amass follow-up");
+
+        assert_eq!(
+            annotated.effects[1].in_env.last_object_tag,
+            RefState::Known(TagKey::from("amassed_0"))
         );
     }
 

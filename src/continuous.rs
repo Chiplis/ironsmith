@@ -14,7 +14,7 @@ use crate::object::{CounterType, Object};
 use crate::object_query::candidate_ids_for_filter;
 use crate::static_abilities::StaticAbility;
 use crate::target::{ObjectFilter, PlayerFilter};
-use crate::types::{CardType, Subtype, Supertype};
+use crate::types::{CardType, Subtype, SubtypeFamily, Supertype};
 use crate::zone::Zone;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -251,8 +251,14 @@ pub enum Modification {
     /// Add subtypes
     AddSubtypes(Vec<Subtype>),
 
+    /// Add every subtype from a specific subtype family
+    AddAllSubtypesOfFamily(SubtypeFamily),
+
     /// Remove subtypes
     RemoveSubtypes(Vec<Subtype>),
+
+    /// Remove every subtype from a specific subtype family
+    RemoveAllSubtypesOfFamily(SubtypeFamily),
 
     /// Set subtypes (replacing existing)
     SetSubtypes(Vec<Subtype>),
@@ -373,7 +379,9 @@ impl Modification {
             | Modification::RemoveCardTypes(_)
             | Modification::SetCardTypes(_)
             | Modification::AddSubtypes(_)
+            | Modification::AddAllSubtypesOfFamily(_)
             | Modification::RemoveSubtypes(_)
+            | Modification::RemoveAllSubtypesOfFamily(_)
             | Modification::SetSubtypes(_)
             | Modification::AddSupertypes(_)
             | Modification::RemoveSupertypes(_)
@@ -2268,6 +2276,16 @@ fn apply_modification_to_chars(
         Modification::RemoveSupertypes(supertypes) => {
             chars.supertypes.retain(|st| !supertypes.contains(st));
         }
+        Modification::AddAllSubtypesOfFamily(family) => {
+            for subtype in family.all_subtypes() {
+                if !chars.subtypes.contains(subtype) {
+                    chars.subtypes.push(*subtype);
+                }
+            }
+        }
+        Modification::RemoveAllSubtypesOfFamily(family) => {
+            chars.subtypes.retain(|st| !st.belongs_to_family(*family));
+        }
         Modification::RemoveAllCreatureTypes => {
             chars.subtypes.retain(|st| !st.is_creature_type());
         }
@@ -2487,6 +2505,16 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
                 }
                 Modification::RemoveSubtypes(types) => {
                     chars.subtypes.retain(|t| !types.contains(t));
+                }
+                Modification::AddAllSubtypesOfFamily(family) => {
+                    for subtype in family.all_subtypes() {
+                        if !chars.subtypes.contains(subtype) {
+                            chars.subtypes.push(*subtype);
+                        }
+                    }
+                }
+                Modification::RemoveAllSubtypesOfFamily(family) => {
+                    chars.subtypes.retain(|t| !t.belongs_to_family(*family));
                 }
                 Modification::SetSubtypes(types) => {
                     // Blood Moon: Only replace LAND subtypes, keep non-land subtypes
@@ -2875,7 +2903,9 @@ fn apply_layer_7_effects(
             | Modification::RemoveCardTypes(_)
             | Modification::SetCardTypes(_)
             | Modification::AddSubtypes(_)
+            | Modification::AddAllSubtypesOfFamily(_)
             | Modification::RemoveSubtypes(_)
+            | Modification::RemoveAllSubtypesOfFamily(_)
             | Modification::SetSubtypes(_)
             | Modification::AddSupertypes(_)
             | Modification::RemoveSupertypes(_)

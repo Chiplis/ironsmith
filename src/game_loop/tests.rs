@@ -184,11 +184,18 @@ fn exert_attack_choice_draws_card_and_skips_only_next_untap() {
         &mut dm,
     )
     .expect("declaring an exert attacker should succeed");
-    assert!(game.is_tapped(source_id), "attacking should tap the creature");
+    assert!(
+        game.is_tapped(source_id),
+        "attacking should tap the creature"
+    );
 
     put_triggers_on_stack(&mut game, &mut trigger_queue)
         .expect("exert follow-up trigger should go on the stack");
-    assert_eq!(game.stack.len(), 1, "exert should queue exactly one linked trigger");
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "exert should queue exactly one linked trigger"
+    );
     resolve_stack_entry(&mut game).expect("exert follow-up trigger should resolve");
     assert_eq!(
         game.player(alice).expect("alice exists").hand.len(),

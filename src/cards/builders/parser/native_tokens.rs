@@ -3,6 +3,16 @@ use super::lexer::TokenKind;
 
 pub(crate) type TokInput<'a> = &'a [OwnedLexToken];
 
+pub(crate) fn lowercase_word_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+    let mut lowered = tokens.to_vec();
+    for token in &mut lowered {
+        if let Some(word) = token.word_mut() {
+            *word = word.to_ascii_lowercase();
+        }
+    }
+    lowered
+}
+
 fn push_normalized_words(slice: &str, in_mana_braces: bool, out: &mut Vec<String>) {
     let mut buffer = String::new();
     let chars: Vec<(usize, char)> = slice.char_indices().collect();
@@ -156,7 +166,15 @@ impl LowercaseWordView {
     }
 
     pub(crate) fn find(&self, expected: &str) -> Option<usize> {
-        self.lower_words.iter().position(|word| word == expected)
+        let mut idx = 0usize;
+        while idx < self.lower_words.len() {
+            if self.lower_words[idx] == expected {
+                return Some(idx);
+            }
+            idx += 1;
+        }
+
+        None
     }
 
     pub(crate) fn to_word_refs(&self) -> Vec<&str> {

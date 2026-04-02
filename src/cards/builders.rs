@@ -28,6 +28,8 @@ use crate::zone::Zone;
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
+mod scan_helpers;
+
 #[cfg(test)]
 use crate::filter::TaggedOpbjectRelation;
 #[cfg(test)]
@@ -11994,13 +11996,179 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .expect("anthem + changeling static line should parse");
 
         let debug = format!("{:?}", def.abilities);
+        let static_ids: Vec<_> = def
+            .abilities
+            .iter()
+            .filter_map(|ability| match &ability.kind {
+                AbilityKind::Static(static_ability) => Some(static_ability.id()),
+                _ => None,
+            })
+            .collect();
         assert!(
             debug.contains("power: Fixed(3)") && debug.contains("toughness: Fixed(0)"),
             "expected +3/+0 anthem, got: {debug}"
         );
+        assert_eq!(
+            static_ids
+                .iter()
+                .filter(
+                    |id| **id == crate::static_abilities::StaticAbilityId::AddAllSubtypesOfFamily
+                )
+                .count(),
+            1,
+            "expected generic every-creature-type static ability, got: {debug}"
+        );
+    }
+
+    #[test]
+    fn parse_creature_spells_are_every_creature_type_line() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Maskwood Stack Variant")
+            .parse_text("Creature spells you control are every creature type.")
+            .expect("stack creature-type static line should parse");
+
+        let debug = format!("{:#?}", def.abilities);
+        let compact = debug.split_whitespace().collect::<String>();
+        let static_ids: Vec<_> = def
+            .abilities
+            .iter()
+            .filter_map(|ability| match &ability.kind {
+                AbilityKind::Static(static_ability) => Some(static_ability.id()),
+                _ => None,
+            })
+            .collect();
+
+        assert_eq!(
+            static_ids
+                .iter()
+                .filter(
+                    |id| **id == crate::static_abilities::StaticAbilityId::AddAllSubtypesOfFamily
+                )
+                .count(),
+            1,
+            "expected generic every-creature-type stack effect, got: {debug}"
+        );
         assert!(
-            debug.contains("Changeling"),
-            "expected granted changeling static ability, got: {debug}"
+            compact.contains("zone:Some(Stack")
+                && compact.contains("card_types:[Creature,")
+                && compact.contains("has_mana_cost:true"),
+            "expected stack creature-spell filter, got: {debug}"
+        );
+    }
+
+    #[test]
+    fn parse_nonbattlefield_creature_cards_are_every_creature_type_line() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Maskwood Off-Battlefield Variant")
+            .parse_text(
+                "Creature cards you own that aren't on the battlefield are every creature type.",
+            )
+            .expect("off-battlefield creature-card static line should parse");
+
+        let debug = format!("{:#?}", def.abilities);
+        let compact = debug.split_whitespace().collect::<String>();
+        let static_ids: Vec<_> = def
+            .abilities
+            .iter()
+            .filter_map(|ability| match &ability.kind {
+                AbilityKind::Static(static_ability) => Some(static_ability.id()),
+                _ => None,
+            })
+            .collect();
+
+        assert_eq!(
+            static_ids
+                .iter()
+                .filter(
+                    |id| **id == crate::static_abilities::StaticAbilityId::AddAllSubtypesOfFamily
+                )
+                .count(),
+            1,
+            "expected generic every-creature-type off-battlefield effect, got: {debug}"
+        );
+        assert!(
+            compact.contains("any_of:[")
+                && compact.contains("owner:Some(You")
+                && compact.contains("card_types:[Creature,")
+                && compact.contains("zone:Some(Hand")
+                && compact.contains("zone:Some(Library")
+                && compact.contains("zone:Some(Graveyard")
+                && compact.contains("zone:Some(Exile")
+                && compact.contains("zone:Some(Command"),
+            "expected off-battlefield card filter to fan out across non-battlefield zones, got: {debug}"
+        );
+    }
+
+    #[test]
+    fn parse_permanent_spells_are_artifacts_in_addition_to_their_other_types_line() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Encroaching Stack Variant")
+            .parse_text(
+                "Permanent spells you control are artifacts in addition to their other types.",
+            )
+            .expect("stack permanent-spell type-addition line should parse");
+
+        let debug = format!("{:#?}", def.abilities);
+        let compact = debug.split_whitespace().collect::<String>();
+        let static_ids: Vec<_> = def
+            .abilities
+            .iter()
+            .filter_map(|ability| match &ability.kind {
+                AbilityKind::Static(static_ability) => Some(static_ability.id()),
+                _ => None,
+            })
+            .collect();
+
+        assert_eq!(
+            static_ids
+                .iter()
+                .filter(|id| **id == crate::static_abilities::StaticAbilityId::AddCardTypes)
+                .count(),
+            1,
+            "expected generic card-type addition stack effect, got: {debug}"
+        );
+        assert!(
+            compact.contains("zone:Some(Stack")
+                && compact.contains("controller:Some(You")
+                && compact.contains("has_mana_cost:true"),
+            "expected stack permanent-spell filter, got: {debug}"
+        );
+    }
+
+    #[test]
+    fn parse_nonbattlefield_nonland_permanent_cards_are_artifacts_in_addition_line() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Encroaching Off-Battlefield Variant")
+            .parse_text(
+                "Nonland permanent cards you own that aren't on the battlefield are artifacts in addition to their other types.",
+            )
+            .expect("off-battlefield permanent-card type-addition line should parse");
+
+        let debug = format!("{:#?}", def.abilities);
+        let compact = debug.split_whitespace().collect::<String>();
+        let static_ids: Vec<_> = def
+            .abilities
+            .iter()
+            .filter_map(|ability| match &ability.kind {
+                AbilityKind::Static(static_ability) => Some(static_ability.id()),
+                _ => None,
+            })
+            .collect();
+
+        assert_eq!(
+            static_ids
+                .iter()
+                .filter(|id| **id == crate::static_abilities::StaticAbilityId::AddCardTypes)
+                .count(),
+            1,
+            "expected generic card-type addition off-battlefield effect, got: {debug}"
+        );
+        assert!(
+            compact.contains("any_of:[")
+                && compact.contains("owner:Some(You")
+                && compact.contains("excluded_card_types:[Land")
+                && compact.contains("zone:Some(Hand")
+                && compact.contains("zone:Some(Library")
+                && compact.contains("zone:Some(Graveyard")
+                && compact.contains("zone:Some(Exile")
+                && compact.contains("zone:Some(Command"),
+            "expected off-battlefield permanent-card filter to fan out across non-battlefield zones, got: {debug}"
         );
     }
 
@@ -13441,6 +13609,80 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         assert!(
             spell_debug.contains("dealdamageeffect"),
             "expected downstream damage effect to remain parsed, got {spell_debug}"
+        );
+        assert!(
+            spell_debug.contains("foreachobject"),
+            "expected Widespread Brutality-style follow-up to fan out per non-Army creature, got {spell_debug}"
+        );
+        assert!(
+            spell_debug.contains("executewithsourceeffect"),
+            "expected follow-up damage to execute with the amassed Army as the source, got {spell_debug}"
+        );
+        assert!(
+            spell_debug.contains("amassed_0") && spell_debug.contains("iterated"),
+            "expected follow-up to route through the amassed Army tag and per-creature iteration, got {spell_debug}"
+        );
+    }
+
+    #[test]
+    fn parse_amass_reflexive_damage_amount_uses_amassed_army_power() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Foray of Orcs")
+            .parse_text(
+                "Amass Orcs 2. When you do, Foray of Orcs deals X damage to target creature an opponent controls, where X is the amassed Army's power.",
+            )
+            .expect("Foray of Orcs style amass follow-up should parse");
+
+        let spell_debug = format!("{:#?}", def.spell_effect);
+        assert!(
+            spell_debug.contains("IfEffect"),
+            "expected reflexive amass follow-up to remain conditional, got {spell_debug}"
+        );
+        assert!(
+            spell_debug.contains("amassed_0")
+                && spell_debug.contains("PowerOf")
+                && spell_debug.contains("Tagged"),
+            "expected damage amount to derive from the amassed Army, got {spell_debug}"
+        );
+    }
+
+    #[test]
+    fn parse_amass_followup_mill_amount_uses_amassed_army_power() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Surrounded by Orcs")
+            .parse_text(
+                "Amass Orcs 3, then target player mills X cards, where X is the amassed Army's power.",
+            )
+            .expect("Surrounded by Orcs style amass follow-up should parse");
+
+        let spell_debug = format!("{:#?}", def.spell_effect);
+        assert!(
+            spell_debug.contains("MillEffect"),
+            "expected mill follow-up to remain parsed, got {spell_debug}"
+        );
+        assert!(
+            spell_debug.contains("amassed_0") && spell_debug.contains("__it__"),
+            "expected mill amount to reference the amassed Army through the follow-up tag, got {spell_debug}"
+        );
+    }
+
+    #[test]
+    fn parse_amass_followup_target_bound_uses_amassed_army_power() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Grishnakh Variant")
+            .card_types(vec![CardType::Creature])
+            .parse_text(
+                "When this creature enters, amass Orcs 2. When you do, until end of turn, gain control of target nonlegendary creature an opponent controls with power less than or equal to the amassed Army's power. Untap that creature. It gains haste until end of turn.",
+            )
+            .expect("Grishnakh-style amass follow-up should parse");
+
+        let abilities_debug = format!("{:#?}", def.abilities);
+        assert!(
+            abilities_debug.contains("ReflexiveTriggerEffect"),
+            "expected reflexive trigger follow-up after amass, got {abilities_debug}"
+        );
+        assert!(
+            abilities_debug.contains("LessThanOrEqualExpr")
+                && abilities_debug.contains("amassed_0")
+                && abilities_debug.contains("__it__"),
+            "expected target power bound to reference the amassed Army, got {abilities_debug}"
         );
     }
 

@@ -849,7 +849,9 @@ impl Trigger {
         player: PlayerFilter,
         filter: ObjectFilter,
     ) -> Self {
-        Self::new(KeywordActionTrigger::matching_object(action, player, filter))
+        Self::new(KeywordActionTrigger::matching_object(
+            action, player, filter,
+        ))
     }
 
     /// Create a "whenever [player] [keyword action] this card" trigger.

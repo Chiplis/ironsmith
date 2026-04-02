@@ -47,6 +47,9 @@ pub(crate) fn capture_tagged_runtime_state(
     {
         pre_snapshot = Some(ObjectSnapshot::from_object(obj, game));
     }
+    if pre_snapshot.is_none() {
+        pre_snapshot = capture_effect_target_snapshot(game, effect, ctx);
+    }
 
     TaggedRuntimeState {
         pre_snapshot,
@@ -74,8 +77,8 @@ pub(crate) fn apply_tagged_runtime_state(
             .collect::<Vec<_>>();
         if !snapshots.is_empty() {
             ctx.set_tagged_objects(tag, snapshots);
+            return;
         }
-        return;
     }
 
     // Generic fallback: preserve the pre-effect target snapshot.
@@ -118,6 +121,42 @@ fn capture_stable_id_fallback(
                     .collect::<Vec<_>>()
             })
         })
+}
+
+fn capture_effect_target_snapshot(
+    game: &GameState,
+    effect: &Effect,
+    ctx: &ExecutionContext,
+) -> Option<ObjectSnapshot> {
+    let spec = effect.0.get_target_spec()?;
+    let object_id = resolve_objects_from_spec(game, spec, ctx)
+        .ok()?
+        .into_iter()
+        .next()?;
+    snapshot_for_object_reference(game, ctx, object_id)
+}
+
+fn snapshot_for_object_reference(
+    game: &GameState,
+    ctx: &ExecutionContext,
+    object_id: crate::ids::ObjectId,
+) -> Option<ObjectSnapshot> {
+    if let Some(obj) = game.object(object_id) {
+        return Some(ObjectSnapshot::from_object(obj, game));
+    }
+    if let Some(snapshot) = ctx.target_snapshots.get(&object_id) {
+        return Some(snapshot.clone());
+    }
+    if let Some(snapshot) = ctx.source_snapshot.as_ref()
+        && snapshot.object_id == object_id
+    {
+        return Some(snapshot.clone());
+    }
+    ctx.tagged_objects
+        .values()
+        .flat_map(|snapshots| snapshots.iter())
+        .find(|snapshot| snapshot.object_id == object_id)
+        .cloned()
 }
 
 #[cfg(test)]

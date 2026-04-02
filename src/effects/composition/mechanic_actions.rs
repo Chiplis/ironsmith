@@ -15,11 +15,11 @@ use crate::effects::zones::{
 };
 use crate::event_processor::EventOutcome;
 use crate::events::permanents::SacrificeEvent;
-use crate::events::{KeywordActionEvent, KeywordActionKind};
+use crate::events::{CardRevealedEvent, KeywordActionEvent, KeywordActionKind};
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::filter::PlayerFilter;
 use crate::game_state::GameState;
-use crate::ids::{ObjectId, StableId};
+use crate::ids::{ObjectId, PlayerId, StableId};
 use crate::object::{CounterType, ObjectKind};
 use crate::snapshot::ObjectSnapshot;
 use crate::target::ChooseSpec;
@@ -107,6 +107,62 @@ impl ExploreEffect {
     }
 }
 
+#[derive(Debug, Clone)]
+struct ExploreInstruction {
+    object_id: ObjectId,
+    controller: PlayerId,
+    snapshot: Option<ObjectSnapshot>,
+}
+
+fn explore_snapshot_for_object(
+    game: &GameState,
+    ctx: &ExecutionContext,
+    object_id: ObjectId,
+) -> Option<ObjectSnapshot> {
+    if let Some(object) = game.object(object_id) {
+        return Some(ObjectSnapshot::from_object(object, game));
+    }
+    if let Some(snapshot) = ctx.target_snapshots.get(&object_id) {
+        return Some(snapshot.clone());
+    }
+    if let Some(snapshot) = ctx.source_snapshot.as_ref()
+        && snapshot.object_id == object_id
+    {
+        return Some(snapshot.clone());
+    }
+    ctx.tagged_objects
+        .values()
+        .flat_map(|snapshots| snapshots.iter())
+        .find(|snapshot| snapshot.object_id == object_id)
+        .cloned()
+}
+
+fn players_in_apnap_order(game: &GameState) -> Vec<PlayerId> {
+    if game.turn_order.is_empty() {
+        return game
+            .players
+            .iter()
+            .filter(|player| player.is_in_game())
+            .map(|player| player.id)
+            .collect();
+    }
+
+    let start = game
+        .turn_order
+        .iter()
+        .position(|&player_id| player_id == game.turn.active_player)
+        .unwrap_or(0);
+
+    (0..game.turn_order.len())
+        .filter_map(|offset| {
+            let player_id = game.turn_order[(start + offset) % game.turn_order.len()];
+            game.player(player_id)
+                .filter(|player| player.is_in_game())
+                .map(|_| player_id)
+        })
+        .collect()
+}
+
 impl EffectExecutor for ExploreEffect {
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
@@ -114,12 +170,218 @@ impl EffectExecutor for ExploreEffect {
 
     fn execute(
         &self,
-        _game: &mut GameState,
-        _ctx: &mut ExecutionContext,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        // Runtime explore behavior is handled separately; this preserves
-        // parser/render semantics without oracle-text fallback.
-        Ok(EffectOutcome::resolved())
+        let target_ids =
+            match crate::effects::helpers::resolve_objects_for_effect(game, ctx, &self.target) {
+                Ok(ids) => ids,
+                Err(ExecutionError::InvalidTarget) if self.target.is_target() => {
+                    return Ok(EffectOutcome::target_invalid());
+                }
+                Err(ExecutionError::InvalidTarget) => return Ok(EffectOutcome::count(0)),
+                Err(err) => return Err(err),
+            };
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
+        if target_ids.is_empty() {
+            return Ok(if self.target.is_target() {
+                EffectOutcome::target_invalid()
+            } else {
+                EffectOutcome::count(0)
+            });
+        }
+
+        let mut remaining = target_ids
+            .into_iter()
+            .filter_map(|object_id| {
+                let snapshot = explore_snapshot_for_object(game, ctx, object_id);
+                let controller = game
+                    .object(object_id)
+                    .map(|object| object.controller)
+                    .or_else(|| snapshot.as_ref().map(|snap| snap.controller))?;
+                Some(ExploreInstruction {
+                    object_id,
+                    controller,
+                    snapshot,
+                })
+            })
+            .collect::<Vec<_>>();
+        if remaining.is_empty() {
+            return Ok(if self.target.is_target() {
+                EffectOutcome::target_invalid()
+            } else {
+                EffectOutcome::count(0)
+            });
+        }
+
+        let mut events = Vec::new();
+        let mut explored_objects = Vec::new();
+        let player_order = players_in_apnap_order(game);
+
+        for player in player_order {
+            while let Some(candidate_indices) = (!remaining.is_empty()).then(|| {
+                remaining
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, instruction)| {
+                        (instruction.controller == player).then_some(index)
+                    })
+                    .collect::<Vec<_>>()
+            }) {
+                if candidate_indices.is_empty() {
+                    break;
+                }
+
+                let chosen_index = if candidate_indices.len() == 1 {
+                    candidate_indices[0]
+                } else {
+                    let choices = candidate_indices
+                        .iter()
+                        .map(|&index| remaining[index].object_id)
+                        .collect::<Vec<_>>();
+                    let spec = ChooseObjectsSpec::new(
+                        ctx.source,
+                        "Choose a permanent to explore next",
+                        choices.clone(),
+                        1,
+                        Some(1),
+                    );
+                    let selection: Vec<ObjectId> =
+                        make_decision(game, ctx.decision_maker, player, Some(ctx.source), spec);
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(
+                            EffectOutcome::with_objects(explored_objects).with_events(events)
+                        );
+                    }
+                    let normalized = normalize_object_selection(selection, &choices, 1);
+                    let chosen_object = normalized.first().copied().unwrap_or(choices[0]);
+                    candidate_indices
+                        .into_iter()
+                        .find(|index| remaining[*index].object_id == chosen_object)
+                        .unwrap_or(0)
+                };
+
+                let instruction = remaining.remove(chosen_index);
+                let controller = instruction.controller;
+                let pre_snapshot = instruction.snapshot.clone();
+
+                let revealed_card_id = game
+                    .player(controller)
+                    .and_then(|entry| entry.library.last().copied());
+                let revealed_snapshot = revealed_card_id.and_then(|card_id| {
+                    game.object(card_id)
+                        .map(|object| ObjectSnapshot::from_object(object, game))
+                });
+                if let Some(card_id) = revealed_card_id {
+                    for viewer_idx in 0..game.players.len() {
+                        let viewer = PlayerId::from_index(viewer_idx as u8);
+                        let view_ctx = crate::decisions::context::ViewCardsContext::new(
+                            viewer,
+                            controller,
+                            Some(ctx.source),
+                            Zone::Library,
+                            "Reveal the top card of a library",
+                        )
+                        .with_public(true);
+                        ctx.decision_maker
+                            .view_cards(game, viewer, &[card_id], &view_ctx);
+                    }
+                    events.push(TriggerEvent::new_with_provenance(
+                        CardRevealedEvent::new(
+                            controller,
+                            card_id,
+                            Zone::Library,
+                            Some(ctx.source),
+                            revealed_snapshot.clone(),
+                        ),
+                        ctx.provenance,
+                    ));
+                }
+
+                let revealed_is_land = revealed_card_id
+                    .and_then(|card_id| game.object(card_id))
+                    .is_some_and(|object| object.has_card_type(crate::types::CardType::Land));
+
+                if let Some(card_id) = revealed_card_id {
+                    if revealed_is_land {
+                        let _ = apply_zone_change(
+                            game,
+                            card_id,
+                            Zone::Library,
+                            Zone::Hand,
+                            ctx.cause.clone(),
+                            &mut *ctx.decision_maker,
+                        );
+                    } else {
+                        if game.object(instruction.object_id).is_some() {
+                            if let Some(event) = game.add_counters_with_source(
+                                instruction.object_id,
+                                CounterType::PlusOnePlusOne,
+                                1,
+                                Some(ctx.source),
+                                Some(ctx.controller),
+                            ) {
+                                events.push(event);
+                            }
+                        }
+
+                        let choice_ctx = crate::decisions::context::BooleanContext::new(
+                            controller,
+                            Some(ctx.source),
+                            "Put the explored card into your graveyard?".to_string(),
+                        );
+                        if ctx.decision_maker.decide_boolean(game, &choice_ctx) {
+                            let _ = apply_zone_change(
+                                game,
+                                card_id,
+                                Zone::Library,
+                                Zone::Graveyard,
+                                ctx.cause.clone(),
+                                &mut *ctx.decision_maker,
+                            );
+                        }
+                    }
+                } else if game.object(instruction.object_id).is_some() {
+                    if let Some(event) = game.add_counters_with_source(
+                        instruction.object_id,
+                        CounterType::PlusOnePlusOne,
+                        1,
+                        Some(ctx.source),
+                        Some(ctx.controller),
+                    ) {
+                        events.push(event);
+                    }
+                }
+
+                let action_snapshot = game
+                    .object(instruction.object_id)
+                    .map(|object| ObjectSnapshot::from_object(object, game))
+                    .or(pre_snapshot);
+                events.push(TriggerEvent::new_with_provenance(
+                    KeywordActionEvent::new(
+                        KeywordActionKind::Explore,
+                        controller,
+                        instruction.object_id,
+                        1,
+                    )
+                    .with_snapshot(action_snapshot),
+                    ctx.provenance,
+                ));
+                explored_objects.push(instruction.object_id);
+            }
+        }
+
+        Ok(EffectOutcome::with_objects(explored_objects).with_events(events))
+    }
+
+    fn get_target_spec(&self) -> Option<&ChooseSpec> {
+        Some(&self.target)
+    }
+
+    fn target_description(&self) -> &'static str {
+        "permanent to explore"
     }
 }
 
@@ -866,10 +1128,19 @@ impl EffectExecutor for AdaptEffect {
 
     fn execute(
         &self,
-        _game: &mut GameState,
-        _ctx: &mut ExecutionContext,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        Ok(EffectOutcome::resolved())
+        let source_id = ctx.source;
+        if game.object(source_id).is_none() {
+            return Ok(EffectOutcome::target_invalid());
+        }
+        if game.counter_count(source_id, CounterType::PlusOnePlusOne) > 0 {
+            return Ok(EffectOutcome::count(0));
+        }
+
+        crate::effects::PutCountersEffect::on_source(CounterType::PlusOnePlusOne, self.amount)
+            .execute(game, ctx)
     }
 }
 
@@ -905,7 +1176,7 @@ mod tests {
     use crate::combat_state::{AttackTarget, AttackerInfo, CombatState};
     use crate::decision::DecisionMaker;
     use crate::decisions::context::SelectObjectsContext;
-    use crate::events::{EventKind, KeywordActionEvent};
+    use crate::events::{CardRevealedEvent, EventKind, KeywordActionEvent, KeywordActionKind};
     use crate::executor::ExecutionContext;
     use crate::ids::{CardId, PlayerId};
     use crate::static_abilities::StaticAbility;
@@ -1014,6 +1285,334 @@ mod tests {
         fn awaiting_choice(&self) -> bool {
             true
         }
+    }
+
+    #[derive(Default)]
+    struct ExploreDecisionMaker {
+        object_choices: VecDeque<Vec<ObjectId>>,
+        boolean_choices: VecDeque<bool>,
+    }
+
+    impl DecisionMaker for ExploreDecisionMaker {
+        fn decide_objects(
+            &mut self,
+            _game: &GameState,
+            ctx: &SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            self.object_choices
+                .pop_front()
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|id| {
+                    ctx.candidates
+                        .iter()
+                        .any(|candidate| candidate.legal && candidate.id == *id)
+                })
+                .collect()
+        }
+
+        fn decide_boolean(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            self.boolean_choices.pop_front().unwrap_or(true)
+        }
+    }
+
+    #[test]
+    fn explore_puts_revealed_land_into_hand_without_a_counter() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let explorer = create_creature(&mut game, alice, 50, "Explorer", 2, 2);
+        let land = create_library_card(
+            &mut game,
+            alice,
+            51,
+            "Forest",
+            vec![CardType::Land],
+            None,
+            None,
+            None,
+        );
+
+        let outcome = ExploreEffect::new(ChooseSpec::SpecificObject(explorer))
+            .execute(&mut game, &mut ExecutionContext::new_default(source, alice))
+            .expect("explore should execute");
+
+        assert_eq!(game.counter_count(explorer, CounterType::PlusOnePlusOne), 0);
+        assert_eq!(game.player(alice).expect("alice").hand.len(), 1);
+        assert_eq!(game.player(alice).expect("alice").library.len(), 0);
+        let reveal = outcome
+            .events
+            .iter()
+            .find_map(|event| event.inner().as_any().downcast_ref::<CardRevealedEvent>())
+            .expect("explore should reveal the top card");
+        assert_eq!(reveal.card, land);
+        let keyword = outcome
+            .events
+            .iter()
+            .find_map(|event| event.inner().as_any().downcast_ref::<KeywordActionEvent>())
+            .expect("explore should emit a keyword action");
+        assert_eq!(keyword.action, KeywordActionKind::Explore);
+        assert_eq!(keyword.source, explorer);
+        assert_eq!(keyword.player, alice);
+    }
+
+    #[test]
+    fn explore_can_leave_a_nonland_on_top_and_snapshot_the_post_explore_creature() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let explorer = create_creature(&mut game, alice, 52, "Explorer", 2, 2);
+        let spell = create_library_card(
+            &mut game,
+            alice,
+            53,
+            "Spell",
+            vec![CardType::Instant],
+            None,
+            None,
+            None,
+        );
+        let mut dm = ExploreDecisionMaker {
+            boolean_choices: VecDeque::from([false]),
+            ..Default::default()
+        };
+        let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
+
+        let outcome = ExploreEffect::new(ChooseSpec::SpecificObject(explorer))
+            .execute(&mut game, &mut ctx)
+            .expect("explore should execute");
+
+        assert_eq!(game.counter_count(explorer, CounterType::PlusOnePlusOne), 1);
+        assert_eq!(game.player(alice).expect("alice").library.len(), 1);
+        assert_eq!(game.player(alice).expect("alice").graveyard.len(), 0);
+        assert_eq!(
+            game.player(alice).expect("alice").library.last().copied(),
+            Some(spell)
+        );
+        let keyword = outcome
+            .events
+            .iter()
+            .find_map(|event| event.inner().as_any().downcast_ref::<KeywordActionEvent>())
+            .expect("explore should emit a keyword action");
+        let snapshot = keyword.snapshot.as_ref().expect("explore snapshot");
+        assert_eq!(snapshot.counter_count(CounterType::PlusOnePlusOne), 1);
+    }
+
+    #[test]
+    fn explore_can_put_a_nonland_into_the_graveyard() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let explorer = create_creature(&mut game, alice, 54, "Explorer", 2, 2);
+        create_library_card(
+            &mut game,
+            alice,
+            55,
+            "Spell",
+            vec![CardType::Sorcery],
+            None,
+            None,
+            None,
+        );
+
+        let outcome = ExploreEffect::new(ChooseSpec::SpecificObject(explorer))
+            .execute(&mut game, &mut ExecutionContext::new_default(source, alice))
+            .expect("explore should execute");
+
+        assert_eq!(game.counter_count(explorer, CounterType::PlusOnePlusOne), 1);
+        assert_eq!(game.player(alice).expect("alice").library.len(), 0);
+        assert_eq!(game.player(alice).expect("alice").graveyard.len(), 1);
+        let graveyard_card = game.player(alice).expect("alice").graveyard[0];
+        assert_eq!(
+            game.object(graveyard_card).expect("graveyard card").name,
+            "Spell"
+        );
+        assert!(
+            outcome
+                .events
+                .iter()
+                .any(|event| event.kind() == EventKind::KeywordAction),
+            "explore should still emit its keyword action after moving the card"
+        );
+    }
+
+    #[test]
+    fn explore_with_an_empty_library_still_puts_a_counter() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let explorer = create_creature(&mut game, alice, 56, "Explorer", 2, 2);
+
+        let outcome = ExploreEffect::new(ChooseSpec::SpecificObject(explorer))
+            .execute(&mut game, &mut ExecutionContext::new_default(source, alice))
+            .expect("explore should execute");
+
+        assert_eq!(game.counter_count(explorer, CounterType::PlusOnePlusOne), 1);
+        assert!(
+            outcome.events.iter().all(|event| event
+                .inner()
+                .as_any()
+                .downcast_ref::<CardRevealedEvent>()
+                .is_none()),
+            "empty-library explore should not reveal a card"
+        );
+        assert!(
+            outcome
+                .events
+                .iter()
+                .any(|event| event.kind() == EventKind::KeywordAction),
+            "empty-library explore should still count as exploring"
+        );
+    }
+
+    #[test]
+    fn explore_uses_tagged_lki_and_preserves_the_subject_tag_when_the_permanent_left() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let explorer = create_creature(&mut game, alice, 57, "Explorer", 2, 2);
+        let snapshot = ObjectSnapshot::from_object(game.object(explorer).expect("explorer"), &game);
+        create_library_card(
+            &mut game,
+            alice,
+            58,
+            "Forest",
+            vec![CardType::Land],
+            None,
+            None,
+            None,
+        );
+        game.move_object_by_effect(explorer, Zone::Graveyard)
+            .expect("moving to graveyard should succeed");
+
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        ctx.set_tagged_objects("subject", vec![snapshot.clone()]);
+        let effect =
+            crate::effect::Effect::explore(ChooseSpec::Tagged("subject".into())).tag("explored");
+        let outcome = crate::executor::execute_effect(&mut game, &effect, &mut ctx)
+            .expect("tagged explore should execute");
+
+        assert_eq!(game.player(alice).expect("alice").hand.len(), 1);
+        let hand_card = game.player(alice).expect("alice").hand[0];
+        assert_eq!(game.object(hand_card).expect("hand card").name, "Forest");
+        let explored = ctx
+            .get_tagged("explored")
+            .expect("explored tag should persist");
+        assert_eq!(explored.object_id, snapshot.object_id);
+        let keyword = outcome
+            .events
+            .iter()
+            .find_map(|event| event.inner().as_any().downcast_ref::<KeywordActionEvent>())
+            .expect("explore should emit a keyword action");
+        assert_eq!(keyword.source, snapshot.object_id);
+        assert_eq!(
+            keyword.snapshot.as_ref().map(|entry| entry.controller),
+            Some(alice)
+        );
+    }
+
+    #[test]
+    fn explore_uses_controller_choice_order_for_multiple_instructions() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let first = create_creature(&mut game, alice, 59, "First", 2, 2);
+        let second = create_creature(&mut game, alice, 60, "Second", 2, 2);
+        create_library_card(
+            &mut game,
+            alice,
+            61,
+            "Forest",
+            vec![CardType::Land],
+            None,
+            None,
+            None,
+        );
+        create_library_card(
+            &mut game,
+            alice,
+            62,
+            "Spell",
+            vec![CardType::Instant],
+            None,
+            None,
+            None,
+        );
+        let mut dm = ExploreDecisionMaker {
+            object_choices: VecDeque::from([vec![second], vec![first]]),
+            boolean_choices: VecDeque::from([true]),
+        };
+        let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
+
+        ExploreEffect::new(ChooseSpec::all(
+            crate::target::ObjectFilter::creature().you_control(),
+        ))
+        .execute(&mut game, &mut ctx)
+        .expect("explore should execute");
+
+        assert_eq!(game.counter_count(second, CounterType::PlusOnePlusOne), 1);
+        assert_eq!(game.counter_count(first, CounterType::PlusOnePlusOne), 0);
+        assert_eq!(game.player(alice).expect("alice").hand.len(), 1);
+        assert_eq!(game.player(alice).expect("alice").graveyard.len(), 1);
+    }
+
+    #[test]
+    fn explore_processes_multiple_controllers_in_apnap_order() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        game.turn.active_player = bob;
+        let source = game.new_object_id();
+        let alice_creature = create_creature(&mut game, alice, 63, "Alice Explorer", 2, 2);
+        let bob_creature = create_creature(&mut game, bob, 64, "Bob Explorer", 2, 2);
+        create_library_card(
+            &mut game,
+            alice,
+            65,
+            "Forest",
+            vec![CardType::Land],
+            None,
+            None,
+            None,
+        );
+        create_library_card(
+            &mut game,
+            bob,
+            66,
+            "Island",
+            vec![CardType::Land],
+            None,
+            None,
+            None,
+        );
+
+        let outcome = ExploreEffect::new(ChooseSpec::all(crate::target::ObjectFilter::creature()))
+            .execute(&mut game, &mut ExecutionContext::new_default(source, alice))
+            .expect("explore should execute");
+
+        let reveal_players = outcome
+            .events
+            .iter()
+            .filter_map(|event| event.inner().as_any().downcast_ref::<CardRevealedEvent>())
+            .map(|event| event.player)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            reveal_players,
+            vec![bob, alice],
+            "APNAP order should resolve Bob's explore before Alice's here"
+        );
+        assert_eq!(
+            game.counter_count(alice_creature, CounterType::PlusOnePlusOne),
+            0
+        );
+        assert_eq!(
+            game.counter_count(bob_creature, CounterType::PlusOnePlusOne),
+            0
+        );
     }
 
     #[test]
@@ -1470,5 +2069,78 @@ mod tests {
             game.object_has_static_ability_id(target, StaticAbilityId::Flying),
             "backup target should gain the granted ability until end of turn"
         );
+    }
+
+    #[test]
+    fn adapt_puts_plus_one_counters_on_source_when_it_has_none() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = create_creature(&mut game, alice, 50, "Adapt Source", 2, 2);
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let outcome = AdaptEffect::new(3)
+            .execute(&mut game, &mut ctx)
+            .expect("adapt should execute");
+
+        assert_eq!(game.counter_count(source, CounterType::PlusOnePlusOne), 3);
+        assert!(outcome.has_marker_change(|event| {
+            event.is_added()
+                && event.object() == Some(source)
+                && event.marker == CounterType::PlusOnePlusOne.into()
+        }));
+    }
+
+    #[test]
+    fn adapt_does_nothing_when_source_already_has_plus_one_counter() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = create_creature(&mut game, alice, 51, "Already Adapted", 2, 2);
+        game.object_mut(source)
+            .expect("source should exist")
+            .add_counters(CounterType::PlusOnePlusOne, 1);
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let outcome = AdaptEffect::new(2)
+            .execute(&mut game, &mut ctx)
+            .expect("adapt should execute");
+
+        assert_eq!(outcome.value, OutcomeValue::Count(0));
+        assert_eq!(game.counter_count(source, CounterType::PlusOnePlusOne), 1);
+        assert!(
+            outcome.events.is_empty(),
+            "adapt should not emit marker events when it is blocked by an existing +1/+1 counter"
+        );
+    }
+
+    #[test]
+    fn adapt_ignores_other_counter_types() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = create_creature(&mut game, alice, 52, "Charge Counter Creature", 2, 2);
+        game.object_mut(source)
+            .expect("source should exist")
+            .add_counters(CounterType::Charge, 2);
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        AdaptEffect::new(2)
+            .execute(&mut game, &mut ctx)
+            .expect("adapt should ignore non +1/+1 counters");
+
+        assert_eq!(game.counter_count(source, CounterType::Charge), 2);
+        assert_eq!(game.counter_count(source, CounterType::PlusOnePlusOne), 2);
+    }
+
+    #[test]
+    fn adapt_returns_target_invalid_when_source_is_missing() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let outcome = AdaptEffect::new(2)
+            .execute(&mut game, &mut ctx)
+            .expect("adapt should resolve cleanly when the source is gone");
+
+        assert_eq!(outcome, EffectOutcome::target_invalid());
     }
 }

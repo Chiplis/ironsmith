@@ -34,14 +34,90 @@ pub(crate) struct PreprocessedLine {
     pub(crate) tokens: Vec<OwnedLexToken>,
 }
 
+fn str_starts_with(text: &str, prefix: &str) -> bool {
+    text.get(..prefix.len()) == Some(prefix)
+}
+
+fn str_starts_with_char(text: &str, expected: char) -> bool {
+    text.chars().next().is_some_and(|ch| ch == expected)
+}
+
+fn str_ends_with(text: &str, suffix: &str) -> bool {
+    if suffix.len() > text.len() {
+        return false;
+    }
+    text.get(text.len() - suffix.len()..) == Some(suffix)
+}
+
+fn str_ends_with_char(text: &str, expected: char) -> bool {
+    text.chars().next_back().is_some_and(|ch| ch == expected)
+}
+
+fn str_contains(text: &str, needle: &str) -> bool {
+    if needle.is_empty() {
+        return true;
+    }
+    text.match_indices(needle).next().is_some()
+}
+
+fn str_strip_prefix<'a>(text: &'a str, prefix: &str) -> Option<&'a str> {
+    str_starts_with(text, prefix).then(|| &text[prefix.len()..])
+}
+
+fn str_strip_suffix<'a>(text: &'a str, suffix: &str) -> Option<&'a str> {
+    str_ends_with(text, suffix).then(|| &text[..text.len().saturating_sub(suffix.len())])
+}
+
+fn str_find(text: &str, needle: &str) -> Option<usize> {
+    text.match_indices(needle).next().map(|(idx, _)| idx)
+}
+
+fn str_find_char(text: &str, needle: char) -> Option<usize> {
+    for (idx, ch) in text.char_indices() {
+        if ch == needle {
+            return Some(idx);
+        }
+    }
+    None
+}
+
+fn str_split_once<'a>(text: &'a str, needle: &str) -> Option<(&'a str, &'a str)> {
+    let (idx, matched) = text.match_indices(needle).next()?;
+    Some((&text[..idx], &text[idx + matched.len()..]))
+}
+
+fn str_split_once_char(text: &str, needle: char) -> Option<(&str, &str)> {
+    for (idx, ch) in text.char_indices() {
+        if ch == needle {
+            let len = ch.len_utf8();
+            return Some((&text[..idx], &text[idx + len..]));
+        }
+    }
+    None
+}
+
+fn byte_slice_starts_with(slice: &[u8], prefix: &[u8]) -> bool {
+    if prefix.len() > slice.len() {
+        return false;
+    }
+    for (idx, expected) in prefix.iter().enumerate() {
+        if slice[idx] != *expected {
+            return false;
+        }
+    }
+    true
+}
+
 fn strip_parenthetical_segments(line: &str) -> String {
     let trimmed = line.trim();
-    if trimmed.starts_with('(') && trimmed.ends_with(')') {
+    if str_starts_with_char(trimmed, '(') && str_ends_with_char(trimmed, ')') {
         return line.to_string();
     }
     let lower = line.to_ascii_lowercase();
-    if (lower.contains("it's an enchantment") || lower.contains("its an enchantment"))
-        && (lower.contains("(it's not a creature") || lower.contains("(its not a creature"))
+    if (str_contains(lower.as_str(), "it's an enchantment")
+        || str_contains(lower.as_str(), "its an enchantment"))
+        && (str_contains(lower.as_str(), "(it's not a creature")
+            || str_contains(lower.as_str(), "(its not a creature"))
     {
         return line
             .replace("(It's not a creature.)", "It's not a creature.")
@@ -71,8 +147,8 @@ fn strip_parenthetical_segments(line: &str) -> String {
 
 fn split_parse_line_variants(line: &str) -> Vec<String> {
     let lower = line.to_ascii_lowercase();
-    if lower.starts_with("as an additional cost to cast this spell")
-        && let Some(period_idx) = line.find('.')
+    if str_starts_with(lower.as_str(), "as an additional cost to cast this spell")
+        && let Some(period_idx) = str_find_char(line, '.')
     {
         let first = line[..=period_idx].trim();
         let second = line[period_idx + 1..].trim();
@@ -83,11 +159,11 @@ fn split_parse_line_variants(line: &str) -> Vec<String> {
 
     let marker = ". when you spend this mana to cast ";
     let marker_compact = ".when you spend this mana to cast ";
-    let split_at = lower.find(marker).or_else(|| lower.find(marker_compact));
+    let split_at = str_find(lower.as_str(), marker).or_else(|| str_find(lower.as_str(), marker_compact));
     if let Some(idx) = split_at {
         let first = line[..=idx].trim();
         let second = line[idx + 1..].trim();
-        if first.contains(':') && !second.is_empty() {
+        if str_contains(first, ":") && !second.is_empty() {
             return vec![first.to_string(), second.to_string()];
         }
     }
@@ -100,7 +176,7 @@ fn split_parse_line_variants(line: &str) -> Vec<String> {
         ". this spell costs ",
         ".this spell costs ",
     ] {
-        if let Some(idx) = lower.find(marker) {
+        if let Some(idx) = str_find(lower.as_str(), marker) {
             let first = line[..=idx].trim();
             let second = line[idx + 1..].trim();
             if !first.is_empty() && !second.is_empty() {
@@ -119,27 +195,27 @@ fn parse_metadata_line(line: &str) -> Result<Option<MetadataLine>, CardTextError
     }
 
     let lower = trimmed.to_ascii_lowercase();
-    if let Some(rest) = lower.strip_prefix("mana cost:") {
+    if let Some(rest) = str_strip_prefix(lower.as_str(), "mana cost:") {
         let value = trimmed[trimmed.len() - rest.len()..].trim();
         return Ok(Some(MetadataLine::ManaCost(value.to_string())));
     }
-    if let Some(rest) = lower.strip_prefix("type line:") {
+    if let Some(rest) = str_strip_prefix(lower.as_str(), "type line:") {
         let value = trimmed[trimmed.len() - rest.len()..].trim();
         return Ok(Some(MetadataLine::TypeLine(value.to_string())));
     }
-    if let Some(rest) = lower.strip_prefix("type:") {
+    if let Some(rest) = str_strip_prefix(lower.as_str(), "type:") {
         let value = trimmed[trimmed.len() - rest.len()..].trim();
         return Ok(Some(MetadataLine::TypeLine(value.to_string())));
     }
-    if let Some(rest) = lower.strip_prefix("power/toughness:") {
+    if let Some(rest) = str_strip_prefix(lower.as_str(), "power/toughness:") {
         let value = trimmed[trimmed.len() - rest.len()..].trim();
         return Ok(Some(MetadataLine::PowerToughness(value.to_string())));
     }
-    if let Some(rest) = lower.strip_prefix("loyalty:") {
+    if let Some(rest) = str_strip_prefix(lower.as_str(), "loyalty:") {
         let value = trimmed[trimmed.len() - rest.len()..].trim();
         return Ok(Some(MetadataLine::Loyalty(value.to_string())));
     }
-    if let Some(rest) = lower.strip_prefix("defense:") {
+    if let Some(rest) = str_strip_prefix(lower.as_str(), "defense:") {
         let value = trimmed[trimmed.len() - rest.len()..].trim();
         return Ok(Some(MetadataLine::Defense(value.to_string())));
     }
@@ -170,7 +246,7 @@ fn replace_names_with_map(
     }
 
     fn is_single_word_keyword_verb(name: &str) -> bool {
-        !name.contains(' ')
+        !str_contains(name, " ")
             && matches!(
                 name,
                 "add"
@@ -209,7 +285,7 @@ fn replace_names_with_map(
         if name == "first strike" || name == "double strike" || name == "ward" {
             return true;
         }
-        if name.contains(' ') {
+        if str_contains(name, " ") {
             return false;
         }
         parse_single_word_keyword_action(name).is_some()
@@ -258,12 +334,12 @@ fn replace_names_with_map(
             if bytes[idx] == b'.' || bytes[idx] == b';' {
                 break;
             }
-            if bytes[idx..].starts_with(b"token")
+            if byte_slice_starts_with(&bytes[idx..], b"token")
                 && has_word_boundaries_at(bytes, idx, "token".len())
             {
                 return true;
             }
-            if bytes[idx..].starts_with(b"tokens")
+            if byte_slice_starts_with(&bytes[idx..], b"tokens")
                 && has_word_boundaries_at(bytes, idx, "tokens".len())
             {
                 return true;
@@ -309,7 +385,9 @@ fn replace_names_with_map(
         }
         std::str::from_utf8(&bytes[sentence_start..idx])
             .ok()
-            .is_some_and(|prefix| prefix.contains(" vote for ") || prefix.contains(" votes for "))
+            .is_some_and(|prefix| {
+                str_contains(prefix, " vote for ") || str_contains(prefix, " votes for ")
+            })
     }
 
     fn is_short_name_self_reference_context(bytes: &[u8], idx: usize, len: usize) -> bool {
@@ -388,7 +466,7 @@ fn replace_names_with_map(
 
     while idx < bytes.len() {
         if !full_bytes.is_empty()
-            && bytes[idx..].starts_with(full_bytes)
+            && byte_slice_starts_with(&bytes[idx..], full_bytes)
             && has_word_boundaries_at(bytes, idx, full_bytes.len())
             && !(idx == 0 && is_single_word_keyword_verb(full_name))
             && !(is_keyword_ability_name(full_name) && preceded_by_ability_grant_word(bytes, idx))
@@ -412,7 +490,7 @@ fn replace_names_with_map(
             continue;
         }
         if !short_bytes.is_empty()
-            && bytes[idx..].starts_with(short_bytes)
+            && byte_slice_starts_with(&bytes[idx..], short_bytes)
             && has_word_boundaries_at(bytes, idx, short_bytes.len())
             && !(idx == 0 && is_single_word_keyword_verb(short_name))
             && !(is_keyword_ability_name(short_name) && preceded_by_ability_grant_word(bytes, idx))
@@ -605,7 +683,7 @@ fn preserve_keyword_prefix_for_parse(prefix: &str) -> bool {
 
 fn starts_with_if_clause(text: &str) -> bool {
     let trimmed = text.trim_start();
-    trimmed == "if" || trimmed.starts_with("if ")
+    trimmed == "if" || str_starts_with(trimmed, "if ")
 }
 
 fn is_generic_ability_label_prefix(prefix: &str) -> bool {
@@ -626,9 +704,11 @@ fn is_generic_ability_label_prefix(prefix: &str) -> bool {
 
 fn strip_labeled_ability_word_prefix_with_map(text: &str, map: &[usize]) -> (String, Vec<usize>) {
     let separator = text
-        .find('—')
+        .match_indices('—')
+        .next()
+        .map(|(idx, _)| idx)
         .map(|idx| (idx, '—'.len_utf8()))
-        .or_else(|| text.find(" - ").map(|idx| (idx, " - ".len())));
+        .or_else(|| str_find(text, " - ").map(|idx| (idx, " - ".len())));
     let Some((sep_idx, sep_len)) = separator else {
         return (text.to_string(), map.to_vec());
     };
@@ -686,7 +766,7 @@ fn normalize_line_for_parse(
     let (stripped, stripped_map) = strip_parenthetical_with_map(&label_stripped, &label_map);
 
     if stripped.trim().is_empty() {
-        let is_wrapped = trimmed.starts_with('(') && trimmed.ends_with(')');
+        let is_wrapped = str_starts_with_char(trimmed, '(') && str_ends_with_char(trimmed, ')');
         if !is_wrapped {
             return None;
         }
@@ -694,11 +774,11 @@ fn normalize_line_for_parse(
         if inner.is_empty() {
             return None;
         }
-        let should_parse = inner.contains(':');
+        let should_parse = str_contains(inner, ":");
         if !should_parse {
             return None;
         }
-        let base_offset = trimmed.find(inner).unwrap_or(0);
+        let base_offset = str_find(trimmed, inner).unwrap_or(0);
         let (inner_replaced, inner_map) =
             replace_names_with_map(inner, full_name, short_name, base_offset);
         return Some(NormalizedLine {
@@ -760,6 +840,32 @@ fn parse_same_is_true_targets(tail: &str) -> Vec<String> {
         .collect()
 }
 
+fn split_same_is_true_subject_predicate(sentence: &str) -> Option<(&str, &str)> {
+    for needle in [
+        " are ",
+        " is ",
+        " have ",
+        " has ",
+        " get ",
+        " gets ",
+        " gain ",
+        " gains ",
+        " lose ",
+        " loses ",
+        " become ",
+        " becomes ",
+    ] {
+        if let Some(idx) = str_find(sentence, needle) {
+            let subject = sentence[..idx].trim();
+            let predicate = sentence[idx..].trim_start();
+            if !subject.is_empty() && !predicate.is_empty() {
+                return Some((subject, predicate));
+            }
+        }
+    }
+    None
+}
+
 fn find_borrow_ability_source_phrase(sentence: &str) -> Option<&'static str> {
     let mut best: Option<(usize, &'static str)> = None;
     for candidate in borrow_ability_keyword_phrases() {
@@ -767,7 +873,7 @@ fn find_borrow_ability_source_phrase(sentence: &str) -> Option<&'static str> {
             "gain ", "gains ", "has ", "have ", "with a ", "with an ", "put a ", "put an ",
         ] {
             let needle = format!("{prefix}{candidate}");
-            if let Some(idx) = sentence.find(needle.as_str()) {
+            if let Some(idx) = str_find(sentence, needle.as_str()) {
                 match best {
                     Some((best_idx, best_phrase))
                         if idx > best_idx
@@ -818,18 +924,18 @@ fn replace_whole_phrase_case_insensitive(text: &str, from: &str, to: &str) -> St
 fn rewrite_borrow_static_condition(condition: &str, ability: &str) -> Option<String> {
     let condition = condition.trim();
     for suffix in [format!(" has {ability}"), format!(" have {ability}")] {
-        if let Some(subject) = condition.strip_suffix(suffix.as_str()) {
+        if let Some(subject) = str_strip_suffix(condition, suffix.as_str()) {
             return Some(format!("there is {} with {ability}", subject.trim()));
         }
     }
-    if let Some((subject, zone_tail)) = condition.split_once(" is in ") {
+    if let Some((subject, zone_tail)) = str_split_once(condition, " is in ") {
         return Some(format!(
             "there is {} in {}",
             subject.trim(),
             zone_tail.trim()
         ));
     }
-    if let Some((subject, zone_tail)) = condition.split_once(" are in ") {
+    if let Some((subject, zone_tail)) = str_split_once(condition, " are in ") {
         return Some(format!(
             "there are {} in {}",
             subject.trim(),
@@ -844,14 +950,14 @@ fn rewrite_borrow_static_sentence(sentence: &str) -> String {
         return sentence.to_string();
     };
 
-    if let Some(rest) = sentence.strip_prefix("as long as ")
-        && let Some((condition, consequence)) = rest.split_once(',')
+    if let Some(rest) = str_strip_prefix(sentence, "as long as ")
+        && let Some((condition, consequence)) = str_split_once_char(rest, ',')
         && let Some(rewritten) = rewrite_borrow_static_condition(condition, ability)
     {
         return format!("as long as {}, {}", rewritten, consequence.trim());
     }
 
-    if let Some((prefix, condition)) = sentence.split_once(" as long as ")
+    if let Some((prefix, condition)) = str_split_once(sentence, " as long as ")
         && let Some(rewritten) = rewrite_borrow_static_condition(condition, ability)
     {
         return format!("{} as long as {}", prefix.trim(), rewritten);
@@ -868,21 +974,33 @@ fn expand_borrow_ability_line(text: &str) -> String {
 
     let mut expanded: Vec<String> = Vec::new();
     for sentence in sentences {
-        if let Some(tail) = sentence.strip_prefix("the same is true for ")
+        if let Some(tail) = str_strip_prefix(sentence.as_str(), "the same is true for ")
             && let Some(base_sentence) = expanded.last().cloned()
-            && let Some(source_phrase) = find_borrow_ability_source_phrase(base_sentence.as_str())
         {
             let targets = parse_same_is_true_targets(tail);
             if !targets.is_empty() {
-                for target in targets {
-                    let replaced = replace_whole_phrase_case_insensitive(
-                        base_sentence.as_str(),
-                        source_phrase,
-                        target.as_str(),
-                    );
-                    expanded.push(rewrite_borrow_static_sentence(replaced.as_str()));
+                if let Some(source_phrase) =
+                    find_borrow_ability_source_phrase(base_sentence.as_str())
+                {
+                    for target in &targets {
+                        let replaced = replace_whole_phrase_case_insensitive(
+                            base_sentence.as_str(),
+                            source_phrase,
+                            target.as_str(),
+                        );
+                        expanded.push(rewrite_borrow_static_sentence(replaced.as_str()));
+                    }
+                    continue;
                 }
-                continue;
+
+                if let Some((_subject, predicate)) =
+                    split_same_is_true_subject_predicate(base_sentence.as_str())
+                {
+                    for target in &targets {
+                        expanded.push(format!("{} {}", target.trim(), predicate));
+                    }
+                    continue;
+                }
             }
         }
 
@@ -890,7 +1008,7 @@ fn expand_borrow_ability_line(text: &str) -> String {
     }
 
     let mut joined = expanded.join(". ");
-    if text.trim_end().ends_with('.') {
+    if str_ends_with(text.trim_end(), ".") {
         joined.push('.');
     }
     joined
@@ -914,8 +1032,9 @@ fn rewrite_vote_count_followups_line(text: &str) -> String {
         let lower = trimmed.to_ascii_lowercase();
         let death_marker = " for each death vote and ";
         let taxes_marker = " for each taxes vote";
-        if let Some(death_idx) = lower.find(death_marker)
-            && let Some(taxes_rel_idx) = lower[death_idx + death_marker.len()..].find(taxes_marker)
+        if let Some(death_idx) = str_find(lower.as_str(), death_marker)
+            && let Some(taxes_rel_idx) =
+                str_find(&lower[death_idx + death_marker.len()..], taxes_marker)
         {
             let taxes_idx = death_idx + death_marker.len() + taxes_rel_idx;
             let left = trimmed[..death_idx].trim();
@@ -928,7 +1047,7 @@ fn rewrite_vote_count_followups_line(text: &str) -> String {
             }
         }
 
-        if let Some(marker_idx) = lower.rfind(" for each ") {
+        if let Some(marker_idx) = lower.match_indices(" for each ").last().map(|(idx, _)| idx) {
             let head = trimmed[..marker_idx].trim();
             let tail = trimmed[marker_idx + " for each ".len()..].trim();
             let tail_words = tail.split_whitespace().collect::<Vec<_>>();
@@ -943,7 +1062,7 @@ fn rewrite_vote_count_followups_line(text: &str) -> String {
         trimmed.to_string()
     }
 
-    let had_period = text.trim_end().ends_with('.');
+    let had_period = str_ends_with(text.trim_end(), ".");
     let rewritten = split_period_sentences(text)
         .into_iter()
         .map(|sentence| rewrite_vote_count_sentence(sentence.as_str()))
@@ -970,7 +1089,7 @@ fn resized_char_map_for_rewrite(original_map: &[usize], normalized: &str) -> Vec
 
 fn is_ignorable_unparsed_line(line: &str) -> bool {
     let trimmed = line.trim();
-    !trimmed.is_empty() && trimmed.starts_with('(') && trimmed.ends_with(')')
+    !trimmed.is_empty() && str_starts_with_char(trimmed, '(') && str_ends_with_char(trimmed, ')')
 }
 
 pub(crate) fn preprocess_document(

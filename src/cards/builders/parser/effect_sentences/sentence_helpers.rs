@@ -30,11 +30,10 @@ pub(crate) use super::super::rule_engine::{
     ClauseView, RULE_SHAPE_STARTS_IF, RuleDef, RuleIndex, UnsupportedDiagnoser, UnsupportedRuleDef,
 };
 pub(crate) use super::super::util::{
-    classify_instead_followup_text, ends_with_until_end_of_turn, helper_tag_for_tokens,
-    is_until_end_of_turn, parse_mana_symbol_word_flexible, parse_number, parser_trace,
-    parser_trace_enabled, replace_unbound_x_with_value, split_on_comma,
-    split_on_comma_or_semicolon, split_on_period, starts_with_until_end_of_turn,
-    value_contains_unbound_x,
+    classify_instead_followup_text, helper_tag_for_tokens, is_until_end_of_turn,
+    parse_mana_symbol_word_flexible, parse_number, parser_trace, parser_trace_enabled,
+    replace_unbound_x_with_value, split_on_comma, split_on_comma_or_semicolon, split_on_period,
+    starts_with_until_end_of_turn, value_contains_unbound_x,
 };
 pub(crate) use super::chain_carry::{
     collapse_token_copy_end_of_combat_exile_followup,

@@ -17,7 +17,7 @@ use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::object::CounterType;
 use crate::target::ObjectFilter;
-use crate::types::{CardType, Subtype, Supertype};
+use crate::types::{CardType, Subtype, SubtypeFamily, Supertype};
 use crate::zone::Zone;
 
 fn attached_subject(filter: &ObjectFilter) -> Option<String> {
@@ -78,11 +78,15 @@ fn subject_text(filter: &ObjectFilter) -> String {
 fn split_subject_suffix(subject: &str) -> (&str, &str) {
     const SUFFIXES: &[&str] = &[
         " you control",
+        " you don't control",
         " that player controls",
+        " that player or that object's controller controls",
         " you own",
+        " you don't own",
         " an opponent owns",
         " a player owns",
         " the active player owns",
+        " the player who cast this spell owns",
         " that player owns",
         " a teammate owns",
         " the defending player owns",
@@ -97,6 +101,23 @@ fn split_subject_suffix(subject: &str) -> (&str, &str) {
         if let Some(base) = subject.strip_suffix(suffix) {
             return (base, suffix);
         }
+    }
+    const CLAUSE_MARKERS: &[&str] = &[
+        " in ",
+        " with ",
+        " without ",
+        " that ",
+        " from ",
+        " named ",
+        " of ",
+    ];
+    let lower = subject.to_ascii_lowercase();
+    if let Some(split_at) = CLAUSE_MARKERS
+        .iter()
+        .filter_map(|marker| lower.find(marker))
+        .min()
+    {
+        return (&subject[..split_at], &subject[split_at..]);
     }
     (subject, "")
 }
@@ -124,62 +145,17 @@ fn pluralized_subject_text(filter: &ObjectFilter) -> String {
         subject
     };
 
-    // Find the first known singular noun in the subject and pluralize it.
-    // This handles subjects like "card in graveyard", "creature you control with a counter on it"
-    // correctly, since the noun appears before zone/controller/qualifier suffixes.
-    const NOUNS: &[(&str, &str)] = &[
-        ("permanent", "permanents"),
-        ("creature", "creatures"),
-        ("artifact", "artifacts"),
-        ("enchantment", "enchantments"),
-        ("land", "lands"),
-        ("planeswalker", "planeswalkers"),
-        ("battle", "battles"),
-        ("spell", "spells"),
-        ("card", "cards"),
-        ("token", "tokens"),
-    ];
-
-    for &(singular, plural) in NOUNS {
-        // Look for the noun as a whole word in the subject.
-        if let Some(pos) = subject.to_ascii_lowercase().find(singular) {
-            let before_ok = pos == 0 || subject.as_bytes()[pos - 1] == b' ';
-            let after_pos = pos + singular.len();
-            let after_ok = after_pos >= subject.len()
-                || subject.as_bytes()[after_pos] == b' '
-                || subject.as_bytes()[after_pos] == b'.';
-            if before_ok && after_ok {
-                let prefix = &subject[..pos];
-                let suffix = &subject[after_pos..];
-                return format!("{prefix}{plural}{suffix}");
-            }
-        }
-    }
-
-    // Fallback for subtype-only filters (e.g., "Zombie you control", "Rat you control"):
-    // find the main noun (the word before " you control", " in graveyard", or similar suffixes)
-    // and pluralize it.
     let (base, suffix) = split_subject_suffix(&subject);
     if !base.is_empty() {
         let prefix_all = suffix.is_empty()
+            && !base.contains(" or ")
+            && !base.contains(" and ")
             && !base.contains(' ')
             && base
                 .chars()
                 .next()
                 .is_some_and(|ch| ch.is_ascii_uppercase());
-        // Pluralize the last word of the base (the main noun/subtype).
-        if let Some((head, noun)) = base.rsplit_once(' ') {
-            let plural = simple_pluralize(noun);
-            let subject = format!("{head} {plural}{suffix}");
-            return if prefix_all {
-                format!("All {subject}")
-            } else {
-                subject
-            };
-        }
-        // Single word base (e.g., just "Zombie").
-        let plural = simple_pluralize(base);
-        let subject = format!("{plural}{suffix}");
+        let subject = pluralize_subject_clause(&subject);
         return if prefix_all {
             format!("All {subject}")
         } else {
@@ -188,6 +164,30 @@ fn pluralized_subject_text(filter: &ObjectFilter) -> String {
     }
 
     subject
+}
+
+fn pluralize_subject_clause(subject: &str) -> String {
+    if let Some((head, tail)) = subject.split_once(" or ") {
+        return format!(
+            "{} or {}",
+            pluralize_subject_clause(head),
+            pluralize_subject_clause(tail)
+        );
+    }
+    if let Some((head, tail)) = subject.split_once(" and ") {
+        return format!(
+            "{} and {}",
+            pluralize_subject_clause(head),
+            pluralize_subject_clause(tail)
+        );
+    }
+
+    let (base, suffix) = split_subject_suffix(subject);
+    if base.is_empty() {
+        subject.to_string()
+    } else {
+        format!("{}{}", pluralize_noun_phrase(base), suffix)
+    }
 }
 
 fn simple_pluralize(word: &str) -> String {
@@ -249,6 +249,48 @@ fn simple_pluralize(word: &str) -> String {
     } else {
         format!("{word}s")
     }
+}
+
+fn pluralize_noun_phrase(phrase: &str) -> String {
+    const NOUNS: &[(&str, &str)] = &[
+        ("permanent", "permanents"),
+        ("creature", "creatures"),
+        ("artifact", "artifacts"),
+        ("enchantment", "enchantments"),
+        ("land", "lands"),
+        ("planeswalker", "planeswalkers"),
+        ("battle", "battles"),
+        ("spell", "spells"),
+        ("card", "cards"),
+        ("token", "tokens"),
+        ("ability", "abilities"),
+        ("source", "sources"),
+    ];
+
+    let lower = phrase.to_ascii_lowercase();
+    let mut best_match: Option<(usize, &'static str, &'static str)> = None;
+    for &(singular, plural) in NOUNS {
+        let mut search_start = 0;
+        while let Some(relative_pos) = lower[search_start..].find(singular) {
+            let pos = search_start + relative_pos;
+            let before_ok = pos == 0 || phrase.as_bytes()[pos - 1] == b' ';
+            let after_pos = pos + singular.len();
+            let after_ok = after_pos >= phrase.len()
+                || phrase.as_bytes()[after_pos] == b' '
+                || phrase.as_bytes()[after_pos] == b'.';
+            if before_ok && after_ok {
+                best_match = Some((pos, singular, plural));
+            }
+            search_start = after_pos;
+        }
+    }
+
+    if let Some((pos, singular, plural)) = best_match {
+        let suffix_start = pos + singular.len();
+        return format!("{}{}{}", &phrase[..pos], plural, &phrase[suffix_start..]);
+    }
+
+    pluralize_terminal_word(phrase)
 }
 
 fn indefinite_article_for(word: &str) -> &'static str {
@@ -1827,7 +1869,14 @@ impl StaticAbilityKind for AddCardTypesForFilter {
         let types = self
             .card_types
             .iter()
-            .map(|card_type| card_type.name().to_string())
+            .map(|card_type| {
+                let name = card_type.name();
+                if verb == "are" {
+                    simple_pluralize(name)
+                } else {
+                    name.to_string()
+                }
+            })
             .collect::<Vec<_>>();
         let mut text = format!(
             "{subject} {verb} {} in addition to {possessive} other types",
@@ -1905,7 +1954,14 @@ impl StaticAbilityKind for RemoveCardTypesForFilter {
         let types = self
             .card_types
             .iter()
-            .map(|card_type| card_type.name().to_string())
+            .map(|card_type| {
+                let name = card_type.name();
+                if verb == "are" {
+                    simple_pluralize(name)
+                } else {
+                    name.to_string()
+                }
+            })
             .collect::<Vec<_>>();
         let mut text = format!("{subject} {verb} no longer {}", join_with_and(&types));
         if let Some(condition) = &self.condition {
@@ -1968,7 +2024,14 @@ impl StaticAbilityKind for SetCardTypesForFilter {
         let types = self
             .card_types
             .iter()
-            .map(|card_type| card_type.name().to_string())
+            .map(|card_type| {
+                let name = card_type.name();
+                if verb == "are" {
+                    simple_pluralize(name)
+                } else {
+                    name.to_string()
+                }
+            })
             .collect::<Vec<_>>();
         format!("{subject} {verb} {}", join_with_and(&types))
     }
@@ -2089,6 +2152,76 @@ impl StaticAbilityKind for AddSubtypesForFilter {
     }
 }
 
+/// Add every subtype from a family: "Creatures you control are every creature type."
+#[derive(Debug, Clone)]
+pub struct AddAllSubtypesOfFamilyForFilter {
+    pub filter: ObjectFilter,
+    pub family: SubtypeFamily,
+    pub condition: Option<crate::ConditionExpr>,
+}
+
+impl AddAllSubtypesOfFamilyForFilter {
+    pub fn new(filter: ObjectFilter, family: SubtypeFamily) -> Self {
+        Self {
+            filter,
+            family,
+            condition: None,
+        }
+    }
+
+    pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
+        self.condition = Some(condition);
+        self
+    }
+}
+
+impl PartialEq for AddAllSubtypesOfFamilyForFilter {
+    fn eq(&self, other: &Self) -> bool {
+        self.filter == other.filter
+            && self.family == other.family
+            && self.condition == other.condition
+    }
+}
+
+impl StaticAbilityKind for AddAllSubtypesOfFamilyForFilter {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::AddAllSubtypesOfFamily
+    }
+
+    fn display(&self) -> String {
+        let subject = pluralized_subject_text(&self.filter);
+        let (verb, _) = subject_verb_and_possessive(&subject);
+        let mut text = format!("{subject} {verb} every {}", self.family.type_phrase());
+        if let Some(condition) = &self.condition {
+            text.push(' ');
+            text.push_str(&describe_static_condition(condition));
+        }
+        text
+    }
+
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        Some(StaticAbility::new(self.clone().with_condition(condition)))
+    }
+
+    fn generate_effects(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+        _game: &GameState,
+    ) -> Vec<ContinuousEffect> {
+        vec![effect_with_optional_static_condition(
+            ContinuousEffect::new(
+                source,
+                controller,
+                effect_target_for_filter(source, &self.filter),
+                Modification::AddAllSubtypesOfFamily(self.family),
+            )
+            .with_source_type(EffectSourceType::StaticAbility),
+            &self.condition,
+        )]
+    }
+}
+
 /// Set creature subtypes by removing all creature types first, then adding the new list.
 #[derive(Debug, Clone)]
 pub struct SetCreatureSubtypesForFilter {
@@ -2135,7 +2268,7 @@ impl StaticAbilityKind for SetCreatureSubtypesForFilter {
                 source,
                 controller,
                 effect_target_for_filter(source, &self.filter),
-                Modification::RemoveAllCreatureTypes,
+                Modification::RemoveAllSubtypesOfFamily(SubtypeFamily::Creature),
             )
             .with_source_type(EffectSourceType::StaticAbility),
             ContinuousEffect::new(
@@ -2859,7 +2992,9 @@ impl StaticAbilityKind for TophFirstMetalbender {
 mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
+    use crate::filter::StackObjectKind;
     use crate::ids::CardId;
+    use crate::target::PlayerFilter;
     use crate::types::{Subtype, Supertype};
     use crate::zone::Zone;
 
@@ -2875,6 +3010,47 @@ mod tests {
     fn test_remove_supertypes_display_mentions_scope_and_supertype() {
         let remove = RemoveSupertypesForFilter::new(ObjectFilter::land(), vec![Supertype::Snow]);
         assert_eq!(remove.display(), "land is no longer snow");
+    }
+
+    #[test]
+    fn test_add_card_types_display_pluralizes_compound_spell_subjects() {
+        let filter = ObjectFilter {
+            zone: Some(Zone::Stack),
+            controller: Some(PlayerFilter::You),
+            stack_kind: Some(StackObjectKind::Spell),
+            has_mana_cost: true,
+            card_types: vec![
+                CardType::Artifact,
+                CardType::Creature,
+                CardType::Enchantment,
+                CardType::Land,
+                CardType::Planeswalker,
+                CardType::Battle,
+            ],
+            ..Default::default()
+        };
+
+        let add = AddCardTypesForFilter::new(filter, vec![CardType::Artifact]);
+        assert_eq!(
+            add.display(),
+            "permanent spells you control are artifacts in addition to their other types"
+        );
+    }
+
+    #[test]
+    fn test_add_all_subtypes_display_pluralizes_compound_card_subjects() {
+        let filter = ObjectFilter {
+            zone: Some(Zone::Hand),
+            owner: Some(PlayerFilter::You),
+            card_types: vec![CardType::Creature],
+            ..Default::default()
+        };
+
+        let add = AddAllSubtypesOfFamilyForFilter::new(filter, SubtypeFamily::Creature);
+        assert_eq!(
+            add.display(),
+            "creature cards in your hand are every creature type"
+        );
     }
 
     #[test]
@@ -3188,6 +3364,28 @@ mod tests {
                 toughness: Value::Fixed(1),
                 sublayer: PtSublayer::Setting,
             }
+        ));
+    }
+
+    #[test]
+    fn test_add_all_subtypes_of_family_for_filter() {
+        let ability = AddAllSubtypesOfFamilyForFilter::new(
+            ObjectFilter::creature().you_control(),
+            SubtypeFamily::Creature,
+        );
+        assert_eq!(ability.id(), StaticAbilityId::AddAllSubtypesOfFamily);
+        assert_eq!(
+            ability.display(),
+            "creatures you control are every creature type"
+        );
+
+        let game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let effects =
+            ability.generate_effects(ObjectId::from_raw(1), PlayerId::from_index(0), &game);
+        assert_eq!(effects.len(), 1);
+        assert!(matches!(
+            effects[0].modification,
+            Modification::AddAllSubtypesOfFamily(SubtypeFamily::Creature)
         ));
     }
 }

@@ -28,6 +28,10 @@ use crate::cards::builders::{
     CardTextError, EffectAst, ExtraTurnAnchorAst, IT_TAG, LineAst, PlayerAst, SubjectAst, TagKey,
     TargetAst, TextSpan, TriggerSpec, Verb,
 };
+use crate::cards::builders::scan_helpers::{
+    find_index, find_window_by, find_window_index, iter_contains, rfind_index, slice_contains,
+    slice_ends_with, slice_starts_with,
+};
 use crate::effect::{ChoiceCount, EventValueSpec, Until, Value};
 use crate::object::CounterType;
 use crate::target::{
@@ -103,9 +107,53 @@ fn next_spell_grant_shared_cast_suffix<'a>(words: &'a [&'a str]) -> Option<&'a [
         &["opponent", "cast"][..],
         &["opponents", "cast"][..],
     ] {
-        if words.ends_with(suffix) {
+        if slice_ends_with(words, suffix) {
             return Some(suffix);
         }
+    }
+    None
+}
+
+fn slice_contains_any(words: &[&str], expected: &[&str]) -> bool {
+    expected.iter().any(|word| slice_contains(words, word))
+}
+
+fn slice_contains_all(words: &[&str], expected: &[&str]) -> bool {
+    expected.iter().all(|word| slice_contains(words, word))
+}
+
+fn slice_starts_with_any(words: &[&str], prefixes: &[&[&str]]) -> bool {
+    prefixes.iter().any(|prefix| slice_starts_with(words, prefix))
+}
+
+fn contains_word_window(words: &[&str], pattern: &[&str]) -> bool {
+    find_window_index(words, pattern).is_some()
+}
+
+fn contains_any_word_window(words: &[&str], patterns: &[&[&str]]) -> bool {
+    patterns.iter().any(|pattern| contains_word_window(words, pattern))
+}
+
+fn token_words_match(tokens: &[OwnedLexToken], start: usize, expected: &[&str]) -> bool {
+    if start + expected.len() > tokens.len() {
+        return false;
+    }
+    expected
+        .iter()
+        .enumerate()
+        .all(|(offset, word)| tokens[start + offset].is_word(word))
+}
+
+fn find_token_word_window(tokens: &[OwnedLexToken], expected: &[&str]) -> Option<usize> {
+    if expected.is_empty() {
+        return Some(0);
+    }
+    let mut idx = 0usize;
+    while idx + expected.len() <= tokens.len() {
+        if token_words_match(tokens, idx, expected) {
+            return Some(idx);
+        }
+        idx += 1;
     }
     None
 }
@@ -145,20 +193,17 @@ fn parse_next_spell_grant_sentence_lexed(
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let clause_word_view = LowercaseWordView::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
-    if !clause_words.starts_with(&["the", "next"]) {
+    if !slice_starts_with(&clause_words, &["the", "next"]) {
         return Ok(None);
     }
 
-    if let Some(have_idx) = clause_words
-        .windows(2)
-        .position(|window| window == ["each", "have"])
-    {
+    if let Some(have_idx) = find_window_index(&clause_words, &["each", "have"]) {
         let subject_words = &clause_words[..have_idx];
         let ability_words = &clause_words[have_idx + 2..];
         let Some(ability) = parse_next_spell_grant_ability(ability_words) else {
             return Ok(None);
         };
-        if !subject_words.ends_with(&["this", "turn"]) {
+        if !slice_ends_with(subject_words, &["this", "turn"]) {
             return Ok(None);
         }
         let subject_without_turn = &subject_words[..subject_words.len() - 2];
@@ -168,10 +213,7 @@ fn parse_next_spell_grant_sentence_lexed(
         };
         let shared_prefix =
             &subject_without_turn[2..subject_without_turn.len() - shared_cast_words.len()];
-        let Some(split_idx) = shared_prefix
-            .windows(3)
-            .position(|window| window == ["and", "the", "next"])
-        else {
+        let Some(split_idx) = find_window_index(shared_prefix, &["and", "the", "next"]) else {
             return Ok(None);
         };
         let first_subject = &shared_prefix[..split_idx];
@@ -206,10 +248,7 @@ fn parse_next_spell_grant_sentence_lexed(
         ]));
     }
 
-    let Some(has_idx) = clause_words
-        .iter()
-        .position(|word| matches!(*word, "has" | "have"))
-    else {
+    let Some(has_idx) = find_index(&clause_words, |word| matches!(*word, "has" | "have")) else {
         return Ok(None);
     };
     let subject_words = &clause_words[..has_idx];
@@ -217,7 +256,7 @@ fn parse_next_spell_grant_sentence_lexed(
     let Some(ability) = parse_next_spell_grant_ability(ability_words) else {
         return Ok(None);
     };
-    if !subject_words.ends_with(&["this", "turn"]) {
+    if !slice_ends_with(subject_words, &["this", "turn"]) {
         return Ok(None);
     }
 
@@ -628,17 +667,17 @@ fn diagnose_sentence_unsupported_lexed(tokens: &[OwnedLexToken]) -> Option<CardT
 fn sentence_looks_like_supported_negated_untap_clause(tokens: &[OwnedLexToken]) -> bool {
     let words_storage = normalize_cant_words(tokens);
     let words = words_storage.iter().map(String::as_str).collect::<Vec<_>>();
-    let has_negated_untap = words.windows(3).any(|window| {
+    let has_negated_untap = find_window_by(&words, 3, |window| {
         window == ["dont", "untap", "during"] || window == ["doesnt", "untap", "during"]
-    });
-    let has_controllers_untap_step = words.windows(3).any(|window| {
+    })
+    .is_some();
+    let has_controllers_untap_step = find_window_by(&words, 3, |window| {
         window == ["controllers", "untap", "step"] || window == ["controllers", "untap", "steps"]
-    });
-    let has_tapped_duration = words
-        .windows(4)
-        .any(|window| window == ["for", "as", "long", "as"])
-        && words.contains(&"remains")
-        && words.contains(&"tapped");
+    })
+    .is_some();
+    let has_tapped_duration = find_window_index(&words, &["for", "as", "long", "as"]).is_some()
+        && slice_contains(&words, &"remains")
+        && slice_contains(&words, &"tapped");
     has_negated_untap && has_controllers_untap_step && has_tapped_duration
 }
 
@@ -674,10 +713,10 @@ fn parse_spell_this_way_pay_life_rule_lexed(
     view: &LexClauseView<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let sentence_words = view.words.to_word_refs();
-    if sentence_words.starts_with(&["if", "you", "cast", "a", "spell", "this", "way"])
-        && sentence_words.contains(&"rather")
-        && sentence_words.contains(&"mana")
-        && sentence_words.contains(&"cost")
+    if slice_starts_with(&sentence_words, &["if", "you", "cast", "a", "spell", "this", "way"])
+        && slice_contains(&sentence_words, &"rather")
+        && slice_contains(&sentence_words, &"mana")
+        && slice_contains(&sentence_words, &"cost")
     {
         return Ok(Some(vec![
             EffectAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn {
@@ -814,51 +853,46 @@ fn sentence_has_each_player_lose_discard_sacrifice_chain(
     words: &[&str],
     _: &[OwnedLexToken],
 ) -> bool {
-    words.starts_with(&["each", "player"])
-        && words.contains(&"then")
-        && (words.contains(&"lose") || words.contains(&"loses"))
-        && (words.contains(&"discard") || words.contains(&"discards"))
-        && (words.contains(&"sacrifice") || words.contains(&"sacrifices"))
+    slice_starts_with(words, &["each", "player"])
+        && slice_contains(words, &"then")
+        && (slice_contains(words, &"lose") || slice_contains(words, &"loses"))
+        && (slice_contains(words, &"discard") || slice_contains(words, &"discards"))
+        && (slice_contains(words, &"sacrifice") || slice_contains(words, &"sacrifices"))
 }
 
 fn sentence_has_each_player_exile_sacrifice_return_exiled_clause(
     words: &[&str],
     _: &[OwnedLexToken],
 ) -> bool {
-    words.starts_with(&["each", "player", "exiles", "all"])
-        && words.contains(&"sacrifices")
-        && words.contains(&"puts")
-        && words.contains(&"exiled")
-        && words.contains(&"this")
-        && words.contains(&"way")
+    slice_starts_with(words, &["each", "player", "exiles", "all"])
+        && slice_contains(words, &"sacrifices")
+        && slice_contains(words, &"puts")
+        && slice_contains(words, &"exiled")
+        && slice_contains(words, &"this")
+        && slice_contains(words, &"way")
 }
 
 fn sentence_has_put_one_of_them_into_hand_rest_clause(words: &[&str], _: &[OwnedLexToken]) -> bool {
-    words
-        .windows(5)
-        .any(|window| window == ["one", "of", "them", "into", "your"])
-        && words.contains(&"rest")
-        && (words.contains(&"graveyard") || words.contains(&"graveyards"))
+    find_window_index(words, &["one", "of", "them", "into", "your"]).is_some()
+        && slice_contains(words, &"rest")
+        && (slice_contains(words, &"graveyard") || slice_contains(words, &"graveyards"))
 }
 
 fn sentence_has_loses_all_abilities_with_becomes_clause(
     words: &[&str],
     _: &[OwnedLexToken],
 ) -> bool {
-    let has_loses_all_abilities = (words.contains(&"lose") || words.contains(&"loses"))
-        && words
-            .windows(2)
-            .any(|window| window == ["all", "abilities"]);
-    has_loses_all_abilities && words.contains(&"becomes")
+    let has_loses_all_abilities = (slice_contains(words, &"lose") || slice_contains(words, &"loses"))
+        && find_window_index(words, &["all", "abilities"]).is_some();
+    has_loses_all_abilities && slice_contains(words, &"becomes")
 }
 
 fn sentence_has_spent_to_cast_this_spell_without_condition(
     words: &[&str],
     _: &[OwnedLexToken],
 ) -> bool {
-    let has_spent_to_cast_this_spell = words
-        .windows(6)
-        .any(|window| window == ["was", "spent", "to", "cast", "this", "spell"]);
+    let has_spent_to_cast_this_spell =
+        find_window_index(words, &["was", "spent", "to", "cast", "this", "spell"]).is_some();
     has_spent_to_cast_this_spell && !words.iter().any(|word| matches!(*word, "if" | "unless"))
 }
 
@@ -866,87 +900,72 @@ fn sentence_has_would_enter_instead_replacement_clause(
     words: &[&str],
     _: &[OwnedLexToken],
 ) -> bool {
-    words.iter().any(|word| *word == "would")
-        && words
-            .iter()
-            .any(|word| *word == "enter" || *word == "enters")
+    slice_contains(words, &"would")
+        && words.iter().any(|word| *word == "enter" || *word == "enters")
         && words.iter().any(|word| *word == "instead")
 }
 
 fn sentence_has_different_mana_value_constraint(words: &[&str], _: &[OwnedLexToken]) -> bool {
-    words
-        .windows(3)
-        .any(|window| window == ["different", "mana", "value"])
+    find_window_index(words, &["different", "mana", "value"]).is_some()
 }
 
 fn sentence_has_most_common_color_constraint(words: &[&str], _: &[OwnedLexToken]) -> bool {
-    words
-        .windows(5)
-        .any(|window| window == ["most", "common", "color", "among", "all"])
-        && words.contains(&"permanents")
+    contains_word_window(words, &["most", "common", "color", "among", "all"])
+        && slice_contains(words, &"permanents")
 }
 
 fn sentence_has_power_vs_count_constraint(words: &[&str], _: &[OwnedLexToken]) -> bool {
-    words.contains(&"power")
-        && words
-            .windows(8)
-            .any(|window| window == ["less", "than", "or", "equal", "to", "the", "number", "of"])
+    slice_contains(words, &"power")
+        && contains_word_window(
+            words,
+            &["less", "than", "or", "equal", "to", "the", "number", "of"],
+        )
 }
 
 fn sentence_has_put_into_graveyards_from_battlefield_this_turn(
     words: &[&str],
     _: &[OwnedLexToken],
 ) -> bool {
-    words.windows(8).any(|window| {
-        window
-            == [
-                "put",
-                "into",
-                "graveyards",
-                "from",
-                "the",
-                "battlefield",
-                "this",
-                "turn",
-            ]
-    })
+    contains_word_window(
+        words,
+        &[
+            "put",
+            "into",
+            "graveyards",
+            "from",
+            "the",
+            "battlefield",
+            "this",
+            "turn",
+        ],
+    )
 }
 
 fn sentence_has_phase_out_until_leaves_clause(words: &[&str], _: &[OwnedLexToken]) -> bool {
     words
         .iter()
         .any(|word| matches!(*word, "phase" | "phases" | "phased"))
-        && words.contains(&"until")
-        && words
-            .windows(3)
-            .any(|window| window == ["leaves", "the", "battlefield"])
+        && slice_contains(words, &"until")
+        && contains_word_window(words, &["leaves", "the", "battlefield"])
 }
 
 fn sentence_has_same_name_as_another_in_hand_clause(words: &[&str], _: &[OwnedLexToken]) -> bool {
-    words
-        .windows(6)
-        .any(|window| window == ["same", "name", "as", "another", "card", "in"])
-        && words.contains(&"hand")
+    contains_word_window(words, &["same", "name", "as", "another", "card", "in"])
+        && slice_contains(words, &"hand")
 }
 
 fn sentence_has_for_each_mana_from_spent_to_cast_clause(
     words: &[&str],
     _: &[OwnedLexToken],
 ) -> bool {
-    words
-        .windows(4)
-        .any(|window| window == ["for", "each", "mana", "from"])
-        && words.contains(&"spent")
-        && words
-            .windows(4)
-            .any(|window| window == ["cast", "this", "spell", "create"])
+    contains_word_window(words, &["for", "each", "mana", "from"])
+        && slice_contains(words, &"spent")
+        && contains_word_window(words, &["cast", "this", "spell", "create"])
 }
 
 fn sentence_has_when_you_sacrifice_this_way_clause(words: &[&str], _: &[OwnedLexToken]) -> bool {
-    words
-        .windows(3)
-        .any(|window| window == ["when", "you", "sacrifice"])
-        && words.windows(2).any(|window| window == ["this", "way"])
+    contains_word_window(words, &["when", "you", "sacrifice"])
+        && contains_word_window(words, &["this", "way"])
 }
 
 fn sentence_has_sacrifice_any_number_then_draw_that_many_clause(
@@ -956,99 +975,78 @@ fn sentence_has_sacrifice_any_number_then_draw_that_many_clause(
     words
         .iter()
         .any(|word| *word == "sacrifice" || *word == "sacrifices")
-        && words
-            .windows(3)
-            .any(|window| window == ["any", "number", "of"])
+        && contains_word_window(words, &["any", "number", "of"])
         && words.iter().any(|word| *word == "draw" || *word == "draws")
-        && words.windows(2).any(|window| window == ["that", "many"])
+        && contains_word_window(words, &["that", "many"])
 }
 
 fn sentence_has_greatest_mana_value_clause(words: &[&str], _: &[OwnedLexToken]) -> bool {
-    words
-        .windows(3)
-        .any(|window| window == ["greatest", "mana", "value"])
+    contains_word_window(words, &["greatest", "mana", "value"])
 }
 
 fn sentence_has_least_power_among_creatures_clause(words: &[&str], _: &[OwnedLexToken]) -> bool {
-    words
-        .windows(4)
-        .any(|window| window == ["least", "power", "among", "creatures"])
+    contains_word_window(words, &["least", "power", "among", "creatures"])
 }
 
 fn sentence_has_villainous_choice_clause(words: &[&str], _: &[OwnedLexToken]) -> bool {
-    words.contains(&"villainous") && words.contains(&"choice")
+    slice_contains_all(words, &["villainous", "choice"])
 }
 
 fn sentence_has_divided_evenly_clause(words: &[&str], _: &[OwnedLexToken]) -> bool {
-    words
-        .windows(2)
-        .any(|window| window == ["divided", "evenly"])
+    contains_word_window(words, &["divided", "evenly"])
 }
 
 fn sentence_has_different_names_clause(words: &[&str], _: &[OwnedLexToken]) -> bool {
-    words
-        .windows(2)
-        .any(|window| window == ["different", "names"])
+    contains_word_window(words, &["different", "names"])
 }
 
 fn sentence_has_chosen_at_random_clause(words: &[&str], _: &[OwnedLexToken]) -> bool {
-    words
-        .windows(3)
-        .any(|window| window == ["chosen", "at", "random"])
+    contains_word_window(words, &["chosen", "at", "random"])
 }
 
 fn sentence_has_defending_players_choice_clause(words: &[&str], _: &[OwnedLexToken]) -> bool {
-    words.windows(3).any(|window| {
-        window == ["defending", "player's", "choice"]
-            || window == ["defending", "player", "choice"]
-            || window == ["player's", "choice", "target"]
-    }) || words
-        .windows(4)
-        .any(|window| window == ["defending", "player", "s", "choice"])
+    contains_any_word_window(
+        words,
+        &[
+            &["defending", "player's", "choice"],
+            &["defending", "player", "choice"],
+            &["player's", "choice", "target"],
+            &["defending", "player", "s", "choice"],
+        ],
+    )
 }
 
 fn sentence_has_target_creature_token_player_planeswalker_clause(
     words: &[&str],
     _: &[OwnedLexToken],
 ) -> bool {
-    words.contains(&"target")
-        && words.contains(&"creature")
-        && words.contains(&"token")
-        && words.contains(&"player")
-        && words.contains(&"planeswalker")
+    slice_contains_all(
+        words,
+        &["target", "creature", "token", "player", "planeswalker"],
+    )
 }
 
 fn sentence_has_if_you_sacrifice_an_island_this_way_clause(
     words: &[&str],
     _: &[OwnedLexToken],
 ) -> bool {
-    words
-        .windows(5)
-        .any(|window| window == ["if", "you", "sacrifice", "an", "island"])
-        && words.windows(2).any(|window| window == ["this", "way"])
+    contains_word_window(words, &["if", "you", "sacrifice", "an", "island"])
+        && contains_word_window(words, &["this", "way"])
 }
 
 fn sentence_has_commander_cast_count_clause(words: &[&str], _: &[OwnedLexToken]) -> bool {
-    words
-        .windows(3)
-        .any(|window| window == ["for", "each", "time"])
-        && words.contains(&"cast")
-        && words.contains(&"commander")
-        && words
-            .windows(4)
-            .any(|window| window == ["from", "the", "command", "zone"])
+    contains_word_window(words, &["for", "each", "time"])
+        && slice_contains_all(words, &["cast", "commander"])
+        && contains_word_window(words, &["from", "the", "command", "zone"])
 }
 
 fn sentence_has_spent_to_cast_clause(words: &[&str], _: &[OwnedLexToken]) -> bool {
-    words
-        .windows(3)
-        .any(|window| window == ["spent", "to", "cast"])
+    contains_word_window(words, &["spent", "to", "cast"])
 }
 
 fn sentence_has_face_down_clause(words: &[&str], _: &[OwnedLexToken]) -> bool {
-    let has_face_down = words.windows(2).any(|window| window == ["face", "down"])
-        || words.contains(&"face-down")
-        || words.contains(&"facedown");
+    let has_face_down = contains_word_window(words, &["face", "down"])
+        || slice_contains_any(words, &["face-down", "facedown"]);
     if !has_face_down {
         return false;
     }
@@ -1056,49 +1054,39 @@ fn sentence_has_face_down_clause(words: &[&str], _: &[OwnedLexToken]) -> bool {
     // Simple "exile ... face down" clauses are handled by the generic exile
     // parser; keep rejecting broader manifest/pile patterns here.
     let simple_exile_face_down = words.first().copied() == Some("exile")
-        && !words.contains(&"then")
-        && !words.contains(&"manifest")
-        && !words.contains(&"pile");
+        && !slice_contains_any(words, &["then", "manifest", "pile"]);
     !simple_exile_face_down
 }
 
 fn sentence_has_copy_spell_legendary_exception_clause(words: &[&str], _: &[OwnedLexToken]) -> bool {
-    words.contains(&"copy")
-        && words.contains(&"spell")
-        && words.contains(&"legendary")
-        && (words.contains(&"except") || words.contains(&"isnt"))
+    slice_contains_all(words, &["copy", "spell", "legendary"])
+        && slice_contains_any(words, &["except", "isnt"])
 }
 
 fn sentence_has_return_each_creature_that_isnt_list_clause(
     words: &[&str],
     _: &[OwnedLexToken],
 ) -> bool {
-    words.starts_with(&["return", "each", "creature", "that", "isnt"])
+    slice_starts_with(words, &["return", "each", "creature", "that", "isnt"])
         && words.iter().filter(|word| **word == "or").count() >= 1
 }
 
 fn sentence_has_unsupported_negated_untap_clause(words: &[&str], _: &[OwnedLexToken]) -> bool {
-    let has_supported_control_duration = words
-        .windows(6)
-        .any(|window| window == ["for", "as", "long", "as", "you", "control"]);
-    let has_supported_source_tapped_duration = words
-        .windows(4)
-        .any(|window| window == ["for", "as", "long", "as"])
-        && words.contains(&"remains")
-        && words.contains(&"tapped")
-        && (words.contains(&"this")
-            || words.contains(&"thiss")
-            || words.contains(&"source")
-            || words.contains(&"artifact")
-            || words.contains(&"creature")
-            || words.contains(&"permanent"));
+    let has_supported_control_duration =
+        contains_word_window(words, &["for", "as", "long", "as", "you", "control"]);
+    let has_supported_source_tapped_duration =
+        contains_word_window(words, &["for", "as", "long", "as"])
+            && slice_contains_all(words, &["remains", "tapped"])
+            && slice_contains_any(
+                words,
+                &["this", "thiss", "source", "artifact", "creature", "permanent"],
+            );
     is_negated_untap_clause(words)
-        && !words.contains(&"and")
-        && !words.contains(&"next")
+        && !slice_contains_any(words, &["and", "next"])
         && !has_supported_control_duration
         && !has_supported_source_tapped_duration
-        && words.contains(&"during")
-        && (words.contains(&"step") || words.contains(&"steps"))
+        && slice_contains(words, &"during")
+        && slice_contains_any(words, &["step", "steps"])
 }
 
 pub(crate) fn parse_effect_sentence_lexed(
@@ -1115,10 +1103,7 @@ pub(crate) fn parse_effect_sentence_lexed(
     }
     let clause_word_view = LowercaseWordView::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
-    if clause_words
-        .windows(3)
-        .any(|window| window == ["where", "x", "is"])
-    {
+    if contains_word_window(clause_words.as_slice(), &["where", "x", "is"]) {
         return parse_effect_sentence_with_where_x_lexed(tokens);
     }
     parse_effect_sentence_inner_lexed(tokens)
@@ -1127,14 +1112,11 @@ pub(crate) fn parse_effect_sentence_lexed(
 fn parse_exile_then_meld_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let clause_words = words(tokens);
-    if !clause_words.starts_with(&["exile", "them"]) {
+    let clause_words = crate::cards::builders::parser::lexed_words(tokens);
+    if !slice_starts_with(&clause_words, &["exile", "them"]) {
         return Ok(None);
     }
-    let Some(meld_idx) = clause_words
-        .windows(4)
-        .position(|window| window == ["then", "meld", "them", "into"])
-    else {
+    let Some(meld_idx) = find_window_index(&clause_words, &["then", "meld", "them", "into"]) else {
         return Ok(None);
     };
     let result_words = &clause_words[meld_idx + 4..];
@@ -1154,15 +1136,12 @@ fn parse_exile_then_meld_sentence(
 fn parse_if_damage_would_be_dealt_put_counters_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let clause_words = words(tokens);
-    if !clause_words.starts_with(&["if", "damage", "would", "be", "dealt", "to"]) {
+    let clause_words = crate::cards::builders::parser::lexed_words(tokens);
+    if !slice_starts_with(&clause_words, &["if", "damage", "would", "be", "dealt", "to"]) {
         return Ok(None);
     }
 
-    let Some(this_turn_rel) = clause_words[6..]
-        .windows(2)
-        .position(|window| window == ["this", "turn"])
-    else {
+    let Some(this_turn_rel) = find_window_index(&clause_words[6..], &["this", "turn"]) else {
         return Ok(None);
     };
     let this_turn_idx = 6 + this_turn_rel;
@@ -1228,10 +1207,7 @@ fn parse_effect_sentence_with_where_x_lexed(
 
     let clause_word_view = LowercaseWordView::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
-    let Some(where_idx) = clause_words
-        .windows(3)
-        .position(|window| window == ["where", "x", "is"])
-    else {
+    let Some(where_idx) = find_window_index(clause_words.as_slice(), &["where", "x", "is"]) else {
         return parse_effect_sentence_inner_lexed(tokens);
     };
     let Some(where_token_idx) = token_index_for_word_index(tokens, where_idx) else {
@@ -1423,7 +1399,7 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
     if is_trigger_only_restriction_sentence_lexed(tokens) {
         return Ok(Vec::new());
     }
-    if sentence_words.starts_with(&["round", "up", "each", "time"]) {
+    if slice_starts_with(sentence_words.as_slice(), &["round", "up", "each", "time"]) {
         return Ok(Vec::new());
     }
 
@@ -1434,9 +1410,10 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
         return parse_conditional_sentence_lexed(stripped);
     }
     if tokens.first().is_some_and(|token| token.is_word("if"))
-        && sentence_words
-            .windows(6)
-            .any(|window| window == ["exile", "them", "then", "meld", "them", "into"])
+        && contains_word_window(
+            sentence_words.as_slice(),
+            &["exile", "them", "then", "meld", "them", "into"],
+        )
     {
         return parse_conditional_sentence_lexed(tokens);
     }
@@ -1487,9 +1464,9 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
     }
-    if sentence_words.starts_with(&["exile", "all", "cards", "from"])
-        && (sentence_words.contains(&"hand") || sentence_words.contains(&"hands"))
-        && (sentence_words.contains(&"graveyard") || sentence_words.contains(&"graveyards"))
+    if slice_starts_with(sentence_words.as_slice(), &["exile", "all", "cards", "from"])
+        && slice_contains_any(sentence_words.as_slice(), &["hand", "hands"])
+        && slice_contains_any(sentence_words.as_slice(), &["graveyard", "graveyards"])
         && let Some(mut effects) = run_sentence_primitives_lexed(
             tokens,
             POST_CONDITIONAL_SENTENCE_PRIMITIVES,
@@ -1509,13 +1486,13 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
     }
-    if sentence_words.contains(&"unless")
+    if slice_contains(sentence_words.as_slice(), &"unless")
         && let Some(mut effects) = super::parse_sentence_unless_pays(tokens)?
     {
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
     }
-    if sentence_words.contains(&"unless")
+    if slice_contains(sentence_words.as_slice(), &"unless")
         && let Some(mut effects) = run_sentence_primitives_lexed(
             tokens,
             POST_CONDITIONAL_SENTENCE_PRIMITIVES,
@@ -1549,8 +1526,10 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
     }
-    if sentence_words.starts_with(&["each", "player", "choose"])
-        || sentence_words.starts_with(&["each", "player", "chooses"])
+    if slice_starts_with_any(
+        sentence_words.as_slice(),
+        &[&["each", "player", "choose"], &["each", "player", "chooses"]],
+    )
     {
         if let Some(mut effects) = run_sentence_primitives_lexed(
             tokens,
@@ -1579,8 +1558,8 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
 }
 
 fn strip_labeled_conditional_prefix_lexed(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
-    let if_idx = tokens.iter().position(|token| token.is_word("if"))?;
-    if !(1..=3).contains(&if_idx) {
+    let if_idx = find_index(tokens, |token| token.is_word("if"))?;
+    if !(1..=3).any(|expected| expected == if_idx) {
         return None;
     }
     if tokens[..if_idx].iter().any(|token| {
@@ -1627,14 +1606,14 @@ fn strip_labeled_conditional_prefix_lexed(tokens: &[OwnedLexToken]) -> Option<&[
 }
 
 fn strip_labeled_effect_prefix_lexed(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
-    let dash_idx = tokens.iter().position(|token| {
+    let dash_idx = find_index(tokens, |token| {
         matches!(
             token.kind,
             crate::cards::builders::parser::lexer::TokenKind::Dash
                 | crate::cards::builders::parser::lexer::TokenKind::EmDash
         )
     })?;
-    if !(1..=3).contains(&dash_idx) || dash_idx + 1 >= tokens.len() {
+    if !(1..=3).any(|expected| expected == dash_idx) || dash_idx + 1 >= tokens.len() {
         return None;
     }
     if tokens[..=dash_idx].iter().any(|token| {
@@ -1683,24 +1662,15 @@ fn strip_labeled_effect_prefix_lexed(tokens: &[OwnedLexToken]) -> Option<&[Owned
 
 fn sentence_starts_with_supported_spent_to_cast_conditional(words: &[&str]) -> bool {
     words.first() == Some(&"if")
-        && words
-            .windows(3)
-            .any(|window| window == ["spent", "to", "cast"])
+        && contains_word_window(words, &["spent", "to", "cast"])
 }
 
 pub(crate) fn is_enters_as_copy_clause(words: &[&str]) -> bool {
-    let has_enter_before_as_copy = words
-        .windows(3)
-        .position(|window| window == ["as", "a", "copy"] || window == ["as", "an", "copy"])
-        .is_some_and(|idx| {
-            words[..idx]
-                .iter()
-                .any(|word| *word == "enter" || *word == "enters")
-        });
-    let has_enter_before_as_copy_no_article = words
-        .windows(2)
-        .position(|window| window == ["as", "copy"])
-        .is_some_and(|idx| {
+    let has_enter_before_as_copy =
+        find_window_by(words, 3, |window| matches!(window, ["as", "a", "copy"] | ["as", "an", "copy"]))
+            .is_some_and(|idx| words[..idx].iter().any(|word| *word == "enter" || *word == "enters"));
+    let has_enter_before_as_copy_no_article =
+        find_window_index(words, &["as", "copy"]).is_some_and(|idx| {
             words[..idx]
                 .iter()
                 .any(|word| *word == "enter" || *word == "enters")
@@ -1712,20 +1682,19 @@ pub(crate) fn is_negated_untap_clause(words: &[&str]) -> bool {
     if words.len() < 3 {
         return false;
     }
-    let has_untap = words.contains(&"untap") || words.contains(&"untaps");
-    let has_negation = words.contains(&"doesnt")
-        || words.contains(&"dont")
-        || words.windows(2).any(|pair| pair == ["does", "not"])
-        || words.windows(2).any(|pair| pair == ["do", "not"])
-        || words.contains(&"cant")
-        || words.windows(2).any(|pair| pair == ["can", "not"]);
+    let has_untap = slice_contains_any(words, &["untap", "untaps"]);
+    let has_negation = slice_contains_any(words, &["doesnt", "dont", "cant"])
+        || contains_any_word_window(
+            words,
+            &[&["does", "not"], &["do", "not"], &["can", "not"]],
+        );
     has_untap && has_negation
 }
 
 pub(crate) fn parse_token_copy_modifier_sentence(
     tokens: &[OwnedLexToken],
 ) -> Option<TokenCopyFollowup> {
-    let filtered: Vec<&str> = words(tokens)
+    let filtered: Vec<&str> = crate::cards::builders::parser::lexed_words(tokens)
         .into_iter()
         .filter(|word| !is_article(word))
         .collect();
@@ -1783,88 +1752,105 @@ pub(crate) fn parse_token_copy_modifier_sentence(
         return Some(TokenCopyFollowup::EnterTappedAndAttacking);
     }
 
-    if filtered.starts_with(&["sacrifice", "it"])
-        || filtered.starts_with(&["sacrifice", "them"])
-        || filtered.starts_with(&["sacrifice", "that", "token"])
-        || filtered.starts_with(&["sacrifice", "those", "tokens"])
+    if slice_starts_with_any(
+        filtered.as_slice(),
+        &[
+            &["sacrifice", "it"],
+            &["sacrifice", "them"],
+            &["sacrifice", "that", "token"],
+            &["sacrifice", "those", "tokens"],
+        ],
+    )
     {
-        let has_next_end_step = filtered
-            .windows(6)
-            .any(|window| window == ["at", "beginning", "of", "next", "end", "step"]);
+        let has_next_end_step =
+            contains_word_window(filtered.as_slice(), &["at", "beginning", "of", "next", "end", "step"]);
         if has_next_end_step {
             return Some(TokenCopyFollowup::SacrificeAtNextEndStep);
         }
     }
-    if filtered.starts_with(&["exile", "it"]) || filtered.starts_with(&["exile", "them"]) {
-        let has_next_end_step = filtered
-            .windows(6)
-            .any(|window| window == ["at", "beginning", "of", "next", "end", "step"]);
+    if slice_starts_with_any(filtered.as_slice(), &[&["exile", "it"], &["exile", "them"]]) {
+        let has_next_end_step =
+            contains_word_window(filtered.as_slice(), &["at", "beginning", "of", "next", "end", "step"]);
         if has_next_end_step {
             return Some(TokenCopyFollowup::ExileAtNextEndStep);
         }
     }
 
-    let starts_delayed_end_step_sacrifice = filtered.starts_with(&[
-        "at",
-        "the",
-        "beginning",
-        "of",
-        "the",
-        "end",
-        "step",
-        "sacrifice",
-    ]) || filtered.starts_with(&[
-        "at",
-        "the",
-        "beginning",
-        "of",
-        "the",
-        "next",
-        "end",
-        "step",
-        "sacrifice",
-    ]) || filtered.starts_with(&[
-        "at",
-        "the",
-        "beginning",
-        "of",
-        "next",
-        "end",
-        "step",
-        "sacrifice",
-    ]);
+    let starts_delayed_end_step_sacrifice = slice_starts_with_any(
+        filtered.as_slice(),
+        &[
+            &[
+                "at",
+                "the",
+                "beginning",
+                "of",
+                "the",
+                "end",
+                "step",
+                "sacrifice",
+            ],
+            &[
+                "at",
+                "the",
+                "beginning",
+                "of",
+                "the",
+                "next",
+                "end",
+                "step",
+                "sacrifice",
+            ],
+            &[
+                "at",
+                "the",
+                "beginning",
+                "of",
+                "next",
+                "end",
+                "step",
+                "sacrifice",
+            ],
+        ],
+    );
     if starts_delayed_end_step_sacrifice {
         return Some(TokenCopyFollowup::SacrificeAtNextEndStep);
     }
-    let starts_delayed_end_step_exile = filtered.starts_with(&[
-        "at",
-        "the",
-        "beginning",
-        "of",
-        "the",
-        "end",
-        "step",
-        "exile",
-    ]) || filtered.starts_with(&[
-        "at",
-        "the",
-        "beginning",
-        "of",
-        "the",
-        "next",
-        "end",
-        "step",
-        "exile",
-    ]) || filtered.starts_with(&[
-        "at",
-        "the",
-        "beginning",
-        "of",
-        "next",
-        "end",
-        "step",
-        "exile",
-    ]);
+    let starts_delayed_end_step_exile = slice_starts_with_any(
+        filtered.as_slice(),
+        &[
+            &[
+                "at",
+                "the",
+                "beginning",
+                "of",
+                "the",
+                "end",
+                "step",
+                "exile",
+            ],
+            &[
+                "at",
+                "the",
+                "beginning",
+                "of",
+                "the",
+                "next",
+                "end",
+                "step",
+                "exile",
+            ],
+            &[
+                "at",
+                "the",
+                "beginning",
+                "of",
+                "next",
+                "end",
+                "step",
+                "exile",
+            ],
+        ],
+    );
     if starts_delayed_end_step_exile {
         return Some(TokenCopyFollowup::ExileAtNextEndStep);
     }
@@ -1931,88 +1917,105 @@ pub(crate) fn parse_token_copy_modifier_sentence_lexed(
         return Some(TokenCopyFollowup::EnterTappedAndAttacking);
     }
 
-    if filtered.starts_with(&["sacrifice", "it"])
-        || filtered.starts_with(&["sacrifice", "them"])
-        || filtered.starts_with(&["sacrifice", "that", "token"])
-        || filtered.starts_with(&["sacrifice", "those", "tokens"])
+    if slice_starts_with_any(
+        filtered.as_slice(),
+        &[
+            &["sacrifice", "it"],
+            &["sacrifice", "them"],
+            &["sacrifice", "that", "token"],
+            &["sacrifice", "those", "tokens"],
+        ],
+    )
     {
-        let has_next_end_step = filtered
-            .windows(6)
-            .any(|window| window == ["at", "beginning", "of", "next", "end", "step"]);
+        let has_next_end_step =
+            contains_word_window(filtered.as_slice(), &["at", "beginning", "of", "next", "end", "step"]);
         if has_next_end_step {
             return Some(TokenCopyFollowup::SacrificeAtNextEndStep);
         }
     }
-    if filtered.starts_with(&["exile", "it"]) || filtered.starts_with(&["exile", "them"]) {
-        let has_next_end_step = filtered
-            .windows(6)
-            .any(|window| window == ["at", "beginning", "of", "next", "end", "step"]);
+    if slice_starts_with_any(filtered.as_slice(), &[&["exile", "it"], &["exile", "them"]]) {
+        let has_next_end_step =
+            contains_word_window(filtered.as_slice(), &["at", "beginning", "of", "next", "end", "step"]);
         if has_next_end_step {
             return Some(TokenCopyFollowup::ExileAtNextEndStep);
         }
     }
 
-    let starts_delayed_end_step_sacrifice = filtered.starts_with(&[
-        "at",
-        "the",
-        "beginning",
-        "of",
-        "the",
-        "end",
-        "step",
-        "sacrifice",
-    ]) || filtered.starts_with(&[
-        "at",
-        "the",
-        "beginning",
-        "of",
-        "the",
-        "next",
-        "end",
-        "step",
-        "sacrifice",
-    ]) || filtered.starts_with(&[
-        "at",
-        "the",
-        "beginning",
-        "of",
-        "next",
-        "end",
-        "step",
-        "sacrifice",
-    ]);
+    let starts_delayed_end_step_sacrifice = slice_starts_with_any(
+        filtered.as_slice(),
+        &[
+            &[
+                "at",
+                "the",
+                "beginning",
+                "of",
+                "the",
+                "end",
+                "step",
+                "sacrifice",
+            ],
+            &[
+                "at",
+                "the",
+                "beginning",
+                "of",
+                "the",
+                "next",
+                "end",
+                "step",
+                "sacrifice",
+            ],
+            &[
+                "at",
+                "the",
+                "beginning",
+                "of",
+                "next",
+                "end",
+                "step",
+                "sacrifice",
+            ],
+        ],
+    );
     if starts_delayed_end_step_sacrifice {
         return Some(TokenCopyFollowup::SacrificeAtNextEndStep);
     }
-    let starts_delayed_end_step_exile = filtered.starts_with(&[
-        "at",
-        "the",
-        "beginning",
-        "of",
-        "the",
-        "end",
-        "step",
-        "exile",
-    ]) || filtered.starts_with(&[
-        "at",
-        "the",
-        "beginning",
-        "of",
-        "the",
-        "next",
-        "end",
-        "step",
-        "exile",
-    ]) || filtered.starts_with(&[
-        "at",
-        "the",
-        "beginning",
-        "of",
-        "next",
-        "end",
-        "step",
-        "exile",
-    ]);
+    let starts_delayed_end_step_exile = slice_starts_with_any(
+        filtered.as_slice(),
+        &[
+            &[
+                "at",
+                "the",
+                "beginning",
+                "of",
+                "the",
+                "end",
+                "step",
+                "exile",
+            ],
+            &[
+                "at",
+                "the",
+                "beginning",
+                "of",
+                "the",
+                "next",
+                "end",
+                "step",
+                "exile",
+            ],
+            &[
+                "at",
+                "the",
+                "beginning",
+                "of",
+                "next",
+                "end",
+                "step",
+                "exile",
+            ],
+        ],
+    );
     if starts_delayed_end_step_exile {
         return Some(TokenCopyFollowup::ExileAtNextEndStep);
     }
@@ -2130,7 +2133,7 @@ pub(crate) fn parse_delayed_until_next_end_step_sentence(
     if delayed_effects.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing delayed end-step effect clause (clause: '{}')",
-            words(tokens).join(" ")
+            crate::cards::builders::parser::lexed_words(tokens).join(" ")
         )));
     }
 
@@ -2164,7 +2167,7 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
         return Ok(None);
     }
 
-    let Some(comma_idx) = tokens.iter().position(|token| token.is_comma()) else {
+    let Some(comma_idx) = find_index(tokens, OwnedLexToken::is_comma) else {
         return Ok(None);
     };
 
@@ -2178,13 +2181,13 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
     if trigger_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing delayed trigger clause before comma (clause: '{}')",
-            words(tokens).join(" ")
+            crate::cards::builders::parser::lexed_words(tokens).join(" ")
         )));
     }
 
     let trigger_word_view = LowercaseWordView::new(&trigger_tokens);
     let trigger_words = trigger_word_view.to_word_refs();
-    if trigger_words.len() < 3 || !trigger_words.ends_with(&["this", "turn"]) {
+    if trigger_words.len() < 3 || !slice_ends_with(trigger_words.as_slice(), &["this", "turn"]) {
         return Ok(None);
     }
 
@@ -2195,10 +2198,10 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
     if trigger_core_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing delayed trigger clause before 'this turn' (clause: '{}')",
-            words(tokens).join(" ")
+            crate::cards::builders::parser::lexed_words(tokens).join(" ")
         )));
     }
-    let trigger_core_words = words(&trigger_core_tokens);
+    let trigger_core_words = crate::cards::builders::parser::lexed_words(&trigger_core_tokens);
     let trigger = if matches!(
         trigger_core_words.as_slice(),
         ["that", "creature", "is", "dealt", "damage"]
@@ -2218,7 +2221,7 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
     if remainder.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing delayed trigger effect clause (clause: '{}')",
-            words(tokens).join(" ")
+            crate::cards::builders::parser::lexed_words(tokens).join(" ")
         )));
     }
 
@@ -2226,7 +2229,7 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
     if delayed_effects.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing delayed trigger effect clause (clause: '{}')",
-            words(tokens).join(" ")
+            crate::cards::builders::parser::lexed_words(tokens).join(" ")
         )));
     }
 
@@ -2239,7 +2242,7 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
 pub(crate) fn parse_delayed_when_that_dies_this_turn_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let clause_words = words(tokens);
+    let clause_words = crate::cards::builders::parser::lexed_words(tokens);
     if clause_words.len() < 6 {
         return Ok(None);
     }
@@ -2251,7 +2254,7 @@ pub(crate) fn parse_delayed_when_that_dies_this_turn_sentence(
     }
     let mut delayed_filter: Option<ObjectFilter> = None;
     let split_after_word_idx = if clause_words.get(1) == Some(&"that") {
-        let Some(dies_idx) = clause_words.iter().position(|word| *word == "dies") else {
+        let Some(dies_idx) = find_index(clause_words.as_slice(), |word| *word == "dies") else {
             return Ok(None);
         };
         if clause_words.get(dies_idx + 1) != Some(&"this")
@@ -2260,10 +2263,10 @@ pub(crate) fn parse_delayed_when_that_dies_this_turn_sentence(
             return Ok(None);
         }
         dies_idx + 2
-    } else if let Some(dealt_idx) = clause_words
-        .windows(7)
-        .position(|window| window == ["dealt", "damage", "this", "way", "dies", "this", "turn"])
-    {
+    } else if let Some(dealt_idx) = find_window_index(
+        &clause_words,
+        &["dealt", "damage", "this", "way", "dies", "this", "turn"],
+    ) {
         if dealt_idx <= 1 {
             return Ok(None);
         }
@@ -2290,12 +2293,12 @@ pub(crate) fn parse_delayed_when_that_dies_this_turn_sentence(
             ))
         })?);
         dealt_idx + 6
-    } else if let Some(dealt_idx) = clause_words.windows(8).position(|window| {
-        window
-            == [
-                "dealt", "damage", "this", "way", "would", "die", "this", "turn",
-            ]
-    }) {
+    } else if let Some(dealt_idx) = find_window_index(
+        &clause_words,
+        &[
+            "dealt", "damage", "this", "way", "would", "die", "this", "turn",
+        ],
+    ) {
         if dealt_idx <= 1 {
             return Ok(None);
         }
@@ -2356,26 +2359,30 @@ pub(crate) fn parse_delayed_when_that_dies_this_turn_sentence(
 pub(crate) fn parse_each_player_choose_and_sacrifice_rest(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let all_words = words(tokens);
+    let all_words = crate::cards::builders::parser::lexed_words(tokens);
     if all_words.len() < 6 {
         return Ok(None);
     }
 
-    if !all_words.starts_with(&["each", "player", "chooses"])
-        && !all_words.starts_with(&["each", "player", "choose"])
+    if !slice_starts_with_any(
+        &all_words,
+        &[&["each", "player", "chooses"], &["each", "player", "choose"]],
+    )
     {
         return Ok(None);
     }
 
-    let then_idx = tokens.iter().position(|token| token.is_word("then"));
+    let then_idx = find_index(tokens, |token| token.is_word("then"));
     let Some(then_idx) = then_idx else {
         return Ok(None);
     };
 
     let after_then = &tokens[then_idx + 1..];
-    let after_words = words(after_then);
-    if !(after_words.starts_with(&["sacrifice", "the", "rest"])
-        || after_words.starts_with(&["sacrifices", "the", "rest"]))
+    let after_words = crate::cards::builders::parser::lexed_words(after_then);
+    if !slice_starts_with_any(
+        &after_words,
+        &[&["sacrifice", "the", "rest"], &["sacrifices", "the", "rest"]],
+    )
     {
         return Ok(None);
     }
@@ -2641,12 +2648,12 @@ pub(crate) fn merge_filters(base: &ObjectFilter, specific: &ObjectFilter) -> Obj
         merged.alternative_cast = specific.alternative_cast;
     }
     for ability_id in &specific.static_abilities {
-        if !merged.static_abilities.contains(ability_id) {
+        if !iter_contains(merged.static_abilities.iter(), ability_id) {
             merged.static_abilities.push(*ability_id);
         }
     }
     for ability_id in &specific.excluded_static_abilities {
-        if !merged.excluded_static_abilities.contains(ability_id) {
+        if !iter_contains(merged.excluded_static_abilities.iter(), ability_id) {
             merged.excluded_static_abilities.push(*ability_id);
         }
     }
@@ -2675,7 +2682,7 @@ pub(crate) fn merge_filters(base: &ObjectFilter, specific: &ObjectFilter) -> Obj
 pub(crate) fn parse_monstrosity_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let words = words(tokens);
+    let words = crate::cards::builders::parser::lexed_words(tokens);
     if words.first().copied() != Some("monstrosity") {
         return Ok(None);
     }
@@ -2694,29 +2701,29 @@ pub(crate) fn parse_monstrosity_sentence(
 pub(crate) fn parse_for_each_counter_removed_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let words_all = words(tokens);
+    let words_all = crate::cards::builders::parser::lexed_words(tokens);
     if words_all.len() < 6 {
         return Ok(None);
     }
-    if !words_all.starts_with(&["for", "each", "counter", "removed", "this", "way"]) {
+    if !slice_starts_with(&words_all, &["for", "each", "counter", "removed", "this", "way"]) {
         return Ok(None);
     }
 
-    let comma_idx = tokens.iter().position(|token| token.is_comma());
+    let comma_idx = find_index(tokens, OwnedLexToken::is_comma);
     let remainder = if let Some(idx) = comma_idx {
         &tokens[idx + 1..]
     } else {
         &tokens[6..]
     };
 
-    let remainder_words = words(remainder);
+    let remainder_words = crate::cards::builders::parser::lexed_words(remainder);
     if remainder_words.is_empty() {
         return Ok(None);
     }
 
-    let gets_idx = remainder_words
-        .iter()
-        .position(|word| *word == "gets" || *word == "get");
+    let gets_idx = find_index(remainder_words.as_slice(), |word| {
+        matches!(*word, "gets" | "get")
+    });
     let Some(gets_idx) = gets_idx else {
         return Ok(None);
     };
@@ -2740,9 +2747,7 @@ pub(crate) fn parse_for_each_counter_removed_sentence(
         })?;
     let (power, toughness) = parse_pt_modifier(modifier_token)?;
 
-    let duration = if remainder_words.contains(&"until")
-        && remainder_words.contains(&"end")
-        && remainder_words.contains(&"turn")
+    let duration = if slice_contains_all(&remainder_words, &["until", "end", "turn"])
     {
         Until::EndOfTurn
     } else {
@@ -2758,7 +2763,7 @@ pub(crate) fn parse_for_each_counter_removed_sentence(
 }
 
 pub(crate) fn is_exile_that_token_at_end_of_combat(tokens: &[OwnedLexToken]) -> bool {
-    let words = words(tokens);
+    let words = crate::cards::builders::parser::lexed_words(tokens);
     if words.first().copied() != Some("exile") {
         return false;
     }
@@ -2802,7 +2807,7 @@ pub(crate) fn is_exile_that_token_at_end_of_combat_lexed(tokens: &[OwnedLexToken
 }
 
 pub(crate) fn is_sacrifice_that_token_at_end_of_combat(tokens: &[OwnedLexToken]) -> bool {
-    let words = words(tokens);
+    let words = crate::cards::builders::parser::lexed_words(tokens);
     if words.first().copied() != Some("sacrifice") {
         return false;
     }
@@ -2848,7 +2853,7 @@ pub(crate) fn is_sacrifice_that_token_at_end_of_combat_lexed(tokens: &[OwnedLexT
 pub(crate) fn parse_take_extra_turn_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let words = words(tokens);
+    let words = crate::cards::builders::parser::lexed_words(tokens);
     if words.as_slice() == ["take", "an", "extra", "turn", "after", "this", "one"] {
         return Ok(Some(EffectAst::ExtraTurnAfterTurn {
             player: PlayerAst::You,
@@ -2900,7 +2905,7 @@ pub(crate) fn find_same_name_reference_span(
         {
             return Err(CardTextError::ParseError(format!(
                 "missing 'that <object>' in same-name clause (clause: '{}')",
-                words(tokens).join(" ")
+                crate::cards::builders::parser::lexed_words(tokens).join(" ")
             )));
         }
         if idx + 3 < tokens.len()
@@ -2910,7 +2915,7 @@ pub(crate) fn find_same_name_reference_span(
         {
             return Err(CardTextError::ParseError(format!(
                 "missing 'that <object>' in same-name clause (clause: '{}')",
-                words(tokens).join(" ")
+                crate::cards::builders::parser::lexed_words(tokens).join(" ")
             )));
         }
     }
@@ -2976,7 +2981,7 @@ pub(crate) fn parse_same_name_fanout_filter(
     if filter_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing object phrase in same-name fanout clause (clause: '{}')",
-            words(tokens).join(" ")
+            crate::cards::builders::parser::lexed_words(tokens).join(" ")
         )));
     }
 
@@ -2985,14 +2990,14 @@ pub(crate) fn parse_same_name_fanout_filter(
     if cleaned_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing base object filter in same-name fanout clause (clause: '{}')",
-            words(tokens).join(" ")
+            crate::cards::builders::parser::lexed_words(tokens).join(" ")
         )));
     }
 
     let mut filter = parse_object_filter(&cleaned_tokens, false).map_err(|_| {
         CardTextError::ParseError(format!(
             "unsupported same-name fanout filter (clause: '{}')",
-            words(tokens).join(" ")
+            crate::cards::builders::parser::lexed_words(tokens).join(" ")
         ))
     })?;
     filter.tagged_constraints.push(TaggedObjectConstraint {
@@ -3016,7 +3021,7 @@ pub(crate) fn parse_same_name_target_fanout_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let (tokens, until_source_leaves) = split_until_source_leaves_tail(tokens);
-    let words_all = words(tokens);
+    let words_all = crate::cards::builders::parser::lexed_words(tokens);
     let Some(first_word) = words_all.first().copied() else {
         return Ok(None);
     };
@@ -3024,7 +3029,7 @@ pub(crate) fn parse_same_name_target_fanout_sentence(
     let deal_tokens: Option<&[OwnedLexToken]> = if first_word == "deal" {
         Some(tokens)
     } else if let Some((Verb::Deal, verb_idx)) = find_verb(tokens) {
-        let subject_words: Vec<&str> = words(&tokens[..verb_idx])
+        let subject_words: Vec<&str> = crate::cards::builders::parser::lexed_words(&tokens[..verb_idx])
             .into_iter()
             .filter(|word| !is_article(word))
             .collect();
@@ -3038,7 +3043,7 @@ pub(crate) fn parse_same_name_target_fanout_sentence(
     };
 
     if let Some(deal_tokens) = deal_tokens {
-        let deal_words = words(deal_tokens);
+        let deal_words = crate::cards::builders::parser::lexed_words(deal_tokens);
         let (amount, used) =
             if deal_words.get(1) == Some(&"that") && deal_words.get(2) == Some(&"much") {
                 (Value::EventValue(EventValueSpec::Amount), 2usize)
@@ -3067,11 +3072,7 @@ pub(crate) fn parse_same_name_target_fanout_sentence(
             return Ok(None);
         }
 
-        let split_idx = (0..target_tokens.len().saturating_sub(2)).find(|idx| {
-            target_tokens[*idx].is_word("and")
-                && target_tokens[*idx + 1].is_word("each")
-                && target_tokens[*idx + 2].is_word("other")
-        });
+        let split_idx = find_token_word_window(target_tokens, &["and", "each", "other"]);
         let Some(split_idx) = split_idx else {
             return Ok(None);
         };
@@ -3106,11 +3107,7 @@ pub(crate) fn parse_same_name_target_fanout_sentence(
         return Ok(None);
     }
 
-    let and_idx = (0..tokens.len().saturating_sub(2)).find(|idx| {
-        tokens[*idx].is_word("and")
-            && tokens[*idx + 1].is_word("all")
-            && tokens[*idx + 2].is_word("other")
-    });
+    let and_idx = find_token_word_window(tokens, &["and", "all", "other"]);
     let Some(and_idx) = and_idx else {
         return Ok(None);
     };
@@ -3128,10 +3125,7 @@ pub(crate) fn parse_same_name_target_fanout_sentence(
     }
 
     let second_clause_tokens = if verb == "return" {
-        let to_idx = tokens
-            .iter()
-            .rposition(|token| token.is_word("to"))
-            .ok_or_else(|| {
+        let to_idx = rfind_index(tokens, |token| token.is_word("to")).ok_or_else(|| {
                 CardTextError::ParseError(format!(
                     "missing return destination in same-name fanout clause (clause: '{}')",
                     words_all.join(" ")
@@ -3143,8 +3137,8 @@ pub(crate) fn parse_same_name_target_fanout_sentence(
                 words_all.join(" ")
             )));
         }
-        let destination_words = words(&tokens[to_idx + 1..]);
-        if !destination_words.contains(&"hand") && !destination_words.contains(&"hands") {
+        let destination_words = crate::cards::builders::parser::lexed_words(&tokens[to_idx + 1..]);
+        if !slice_contains_any(&destination_words, &["hand", "hands"]) {
             return Ok(None);
         }
         tokens[and_idx + 3..to_idx].to_vec()
@@ -3166,16 +3160,14 @@ pub(crate) fn parse_same_name_target_fanout_sentence(
     {
         if first_filter.zone.is_none() {
             first_filter.zone = filter.zone;
-            if first_filter.zone.is_none() && words_all.contains(&"graveyard") {
+            if first_filter.zone.is_none() && slice_contains(&words_all, &"graveyard") {
                 first_filter.zone = Some(Zone::Graveyard);
             }
         }
         if first_filter.owner.is_none() {
             first_filter.owner = filter.owner.clone();
             if first_filter.owner.is_none()
-                && words_all
-                    .windows(2)
-                    .any(|window| window == ["your", "graveyard"])
+                && contains_word_window(&words_all, &["your", "graveyard"])
             {
                 first_filter.owner = Some(PlayerFilter::You);
             }
@@ -3250,7 +3242,7 @@ pub(crate) fn find_shares_color_reference_span(
         {
             return Err(CardTextError::ParseError(format!(
                 "missing 'it' in shares-color clause (clause: '{}')",
-                words(tokens).join(" ")
+                crate::cards::builders::parser::lexed_words(tokens).join(" ")
             )));
         }
     }
@@ -3271,14 +3263,14 @@ pub(crate) fn parse_shared_color_fanout_filter(
     if filter_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing object phrase in shared-color fanout clause (clause: '{}')",
-            words(tokens).join(" ")
+            crate::cards::builders::parser::lexed_words(tokens).join(" ")
         )));
     }
 
     let mut filter = parse_object_filter(&filter_tokens, false).map_err(|_| {
         CardTextError::ParseError(format!(
             "unsupported shared-color fanout filter (clause: '{}')",
-            words(tokens).join(" ")
+            crate::cards::builders::parser::lexed_words(tokens).join(" ")
         ))
     })?;
     filter.tagged_constraints.push(TaggedObjectConstraint {
@@ -3322,14 +3314,9 @@ fn split_full_shared_color_target(target: &TargetAst) -> Option<(TargetAst, Obje
 fn parse_explicit_shared_color_gets_or_gains(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let words_all = words(tokens);
-    let find_and_each_other = |scope: &[OwnedLexToken]| {
-        (0..scope.len().saturating_sub(2)).find(|idx| {
-            scope[*idx].is_word("and")
-                && scope[*idx + 1].is_word("each")
-                && scope[*idx + 2].is_word("other")
-        })
-    };
+    let words_all = crate::cards::builders::parser::lexed_words(tokens);
+    let find_and_each_other =
+        |scope: &[OwnedLexToken]| find_token_word_window(scope, &["and", "each", "other"]);
 
     let Some(and_idx) = find_and_each_other(tokens) else {
         return Ok(None);
@@ -3338,12 +3325,13 @@ fn parse_explicit_shared_color_gets_or_gains(
         return Ok(None);
     }
 
-    let verb_idx = (and_idx + 3..tokens.len()).find(|idx| {
-        tokens[*idx].is_word("get")
-            || tokens[*idx].is_word("gets")
-            || tokens[*idx].is_word("gain")
-            || tokens[*idx].is_word("gains")
-    });
+    let verb_idx = find_index(&tokens[and_idx + 3..], |token| {
+        token.is_word("get")
+            || token.is_word("gets")
+            || token.is_word("gain")
+            || token.is_word("gains")
+    })
+    .map(|idx| and_idx + 3 + idx);
     let Some(verb_token_idx) = verb_idx else {
         return Ok(None);
     };
@@ -3441,7 +3429,7 @@ pub(crate) fn parse_shared_color_target_fanout_sentence(
         return Ok(Some(effects));
     }
 
-    let words_all = words(tokens);
+    let words_all = crate::cards::builders::parser::lexed_words(tokens);
     let Some((verb, verb_idx)) = find_verb(tokens) else {
         return Ok(None);
     };
@@ -3449,13 +3437,8 @@ pub(crate) fn parse_shared_color_target_fanout_sentence(
         return Ok(None);
     };
 
-    let find_and_each_other = |scope: &[OwnedLexToken]| {
-        (0..scope.len().saturating_sub(2)).find(|idx| {
-            scope[*idx].is_word("and")
-                && scope[*idx + 1].is_word("each")
-                && scope[*idx + 2].is_word("other")
-        })
-    };
+    let find_and_each_other =
+        |scope: &[OwnedLexToken]| find_token_word_window(scope, &["and", "each", "other"]);
 
     if matches!(verb, Verb::Destroy | Verb::Exile | Verb::Untap) {
         let after_verb = &tokens[verb_token_idx + 1..];
@@ -3509,8 +3492,8 @@ pub(crate) fn parse_shared_color_target_fanout_sentence(
 
     if verb == Verb::Deal {
         let after_verb = &tokens[verb_token_idx + 1..];
-        let after_words = words(after_verb);
-        let (amount, used) = if after_words.starts_with(&["that", "much"]) {
+        let after_words = crate::cards::builders::parser::lexed_words(after_verb);
+        let (amount, used) = if slice_starts_with(&after_words, &["that", "much"]) {
             (Value::EventValue(EventValueSpec::Amount), 2usize)
         } else if let Some((value, used)) = parse_value(after_verb) {
             (value, used)
@@ -3600,9 +3583,8 @@ pub(crate) fn parse_shared_color_target_fanout_sentence(
         }
         idx += 1;
 
-        let this_turn_rel = words(&tokens[idx..])
-            .windows(2)
-            .position(|window| window == ["this", "turn"]);
+        let this_turn_rel =
+            find_window_index(&crate::cards::builders::parser::lexed_words(&tokens[idx..]), &["this", "turn"]);
         let Some(this_turn_rel) = this_turn_rel else {
             return Ok(None);
         };
@@ -3809,11 +3791,7 @@ pub(crate) fn parse_same_name_gets_fanout_sentence(
     }
 
     let subject_tokens = &tokens[..verb_idx];
-    let and_idx = (0..subject_tokens.len().saturating_sub(2)).find(|idx| {
-        subject_tokens[*idx].is_word("and")
-            && subject_tokens[*idx + 1].is_word("all")
-            && subject_tokens[*idx + 2].is_word("other")
-    });
+    let and_idx = find_token_word_window(subject_tokens, &["and", "all", "other"]);
     let Some(and_idx) = and_idx else {
         return Ok(None);
     };
@@ -3846,19 +3824,17 @@ pub(crate) fn parse_same_name_gets_fanout_sentence(
         .ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "missing modifier in same-name gets clause (clause: '{}')",
-                words(tokens).join(" ")
+                crate::cards::builders::parser::lexed_words(tokens).join(" ")
             ))
         })?;
     let (power, toughness) = parse_pt_modifier(modifier_word).map_err(|_| {
         CardTextError::ParseError(format!(
             "invalid power/toughness modifier in same-name gets clause (clause: '{}')",
-            words(tokens).join(" ")
+            crate::cards::builders::parser::lexed_words(tokens).join(" ")
         ))
     })?;
-    let modifier_words = words(&collapsed_modifier_tokens);
-    let duration = if modifier_words.contains(&"until")
-        && modifier_words.contains(&"end")
-        && modifier_words.contains(&"turn")
+    let modifier_words = crate::cards::builders::parser::lexed_words(&collapsed_modifier_tokens);
+    let duration = if slice_contains_all(&modifier_words, &["until", "end", "turn"])
     {
         Until::EndOfTurn
     } else {
@@ -3886,7 +3862,7 @@ pub(crate) fn parse_same_name_gets_fanout_sentence(
 pub(crate) fn parse_destroy_or_exile_all_split_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let words = words(tokens);
+    let words = crate::cards::builders::parser::lexed_words(tokens);
     if words.len() < 4 {
         return Ok(None);
     }
@@ -3901,12 +3877,12 @@ pub(crate) fn parse_destroy_or_exile_all_split_sentence(
     let Some(verb) = verb else {
         return Ok(None);
     };
-    if words[1] != "all" || !words.contains(&"and") || words.contains(&"except") {
+    if words[1] != "all" || !slice_contains(&words, &"and") || slice_contains(&words, &"except") {
         return Ok(None);
     }
-    if words.starts_with(&["exile", "all", "cards", "from"])
-        && (words.contains(&"hand") || words.contains(&"hands"))
-        && (words.contains(&"graveyard") || words.contains(&"graveyards"))
+    if slice_starts_with(&words, &["exile", "all", "cards", "from"])
+        && slice_contains_any(&words, &["hand", "hands"])
+        && slice_contains_any(&words, &["graveyard", "graveyards"])
     {
         return Ok(None);
     }
@@ -3989,18 +3965,15 @@ pub(crate) fn parse_exile_then_return_same_object_sentence(
         clause_tokens = &clause_tokens[1..];
     }
 
-    let words_all = words(clause_tokens);
+    let words_all = crate::cards::builders::parser::lexed_words(clause_tokens);
     if words_all.first().copied() != Some("exile")
-        || !words_all.contains(&"then")
-        || !words_all.contains(&"return")
+        || !slice_contains_all(&words_all, &["then", "return"])
     {
         return Ok(None);
     }
 
-    let split_idx = (0..clause_tokens.len().saturating_sub(2)).find(|idx| {
-        clause_tokens[*idx].is_comma()
-            && clause_tokens[*idx + 1].is_word("then")
-            && clause_tokens[*idx + 2].is_word("return")
+    let split_idx = find_index(clause_tokens, |token| token.is_comma()).and_then(|idx| {
+        token_words_match(clause_tokens, idx + 1, &["then", "return"]).then_some(idx)
     });
     let Some(split_idx) = split_idx else {
         return Ok(None);
@@ -4059,11 +4032,11 @@ pub(crate) fn parse_exile_then_return_same_object_sentence(
 pub(crate) fn parse_exile_up_to_one_each_target_type_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let words = words(tokens);
+    let words = crate::cards::builders::parser::lexed_words(tokens);
     if words.len() < 6 || words[0] != "exile" {
         return Ok(None);
     }
-    if !words.starts_with(&["exile", "up", "to", "one", "target"]) {
+    if !slice_starts_with(&words, &["exile", "up", "to", "one", "target"]) {
         return Ok(None);
     }
     // This primitive is for repeated clauses like:
@@ -4158,7 +4131,7 @@ pub(crate) fn parse_exile_up_to_one_each_target_type_sentence(
 pub(crate) fn parse_look_at_hand_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let words = words(tokens);
+    let words = crate::cards::builders::parser::lexed_words(tokens);
     if words.as_slice()
         == [
             "look",
@@ -4213,14 +4186,16 @@ pub(crate) fn parse_look_at_hand_sentence(
 pub(crate) fn parse_look_at_top_then_exile_one_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let clause_words = words(tokens);
-    let starts_with_look_top = clause_words.starts_with(&["look", "at", "the", "top"])
-        || clause_words.starts_with(&["look", "at", "top"]);
+    let clause_words = crate::cards::builders::parser::lexed_words(tokens);
+    let starts_with_look_top = slice_starts_with_any(
+        &clause_words,
+        &[&["look", "at", "the", "top"], &["look", "at", "top"]],
+    );
     if !starts_with_look_top {
         return Ok(None);
     }
 
-    let Some(top_idx) = tokens.iter().position(|token| token.is_word("top")) else {
+    let Some(top_idx) = find_index(tokens, |token| token.is_word("top")) else {
         return Ok(None);
     };
     let Some((count, used_count)) = parse_number(&tokens[top_idx + 1..]) else {
@@ -4238,9 +4213,7 @@ pub(crate) fn parse_look_at_top_then_exile_one_sentence(
     }
     idx += 1;
 
-    let Some(library_idx) = tokens[idx..]
-        .iter()
-        .position(|token| token.is_word("library"))
+    let Some(library_idx) = find_index(&tokens[idx..], |token| token.is_word("library"))
         .map(|offset| idx + offset)
     else {
         return Ok(None);
@@ -4261,10 +4234,15 @@ pub(crate) fn parse_look_at_top_then_exile_one_sentence(
     {
         tail_tokens.remove(0);
     }
-    let tail_words = words(&tail_tokens);
-    let looks_like_exile_one_of_looked = tail_words.starts_with(&["exile", "one", "of", "them"])
-        || tail_words.starts_with(&["exile", "one", "of", "those"])
-        || tail_words.starts_with(&["exile", "one", "of", "those", "cards"]);
+    let tail_words = crate::cards::builders::parser::lexed_words(&tail_tokens);
+    let looks_like_exile_one_of_looked = slice_starts_with_any(
+        &tail_words,
+        &[
+            &["exile", "one", "of", "them"],
+            &["exile", "one", "of", "those"],
+            &["exile", "one", "of", "those", "cards"],
+        ],
+    );
     if !looks_like_exile_one_of_looked {
         return Ok(None);
     }
@@ -4305,7 +4283,7 @@ pub(crate) fn parse_gain_life_equal_to_age_sentence(
 pub(crate) fn parse_you_and_each_opponent_voted_with_you_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let words = words(tokens);
+    let words = crate::cards::builders::parser::lexed_words(tokens);
     let pattern = [
         "you", "and", "each", "opponent", "who", "voted", "for", "a", "choice", "you", "voted",
         "for", "may", "scry",
@@ -4315,7 +4293,7 @@ pub(crate) fn parse_you_and_each_opponent_voted_with_you_sentence(
         return Ok(None);
     }
 
-    if !words.starts_with(&pattern) {
+    if !slice_starts_with(&words, &pattern) {
         return Ok(None);
     }
 
@@ -4351,10 +4329,8 @@ pub(crate) fn parse_you_and_each_opponent_voted_with_you_sentence(
 pub(crate) fn parse_gain_life_equal_to_power_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let words = words(tokens);
-    let Some(gain_idx) = words
-        .iter()
-        .position(|word| *word == "gain" || *word == "gains")
+    let words = crate::cards::builders::parser::lexed_words(tokens);
+    let Some(gain_idx) = find_index(words.as_slice(), |word| matches!(*word, "gain" | "gains"))
     else {
         return Ok(None);
     };
@@ -4367,7 +4343,7 @@ pub(crate) fn parse_gain_life_equal_to_power_sentence(
     }
 
     let tail = &words[gain_idx + 4..];
-    let has_its_power = tail.windows(2).any(|pair| pair == ["its", "power"]);
+    let has_its_power = contains_word_window(tail, &["its", "power"]);
     if !has_its_power {
         return Ok(None);
     }
@@ -4470,7 +4446,7 @@ pub(crate) fn parse_scaled_target_power_sentence(
     };
 
     if verb == "double"
-        && let Some(life_total_idx) = words.iter().position(|word| *word == "life")
+        && let Some(life_total_idx) = find_index(words.as_slice(), |word| *word == "life")
         && words.get(life_total_idx + 1) == Some(&"total")
         && let Some((player, player_filter)) =
             parse_double_life_total_subject(&words[1..life_total_idx])
@@ -4486,7 +4462,7 @@ pub(crate) fn parse_scaled_target_power_sentence(
         "double", "the", "amount", "of", "each", "type", "of", "unspent", "mana",
     ];
     if verb == "double"
-        && words.starts_with(&mana_prefix)
+        && slice_starts_with(words.as_slice(), &mana_prefix)
         && let Some(player) = parse_double_mana_pool_subject(&words[mana_prefix.len()..])
     {
         return Ok(Some(vec![EffectAst::DoubleManaPool { player }]));
@@ -4499,7 +4475,7 @@ pub(crate) fn parse_scaled_target_power_sentence(
     };
     let subject_end = duration_start;
 
-    if words.starts_with(&[verb, "the"]) {
+    if slice_starts_with(words.as_slice(), &[verb, "the"]) {
         let (include_power, include_toughness, subject_start) = match words.get(2..) {
             Some(["power", "of", ..]) => (true, false, 4),
             Some(["toughness", "of", ..]) => (false, true, 4),
@@ -4597,24 +4573,24 @@ pub(crate) fn parse_scaled_target_power_sentence(
 pub(crate) fn parse_prevent_damage_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let words = words(tokens);
+    let words = crate::cards::builders::parser::lexed_words(tokens);
     let prefix = ["prevent", "all", "combat", "damage"];
-    if !words.starts_with(&prefix) {
+    if !slice_starts_with(&words, &prefix) {
         return Ok(None);
     }
 
-    let this_turn_positions: Vec<usize> = words
-        .windows(2)
-        .enumerate()
-        .filter_map(|(idx, pair)| (pair == ["this", "turn"]).then_some(idx))
-        .collect();
-    if this_turn_positions.len() != 1 {
+    let Some(this_turn_idx) = find_window_index(&words, &["this", "turn"]) else {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported prevent-all-combat-damage duration (clause: '{}')",
+            words.join(" ")
+        )));
+    };
+    if find_window_index(&words[this_turn_idx + 2..], &["this", "turn"]).is_some() {
         return Err(CardTextError::ParseError(format!(
             "unsupported prevent-all-combat-damage duration (clause: '{}')",
             words.join(" ")
         )));
     }
-    let this_turn_idx = this_turn_positions[0];
     if this_turn_idx < prefix.len() {
         return Err(CardTextError::ParseError(format!(
             "unsupported prevent-all-combat-damage duration (clause: '{}')",
@@ -4637,7 +4613,7 @@ pub(crate) fn parse_prevent_damage_sentence(
         }));
     }
 
-    if core_words.starts_with(&["that", "would", "be", "dealt", "by"]) {
+    if slice_starts_with(&core_words, &["that", "would", "be", "dealt", "by"]) {
         let source_tokens = &core_tokens[5..];
         let source = parse_prevent_damage_source_target(source_tokens, &words)?;
         return Ok(Some(EffectAst::PreventAllCombatDamageFromSource {
@@ -4646,7 +4622,10 @@ pub(crate) fn parse_prevent_damage_sentence(
         }));
     }
 
-    if core_words.starts_with(&["that", "would", "be", "dealt", "to", "and", "dealt", "by"]) {
+    if slice_starts_with(
+        &core_words,
+        &["that", "would", "be", "dealt", "to", "and", "dealt", "by"],
+    ) {
         let source_tokens = &core_tokens[8..];
         let source = parse_prevent_damage_source_target(source_tokens, &words)?;
         return Ok(Some(EffectAst::PreventAllCombatDamageFromSource {
@@ -4655,11 +4634,11 @@ pub(crate) fn parse_prevent_damage_sentence(
         }));
     }
 
-    if core_words.starts_with(&["that", "would", "be", "dealt", "to"]) {
+    if slice_starts_with(&core_words, &["that", "would", "be", "dealt", "to"]) {
         return parse_prevent_damage_target_scope(&core_tokens[5..], &words);
     }
 
-    if let Some(would_idx) = core_words.iter().position(|word| *word == "would")
+    if let Some(would_idx) = find_index(core_words.as_slice(), |word| *word == "would")
         && core_words.get(would_idx + 1) == Some(&"deal")
     {
         let source_tokens = &core_tokens[..would_idx];
@@ -4687,11 +4666,11 @@ pub(crate) fn parse_prevent_damage_source_target(
         )));
     }
 
-    let source_words: Vec<&str> = words(tokens)
+    let source_words: Vec<&str> = crate::cards::builders::parser::lexed_words(tokens)
         .into_iter()
         .filter(|word| !is_article(word))
         .collect();
-    let is_explicit_reference = source_words.contains(&"target")
+    let is_explicit_reference = slice_contains(&source_words, &"target")
         || source_words
             .first()
             .is_some_and(|word| matches!(*word, "this" | "that" | "it"));
@@ -4707,7 +4686,7 @@ pub(crate) fn parse_prevent_damage_source_target(
         TargetAst::Source(_) | TargetAst::Object(_, _, _) | TargetAst::Tagged(_, _) => Ok(source),
         _ => Err(CardTextError::ParseError(format!(
             "unsupported prevent-all source target '{}'",
-            words(tokens).join(" ")
+            crate::cards::builders::parser::lexed_words(tokens).join(" ")
         ))),
     }
 }
@@ -4723,7 +4702,7 @@ pub(crate) fn parse_prevent_damage_target_scope(
         )));
     }
 
-    let target_words: Vec<&str> = words(tokens)
+    let target_words: Vec<&str> = crate::cards::builders::parser::lexed_words(tokens)
         .into_iter()
         .filter(|word| !is_article(word))
         .collect();
@@ -4740,17 +4719,15 @@ pub(crate) fn parse_prevent_damage_target_scope(
 
     Err(CardTextError::ParseError(format!(
         "unsupported prevent-all target scope '{}'",
-        words(tokens).join(" ")
+        crate::cards::builders::parser::lexed_words(tokens).join(" ")
     )))
 }
 
 pub(crate) fn parse_gain_x_plus_life_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let words = words(tokens);
-    let Some(gain_idx) = words
-        .iter()
-        .position(|word| *word == "gain" || *word == "gains")
+    let words = crate::cards::builders::parser::lexed_words(tokens);
+    let Some(gain_idx) = find_index(words.as_slice(), |word| matches!(*word, "gain" | "gains"))
     else {
         return Ok(None);
     };

@@ -59,29 +59,28 @@ pub(crate) fn reject_unimplemented_keyword_actions(
 }
 
 pub(crate) fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
-    let mut words = words(tokens);
-    if words.first().copied() == Some("and") {
-        words.remove(0);
-    }
-    if words.len() < 3 {
+    let words = LowercaseWordView::new(tokens);
+    let first_word_idx = if words.first() == Some("and") { 1 } else { 0 };
+    if words.len().saturating_sub(first_word_idx) < 3 {
         return None;
     }
-    if words[0] != "protection" || words[1] != "from" {
+    if words.get(first_word_idx) != Some("protection")
+        || words.get(first_word_idx + 1) != Some("from")
+    {
         return None;
     }
 
     let mut actions = Vec::new();
-    let parse_from_target = |words: &[&str], idx: usize| -> Option<KeywordAction> {
-        let value = *words.get(idx + 1)?;
+    let parse_from_target = |words: &LowercaseWordView, idx: usize| -> Option<KeywordAction> {
+        let value = words.get(idx + 1)?;
         match value {
-            "the" if words.get(idx + 2).copied() == Some("chosen")
-                && words.get(idx + 3).copied() == Some("player") =>
+            "the" if words.get(idx + 2) == Some("chosen") && words.get(idx + 3) == Some("player") =>
             {
                 Some(KeywordAction::ProtectionFromChosenPlayer)
             }
             "colorless" => Some(KeywordAction::ProtectionFromColorless),
             "everything" => Some(KeywordAction::ProtectionFromEverything),
-            "all" if matches!(words.get(idx + 2).copied(), Some("color") | Some("colors")) => {
+            "all" if matches!(words.get(idx + 2), Some("color") | Some("colors")) => {
                 Some(KeywordAction::ProtectionFromAllColors)
             }
             _ => parse_color(value)
@@ -93,16 +92,27 @@ pub(crate) fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<Key
         }
     };
 
+    let has_action = |actions: &[KeywordAction], expected: &KeywordAction| -> bool {
+        let mut idx = 0usize;
+        while idx < actions.len() {
+            if &actions[idx] == expected {
+                return true;
+            }
+            idx += 1;
+        }
+        false
+    };
+
     let mut from_count = 0usize;
     let mut parsed_count = 0usize;
-    for idx in 0..words.len().saturating_sub(1) {
-        if words[idx] != "from" {
+    for idx in first_word_idx..words.len().saturating_sub(1) {
+        if words.get(idx) != Some("from") {
             continue;
         }
         from_count += 1;
         if let Some(action) = parse_from_target(&words, idx) {
             parsed_count += 1;
-            if !actions.contains(&action) {
+            if !has_action(&actions, &action) {
                 actions.push(action);
             }
         }

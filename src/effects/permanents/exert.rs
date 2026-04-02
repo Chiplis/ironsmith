@@ -57,10 +57,12 @@ impl EffectExecutor for ExertCostEffect {
         );
         game.update_cant_effects();
 
-        Ok(EffectOutcome::resolved().with_event(TriggerEvent::new_with_provenance(
-            KeywordActionEvent::new(KeywordActionKind::Exert, ctx.controller, ctx.source, 1),
-            ctx.provenance,
-        )))
+        Ok(
+            EffectOutcome::resolved().with_event(TriggerEvent::new_with_provenance(
+                KeywordActionEvent::new(KeywordActionKind::Exert, ctx.controller, ctx.source, 1),
+                ctx.provenance,
+            )),
+        )
     }
 
     fn cost_description(&self) -> Option<String> {
@@ -75,7 +77,10 @@ impl CostExecutableEffect for ExertCostEffect {
         source: crate::ids::ObjectId,
         _controller: crate::ids::PlayerId,
     ) -> Result<(), CostValidationError> {
-        if game.object(source).is_some_and(|object| object.zone == Zone::Battlefield) {
+        if game
+            .object(source)
+            .is_some_and(|object| object.zone == Zone::Battlefield)
+        {
             Ok(())
         } else {
             Err(CostValidationError::Other(

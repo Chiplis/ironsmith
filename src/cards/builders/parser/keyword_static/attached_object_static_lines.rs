@@ -29,6 +29,112 @@ fn scale_value_by_factor(base: Value, factor: u32) -> Option<Value> {
     Some(value)
 }
 
+fn token_words(tokens: &[OwnedLexToken]) -> Vec<&str> {
+    crate::cards::builders::parser::lexer::lexed_words(tokens)
+}
+
+fn str_ends_with_char(text: &str, suffix: char) -> bool {
+    let mut chars = text.chars();
+    chars.next_back().is_some_and(|ch| ch == suffix)
+}
+
+fn word_slice_starts_with(words: &[&str], prefix: &[&str]) -> bool {
+    if prefix.len() > words.len() {
+        return false;
+    }
+    for (idx, expected) in prefix.iter().enumerate() {
+        if words[idx] != *expected {
+            return false;
+        }
+    }
+    true
+}
+
+fn word_slice_ends_with(words: &[&str], suffix: &[&str]) -> bool {
+    if suffix.len() > words.len() {
+        return false;
+    }
+    let start = words.len() - suffix.len();
+    for (offset, expected) in suffix.iter().enumerate() {
+        if words[start + offset] != *expected {
+            return false;
+        }
+    }
+    true
+}
+
+fn word_slice_contains(words: &[&str], expected: &str) -> bool {
+    for word in words {
+        if *word == expected {
+            return true;
+        }
+    }
+    false
+}
+
+fn word_slice_contains_sequence(words: &[&str], sequence: &[&str]) -> bool {
+    if sequence.is_empty() {
+        return true;
+    }
+    if sequence.len() > words.len() {
+        return false;
+    }
+    for start in 0..=words.len() - sequence.len() {
+        let mut matches = true;
+        for (offset, expected) in sequence.iter().enumerate() {
+            if words[start + offset] != *expected {
+                matches = false;
+                break;
+            }
+        }
+        if matches {
+            return true;
+        }
+    }
+    false
+}
+
+fn find_word_index(words: &[&str], mut predicate: impl FnMut(&str) -> bool) -> Option<usize> {
+    for (idx, word) in words.iter().enumerate() {
+        if predicate(word) {
+            return Some(idx);
+        }
+    }
+    None
+}
+
+fn find_token_index(
+    tokens: &[OwnedLexToken],
+    mut predicate: impl FnMut(&OwnedLexToken) -> bool,
+) -> Option<usize> {
+    for (idx, token) in tokens.iter().enumerate() {
+        if predicate(token) {
+            return Some(idx);
+        }
+    }
+    None
+}
+
+fn strip_suffix_char<'a>(word: &'a str, suffix: char) -> Option<&'a str> {
+    let mut chars = word.char_indices();
+    let Some((last_idx, last_char)) = chars.next_back() else {
+        return None;
+    };
+    if last_char != suffix {
+        return None;
+    }
+    Some(&word[..last_idx])
+}
+
+fn push_unique<T: PartialEq>(items: &mut Vec<T>, item: T) {
+    for existing in items.iter() {
+        if *existing == item {
+            return;
+        }
+    }
+    items.push(item);
+}
+
 pub(crate) fn display_text_for_tokens(
     tokens: &[OwnedLexToken],
     capitalize_effect_start: bool,
@@ -79,7 +185,7 @@ pub(crate) fn display_text_for_tokens(
             token.kind,
             crate::cards::builders::parser::lexer::TokenKind::ManaGroup
         ) {
-            let suppress_space = text.ends_with('}');
+            let suppress_space = str_ends_with_char(text.as_str(), '}');
             if needs_space && !text.is_empty() && !suppress_space {
                 text.push(' ');
             }
@@ -231,7 +337,7 @@ pub(crate) fn cumulative_upkeep_granted_ability(
 pub(crate) fn parse_equipped_creature_has_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
-    let words = words(tokens);
+    let words = token_words(tokens);
     let clause_text = words.join(" ");
     if words.len() < 4 || words[0] != "equipped" || words[1] != "creature" || words[2] != "has" {
         return Ok(None);
@@ -296,7 +402,7 @@ pub(crate) fn parse_equipped_creature_has_line(
 pub(crate) fn parse_enchanted_creature_has_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
-    let line_words = words(tokens);
+    let line_words = token_words(tokens);
     let clause_text = line_words.join(" ");
     if line_words.len() < 4 || line_words.first().copied() != Some("enchanted") {
         return Ok(None);
@@ -316,9 +422,9 @@ pub(crate) fn parse_enchanted_creature_has_line(
     }
 
     let mut condition: Option<crate::ConditionExpr> = None;
-    if let Some(as_long_idx) = words(&ability_tokens)
-        .windows(3)
-        .position(|window| window == ["as", "long", "as"])
+    let ability_head_words = token_words(&ability_tokens);
+    if let Some(as_long_idx) = find_word_index(&ability_head_words, |word| word == "as")
+        .filter(|idx| word_slice_starts_with(&ability_head_words[*idx..], &["as", "long", "as"]))
     {
         let Some(as_long_token_idx) = token_index_for_word_index(&ability_tokens, as_long_idx)
         else {
@@ -341,7 +447,7 @@ pub(crate) fn parse_enchanted_creature_has_line(
         ability_tokens = ability_head;
     }
 
-    let ability_words = words(&ability_tokens);
+    let ability_words = token_words(&ability_tokens);
     if matches!(ability_words.as_slice(), ["landwalk", "of", "the", "chosen", "type"])
         || matches!(
             ability_words.as_slice(),
@@ -417,7 +523,7 @@ pub(crate) fn parse_enchanted_creature_has_line(
 pub(crate) fn parse_attached_has_and_loses_keywords_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
-    let line_words = words(tokens);
+    let line_words = token_words(tokens);
     if line_words.len() < 7 {
         return Ok(None);
     }
@@ -434,7 +540,7 @@ pub(crate) fn parse_attached_has_and_loses_keywords_line(
         return Ok(None);
     }
 
-    let Some(and_idx) = tokens.iter().position(|token| token.is_word("and")) else {
+    let Some(and_idx) = find_token_index(tokens, |token| token.is_word("and")) else {
         return Ok(None);
     };
     if and_idx <= 3
@@ -503,16 +609,17 @@ pub(crate) fn parse_attached_cant_attack_or_block_line(
         return Ok(None);
     }
 
-    let is_enchanted_creature = normalized.starts_with(&["enchanted", "creature"]);
-    let is_enchanted_permanent = normalized.starts_with(&["enchanted", "permanent"]);
-    let is_equipped_creature = normalized.starts_with(&["equipped", "creature"]);
+    let is_enchanted_creature = word_slice_starts_with(&normalized, &["enchanted", "creature"]);
+    let is_enchanted_permanent =
+        word_slice_starts_with(&normalized, &["enchanted", "permanent"]);
+    let is_equipped_creature = word_slice_starts_with(&normalized, &["equipped", "creature"]);
     if !is_enchanted_creature && !is_enchanted_permanent && !is_equipped_creature {
         return Ok(None);
     }
 
     let subject_len = 2usize;
     let tail = &normalized[subject_len..];
-    if !tail.starts_with(&["cant"]) {
+    if !word_slice_starts_with(tail, &["cant"]) {
         return Ok(None);
     }
 
@@ -628,8 +735,8 @@ pub(crate) fn parse_attached_tap_abilities_cant_be_activated_line(
 pub(crate) fn parse_you_control_attached_creature_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
-    let line_words = words(tokens);
-    if line_words.len() < 4 || !line_words.starts_with(&["you", "control"]) {
+    let line_words = token_words(tokens);
+    if line_words.len() < 4 || !word_slice_starts_with(&line_words, &["you", "control"]) {
         return Ok(None);
     }
 
@@ -655,18 +762,18 @@ pub(crate) fn parse_you_control_attached_creature_line(
 pub(crate) fn parse_attached_gets_and_cant_block_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
-    let line_words = words(tokens);
+    let line_words = token_words(tokens);
     if line_words.len() < 6 {
         return Ok(None);
     }
 
-    let Some(get_idx) = tokens
-        .iter()
-        .position(|token| token.is_word("get") || token.is_word("gets"))
+    let Some(get_idx) = find_token_index(tokens, |token| {
+        token.is_word("get") || token.is_word("gets")
+    })
     else {
         return Ok(None);
     };
-    let Some(and_idx) = tokens.iter().position(|token| token.is_word("and")) else {
+    let Some(and_idx) = find_token_index(tokens, |token| token.is_word("and")) else {
         return Ok(None);
     };
     if get_idx >= and_idx {
@@ -680,25 +787,13 @@ pub(crate) fn parse_attached_gets_and_cant_block_line(
         .iter()
         .map(String::as_str)
         .collect::<Vec<_>>();
-    let subject = if line_words
-        .windows(2)
-        .any(|window| window == ["enchanted", "permanent"])
-    {
+    let subject = if word_slice_contains_sequence(&line_words, &["enchanted", "permanent"]) {
         "enchanted permanent"
-    } else if line_words
-        .windows(2)
-        .any(|window| window == ["enchanted", "creature"])
-    {
+    } else if word_slice_contains_sequence(&line_words, &["enchanted", "creature"]) {
         "enchanted creature"
-    } else if line_words
-        .windows(2)
-        .any(|window| window == ["equipped", "permanent"])
-    {
+    } else if word_slice_contains_sequence(&line_words, &["equipped", "permanent"]) {
         "equipped permanent"
-    } else if line_words
-        .windows(2)
-        .any(|window| window == ["equipped", "creature"])
-    {
+    } else if word_slice_contains_sequence(&line_words, &["equipped", "creature"]) {
         "equipped creature"
     } else {
         return Ok(None);
@@ -781,24 +876,24 @@ pub(crate) fn parse_attached_gets_and_cant_block_line(
 pub(crate) fn parse_attached_type_transform_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
-    let line_words = words(tokens);
+    let line_words = token_words(tokens);
     if line_words.len() < 4 {
         return Ok(None);
     }
 
-    if !line_words.starts_with(&["enchanted", "creature"])
-        && !line_words.starts_with(&["enchanted", "permanent"])
-        && !line_words.starts_with(&["enchanted", "artifact"])
-        && !line_words.starts_with(&["enchanted", "land"])
-        && !line_words.starts_with(&["equipped", "creature"])
-        && !line_words.starts_with(&["equipped", "permanent"])
+    if !word_slice_starts_with(&line_words, &["enchanted", "creature"])
+        && !word_slice_starts_with(&line_words, &["enchanted", "permanent"])
+        && !word_slice_starts_with(&line_words, &["enchanted", "artifact"])
+        && !word_slice_starts_with(&line_words, &["enchanted", "land"])
+        && !word_slice_starts_with(&line_words, &["equipped", "creature"])
+        && !word_slice_starts_with(&line_words, &["equipped", "permanent"])
     {
         return Ok(None);
     }
 
     let subject_token_end = token_index_for_word_index(tokens, 2).unwrap_or(tokens.len());
     let subject_tokens = trim_commas(&tokens[..subject_token_end]);
-    let subject_text = words(&subject_tokens).join(" ");
+    let subject_text = token_words(&subject_tokens).join(" ");
     let filter = parse_object_filter(&subject_tokens, false).map_err(|_| {
         CardTextError::ParseError(format!(
             "unsupported attached transform subject (clause: '{}')",
@@ -807,7 +902,7 @@ pub(crate) fn parse_attached_type_transform_line(
     })?;
 
     let remainder = trim_commas(&tokens[subject_token_end..]);
-    let remainder_words = words(&remainder);
+    let remainder_words = token_words(&remainder);
     if !matches!(remainder_words.first().copied(), Some("is" | "are")) {
         return Ok(None);
     }
@@ -841,7 +936,7 @@ pub(crate) fn parse_attached_type_transform_line(
     {
         descriptor_tokens.remove(0);
     }
-    let descriptor_words = words(&descriptor_tokens);
+    let descriptor_words = token_words(&descriptor_tokens);
     if descriptor_words.is_empty() {
         return Ok(None);
     }
@@ -863,17 +958,13 @@ pub(crate) fn parse_attached_type_transform_line(
             continue;
         }
         if let Some(card_type) = parse_card_type(word) {
-            if !set_card_types.contains(&card_type) {
-                set_card_types.push(card_type);
-            }
+            push_unique(&mut set_card_types, card_type);
             continue;
         }
         if let Some(subtype) = parse_subtype_word(word)
-            .or_else(|| word.strip_suffix('s').and_then(parse_subtype_word))
+            .or_else(|| strip_suffix_char(word, 's').and_then(parse_subtype_word))
         {
-            if !add_subtypes.contains(&subtype) {
-                add_subtypes.push(subtype);
-            }
+            push_unique(&mut add_subtypes, subtype);
             continue;
         }
         return Err(CardTextError::ParseError(format!(
@@ -941,7 +1032,7 @@ pub(crate) fn parse_attached_type_transform_line(
 
     if let Some(lose_idx) = lose_idx {
         let loss_tokens = trim_commas(&remainder[lose_idx..]);
-        let loss_words = words(&loss_tokens);
+        let loss_words = token_words(&loss_tokens);
         if matches!(
             loss_words.as_slice(),
             ["lose", "all", "other", "abilities"]
@@ -971,32 +1062,29 @@ pub(crate) fn parse_attached_type_transform_line(
 pub(crate) fn parse_prevent_damage_to_source_remove_counter_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
-    let line_words = words(tokens);
+    let line_words = token_words(tokens);
     if line_words.len() < 12 {
         return Ok(None);
     }
 
-    if !line_words.starts_with(&["if", "damage", "would", "be", "dealt", "to"]) {
+    if !word_slice_starts_with(&line_words, &["if", "damage", "would", "be", "dealt", "to"]) {
         return Ok(None);
     }
-    if !(line_words[6..].starts_with(&["this", "creature"])
-        || line_words[6..].starts_with(&["this", "permanent"]))
+    if !(word_slice_starts_with(&line_words[6..], &["this", "creature"])
+        || word_slice_starts_with(&line_words[6..], &["this", "permanent"]))
     {
         return Ok(None);
     }
-    if !line_words
-        .windows(3)
-        .any(|window| window == ["prevent", "that", "damage"])
-    {
+    if !word_slice_contains_sequence(&line_words, &["prevent", "that", "damage"]) {
         return Ok(None);
     }
 
-    let Some(remove_word_idx) = line_words.iter().position(|word| *word == "remove") else {
+    let Some(remove_word_idx) = find_word_index(&line_words, |word| word == "remove") else {
         return Ok(None);
     };
-    let Some(counter_word_idx) = line_words[remove_word_idx + 1..]
-        .iter()
-        .position(|word| *word == "counter" || *word == "counters")
+    let Some(counter_word_idx) = find_word_index(&line_words[remove_word_idx + 1..], |word| {
+        matches!(word, "counter" | "counters")
+    })
         .map(|idx| remove_word_idx + 1 + idx)
     else {
         return Ok(None);
@@ -1042,9 +1130,9 @@ pub(crate) fn parse_prevent_damage_to_source_remove_counter_line(
     })?;
 
     let after_counter_words = line_words.get(counter_word_idx + 1..).unwrap_or_default();
-    let valid_tail = after_counter_words.starts_with(&["from", "this", "creature"])
-        || after_counter_words.starts_with(&["from", "this", "permanent"])
-        || after_counter_words.starts_with(&["from", "it"]);
+    let valid_tail = word_slice_starts_with(after_counter_words, &["from", "this", "creature"])
+        || word_slice_starts_with(after_counter_words, &["from", "this", "permanent"])
+        || word_slice_starts_with(after_counter_words, &["from", "it"]);
     if !valid_tail {
         return Err(CardTextError::ParseError(format!(
             "unsupported prevent-damage remove tail (clause: '{}')",
@@ -1061,18 +1149,18 @@ pub(crate) fn parse_prevent_damage_to_source_remove_counter_line(
 pub(crate) fn parse_prevent_damage_to_source_put_counters_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
-    let line_words = words(tokens);
+    let line_words = token_words(tokens);
     if line_words.len() < 11 {
         return Ok(None);
     }
 
     let self_damage_prefix = ["if", "damage", "would", "be", "dealt", "to"];
-    if line_words.starts_with(&self_damage_prefix) {
-        let source_words_used = if line_words[6..].starts_with(&["this", "creature"])
-            || line_words[6..].starts_with(&["this", "permanent"])
+    if word_slice_starts_with(&line_words, &self_damage_prefix) {
+        let source_words_used = if word_slice_starts_with(&line_words[6..], &["this", "creature"])
+            || word_slice_starts_with(&line_words[6..], &["this", "permanent"])
         {
             Some(2usize)
-        } else if line_words[6..].starts_with(&["this"]) {
+        } else if word_slice_starts_with(&line_words[6..], &["this"]) {
             Some(1usize)
         } else {
             None
@@ -1145,7 +1233,7 @@ pub(crate) fn parse_prevent_damage_to_source_put_counters_line(
             let mut condition = None;
 
             if tail.first().copied() == Some("while") {
-                let Some(prevent_word_idx) = tail.iter().position(|word| *word == "prevent") else {
+                let Some(prevent_word_idx) = find_word_index(tail, |word| word == "prevent") else {
                     return Err(CardTextError::ParseError(format!(
                         "unsupported conditional prevent-damage tail (clause: '{}')",
                         line_words.join(" ")
@@ -1231,8 +1319,10 @@ pub(crate) fn parse_prevent_damage_to_source_put_counters_line(
         "this",
         "way",
     ];
-    if line_words.starts_with(&["if", "noncombat", "damage", "would", "be", "dealt", "to"])
-        && line_words[7..].starts_with(&["this", "creature"])
+    if word_slice_starts_with(
+        &line_words,
+        &["if", "noncombat", "damage", "would", "be", "dealt", "to"],
+    ) && word_slice_starts_with(&line_words[7..], &["this", "creature"])
         && line_words[9..] == noncombat_tail
     {
         return Ok(Some(StaticAbilityAst::Static(
@@ -1270,7 +1360,7 @@ pub(crate) fn parse_prevent_damage_to_source_put_counters_line(
         "this",
         "creature",
     ];
-    if line_words.starts_with(&combat_creature_prefix)
+    if word_slice_starts_with(&line_words, &combat_creature_prefix)
         && line_words[10..] == combat_creature_tail
     {
         return Ok(Some(StaticAbilityAst::Static(
@@ -1289,16 +1379,16 @@ pub(crate) fn parse_prevent_damage_to_source_put_counters_line(
 pub(crate) fn parse_attached_prevent_all_damage_dealt_by_attached_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
-    let line_words = words(tokens);
+    let line_words = token_words(tokens);
     if line_words.len() < 6 {
         return Ok(None);
     }
 
     // "Prevent all damage that would be dealt by enchanted creature."
-    if !line_words.starts_with(&["prevent", "all", "damage"]) {
+    if !word_slice_starts_with(&line_words, &["prevent", "all", "damage"]) {
         return Ok(None);
     }
-    if !line_words.ends_with(&["by", "enchanted", "creature"]) {
+    if !word_slice_ends_with(&line_words, &["by", "enchanted", "creature"]) {
         return Ok(None);
     }
 
@@ -1315,18 +1405,18 @@ pub(crate) fn parse_attached_prevent_all_damage_dealt_by_attached_line(
 pub(crate) fn parse_attached_has_keywords_and_triggered_ability_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
-    let line_words = words(tokens);
+    let line_words = token_words(tokens);
     if line_words.len() < 6 {
         return Ok(None);
     }
 
-    let is_enchanted = line_words.starts_with(&["enchanted", "creature"]);
-    let is_equipped = line_words.starts_with(&["equipped", "creature"]);
+    let is_enchanted = word_slice_starts_with(&line_words, &["enchanted", "creature"]);
+    let is_equipped = word_slice_starts_with(&line_words, &["equipped", "creature"]);
     if !is_enchanted && !is_equipped {
         return Ok(None);
     }
 
-    let Some(has_idx) = tokens.iter().position(|token| token.is_word("has")) else {
+    let Some(has_idx) = find_token_index(tokens, |token| token.is_word("has")) else {
         return Ok(None);
     };
     if has_idx + 1 >= tokens.len() {
@@ -1338,7 +1428,7 @@ pub(crate) fn parse_attached_has_keywords_and_triggered_ability_line(
         return Ok(None);
     }
 
-    let Some(and_idx) = ability_tokens.iter().position(|token| token.is_word("and")) else {
+    let Some(and_idx) = find_token_index(&ability_tokens, |token| token.is_word("and")) else {
         return Ok(None);
     };
     if and_idx == 0 || and_idx + 1 >= ability_tokens.len() {
@@ -1403,7 +1493,7 @@ pub(crate) fn parse_attached_has_keywords_and_triggered_ability_line(
                 trigger,
                 effects,
                 vec![Zone::Battlefield],
-                Some(words(&trigger_tokens).join(" ")),
+                Some(token_words(&trigger_tokens).join(" ")),
                 max_triggers_per_turn.map(crate::ConditionExpr::MaxTimesEachTurn),
                 ReferenceImports::default(),
             ),
@@ -1439,8 +1529,8 @@ pub(crate) fn parse_attached_has_keywords_and_triggered_ability_line(
         });
     }
     static_abilities.extend(extra_grants);
-    let subject_text = words(&tokens[..has_idx]).join(" ");
-    let display = format!("{subject_text} has {}", words(&trigger_tokens).join(" "));
+    let subject_text = token_words(&tokens[..has_idx]).join(" ");
+    let display = format!("{subject_text} has {}", token_words(&trigger_tokens).join(" "));
     static_abilities.push(StaticAbilityAst::AttachedObjectAbilityGrant {
         ability: triggered,
         display,
@@ -1453,18 +1543,18 @@ pub(crate) fn parse_attached_has_keywords_and_triggered_ability_line(
 pub(crate) fn parse_attached_is_legendary_gets_and_has_keywords_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
-    let line_words = words(tokens);
+    let line_words = token_words(tokens);
     if line_words.len() < 10 {
         return Ok(None);
     }
 
-    let is_enchanted = line_words.starts_with(&["enchanted", "creature"]);
-    let is_equipped = line_words.starts_with(&["equipped", "creature"]);
+    let is_enchanted = word_slice_starts_with(&line_words, &["enchanted", "creature"]);
+    let is_equipped = word_slice_starts_with(&line_words, &["equipped", "creature"]);
     if !is_enchanted && !is_equipped {
         return Ok(None);
     }
 
-    let Some(is_idx) = tokens.iter().position(|token| token.is_word("is")) else {
+    let Some(is_idx) = find_token_index(tokens, |token| token.is_word("is")) else {
         return Ok(None);
     };
     if is_idx < 2
@@ -1475,13 +1565,13 @@ pub(crate) fn parse_attached_is_legendary_gets_and_has_keywords_line(
         return Ok(None);
     }
 
-    let Some(get_idx) = tokens
-        .iter()
-        .position(|token| token.is_word("get") || token.is_word("gets"))
+    let Some(get_idx) = find_token_index(tokens, |token| {
+        token.is_word("get") || token.is_word("gets")
+    })
     else {
         return Ok(None);
     };
-    let Some(has_idx) = tokens.iter().position(|token| token.is_word("has")) else {
+    let Some(has_idx) = find_token_index(tokens, |token| token.is_word("has")) else {
         return Ok(None);
     };
     if !(is_idx < get_idx && get_idx + 1 < tokens.len() && get_idx < has_idx) {
@@ -1543,28 +1633,28 @@ pub(crate) fn parse_attached_is_legendary_gets_and_has_keywords_line(
 pub(crate) fn parse_attached_gets_and_has_ability_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
-    let line_words = words(tokens);
+    let line_words = token_words(tokens);
     if line_words.len() < 6 {
         return Ok(None);
     }
-    let is_enchanted = line_words.starts_with(&["enchanted", "creature"])
-        || line_words.starts_with(&["enchanted", "permanent"]);
-    let is_equipped = line_words.starts_with(&["equipped", "creature"])
-        || line_words.starts_with(&["equipped", "permanent"]);
+    let is_enchanted = word_slice_starts_with(&line_words, &["enchanted", "creature"])
+        || word_slice_starts_with(&line_words, &["enchanted", "permanent"]);
+    let is_equipped = word_slice_starts_with(&line_words, &["equipped", "creature"])
+        || word_slice_starts_with(&line_words, &["equipped", "permanent"]);
     if !is_enchanted && !is_equipped {
         return Ok(None);
     }
 
-    let Some(get_idx) = tokens
-        .iter()
-        .position(|token| token.is_word("get") || token.is_word("gets"))
+    let Some(get_idx) = find_token_index(tokens, |token| {
+        token.is_word("get") || token.is_word("gets")
+    })
     else {
         return Ok(None);
     };
-    let Some(has_idx) = tokens.iter().position(|token| token.is_word("has")) else {
+    let Some(has_idx) = find_token_index(tokens, |token| token.is_word("has")) else {
         return Ok(None);
     };
-    let Some(and_idx) = tokens.iter().position(|token| token.is_word("and")) else {
+    let Some(and_idx) = find_token_index(tokens, |token| token.is_word("and")) else {
         return Ok(None);
     };
     if !(get_idx < and_idx && and_idx < has_idx) {
@@ -1660,7 +1750,7 @@ pub(crate) fn parse_attached_gets_and_has_ability_line(
             trigger,
             effects,
             vec![Zone::Battlefield],
-            Some(words(&ability_tokens).join(" ")),
+            Some(token_words(&ability_tokens).join(" ")),
             max_triggers_per_turn.map(crate::ConditionExpr::MaxTimesEachTurn),
             ReferenceImports::default(),
         );
@@ -1670,7 +1760,7 @@ pub(crate) fn parse_attached_gets_and_has_ability_line(
                 line_words.join(" ")
             )));
         }
-        let text = words(&ability_tokens).join(" ");
+        let text = token_words(&ability_tokens).join(" ");
         let grant = grant_object_ability_for_anthem_subject(&clause, parsed, text);
         return Ok(Some(vec![anthem.into(), grant]));
     }
@@ -1684,12 +1774,12 @@ pub(crate) fn parse_attached_gets_and_has_ability_line(
 pub(crate) fn parse_equipped_gets_and_has_activated_ability_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
-    let line_words = words(tokens);
+    let line_words = token_words(tokens);
     if line_words.len() < 4 || line_words[0] != "equipped" || line_words[1] != "creature" {
         return Ok(None);
     }
 
-    let Some(has_idx) = tokens.iter().position(|token| token.is_word("has")) else {
+    let Some(has_idx) = find_token_index(tokens, |token| token.is_word("has")) else {
         return Ok(None);
     };
     if has_idx + 1 >= tokens.len() {
@@ -1711,9 +1801,9 @@ pub(crate) fn parse_equipped_gets_and_has_activated_ability_line(
         return Ok(None);
     };
     let mut static_abilities = Vec::new();
-    if let Some(get_idx) = tokens
-        .iter()
-        .position(|token| token.is_word("get") || token.is_word("gets"))
+    if let Some(get_idx) = find_token_index(tokens, |token| {
+        token.is_word("get") || token.is_word("gets")
+    })
         && get_idx < has_idx
     {
         let clause_tail_end = if has_idx > get_idx + 2
@@ -1733,7 +1823,7 @@ pub(crate) fn parse_equipped_gets_and_has_activated_ability_line(
         ability: parsed,
         display: format!(
             "{} has {}",
-            words(&tokens[..has_idx]).join(" "),
+            token_words(&tokens[..has_idx]).join(" "),
             display_text_for_tokens(&ability_tokens, true)
         ),
         condition: None,
@@ -1745,12 +1835,14 @@ pub(crate) fn parse_equipped_gets_and_has_activated_ability_line(
 pub(crate) fn parse_enchanted_has_activated_ability_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
-    let token_words = words(tokens);
-    if !token_words.starts_with(&["enchanted"]) || !token_words.contains(&"has") {
+    let line_words = token_words(tokens);
+    if !word_slice_starts_with(&line_words, &["enchanted"])
+        || !word_slice_contains(&line_words, "has")
+    {
         return Ok(None);
     }
 
-    let Some(has_idx) = tokens.iter().position(|token| token.is_word("has")) else {
+    let Some(has_idx) = find_token_index(tokens, |token| token.is_word("has")) else {
         return Ok(None);
     };
     let ability_tokens_raw = &tokens[has_idx + 1..];
@@ -1766,7 +1858,7 @@ pub(crate) fn parse_enchanted_has_activated_ability_line(
         ability: parsed,
         display: format!(
             "{} has {}",
-            words(&tokens[..has_idx]).join(" "),
+            token_words(&tokens[..has_idx]).join(" "),
             display_text_for_tokens(&ability_tokens, true)
         ),
         condition: None,

@@ -17,6 +17,8 @@ mod leaf;
 mod lexer;
 mod lower;
 mod lowering_support;
+#[cfg(test)]
+mod migration_audit;
 mod modal_helpers;
 mod modal_support;
 mod native_tokens;
@@ -31,6 +33,7 @@ mod restriction_support;
 mod rule_engine;
 mod shared_types;
 mod static_ability_helpers;
+mod token_primitives;
 mod util;
 mod value_helpers;
 pub(crate) use activation_and_restrictions::*;

@@ -3,6 +3,7 @@ use super::super::lexer::{OwnedLexToken, trim_lexed_commas};
 use super::super::modal_helpers::parse_if_result_predicate_lexed;
 use super::super::native_tokens::LowercaseWordView;
 use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed};
+use super::super::token_primitives as shared_tokens;
 use super::super::util::{
     is_article, is_permanent_type, is_source_reference_words, parse_card_type,
     parse_counter_type_word, parse_mana_symbol_word_flexible, parse_number, parse_target_phrase,
@@ -16,6 +17,10 @@ use crate::cards::builders::{
     CardTextError, EffectAst, ExtraTurnAnchorAst, IT_TAG, IfResultPredicate, PlayerAst,
     PredicateAst, TagKey, TargetAst, TextSpan,
 };
+use crate::cards::builders::scan_helpers::{
+    contains_window, find_index, find_window_index, rfind_index, slice_contains, slice_ends_with,
+    slice_starts_with, slice_strip_prefix, str_strip_prefix, str_strip_suffix,
+};
 use crate::effect::{ChoiceCount, Value};
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::target::{ObjectFilter, PlayerFilter, TaggedOpbjectRelation};
@@ -23,79 +28,15 @@ use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 
 pub(crate) fn parse_scryfall_mana_cost(raw: &str) -> Result<ManaCost, CardTextError> {
-    let trimmed = raw.trim();
-    if trimmed.is_empty() || trimmed == "—" {
-        return Ok(ManaCost::new());
-    }
-
-    let mut pips: Vec<Vec<ManaSymbol>> = Vec::new();
-    let mut current = String::new();
-    let mut in_brace = false;
-
-    for ch in trimmed.chars() {
-        if ch == '{' {
-            in_brace = true;
-            current.clear();
-            continue;
-        }
-        if ch == '}' {
-            if !in_brace {
-                continue;
-            }
-            in_brace = false;
-            if current.is_empty() {
-                continue;
-            }
-            let alternatives = parse_mana_symbol_group(&current)?;
-            if !alternatives.is_empty() {
-                pips.push(alternatives);
-            }
-            continue;
-        }
-        if in_brace {
-            current.push(ch);
-        }
-    }
-
-    Ok(ManaCost::from_pips(pips))
+    shared_tokens::parse_scryfall_mana_cost(raw)
 }
 
 pub(crate) fn parse_mana_symbol_group(raw: &str) -> Result<Vec<ManaSymbol>, CardTextError> {
-    let mut alternatives = Vec::new();
-    for part in raw.split('/') {
-        let symbol = parse_mana_symbol(part)?;
-        alternatives.push(symbol);
-    }
-    Ok(alternatives)
+    shared_tokens::parse_mana_symbol_group(raw)
 }
 
 pub(crate) fn parse_mana_symbol(part: &str) -> Result<ManaSymbol, CardTextError> {
-    let upper = part.trim().to_ascii_uppercase();
-    if upper.is_empty() {
-        return Err(CardTextError::ParseError("empty mana symbol".to_string()));
-    }
-
-    if upper.chars().all(|c| c.is_ascii_digit()) {
-        let value = upper.parse::<u8>().map_err(|_| {
-            CardTextError::ParseError(format!("invalid generic mana symbol '{part}'"))
-        })?;
-        return Ok(ManaSymbol::Generic(value));
-    }
-
-    match upper.as_str() {
-        "W" => Ok(ManaSymbol::White),
-        "U" => Ok(ManaSymbol::Blue),
-        "B" => Ok(ManaSymbol::Black),
-        "R" => Ok(ManaSymbol::Red),
-        "G" => Ok(ManaSymbol::Green),
-        "C" => Ok(ManaSymbol::Colorless),
-        "S" => Ok(ManaSymbol::Snow),
-        "X" => Ok(ManaSymbol::X),
-        "P" => Ok(ManaSymbol::Life(2)),
-        _ => Err(CardTextError::ParseError(format!(
-            "unsupported mana symbol '{part}'"
-        ))),
-    }
+    shared_tokens::parse_mana_symbol(part)
 }
 
 fn synth_words_as_tokens(words: &[&str]) -> Vec<OwnedLexToken> {
@@ -151,39 +92,18 @@ fn find_meld_subject_split(words: &[&str]) -> Option<usize> {
                     .is_some_and(|next| is_plausible_meld_subject_start(next)))
             .then_some(idx)
         })
-        .or_else(|| words.iter().position(|word| *word == "and"))
+        .or_else(|| find_index(words, |word| *word == "and"))
 }
 
 pub(crate) fn parse_type_line(
     raw: &str,
 ) -> Result<(Vec<Supertype>, Vec<CardType>, Vec<Subtype>), CardTextError> {
-    let mut supertypes = Vec::new();
-    let mut card_types = Vec::new();
-    let mut subtypes = Vec::new();
-
-    let parts: Vec<&str> = raw.split('—').collect();
-    let left = parts[0].trim();
-    let right = parts.get(1).map(|s| s.trim());
-
-    for word in left.split_whitespace() {
-        if let Some(supertype) = parse_supertype_word(word) {
-            supertypes.push(supertype);
-            continue;
-        }
-        if let Some(card_type) = parse_card_type(&word.to_ascii_lowercase()) {
-            card_types.push(card_type);
-        }
-    }
-
-    if let Some(right) = right {
-        for word in right.split_whitespace() {
-            if let Some(subtype) = parse_subtype_word(word) {
-                subtypes.push(subtype);
-            }
-        }
-    }
-
-    Ok((supertypes, card_types, subtypes))
+    shared_tokens::parse_type_line_with(
+        raw,
+        parse_supertype_word,
+        |word| parse_card_type(&word.to_ascii_lowercase()),
+        parse_subtype_word,
+    )
 }
 
 pub(crate) fn parse_supertype_word(word: &str) -> Option<Supertype> {
@@ -471,11 +391,11 @@ pub(crate) fn parse_pt_value(raw: &str) -> Option<PtValue> {
     if raw == "*" {
         return Some(PtValue::Star);
     }
-    if let Some(stripped) = raw.strip_prefix("*+") {
+    if let Some(stripped) = str_strip_prefix(raw, "*+") {
         let value = stripped.trim().parse::<i32>().ok()?;
         return Some(PtValue::StarPlus(value));
     }
-    if let Some(stripped) = raw.strip_suffix("+*") {
+    if let Some(stripped) = str_strip_suffix(raw, "+*") {
         let value = stripped.trim().parse::<i32>().ok()?;
         return Some(PtValue::StarPlus(value));
     }
@@ -489,21 +409,21 @@ pub(crate) fn parse_for_each_opponent_doesnt(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let mut clause_tokens = tokens;
-    let mut clause_words = words(clause_tokens);
+    let mut clause_words = crate::cards::builders::parser::lexed_words(clause_tokens);
     if clause_words.first().copied() == Some("then") {
         clause_tokens = &clause_tokens[1..];
-        clause_words = words(clause_tokens);
+        clause_words = crate::cards::builders::parser::lexed_words(clause_tokens);
     }
     if clause_words.len() < 4 {
         return Ok(None);
     }
 
-    let start = if clause_words.starts_with(&["for", "each", "opponent"])
-        || clause_words.starts_with(&["for", "each", "opponents"])
+    let start = if slice_starts_with(&clause_words, &["for", "each", "opponent"])
+        || slice_starts_with(&clause_words, &["for", "each", "opponents"])
     {
         3
-    } else if clause_words.starts_with(&["each", "opponent"])
-        || clause_words.starts_with(&["each", "opponents"])
+    } else if slice_starts_with(&clause_words, &["each", "opponent"])
+        || slice_starts_with(&clause_words, &["each", "opponents"])
     {
         2
     } else {
@@ -511,7 +431,7 @@ pub(crate) fn parse_for_each_opponent_doesnt(
     };
 
     let inner_tokens = trim_commas(&clause_tokens[start..]);
-    let inner_words = words(&inner_tokens);
+    let inner_words = crate::cards::builders::parser::lexed_words(&inner_tokens);
     let starts_with_who = inner_words.first().copied() == Some("who");
     let Some((negation_idx, negation_len)) = negated_action_word_index(&inner_words) else {
         return Ok(None);
@@ -520,14 +440,9 @@ pub(crate) fn parse_for_each_opponent_doesnt(
         return Ok(None);
     }
 
-    let effect_token_start = if let Some(comma_idx) =
-        inner_tokens.iter().position(|token| token.is_comma())
-    {
+    let effect_token_start = if let Some(comma_idx) = find_index(&inner_tokens, |token| token.is_comma()) {
         comma_idx + 1
-    } else if let Some(this_way_idx) = inner_words
-        .windows(2)
-        .position(|pair| pair == ["this", "way"])
-    {
+    } else if let Some(this_way_idx) = find_window_index(&inner_words, &["this", "way"]) {
         token_index_for_word_index(&inner_tokens, this_way_idx + 2).unwrap_or(inner_tokens.len())
     } else {
         token_index_for_word_index(&inner_tokens, negation_idx + negation_len)
@@ -553,21 +468,21 @@ pub(crate) fn parse_for_each_player_doesnt(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let mut clause_tokens = tokens;
-    let mut clause_words = words(clause_tokens);
+    let mut clause_words = crate::cards::builders::parser::lexed_words(clause_tokens);
     if clause_words.first().copied() == Some("then") {
         clause_tokens = &clause_tokens[1..];
-        clause_words = words(clause_tokens);
+        clause_words = crate::cards::builders::parser::lexed_words(clause_tokens);
     }
     if clause_words.len() < 5 {
         return Ok(None);
     }
 
-    let start = if clause_words.starts_with(&["for", "each", "player"])
-        || clause_words.starts_with(&["for", "each", "players"])
+    let start = if slice_starts_with(&clause_words, &["for", "each", "player"])
+        || slice_starts_with(&clause_words, &["for", "each", "players"])
     {
         3
-    } else if clause_words.starts_with(&["each", "player"])
-        || clause_words.starts_with(&["each", "players"])
+    } else if slice_starts_with(&clause_words, &["each", "player"])
+        || slice_starts_with(&clause_words, &["each", "players"])
     {
         2
     } else {
@@ -575,7 +490,7 @@ pub(crate) fn parse_for_each_player_doesnt(
     };
 
     let inner_tokens = trim_commas(&clause_tokens[start..]);
-    let inner_words = words(&inner_tokens);
+    let inner_words = crate::cards::builders::parser::lexed_words(&inner_tokens);
     let starts_with_who = inner_words.first().copied() == Some("who");
     let Some((negation_idx, negation_len)) = negated_action_word_index(&inner_words) else {
         return Ok(None);
@@ -584,14 +499,9 @@ pub(crate) fn parse_for_each_player_doesnt(
         return Ok(None);
     }
 
-    let effect_token_start = if let Some(comma_idx) =
-        inner_tokens.iter().position(|token| token.is_comma())
-    {
+    let effect_token_start = if let Some(comma_idx) = find_index(&inner_tokens, |token| token.is_comma()) {
         comma_idx + 1
-    } else if let Some(this_way_idx) = inner_words
-        .windows(2)
-        .position(|pair| pair == ["this", "way"])
-    {
+    } else if let Some(this_way_idx) = find_window_index(&inner_words, &["this", "way"]) {
         token_index_for_word_index(&inner_tokens, this_way_idx + 2).unwrap_or(inner_tokens.len())
     } else {
         token_index_for_word_index(&inner_tokens, negation_idx + negation_len)
@@ -612,16 +522,16 @@ pub(crate) fn parse_for_each_player_doesnt(
 }
 
 pub(crate) fn negated_action_word_index(words: &[&str]) -> Option<(usize, usize)> {
-    if let Some(idx) = words
-        .iter()
-        .position(|word| matches!(*word, "doesnt" | "didnt" | "doesn't" | "didn't"))
-    {
+    if let Some(idx) = find_index(words, |word| {
+        matches!(*word, "doesnt" | "didnt" | "doesn't" | "didn't")
+    }) {
         return Some((idx, 1));
     }
-    for (idx, pair) in words.windows(2).enumerate() {
-        if pair == ["do", "not"] || pair == ["did", "not"] {
-            return Some((idx, 2));
-        }
+    if let Some(idx) = find_window_index(words, &["do", "not"]) {
+        return Some((idx, 2));
+    }
+    if let Some(idx) = find_window_index(words, &["did", "not"]) {
+        return Some((idx, 2));
     }
     None
 }
@@ -629,14 +539,11 @@ pub(crate) fn negated_action_word_index(words: &[&str]) -> Option<(usize, usize)
 fn parse_negated_who_this_way_predicate(
     inner_tokens: &[OwnedLexToken],
 ) -> Result<Option<PredicateAst>, CardTextError> {
-    let inner_words = words(inner_tokens);
+    let inner_words = crate::cards::builders::parser::lexed_words(inner_tokens);
     if inner_words.first().copied() != Some("who") {
         return Ok(None);
     }
-    let Some(this_way_idx) = inner_words
-        .windows(2)
-        .position(|window| window == ["this", "way"])
-    else {
+    let Some(this_way_idx) = find_window_index(&inner_words, &["this", "way"]) else {
         return Ok(None);
     };
     let Some((negation_idx, negation_len)) = negated_action_word_index(&inner_words) else {
@@ -676,15 +583,13 @@ fn parse_negated_who_this_way_predicate(
 pub(crate) fn parse_vote_start_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let clause_words = words(tokens);
-    let vote_idx = clause_words
-        .iter()
-        .position(|word| *word == "vote" || *word == "votes");
+    let clause_words = crate::cards::builders::parser::lexed_words(tokens);
+    let vote_idx = find_index(&clause_words, |word| *word == "vote" || *word == "votes");
     let Some(vote_idx) = vote_idx else {
         return Ok(None);
     };
 
-    let has_each = clause_words[..vote_idx].contains(&"each");
+    let has_each = slice_contains(&clause_words[..vote_idx], &"each");
     let has_player = clause_words[..vote_idx]
         .iter()
         .any(|word| *word == "player" || *word == "players");
@@ -692,19 +597,14 @@ pub(crate) fn parse_vote_start_sentence(
         return Ok(None);
     }
 
-    let for_idx = clause_words
-        .iter()
-        .position(|word| *word == "for")
+    let for_idx = find_index(&clause_words, |word| *word == "for")
         .ok_or_else(|| CardTextError::ParseError("missing 'for' in vote clause".to_string()))?;
     if for_idx < vote_idx {
         return Ok(None);
     }
 
     let mut option_words = clause_words[for_idx + 1..].to_vec();
-    if let Some(reveal_idx) = option_words
-        .windows(4)
-        .position(|window| window == ["then", "those", "votes", "are"])
-    {
+    if let Some(reveal_idx) = find_window_index(&option_words, &["then", "those", "votes", "are"]) {
         option_words.truncate(reveal_idx);
     }
     let option_tokens = option_words
@@ -768,18 +668,16 @@ pub(crate) fn parse_vote_start_sentence(
 pub(crate) fn parse_for_each_vote_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let words = words(tokens);
+    let words = crate::cards::builders::parser::lexed_words(tokens);
     if words.len() < 4 {
         return Ok(None);
     }
 
-    if !words.starts_with(&["for", "each"]) {
+    if !slice_starts_with(&words, &["for", "each"]) {
         return Ok(None);
     }
 
-    let vote_idx = words
-        .iter()
-        .position(|word| *word == "vote" || *word == "votes");
+    let vote_idx = find_index(&words, |word| *word == "vote" || *word == "votes");
     let Some(vote_idx) = vote_idx else {
         return Ok(None);
     };
@@ -801,9 +699,7 @@ pub(crate) fn parse_for_each_vote_clause(
     }
     let option = option_words.join(" ");
 
-    let comma_idx = tokens
-        .iter()
-        .position(|token| token.is_comma())
+    let comma_idx = find_index(tokens, |token| token.is_comma())
         .ok_or_else(|| {
             CardTextError::ParseError("missing comma in for each vote clause".to_string())
         })?;
@@ -814,26 +710,26 @@ pub(crate) fn parse_for_each_vote_clause(
 }
 
 pub(crate) fn parse_vote_extra_sentence(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
-    let words = words(tokens);
+    let words = crate::cards::builders::parser::lexed_words(tokens);
     if words.len() < 3 || words.first().copied() != Some("you") {
         return None;
     }
 
     let has_vote = words.iter().any(|word| *word == "vote" || *word == "votes");
-    let has_additional = words.contains(&"additional");
+    let has_additional = slice_contains(&words, &"additional");
     let has_time = words.iter().any(|word| *word == "time" || *word == "times");
     if !has_vote || !has_additional || !has_time {
         return None;
     }
 
-    let optional = words.contains(&"may");
+    let optional = slice_contains(&words, &"may");
     Some(EffectAst::VoteExtra { count: 1, optional })
 }
 
 pub(crate) fn parse_after_turn_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let line_words = words(tokens);
+    let line_words = crate::cards::builders::parser::lexed_words(tokens);
     if line_words.len() < 3
         || line_words[0] != "after"
         || line_words[1] != "that"
@@ -842,14 +738,14 @@ pub(crate) fn parse_after_turn_sentence(
         return Ok(None);
     }
 
-    let comma_idx = tokens.iter().position(|token| token.is_comma());
+    let comma_idx = find_index(tokens, |token| token.is_comma());
     let remainder = if let Some(idx) = comma_idx {
         &tokens[idx + 1..]
     } else {
         &tokens[3..]
     };
 
-    let remaining_words: Vec<&str> = words(remainder)
+    let remaining_words: Vec<&str> = crate::cards::builders::parser::lexed_words(remainder)
         .into_iter()
         .filter(|word| !is_article(word))
         .collect();
@@ -860,11 +756,11 @@ pub(crate) fn parse_after_turn_sentence(
         ));
     }
 
-    let player = if remaining_words.starts_with(&["that", "player"]) {
+    let player = if slice_starts_with(&remaining_words, &["that", "player"]) {
         PlayerAst::That
-    } else if remaining_words.starts_with(&["target", "player"]) {
+    } else if slice_starts_with(&remaining_words, &["target", "player"]) {
         PlayerAst::Target
-    } else if remaining_words.starts_with(&["you"]) {
+    } else if slice_starts_with(&remaining_words, &["you"]) {
         PlayerAst::You
     } else {
         return Err(CardTextError::ParseError(
@@ -872,7 +768,7 @@ pub(crate) fn parse_after_turn_sentence(
         ));
     };
 
-    if remaining_words.contains(&"extra") && remaining_words.contains(&"turn") {
+    if slice_contains(&remaining_words, &"extra") && slice_contains(&remaining_words, &"turn") {
         return Ok(Some(EffectAst::ExtraTurnAfterTurn {
             player,
             anchor: ExtraTurnAnchorAst::ReferencedTurn,
@@ -887,10 +783,11 @@ pub(crate) fn parse_after_turn_sentence(
 pub(crate) fn parse_conditional_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
-    let token_words = words(tokens);
-    if let Some(effect_word_idx) = token_words
-        .windows(6)
-        .position(|window| window == ["exile", "them", "then", "meld", "them", "into"])
+    let token_words = crate::cards::builders::parser::lexed_words(tokens);
+    if let Some(effect_word_idx) = find_window_index(
+        &token_words,
+        &["exile", "them", "then", "meld", "them", "into"],
+    )
         && let Some(effect_token_idx) = token_index_for_word_index(tokens, effect_word_idx)
     {
         let predicate_tokens = trim_commas(&tokens[1..effect_token_idx]);
@@ -1049,7 +946,7 @@ pub(crate) fn split_leading_result_prefix_lexed(
         return None;
     };
 
-    let comma_idx = trimmed.iter().position(|token| {
+    let comma_idx = find_index(trimmed, |token| {
         matches!(
             token.kind,
             crate::cards::builders::parser::lexer::TokenKind::Comma
@@ -1125,7 +1022,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
-    if let Some(gets_idx) = filtered.iter().position(|word| *word == "gets")
+    if let Some(gets_idx) = find_index(&filtered, |word| *word == "gets")
         && gets_idx > 0
         && filtered[gets_idx + 1..] == ["more", "votes"]
     {
@@ -1134,7 +1031,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         });
     }
 
-    if let Some(gets_idx) = filtered.iter().position(|word| *word == "gets")
+    if let Some(gets_idx) = find_index(&filtered, |word| *word == "gets")
         && gets_idx > 0
         && filtered[gets_idx + 1..] == ["more", "votes", "or", "vote", "is", "tied"]
     {
@@ -1155,20 +1052,20 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(PredicateAst::NoVoteObjectsMatched { filter });
     }
 
-    if let Some(attacking_idx) = filtered.windows(9).position(|window| {
-        window
-            == [
-                "are",
-                "attacking",
-                "and",
-                "you",
-                "both",
-                "own",
-                "and",
-                "control",
-                "them",
-            ]
-    }) && let Some(and_idx) = find_meld_subject_split(&filtered[..attacking_idx])
+    if let Some(attacking_idx) = find_window_index(
+        &filtered,
+        &[
+            "are",
+            "attacking",
+            "and",
+            "you",
+            "both",
+            "own",
+            "and",
+            "control",
+            "them",
+        ],
+    ) && let Some(and_idx) = find_meld_subject_split(&filtered[..attacking_idx])
     {
         let left_words = &filtered[..and_idx];
         let right_words = &filtered[and_idx + 1..attacking_idx];
@@ -1244,7 +1141,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     // Handle simple conjunction predicates like "... and have no cards in hand".
-    if let Some(and_idx) = filtered.iter().position(|word| *word == "and")
+    if let Some(and_idx) = find_index(&filtered, |word| *word == "and")
         && and_idx > 0
         && and_idx + 1 < filtered.len()
     {
@@ -1307,17 +1204,17 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(PredicateAst::SourceIsSaddled);
     }
 
-    if filtered.starts_with(&["there", "are", "no"])
-        && filtered.contains(&"counters")
-        && filtered.windows(2).any(|window| window == ["on", "this"])
-        && let Some(counters_idx) = filtered.iter().position(|word| *word == "counters")
+    if slice_starts_with(&filtered, &["there", "are", "no"])
+        && slice_contains(&filtered, &"counters")
+        && contains_window(&filtered, &["on", "this"])
+        && let Some(counters_idx) = find_index(&filtered, |word| *word == "counters")
         && counters_idx >= 4
         && let Some(counter_type) = parse_counter_type_word(filtered[counters_idx - 1])
     {
         return Ok(PredicateAst::SourceHasNoCounter(counter_type));
     }
 
-    let source_has_counter_prefix_len = if raw_words.starts_with(&["this", "has"]) {
+    let source_has_counter_prefix_len = if slice_starts_with(&raw_words, &["this", "has"]) {
         Some(2)
     } else if raw_words.len() >= 3
         && raw_words[0] == "this"
@@ -1351,13 +1248,13 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(PredicateAst::SourceHasNoCounter(counter_type));
     }
 
-    let triggering_object_had_no_counter_prefix_len = if raw_words.starts_with(&["it", "had", "no"])
+    let triggering_object_had_no_counter_prefix_len = if slice_starts_with(&raw_words, &["it", "had", "no"])
     {
         Some(3)
-    } else if raw_words.starts_with(&["this", "creature", "had", "no"])
-        || raw_words.starts_with(&["that", "creature", "had", "no"])
-        || raw_words.starts_with(&["this", "permanent", "had", "no"])
-        || raw_words.starts_with(&["that", "permanent", "had", "no"])
+    } else if slice_starts_with(&raw_words, &["this", "creature", "had", "no"])
+        || slice_starts_with(&raw_words, &["that", "creature", "had", "no"])
+        || slice_starts_with(&raw_words, &["this", "permanent", "had", "no"])
+        || slice_starts_with(&raw_words, &["that", "permanent", "had", "no"])
     {
         Some(4)
     } else {
@@ -1376,7 +1273,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(PredicateAst::TriggeringObjectHadNoCounter(counter_type));
     }
 
-    if raw_words.starts_with(&["there", "are"])
+    if slice_starts_with(&raw_words, &["there", "are"])
         && raw_words.get(3).copied() == Some("or")
         && raw_words.get(4).copied() == Some("more")
         && raw_words
@@ -1385,7 +1282,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     {
         if let Some((count, used)) = parse_number(&tokens[2..]) {
             let rest = &tokens[2 + used..];
-            let rest_words = words(rest);
+            let rest_words = crate::cards::builders::parser::lexed_words(rest);
             // Pattern: "there are <N> or more <counter> counters on this <permanent>"
             if rest_words.len() >= 4
                 && rest_words[0] == "or"
@@ -1596,12 +1493,12 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         && filtered.get(subject_len).copied() == Some("is")
     {
         let tail = &filtered[subject_len + 1..];
-        if let Some(rest) = tail.strip_prefix(&["less", "than", "or", "equal", "to"])
+        if let Some(rest) = slice_strip_prefix(tail, &["less", "than", "or", "equal", "to"])
             && half_starting_tail_matches(rest)
         {
             return Ok(PredicateAst::PlayerLifeAtMostHalfStartingLifeTotal { player });
         }
-        if let Some(rest) = tail.strip_prefix(&["less", "than"])
+        if let Some(rest) = slice_strip_prefix(tail, &["less", "than"])
             && half_starting_tail_matches(rest)
         {
             return Ok(PredicateAst::PlayerLifeLessThanHalfStartingLifeTotal { player });
@@ -1613,9 +1510,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             Some("control" | "controls")
         )
         && filtered.get(subject_len + 1).copied() == Some("more")
-        && let Some(than_offset) = filtered[subject_len + 2..]
-            .iter()
-            .position(|word| *word == "than")
+        && let Some(than_offset) =
+            find_index(&filtered[subject_len + 2..], |word| *word == "than")
     {
         let than_idx = subject_len + 2 + than_offset;
         let tail = &filtered[than_idx..];
@@ -2106,9 +2002,9 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     if filtered.len() >= 2 {
-        let tag = if filtered.starts_with(&["equipped", "creature"]) {
+        let tag = if slice_starts_with(&filtered, &["equipped", "creature"]) {
             Some("equipped")
-        } else if filtered.starts_with(&["enchanted", "creature"]) {
+        } else if slice_starts_with(&filtered, &["enchanted", "creature"]) {
             Some("enchanted")
         } else {
             None
@@ -2127,18 +2023,14 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         }
     }
 
-    let onto_battlefield_idx = filtered
-        .windows(2)
-        .position(|window| window == ["onto", "battlefield"])
+    let onto_battlefield_idx = find_window_index(&filtered, &["onto", "battlefield"])
         .or_else(|| {
-            filtered
-                .windows(3)
-                .position(|window| window == ["onto", "the", "battlefield"])
+            find_window_index(&filtered, &["onto", "the", "battlefield"])
         });
     if filtered.len() >= 7
         && filtered[0] == "you"
         && filtered[1] == "put"
-        && filtered.ends_with(&["this", "way"])
+        && slice_ends_with(&filtered, &["this", "way"])
         && let Some(onto_idx) = onto_battlefield_idx
     {
         let filter_words = &filtered[2..onto_idx];
@@ -2159,7 +2051,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
 
     let is_it = demonstrative_reference_len == Some(1);
     let has_card = demonstrative_reference_len
-        .map(|reference_len| filtered[reference_len..].contains(&"card"))
+        .map(|reference_len| slice_contains(&filtered[reference_len..], &"card"))
         .unwrap_or(false);
 
     if is_it {
@@ -2236,7 +2128,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         {
             descriptor_words.remove(0);
         }
-        if descriptor_words.starts_with(&["not", "token"]) {
+        if slice_starts_with(&descriptor_words, &["not", "token"]) {
             descriptor_words.drain(0..2);
             descriptor_words.insert(0, "nontoken");
         }
@@ -2320,7 +2212,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     if filtered.len() >= 7
         && filtered[0] == "you"
         && (filtered[1] == "control" || filtered[1] == "controls")
-        && let Some(or_idx) = filtered.iter().position(|word| *word == "or")
+        && let Some(or_idx) = find_index(&filtered, |word| *word == "or")
         && or_idx > 2
     {
         let left_tokens = filtered[2..or_idx]
@@ -2331,7 +2223,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         if right_words.first().copied() == Some("there") {
             right_words = right_words[1..].to_vec();
         }
-        if right_words.contains(&"graveyard") && right_words.contains(&"your") {
+        if slice_contains(&right_words, &"graveyard") && slice_contains(&right_words, &"your") {
             let right_tokens = right_words
                 .iter()
                 .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
@@ -2387,8 +2279,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
 
         let mut control_words = filtered[filter_start..].to_vec();
         let mut requires_different_powers = false;
-        if control_words.ends_with(&["with", "different", "powers"])
-            || control_words.ends_with(&["with", "different", "power"])
+        if slice_ends_with(&control_words, &["with", "different", "powers"])
+            || slice_ends_with(&control_words, &["with", "different", "power"])
         {
             requires_different_powers = true;
             control_words.truncate(control_words.len().saturating_sub(3));
@@ -2516,7 +2408,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     if filtered.len() >= 8
         && filtered[0] == "you"
         && filtered[1] == "put"
-        && filtered.ends_with(&["onto", "the", "battlefield", "this", "way"])
+        && slice_ends_with(&filtered, &["onto", "the", "battlefield", "this", "way"])
     {
         let filter_words = &filtered[2..filtered.len() - 5];
         let filter_tokens = filter_words
@@ -2553,8 +2445,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
 
     if filtered.as_slice() == ["you", "have", "citys", "blessing"]
         || filtered.as_slice() == ["you", "have", "city", "blessing"]
-        || filtered.starts_with(&["you", "have", "citys", "blessing", "for", "each"])
-        || filtered.starts_with(&["you", "have", "city", "blessing", "for", "each"])
+        || slice_starts_with(&filtered, &["you", "have", "citys", "blessing", "for", "each"])
+        || slice_starts_with(&filtered, &["you", "have", "city", "blessing", "for", "each"])
     {
         return Ok(PredicateAst::PlayerHasCitysBlessing {
             player: PlayerAst::You,
@@ -2588,8 +2480,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         });
     }
 
-    if (filtered.starts_with(&["youve", "completed"]) && filtered.len() > 2)
-        || (filtered.starts_with(&["you", "have", "completed"]) && filtered.len() > 3)
+    if (slice_starts_with(&filtered, &["youve", "completed"]) && filtered.len() > 2)
+        || (slice_starts_with(&filtered, &["you", "have", "completed"]) && filtered.len() > 3)
     {
         let name_start = if filtered[1] == "have" { 3 } else { 2 };
         let dungeon_name = filtered[name_start..]
@@ -2603,8 +2495,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         });
     }
 
-    if (filtered.starts_with(&["you", "havent", "completed"]) && filtered.len() > 3)
-        || (filtered.starts_with(&["you", "have", "not", "completed"]) && filtered.len() > 4)
+    if (slice_starts_with(&filtered, &["you", "havent", "completed"]) && filtered.len() > 3)
+        || (slice_starts_with(&filtered, &["you", "have", "not", "completed"]) && filtered.len() > 4)
     {
         let name_start = if filtered[1] == "have" { 4 } else { 3 };
         let dungeon_name = filtered[name_start..]
@@ -2630,15 +2522,15 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         });
     }
 
-    let spell_cast_prefix = if filtered.starts_with(&["opponent", "has", "cast"]) {
+    let spell_cast_prefix = if slice_starts_with(&filtered, &["opponent", "has", "cast"]) {
         Some((3usize, PlayerFilter::Opponent))
-    } else if filtered.starts_with(&["opponents", "have", "cast"]) {
+    } else if slice_starts_with(&filtered, &["opponents", "have", "cast"]) {
         Some((3usize, PlayerFilter::Opponent))
-    } else if filtered.starts_with(&["youve", "cast"]) {
+    } else if slice_starts_with(&filtered, &["youve", "cast"]) {
         Some((2usize, PlayerFilter::You))
-    } else if filtered.starts_with(&["you", "have", "cast"]) {
+    } else if slice_starts_with(&filtered, &["you", "have", "cast"]) {
         Some((3usize, PlayerFilter::You))
-    } else if filtered.starts_with(&["you", "cast"]) {
+    } else if slice_starts_with(&filtered, &["you", "cast"]) {
         Some((2usize, PlayerFilter::You))
     } else {
         None
@@ -2807,7 +2699,7 @@ pub(crate) fn parse_graveyard_threshold_predicate(
     };
 
     let tail = &filtered[tail_start..];
-    let Some(in_idx) = tail.iter().rposition(|word| *word == "in") else {
+    let Some(in_idx) = rfind_index(tail, |word| *word == "in") else {
         return Ok(None);
     };
     if in_idx == 0 || in_idx + 1 >= tail.len() {
@@ -2831,8 +2723,8 @@ pub(crate) fn parse_graveyard_threshold_predicate(
 
     let raw_filter_words = &tail[..in_idx];
     if raw_filter_words.is_empty()
-        || raw_filter_words.contains(&"type")
-        || raw_filter_words.contains(&"types")
+        || slice_contains(raw_filter_words, &"type")
+        || slice_contains(raw_filter_words, &"types")
     {
         return Ok(None);
     }
@@ -2877,7 +2769,7 @@ pub(crate) fn parse_graveyard_threshold_predicate(
 pub(crate) fn parse_sentence_counter_target_spell_if_it_was_kicked(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let clause_words = words(tokens);
+    let clause_words = crate::cards::builders::parser::lexed_words(tokens);
     if clause_words.as_slice() != ["counter", "target", "spell", "if", "it", "was", "kicked"] {
         return Ok(None);
     }
@@ -2895,7 +2787,7 @@ pub(crate) fn parse_sentence_counter_target_spell_if_it_was_kicked(
 pub(crate) fn parse_sentence_counter_target_spell_thats_second_cast_this_turn(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let clause_words = words(tokens);
+    let clause_words = crate::cards::builders::parser::lexed_words(tokens);
     let matches = clause_words.as_slice()
         == [
             "counter", "target", "spell", "thats", "second", "spell", "cast", "this", "turn",
@@ -2922,15 +2814,11 @@ pub(crate) fn parse_sentence_counter_target_spell_thats_second_cast_this_turn(
 pub(crate) fn parse_sentence_exile_target_creature_with_greatest_power(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let clause_words = words(tokens);
-    let is_shape = clause_words.starts_with(&["exile", "target", "creature"])
+    let clause_words = crate::cards::builders::parser::lexed_words(tokens);
+    let is_shape = slice_starts_with(&clause_words, &["exile", "target", "creature"])
         && contains_word_sequence(&clause_words, &["greatest", "power", "among", "creatures"])
-        && (clause_words
-            .windows(2)
-            .any(|pair| pair == ["on", "battlefield"])
-            || clause_words
-                .windows(3)
-                .any(|triplet| triplet == ["on", "the", "battlefield"]));
+        && (contains_window(&clause_words, &["on", "battlefield"])
+            || contains_window(&clause_words, &["on", "the", "battlefield"]));
     if !is_shape {
         return Ok(None);
     }

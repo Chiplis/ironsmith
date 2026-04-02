@@ -195,9 +195,13 @@ impl StaticAbilityKind for ExertAttack {
             return Some(Ok(()));
         }
 
-        let event_provenance = game.provenance_graph.alloc_root_event(EventKind::KeywordAction);
+        let event_provenance = game
+            .provenance_graph
+            .alloc_root_event(EventKind::KeywordAction);
         let mut ctx = crate::executor::ExecutionContext::new_default(source, controller)
-            .with_cause(crate::events::cause::EventCause::from_cost(source, controller))
+            .with_cause(crate::events::cause::EventCause::from_cost(
+                source, controller,
+            ))
             .with_provenance(event_provenance);
         let outcome = crate::effects::ExertCostEffect::new("Exert this creature")
             .execute(game, &mut ctx)

@@ -527,6 +527,7 @@ impl CardRegistry {
         maybe_register!(hanweir_the_writhing_township);
         maybe_register!(innocent_blood);
         maybe_register!(mana_vault);
+        maybe_register!(maskwood_nexus);
         maybe_register!(merciless_executioner);
         maybe_register!(phyrexian_tower);
         maybe_register!(shattered_sanctum);

@@ -4324,6 +4324,33 @@ fn test_parse_triggered_explore_clause_without_fallback_marker() {
 }
 
 #[test]
+fn test_parse_explore_trigger_subject_without_fallback_marker() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Wildgrowth Walker")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 3))
+        .parse_text(
+            "Whenever a creature you control explores, put a +1/+1 counter on this creature and you gain 3 life.",
+        )
+        .expect("explore subject trigger should parse as an explicit keyword-action trigger");
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("whenever a creature you control explores"),
+        "expected explore trigger text in oracle-like output, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("unsupported parser line fallback"),
+        "explore subject trigger should not rely on unsupported fallback marker: {rendered}"
+    );
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("KeywordAction") && debug.contains("Explore"),
+        "expected explore keyword-action trigger in parsed definition, got {debug}"
+    );
+}
+
+#[test]
 fn test_parse_open_attraction_clause_without_fallback_marker() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Open Attraction Probe")
         .card_types(vec![CardType::Creature])
@@ -14670,13 +14697,11 @@ fn parse_fatal_push_revolt_clause_keeps_permanent_left_gate() {
 
     let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        rendered.contains("mana value 4 or less")
-            || rendered.contains("mana value is 4 or less"),
+        rendered.contains("mana value 4 or less") || rendered.contains("mana value is 4 or less"),
         "expected revolt branch to preserve the mana value 4 threshold, got {rendered}"
     );
     assert!(
-        rendered.contains("mana value 2 or less")
-            || rendered.contains("mana value is 2 or less"),
+        rendered.contains("mana value 2 or less") || rendered.contains("mana value is 2 or less"),
         "expected base branch to preserve the mana value 2 threshold, got {rendered}"
     );
 }
@@ -18574,6 +18599,44 @@ fn parse_oracle_liquimetal_coating_type_addition_render_regression() {
 }
 
 #[test]
+fn parse_oracle_encroaching_mycosynth_type_addition_regression() {
+    let def = parse_oracle_card_definition("Encroaching Mycosynth");
+
+    let raw = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        raw.matches("addcardtypes").count() == 3 && raw.contains("artifact"),
+        "expected battlefield, stack, and off-battlefield artifact type addition, got {raw}"
+    );
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains(
+            "nonland permanents you control are artifacts in addition to their other types"
+        ),
+        "expected battlefield clause to render, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "permanent spells you control are artifacts in addition to their other types"
+        ),
+        "expected stack clause to render, got {rendered}"
+    );
+    assert!(
+        rendered.contains("nonland permanent cards in your hand")
+            && rendered.contains("nonland permanent cards in your library")
+            && rendered.contains("nonland permanent cards in your graveyard")
+            && rendered.contains("nonland permanent cards in your exile")
+            && rendered.contains("nonland permanent cards in your command zone")
+            && rendered.contains("are artifacts in addition to their other types"),
+        "expected off-battlefield clause to render, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("unsupported effect"),
+        "expected Encroaching Mycosynth to avoid unsupported markers, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_oracle_dispossess_typed_card_name_regression() {
     let def = parse_oracle_card_definition("Dispossess");
 
@@ -19984,10 +20047,12 @@ const STRICT_PARSE_REGRESSION_SUCCESS_CARDS: &[&str] = &[
     "Cultivator Colossus",
     "Dungeon Crawler",
     "Echoing Deeps",
+    "Encroaching Mycosynth",
     "Fatal Push",
     "Gloom Stalker",
     "Grief",
     "Imoen, Mystic Trickster",
+    "Maskwood Nexus",
     "Mox Amber",
     "Nexus of Fate",
     "Nykthos, Shrine to Nyx",
@@ -20044,6 +20109,7 @@ strict_parse_card_test!(strict_parse_bridge_from_below, "Bridge from Below");
 strict_parse_card_test!(strict_parse_cabal_ritual, "Cabal Ritual");
 strict_parse_card_test!(strict_parse_cavern_of_souls, "Cavern of Souls");
 strict_parse_card_expected_fail_test!(strict_parse_clown_car, "Clown Car");
+strict_parse_card_test!(strict_parse_encroaching_mycosynth, "Encroaching Mycosynth");
 strict_parse_card_test!(strict_parse_fatal_push, "Fatal Push");
 strict_parse_card_test!(strict_parse_gemstone_caverns, "Gemstone Caverns");
 strict_parse_card_expected_fail_test!(strict_parse_golgari_thug, "Golgari Thug");
@@ -20054,6 +20120,7 @@ strict_parse_card_expected_fail_test!(
     "Hancock, Ghoulish Mayor"
 );
 strict_parse_card_expected_fail_test!(strict_parse_lake_of_the_dead, "Lake of the Dead");
+strict_parse_card_test!(strict_parse_maskwood_nexus, "Maskwood Nexus");
 strict_parse_card_test!(strict_parse_mox_amber, "Mox Amber");
 strict_parse_card_test!(strict_parse_nine_lives_familiar, "Nine-Lives Familiar");
 strict_parse_card_test!(strict_parse_nykthos_shrine_to_nyx, "Nykthos, Shrine to Nyx");
@@ -20834,6 +20901,50 @@ fn parse_oracle_mass_polymorph_shuffle_remainder() {
     assert!(
         rendered.contains("shuffle"),
         "expected Mass Polymorph to keep its shuffled remainder, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_maskwood_nexus_uses_generic_subtype_family_effects() {
+    let def = parse_oracle_card_definition("Maskwood Nexus");
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let static_ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+
+    assert_eq!(
+        static_ids
+            .iter()
+            .filter(|id| **id == StaticAbilityId::AddAllSubtypesOfFamily)
+            .count(),
+        3,
+        "expected battlefield, stack, and one disjunctive off-battlefield family effect on Maskwood Nexus"
+    );
+    assert!(
+        rendered.contains("creatures you control are every creature type"),
+        "expected battlefield clause in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("creature spells you control are every creature type"),
+        "expected stack clause in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("creature cards in your hand")
+            && rendered.contains("creature cards in your library")
+            && rendered.contains("creature cards in your graveyard")
+            && rendered.contains("creature cards in your exile")
+            && rendered.contains("creature cards in your command zone")
+            && rendered.contains("every creature type"),
+        "expected off-battlefield clause in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("create a 2/2 blue shapeshifter creature token with changeling"),
+        "expected parsed activated token clause, got {rendered}"
     );
 }
 

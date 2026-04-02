@@ -14,11 +14,92 @@ use super::super::util::{
     contains_until_end_of_turn, is_until_end_of_turn, parse_number,
     parse_target_count_range_prefix, parse_target_phrase, parse_value,
     replace_unbound_x_with_value, starts_with_until_end_of_turn, token_index_for_word_index,
-    trim_commas, value_contains_unbound_x, words,
+    trim_commas, value_contains_unbound_x,
 };
 use super::chain_carry::bind_implicit_player_context;
 use super::chain_carry::{parse_effect_chain, parse_effect_chain_inner, remove_first_word};
 use super::conditionals::negated_action_word_index;
+
+fn token_words(tokens: &[OwnedLexToken]) -> Vec<&str> {
+    crate::cards::builders::parser::lexer::lexed_words(tokens)
+}
+
+fn word_slice_starts_with(words: &[&str], prefix: &[&str]) -> bool {
+    if prefix.len() > words.len() {
+        return false;
+    }
+    for (idx, expected) in prefix.iter().enumerate() {
+        if words[idx] != *expected {
+            return false;
+        }
+    }
+    true
+}
+
+fn word_slice_contains(words: &[&str], expected: &str) -> bool {
+    for word in words {
+        if *word == expected {
+            return true;
+        }
+    }
+    false
+}
+
+fn find_word_index(words: &[&str], mut predicate: impl FnMut(&str) -> bool) -> Option<usize> {
+    for (idx, word) in words.iter().enumerate() {
+        if predicate(word) {
+            return Some(idx);
+        }
+    }
+    None
+}
+
+fn find_token_index(
+    tokens: &[OwnedLexToken],
+    mut predicate: impl FnMut(&OwnedLexToken) -> bool,
+) -> Option<usize> {
+    for (idx, token) in tokens.iter().enumerate() {
+        if predicate(token) {
+            return Some(idx);
+        }
+    }
+    None
+}
+
+fn find_word_sequence_index(words: &[&str], sequence: &[&str]) -> Option<usize> {
+    if sequence.is_empty() {
+        return Some(0);
+    }
+    if sequence.len() > words.len() {
+        return None;
+    }
+    for start in 0..=words.len() - sequence.len() {
+        let mut matches = true;
+        for (offset, expected) in sequence.iter().enumerate() {
+            if words[start + offset] != *expected {
+                matches = false;
+                break;
+            }
+        }
+        if matches {
+            return Some(start);
+        }
+    }
+    None
+}
+
+fn word_slice_contains_sequence(words: &[&str], sequence: &[&str]) -> bool {
+    find_word_sequence_index(words, sequence).is_some()
+}
+
+fn find_tapped_land_for_mana_this_turn_end(words: &[&str]) -> Option<usize> {
+    find_word_sequence_index(words, &["tapped", "a", "land", "for", "mana", "this", "turn"])
+        .map(|idx| idx + 6)
+        .or_else(|| {
+            find_word_sequence_index(words, &["tapped", "land", "for", "mana", "this", "turn"])
+                .map(|idx| idx + 5)
+        })
+}
 
 pub(crate) fn parse_for_each_object_subject(
     subject_tokens: &[OwnedLexToken],
@@ -26,12 +107,12 @@ pub(crate) fn parse_for_each_object_subject(
     if subject_tokens.is_empty() {
         return Ok(None);
     }
-    let subject_words = words(subject_tokens);
+    let subject_words = token_words(subject_tokens);
     if subject_words.is_empty() {
         return Ok(None);
     }
 
-    let mut filter_tokens = if subject_words.starts_with(&["for", "each"]) {
+    let mut filter_tokens = if word_slice_starts_with(&subject_words, &["for", "each"]) {
         &subject_tokens[2..]
     } else if subject_words.first() == Some(&"each") {
         &subject_tokens[1..]
@@ -49,35 +130,33 @@ pub(crate) fn parse_for_each_object_subject(
     }
 
     let mut normalized_filter_tokens: Vec<OwnedLexToken> = filter_tokens.to_vec();
-    if let Some(attached_idx) = filter_tokens
-        .iter()
-        .position(|token| token.is_word("attached"))
+    if let Some(attached_idx) = find_token_index(filter_tokens, |token| token.is_word("attached"))
         && filter_tokens
             .get(attached_idx + 1)
             .is_some_and(|token| token.is_word("to"))
         && attached_idx > 0
     {
-        let attached_tail_words = words(&filter_tokens[attached_idx + 2..]);
-        let attached_to_creature = attached_tail_words.starts_with(&["creature"])
-            || attached_tail_words.starts_with(&["a", "creature"]);
+        let attached_tail_words = token_words(&filter_tokens[attached_idx + 2..]);
+        let attached_to_creature = word_slice_starts_with(&attached_tail_words, &["creature"])
+            || word_slice_starts_with(&attached_tail_words, &["a", "creature"]);
         if attached_to_creature {
             normalized_filter_tokens = trim_commas(&filter_tokens[..attached_idx]);
         }
     }
 
-    let filter_words = words(&normalized_filter_tokens);
+    let filter_words = token_words(&normalized_filter_tokens);
     if filter_words.is_empty() {
         return Ok(None);
     }
 
-    if filter_words.starts_with(&["player"])
-        || filter_words.starts_with(&["players"])
-        || filter_words.starts_with(&["opponent"])
-        || filter_words.starts_with(&["opponents"])
-        || filter_words.starts_with(&["target", "player"])
-        || filter_words.starts_with(&["target", "players"])
-        || filter_words.starts_with(&["target", "opponent"])
-        || filter_words.starts_with(&["target", "opponents"])
+    if word_slice_starts_with(&filter_words, &["player"])
+        || word_slice_starts_with(&filter_words, &["players"])
+        || word_slice_starts_with(&filter_words, &["opponent"])
+        || word_slice_starts_with(&filter_words, &["opponents"])
+        || word_slice_starts_with(&filter_words, &["target", "player"])
+        || word_slice_starts_with(&filter_words, &["target", "players"])
+        || word_slice_starts_with(&filter_words, &["target", "opponent"])
+        || word_slice_starts_with(&filter_words, &["target", "opponents"])
     {
         return Ok(None);
     }
@@ -91,12 +170,12 @@ pub(crate) fn parse_for_each_targeted_object_subject(
     if subject_tokens.is_empty() {
         return Ok(None);
     }
-    let subject_words = words(subject_tokens);
+    let subject_words = token_words(subject_tokens);
     if subject_words.is_empty() {
         return Ok(None);
     }
 
-    let mut target_tokens = if subject_words.starts_with(&["for", "each"]) {
+    let mut target_tokens = if word_slice_starts_with(&subject_words, &["for", "each"]) {
         &subject_tokens[2..]
     } else if subject_words.first() == Some(&"each") {
         &subject_tokens[1..]
@@ -127,75 +206,68 @@ pub(crate) fn parse_for_each_targeted_object_subject(
 }
 
 pub(crate) fn has_demonstrative_object_reference(words: &[&str]) -> bool {
-    words.windows(2).any(|window| {
-        matches!(
-            window,
-            ["that", "creature"]
-                | ["that", "creatures"]
-                | ["that", "permanent"]
-                | ["that", "permanents"]
-                | ["that", "artifact"]
-                | ["that", "artifacts"]
-                | ["that", "enchantment"]
-                | ["that", "enchantments"]
-                | ["that", "land"]
-                | ["that", "lands"]
-                | ["that", "card"]
-                | ["that", "cards"]
-                | ["that", "token"]
-                | ["that", "tokens"]
-                | ["that", "spell"]
-                | ["that", "spells"]
-                | ["those", "creatures"]
-                | ["those", "permanents"]
-                | ["those", "artifacts"]
-                | ["those", "enchantments"]
-                | ["those", "lands"]
-                | ["those", "cards"]
-                | ["those", "tokens"]
-                | ["those", "spells"]
-        )
-    })
+    word_slice_contains_sequence(words, &["that", "creature"])
+        || word_slice_contains_sequence(words, &["that", "creatures"])
+        || word_slice_contains_sequence(words, &["that", "permanent"])
+        || word_slice_contains_sequence(words, &["that", "permanents"])
+        || word_slice_contains_sequence(words, &["that", "artifact"])
+        || word_slice_contains_sequence(words, &["that", "artifacts"])
+        || word_slice_contains_sequence(words, &["that", "enchantment"])
+        || word_slice_contains_sequence(words, &["that", "enchantments"])
+        || word_slice_contains_sequence(words, &["that", "land"])
+        || word_slice_contains_sequence(words, &["that", "lands"])
+        || word_slice_contains_sequence(words, &["that", "card"])
+        || word_slice_contains_sequence(words, &["that", "cards"])
+        || word_slice_contains_sequence(words, &["that", "token"])
+        || word_slice_contains_sequence(words, &["that", "tokens"])
+        || word_slice_contains_sequence(words, &["that", "spell"])
+        || word_slice_contains_sequence(words, &["that", "spells"])
+        || word_slice_contains_sequence(words, &["those", "creatures"])
+        || word_slice_contains_sequence(words, &["those", "permanents"])
+        || word_slice_contains_sequence(words, &["those", "artifacts"])
+        || word_slice_contains_sequence(words, &["those", "enchantments"])
+        || word_slice_contains_sequence(words, &["those", "lands"])
+        || word_slice_contains_sequence(words, &["those", "cards"])
+        || word_slice_contains_sequence(words, &["those", "tokens"])
+        || word_slice_contains_sequence(words, &["those", "spells"])
 }
 
 pub(crate) fn is_target_player_dealt_damage_by_this_turn_subject(words: &[&str]) -> bool {
     if words.len() < 8 {
         return false;
     }
-    if !(words.starts_with(&["target", "player"]) || words.starts_with(&["target", "players"])) {
+    if !(word_slice_starts_with(words, &["target", "player"])
+        || word_slice_starts_with(words, &["target", "players"]))
+    {
         return false;
     }
-    words
-        .windows(6)
-        .any(|window| window == ["dealt", "damage", "by", "this", "creature", "this"])
-        && words.windows(2).any(|window| window == ["this", "turn"])
+    word_slice_contains_sequence(words, &["dealt", "damage", "by", "this", "creature", "this"])
+        && word_slice_contains_sequence(words, &["this", "turn"])
 }
 
 pub(crate) fn is_mana_replacement_clause_words(words: &[&str]) -> bool {
-    let has_if = words.contains(&"if");
-    let has_tap = words.contains(&"tap") || words.contains(&"taps");
-    let has_for_mana = words.windows(2).any(|window| window == ["for", "mana"]);
-    let has_produce = words.contains(&"produce") || words.contains(&"produces");
-    let has_instead = words.contains(&"instead");
+    let has_if = word_slice_contains(words, "if");
+    let has_tap = word_slice_contains(words, "tap") || word_slice_contains(words, "taps");
+    let has_for_mana = word_slice_contains_sequence(words, &["for", "mana"]);
+    let has_produce = word_slice_contains(words, "produce") || word_slice_contains(words, "produces");
+    let has_instead = word_slice_contains(words, "instead");
     has_if && has_tap && has_for_mana && has_produce && has_instead
 }
 
 pub(crate) fn is_mana_trigger_additional_clause_words(words: &[&str]) -> bool {
-    let has_whenever = words.contains(&"whenever");
-    let has_tap = words.contains(&"tap") || words.contains(&"taps");
-    let has_for_mana = words.windows(2).any(|window| window == ["for", "mana"]);
-    let has_add = words.contains(&"add") || words.contains(&"adds");
-    let has_additional = words.contains(&"additional");
+    let has_whenever = word_slice_contains(words, "whenever");
+    let has_tap = word_slice_contains(words, "tap") || word_slice_contains(words, "taps");
+    let has_for_mana = word_slice_contains_sequence(words, &["for", "mana"]);
+    let has_add = word_slice_contains(words, "add") || word_slice_contains(words, "adds");
+    let has_additional = word_slice_contains(words, "additional");
     has_whenever && has_tap && has_for_mana && has_add && has_additional
 }
 
 pub(crate) fn parse_has_base_power_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let words_all = words(tokens);
-    let Some(has_idx) = words_all
-        .iter()
-        .position(|word| *word == "has" || *word == "have")
+    let words_all = token_words(tokens);
+    let Some(has_idx) = find_word_index(&words_all, |word| word == "has" || word == "have")
     else {
         return Ok(None);
     };
@@ -203,19 +275,19 @@ pub(crate) fn parse_has_base_power_clause(
     if subject_tokens.is_empty() {
         return Ok(None);
     }
-    let subject_words = words(subject_tokens);
+    let subject_words = token_words(subject_tokens);
 
     let rest_words = &words_all[has_idx + 1..];
-    if rest_words.len() < 3 || !rest_words.starts_with(&["base", "power"]) {
+    if rest_words.len() < 3 || !word_slice_starts_with(rest_words, &["base", "power"]) {
         return Ok(None);
     }
     if rest_words.get(2).is_some_and(|word| *word == "and") {
         return Ok(None);
     }
 
-    let has_token_idx = tokens
-        .iter()
-        .position(|token| token.is_word("has") || token.is_word("have"))
+    let has_token_idx = find_token_index(tokens, |token| {
+        token.is_word("has") || token.is_word("have")
+    })
         .ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "missing has/have token in base-power clause (clause: '{}')",
@@ -250,12 +322,11 @@ pub(crate) fn parse_has_base_power_clause(
         .filter_map(OwnedLexToken::as_word)
         .collect();
     if tail_words.is_empty() {
-        let has_target_subject = subject_words.contains(&"target");
+        let has_target_subject = word_slice_contains(&subject_words, "target");
         let has_leading_until_eot = starts_with_until_end_of_turn(&subject_words);
         let has_temporal_words = contains_until_end_of_turn(&words_all)
-            || words_all
-                .windows(2)
-                .any(|window| window == ["this", "turn"] || window == ["next", "turn"]);
+            || word_slice_contains_sequence(&words_all, &["this", "turn"])
+            || word_slice_contains_sequence(&words_all, &["next", "turn"]);
         if !has_target_subject && !has_leading_until_eot && !has_temporal_words {
             return Ok(None);
         }
@@ -289,10 +360,8 @@ pub(crate) fn parse_has_base_power_clause(
 pub(crate) fn parse_has_base_power_toughness_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let words_all = words(tokens);
-    let Some(has_idx) = words_all
-        .iter()
-        .position(|word| *word == "has" || *word == "have")
+    let words_all = token_words(tokens);
+    let Some(has_idx) = find_word_index(&words_all, |word| word == "has" || word == "have")
     else {
         return Ok(None);
     };
@@ -300,10 +369,12 @@ pub(crate) fn parse_has_base_power_toughness_clause(
     if subject_tokens.is_empty() {
         return Ok(None);
     }
-    let subject_words = words(subject_tokens);
+    let subject_words = token_words(subject_tokens);
 
     let rest_words = &words_all[has_idx + 1..];
-    if rest_words.len() < 5 || !rest_words.starts_with(&["base", "power", "and", "toughness"]) {
+    if rest_words.len() < 5
+        || !word_slice_starts_with(rest_words, &["base", "power", "and", "toughness"])
+    {
         return Ok(None);
     }
 
@@ -316,12 +387,11 @@ pub(crate) fn parse_has_base_power_toughness_clause(
 
     let tail = &rest_words[5..];
     if tail.is_empty() {
-        let has_target_subject = subject_words.contains(&"target");
+        let has_target_subject = word_slice_contains(&subject_words, "target");
         let has_leading_until_eot = starts_with_until_end_of_turn(&subject_words);
         let has_temporal_words = contains_until_end_of_turn(&words_all)
-            || words_all
-                .windows(2)
-                .any(|window| window == ["this", "turn"] || window == ["next", "turn"]);
+            || word_slice_contains_sequence(&words_all, &["this", "turn"])
+            || word_slice_contains_sequence(&words_all, &["next", "turn"]);
         if !has_target_subject && !has_leading_until_eot && !has_temporal_words {
             return Ok(None);
         }
@@ -391,9 +461,9 @@ pub(crate) fn parse_get_for_each_count_value(
         ));
     }
 
-    let filter_words = words(filter_tokens);
-    if filter_words.starts_with(&["basic", "land", "type", "among"])
-        || filter_words.starts_with(&["basic", "land", "types", "among"])
+    let filter_words = token_words(filter_tokens);
+    if word_slice_starts_with(&filter_words, &["basic", "land", "type", "among"])
+        || word_slice_starts_with(&filter_words, &["basic", "land", "types", "among"])
     {
         let mut scope_tokens = &filter_tokens[4..];
         if scope_tokens
@@ -410,8 +480,8 @@ pub(crate) fn parse_get_for_each_count_value(
         let filter = parse_object_filter(scope_tokens, false)?;
         return Ok(Some(Value::BasicLandTypesAmong(filter)));
     }
-    if filter_words.starts_with(&["color", "among"])
-        || filter_words.starts_with(&["colors", "among"])
+    if word_slice_starts_with(&filter_words, &["color", "among"])
+        || word_slice_starts_with(&filter_words, &["colors", "among"])
     {
         let mut scope_tokens = &filter_tokens[2..];
         if scope_tokens
@@ -440,7 +510,7 @@ pub(crate) fn parse_get_modifier_values_with_tail(
     power: Value,
     toughness: Value,
 ) -> Result<(Value, Value, Until, Option<crate::ConditionExpr>), CardTextError> {
-    let clause = words(modifier_tokens).join(" ");
+    let clause = token_words(modifier_tokens).join(" ");
     let mut out_power = power;
     let mut out_toughness = toughness;
     let mut duration = Until::EndOfTurn;
@@ -451,14 +521,14 @@ pub(crate) fn parse_get_modifier_values_with_tail(
     }
 
     let after_modifier = &modifier_tokens[1..];
-    let after_modifier_words = words(after_modifier);
+    let after_modifier_words = token_words(after_modifier);
     let until_word_count = if starts_with_until_end_of_turn(&after_modifier_words) {
         duration = Until::EndOfTurn;
         4usize
-    } else if after_modifier_words.starts_with(&["until", "your", "next", "turn"]) {
+    } else if word_slice_starts_with(&after_modifier_words, &["until", "your", "next", "turn"]) {
         duration = Until::YourNextTurn;
         4usize
-    } else if after_modifier_words.starts_with(&["until", "end", "of", "combat"]) {
+    } else if word_slice_starts_with(&after_modifier_words, &["until", "end", "of", "combat"]) {
         duration = Until::EndOfCombat;
         4usize
     } else {
@@ -472,17 +542,17 @@ pub(crate) fn parse_get_modifier_values_with_tail(
         return Ok((out_power, out_toughness, duration, condition));
     }
 
-    let tail_words = words(&tail_tokens);
+    let tail_words = token_words(&tail_tokens);
     if tail_words.as_slice() == ["instead"] {
         return Ok((out_power, out_toughness, duration, condition));
     }
-    if tail_words.starts_with(&["instead", "if"]) {
+    if word_slice_starts_with(&tail_words, &["instead", "if"]) {
         return Ok((out_power, out_toughness, duration, condition));
     }
-    if tail_words.starts_with(&["for", "as", "long", "as"])
-        && tail_words.contains(&"this")
-        && tail_words.contains(&"remains")
-        && tail_words.contains(&"tapped")
+    if word_slice_starts_with(&tail_words, &["for", "as", "long", "as"])
+        && word_slice_contains(&tail_words, "this")
+        && word_slice_contains(&tail_words, "remains")
+        && word_slice_contains(&tail_words, "tapped")
     {
         condition = Some(crate::ConditionExpr::SourceIsTapped);
         return Ok((
@@ -507,7 +577,7 @@ pub(crate) fn parse_get_modifier_values_with_tail(
             return Ok((out_power, out_toughness, duration, condition));
         }
     }
-    if tail_words.starts_with(&["for", "each"])
+    if word_slice_starts_with(&tail_words, &["for", "each"])
         && let Some(count) = parse_get_for_each_count_value(&tail_tokens)?
     {
         let scale_modifier = |modifier: Value| -> Result<Value, CardTextError> {
@@ -528,7 +598,7 @@ pub(crate) fn parse_get_modifier_values_with_tail(
         out_toughness = scale_modifier(out_toughness)?;
         return Ok((out_power, out_toughness, duration, condition));
     }
-    if !tail_words.starts_with(&["where", "x", "is"]) {
+    if !word_slice_starts_with(&tail_words, &["where", "x", "is"]) {
         return Err(CardTextError::ParseError(format!(
             "unsupported trailing gets clause (clause: '{}')",
             clause
@@ -575,21 +645,21 @@ pub(crate) fn parse_for_each_opponent_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let mut clause_tokens = tokens;
-    let mut clause_words = words(clause_tokens);
+    let mut clause_words = token_words(clause_tokens);
     if clause_words.first().copied() == Some("then") {
         clause_tokens = &clause_tokens[1..];
-        clause_words = words(clause_tokens);
+        clause_words = token_words(clause_tokens);
     }
     if clause_words.len() < 2 {
         return Ok(None);
     }
 
-    let start = if clause_words.starts_with(&["for", "each", "opponent"])
-        || clause_words.starts_with(&["for", "each", "opponents"])
+    let start = if word_slice_starts_with(&clause_words, &["for", "each", "opponent"])
+        || word_slice_starts_with(&clause_words, &["for", "each", "opponents"])
     {
         3
-    } else if clause_words.starts_with(&["each", "opponent"])
-        || clause_words.starts_with(&["each", "opponents"])
+    } else if word_slice_starts_with(&clause_words, &["each", "opponent"])
+        || word_slice_starts_with(&clause_words, &["each", "opponents"])
     {
         2
     } else {
@@ -597,9 +667,9 @@ pub(crate) fn parse_for_each_opponent_clause(
     };
 
     let mut inner_tokens = trim_commas(&clause_tokens[start..]).to_vec();
-    let inner_words = words(&inner_tokens);
+    let inner_words = token_words(&inner_tokens);
     let mut iteration_filter = PlayerFilter::Opponent;
-    if inner_words.starts_with(&["other", "than", "defending", "player"]) {
+    if word_slice_starts_with(&inner_words, &["other", "than", "defending", "player"]) {
         let strip_start =
             token_index_for_word_index(&inner_tokens, 4).unwrap_or(inner_tokens.len());
         inner_tokens = trim_commas(&inner_tokens[strip_start..]).to_vec();
@@ -615,8 +685,8 @@ pub(crate) fn parse_for_each_opponent_clause(
             }
         }
     };
-    let inner_words = words(&inner_tokens);
-    if inner_words.starts_with(&["who", "has", "less", "life", "than", "you"]) {
+    let inner_words = token_words(&inner_tokens);
+    if word_slice_starts_with(&inner_words, &["who", "has", "less", "life", "than", "you"]) {
         let effect_start =
             token_index_for_word_index(&inner_tokens, 6).unwrap_or(inner_tokens.len());
         let effect_tokens = trim_commas(&inner_tokens[effect_start..]);
@@ -647,13 +717,11 @@ pub(crate) fn parse_for_each_opponent_clause(
     if inner_words.first().copied() == Some("who")
         && let Some((negation_idx, negation_len)) = negated_action_word_index(&inner_words)
     {
-        let effect_token_start =
-            if let Some(comma_idx) = inner_tokens.iter().position(|token| token.is_comma()) {
+        let effect_token_start = if let Some(comma_idx) =
+            find_token_index(&inner_tokens, |token| token.is_comma())
+        {
                 comma_idx + 1
-            } else if let Some(this_way_idx) = inner_words
-                .windows(2)
-                .position(|pair| pair == ["this", "way"])
-            {
+            } else if let Some(this_way_idx) = find_word_sequence_index(&inner_words, &["this", "way"]) {
                 token_index_for_word_index(&inner_tokens, this_way_idx + 2)
                     .unwrap_or(inner_tokens.len())
             } else {
@@ -676,9 +744,7 @@ pub(crate) fn parse_for_each_opponent_clause(
     }
 
     if inner_words.first().copied() == Some("who")
-        && let Some(this_way_idx) = inner_words
-            .windows(2)
-            .position(|window| window == ["this", "way"])
+        && let Some(this_way_idx) = find_word_sequence_index(&inner_words, &["this", "way"])
     {
         let effect_start = this_way_idx + 2;
         let effect_token_start =
@@ -694,12 +760,12 @@ pub(crate) fn parse_for_each_opponent_clause(
         let predicate = parse_who_did_this_way_predicate(&inner_tokens)?;
         return Ok(Some(EffectAst::ForEachOpponentDid { effects, predicate }));
     }
-    if inner_words.starts_with(&["who", "does"])
-        || inner_words.starts_with(&["who", "do"])
-        || inner_words.starts_with(&["who", "did"])
+    if word_slice_starts_with(&inner_words, &["who", "does"])
+        || word_slice_starts_with(&inner_words, &["who", "do"])
+        || word_slice_starts_with(&inner_words, &["who", "did"])
     {
         let effect_token_start =
-            if let Some(comma_idx) = inner_tokens.iter().position(|token| token.is_comma()) {
+            if let Some(comma_idx) = find_token_index(&inner_tokens, |token| token.is_comma()) {
                 comma_idx + 1
             } else {
                 token_index_for_word_index(&inner_tokens, 2).unwrap_or(inner_tokens.len())
@@ -721,18 +787,9 @@ pub(crate) fn parse_for_each_opponent_clause(
         }));
     }
 
-    let inner_words = words(&inner_tokens);
+    let inner_words = token_words(&inner_tokens);
     if inner_words.first().copied() == Some("who") {
-        let tapped_land_turn_idx = inner_words
-            .windows(7)
-            .position(|window| window == ["tapped", "a", "land", "for", "mana", "this", "turn"])
-            .map(|idx| idx + 6)
-            .or_else(|| {
-                inner_words
-                    .windows(6)
-                    .position(|window| window == ["tapped", "land", "for", "mana", "this", "turn"])
-                    .map(|idx| idx + 5)
-            });
+        let tapped_land_turn_idx = find_tapped_land_for_mana_this_turn_end(&inner_words);
         if let Some(turn_idx) = tapped_land_turn_idx {
             let effect_token_start = token_index_for_word_index(&inner_tokens, turn_idx + 1)
                 .unwrap_or(inner_tokens.len());
@@ -766,13 +823,11 @@ pub(crate) fn parse_for_each_opponent_clause(
     if inner_words.first().copied() == Some("who")
         && let Some((negation_idx, negation_len)) = negated_action_word_index(&inner_words)
     {
-        let effect_token_start =
-            if let Some(comma_idx) = inner_tokens.iter().position(|token| token.is_comma()) {
+        let effect_token_start = if let Some(comma_idx) =
+            find_token_index(&inner_tokens, |token| token.is_comma())
+        {
                 comma_idx + 1
-            } else if let Some(this_way_idx) = inner_words
-                .windows(2)
-                .position(|pair| pair == ["this", "way"])
-            {
+            } else if let Some(this_way_idx) = find_word_sequence_index(&inner_words, &["this", "way"]) {
                 token_index_for_word_index(&inner_tokens, this_way_idx + 2)
                     .unwrap_or(inner_tokens.len())
             } else {
@@ -791,9 +846,7 @@ pub(crate) fn parse_for_each_opponent_clause(
         return Ok(Some(EffectAst::ForEachPlayerDoesNot { effects, predicate }));
     }
     if inner_words.first().copied() == Some("who")
-        && let Some(this_way_idx) = inner_words
-            .windows(2)
-            .position(|window| window == ["this", "way"])
+        && let Some(this_way_idx) = find_word_sequence_index(&inner_words, &["this", "way"])
     {
         let effect_start = this_way_idx + 2;
         let effect_token_start =
@@ -809,12 +862,12 @@ pub(crate) fn parse_for_each_opponent_clause(
         let predicate = parse_who_did_this_way_predicate(&inner_tokens)?;
         return Ok(Some(EffectAst::ForEachPlayerDid { effects, predicate }));
     }
-    if inner_words.starts_with(&["who", "does"])
-        || inner_words.starts_with(&["who", "do"])
-        || inner_words.starts_with(&["who", "did"])
+    if word_slice_starts_with(&inner_words, &["who", "does"])
+        || word_slice_starts_with(&inner_words, &["who", "do"])
+        || word_slice_starts_with(&inner_words, &["who", "did"])
     {
         let effect_token_start =
-            if let Some(comma_idx) = inner_tokens.iter().position(|token| token.is_comma()) {
+            if let Some(comma_idx) = find_token_index(&inner_tokens, |token| token.is_comma()) {
                 comma_idx + 1
             } else {
                 token_index_for_word_index(&inner_tokens, 2).unwrap_or(inner_tokens.len())
@@ -836,18 +889,9 @@ pub(crate) fn parse_for_each_opponent_clause(
         }));
     }
 
-    let inner_words = words(&inner_tokens);
+    let inner_words = token_words(&inner_tokens);
     if inner_words.first().copied() == Some("who") {
-        let tapped_land_turn_idx = inner_words
-            .windows(7)
-            .position(|window| window == ["tapped", "a", "land", "for", "mana", "this", "turn"])
-            .map(|idx| idx + 6)
-            .or_else(|| {
-                inner_words
-                    .windows(6)
-                    .position(|window| window == ["tapped", "land", "for", "mana", "this", "turn"])
-                    .map(|idx| idx + 5)
-            });
+        let tapped_land_turn_idx = find_tapped_land_for_mana_this_turn_end(&inner_words);
         if let Some(turn_idx) = tapped_land_turn_idx {
             let effect_token_start = token_index_for_word_index(&inner_tokens, turn_idx + 1)
                 .unwrap_or(inner_tokens.len());
@@ -881,13 +925,11 @@ pub(crate) fn parse_for_each_opponent_clause(
     if inner_words.first().copied() == Some("who")
         && let Some((negation_idx, negation_len)) = negated_action_word_index(&inner_words)
     {
-        let effect_token_start =
-            if let Some(comma_idx) = inner_tokens.iter().position(|token| token.is_comma()) {
+        let effect_token_start = if let Some(comma_idx) =
+            find_token_index(&inner_tokens, |token| token.is_comma())
+        {
                 comma_idx + 1
-            } else if let Some(this_way_idx) = inner_words
-                .windows(2)
-                .position(|pair| pair == ["this", "way"])
-            {
+            } else if let Some(this_way_idx) = find_word_sequence_index(&inner_words, &["this", "way"]) {
                 token_index_for_word_index(&inner_tokens, this_way_idx + 2)
                     .unwrap_or(inner_tokens.len())
             } else {
@@ -906,9 +948,7 @@ pub(crate) fn parse_for_each_opponent_clause(
         return Ok(Some(EffectAst::ForEachPlayerDoesNot { effects, predicate }));
     }
     if inner_words.first().copied() == Some("who")
-        && let Some(this_way_idx) = inner_words
-            .windows(2)
-            .position(|window| window == ["this", "way"])
+        && let Some(this_way_idx) = find_word_sequence_index(&inner_words, &["this", "way"])
     {
         let effect_start = this_way_idx + 2;
         let effect_token_start =
@@ -924,12 +964,12 @@ pub(crate) fn parse_for_each_opponent_clause(
         let predicate = parse_who_did_this_way_predicate(&inner_tokens)?;
         return Ok(Some(EffectAst::ForEachPlayerDid { effects, predicate }));
     }
-    if inner_words.starts_with(&["who", "does"])
-        || inner_words.starts_with(&["who", "do"])
-        || inner_words.starts_with(&["who", "did"])
+    if word_slice_starts_with(&inner_words, &["who", "does"])
+        || word_slice_starts_with(&inner_words, &["who", "do"])
+        || word_slice_starts_with(&inner_words, &["who", "did"])
     {
         let effect_token_start =
-            if let Some(comma_idx) = inner_tokens.iter().position(|token| token.is_comma()) {
+            if let Some(comma_idx) = find_token_index(&inner_tokens, |token| token.is_comma()) {
                 comma_idx + 1
             } else {
                 token_index_for_word_index(&inner_tokens, 2).unwrap_or(inner_tokens.len())
@@ -967,10 +1007,10 @@ pub(crate) fn parse_for_each_target_players_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let mut clause_tokens = tokens;
-    let mut clause_words = words(clause_tokens);
+    let mut clause_words = token_words(clause_tokens);
     if clause_words.first().copied() == Some("then") {
         clause_tokens = &clause_tokens[1..];
-        clause_words = words(clause_tokens);
+        clause_words = token_words(clause_tokens);
     }
     if clause_words.len() < 4 {
         return Ok(None);
@@ -978,10 +1018,10 @@ pub(crate) fn parse_for_each_target_players_clause(
 
     let mut start = 0usize;
     let mut count = ChoiceCount::exactly(1);
-    if clause_words.starts_with(&["any", "number", "of"]) {
+    if word_slice_starts_with(&clause_words, &["any", "number", "of"]) {
         count = ChoiceCount::any_number();
         start = 3;
-    } else if clause_words.starts_with(&["up", "to"])
+    } else if word_slice_starts_with(&clause_words, &["up", "to"])
         && let Some((value, used)) = parse_number(&clause_tokens[2..])
     {
         count = ChoiceCount::up_to(value as usize);
@@ -1040,13 +1080,11 @@ pub(crate) fn parse_for_each_target_players_clause(
 pub(crate) fn parse_who_did_this_way_predicate(
     inner_tokens: &[OwnedLexToken],
 ) -> Result<Option<PredicateAst>, CardTextError> {
-    let inner_words = words(inner_tokens);
+    let inner_words = token_words(inner_tokens);
     if inner_words.first().copied() != Some("who") {
         return Ok(None);
     }
-    let Some(this_way_idx) = inner_words
-        .windows(2)
-        .position(|window| window == ["this", "way"])
+    let Some(this_way_idx) = find_word_sequence_index(&inner_words, &["this", "way"])
     else {
         return Ok(None);
     };
@@ -1079,13 +1117,11 @@ pub(crate) fn parse_who_did_this_way_predicate(
 fn parse_negated_who_this_way_predicate(
     inner_tokens: &[OwnedLexToken],
 ) -> Result<Option<PredicateAst>, CardTextError> {
-    let inner_words = words(inner_tokens);
+    let inner_words = token_words(inner_tokens);
     if inner_words.first().copied() != Some("who") {
         return Ok(None);
     }
-    let Some(this_way_idx) = inner_words
-        .windows(2)
-        .position(|window| window == ["this", "way"])
+    let Some(this_way_idx) = find_word_sequence_index(&inner_words, &["this", "way"])
     else {
         return Ok(None);
     };
@@ -1127,21 +1163,21 @@ pub(crate) fn parse_for_each_player_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let mut clause_tokens = tokens;
-    let mut clause_words = words(clause_tokens);
+    let mut clause_words = token_words(clause_tokens);
     if clause_words.first().copied() == Some("then") {
         clause_tokens = &clause_tokens[1..];
-        clause_words = words(clause_tokens);
+        clause_words = token_words(clause_tokens);
     }
     if clause_words.len() < 2 {
         return Ok(None);
     }
 
-    let start = if clause_words.starts_with(&["for", "each", "player"])
-        || clause_words.starts_with(&["for", "each", "players"])
+    let start = if word_slice_starts_with(&clause_words, &["for", "each", "player"])
+        || word_slice_starts_with(&clause_words, &["for", "each", "players"])
     {
         3
-    } else if clause_words.starts_with(&["each", "player"])
-        || clause_words.starts_with(&["each", "players"])
+    } else if word_slice_starts_with(&clause_words, &["each", "player"])
+        || word_slice_starts_with(&clause_words, &["each", "players"])
     {
         2
     } else {
@@ -1178,13 +1214,13 @@ pub(crate) fn parse_for_each_player_clause(
                 clause_words.join(" ")
             )));
         }
-        let filter_words = words(&filter_tokens);
+        let filter_words = token_words(&filter_tokens);
         let (controls_most, normalized_filter_tokens) =
-            if filter_words.starts_with(&["the", "most"]) {
+            if word_slice_starts_with(&filter_words, &["the", "most"]) {
                 let start_idx =
                     token_index_for_word_index(&filter_tokens, 2).unwrap_or(filter_tokens.len());
                 (true, trim_commas(&filter_tokens[start_idx..]))
-            } else if filter_words.starts_with(&["most"]) {
+            } else if word_slice_starts_with(&filter_words, &["most"]) {
                 let start_idx =
                     token_index_for_word_index(&filter_tokens, 1).unwrap_or(filter_tokens.len());
                 (true, trim_commas(&filter_tokens[start_idx..]))
@@ -1229,18 +1265,9 @@ pub(crate) fn parse_for_each_player_clause(
         return Ok(Some(EffectAst::ForEachPlayer { effects }));
     }
 
-    let inner_words = words(&inner_tokens);
+    let inner_words = token_words(&inner_tokens);
     if inner_words.first().copied() == Some("who") {
-        let tapped_land_turn_idx = inner_words
-            .windows(7)
-            .position(|window| window == ["tapped", "a", "land", "for", "mana", "this", "turn"])
-            .map(|idx| idx + 6)
-            .or_else(|| {
-                inner_words
-                    .windows(6)
-                    .position(|window| window == ["tapped", "land", "for", "mana", "this", "turn"])
-                    .map(|idx| idx + 5)
-            });
+        let tapped_land_turn_idx = find_tapped_land_for_mana_this_turn_end(&inner_words);
         if let Some(turn_idx) = tapped_land_turn_idx {
             let effect_token_start = token_index_for_word_index(&inner_tokens, turn_idx + 1)
                 .unwrap_or(inner_tokens.len());
@@ -1274,13 +1301,11 @@ pub(crate) fn parse_for_each_player_clause(
     if inner_words.first().copied() == Some("who")
         && let Some((negation_idx, negation_len)) = negated_action_word_index(&inner_words)
     {
-        let effect_token_start =
-            if let Some(comma_idx) = inner_tokens.iter().position(|token| token.is_comma()) {
+        let effect_token_start = if let Some(comma_idx) =
+            find_token_index(&inner_tokens, |token| token.is_comma())
+        {
                 comma_idx + 1
-            } else if let Some(this_way_idx) = inner_words
-                .windows(2)
-                .position(|pair| pair == ["this", "way"])
-            {
+            } else if let Some(this_way_idx) = find_word_sequence_index(&inner_words, &["this", "way"]) {
                 token_index_for_word_index(&inner_tokens, this_way_idx + 2)
                     .unwrap_or(inner_tokens.len())
             } else {
@@ -1299,9 +1324,7 @@ pub(crate) fn parse_for_each_player_clause(
         return Ok(Some(EffectAst::ForEachPlayerDoesNot { effects, predicate }));
     }
     if inner_words.first().copied() == Some("who")
-        && let Some(this_way_idx) = inner_words
-            .windows(2)
-            .position(|window| window == ["this", "way"])
+        && let Some(this_way_idx) = find_word_sequence_index(&inner_words, &["this", "way"])
     {
         let effect_start = this_way_idx + 2;
         let effect_token_start =
@@ -1317,12 +1340,12 @@ pub(crate) fn parse_for_each_player_clause(
         let predicate = parse_who_did_this_way_predicate(&inner_tokens)?;
         return Ok(Some(EffectAst::ForEachPlayerDid { effects, predicate }));
     }
-    if inner_words.starts_with(&["who", "does"])
-        || inner_words.starts_with(&["who", "do"])
-        || inner_words.starts_with(&["who", "did"])
+    if word_slice_starts_with(&inner_words, &["who", "does"])
+        || word_slice_starts_with(&inner_words, &["who", "do"])
+        || word_slice_starts_with(&inner_words, &["who", "did"])
     {
         let effect_token_start =
-            if let Some(comma_idx) = inner_tokens.iter().position(|token| token.is_comma()) {
+            if let Some(comma_idx) = find_token_index(&inner_tokens, |token| token.is_comma()) {
                 comma_idx + 1
             } else {
                 token_index_for_word_index(&inner_tokens, 2).unwrap_or(inner_tokens.len())

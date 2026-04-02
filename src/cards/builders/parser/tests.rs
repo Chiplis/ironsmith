@@ -10,7 +10,8 @@ use std::path::{Path, PathBuf};
 use super::{
     LexCursor, LowercaseWordView, RewriteKeywordLineKind, RewriteSemanticItem, lex_line,
     lexed_words, lower_activation_cost_cst, parse_activate_only_timing_lexed,
-    parse_activation_condition_lexed, parse_activation_cost_rewrite, parse_cant_effect_sentence,
+    parse_activation_condition_lexed, parse_activation_cost_rewrite,
+    parse_activation_cost_tokens_rewrite, parse_cant_effect_sentence,
     parse_cant_effect_sentence_lexed, parse_cost_reduction_line, parse_count_word_rewrite,
     parse_effect_sentence_lexed, parse_mana_symbol_group_rewrite,
     parse_mana_usage_restriction_sentence_lexed, parse_restriction_duration,
@@ -18,6 +19,18 @@ use super::{
     parse_text_with_annotations_lowered, parse_triggered_times_each_turn_lexed,
     parse_type_line_rewrite, split_lexed_sentences,
 };
+
+fn rewrite_line_info(text: &str) -> super::LineInfo {
+    super::LineInfo {
+        line_index: 0,
+        raw_line: text.to_string(),
+        normalized: super::NormalizedLine {
+            original: text.to_string(),
+            normalized: text.to_string(),
+            char_map: Vec::new(),
+        },
+    }
+}
 
 #[test]
 fn rewrite_lexer_tracks_spans_for_activation_lines() {
@@ -109,6 +122,36 @@ fn rewrite_sentence_splitter_ignores_single_quotes_inside_double_quotes() {
 }
 
 #[test]
+fn rewrite_modal_header_parser_tracks_unchosen_turn_scope() {
+    let text = "Whenever another creature you control enters, choose one that hasn't been chosen this turn —";
+    let header = super::modal_support::parse_modal_header(&rewrite_line_info(text))
+        .expect("modal header should parse")
+        .expect("modal header should be recognized");
+
+    assert!(header.trigger.is_some(), "{header:?}");
+    assert!(header.mode_must_be_unchosen, "{header:?}");
+    assert!(header.mode_must_be_unchosen_this_turn, "{header:?}");
+}
+
+#[test]
+fn rewrite_modal_header_parser_keeps_prefix_effect_and_result_gate() {
+    let text = "Whenever this creature enters or attacks, draw a card. If you do, choose one —";
+    let header = super::modal_support::parse_modal_header(&rewrite_line_info(text))
+        .expect("modal header should parse")
+        .expect("modal header should be recognized");
+
+    assert!(header.trigger.is_some(), "{header:?}");
+    assert!(!header.prefix_effects_ast.is_empty(), "{header:?}");
+    assert!(matches!(
+        header.modal_gate,
+        Some(crate::cards::builders::ParsedModalGate {
+            predicate: crate::effect::EffectPredicate::Happened,
+            remove_mode_only: false,
+        })
+    ));
+}
+
+#[test]
 fn rewrite_lowercase_word_view_caches_lower_words_and_word_token_indices() {
     let tokens = lex_line("Activate only during your turn.", 0)
         .expect("rewrite lexer should classify restriction text");
@@ -144,6 +187,32 @@ fn rewrite_lowercase_word_view_normalizes_compat_style_word_shapes() {
 }
 
 #[test]
+fn rewrite_lowercase_word_view_find_preserves_word_indices() {
+    let tokens = lex_line("Whenever one or more cards are exiled this way", 0)
+        .expect("rewrite lexer should classify followup text");
+    let words = LowercaseWordView::new(&tokens);
+
+    assert_eq!(words.find("whenever"), Some(0));
+    assert_eq!(words.find("this"), Some(7));
+    assert_eq!(words.find("way"), Some(8));
+}
+
+#[test]
+fn rewrite_parser_support_detects_this_way_followup_intro() {
+    let tokens = lex_line("Whenever one or more cards are exiled this way", 0)
+        .expect("rewrite lexer should classify followup text");
+    let plain_tokens = lex_line("Whenever one or more cards are exiled", 0)
+        .expect("rewrite lexer should classify non-followup text");
+
+    assert!(super::looks_like_spell_resolution_followup_intro_lexed(
+        &tokens
+    ));
+    assert!(!super::looks_like_spell_resolution_followup_intro_lexed(
+        &plain_tokens
+    ));
+}
+
+#[test]
 fn rewrite_lexed_restriction_parsers_match_activation_trigger_and_mana_shapes() {
     let activate_only = lex_line("Activate only during your turn.", 0)
         .expect("rewrite lexer should classify activation restriction");
@@ -172,6 +241,179 @@ fn rewrite_lexed_restriction_parsers_match_activation_trigger_and_mana_shapes() 
             ),
             grant_uncounterable: true,
         }) if card_types == vec![CardType::Artifact]
+    ));
+}
+
+#[test]
+fn rewrite_restriction_support_preserves_text_only_attack_conditions() {
+    let mut attacked_ability = crate::ability::ActivatedAbility {
+        mana_cost: crate::cost::TotalCost::default(),
+        effects: crate::resolution::ResolutionProgram::default(),
+        choices: vec![],
+        timing: crate::ability::ActivationTiming::AnyTime,
+        additional_restrictions: vec![],
+        activation_restrictions: vec![],
+        mana_output: None,
+        activation_condition: None,
+        mana_usage_restrictions: vec![],
+    };
+    super::restriction_support::apply_pending_activation_restriction(
+        &mut attacked_ability,
+        "Activate only once each turn and only if this creature attacked this turn",
+    );
+
+    assert_eq!(
+        attacked_ability.timing,
+        crate::ability::ActivationTiming::OncePerTurn
+    );
+    assert_eq!(
+        attacked_ability.additional_restrictions,
+        vec!["only if this creature attacked this turn".to_string()]
+    );
+    assert!(attacked_ability
+        .activation_restrictions
+        .iter()
+        .any(|condition| matches!(condition, crate::ConditionExpr::SourceAttackedThisTurn)));
+
+    let mut didnt_attack_ability = crate::ability::ActivatedAbility {
+        mana_cost: crate::cost::TotalCost::default(),
+        effects: crate::resolution::ResolutionProgram::default(),
+        choices: vec![],
+        timing: crate::ability::ActivationTiming::AnyTime,
+        additional_restrictions: vec![],
+        activation_restrictions: vec![],
+        mana_output: None,
+        activation_condition: None,
+        mana_usage_restrictions: vec![],
+    };
+    super::restriction_support::apply_pending_activation_restriction(
+        &mut didnt_attack_ability,
+        "Activate only if it didn't attack this turn and only once each turn",
+    );
+
+    assert_eq!(
+        didnt_attack_ability.timing,
+        crate::ability::ActivationTiming::OncePerTurn
+    );
+    assert_eq!(
+        didnt_attack_ability.additional_restrictions,
+        vec!["activate only if it didn't attack this turn".to_string()]
+    );
+    assert!(didnt_attack_ability
+        .activation_restrictions
+        .iter()
+        .any(|condition| matches!(
+            condition,
+            crate::ConditionExpr::Not(inner)
+                if matches!(inner.as_ref(), crate::ConditionExpr::SourceAttackedThisTurn)
+        )));
+}
+
+#[test]
+fn rewrite_zone_counter_helpers_parse_put_or_remove_counter_modes() {
+    let tokens = lex_line(
+        "Put a +1/+1 counter on target creature or remove a counter from it",
+        0,
+    )
+    .expect("rewrite lexer should classify put-or-remove counter clause");
+
+    let parsed =
+        super::parse_effect_sentence_lexed(&tokens).expect("put-or-remove counter clause should parse");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("UnlessAction"), "{debug}");
+    assert!(debug.contains("PutCounters"), "{debug}");
+    assert!(debug.contains("RemoveUpToAnyCounters"), "{debug}");
+    assert!(debug.contains("PlusOnePlusOne"), "{debug}");
+}
+
+#[test]
+fn rewrite_zone_counter_helpers_parse_multiple_counter_sentence() {
+    let tokens = lex_line("Put a +1/+1 counter and a flying counter on target creature", 0)
+        .expect("rewrite lexer should classify multi-counter clause");
+
+    let parsed = super::parse_sentence_put_multiple_counters_on_target(&tokens)
+        .expect("multi-counter clause should parse");
+
+    assert_eq!(parsed.as_ref().map(Vec::len), Some(2), "{parsed:?}");
+}
+
+#[test]
+fn rewrite_zone_counter_helpers_parse_half_starting_life_total_variants() {
+    let your_tokens = lex_line("half your starting life total", 0)
+        .expect("rewrite lexer should classify half-life value");
+    let target_tokens = lex_line("half target player's starting life total rounded down", 0)
+        .expect("rewrite lexer should classify rounded-down half-life value");
+
+    assert_eq!(
+        super::parse_half_starting_life_total_value(
+            &your_tokens,
+            crate::cards::builders::PlayerAst::Implicit,
+        ),
+        Some(crate::effect::Value::HalfStartingLifeTotalRoundedUp(
+            crate::target::PlayerFilter::You,
+        ))
+    );
+    assert_eq!(
+        super::parse_half_starting_life_total_value(
+            &target_tokens,
+            crate::cards::builders::PlayerAst::Target,
+        ),
+        Some(crate::effect::Value::HalfStartingLifeTotalRoundedDown(
+            crate::target::PlayerFilter::target_player(),
+        ))
+    );
+}
+
+#[test]
+fn rewrite_activation_helpers_cover_color_choice_mana_helpers() {
+    let or_tokens =
+        lex_line("{W}, {U}, or {B}", 0).expect("rewrite lexer should classify color choices");
+    let combination_tokens = lex_line("any combination of {W}, {U}, or {R}", 0)
+        .expect("rewrite lexer should classify any-combination mana");
+    let land_filter_tokens = lex_line("that a land an opponent controls could produce", 0)
+        .expect("rewrite lexer should classify land filter tail");
+
+    assert_eq!(
+        super::activation_helpers::parse_or_mana_color_choices(&or_tokens)
+            .expect("or-choice mana colors should parse"),
+        Some(vec![
+            crate::color::Color::White,
+            crate::color::Color::Blue,
+            crate::color::Color::Black,
+        ])
+    );
+    assert_eq!(
+        super::activation_helpers::parse_any_combination_mana_colors(&combination_tokens)
+            .expect("any-combination mana colors should parse"),
+        Some(vec![
+            crate::color::Color::White,
+            crate::color::Color::Blue,
+            crate::color::Color::Red,
+        ])
+    );
+    assert!(matches!(
+        super::activation_helpers::parse_land_could_produce_filter(&land_filter_tokens)
+            .expect("land could produce tail should parse"),
+        Some(filter)
+            if filter.card_types == vec![CardType::Land]
+                && filter.controller == Some(crate::target::PlayerFilter::Opponent)
+    ));
+}
+
+#[test]
+fn rewrite_activation_helpers_parse_add_mana_preserves_chosen_color_tail() {
+    let tokens = lex_line("{R} or one mana of the chosen color", 0)
+        .expect("rewrite lexer should classify chosen-color mana clause");
+
+    assert!(matches!(
+        super::activation_helpers::parse_add_mana(&tokens, None)
+            .expect("chosen-color mana clause should parse"),
+        crate::cards::builders::EffectAst::AddManaChosenColor {
+            amount: crate::effect::Value::Fixed(1),
+            player: crate::cards::builders::PlayerAst::Implicit,
+            fixed_option: Some(crate::color::Color::Red),
+        }
     ));
 }
 
@@ -397,25 +639,31 @@ fn semantic_document_supports_next_turn_silence() {
 
 #[test]
 fn rewrite_lexed_restriction_duration_matches_wrapper_shapes() {
-    let text = "Target creature can't attack this turn.";
-    let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
-    let lexed = lex_line(text, 0).expect("rewrite lexer should classify restriction duration");
+    for text in [
+        "Target creature can't attack this turn.",
+        "Until your next turn, target creature can't attack.",
+        "Target creature can't attack until end of combat.",
+        "Lands you control don't untap during your next untap step.",
+    ] {
+        let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
+        let lexed = lex_line(text, 0).expect("rewrite lexer should classify restriction duration");
 
-    let native = parse_restriction_duration_lexed(&lexed)
-        .expect("lexed restriction duration should parse")
-        .expect("lexed restriction duration should be present");
-    let wrapper = parse_restriction_duration(&compat)
-        .expect("wrapper restriction duration should parse")
-        .expect("wrapper restriction duration should be present");
+        let native = parse_restriction_duration_lexed(&lexed)
+            .expect("lexed restriction duration should parse")
+            .expect("lexed restriction duration should be present");
+        let wrapper = parse_restriction_duration(&compat)
+            .expect("wrapper restriction duration should parse")
+            .expect("wrapper restriction duration should be present");
 
-    assert_eq!(native.0, wrapper.0);
-    let native_word_view = LowercaseWordView::new(&native.1);
-    let native_words = native_word_view.to_word_refs();
-    assert_eq!(
-        native_words,
-        crate::cards::builders::parser::util::words(&wrapper.1),
-        "lexed restriction duration remainder should match wrapper words"
-    );
+        assert_eq!(native.0, wrapper.0, "{text}");
+        let native_word_view = LowercaseWordView::new(&native.1);
+        let native_words = native_word_view.to_word_refs();
+        assert_eq!(
+            native_words,
+            crate::cards::builders::parser::util::words(&wrapper.1),
+            "{text}"
+        );
+    }
 }
 
 fn collect_rust_files(dir: &Path, files: &mut Vec<PathBuf>) {
@@ -474,6 +722,11 @@ fn rewrite_lexed_value_helpers_cover_offset_and_aggregate_counts() {
         .expect("rewrite lexer should classify offset count-value clause");
     let aggregate_tokens = lex_line("equal to the greatest power among creatures you control", 0)
         .expect("rewrite lexer should classify aggregate-value clause");
+    let spells_cast_tokens = lex_line(
+        "equal to the number of instant spells you cast this turn",
+        0,
+    )
+    .expect("rewrite lexer should classify spells-cast count-value clause");
 
     assert!(matches!(
         super::value_helpers::parse_equal_to_number_of_filter_plus_or_minus_fixed_value_lexed(
@@ -488,6 +741,12 @@ fn rewrite_lexed_value_helpers_cover_offset_and_aggregate_counts() {
         Some(crate::effect::Value::GreatestPower(filter))
             if filter.card_types == vec![CardType::Creature]
                 && filter.controller == Some(crate::target::PlayerFilter::You)
+    ));
+    assert!(matches!(
+        super::value_helpers::parse_equal_to_number_of_filter_value_lexed(&spells_cast_tokens),
+        Some(crate::effect::Value::SpellsCastThisTurnMatching { player, filter, .. })
+            if player == crate::target::PlayerFilter::You
+                && filter.card_types == vec![CardType::Instant]
     ));
 }
 
@@ -524,6 +783,174 @@ fn rewrite_lexed_permission_helpers_cover_flash_and_free_cast_grants() {
             && spec.filter.card_types == vec![CardType::Creature]
             && spec.zone == crate::zone::Zone::Hand
     ));
+}
+
+#[test]
+fn rewrite_lexed_permission_helpers_cover_until_next_turn_tagged_play() {
+    let tokens = lex_line("Until the end of your next turn, you may play that card", 0)
+        .expect("rewrite lexer should classify until-next-turn permission clause");
+
+    assert!(matches!(
+        super::permission_helpers::parse_permission_clause_spec_lexed(&tokens),
+        Ok(Some(super::PermissionClauseSpec::Tagged {
+            player: crate::cards::builders::PlayerAst::You,
+            allow_land: true,
+            as_copy: false,
+            without_paying_mana_cost: false,
+            lifetime: super::PermissionLifetime::UntilYourNextTurn,
+        }))
+    ));
+}
+
+#[test]
+fn rewrite_token_primitives_cover_count_range_prefixes() {
+    let up_to = lex_line("up to three target creatures", 0)
+        .expect("rewrite lexer should classify up-to count range");
+    let one_or_more = lex_line("one or more creatures", 0)
+        .expect("rewrite lexer should classify one-or-more count range");
+    let one_or_both = lex_line("one or both modes", 0)
+        .expect("rewrite lexer should classify one-or-both count range");
+
+    let up_to_range = super::token_primitives::parse_count_range_prefix(&up_to)
+        .expect("up-to prefix should parse");
+    let one_or_more_range = super::token_primitives::parse_count_range_prefix(&one_or_more)
+        .expect("one-or-more prefix should parse");
+    let one_or_both_range = super::token_primitives::parse_count_range_prefix(&one_or_both)
+        .expect("one-or-both prefix should parse");
+
+    assert_eq!(
+        up_to_range.0,
+        (
+            Some(crate::effect::Value::Fixed(0)),
+            Some(crate::effect::Value::Fixed(3))
+        )
+    );
+    assert_eq!(
+        LowercaseWordView::new(up_to_range.1).to_word_refs(),
+        vec!["target", "creatures"]
+    );
+    assert_eq!(
+        one_or_more_range.0,
+        (Some(crate::effect::Value::Fixed(1)), None)
+    );
+    assert_eq!(
+        LowercaseWordView::new(one_or_more_range.1).to_word_refs(),
+        vec!["creatures"]
+    );
+    assert_eq!(
+        one_or_both_range.0,
+        (
+            Some(crate::effect::Value::Fixed(1)),
+            Some(crate::effect::Value::Fixed(2))
+        )
+    );
+    assert_eq!(
+        LowercaseWordView::new(one_or_both_range.1).to_word_refs(),
+        vec!["modes"]
+    );
+}
+
+#[test]
+fn rewrite_token_primitives_cover_turn_duration_prefix_and_suffix_phrases() {
+    let prefixed = lex_line("Until the end of your next turn, you may play that card", 0)
+        .expect("rewrite lexer should classify prefixed duration phrase");
+    let suffixed = lex_line("Target creature can't attack this turn", 0)
+        .expect("rewrite lexer should classify suffixed duration phrase");
+
+    let (prefix_duration, prefix_remainder) =
+        super::token_primitives::parse_turn_duration_prefix(&prefixed)
+            .expect("prefixed duration should parse");
+    let (suffix_remainder, suffix_duration) =
+        super::token_primitives::parse_turn_duration_suffix(&suffixed)
+            .expect("suffixed duration should parse");
+
+    assert_eq!(
+        prefix_duration,
+        super::token_primitives::TurnDurationPhrase::UntilYourNextTurn
+    );
+    assert_eq!(
+        LowercaseWordView::new(prefix_remainder).to_word_refs(),
+        vec!["you", "may", "play", "that", "card"]
+    );
+    assert_eq!(
+        suffix_duration,
+        super::token_primitives::TurnDurationPhrase::ThisTurn
+    );
+    assert_eq!(
+        LowercaseWordView::new(suffix_remainder).to_word_refs(),
+        vec!["target", "creature", "cant", "attack"]
+    );
+}
+
+#[test]
+fn rewrite_token_primitives_cover_bare_value_comparison_phrases() {
+    let equal = lex_line("equal to 3", 0).expect("rewrite lexer should classify bare equality");
+    let not_equal =
+        lex_line("not equal to 3", 0).expect("rewrite lexer should classify bare inequality");
+    let less_than =
+        lex_line("less than 3", 0).expect("rewrite lexer should classify bare less-than");
+    let greater_equal = lex_line("greater than or equal to 3", 0)
+        .expect("rewrite lexer should classify bare greater-or-equal");
+
+    let (equal_op, equal_remainder) =
+        super::token_primitives::parse_value_comparison_tokens(&equal)
+            .expect("bare equality should parse");
+    let (not_equal_op, not_equal_remainder) =
+        super::token_primitives::parse_value_comparison_tokens(&not_equal)
+            .expect("bare inequality should parse");
+    let (less_than_op, less_than_remainder) =
+        super::token_primitives::parse_value_comparison_tokens(&less_than)
+            .expect("bare less-than should parse");
+    let (greater_equal_op, greater_equal_remainder) =
+        super::token_primitives::parse_value_comparison_tokens(&greater_equal)
+            .expect("bare greater-or-equal should parse");
+
+    assert_eq!(equal_op, crate::effect::ValueComparisonOperator::Equal);
+    assert_eq!(
+        LowercaseWordView::new(equal_remainder).to_word_refs(),
+        vec!["3"]
+    );
+    assert_eq!(
+        not_equal_op,
+        crate::effect::ValueComparisonOperator::NotEqual
+    );
+    assert_eq!(
+        LowercaseWordView::new(not_equal_remainder).to_word_refs(),
+        vec!["3"]
+    );
+    assert_eq!(
+        less_than_op,
+        crate::effect::ValueComparisonOperator::LessThan
+    );
+    assert_eq!(
+        LowercaseWordView::new(less_than_remainder).to_word_refs(),
+        vec!["3"]
+    );
+    assert_eq!(
+        greater_equal_op,
+        crate::effect::ValueComparisonOperator::GreaterThanOrEqual
+    );
+    assert_eq!(
+        LowercaseWordView::new(greater_equal_remainder).to_word_refs(),
+        vec!["3"]
+    );
+}
+
+#[test]
+fn rewrite_lexed_permission_helpers_cover_or_less_conditional_free_casts() {
+    let tokens = lex_line(
+        "Cast that card without paying its mana cost if its mana value is 3 or less",
+        0,
+    )
+    .expect("rewrite lexer should classify conditional free-cast permission");
+
+    let parsed = super::permission_helpers::parse_cast_or_play_tagged_clause(&tokens)
+        .expect("conditional free-cast clause should parse");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("Conditional"), "{debug}");
+    assert!(debug.contains("LessThanOrEqual"), "{debug}");
+    assert!(debug.contains("Fixed(3)"), "{debug}");
 }
 
 #[test]
@@ -946,6 +1373,8 @@ fn rewrite_lexed_search_library_sentence_matches_wrapper_output() {
     for text in [
         "Search target player's library for an artifact card, reveal it, put it into your hand, then shuffle.",
         "Discard a card, then search your library for a creature card, reveal it, put it into your hand, then shuffle.",
+        "Search your library for a creature card with mana value 3 or less, reveal it, put it into your hand, then shuffle.",
+        "Search target opponent's library for a card and exile it face down. Then that player shuffles.",
     ] {
         let lexed = lex_line(text, 0).expect("rewrite lexer should classify search-library text");
         let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
@@ -957,6 +1386,58 @@ fn rewrite_lexed_search_library_sentence_matches_wrapper_output() {
 
         assert_eq!(format!("{native:?}"), format!("{wrapper:?}"), "{text}");
     }
+}
+
+#[test]
+fn rewrite_lexed_object_filters_match_wrapper_comparison_shapes() {
+    for text in [
+        "creature card with mana value equal to 3",
+        "creature card with mana value 3 or less",
+    ] {
+        let lexed = lex_line(text, 0).expect("rewrite lexer should classify comparison filter");
+        let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
+
+        let native = super::object_filters::parse_object_filter_lexed(&lexed, false)
+            .expect("lexed object filter should parse");
+        let wrapper = super::object_filters::parse_object_filter(&compat, false)
+            .expect("wrapper object filter should parse");
+
+        assert_eq!(format!("{native:?}"), format!("{wrapper:?}"), "{text}");
+    }
+}
+
+#[test]
+fn rewrite_lexed_spell_filter_preserves_comparison_shapes() {
+    for text in [
+        "noncreature spells with mana value equal to 3",
+        "creature spells with power or toughness 2 or less",
+    ] {
+        let tokens =
+            lex_line(text, 0).expect("rewrite lexer should classify comparison spell filter");
+        let filter = super::parse_spell_filter_lexed(&tokens);
+        let debug = format!("{filter:?}");
+
+        if text.contains("mana value equal to 3") {
+            assert!(debug.contains("excluded_card_types: [Creature]"), "{debug}");
+            assert!(debug.contains("mana_value: Some(Equal(3))"), "{debug}");
+        } else {
+            assert!(debug.contains("any_of"), "{debug}");
+            assert!(debug.contains("LessThanOrEqual(2)"), "{debug}");
+        }
+    }
+}
+
+#[test]
+fn rewrite_lexed_search_library_sentence_parses_shared_mana_value_constraint() {
+    let text = "Search your library for a creature card with mana value 3 or less, reveal it, put it into your hand, then shuffle.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify search-library text");
+
+    let parsed = super::parse_search_library_sentence_lexed(&lexed)
+        .expect("lexed search-library sentence should parse")
+        .expect("search-library sentence should produce effects");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("LessThanOrEqual(3)"), "{debug}");
 }
 
 #[test]
@@ -1052,6 +1533,19 @@ fn rewrite_lexed_keyword_line_parses_simple_native_keyword_lists() {
         Some(actions)
             if actions
                 == vec![crate::cards::builders::KeywordAction::Ward(2)]
+    ));
+}
+
+#[test]
+fn rewrite_lexed_keyword_line_parses_protection_chains_without_duplicates() {
+    let protection_tokens = lex_line("Protection from everything and from everything", 0)
+        .expect("rewrite lexer should classify protection chain");
+
+    assert!(matches!(
+        super::clause_support::parse_ability_line_lexed(&protection_tokens),
+        Some(actions)
+            if actions
+                == vec![crate::cards::builders::KeywordAction::ProtectionFromEverything]
     ));
 }
 
@@ -1886,6 +2380,20 @@ fn rewrite_lexed_effect_sequence_parses_consult_dynamic_mana_value_gate() {
 }
 
 #[test]
+fn rewrite_lexed_effect_sequence_parses_consult_fixed_or_less_gate() {
+    let text = "Exile cards from the top of your library until you exile a nonland card. You may cast that card without paying its mana cost if that spell's mana value is 3 or less. Put the exiled cards not cast this way on the bottom of your library in a random order.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify fixed consult gate");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed).expect("sequence");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("operator: LessThanOrEqual"), "{debug}");
+    assert!(debug.contains("Fixed(3)"), "{debug}");
+    assert!(debug.contains("May"), "{debug}");
+    assert!(debug.contains("CastTagged"), "{debug}");
+}
+
+#[test]
 fn rewrite_lexed_effect_sequence_parses_copy_cast_cost_reduction_followup() {
     let text = "Copy that card and you may cast the copy. That copy costs {2} less to cast.";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify copy-cast reduction text");
@@ -2128,6 +2636,45 @@ fn rewrite_lexed_effect_entrypoint_matches_wrapper_simple_draw_clause() {
 }
 
 #[test]
+fn rewrite_lexed_effect_entrypoint_matches_wrapper_create_for_each_creatures_died() {
+    let text = "Create a Treasure token for each creature that died this turn.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify create-for-each effect");
+    let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
+
+    let wrapper = super::clause_support::parse_effect_sentences_lexed(&compat)
+        .expect("wrapper create-for-each parser should succeed");
+    let native = super::clause_support::parse_effect_sentences_lexed(&lexed)
+        .expect("lexed create-for-each parser should succeed");
+
+    let debug = format!("{native:?}");
+    assert_eq!(debug, format!("{wrapper:?}"));
+    assert!(
+        debug.contains("CreaturesDiedThisTurn"),
+        "expected dynamic creature-died count in create clause, got {debug}"
+    );
+}
+
+#[test]
+fn rewrite_lexed_effect_entrypoint_matches_wrapper_investigate_for_each_creatures_died() {
+    let text = "Investigate for each creature that died this turn.";
+    let lexed =
+        lex_line(text, 0).expect("rewrite lexer should classify investigate-for-each effect");
+    let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
+
+    let wrapper = super::clause_support::parse_effect_sentences_lexed(&compat)
+        .expect("wrapper investigate-for-each parser should succeed");
+    let native = super::clause_support::parse_effect_sentences_lexed(&lexed)
+        .expect("lexed investigate-for-each parser should succeed");
+
+    let debug = format!("{native:?}");
+    assert_eq!(debug, format!("{wrapper:?}"));
+    assert!(
+        debug.contains("CreaturesDiedThisTurn"),
+        "expected dynamic creature-died count in investigate clause, got {debug}"
+    );
+}
+
+#[test]
 fn rewrite_cost_reduction_line_rejects_unmodeled_activate_if_condition() {
     let tokens = lex_line(
         "this ability costs 1 less to activate if you control an artifact.",
@@ -2236,6 +2783,35 @@ fn rewrite_type_line_parser_handles_supertypes_types_and_subtypes() {
 }
 
 #[test]
+fn rewrite_shared_type_line_parser_keeps_conditionals_entrypoint_in_sync() {
+    let parsed =
+        super::effect_sentences::conditionals::parse_type_line("Legendary Creature — Elf Druid")
+            .expect("shared type-line parser should support conditionals entrypoint");
+    assert_eq!(parsed.0, vec![Supertype::Legendary]);
+    assert_eq!(parsed.1, vec![CardType::Creature]);
+    assert_eq!(parsed.2, vec![Subtype::Elf, Subtype::Druid]);
+}
+
+#[test]
+fn rewrite_shared_scryfall_mana_cost_parser_uses_lexed_mana_groups() {
+    let parsed = super::util::parse_scryfall_mana_cost("{2}{W/U}{B}")
+        .expect("shared mana-cost parser should parse grouped mana costs");
+
+    assert_eq!(
+        parsed.pips(),
+        vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::White, ManaSymbol::Blue],
+            vec![ManaSymbol::Black],
+        ]
+    );
+    assert_eq!(
+        super::util::parse_scryfall_mana_cost("—").expect("emdash should mean no mana cost"),
+        crate::mana::ManaCost::new()
+    );
+}
+
+#[test]
 fn rewrite_activation_cost_parses_sacrifice_segments() {
     let cst = parse_activation_cost_rewrite("Sacrifice a creature")
         .expect("rewrite activation-cost parser should parse sacrifice segments");
@@ -2341,6 +2917,44 @@ fn rewrite_activation_cost_parses_loyalty_shorthand_without_wrapper_escape_hatch
         lower_activation_cost_cst(&zero)
             .expect("zero loyalty shorthand should lower")
             .is_free()
+    );
+}
+
+#[test]
+fn rewrite_activation_cost_token_entrypoint_preserves_named_card_commas() {
+    let tokens = lex_line("Discard a card named Mishra, Lost to Phyrexia", 0)
+        .expect("lexer should preserve punctuation in named-card costs");
+    let cst = parse_activation_cost_tokens_rewrite(&tokens)
+        .expect("token activation-cost parser should keep named-card commas intact");
+
+    assert!(matches!(
+        cst.segments.as_slice(),
+        [super::ActivationCostSegmentCst::DiscardFiltered {
+            name: Some(name),
+            ..
+        }] if name == "mishra, lost to phyrexia"
+    ));
+}
+
+#[test]
+fn rewrite_activation_cost_shared_parser_supports_behold_costs() {
+    let cst = parse_activation_cost_rewrite("Behold an Elemental")
+        .expect("shared activation-cost parser should support behold costs");
+    assert!(matches!(
+        cst.segments.as_slice(),
+        [super::ActivationCostSegmentCst::Behold {
+            subtype: Subtype::Elemental,
+            count: 1
+        }]
+    ));
+
+    let tokens =
+        lex_line("Behold an Elemental", 0).expect("lexer should classify behold activation cost");
+    let lowered = super::parse_activation_cost(&tokens)
+        .expect("activated ability entrypoint should use shared behold cost parser");
+    assert!(
+        !lowered.is_free(),
+        "behold costs should survive lowering as a non-free activation cost"
     );
 }
 

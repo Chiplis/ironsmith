@@ -994,6 +994,16 @@ pub(crate) fn apply_modification_to_chars_for_dependency(
         Modification::RemoveSupertypes(types) => {
             chars.supertypes.retain(|t| !types.contains(t));
         }
+        Modification::AddAllSubtypesOfFamily(family) => {
+            for subtype in family.all_subtypes() {
+                if !chars.subtypes.contains(subtype) {
+                    chars.subtypes.push(*subtype);
+                }
+            }
+        }
+        Modification::RemoveAllSubtypesOfFamily(family) => {
+            chars.subtypes.retain(|t| !t.belongs_to_family(*family));
+        }
         Modification::RemoveAllCreatureTypes => {
             chars.subtypes.retain(|t| !t.is_creature_type());
         }

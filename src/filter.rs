@@ -30,6 +30,24 @@ fn names_match(lhs: &str, rhs: &str) -> bool {
     lhs.eq_ignore_ascii_case(rhs) || normalize_name_for_match(lhs) == normalize_name_for_match(rhs)
 }
 
+fn expand_semantic_subtypes(chars: &mut crate::continuous::CalculatedCharacteristics) {
+    let has_changeling = chars
+        .static_abilities
+        .iter()
+        .any(|ability| ability.id() == StaticAbilityId::Changeling);
+    let can_have_creature_subtypes = chars
+        .card_types
+        .iter()
+        .any(|card_type| matches!(card_type, CardType::Creature | CardType::Kindred));
+    if has_changeling && can_have_creature_subtypes {
+        for subtype in Subtype::all_creature_types() {
+            if !chars.subtypes.contains(subtype) {
+                chars.subtypes.push(*subtype);
+            }
+        }
+    }
+}
+
 trait TaggedConstraintSubject {
     fn subject_object_id(&self) -> ObjectId;
     fn subject_stable_id(&self) -> StableId;
@@ -1711,6 +1729,11 @@ impl ObjectFilter {
         self
     }
 
+    /// Backwards-compatible alias for `without_subtype`.
+    pub fn exclude_subtype(self, subtype: Subtype) -> Self {
+        self.without_subtype(subtype)
+    }
+
     /// Add a required supertype.
     pub fn with_supertype(mut self, supertype: Supertype) -> Self {
         self.supertypes.push(supertype);
@@ -2465,20 +2488,30 @@ impl ObjectFilter {
         let mut adjusted_object_storage = None;
         let needs_pt = self.uses_power_or_toughness_characteristics();
         let needs_non_pt = self.uses_non_pt_battlefield_characteristics();
-        let should_consider_adjusted_object =
-            allow_calculated_pt && object.zone == Zone::Battlefield && (needs_pt || needs_non_pt);
+        let should_consider_adjusted_object = allow_calculated_pt && (needs_pt || needs_non_pt);
         let should_calculate_chars = should_consider_adjusted_object
             && match view {
-                Some(view) => {
+                Some(view) if object.zone == Zone::Battlefield => {
                     needs_pt || view.requires_battlefield_characteristic_calculation(object.id)
                 }
+                Some(_) => true,
                 None => true,
             };
         if should_calculate_chars
-            && let Some(chars) = view
-                .and_then(|view| view.calculated_characteristics(object.id))
-                .or_else(|| game.calculated_characteristics(object.id))
+            && let Some(mut chars) = view
+                .and_then(|view| {
+                    if object.zone != Zone::Battlefield
+                        || needs_pt
+                        || view.requires_battlefield_characteristic_calculation(object.id)
+                    {
+                        view.calculated_characteristics(object.id)
+                    } else {
+                        None
+                    }
+                })
+                .or_else(|| game.current_characteristics(object.id))
         {
+            expand_semantic_subtypes(&mut chars);
             let mut adjusted = object.clone();
             adjusted.name = chars.name;
             adjusted.controller = chars.controller;
@@ -5095,6 +5128,58 @@ mod tests {
         assert!(
             filter.matches(object, &ctx, &game),
             "spell cast with a graveyard alternative method should satisfy graveyard origin filter"
+        );
+    }
+
+    #[test]
+    fn test_graveyard_filter_uses_current_subtypes() {
+        use crate::ability::Ability;
+        use crate::card::{CardBuilder, PowerToughness};
+        use crate::cards::CardDefinitionBuilder;
+        use crate::ids::CardId;
+        use crate::static_abilities::StaticAbility;
+        use crate::zone::Zone;
+
+        let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let _beacon_id = game.create_object_from_definition(
+            &CardDefinitionBuilder::new(CardId::from_raw(30), "Graveyard Beacon")
+                .card_types(vec![CardType::Artifact])
+                .with_ability(Ability::static_ability(StaticAbility::add_subtypes(
+                    ObjectFilter::default()
+                        .in_zone(Zone::Graveyard)
+                        .owned_by(PlayerFilter::You)
+                        .with_type(CardType::Creature),
+                    vec![Subtype::Wizard],
+                )))
+                .build(),
+            alice,
+            Zone::Battlefield,
+        );
+
+        let graveyard_id = game.create_object_from_card(
+            &CardBuilder::new(CardId::from_raw(31), "Vanilla Bear")
+                .card_types(vec![CardType::Creature])
+                .power_toughness(PowerToughness::fixed(2, 2))
+                .build(),
+            alice,
+            Zone::Graveyard,
+        );
+
+        let filter = ObjectFilter::default()
+            .in_zone(Zone::Graveyard)
+            .owned_by(PlayerFilter::You)
+            .with_type(CardType::Creature)
+            .with_subtype(Subtype::Wizard);
+        let ctx = FilterContext::new(alice);
+        let object = game
+            .object(graveyard_id)
+            .expect("graveyard card should exist");
+
+        assert!(
+            filter.matches(object, &ctx, &game),
+            "off-battlefield subtype filters should use current characteristics"
         );
     }
 

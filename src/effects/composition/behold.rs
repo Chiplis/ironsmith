@@ -54,7 +54,10 @@ fn candidates(
         game.battlefield
             .iter()
             .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
-            .filter(|(_, obj)| obj.controller == chooser && obj.subtypes.contains(&subtype))
+            .filter(|(id, _)| {
+                game.current_controller(*id) == Some(chooser)
+                    && game.current_has_subtype(*id, subtype)
+            })
             .map(|(id, _)| id),
     );
 
@@ -66,7 +69,7 @@ fn candidates(
                 .copied()
                 .filter(|id| *id != source)
                 .filter_map(|id| game.object(id).map(|obj| (id, obj)))
-                .filter(|(_, obj)| obj.subtypes.contains(&subtype))
+                .filter(|(id, _)| game.current_has_subtype(*id, subtype))
                 .map(|(id, _)| id),
         );
     }

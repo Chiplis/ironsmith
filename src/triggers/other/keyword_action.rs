@@ -74,10 +74,14 @@ impl TriggerMatcher for KeywordActionTrigger {
         }
 
         if let Some(source_filter) = &self.source_filter {
-            let Some(source_object) = ctx.game.object(e.source) else {
-                return false;
+            let matches = if let Some(snapshot) = e.snapshot.as_ref() {
+                source_filter.matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game)
+            } else if let Some(source_object) = ctx.game.object(e.source) {
+                source_filter.matches(source_object, &ctx.filter_ctx, ctx.game)
+            } else {
+                false
             };
-            if !source_filter.matches(source_object, &ctx.filter_ctx, ctx.game) {
+            if !matches {
                 return false;
             }
         }
@@ -137,6 +141,15 @@ impl TriggerMatcher for KeywordActionTrigger {
                 _ => format!("Whenever a player exerts {}", source_filter.description()),
             };
         }
+        if self.action == KeywordActionKind::Explore
+            && let Some(source_filter) = &self.source_filter
+        {
+            return format!(
+                "Whenever {} {}",
+                source_filter.description(),
+                self.action.third_person()
+            );
+        }
 
         match &self.player {
             PlayerFilter::You => format!("Whenever you {}", self.action.infinitive()),
@@ -154,6 +167,7 @@ mod tests {
     use super::*;
     use crate::game_state::GameState;
     use crate::ids::{ObjectId, PlayerId};
+    use crate::snapshot::ObjectSnapshot;
 
     #[test]
     fn keyword_action_trigger_matches_you() {
@@ -250,6 +264,19 @@ mod tests {
     }
 
     #[test]
+    fn keyword_action_explore_display_phrase_uses_subject_filter() {
+        let trigger = KeywordActionTrigger::matching_object(
+            KeywordActionKind::Explore,
+            PlayerFilter::Any,
+            ObjectFilter::creature().you_control(),
+        );
+        assert_eq!(
+            trigger.display(),
+            "Whenever a creature you control explores"
+        );
+    }
+
+    #[test]
     fn keyword_action_matching_object_rejects_land_exert_for_creature_trigger() {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
         let alice = PlayerId::from_index(0);
@@ -290,6 +317,41 @@ mod tests {
         assert!(
             !trigger.matches(&land_event, &ctx),
             "land exert should not satisfy a trigger that asks for exerting a creature"
+        );
+    }
+
+    #[test]
+    fn keyword_action_matching_object_uses_event_snapshot_for_explore_lki() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let creature_card =
+            crate::card::CardBuilder::new(crate::ids::CardId::from_raw(3), "Explorer")
+                .card_types(vec![crate::types::CardType::Creature])
+                .build();
+        let battlefield_id =
+            game.create_object_from_card(&creature_card, alice, crate::zone::Zone::Battlefield);
+        let snapshot =
+            ObjectSnapshot::from_object(game.object(battlefield_id).expect("creature"), &game);
+        let source_id = game
+            .move_object_by_effect(battlefield_id, crate::zone::Zone::Graveyard)
+            .expect("moving to graveyard should create a new id");
+
+        let trigger = KeywordActionTrigger::matching_object(
+            KeywordActionKind::Explore,
+            PlayerFilter::Any,
+            ObjectFilter::creature().you_control(),
+        );
+        let ctx = TriggerContext::for_source(source_id, alice, &game);
+        let event = TriggerEvent::new_with_provenance(
+            KeywordActionEvent::new(KeywordActionKind::Explore, alice, snapshot.object_id, 1)
+                .with_snapshot(Some(snapshot)),
+            crate::provenance::ProvNodeId::default(),
+        );
+
+        assert!(
+            trigger.matches(&event, &ctx),
+            "explore triggers should use the event snapshot when the exploring permanent has left"
         );
     }
 }

@@ -100,6 +100,7 @@ pub enum StaticAbilityId {
     RemoveCardTypes,
     SetCardTypes,
     AddSubtypes,
+    AddAllSubtypesOfFamily,
     SetCreatureSubtypes,
     AddColors,
     CopyActivatedAbilities,
@@ -339,6 +340,7 @@ impl StaticAbilityId {
             | RemoveCardTypes
             | SetCardTypes
             | AddSubtypes
+            | AddAllSubtypesOfFamily
             | SetCreatureSubtypes
             | AddColors
             | CopyActivatedAbilities

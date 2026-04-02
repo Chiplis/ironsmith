@@ -687,15 +687,17 @@ pub fn evaluate_condition_external(
             subtypes,
         } => game.player(ctx.controller).is_some_and(|player_state| {
             player_state.graveyard.iter().any(|&card_id| {
-                let Some(card) = game.object(card_id) else {
+                if game.object(card_id).is_none() {
                     return false;
-                };
+                }
                 let card_type_match = card_types.is_empty()
                     || card_types
                         .iter()
-                        .any(|card_type| card.card_types.contains(card_type));
+                        .any(|card_type| game.current_has_card_type(card_id, *card_type));
                 let subtype_match = subtypes.is_empty()
-                    || subtypes.iter().any(|subtype| card.has_subtype(*subtype));
+                    || subtypes
+                        .iter()
+                        .any(|subtype| game.current_has_subtype(card_id, *subtype));
                 card_type_match && subtype_match
             })
         }),
@@ -1197,14 +1199,11 @@ fn player_had_land_enter_battlefield_this_turn(game: &GameState, player_id: Play
 
 fn player_has_full_party(game: &GameState, player_id: PlayerId) -> bool {
     let has_role = |role: crate::types::Subtype| {
-        game.battlefield
-            .iter()
-            .filter_map(|&id| game.object(id))
-            .any(|obj| {
-                obj.controller == player_id
-                    && obj.has_card_type(crate::types::CardType::Creature)
-                    && obj.has_subtype(role)
-            })
+        game.battlefield.iter().copied().any(|id| {
+            game.current_controller(id) == Some(player_id)
+                && game.current_has_card_type(id, crate::types::CardType::Creature)
+                && game.current_has_subtype(id, role)
+        })
     };
 
     has_role(crate::types::Subtype::Cleric)
@@ -2493,15 +2492,17 @@ fn evaluate_condition(
             subtypes,
         } => Ok(game.player(ctx.controller).is_some_and(|player_state| {
             player_state.graveyard.iter().any(|&card_id| {
-                let Some(card) = game.object(card_id) else {
+                if game.object(card_id).is_none() {
                     return false;
-                };
+                }
                 let card_type_match = card_types.is_empty()
                     || card_types
                         .iter()
-                        .any(|card_type| card.card_types.contains(card_type));
+                        .any(|card_type| game.current_has_card_type(card_id, *card_type));
                 let subtype_match = subtypes.is_empty()
-                    || subtypes.iter().any(|subtype| card.has_subtype(*subtype));
+                    || subtypes
+                        .iter()
+                        .any(|subtype| game.current_has_subtype(card_id, *subtype));
                 card_type_match && subtype_match
             })
         })),

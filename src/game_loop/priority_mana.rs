@@ -670,7 +670,7 @@ pub(super) fn payment_source_matches_restriction(
             }
             if !card_types
                 .iter()
-                .all(|card_type| source_obj.card_types.contains(card_type))
+                .all(|card_type| game.current_has_card_type(source_obj.id, *card_type))
             {
                 return false;
             }
@@ -682,7 +682,7 @@ pub(super) fn payment_source_matches_restriction(
                 }
                 None => None,
             };
-            required_subtype.is_none_or(|subtype| source_obj.subtypes.contains(&subtype))
+            required_subtype.is_none_or(|subtype| game.current_has_subtype(source_obj.id, subtype))
         }
     }
 }

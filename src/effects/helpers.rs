@@ -339,14 +339,11 @@ pub fn resolve_value(
         Value::PartySize(player_filter) => {
             let player_id = resolve_player_filter(game, player_filter, ctx)?;
             let has_role = |role: crate::types::Subtype| {
-                game.battlefield
-                    .iter()
-                    .filter_map(|&id| game.object(id))
-                    .any(|obj| {
-                        obj.controller == player_id
-                            && obj.has_card_type(crate::types::CardType::Creature)
-                            && obj.has_subtype(role)
-                    })
+                game.battlefield.iter().copied().any(|id| {
+                    game.current_controller(id) == Some(player_id)
+                        && game.current_has_card_type(id, crate::types::CardType::Creature)
+                        && game.current_has_subtype(id, role)
+                })
             };
 
             let mut size = 0i32;

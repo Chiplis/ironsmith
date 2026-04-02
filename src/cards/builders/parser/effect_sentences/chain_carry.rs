@@ -40,6 +40,97 @@ fn synthetic_lexed_word(word: &str) -> OwnedLexToken {
     }
 }
 
+fn word_slice_starts_with(words: &[&str], expected: &[&str]) -> bool {
+    if words.len() < expected.len() {
+        return false;
+    }
+
+    let mut idx = 0usize;
+    while idx < expected.len() {
+        if words[idx] != expected[idx] {
+            return false;
+        }
+        idx += 1;
+    }
+
+    true
+}
+
+fn word_slice_contains(words: &[&str], expected: &str) -> bool {
+    let mut idx = 0usize;
+    while idx < words.len() {
+        if words[idx] == expected {
+            return true;
+        }
+        idx += 1;
+    }
+
+    false
+}
+
+fn find_word_sequence_index(words: &[&str], expected: &[&str]) -> Option<usize> {
+    if expected.is_empty() || words.len() < expected.len() {
+        return None;
+    }
+
+    let mut start = 0usize;
+    while start + expected.len() <= words.len() {
+        if word_slice_starts_with(&words[start..], expected) {
+            return Some(start);
+        }
+        start += 1;
+    }
+
+    None
+}
+
+fn contains_char(text: &str, expected: char) -> bool {
+    let mut chars = text.chars();
+    while let Some(ch) = chars.next() {
+        if ch == expected {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn find_last_token_index(
+    tokens: &[OwnedLexToken],
+    mut predicate: impl FnMut(&OwnedLexToken) -> bool,
+) -> Option<usize> {
+    let mut idx = tokens.len();
+    while idx > 0 {
+        idx -= 1;
+        if predicate(&tokens[idx]) {
+            return Some(idx);
+        }
+    }
+
+    None
+}
+
+fn string_contains(text: &str, expected: &str) -> bool {
+    let text_bytes = text.as_bytes();
+    let expected_bytes = expected.as_bytes();
+    if expected_bytes.is_empty() {
+        return true;
+    }
+    if expected_bytes.len() > text_bytes.len() {
+        return false;
+    }
+
+    let mut idx = 0usize;
+    while idx + expected_bytes.len() <= text_bytes.len() {
+        if &text_bytes[idx..idx + expected_bytes.len()] == expected_bytes {
+            return true;
+        }
+        idx += 1;
+    }
+
+    false
+}
+
 fn starts_like_create_fragment_lexed(tokens: &[OwnedLexToken]) -> bool {
     let words = LowercaseWordView::new(tokens);
     let Some(first_word) = words.first() else {
@@ -49,7 +140,7 @@ fn starts_like_create_fragment_lexed(tokens: &[OwnedLexToken]) -> bool {
         first_word,
         "a" | "an" | "one" | "two" | "three" | "four" | "five" | "six"
     ) || parse_number_from_lexed(tokens).is_some()
-        || first_word.contains('/')
+        || contains_char(first_word, '/')
         || first_word == "x";
     starts_like_count
         && words
@@ -71,10 +162,8 @@ pub(crate) fn parse_effect_chain_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
     let clause_words = crate::cards::builders::parser::lexed_words(tokens);
-    if clause_words.starts_with(&["exile", "them"])
-        && let Some(meld_idx) = clause_words
-            .windows(4)
-            .position(|window| window == ["then", "meld", "them", "into"])
+    if word_slice_starts_with(&clause_words, &["exile", "them"])
+        && let Some(meld_idx) = find_word_sequence_index(&clause_words, &["then", "meld", "them", "into"])
     {
         let result_words = &clause_words[meld_idx + 4..];
         if result_words.is_empty() {
@@ -93,10 +182,10 @@ pub(crate) fn parse_effect_chain_lexed(
     if let Some(stripped) = strip_leading_instead_prefix_lexed(tokens) {
         return parse_effect_chain_lexed(stripped);
     }
-    let starts_with_each_opponent = clause_words.starts_with(&["each", "opponent"])
-        || clause_words.starts_with(&["each", "opponents"]);
-    let starts_with_each_player = clause_words.starts_with(&["each", "player"])
-        || clause_words.starts_with(&["each", "players"]);
+    let starts_with_each_opponent = word_slice_starts_with(&clause_words, &["each", "opponent"])
+        || word_slice_starts_with(&clause_words, &["each", "opponents"]);
+    let starts_with_each_player = word_slice_starts_with(&clause_words, &["each", "player"])
+        || word_slice_starts_with(&clause_words, &["each", "players"]);
 
     if let Some(player) = parse_leading_player_may_lexed(tokens) {
         let mut stripped = remove_through_first_word_lexed(tokens, "may");
@@ -142,8 +231,8 @@ fn leading_may_is_permission_clause_lexed(tokens: &[OwnedLexToken]) -> Result<bo
 }
 
 fn starts_with_until_end_of_turn_trigger_clause(clause_words: &[&str]) -> bool {
-    (clause_words.starts_with(&["until", "end", "of", "turn"])
-        || clause_words.starts_with(&["until", "the", "end", "of", "turn"]))
+    (word_slice_starts_with(clause_words, &["until", "end", "of", "turn"])
+        || word_slice_starts_with(clause_words, &["until", "the", "end", "of", "turn"]))
         && clause_words
             .get(if clause_words.get(1) == Some(&"the") {
                 5
@@ -212,7 +301,7 @@ pub(crate) fn parse_or_action_clause_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let clause_words = lexed_words(tokens);
-    if !clause_words.contains(&"or") {
+    if !word_slice_contains(&clause_words, "or") {
         return Ok(None);
     }
 
@@ -264,11 +353,11 @@ mod tests {
 
         let spell_debug = format!("{:?}", def.spell_effect.as_ref().expect("spell effects"));
         assert!(
-            spell_debug.contains("AdditionalLandPlaysEffect"),
+            super::string_contains(&spell_debug, "AdditionalLandPlaysEffect"),
             "expected Explore-style permission text to lower to additional land plays, got {spell_debug}"
         );
         assert!(
-            !spell_debug.contains("MayEffect"),
+            !super::string_contains(&spell_debug, "MayEffect"),
             "permission-granting land-play text should not become a MayEffect: {spell_debug}"
         );
     }
@@ -500,7 +589,7 @@ pub(crate) fn collapse_for_each_player_it_tag_followups(effects: &mut Vec<Effect
 pub(crate) fn parse_effect_clause_with_trailing_if_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<EffectAst, CardTextError> {
-    let Some(if_idx) = tokens.iter().rposition(|token| token.is_word("if")) else {
+    let Some(if_idx) = find_last_token_index(tokens, |token| token.is_word("if")) else {
         return parse_effect_clause_lexed(tokens);
     };
     if if_idx == 0 || if_idx + 1 >= tokens.len() {
@@ -556,21 +645,14 @@ fn trailing_if_predicate_supported(predicate: &PredicateAst) -> bool {
 }
 
 pub(crate) fn is_beginning_of_end_step_words(words: &[&str]) -> bool {
-    words
-        .windows(5)
-        .any(|window| window == ["beginning", "of", "the", "end", "step"])
-        || words
-            .windows(5)
-            .any(|window| window == ["beginning", "of", "next", "end", "step"])
-        || words
-            .windows(6)
-            .any(|window| window == ["beginning", "of", "the", "next", "end", "step"])
+    find_word_sequence_index(words, &["beginning", "of", "the", "end", "step"]).is_some()
+        || find_word_sequence_index(words, &["beginning", "of", "next", "end", "step"]).is_some()
+        || find_word_sequence_index(words, &["beginning", "of", "the", "next", "end", "step"])
+            .is_some()
 }
 
 pub(crate) fn is_end_of_combat_words(words: &[&str]) -> bool {
-    words
-        .windows(3)
-        .any(|window| window == ["end", "of", "combat"])
+    find_word_sequence_index(words, &["end", "of", "combat"]).is_some()
 }
 
 pub(crate) fn target_is_generic_token_filter(target: &TargetAst) -> bool {
@@ -591,8 +673,8 @@ pub(crate) fn collapse_token_copy_next_end_step_exile_followup_lexed(
     tokens: &[OwnedLexToken],
 ) {
     let chain_words = lexed_words(tokens);
-    if !chain_words.contains(&"exile")
-        || !chain_words.contains(&"token")
+    if !word_slice_contains(&chain_words, "exile")
+        || !word_slice_contains(&chain_words, "token")
         || !is_beginning_of_end_step_words(&chain_words)
     {
         return;
@@ -643,11 +725,9 @@ pub(crate) fn collapse_token_copy_next_end_step_sacrifice_followup_lexed(
     tokens: &[OwnedLexToken],
 ) {
     let chain_words = lexed_words(tokens);
-    if !chain_words.contains(&"sacrifice")
-        || !chain_words.contains(&"token")
-        || !chain_words
-            .windows(4)
-            .any(|window| window == ["next", "end", "step", "repeat"])
+    if !word_slice_contains(&chain_words, "sacrifice")
+        || !word_slice_contains(&chain_words, "token")
+        || find_word_sequence_index(&chain_words, &["next", "end", "step", "repeat"]).is_none()
             && !is_beginning_of_end_step_words(&chain_words)
     {
         return;
@@ -690,8 +770,8 @@ pub(crate) fn collapse_token_copy_end_of_combat_exile_followup_lexed(
     tokens: &[OwnedLexToken],
 ) {
     let chain_words = lexed_words(tokens);
-    if !chain_words.contains(&"exile")
-        || !chain_words.contains(&"token")
+    if !word_slice_contains(&chain_words, "exile")
+        || !word_slice_contains(&chain_words, "token")
         || !is_end_of_combat_words(&chain_words)
     {
         return;
@@ -772,9 +852,10 @@ pub(crate) fn expand_segments_with_comma_action_clauses_lexed(
 
     for segment in segments {
         let segment_words = lexed_words(&segment);
-        let looks_like_sac_discard_chain = (segment_words.contains(&"sacrifice")
-            || segment_words.contains(&"sacrifices"))
-            && (segment_words.contains(&"discard") || segment_words.contains(&"discards"));
+        let looks_like_sac_discard_chain = (word_slice_contains(&segment_words, "sacrifice")
+            || word_slice_contains(&segment_words, "sacrifices"))
+            && (word_slice_contains(&segment_words, "discard")
+                || word_slice_contains(&segment_words, "discards"));
         if !looks_like_sac_discard_chain {
             expanded.push(segment);
             continue;
@@ -834,19 +915,14 @@ pub(crate) fn expand_segments_with_multi_create_clauses_lexed(
             continue;
         };
         let segment_words = lexed_words(&segment);
-        let has_token_rules_tail = segment_words.windows(3).any(|window| {
-            matches!(
-                window,
-                ["when", "this", "token"] | ["whenever", "this", "token"]
-            )
-        }) || segment_words.windows(2).any(|window| {
-            matches!(
-                window,
-                ["this", "token"] | ["that", "token"] | ["those", "tokens"]
-            )
-        }) || segment_words
-            .windows(2)
-            .any(|window| matches!(window, ["it", "has"] | ["they", "have"]));
+        let has_token_rules_tail = find_word_sequence_index(&segment_words, &["when", "this", "token"])
+            .is_some()
+            || find_word_sequence_index(&segment_words, &["whenever", "this", "token"]).is_some()
+            || find_word_sequence_index(&segment_words, &["this", "token"]).is_some()
+            || find_word_sequence_index(&segment_words, &["that", "token"]).is_some()
+            || find_word_sequence_index(&segment_words, &["those", "tokens"]).is_some()
+            || find_word_sequence_index(&segment_words, &["it", "has"]).is_some()
+            || find_word_sequence_index(&segment_words, &["they", "have"]).is_some();
         if has_token_rules_tail {
             expanded.push(segment);
             continue;
@@ -930,7 +1006,9 @@ pub(crate) fn expand_missing_verb_segment_lexed(
     match verb {
         Verb::Deal => {
             let segment_words = lexed_words(segment);
-            if parse_value_from_lexed(segment).is_none() || !segment_words.contains(&"damage") {
+            if parse_value_from_lexed(segment).is_none()
+                || !word_slice_contains(&segment_words, "damage")
+            {
                 return None;
             }
             let mut expanded = Vec::new();
@@ -1444,25 +1522,25 @@ fn parse_leading_player_may_words(words: &[&str]) -> Option<PlayerAst> {
         return None;
     }
 
-    if words.starts_with(&["you", "may"]) {
+    if word_slice_starts_with(&words, &["you", "may"]) {
         return Some(PlayerAst::You);
     }
-    if words.starts_with(&["target", "opponent", "may"])
-        || words.starts_with(&["target", "opponents", "may"])
+    if word_slice_starts_with(&words, &["target", "opponent", "may"])
+        || word_slice_starts_with(&words, &["target", "opponents", "may"])
     {
         return Some(PlayerAst::TargetOpponent);
     }
-    if words.starts_with(&["target", "player", "may"])
-        || words.starts_with(&["target", "players", "may"])
+    if word_slice_starts_with(&words, &["target", "player", "may"])
+        || word_slice_starts_with(&words, &["target", "players", "may"])
     {
         return Some(PlayerAst::Target);
     }
-    if words.starts_with(&["that", "player", "may"])
-        || words.starts_with(&["that", "players", "may"])
+    if word_slice_starts_with(&words, &["that", "player", "may"])
+        || word_slice_starts_with(&words, &["that", "players", "may"])
     {
         return Some(PlayerAst::That);
     }
-    if words.starts_with(&["they", "may"]) {
+    if word_slice_starts_with(&words, &["they", "may"]) {
         return Some(PlayerAst::That);
     }
     if words.len() >= 7
@@ -1495,30 +1573,32 @@ fn parse_leading_player_may_words(words: &[&str]) -> Option<PlayerAst> {
     {
         return Some(PlayerAst::ItsOwner);
     }
-    if words.starts_with(&["the", "player", "may"]) || words.starts_with(&["the", "players", "may"])
+    if word_slice_starts_with(&words, &["the", "player", "may"])
+        || word_slice_starts_with(&words, &["the", "players", "may"])
     {
         return Some(PlayerAst::That);
     }
-    if words.starts_with(&["defending", "player", "may"]) {
+    if word_slice_starts_with(&words, &["defending", "player", "may"]) {
         return Some(PlayerAst::Defending);
     }
-    if words.starts_with(&["attacking", "player", "may"])
-        || words.starts_with(&["the", "attacking", "player", "may"])
+    if word_slice_starts_with(&words, &["attacking", "player", "may"])
+        || word_slice_starts_with(&words, &["the", "attacking", "player", "may"])
     {
         return Some(PlayerAst::Attacking);
     }
-    if words.starts_with(&["its", "controller", "may"])
-        || words.starts_with(&["their", "controller", "may"])
+    if word_slice_starts_with(&words, &["its", "controller", "may"])
+        || word_slice_starts_with(&words, &["their", "controller", "may"])
     {
         return Some(PlayerAst::ItsController);
     }
-    if words.starts_with(&["its", "owner", "may"]) || words.starts_with(&["their", "owner", "may"])
+    if word_slice_starts_with(&words, &["its", "owner", "may"])
+        || word_slice_starts_with(&words, &["their", "owner", "may"])
     {
         return Some(PlayerAst::ItsOwner);
     }
-    if words.starts_with(&["opponent", "may"])
-        || words.starts_with(&["opponents", "may"])
-        || words.starts_with(&["an", "opponent", "may"])
+    if word_slice_starts_with(&words, &["opponent", "may"])
+        || word_slice_starts_with(&words, &["opponents", "may"])
+        || word_slice_starts_with(&words, &["an", "opponent", "may"])
     {
         return Some(PlayerAst::Opponent);
     }

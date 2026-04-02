@@ -8,6 +8,52 @@ use super::activation_and_restrictions::{
 };
 use super::lexer::lex_line;
 
+fn ascii_contains(haystack: &str, needle: &str) -> bool {
+    let haystack_bytes = haystack.as_bytes();
+    let needle_bytes = needle.as_bytes();
+    if needle_bytes.is_empty() {
+        return true;
+    }
+    if needle_bytes.len() > haystack_bytes.len() {
+        return false;
+    }
+
+    let mut idx = 0usize;
+    while idx + needle_bytes.len() <= haystack_bytes.len() {
+        if &haystack_bytes[idx..idx + needle_bytes.len()] == needle_bytes {
+            return true;
+        }
+        idx += 1;
+    }
+
+    false
+}
+
+fn trim_ascii_prefix<'a>(text: &'a str, prefix: &str) -> Option<&'a str> {
+    let text_bytes = text.as_bytes();
+    let prefix_bytes = prefix.as_bytes();
+    if prefix_bytes.len() > text_bytes.len() {
+        return None;
+    }
+    if &text_bytes[..prefix_bytes.len()] == prefix_bytes {
+        return Some(&text[prefix_bytes.len()..]);
+    }
+    None
+}
+
+fn trim_ascii_suffix<'a>(text: &'a str, suffix: &str) -> Option<&'a str> {
+    let text_bytes = text.as_bytes();
+    let suffix_bytes = suffix.as_bytes();
+    if suffix_bytes.len() > text_bytes.len() {
+        return None;
+    }
+    let suffix_start = text_bytes.len() - suffix_bytes.len();
+    if &text_bytes[suffix_start..] == suffix_bytes {
+        return Some(&text[..suffix_start]);
+    }
+    None
+}
+
 pub(crate) fn apply_pending_restrictions_to_ability(
     ability: &mut Ability,
     pending: &mut ParsedRestrictions,
@@ -79,18 +125,18 @@ pub(crate) fn apply_pending_activation_restriction(
             .trim_end_matches('.')
             .to_string();
 
-        if lower.contains("didn't attack this turn")
-            || lower.contains("did not attack this turn")
-            || lower.contains("has not attacked this turn")
+        if ascii_contains(&lower, "didn't attack this turn")
+            || ascii_contains(&lower, "did not attack this turn")
+            || ascii_contains(&lower, "has not attacked this turn")
         {
             return Some(crate::ConditionExpr::Not(Box::new(
                 crate::ConditionExpr::SourceAttackedThisTurn,
             )));
         }
 
-        if lower.contains("this creature attacked this turn")
-            || lower.contains("it attacked this turn")
-            || lower.contains("that creature attacked this turn")
+        if ascii_contains(&lower, "this creature attacked this turn")
+            || ascii_contains(&lower, "it attacked this turn")
+            || ascii_contains(&lower, "that creature attacked this turn")
         {
             return Some(crate::ConditionExpr::SourceAttackedThisTurn);
         }
@@ -222,14 +268,12 @@ fn normalize_activation_restriction(
         return None;
     }
     let prefix = "activate only once each turn and ";
-    if normalized.starts_with(prefix) {
-        normalized = normalized[prefix.len()..].trim_start().to_string();
+    if let Some(stripped) = trim_ascii_prefix(&normalized, prefix) {
+        normalized = stripped.trim_start().to_string();
     }
     let suffix = " and only once each turn";
-    if normalized.ends_with(suffix) {
-        normalized = normalized[..normalized.len() - suffix.len()]
-            .trim_end()
-            .to_string();
+    if let Some(stripped) = trim_ascii_suffix(&normalized, suffix) {
+        normalized = stripped.trim_end().to_string();
     }
     if normalized.is_empty() {
         None

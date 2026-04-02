@@ -5,7 +5,7 @@ use crate::cards::{CardDefinition, CardDefinitionBuilder};
 use crate::color::ColorSet;
 use crate::decisions::make_decision;
 use crate::decisions::specs::ChooseObjectsSpec;
-use crate::effect::EffectOutcome;
+use crate::effect::{EffectOutcome, ExecutionFact};
 use crate::effects::helpers::normalize_object_selection;
 use crate::effects::{CreateTokenEffect, EffectExecutor, PutCountersEffect};
 use crate::events::{KeywordActionEvent, KeywordActionKind};
@@ -147,7 +147,9 @@ impl EffectExecutor for AmassEffect {
             ),
             ctx.provenance,
         );
-        Ok(EffectOutcome::aggregate(outcomes).with_event(action_event))
+        Ok(EffectOutcome::aggregate(outcomes)
+            .with_execution_fact(ExecutionFact::ChosenObjects(vec![chosen_army]))
+            .with_event(action_event))
     }
 }
 
@@ -155,6 +157,11 @@ impl EffectExecutor for AmassEffect {
 mod tests {
     use super::*;
     use crate::card::CardBuilder;
+    use crate::effect::{Effect, Value};
+    use crate::events::DamageEvent;
+    use crate::executor::{ResolvedTarget, execute_effect};
+    use crate::game_event::DamageTarget;
+    use crate::tag::TagKey;
     use crate::zone::Zone;
 
     fn setup_game() -> GameState {
@@ -245,6 +252,136 @@ mod tests {
             army_creature_candidates(&game, alice).len(),
             1,
             "amass should not create a new Army when one already exists"
+        );
+    }
+
+    #[test]
+    fn tagged_amass_preserves_the_chosen_army_for_followup_provenance() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = game.new_object_id();
+        let first_army = add_army_creature(&mut game, alice, vec![Subtype::Zombie, Subtype::Army]);
+        let second_army = add_army_creature(&mut game, alice, vec![Subtype::Orc, Subtype::Army]);
+        game.add_counters_with_source(
+            second_army,
+            CounterType::PlusOnePlusOne,
+            5,
+            Some(source),
+            Some(alice),
+        );
+        let victim = add_army_creature(&mut game, bob, vec![Subtype::Goblin, Subtype::Warrior]);
+
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let amass = Effect::amass(Some(Subtype::Orc), 2).tag("amassed");
+        execute_effect(&mut game, &amass, &mut ctx).expect("amass should resolve");
+
+        let tagged = ctx
+            .get_tagged("amassed")
+            .expect("chosen Army should be tagged");
+        assert_eq!(
+            tagged.object_id, first_army,
+            "amass should tag the specifically chosen Army, not an arbitrary Army"
+        );
+
+        let followup = Effect::new(crate::effects::ExecuteWithSourceEffect::new(
+            ChooseSpec::Tagged(TagKey::from("amassed")),
+            Effect::deal_damage(
+                Value::PowerOf(Box::new(ChooseSpec::Tagged(TagKey::from("amassed")))),
+                ChooseSpec::AnyTarget,
+            ),
+        ));
+        let outcome = ctx
+            .with_temp_targets(vec![ResolvedTarget::Object(victim)], |ctx| {
+                execute_effect(&mut game, &followup, ctx)
+            })
+            .expect("follow-up damage should work");
+        let events_debug = format!("{:?}", outcome.events);
+
+        assert!(
+            outcome.events.iter().any(|event| {
+                event.downcast::<DamageEvent>().is_some_and(|damage| {
+                    damage.source == first_army
+                        && damage.amount == 3
+                        && matches!(damage.target, DamageTarget::Object(id) if id == victim)
+                })
+            }),
+            "expected damage from the chosen Army, got {events_debug}"
+        );
+    }
+
+    #[test]
+    fn tagged_amass_with_zero_counters_still_tags_the_chosen_army() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = game.new_object_id();
+        let first_army = add_army_creature(&mut game, alice, vec![Subtype::Zombie, Subtype::Army]);
+        let second_army = add_army_creature(&mut game, alice, vec![Subtype::Orc, Subtype::Army]);
+        game.add_counters_with_source(
+            second_army,
+            CounterType::PlusOnePlusOne,
+            4,
+            Some(source),
+            Some(alice),
+        );
+        let victim = add_army_creature(&mut game, bob, vec![Subtype::Goblin, Subtype::Warrior]);
+
+        let initial_first_counters = game
+            .object(first_army)
+            .expect("first Army should exist")
+            .counters
+            .get(&CounterType::PlusOnePlusOne)
+            .copied()
+            .unwrap_or(0);
+
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let amass = Effect::amass(Some(Subtype::Orc), 0).tag("amassed");
+        execute_effect(&mut game, &amass, &mut ctx).expect("zero-counter amass should resolve");
+
+        let tagged = ctx
+            .get_tagged("amassed")
+            .expect("chosen Army should still be tagged");
+        assert_eq!(
+            tagged.object_id, first_army,
+            "amass should remember the chosen Army even if no counters were added"
+        );
+        assert_eq!(
+            game.object(first_army)
+                .expect("first Army should still exist")
+                .counters
+                .get(&CounterType::PlusOnePlusOne)
+                .copied()
+                .unwrap_or(0),
+            initial_first_counters,
+            "zero-counter amass should not add counters to the chosen Army"
+        );
+
+        let followup = Effect::new(crate::effects::ExecuteWithSourceEffect::new(
+            ChooseSpec::Tagged(TagKey::from("amassed")),
+            Effect::deal_damage(
+                Value::PowerOf(Box::new(ChooseSpec::Tagged(TagKey::from("amassed")))),
+                ChooseSpec::AnyTarget,
+            ),
+        ));
+        let outcome = ctx
+            .with_temp_targets(vec![ResolvedTarget::Object(victim)], |ctx| {
+                execute_effect(&mut game, &followup, ctx)
+            })
+            .expect("follow-up damage should use the chosen Army");
+        let events_debug = format!("{:?}", outcome.events);
+
+        assert!(
+            outcome.events.iter().any(|event| {
+                event.downcast::<DamageEvent>().is_some_and(|damage| {
+                    damage.source == first_army
+                        && damage.amount == 1
+                        && matches!(damage.target, DamageTarget::Object(id) if id == victim)
+                })
+            }),
+            "expected damage from the chosen zero-counter Army, got {events_debug}"
         );
     }
 }

@@ -18,6 +18,10 @@ use crate::cards::builders::{
     PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst, RetargetModeAst,
     ReturnControllerAst, SharedTypeConstraintAst, TagKey, TargetAst, TriggerSpec,
 };
+use crate::cards::builders::scan_helpers::{
+    find_index, find_window_by, find_window_index, slice_contains, str_contains, str_find,
+    str_split_once, str_split_once_char, str_starts_with, str_strip_suffix,
+};
 #[allow(unused_imports)]
 use crate::color::ColorSet;
 #[allow(unused_imports)]
@@ -590,7 +594,7 @@ fn validate_unbound_iterated_player(
     debug_repr: String,
     context: &str,
 ) -> Result<(), CardTextError> {
-    if debug_repr.contains("IteratedPlayer") {
+    if str_contains(debug_repr.as_str(), "IteratedPlayer") {
         return Err(CardTextError::InvariantViolation(format!(
             "{context} references PlayerFilter::IteratedPlayer without a trigger or loop that binds \"that player\": {debug_repr}"
         )));
@@ -1811,7 +1815,7 @@ pub(crate) fn choose_spec_references_tag(spec: &ChooseSpec, tag: &str) -> bool {
 pub(crate) fn choose_spec_references_exiled_tag(spec: &ChooseSpec) -> bool {
     fn is_exiled_tag(tag: &TagKey) -> bool {
         let tag = tag.as_str();
-        tag.starts_with("exiled_") || tag.starts_with("__sentence_helper_exiled")
+        str_starts_with(tag, "exiled_") || str_starts_with(tag, "__sentence_helper_exiled")
     }
 
     match spec {
@@ -3293,7 +3297,7 @@ fn is_vote_related_predicate(predicate: &PredicateAst) -> bool {
 }
 
 fn compiled_vote_option_uses_iterated_player(effects: &[Effect], choices: &[ChooseSpec]) -> bool {
-    format!("{effects:?}{choices:?}").contains("IteratedPlayer")
+    str_contains(format!("{effects:?}{choices:?}").as_str(), "IteratedPlayer")
 }
 
 pub(crate) fn compile_vote_sequence(
@@ -3394,11 +3398,14 @@ pub(crate) fn compile_vote_sequence(
                 if compiled_vote_option_uses_iterated_player(&repeat_effects, &repeat_choices) {
                     let (per_vote_effects, per_vote_choices) =
                         compile_effects_in_iterated_player_context(&option_effects_ast, ctx, None)?;
-                    if let Some(vote_option) = vote_options
-                        .iter_mut()
-                        .find(|vote_option| vote_option.name.eq_ignore_ascii_case(option))
+                    if let Some(vote_option_idx) =
+                        find_index(vote_options.as_slice(), |vote_option| {
+                            vote_option.name.eq_ignore_ascii_case(option)
+                        })
                     {
-                        vote_option.effects_per_vote.extend(per_vote_effects);
+                        vote_options[vote_option_idx]
+                            .effects_per_vote
+                            .extend(per_vote_effects);
                     }
                     for choice in per_vote_choices {
                         push_choice(&mut choices, choice);
@@ -4357,7 +4364,12 @@ fn try_compile_combat_and_damage_effect(
             };
 
             let mut effects = Vec::new();
-            let mut amount_source_spec = source_spec.clone();
+            let mut damage_source_spec = source_spec.clone();
+            let per_target_source_spec = if source == target {
+                ChooseSpec::Iterated
+            } else {
+                source_spec.clone()
+            };
 
             if source_spec.is_target() {
                 let source_tag = ctx.next_tag("damage_source");
@@ -4365,22 +4377,45 @@ fn try_compile_combat_and_damage_effect(
                     Effect::new(crate::effects::TargetOnlyEffect::new(source_spec.clone()))
                         .tag(source_tag.clone()),
                 );
-                amount_source_spec = ChooseSpec::Tagged(source_tag.as_str().into());
+                damage_source_spec = ChooseSpec::Tagged(source_tag.as_str().into());
                 if source == target {
                     damage_target_spec = ChooseSpec::Tagged(source_tag.as_str().into());
                 }
             }
 
-            let damage_effect = tag_object_target_effect(
-                Effect::deal_damage(
-                    Value::PowerOf(Box::new(amount_source_spec)),
-                    damage_target_spec.clone(),
-                ),
-                &damage_target_spec,
-                ctx,
-                "damaged",
-            );
-            effects.push(damage_effect);
+            if !damage_target_spec.is_target()
+                && let ChooseSpec::Object(filter) | ChooseSpec::All(filter) =
+                    damage_target_spec.base()
+            {
+                let mut per_target_damage =
+                    Effect::new(crate::effects::ExecuteWithSourceEffect::new(
+                        per_target_source_spec.clone(),
+                        Effect::deal_damage(
+                            Value::PowerOf(Box::new(per_target_source_spec.clone())),
+                            ChooseSpec::Iterated,
+                        ),
+                    ));
+                if ctx.auto_tag_object_targets {
+                    let tag = ctx.next_tag("damaged");
+                    ctx.last_object_tag = Some(tag.clone());
+                    per_target_damage = per_target_damage.tag(tag);
+                }
+                effects.push(Effect::for_each(filter.clone(), vec![per_target_damage]));
+            } else {
+                let damage_effect = tag_object_target_effect(
+                    Effect::new(crate::effects::ExecuteWithSourceEffect::new(
+                        damage_source_spec.clone(),
+                        Effect::deal_damage(
+                            Value::PowerOf(Box::new(damage_source_spec.clone())),
+                            damage_target_spec.clone(),
+                        ),
+                    )),
+                    &damage_target_spec,
+                    ctx,
+                    "damaged",
+                );
+                effects.push(damage_effect);
+            }
 
             if let TargetAst::Player(filter, _) | TargetAst::PlayerOrPlaneswalker(filter, _) =
                 target
@@ -7308,11 +7343,14 @@ fn try_compile_stack_and_condition_effect(
                 );
 
             let antecedent_choice = if saved_last_tag.is_none() && predicate_references_it {
-                true_choices
-                    .iter()
-                    .chain(false_choices.iter())
-                    .find(|choice| choice.is_target() && choose_spec_targets_object(choice))
-                    .cloned()
+                let mut antecedent_choice = None;
+                for choice in true_choices.iter().chain(false_choices.iter()) {
+                    if choice.is_target() && choose_spec_targets_object(choice) {
+                        antecedent_choice = Some(choice.clone());
+                        break;
+                    }
+                }
+                antecedent_choice
             } else {
                 None
             };
@@ -7400,7 +7438,13 @@ fn try_compile_attachment_and_setup_effect(
             (vec![Effect::investigate(count)], Vec::new())
         }
         EffectAst::Amass { subtype, amount } => {
-            (vec![Effect::amass(*subtype, *amount)], Vec::new())
+            let mut effect = Effect::amass(*subtype, *amount);
+            if ctx.auto_tag_object_targets {
+                let tag = ctx.next_tag("amassed");
+                ctx.last_object_tag = Some(tag.clone());
+                effect = effect.tag(tag);
+            }
+            (vec![effect], Vec::new())
         }
         _ => return Ok(None),
     };
@@ -7635,7 +7679,7 @@ fn try_compile_token_generation_effect(
                 push_choice(&mut choices, choice);
             }
             if let Some(last_tag) = ctx.last_object_tag.as_deref()
-                && last_tag.starts_with("exile_cost_")
+                && str_starts_with(last_tag, "exile_cost_")
                 && let ChooseSpec::Object(filter) = &source_spec
                 && filter.zone == Some(Zone::Exile)
                 && filter.tagged_constraints.iter().any(|constraint| {
@@ -8561,7 +8605,7 @@ fn try_compile_object_zone_and_exchange_effect(
                 resolved_filter.owner = ctx.last_player_filter.clone();
             }
             preserve_chooser_relative_player_filters(filter, &mut resolved_filter, &chooser);
-            if zones.contains(&Zone::Battlefield)
+            if slice_contains(zones.as_slice(), &Zone::Battlefield)
                 && resolved_filter.controller.is_none()
                 && resolved_filter.tagged_constraints.is_empty()
             {
@@ -8586,7 +8630,7 @@ fn try_compile_object_zone_and_exchange_effect(
                         choose_effect.as_all_matching_search()
                     }
                 };
-            } else if zones.contains(&Zone::Library) {
+            } else if slice_contains(zones.as_slice(), &Zone::Library) {
                 choose_effect = choose_effect.as_search();
             }
             let effect = Effect::new(choose_effect);
@@ -9463,12 +9507,13 @@ pub(crate) fn parse_number_word(word: &str) -> Option<i32> {
 }
 
 pub(crate) fn parse_deals_damage_amount(words: &[&str]) -> Option<i32> {
-    for window in words.windows(3) {
+    let match_idx = find_window_by(words, 3, |window| {
         if (window[0] == "deals" || window[0] == "deal") && window[2] == "damage" {
-            return parse_number_word(window[1]);
+            return true;
         }
-    }
-    None
+        false
+    })?;
+    parse_number_word(words[match_idx + 1])
 }
 
 pub(crate) fn token_inline_noncreature_spell_each_opponent_damage_amount(
@@ -9484,44 +9529,47 @@ pub(crate) fn token_inline_noncreature_spell_each_opponent_damage_amount(
         })
         .filter(|word| !word.is_empty())
         .collect();
-    let has_noncreature_cast_trigger = words
-        .windows(6)
-        .any(|window| window == ["whenever", "you", "cast", "a", "noncreature", "spell"])
-        || words
-            .windows(5)
-            .any(|window| window == ["whenever", "you", "cast", "noncreature", "spell"]);
+    let has_noncreature_cast_trigger =
+        find_window_by(&words, 6, |window| {
+            window == ["whenever", "you", "cast", "a", "noncreature", "spell"]
+        })
+        .is_some()
+            || find_window_by(&words, 5, |window| {
+                window == ["whenever", "you", "cast", "noncreature", "spell"]
+            })
+            .is_some();
     if !has_noncreature_cast_trigger {
         return None;
     }
-    let has_damage_subject = words.windows(3).any(|window| {
+    let has_damage_subject = find_window_by(&words, 3, |window| {
         window == ["this", "token", "deals"]
             || window == ["this", "creature", "deals"]
             || window == ["this", "token", "deal"]
             || window == ["this", "creature", "deal"]
-    }) || words
-        .windows(2)
-        .any(|window| window == ["it", "deals"] || window == ["it", "deal"]);
+    })
+    .is_some()
+        || find_window_by(&words, 2, |window| {
+            window == ["it", "deals"] || window == ["it", "deal"]
+        })
+        .is_some();
     if !has_damage_subject {
         return None;
     }
-    if !words
-        .windows(3)
-        .any(|window| window == ["to", "each", "opponent"])
-    {
+    if find_window_by(&words, 3, |window| window == ["to", "each", "opponent"]).is_none() {
         return None;
     }
     parse_deals_damage_amount(&words)
 }
 
 pub(crate) fn parse_crew_amount(words: &[&str]) -> Option<u32> {
-    let crew_idx = words.iter().position(|word| *word == "crew")?;
+    let crew_idx = find_index(words, |word| *word == "crew")?;
     let amount_word = words.get(crew_idx + 1)?;
     let amount = parse_number_word(amount_word)?;
     u32::try_from(amount).ok()
 }
 
 pub(crate) fn parse_equip_amount(words: &[&str]) -> Option<u32> {
-    let equip_idx = words.iter().position(|word| *word == "equip")?;
+    let equip_idx = find_index(words, |word| *word == "equip")?;
     let amount_word = words.get(equip_idx + 1)?;
     let amount = parse_number_word(amount_word)?;
     u32::try_from(amount).ok()
@@ -9543,14 +9591,15 @@ pub(crate) fn join_simple_and_list(parts: &[&str]) -> String {
 
 pub(crate) fn parse_equipment_rules_text(words: &[&str]) -> Option<String> {
     let has_equipped_subject = words
-        .windows(2)
-        .any(|window| window == ["equipped", "creature"]);
+        .iter()
+        .enumerate()
+        .any(|(idx, _)| idx + 2 <= words.len() && words[idx..idx + 2] == ["equipped", "creature"]);
     if !has_equipped_subject {
         return None;
     }
 
     let mut lines = Vec::new();
-    let has_plus_one = words.windows(2).any(|window| window == ["gets", "+1/+1"]);
+    let has_plus_one = find_window_by(words, 2, |window| window == ["gets", "+1/+1"]).is_some();
     let mut granted_keywords: Vec<&str> = Vec::new();
     for keyword in [
         "vigilance",
@@ -9564,7 +9613,7 @@ pub(crate) fn parse_equipment_rules_text(words: &[&str]) -> Option<String> {
         "hexproof",
         "indestructible",
     ] {
-        if words.contains(&keyword) {
+        if words.iter().any(|word| *word == keyword) {
             granted_keywords.push(keyword);
         }
     }
@@ -9742,8 +9791,8 @@ pub(crate) fn token_tap_add_single_mana_ability(symbol: ManaSymbol) -> Ability {
 }
 
 pub(crate) fn parse_token_tap_add_single_mana_symbol(words: &[&str]) -> Option<ManaSymbol> {
-    let add_idx = words.iter().position(|word| *word == "add")?;
-    if !words[..add_idx].contains(&"t") {
+    let add_idx = find_index(words, |word| *word == "add")?;
+    if !words[..add_idx].iter().any(|word| *word == "t") {
         return None;
     }
     let symbol = parse_token_mana_symbol(words.get(add_idx + 1).copied()?)?;
@@ -9865,7 +9914,7 @@ pub(crate) fn title_case_words(words: &[&str]) -> String {
         .filter(|word| !word.is_empty())
         .enumerate()
         .map(|(idx, word)| {
-            if idx > 0 && lowercase_words.contains(word) {
+            if idx > 0 && lowercase_words.iter().any(|candidate| candidate == word) {
                 return (*word).to_string();
             }
             let mut chars = word.chars();
@@ -9897,7 +9946,10 @@ pub(crate) fn title_case_phrase_preserving_punctuation(phrase: &str) -> String {
                 .filter(|ch| ch.is_ascii_alphabetic())
                 .map(|ch| ch.to_ascii_lowercase())
                 .collect();
-            let keep_lowercase = idx > 0 && lowercase_words.contains(&letters_only.as_str());
+            let keep_lowercase = idx > 0
+                && lowercase_words
+                    .iter()
+                    .any(|candidate| *candidate == letters_only.as_str());
             if keep_lowercase {
                 return word.to_string();
             }
@@ -9918,7 +9970,7 @@ pub(crate) fn title_case_phrase_preserving_punctuation(phrase: &str) -> String {
 }
 
 pub(crate) fn extract_named_card_name(words: &[&str], source_text: &str) -> Option<String> {
-    let named_idx = words.iter().position(|word| *word == "named")?;
+    let named_idx = find_index(words, |word| *word == "named")?;
     if named_idx > 0 && matches!(words[named_idx - 1], "card" | "cards") {
         return None;
     }
@@ -9976,7 +10028,7 @@ pub(crate) fn extract_named_card_name(words: &[&str], source_text: &str) -> Opti
         "c",
     ];
     let mut end = named_idx + 1;
-    while end < words.len() && !stop_words.contains(&words[end]) {
+    while end < words.len() && !stop_words.iter().any(|candidate| *candidate == words[end]) {
         end += 1;
     }
     if end <= named_idx + 1 {
@@ -9984,7 +10036,7 @@ pub(crate) fn extract_named_card_name(words: &[&str], source_text: &str) -> Opti
     }
     let name_word_count = end - (named_idx + 1);
 
-    if let Some(named_pos) = source_text.find("named") {
+    if let Some(named_pos) = str_find(source_text, "named") {
         let after_named = &source_text[named_pos + "named".len()..];
         let raw_words: Vec<&str> = after_named
             .split_whitespace()
@@ -10179,7 +10231,7 @@ pub(crate) fn extract_leading_token_name_phrase(words: &[&str]) -> Option<String
 
     let mut name_words = Vec::new();
     for word in words {
-        if stop_words.contains(word)
+        if stop_words.iter().any(|candidate| *candidate == *word)
             || parse_token_pt(word).is_some()
             || parse_card_type(word).is_some()
         {
@@ -10347,32 +10399,33 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
         })
         .filter(|word| !word.is_empty())
         .collect();
-    let has_word = |needle: &str| words.iter().any(|word| *word == needle);
+    let has_word = |needle: &str| slice_contains(words.as_slice(), &needle);
+    let has_words = |needles: &[&str]| needles.iter().all(|needle| has_word(needle));
+    let has_any_word = |needles: &[&str]| needles.iter().any(|needle| has_word(needle));
+    let has_phrase = |phrase: &[&str]| find_window_index(words.as_slice(), phrase).is_some();
+    let has_text = |needle: &str| str_contains(lower.as_str(), needle);
     let has_explicit_pt = words.iter().any(|word| parse_token_pt(word).is_some());
-    let has_equipment_rules_subject = has_word("equipment")
-        && words
-            .windows(2)
-            .any(|window| window == ["equipped", "creature"]);
+    let has_equipment_rules_subject = has_word("equipment") && has_phrase(&["equipped", "creature"]);
 
-    if has_word("treasure") && !words.contains(&"creature") {
+    if has_word("treasure") && !has_word("creature") {
         return Some(crate::cards::tokens::treasure_token_definition());
     }
-    if has_word("clue") && !words.contains(&"creature") {
+    if has_word("clue") && !has_word("creature") {
         return Some(crate::cards::tokens::clue_token_definition());
     }
-    if has_word("map") && !words.contains(&"creature") {
+    if has_word("map") && !has_word("creature") {
         return Some(crate::cards::tokens::map_token_definition());
     }
-    if has_word("lander") && !words.contains(&"creature") {
+    if has_word("lander") && !has_word("creature") {
         return Some(crate::cards::tokens::lander_token_definition());
     }
-    if has_word("junk") && !words.contains(&"creature") {
+    if has_word("junk") && !has_word("creature") {
         return Some(crate::cards::tokens::junk_token_definition());
     }
-    if has_word("gold") && !words.contains(&"creature") {
+    if has_word("gold") && !has_word("creature") {
         return Some(crate::cards::tokens::gold_token_definition());
     }
-    if has_word("shard") && !words.contains(&"creature") {
+    if has_word("shard") && !has_word("creature") {
         return Some(crate::cards::tokens::shard_token_definition());
     }
     if has_word("walker") && !has_word("planeswalker") {
@@ -10384,7 +10437,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
     if has_word("eldrazi") && has_word("scion") {
         return Some(eldrazi_scion_token_definition());
     }
-    if has_word("food") && !words.contains(&"creature") {
+    if has_word("food") && !has_word("creature") {
         let builder = CardDefinitionBuilder::new(CardId::new(), "Food")
             .token()
             .card_types(vec![CardType::Artifact])
@@ -10409,19 +10462,19 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
     if has_word("cursed") && has_word("role") {
         return Some(crate::cards::tokens::cursed_role_token_definition());
     }
-    if has_word("blood") && !words.contains(&"creature") {
+    if has_word("blood") && !has_word("creature") {
         let builder = CardDefinitionBuilder::new(CardId::new(), "Blood")
             .token()
             .card_types(vec![CardType::Artifact]);
         return Some(builder.build());
     }
-    if has_word("powerstone") && !words.contains(&"creature") {
+    if has_word("powerstone") && !has_word("creature") {
         let builder = CardDefinitionBuilder::new(CardId::new(), "Powerstone")
             .token()
             .card_types(vec![CardType::Artifact]);
         return Some(builder.build());
     }
-    if has_word("vehicle") && has_word("artifact") && !words.contains(&"creature") {
+    if has_word("vehicle") && has_word("artifact") && !has_word("creature") {
         let explicit_name_from_words = words.iter().find_map(|word| {
             if parse_token_pt(word).is_some() {
                 return None;
@@ -10467,7 +10520,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
         if let Some((power, toughness)) = words.iter().find_map(|word| parse_token_pt(word)) {
             builder = builder.power_toughness(PowerToughness::fixed(power, toughness));
         }
-        if words.contains(&"flying") {
+        if has_word("flying") {
             builder = builder.flying();
         }
         if let Some(crew_amount) = parse_crew_amount(&words) {
@@ -10479,56 +10532,54 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
     }
     if has_word("artifact")
         && !has_explicit_pt
-        && (!words.contains(&"creature") || has_equipment_rules_subject)
+        && (!has_word("creature") || has_equipment_rules_subject)
     {
         let mut subtypes = Vec::new();
         for word in &words {
             if let Some(subtype) = parse_subtype_word(word)
                 && !subtype.is_creature_type()
-                && !subtypes.contains(&subtype)
+                && !subtypes.iter().any(|candidate| *candidate == subtype)
             {
                 subtypes.push(subtype);
             }
         }
-        let token_name = words
-            .iter()
-            .find(|word| {
-                !matches!(
-                    **word,
-                    "artifact"
-                        | "token"
-                        | "tokens"
-                        | "named"
-                        | "colorless"
-                        | "white"
-                        | "blue"
-                        | "black"
-                        | "red"
-                        | "green"
-                )
-            })
-            .map(|word| {
-                let mut chars = word.chars();
-                match chars.next() {
-                    Some(first) => {
-                        let mut name = first.to_uppercase().to_string();
-                        name.push_str(chars.as_str());
-                        name
-                    }
-                    None => "Artifact".to_string(),
+        let token_name = find_index(words.as_slice(), |word| {
+            !matches!(
+                *word,
+                "artifact"
+                    | "token"
+                    | "tokens"
+                    | "named"
+                    | "colorless"
+                    | "white"
+                    | "blue"
+                    | "black"
+                    | "red"
+                    | "green"
+            )
+        })
+        .map(|idx| {
+            let mut chars = words[idx].chars();
+            match chars.next() {
+                Some(first) => {
+                    let mut name = first.to_uppercase().to_string();
+                    name.push_str(chars.as_str());
+                    name
                 }
-            })
-            .unwrap_or_else(|| "Artifact".to_string());
+                None => "Artifact".to_string(),
+            }
+        })
+        .unwrap_or_else(|| "Artifact".to_string());
         let mut builder = CardDefinitionBuilder::new(CardId::new(), token_name)
             .token()
             .card_types(vec![CardType::Artifact]);
-        if words.contains(&"legendary") {
+        if has_word("legendary") {
             builder = builder.supertypes(vec![crate::types::Supertype::Legendary]);
         }
         if !subtypes.is_empty() {
             builder = builder.subtypes(subtypes);
         }
-        if words.contains(&"colorless") {
+        if has_word("colorless") {
             builder = builder.with_ability(Ability::static_ability(StaticAbility::make_colorless(
                 ObjectFilter::source(),
             )));
@@ -10538,13 +10589,15 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
         {
             return Some(def);
         }
-        if words.contains(&"when")
-            && words.contains(&"token")
-            && words.contains(&"leaves")
-            && words.contains(&"battlefield")
-            && words.contains(&"deals")
-            && words.contains(&"damage")
-            && words.contains(&"target")
+        if has_words(&[
+            "when",
+            "token",
+            "leaves",
+            "battlefield",
+            "deals",
+            "damage",
+            "target",
+        ])
             && let Some(amount) = parse_deals_damage_amount(&words)
         {
             builder = builder.with_ability(token_leaves_deals_damage_any_target_ability(amount));
@@ -10562,9 +10615,9 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
         return Some(builder.build());
     }
     if has_word("wall")
-        && lower.contains("0/4")
-        && lower.contains("artifact")
-        && lower.contains("creature")
+        && has_text("0/4")
+        && has_text("artifact")
+        && has_text("creature")
     {
         let builder = CardDefinitionBuilder::new(CardId::new(), "Wall")
             .token()
@@ -10574,7 +10627,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
             .defender();
         return Some(builder.build());
     }
-    if has_word("squirrel") && lower.contains("1/1") && lower.contains("green") {
+    if has_word("squirrel") && has_text("1/1") && has_text("green") {
         let builder = CardDefinitionBuilder::new(CardId::new(), "Squirrel")
             .token()
             .card_types(vec![CardType::Creature])
@@ -10585,15 +10638,8 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
     }
     let is_dragon_egg_death_spawn_pattern = has_word("dragon")
         && has_word("egg")
-        && lower.contains("0/2")
-        && words.contains(&"when")
-        && words.contains(&"token")
-        && words.contains(&"dies")
-        && words.contains(&"create")
-        && words.contains(&"2/2")
-        && words.contains(&"flying")
-        && words.contains(&"r")
-        && words.contains(&"+1/+0");
+        && has_text("0/2")
+        && has_words(&["when", "token", "dies", "create", "2/2", "flying", "r", "+1/+0"]);
     if is_dragon_egg_death_spawn_pattern {
         let builder = CardDefinitionBuilder::new(CardId::new(), "Dragon Egg")
             .token()
@@ -10605,7 +10651,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
             .with_ability(token_dies_create_dragon_with_firebreathing_ability());
         return Some(builder.build());
     }
-    if has_word("elephant") && lower.contains("3/3") && lower.contains("green") {
+    if has_word("elephant") && has_text("3/3") && has_text("green") {
         let builder = CardDefinitionBuilder::new(CardId::new(), "Elephant")
             .token()
             .card_types(vec![CardType::Creature])
@@ -10614,21 +10660,11 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
             .power_toughness(PowerToughness::fixed(3, 3));
         return Some(builder.build());
     }
-    let has_construct_cda_words = words.contains(&"power")
-        && words.contains(&"toughness")
-        && words.contains(&"equal")
-        && words.contains(&"number")
-        && words.contains(&"artifacts")
-        && words.contains(&"you")
-        && words.contains(&"control");
-    let has_construct_plus_words = words.contains(&"gets")
-        && words.contains(&"+1/+1")
-        && words.contains(&"for")
-        && words.contains(&"each")
-        && words.contains(&"artifact")
-        && words.contains(&"you")
-        && words.contains(&"control");
-    let is_zero_zero_construct = has_word("construct") && lower.contains("0/0");
+    let has_construct_cda_words =
+        has_words(&["power", "toughness", "equal", "number", "artifacts", "you", "control"]);
+    let has_construct_plus_words =
+        has_words(&["gets", "+1/+1", "for", "each", "artifact", "you", "control"]);
+    let is_zero_zero_construct = has_word("construct") && has_text("0/0");
     if has_word("construct")
         && (!has_explicit_pt
             || has_construct_cda_words
@@ -10649,21 +10685,21 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
             .with_ability(scaling_ability);
         return Some(builder.build());
     }
-    if has_word("shapeshifter") {
+    if has_word("shapeshifter") && !has_word("creature") {
         let mut builder = CardDefinitionBuilder::new(CardId::new(), "Shapeshifter")
             .token()
             .card_types(vec![CardType::Creature])
             .subtypes(vec![Subtype::Shapeshifter])
             .power_toughness(PowerToughness::fixed(3, 2));
-        if lower.contains("changeling") || lower == "shapeshifter" {
+        if has_text("changeling") || lower == "shapeshifter" {
             builder = builder.with_ability(Ability::static_ability(StaticAbility::changeling()));
         }
         return Some(builder.build());
     }
     if has_word("astartes")
         && has_word("warrior")
-        && lower.contains("2/2")
-        && lower.contains("white")
+        && has_text("2/2")
+        && has_text("white")
     {
         let mut builder = CardDefinitionBuilder::new(CardId::new(), "Astartes Warrior")
             .token()
@@ -10671,18 +10707,18 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
             .subtypes(vec![Subtype::Astartes, Subtype::Warrior])
             .color_indicator(ColorSet::WHITE)
             .power_toughness(PowerToughness::fixed(2, 2));
-        if lower.contains("vigilance") {
+        if has_text("vigilance") {
             builder = builder.vigilance();
         }
         return Some(builder.build());
     }
-    if words.contains(&"creature") {
+    if has_word("creature") {
         let mut card_types = vec![CardType::Creature];
-        let first_creature_idx = words.iter().position(|word| *word == "creature");
+        let first_creature_idx = find_index(words.as_slice(), |word| *word == "creature");
         let artifact_before_creature =
-            first_creature_idx.is_some_and(|idx| words[..idx].contains(&"artifact"));
+            first_creature_idx.is_some_and(|idx| slice_contains(&words[..idx], &"artifact"));
         let enchantment_before_creature =
-            first_creature_idx.is_some_and(|idx| words[..idx].contains(&"enchantment"));
+            first_creature_idx.is_some_and(|idx| slice_contains(&words[..idx], &"enchantment"));
         if artifact_before_creature {
             card_types.insert(0, CardType::Artifact);
         }
@@ -10693,14 +10729,13 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
         let (power, toughness) = words.iter().find_map(|word| parse_token_pt(word))?;
 
         let mut subtypes = Vec::new();
-        let subtype_scan_end = words
-            .iter()
-            .position(|word| parse_card_type(word).is_some())
-            .unwrap_or(words.len());
+        let subtype_scan_end =
+            find_index(words.as_slice(), |word| parse_card_type(word).is_some())
+                .unwrap_or(words.len());
         for word in &words[..subtype_scan_end] {
             if let Some(subtype) = parse_subtype_word(word)
-                .or_else(|| word.strip_suffix('s').and_then(parse_subtype_word))
-                && !subtypes.contains(&subtype)
+                .or_else(|| str_strip_suffix(word, "s").and_then(parse_subtype_word))
+                && !subtypes.iter().any(|candidate| *candidate == subtype)
             {
                 subtypes.push(subtype);
             }
@@ -10720,7 +10755,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
             .token()
             .card_types(card_types)
             .power_toughness(PowerToughness::fixed(power, toughness));
-        if words.contains(&"legendary") {
+        if has_word("legendary") {
             builder = builder.supertypes(vec![crate::types::Supertype::Legendary]);
         }
 
@@ -10729,59 +10764,56 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
         }
 
         let mut colors = ColorSet::new();
-        if words.contains(&"white") {
+        if has_word("white") {
             colors = colors.union(ColorSet::WHITE);
         }
-        if words.contains(&"blue") {
+        if has_word("blue") {
             colors = colors.union(ColorSet::BLUE);
         }
-        if words.contains(&"black") {
+        if has_word("black") {
             colors = colors.union(ColorSet::BLACK);
         }
-        if words.contains(&"red") {
+        if has_word("red") {
             colors = colors.union(ColorSet::RED);
         }
-        if words.contains(&"green") {
+        if has_word("green") {
             colors = colors.union(ColorSet::GREEN);
         }
         if !colors.is_empty() {
             builder = builder.color_indicator(colors);
         }
 
-        if words.contains(&"flying") {
+        if has_word("flying") {
             builder = builder.flying();
         }
-        if words.contains(&"defender") {
+        if has_word("defender") {
             builder = builder.defender();
         }
-        if words.contains(&"prowess") {
+        if has_word("prowess") {
             builder = builder.prowess();
         }
-        if words.contains(&"vigilance") {
+        if has_word("vigilance") {
             builder = builder.vigilance();
         }
-        if words.contains(&"trample") {
+        if has_word("trample") {
             builder = builder.trample();
         }
-        if words.contains(&"lifelink") {
+        if has_word("lifelink") {
             builder = builder.lifelink();
         }
-        if words.contains(&"deathtouch") {
+        if has_word("deathtouch") {
             builder = builder.deathtouch();
         }
-        if words.contains(&"haste") {
+        if has_word("haste") {
             builder = builder.haste();
         }
-        if words.contains(&"menace") {
+        if has_word("menace") {
             builder = builder.menace();
         }
-        if words.contains(&"reach") {
+        if has_word("reach") {
             builder = builder.reach();
         }
-        if let Some(upkeep_idx) = words
-            .windows(2)
-            .position(|window| window == ["cumulative", "upkeep"])
-        {
+        if let Some(upkeep_idx) = find_window_index(words.as_slice(), &["cumulative", "upkeep"]) {
             let mut cost_symbols = Vec::new();
             for word in &words[upkeep_idx + 2..] {
                 if matches!(*word, "when" | "whenever" | "at") {
@@ -10804,44 +10836,38 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
         if let Some(symbol) = parse_token_tap_add_single_mana_symbol(&words) {
             builder = builder.with_ability(token_tap_add_single_mana_ability(symbol));
         }
-        if words.contains(&"crews")
-            && words.contains(&"vehicles")
-            && words.contains(&"power")
-            && words.contains(&"greater")
-            && words.contains(&"2")
-        {
+        if has_words(&["crews", "vehicles", "power", "greater", "2"]) {
             return None;
         }
-        if words.contains(&"banding") {
+        if has_word("banding") {
             builder = builder.with_ability(Ability::static_ability(StaticAbility::keyword_marker(
                 "banding",
             )));
         }
-        if words.contains(&"hexproof") {
+        if has_word("hexproof") {
             builder = builder.hexproof();
         }
-        if words.contains(&"indestructible") {
+        if has_word("indestructible") {
             builder = builder.indestructible();
         }
-        if let Some(amount) = words.windows(2).find_map(|window| {
-            if window[0] == "toxic" {
-                window[1].parse::<u32>().ok()
-            } else {
-                None
+        if let Some(toxic_idx) = find_window_by(words.as_slice(), 2, |window| window[0] == "toxic")
+        {
+            if let Ok(amount) = words[toxic_idx + 1].parse::<u32>() {
+                builder = builder.toxic(amount);
             }
-        }) {
-            builder = builder.toxic(amount);
         }
-        if words.contains(&"sacrifice")
-            && words.contains(&"this")
-            && words.contains(&"token")
-            && words.contains(&"return")
-            && words.contains(&"named")
-            && words.contains(&"graveyard")
-            && words.contains(&"battlefield")
-            && !words.contains(&"beginning")
+        if has_words(&[
+            "sacrifice",
+            "this",
+            "token",
+            "return",
+            "named",
+            "graveyard",
+            "battlefield",
+        ])
+            && !has_word("beginning")
             && let Some(card_name) = extract_named_card_name(&words, lower.as_str())
-            && let Some(sacrifice_idx) = words.iter().position(|word| *word == "sacrifice")
+            && let Some(sacrifice_idx) = find_index(words.as_slice(), |word| *word == "sacrifice")
         {
             let mut mana_symbols = Vec::new();
             let mut tap_cost = false;
@@ -10860,69 +10886,51 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
                 tap_cost,
             ));
         }
-        if words
-            .windows(5)
-            .any(|window| window == ["at", "the", "beginning", "of", "your"])
-            && words.contains(&"upkeep")
-            && words.contains(&"sacrifice")
-            && words.contains(&"this")
-            && words.contains(&"token")
-            && words.contains(&"return")
-            && words.contains(&"named")
-            && words.contains(&"graveyard")
-            && words.contains(&"battlefield")
+        if has_phrase(&["at", "the", "beginning", "of", "your"])
+            && has_words(&[
+                "upkeep",
+                "sacrifice",
+                "this",
+                "token",
+                "return",
+                "named",
+                "graveyard",
+                "battlefield",
+            ])
             && let Some(card_name) = extract_named_card_name(&words, lower.as_str())
         {
             builder =
                 builder.with_ability(token_upkeep_sacrifice_return_named_from_graveyard_ability(
                     &card_name,
-                    words.contains(&"haste"),
+                    has_word("haste"),
                 ));
         }
-        if words.contains(&"when")
-            && words.contains(&"token")
-            && words.contains(&"dies")
-            && words.contains(&"create")
-            && words.contains(&"2/2")
-            && words.contains(&"red")
-            && words.contains(&"dragon")
-            && words.contains(&"flying")
-            && words.contains(&"r")
-            && words.contains(&"+1/+0")
-        {
+        if has_words(&[
+            "when", "token", "dies", "create", "2/2", "red", "dragon", "flying", "r", "+1/+0",
+        ]) {
             builder = builder.with_ability(token_dies_create_dragon_with_firebreathing_ability());
         }
-        if words.contains(&"when")
-            && words.contains(&"token")
-            && words.contains(&"dies")
-            && words.contains(&"deals")
-            && words.contains(&"damage")
-            && words.contains(&"target")
+        if has_words(&["when", "token", "dies", "deals", "damage", "target"])
             && let Some(amount) = parse_deals_damage_amount(&words)
         {
             builder = builder.with_ability(token_dies_deals_damage_any_target_ability(amount));
         }
-        if words.contains(&"when")
-            && words.contains(&"token")
-            && words.contains(&"dies")
-            && words.contains(&"target")
-            && words.contains(&"creature")
-            && words.contains(&"gets")
-            && words.contains(&"-1/-1")
-        {
+        if has_words(&["when", "token", "dies", "target", "creature", "gets", "-1/-1"]) {
             builder =
                 builder.with_ability(token_dies_target_creature_gets_minus_one_minus_one_ability());
         }
-        if words.contains(&"when")
-            && words.contains(&"token")
-            && words.contains(&"leaves")
-            && words.contains(&"battlefield")
-            && words.contains(&"deals")
-            && words.contains(&"damage")
-            && words.contains(&"you")
-            && words.contains(&"each")
-            && words.contains(&"creature")
-            && words.contains(&"control")
+        if has_words(&[
+            "when",
+            "token",
+            "leaves",
+            "battlefield",
+            "deals",
+            "damage",
+            "you",
+            "each",
+            "creature",
+            "control",
+        ])
             && let Some(amount) = parse_deals_damage_amount(&words)
         {
             let ability = Ability {
@@ -10945,42 +10953,20 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
             };
             builder = builder.with_ability(ability);
         }
-        if words.contains(&"bands")
-            && words.contains(&"other")
-            && words.contains(&"creatures")
-            && words.contains(&"named")
-            && words.contains(&"wolves")
-        {
+        if has_words(&["bands", "other", "creatures", "named", "wolves"]) {
             builder = builder.with_ability(Ability::static_ability(StaticAbility::keyword_marker(
                 "bands with other creatures named Wolves of the Hunt",
             )));
         }
-        if words.contains(&"r")
-            && words.contains(&"this")
-            && words.contains(&"creature")
-            && words.contains(&"gets")
-            && words.contains(&"+1/+0")
-            && !(words.contains(&"when")
-                && words.contains(&"token")
-                && words.contains(&"dies")
-                && words.contains(&"create"))
+        if has_words(&["r", "this", "creature", "gets", "+1/+0"])
+            && !has_words(&["when", "token", "dies", "create"])
         {
             builder = builder.with_ability(token_red_pump_ability());
         }
-        if words.contains(&"w")
-            && words.contains(&"t")
-            && words.contains(&"tap")
-            && words.contains(&"target")
-            && words.contains(&"creature")
-        {
+        if has_words(&["w", "t", "tap", "target", "creature"]) {
             builder = builder.with_ability(token_white_tap_target_creature_ability());
         }
-        if words.contains(&"deals")
-            && words.contains(&"damage")
-            && words.contains(&"player")
-            && words.contains(&"poison")
-            && words.contains(&"counter")
-        {
+        if has_words(&["deals", "damage", "player", "poison", "counter"]) {
             builder = builder.with_ability(token_damage_to_player_poison_counter_ability());
         }
         if let Some(amount) =
@@ -10989,40 +10975,37 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
             builder =
                 builder.with_ability(token_noncreature_spell_each_opponent_damage_ability(amount));
         }
-        if words.contains(&"whenever")
-            && words.contains(&"token")
-            && words.contains(&"becomes")
-            && words.contains(&"tapped")
-            && words.contains(&"deals")
-            && words.contains(&"damage")
-            && words.contains(&"target")
-            && words.contains(&"player")
+        if has_words(&[
+            "whenever",
+            "token",
+            "becomes",
+            "tapped",
+            "deals",
+            "damage",
+            "target",
+            "player",
+        ])
             && let Some(amount) = parse_deals_damage_amount(&words)
         {
             builder = builder.with_ability(
                 token_becomes_tapped_deals_damage_target_player_ability(amount),
             );
         }
-        if words.contains(&"whenever")
-            && words.contains(&"token")
-            && words.contains(&"deals")
-            && words.contains(&"combat")
-            && words.contains(&"damage")
-            && words.contains(&"player")
-            && words.contains(&"gain")
-            && words.contains(&"control")
-            && words.contains(&"artifact")
-        {
+        if has_words(&[
+            "whenever",
+            "token",
+            "deals",
+            "combat",
+            "damage",
+            "player",
+            "gain",
+            "control",
+            "artifact",
+        ]) {
             builder =
                 builder.with_ability(token_combat_damage_gain_control_target_artifact_ability());
         }
-        if words.contains(&"when")
-            && words.contains(&"leaves")
-            && words.contains(&"battlefield")
-            && words.contains(&"return")
-            && words.contains(&"named")
-            && words.contains(&"graveyard")
-            && words.contains(&"hand")
+        if has_words(&["when", "leaves", "battlefield", "return", "named", "graveyard", "hand"])
             && let Some(card_name) = extract_named_card_name(&words, lower.as_str())
         {
             builder = builder.with_ability(
@@ -11030,12 +11013,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
             );
         }
         if has_word("pest")
-            && words.contains(&"when")
-            && words.contains(&"token")
-            && words.contains(&"dies")
-            && words.contains(&"gain")
-            && words.contains(&"1")
-            && words.contains(&"life")
+            && has_words(&["when", "token", "dies", "gain", "1", "life"])
         {
             let ability = Ability {
                 kind: AbilityKind::Triggered(crate::ability::TriggeredAbility {
@@ -11051,16 +11029,14 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
             };
             builder = builder.with_ability(ability);
         }
-        if words.contains(&"first") && words.contains(&"strike") {
+        if has_words(&["first", "strike"]) {
             builder = builder.first_strike();
         }
-        if words.contains(&"double") && words.contains(&"strike") {
+        if has_words(&["double", "strike"]) {
             builder = builder.double_strike();
         }
         if has_word("mercenary")
-            && words.contains(&"creature")
-            && words.contains(&"1/1")
-            && words.contains(&"red")
+            && has_words(&["creature", "1/1", "red"])
         {
             let target =
                 ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature().you_control()));
@@ -11086,11 +11062,8 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
             };
             builder = builder.with_ability(ability);
         }
-        let has_cant_attack_or_block = words.contains(&"cant")
-            && words.contains(&"attack")
-            && words.contains(&"or")
-            && words.contains(&"block");
-        if has_cant_attack_or_block && words.contains(&"alone") {
+        let has_cant_attack_or_block = has_words(&["cant", "attack", "or", "block"]);
+        if has_cant_attack_or_block && has_word("alone") {
             builder = builder.with_ability(Ability::static_ability(StaticAbility::restriction(
                 crate::effect::Restriction::attack_or_block_alone(ObjectFilter::source()),
                 "this token can't attack or block alone".to_string(),
@@ -11100,29 +11073,25 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
                 crate::effect::Restriction::attack_or_block(ObjectFilter::source()),
                 "this token can't attack or block".to_string(),
             )));
-        } else if words.contains(&"cant") && words.contains(&"block") {
+        } else if has_words(&["cant", "block"]) {
             builder = builder.with_ability(Ability::static_ability(StaticAbility::cant_block()));
         }
-        if words.contains(&"can")
-            && words.contains(&"block")
-            && words.contains(&"only")
-            && words.contains(&"creatures")
-            && words.contains(&"flying")
-        {
+        if has_words(&["can", "block", "only", "creatures", "flying"]) {
             builder = builder.with_ability(Ability::static_ability(
                 StaticAbility::can_block_only_flying(),
             ));
         }
-        if words.contains(&"counter")
-            && words.contains(&"noncreature")
-            && words.contains(&"spell")
-            && words.contains(&"sacrifice")
-            && words.contains(&"token")
-            && words.contains(&"unless")
-            && words.contains(&"controller")
-            && words.contains(&"pays")
-            && words.contains(&"1")
-        {
+        if has_words(&[
+            "counter",
+            "noncreature",
+            "spell",
+            "sacrifice",
+            "token",
+            "unless",
+            "controller",
+            "pays",
+            "1",
+        ]) {
             let target = ChooseSpec::target(ChooseSpec::Object(
                 ObjectFilter::spell().without_type(CardType::Creature),
             ));
@@ -11153,39 +11122,24 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
             };
             builder = builder.with_ability(counter_ability);
         }
-        if words.contains(&"changeling") {
+        if has_word("changeling") {
             builder = builder.with_ability(Ability::static_ability(StaticAbility::changeling()));
         }
-        if words.contains(&"this")
-            && words.contains(&"token")
-            && words.contains(&"gets")
-            && words.contains(&"+1/+1")
-            && words.contains(&"for")
-            && words.contains(&"each")
-            && words.contains(&"card")
-            && words.contains(&"named")
-            && (words.contains(&"graveyard") || words.contains(&"graveyards"))
+        if has_words(&["this", "token", "gets", "+1/+1", "for", "each", "card", "named"])
+            && has_any_word(&["graveyard", "graveyards"])
         {
-            let card_name = words
-                .windows(2)
-                .position(|window| window == ["card", "named"])
+            let card_name = find_window_index(words.as_slice(), &["card", "named"])
                 .and_then(|named_card_idx| {
                     let start = named_card_idx + 2;
-                    let end = (start..words.len())
-                        .find(|idx| {
-                            matches!(
-                                words[*idx],
-                                "in" | "from"
-                                    | "and"
-                                    | "or"
-                                    | "with"
-                                    | "that"
-                                    | "where"
-                                    | "when"
-                                    | "whenever"
-                            )
-                        })
-                        .unwrap_or(words.len());
+                    let end = find_index(&words[start..], |word| {
+                        matches!(
+                            *word,
+                            "in" | "from" | "and" | "or" | "with" | "that" | "where" | "when"
+                                | "whenever"
+                        )
+                    })
+                    .map(|offset| start + offset)
+                    .unwrap_or(words.len());
                     (end > start).then(|| title_case_words(&words[start..end]))
                 })
                 .or_else(|| extract_named_card_name(&words, lower.as_str()));
@@ -11212,14 +11166,8 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
         // Final Fantasy "Chocobo" token text: a Bird token with a quoted landfall-ish pump ability.
         // Example: Create a 2/2 green Bird creature token with
         // "Whenever a land you control enters, this token gets +1/+0 until end of turn."
-        let is_land_you_control_enters_pump_token = words.contains(&"whenever")
-            && words.contains(&"land")
-            && words.contains(&"control")
-            && words.contains(&"enters")
-            && words.contains(&"this")
-            && words.contains(&"token")
-            && words.contains(&"gets")
-            && words.contains(&"+1/+0")
+        let is_land_you_control_enters_pump_token =
+            has_words(&["whenever", "land", "control", "enters", "this", "token", "gets", "+1/+0"])
             && contains_until_end_of_turn(&words);
         if is_land_you_control_enters_pump_token {
             let ability = Ability {
@@ -11246,11 +11194,11 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
 }
 
 pub(crate) fn parse_token_pt(word: &str) -> Option<(i32, i32)> {
-    let (left, right) = word.split_once('/')?;
-    if left.starts_with('+')
-        || right.starts_with('+')
-        || left.starts_with('-')
-        || right.starts_with('-')
+    let (left, right) = str_split_once_char(word, '/')?;
+    if str_starts_with(left, "+")
+        || str_starts_with(right, "+")
+        || str_starts_with(left, "-")
+        || str_starts_with(right, "-")
     {
         return None;
     }
@@ -11309,12 +11257,13 @@ mod parse_compile_tests {
     use crate::cards::builders::RefState;
     use crate::effect::{Condition, Value};
     use crate::effects::{
-        ConditionalEffect, ForEachTaggedEffect, GrantPlayTaggedEffect, InvestigateEffect,
-        MoveToZoneEffect,
+        AmassEffect, ConditionalEffect, ExecuteWithSourceEffect, ForEachObject,
+        ForEachTaggedEffect, GrantPlayTaggedEffect, InvestigateEffect, MoveToZoneEffect,
+        TaggedEffect,
     };
     use crate::ids::CardId;
     use crate::target::ChooseSpec;
-    use crate::types::CardType;
+    use crate::types::{CardType, Subtype};
 
     #[test]
     fn compile_investigate_uses_ast_count() {
@@ -11348,6 +11297,87 @@ mod parse_compile_tests {
             .downcast_ref::<InvestigateEffect>()
             .expect("investigate effect");
         assert_eq!(investigate.count, Value::Fixed(2));
+    }
+
+    #[test]
+    fn compile_amass_tags_output_when_followup_references_it() {
+        let mut ctx = EffectLoweringContext::new();
+        ctx.auto_tag_object_targets = true;
+
+        let (effects, choices) = compile_effect(
+            &EffectAst::Amass {
+                subtype: Some(Subtype::Orc),
+                amount: 2,
+            },
+            &mut ctx,
+        )
+        .expect("compile amass");
+
+        assert!(choices.is_empty());
+        assert_eq!(effects.len(), 1);
+
+        let tagged = effects[0]
+            .downcast_ref::<TaggedEffect>()
+            .expect("amass should lower through TaggedEffect when auto-tagging is active");
+        assert_eq!(tagged.tag.as_str(), "amassed_0");
+
+        let amass = tagged
+            .effect
+            .downcast_ref::<AmassEffect>()
+            .expect("inner effect should still be AmassEffect");
+        assert_eq!(amass.subtype, Some(Subtype::Orc));
+        assert_eq!(amass.amount, 2);
+        assert_eq!(ctx.last_object_tag.as_deref(), Some("amassed_0"));
+    }
+
+    #[test]
+    fn compile_damage_equal_to_power_over_each_object_fans_out_per_object() {
+        let (effects, choices) = compile_effect(
+            &EffectAst::DealDamageEqualToPower {
+                source: TargetAst::Tagged(TagKey::from("amassed_0"), None),
+                target: TargetAst::Object(
+                    ObjectFilter::creature().without_subtype(Subtype::Army),
+                    None,
+                    None,
+                ),
+            },
+            &mut EffectLoweringContext::new(),
+        )
+        .expect("compile power-based fanout damage");
+
+        assert!(choices.is_empty());
+        assert_eq!(effects.len(), 1);
+
+        let for_each = effects[0]
+            .downcast_ref::<ForEachObject>()
+            .expect("non-target object damage should lower through ForEachObject");
+        assert!(crate::cards::builders::scan_helpers::iter_contains(
+            &for_each.filter.card_types,
+            &CardType::Creature,
+        ));
+        assert!(crate::cards::builders::scan_helpers::iter_contains(
+            &for_each.filter.excluded_subtypes,
+            &Subtype::Army,
+        ));
+        assert_eq!(for_each.effects.len(), 1);
+
+        let with_source = for_each.effects[0]
+            .downcast_ref::<ExecuteWithSourceEffect>()
+            .expect("fan-out damage should preserve the chosen source");
+        assert_eq!(
+            with_source.source,
+            ChooseSpec::Tagged(TagKey::from("amassed_0"))
+        );
+
+        let deal_damage = with_source
+            .effect
+            .downcast_ref::<crate::effects::DealDamageEffect>()
+            .expect("wrapped effect should still be DealDamageEffect");
+        assert_eq!(
+            deal_damage.amount,
+            Value::PowerOf(Box::new(ChooseSpec::Tagged(TagKey::from("amassed_0"))))
+        );
+        assert_eq!(deal_damage.target, ChooseSpec::Iterated);
     }
 
     fn test_ctx(line: &str) -> NormalizedLine {

@@ -189,7 +189,10 @@ fn prepare_attacker_declarations(
     let attacking_creatures: Vec<ObjectId> = declarations.iter().map(|d| d.creature).collect();
 
     if declarations.len() == 1 && !game.can_attack_alone(declarations[0].creature) {
-        return Err(ResponseError::InvalidAttackers("This creature can't attack alone".to_string()).into());
+        return Err(ResponseError::InvalidAttackers(
+            "This creature can't attack alone".to_string(),
+        )
+        .into());
     }
 
     for attacker in &legal_attackers {
@@ -298,7 +301,8 @@ fn prepare_attacker_declarations(
 
     Ok(PreparedAttackDeclarations {
         declarations: prepared,
-        total_generic_attack_mana_cost: total_attack_tax.saturating_add(additional_attack_mana_cost),
+        total_generic_attack_mana_cost: total_attack_tax
+            .saturating_add(additional_attack_mana_cost),
     })
 }
 
@@ -472,7 +476,13 @@ pub fn apply_attacker_declarations_with_dm(
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<(), GameLoopError> {
     let prepared = prepare_attacker_declarations(game, combat, declarations)?;
-    apply_prepared_attacker_declarations_with_dm(game, combat, trigger_queue, prepared, decision_maker)
+    apply_prepared_attacker_declarations_with_dm(
+        game,
+        combat,
+        trigger_queue,
+        prepared,
+        decision_maker,
+    )
 }
 
 /// Get a decision context for declaring blockers.

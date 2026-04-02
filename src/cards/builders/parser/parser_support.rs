@@ -172,11 +172,21 @@ fn looks_like_delayed_next_turn_intro_lexed(tokens: &[OwnedLexToken]) -> bool {
 }
 
 fn looks_like_when_one_or_more_this_way_followup_lexed(tokens: &[OwnedLexToken]) -> bool {
-    (starts_with_lexed_words(tokens, &["when", "one", "or", "more"])
+    if !(starts_with_lexed_words(tokens, &["when", "one", "or", "more"])
         || starts_with_lexed_words(tokens, &["whenever", "one", "or", "more"]))
-        && tokens
-            .windows(2)
-            .any(|window| window[0].is_word("this") && window[1].is_word("way"))
+    {
+        return false;
+    }
+
+    let mut idx = 0usize;
+    while idx + 1 < tokens.len() {
+        if tokens[idx].is_word("this") && tokens[idx + 1].is_word("way") {
+            return true;
+        }
+        idx += 1;
+    }
+
+    false
 }
 
 fn looks_like_when_you_do_followup_lexed(tokens: &[OwnedLexToken]) -> bool {

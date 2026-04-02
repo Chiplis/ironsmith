@@ -2240,7 +2240,8 @@ impl ReplacementMatcher for ChosenTypeDamageSourceMatcher {
             return false;
         };
 
-        source_obj.controller == ctx.controller && source_obj.has_subtype(chosen_type)
+        ctx.game.current_controller(source_obj.id) == Some(ctx.controller)
+            && ctx.game.current_has_subtype(source_obj.id, chosen_type)
     }
 
     fn priority(&self) -> ReplacementPriority {

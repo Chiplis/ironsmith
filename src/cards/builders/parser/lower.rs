@@ -12,6 +12,11 @@ use crate::cost::TotalCost;
 use crate::costs::Cost;
 use crate::mana::ManaSymbol;
 use crate::resolution::ResolutionProgram;
+use crate::cards::builders::scan_helpers::{
+    find_index, find_window_index, iter_contains, slice_contains, slice_ends_with,
+    slice_starts_with, str_contains, str_ends_with, str_find, str_split_once,
+    str_split_once_char, str_starts_with, str_strip_prefix, str_strip_suffix,
+};
 use crate::static_abilities::StaticAbility;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::types::CardType;
@@ -29,8 +34,7 @@ use super::clause_support::{
     parse_trigger_clause_lexed, parse_triggered_line_lexed,
 };
 use super::compile_support::{
-    collect_tag_spans_from_effects_with_context,
-    materialize_prepared_effects_with_trigger_context,
+    collect_tag_spans_from_effects_with_context, materialize_prepared_effects_with_trigger_context,
     trigger_binds_player_reference_context as rewrite_trigger_binds_player_reference_context,
 };
 use super::effect_pipeline::{
@@ -107,6 +111,18 @@ fn parse_trigger_clause_from_text(
 fn parse_triggered_line_from_text(text: &str, line_index: usize) -> Result<LineAst, CardTextError> {
     let tokens = lexed_tokens(text, line_index)?;
     parse_triggered_line_lexed(&tokens)
+}
+
+fn word_refs_have_prefix(words: &[&str], prefix: &[&str]) -> bool {
+    slice_starts_with(words, prefix)
+}
+
+fn word_refs_have_suffix(words: &[&str], suffix: &[&str]) -> bool {
+    slice_ends_with(words, suffix)
+}
+
+fn word_refs_find(words: &[&str], expected: &str) -> Option<usize> {
+    find_index(words, |word| *word == expected)
 }
 
 #[derive(Debug, Clone, Default)]
@@ -221,10 +237,9 @@ fn describe_hexproof_from_filter(filter: &crate::target::ObjectFilter) -> String
     }
 
     let description = filter.description();
-    description
-        .strip_suffix(" permanent")
-        .or_else(|| description.strip_suffix(" spell"))
-        .or_else(|| description.strip_suffix(" source"))
+    str_strip_suffix(description.as_str(), " permanent")
+        .or_else(|| str_strip_suffix(description.as_str(), " spell"))
+        .or_else(|| str_strip_suffix(description.as_str(), " source"))
         .unwrap_or(description.as_str())
         .to_string()
 }
@@ -396,7 +411,7 @@ fn uses_referenced_ability_functional_zones(
     normalized_line: &str,
 ) -> bool {
     static_ability.id() == crate::static_abilities::StaticAbilityId::ActivatedAbilityCostReduction
-        && normalized_line.starts_with("this ability costs")
+        && str_starts_with(normalized_line, "this ability costs")
 }
 
 fn uses_all_zone_functional_zones(static_ability: &StaticAbility) -> bool {
@@ -441,7 +456,7 @@ fn infer_static_ability_functional_zones(normalized_line: &str) -> Option<Vec<Zo
     ] {
         if needles
             .iter()
-            .any(|needle| normalized_line.contains(needle))
+            .any(|needle| str_contains(normalized_line, needle))
         {
             zones.push(zone);
         }
@@ -470,12 +485,12 @@ fn infer_triggered_ability_functional_zones(
         ("if this card is in exile", Zone::Exile),
         ("if this card is in the command zone", Zone::Command),
     ] {
-        if normalized.contains(needle) {
+        if str_contains(normalized.as_str(), needle) {
             zones = vec![zone];
             break;
         }
     }
-    if normalized.contains("return this card from your graveyard") {
+    if str_contains(normalized.as_str(), "return this card from your graveyard") {
         zones = vec![Zone::Graveyard];
     }
     zones
@@ -607,7 +622,7 @@ fn rewrite_normalize_spell_delayed_trigger_effects(
             .as_deref()
             .unwrap_or_default()
             .to_ascii_lowercase();
-        if !ability_text.contains("this turn") {
+        if !str_contains(ability_text.as_str(), "this turn") {
             return true;
         }
 
@@ -663,7 +678,8 @@ fn rewrite_normalize_take_to_the_streets_spell_effect(
         crate::continuous::EffectTarget::Filter(filter) => filter,
         _ => return builder,
     };
-    if filter.controller != Some(PlayerFilter::You) || !filter.subtypes.contains(&Subtype::Citizen)
+    if filter.controller != Some(PlayerFilter::You)
+        || !slice_contains(filter.subtypes.as_slice(), &Subtype::Citizen)
     {
         return builder;
     }
@@ -734,7 +750,7 @@ fn rewrite_apply_line_ast(
                 .split('(')
                 .next()
                 .unwrap_or(info.raw_line.as_str());
-            let separator = if keyword_segment.contains(';') {
+            let separator = if str_find(keyword_segment, ";").is_some() {
                 "; "
             } else {
                 ", "
@@ -1572,8 +1588,10 @@ fn lower_rewrite_statement_to_unsupported_chunk(
     line: &super::RewriteStatementLine,
 ) -> Option<LineAst> {
     let normalized = line.text.trim().to_ascii_lowercase();
-    if normalized
-        .contains("ask a person outside the game to rate its new art on a scale from 1 to 5")
+    if str_contains(
+        normalized.as_str(),
+        "ask a person outside the game to rate its new art on a scale from 1 to 5",
+    )
     {
         return Some(rewrite_unsupported_line_ast(
             line.info.raw_line.as_str(),
@@ -1995,10 +2013,10 @@ fn lower_rewrite_triggered_to_chunk_impl(
     let normalized_full_text = line.full_text.to_ascii_lowercase();
     let normalized_effect_text = line.effect_text.trim().to_ascii_lowercase();
     if !line.effect_text.trim().is_empty()
-        && !normalized_full_text.contains("if you do")
-        && !normalized_full_text.contains("if you don't")
-        && !normalized_full_text.contains("if you dont")
-        && !normalized_effect_text.starts_with("if ")
+        && !str_contains(normalized_full_text.as_str(), "if you do")
+        && !str_contains(normalized_full_text.as_str(), "if you don't")
+        && !str_contains(normalized_full_text.as_str(), "if you dont")
+        && !str_starts_with(normalized_effect_text.as_str(), "if ")
     {
         let direct_trigger =
             parse_trigger_clause_from_text(line.trigger_text.as_str(), line.info.line_index);
@@ -2031,9 +2049,9 @@ fn lower_rewrite_triggered_to_chunk_impl(
 
 fn infer_trigger_cap_from_text(text: &str) -> Option<u32> {
     let normalized = text.trim().to_ascii_lowercase();
-    if normalized.contains("this ability triggers only once each turn") {
+    if str_contains(normalized.as_str(), "this ability triggers only once each turn") {
         Some(1)
-    } else if normalized.contains("this ability triggers only twice each turn") {
+    } else if str_contains(normalized.as_str(), "this ability triggers only twice each turn") {
         Some(2)
     } else {
         None
@@ -2061,12 +2079,12 @@ fn infer_rewrite_triggered_functional_zones(
         ("if this card is in exile", Zone::Exile),
         ("if this card is in the command zone", Zone::Command),
     ] {
-        if normalized.contains(needle) {
+        if str_contains(normalized.as_str(), needle) {
             zones = vec![zone];
             break;
         }
     }
-    if normalized.contains("return this card from your graveyard") {
+    if str_contains(normalized.as_str(), "return this card from your graveyard") {
         zones = vec![Zone::Graveyard];
     }
 
@@ -2088,9 +2106,10 @@ fn lower_special_rewrite_triggered_chunk(
         .map(Some);
     }
 
-    if let Some(rest) = normalized.strip_prefix("when this creature dies during combat, it deals ")
+    if let Some(rest) =
+        str_strip_prefix(normalized, "when this creature dies during combat, it deals ")
         && let Some((amount, _)) =
-            rest.split_once(" damage to each creature it blocked this combat")
+            str_split_once(rest, " damage to each creature it blocked this combat")
     {
         let trigger = parse_trigger_clause_from_text("this creature dies", line.info.line_index)?;
         let effect_text =
@@ -2103,8 +2122,10 @@ fn lower_special_rewrite_triggered_chunk(
         }));
     }
 
-    if normalized.starts_with("whenever this creature blocks or becomes blocked by a creature")
-        && normalized.ends_with("that creature gains first strike until end of turn")
+    if str_starts_with(
+        normalized,
+        "whenever this creature blocks or becomes blocked by a creature",
+    ) && str_ends_with(normalized, "that creature gains first strike until end of turn")
     {
         let trigger = parse_trigger_clause_from_text(
             "this creature becomes blocked by a creature",
@@ -2282,13 +2303,16 @@ fn lower_rewrite_static_to_chunk_impl(
 
     let static_parse_text = rewrite_keyword_dash_parse_text_for_lowering(line.text.as_str());
     let lexed = lexed_tokens(static_parse_text.as_str(), line.info.line_index)?;
-    if line.text.starts_with("level up ") {
+    if str_starts_with(line.text.as_str(), "level up ") {
         if let Some(level_up) = parse_level_up_line_lexed(&lexed)? {
             return Ok(LineAst::Ability(level_up));
         }
     }
     let token_words = crate::cards::builders::parser::lexer::lexed_words(&lexed);
-    if token_words.ends_with(&["untap", "during", "your", "untap", "step"])
+    if word_refs_have_suffix(
+        token_words.as_slice(),
+        &["untap", "during", "your", "untap", "step"],
+    )
         && token_words
             .iter()
             .any(|word| matches!(*word, "doesnt" | "doesn't"))
@@ -2321,7 +2345,7 @@ fn lower_rewrite_static_to_chunk_impl(
             );
         }
         Ok(None) => {}
-        Err(_) if line.text.contains('.') => {}
+        Err(_) if str_find(line.text.as_str(), ".").is_some() => {}
         Err(err) => return Err(err),
     }
     if let Some(chunk) = lower_split_rewrite_static_chunk(line)? {
@@ -2396,9 +2420,10 @@ fn lower_split_rewrite_static_chunk(
 
 fn should_skip_keyword_action_static_probe(normalized: &str) -> bool {
     let normalized = normalized.trim();
-    (normalized.ends_with("can't be blocked.") || normalized.ends_with("can't be blocked"))
-        && !normalized.starts_with("this ")
-        && !normalized.starts_with("it ")
+    (str_ends_with(normalized, "can't be blocked.")
+        || str_ends_with(normalized, "can't be blocked"))
+        && !str_starts_with(normalized, "this ")
+        && !str_starts_with(normalized, "it ")
 }
 
 fn rewrite_statement_parse_text_for_lowering(text: &str) -> String {
@@ -2408,9 +2433,9 @@ fn rewrite_statement_parse_text_for_lowering(text: &str) -> String {
         .filter(|sentence| !sentence.is_empty())
         .map(|sentence| {
             let trimmed = sentence.trim();
-            if let Some((label, body)) = trimmed.split_once('—') {
+            if let Some((label, body)) = str_split_once_char(trimmed, '—') {
                 let label = label.trim();
-                if !label.is_empty() && !label.contains(' ') {
+                if !label.is_empty() && str_find(label, " ").is_none() {
                     body.trim()
                 } else {
                     trimmed
@@ -2462,10 +2487,10 @@ fn rewrite_copy_exception_type_removal_for_lowering(sentence: String) -> String 
 
 fn rewrite_statement_followup_intro_for_lowering(sentence: &str) -> String {
     let trimmed = sentence.trim();
-    if let Some(rest) = trimmed.strip_prefix("when you do,") {
+    if let Some(rest) = str_strip_prefix(trimmed, "when you do,") {
         return format!("if you do, {}", rest.trim_start());
     }
-    if let Some(rest) = trimmed.strip_prefix("whenever you do,") {
+    if let Some(rest) = str_strip_prefix(trimmed, "whenever you do,") {
         return format!("if you do, {}", rest.trim_start());
     }
     trimmed.to_string()
@@ -2488,10 +2513,10 @@ fn group_statement_sentences_for_lowering(text: &str) -> Vec<String> {
         .skip(1)
         .find_map(|(idx, sentence)| {
             let lower = sentence.to_ascii_lowercase();
-            ((lower.contains(" instead ")
-                || lower.contains(" instead,")
-                || lower.contains(", instead "))
-                && !lower.starts_with("if "))
+            ((str_contains(lower.as_str(), " instead ")
+                || str_contains(lower.as_str(), " instead,")
+                || str_contains(lower.as_str(), ", instead "))
+                && !str_starts_with(lower.as_str(), "if "))
             .then_some(idx)
         });
 
@@ -2551,7 +2576,7 @@ fn effective_chosen_option_label<'a>(
 
 fn rewrite_keyword_dash_parse_text_for_lowering(text: &str) -> String {
     let trimmed = text.trim();
-    if let Some((label, body)) = trimmed.split_once('—') {
+    if let Some((label, body)) = str_split_once_char(trimmed, '—') {
         let label = label.trim();
         let body = body.trim();
         let normalized_label = label.to_ascii_lowercase();
@@ -2822,7 +2847,7 @@ fn strip_exert_reminder_suffix_for_lowering(text: &str) -> &str {
         " (an exerted permanent won't untap during your next untap step.)",
         " (it won't untap during your next untap step.)",
     ] {
-        if let Some(stripped) = trimmed.strip_suffix(suffix) {
+        if let Some(stripped) = str_strip_suffix(trimmed, suffix) {
             return stripped.trim_end();
         }
     }
@@ -2834,14 +2859,14 @@ fn normalize_exert_followup_source_references(source_ref: &str, followup: &str) 
     let lower = trimmed.to_ascii_lowercase();
 
     for pronoun in ["he ", "she ", "they "] {
-        if let Some(rest) = lower.strip_prefix(pronoun) {
+        if let Some(rest) = str_strip_prefix(lower.as_str(), pronoun) {
             return format!("this creature {}", rest.trim_start());
         }
     }
 
     let normalized_source = source_ref.trim().to_ascii_lowercase();
     if !normalized_source.is_empty()
-        && let Some(rest) = lower.strip_prefix(&(normalized_source + " "))
+        && let Some(rest) = str_strip_prefix(lower.as_str(), &(normalized_source + " "))
     {
         return format!("this creature {}", rest.trim_start());
     }
@@ -2854,35 +2879,37 @@ fn lower_exert_attack_keyword_to_chunk(
 ) -> Result<LineAst, CardTextError> {
     let normalized = strip_exert_reminder_suffix_for_lowering(line.text.as_str());
     let normalized = normalized.trim_end_matches('.');
-    let (only_if_not_exerted_this_turn, body) = if let Some(rest) = normalized
-        .strip_prefix("if this creature hasn't been exerted this turn, ")
+    let (only_if_not_exerted_this_turn, body) = if let Some(rest) =
+        str_strip_prefix(normalized, "if this creature hasn't been exerted this turn, ")
     {
         (true, rest)
     } else {
         (false, normalized)
     };
 
-    let Some(body) = body.strip_prefix("you may exert ") else {
+    let Some(body) = str_strip_prefix(body, "you may exert ") else {
         return Err(CardTextError::ParseError(format!(
             "rewrite keyword lowering could not parse exert attack line '{}'",
             line.info.raw_line
         )));
     };
 
-    let (head, followup_text) = if let Some((head, followup)) = body.split_once(". when you do, ") {
+    let (head, followup_text) = if let Some((head, followup)) =
+        str_split_once(body, ". when you do, ")
+    {
         (head, Some(followup.trim()))
     } else {
         (body.trim(), None)
     };
 
-    let Some((source_ref, attack_clause)) = head.split_once(" as ") else {
+    let Some((source_ref, attack_clause)) = str_split_once(head, " as ") else {
         return Err(CardTextError::ParseError(format!(
             "rewrite keyword lowering could not parse exert attack head '{}'",
             line.info.raw_line
         )));
     };
     let attack_clause = attack_clause.trim();
-    if !(attack_clause.ends_with(" attack") || attack_clause.ends_with(" attacks")) {
+    if !(str_ends_with(attack_clause, " attack") || str_ends_with(attack_clause, " attacks")) {
         return Err(CardTextError::ParseError(format!(
             "rewrite keyword lowering expected attack clause in '{}'",
             line.info.raw_line
@@ -3023,9 +3050,7 @@ fn lower_gift_keyword_to_chunk(line: &super::RewriteKeywordLine) -> Result<LineA
 }
 
 fn standard_gift_followup_effect_text(text: &str) -> Option<String> {
-    let head = text
-        .trim()
-        .split_once('(')
+    let head = str_split_once_char(text.trim(), '(')
         .map(|(head, _)| head.trim())
         .unwrap_or(text.trim())
         .to_ascii_lowercase();
@@ -3045,11 +3070,10 @@ fn standard_gift_followup_effect_text(text: &str) -> Option<String> {
 
 fn standard_gift_timing(text: &str) -> Option<GiftTimingAst> {
     let normalized = text.trim().to_ascii_lowercase();
-    let head = normalized
-        .split_once('(')
+    let head = str_split_once_char(normalized.as_str(), '(')
         .map(|(head, _)| head.trim())
         .unwrap_or(normalized.as_str());
-    if normalized.contains("when it enters") {
+    if str_contains(normalized.as_str(), "when it enters") {
         Some(GiftTimingAst::PermanentEtb)
     } else if matches!(
         head,
@@ -3073,20 +3097,20 @@ fn try_lower_optional_cost_with_cast_trigger(
     let normalized = line.text.as_str();
     let prefix = "as an additional cost to cast this spell, ";
     if line.kind != super::RewriteKeywordLineKind::AdditionalCost
-        || !normalized.starts_with(prefix)
-        || !normalized.contains(". when you do, ")
+        || !str_starts_with(normalized, prefix)
+        || !str_contains(normalized, ". when you do, ")
     {
         return Ok(None);
     }
 
-    let Some((head, followup)) = normalized.split_once(". when you do, ") else {
+    let Some((head, followup)) = str_split_once(normalized, ". when you do, ") else {
         return Ok(None);
     };
-    let head_effect_text = head.strip_prefix(prefix).unwrap_or(head);
+    let head_effect_text = str_strip_prefix(head, prefix).unwrap_or(head);
     let head_tokens = lexed_tokens(head_effect_text, line.info.line_index)?;
     let stripped_head_tokens = trim_lexed_commas(&head_tokens);
     let stripped_head_view = LowercaseWordView::new(stripped_head_tokens);
-    if !stripped_head_view.starts_with(&["you", "may"]) {
+    if !stripped_head_view.slice_eq(0, &["you", "may"]) {
         return Ok(None);
     }
     let Some(head_effect_start) = stripped_head_view.token_index_for_word_index(2) else {
@@ -3147,7 +3171,8 @@ fn try_lower_optional_behold_additional_cost(
 ) -> Result<Option<LineAst>, CardTextError> {
     let normalized = line.text.as_str();
     let prefix = "as an additional cost to cast this spell, ";
-    if line.kind != super::RewriteKeywordLineKind::AdditionalCost || !normalized.starts_with(prefix)
+    if line.kind != super::RewriteKeywordLineKind::AdditionalCost
+        || !str_starts_with(normalized, prefix)
     {
         return Ok(None);
     }
@@ -3159,7 +3184,7 @@ fn try_lower_optional_behold_additional_cost(
     };
     let stripped = trim_lexed_commas(effect_tokens);
     let view = LowercaseWordView::new(stripped);
-    if !view.starts_with(&["you", "may", "behold"]) {
+    if !view.slice_eq(0, &["you", "may", "behold"]) {
         return Ok(None);
     }
 
@@ -3175,12 +3200,10 @@ fn try_lower_optional_behold_additional_cost(
 }
 
 fn additional_cost_tail_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
-    let comma_idx = tokens
-        .iter()
-        .position(|token| token.kind == TokenKind::Comma);
+    let comma_idx = find_index(tokens, |token| token.kind == TokenKind::Comma);
     let effect_start = if let Some(idx) = comma_idx {
         idx + 1
-    } else if let Some(idx) = tokens.iter().position(|token| token.is_word("spell")) {
+    } else if let Some(idx) = find_index(tokens, |token| token.is_word("spell")) {
         idx + 1
     } else {
         tokens.len()
@@ -3192,7 +3215,7 @@ fn additional_cost_tail_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexTok
 #[allow(dead_code)]
 fn strip_modal_mode_label_for_parse(text: &str) -> &str {
     let trimmed = text.trim();
-    let Some((label, body)) = trimmed.split_once('—') else {
+    let Some((label, body)) = str_split_once_char(trimmed, '—') else {
         return trimmed;
     };
     let label = label.trim();
@@ -3296,7 +3319,7 @@ fn activated_effect_may_be_mana_ability(effect_text: &str, line_index: usize) ->
     };
     let line_view = LowercaseWordView::new(&tokens);
     let line_words = line_view.to_word_refs();
-    line_words.contains(&"add")
+    word_refs_find(line_words.as_slice(), "add").is_some()
         && matches!(
             line_words.as_slice(),
             ["add", ..]
@@ -3354,9 +3377,9 @@ fn activation_cost_defines_x_for_mana_ability(cost: &TotalCost) -> bool {
 
 fn extract_fixed_mana_output(effect_text: &str, line_index: usize) -> Option<Vec<ManaSymbol>> {
     let tokens = lexed_tokens(effect_text, line_index).ok()?;
-    let Some(add_idx) = tokens
-        .iter()
-        .position(|token| token.is_word("add") || token.is_word("adds"))
+    let Some(add_idx) = find_index(tokens.as_slice(), |token| {
+        token.is_word("add") || token.is_word("adds")
+    })
     else {
         return None;
     };
@@ -3440,8 +3463,11 @@ fn split_rewrite_activated_effect_text(
         let sentence_view = LowercaseWordView::new(&tokens);
         let sentence_words = sentence_view.to_word_refs();
         if parse_mana_usage_restriction_sentence_lexed(&tokens).is_some()
-            || sentence_words.starts_with(&["spend", "this", "mana", "only"])
-            || sentence_words.starts_with(&["when", "you", "spend", "this", "mana", "to", "cast"])
+            || word_refs_have_prefix(sentence_words.as_slice(), &["spend", "this", "mana", "only"])
+            || word_refs_have_prefix(
+                sentence_words.as_slice(),
+                &["when", "you", "spend", "this", "mana", "to", "cast"],
+            )
         {
             mana_restrictions.push(sentence);
         } else if is_any_player_may_activate_sentence_lexed(&tokens) {
@@ -3481,13 +3507,13 @@ fn apply_pending_mana_restrictions(
 fn parse_next_spell_cost_reduction_sentence_rewrite(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     let word_view = LowercaseWordView::new(tokens);
     let clause_words = word_view.to_word_refs();
-    if !clause_words.starts_with(&["the", "next"]) {
+    if !word_refs_have_prefix(clause_words.as_slice(), &["the", "next"]) {
         return None;
     }
 
-    let spell_idx = clause_words.iter().position(|word| *word == "spell")?;
-    let costs_idx = clause_words.iter().position(|word| *word == "costs")?;
-    let less_idx = clause_words.iter().position(|word| *word == "less")?;
+    let spell_idx = word_refs_find(clause_words.as_slice(), "spell")?;
+    let costs_idx = word_refs_find(clause_words.as_slice(), "costs")?;
+    let less_idx = word_refs_find(clause_words.as_slice(), "less")?;
     if clause_words.get(spell_idx + 1).copied() != Some("you")
         || clause_words.get(spell_idx + 2).copied() != Some("cast")
         || clause_words.get(spell_idx + 3).copied() != Some("this")
@@ -3501,8 +3527,8 @@ fn parse_next_spell_cost_reduction_sentence_rewrite(tokens: &[OwnedLexToken]) ->
 
     let spell_filter_start = word_view.token_index_for_word_index(2)?;
     let spell_filter_end = word_view.token_index_for_word_index(spell_idx)?;
-    let costs_token_idx = tokens.iter().position(|token| token.is_word("costs"))?;
-    let less_token_idx = tokens.iter().position(|token| token.is_word("less"))?;
+    let costs_token_idx = find_index(tokens, |token| token.is_word("costs"))?;
+    let less_token_idx = find_index(tokens, |token| token.is_word("less"))?;
     if less_token_idx <= costs_token_idx + 1 {
         return None;
     }
@@ -3577,19 +3603,26 @@ fn parse_each_player_and_their_creatures_damage_sentence_rewrite(
         .trim()
         .trim_end_matches('.')
         .to_ascii_lowercase();
-    let matches_shape = normalized
-        .contains(" damage to each player and each creature they control")
-        || normalized.contains(" damage to each player and each creatures they control")
-        || normalized.contains(" damage to each player and each creature that player controls")
-        || normalized.contains(" damage to each player and each creatures that player controls");
+    let matches_shape =
+        str_contains(normalized.as_str(), " damage to each player and each creature they control")
+            || str_contains(
+                normalized.as_str(),
+                " damage to each player and each creatures they control",
+            )
+            || str_contains(
+                normalized.as_str(),
+                " damage to each player and each creature that player controls",
+            )
+            || str_contains(
+                normalized.as_str(),
+                " damage to each player and each creatures that player controls",
+            );
     if !matches_shape {
         return None;
     }
     let word_view = LowercaseWordView::new(tokens);
     let clause_words = word_view.to_word_refs();
-    let deals_idx = clause_words
-        .iter()
-        .position(|word| matches!(*word, "deal" | "deals"))?;
+    let deals_idx = find_index(clause_words.as_slice(), |word| matches!(*word, "deal" | "deals"))?;
     let amount_start = word_view.token_index_for_word_index(deals_idx + 1)?;
     let (amount, _used) = parse_number_or_x_value_lexed(&tokens[amount_start..])?;
 
@@ -3614,13 +3647,8 @@ fn parse_each_player_and_their_creatures_damage_sentence_rewrite(
 fn lower_rewrite_pact_statement_to_chunk(
     line: &super::RewriteStatementLine,
 ) -> Result<Option<LineAst>, CardTextError> {
-    if !line
-        .info
-        .raw_line
-        .trim_start()
-        .to_ascii_lowercase()
-        .starts_with("search your library")
-    {
+    let normalized_raw_line = line.info.raw_line.trim_start().to_ascii_lowercase();
+    if !str_starts_with(normalized_raw_line.as_str(), "search your library") {
         return Ok(None);
     }
 
@@ -3640,7 +3668,7 @@ fn lower_rewrite_pact_statement_to_chunk(
             let upkeep_tokens = trim_lexed_commas(&upkeep_segment);
             let upkeep_word_view = LowercaseWordView::new(upkeep_tokens);
             let upkeep_words = upkeep_word_view.to_word_refs();
-            let pay_prefix = if upkeep_words.starts_with(&[
+            let pay_prefix = if word_refs_have_prefix(upkeep_words.as_slice(), &[
                 "at",
                 "the",
                 "beginning",
@@ -3651,7 +3679,7 @@ fn lower_rewrite_pact_statement_to_chunk(
                 "pay",
             ]) {
                 "at the beginning of your next upkeep, pay"
-            } else if upkeep_words.starts_with(&[
+            } else if word_refs_have_prefix(upkeep_words.as_slice(), &[
                 "at",
                 "the",
                 "beginning",
@@ -3730,14 +3758,10 @@ fn lower_rewrite_pact_statement_to_chunk(
         "upkeep",
         "pay",
     ];
-    let Some((marker_start, marker_len)) = token_words
-        .windows(upkeep_marker.len())
-        .position(|window| window == upkeep_marker)
+    let Some((marker_start, marker_len)) = find_window_index(token_words.as_slice(), upkeep_marker.as_slice())
         .map(|idx| (idx, upkeep_marker.len()))
         .or_else(|| {
-            token_words
-                .windows(upkeep_alt_marker.len())
-                .position(|window| window == upkeep_alt_marker)
+            find_window_index(token_words.as_slice(), upkeep_alt_marker.as_slice())
                 .map(|idx| (idx, upkeep_alt_marker.len()))
         })
     else {
@@ -3748,10 +3772,14 @@ fn lower_rewrite_pact_statement_to_chunk(
         &["if", "you", "do", "not", "you", "lose", "the", "game"],
     ];
     let tail_words = &token_words[marker_start + marker_len..];
-    let Some(lose_len) = lose_patterns
-        .iter()
-        .find_map(|pattern| tail_words.ends_with(pattern).then_some(pattern.len()))
-    else {
+    let mut lose_len = None;
+    for pattern in lose_patterns {
+        if word_refs_have_suffix(tail_words, pattern) {
+            lose_len = Some(pattern.len());
+            break;
+        }
+    }
+    let Some(lose_len) = lose_len else {
         return Ok(None);
     };
     let mana_word_len = tail_words.len().saturating_sub(lose_len);
@@ -3903,13 +3931,11 @@ fn lower_rewrite_activated_to_chunk_impl(
 
     let normalized_cost = line.cost.clone();
     let ability_text = rewrite_activated_display_text(line);
+    let normalized_effect_text = effect_text.to_ascii_lowercase();
+    let normalized_raw_line = line.info.raw_line.to_ascii_lowercase();
 
-    if effect_text.to_ascii_lowercase().contains("add x mana")
-        && !line
-            .info
-            .raw_line
-            .to_ascii_lowercase()
-            .contains("where x is")
+    if str_contains(normalized_effect_text.as_str(), "add x mana")
+        && !str_contains(normalized_raw_line.as_str(), "where x is")
         && !activation_cost_defines_x_for_mana_ability(&normalized_cost)
     {
         return Err(CardTextError::ParseError(
@@ -4064,7 +4090,7 @@ fn rewrite_activated_display_text(line: &super::RewriteActivatedLine) -> Option<
         "Transmute",
     ] {
         let needle = format!("{} —", display.to_ascii_lowercase());
-        if let Some(idx) = raw_lower.find(&needle) {
+        if let Some(idx) = str_find(raw_lower.as_str(), needle.as_str()) {
             return Some(raw[idx..].trim().to_string());
         }
     }
@@ -4079,7 +4105,7 @@ fn rewrite_activated_display_text(line: &super::RewriteActivatedLine) -> Option<
             "Transmute",
         ] {
             if chosen.eq_ignore_ascii_case(display)
-                && let Some((_, tail)) = raw.split_once('—')
+                && let Some((_, tail)) = str_split_once_char(raw, '—')
             {
                 return Some(format!("{display} — {}", tail.trim()));
             }
@@ -4095,9 +4121,9 @@ fn infer_rewrite_activated_functional_zones(
     effect_text: &str,
 ) -> Result<Vec<Zone>, CardTextError> {
     let raw_lower = line.info.raw_line.to_ascii_lowercase();
-    if raw_lower.contains("exile this card from your graveyard")
-        || raw_lower.contains("exile this creature from your graveyard")
-        || raw_lower.contains("exile this permanent from your graveyard")
+    if str_contains(raw_lower.as_str(), "exile this card from your graveyard")
+        || str_contains(raw_lower.as_str(), "exile this creature from your graveyard")
+        || str_contains(raw_lower.as_str(), "exile this permanent from your graveyard")
     {
         return Ok(vec![Zone::Graveyard]);
     }
@@ -4176,9 +4202,7 @@ fn apply_chosen_option_to_triggered_chunk(
 }
 
 fn optional_cost_tail_effect_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
-    let comma_idx = tokens
-        .iter()
-        .position(|token| token.kind == TokenKind::Comma)?;
+    let comma_idx = find_index(tokens, |token| token.kind == TokenKind::Comma)?;
     let effect_tokens = trim_lexed_commas(tokens.get(comma_idx + 1..).unwrap_or_default());
     (!effect_tokens.is_empty()).then_some(effect_tokens)
 }
@@ -4373,10 +4397,9 @@ fn try_merge_modal_into_remove_mode(
         return false;
     }
 
-    let Some(remove_mode_idx) = choose_mode
-        .modes
-        .iter()
-        .position(|mode| mode.description.to_ascii_lowercase().starts_with("remove "))
+    let Some(remove_mode_idx) = find_index(choose_mode.modes.as_slice(), |mode| {
+        str_starts_with(mode.description.to_ascii_lowercase().as_str(), "remove ")
+    })
     else {
         effects.push(last_effect);
         return false;

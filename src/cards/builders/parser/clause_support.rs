@@ -14,18 +14,131 @@ use super::lexer::{OwnedLexToken, TokenKind, split_lexed_sentences};
 use super::native_tokens::LowercaseWordView;
 use super::util::{
     parse_card_type, parse_color, parse_flashback_keyword_line, parse_subtype_flexible,
-    split_on_and, split_on_comma_or_semicolon, trim_commas, words,
+    split_on_and, split_on_comma_or_semicolon, trim_commas,
 };
 
-fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
-    let mut words = words(tokens);
-    if words.first().copied() == Some("and") {
-        words.remove(0);
+fn word_slice_starts_with(words: &[&str], expected: &[&str]) -> bool {
+    if words.len() < expected.len() {
+        return false;
     }
-    if words.len() < 3 {
+
+    let mut idx = 0usize;
+    while idx < expected.len() {
+        if words[idx] != expected[idx] {
+            return false;
+        }
+        idx += 1;
+    }
+
+    true
+}
+
+fn word_slice_ends_with(words: &[&str], expected: &[&str]) -> bool {
+    if words.len() < expected.len() {
+        return false;
+    }
+
+    let start = words.len() - expected.len();
+    let mut idx = 0usize;
+    while idx < expected.len() {
+        if words[start + idx] != expected[idx] {
+            return false;
+        }
+        idx += 1;
+    }
+
+    true
+}
+
+fn word_slice_contains(words: &[&str], expected: &str) -> bool {
+    let mut idx = 0usize;
+    while idx < words.len() {
+        if words[idx] == expected {
+            return true;
+        }
+        idx += 1;
+    }
+
+    false
+}
+
+fn find_word_sequence_index(words: &[&str], expected: &[&str]) -> Option<usize> {
+    if expected.is_empty() || words.len() < expected.len() {
         return None;
     }
-    if words[0] != "protection" || words[1] != "from" {
+
+    let mut start = 0usize;
+    while start + expected.len() <= words.len() {
+        if word_slice_starts_with(&words[start..], expected) {
+            return Some(start);
+        }
+        start += 1;
+    }
+
+    None
+}
+
+fn find_token_index(tokens: &[OwnedLexToken], mut predicate: impl FnMut(&OwnedLexToken) -> bool) -> Option<usize> {
+    let mut idx = 0usize;
+    while idx < tokens.len() {
+        if predicate(&tokens[idx]) {
+            return Some(idx);
+        }
+        idx += 1;
+    }
+
+    None
+}
+
+fn contains_keyword_action(actions: &[KeywordAction], expected: &KeywordAction) -> bool {
+    let mut idx = 0usize;
+    while idx < actions.len() {
+        if &actions[idx] == expected {
+            return true;
+        }
+        idx += 1;
+    }
+
+    false
+}
+
+fn token_index_after_word_count(
+    words: &LowercaseWordView,
+    word_count: usize,
+    token_len: usize,
+) -> Option<usize> {
+    if word_count == 0 {
+        return Some(0);
+    }
+    if word_count > words.len() {
+        return None;
+    }
+    if word_count == words.len() {
+        return Some(token_len);
+    }
+
+    words.token_index_for_word_index(word_count)
+}
+
+fn trim_plural_s(word: &str) -> Option<&str> {
+    let bytes = word.as_bytes();
+    if bytes.len() <= 1 || bytes[bytes.len() - 1] != b's' {
+        return None;
+    }
+
+    Some(&word[..word.len() - 1])
+}
+
+fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
+    let words_view = LowercaseWordView::new(tokens);
+    let words = words_view.to_word_refs();
+    let first_word_idx = if words.first().copied() == Some("and") { 1 } else { 0 };
+    if words.len().saturating_sub(first_word_idx) < 3 {
+        return None;
+    }
+    if words.get(first_word_idx).copied() != Some("protection")
+        || words.get(first_word_idx + 1).copied() != Some("from")
+    {
         return None;
     }
 
@@ -55,14 +168,14 @@ fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>
 
     let mut from_count = 0usize;
     let mut parsed_count = 0usize;
-    for idx in 0..words.len().saturating_sub(1) {
+    for idx in first_word_idx..words.len().saturating_sub(1) {
         if words[idx] != "from" {
             continue;
         }
         from_count += 1;
         if let Some(action) = parse_from_target(&words, idx) {
             parsed_count += 1;
-            if !actions.contains(&action) {
+            if !contains_keyword_action(&actions, &action) {
                 actions.push(action);
             }
         }
@@ -258,11 +371,12 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
 
     fn parse_protection_chain_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
         let words_view = LowercaseWordView::new(tokens);
-        let mut words = words_view.to_word_refs();
-        if words.first().copied() == Some("and") {
-            words.remove(0);
-        }
-        if words.len() < 3 || words[0] != "protection" || words[1] != "from" {
+        let words = words_view.to_word_refs();
+        let first_word_idx = if words.first().copied() == Some("and") { 1 } else { 0 };
+        if words.len().saturating_sub(first_word_idx) < 3
+            || words.get(first_word_idx).copied() != Some("protection")
+            || words.get(first_word_idx + 1).copied() != Some("from")
+        {
             return None;
         }
 
@@ -292,14 +406,14 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
         let mut actions = Vec::new();
         let mut from_count = 0usize;
         let mut parsed_count = 0usize;
-        for idx in 0..words.len().saturating_sub(1) {
+        for idx in first_word_idx..words.len().saturating_sub(1) {
             if words[idx] != "from" {
                 continue;
             }
             from_count += 1;
             if let Some(action) = parse_from_target(&words, idx) {
                 parsed_count += 1;
-                if !actions.contains(&action) {
+                if !contains_keyword_action(&actions, &action) {
                     actions.push(action);
                 }
             }
@@ -437,22 +551,25 @@ pub(crate) fn parse_triggered_line_lexed(
 ) -> Result<LineAst, CardTextError> {
     let clause_word_view = LowercaseWordView::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
-    if clause_words.starts_with(&[
-        "when",
-        "this",
-        "becomes",
-        "monstrous",
-        "it",
-        "deals",
-        "damage",
-        "to",
-        "each",
-        "opponent",
-        "equal",
-        "to",
-    ]) && clause_words.contains(&"number")
-        && clause_words.contains(&"cards")
-        && clause_words.contains(&"hand")
+    if word_slice_starts_with(
+        &clause_words,
+        &[
+            "when",
+            "this",
+            "becomes",
+            "monstrous",
+            "it",
+            "deals",
+            "damage",
+            "to",
+            "each",
+            "opponent",
+            "equal",
+            "to",
+        ],
+    ) && word_slice_contains(&clause_words, "number")
+        && word_slice_contains(&clause_words, "cards")
+        && word_slice_contains(&clause_words, "hand")
     {
         return Ok(LineAst::Triggered {
             trigger: TriggerSpec::ThisBecomesMonstrous,
@@ -469,7 +586,7 @@ pub(crate) fn parse_triggered_line_lexed(
     fn looks_like_trigger_objectish_word(word: &str) -> bool {
         parse_card_type(word).is_some()
             || parse_subtype_flexible(word).is_some()
-            || word.strip_suffix('s').is_some_and(|stem| {
+            || trim_plural_s(word).is_some_and(|stem| {
                 parse_card_type(stem).is_some() || parse_subtype_flexible(stem).is_some()
             })
     }
@@ -507,7 +624,9 @@ pub(crate) fn parse_triggered_line_lexed(
 
         let prefix_words_view = LowercaseWordView::new(trigger_prefix_tokens);
         let prefix_words = prefix_words_view.to_word_refs();
-        if !(prefix_words.contains(&"discard") || prefix_words.contains(&"discards")) {
+        if !(word_slice_contains(&prefix_words, "discard")
+            || word_slice_contains(&prefix_words, "discards"))
+        {
             return false;
         }
 
@@ -530,14 +649,14 @@ pub(crate) fn parse_triggered_line_lexed(
             return false;
         }
 
-        tail_tokens
-            .iter()
-            .position(|token| token.kind == TokenKind::Comma)
-            .is_some_and(|comma_idx| {
+        find_token_index(tail_tokens, |token| token.kind == TokenKind::Comma).is_some_and(
+            |comma_idx| {
                 let before_words_view = LowercaseWordView::new(&tail_tokens[..comma_idx]);
                 let before_words = before_words_view.to_word_refs();
-                before_words.contains(&"card") || before_words.contains(&"cards")
-            })
+                word_slice_contains(&before_words, "card")
+                    || word_slice_contains(&before_words, "cards")
+            },
+        )
     }
 
     fn looks_like_trigger_type_list_tail_lexed(tokens: &[OwnedLexToken]) -> bool {
@@ -551,12 +670,12 @@ pub(crate) fn parse_triggered_line_lexed(
         }
         let first_is_card_type = parse_card_type(words[0]).is_some()
             || parse_subtype_flexible(words[0]).is_some()
-            || words[0].strip_suffix('s').is_some_and(|word| {
+            || trim_plural_s(words[0]).is_some_and(|word| {
                 parse_card_type(word).is_some() || parse_subtype_flexible(word).is_some()
             });
         first_is_card_type
-            && (words.contains(&"spell") || words.contains(&"spells"))
-            && words.contains(&"or")
+            && (word_slice_contains(&words, "spell") || word_slice_contains(&words, "spells"))
+            && word_slice_contains(&words, "or")
             && tokens.iter().any(|token| token.kind == TokenKind::Comma)
     }
 
@@ -570,7 +689,7 @@ pub(crate) fn parse_triggered_line_lexed(
             return false;
         }
         parse_color(words[0]).is_some()
-            && words.contains(&"or")
+            && word_slice_contains(&words, "or")
             && tokens.iter().any(|token| token.kind == TokenKind::Comma)
     }
 
@@ -583,7 +702,8 @@ pub(crate) fn parse_triggered_line_lexed(
         if words.len() < 3 || words[0].parse::<i32>().is_err() {
             return false;
         }
-        words.iter().skip(1).any(|word| word.parse::<i32>().is_ok()) && words.contains(&"or")
+        words.iter().skip(1).any(|word| word.parse::<i32>().is_ok())
+            && word_slice_contains(&words, "or")
     }
 
     fn trim_first_time_each_turn_suffix_lexed(
@@ -595,7 +715,7 @@ pub(crate) fn parse_triggered_line_lexed(
             ["for", "the", "first", "time", "each", "turn"].as_slice(),
             ["for", "the", "first", "time", "this", "turn"].as_slice(),
         ] {
-            if words.ends_with(suffix) {
+            if word_slice_ends_with(&words, suffix) {
                 let trimmed_word_len = words.len().saturating_sub(suffix.len());
                 let trimmed_token_len = trigger_words
                     .token_index_for_word_index(trimmed_word_len)
@@ -612,10 +732,12 @@ pub(crate) fn parse_triggered_line_lexed(
     ) -> Vec<OwnedLexToken> {
         let trigger_words_view = LowercaseWordView::new(trigger_tokens);
         let trigger_words = trigger_words_view.to_word_refs();
-        let references_enchanted_controller = trigger_words.windows(3).any(|window| {
-            window[0] == "enchanted"
+        let mut references_enchanted_controller = false;
+        let mut idx = 0usize;
+        while idx + 2 < trigger_words.len() {
+            if trigger_words[idx] == "enchanted"
                 && matches!(
-                    window[1],
+                    trigger_words[idx + 1],
                     "creature"
                         | "creatures"
                         | "permanent"
@@ -627,8 +749,13 @@ pub(crate) fn parse_triggered_line_lexed(
                         | "land"
                         | "lands"
                 )
-                && window[2] == "controller"
-        });
+                && trigger_words[idx + 2] == "controller"
+            {
+                references_enchanted_controller = true;
+                break;
+            }
+            idx += 1;
+        }
         if !references_enchanted_controller {
             return effects_tokens.to_vec();
         }
@@ -687,16 +814,20 @@ pub(crate) fn parse_triggered_line_lexed(
         let trigger_body = &tokens[start_idx..];
         let trigger_body_view = LowercaseWordView::new(trigger_body);
         let trigger_body_words = trigger_body_view.to_word_refs();
-        let blocked_prefix_len =
-            if trigger_body_words.starts_with(&["this", "creature", "becomes", "blocked"]) {
+        let blocked_prefix_len = if word_slice_starts_with(
+            &trigger_body_words,
+            &["this", "creature", "becomes", "blocked"],
+        ) {
                 Some(4usize)
-            } else if trigger_body_words.starts_with(&["this", "becomes", "blocked"]) {
+            } else if word_slice_starts_with(&trigger_body_words, &["this", "becomes", "blocked"])
+            {
                 Some(3usize)
             } else {
                 None
             };
         if let Some(prefix_len) = blocked_prefix_len
-            && let Some(effect_start_rel) = trigger_body_view.token_index_after_words(prefix_len)
+            && let Some(effect_start_rel) =
+                token_index_after_word_count(&trigger_body_view, prefix_len, trigger_body.len())
         {
             let split_idx = start_idx + effect_start_rel;
             let effects_tokens = trim_commas(&tokens[split_idx..]);
@@ -711,22 +842,22 @@ pub(crate) fn parse_triggered_line_lexed(
             }
         }
 
-        let leaves_prefix_len =
-            if trigger_body_words.starts_with(&["this", "leaves", "the", "battlefield"]) {
+        let leaves_prefix_len = if word_slice_starts_with(
+            &trigger_body_words,
+            &["this", "leaves", "the", "battlefield"],
+        ) {
                 Some(4usize)
-            } else if trigger_body_words.starts_with(&[
-                "this",
-                "creature",
-                "leaves",
-                "the",
-                "battlefield",
-            ]) {
+            } else if word_slice_starts_with(
+                &trigger_body_words,
+                &["this", "creature", "leaves", "the", "battlefield"],
+            ) {
                 Some(5usize)
             } else {
                 None
             };
         if let Some(prefix_len) = leaves_prefix_len
-            && let Some(effect_start_rel) = trigger_body_view.token_index_after_words(prefix_len)
+            && let Some(effect_start_rel) =
+                token_index_after_word_count(&trigger_body_view, prefix_len, trigger_body.len())
         {
             let split_idx = start_idx + effect_start_rel;
             let trigger_tokens = trim_commas(&tokens[start_idx..split_idx]);
@@ -744,18 +875,15 @@ pub(crate) fn parse_triggered_line_lexed(
         }
     }
 
-    if let Some(first_comma_idx) = tokens
-        .iter()
-        .position(|token| token.kind == TokenKind::Comma)
+    if let Some(first_comma_idx) = find_token_index(tokens, |token| token.kind == TokenKind::Comma)
     {
         let trigger_tokens = &tokens[start_idx..first_comma_idx];
         let after_first_comma = trim_commas(&tokens[first_comma_idx + 1..]);
         if after_first_comma
             .first()
             .is_some_and(|token| token.is_word("if"))
-            && let Some(second_comma_rel) = after_first_comma
-                .iter()
-                .position(|token| token.kind == TokenKind::Comma)
+            && let Some(second_comma_rel) =
+                find_token_index(&after_first_comma, |token| token.kind == TokenKind::Comma)
         {
             let predicate_with_if = trim_commas(&after_first_comma[..second_comma_rel]);
             let predicate_tokens = if predicate_with_if
@@ -796,16 +924,20 @@ pub(crate) fn parse_triggered_line_lexed(
         }
     }
 
-    if let Some(split_idx) = tokens
-        .iter()
-        .position(|token| token.kind == TokenKind::Comma)
-    {
+    if let Some(split_idx) = find_token_index(tokens, |token| token.kind == TokenKind::Comma) {
         let trigger_tokens = &tokens[start_idx..split_idx];
         let trigger_word_view = LowercaseWordView::new(trigger_tokens);
         let trigger_words = trigger_word_view.to_word_refs();
-        if let Some(attack_idx) = trigger_words
-            .iter()
-            .position(|word| *word == "attack" || *word == "attacks")
+        let mut attack_idx = None;
+        let mut word_idx = 0usize;
+        while word_idx < trigger_words.len() {
+            if matches!(trigger_words[word_idx], "attack" | "attacks") {
+                attack_idx = Some(word_idx);
+                break;
+            }
+            word_idx += 1;
+        }
+        if let Some(attack_idx) = attack_idx
             && trigger_words.get(attack_idx + 1).copied() == Some("with")
         {
             let subject_words = &trigger_words[..attack_idx];
@@ -875,10 +1007,8 @@ pub(crate) fn parse_triggered_line_lexed(
         }
     }
 
-    if let Some(mut split_idx) = tokens
-        .iter()
-        .position(|token| token.kind == TokenKind::Comma)
-        .or_else(|| tokens.iter().position(|token| token.is_word("then")))
+    if let Some(mut split_idx) = find_token_index(tokens, |token| token.kind == TokenKind::Comma)
+        .or_else(|| find_token_index(tokens, |token| token.is_word("then")))
     {
         if tokens
             .get(split_idx)
@@ -904,7 +1034,9 @@ pub(crate) fn parse_triggered_line_lexed(
                         }
                         let before_words_view = LowercaseWordView::new(&tail[..idx]);
                         let before_words = before_words_view.to_word_refs();
-                        if before_words.contains(&"card") || before_words.contains(&"cards") {
+                        if word_slice_contains(&before_words, "card")
+                            || word_slice_contains(&before_words, "cards")
+                        {
                             Some(idx)
                         } else {
                             None
@@ -924,7 +1056,9 @@ pub(crate) fn parse_triggered_line_lexed(
                             }
                             let before_words_view = LowercaseWordView::new(&tail[..idx]);
                             let before_words = before_words_view.to_word_refs();
-                            if before_words.contains(&"spell") || before_words.contains(&"spells") {
+                            if word_slice_contains(&before_words, "spell")
+                                || word_slice_contains(&before_words, "spells")
+                            {
                                 Some(idx)
                             } else {
                                 None
