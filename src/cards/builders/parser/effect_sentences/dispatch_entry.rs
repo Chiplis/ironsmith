@@ -1089,13 +1089,11 @@ fn parse_consult_cast_clause(tokens: &[OwnedLexToken]) -> Option<ConsultCastClau
         return None;
     }
 
-    let Some(condition_start) = token_index_for_word_index(remainder_tokens, 5) else {
-        return None;
-    };
-    let condition_tokens = &remainder_tokens[condition_start..];
     let mana_value_condition = if remainder.len() == 5 {
         None
     } else {
+        let condition_start = token_index_for_word_index(remainder_tokens, 5)?;
+        let condition_tokens = &remainder_tokens[condition_start..];
         Some(parse_consult_mana_value_condition_tokens(condition_tokens)?)
     };
 

@@ -18422,7 +18422,7 @@ fn parse_oracle_ryan_sinclair_uses_dynamic_consult_gate() {
         "expected immediate tagged cast in consult follow-up, got {abilities_debug}"
     );
     assert!(
-        abilities_debug.contains("MoveToZoneEffect") && abilities_debug.contains("zone: Library"),
+        abilities_debug.contains("PutTaggedRemainderOnLibraryBottomEffect"),
         "expected exiled remainder to return to library bottom, got {abilities_debug}"
     );
 }

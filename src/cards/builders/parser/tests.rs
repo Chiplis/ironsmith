@@ -2371,12 +2371,19 @@ fn rewrite_lexed_effect_sequence_parses_consult_dynamic_mana_value_gate() {
     let debug = format!("{parsed:?}");
 
     assert!(
-        debug.contains("mana_value: Some(LessThanOrEqualExpr"),
+        debug.contains("Conditional"),
+        "{debug}"
+    );
+    assert!(
+        debug.contains("ManaValueOf(Tagged("),
         "{debug}"
     );
     assert!(debug.contains("SourcePower"), "{debug}");
     assert!(debug.contains("CastTagged"), "{debug}");
-    assert!(debug.contains("MoveToZone"), "{debug}");
+    assert!(
+        debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+        "{debug}"
+    );
 }
 
 #[test]

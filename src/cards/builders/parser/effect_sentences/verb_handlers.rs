@@ -3060,9 +3060,15 @@ pub(crate) fn parse_gain_control(
                     clause_words.join(" ")
                 )));
             }
+            let predicate = parse_predicate(&predicate_tokens).map_err(|_| {
+                CardTextError::ParseError(format!(
+                    "unsupported conditional gain-control clause (clause: '{}')",
+                    clause_words.join(" ")
+                ))
+            })?;
             (
                 parse_target_phrase(&pre_target_tokens)?,
-                Some(parse_predicate(&predicate_tokens)?),
+                Some(predicate),
                 false,
             )
         } else if let Some(unless_idx) =
@@ -3076,9 +3082,15 @@ pub(crate) fn parse_gain_control(
                     clause_words.join(" ")
                 )));
             }
+            let predicate = parse_predicate(&predicate_tokens).map_err(|_| {
+                CardTextError::ParseError(format!(
+                    "unsupported conditional gain-control clause (clause: '{}')",
+                    clause_words.join(" ")
+                ))
+            })?;
             (
                 parse_target_phrase(&pre_target_tokens)?,
-                Some(parse_predicate(&predicate_tokens)?),
+                Some(predicate),
                 true,
             )
         } else {

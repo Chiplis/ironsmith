@@ -1701,6 +1701,10 @@ pub(crate) fn parse_keyword_mechanic_clause(
         == [
             "manifest", "the", "top", "card", "of", "that", "player's", "library",
         ]
+        || clause_words
+            == [
+                "manifest", "the", "top", "card", "of", "that", "players", "library",
+            ]
     {
         return Ok(Some(EffectAst::ManifestTopCardOfLibrary {
             player: PlayerAst::ThatPlayerOrTargetController,

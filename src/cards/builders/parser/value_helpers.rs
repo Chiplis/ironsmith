@@ -772,6 +772,12 @@ pub(crate) fn parse_filter_comparison_tokens(
         return Ok(None);
     }
 
+    if matches!(axis, "power" | "toughness")
+        && matches!(tokens, ["or", "power" | "toughness", ..])
+    {
+        return Ok(None);
+    }
+
     let to_comparison = |kind: &str, operand: Value| -> crate::filter::Comparison {
         use crate::filter::Comparison;
 
@@ -858,21 +864,6 @@ pub(crate) fn parse_filter_comparison_tokens(
         if tokens.len() == 1 {
             return Ok(Some((crate::filter::Comparison::Equal(value), 1)));
         }
-    }
-
-    if first == "equal" && tokens.get(1) == Some(&"to") && tokens.get(2) == Some(&"x") {
-        return Ok(Some((crate::filter::Comparison::GreaterThanOrEqual(0), 3)));
-    }
-
-    if first == "x" {
-        if tokens.get(1) == Some(&"or")
-            && tokens
-                .get(2)
-                .is_some_and(|word| matches!(*word, "less" | "fewer" | "greater" | "more"))
-        {
-            return Ok(Some((crate::filter::Comparison::GreaterThanOrEqual(0), 3)));
-        }
-        return Ok(Some((crate::filter::Comparison::GreaterThanOrEqual(0), 1)));
     }
 
     let synthetic_tokens = tokens

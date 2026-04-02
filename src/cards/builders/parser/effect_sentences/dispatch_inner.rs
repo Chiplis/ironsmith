@@ -3972,8 +3972,8 @@ pub(crate) fn parse_exile_then_return_same_object_sentence(
         return Ok(None);
     }
 
-    let split_idx = find_index(clause_tokens, |token| token.is_comma()).and_then(|idx| {
-        token_words_match(clause_tokens, idx + 1, &["then", "return"]).then_some(idx)
+    let split_idx = find_window_by(clause_tokens, 3, |window: &[OwnedLexToken]| {
+        window[0].is_comma() && window[1].is_word("then") && window[2].is_word("return")
     });
     let Some(split_idx) = split_idx else {
         return Ok(None);
