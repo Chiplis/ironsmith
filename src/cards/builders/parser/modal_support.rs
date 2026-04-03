@@ -5,55 +5,31 @@ use crate::cards::builders::{
 use crate::effect::Value;
 use crate::target::PlayerFilter;
 
-use super::LowercaseWordView;
 use super::activation_and_restrictions::infer_activated_functional_zones_lexed;
 use super::clause_support::{parse_effect_sentences_lexed, parse_trigger_clause_lexed};
 use super::effect_ast_traversal::try_for_each_nested_effects_mut;
+use super::grammar::primitives as grammar;
+use super::grammar::structure::{
+    parse_modal_header_choose_spec, scan_modal_header_flags, split_lexed_sentences,
+    split_trailing_modal_gate_clause,
+};
 use super::keyword_static::parse_where_x_value_clause_lexed;
 use super::leaf::{lower_activation_cost_cst, parse_activation_cost_tokens_rewrite};
-use super::lexer::{
-    OwnedLexToken, TokenKind, lex_line, render_lexed_tokens, split_lexed_sentences,
-    trim_lexed_commas,
-};
-use super::modal_helpers::{
-    parse_if_result_predicate_lexed, replace_unbound_x_with_value, value_contains_unbound_x,
-};
-use super::token_primitives::parse_modal_choose_range;
+use super::lexer::{OwnedLexToken, TokenKind, lex_line, render_token_slice, trim_lexed_commas};
+use super::modal_helpers::{replace_unbound_x_with_value, value_contains_unbound_x};
 
 type ModalHeader = ParsedModalHeader;
 type ModalActivatedHeader = ParsedModalActivatedHeader;
 type ModalGate = ParsedModalGate;
 
-fn word_slice_has(words: &[&str], expected: &str) -> bool {
-    let mut idx = 0usize;
-    while idx < words.len() {
-        if words[idx] == expected {
-            return true;
-        }
-        idx += 1;
-    }
-
-    false
+fn token_slice_has_word(tokens: &[OwnedLexToken], expected: &str) -> bool {
+    tokens.iter().any(|token| token.is_word(expected))
 }
 
-fn word_slice_has_prefix(words: &[&str], prefix: &[&str]) -> bool {
-    words.len() >= prefix.len() && words[..prefix.len()] == *prefix
-}
-
-fn word_slice_has_sequence(words: &[&str], phrase: &[&str]) -> bool {
-    if phrase.is_empty() || words.len() < phrase.len() {
-        return false;
-    }
-
-    let mut idx = 0usize;
-    while idx + phrase.len() <= words.len() {
-        if word_slice_has_prefix(&words[idx..], phrase) {
-            return true;
-        }
-        idx += 1;
-    }
-
-    false
+fn token_slice_has_any_word(tokens: &[OwnedLexToken], expected: &[&str]) -> bool {
+    expected
+        .iter()
+        .any(|candidate| token_slice_has_word(tokens, candidate))
 }
 
 fn find_token_index(
@@ -63,33 +39,6 @@ fn find_token_index(
     let mut idx = 0usize;
     while idx < tokens.len() {
         if predicate(&tokens[idx]) {
-            return Some(idx);
-        }
-        idx += 1;
-    }
-
-    None
-}
-
-fn rfind_token_index(
-    tokens: &[OwnedLexToken],
-    mut predicate: impl FnMut(&OwnedLexToken) -> bool,
-) -> Option<usize> {
-    let mut idx = tokens.len();
-    while idx > 0 {
-        idx -= 1;
-        if predicate(&tokens[idx]) {
-            return Some(idx);
-        }
-    }
-
-    None
-}
-
-fn find_word_index(words: &[&str], expected: &str) -> Option<usize> {
-    let mut idx = 0usize;
-    while idx < words.len() {
-        if words[idx] == expected {
             return Some(idx);
         }
         idx += 1;
@@ -112,49 +61,31 @@ fn strip_leading_sign(text: &str) -> Option<&str> {
 
 pub(crate) fn parse_modal_header(info: &LineInfo) -> Result<Option<ModalHeader>, CardTextError> {
     let tokens = lex_line(&info.normalized.normalized, info.line_index)?;
-    let token_view = LowercaseWordView::new(&tokens);
-    let token_words = token_view.to_word_refs();
-    let Some(choose_idx) = find_token_index(&tokens, |token| token.is_word("choose")) else {
+    let Some(choose_spec) = grammar::parse_all_with_display_line(
+        &tokens,
+        parse_modal_header_choose_spec,
+        "modal-header",
+        info.display_line_index,
+    )?
+    else {
         return Ok(None);
     };
-
-    let choose_tokens = &tokens[choose_idx + 1..];
-    let Some((min, max)) = parse_modal_choose_range(choose_tokens)? else {
-        return Ok(None);
-    };
-
-    let Some(min) = min else {
-        return Ok(None);
-    };
-
-    let commander_allows_both =
-        word_slice_has(&token_words, "commander") && word_slice_has(&token_words, "both");
-    let same_mode_more_than_once =
-        word_slice_has_sequence(&token_words, &["same", "mode", "more", "than", "once"]);
-    let mode_must_be_unchosen_this_turn = word_slice_has_sequence(
-        &token_words,
-        &["that", "hasnt", "been", "chosen", "this", "turn"],
-    ) || word_slice_has_sequence(
-        &token_words,
-        &["that", "hasn't", "been", "chosen", "this", "turn"],
-    ) || word_slice_has_sequence(
-        &token_words,
-        &["that", "has", "not", "been", "chosen", "this", "turn"],
-    );
-    let mode_must_be_unchosen = mode_must_be_unchosen_this_turn
-        || word_slice_has_sequence(&token_words, &["that", "hasnt", "been", "chosen"])
-        || word_slice_has_sequence(&token_words, &["that", "hasn't", "been", "chosen"])
-        || word_slice_has_sequence(&token_words, &["that", "has", "not", "been", "chosen"]);
+    let modal_flags = scan_modal_header_flags(&tokens);
+    let choose_idx = choose_spec.choose_idx;
+    let min = choose_spec.min;
+    let max = choose_spec.max;
 
     let mut trigger = None;
     let mut activated = None;
-    let x_replacement = parse_modal_header_x_replacement(&tokens, choose_idx);
+    let x_replacement = choose_spec.x_clause_start.and_then(|x_clause_start| {
+        parse_x_is_value_clause(trim_lexed_commas(&tokens[x_clause_start..]))
+    });
     let mut effect_start_idx = 0usize;
     if let Some(colon_idx) = find_token_index(&tokens, |token| token.kind == TokenKind::Colon)
         .filter(|idx| *idx < choose_idx)
     {
         let cost_tokens = &tokens[..colon_idx];
-        let cost_raw = render_lexed_tokens(cost_tokens);
+        let cost_raw = render_token_slice(cost_tokens);
         let cost_raw = cost_raw.trim();
         if !cost_raw.is_empty() {
             let cost_cst = parse_activation_cost_tokens_rewrite(cost_tokens)?;
@@ -214,10 +145,10 @@ pub(crate) fn parse_modal_header(info: &LineInfo) -> Result<Option<ModalHeader>,
     Ok(Some(ModalHeader {
         min,
         max,
-        same_mode_more_than_once,
-        mode_must_be_unchosen,
-        mode_must_be_unchosen_this_turn,
-        commander_allows_both,
+        same_mode_more_than_once: modal_flags.same_mode_more_than_once,
+        mode_must_be_unchosen: modal_flags.mode_must_be_unchosen,
+        mode_must_be_unchosen_this_turn: modal_flags.mode_must_be_unchosen_this_turn,
+        commander_allows_both: modal_flags.commander_allows_both,
         trigger,
         activated,
         x_replacement,
@@ -227,40 +158,18 @@ pub(crate) fn parse_modal_header(info: &LineInfo) -> Result<Option<ModalHeader>,
     }))
 }
 
-fn parse_modal_header_x_replacement(tokens: &[OwnedLexToken], choose_idx: usize) -> Option<Value> {
-    let choose_tail = tokens.get(choose_idx + 1..)?;
-    let choose_tail_words = LowercaseWordView::new(choose_tail);
-    let choose_tail_word_refs = choose_tail_words.to_word_refs();
-    let x_word_idx = find_word_index(&choose_tail_word_refs, "x")?;
-    if choose_tail_word_refs.get(x_word_idx + 1).copied() != Some("is") {
-        return None;
-    }
-
-    let x_token_idx = choose_tail_words.token_index_for_word_index(x_word_idx)?;
-    let x_clause_tokens = trim_lexed_commas(&choose_tail[x_token_idx..]);
-    parse_x_is_value_clause(x_clause_tokens)
-}
-
 fn parse_x_is_value_clause(tokens: &[OwnedLexToken]) -> Option<Value> {
-    let word_view = LowercaseWordView::new(tokens);
-    let words = word_view.to_word_refs();
-    if !word_slice_has_prefix(&words, &["x", "is"]) {
+    if tokens.len() < 2 || !tokens[0].is_word("x") || !tokens[1].is_word("is") {
         return None;
     }
 
-    if (word_slice_has(&words, "spell") || word_slice_has(&words, "spells"))
-        && (word_slice_has(&words, "cast") || word_slice_has(&words, "casts"))
-        && word_slice_has(&words, "turn")
+    if token_slice_has_any_word(tokens, &["spell", "spells"])
+        && token_slice_has_any_word(tokens, &["cast", "casts"])
+        && token_slice_has_word(tokens, "turn")
     {
-        let player = if words
-            .iter()
-            .any(|word| matches!(*word, "you" | "your" | "youve" | "you've"))
-        {
+        let player = if token_slice_has_any_word(tokens, &["you", "your", "youve", "you've"]) {
             PlayerFilter::You
-        } else if words
-            .iter()
-            .any(|word| matches!(*word, "opponent" | "opponents"))
-        {
+        } else if token_slice_has_any_word(tokens, &["opponent", "opponents"]) {
             PlayerFilter::Opponent
         } else {
             PlayerFilter::Any
@@ -269,14 +178,13 @@ fn parse_x_is_value_clause(tokens: &[OwnedLexToken]) -> Option<Value> {
     }
 
     let mut where_prefixed = Vec::with_capacity(tokens.len() + 3);
-    where_prefixed.push(OwnedLexToken {
-        kind: TokenKind::Word,
-        slice: "where".to_string(),
-        span: tokens
+    where_prefixed.push(OwnedLexToken::word(
+        "where",
+        tokens
             .first()
             .map(|token| token.span)
             .unwrap_or_else(crate::cards::builders::TextSpan::synthetic),
-    });
+    ));
     where_prefixed.extend_from_slice(tokens);
     parse_where_x_value_clause_lexed(&where_prefixed)
 }
@@ -389,7 +297,24 @@ fn parse_modal_header_prefix_effects(
         return Ok((Vec::new(), None));
     }
 
-    let (prefix_tokens, modal_gate) = strip_trailing_modal_gate_clause(tokens);
+    let (prefix_tokens, modal_gate) =
+        if let Some(gate_spec) = split_trailing_modal_gate_clause(tokens) {
+            let effect_predicate = match gate_spec.predicate {
+                IfResultPredicate::Did => EffectPredicate::Happened,
+                IfResultPredicate::DidNot => EffectPredicate::DidNotHappen,
+                IfResultPredicate::DiesThisWay => EffectPredicate::HappenedNotReplaced,
+                IfResultPredicate::WasDeclined => EffectPredicate::WasDeclined,
+            };
+            (
+                gate_spec.prefix_tokens,
+                Some(ModalGate {
+                    predicate: effect_predicate,
+                    remove_mode_only: gate_spec.remove_mode_only,
+                }),
+            )
+        } else {
+            (tokens, None)
+        };
     if prefix_tokens.is_empty() {
         return Ok((Vec::new(), modal_gate));
     }
@@ -402,69 +327,6 @@ fn parse_modal_header_prefix_effects(
     }
 
     Ok((effects, modal_gate))
-}
-
-fn strip_trailing_modal_gate_clause(
-    tokens: &[OwnedLexToken],
-) -> (&[OwnedLexToken], Option<ModalGate>) {
-    let sentence_start = rfind_token_index(tokens, |token| token.kind == TokenKind::Period)
-        .map(|idx| idx + 1)
-        .unwrap_or(0);
-    let sentence_tokens = trim_lexed_commas(&tokens[sentence_start..]);
-    if sentence_tokens.is_empty() {
-        return (tokens, None);
-    }
-    if !sentence_tokens
-        .first()
-        .is_some_and(|token| token.is_word("if") || token.is_word("when"))
-    {
-        return (tokens, None);
-    }
-
-    let comma_idx = find_token_index(sentence_tokens, |token| token.kind == TokenKind::Comma)
-        .unwrap_or(sentence_tokens.len());
-    if comma_idx <= 1 {
-        return (tokens, None);
-    }
-
-    let predicate_tokens = &sentence_tokens[1..comma_idx];
-    let Some(predicate) = parse_if_result_predicate_lexed(predicate_tokens) else {
-        return (tokens, None);
-    };
-
-    let trailing_tokens = if comma_idx < sentence_tokens.len() {
-        trim_lexed_commas(&sentence_tokens[comma_idx + 1..])
-    } else {
-        &[]
-    };
-    if !trailing_tokens.is_empty() {
-        return (tokens, None);
-    }
-
-    let mut prefix_end = sentence_start;
-    while prefix_end > 0 && tokens[prefix_end - 1].kind == TokenKind::Comma {
-        prefix_end -= 1;
-    }
-
-    let effect_predicate = match predicate {
-        IfResultPredicate::Did => EffectPredicate::Happened,
-        IfResultPredicate::DidNot => EffectPredicate::DidNotHappen,
-        IfResultPredicate::DiesThisWay => EffectPredicate::HappenedNotReplaced,
-        IfResultPredicate::WasDeclined => EffectPredicate::WasDeclined,
-    };
-    let predicate_view = LowercaseWordView::new(predicate_tokens);
-    let predicate_words = predicate_view.to_word_refs();
-    let remove_mode_only = predicate_words.len() >= 2
-        && matches!(predicate_words[0], "you" | "they")
-        && matches!(predicate_words[1], "remove" | "removed");
-
-    (
-        &tokens[..prefix_end],
-        Some(ModalGate {
-            predicate: effect_predicate,
-            remove_mode_only,
-        }),
-    )
 }
 
 fn is_loyalty_shorthand_cost_text(text: &str) -> bool {

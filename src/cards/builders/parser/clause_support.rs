@@ -9,12 +9,15 @@ use crate::target::PlayerFilter;
 use super::activation_and_restrictions::{
     parse_ability_phrase, parse_single_word_keyword_action, parse_triggered_times_each_turn_lexed,
 };
-use super::effect_sentences::conditionals::parse_predicate_lexed;
+use super::grammar::primitives::{
+    CompatWordIndex, split_lexed_slices_on_and, split_lexed_slices_on_commas_or_semicolons,
+};
+use super::grammar::structure::{
+    split_state_triggered_clause_lexed, split_triggered_conditional_clause_lexed,
+};
 use super::lexer::{OwnedLexToken, TokenKind, split_lexed_sentences};
-use super::native_tokens::LowercaseWordView;
 use super::util::{
-    parse_card_type, parse_color, parse_flashback_keyword_line, parse_subtype_flexible,
-    split_on_and, split_on_comma_or_semicolon, trim_commas,
+    parse_card_type, parse_color, parse_flashback_keyword_line, parse_subtype_flexible, trim_commas,
 };
 
 fn word_slice_starts_with(words: &[&str], expected: &[&str]) -> bool {
@@ -106,7 +109,7 @@ fn contains_keyword_action(actions: &[KeywordAction], expected: &KeywordAction) 
 }
 
 fn token_index_after_word_count(
-    words: &LowercaseWordView,
+    words: &CompatWordIndex,
     word_count: usize,
     token_len: usize,
 ) -> Option<usize> {
@@ -133,8 +136,8 @@ fn trim_plural_s(word: &str) -> Option<&str> {
 }
 
 fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
-    let words_view = LowercaseWordView::new(tokens);
-    let words = words_view.to_word_refs();
+    let words_view = CompatWordIndex::new(tokens);
+    let words = words_view.word_refs();
     let first_word_idx = if words.first().copied() == Some("and") {
         1
     } else {
@@ -200,7 +203,7 @@ pub(crate) fn rewrite_parse_ability_line(tokens: &[OwnedLexToken]) -> Option<Vec
         return Some(actions);
     }
 
-    let segments = split_on_comma_or_semicolon(tokens);
+    let segments = split_lexed_slices_on_commas_or_semicolons(tokens);
     let mut actions = Vec::new();
 
     for segment in segments {
@@ -208,15 +211,15 @@ pub(crate) fn rewrite_parse_ability_line(tokens: &[OwnedLexToken]) -> Option<Vec
             continue;
         }
 
-        if let Some(protection_actions) = parse_protection_chain(&segment) {
+        if let Some(protection_actions) = parse_protection_chain(segment) {
             actions.extend(protection_actions);
             continue;
         }
 
-        if let Some(action) = parse_ability_phrase(&segment) {
+        if let Some(action) = parse_ability_phrase(segment) {
             actions.push(action);
         } else {
-            let and_parts = split_on_and(&segment);
+            let and_parts = split_lexed_slices_on_and(segment);
             if and_parts.len() > 1 {
                 let mut all_ok = true;
                 for part in &and_parts {
@@ -248,8 +251,8 @@ pub(crate) fn rewrite_parse_ability_line(tokens: &[OwnedLexToken]) -> Option<Vec
 
 pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
     fn parse_simple_keyword_phrase_lexed(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
-        let words_view = LowercaseWordView::new(tokens);
-        let mut words = words_view.to_word_refs();
+        let words_view = CompatWordIndex::new(tokens);
+        let mut words = words_view.word_refs();
         if words.first().copied() == Some("and") {
             words.remove(0);
         }
@@ -360,8 +363,8 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
             return None;
         }
 
-        let tail_view = LowercaseWordView::new(&tokens[idx..]);
-        let tail = tail_view.to_word_refs();
+        let tail_view = CompatWordIndex::new(&tokens[idx..]);
+        let tail = tail_view.word_refs();
         let mut text = format!("Flashback {cost}");
         if !tail.is_empty() {
             let mut tail_text = tail.join(" ");
@@ -377,8 +380,8 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
     }
 
     fn parse_protection_chain_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
-        let words_view = LowercaseWordView::new(tokens);
-        let words = words_view.to_word_refs();
+        let words_view = CompatWordIndex::new(tokens);
+        let words = words_view.word_refs();
         let first_word_idx = if words.first().copied() == Some("and") {
             1
         } else {
@@ -560,8 +563,8 @@ pub(crate) fn parse_effect_sentences_lexed(
 pub(crate) fn parse_triggered_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
-    let clause_word_view = LowercaseWordView::new(tokens);
-    let clause_words = clause_word_view.to_word_refs();
+    let clause_word_view = CompatWordIndex::new(tokens);
+    let clause_words = clause_word_view.word_refs();
     if word_slice_starts_with(
         &clause_words,
         &[
@@ -606,8 +609,8 @@ pub(crate) fn parse_triggered_line_lexed(
         if tokens.is_empty() {
             return false;
         }
-        let words_view = LowercaseWordView::new(tokens);
-        let words = words_view.to_word_refs();
+        let words_view = CompatWordIndex::new(tokens);
+        let words = words_view.word_refs();
         if words.is_empty() {
             return false;
         }
@@ -633,16 +636,16 @@ pub(crate) fn parse_triggered_line_lexed(
             return false;
         }
 
-        let prefix_words_view = LowercaseWordView::new(trigger_prefix_tokens);
-        let prefix_words = prefix_words_view.to_word_refs();
+        let prefix_words_view = CompatWordIndex::new(trigger_prefix_tokens);
+        let prefix_words = prefix_words_view.word_refs();
         if !(word_slice_contains(&prefix_words, "discard")
             || word_slice_contains(&prefix_words, "discards"))
         {
             return false;
         }
 
-        let tail_words_view = LowercaseWordView::new(tail_tokens);
-        let tail_words = tail_words_view.to_word_refs();
+        let tail_words_view = CompatWordIndex::new(tail_tokens);
+        let tail_words = tail_words_view.word_refs();
         if tail_words.is_empty() {
             return false;
         }
@@ -662,8 +665,8 @@ pub(crate) fn parse_triggered_line_lexed(
 
         find_token_index(tail_tokens, |token| token.kind == TokenKind::Comma).is_some_and(
             |comma_idx| {
-                let before_words_view = LowercaseWordView::new(&tail_tokens[..comma_idx]);
-                let before_words = before_words_view.to_word_refs();
+                let before_words_view = CompatWordIndex::new(&tail_tokens[..comma_idx]);
+                let before_words = before_words_view.word_refs();
                 word_slice_contains(&before_words, "card")
                     || word_slice_contains(&before_words, "cards")
             },
@@ -674,8 +677,8 @@ pub(crate) fn parse_triggered_line_lexed(
         if tokens.is_empty() {
             return false;
         }
-        let words_view = LowercaseWordView::new(tokens);
-        let words = words_view.to_word_refs();
+        let words_view = CompatWordIndex::new(tokens);
+        let words = words_view.word_refs();
         if words.is_empty() {
             return false;
         }
@@ -694,8 +697,8 @@ pub(crate) fn parse_triggered_line_lexed(
         if tokens.is_empty() {
             return false;
         }
-        let words_view = LowercaseWordView::new(tokens);
-        let words = words_view.to_word_refs();
+        let words_view = CompatWordIndex::new(tokens);
+        let words = words_view.word_refs();
         if words.is_empty() {
             return false;
         }
@@ -708,8 +711,8 @@ pub(crate) fn parse_triggered_line_lexed(
         if tokens.is_empty() {
             return false;
         }
-        let words_view = LowercaseWordView::new(tokens);
-        let words = words_view.to_word_refs();
+        let words_view = CompatWordIndex::new(tokens);
+        let words = words_view.word_refs();
         if words.len() < 3 || words[0].parse::<i32>().is_err() {
             return false;
         }
@@ -720,8 +723,8 @@ pub(crate) fn parse_triggered_line_lexed(
     fn trim_first_time_each_turn_suffix_lexed(
         trigger_tokens: &[OwnedLexToken],
     ) -> (&[OwnedLexToken], Option<u32>) {
-        let trigger_words = LowercaseWordView::new(trigger_tokens);
-        let words = trigger_words.to_word_refs();
+        let trigger_words = CompatWordIndex::new(trigger_tokens);
+        let words = trigger_words.word_refs();
         for suffix in [
             ["for", "the", "first", "time", "each", "turn"].as_slice(),
             ["for", "the", "first", "time", "this", "turn"].as_slice(),
@@ -741,8 +744,8 @@ pub(crate) fn parse_triggered_line_lexed(
         trigger_tokens: &[OwnedLexToken],
         effects_tokens: &[OwnedLexToken],
     ) -> Vec<OwnedLexToken> {
-        let trigger_words_view = LowercaseWordView::new(trigger_tokens);
-        let trigger_words = trigger_words_view.to_word_refs();
+        let trigger_words_view = CompatWordIndex::new(trigger_tokens);
+        let trigger_words = trigger_words_view.word_refs();
         let mut references_enchanted_controller = false;
         let mut idx = 0usize;
         while idx + 2 < trigger_words.len() {
@@ -823,8 +826,8 @@ pub(crate) fn parse_triggered_line_lexed(
 
     if start_idx < tokens.len() {
         let trigger_body = &tokens[start_idx..];
-        let trigger_body_view = LowercaseWordView::new(trigger_body);
-        let trigger_body_words = trigger_body_view.to_word_refs();
+        let trigger_body_view = CompatWordIndex::new(trigger_body);
+        let trigger_body_words = trigger_body_view.word_refs();
         let blocked_prefix_len = if word_slice_starts_with(
             &trigger_body_words,
             &["this", "creature", "becomes", "blocked"],
@@ -885,59 +888,30 @@ pub(crate) fn parse_triggered_line_lexed(
         }
     }
 
-    if let Some(first_comma_idx) = find_token_index(tokens, |token| token.kind == TokenKind::Comma)
+    if let Some(spec) = split_triggered_conditional_clause_lexed(tokens, start_idx)
+        && let Ok(trigger) = parse_trigger_clause_lexed(spec.trigger_tokens)
     {
-        let trigger_tokens = &tokens[start_idx..first_comma_idx];
-        let after_first_comma = trim_commas(&tokens[first_comma_idx + 1..]);
-        if after_first_comma
-            .first()
-            .is_some_and(|token| token.is_word("if"))
-            && let Some(second_comma_rel) =
-                find_token_index(&after_first_comma, |token| token.kind == TokenKind::Comma)
-        {
-            let predicate_with_if = trim_commas(&after_first_comma[..second_comma_rel]);
-            let predicate_tokens = if predicate_with_if
-                .first()
-                .is_some_and(|token| token.is_word("if"))
-            {
-                trim_commas(predicate_with_if.get(1..).unwrap_or_default())
-            } else {
-                predicate_with_if
-            };
-            let effects_tokens = trim_commas(&after_first_comma[second_comma_rel + 1..]);
-            if !predicate_tokens.is_empty()
-                && !effects_tokens.is_empty()
-                && let Ok(trigger) = parse_trigger_clause_lexed(trigger_tokens)
-                && let Ok(predicate) = parse_predicate_lexed(&predicate_tokens)
-                && !matches!(
-                    predicate,
-                    crate::cards::builders::PredicateAst::Unmodeled(_)
-                )
-            {
-                let rewritten_effects_tokens =
-                    rewrite_attached_controller_trigger_effect_tokens_lexed(
-                        trigger_tokens,
-                        &effects_tokens,
-                    );
-                if let Ok(effects) = parse_effect_sentences_lexed(&rewritten_effects_tokens) {
-                    return Ok(LineAst::Triggered {
-                        trigger,
-                        effects: vec![EffectAst::Conditional {
-                            predicate,
-                            if_true: effects,
-                            if_false: Vec::new(),
-                        }],
-                        max_triggers_per_turn: None,
-                    });
-                }
-            }
+        let rewritten_effects_tokens = rewrite_attached_controller_trigger_effect_tokens_lexed(
+            spec.trigger_tokens,
+            spec.effects_tokens,
+        );
+        if let Ok(effects) = parse_effect_sentences_lexed(&rewritten_effects_tokens) {
+            return Ok(LineAst::Triggered {
+                trigger,
+                effects: vec![EffectAst::Conditional {
+                    predicate: spec.predicate,
+                    if_true: effects,
+                    if_false: Vec::new(),
+                }],
+                max_triggers_per_turn: None,
+            });
         }
     }
 
     if let Some(split_idx) = find_token_index(tokens, |token| token.kind == TokenKind::Comma) {
         let trigger_tokens = &tokens[start_idx..split_idx];
-        let trigger_word_view = LowercaseWordView::new(trigger_tokens);
-        let trigger_words = trigger_word_view.to_word_refs();
+        let trigger_word_view = CompatWordIndex::new(trigger_tokens);
+        let trigger_words = trigger_word_view.word_refs();
         let mut attack_idx = None;
         let mut word_idx = 0usize;
         while word_idx < trigger_words.len() {
@@ -1042,8 +1016,8 @@ pub(crate) fn parse_triggered_line_lexed(
                         if token.kind != TokenKind::Comma {
                             return None;
                         }
-                        let before_words_view = LowercaseWordView::new(&tail[..idx]);
-                        let before_words = before_words_view.to_word_refs();
+                        let before_words_view = CompatWordIndex::new(&tail[..idx]);
+                        let before_words = before_words_view.word_refs();
                         if word_slice_contains(&before_words, "card")
                             || word_slice_contains(&before_words, "cards")
                         {
@@ -1064,8 +1038,8 @@ pub(crate) fn parse_triggered_line_lexed(
                             if token.kind != TokenKind::Comma {
                                 return None;
                             }
-                            let before_words_view = LowercaseWordView::new(&tail[..idx]);
-                            let before_words = before_words_view.to_word_refs();
+                            let before_words_view = CompatWordIndex::new(&tail[..idx]);
+                            let before_words = before_words_view.word_refs();
                             if word_slice_contains(&before_words, "spell")
                                 || word_slice_contains(&before_words, "spells")
                             {
@@ -1141,24 +1115,17 @@ pub(crate) fn parse_triggered_line_lexed(
             }
         }
 
-        if matches!(
-            tokens.first(),
-            Some(token) if token.is_word("when") || token.is_word("whenever")
-        ) && let Ok(predicate) = parse_predicate_lexed(trigger_tokens)
-            && !matches!(
-                predicate,
-                crate::cards::builders::PredicateAst::Unmodeled(_)
-            )
-        {
+        if let Some(spec) = split_state_triggered_clause_lexed(tokens, start_idx, split_idx) {
             let effects_tokens = rewrite_attached_controller_trigger_effect_tokens_lexed(
-                trigger_tokens,
-                &tokens[split_idx + 1..],
+                spec.trigger_tokens,
+                spec.effects_tokens,
             );
             let effects = parse_effect_sentences_lexed(&effects_tokens)?;
             return Ok(LineAst::Triggered {
                 trigger: TriggerSpec::StateBased {
-                    condition: predicate,
-                    display: tokens[..split_idx]
+                    condition: spec.predicate,
+                    display: spec
+                        .display_tokens
                         .iter()
                         .map(|token| token.slice.as_str())
                         .collect::<Vec<_>>()
@@ -1209,7 +1176,7 @@ pub(crate) fn parse_triggered_line_lexed(
 
     Err(CardTextError::ParseError(format!(
         "unsupported triggered line (clause: '{}')",
-        LowercaseWordView::new(tokens).to_word_refs().join(" ")
+        CompatWordIndex::new(tokens).word_refs().join(" ")
     )))
 }
 

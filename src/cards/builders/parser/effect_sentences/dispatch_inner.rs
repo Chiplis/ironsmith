@@ -1,36 +1,42 @@
+use super::super::grammar::effects::{
+    parse_cant_effect_sentence_with_grammar_entrypoint_lexed,
+    parse_conditional_sentence_family_lexed,
+    parse_search_library_sentence_with_grammar_entrypoint_lexed,
+};
+use super::super::grammar::primitives::{
+    CompatWordIndex, split_lexed_slices_on_and, split_lexed_slices_on_comma,
+    split_lexed_slices_on_commas_or_semicolons,
+};
+use super::super::grammar::structure::{
+    LeadingResultPrefixKind, split_leading_result_prefix_lexed,
+};
 use super::super::keyword_static::{
     parse_ability_line, parse_pt_modifier, parse_where_x_value_clause,
     parse_where_x_value_clause_lexed,
 };
 use super::super::lexer::OwnedLexToken;
-use super::super::native_tokens::LowercaseWordView;
 use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed};
 use super::super::rule_engine::{
     LexClauseView, LexRuleDef, LexRuleIndex, LexUnsupportedDiagnoser, LexUnsupportedRuleDef,
 };
 use super::super::util::{
     is_article, is_source_reference_words, parse_card_type, parse_subject, parse_target_phrase,
-    parse_value, split_on_and, token_index_for_word_index, words,
+    parse_value, token_index_for_word_index, words,
 };
 use super::super::{
     is_activate_only_restriction_sentence_lexed, is_trigger_only_restriction_sentence_lexed,
 };
 use super::sentence_helpers::*;
 use super::zone_handlers::collapse_leading_signed_pt_modifier_tokens;
-use super::{
-    LeadingResultPrefixKind, TokenCopyFollowup, parse_cant_effect_sentence_lexed,
-    parse_conditional_sentence_lexed, parse_effect_chain_lexed,
-    parse_search_library_sentence_lexed, parse_simple_gain_ability_clause,
-    split_leading_result_prefix_lexed,
-};
-use crate::cards::builders::scan_helpers::{
-    find_index, find_window_by, find_window_index, iter_contains, rfind_index, slice_contains,
-    slice_ends_with, slice_starts_with,
-};
+use super::{TokenCopyFollowup, parse_effect_chain_lexed, parse_simple_gain_ability_clause};
 #[allow(unused_imports)]
 use crate::cards::builders::{
     CardTextError, EffectAst, ExtraTurnAnchorAst, IT_TAG, LineAst, PlayerAst, SubjectAst, TagKey,
     TargetAst, TextSpan, TriggerSpec, Verb,
+};
+use crate::cards::builders::{
+    find_index, find_window_by, find_window_index, iter_contains, rfind_index, slice_contains,
+    slice_ends_with, slice_starts_with,
 };
 use crate::effect::{ChoiceCount, EventValueSpec, Until, Value};
 use crate::object::CounterType;
@@ -39,6 +45,8 @@ use crate::target::{
 };
 use crate::types::CardType;
 use crate::zone::Zone;
+
+type DispatchInnerNormalizedWords = CompatWordIndex;
 
 const SENTENCE_PRIMITIVE_RULE_HEADS: &[&str] = &[
     "if",
@@ -195,8 +203,8 @@ fn parse_next_spell_subject_filter(words: &[&str]) -> Result<Option<ObjectFilter
 fn parse_next_spell_grant_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let clause_word_view = LowercaseWordView::new(tokens);
-    let clause_words = clause_word_view.to_word_refs();
+    let clause_word_storage = DispatchInnerNormalizedWords::new(tokens);
+    let clause_words = clause_word_storage.to_word_refs();
     if !slice_starts_with(&clause_words, &["the", "next"]) {
         return Ok(None);
     }
@@ -734,15 +742,6 @@ fn parse_spell_this_way_pay_life_rule_lexed(
     Ok(None)
 }
 
-fn parse_conditional_sentence_rule_lexed(
-    view: &LexClauseView<'_>,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if view.head() == "if" {
-        return parse_conditional_sentence_lexed(view.tokens).map(Some);
-    }
-    Ok(None)
-}
-
 fn parse_postconditional_sentence_primitives_rule_lexed(
     view: &LexClauseView<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -759,7 +758,7 @@ fn parse_effect_chain_rule_lexed(
     parse_effect_chain_lexed(view.tokens).map(Some)
 }
 
-const SENTENCE_PRE_DIAGNOSTIC_PARSE_RULES_LEXED: [LexRuleDef<Vec<EffectAst>>; 6] = [
+const SENTENCE_PRE_DIAGNOSTIC_PARSE_RULES_LEXED: [LexRuleDef<Vec<EffectAst>>; 5] = [
     LexRuleDef {
         id: "redirect-next-damage",
         priority: 100,
@@ -794,13 +793,6 @@ const SENTENCE_PRE_DIAGNOSTIC_PARSE_RULES_LEXED: [LexRuleDef<Vec<EffectAst>>; 6]
         heads: SENTENCE_PRIMITIVE_RULE_HEADS,
         shape_mask: 0,
         run: parse_preconditional_sentence_primitives_rule_lexed,
-    },
-    LexRuleDef {
-        id: "conditional",
-        priority: 140,
-        heads: &["if"],
-        shape_mask: RULE_SHAPE_STARTS_IF,
-        run: parse_conditional_sentence_rule_lexed,
     },
 ];
 
@@ -1114,11 +1106,11 @@ pub(crate) fn parse_effect_sentence_lexed(
     if let Some(effect) = parse_if_damage_would_be_dealt_put_counters_sentence(tokens)? {
         return Ok(vec![effect]);
     }
-    if let Some(effects) = parse_cant_effect_sentence_lexed(tokens)? {
+    if let Some(effects) = parse_cant_effect_sentence_with_grammar_entrypoint_lexed(tokens)? {
         return Ok(effects);
     }
-    let clause_word_view = LowercaseWordView::new(tokens);
-    let clause_words = clause_word_view.to_word_refs();
+    let clause_word_storage = DispatchInnerNormalizedWords::new(tokens);
+    let clause_words = clause_word_storage.to_word_refs();
     if contains_word_window(clause_words.as_slice(), &["where", "x", "is"]) {
         return parse_effect_sentence_with_where_x_lexed(tokens);
     }
@@ -1128,7 +1120,7 @@ pub(crate) fn parse_effect_sentence_lexed(
 fn parse_exile_then_meld_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let clause_words = crate::cards::builders::parser::lexed_words(tokens);
+    let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
     if !slice_starts_with(&clause_words, &["exile", "them"]) {
         return Ok(None);
     }
@@ -1152,7 +1144,7 @@ fn parse_exile_then_meld_sentence(
 fn parse_if_damage_would_be_dealt_put_counters_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let clause_words = crate::cards::builders::parser::lexed_words(tokens);
+    let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
     if !slice_starts_with(
         &clause_words,
         &["if", "damage", "would", "be", "dealt", "to"],
@@ -1224,8 +1216,8 @@ fn parse_effect_sentence_with_where_x_lexed(
         }
     }
 
-    let clause_word_view = LowercaseWordView::new(tokens);
-    let clause_words = clause_word_view.to_word_refs();
+    let clause_word_storage = DispatchInnerNormalizedWords::new(tokens);
+    let clause_words = clause_word_storage.to_word_refs();
     let Some(where_idx) = find_window_index(clause_words.as_slice(), &["where", "x", "is"]) else {
         return parse_effect_sentence_inner_lexed(tokens);
     };
@@ -1236,11 +1228,8 @@ fn parse_effect_sentence_with_where_x_lexed(
         )));
     };
     let where_tokens = &tokens[where_token_idx..];
-    let where_segments = split_on_comma_or_semicolon(where_tokens);
-    let primary_where_tokens = where_segments
-        .first()
-        .cloned()
-        .unwrap_or_else(|| where_tokens.to_vec());
+    let where_segments = split_lexed_slices_on_commas_or_semicolons(where_tokens);
+    let primary_where_tokens = where_segments.first().copied().unwrap_or(where_tokens);
     let trailing_after_where = if where_segments.len() > 1 {
         let mut tail = Vec::new();
         for (idx, segment) in where_segments.iter().enumerate().skip(1) {
@@ -1255,10 +1244,10 @@ fn parse_effect_sentence_with_where_x_lexed(
     };
 
     let stripped = trim_edge_punctuation(&tokens[..where_token_idx]);
-    let stripped_word_view = LowercaseWordView::new(&stripped);
-    let stripped_words = stripped_word_view.to_word_refs();
-    let where_word_view = LowercaseWordView::new(&primary_where_tokens);
-    let where_words = where_word_view.to_word_refs();
+    let stripped_word_storage = DispatchInnerNormalizedWords::new(&stripped);
+    let stripped_words = stripped_word_storage.to_word_refs();
+    let where_word_storage = DispatchInnerNormalizedWords::new(&primary_where_tokens);
+    let where_words = where_word_storage.to_word_refs();
 
     let where_value = match where_words.get(3..) {
         Some(["its", "power"]) => {
@@ -1425,17 +1414,6 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
     if let Some(stripped) = strip_labeled_effect_prefix_lexed(tokens) {
         return parse_effect_sentence_lexed(stripped);
     }
-    if let Some(stripped) = strip_labeled_conditional_prefix_lexed(tokens) {
-        return parse_conditional_sentence_lexed(stripped);
-    }
-    if tokens.first().is_some_and(|token| token.is_word("if"))
-        && contains_word_window(
-            sentence_words.as_slice(),
-            &["exile", "them", "then", "meld", "them", "into"],
-        )
-    {
-        return parse_conditional_sentence_lexed(tokens);
-    }
     if tokens.first().is_some_and(|token| token.is_word("if"))
         && let Some(mut effects) = run_sentence_primitives_lexed(
             tokens,
@@ -1446,39 +1424,34 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
     }
-    if tokens.first().is_some_and(|token| token.is_word("if")) {
-        return parse_conditional_sentence_lexed(tokens);
-    }
-    if sentence_starts_with_supported_spent_to_cast_conditional(sentence_words.as_slice()) {
-        return parse_conditional_sentence_lexed(tokens);
+    if let Some(effects) =
+        parse_conditional_sentence_family_lexed(tokens, parse_effect_chain_lexed)?
+    {
+        return Ok(effects);
     }
     if let Some(effects) = parse_next_spell_grant_sentence_lexed(tokens)? {
         return Ok(effects);
     }
-    if tokens.first().is_some_and(|token| token.is_word("then"))
-        && tokens.get(1).is_some_and(|token| token.is_word("if"))
-    {
-        return parse_conditional_sentence_lexed(&tokens[1..]);
-    }
     if tokens.first().is_some_and(|token| token.is_word("then")) && tokens.len() > 1 {
         return parse_effect_sentence_lexed(&tokens[1..]);
     }
-    if let Some((kind, predicate, stripped)) = split_leading_result_prefix_lexed(tokens) {
-        return Ok(vec![match kind {
+    if let Some(prefix) = split_leading_result_prefix_lexed(tokens) {
+        return Ok(vec![match prefix.kind {
             LeadingResultPrefixKind::If => EffectAst::IfResult {
-                predicate,
-                effects: parse_effect_sentence_lexed(&stripped)?,
+                predicate: prefix.predicate,
+                effects: parse_effect_sentence_lexed(prefix.trailing_tokens)?,
             },
             LeadingResultPrefixKind::When => EffectAst::WhenResult {
-                predicate,
-                effects: parse_effect_sentence_lexed(&stripped)?,
+                predicate: prefix.predicate,
+                effects: parse_effect_sentence_lexed(prefix.trailing_tokens)?,
             },
         }]);
     }
     if tokens
         .iter()
         .any(|token| token.is_word("search") || token.is_word("searches"))
-        && let Some(mut effects) = parse_search_library_sentence_lexed(tokens)?
+        && let Some(mut effects) =
+            parse_search_library_sentence_with_grammar_entrypoint_lexed(tokens)?
     {
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
@@ -1580,54 +1553,6 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
     Ok(effects)
 }
 
-fn strip_labeled_conditional_prefix_lexed(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
-    let if_idx = find_index(tokens, |token| token.is_word("if"))?;
-    if !(1..=3).any(|expected| expected == if_idx) {
-        return None;
-    }
-    if tokens[..if_idx].iter().any(|token| {
-        !matches!(
-            token.kind,
-            crate::cards::builders::parser::lexer::TokenKind::Word
-                | crate::cards::builders::parser::lexer::TokenKind::Dash
-                | crate::cards::builders::parser::lexer::TokenKind::EmDash
-        )
-    }) {
-        return None;
-    }
-
-    let prefix_words = crate::cards::builders::parser::lexed_words(&tokens[..if_idx]);
-    if prefix_words.is_empty() {
-        return None;
-    }
-    let is_known_label = matches!(
-        prefix_words[0],
-        "adamant"
-            | "addendum"
-            | "ascend"
-            | "battalion"
-            | "delirium"
-            | "domain"
-            | "ferocious"
-            | "formidable"
-            | "hellbent"
-            | "metalcraft"
-            | "morbid"
-            | "raid"
-            | "revolt"
-            | "spectacle"
-            | "spell"
-            | "surge"
-            | "threshold"
-            | "undergrowth"
-    );
-    if !is_known_label {
-        return None;
-    }
-
-    Some(&tokens[if_idx..])
-}
-
 fn strip_labeled_effect_prefix_lexed(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     let dash_idx = find_index(tokens, |token| {
         matches!(
@@ -1650,7 +1575,7 @@ fn strip_labeled_effect_prefix_lexed(tokens: &[OwnedLexToken]) -> Option<&[Owned
         return None;
     }
 
-    let prefix_words = crate::cards::builders::parser::lexed_words(&tokens[..dash_idx]);
+    let prefix_words = crate::cards::builders::parser::token_word_refs(&tokens[..dash_idx]);
     if prefix_words.is_empty() {
         return None;
     }
@@ -1681,10 +1606,6 @@ fn strip_labeled_effect_prefix_lexed(tokens: &[OwnedLexToken]) -> Option<&[Owned
     }
 
     Some(&tokens[dash_idx + 1..])
-}
-
-fn sentence_starts_with_supported_spent_to_cast_conditional(words: &[&str]) -> bool {
-    words.first() == Some(&"if") && contains_word_window(words, &["spent", "to", "cast"])
 }
 
 pub(crate) fn is_enters_as_copy_clause(words: &[&str]) -> bool {
@@ -1718,7 +1639,7 @@ pub(crate) fn is_negated_untap_clause(words: &[&str]) -> bool {
 pub(crate) fn parse_token_copy_modifier_sentence(
     tokens: &[OwnedLexToken],
 ) -> Option<TokenCopyFollowup> {
-    let filtered: Vec<&str> = crate::cards::builders::parser::lexed_words(tokens)
+    let filtered: Vec<&str> = crate::cards::builders::parser::token_word_refs(tokens)
         .into_iter()
         .filter(|word| !is_article(word))
         .collect();
@@ -1888,7 +1809,7 @@ pub(crate) fn parse_token_copy_modifier_sentence(
 pub(crate) fn parse_token_copy_modifier_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<TokenCopyFollowup> {
-    let filtered: Vec<&str> = crate::cards::builders::parser::lexed_words(tokens)
+    let filtered: Vec<&str> = crate::cards::builders::parser::token_word_refs(tokens)
         .into_iter()
         .filter(|word| !is_article(word))
         .collect();
@@ -2163,7 +2084,7 @@ pub(crate) fn parse_delayed_until_next_end_step_sentence(
     if delayed_effects.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing delayed end-step effect clause (clause: '{}')",
-            crate::cards::builders::parser::lexed_words(tokens).join(" ")
+            crate::cards::builders::parser::token_word_refs(tokens).join(" ")
         )));
     }
 
@@ -2211,27 +2132,27 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
     if trigger_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing delayed trigger clause before comma (clause: '{}')",
-            crate::cards::builders::parser::lexed_words(tokens).join(" ")
+            crate::cards::builders::parser::token_word_refs(tokens).join(" ")
         )));
     }
 
-    let trigger_word_view = LowercaseWordView::new(&trigger_tokens);
-    let trigger_words = trigger_word_view.to_word_refs();
+    let trigger_word_storage = DispatchInnerNormalizedWords::new(&trigger_tokens);
+    let trigger_words = trigger_word_storage.to_word_refs();
     if trigger_words.len() < 3 || !slice_ends_with(trigger_words.as_slice(), &["this", "turn"]) {
         return Ok(None);
     }
 
-    let trim_start = trigger_word_view
+    let trim_start = trigger_word_storage
         .token_index_for_word_index(trigger_words.len() - 2)
         .unwrap_or(trigger_tokens.len());
     let trigger_core_tokens = trim_commas(&trigger_tokens[..trim_start]);
     if trigger_core_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing delayed trigger clause before 'this turn' (clause: '{}')",
-            crate::cards::builders::parser::lexed_words(tokens).join(" ")
+            crate::cards::builders::parser::token_word_refs(tokens).join(" ")
         )));
     }
-    let trigger_core_words = crate::cards::builders::parser::lexed_words(&trigger_core_tokens);
+    let trigger_core_words = crate::cards::builders::parser::token_word_refs(&trigger_core_tokens);
     let trigger = if matches!(
         trigger_core_words.as_slice(),
         ["that", "creature", "is", "dealt", "damage"]
@@ -2251,7 +2172,7 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
     if remainder.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing delayed trigger effect clause (clause: '{}')",
-            crate::cards::builders::parser::lexed_words(tokens).join(" ")
+            crate::cards::builders::parser::token_word_refs(tokens).join(" ")
         )));
     }
 
@@ -2259,7 +2180,7 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
     if delayed_effects.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing delayed trigger effect clause (clause: '{}')",
-            crate::cards::builders::parser::lexed_words(tokens).join(" ")
+            crate::cards::builders::parser::token_word_refs(tokens).join(" ")
         )));
     }
 
@@ -2272,7 +2193,7 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
 pub(crate) fn parse_delayed_when_that_dies_this_turn_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let clause_words = crate::cards::builders::parser::lexed_words(tokens);
+    let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
     if clause_words.len() < 6 {
         return Ok(None);
     }
@@ -2389,7 +2310,7 @@ pub(crate) fn parse_delayed_when_that_dies_this_turn_sentence(
 pub(crate) fn parse_each_player_choose_and_sacrifice_rest(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let all_words = crate::cards::builders::parser::lexed_words(tokens);
+    let all_words = crate::cards::builders::parser::token_word_refs(tokens);
     if all_words.len() < 6 {
         return Ok(None);
     }
@@ -2410,7 +2331,7 @@ pub(crate) fn parse_each_player_choose_and_sacrifice_rest(
     };
 
     let after_then = &tokens[then_idx + 1..];
-    let after_words = crate::cards::builders::parser::lexed_words(after_then);
+    let after_words = crate::cards::builders::parser::token_word_refs(after_then);
     if !slice_starts_with_any(
         &after_words,
         &[
@@ -2582,9 +2503,9 @@ pub(crate) fn strip_leading_articles(tokens: &[OwnedLexToken]) -> Vec<OwnedLexTo
 
 pub(crate) fn split_choose_list(tokens: &[OwnedLexToken]) -> Vec<Vec<OwnedLexToken>> {
     let mut segments = Vec::new();
-    for segment in split_on_and(tokens) {
-        for sub in split_on_comma(&segment) {
-            let trimmed = trim_commas(&sub);
+    for segment in split_lexed_slices_on_and(tokens) {
+        for sub in split_lexed_slices_on_comma(segment) {
+            let trimmed = trim_commas(sub);
             if !trimmed.is_empty() {
                 segments.push(trimmed);
             }
@@ -2716,7 +2637,7 @@ pub(crate) fn merge_filters(base: &ObjectFilter, specific: &ObjectFilter) -> Obj
 pub(crate) fn parse_monstrosity_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let words = crate::cards::builders::parser::lexed_words(tokens);
+    let words = crate::cards::builders::parser::token_word_refs(tokens);
     if words.first().copied() != Some("monstrosity") {
         return Ok(None);
     }
@@ -2735,7 +2656,7 @@ pub(crate) fn parse_monstrosity_sentence(
 pub(crate) fn parse_for_each_counter_removed_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let words_all = crate::cards::builders::parser::lexed_words(tokens);
+    let words_all = crate::cards::builders::parser::token_word_refs(tokens);
     if words_all.len() < 6 {
         return Ok(None);
     }
@@ -2753,7 +2674,7 @@ pub(crate) fn parse_for_each_counter_removed_sentence(
         &tokens[6..]
     };
 
-    let remainder_words = crate::cards::builders::parser::lexed_words(remainder);
+    let remainder_words = crate::cards::builders::parser::token_word_refs(remainder);
     if remainder_words.is_empty() {
         return Ok(None);
     }
@@ -2799,7 +2720,7 @@ pub(crate) fn parse_for_each_counter_removed_sentence(
 }
 
 pub(crate) fn is_exile_that_token_at_end_of_combat(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::cards::builders::parser::lexed_words(tokens);
+    let words = crate::cards::builders::parser::token_word_refs(tokens);
     if words.first().copied() != Some("exile") {
         return false;
     }
@@ -2821,7 +2742,7 @@ pub(crate) fn is_exile_that_token_at_end_of_combat(tokens: &[OwnedLexToken]) -> 
 }
 
 pub(crate) fn is_exile_that_token_at_end_of_combat_lexed(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::cards::builders::parser::lexed_words(tokens);
+    let words = crate::cards::builders::parser::token_word_refs(tokens);
     if words.first().copied() != Some("exile") {
         return false;
     }
@@ -2843,7 +2764,7 @@ pub(crate) fn is_exile_that_token_at_end_of_combat_lexed(tokens: &[OwnedLexToken
 }
 
 pub(crate) fn is_sacrifice_that_token_at_end_of_combat(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::cards::builders::parser::lexed_words(tokens);
+    let words = crate::cards::builders::parser::token_word_refs(tokens);
     if words.first().copied() != Some("sacrifice") {
         return false;
     }
@@ -2865,7 +2786,7 @@ pub(crate) fn is_sacrifice_that_token_at_end_of_combat(tokens: &[OwnedLexToken])
 }
 
 pub(crate) fn is_sacrifice_that_token_at_end_of_combat_lexed(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::cards::builders::parser::lexed_words(tokens);
+    let words = crate::cards::builders::parser::token_word_refs(tokens);
     if words.first().copied() != Some("sacrifice") {
         return false;
     }
@@ -2889,7 +2810,7 @@ pub(crate) fn is_sacrifice_that_token_at_end_of_combat_lexed(tokens: &[OwnedLexT
 pub(crate) fn parse_take_extra_turn_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let words = crate::cards::builders::parser::lexed_words(tokens);
+    let words = crate::cards::builders::parser::token_word_refs(tokens);
     if words.as_slice() == ["take", "an", "extra", "turn", "after", "this", "one"] {
         return Ok(Some(EffectAst::ExtraTurnAfterTurn {
             player: PlayerAst::You,
@@ -2941,7 +2862,7 @@ pub(crate) fn find_same_name_reference_span(
         {
             return Err(CardTextError::ParseError(format!(
                 "missing 'that <object>' in same-name clause (clause: '{}')",
-                crate::cards::builders::parser::lexed_words(tokens).join(" ")
+                crate::cards::builders::parser::token_word_refs(tokens).join(" ")
             )));
         }
         if idx + 3 < tokens.len()
@@ -2951,7 +2872,7 @@ pub(crate) fn find_same_name_reference_span(
         {
             return Err(CardTextError::ParseError(format!(
                 "missing 'that <object>' in same-name clause (clause: '{}')",
-                crate::cards::builders::parser::lexed_words(tokens).join(" ")
+                crate::cards::builders::parser::token_word_refs(tokens).join(" ")
             )));
         }
     }
@@ -3017,7 +2938,7 @@ pub(crate) fn parse_same_name_fanout_filter(
     if filter_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing object phrase in same-name fanout clause (clause: '{}')",
-            crate::cards::builders::parser::lexed_words(tokens).join(" ")
+            crate::cards::builders::parser::token_word_refs(tokens).join(" ")
         )));
     }
 
@@ -3026,14 +2947,14 @@ pub(crate) fn parse_same_name_fanout_filter(
     if cleaned_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing base object filter in same-name fanout clause (clause: '{}')",
-            crate::cards::builders::parser::lexed_words(tokens).join(" ")
+            crate::cards::builders::parser::token_word_refs(tokens).join(" ")
         )));
     }
 
     let mut filter = parse_object_filter(&cleaned_tokens, false).map_err(|_| {
         CardTextError::ParseError(format!(
             "unsupported same-name fanout filter (clause: '{}')",
-            crate::cards::builders::parser::lexed_words(tokens).join(" ")
+            crate::cards::builders::parser::token_word_refs(tokens).join(" ")
         ))
     })?;
     filter.tagged_constraints.push(TaggedObjectConstraint {
@@ -3057,7 +2978,7 @@ pub(crate) fn parse_same_name_target_fanout_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let (tokens, until_source_leaves) = split_until_source_leaves_tail(tokens);
-    let words_all = crate::cards::builders::parser::lexed_words(tokens);
+    let words_all = crate::cards::builders::parser::token_word_refs(tokens);
     let Some(first_word) = words_all.first().copied() else {
         return Ok(None);
     };
@@ -3066,7 +2987,7 @@ pub(crate) fn parse_same_name_target_fanout_sentence(
         Some(tokens)
     } else if let Some((Verb::Deal, verb_idx)) = find_verb(tokens) {
         let subject_words: Vec<&str> =
-            crate::cards::builders::parser::lexed_words(&tokens[..verb_idx])
+            crate::cards::builders::parser::token_word_refs(&tokens[..verb_idx])
                 .into_iter()
                 .filter(|word| !is_article(word))
                 .collect();
@@ -3080,7 +3001,7 @@ pub(crate) fn parse_same_name_target_fanout_sentence(
     };
 
     if let Some(deal_tokens) = deal_tokens {
-        let deal_words = crate::cards::builders::parser::lexed_words(deal_tokens);
+        let deal_words = crate::cards::builders::parser::token_word_refs(deal_tokens);
         let (amount, used) =
             if deal_words.get(1) == Some(&"that") && deal_words.get(2) == Some(&"much") {
                 (Value::EventValue(EventValueSpec::Amount), 2usize)
@@ -3174,7 +3095,8 @@ pub(crate) fn parse_same_name_target_fanout_sentence(
                 words_all.join(" ")
             )));
         }
-        let destination_words = crate::cards::builders::parser::lexed_words(&tokens[to_idx + 1..]);
+        let destination_words =
+            crate::cards::builders::parser::token_word_refs(&tokens[to_idx + 1..]);
         if !slice_contains_any(&destination_words, &["hand", "hands"]) {
             return Ok(None);
         }
@@ -3279,7 +3201,7 @@ pub(crate) fn find_shares_color_reference_span(
         {
             return Err(CardTextError::ParseError(format!(
                 "missing 'it' in shares-color clause (clause: '{}')",
-                crate::cards::builders::parser::lexed_words(tokens).join(" ")
+                crate::cards::builders::parser::token_word_refs(tokens).join(" ")
             )));
         }
     }
@@ -3300,14 +3222,14 @@ pub(crate) fn parse_shared_color_fanout_filter(
     if filter_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing object phrase in shared-color fanout clause (clause: '{}')",
-            crate::cards::builders::parser::lexed_words(tokens).join(" ")
+            crate::cards::builders::parser::token_word_refs(tokens).join(" ")
         )));
     }
 
     let mut filter = parse_object_filter(&filter_tokens, false).map_err(|_| {
         CardTextError::ParseError(format!(
             "unsupported shared-color fanout filter (clause: '{}')",
-            crate::cards::builders::parser::lexed_words(tokens).join(" ")
+            crate::cards::builders::parser::token_word_refs(tokens).join(" ")
         ))
     })?;
     filter.tagged_constraints.push(TaggedObjectConstraint {
@@ -3351,7 +3273,7 @@ fn split_full_shared_color_target(target: &TargetAst) -> Option<(TargetAst, Obje
 fn parse_explicit_shared_color_gets_or_gains(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let words_all = crate::cards::builders::parser::lexed_words(tokens);
+    let words_all = crate::cards::builders::parser::token_word_refs(tokens);
     let find_and_each_other =
         |scope: &[OwnedLexToken]| find_token_word_window(scope, &["and", "each", "other"]);
 
@@ -3466,7 +3388,7 @@ pub(crate) fn parse_shared_color_target_fanout_sentence(
         return Ok(Some(effects));
     }
 
-    let words_all = crate::cards::builders::parser::lexed_words(tokens);
+    let words_all = crate::cards::builders::parser::token_word_refs(tokens);
     let Some((verb, verb_idx)) = find_verb(tokens) else {
         return Ok(None);
     };
@@ -3529,7 +3451,7 @@ pub(crate) fn parse_shared_color_target_fanout_sentence(
 
     if verb == Verb::Deal {
         let after_verb = &tokens[verb_token_idx + 1..];
-        let after_words = crate::cards::builders::parser::lexed_words(after_verb);
+        let after_words = crate::cards::builders::parser::token_word_refs(after_verb);
         let (amount, used) = if slice_starts_with(&after_words, &["that", "much"]) {
             (Value::EventValue(EventValueSpec::Amount), 2usize)
         } else if let Some((value, used)) = parse_value(after_verb) {
@@ -3621,7 +3543,7 @@ pub(crate) fn parse_shared_color_target_fanout_sentence(
         idx += 1;
 
         let this_turn_rel = find_window_index(
-            &crate::cards::builders::parser::lexed_words(&tokens[idx..]),
+            &crate::cards::builders::parser::token_word_refs(&tokens[idx..]),
             &["this", "turn"],
         );
         let Some(this_turn_rel) = this_turn_rel else {
@@ -3863,16 +3785,17 @@ pub(crate) fn parse_same_name_gets_fanout_sentence(
         .ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "missing modifier in same-name gets clause (clause: '{}')",
-                crate::cards::builders::parser::lexed_words(tokens).join(" ")
+                crate::cards::builders::parser::token_word_refs(tokens).join(" ")
             ))
         })?;
     let (power, toughness) = parse_pt_modifier(modifier_word).map_err(|_| {
         CardTextError::ParseError(format!(
             "invalid power/toughness modifier in same-name gets clause (clause: '{}')",
-            crate::cards::builders::parser::lexed_words(tokens).join(" ")
+            crate::cards::builders::parser::token_word_refs(tokens).join(" ")
         ))
     })?;
-    let modifier_words = crate::cards::builders::parser::lexed_words(&collapsed_modifier_tokens);
+    let modifier_words =
+        crate::cards::builders::parser::token_word_refs(&collapsed_modifier_tokens);
     let duration = if slice_contains_all(&modifier_words, &["until", "end", "turn"]) {
         Until::EndOfTurn
     } else {
@@ -3900,7 +3823,7 @@ pub(crate) fn parse_same_name_gets_fanout_sentence(
 pub(crate) fn parse_destroy_or_exile_all_split_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let words = crate::cards::builders::parser::lexed_words(tokens);
+    let words = crate::cards::builders::parser::token_word_refs(tokens);
     if words.len() < 4 {
         return Ok(None);
     }
@@ -4003,7 +3926,7 @@ pub(crate) fn parse_exile_then_return_same_object_sentence(
         clause_tokens = &clause_tokens[1..];
     }
 
-    let words_all = crate::cards::builders::parser::lexed_words(clause_tokens);
+    let words_all = crate::cards::builders::parser::token_word_refs(clause_tokens);
     if words_all.first().copied() != Some("exile")
         || !slice_contains_all(&words_all, &["then", "return"])
     {
@@ -4070,7 +3993,7 @@ pub(crate) fn parse_exile_then_return_same_object_sentence(
 pub(crate) fn parse_exile_up_to_one_each_target_type_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let words = crate::cards::builders::parser::lexed_words(tokens);
+    let words = crate::cards::builders::parser::token_word_refs(tokens);
     if words.len() < 6 || words[0] != "exile" {
         return Ok(None);
     }
@@ -4169,7 +4092,7 @@ pub(crate) fn parse_exile_up_to_one_each_target_type_sentence(
 pub(crate) fn parse_look_at_hand_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let words = crate::cards::builders::parser::lexed_words(tokens);
+    let words = crate::cards::builders::parser::token_word_refs(tokens);
     if words.as_slice()
         == [
             "look",
@@ -4224,7 +4147,7 @@ pub(crate) fn parse_look_at_hand_sentence(
 pub(crate) fn parse_look_at_top_then_exile_one_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let clause_words = crate::cards::builders::parser::lexed_words(tokens);
+    let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
     let starts_with_look_top = slice_starts_with_any(
         &clause_words,
         &[&["look", "at", "the", "top"], &["look", "at", "top"]],
@@ -4272,7 +4195,7 @@ pub(crate) fn parse_look_at_top_then_exile_one_sentence(
     {
         tail_tokens.remove(0);
     }
-    let tail_words = crate::cards::builders::parser::lexed_words(&tail_tokens);
+    let tail_words = crate::cards::builders::parser::token_word_refs(&tail_tokens);
     let looks_like_exile_one_of_looked = slice_starts_with_any(
         &tail_words,
         &[
@@ -4321,7 +4244,7 @@ pub(crate) fn parse_gain_life_equal_to_age_sentence(
 pub(crate) fn parse_you_and_each_opponent_voted_with_you_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let words = crate::cards::builders::parser::lexed_words(tokens);
+    let words = crate::cards::builders::parser::token_word_refs(tokens);
     let pattern = [
         "you", "and", "each", "opponent", "who", "voted", "for", "a", "choice", "you", "voted",
         "for", "may", "scry",
@@ -4367,7 +4290,7 @@ pub(crate) fn parse_you_and_each_opponent_voted_with_you_sentence(
 pub(crate) fn parse_gain_life_equal_to_power_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let words = crate::cards::builders::parser::lexed_words(tokens);
+    let words = crate::cards::builders::parser::token_word_refs(tokens);
     let Some(gain_idx) = find_index(words.as_slice(), |word| matches!(*word, "gain" | "gains"))
     else {
         return Ok(None);
@@ -4403,9 +4326,9 @@ pub(crate) fn parse_gain_life_equal_to_power_sentence(
 pub(crate) fn parse_scaled_target_power_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let word_view = crate::cards::builders::parser::native_tokens::LowercaseWordView::new(tokens);
-    let words = word_view.to_word_refs();
-    let Some((verb, multiplier)) = words.first().and_then(|word| match *word {
+    let word_storage = DispatchInnerNormalizedWords::new(tokens);
+    let words = word_storage.to_word_refs();
+    let Some((verb, multiplier)) = word_storage.first().and_then(|word| match word {
         "double" => Some(("double", 1)),
         "triple" => Some(("triple", 2)),
         _ => None,
@@ -4611,7 +4534,7 @@ pub(crate) fn parse_scaled_target_power_sentence(
 pub(crate) fn parse_prevent_damage_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let words = crate::cards::builders::parser::lexed_words(tokens);
+    let words = crate::cards::builders::parser::token_word_refs(tokens);
     let prefix = ["prevent", "all", "combat", "damage"];
     if !slice_starts_with(&words, &prefix) {
         return Ok(None);
@@ -4704,7 +4627,7 @@ pub(crate) fn parse_prevent_damage_source_target(
         )));
     }
 
-    let source_words: Vec<&str> = crate::cards::builders::parser::lexed_words(tokens)
+    let source_words: Vec<&str> = crate::cards::builders::parser::token_word_refs(tokens)
         .into_iter()
         .filter(|word| !is_article(word))
         .collect();
@@ -4724,7 +4647,7 @@ pub(crate) fn parse_prevent_damage_source_target(
         TargetAst::Source(_) | TargetAst::Object(_, _, _) | TargetAst::Tagged(_, _) => Ok(source),
         _ => Err(CardTextError::ParseError(format!(
             "unsupported prevent-all source target '{}'",
-            crate::cards::builders::parser::lexed_words(tokens).join(" ")
+            crate::cards::builders::parser::token_word_refs(tokens).join(" ")
         ))),
     }
 }
@@ -4740,7 +4663,7 @@ pub(crate) fn parse_prevent_damage_target_scope(
         )));
     }
 
-    let target_words: Vec<&str> = crate::cards::builders::parser::lexed_words(tokens)
+    let target_words: Vec<&str> = crate::cards::builders::parser::token_word_refs(tokens)
         .into_iter()
         .filter(|word| !is_article(word))
         .collect();
@@ -4757,14 +4680,14 @@ pub(crate) fn parse_prevent_damage_target_scope(
 
     Err(CardTextError::ParseError(format!(
         "unsupported prevent-all target scope '{}'",
-        crate::cards::builders::parser::lexed_words(tokens).join(" ")
+        crate::cards::builders::parser::token_word_refs(tokens).join(" ")
     )))
 }
 
 pub(crate) fn parse_gain_x_plus_life_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let words = crate::cards::builders::parser::lexed_words(tokens);
+    let words = crate::cards::builders::parser::token_word_refs(tokens);
     let Some(gain_idx) = find_index(words.as_slice(), |word| matches!(*word, "gain" | "gains"))
     else {
         return Ok(None);

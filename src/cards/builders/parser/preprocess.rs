@@ -1,13 +1,14 @@
-use crate::cards::builders::scan_helpers::{
-    str_contains, str_ends_with, str_ends_with_char, str_find, str_find_char, str_split_once,
-    str_split_once_char, str_starts_with, str_starts_with_char, str_strip_prefix, str_strip_suffix,
-};
 use crate::cards::builders::{
     CardDefinitionBuilder, CardTextError, LineInfo, MetadataLine, NormalizedLine, OwnedLexToken,
     ParseAnnotations,
 };
+use crate::cards::builders::{
+    str_contains, str_ends_with, str_ends_with_char, str_find, str_find_char, str_split_once,
+    str_split_once_char, str_starts_with, str_starts_with_char, str_strip_prefix, str_strip_suffix,
+};
 
 use super::activation_and_restrictions::parse_single_word_keyword_action;
+use super::grammar::structure::{MetadataLineKind, split_metadata_line_lexed};
 use super::lexer::lex_line;
 use super::parser_support::{
     looks_like_spell_resolution_followup_intro_lexed, spell_card_prefers_resolution_line_merge,
@@ -137,33 +138,30 @@ fn parse_metadata_line(line: &str) -> Result<Option<MetadataLine>, CardTextError
         return Ok(None);
     }
 
-    let lower = trimmed.to_ascii_lowercase();
-    if let Some(rest) = str_strip_prefix(lower.as_str(), "mana cost:") {
-        let value = trimmed[trimmed.len() - rest.len()..].trim();
-        return Ok(Some(MetadataLine::ManaCost(value.to_string())));
-    }
-    if let Some(rest) = str_strip_prefix(lower.as_str(), "type line:") {
-        let value = trimmed[trimmed.len() - rest.len()..].trim();
-        return Ok(Some(MetadataLine::TypeLine(value.to_string())));
-    }
-    if let Some(rest) = str_strip_prefix(lower.as_str(), "type:") {
-        let value = trimmed[trimmed.len() - rest.len()..].trim();
-        return Ok(Some(MetadataLine::TypeLine(value.to_string())));
-    }
-    if let Some(rest) = str_strip_prefix(lower.as_str(), "power/toughness:") {
-        let value = trimmed[trimmed.len() - rest.len()..].trim();
-        return Ok(Some(MetadataLine::PowerToughness(value.to_string())));
-    }
-    if let Some(rest) = str_strip_prefix(lower.as_str(), "loyalty:") {
-        let value = trimmed[trimmed.len() - rest.len()..].trim();
-        return Ok(Some(MetadataLine::Loyalty(value.to_string())));
-    }
-    if let Some(rest) = str_strip_prefix(lower.as_str(), "defense:") {
-        let value = trimmed[trimmed.len() - rest.len()..].trim();
-        return Ok(Some(MetadataLine::Defense(value.to_string())));
-    }
+    let Ok(tokens) = lex_line(trimmed, 0) else {
+        return Ok(None);
+    };
+    let Some(spec) = split_metadata_line_lexed(&tokens) else {
+        return Ok(None);
+    };
 
-    Ok(None)
+    let value = spec
+        .value_tokens
+        .first()
+        .and_then(|token| trimmed.get(token.span.start..))
+        .unwrap_or("")
+        .trim()
+        .to_string();
+
+    let metadata = match spec.kind {
+        MetadataLineKind::ManaCost => MetadataLine::ManaCost(value),
+        MetadataLineKind::TypeLine => MetadataLine::TypeLine(value),
+        MetadataLineKind::PowerToughness => MetadataLine::PowerToughness(value),
+        MetadataLineKind::Loyalty => MetadataLine::Loyalty(value),
+        MetadataLineKind::Defense => MetadataLine::Defense(value),
+    };
+
+    Ok(Some(metadata))
 }
 
 fn replace_names_with_map(
@@ -1168,6 +1166,7 @@ pub(crate) fn preprocess_document(
     fn normalize_non_metadata_line(
         raw_line: &str,
         line_index: usize,
+        display_line_index: usize,
         full_name: &str,
         short_name: &str,
         annotations: &mut ParseAnnotations,
@@ -1209,6 +1208,7 @@ pub(crate) fn preprocess_document(
         Ok(Some(PreprocessedLine {
             info: LineInfo {
                 line_index,
+                display_line_index,
                 raw_line: raw_line.trim().to_string(),
                 normalized,
             },
@@ -1284,6 +1284,7 @@ pub(crate) fn preprocess_document(
             if let Some(parsed_line) = normalize_non_metadata_line(
                 split_line.as_str(),
                 virtual_line_index,
+                line_index,
                 full_lower.as_str(),
                 short_lower.as_str(),
                 &mut annotations,
@@ -1327,7 +1328,69 @@ pub(crate) fn make_line_info(
 ) -> LineInfo {
     LineInfo {
         line_index,
+        display_line_index: line_index,
         raw_line: raw_line.into(),
         normalized,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cards::builders::CardDefinitionBuilder;
+    use crate::ids::CardId;
+
+    #[test]
+    fn parse_metadata_line_routes_supported_labels_through_structure_parser() {
+        assert!(matches!(
+            parse_metadata_line("Mana Cost: {2}{W}"),
+            Ok(Some(MetadataLine::ManaCost(value))) if value == "{2}{W}"
+        ));
+        assert!(matches!(
+            parse_metadata_line("Type: Legendary Creature — Human"),
+            Ok(Some(MetadataLine::TypeLine(value))) if value == "Legendary Creature — Human"
+        ));
+        assert!(matches!(
+            parse_metadata_line(" Power/Toughness: 2/3 "),
+            Ok(Some(MetadataLine::PowerToughness(value))) if value == "2/3"
+        ));
+        assert!(matches!(
+            parse_metadata_line("Loyalty: 4"),
+            Ok(Some(MetadataLine::Loyalty(value))) if value == "4"
+        ));
+        assert!(matches!(
+            parse_metadata_line("Defense: 5"),
+            Ok(Some(MetadataLine::Defense(value))) if value == "5"
+        ));
+        assert!(matches!(parse_metadata_line("Draw a card."), Ok(None)));
+    }
+
+    #[test]
+    fn preprocess_document_keeps_metadata_values_after_structure_cutover() {
+        let builder = CardDefinitionBuilder::new(CardId::new(), "Metadata Variant");
+        let preprocessed = preprocess_document(
+            builder,
+            "Mana Cost: {2}{W}\nType Line: Legendary Creature — Human\nDraw a card.",
+        )
+        .expect("metadata-bearing text should preprocess");
+
+        assert!(matches!(
+            preprocessed.items.first(),
+            Some(PreprocessedItem::Metadata(PreprocessedMetadataLine {
+                value: MetadataLine::ManaCost(value),
+                ..
+            })) if value == "{2}{W}"
+        ));
+        assert!(matches!(
+            preprocessed.items.get(1),
+            Some(PreprocessedItem::Metadata(PreprocessedMetadataLine {
+                value: MetadataLine::TypeLine(value),
+                ..
+            })) if value == "Legendary Creature — Human"
+        ));
+        assert!(matches!(
+            preprocessed.items.get(2),
+            Some(PreprocessedItem::Line(_))
+        ));
     }
 }

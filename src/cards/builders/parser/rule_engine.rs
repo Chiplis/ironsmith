@@ -2,8 +2,8 @@
 
 use crate::cards::builders::CardTextError;
 
-use super::lexer::{OwnedLexToken, TokenKind, lexed_words};
-use super::native_tokens::LowercaseWordView;
+use super::grammar::primitives::CompatWordIndex;
+use super::lexer::{OwnedLexToken, TokenKind, token_word_refs};
 
 pub(crate) const RULE_SHAPE_HAS_COLON: u32 = 1 << 0;
 pub(crate) const RULE_SHAPE_HAS_COMMA: u32 = 1 << 1;
@@ -36,7 +36,7 @@ pub(crate) struct ClauseView<'a> {
 
 impl<'a> ClauseView<'a> {
     pub(crate) fn from_tokens(tokens: &'a [OwnedLexToken]) -> Self {
-        let words = lexed_words(tokens);
+        let words = token_word_refs(tokens);
         let head = words.first().copied().unwrap_or("");
         let shape = clause_shape(tokens, &words);
         Self {
@@ -56,17 +56,19 @@ impl<'a> ClauseView<'a> {
     }
 }
 
+pub(crate) type LexClauseWords = CompatWordIndex;
+
 #[derive(Debug, Clone)]
 pub(crate) struct LexClauseView<'a> {
     pub(crate) raw: Option<&'a str>,
     pub(crate) tokens: &'a [OwnedLexToken],
-    pub(crate) words: LowercaseWordView,
+    pub(crate) words: LexClauseWords,
     pub(crate) shape: u32,
 }
 
 impl<'a> LexClauseView<'a> {
     pub(crate) fn from_tokens(tokens: &'a [OwnedLexToken]) -> Self {
-        let words = LowercaseWordView::new(tokens);
+        let words = LexClauseWords::new(tokens);
         let shape = clause_shape_lexed(tokens, &words);
         Self {
             raw: None,
@@ -132,7 +134,7 @@ fn clause_shape(tokens: &[OwnedLexToken], words: &[&str]) -> u32 {
     shape
 }
 
-fn clause_shape_lexed(tokens: &[OwnedLexToken], words: &LowercaseWordView) -> u32 {
+fn clause_shape_lexed(tokens: &[OwnedLexToken], words: &LexClauseWords) -> u32 {
     let mut shape = 0u32;
     if tokens
         .iter()

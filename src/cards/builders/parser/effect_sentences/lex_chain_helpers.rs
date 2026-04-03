@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use super::super::clause_support::parse_ability_line_lexed;
-use super::super::lexer::{OwnedLexToken, TokenKind, lexed_words, trim_lexed_commas};
+use super::super::lexer::{OwnedLexToken, TokenKind, token_word_refs, trim_lexed_commas};
 use super::super::util::{parse_zone_word, trim_commas};
 use super::chain_carry::{Verb, find_verb};
 use super::clause_pattern_helpers::{
@@ -12,7 +12,7 @@ use super::clause_primitives::{
     parse_attack_or_block_this_turn_if_able_clause, parse_attack_this_turn_if_able_clause,
     parse_must_block_if_able_clause,
 };
-use crate::cards::builders::scan_helpers::{
+use crate::cards::builders::{
     contains_window as word_slice_contains_sequence, find_str_by as find_word_index,
     slice_contains_str as word_slice_contains, slice_ends_with as word_slice_ends_with,
     slice_starts_with as word_slice_starts_with,
@@ -316,7 +316,7 @@ fn should_keep_and_for_token_rules_lexed(
     if current.is_empty() || remaining.is_empty() {
         return false;
     }
-    let current_words = lexed_words(current);
+    let current_words = token_word_refs(current);
     if current_words.is_empty() {
         return false;
     }
@@ -324,7 +324,7 @@ fn should_keep_and_for_token_rules_lexed(
     {
         return false;
     }
-    let remaining_words = lexed_words(remaining);
+    let remaining_words = token_word_refs(remaining);
     starts_with_inline_token_rules_tail(&remaining_words)
 }
 
@@ -335,8 +335,8 @@ fn should_keep_and_for_attachment_object_list_lexed(
     if current.is_empty() || remaining.is_empty() {
         return false;
     }
-    let current_words = lexed_words(current);
-    let remaining_words = lexed_words(remaining);
+    let current_words = token_word_refs(current);
+    let remaining_words = token_word_refs(remaining);
     if current_words.is_empty() || remaining_words.is_empty() {
         return false;
     }
@@ -370,7 +370,7 @@ fn should_keep_and_for_each_player_may_clause_lexed(
     if current.is_empty() || remaining.is_empty() {
         return false;
     }
-    let current_words = lexed_words(current);
+    let current_words = token_word_refs(current);
     if current_words.is_empty() || !word_slice_contains(&current_words, "may") {
         return false;
     }
@@ -379,7 +379,7 @@ fn should_keep_and_for_each_player_may_clause_lexed(
         return false;
     }
 
-    let remaining_words = lexed_words(remaining);
+    let remaining_words = token_word_refs(remaining);
     if remaining_words.is_empty() {
         return false;
     }
@@ -400,8 +400,8 @@ fn should_keep_and_for_put_rest_clause_lexed(
         return false;
     }
 
-    let current_words = lexed_words(current);
-    let remaining_words = lexed_words(remaining);
+    let current_words = token_word_refs(current);
+    let remaining_words = token_word_refs(remaining);
     if current_words.is_empty() || remaining_words.is_empty() {
         return false;
     }
@@ -421,8 +421,8 @@ fn should_keep_and_for_steps_and_phases_end_lexed(
     current: &[OwnedLexToken],
     remaining: &[OwnedLexToken],
 ) -> bool {
-    let current_words = lexed_words(current);
-    let remaining_words = lexed_words(remaining);
+    let current_words = token_word_refs(current);
+    let remaining_words = token_word_refs(remaining);
     word_slice_ends_with(&current_words, &["as", "steps"])
         && word_slice_starts_with(&remaining_words, &["phases", "end"])
 }
@@ -431,8 +431,8 @@ fn should_keep_and_for_exchange_zones_lexed(
     current: &[OwnedLexToken],
     remaining: &[OwnedLexToken],
 ) -> bool {
-    let current_words = lexed_words(current);
-    let remaining_words = lexed_words(remaining);
+    let current_words = token_word_refs(current);
+    let remaining_words = token_word_refs(remaining);
     current_words.first().copied() == Some("exchange")
         && current_words
             .iter()
@@ -584,7 +584,7 @@ pub(crate) fn split_effect_chain_on_and_lexed(tokens: &[OwnedLexToken]) -> Vec<&
 }
 
 pub(crate) fn has_effect_head_without_verb(tokens: &[OwnedLexToken]) -> bool {
-    let token_words = lexed_words(tokens);
+    let token_words = token_word_refs(tokens);
     if matches!(
         token_words.as_slice(),
         ["repeat", "this", "process"] | ["and", "repeat", "this", "process"]
@@ -623,7 +623,7 @@ pub(crate) fn has_effect_head_without_verb(tokens: &[OwnedLexToken]) -> bool {
 }
 
 pub(crate) fn has_effect_head_without_verb_lexed(tokens: &[OwnedLexToken]) -> bool {
-    let token_words = lexed_words(tokens);
+    let token_words = token_word_refs(tokens);
     if matches!(
         token_words.as_slice(),
         ["repeat", "this", "process"] | ["and", "repeat", "this", "process"]
@@ -677,7 +677,7 @@ pub(crate) fn split_segments_on_comma_then_lexed(
     let back_ref_words = ["that", "it", "them", "its"];
     let mut result = Vec::new();
     for segment in segments {
-        let segment_words = lexed_words(segment);
+        let segment_words = token_word_refs(segment);
         let starts_with_for_each_player_or_opponent =
             starts_with_each_player_or_opponent(&segment_words);
         let mut split_point = None;
@@ -686,11 +686,11 @@ pub(crate) fn split_segments_on_comma_then_lexed(
                 && segment.get(i + 1).is_some_and(|t| t.is_word("then"))
             {
                 let before_then = trim_lexed_commas(&segment[..i]);
-                let before_words = lexed_words(before_then);
+                let before_words = token_word_refs(before_then);
                 let starts_with_clash = word_slice_starts_with(&before_words, &["clash"])
                     || word_slice_starts_with(&before_words, &["clashes"]);
                 let after_then = trim_lexed_commas(&segment[i + 2..]);
-                let after_words = lexed_words(after_then);
+                let after_words = token_word_refs(after_then);
                 let has_back_ref = after_words
                     .iter()
                     .any(|w| word_slice_contains(&back_ref_words, w));
@@ -846,8 +846,8 @@ pub(crate) fn split_segments_on_comma_effect_head_lexed(
             let after_starts_effect = find_verb_lexed(after)
                 .is_some_and(|(_, verb_idx)| verb_idx == 0)
                 || has_effect_head_without_verb_lexed(after);
-            let before_words = lexed_words(before);
-            let after_words = lexed_words(after);
+            let before_words = token_word_refs(before);
+            let after_words = token_word_refs(after);
             let duration_trigger_prefix = (before_words.first() == Some(&"until")
                 || before_words.first() == Some(&"during"))
                 && (word_slice_contains(&before_words, "whenever")

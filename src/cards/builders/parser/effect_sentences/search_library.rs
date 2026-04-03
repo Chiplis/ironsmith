@@ -1,9 +1,9 @@
-use super::super::lexer::{OwnedLexToken, TokenKind, lex_line, lexed_words, trim_lexed_commas};
-use super::super::native_tokens::{LowercaseWordView, lowercase_word_tokens};
-use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed, split_on_or};
+use super::super::grammar::primitives::{CompatWordIndex, split_lexed_slices_on_or};
+use super::super::grammar::values::parse_value_comparison_tokens;
+use super::super::lexer::{OwnedLexToken, TokenKind, lex_line, token_word_refs, trim_lexed_commas};
+use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed};
 use super::super::token_primitives::{
     parse_simple_restriction_duration_prefix, parse_simple_restriction_duration_suffix,
-    parse_value_comparison_tokens,
 };
 use super::super::util::{
     helper_tag_for_tokens, is_article, parse_number, parse_subject, parse_target_phrase,
@@ -13,7 +13,12 @@ use super::sentence_helpers::*;
 use super::{
     find_verb, parse_effect_chain, parse_effect_chain_with_sentence_primitives, parse_effect_clause,
 };
-use crate::cards::builders::scan_helpers::{
+use crate::cards::builders::{
+    CardTextError, CarryContext, ChoiceCount, EffectAst, IT_TAG, LibraryBottomOrderAst,
+    LibraryConsultModeAst, LibraryConsultStopRuleAst, PlayerAst, ReturnControllerAst, SubjectAst,
+    TagKey, TargetAst, TextSpan,
+};
+use crate::cards::builders::{
     contains_window as word_slice_contains_sequence, find_any_str_index as word_slice_find_any,
     find_index as find_token_index, find_str_index as word_slice_find,
     find_window_index as word_slice_find_sequence, rfind_index as rfind_token_index,
@@ -21,41 +26,32 @@ use crate::cards::builders::scan_helpers::{
     slice_contains_str as word_slice_contains, slice_ends_with as word_slice_ends_with,
     slice_starts_with as word_slice_starts_with,
 };
-use crate::cards::builders::{
-    CardTextError, CarryContext, ChoiceCount, EffectAst, IT_TAG, LibraryBottomOrderAst,
-    LibraryConsultModeAst, LibraryConsultStopRuleAst, PlayerAst, ReturnControllerAst, SubjectAst,
-    TagKey, TargetAst, TextSpan,
-};
 use crate::effect::SearchSelectionMode;
 use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 
-const CHOSEN_NAME_TAG: &str = "__chosen_name__";
-
 #[derive(Clone)]
-enum SearchLibraryManaConstraint {
+pub(crate) enum SearchLibraryManaConstraint {
     Equal(u32),
     LessThanOrEqual(u32),
     GreaterThanOrEqual(u32),
     OneOf(Vec<u32>),
 }
 
+pub(crate) type SearchLibraryCompatWords = CompatWordIndex;
+
 fn token_words<'a>(tokens: &'a [OwnedLexToken]) -> Vec<&'a str> {
-    lexed_words(tokens)
+    token_word_refs(tokens)
 }
 
-fn joined_token_words(tokens: &[OwnedLexToken]) -> String {
-    token_words(tokens).join(" ")
-}
-
-fn word_slice_starts_with_any(words: &[&str], prefixes: &[&[&str]]) -> bool {
+pub(crate) fn word_slice_starts_with_any(words: &[&str], prefixes: &[&[&str]]) -> bool {
     prefixes
         .iter()
         .any(|prefix| word_slice_starts_with(words, prefix))
 }
 
-fn word_slice_mentions_nth_from_top(words: &[&str]) -> bool {
+pub(crate) fn word_slice_mentions_nth_from_top(words: &[&str]) -> bool {
     let mut idx = 0usize;
     while idx + 3 < words.len() {
         if words[idx + 1] == "from" && words[idx + 2] == "the" && words[idx + 3] == "top" {
@@ -66,7 +62,7 @@ fn word_slice_mentions_nth_from_top(words: &[&str]) -> bool {
     false
 }
 
-fn is_source_reference_duration_words(words: &LowercaseWordView) -> bool {
+fn is_source_reference_duration_words(words: &SearchLibraryCompatWords) -> bool {
     words.has_any_word(&[
         "this",
         "thiss",
@@ -77,11 +73,11 @@ fn is_source_reference_duration_words(words: &LowercaseWordView) -> bool {
     ])
 }
 
-fn is_as_long_as_you_control_duration_words(words: &LowercaseWordView) -> bool {
+fn is_as_long_as_you_control_duration_words(words: &SearchLibraryCompatWords) -> bool {
     words.has_word("you") && words.has_word("control") && is_source_reference_duration_words(words)
 }
 
-fn is_source_remains_tapped_duration_words(words: &LowercaseWordView) -> bool {
+fn is_source_remains_tapped_duration_words(words: &SearchLibraryCompatWords) -> bool {
     words.has_phrase(&["for", "as", "long", "as"])
         && words.has_word("remains")
         && words.has_word("tapped")
@@ -106,7 +102,7 @@ fn remove_this_turn_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     cleaned
 }
 
-fn zone_slice_contains(zones: &[Zone], expected: Zone) -> bool {
+pub(crate) fn zone_slice_contains(zones: &[Zone], expected: Zone) -> bool {
     zones.iter().any(|zone| *zone == expected)
 }
 
@@ -132,14 +128,14 @@ fn strip_known_possessive_suffix(word: &str) -> &str {
 pub(crate) fn parse_search_library_disjunction_filter(
     filter_tokens: &[OwnedLexToken],
 ) -> Option<ObjectFilter> {
-    let segments = split_on_or(filter_tokens);
+    let segments = split_lexed_slices_on_or(filter_tokens);
     if segments.len() < 2 {
         return None;
     }
 
     let mut branches = Vec::new();
     for segment in segments {
-        let trimmed = trim_commas(&segment);
+        let trimmed = trim_commas(segment);
         if trimmed.is_empty() {
             return None;
         }
@@ -158,161 +154,6 @@ pub(crate) fn parse_search_library_disjunction_filter(
     Some(filter)
 }
 
-pub(crate) fn parse_search_library_sentence_lexed(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    parse_search_library_sentence(tokens)
-}
-
-pub(crate) fn parse_cant_effect_sentence_lexed(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let lowered_tokens = lowercase_word_tokens(tokens);
-    let lowered_word_view = LowercaseWordView::new(&lowered_tokens);
-    let lowered_words = lowered_word_view.to_word_refs();
-    for suffix in [
-        ["during", "that", "players", "next", "turn"].as_slice(),
-        ["during", "that", "player's", "next", "turn"].as_slice(),
-        ["during", "that", "player", "s", "next", "turn"].as_slice(),
-    ] {
-        if !word_slice_ends_with(&lowered_words, suffix) {
-            continue;
-        }
-
-        let prefix_word_len = lowered_words.len().saturating_sub(suffix.len());
-        let prefix_end = lowered_word_view
-            .token_index_for_word_index(prefix_word_len)
-            .unwrap_or(lowered_tokens.len());
-        let prefix_tokens = &lowered_tokens[..prefix_end];
-        let Some(parsed) =
-            super::super::activation_and_restrictions::parse_cant_restriction_clause(
-                prefix_tokens,
-            )?
-        else {
-            continue;
-        };
-
-        let iterated_restriction = match parsed.restriction {
-            crate::effect::Restriction::CastSpellsMatching(player, spell_filter) => {
-                let nested = crate::effect::Restriction::cast_spells_matching(
-                    PlayerFilter::Active,
-                    spell_filter,
-                );
-                match player {
-                    PlayerFilter::Opponent => {
-                        return Ok(Some(vec![EffectAst::ForEachOpponent {
-                            effects: vec![EffectAst::DelayedUntilNextUpkeep {
-                                player: PlayerAst::That,
-                                effects: vec![EffectAst::Cant {
-                                    restriction: nested,
-                                    duration: crate::effect::Until::EndOfTurn,
-                                    condition: None,
-                                }],
-                            }],
-                        }]));
-                    }
-                    PlayerFilter::IteratedPlayer => nested,
-                    _ => continue,
-                }
-            }
-            crate::effect::Restriction::CastMoreThanOneSpellEachTurn(player, spell_filter) => {
-                let nested = crate::effect::Restriction::CastMoreThanOneSpellEachTurn(
-                    PlayerFilter::Active,
-                    spell_filter,
-                );
-                match player {
-                    PlayerFilter::Opponent => {
-                        return Ok(Some(vec![EffectAst::ForEachOpponent {
-                            effects: vec![EffectAst::DelayedUntilNextUpkeep {
-                                player: PlayerAst::That,
-                                effects: vec![EffectAst::Cant {
-                                    restriction: nested,
-                                    duration: crate::effect::Until::EndOfTurn,
-                                    condition: None,
-                                }],
-                            }],
-                        }]));
-                    }
-                    PlayerFilter::IteratedPlayer => nested,
-                    _ => continue,
-                }
-            }
-            _ => continue,
-        };
-
-        return Ok(Some(vec![EffectAst::DelayedUntilNextUpkeep {
-            player: PlayerAst::That,
-            effects: vec![EffectAst::Cant {
-                restriction: iterated_restriction,
-                duration: crate::effect::Until::EndOfTurn,
-                condition: None,
-            }],
-        }]));
-    }
-
-    let source_tapped_duration = has_source_remains_tapped_duration_lexed(tokens);
-    let Some((duration, clause_tokens)) = parse_restriction_duration_lexed(tokens)? else {
-        return Ok(None);
-    };
-    if clause_tokens.is_empty() {
-        return Err(CardTextError::ParseError(
-            "restriction clause missing body".to_string(),
-        ));
-    }
-    if clause_tokens
-        .first()
-        .is_some_and(|token| token.is_word("if"))
-    {
-        return Ok(None);
-    }
-
-    let clause_tokens = lowercase_word_tokens(&clause_tokens);
-    if find_negation_span(&clause_tokens).is_none() {
-        return Ok(None);
-    }
-    if let Some((neg_start, _)) = find_negation_span(&clause_tokens)
-        && clause_tokens[..neg_start]
-            .iter()
-            .any(|token| token.is_word("and"))
-    {
-        return Ok(None);
-    }
-
-    let Some(restrictions) = parse_cant_restrictions(&clause_tokens)? else {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported restriction clause body (clause: '{}')",
-            joined_token_words(&clause_tokens)
-        )));
-    };
-
-    let mut target: Option<TargetAst> = None;
-    let mut effects = Vec::new();
-    for parsed in restrictions {
-        if let Some(parsed_target) = parsed.target {
-            if let Some(existing) = &target {
-                if *existing != parsed_target {
-                    return Err(CardTextError::ParseError(format!(
-                        "unsupported mixed restriction targets (clause: '{}')",
-                        joined_token_words(&clause_tokens)
-                    )));
-                }
-            } else {
-                target = Some(parsed_target);
-            }
-        }
-        effects.push(EffectAst::Cant {
-            restriction: parsed.restriction,
-            duration: duration.clone(),
-            condition: source_tapped_duration.then_some(crate::ConditionExpr::SourceIsTapped),
-        });
-    }
-    if let Some(target) = target {
-        effects.insert(0, EffectAst::TargetOnly { target });
-    }
-
-    Ok(Some(effects))
-}
-
 pub(crate) fn parse_restriction_duration_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(crate::effect::Until, Vec<OwnedLexToken>)>, CardTextError> {
@@ -326,7 +167,7 @@ pub(crate) fn parse_restriction_duration_lexed(
         return Ok(Some((duration, trim_lexed_commas(rest).to_vec())));
     }
 
-    let words = LowercaseWordView::new(tokens);
+    let words = SearchLibraryCompatWords::new(tokens);
     if words.len() < 2 {
         return Ok(None);
     }
@@ -359,7 +200,7 @@ pub(crate) fn parse_restriction_duration_lexed(
         let token_idx = words
             .token_index_for_word_index(word_idx)
             .unwrap_or(tokens.len());
-        let suffix_words = LowercaseWordView::new(&tokens[token_idx..]);
+        let suffix_words = SearchLibraryCompatWords::new(&tokens[token_idx..]);
         if is_source_remains_tapped_duration_words(&suffix_words) {
             let remainder = trim_lexed_commas(&tokens[..token_idx]).to_vec();
             return Ok(Some((Until::ThisLeavesTheBattlefield, remainder)));
@@ -381,10 +222,10 @@ pub(crate) fn parse_restriction_duration_lexed(
     Ok(None)
 }
 
-fn extract_search_library_mana_constraint(
+pub(crate) fn extract_search_library_mana_constraint(
     filter_tokens: &[OwnedLexToken],
 ) -> Option<(Vec<OwnedLexToken>, SearchLibraryManaConstraint)> {
-    let filter_word_view = LowercaseWordView::new(filter_tokens);
+    let filter_word_view = SearchLibraryCompatWords::new(filter_tokens);
     let with_idx = filter_word_view
         .find_phrase_start(&["with", "mana", "cost"])
         .or_else(|| filter_word_view.find_phrase_start(&["with", "mana", "value"]))?;
@@ -404,7 +245,7 @@ fn extract_search_library_mana_constraint(
     }
 
     let parse_single_u32_clause = |tokens: &[OwnedLexToken]| {
-        let clause_words = LowercaseWordView::new(tokens);
+        let clause_words = SearchLibraryCompatWords::new(tokens);
         if clause_words.len() != 1 {
             return None;
         }
@@ -424,7 +265,7 @@ fn extract_search_library_mana_constraint(
             _ => return None,
         }
     } else {
-        let clause_words = LowercaseWordView::new(clause_tokens);
+        let clause_words = SearchLibraryCompatWords::new(clause_tokens);
         if clause_words.len() != 3 || clause_words.get(1) != Some("or") {
             return None;
         }
@@ -437,7 +278,7 @@ fn extract_search_library_mana_constraint(
     Some((base_filter_tokens, constraint))
 }
 
-fn apply_search_library_mana_constraint(
+pub(crate) fn apply_search_library_mana_constraint(
     filter: &mut ObjectFilter,
     constraint: SearchLibraryManaConstraint,
 ) {
@@ -486,7 +327,7 @@ fn apply_search_library_mana_constraint(
 pub(crate) fn split_search_same_name_reference_filter(
     tokens: &[OwnedLexToken],
 ) -> Option<(Vec<OwnedLexToken>, Vec<OwnedLexToken>)> {
-    let word_view = LowercaseWordView::new(tokens);
+    let word_view = SearchLibraryCompatWords::new(tokens);
     let words_all = word_view.to_word_refs();
     let (start_word_idx, phrase_len) = if let Some(idx) =
         word_slice_find_sequence(&words_all, &["with", "the", "same", "name", "as"])
@@ -558,911 +399,6 @@ pub(crate) fn normalize_search_library_filter(filter: &mut ObjectFilter) {
     for nested in &mut filter.any_of {
         normalize_search_library_filter(nested);
     }
-}
-
-pub(crate) fn parse_search_library_sentence(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let words_view = LowercaseWordView::new(tokens);
-    let words_all = words_view.to_word_refs();
-    let Some(search_idx) = find_token_index(tokens, |token| {
-        token.is_word("search") || token.is_word("searches")
-    }) else {
-        return Ok(None);
-    };
-    if tokens[..search_idx]
-        .iter()
-        .any(|token| token.is_word("unless"))
-    {
-        return Ok(None);
-    }
-    // Allow "you may search ..." to parse as a search sentence, but avoid treating
-    // a larger "may ... then search ..." chain as a single search clause. In those
-    // cases, we need the higher-level parser to preserve conditionals like "If you do".
-    let may_positions: Vec<usize> = tokens[..search_idx]
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, token)| token.is_word("may").then_some(idx))
-        .collect();
-    if !may_positions.is_empty() {
-        let allowed_may = may_positions.len() == 1 && may_positions[0] + 1 == search_idx;
-        if !allowed_may {
-            return Ok(None);
-        }
-    }
-
-    let mut subject_tokens = &tokens[..search_idx];
-    let sentence_has_direct_may = subject_tokens
-        .last()
-        .is_some_and(|token| token.is_word("may"));
-    if sentence_has_direct_may {
-        subject_tokens = &subject_tokens[..subject_tokens.len().saturating_sub(1)];
-    }
-    let mut leading_effects = Vec::new();
-    if !subject_tokens.is_empty()
-        && super::lex_chain_helpers::find_verb_lexed(&lowercase_word_tokens(subject_tokens))
-            .is_some()
-    {
-        let mut leading_tokens = trim_commas(subject_tokens);
-        while leading_tokens
-            .last()
-            .is_some_and(|token| token.is_word("then") || token.is_word("and"))
-        {
-            leading_tokens.pop();
-        }
-        if !leading_tokens.is_empty() {
-            leading_effects =
-                super::chain_carry::parse_effect_chain_with_sentence_primitives_lexed(
-                    &lowercase_word_tokens(&leading_tokens),
-                )?;
-        }
-        subject_tokens = &[];
-    }
-    let subject_words = token_words(subject_tokens);
-    let wrap_each_target_player = subject_words == ["each", "of", "them"];
-    let chooser = match parse_subject(subject_tokens) {
-        SubjectAst::Player(player) => player,
-        _ => PlayerAst::Implicit,
-    };
-    let mut player = chooser;
-
-    let search_tokens = &tokens[search_idx..];
-    let search_word_view = LowercaseWordView::new(search_tokens);
-    let search_words = search_word_view.to_word_refs();
-    let Some(search_verb) = search_words.first().copied() else {
-        return Ok(None);
-    };
-    if !matches!(search_verb, "search" | "searches") {
-        return Ok(None);
-    }
-    let search_body_words = &search_words[1..];
-    let mut search_player_target: Option<TargetAst> = None;
-    let mut forced_library_owner: Option<PlayerFilter> = None;
-    let mut search_zones_override: Option<Vec<Zone>> = None;
-    if word_slice_starts_with_any(
-        search_body_words,
-        &[&["your", "library", "for"], &["their", "library", "for"]],
-    ) {
-        // Keep player from parsed subject/default context.
-    } else if word_slice_starts_with_any(
-        search_body_words,
-        &[
-            &[
-                "its",
-                "controller",
-                "graveyard",
-                "hand",
-                "and",
-                "library",
-                "for",
-            ],
-            &[
-                "its",
-                "controllers",
-                "graveyard",
-                "hand",
-                "and",
-                "library",
-                "for",
-            ],
-        ],
-    ) {
-        player = PlayerAst::ItsController;
-        forced_library_owner = Some(PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target));
-        search_zones_override = Some(vec![Zone::Graveyard, Zone::Hand, Zone::Library]);
-    } else if word_slice_starts_with_any(
-        search_body_words,
-        &[
-            &["its", "owner", "graveyard", "hand", "and", "library", "for"],
-            &[
-                "its",
-                "owners",
-                "graveyard",
-                "hand",
-                "and",
-                "library",
-                "for",
-            ],
-        ],
-    ) {
-        player = PlayerAst::ItsOwner;
-        forced_library_owner = Some(PlayerFilter::OwnerOf(crate::filter::ObjectRef::Target));
-        search_zones_override = Some(vec![Zone::Graveyard, Zone::Hand, Zone::Library]);
-    } else if word_slice_starts_with_any(
-        search_body_words,
-        &[
-            &[
-                "target",
-                "player",
-                "graveyard",
-                "hand",
-                "and",
-                "library",
-                "for",
-            ],
-            &[
-                "target",
-                "players",
-                "graveyard",
-                "hand",
-                "and",
-                "library",
-                "for",
-            ],
-        ],
-    ) {
-        search_player_target = Some(TargetAst::Player(
-            PlayerFilter::target_player(),
-            span_from_tokens(&search_tokens[1..3]),
-        ));
-        forced_library_owner = Some(PlayerFilter::target_player());
-        search_zones_override = Some(vec![Zone::Graveyard, Zone::Hand, Zone::Library]);
-    } else if word_slice_starts_with_any(
-        search_body_words,
-        &[
-            &[
-                "target",
-                "opponent",
-                "graveyard",
-                "hand",
-                "and",
-                "library",
-                "for",
-            ],
-            &[
-                "target",
-                "opponents",
-                "graveyard",
-                "hand",
-                "and",
-                "library",
-                "for",
-            ],
-        ],
-    ) {
-        search_player_target = Some(TargetAst::Player(
-            PlayerFilter::target_opponent(),
-            span_from_tokens(&search_tokens[1..3]),
-        ));
-        forced_library_owner = Some(PlayerFilter::target_opponent());
-        search_zones_override = Some(vec![Zone::Graveyard, Zone::Hand, Zone::Library]);
-    } else if word_slice_starts_with_any(
-        search_body_words,
-        &[
-            &["target", "player", "library", "for"],
-            &["target", "players", "library", "for"],
-        ],
-    ) {
-        search_player_target = Some(TargetAst::Player(
-            PlayerFilter::target_player(),
-            span_from_tokens(&search_tokens[1..3]),
-        ));
-        forced_library_owner = Some(PlayerFilter::target_player());
-    } else if word_slice_starts_with_any(
-        search_body_words,
-        &[
-            &["target", "opponent", "library", "for"],
-            &["target", "opponents", "library", "for"],
-        ],
-    ) {
-        search_player_target = Some(TargetAst::Player(
-            PlayerFilter::target_opponent(),
-            span_from_tokens(&search_tokens[1..3]),
-        ));
-        forced_library_owner = Some(PlayerFilter::target_opponent());
-    } else if word_slice_starts_with_any(
-        search_body_words,
-        &[
-            &["that", "player", "library", "for"],
-            &["that", "players", "library", "for"],
-        ],
-    ) {
-        player = PlayerAst::That;
-    } else if word_slice_starts_with_any(
-        search_body_words,
-        &[
-            &[
-                "that",
-                "player",
-                "graveyard",
-                "hand",
-                "and",
-                "library",
-                "for",
-            ],
-            &[
-                "that",
-                "players",
-                "graveyard",
-                "hand",
-                "and",
-                "library",
-                "for",
-            ],
-        ],
-    ) {
-        player = PlayerAst::That;
-        search_zones_override = Some(vec![Zone::Graveyard, Zone::Hand, Zone::Library]);
-    } else if word_slice_starts_with_any(
-        search_body_words,
-        &[
-            &["its", "controller", "library", "for"],
-            &["its", "controllers", "library", "for"],
-        ],
-    ) {
-        player = PlayerAst::ItsController;
-    } else if word_slice_starts_with_any(
-        search_body_words,
-        &[
-            &["its", "owner", "library", "for"],
-            &["its", "owners", "library", "for"],
-        ],
-    ) {
-        player = PlayerAst::ItsOwner;
-    } else {
-        // Support "Search your graveyard, hand, and/or library ..." (and ordering variants)
-        // by modeling non-library zones as optional alternatives before a library search.
-        if search_body_words.first().copied() == Some("your")
-            && let Some(for_pos) = word_slice_find(search_body_words, "for")
-            && for_pos > 1
-        {
-            let zone_words = &search_body_words[1..for_pos];
-            let has_library = zone_words
-                .iter()
-                .any(|word| *word == "library" || *word == "libraries");
-            if !has_library {
-                return Ok(None);
-            }
-
-            let has_graveyard = zone_words
-                .iter()
-                .any(|word| *word == "graveyard" || *word == "graveyards");
-            let has_hand = zone_words
-                .iter()
-                .any(|word| *word == "hand" || *word == "hands");
-            let mut zones = Vec::new();
-            if has_graveyard {
-                zones.push(Zone::Graveyard);
-            }
-            if has_hand {
-                zones.push(Zone::Hand);
-            }
-            if zones.is_empty() {
-                return Ok(None);
-            }
-            zones.push(Zone::Library);
-            search_zones_override = Some(zones);
-        } else {
-            return Ok(None);
-        }
-    }
-    let mentions_nth_from_top = word_slice_mentions_nth_from_top(&search_words)
-        && !word_slice_contains_sequence(&search_words, &["on", "top", "of", "library"]);
-    if mentions_nth_from_top {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported search-library top-position clause (clause: '{}')",
-            words_all.join(" ")
-        )));
-    }
-
-    let for_idx = find_token_index(search_tokens, |token| token.is_word("for")).unwrap_or(3);
-    let put_idx = find_token_index(search_tokens, |token| {
-        token.is_word("put") || token.is_word("puts")
-    });
-    let exile_idx = search_tokens.iter().enumerate().find_map(|(idx, token)| {
-        if !(token.is_word("exile") || token.is_word("exiles")) {
-            return None;
-        }
-        let tail_view = LowercaseWordView::new(&search_tokens[idx + 1..]);
-        let tail = tail_view.to_word_refs();
-        word_slice_starts_with_any(
-            &tail,
-            &[&["it"], &["them"], &["that", "card"], &["those", "cards"]],
-        )
-        .then_some(idx)
-    });
-    let reveal_idx = find_token_index(search_tokens, |token| {
-        token.is_word("reveal") || token.is_word("reveals")
-    });
-    let shuffle_idx = find_token_index(search_tokens, |token| {
-        token.is_word("shuffle") || token.is_word("shuffles")
-    });
-    let has_explicit_destination = put_idx.is_some() || exile_idx.is_some();
-    let filter_boundary = put_idx
-        .or(exile_idx)
-        .or(reveal_idx)
-        .or(shuffle_idx)
-        .unwrap_or(search_tokens.len());
-
-    let filter_end = {
-        let mut end = filter_boundary;
-        for idx in (for_idx + 1)..filter_boundary {
-            if !search_tokens[idx].is_comma() {
-                continue;
-            }
-            let next_word = search_tokens[idx + 1..]
-                .iter()
-                .find_map(OwnedLexToken::as_word);
-            if matches!(next_word, Some("put" | "reveal" | "then")) {
-                end = idx;
-                break;
-            }
-        }
-        if end == filter_boundary
-            && let Some(idx) = find_token_index(search_tokens, |token| {
-                token.is_word("reveal") || token.is_word("then")
-            })
-        {
-            end = end.min(idx);
-        }
-        while end > for_idx + 1 {
-            let token = &search_tokens[end - 1];
-            if token.is_comma() || token.is_word("and") || token.is_word("then") {
-                end -= 1;
-            } else {
-                break;
-            }
-        }
-        end
-    };
-
-    if filter_end <= for_idx + 1 {
-        return Err(CardTextError::ParseError(format!(
-            "missing search filter in search-library sentence (clause: '{}')",
-            words_all.join(" ")
-        )));
-    }
-
-    let count_tokens = &search_tokens[for_idx + 1..filter_end];
-    let mut count = ChoiceCount::up_to(1);
-    let mut search_mode = SearchSelectionMode::Exact;
-    let mut count_used = 0usize;
-
-    if count_tokens.len() >= 2
-        && count_tokens[0].is_word("any")
-        && count_tokens[1].is_word("number")
-    {
-        count = ChoiceCount::any_number();
-        search_mode = SearchSelectionMode::Optional;
-        count_used = 2;
-    } else if count_tokens
-        .first()
-        .is_some_and(|token| token.is_word("any"))
-    {
-        if let Some((value, used)) = parse_number(&count_tokens[1..]) {
-            count = ChoiceCount::up_to(value as usize);
-            search_mode = SearchSelectionMode::Optional;
-            count_used = 1 + used;
-        }
-    } else if count_tokens.len() >= 2
-        && count_tokens[0].is_word("that")
-        && count_tokens[1].is_word("many")
-    {
-        count = ChoiceCount::any_number();
-        count_used = 2;
-    } else if count_tokens
-        .first()
-        .is_some_and(|token| token.is_word("all"))
-    {
-        count = ChoiceCount::any_number();
-        search_mode = SearchSelectionMode::AllMatching;
-        count_used = 1;
-    } else if count_tokens.len() >= 2
-        && count_tokens[0].is_word("up")
-        && count_tokens[1].is_word("to")
-    {
-        if count_tokens.get(2).is_some_and(|token| token.is_word("x")) {
-            count = ChoiceCount::dynamic_x();
-            search_mode = SearchSelectionMode::Optional;
-            count_used = 3;
-        } else if let Some((value, used)) = parse_number(&count_tokens[2..]) {
-            count = ChoiceCount::up_to(value as usize);
-            search_mode = SearchSelectionMode::Optional;
-            count_used = 2 + used;
-        }
-    } else if count_tokens.first().is_some_and(|token| token.is_word("x")) {
-        count = ChoiceCount::dynamic_x();
-        count_used = 1;
-    } else if let Some((value, used)) = parse_number(count_tokens) {
-        count = ChoiceCount::up_to(value as usize);
-        count_used = used;
-    }
-
-    if count_used < count_tokens.len() && count_tokens[count_used].is_word("of") {
-        count_used += 1;
-    }
-
-    let filter_start = for_idx + 1 + count_used;
-    if filter_start >= filter_end {
-        return Err(CardTextError::ParseError(format!(
-            "missing object selector in search-library sentence (clause: '{}')",
-            words_all.join(" ")
-        )));
-    }
-
-    enum SameNameReference {
-        Tagged(TagKey),
-        Target(TargetAst),
-        Choose { filter: ObjectFilter, tag: TagKey },
-    }
-
-    let raw_filter_tokens = trim_commas(&search_tokens[filter_start..filter_end]);
-    let (mut filter_tokens, mana_constraint) = if let Some((base_filter_tokens, mana_constraint)) =
-        extract_search_library_mana_constraint(&raw_filter_tokens)
-    {
-        (base_filter_tokens, Some(mana_constraint))
-    } else {
-        (raw_filter_tokens.clone(), None)
-    };
-    let mut same_name_reference: Option<SameNameReference> = None;
-    let raw_filter_word_view = LowercaseWordView::new(&raw_filter_tokens);
-    let raw_filter_words = raw_filter_word_view.to_word_refs();
-    if raw_filter_words.len() >= 3
-        && raw_filter_words[raw_filter_words.len() - 3..] == ["with", "that", "name"]
-    {
-        let base_end = raw_filter_word_view
-            .token_index_for_word_index(raw_filter_words.len() - 3)
-            .unwrap_or(raw_filter_tokens.len());
-        filter_tokens = trim_commas(&raw_filter_tokens[..base_end]);
-        same_name_reference = Some(SameNameReference::Tagged(TagKey::from(CHOSEN_NAME_TAG)));
-    } else if raw_filter_words.len() >= 4
-        && raw_filter_words[raw_filter_words.len() - 4..] == ["with", "the", "chosen", "name"]
-    {
-        let base_end = raw_filter_word_view
-            .token_index_for_word_index(raw_filter_words.len() - 4)
-            .unwrap_or(raw_filter_tokens.len());
-        filter_tokens = trim_commas(&raw_filter_tokens[..base_end]);
-        same_name_reference = Some(SameNameReference::Tagged(TagKey::from(CHOSEN_NAME_TAG)));
-    } else if raw_filter_words.len() >= 3
-        && raw_filter_words[raw_filter_words.len() - 3..] == ["with", "chosen", "name"]
-    {
-        let base_end = raw_filter_word_view
-            .token_index_for_word_index(raw_filter_words.len() - 3)
-            .unwrap_or(raw_filter_tokens.len());
-        filter_tokens = trim_commas(&raw_filter_tokens[..base_end]);
-        same_name_reference = Some(SameNameReference::Tagged(TagKey::from(CHOSEN_NAME_TAG)));
-    } else if let Some((base_filter_tokens, reference_tokens)) =
-        split_search_same_name_reference_filter(&raw_filter_tokens)
-    {
-        if base_filter_tokens.is_empty() || reference_tokens.is_empty() {
-            return Err(CardTextError::ParseError(format!(
-                "incomplete same-name search filter in search-library sentence (clause: '{}')",
-                words_all.join(" ")
-            )));
-        }
-        filter_tokens = base_filter_tokens;
-        let reference_words = token_words(&reference_tokens);
-        same_name_reference = if is_same_name_that_reference_words(&reference_words) {
-            Some(SameNameReference::Tagged(TagKey::from(IT_TAG)))
-        } else if reference_words.iter().any(|word| *word == "target") {
-            let target = parse_target_phrase(&reference_tokens).map_err(|_| {
-                CardTextError::ParseError(format!(
-                    "unsupported target same-name reference in search-library sentence (clause: '{}')",
-                    words_all.join(" ")
-                ))
-            })?;
-            Some(SameNameReference::Target(target))
-        } else {
-            let mut reference_filter_tokens = reference_tokens.clone();
-            let mut other_reference = false;
-            if reference_filter_tokens
-                .first()
-                .is_some_and(|token| token.is_word("another") || token.is_word("other"))
-            {
-                other_reference = true;
-                reference_filter_tokens = trim_commas(&reference_filter_tokens[1..]);
-            }
-            let reference_filter =
-                parse_object_filter(&reference_filter_tokens, other_reference).map_err(|_| {
-                CardTextError::ParseError(format!(
-                    "unsupported same-name reference filter in search-library sentence (clause: '{}')",
-                    words_all.join(" ")
-                ))
-            })?;
-            Some(SameNameReference::Choose {
-                filter: reference_filter,
-                tag: TagKey::from("same_name_reference"),
-            })
-        };
-    }
-
-    let filter_word_view = LowercaseWordView::new(&filter_tokens);
-    let filter_words: Vec<&str> = filter_word_view
-        .to_word_refs()
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect();
-    let mut filter = if let Some(named_idx) = word_slice_find(&filter_words, "named") {
-        let negated_named = named_idx > 0 && filter_words[named_idx - 1] == "not";
-        let base_words_end = if negated_named {
-            named_idx.saturating_sub(1)
-        } else {
-            named_idx
-        };
-        let name_words = filter_words
-            .iter()
-            .skip(named_idx + 1)
-            .copied()
-            .take_while(|word| !matches!(*word, "that" | "with"))
-            .collect::<Vec<_>>();
-        let name = name_words.join(" ");
-        if name.is_empty() {
-            return Err(CardTextError::ParseError(format!(
-                "missing card name in named search clause (clause: '{}')",
-                words_all.join(" ")
-            )));
-        }
-        let mut base_words = filter_words[..base_words_end].to_vec();
-        if base_words.first().copied() == Some("exactly") {
-            let count_tokens = base_words[1..]
-                .iter()
-                .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
-                .collect::<Vec<_>>();
-            if let Some((_, used)) = parse_number(&count_tokens) {
-                base_words = base_words[1 + used..].to_vec();
-            }
-        } else {
-            let count_tokens = base_words
-                .iter()
-                .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
-                .collect::<Vec<_>>();
-            if let Some((_, used)) = parse_number(&count_tokens) {
-                base_words = base_words[used..].to_vec();
-            }
-        }
-        let mut base_filter = if base_words.is_empty()
-            || (base_words.len() == 1 && (base_words[0] == "card" || base_words[0] == "cards"))
-        {
-            ObjectFilter::default()
-        } else {
-            let base_tokens: Vec<OwnedLexToken> = base_words
-                .iter()
-                .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
-                .collect();
-            parse_object_filter(&base_tokens, false).map_err(|_| {
-                CardTextError::ParseError(format!(
-                    "unsupported named search filter in search-library sentence (clause: '{}')",
-                    words_all.join(" ")
-                ))
-            })?
-        };
-        if negated_named {
-            base_filter.excluded_name = Some(name);
-        } else {
-            base_filter.name = Some(name);
-        }
-        base_filter
-    } else if filter_words.len() == 1 && (filter_words[0] == "card" || filter_words[0] == "cards") {
-        ObjectFilter::default()
-    } else if word_slice_contains(&filter_words, "or") {
-        parse_search_library_disjunction_filter(&filter_tokens)
-            .or_else(|| parse_object_filter(&filter_tokens, false).ok())
-            .ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "unsupported search filter in search-library sentence (clause: '{}')",
-                    words_all.join(" ")
-                ))
-            })?
-    } else {
-        parse_object_filter(&filter_tokens, false).map_err(|_| {
-            CardTextError::ParseError(format!(
-                "unsupported search filter in search-library sentence (clause: '{}')",
-                words_all.join(" ")
-            ))
-        })?
-    };
-    if let Some(same_name_tag) = same_name_reference
-        .as_ref()
-        .map(|reference| match reference {
-            SameNameReference::Tagged(tag) => tag.clone(),
-            SameNameReference::Target(_) => TagKey::from(IT_TAG),
-            SameNameReference::Choose { tag, .. } => tag.clone(),
-        })
-    {
-        filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: same_name_tag.clone(),
-            relation: TaggedOpbjectRelation::SameNameAsTagged,
-        });
-    }
-    if filter.owner.is_none()
-        && let Some(owner) = forced_library_owner.clone()
-    {
-        filter.owner = Some(owner);
-    }
-    normalize_search_library_filter(&mut filter);
-    if let Some(mana_constraint) = mana_constraint {
-        apply_search_library_mana_constraint(&mut filter, mana_constraint);
-    }
-
-    let destination = if let Some(put_idx) = put_idx {
-        let put_clause_words = token_words(&search_tokens[put_idx..]);
-        if word_slice_contains(&put_clause_words, "graveyard") {
-            Zone::Graveyard
-        } else if word_slice_contains(&put_clause_words, "hand") {
-            Zone::Hand
-        } else if word_slice_contains(&put_clause_words, "top") {
-            Zone::Library
-        } else {
-            Zone::Battlefield
-        }
-    } else {
-        Zone::Exile
-    };
-
-    let reveal = word_slice_contains(&words_all, "reveal");
-    let face_down_exile = exile_idx.is_some_and(|idx| {
-        word_slice_contains_sequence(&token_words(&search_tokens[idx..]), &["face", "down"])
-    });
-    let trailing_discard_before_shuffle = if let Some(put_idx) = put_idx {
-        let discard_idx = find_token_index(search_tokens, |token| {
-            token.is_word("discard") || token.is_word("discards")
-        });
-        let shuffle_idx = rfind_token_index(search_tokens, |token| {
-            token.is_word("shuffle") || token.is_word("shuffles")
-        });
-        matches!(
-            (discard_idx, shuffle_idx),
-            (Some(discard_idx), Some(shuffle_idx)) if discard_idx > put_idx && discard_idx < shuffle_idx
-        )
-    } else {
-        false
-    };
-    let shuffle = words_all
-        .iter()
-        .any(|word| matches!(*word, "shuffle" | "shuffles"))
-        && !trailing_discard_before_shuffle;
-    let split_battlefield_and_hand = put_idx.is_some()
-        && word_slice_has_all(&words_all, &["battlefield", "hand", "other", "one"]);
-    let mut effects = if !has_explicit_destination {
-        let chosen_tag: TagKey = "searched".into();
-        let mut sequence = vec![EffectAst::ChooseObjectsAcrossZones {
-            filter,
-            count,
-            player: chooser,
-            tag: chosen_tag.clone(),
-            zones: search_zones_override.unwrap_or_else(|| vec![Zone::Library]),
-            search_mode: Some(search_mode),
-        }];
-        if reveal {
-            sequence.push(EffectAst::RevealTagged {
-                tag: chosen_tag.clone(),
-            });
-        }
-        if shuffle {
-            sequence.push(EffectAst::ShuffleLibrary { player });
-        }
-        sequence
-    } else if let Some(search_zones) = search_zones_override.clone() {
-        let chosen_tag: TagKey = "searched_multi_zone".into();
-        let battlefield_tapped =
-            destination == Zone::Battlefield && word_slice_contains(&words_all, "tapped");
-        let shuffle_player = PlayerAst::That;
-        let mut sequence = vec![EffectAst::ChooseObjectsAcrossZones {
-            filter,
-            count,
-            player: chooser,
-            tag: chosen_tag.clone(),
-            zones: search_zones.clone(),
-            search_mode: Some(search_mode),
-        }];
-        if reveal {
-            sequence.push(EffectAst::RevealTagged {
-                tag: chosen_tag.clone(),
-            });
-        }
-        if shuffle
-            && destination == Zone::Library
-            && zone_slice_contains(&search_zones, Zone::Library)
-        {
-            sequence.push(EffectAst::ShuffleLibrary {
-                player: shuffle_player,
-            });
-        }
-        sequence.push(EffectAst::ForEachTagged {
-            tag: chosen_tag.clone(),
-            effects: vec![EffectAst::MoveToZone {
-                target: TargetAst::Tagged(chosen_tag, span_from_tokens(tokens)),
-                zone: destination,
-                to_top: matches!(destination, Zone::Library),
-                battlefield_controller: ReturnControllerAst::Preserve,
-                battlefield_tapped: battlefield_tapped,
-                attached_to: None,
-            }],
-        });
-        if shuffle
-            && !(destination == Zone::Library && zone_slice_contains(&search_zones, Zone::Library))
-        {
-            sequence.push(EffectAst::ShuffleLibrary {
-                player: shuffle_player,
-            });
-        }
-        sequence
-    } else if split_battlefield_and_hand {
-        let battlefield_tapped = word_slice_contains(&words_all, "tapped");
-        vec![
-            EffectAst::SearchLibrary {
-                filter: filter.clone(),
-                destination: Zone::Battlefield,
-                chooser,
-                player,
-                search_mode,
-                reveal,
-                shuffle: false,
-                count: ChoiceCount::up_to(1),
-                tapped: battlefield_tapped,
-            },
-            EffectAst::SearchLibrary {
-                filter,
-                destination: Zone::Hand,
-                chooser,
-                player,
-                search_mode,
-                reveal,
-                shuffle,
-                count: ChoiceCount::up_to(1),
-                tapped: false,
-            },
-        ]
-    } else if destination == Zone::Exile && face_down_exile {
-        let searched_tag: TagKey = "searched_face_down".into();
-        let mut sequence = vec![
-            EffectAst::ChooseObjectsAcrossZones {
-                filter,
-                count,
-                player: chooser,
-                tag: searched_tag.clone(),
-                zones: vec![Zone::Library],
-                search_mode: Some(search_mode),
-            },
-            EffectAst::Exile {
-                target: TargetAst::Tagged(searched_tag, span_from_tokens(tokens)),
-                face_down: true,
-            },
-        ];
-        if shuffle {
-            sequence.push(EffectAst::ShuffleLibrary { player });
-        }
-        sequence
-    } else {
-        let battlefield_tapped =
-            destination == Zone::Battlefield && word_slice_contains(&words_all, "tapped");
-        vec![EffectAst::SearchLibrary {
-            filter,
-            destination,
-            chooser,
-            player,
-            search_mode,
-            reveal,
-            shuffle,
-            count,
-            tapped: battlefield_tapped,
-        }]
-    };
-
-    if trailing_discard_before_shuffle
-        && let (Some(discard_idx), Some(shuffle_idx)) = (
-            find_token_index(search_tokens, |token| {
-                token.is_word("discard") || token.is_word("discards")
-            }),
-            rfind_token_index(search_tokens, |token| {
-                token.is_word("shuffle") || token.is_word("shuffles")
-            }),
-        )
-    {
-        let mut discard_end = shuffle_idx;
-        while discard_end > discard_idx {
-            let token = &search_tokens[discard_end - 1];
-            if token.is_comma() || token.is_word("then") || token.is_word("and") {
-                discard_end -= 1;
-                continue;
-            }
-            break;
-        }
-
-        let discard_tokens = trim_commas(&search_tokens[discard_idx..discard_end]);
-        if !discard_tokens.is_empty() {
-            effects.push(super::clause_dispatch::parse_effect_clause_lexed(
-                &lowercase_word_tokens(&discard_tokens),
-            )?);
-        }
-        effects.push(EffectAst::ShuffleLibrary { player });
-    }
-
-    if let Some(target) = search_player_target {
-        effects.insert(0, EffectAst::TargetOnly { target });
-    }
-
-    if let Some(and_idx) = search_tokens
-        .iter()
-        .enumerate()
-        .skip(put_idx.unwrap_or(filter_boundary))
-        .find_map(|(idx, token)| token.is_word("and").then_some(idx))
-    {
-        let trailing_tokens = trim_commas(&search_tokens[and_idx + 1..]);
-        if !trailing_tokens.is_empty() {
-            let trailing_word_view = LowercaseWordView::new(&trailing_tokens);
-            let trailing_words = trailing_word_view.to_word_refs();
-            let starts_with_life_clause = word_slice_starts_with_any(
-                &trailing_words,
-                &[
-                    &["you", "gain"],
-                    &["target", "player", "gains"],
-                    &["target", "player", "gain"],
-                ],
-            );
-            if starts_with_life_clause {
-                let trailing_effect = super::clause_dispatch::parse_effect_clause_lexed(
-                    &lowercase_word_tokens(&trailing_tokens),
-                )?;
-                effects.push(trailing_effect);
-            }
-        }
-    }
-
-    if let Some(reference) = same_name_reference {
-        match reference {
-            SameNameReference::Tagged(_) => {}
-            SameNameReference::Target(target) => {
-                effects.insert(0, EffectAst::TargetOnly { target });
-            }
-            SameNameReference::Choose { filter, tag } => {
-                effects.insert(
-                    0,
-                    EffectAst::ChooseObjects {
-                        filter,
-                        count: ChoiceCount::exactly(1),
-                        player,
-                        tag,
-                    },
-                );
-            }
-        }
-    }
-
-    if sentence_has_direct_may {
-        effects = vec![if matches!(chooser, PlayerAst::You | PlayerAst::Implicit) {
-            EffectAst::May { effects }
-        } else {
-            EffectAst::MayByPlayer {
-                player: chooser,
-                effects,
-            }
-        }];
-    }
-
-    if !leading_effects.is_empty() {
-        leading_effects.extend(effects);
-        return Ok(Some(leading_effects));
-    }
-
-    if wrap_each_target_player {
-        effects = vec![EffectAst::ForEachPlayersFiltered {
-            filter: PlayerFilter::target_player(),
-            effects,
-        }];
-    }
-
-    Ok(Some(effects))
 }
 
 pub(crate) fn parse_shuffle_graveyard_into_library_sentence(
@@ -2101,171 +1037,10 @@ pub(crate) fn parse_enchant_sentence(
     Ok(Some(EffectAst::Enchant { filter }))
 }
 
-pub(crate) fn parse_cant_effect_sentence(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let lowered_tokens = lowercase_word_tokens(tokens);
-    let lowered_words = token_words(&lowered_tokens);
-    for suffix in [
-        ["during", "that", "players", "next", "turn"].as_slice(),
-        ["during", "that", "player's", "next", "turn"].as_slice(),
-        ["during", "that", "player", "s", "next", "turn"].as_slice(),
-    ] {
-        if !word_slice_ends_with(&lowered_words, suffix) {
-            continue;
-        }
-
-        let prefix_word_len = lowered_words.len().saturating_sub(suffix.len());
-        let prefix_end = token_index_for_word_index(&lowered_tokens, prefix_word_len)
-            .unwrap_or(lowered_tokens.len());
-        let prefix_tokens = &lowered_tokens[..prefix_end];
-        let Some(parsed) =
-            super::super::activation_and_restrictions::parse_cant_restriction_clause(
-                prefix_tokens,
-            )?
-        else {
-            continue;
-        };
-
-        match parsed.restriction {
-            crate::effect::Restriction::CastSpellsMatching(player, spell_filter) => {
-                let nested = crate::effect::Restriction::cast_spells_matching(
-                    PlayerFilter::Active,
-                    spell_filter,
-                );
-                if player == PlayerFilter::Opponent {
-                    return Ok(Some(vec![EffectAst::ForEachOpponent {
-                        effects: vec![EffectAst::DelayedUntilNextUpkeep {
-                            player: PlayerAst::That,
-                            effects: vec![EffectAst::Cant {
-                                restriction: nested,
-                                duration: crate::effect::Until::EndOfTurn,
-                                condition: None,
-                            }],
-                        }],
-                    }]));
-                }
-                if player == PlayerFilter::IteratedPlayer {
-                    return Ok(Some(vec![EffectAst::DelayedUntilNextUpkeep {
-                        player: PlayerAst::That,
-                        effects: vec![EffectAst::Cant {
-                            restriction: nested,
-                            duration: crate::effect::Until::EndOfTurn,
-                            condition: None,
-                        }],
-                    }]));
-                }
-            }
-            crate::effect::Restriction::CastMoreThanOneSpellEachTurn(player, spell_filter) => {
-                let nested = crate::effect::Restriction::CastMoreThanOneSpellEachTurn(
-                    PlayerFilter::Active,
-                    spell_filter,
-                );
-                if player == PlayerFilter::Opponent {
-                    return Ok(Some(vec![EffectAst::ForEachOpponent {
-                        effects: vec![EffectAst::DelayedUntilNextUpkeep {
-                            player: PlayerAst::That,
-                            effects: vec![EffectAst::Cant {
-                                restriction: nested,
-                                duration: crate::effect::Until::EndOfTurn,
-                                condition: None,
-                            }],
-                        }],
-                    }]));
-                }
-                if player == PlayerFilter::IteratedPlayer {
-                    return Ok(Some(vec![EffectAst::DelayedUntilNextUpkeep {
-                        player: PlayerAst::That,
-                        effects: vec![EffectAst::Cant {
-                            restriction: nested,
-                            duration: crate::effect::Until::EndOfTurn,
-                            condition: None,
-                        }],
-                    }]));
-                }
-            }
-            _ => {}
-        }
-    }
-
-    let source_tapped_duration = has_source_remains_tapped_duration(tokens);
-    let Some((duration, clause_tokens)) = parse_restriction_duration(tokens)? else {
-        return Ok(None);
-    };
-    if clause_tokens.is_empty() {
-        return Err(CardTextError::ParseError(
-            "restriction clause missing body".to_string(),
-        ));
-    }
-    if clause_tokens
-        .first()
-        .is_some_and(|token| token.is_word("if"))
-    {
-        return Ok(None);
-    }
-    if find_negation_span(&clause_tokens).is_none() {
-        return Ok(None);
-    }
-    // Let chain-carry handle mixed clauses like
-    // "Tap that creature and it doesn't untap during its controller's next untap step."
-    // If conjunction appears before the first negation, this is likely not a pure
-    // cant-restriction sentence.
-    if let Some((neg_start, _)) = find_negation_span(&clause_tokens)
-        && clause_tokens[..neg_start]
-            .iter()
-            .any(|token| token.is_word("and"))
-    {
-        return Ok(None);
-    }
-
-    let Some(restrictions) = parse_cant_restrictions(&clause_tokens)? else {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported restriction clause body (clause: '{}')",
-            joined_token_words(&clause_tokens)
-        )));
-    };
-
-    let mut target: Option<TargetAst> = None;
-    let mut effects = Vec::new();
-    for parsed in restrictions {
-        if let Some(parsed_target) = parsed.target {
-            if let Some(existing) = &target {
-                if *existing != parsed_target {
-                    return Err(CardTextError::ParseError(format!(
-                        "unsupported mixed restriction targets (clause: '{}')",
-                        joined_token_words(&clause_tokens)
-                    )));
-                }
-            } else {
-                target = Some(parsed_target);
-            }
-        }
-        effects.push(EffectAst::Cant {
-            restriction: parsed.restriction,
-            duration: duration.clone(),
-            condition: source_tapped_duration.then_some(crate::ConditionExpr::SourceIsTapped),
-        });
-    }
-    if let Some(target) = target {
-        effects.insert(0, EffectAst::TargetOnly { target });
-    }
-
-    Ok(Some(effects))
-}
-
 pub(crate) fn parse_restriction_duration(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(crate::effect::Until, Vec<OwnedLexToken>)>, CardTextError> {
     parse_restriction_duration_lexed(tokens)
-}
-
-fn has_source_remains_tapped_duration(tokens: &[OwnedLexToken]) -> bool {
-    has_source_remains_tapped_duration_lexed(tokens)
-}
-
-fn has_source_remains_tapped_duration_lexed(tokens: &[OwnedLexToken]) -> bool {
-    let word_view = LowercaseWordView::new(tokens);
-    is_source_remains_tapped_duration_words(&word_view)
 }
 
 pub(crate) fn parse_play_from_graveyard_sentence(

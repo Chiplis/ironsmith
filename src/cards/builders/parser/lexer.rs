@@ -19,6 +19,27 @@ impl std::fmt::Display for LexerError {
     }
 }
 
+fn normalize_parser_fragment(slice: &str) -> String {
+    let mut normalized = String::with_capacity(slice.len());
+    for ch in slice.chars() {
+        match ch {
+            '−' => normalized.push('-'),
+            '’' | '‘' => normalized.push('\''),
+            '“' | '”' => normalized.push('"'),
+            _ => normalized.push(ch.to_ascii_lowercase()),
+        }
+    }
+    normalized
+}
+
+fn parser_text_for_token(kind: TokenKind, slice: &str) -> String {
+    match kind {
+        TokenKind::Tilde => "this".to_string(),
+        TokenKind::Half => "1/2".to_string(),
+        _ => normalize_parser_fragment(slice),
+    }
+}
+
 #[derive(Logos, Debug, Clone, Copy, PartialEq, Eq)]
 #[logos(skip r"[ \t\r\n\f]+", error = LexerError)]
 pub(crate) enum TokenKind {
@@ -30,8 +51,12 @@ pub(crate) enum TokenKind {
     Comma,
     #[token("[")]
     LBracket,
+    #[token("(")]
+    LParen,
     #[token("]")]
     RBracket,
+    #[token(")")]
+    RParen,
     #[token("?")]
     Question,
     #[token(".")]
@@ -54,11 +79,19 @@ pub(crate) enum TokenKind {
     EmDash,
     #[token("½")]
     Half,
-    #[regex(r#""|'|‘|’|“|”"#)]
+    #[token("'")]
+    #[token("’")]
+    #[token("‘")]
+    Apostrophe,
+    #[regex(r#""|“|”"#)]
     Quote,
     #[regex(r"\{[^}\r\n]+\}")]
     ManaGroup,
-    #[regex(r"(?:\+[\p{L}0-9][\p{L}0-9/'’+\-−]*|[\p{L}0-9][\p{L}0-9/'’+\-−]*)")]
+    #[regex(r"[0-9]+", priority = 3)]
+    Number,
+    #[regex(
+        r"(?:\+[0-9xX]+|-[0-9xX]+|[\p{L}0-9]+)(?:(?:['’‘](?:[\p{L}0-9]+)?)|(?:[-−/](?:\+[0-9xX]+|-[0-9xX]+|[\p{L}0-9]+)))*"
+    )]
     Word,
 }
 
@@ -66,8 +99,11 @@ pub(crate) enum TokenKind {
 pub(crate) struct OwnedLexToken {
     pub(crate) kind: TokenKind,
     pub(crate) slice: String,
+    pub(crate) parser_text: String,
     pub(crate) span: TextSpan,
 }
+
+pub(crate) type LexToken = OwnedLexToken;
 
 impl PartialEq<TokenKind> for OwnedLexToken {
     fn eq(&self, other: &TokenKind) -> bool {
@@ -86,52 +122,39 @@ impl Location for OwnedLexToken {
 }
 
 impl OwnedLexToken {
-    pub(crate) fn word(slice: impl Into<String>, span: TextSpan) -> Self {
+    pub(crate) fn new(kind: TokenKind, slice: impl Into<String>, span: TextSpan) -> Self {
+        let slice = slice.into();
+        let parser_text = parser_text_for_token(kind, slice.as_str());
         Self {
-            kind: TokenKind::Word,
-            slice: slice.into(),
+            kind,
+            slice,
+            parser_text,
             span,
         }
+    }
+
+    pub(crate) fn word(slice: impl Into<String>, span: TextSpan) -> Self {
+        Self::new(TokenKind::Word, slice, span)
     }
 
     pub(crate) fn comma(span: TextSpan) -> Self {
-        Self {
-            kind: TokenKind::Comma,
-            slice: ",".to_string(),
-            span,
-        }
+        Self::new(TokenKind::Comma, ",", span)
     }
 
     pub(crate) fn period(span: TextSpan) -> Self {
-        Self {
-            kind: TokenKind::Period,
-            slice: ".".to_string(),
-            span,
-        }
+        Self::new(TokenKind::Period, ".", span)
     }
 
     pub(crate) fn colon(span: TextSpan) -> Self {
-        Self {
-            kind: TokenKind::Colon,
-            slice: ":".to_string(),
-            span,
-        }
+        Self::new(TokenKind::Colon, ":", span)
     }
 
     pub(crate) fn semicolon(span: TextSpan) -> Self {
-        Self {
-            kind: TokenKind::Semicolon,
-            slice: ";".to_string(),
-            span,
-        }
+        Self::new(TokenKind::Semicolon, ";", span)
     }
 
     pub(crate) fn quote(span: TextSpan) -> Self {
-        Self {
-            kind: TokenKind::Quote,
-            slice: "\"".to_string(),
-            span,
-        }
+        Self::new(TokenKind::Quote, "\"", span)
     }
 
     #[allow(dead_code)]
@@ -146,22 +169,48 @@ impl OwnedLexToken {
 
     pub(crate) fn as_word(&self) -> Option<&str> {
         match self.kind {
-            TokenKind::Word => Some(self.slice.as_str()),
+            TokenKind::Word | TokenKind::Number => Some(self.slice.as_str()),
             TokenKind::Tilde => Some("this"),
             _ => None,
         }
     }
 
-    pub(crate) fn word_mut(&mut self) -> Option<&mut String> {
+    pub(crate) fn parser_text(&self) -> &str {
+        self.parser_text.as_str()
+    }
+
+    pub(crate) fn replace_word(&mut self, slice: impl Into<String>) -> bool {
         match self.kind {
-            TokenKind::Word => Some(&mut self.slice),
-            _ => None,
+            TokenKind::Word | TokenKind::Number => {
+                let slice = slice.into();
+                self.parser_text = parser_text_for_token(self.kind, slice.as_str());
+                self.slice = slice;
+                true
+            }
+            TokenKind::Tilde => {
+                self.parser_text = "this".to_string();
+                true
+            }
+            _ => false,
+        }
+    }
+
+    pub(crate) fn lowercase_word(&mut self) -> bool {
+        match self.kind {
+            TokenKind::Word | TokenKind::Number => {
+                let lowered = self.slice.to_ascii_lowercase();
+                self.replace_word(lowered)
+            }
+            TokenKind::Tilde => true,
+            _ => false,
         }
     }
 
     pub(crate) fn is_word(&self, expected: &str) -> bool {
-        self.as_word()
-            .is_some_and(|word| word.eq_ignore_ascii_case(expected))
+        matches!(
+            self.kind,
+            TokenKind::Word | TokenKind::Number | TokenKind::Tilde
+        ) && self.parser_text == normalize_parser_fragment(expected)
     }
 
     pub(crate) fn is_comma(&self) -> bool {
@@ -195,7 +244,7 @@ pub(crate) struct LexCursor<'a> {
     pos: usize,
 }
 
-pub(crate) type LexStream<'a> = TokenSlice<'a, OwnedLexToken>;
+pub(crate) type LexStream<'a> = TokenSlice<'a, LexToken>;
 
 impl<'a> LexCursor<'a> {
     pub(crate) fn new(tokens: &'a [OwnedLexToken]) -> Self {
@@ -225,11 +274,11 @@ impl<'a> LexCursor<'a> {
     }
 }
 
-pub(crate) fn lexed_words(tokens: &[OwnedLexToken]) -> Vec<&str> {
+pub(crate) fn token_word_refs(tokens: &[OwnedLexToken]) -> Vec<&str> {
     tokens.iter().filter_map(OwnedLexToken::as_word).collect()
 }
 
-pub(crate) fn render_lexed_tokens(tokens: &[OwnedLexToken]) -> String {
+pub(crate) fn render_token_slice(tokens: &[OwnedLexToken]) -> String {
     fn needs_space(prev: &OwnedLexToken, current: &OwnedLexToken) -> bool {
         if prev.span.end == current.span.start {
             return false;
@@ -243,6 +292,7 @@ pub(crate) fn render_lexed_tokens(tokens: &[OwnedLexToken]) -> String {
                 | TokenKind::Semicolon
                 | TokenKind::Question
                 | TokenKind::Bang
+                | TokenKind::RParen
                 | TokenKind::RBracket
         ) {
             return false;
@@ -250,7 +300,12 @@ pub(crate) fn render_lexed_tokens(tokens: &[OwnedLexToken]) -> String {
 
         !matches!(
             prev.kind,
-            TokenKind::LBracket | TokenKind::Quote | TokenKind::Plus | TokenKind::Dash
+            TokenKind::LBracket
+                | TokenKind::LParen
+                | TokenKind::Quote
+                | TokenKind::Apostrophe
+                | TokenKind::Plus
+                | TokenKind::Dash
         )
     }
 
@@ -284,43 +339,7 @@ pub(crate) fn trim_lexed_commas(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
 }
 
 pub(crate) fn split_lexed_sentences(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> {
-    let mut segments = Vec::new();
-    let mut start = 0usize;
-    let mut quote_depth = 0u32;
-
-    for (idx, token) in tokens.iter().enumerate() {
-        match token.kind {
-            TokenKind::Quote => {
-                if !matches!(token.slice.as_str(), "\"" | "“" | "”") {
-                    continue;
-                }
-                let closing_quote = quote_depth != 0;
-                quote_depth = if quote_depth == 0 { 1 } else { 0 };
-                if closing_quote
-                    && idx > start
-                    && tokens
-                        .get(idx.saturating_sub(1))
-                        .is_some_and(|previous| previous.kind == TokenKind::Period)
-                {
-                    segments.push(&tokens[start..=idx]);
-                    start = idx + 1;
-                }
-            }
-            TokenKind::Period if quote_depth == 0 => {
-                if start < idx {
-                    segments.push(&tokens[start..idx]);
-                }
-                start = idx + 1;
-            }
-            _ => {}
-        }
-    }
-
-    if start < tokens.len() {
-        segments.push(&tokens[start..]);
-    }
-
-    segments
+    super::grammar::structure::split_lexed_sentences(tokens)
 }
 
 pub(crate) fn lex_line(line: &str, line_index: usize) -> Result<Vec<OwnedLexToken>, CardTextError> {
@@ -343,11 +362,7 @@ pub(crate) fn lex_line(line: &str, line_index: usize) -> Result<Vec<OwnedLexToke
             )));
         };
 
-        tokens.push(OwnedLexToken {
-            kind,
-            slice: slice.to_string(),
-            span,
-        });
+        tokens.push(OwnedLexToken::new(kind, slice, span));
     }
 
     Ok(tokens)

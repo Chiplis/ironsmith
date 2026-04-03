@@ -8,10 +8,6 @@ use crate::ability::{Ability, AbilityKind, ActivatedAbility, ActivationTiming, T
 use crate::card::PowerToughness;
 #[allow(unused_imports)]
 use crate::cards::CardDefinition;
-use crate::cards::builders::scan_helpers::{
-    find_index, find_window_by, find_window_index, slice_contains, str_contains, str_find,
-    str_split_once, str_split_once_char, str_starts_with, str_strip_suffix,
-};
 #[allow(unused_imports)]
 #[allow(unused_imports)]
 use crate::cards::builders::{
@@ -21,6 +17,10 @@ use crate::cards::builders::{
     NormalizedLine, ObjectRefAst, ParseAnnotations, PlayerAst, PredicateAst,
     PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst, RetargetModeAst,
     ReturnControllerAst, SharedTypeConstraintAst, TagKey, TargetAst, TriggerSpec,
+};
+use crate::cards::builders::{
+    find_index, find_window_by, find_window_index, slice_contains, str_contains, str_find,
+    str_split_once, str_split_once_char, str_starts_with, str_strip_suffix,
 };
 #[allow(unused_imports)]
 use crate::color::ColorSet;
@@ -11345,11 +11345,11 @@ mod parse_compile_tests {
         let for_each = effects[0]
             .downcast_ref::<ForEachObject>()
             .expect("non-target object damage should lower through ForEachObject");
-        assert!(crate::cards::builders::scan_helpers::iter_contains(
+        assert!(crate::cards::builders::iter_contains(
             &for_each.filter.card_types,
             &CardType::Creature,
         ));
-        assert!(crate::cards::builders::scan_helpers::iter_contains(
+        assert!(crate::cards::builders::iter_contains(
             &for_each.filter.excluded_subtypes,
             &Subtype::Army,
         ));

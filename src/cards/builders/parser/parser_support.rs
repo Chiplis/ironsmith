@@ -176,8 +176,8 @@ fn looks_like_delayed_next_turn_intro_lexed(tokens: &[OwnedLexToken]) -> bool {
 }
 
 fn looks_like_when_one_or_more_this_way_followup_lexed(tokens: &[OwnedLexToken]) -> bool {
-    if !(starts_with_lexed_words(tokens, &["when", "one", "or", "more"])
-        || starts_with_lexed_words(tokens, &["whenever", "one", "or", "more"]))
+    if !(starts_with_token_word_refs(tokens, &["when", "one", "or", "more"])
+        || starts_with_token_word_refs(tokens, &["whenever", "one", "or", "more"]))
     {
         return false;
     }
@@ -194,8 +194,8 @@ fn looks_like_when_one_or_more_this_way_followup_lexed(tokens: &[OwnedLexToken])
 }
 
 fn looks_like_when_you_do_followup_lexed(tokens: &[OwnedLexToken]) -> bool {
-    starts_with_lexed_words(tokens, &["when", "you", "do"])
-        || starts_with_lexed_words(tokens, &["whenever", "you", "do"])
+    starts_with_token_word_refs(tokens, &["when", "you", "do"])
+        || starts_with_token_word_refs(tokens, &["whenever", "you", "do"])
 }
 
 fn looks_like_otherwise_followup_lexed(tokens: &[OwnedLexToken]) -> bool {
@@ -204,7 +204,7 @@ fn looks_like_otherwise_followup_lexed(tokens: &[OwnedLexToken]) -> bool {
         .is_some_and(|token| token.is_word("otherwise"))
 }
 
-fn starts_with_lexed_words(tokens: &[OwnedLexToken], expected: &[&str]) -> bool {
+fn starts_with_token_word_refs(tokens: &[OwnedLexToken], expected: &[&str]) -> bool {
     tokens.len() >= expected.len()
         && tokens
             .iter()

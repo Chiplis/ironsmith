@@ -1,12 +1,12 @@
-use crate::cards::builders::scan_helpers::{
+use crate::cards::builders::{
+    CardTextError, EffectAst, IT_TAG, ObjectRefAst, OwnedLexToken, PlayerAst, SubjectAst, TagKey,
+    TargetAst,
+};
+use crate::cards::builders::{
     contains_window as word_slice_contains_sequence, find_index as find_token_index,
     find_str_by as find_word_index, find_window_index as find_word_sequence_index,
     rfind_str_by as find_word_index_rev, slice_contains_str as word_slice_contains,
     slice_starts_with as word_slice_starts_with, str_split_once_char, str_starts_with_char,
-};
-use crate::cards::builders::{
-    CardTextError, EffectAst, IT_TAG, ObjectRefAst, OwnedLexToken, PlayerAst, SubjectAst, TagKey,
-    TargetAst,
 };
 use crate::color::ColorSet;
 use crate::effect::{EventValueSpec, Value};
@@ -15,7 +15,7 @@ use crate::target::{ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 
-use super::super::lexer::lexed_words;
+use super::super::lexer::token_word_refs;
 use super::super::object_filters::parse_object_filter;
 use super::super::util::{
     is_article, parse_card_type, parse_color, parse_number, parse_target_phrase, parse_value,
@@ -395,7 +395,7 @@ pub(crate) fn split_copy_source_tail_modifiers(
             continue;
         }
         let tail_tokens = trim_commas(&source_tokens[idx + 1..]);
-        let tail_words = lexed_words(&tail_tokens);
+        let tail_words = token_word_refs(&tail_tokens);
         if tail_words.is_empty() {
             continue;
         }
@@ -420,7 +420,7 @@ pub(crate) fn split_copy_source_tail_modifiers(
     };
 
     let modifier_tokens = trim_commas(&source_tokens[split_idx + 1..]);
-    let modifier_words = lexed_words(&modifier_tokens);
+    let modifier_words = token_word_refs(&modifier_tokens);
     let enters_tapped = word_slice_contains(&modifier_words, "tapped");
     let enters_attacking = word_slice_contains(&modifier_words, "attacking");
     let source_tokens = trim_commas(&source_tokens[..split_idx]).to_vec();
@@ -430,7 +430,7 @@ pub(crate) fn split_copy_source_tail_modifiers(
 pub(crate) fn split_copy_source_inline_combat_modifiers(
     source_tokens: &[OwnedLexToken],
 ) -> (Vec<OwnedLexToken>, bool, bool, Option<PlayerAst>) {
-    let source_words = lexed_words(source_tokens);
+    let source_words = token_word_refs(source_tokens);
     let modifier_start_word_idx = find_word_index(&source_words, |word| word == "thats")
         .or_else(|| find_word_sequence_index(&source_words, &["that", "is"]))
         .or_else(|| find_word_sequence_index(&source_words, &["that", "are"]));
@@ -515,7 +515,7 @@ pub(crate) fn parse_create(
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
-    let clause_words = lexed_words(tokens);
+    let clause_words = token_word_refs(tokens);
     let has_unsupported_dynamic_count =
         word_slice_starts_with(&clause_words, &["a", "number", "of"])
             || word_slice_starts_with(&clause_words, &["the", "number", "of"]);
@@ -547,7 +547,7 @@ pub(crate) fn parse_create(
         idx += 1;
     }
 
-    let remaining_words = lexed_words(&tokens[idx..]);
+    let remaining_words = token_word_refs(&tokens[idx..]);
     let token_idx = find_word_index(&remaining_words, |word| matches!(word, "token" | "tokens"))
         .ok_or_else(|| CardTextError::ParseError("create clause missing token".to_string()))?;
 
@@ -558,7 +558,7 @@ pub(crate) fn parse_create(
         .collect();
     let mut tail_tokens = tokens[idx + token_idx + 1..].to_vec();
     let mut delayed_create_player = None;
-    let initial_tail_words = lexed_words(&tail_tokens);
+    let initial_tail_words = token_word_refs(&tail_tokens);
     if let Some((clause_start, player)) =
         trailing_create_at_next_end_step_clause(&initial_tail_words)
     {
@@ -568,7 +568,7 @@ pub(crate) fn parse_create(
         }
     }
     let mut attached_to_target: Option<TargetAst> = None;
-    let pre_attach_tail_words = lexed_words(&tail_tokens);
+    let pre_attach_tail_words = token_word_refs(&tail_tokens);
     let pre_attach_for_each_idx =
         find_word_sequence_index(&pre_attach_tail_words, &["for", "each"]);
     if let Some(attached_word_idx) =
@@ -589,7 +589,7 @@ pub(crate) fn parse_create(
         attached_to_target = Some(parse_target_phrase(&target_tokens)?);
         tail_tokens.truncate(attached_token_idx);
     }
-    let tail_words = lexed_words(&tail_tokens);
+    let tail_words = token_word_refs(&tail_tokens);
     if attached_to_target.is_some()
         && tail_words
             .iter()
@@ -770,10 +770,10 @@ pub(crate) fn parse_create(
                 .unwrap_or(source_tokens.len());
                 let mut source_end = source_end;
                 for idx in 1..source_end {
-                    let remaining_words = lexed_words(&source_tokens[idx..]);
+                    let remaining_words = token_word_refs(&source_tokens[idx..]);
                     if starts_with_inline_token_rules_tail(&remaining_words)
                         || (source_tokens[idx].is_word("and")
-                            && starts_with_inline_token_rules_tail(&lexed_words(
+                            && starts_with_inline_token_rules_tail(&token_word_refs(
                                 &source_tokens[idx + 1..],
                             )))
                     {
@@ -978,7 +978,7 @@ pub(crate) fn parse_create(
 }
 
 pub(crate) fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> Option<Value> {
-    let clause_words = lexed_words(tokens);
+    let clause_words = token_word_refs(tokens);
     if word_slice_starts_with(&clause_words, &["creature", "that", "died", "this", "turn"])
         || word_slice_starts_with(
             &clause_words,
@@ -1082,17 +1082,18 @@ pub(crate) fn parse_investigate(tokens: &[OwnedLexToken]) -> Result<EffectAst, C
         if filter_tokens.is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "missing filter after 'for each' in investigate clause (clause: '{}')",
-                lexed_words(tokens).join(" ")
+                token_word_refs(tokens).join(" ")
             )));
         }
 
-        let count = if word_slice_contains_sequence(&lexed_words(filter_tokens), &["this", "way"]) {
-            Value::EventValue(EventValueSpec::Amount)
-        } else if let Some(dynamic) = parse_create_for_each_dynamic_count(filter_tokens) {
-            dynamic
-        } else {
-            Value::Count(parse_object_filter(filter_tokens, false)?)
-        };
+        let count =
+            if word_slice_contains_sequence(&token_word_refs(filter_tokens), &["this", "way"]) {
+                Value::EventValue(EventValueSpec::Amount)
+            } else if let Some(dynamic) = parse_create_for_each_dynamic_count(filter_tokens) {
+                dynamic
+            } else {
+                Value::Count(parse_object_filter(filter_tokens, false)?)
+            };
 
         return Ok(EffectAst::Investigate { count });
     }
@@ -1104,26 +1105,26 @@ pub(crate) fn parse_investigate(tokens: &[OwnedLexToken]) -> Result<EffectAst, C
             _ => parse_value(tokens).ok_or_else(|| {
                 CardTextError::ParseError(format!(
                     "missing investigate count (clause: '{}')",
-                    lexed_words(tokens).join(" ")
+                    token_word_refs(tokens).join(" ")
                 ))
             })?,
         }
     } else {
         return Err(CardTextError::ParseError(format!(
             "missing investigate count (clause: '{}')",
-            lexed_words(tokens).join(" ")
+            token_word_refs(tokens).join(" ")
         )));
     };
 
     let trailing = trim_commas(&tokens[used..]);
-    let trailing_words = lexed_words(&trailing);
+    let trailing_words = token_word_refs(&trailing);
     let trailing_ok = trailing_words.is_empty()
         || trailing_words.as_slice() == ["time"]
         || trailing_words.as_slice() == ["times"];
     if !trailing_ok {
         return Err(CardTextError::ParseError(format!(
             "unsupported trailing investigate clause (clause: '{}')",
-            lexed_words(tokens).join(" ")
+            token_word_refs(tokens).join(" ")
         )));
     }
 

@@ -1,16 +1,16 @@
 use crate::Until;
 use crate::ability::{Ability, AbilityKind, ActivatedAbility, ActivationTiming};
-use crate::cards::builders::scan_helpers::{
-    find_index, find_window_index, iter_contains, slice_contains, slice_ends_with,
-    slice_starts_with, str_contains, str_ends_with, str_find, str_split_once, str_split_once_char,
-    str_starts_with, str_strip_prefix, str_strip_suffix,
-};
 use crate::cards::builders::{
     CardDefinition, CardDefinitionBuilder, CardTextError, ChoiceCount, EffectAst, GiftTimingAst,
     IT_TAG, InsteadSemantics, LineAst, LineInfo, OptionalCost, ParseAnnotations, ParsedAbility,
     ParsedCardItem, ParsedLevelAbilityAst, ParsedLevelAbilityItemAst, ParsedLineAst,
     ParsedModalAst, ParsedModalModeAst, ParsedRestrictions, PlayerAst, PredicateAst,
     ReferenceImports, ReturnControllerAst, TagKey, TargetAst, TriggerSpec,
+};
+use crate::cards::builders::{
+    find_index, find_window_index, iter_contains, slice_contains, slice_ends_with,
+    slice_starts_with, str_contains, str_ends_with, str_find, str_split_once, str_split_once_char,
+    str_starts_with, str_strip_prefix, str_strip_suffix,
 };
 use crate::color::ColorSet;
 use crate::cost::TotalCost;
@@ -42,6 +42,8 @@ use super::effect_pipeline::{
     NormalizedLineAst, NormalizedLineChunk, NormalizedModalAst, NormalizedModalModeAst,
     NormalizedParsedAbility, NormalizedPreparedAbility,
 };
+use super::grammar::filters::parse_spell_filter_with_grammar_entrypoint_lexed;
+use super::grammar::primitives::CompatWordIndex;
 use super::keyword_static::parse_if_this_spell_costs_less_to_cast_line_lexed;
 use super::lexer::{OwnedLexToken, TokenKind, lex_line, split_lexed_sentences, trim_lexed_commas};
 use super::lowering_support::{
@@ -55,7 +57,6 @@ use super::lowering_support::{
     rewrite_validate_iterated_player_bindings_in_lowered_effects,
 };
 use super::modal_support::{parse_modal_header, replace_modal_header_x_in_effects_ast};
-use super::object_filters::parse_spell_filter_lexed;
 use super::parser_support::split_text_for_parse;
 use super::reference_model::{LoweredEffects, ReferenceExports};
 use super::restriction_support::{
@@ -76,10 +77,7 @@ use super::util::{
     parse_you_may_rather_than_spell_cost_line_lexed, preserve_keyword_prefix_for_parse,
     token_index_for_word_index, trim_commas, words,
 };
-use super::{
-    LowercaseWordView, RewriteSemanticDocument, RewriteSemanticItem,
-    parse_text_to_semantic_document,
-};
+use super::{RewriteSemanticDocument, RewriteSemanticItem, parse_text_to_semantic_document};
 
 fn rewrite_unsupported_line_ast(
     raw_line: &str,
@@ -2316,7 +2314,7 @@ fn lower_rewrite_static_to_chunk_impl(
             return Ok(LineAst::Ability(level_up));
         }
     }
-    let token_words = crate::cards::builders::parser::lexer::lexed_words(&lexed);
+    let token_words = crate::cards::builders::parser::lexer::token_word_refs(&lexed);
     if word_refs_have_suffix(
         token_words.as_slice(),
         &["untap", "during", "your", "untap", "step"],
@@ -3116,7 +3114,7 @@ fn try_lower_optional_cost_with_cast_trigger(
     let head_effect_text = str_strip_prefix(head, prefix).unwrap_or(head);
     let head_tokens = lexed_tokens(head_effect_text, line.info.line_index)?;
     let stripped_head_tokens = trim_lexed_commas(&head_tokens);
-    let stripped_head_view = LowercaseWordView::new(stripped_head_tokens);
+    let stripped_head_view = LowerRewriteNormalizedWords::new(stripped_head_tokens);
     if !stripped_head_view.slice_eq(0, &["you", "may"]) {
         return Ok(None);
     }
@@ -3149,7 +3147,7 @@ fn try_lower_optional_cost_with_cast_trigger(
         return Ok(None);
     }
 
-    let head_word_view = LowercaseWordView::new(&head_tokens);
+    let head_word_view = LowerRewriteNormalizedWords::new(&head_tokens);
     let head_words = head_word_view.to_word_refs();
     let label = format!(
         "As an additional cost to cast this spell, {}",
@@ -3163,7 +3161,7 @@ fn try_lower_optional_cost_with_cast_trigger(
     let followup_tokens = lexed_tokens(followup, line.info.line_index)?;
     let mut effects = parse_effect_sentences_lexed(&followup_tokens)?;
     rewrite_copy_count_to_times_paid_label_rewrite(&mut effects, &label);
-    let followup_word_view = LowercaseWordView::new(&followup_tokens);
+    let followup_word_view = LowerRewriteNormalizedWords::new(&followup_tokens);
     let followup_words = followup_word_view.to_word_refs();
 
     Ok(Some(LineAst::OptionalCostWithCastTrigger {
@@ -3172,6 +3170,8 @@ fn try_lower_optional_cost_with_cast_trigger(
         followup_text: format!("When you do, {}", followup_words.join(" ")),
     }))
 }
+
+type LowerRewriteNormalizedWords = CompatWordIndex;
 
 fn try_lower_optional_behold_additional_cost(
     line: &super::RewriteKeywordLine,
@@ -3190,7 +3190,7 @@ fn try_lower_optional_behold_additional_cost(
         return Ok(None);
     };
     let stripped = trim_lexed_commas(effect_tokens);
-    let view = LowercaseWordView::new(stripped);
+    let view = LowerRewriteNormalizedWords::new(stripped);
     if !view.slice_eq(0, &["you", "may", "behold"]) {
         return Ok(None);
     }
@@ -3324,7 +3324,7 @@ fn activated_effect_may_be_mana_ability(effect_text: &str, line_index: usize) ->
     let Ok(tokens) = lexed_tokens(effect_text, line_index) else {
         return false;
     };
-    let line_view = LowercaseWordView::new(&tokens);
+    let line_view = LowerRewriteNormalizedWords::new(&tokens);
     let line_words = line_view.to_word_refs();
     word_refs_find(line_words.as_slice(), "add").is_some()
         && matches!(
@@ -3389,7 +3389,7 @@ fn extract_fixed_mana_output(effect_text: &str, line_index: usize) -> Option<Vec
     }) else {
         return None;
     };
-    let prefix_view = LowercaseWordView::new(&tokens[..add_idx]);
+    let prefix_view = LowerRewriteNormalizedWords::new(&tokens[..add_idx]);
     let prefix_words = prefix_view.to_word_refs();
     if !matches!(
         prefix_words.as_slice(),
@@ -3409,7 +3409,7 @@ fn extract_fixed_mana_output(effect_text: &str, line_index: usize) -> Option<Vec
                 mana.push(symbol);
             }
             TokenKind::Period | TokenKind::Comma => {}
-            TokenKind::Word => return None,
+            TokenKind::Word | TokenKind::Number => return None,
             _ => return None,
         }
     }
@@ -3466,7 +3466,7 @@ fn split_rewrite_activated_effect_text(
             mana_restrictions.push(sentence);
             continue;
         };
-        let sentence_view = LowercaseWordView::new(&tokens);
+        let sentence_view = LowerRewriteNormalizedWords::new(&tokens);
         let sentence_words = sentence_view.to_word_refs();
         if parse_mana_usage_restriction_sentence_lexed(&tokens).is_some()
             || word_refs_have_prefix(
@@ -3514,7 +3514,7 @@ fn apply_pending_mana_restrictions(
 }
 
 fn parse_next_spell_cost_reduction_sentence_rewrite(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
-    let word_view = LowercaseWordView::new(tokens);
+    let word_view = LowerRewriteNormalizedWords::new(tokens);
     let clause_words = word_view.to_word_refs();
     if !word_refs_have_prefix(clause_words.as_slice(), &["the", "next"]) {
         return None;
@@ -3543,12 +3543,12 @@ fn parse_next_spell_cost_reduction_sentence_rewrite(tokens: &[OwnedLexToken]) ->
     }
     let spell_filter_tokens = trim_lexed_commas(&tokens[spell_filter_start..spell_filter_end]);
     let reduction_tokens = trim_lexed_commas(&tokens[costs_token_idx + 1..less_token_idx]);
-    let filter = parse_spell_filter_lexed(spell_filter_tokens);
+    let filter = parse_spell_filter_with_grammar_entrypoint_lexed(spell_filter_tokens);
     let reduction_symbols = reduction_tokens
         .iter()
         .filter_map(|token| match token.kind {
             TokenKind::ManaGroup => Some(token.slice.trim_start_matches('{').trim_end_matches('}')),
-            TokenKind::Word => token.as_word(),
+            TokenKind::Word | TokenKind::Number => token.as_word(),
             TokenKind::Comma | TokenKind::Period => None,
             _ => Some(""),
         })
@@ -3628,7 +3628,7 @@ fn parse_each_player_and_their_creatures_damage_sentence_rewrite(
     if !matches_shape {
         return None;
     }
-    let word_view = LowercaseWordView::new(tokens);
+    let word_view = LowerRewriteNormalizedWords::new(tokens);
     let clause_words = word_view.to_word_refs();
     let deals_idx = find_index(clause_words.as_slice(), |word| {
         matches!(*word, "deal" | "deals")
@@ -3676,7 +3676,7 @@ fn lower_rewrite_pact_statement_to_chunk(
             let upkeep_raw = raw_segments[1].trim();
             let upkeep_segment = lexed_tokens(upkeep_raw, line.info.line_index)?;
             let upkeep_tokens = trim_lexed_commas(&upkeep_segment);
-            let upkeep_word_view = LowercaseWordView::new(upkeep_tokens);
+            let upkeep_word_view = LowerRewriteNormalizedWords::new(upkeep_tokens);
             let upkeep_words = upkeep_word_view.to_word_refs();
             let pay_prefix = if word_refs_have_prefix(
                 upkeep_words.as_slice(),
@@ -3718,7 +3718,7 @@ fn lower_rewrite_pact_statement_to_chunk(
             {
                 let lose_segment = lexed_tokens(raw_segments[2], line.info.line_index)?;
                 let lose_tokens = trim_lexed_commas(&lose_segment);
-                let lose_word_view = LowercaseWordView::new(lose_tokens);
+                let lose_word_view = LowerRewriteNormalizedWords::new(lose_tokens);
                 let lose_words = lose_word_view.to_word_refs();
                 if lose_words == ["if", "you", "don't", "you", "lose", "the", "game"]
                     || lose_words == ["if", "you", "do", "not", "you", "lose", "the", "game"]
@@ -3752,7 +3752,7 @@ fn lower_rewrite_pact_statement_to_chunk(
 
     let tokens = lexed_tokens(line.text.as_str(), line.info.line_index)?;
     let tokens = trim_lexed_commas(&tokens);
-    let token_word_view = LowercaseWordView::new(tokens);
+    let token_word_view = LowerRewriteNormalizedWords::new(tokens);
     let token_words = token_word_view.to_word_refs();
     let upkeep_marker = [
         "at",

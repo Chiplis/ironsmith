@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use winnow::ascii::{digit1, multispace0, multispace1};
+use winnow::ascii::{multispace0, multispace1};
 use winnow::combinator::{alt, cut_err, delimited, opt, preceded, terminated};
 use winnow::error::{
     ContextError, ErrMode, ModalResult as WResult, ParserError, StrContext, StrContextValue,
@@ -18,22 +18,16 @@ use crate::filter::ObjectFilter;
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::object::CounterType;
 use crate::target::PlayerFilter;
-use crate::types::{CardType, Subtype, Supertype};
+use crate::types::{CardType, Subtype};
 
 use super::effect_sentences::parse_subtype_word;
-use super::lexer::{OwnedLexToken, TokenKind, lex_line, render_lexed_tokens};
-use super::native_tokens::LowercaseWordView;
-use super::object_filters::parse_object_filter_lexed;
-use super::token_primitives::{
-    parse_mana_cost_inner, parse_mana_symbol, parse_mana_symbol_group, parse_type_line_with,
+use super::grammar::primitives::CompatWordIndex;
+use super::grammar::values::{
+    count_word_value, parse_count_inner, parse_count_word_rewrite, parse_mana_cost_inner,
+    parse_mana_cost_rewrite, parse_mana_symbol, parse_mana_symbol_group,
 };
-
-#[derive(Debug, Clone)]
-pub(crate) struct TypeLineCst {
-    pub(crate) supertypes: Vec<Supertype>,
-    pub(crate) card_types: Vec<CardType>,
-    pub(crate) subtypes: Vec<Subtype>,
-}
+use super::lexer::{OwnedLexToken, TokenKind, lex_line, render_token_slice};
+use super::object_filters::parse_object_filter_lexed;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ActivationCostCst {
@@ -125,6 +119,8 @@ pub(crate) enum ActivationCostSegmentCst {
     },
 }
 
+type LeafCompatWords = CompatWordIndex;
+
 fn parse_word<'a>(input: &mut &'a str) -> WResult<&'a str> {
     take_while(1.., |ch: char| {
         ch.is_ascii_alphabetic() || ch == '\'' || ch == '-'
@@ -146,22 +142,6 @@ where
     delimited(multispace0, parser, multispace0)
 }
 
-fn count_word_value(word: &str) -> Option<u32> {
-    match word.to_ascii_lowercase().as_str() {
-        "a" | "an" | "one" => Some(1),
-        "two" => Some(2),
-        "three" => Some(3),
-        "four" => Some(4),
-        "five" => Some(5),
-        "six" => Some(6),
-        "seven" => Some(7),
-        "eight" => Some(8),
-        "nine" => Some(9),
-        "ten" => Some(10),
-        _ => None,
-    }
-}
-
 fn parse_card_type_word(word: &str) -> Option<CardType> {
     match word.to_ascii_lowercase().as_str() {
         "creature" | "creatures" => Some(CardType::Creature),
@@ -179,16 +159,6 @@ fn parse_card_type_word(word: &str) -> Option<CardType> {
 
 fn parse_color_word(word: &str) -> Option<ColorSet> {
     Color::from_name(word).map(ColorSet::from_color)
-}
-
-fn parse_supertype_word_local(word: &str) -> Option<Supertype> {
-    match word.to_ascii_lowercase().as_str() {
-        "basic" => Some(Supertype::Basic),
-        "legendary" => Some(Supertype::Legendary),
-        "snow" => Some(Supertype::Snow),
-        "world" => Some(Supertype::World),
-        _ => None,
-    }
 }
 
 fn str_starts_with(text: &str, prefix: &str) -> bool {
@@ -327,7 +297,7 @@ fn trim_activation_cost_segment_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexTo
 }
 
 fn render_trimmed_lexed_tokens(tokens: &[OwnedLexToken]) -> String {
-    render_lexed_tokens(tokens).trim().to_string()
+    render_token_slice(tokens).trim().to_string()
 }
 
 fn render_lower_lexed_tokens(tokens: &[OwnedLexToken]) -> String {
@@ -368,7 +338,7 @@ fn skip_articles(words: &[&str], mut idx: usize) -> usize {
 
 fn token_slice_from_word_index<'a>(
     tokens: &'a [OwnedLexToken],
-    words: &LowercaseWordView,
+    words: &LeafCompatWords,
     word_idx: usize,
 ) -> Option<&'a [OwnedLexToken]> {
     let token_start = if word_idx == 0 {
@@ -381,7 +351,7 @@ fn token_slice_from_word_index<'a>(
 
 fn token_slice_for_word_range<'a>(
     tokens: &'a [OwnedLexToken],
-    words: &LowercaseWordView,
+    words: &LeafCompatWords,
     word_start: usize,
     word_end: usize,
 ) -> Option<&'a [OwnedLexToken]> {
@@ -454,18 +424,6 @@ fn parse_counter_type_word(word: &str) -> Option<CounterType> {
         "oil" => Some(CounterType::Oil),
         _ => None,
     }
-}
-
-fn parse_count_inner(input: &mut &str) -> WResult<u32> {
-    alt((
-        digit1.try_map(str::parse::<u32>),
-        parse_word.verify_map(count_word_value),
-    ))
-    .context(StrContext::Label("count"))
-    .context(StrContext::Expected(StrContextValue::Description(
-        "numeric or counted quantity",
-    )))
-    .parse_next(input)
 }
 
 fn parse_discard_segment_inner(input: &mut &str) -> WResult<ActivationCostSegmentCst> {
@@ -1434,7 +1392,7 @@ fn parse_generic_choice_prefix(raw: &str) -> Option<(ChoiceCount, String)> {
 fn parse_generic_choice_prefix_tokens<'a>(
     tokens: &'a [OwnedLexToken],
 ) -> Option<(ChoiceCount, &'a [OwnedLexToken])> {
-    let words = LowercaseWordView::new(tokens);
+    let words = LeafCompatWords::new(tokens);
     let lowered = words.to_word_refs();
     if lowered.is_empty() {
         return None;
@@ -1471,7 +1429,7 @@ fn parse_discard_segment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
     let raw = render_lower_lexed_tokens(tokens);
-    let words = LowercaseWordView::new(tokens);
+    let words = LeafCompatWords::new(tokens);
     let lowered = words.to_word_refs();
     let tail = lowered.get(1..).unwrap_or_default();
 
@@ -1586,7 +1544,7 @@ fn parse_sacrifice_segment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
     let raw = render_lower_lexed_tokens(tokens);
-    let words = LowercaseWordView::new(tokens);
+    let words = LeafCompatWords::new(tokens);
     let lowered = words.to_word_refs();
     let tail = lowered.get(1..).unwrap_or_default();
 
@@ -1650,7 +1608,7 @@ fn parse_tap_chosen_segment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
     let raw = render_lower_lexed_tokens(tokens);
-    let words = LowercaseWordView::new(tokens);
+    let words = LeafCompatWords::new(tokens);
     let lowered = words.to_word_refs();
     let tail = lowered.get(1..).unwrap_or_default();
 
@@ -1700,7 +1658,7 @@ fn parse_exile_segment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
     let raw = render_lower_lexed_tokens(tokens);
-    let words = LowercaseWordView::new(tokens);
+    let words = LeafCompatWords::new(tokens);
     let lowered = words.to_word_refs();
     let tail = lowered.get(1..).unwrap_or_default();
 
@@ -1839,7 +1797,7 @@ fn parse_return_segment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
     let raw = render_lower_lexed_tokens(tokens);
-    let words = LowercaseWordView::new(tokens);
+    let words = LeafCompatWords::new(tokens);
     let lowered = words.to_word_refs();
     let suffix_len = if word_slice_ends_with(lowered.as_slice(), &["to", "its", "owners", "hand"]) {
         4
@@ -1897,7 +1855,7 @@ fn parse_put_counter_segment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
     let raw = render_lower_lexed_tokens(tokens);
-    let words = LowercaseWordView::new(tokens);
+    let words = LeafCompatWords::new(tokens);
     let lowered = words.to_word_refs();
     let Some(on_word_idx) = find_word_index(lowered.as_slice(), |word| word == "on") else {
         return Err(CardTextError::ParseError(format!(
@@ -1958,7 +1916,7 @@ fn parse_remove_counter_segment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
     let raw = render_lower_lexed_tokens(tokens);
-    let words = LowercaseWordView::new(tokens);
+    let words = LeafCompatWords::new(tokens);
     let lowered = words.to_word_refs();
     let Some(from_word_idx) = find_word_index(lowered.as_slice(), |word| word == "from") else {
         return Err(CardTextError::ParseError(format!(
@@ -2097,7 +2055,7 @@ fn parse_remove_counter_segment_tokens(
 fn parse_activation_cost_segment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<Result<ActivationCostSegmentCst, CardTextError>> {
-    let words = LowercaseWordView::new(tokens);
+    let words = LeafCompatWords::new(tokens);
     let lowered = words.to_word_refs();
     let first = lowered.first().copied()?;
 
@@ -2124,7 +2082,7 @@ fn parse_energy_symbol_count_tokens(tokens: &[OwnedLexToken]) -> Option<u32> {
     for token in tokens {
         match token.kind {
             TokenKind::ManaGroup if token.slice.eq_ignore_ascii_case("{e}") => count += 1,
-            TokenKind::Word if token.is_word("e") => count += 1,
+            TokenKind::Word | TokenKind::Number if token.is_word("e") => count += 1,
             _ => return None,
         }
     }
@@ -2165,7 +2123,7 @@ fn parse_bare_symbol_segment_tokens(tokens: &[OwnedLexToken]) -> Option<Activati
                 let group = parse_mana_symbol_group(slice).ok()?;
                 pips.push(group);
             }
-            TokenKind::Word => {
+            TokenKind::Word | TokenKind::Number => {
                 let word = token.as_word()?;
                 if word.eq_ignore_ascii_case("e")
                     || word.eq_ignore_ascii_case("t")
@@ -2191,7 +2149,7 @@ fn parse_pay_segment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
     let raw = render_trimmed_lexed_tokens(tokens);
-    let words = LowercaseWordView::new(tokens);
+    let words = LeafCompatWords::new(tokens);
     let lowered = words.to_word_refs();
     if lowered.first().copied() != Some("pay") {
         return Err(CardTextError::ParseError(
@@ -2204,7 +2162,7 @@ fn parse_pay_segment_tokens(
             "rewrite pay-cost parser missing payment in '{raw}'"
         )));
     };
-    let rest_words = LowercaseWordView::new(rest_tokens);
+    let rest_words = LeafCompatWords::new(rest_tokens);
     let lowered_rest = rest_words.to_word_refs();
     if lowered_rest.is_empty() {
         return Err(CardTextError::ParseError(format!(
@@ -2248,7 +2206,7 @@ fn parse_exert_segment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
     let raw = render_trimmed_lexed_tokens(tokens);
-    let words = LowercaseWordView::new(tokens);
+    let words = LeafCompatWords::new(tokens);
     let lowered = words.to_word_refs();
     if lowered.first().copied() != Some("exert") {
         return Err(CardTextError::ParseError(
@@ -2257,7 +2215,7 @@ fn parse_exert_segment_tokens(
     }
     let missing_object = match token_slice_from_word_index(tokens, &words, 1) {
         None => true,
-        Some(rest) => LowercaseWordView::new(rest).is_empty(),
+        Some(rest) => LeafCompatWords::new(rest).is_empty(),
     };
     if missing_object {
         return Err(CardTextError::ParseError(format!(
@@ -2272,7 +2230,7 @@ fn parse_mill_segment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
     let raw = render_lower_lexed_tokens(tokens);
-    let words = LowercaseWordView::new(tokens);
+    let words = LeafCompatWords::new(tokens);
     let lowered = words.to_word_refs();
     if lowered.first().copied() != Some("mill") {
         return Err(CardTextError::ParseError(
@@ -2308,7 +2266,7 @@ fn parse_behold_segment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
     let raw = render_lower_lexed_tokens(tokens);
-    let words = LowercaseWordView::new(tokens);
+    let words = LeafCompatWords::new(tokens);
     let lowered = words.to_word_refs();
     if lowered.first().copied() != Some("behold") {
         return Err(CardTextError::ParseError(
@@ -2389,19 +2347,6 @@ where
     Ok(parsed)
 }
 
-pub(crate) fn parse_count_word_rewrite(raw: &str) -> Result<u32, CardTextError> {
-    finish_parse(raw, spaced(parse_count_inner), "count-word")
-}
-
-#[cfg(test)]
-pub(crate) fn parse_mana_symbol_group_rewrite(raw: &str) -> Result<Vec<ManaSymbol>, CardTextError> {
-    parse_mana_symbol_group(raw)
-}
-
-pub(crate) fn parse_mana_cost_rewrite(raw: &str) -> Result<ManaCost, CardTextError> {
-    finish_parse(raw, spaced(parse_mana_cost_inner), "mana-cost")
-}
-
 fn parse_shard_style_mana_or_tap_cost_rewrite(raw: &str) -> Option<(ManaSymbol, ManaSymbol)> {
     let normalized = raw.trim().to_ascii_lowercase();
     let (left_raw, right_raw) = str_split_once(normalized.as_str(), " or ")?;
@@ -2431,28 +2376,13 @@ fn parse_shard_style_mana_or_tap_cost_rewrite(raw: &str) -> Option<(ManaSymbol, 
     Some((left, right))
 }
 
-pub(crate) fn parse_type_line_rewrite(raw: &str) -> Result<TypeLineCst, CardTextError> {
-    let (supertypes, card_types, subtypes) = parse_type_line_with(
-        raw,
-        parse_supertype_word_local,
-        parse_card_type_word,
-        parse_subtype_word,
-    )?;
-
-    Ok(TypeLineCst {
-        supertypes,
-        card_types,
-        subtypes,
-    })
-}
-
 fn starts_new_activation_cost_segment_tokens(tokens: &[OwnedLexToken]) -> bool {
     let Some(first) = first_non_comma_token(tokens) else {
         return false;
     };
 
     match first.kind {
-        TokenKind::ManaGroup | TokenKind::Plus | TokenKind::Dash => true,
+        TokenKind::ManaGroup | TokenKind::Number | TokenKind::Plus | TokenKind::Dash => true,
         TokenKind::Word => matches!(
             first.slice.to_ascii_lowercase().as_str(),
             "tap"
@@ -2588,7 +2518,7 @@ fn parse_activation_cost_cst_tokens(
 pub(crate) fn parse_activation_cost_tokens_rewrite(
     tokens: &[OwnedLexToken],
 ) -> Result<ActivationCostCst, CardTextError> {
-    parse_activation_cost_cst_tokens(tokens, &render_lexed_tokens(tokens))
+    parse_activation_cost_cst_tokens(tokens, &render_token_slice(tokens))
 }
 
 pub(crate) fn parse_activation_cost_rewrite(raw: &str) -> Result<ActivationCostCst, CardTextError> {

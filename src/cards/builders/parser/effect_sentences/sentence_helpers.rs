@@ -17,6 +17,10 @@ pub(crate) use super::super::activation_and_restrictions::{
     parse_you_choose_player_clause, starts_with_target_indicator, strip_embedded_token_rules_text,
     target_ast_to_object_filter,
 };
+pub(crate) use super::super::grammar::effects::parse_cant_effect_sentence_with_grammar_entrypoint_lexed as parse_cant_effect_sentence_lexed;
+pub(crate) use super::super::grammar::effects::parse_conditional_sentence_lexed;
+pub(crate) use super::super::grammar::effects::parse_search_library_sentence_with_grammar_entrypoint_lexed as parse_search_library_sentence_lexed;
+pub(crate) use super::super::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed as parse_predicate_lexed;
 pub(crate) use super::super::keyword_static::{
     parse_ability_line, parse_pt_modifier_values, reject_unimplemented_keyword_actions,
 };
@@ -32,8 +36,7 @@ pub(crate) use super::super::rule_engine::{
 pub(crate) use super::super::util::{
     classify_instead_followup_text, helper_tag_for_tokens, is_until_end_of_turn,
     parse_mana_symbol_word_flexible, parse_number, parser_trace, parser_trace_enabled,
-    replace_unbound_x_with_value, split_on_comma, split_on_comma_or_semicolon, split_on_period,
-    starts_with_until_end_of_turn, value_contains_unbound_x,
+    replace_unbound_x_with_value, starts_with_until_end_of_turn, value_contains_unbound_x,
 };
 pub(crate) use super::chain_carry::{
     collapse_token_copy_end_of_combat_exile_followup,
@@ -50,8 +53,6 @@ pub(crate) use super::clause_pattern_helpers::{
     parse_prevent_next_time_damage_sentence, parse_redirect_next_damage_sentence,
     parse_verb_first_clause, parse_win_the_game_clause,
 };
-pub(crate) use super::conditionals::{parse_conditional_sentence_lexed, parse_predicate};
-pub(crate) use super::conditionals::{parse_predicate_lexed, split_leading_result_prefix_lexed};
 pub(crate) use super::dispatch_entry::{
     apply_where_x_to_damage_amounts, parse_token_copy_followup_sentence_lexed,
     replace_unbound_x_in_effects_anywhere,
@@ -75,8 +76,7 @@ pub(crate) use super::lex_chain_helpers::{
     starts_with_inline_token_rules_tail, strip_leading_instead_prefix,
 };
 pub(crate) use super::search_library::{
-    normalize_search_library_filter, parse_cant_effect_sentence_lexed, parse_restriction_duration,
-    parse_search_library_sentence_lexed,
+    normalize_search_library_filter, parse_restriction_duration,
 };
 pub(crate) use super::sentence_primitives::{
     POST_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX, POST_CONDITIONAL_SENTENCE_PRIMITIVES,

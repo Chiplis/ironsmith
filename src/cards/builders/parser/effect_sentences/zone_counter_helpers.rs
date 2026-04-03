@@ -1,12 +1,12 @@
 use crate::cards::TextSpan;
-use crate::cards::builders::scan_helpers::{
-    find_index as find_token_index, find_window_index as find_word_sequence_index,
-    rfind_index as find_last_token_index, slice_contains_str as word_slice_contains,
-    slice_ends_with as word_slice_ends_with, slice_starts_with as word_slice_starts_with,
-};
 use crate::cards::builders::{
     CardTextError, ChoiceCount, EffectAst, IT_TAG, OwnedLexToken, PlayerAst, PredicateAst,
     SubjectAst, TargetAst,
+};
+use crate::cards::builders::{
+    find_index as find_token_index, find_window_index as find_word_sequence_index,
+    rfind_index as find_last_token_index, slice_contains_str as word_slice_contains,
+    slice_ends_with as word_slice_ends_with, slice_starts_with as word_slice_starts_with,
 };
 use crate::effect::EventValueSpec;
 use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
@@ -14,10 +14,11 @@ use crate::zone::Zone;
 use crate::{ChooseSpec, CounterType, TagKey, Value};
 
 use super::super::activation_and_restrictions::parse_devotion_value_from_add_clause;
+use super::super::grammar::primitives::CompatWordIndex;
+use super::super::grammar::structure::split_trailing_if_clause_lexed;
 use super::super::keyword_static::{
     parse_add_mana_equal_amount_value, parse_dynamic_cost_modifier_value,
 };
-use super::super::native_tokens::LowercaseWordView;
 use super::super::object_filters::parse_object_filter;
 use super::super::util::{
     parse_counter_type_from_tokens, parse_counter_type_word, parse_number, parse_target_phrase,
@@ -26,14 +27,15 @@ use super::super::util::{
 use super::super::value_helpers::{
     parse_equal_to_aggregate_filter_value, parse_equal_to_number_of_filter_value,
 };
-use super::conditionals::parse_predicate;
+
+type ZoneCounterCompatWords = CompatWordIndex;
 
 fn render_clause_words(tokens: &[OwnedLexToken]) -> String {
-    LowercaseWordView::new(tokens).to_word_refs().join(" ")
+    ZoneCounterCompatWords::new(tokens).to_word_refs().join(" ")
 }
 
 fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> Option<Value> {
-    let clause_word_view = LowercaseWordView::new(tokens);
+    let clause_word_view = ZoneCounterCompatWords::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
     if word_slice_starts_with(&clause_words, &["creature", "that", "died", "this", "turn"])
         || word_slice_starts_with(
@@ -175,7 +177,7 @@ pub(crate) fn parse_counter_descriptor(
 }
 
 fn parse_referential_counter_count_value(tokens: &[OwnedLexToken]) -> Option<(Value, usize)> {
-    let words_view = LowercaseWordView::new(tokens);
+    let words_view = ZoneCounterCompatWords::new(tokens);
     let words_all = words_view.to_word_refs();
     if words_all.is_empty() {
         return None;
@@ -220,7 +222,7 @@ fn parse_put_counter_count_value(
     tokens: &[OwnedLexToken],
 ) -> Result<(Value, usize), CardTextError> {
     let clause = render_clause_words(tokens);
-    let words_view = LowercaseWordView::new(tokens);
+    let words_view = ZoneCounterCompatWords::new(tokens);
     let words_all = words_view.to_word_refs();
 
     if word_slice_starts_with(&words_all, &["that", "many"])
@@ -309,7 +311,7 @@ fn merge_it_match_filter_into_target(target: &mut TargetAst, it_filter: &ObjectF
 }
 
 fn parse_counter_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTextError> {
-    let target_word_view = LowercaseWordView::new(tokens);
+    let target_word_view = ZoneCounterCompatWords::new(tokens);
     let target_words = target_word_view.to_word_refs();
     if matches!(target_words.as_slice(), ["him"] | ["her"]) {
         return Ok(TargetAst::Source(span_from_tokens(tokens)));
@@ -338,12 +340,9 @@ pub(crate) fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, 
         target_tokens = trim_commas(&target_tokens[..equal_idx]);
     }
     let mut trailing_predicate: Option<PredicateAst> = None;
-    if let Some(if_idx) = find_token_index(&target_tokens, |token| token.is_word("if")) {
-        let predicate_tokens = trim_commas(&target_tokens[if_idx + 1..]);
-        if !predicate_tokens.is_empty() {
-            trailing_predicate = Some(parse_predicate(&predicate_tokens)?);
-            target_tokens = trim_commas(&target_tokens[..if_idx]);
-        }
+    if let Some(spec) = split_trailing_if_clause_lexed(&target_tokens) {
+        trailing_predicate = Some(spec.predicate);
+        target_tokens = spec.leading_tokens.to_vec();
     }
     while target_tokens
         .last()
@@ -539,7 +538,7 @@ pub(crate) fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, 
 pub(crate) fn parse_sentence_put_multiple_counters_on_target(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let clause_word_view = LowercaseWordView::new(tokens);
+    let clause_word_view = ZoneCounterCompatWords::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
     if !matches!(clause_words.first().copied(), Some("put") | Some("puts")) {
         return Ok(None);
@@ -570,9 +569,9 @@ pub(crate) fn parse_sentence_put_multiple_counters_on_target(
     {
         return Ok(None);
     }
-    let first_word_view = LowercaseWordView::new(&first_desc);
+    let first_word_view = ZoneCounterCompatWords::new(&first_desc);
     let first_words = first_word_view.to_word_refs();
-    let second_word_view = LowercaseWordView::new(&second_desc);
+    let second_word_view = ZoneCounterCompatWords::new(&second_desc);
     let second_words = second_word_view.to_word_refs();
     if !first_words
         .iter()
@@ -601,7 +600,7 @@ pub(crate) fn parse_sentence_put_multiple_counters_on_target(
         )));
     }
 
-    let target_word_view = LowercaseWordView::new(&target_tokens);
+    let target_word_view = ZoneCounterCompatWords::new(&target_tokens);
     let target_words = target_word_view.to_word_refs();
     if !target_words
         .iter()
@@ -698,7 +697,7 @@ fn parse_put_or_remove_counter_choice(
     };
 
     let remove_target_tokens = trim_commas(&remove_tokens[from_idx + 1..]);
-    let remove_target_word_view = LowercaseWordView::new(&remove_target_tokens);
+    let remove_target_word_view = ZoneCounterCompatWords::new(&remove_target_tokens);
     let remove_target_words = remove_target_word_view.to_word_refs();
     let referential_remove_target = matches!(
         remove_target_words.as_slice(),
@@ -884,7 +883,7 @@ pub(crate) fn split_until_source_leaves_tail(tokens: &[OwnedLexToken]) -> (&[Own
     if until_idx == 0 {
         return (tokens, false);
     }
-    let tail_word_view = LowercaseWordView::new(&tokens[until_idx + 1..]);
+    let tail_word_view = ZoneCounterCompatWords::new(&tokens[until_idx + 1..]);
     let tail_words = tail_word_view.to_word_refs();
     let has_source_leaves_tail =
         word_slice_ends_with(&tail_words, &["leaves", "the", "battlefield"]);
@@ -916,7 +915,7 @@ pub(crate) fn parse_half_starting_life_total_value(
     tokens: &[OwnedLexToken],
     player: PlayerAst,
 ) -> Option<Value> {
-    let clause_word_view = LowercaseWordView::new(tokens);
+    let clause_word_view = ZoneCounterCompatWords::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
     let inferred_player_filter = || match clause_words.as_slice() {
         ["half", "your", "starting", "life", "total"]
@@ -1056,7 +1055,7 @@ fn parse_transform_like(
     if tokens.is_empty() {
         return Ok(action(TargetAst::Source(None)));
     }
-    let target_word_view = LowercaseWordView::new(tokens);
+    let target_word_view = ZoneCounterCompatWords::new(tokens);
     let target_words = target_word_view.to_word_refs();
     if target_words == ["it"]
         || target_words == ["this"]

@@ -29,6 +29,7 @@ use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
 mod scan_helpers;
+pub(crate) use scan_helpers::*;
 
 #[cfg(test)]
 use crate::filter::TaggedOpbjectRelation;

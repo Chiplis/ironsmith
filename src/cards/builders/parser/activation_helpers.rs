@@ -5,12 +5,12 @@ use crate::target::ObjectFilter;
 
 use super::activation_and_restrictions::parse_devotion_value_from_add_clause;
 use super::effect_sentences::clause_pattern_helpers::extract_subject_player;
-use super::effect_sentences::conditionals::parse_predicate;
+use super::grammar::primitives::CompatWordIndex;
+use super::grammar::structure::parse_trailing_instead_if_predicate_lexed;
 use super::keyword_static::{
     parse_add_mana_equal_amount_value, parse_add_mana_that_much_value,
     parse_dynamic_cost_modifier_value, parse_where_x_is_number_of_filter_value,
 };
-use super::native_tokens::LowercaseWordView;
 pub(crate) use super::object_filters::is_comparison_or_delimiter;
 use super::object_filters::parse_object_filter;
 pub(crate) use super::util::{
@@ -18,10 +18,12 @@ pub(crate) use super::util::{
     contains_source_from_your_hand_phrase, find_activation_cost_start, is_article,
     is_basic_color_word, is_source_from_your_graveyard_words, join_sentences_with_period,
     mana_pips_from_token, parse_mana_symbol, parse_next_end_step_token_delay_flags,
-    parse_subtype_flexible, parse_value, split_cost_segments, token_index_for_word_index,
-    trim_commas, value_contains_unbound_x,
+    parse_subtype_flexible, parse_value, split_cost_segments, trim_commas,
+    value_contains_unbound_x,
 };
 pub(crate) use super::value_helpers::parse_filter_comparison_tokens;
+
+type ActivationHelperNormalizedWords = CompatWordIndex;
 
 fn word_slice_starts_with(words: &[&str], expected: &[&str]) -> bool {
     if words.len() < expected.len() {
@@ -113,29 +115,25 @@ pub(crate) fn parse_add_mana(
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
-    let clause_word_view = LowercaseWordView::new(tokens);
-    let clause_words = clause_word_view.to_word_refs();
+    let clause_words_view = ActivationHelperNormalizedWords::new(tokens);
+    let clause_words = clause_words_view.to_word_refs();
     let wrap_instead_if_tail = |base_effect: EffectAst,
                                 tail_tokens: &[OwnedLexToken]|
      -> Result<Option<EffectAst>, CardTextError> {
-        let tail_word_view = LowercaseWordView::new(tail_tokens);
-        let tail_words = tail_word_view.to_word_refs();
-        if !word_slice_starts_with(&tail_words, &["instead", "if"]) {
+        if !tail_tokens
+            .first()
+            .is_some_and(|token| token.is_word("instead"))
+            || !tail_tokens.get(1).is_some_and(|token| token.is_word("if"))
+        {
             return Ok(None);
         }
-        let predicate_tokens = trim_commas(&tail_tokens[2..]);
-        if predicate_tokens.is_empty() {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported trailing mana clause (clause: '{}')",
-                clause_words.join(" ")
-            )));
-        }
-        let predicate = parse_predicate(&predicate_tokens).map_err(|_| {
-            CardTextError::ParseError(format!(
-                "unsupported trailing mana clause (clause: '{}')",
-                clause_words.join(" ")
-            ))
-        })?;
+        let predicate =
+            parse_trailing_instead_if_predicate_lexed(tail_tokens).ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "unsupported trailing mana clause (clause: '{}')",
+                    clause_words.join(" ")
+                ))
+            })?;
         Ok(Some(EffectAst::Conditional {
             predicate,
             if_true: vec![base_effect],
@@ -306,8 +304,8 @@ pub(crate) fn parse_add_mana(
             });
         }
 
-        let tail_word_view = LowercaseWordView::new(tail_tokens);
-        let tail_words = tail_word_view.to_word_refs();
+        let tail_words_view = ActivationHelperNormalizedWords::new(tail_tokens);
+        let tail_words = tail_words_view.to_word_refs();
         let chosen_by_player_tail = matches!(
             tail_words.as_slice(),
             ["they", "choose"]
@@ -455,11 +453,11 @@ pub(crate) fn parse_add_mana(
                 player,
             });
         }
-        let trailing_word_view =
-            last_mana_idx.map(|last_idx| LowercaseWordView::new(&tokens[last_idx + 1..]));
-        let trailing_words = trailing_word_view
+        let trailing_words_view = last_mana_idx
+            .map(|last_idx| ActivationHelperNormalizedWords::new(&tokens[last_idx + 1..]));
+        let trailing_words = trailing_words_view
             .as_ref()
-            .map(LowercaseWordView::to_word_refs)
+            .map(ActivationHelperNormalizedWords::to_word_refs)
             .unwrap_or_default();
         if !trailing_words.is_empty() {
             let chosen_color_tail = word_slice_starts_with(
@@ -541,8 +539,8 @@ pub(crate) fn mana_symbol_to_color(symbol: ManaSymbol) -> Option<crate::color::C
 pub(crate) fn parse_or_mana_color_choices(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<crate::color::Color>>, CardTextError> {
-    let clause_word_view = LowercaseWordView::new(tokens);
-    let clause_words = clause_word_view.to_word_refs();
+    let clause_words_view = ActivationHelperNormalizedWords::new(tokens);
+    let clause_words = clause_words_view.to_word_refs();
     if !word_slice_contains(&clause_words, "or") {
         return Ok(None);
     }
@@ -585,8 +583,8 @@ pub(crate) fn parse_or_mana_color_choices(
 pub(crate) fn parse_any_combination_mana_colors(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<crate::color::Color>>, CardTextError> {
-    let clause_word_view = LowercaseWordView::new(tokens);
-    let clause_words = clause_word_view.to_word_refs();
+    let clause_words_view = ActivationHelperNormalizedWords::new(tokens);
+    let clause_words = clause_words_view.to_word_refs();
     let Some(combination_idx) =
         find_word_sequence_index(&clause_words, &["any", "combination", "of"])
     else {
@@ -649,8 +647,8 @@ pub(crate) fn trim_leading_commas(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] 
 }
 
 pub(crate) fn is_mana_pool_tail_tokens(tokens: &[OwnedLexToken]) -> bool {
-    let word_view = LowercaseWordView::new(tokens);
-    let words = word_view.to_word_refs();
+    let words_view = ActivationHelperNormalizedWords::new(tokens);
+    let words = words_view.to_word_refs();
     if words.is_empty()
         || words[0] != "to"
         || !word_slice_contains(&words, "mana")
@@ -669,8 +667,8 @@ pub(crate) fn is_mana_pool_tail_tokens(tokens: &[OwnedLexToken]) -> bool {
 pub(crate) fn parse_land_could_produce_filter(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
-    let word_view = LowercaseWordView::new(tokens);
-    let words = word_view.to_word_refs();
+    let words_view = ActivationHelperNormalizedWords::new(tokens);
+    let words = words_view.to_word_refs();
     if words.len() < 3 || words[0] != "that" {
         return Ok(None);
     }
@@ -706,7 +704,7 @@ pub(crate) fn parse_land_could_produce_filter(
             produced_idx
         };
 
-    let marker_token_idx = word_view
+    let marker_token_idx = words_view
         .token_index_for_word_index(marker_word_idx)
         .ok_or_else(|| {
             CardTextError::ParseError(format!(

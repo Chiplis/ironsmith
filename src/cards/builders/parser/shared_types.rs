@@ -26,6 +26,7 @@ pub(crate) struct NormalizedLine {
 #[derive(Debug, Clone)]
 pub(crate) struct LineInfo {
     pub(crate) line_index: usize,
+    pub(crate) display_line_index: usize,
     pub(crate) raw_line: String,
     pub(crate) normalized: NormalizedLine,
 }

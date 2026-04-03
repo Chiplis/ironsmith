@@ -19,6 +19,11 @@ const RAW_STRING_PATTERNS: &[&str] = &[
     ".ends_with(",
     ".contains(",
 ];
+const CONTROL_FLOW_HELPER_PATTERNS: &[&str] = &[
+    concat!("scan_", "helpers::"),
+    concat!("lexed", "_words("),
+    concat!("render_", "lexed_tokens("),
+];
 const LEXED_CONTEXT_MARKERS: &[&str] = &[
     "lex_line(",
     "OwnedLexToken",
@@ -32,6 +37,7 @@ const LEXED_CONTEXT_MARKERS: &[&str] = &[
 enum AuditKind {
     ManualScan,
     RawStringAfterLex,
+    ControlFlowHelpers,
 }
 
 impl AuditKind {
@@ -39,6 +45,7 @@ impl AuditKind {
         match self {
             Self::ManualScan => "manual_scan",
             Self::RawStringAfterLex => "raw_string_after_lex",
+            Self::ControlFlowHelpers => "control_flow_helpers",
         }
     }
 
@@ -46,6 +53,7 @@ impl AuditKind {
         match raw {
             "manual_scan" => Some(Self::ManualScan),
             "raw_string_after_lex" => Some(Self::RawStringAfterLex),
+            "control_flow_helpers" => Some(Self::ControlFlowHelpers),
             _ => None,
         }
     }
@@ -54,6 +62,7 @@ impl AuditKind {
         match self {
             Self::ManualScan => &[],
             Self::RawStringAfterLex => RAW_STRING_PATTERNS,
+            Self::ControlFlowHelpers => CONTROL_FLOW_HELPER_PATTERNS,
         }
     }
 
@@ -102,14 +111,17 @@ fn parser_migration_audit_matches_allowlist() {
     let allowlist = parse_allowlist(&repo_root);
     let manual = collect_findings(&repo_root, AuditKind::ManualScan);
     let raw = collect_findings(&repo_root, AuditKind::RawStringAfterLex);
+    let helpers = collect_findings(&repo_root, AuditKind::ControlFlowHelpers);
 
     print_summary(AuditKind::ManualScan, &manual);
     print_summary(AuditKind::RawStringAfterLex, &raw);
+    print_summary(AuditKind::ControlFlowHelpers, &helpers);
 
     let mut failures = Vec::new();
     for (kind, findings) in [
         (AuditKind::ManualScan, &manual),
         (AuditKind::RawStringAfterLex, &raw),
+        (AuditKind::ControlFlowHelpers, &helpers),
     ] {
         let allowed_entries = match allowlist.get(&kind) {
             Some(entries) => entries,
@@ -196,6 +208,9 @@ fn collect_findings(repo_root: &Path, kind: AuditKind) -> BTreeMap<String, usize
         let hits = match kind {
             AuditKind::ManualScan => count_manual_patterns(&source),
             AuditKind::RawStringAfterLex => {
+                count_string_patterns(&source, kind.raw_string_patterns())
+            }
+            AuditKind::ControlFlowHelpers => {
                 count_string_patterns(&source, kind.raw_string_patterns())
             }
         };

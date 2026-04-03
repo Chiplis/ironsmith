@@ -55,6 +55,12 @@ mod verb_handlers;
 mod zone_counter_helpers;
 mod zone_handlers;
 
+pub(crate) use super::grammar::effects::parse_cant_effect_sentence;
+pub(crate) use super::grammar::effects::parse_cant_effect_sentence_with_grammar_entrypoint_lexed as parse_cant_effect_sentence_lexed;
+pub(crate) use super::grammar::effects::parse_conditional_sentence_lexed;
+pub(crate) use super::grammar::effects::parse_search_library_sentence;
+pub(crate) use super::grammar::effects::parse_search_library_sentence_with_grammar_entrypoint_lexed as parse_search_library_sentence_lexed;
+pub(crate) use chain_carry::parse_effect_chain_with_sentence_primitives_lexed;
 pub(crate) use chain_carry::*;
 pub(crate) use chain_carry::{
     collapse_token_copy_end_of_combat_exile_followup,
@@ -64,6 +70,7 @@ pub(crate) use chain_carry::{
     parse_effect_chain_with_sentence_primitives, parse_effect_clause_with_trailing_if,
     parse_leading_player_may, parse_or_action_clause, remove_first_word, remove_through_first_word,
 };
+pub(crate) use clause_dispatch::parse_effect_clause_lexed;
 pub(crate) use clause_dispatch::*;
 pub(crate) use clause_primitives::{
     parse_attack_or_block_this_turn_if_able_clause, parse_attack_this_turn_if_able_clause,
@@ -73,6 +80,7 @@ pub(crate) use conditionals::*;
 pub(crate) use dispatch_entry::*;
 pub(crate) use dispatch_inner::*;
 pub(crate) use gain_ability::*;
+pub(crate) use lex_chain_helpers::find_verb_lexed;
 pub(crate) use search_library::*;
 #[cfg(test)]
 pub(crate) use sentence_helpers::{

@@ -3,15 +3,17 @@ use super::super::clause_support::{
     parse_static_ability_ast_line_lexed, parse_triggered_line_lexed,
 };
 use super::super::compile_support::compile_statement_effects;
+use super::super::grammar::primitives::{
+    CompatWordIndex, split_lexed_slices_on_and, split_lexed_slices_on_or,
+};
 use super::super::lexer::{OwnedLexToken, TokenKind, trim_lexed_commas};
 use super::super::lowering_support::{
     rewrite_lower_static_ability_ast, rewrite_parsed_triggered_ability as parsed_triggered_ability,
 };
-use super::super::native_tokens::LowercaseWordView;
-use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed, split_on_or};
+use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed};
 use super::super::util::{
     is_article, is_source_reference_words, parse_mana_symbol, parse_target_phrase,
-    span_from_tokens, split_on_and, token_index_for_word_index, trim_commas,
+    span_from_tokens, token_index_for_word_index, trim_commas,
 };
 use super::dispatch_inner::trim_edge_punctuation;
 use super::lex_chain_helpers::find_verb_lexed;
@@ -19,19 +21,21 @@ use super::sentence_helpers::*;
 #[allow(unused_imports)]
 use super::{Verb, find_verb, parse_effect_chain};
 use crate::ability::Ability;
-use crate::cards::builders::scan_helpers::{
-    find_str_by as find_word_index_by, find_window_index as find_word_sequence_index,
-    slice_contains_str as word_slice_contains, slice_starts_with as word_slice_starts_with,
-    str_contains as string_contains,
-};
 use crate::cards::builders::{
     CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, KeywordAction, LineAst, ParsedAbility,
     ReferenceImports, TagKey, TargetAst, TextSpan,
+};
+use crate::cards::builders::{
+    find_str_by as find_word_index_by, find_window_index as find_word_sequence_index,
+    slice_contains_str as word_slice_contains, slice_starts_with as word_slice_starts_with,
+    str_contains as string_contains,
 };
 use crate::effect::Until;
 use crate::mana::ManaCost;
 use crate::target::PlayerFilter;
 use crate::zone::Zone;
+
+type GainAbilityCompatWords = CompatWordIndex;
 
 fn display_text_for_tokens(tokens: &[OwnedLexToken]) -> String {
     let mut text = String::new();
@@ -150,7 +154,7 @@ fn player_gain_effects_for_abilities(
 }
 
 fn render_lower_words(tokens: &[OwnedLexToken]) -> String {
-    let word_view = LowercaseWordView::new(tokens);
+    let word_view = GainAbilityCompatWords::new(tokens);
     word_view.to_word_refs().join(" ")
 }
 
@@ -172,7 +176,7 @@ fn parse_granted_ability_component_for_gain(
         return Ok(None);
     }
 
-    let ability_word_view = LowercaseWordView::new(&ability_tokens);
+    let ability_word_view = GainAbilityCompatWords::new(&ability_tokens);
     let ability_words = ability_word_view.to_word_refs();
     if word_slice_starts_with(&ability_words, &["hexproof", "from"]) {
         let filter_tokens = ability_tokens[2..]
@@ -239,14 +243,14 @@ fn parse_granted_abilities_for_gain_clause(
         ));
     }
 
-    let segments = split_on_and(ability_tokens);
+    let segments = split_lexed_slices_on_and(ability_tokens);
     if segments.len() <= 1 {
         return Ok((Vec::new(), false));
     }
 
     let mut abilities = Vec::new();
     for segment in segments {
-        let Some(parsed) = parse_granted_ability_component_for_gain(&segment, clause_words)? else {
+        let Some(parsed) = parse_granted_ability_component_for_gain(segment, clause_words)? else {
             return Ok((Vec::new(), false));
         };
         abilities.extend(parsed);
@@ -306,7 +310,7 @@ pub(crate) fn parse_simple_lose_ability_clause_lexed(
 }
 
 fn lexed_token_index_for_word_index(tokens: &[OwnedLexToken], word_idx: usize) -> Option<usize> {
-    token_index_for_word_index(tokens, word_idx)
+    GainAbilityCompatWords::new(tokens).token_index_for_word_index(word_idx)
 }
 
 fn span_from_lexed_tokens(tokens: &[OwnedLexToken]) -> Option<TextSpan> {
@@ -324,7 +328,7 @@ fn parse_simple_ability_modifier_clause_lexed(
     tokens: &[OwnedLexToken],
     losing: bool,
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let clause_word_view = LowercaseWordView::new(tokens);
+    let clause_word_view = GainAbilityCompatWords::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
     let verb_idx = find_word_index_by(&clause_words, |word| {
         if losing {
@@ -363,7 +367,7 @@ fn parse_simple_ability_modifier_clause_lexed(
         && let Some((subject_verb, _)) = find_verb_lexed(subject_tokens)
         && subject_verb != Verb::Get
     {
-        let subject_words = LowercaseWordView::new(&subject_tokens);
+        let subject_words = GainAbilityCompatWords::new(&subject_tokens);
         let subject_word_refs = subject_words.to_word_refs();
         let target_phrase_with_controller_tail = subject_word_refs.first().copied()
             == Some("target")
@@ -413,7 +417,7 @@ fn parse_simple_ability_modifier_clause_lexed(
         }
     }
 
-    let subject_words = LowercaseWordView::new(subject_tokens);
+    let subject_words = GainAbilityCompatWords::new(subject_tokens);
     let subject_word_refs = subject_words.to_word_refs();
     let is_pronoun_subject =
         implied_it_subject || matches!(subject_word_refs.as_slice(), ["it"] | ["they"] | ["them"]);
@@ -434,9 +438,9 @@ fn parse_simple_ability_modifier_clause_lexed(
         }));
     }
 
-    let is_demonstrative_subject = subject_words
+    let is_demonstrative_subject = subject_word_refs
         .first()
-        .is_some_and(|word| word == "that" || word == "those");
+        .is_some_and(|word| *word == "that" || *word == "those");
     if is_demonstrative_subject || word_slice_contains(&subject_word_refs, "target") {
         let target = parse_target_phrase(subject_tokens)?;
         if losing {
@@ -490,7 +494,7 @@ pub(crate) fn parse_simple_ability_modifier_clause(
     tokens: &[OwnedLexToken],
     losing: bool,
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let clause_word_view = LowercaseWordView::new(tokens);
+    let clause_word_view = GainAbilityCompatWords::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
     let verb_idx = find_word_index_by(&clause_words, |word| {
         if losing {
@@ -529,7 +533,7 @@ pub(crate) fn parse_simple_ability_modifier_clause(
         && let Some((subject_verb, _)) = find_verb(&subject_tokens)
         && subject_verb != Verb::Get
     {
-        let subject_words = LowercaseWordView::new(&subject_tokens);
+        let subject_words = GainAbilityCompatWords::new(&subject_tokens);
         let subject_word_refs = subject_words.to_word_refs();
         let target_phrase_with_controller_tail = subject_word_refs.first().copied()
             == Some("target")
@@ -579,7 +583,7 @@ pub(crate) fn parse_simple_ability_modifier_clause(
         }
     }
 
-    let subject_words = LowercaseWordView::new(&subject_tokens);
+    let subject_words = GainAbilityCompatWords::new(&subject_tokens);
     let subject_word_refs = subject_words.to_word_refs();
     let is_pronoun_subject =
         implied_it_subject || matches!(subject_word_refs.as_slice(), ["it"] | ["they"] | ["them"]);
@@ -642,7 +646,7 @@ pub(crate) fn parse_simple_ability_modifier_clause(
 pub(crate) fn parse_gain_ability_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let word_view = LowercaseWordView::new(&tokens);
+    let word_view = GainAbilityCompatWords::new(&tokens);
     let word_list = word_view.to_word_refs();
     let looks_like_can_attack_no_defender =
         find_word_sequence_index(&word_list, &["can", "attack"]).is_some()
@@ -733,7 +737,7 @@ pub(crate) fn parse_gain_ability_sentence(
     }
     let mut grants_must_attack = false;
     if !trailing_tail_tokens.is_empty() {
-        let tail_view = LowercaseWordView::new(&trailing_tail_tokens);
+        let tail_view = GainAbilityCompatWords::new(&trailing_tail_tokens);
         let mut tail_words = tail_view.to_word_refs();
         if tail_words.first().is_some_and(|word| *word == "and") {
             tail_words = tail_words[1..].to_vec();
@@ -804,7 +808,7 @@ pub(crate) fn parse_gain_ability_sentence(
     let mut effects = Vec::new();
 
     // Check for pronoun subjects ("it", "they") that reference a prior tagged object.
-    let real_subject_word_view = LowercaseWordView::new(&real_subject_tokens);
+    let real_subject_word_view = GainAbilityCompatWords::new(&real_subject_tokens);
     let real_subject_words = real_subject_word_view.to_word_refs();
     let is_pronoun_subject =
         real_subject_words.as_slice() == ["it"] || real_subject_words.as_slice() == ["they"];
@@ -1089,7 +1093,7 @@ pub(crate) fn append_gain_ability_trailing_effects(
 
 pub(crate) fn parse_choice_of_abilities(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
     let tokens = trim_commas(tokens);
-    let word_view = LowercaseWordView::new(&tokens);
+    let word_view = GainAbilityCompatWords::new(&tokens);
     let word_list = word_view.to_word_refs();
     let prefix_words = if word_slice_starts_with(&word_list, &["your", "choice", "of"]) {
         3usize
@@ -1109,8 +1113,8 @@ pub(crate) fn parse_choice_of_abilities(tokens: &[OwnedLexToken]) -> Option<Vec<
     }
 
     let mut actions = Vec::new();
-    for segment in split_on_or(&option_tokens) {
-        let segment = trim_commas(&segment);
+    for segment in split_lexed_slices_on_or(&option_tokens) {
+        let segment = trim_commas(segment);
         if segment.is_empty() {
             continue;
         }
@@ -1127,7 +1131,7 @@ pub(crate) fn parse_choice_of_abilities(tokens: &[OwnedLexToken]) -> Option<Vec<
 pub(crate) fn parse_gain_ability_to_source_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let clause_word_view = LowercaseWordView::new(tokens);
+    let clause_word_view = GainAbilityCompatWords::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
     let gain_idx = find_word_index_by(&clause_words, |word| matches!(word, "gain" | "gains"));
     let Some(gain_idx) = gain_idx else {
@@ -1138,7 +1142,7 @@ pub(crate) fn parse_gain_ability_to_source_sentence(
         return Ok(None);
     };
     let subject_tokens = &tokens[..gain_token_idx];
-    let subject_word_view = LowercaseWordView::new(subject_tokens);
+    let subject_word_view = GainAbilityCompatWords::new(subject_tokens);
     let subject_words: Vec<&str> = subject_word_view
         .to_word_refs()
         .into_iter()
@@ -1342,9 +1346,7 @@ mod tests {
         )
         .expect("rewrite lexer should classify landwalk gain clause");
         for token in &mut tokens {
-            if let Some(word) = token.word_mut() {
-                *word = word.to_ascii_lowercase();
-            }
+            token.lowercase_word();
         }
         let effects = parse_gain_ability_sentence(&tokens)
             .expect("lexed gain-until-next-upkeep sentence should parse")

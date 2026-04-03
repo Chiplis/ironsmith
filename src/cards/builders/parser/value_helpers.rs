@@ -5,14 +5,18 @@ use crate::effect::{Value, ValueComparisonOperator};
 use crate::target::{ChooseSpec, PlayerFilter};
 
 use super::effect_sentences::trim_edge_punctuation;
+use super::grammar::primitives::CompatWordIndex;
+pub(crate) use super::grammar::values::{
+    parse_number_from_lexed, parse_value_comparison_tokens, parse_value_from_lexed,
+};
 use super::lexer::{OwnedLexToken, TokenKind, trim_lexed_commas};
-use super::native_tokens::LowercaseWordView;
 use super::object_filters::{parse_object_filter, parse_object_filter_lexed};
-use super::token_primitives::parse_value_comparison_tokens;
 use super::util::{
     is_article, parse_counter_type_word, parse_number, parse_number_word_i32, parse_value,
     parse_value_expr_words, token_index_for_word_index, trim_commas,
 };
+
+type ValueHelperCompatWords = CompatWordIndex;
 
 fn word_refs_have(words: &[&str], expected: &str) -> bool {
     let mut idx = 0usize;
@@ -50,7 +54,7 @@ fn word_refs_find_sequence(words: &[&str], phrase: &[&str]) -> Option<usize> {
     None
 }
 
-fn lower_words_have(words: &LowercaseWordView, expected: &str) -> bool {
+fn lower_words_have(words: &ValueHelperCompatWords, expected: &str) -> bool {
     let mut idx = 0usize;
     while idx < words.len() {
         if words.get(idx) == Some(expected) {
@@ -62,7 +66,7 @@ fn lower_words_have(words: &LowercaseWordView, expected: &str) -> bool {
     false
 }
 
-fn lower_words_have_any(words: &LowercaseWordView, expected: &[&str]) -> bool {
+fn lower_words_have_any(words: &ValueHelperCompatWords, expected: &[&str]) -> bool {
     let mut idx = 0usize;
     while idx < words.len() {
         if let Some(word) = words.get(idx)
@@ -76,12 +80,12 @@ fn lower_words_have_any(words: &LowercaseWordView, expected: &[&str]) -> bool {
     false
 }
 
-fn lower_words_start_with(words: &LowercaseWordView, prefix: &[&str]) -> bool {
+fn lower_words_start_with(words: &ValueHelperCompatWords, prefix: &[&str]) -> bool {
     words.len() >= prefix.len() && words.slice_eq(0, prefix)
 }
 
 fn lower_words_find_first_of(
-    words: &LowercaseWordView,
+    words: &ValueHelperCompatWords,
     candidates: &[&str],
     start: usize,
 ) -> Option<usize> {
@@ -99,11 +103,11 @@ fn lower_words_find_first_of(
 }
 
 fn token_slice_has_no_words(tokens: &[OwnedLexToken]) -> bool {
-    LowercaseWordView::new(tokens).len() == 0
+    ValueHelperCompatWords::new(tokens).len() == 0
 }
 
 fn parse_spells_cast_this_turn_matching_count_value(tokens: &[OwnedLexToken]) -> Option<Value> {
-    let word_view = LowercaseWordView::new(tokens);
+    let word_view = ValueHelperCompatWords::new(tokens);
     let filter_words = word_view.to_word_refs();
     if !lower_words_have_any(&word_view, &["spell", "spells"])
         || !lower_words_have_any(&word_view, &["cast", "casts"])
@@ -185,30 +189,12 @@ fn trim_lexed_edge_punctuation(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     &tokens[start..end]
 }
 
-fn lower_words_end_with(words: &LowercaseWordView, suffix: &[&str]) -> bool {
+fn lower_words_end_with(words: &ValueHelperCompatWords, suffix: &[&str]) -> bool {
     words.len() >= suffix.len() && words.slice_eq(words.len() - suffix.len(), suffix)
 }
 
-pub(crate) fn parse_number_from_lexed(tokens: &[OwnedLexToken]) -> Option<(u32, usize)> {
-    let trimmed = trim_lexed_edge_punctuation(tokens);
-    let first_word = trimmed.first()?.as_word()?.to_ascii_lowercase();
-    let value: u32 = parse_number_word_i32(&first_word).and_then(|value| value.try_into().ok())?;
-    Some((value, 1))
-}
-
-pub(crate) fn parse_value_from_lexed(tokens: &[OwnedLexToken]) -> Option<(Value, usize)> {
-    let trimmed = trim_lexed_edge_punctuation(tokens);
-    let words = LowercaseWordView::new(trimmed);
-    let word_refs = words.to_word_refs();
-    let (value, used_words) = parse_value_expr_words(&word_refs)?;
-    let used_tokens = words
-        .token_index_for_word_index(used_words)
-        .unwrap_or(trimmed.len());
-    Some((value, used_tokens))
-}
-
 pub(crate) fn parse_equal_to_number_of_filter_value(tokens: &[OwnedLexToken]) -> Option<Value> {
-    let word_view = LowercaseWordView::new(tokens);
+    let word_view = ValueHelperCompatWords::new(tokens);
     let words_all = word_view.to_word_refs();
     let equal_idx = word_refs_find_sequence(&words_all, &["equal", "to"])?;
     let mut number_word_idx = equal_idx + 2;
@@ -232,7 +218,7 @@ pub(crate) fn parse_equal_to_number_of_filter_value(tokens: &[OwnedLexToken]) ->
     let filter_start_word_idx = number_word_idx + 2;
     let filter_start_token_idx = token_index_for_word_index(tokens, filter_start_word_idx)?;
     let filter_tokens = trim_edge_punctuation(&tokens[filter_start_token_idx..]);
-    let filter_word_view = LowercaseWordView::new(&filter_tokens);
+    let filter_word_view = ValueHelperCompatWords::new(&filter_tokens);
     let filter_words = filter_word_view.to_word_refs();
     if lower_words_have(&filter_word_view, "cards")
         && lower_words_have(&filter_word_view, "in")
@@ -262,7 +248,7 @@ pub(crate) fn parse_equal_to_number_of_filter_value(tokens: &[OwnedLexToken]) ->
 pub(crate) fn parse_equal_to_number_of_filter_plus_or_minus_fixed_value(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
-    let word_view = LowercaseWordView::new(tokens);
+    let word_view = ValueHelperCompatWords::new(tokens);
     let clause_words = word_view.to_word_refs();
     if !word_refs_have_prefix(&clause_words, &["equal", "to"]) {
         return None;
@@ -314,7 +300,7 @@ pub(crate) fn parse_equal_to_number_of_filter_plus_or_minus_fixed_value(
 pub(crate) fn parse_equal_to_number_of_opponents_you_have_value(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
-    let clause_words = LowercaseWordView::new(tokens);
+    let clause_words = ValueHelperCompatWords::new(tokens);
     let clause_refs = clause_words.to_word_refs();
     if matches!(
         clause_refs.as_slice(),
@@ -337,7 +323,7 @@ pub(crate) fn parse_equal_to_number_of_opponents_you_have_value(
 pub(crate) fn parse_equal_to_number_of_counters_on_reference_value(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
-    let clause_words = LowercaseWordView::new(tokens);
+    let clause_words = ValueHelperCompatWords::new(tokens);
     let clause_refs = clause_words.to_word_refs();
     if !word_refs_have_prefix(&clause_refs, &["equal", "to"]) {
         return None;
@@ -412,7 +398,7 @@ pub(crate) fn parse_equal_to_number_of_counters_on_reference_value(
 }
 
 pub(crate) fn parse_equal_to_aggregate_filter_value(tokens: &[OwnedLexToken]) -> Option<Value> {
-    let clause_words = LowercaseWordView::new(tokens);
+    let clause_words = ValueHelperCompatWords::new(tokens);
     let clause_refs = clause_words.to_word_refs();
     let equal_idx = word_refs_find_sequence(&clause_refs, &["equal", "to"])?;
 
@@ -464,7 +450,7 @@ pub(crate) fn parse_equal_to_aggregate_filter_value(tokens: &[OwnedLexToken]) ->
 pub(crate) fn parse_equal_to_number_of_filter_value_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
-    let words_all = LowercaseWordView::new(tokens);
+    let words_all = ValueHelperCompatWords::new(tokens);
     let words_refs = words_all.to_word_refs();
     let equal_idx = word_refs_find_sequence(&words_refs, &["equal", "to"])?;
     let mut number_word_idx = equal_idx + 2;
@@ -498,7 +484,7 @@ pub(crate) fn parse_equal_to_number_of_filter_value_lexed(
 pub(crate) fn parse_equal_to_number_of_filter_plus_or_minus_fixed_value_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
-    let clause_words = LowercaseWordView::new(tokens);
+    let clause_words = ValueHelperCompatWords::new(tokens);
     if !lower_words_start_with(&clause_words, &["equal", "to"]) {
         return None;
     }
@@ -550,7 +536,7 @@ pub(crate) fn parse_equal_to_number_of_filter_plus_or_minus_fixed_value_lexed(
 pub(crate) fn parse_equal_to_number_of_opponents_you_have_value_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
-    let clause_words = LowercaseWordView::new(tokens);
+    let clause_words = ValueHelperCompatWords::new(tokens);
     if lower_words_start_with(
         &clause_words,
         &[
@@ -575,7 +561,7 @@ pub(crate) fn parse_equal_to_number_of_opponents_you_have_value_lexed(
 pub(crate) fn parse_equal_to_number_of_counters_on_reference_value_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
-    let clause_words = LowercaseWordView::new(tokens);
+    let clause_words = ValueHelperCompatWords::new(tokens);
     if !lower_words_start_with(&clause_words, &["equal", "to"]) {
         return None;
     }
@@ -651,7 +637,7 @@ pub(crate) fn parse_equal_to_number_of_counters_on_reference_value_lexed(
 pub(crate) fn parse_equal_to_aggregate_filter_value_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
-    let clause_words = LowercaseWordView::new(tokens);
+    let clause_words = ValueHelperCompatWords::new(tokens);
     let clause_refs = clause_words.to_word_refs();
     let equal_idx = word_refs_find_sequence(&clause_refs, &["equal", "to"])?;
 
@@ -703,7 +689,7 @@ pub(crate) fn parse_equal_to_aggregate_filter_value_lexed(
 pub(crate) fn parse_spells_cast_this_turn_matching_count_value_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
-    let filter_words = LowercaseWordView::new(tokens);
+    let filter_words = ValueHelperCompatWords::new(tokens);
     if !lower_words_have_any(&filter_words, &["spell", "spells"])
         || !lower_words_have_any(&filter_words, &["cast", "casts"])
         || !lower_words_have(&filter_words, "this")

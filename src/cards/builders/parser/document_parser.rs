@@ -1,12 +1,12 @@
 use crate::PtValue;
 use crate::ability::ActivationTiming;
-use crate::cards::builders::scan_helpers::{
-    find_index as find_token_index, slice_ends_with as word_slice_ends_with, str_contains,
-    str_ends_with, str_ends_with_char, str_split_once, str_split_once_char, str_starts_with,
-    str_starts_with_char, str_strip_prefix, str_strip_suffix,
-};
 use crate::cards::builders::{
     CardDefinitionBuilder, CardTextError, LineAst, ParseAnnotations, ParsedLevelAbilityItemAst,
+};
+use crate::cards::builders::{
+    find_index as find_token_index, str_contains, str_ends_with, str_ends_with_char,
+    str_split_once, str_split_once_char, str_starts_with, str_starts_with_char, str_strip_prefix,
+    str_strip_suffix,
 };
 
 use super::activation_and_restrictions::{
@@ -22,6 +22,8 @@ use super::cst::{
     RewriteLineCst, SagaChapterLineCst, StatementLineCst, StaticLineCst, TriggerIntroCst,
     TriggeredLineCst, UnsupportedLineCst,
 };
+use super::grammar::primitives as grammar;
+use super::grammar::structure::split_lexed_sentences;
 use super::ir::{
     RewriteActivatedLine, RewriteKeywordLine, RewriteKeywordLineKind, RewriteLevelHeader,
     RewriteLevelItem, RewriteLevelItemKind, RewriteModalBlock, RewriteModalMode,
@@ -30,7 +32,9 @@ use super::ir::{
 };
 use super::keyword_static::parse_if_this_spell_costs_less_to_cast_line_lexed;
 use super::leaf::{lower_activation_cost_cst, parse_activation_cost_tokens_rewrite};
-use super::lexer::{OwnedLexToken, TokenKind, lex_line, render_lexed_tokens, trim_lexed_commas};
+use super::lexer::{
+    OwnedLexToken, TokenKind, lex_line, render_token_slice, token_word_refs, trim_lexed_commas,
+};
 use super::lower::{
     lower_rewrite_activated_to_chunk, lower_rewrite_keyword_to_chunk,
     lower_rewrite_statement_to_chunks, lower_rewrite_static_to_chunk,
@@ -39,9 +43,7 @@ use super::lower::{
 use super::preprocess::{
     PreprocessedDocument, PreprocessedItem, PreprocessedLine, preprocess_document,
 };
-use super::token_primitives::strip_lexed_suffix_phrase;
 use super::util::{
-    is_untap_during_each_other_players_untap_step_words,
     parse_additional_cost_choice_options_lexed, parse_bargain_line_lexed, parse_bestow_line_lexed,
     parse_buyback_line_lexed, parse_cast_this_spell_only_line_lexed, parse_entwine_line_lexed,
     parse_escape_line_lexed, parse_flashback_line_lexed, parse_harmonize_line_lexed,
@@ -56,6 +58,10 @@ use super::util::{
 
 fn lexed_tokens(text: &str, line_index: usize) -> Result<Vec<OwnedLexToken>, CardTextError> {
     lex_line(text, line_index)
+}
+
+fn normalized_token_words(tokens: &[OwnedLexToken]) -> Vec<String> {
+    grammar::CompatWordIndex::new(tokens).owned_words()
 }
 
 fn is_bullet_line(line: &str) -> bool {
@@ -74,12 +80,9 @@ fn is_bullet_line(line: &str) -> bool {
 }
 
 fn parse_trigger_intro_tokens(tokens: &[OwnedLexToken]) -> Option<TriggerIntroCst> {
-    if tokens.first().is_some_and(|token| token.is_word("when")) {
+    if grammar::parse_prefix(tokens, grammar::phrase(&["when"])).is_some() {
         Some(TriggerIntroCst::When)
-    } else if tokens
-        .first()
-        .is_some_and(|token| token.is_word("whenever"))
-    {
+    } else if grammar::parse_prefix(tokens, grammar::phrase(&["whenever"])).is_some() {
         Some(TriggerIntroCst::Whenever)
     } else if super::parser_support::is_at_trigger_intro_lexed(tokens, 0) {
         Some(TriggerIntroCst::At)
@@ -91,13 +94,14 @@ fn parse_trigger_intro_tokens(tokens: &[OwnedLexToken]) -> Option<TriggerIntroCs
 fn strip_trigger_frequency_suffix_tokens(
     tokens: &[OwnedLexToken],
 ) -> (&[OwnedLexToken], Option<u32>) {
-    for phrase in [
-        &["for", "the", "first", "time", "each", "turn"][..],
-        &["for", "the", "first", "time", "this", "turn"][..],
-    ] {
-        if let Some(rest) = strip_lexed_suffix_phrase(tokens, phrase) {
-            return (rest, Some(1));
-        }
+    if let Some((_, rest)) = grammar::strip_lexed_suffix_phrases(
+        tokens,
+        &[
+            &["for", "the", "first", "time", "each", "turn"][..],
+            &["for", "the", "first", "time", "this", "turn"][..],
+        ],
+    ) {
+        return (rest, Some(1));
     }
 
     (tokens, None)
@@ -106,40 +110,128 @@ fn strip_trigger_frequency_suffix_tokens(
 fn strip_trailing_trigger_cap_suffix_tokens(
     tokens: &[OwnedLexToken],
 ) -> (&[OwnedLexToken], Option<u32>) {
-    for (phrase, count) in [
-        (
-            &[
-                "this", "ability", "triggers", "only", "once", "each", "turn",
-            ][..],
-            1,
-        ),
-        (
-            &[
-                "this", "ability", "triggers", "only", "twice", "each", "turn",
-            ][..],
-            2,
-        ),
-    ] {
-        let Some(head) = strip_lexed_suffix_phrase(tokens, phrase) else {
-            continue;
-        };
-        if !head.last().is_some_and(|token| token.is_period()) {
-            continue;
-        }
-        return (&head[..head.len() - 1], Some(count));
+    let cap_suffixes = [
+        &[
+            "this", "ability", "triggers", "only", "once", "each", "turn",
+        ][..],
+        &[
+            "this", "ability", "triggers", "only", "twice", "each", "turn",
+        ][..],
+    ];
+    let Some((phrase, head)) = grammar::strip_lexed_suffix_phrases(tokens, &cap_suffixes) else {
+        return (tokens, None);
+    };
+    let count = if phrase
+        == [
+            "this", "ability", "triggers", "only", "once", "each", "turn",
+        ] {
+        1
+    } else {
+        2
+    };
+    if !head.last().is_some_and(|token| token.is_period()) {
+        return (tokens, None);
     }
-
-    (tokens, None)
+    (&head[..head.len() - 1], Some(count))
 }
 
 fn line_starts_with_trigger_intro_rewrite(text: &str, line_index: usize) -> bool {
     let Ok(tokens) = lexed_tokens(text, line_index) else {
         return false;
     };
-    if super::parser_support::looks_like_reflexive_followup_intro_lexed(&tokens) {
+    line_starts_with_trigger_intro_tokens(&tokens)
+}
+
+fn line_starts_with_trigger_intro_tokens(tokens: &[OwnedLexToken]) -> bool {
+    if super::parser_support::looks_like_reflexive_followup_intro_lexed(tokens) {
         return false;
     }
-    parse_trigger_intro_tokens(&tokens).is_some()
+    parse_trigger_intro_tokens(tokens).is_some()
+}
+
+fn render_trimmed_lexed_sentence(tokens: &[OwnedLexToken]) -> String {
+    render_token_slice(tokens).trim().to_string()
+}
+
+fn render_trimmed_lexed_sentences(tokens: &[OwnedLexToken]) -> Vec<String> {
+    split_lexed_sentences(tokens)
+        .into_iter()
+        .map(render_trimmed_lexed_sentence)
+        .filter(|sentence| !sentence.is_empty())
+        .collect()
+}
+
+fn nested_combat_whenever_clause_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+    let (_, after_intro) = grammar::parse_prefix(
+        tokens,
+        grammar::phrase(&["at", "the", "beginning", "of", "each", "combat"]),
+    )?;
+    let after_unless = trim_lexed_commas(after_intro);
+    let (_, _after_pay) =
+        grammar::parse_prefix(after_unless, grammar::phrase(&["unless", "you", "pay"]))?;
+
+    tokens.iter().enumerate().find_map(|(idx, token)| {
+        (token.kind == TokenKind::Comma
+            && tokens
+                .get(idx + 1)
+                .is_some_and(|next| next.is_word("whenever")))
+        .then_some(&tokens[idx + 1..])
+    })
+}
+
+fn is_activate_only_once_each_turn_tokens(tokens: &[OwnedLexToken]) -> bool {
+    let Some((_, rest)) = grammar::parse_prefix(
+        tokens,
+        grammar::phrase(&["activate", "only", "once", "each", "turn"]),
+    ) else {
+        return false;
+    };
+    grammar::parse_prefix(rest, grammar::end_of_sentence_or_block())
+        .is_some_and(|(_, remainder)| remainder.is_empty())
+}
+
+fn is_doesnt_untap_during_your_untap_step_tokens(tokens: &[OwnedLexToken]) -> bool {
+    let words = normalized_token_words(tokens);
+    words.len() >= 5
+        && words[words.len() - 5..]
+            .iter()
+            .zip(["untap", "during", "your", "untap", "step"])
+            .all(|(actual, expected)| actual == expected)
+        && words
+            .iter()
+            .any(|word| matches!(word.as_str(), "dont" | "doesnt"))
+}
+
+fn looks_like_untap_all_during_each_other_players_untap_step_tokens(
+    tokens: &[OwnedLexToken],
+) -> bool {
+    super::grammar::structure::looks_like_untap_all_during_each_other_players_untap_step_line_lexed(
+        tokens,
+    )
+}
+
+fn looks_like_pact_next_upkeep_line_tokens(tokens: &[OwnedLexToken]) -> bool {
+    super::grammar::structure::looks_like_pact_next_upkeep_line_lexed(tokens)
+}
+
+fn looks_like_next_turn_cant_cast_line_tokens(tokens: &[OwnedLexToken]) -> bool {
+    super::grammar::structure::looks_like_next_turn_cant_cast_line_lexed(tokens)
+}
+
+fn looks_like_divvy_statement_line_tokens(tokens: &[OwnedLexToken]) -> bool {
+    super::grammar::structure::looks_like_divvy_statement_line_lexed(tokens)
+}
+
+fn looks_like_vote_statement_line_tokens(tokens: &[OwnedLexToken]) -> bool {
+    super::grammar::structure::looks_like_vote_statement_line_lexed(tokens)
+}
+
+fn looks_like_generic_statement_line_tokens(tokens: &[OwnedLexToken]) -> bool {
+    super::grammar::structure::looks_like_generic_statement_line_lexed(tokens)
+}
+
+fn looks_like_generic_static_line_tokens(tokens: &[OwnedLexToken]) -> bool {
+    super::grammar::structure::looks_like_generic_static_line_lexed(tokens)
 }
 
 fn parse_triggered_line_cst(line: &PreprocessedLine) -> Result<TriggeredLineCst, CardTextError> {
@@ -168,17 +260,13 @@ fn parse_triggered_line_cst(line: &PreprocessedLine) -> Result<TriggeredLineCst,
             line.info.raw_line
         )));
     }
-    let normalized = render_lexed_tokens(tokens_without_cap).trim().to_string();
+    let normalized = render_token_slice(tokens_without_cap).trim().to_string();
     if let Some(err) = diagnose_known_unsupported_rewrite_line(normalized.as_str()) {
         return Err(err);
     }
 
-    if str_starts_with(
-        normalized.as_str(),
-        "at the beginning of each combat, unless you pay ",
-    ) && let Some((_, nested_trigger)) = str_split_once(normalized.as_str(), ", whenever ")
-    {
-        let nested_text = format!("whenever {nested_trigger}");
+    if let Some(nested_trigger_tokens) = nested_combat_whenever_clause_tokens(tokens_without_cap) {
+        let nested_text = render_token_slice(nested_trigger_tokens);
         let nested_line = rewrite_line_normalized(line, nested_text.as_str())?;
         if let Ok(parsed) = parse_triggered_line_cst(&nested_line) {
             return Ok(parsed);
@@ -202,8 +290,8 @@ fn parse_triggered_line_cst(line: &PreprocessedLine) -> Result<TriggeredLineCst,
         let (trigger_tokens, max_triggers_per_turn) =
             strip_trigger_frequency_suffix_tokens(trigger_candidate_tokens);
         let max_triggers_per_turn = max_triggers_per_turn.or(trailing_cap);
-        let trigger_text = render_lexed_tokens(trigger_tokens).trim().to_string();
-        let effect_candidate = render_lexed_tokens(effect_candidate_tokens)
+        let trigger_text = render_token_slice(trigger_tokens).trim().to_string();
+        let effect_candidate = render_token_slice(effect_candidate_tokens)
             .trim()
             .to_string();
         if trigger_text.is_empty() {
@@ -258,7 +346,7 @@ fn parse_triggered_line_cst(line: &PreprocessedLine) -> Result<TriggeredLineCst,
         Ok(_) => Ok(TriggeredLineCst {
             info: line.info.clone(),
             full_text: normalized.to_string(),
-            trigger_text: render_lexed_tokens(condition_tokens).trim().to_string(),
+            trigger_text: render_token_slice(condition_tokens).trim().to_string(),
             effect_text: String::new(),
             max_triggers_per_turn: trailing_cap,
             chosen_option_label: None,
@@ -279,8 +367,6 @@ fn parse_static_line_cst(line: &PreprocessedLine) -> Result<Option<StaticLineCst
             | "creatures you control can boast twice during each of your turns rather than once."
             | "while voting, you may vote an additional time."
             | "while voting, you get an additional vote."
-            | "untap all permanents you control during each other player's untap step."
-            | "untap all permanents you control during each other players untap step."
     ) {
         return Ok(Some(StaticLineCst {
             info: line.info.clone(),
@@ -293,7 +379,7 @@ fn parse_static_line_cst(line: &PreprocessedLine) -> Result<Option<StaticLineCst
     let lexed = lexed_tokens(rewritten_parse_text.as_str(), line.info.line_index)?;
     let mut deferred_error = None;
 
-    if str_starts_with(normalized, "level up ") {
+    if grammar::parse_prefix(&lexed, grammar::phrase(&["level", "up"])).is_some() {
         if parse_level_up_line_lexed(&lexed)?.is_some() {
             return Ok(Some(StaticLineCst {
                 info: line.info.clone(),
@@ -302,15 +388,14 @@ fn parse_static_line_cst(line: &PreprocessedLine) -> Result<Option<StaticLineCst
             }));
         }
     }
-    let lexed_words = crate::cards::builders::parser::lexer::lexed_words(&lexed);
-    if is_doesnt_untap_during_your_untap_step_words(lexed_words.as_slice()) {
+    if is_doesnt_untap_during_your_untap_step_tokens(&lexed) {
         return Ok(Some(StaticLineCst {
             info: line.info.clone(),
             text: normalized.to_string(),
             chosen_option_label: None,
         }));
     }
-    if is_untap_during_each_other_players_untap_step_words(lexed_words.as_slice()) {
+    if looks_like_untap_all_during_each_other_players_untap_step_tokens(&lexed) {
         return Ok(Some(StaticLineCst {
             info: line.info.clone(),
             text: normalized.to_string(),
@@ -326,7 +411,7 @@ fn parse_static_line_cst(line: &PreprocessedLine) -> Result<Option<StaticLineCst
         }));
     }
 
-    if normalized == "activate only once each turn." {
+    if is_activate_only_once_each_turn_tokens(&lexed) {
         return Ok(Some(StaticLineCst {
             info: line.info.clone(),
             text: normalized.to_string(),
@@ -364,7 +449,7 @@ fn parse_static_line_cst(line: &PreprocessedLine) -> Result<Option<StaticLineCst
         Err(err) => deferred_error = Some(err),
     }
 
-    if parse_split_static_item_count(normalized, line.info.line_index)?.is_some() {
+    if parse_split_static_item_count(&lexed)?.is_some() {
         return Ok(Some(StaticLineCst {
             info: line.info.clone(),
             text: normalized.to_string(),
@@ -379,31 +464,23 @@ fn parse_static_line_cst(line: &PreprocessedLine) -> Result<Option<StaticLineCst
     Ok(None)
 }
 
-fn parse_split_static_item_count(
-    text: &str,
-    line_index: usize,
-) -> Result<Option<usize>, CardTextError> {
-    let sentences = text
-        .split('.')
-        .map(str::trim)
-        .filter(|sentence| !sentence.is_empty())
-        .collect::<Vec<_>>();
+fn parse_split_static_item_count(tokens: &[OwnedLexToken]) -> Result<Option<usize>, CardTextError> {
+    let sentences = split_lexed_sentences(tokens);
     if sentences.len() <= 1 {
         return Ok(None);
     }
 
     let mut item_count = 0usize;
     for sentence in sentences {
-        let lexed = lexed_tokens(sentence, line_index)?;
-        if parse_if_this_spell_costs_less_to_cast_line_lexed(&lexed)?.is_some() {
+        if parse_if_this_spell_costs_less_to_cast_line_lexed(sentence)?.is_some() {
             item_count += 1;
             continue;
         }
-        if let Some(actions) = parse_ability_line_lexed(&lexed) {
+        if let Some(actions) = parse_ability_line_lexed(sentence) {
             item_count += actions.len();
             continue;
         }
-        let Some(abilities) = parse_static_ability_ast_line_lexed(&lexed)? else {
+        let Some(abilities) = parse_static_ability_ast_line_lexed(sentence)? else {
             return Ok(None);
         };
         item_count += abilities.len();
@@ -422,13 +499,6 @@ pub(crate) fn split_compound_buff_and_unblockable_sentence(text: &str) -> Option
     let left = format!("{} gets {}.", subject.trim(), buff_clause.trim());
     let right = format!("{} can't be blocked.", subject.trim());
     Some((left, right))
-}
-
-fn is_doesnt_untap_during_your_untap_step_words(words: &[&str]) -> bool {
-    word_slice_ends_with(words, &["untap", "during", "your", "untap", "step"])
-        && words
-            .iter()
-            .any(|word| matches!(*word, "doesnt" | "doesn't"))
 }
 
 fn parse_keyword_line_cst(
@@ -623,7 +693,7 @@ fn parse_statement_line_cst(
     line: &PreprocessedLine,
 ) -> Result<Option<StatementLineCst>, CardTextError> {
     let normalized = line.info.normalized.normalized.as_str();
-    if looks_like_divvy_statement_line(normalized) {
+    if looks_like_divvy_statement_line_tokens(&line.tokens) {
         return Ok(Some(StatementLineCst {
             info: line.info.clone(),
             text: normalized.to_string(),
@@ -638,7 +708,7 @@ fn parse_statement_line_cst(
             text: normalized.to_string(),
         }));
     }
-    if looks_like_pact_next_upkeep_line(normalized) {
+    if looks_like_pact_next_upkeep_line_tokens(&line.tokens) {
         return Ok(Some(StatementLineCst {
             info: line.info.clone(),
             text: normalized.to_string(),
@@ -652,13 +722,10 @@ fn parse_statement_line_cst(
             text: normalized.to_string(),
         }));
     }
-    if (str_contains(normalized, "during each other player's untap step")
-        || str_contains(normalized, "during each other players untap step"))
-        && str_starts_with(normalized, "untap all ")
-    {
+    if looks_like_untap_all_during_each_other_players_untap_step_tokens(&line.tokens) {
         return Ok(None);
     }
-    let parse_text = rewrite_statement_parse_text(normalized);
+    let parse_text = rewrite_statement_parse_text_lexed(&line.tokens, normalized);
     let lexed = lexed_tokens(parse_text.as_str(), line.info.line_index)?;
     let effects = match parse_effect_sentences_lexed(&lexed) {
         Ok(effects) => effects,
@@ -680,17 +747,6 @@ fn parse_statement_line_cst(
         info: line.info.clone(),
         text: normalized.to_string(),
     }))
-}
-
-fn looks_like_divvy_statement_line(normalized: &str) -> bool {
-    str_contains(normalized, " into two piles")
-        || str_contains(normalized, " into three piles")
-        || str_contains(normalized, "chooses two of those cards")
-        || str_contains(normalized, "chooses one of those piles")
-        || str_contains(normalized, "pile of your choice")
-        || str_contains(normalized, "pile of that player's choice")
-        || str_contains(normalized, "chosen pile")
-        || str_contains(normalized, "chosen piles")
 }
 
 fn parse_former_section9_unsupported_line_cst(
@@ -725,103 +781,18 @@ fn looks_like_statement_line(normalized: &str) -> bool {
         return looks_like_statement_line(body);
     }
 
-    if (str_contains(normalized, "during each other player's untap step")
-        || str_contains(normalized, "during each other players untap step"))
-        && str_starts_with(normalized, "untap all ")
-    {
-        return false;
+    if let Ok(tokens) = lex_line(normalized, 0) {
+        if looks_like_untap_all_during_each_other_players_untap_step_tokens(&tokens) {
+            return false;
+        }
+        if looks_like_next_turn_cant_cast_line_tokens(&tokens)
+            || looks_like_vote_statement_line_tokens(&tokens)
+            || looks_like_generic_statement_line_tokens(&tokens)
+        {
+            return true;
+        }
     }
-
-    if (str_contains(normalized, "during that player's next turn")
-        || str_contains(normalized, "during that players next turn"))
-        && str_contains(normalized, "can't cast")
-    {
-        return true;
-    }
-
-    let is_statement_verb = |word: &str| {
-        matches!(
-            word,
-            "add"
-                | "adds"
-                | "choose"
-                | "chooses"
-                | "counter"
-                | "counters"
-                | "create"
-                | "creates"
-                | "deal"
-                | "deals"
-                | "destroy"
-                | "destroys"
-                | "discard"
-                | "discards"
-                | "draw"
-                | "draws"
-                | "enchant"
-                | "enchants"
-                | "exchange"
-                | "exchanges"
-                | "exile"
-                | "exiles"
-                | "gain"
-                | "gains"
-                | "look"
-                | "looks"
-                | "mill"
-                | "mills"
-                | "put"
-                | "puts"
-                | "return"
-                | "returns"
-                | "reveal"
-                | "reveals"
-                | "sacrifice"
-                | "sacrifices"
-                | "search"
-                | "searches"
-                | "shuffle"
-                | "shuffles"
-                | "surveil"
-                | "tap"
-                | "taps"
-                | "until"
-                | "untap"
-                | "untaps"
-        )
-    };
-
-    let words = normalized.split_whitespace().collect::<Vec<_>>();
-    if words.is_empty() {
-        return false;
-    }
-
-    let starts_with_each_player_statement = matches!(
-        words.as_slice(),
-        ["each", "player", third, ..] if is_statement_verb(third)
-    );
-    let starts_with_vote_statement = matches!(
-        words.as_slice(),
-        ["starting", "with", ..]
-            | ["each", "player", "votes", ..]
-            | ["each", "player", "secretly", "votes", ..]
-    ) && words
-        .iter()
-        .any(|word| matches!(*word, "vote" | "votes" | "voting"));
-    let starts_with_quantified_target_player_statement = matches!(
-        words.as_slice(),
-        [_, "target", "player", fourth, ..] | [_, "target", "players", fourth, ..]
-            if is_statement_verb(fourth)
-    );
-
-    starts_with_each_player_statement
-        || starts_with_vote_statement
-        || starts_with_quantified_target_player_statement
-        || is_statement_verb(words[0])
-        || matches!(words.as_slice(), ["this", "spell", third, ..] if is_statement_verb(third))
-        || matches!(words.as_slice(), [_, second, ..] if is_statement_verb(second))
-        || matches!(words.first(), Some(&"target")
-            if words.iter().skip(1).any(|word| is_statement_verb(word)))
+    false
 }
 
 fn should_skip_keyword_action_static_probe(normalized: &str) -> bool {
@@ -832,19 +803,20 @@ fn should_skip_keyword_action_static_probe(normalized: &str) -> bool {
         && !str_starts_with(normalized, "it ")
 }
 
-fn rewrite_statement_parse_text(text: &str) -> String {
-    let sentences = text
-        .split('.')
-        .map(str::trim)
-        .filter(|sentence| !sentence.is_empty())
-        .map(strip_non_keyword_label_prefix)
-        .map(str::trim)
-        .map(rewrite_statement_followup_intro)
+fn rewrite_statement_parse_text_lexed(tokens: &[OwnedLexToken], fallback_text: &str) -> String {
+    let sentences = render_trimmed_lexed_sentences(tokens)
+        .into_iter()
+        .map(|sentence| {
+            strip_non_keyword_label_prefix(sentence.as_str())
+                .trim()
+                .to_string()
+        })
+        .map(|sentence| rewrite_statement_followup_intro(sentence.as_str()))
         .map(rewrite_copy_exception_type_removal)
         .filter(|sentence| !sentence.is_empty())
         .collect::<Vec<_>>();
     if sentences.is_empty() {
-        text.trim().to_string()
+        fallback_text.trim().to_string()
     } else {
         format!("{}.", sentences.join(". "))
     }
@@ -923,31 +895,10 @@ fn looks_like_activation_cost_prefix(raw: &str) -> bool {
 }
 
 fn looks_like_static_line(normalized: &str) -> bool {
-    ((str_contains(normalized, "during each other player's untap step")
-        || str_contains(normalized, "during each other players untap step"))
-        && str_starts_with(normalized, "untap all "))
-        || str_starts_with(normalized, "this ")
-        || str_starts_with(normalized, "enchanted ")
-        || str_starts_with(normalized, "equipped ")
-        || str_starts_with(normalized, "fortified ")
-        || str_starts_with(normalized, "spells ")
-        || str_starts_with(normalized, "creatures ")
-        || str_starts_with(normalized, "other ")
-        || str_starts_with(normalized, "each ")
-        || str_starts_with(normalized, "as long as ")
-        || str_contains(normalized, " can't ")
-        || str_contains(normalized, " can ")
-        || str_contains(normalized, " has ")
-        || str_contains(normalized, " have ")
-        || str_contains(normalized, "maximum hand size")
-}
-
-fn looks_like_pact_next_upkeep_line(normalized: &str) -> bool {
-    str_contains(normalized, "at the beginning of your next upkeep")
-        && str_contains(normalized, "lose the game")
-        && (str_contains(normalized, "if you dont")
-            || str_contains(normalized, "if you don't")
-            || str_contains(normalized, "if you do not"))
+    lex_line(normalized, 0).ok().is_some_and(|tokens| {
+        looks_like_untap_all_during_each_other_players_untap_step_tokens(&tokens)
+            || looks_like_generic_static_line_tokens(&tokens)
+    })
 }
 
 fn rewrite_keyword_dash_parse_text(text: &str) -> String {
@@ -1029,12 +980,10 @@ fn labeled_choice_block_has_peer(items: &[PreprocessedItem], idx: usize) -> bool
     false
 }
 
-fn split_trailing_keyword_activation_sentence(text: &str) -> Option<(String, String)> {
-    let sentences = text
-        .split('.')
-        .map(str::trim)
-        .filter(|sentence| !sentence.is_empty())
-        .collect::<Vec<_>>();
+fn split_trailing_keyword_activation_sentence_lexed(
+    tokens: &[OwnedLexToken],
+) -> Option<(String, String)> {
+    let sentences = render_trimmed_lexed_sentences(tokens);
     if sentences.len() <= 1 {
         return None;
     }
@@ -1214,7 +1163,14 @@ fn strip_non_keyword_label_prefix(text: &str) -> &str {
 
 #[cfg(test)]
 mod tests {
-    use super::{looks_like_statement_line, strip_non_keyword_label_prefix};
+    use super::{
+        is_doesnt_untap_during_your_untap_step_tokens, lex_line,
+        looks_like_divvy_statement_line_tokens, looks_like_generic_statement_line_tokens,
+        looks_like_generic_static_line_tokens, looks_like_next_turn_cant_cast_line_tokens,
+        looks_like_pact_next_upkeep_line_tokens, looks_like_statement_line, looks_like_static_line,
+        looks_like_untap_all_during_each_other_players_untap_step_tokens,
+        looks_like_vote_statement_line_tokens, split_label_prefix, strip_non_keyword_label_prefix,
+    };
 
     #[test]
     fn strip_non_keyword_label_prefix_removes_chained_mode_name_and_cost() {
@@ -1238,11 +1194,98 @@ mod tests {
             "Starting with you, each player votes for death or torture. If death gets more votes, each opponent sacrifices a creature of their choice. If torture gets more votes or the vote is tied, each opponent loses 4 life.",
             "Secret council — Each player secretly votes for truth or consequences, then those votes are revealed. For each truth vote, draw a card. Then choose an opponent at random. For each consequences vote, Truth or Consequences deals 3 damage to that player.",
         ] {
+            let helper_text = split_label_prefix(text)
+                .map(|(_, body)| body.trim())
+                .unwrap_or(text);
+            let tokens =
+                lex_line(helper_text, 0).expect("rewrite lexer should classify vote line body");
+            assert!(looks_like_vote_statement_line_tokens(&tokens));
             assert!(
                 looks_like_statement_line(text.to_ascii_lowercase().as_str()),
                 "expected vote line to classify as a statement: {text}"
             );
         }
+    }
+
+    #[test]
+    fn looks_like_statement_line_recognizes_next_turn_cast_lock() {
+        let text =
+            "Each opponent can't cast instant or sorcery spells during that player's next turn.";
+        let tokens =
+            lex_line(text, 0).expect("rewrite lexer should classify next-turn cast-lock line");
+        assert!(looks_like_next_turn_cant_cast_line_tokens(&tokens));
+        assert!(looks_like_statement_line(
+            text.to_ascii_lowercase().as_str()
+        ));
+    }
+
+    #[test]
+    fn looks_like_statement_line_recognizes_generic_heads() {
+        for text in [
+            "Draw a card.",
+            "Each player discards a card.",
+            "That target player sacrifices a creature.",
+            "This spell deals 3 damage to any target.",
+            "Target creature gets +2/+2 until end of turn.",
+        ] {
+            let tokens =
+                lex_line(text, 0).expect("rewrite lexer should classify generic statement head");
+            assert!(looks_like_generic_statement_line_tokens(&tokens));
+            assert!(looks_like_statement_line(
+                text.to_ascii_lowercase().as_str()
+            ));
+        }
+    }
+
+    #[test]
+    fn looks_like_static_line_recognizes_generic_heads() {
+        for text in [
+            "This creature has flying.",
+            "Enchanted creature gets +1/+1.",
+            "As long as you control an artifact, this creature has hexproof.",
+            "Your maximum hand size is reduced by four.",
+        ] {
+            let tokens =
+                lex_line(text, 0).expect("rewrite lexer should classify generic static head");
+            assert!(looks_like_generic_static_line_tokens(&tokens));
+            assert!(looks_like_static_line(text.to_ascii_lowercase().as_str()));
+        }
+    }
+
+    #[test]
+    fn looks_like_divvy_statement_probe_recognizes_pile_lines() {
+        let text = "Separate all creatures target player controls into two piles. Destroy all creatures in the pile of your choice.";
+        let tokens = lex_line(text, 0).expect("rewrite lexer should classify divvy pile line");
+        assert!(looks_like_divvy_statement_line_tokens(&tokens));
+    }
+
+    #[test]
+    fn untap_shape_probes_recognize_expected_token_patterns() {
+        let your_step = lex_line("Lands you control don't untap during your untap step.", 0)
+            .expect("rewrite lexer should classify your-untap-step probe");
+        assert!(is_doesnt_untap_during_your_untap_step_tokens(&your_step));
+
+        let other_players_text =
+            "Untap all permanents you control during each other player's untap step.";
+        let other_players = lex_line(other_players_text, 0)
+            .expect("rewrite lexer should classify other-players untap-step probe");
+        assert!(looks_like_untap_all_during_each_other_players_untap_step_tokens(&other_players));
+        assert!(!looks_like_statement_line(
+            other_players_text.to_ascii_lowercase().as_str()
+        ));
+        assert!(looks_like_static_line(
+            other_players_text.to_ascii_lowercase().as_str()
+        ));
+    }
+
+    #[test]
+    fn pact_shape_probe_recognizes_next_upkeep_lose_game_line() {
+        let tokens = lex_line(
+            "At the beginning of your next upkeep, pay {2}{U}{U}. If you don't, you lose the game.",
+            0,
+        )
+        .expect("rewrite lexer should classify pact next-upkeep statement line");
+        assert!(looks_like_pact_next_upkeep_line_tokens(&tokens));
     }
 }
 
@@ -1314,12 +1357,12 @@ fn is_fully_parenthetical_line(text: &str) -> bool {
     str_starts_with_char(trimmed, '(') && str_ends_with_char(trimmed, ')')
 }
 
-fn split_trigger_sentence_chunks_rewrite(text: &str, line_index: usize) -> Vec<String> {
-    let sentences = text
-        .split('.')
-        .map(str::trim)
+fn split_trigger_sentence_chunks_rewrite_lexed(tokens: &[OwnedLexToken]) -> Vec<String> {
+    let sentence_tokens = split_lexed_sentences(tokens);
+    let sentences = sentence_tokens
+        .iter()
+        .map(|sentence| render_trimmed_lexed_sentence(sentence))
         .filter(|sentence| !sentence.is_empty())
-        .map(ToString::to_string)
         .collect::<Vec<_>>();
     if sentences.len() <= 1 {
         return sentences;
@@ -1329,9 +1372,8 @@ fn split_trigger_sentence_chunks_rewrite(text: &str, line_index: usize) -> Vec<S
     let mut current = Vec::new();
     let mut current_starts_with_trigger = false;
 
-    for sentence in sentences {
-        let sentence_starts_with_trigger =
-            sentence_starts_with_trigger_intro_rewrite(&sentence, line_index);
+    for (sentence, sentence_tokens) in sentences.into_iter().zip(sentence_tokens.into_iter()) {
+        let sentence_starts_with_trigger = line_starts_with_trigger_intro_tokens(sentence_tokens);
         if !current.is_empty() && current_starts_with_trigger && sentence_starts_with_trigger {
             chunks.push(current.join(". "));
             current.clear();
@@ -1350,13 +1392,8 @@ fn split_trigger_sentence_chunks_rewrite(text: &str, line_index: usize) -> Vec<S
     chunks
 }
 
-fn split_reveal_first_draw_line_rewrite(text: &str) -> Option<Vec<String>> {
-    let sentences = text
-        .split('.')
-        .map(str::trim)
-        .filter(|sentence| !sentence.is_empty())
-        .map(ToString::to_string)
-        .collect::<Vec<_>>();
+fn split_reveal_first_draw_line_rewrite_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<String>> {
+    let sentences = render_trimmed_lexed_sentences(tokens);
     if sentences.len() <= 1 {
         return None;
     }
@@ -1380,10 +1417,6 @@ fn split_reveal_first_draw_line_rewrite(text: &str) -> Option<Vec<String>> {
     }
 
     Some(vec![sentences[0].clone(), tail])
-}
-
-fn sentence_starts_with_trigger_intro_rewrite(sentence: &str, line_index: usize) -> bool {
-    line_starts_with_trigger_intro_rewrite(sentence, line_index)
 }
 
 fn classify_unsupported_line_reason(line: &PreprocessedLine) -> &'static str {
@@ -1603,7 +1636,7 @@ fn split_activation_text_parts(
 
         return Ok(Some((
             cost_tokens.to_vec(),
-            render_lexed_tokens(effect_tokens).trim().to_string(),
+            render_token_slice(effect_tokens).trim().to_string(),
         )));
     }
 
@@ -1754,17 +1787,13 @@ pub(crate) fn parse_document_cst(
                 }
 
                 let normalized = line.info.normalized.normalized.as_str();
-                if let Some(chunks) = split_reveal_first_draw_line_rewrite(normalized) {
+                if let Some(chunks) = split_reveal_first_draw_line_rewrite_lexed(&line.tokens) {
                     for chunk in chunks {
                         let chunk_line = rewrite_line_normalized(line, chunk.as_str())?;
-                        if line_starts_with_trigger_intro_rewrite(
-                            &chunk,
-                            chunk_line.info.line_index,
-                        ) {
-                            for trigger_chunk in split_trigger_sentence_chunks_rewrite(
-                                &chunk_line.info.normalized.normalized,
-                                chunk_line.info.line_index,
-                            ) {
+                        if line_starts_with_trigger_intro_tokens(&chunk_line.tokens) {
+                            for trigger_chunk in
+                                split_trigger_sentence_chunks_rewrite_lexed(&chunk_line.tokens)
+                            {
                                 let trigger_line =
                                     rewrite_line_normalized(&chunk_line, trigger_chunk.as_str())?;
                                 lines.push(RewriteLineCst::Triggered(parse_triggered_line_cst(
@@ -1789,7 +1818,7 @@ pub(crate) fn parse_document_cst(
                     continue;
                 }
                 if let Some((prefix, suffix)) =
-                    split_trailing_keyword_activation_sentence(normalized)
+                    split_trailing_keyword_activation_sentence_lexed(&line.tokens)
                 {
                     let prefix_line = rewrite_line_normalized(line, prefix.as_str())?;
                     if let Some(statement_line) = parse_statement_line_cst(&prefix_line)? {
@@ -1866,7 +1895,7 @@ pub(crate) fn parse_document_cst(
                         labeled_choice_block_has_peer(&preprocessed.items, idx);
                     if !preserve_keyword_prefix_for_parse(label) {
                         let body_line = rewrite_line_normalized(line, body)?;
-                        if line_starts_with_trigger_intro_rewrite(body, body_line.info.line_index) {
+                        if line_starts_with_trigger_intro_tokens(&body_line.tokens) {
                             if let Ok(mut triggered) = parse_triggered_line_cst(&body_line) {
                                 if preserve_as_choice_label {
                                     triggered.chosen_option_label =
@@ -1924,7 +1953,7 @@ pub(crate) fn parse_document_cst(
                             && let Some((cost_tokens, effect_text)) =
                                 split_activation_text_parts(body, line.info.line_index)?
                         {
-                            let cost_text = render_lexed_tokens(&cost_tokens);
+                            let cost_text = render_token_slice(&cost_tokens);
                             match parse_activation_cost_tokens_rewrite(&cost_tokens) {
                                 Ok(cost) => {
                                     lines.push(RewriteLineCst::Activated(ActivatedLineCst {
@@ -1963,14 +1992,8 @@ pub(crate) fn parse_document_cst(
                     }
                 }
 
-                if line_starts_with_trigger_intro_rewrite(
-                    &line.info.normalized.normalized,
-                    line.info.line_index,
-                ) {
-                    let trigger_chunks = split_trigger_sentence_chunks_rewrite(
-                        &line.info.normalized.normalized,
-                        line.info.line_index,
-                    );
+                if line_starts_with_trigger_intro_tokens(&line.tokens) {
+                    let trigger_chunks = split_trigger_sentence_chunks_rewrite_lexed(&line.tokens);
                     if trigger_chunks.len() > 1 {
                         for chunk in trigger_chunks {
                             let chunk_line = rewrite_line_normalized(line, chunk.as_str())?;
@@ -2078,7 +2101,7 @@ pub(crate) fn parse_document_cst(
                     && let Some((cost_tokens, effect_text)) =
                         split_activation_text_parts(activation_text, line.info.line_index)?
                 {
-                    let cost_text = render_lexed_tokens(&cost_tokens);
+                    let cost_text = render_token_slice(&cost_tokens);
                     match parse_activation_cost_tokens_rewrite(&cost_tokens) {
                         Ok(cost) => {
                             lines.push(RewriteLineCst::Activated(ActivatedLineCst {
@@ -2139,7 +2162,7 @@ pub(crate) fn parse_document_cst(
                     }
                 }
 
-                if looks_like_pact_next_upkeep_line(normalized)
+                if looks_like_pact_next_upkeep_line_tokens(&line.tokens)
                     || looks_like_statement_line(normalized)
                 {
                     if let Some(statement_line) = parse_statement_line_cst(line)? {
@@ -2172,7 +2195,7 @@ pub(crate) fn parse_document_cst(
                 if allow_unsupported {
                     lines.push(RewriteLineCst::Unsupported(UnsupportedLineCst {
                         info: line.info.clone(),
-                        reason_code: if looks_like_pact_next_upkeep_line(normalized) {
+                        reason_code: if looks_like_pact_next_upkeep_line_tokens(&line.tokens) {
                             "statement-line-not-yet-supported"
                         } else {
                             classify_unsupported_line_reason(line)

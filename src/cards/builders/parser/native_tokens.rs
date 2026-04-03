@@ -1,31 +1,48 @@
+use crate::cards::builders::TextSpan;
+
 use super::lexer::OwnedLexToken;
 use super::lexer::TokenKind;
 
 pub(crate) type TokInput<'a> = &'a [OwnedLexToken];
 
-pub(crate) fn lowercase_word_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
-    let mut lowered = tokens.to_vec();
-    for token in &mut lowered {
-        if let Some(word) = token.word_mut() {
-            *word = word.to_ascii_lowercase();
-        }
-    }
-    lowered
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct CompatWordPiece {
+    pub(crate) text: String,
+    pub(crate) span: TextSpan,
 }
 
-fn push_normalized_words(slice: &str, in_mana_braces: bool, out: &mut Vec<String>) {
+fn push_normalized_words(
+    slice: &str,
+    base_span: TextSpan,
+    in_mana_braces: bool,
+    out: &mut Vec<CompatWordPiece>,
+) {
     let mut buffer = String::new();
+    let mut piece_start: Option<usize> = None;
+    let mut piece_end = base_span.start;
     let chars: Vec<(usize, char)> = slice.char_indices().collect();
 
-    let flush = |buffer: &mut String, out: &mut Vec<String>| {
+    let flush = |buffer: &mut String,
+                 out: &mut Vec<CompatWordPiece>,
+                 piece_start: &mut Option<usize>,
+                 piece_end: &mut usize| {
         if !buffer.is_empty() {
-            out.push(std::mem::take(buffer));
+            out.push(CompatWordPiece {
+                text: std::mem::take(buffer),
+                span: TextSpan {
+                    line: base_span.line,
+                    start: piece_start.unwrap_or(base_span.start),
+                    end: *piece_end,
+                },
+            });
         }
+        *piece_start = None;
     };
 
-    for (idx, (_, mut ch)) in chars.iter().copied().enumerate() {
-        if ch == '−' {
-            ch = '-';
+    for (idx, (rel_idx, original_ch)) in chars.iter().copied().enumerate() {
+        let mut normalized_ch = original_ch;
+        if normalized_ch == '−' {
+            normalized_ch = '-';
         }
         let prev = if idx > 0 { chars[idx - 1].1 } else { '\0' };
         let next = if idx + 1 < chars.len() {
@@ -33,7 +50,7 @@ fn push_normalized_words(slice: &str, in_mana_braces: bool, out: &mut Vec<String
         } else {
             '\0'
         };
-        let is_counter_char = match ch {
+        let is_counter_char = match normalized_ch {
             '+' | '-' => next.is_ascii_digit() || next == 'x' || next == 'X',
             '/' => {
                 (prev.is_ascii_digit() || prev == 'x' || prev == 'X')
@@ -45,21 +62,62 @@ fn push_normalized_words(slice: &str, in_mana_braces: bool, out: &mut Vec<String
             }
             _ => false,
         };
-        let is_mana_hybrid_slash = ch == '/' && in_mana_braces;
+        let is_mana_hybrid_slash = normalized_ch == '/' && in_mana_braces;
 
-        if ch.is_ascii_alphanumeric() || is_counter_char || is_mana_hybrid_slash {
-            buffer.push(ch.to_ascii_lowercase());
+        if normalized_ch.is_ascii_alphanumeric() || is_counter_char || is_mana_hybrid_slash {
+            if piece_start.is_none() {
+                piece_start = Some(base_span.start + rel_idx);
+            }
+            piece_end = base_span.start + rel_idx + original_ch.len_utf8();
+            buffer.push(normalized_ch.to_ascii_lowercase());
             continue;
         }
 
-        if matches!(ch, '\'' | '’' | '‘') {
+        if matches!(normalized_ch, '\'' | '’' | '‘') {
+            if piece_start.is_some() {
+                piece_end = base_span.start + rel_idx + original_ch.len_utf8();
+            }
             continue;
         }
 
-        flush(&mut buffer, out);
+        flush(&mut buffer, out, &mut piece_start, &mut piece_end);
     }
 
-    flush(&mut buffer, out);
+    flush(&mut buffer, out, &mut piece_start, &mut piece_end);
+}
+
+pub(crate) fn compat_word_pieces_for_token(token: &OwnedLexToken) -> Vec<CompatWordPiece> {
+    let mut pieces = Vec::new();
+    match token.kind {
+        TokenKind::Word | TokenKind::Number => {
+            push_normalized_words(token.parser_text(), token.span(), false, &mut pieces);
+        }
+        TokenKind::Tilde => pieces.push(CompatWordPiece {
+            text: "this".to_string(),
+            span: token.span(),
+        }),
+        TokenKind::ManaGroup => {
+            let inner = token.slice.trim_start_matches('{').trim_end_matches('}');
+            if !inner.is_empty() {
+                push_normalized_words(
+                    inner,
+                    TextSpan {
+                        line: token.span().line,
+                        start: token.span().start.saturating_add(1),
+                        end: token.span().end.saturating_sub(1),
+                    },
+                    true,
+                    &mut pieces,
+                );
+            }
+        }
+        TokenKind::Half => pieces.push(CompatWordPiece {
+            text: "1/2".to_string(),
+            span: token.span(),
+        }),
+        _ => {}
+    }
+    pieces
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -77,44 +135,15 @@ impl LowercaseWordView {
         let mut token_idx = 0usize;
         while token_idx < tokens.len() {
             let token = &tokens[token_idx];
-            let (token_start, token_end_exclusive, pieces) = match token.kind {
-                TokenKind::Word => {
-                    let mut pieces = Vec::new();
-                    push_normalized_words(token.slice.as_str(), false, &mut pieces);
-                    (token_idx, token_idx + 1, pieces)
-                }
-                TokenKind::Tilde => (token_idx, token_idx + 1, vec!["this".to_string()]),
-                TokenKind::ManaGroup => {
-                    let inner = token.slice.trim_start_matches('{').trim_end_matches('}');
-                    let mut pieces = Vec::new();
-                    if !inner.is_empty() {
-                        push_normalized_words(inner, true, &mut pieces);
-                    }
-                    (token_idx, token_idx + 1, pieces)
-                }
-                TokenKind::Dash
-                    if tokens
-                        .get(token_idx + 1)
-                        .is_some_and(|next| next.kind == TokenKind::Word)
-                        && token.span.end == tokens[token_idx + 1].span.start =>
-                {
-                    let next = &tokens[token_idx + 1];
-                    let mut pieces = Vec::new();
-                    let combined = format!("-{}", next.slice);
-                    push_normalized_words(combined.as_str(), false, &mut pieces);
-                    token_idx += 1;
-                    (token_idx - 1, token_idx + 1, pieces)
-                }
-                TokenKind::Half => (token_idx, token_idx + 1, vec!["1/2".to_string()]),
-                _ => {
-                    token_idx += 1;
-                    continue;
-                }
-            };
+            let pieces = compat_word_pieces_for_token(token);
+            if pieces.is_empty() {
+                token_idx += 1;
+                continue;
+            }
             for piece in pieces {
-                lower_words.push(piece);
-                token_start_indices.push(token_start);
-                token_end_indices.push(token_end_exclusive);
+                lower_words.push(piece.text);
+                token_start_indices.push(token_idx);
+                token_end_indices.push(token_idx + 1);
             }
             token_idx += 1;
         }
@@ -136,10 +165,6 @@ impl LowercaseWordView {
 
     pub(crate) fn get(&self, idx: usize) -> Option<&str> {
         self.lower_words.get(idx).map(String::as_str)
-    }
-
-    pub(crate) fn first(&self) -> Option<&str> {
-        self.get(0)
     }
 
     pub(crate) fn starts_with(&self, expected: &[&str]) -> bool {
@@ -187,21 +212,6 @@ impl LowercaseWordView {
         }
 
         None
-    }
-
-    pub(crate) fn has_word(&self, expected: &str) -> bool {
-        self.find_word(expected).is_some()
-    }
-
-    pub(crate) fn has_any_word(&self, expected: &[&str]) -> bool {
-        let mut idx = 0usize;
-        while idx < expected.len() {
-            if self.has_word(expected[idx]) {
-                return true;
-            }
-            idx += 1;
-        }
-        false
     }
 
     pub(crate) fn to_word_refs(&self) -> Vec<&str> {

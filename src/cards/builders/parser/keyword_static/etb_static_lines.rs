@@ -1,5 +1,12 @@
 fn etb_token_words(tokens: &[OwnedLexToken]) -> Vec<&str> {
-    crate::cards::builders::parser::lexer::lexed_words(tokens)
+    crate::cards::builders::parser::lexer::token_word_refs(tokens)
+}
+
+fn etb_normalized_token_words(tokens: &[OwnedLexToken]) -> (Vec<String>, Vec<usize>) {
+    let word_view = crate::cards::builders::parser::grammar::primitives::CompatWordIndex::new(
+        tokens,
+    );
+    (word_view.owned_words(), word_view.token_start_indices())
 }
 
 fn etb_word_slice_starts_with(words: &[&str], prefix: &[&str]) -> bool {
@@ -688,7 +695,7 @@ fn parse_enters_with_counter_condition_clause(tokens: &[OwnedLexToken]) -> Optio
 
 fn parse_enters_with_counter_equal_to_value_clause(tokens: &[OwnedLexToken]) -> Option<Value> {
     let trimmed = trim_edge_punctuation(tokens);
-    let words_all = crate::cards::builders::parser::lexed_words(&trimmed);
+    let words_all = crate::cards::builders::parser::token_word_refs(&trimmed);
     if !etb_word_slice_starts_with(&words_all, &["equal", "to"]) {
         return None;
     }
@@ -714,7 +721,7 @@ fn parse_enters_with_counter_equal_to_value_clause(tokens: &[OwnedLexToken]) -> 
 }
 
 fn parse_equal_to_greatest_cards_drawn_this_turn_value(tokens: &[OwnedLexToken]) -> Option<Value> {
-    let words_all = crate::cards::builders::parser::lexed_words(tokens);
+    let words_all = crate::cards::builders::parser::token_word_refs(tokens);
     if words_all
         == [
             "equal", "to", "the", "greatest", "number", "of", "cards", "an", "opponent", "has",
@@ -732,8 +739,11 @@ fn parse_equal_to_greatest_cards_drawn_this_turn_value(tokens: &[OwnedLexToken])
 }
 
 pub(crate) fn parse_where_x_value_clause(tokens: &[OwnedLexToken]) -> Option<Value> {
-    let word_view = LowercaseWordView::new(tokens);
-    let words = word_view.to_word_refs();
+    let (normalized_words, _) = etb_normalized_token_words(tokens);
+    let words = normalized_words
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
     if !etb_word_slice_starts_with(&words, &["where", "x", "is"]) {
         return None;
     }
@@ -840,8 +850,11 @@ pub(crate) fn parse_where_x_value_clause_lexed(
 }
 
 pub(crate) fn parse_where_x_source_stat_value(tokens: &[OwnedLexToken]) -> Option<Value> {
-    let word_view = LowercaseWordView::new(tokens);
-    let words = word_view.to_word_refs();
+    let (normalized_words, _) = etb_normalized_token_words(tokens);
+    let words = normalized_words
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
     if !etb_word_slice_starts_with(&words, &["where", "x", "is"]) {
         return None;
     }
@@ -929,7 +942,7 @@ pub(crate) fn parse_where_x_source_stat_value(tokens: &[OwnedLexToken]) -> Optio
 pub(crate) fn parse_where_x_is_fixed_plus_reference_value(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
-    let clause_words = crate::cards::builders::parser::lexed_words(tokens);
+    let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
     if !etb_word_slice_starts_with(&clause_words, &["where", "x", "is"]) {
         return None;
     }
@@ -999,7 +1012,7 @@ pub(crate) fn parse_where_x_is_fixed_plus_reference_value(
 }
 
 pub(crate) fn parse_where_x_life_gained_this_turn_value(tokens: &[OwnedLexToken]) -> Option<Value> {
-    let words = crate::cards::builders::parser::lexed_words(tokens);
+    let words = crate::cards::builders::parser::token_word_refs(tokens);
     if !etb_word_slice_starts_with(&words, &["where", "x", "is"]) {
         return None;
     }
@@ -1039,7 +1052,7 @@ pub(crate) fn parse_where_x_life_gained_this_turn_value(tokens: &[OwnedLexToken]
 }
 
 pub(crate) fn parse_where_x_life_lost_this_turn_value(tokens: &[OwnedLexToken]) -> Option<Value> {
-    let words = crate::cards::builders::parser::lexed_words(tokens);
+    let words = crate::cards::builders::parser::token_word_refs(tokens);
     if !etb_word_slice_starts_with(&words, &["where", "x", "is"]) {
         return None;
     }
@@ -1076,7 +1089,7 @@ pub(crate) fn parse_where_x_life_lost_this_turn_value(tokens: &[OwnedLexToken]) 
 pub(crate) fn parse_where_x_opponents_dealt_combat_damage_this_turn_value(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
-    let words = crate::cards::builders::parser::lexed_words(tokens);
+    let words = crate::cards::builders::parser::token_word_refs(tokens);
     if !etb_word_slice_starts_with(&words, &["where", "x", "is"]) {
         return None;
     }
@@ -1115,7 +1128,7 @@ pub(crate) fn parse_where_x_opponents_dealt_combat_damage_this_turn_value(
 }
 
 pub(crate) fn parse_where_x_noncombat_damage_to_opponents_value(tokens: &[OwnedLexToken]) -> Option<Value> {
-    let words = crate::cards::builders::parser::lexed_words(tokens);
+    let words = crate::cards::builders::parser::token_word_refs(tokens);
     if !etb_word_slice_starts_with(&words, &["where", "x", "is"]) {
         return None;
     }
@@ -1158,7 +1171,7 @@ pub(crate) fn parse_where_x_noncombat_damage_to_opponents_value(tokens: &[OwnedL
 }
 
 pub(crate) fn parse_where_x_is_aggregate_filter_value(tokens: &[OwnedLexToken]) -> Option<Value> {
-    let clause_words = crate::cards::builders::parser::lexed_words(tokens);
+    let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
     if !etb_word_slice_starts_with(&clause_words, &["where", "x", "is"]) {
         return None;
     }
@@ -1202,16 +1215,19 @@ pub(crate) fn parse_where_x_is_aggregate_filter_value(tokens: &[OwnedLexToken]) 
 
     let object_start_token_idx = token_index_for_word_index(tokens, idx)?;
     let filter_tokens = &tokens[object_start_token_idx..];
-    let filter_words = crate::cards::builders::parser::lexed_words(filter_tokens);
+    let filter_words = crate::cards::builders::parser::token_word_refs(filter_tokens);
     let should_try_split = etb_word_slice_contains_all(&filter_words, &["and", "graveyard"])
         && filter_words
             .iter()
             .any(|word| matches!(*word, "control" | "controls" | "own" | "owns"));
     let filter = (if should_try_split {
-        let segments = split_on_and(filter_tokens);
+        let segments =
+            crate::cards::builders::parser::grammar::primitives::split_lexed_slices_on_and(
+                filter_tokens,
+            );
         let mut branches = Vec::new();
         for segment in segments {
-            let trimmed = trim_commas(&segment);
+            let trimmed = trim_commas(segment);
             if trimmed.is_empty() {
                 return None;
             }
@@ -1245,7 +1261,7 @@ pub(crate) fn parse_where_x_greatest_commander_mana_value(
 ) -> Option<Value> {
     let commander_start_token_idx = token_index_for_word_index(tokens, commander_start_word_idx)?;
     let commander_words =
-        crate::cards::builders::parser::lexed_words(&tokens[commander_start_token_idx..]);
+        crate::cards::builders::parser::token_word_refs(&tokens[commander_start_token_idx..]);
     let normalized: Vec<&str> = commander_words
         .iter()
         .copied()
@@ -1284,7 +1300,7 @@ pub(crate) fn parse_where_x_greatest_commander_mana_value(
 pub(crate) fn parse_where_x_is_number_of_differently_named_filter_value(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
-    let clause_words = crate::cards::builders::parser::lexed_words(tokens);
+    let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
     if !etb_word_slice_starts_with(&clause_words, &["where", "x", "is"]) {
         return None;
     }
@@ -1308,7 +1324,7 @@ pub(crate) fn parse_where_x_is_number_of_differently_named_filter_value(
 }
 
 pub(crate) fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) -> Option<Value> {
-    let clause_words = crate::cards::builders::parser::lexed_words(tokens);
+    let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
     if !etb_word_slice_starts_with(&clause_words, &["where", "x", "is"]) {
         return None;
     }
@@ -1338,7 +1354,7 @@ pub(crate) fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) 
     }
     let object_start_token_idx = object_start_token_idx?;
     let filter_tokens = &tokens[object_start_token_idx..];
-    let filter_words = crate::cards::builders::parser::lexed_words(filter_tokens);
+    let filter_words = crate::cards::builders::parser::token_word_refs(filter_tokens);
     if let Some(value) = parse_number_of_counters_on_source_value(&filter_words) {
         return Some(value);
     }
@@ -1436,7 +1452,7 @@ fn parse_number_of_counters_on_source_value(filter_words: &[&str]) -> Option<Val
 pub(crate) fn parse_where_x_is_fixed_plus_number_of_filter_value(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
-    let clause_words = crate::cards::builders::parser::lexed_words(tokens);
+    let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
     if !etb_word_slice_starts_with(&clause_words, &["where", "x", "is"]) {
         return None;
     }
@@ -1460,7 +1476,7 @@ pub(crate) fn parse_where_x_is_fixed_plus_number_of_filter_value(
 
     let filter_start_idx = token_index_for_word_index(tokens, number_word_idx + 2)?;
     let filter_tokens = &tokens[filter_start_idx..];
-    let filter_words = crate::cards::builders::parser::lexed_words(filter_tokens);
+    let filter_words = crate::cards::builders::parser::token_word_refs(filter_tokens);
     if etb_word_slice_starts_with(&filter_words, &["basic", "land", "type", "among"])
         || etb_word_slice_starts_with(&filter_words, &["basic", "land", "types", "among"])
     {
@@ -1503,7 +1519,7 @@ pub(crate) fn parse_where_x_is_fixed_plus_number_of_filter_value(
 pub(crate) fn parse_where_x_is_number_of_filter_plus_or_minus_fixed_value(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
-    let clause_words = crate::cards::builders::parser::lexed_words(tokens);
+    let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
     if !etb_word_slice_starts_with(&clause_words, &["where", "x", "is"]) {
         return None;
     }
@@ -1529,7 +1545,7 @@ pub(crate) fn parse_where_x_is_number_of_filter_plus_or_minus_fixed_value(
     let operator_token_idx = token_index_for_word_index(tokens, operator_word_idx)?;
     let filter_tokens = trim_commas(&tokens[filter_start_token_idx..operator_token_idx]);
     let filter = parse_object_filter(&filter_tokens, false).ok()?;
-    let filter_words = crate::cards::builders::parser::lexed_words(&filter_tokens);
+    let filter_words = crate::cards::builders::parser::token_word_refs(&filter_tokens);
     let count_value = if etb_word_slice_contains_all(&filter_words, &["cards", "in", "your"])
         && etb_word_slice_contains_any(&filter_words, &["hand", "hands"])
     {
@@ -1541,7 +1557,7 @@ pub(crate) fn parse_where_x_is_number_of_filter_plus_or_minus_fixed_value(
     let offset_start_token_idx = token_index_for_word_index(tokens, operator_word_idx + 1)?;
     let offset_tokens = trim_commas(&tokens[offset_start_token_idx..]);
     let (offset_value, used) = parse_number(&offset_tokens)?;
-    let trailing_words = crate::cards::builders::parser::lexed_words(&offset_tokens[used..]);
+    let trailing_words = crate::cards::builders::parser::token_word_refs(&offset_tokens[used..]);
     if !trailing_words.is_empty() {
         return None;
     }
@@ -1574,7 +1590,7 @@ pub(crate) fn token_index_for_word_index(tokens: &[OwnedLexToken], word_index: u
 pub(crate) fn parse_enters_tapped_for_filter_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
-    let clause_words = crate::cards::builders::parser::lexed_words(tokens);
+    let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
     if matches!(
         clause_words.first().copied(),
         Some("if" | "when" | "whenever" | "as")
@@ -1622,14 +1638,24 @@ pub(crate) fn parse_enters_tapped_for_filter_line(
         )));
     }
     let before_enter = &tokens[..enter_token_idx];
-    let before_word_view = LowercaseWordView::new(before_enter);
-    let before_words = before_word_view.to_word_refs();
+    let (normalized_before_words, before_token_start_indices) =
+        etb_normalized_token_words(before_enter);
+    let before_words = normalized_before_words
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
     let mut controller_override: Option<PlayerFilter> = None;
     let mut filter_end = before_enter.len();
     let find_suffix_cut = |suffix_len: usize| {
-        before_word_view
-            .token_index_for_word_index(before_words.len().saturating_sub(suffix_len))
-            .unwrap_or(before_enter.len())
+        let keep_word_count = before_words.len().saturating_sub(suffix_len);
+        if keep_word_count == 0 {
+            0
+        } else {
+            before_token_start_indices
+                .get(keep_word_count)
+                .copied()
+                .unwrap_or(before_enter.len())
+        }
     };
     if etb_word_slice_ends_with(&before_words, &["played", "by", "your", "opponents"]) {
         controller_override = Some(PlayerFilter::Opponent);
@@ -1653,7 +1679,7 @@ pub(crate) fn parse_enters_tapped_for_filter_line(
 pub(crate) fn parse_enters_untapped_for_filter_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
-    let clause_words = crate::cards::builders::parser::lexed_words(tokens);
+    let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
     if matches!(
         clause_words.first().copied(),
         Some("if" | "when" | "whenever" | "as")
@@ -1692,7 +1718,7 @@ pub(crate) fn parse_enters_untapped_for_filter_line(
 pub(crate) fn parse_reveal_from_hand_or_enters_tapped_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
-    let clause_words = crate::cards::builders::parser::lexed_words(tokens);
+    let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
     if !etb_word_slice_starts_with(&clause_words, &["as", "this", "land", "enters"]) {
         return Ok(None);
     }
@@ -1832,7 +1858,7 @@ pub(crate) fn parse_reveal_from_hand_or_enters_tapped_line(
 pub(crate) fn parse_conditional_enters_tapped_unless_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
-    let clause_words = crate::cards::builders::parser::lexed_words(tokens);
+    let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
     if !etb_word_slice_contains_any(&clause_words, &["enters", "enter"]) {
         return Ok(None);
     }
@@ -1843,7 +1869,7 @@ pub(crate) fn parse_conditional_enters_tapped_unless_line(
     let Some(unless_idx) = etb_find_token_index(tokens, |token| token.is_word("unless")) else {
         return Ok(None);
     };
-    let condition_words = crate::cards::builders::parser::lexed_words(&tokens[unless_idx + 1..]);
+    let condition_words = crate::cards::builders::parser::token_word_refs(&tokens[unless_idx + 1..]);
     if etb_word_slice_starts_with(&condition_words, &["you", "control", "two", "or", "more", "other", "lands"]) {
         return Ok(Some(
             StaticAbility::enters_tapped_unless_control_two_or_more_other_lands(),
@@ -1912,7 +1938,7 @@ pub(crate) fn parse_conditional_enters_tapped_unless_line(
 pub(crate) fn parse_enters_with_additional_counter_for_filter_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
-    let clause_words = crate::cards::builders::parser::lexed_words(tokens);
+    let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
     let enter_word_idx = etb_find_word_index(&clause_words, |word| matches!(word, "enter" | "enters"));
     let Some(enter_word_idx) = enter_word_idx else {
         return Ok(None);
@@ -1930,7 +1956,7 @@ pub(crate) fn parse_enters_with_additional_counter_for_filter_line(
     if subject_tokens.is_empty() {
         return Ok(None);
     }
-    let subject_words = crate::cards::builders::parser::lexed_words(&subject_tokens);
+    let subject_words = crate::cards::builders::parser::token_word_refs(&subject_tokens);
     if is_source_reference_words(&subject_words) {
         return Ok(None);
     }

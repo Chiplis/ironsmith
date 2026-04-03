@@ -5,12 +5,12 @@ use super::super::activation_and_restrictions::{
     parse_target_player_choose_objects_clause, parse_you_choose_objects_clause,
     parse_you_choose_player_clause,
 };
+use super::super::grammar::primitives::CompatWordIndex;
 use super::super::keyword_static::{
     keyword_action_to_static_ability, parse_ability_line, parse_pt_modifier,
     parse_pt_modifier_values,
 };
 use super::super::lexer::OwnedLexToken;
-use super::super::native_tokens::{LowercaseWordView, lowercase_word_tokens};
 use super::super::object_filters::parse_object_filter;
 use super::super::util::{
     contains_until_end_of_turn, parse_card_type, parse_color, parse_subject, parse_target_phrase,
@@ -37,19 +37,21 @@ use super::{
     parse_simple_gain_ability_clause, parse_simple_lose_ability_clause, parse_subtype_word,
 };
 use crate::TagKey;
-use crate::cards::builders::scan_helpers::{
+use crate::cards::builders::{CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, TargetAst};
+use crate::cards::builders::{
     find_index as find_token_index, find_str_by as find_word_index_by,
     find_str_index as find_word_index, find_window_index as find_word_sequence_index,
     slice_contains_any as word_slice_contains_any, slice_contains_str as word_slice_contains,
     slice_ends_with as word_slice_ends_with, slice_starts_with as word_slice_starts_with,
 };
-use crate::cards::builders::{CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, TargetAst};
 use crate::effect::{Until, Value};
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype};
 
+type ClauseDispatchCompatWords = CompatWordIndex;
+
 fn render_lower_words(tokens: &[OwnedLexToken]) -> String {
-    let word_view = LowercaseWordView::new(tokens);
+    let word_view = ClauseDispatchCompatWords::new(tokens);
     word_view.to_word_refs().join(" ")
 }
 
@@ -221,7 +223,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         return Ok(EffectAst::May { effects });
     }
 
-    let clause_word_view = LowercaseWordView::new(tokens);
+    let clause_word_view = ClauseDispatchCompatWords::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
     if clause_words.as_slice() == ["the", "ring", "tempts", "you"] {
         return Ok(EffectAst::RingTemptsYou {
@@ -368,7 +370,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         .unwrap_or(0);
         let subject_tokens = trim_commas(&tokens[..assigns_idx]);
         let tail_tokens = trim_commas(&tokens[assigns_idx + 1..]);
-        let tail_word_view = LowercaseWordView::new(&tail_tokens);
+        let tail_word_view = ClauseDispatchCompatWords::new(&tail_tokens);
         let tail_words = tail_word_view.to_word_refs();
         if !word_slice_starts_with(&tail_words, &["no", "combat", "damage"]) {
             return Err(CardTextError::ParseError(format!(
@@ -390,7 +392,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
             )));
         }
 
-        let subject_word_view = LowercaseWordView::new(&subject_tokens);
+        let subject_word_view = ClauseDispatchCompatWords::new(&subject_tokens);
         let subject_words = subject_word_view.to_word_refs();
         let source = if subject_words.is_empty()
             || matches!(
@@ -502,7 +504,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
     if matches!(verb, Verb::Get) {
         let subject_tokens = &tokens[..verb_idx];
         if !subject_tokens.is_empty() {
-            let subject_word_view = LowercaseWordView::new(subject_tokens);
+            let subject_word_view = ClauseDispatchCompatWords::new(subject_tokens);
             let subject_words = subject_word_view.to_word_refs();
             let collapsed_modifier_tail =
                 collapse_leading_signed_pt_modifier_tokens(&tokens[verb_idx + 1..]);
@@ -513,7 +515,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
                 && let Ok((power, toughness)) = parse_pt_modifier_values(mod_token)
             {
                 if let Some(count) = parse_get_for_each_count_value(modifier_tail)? {
-                    let modifier_word_view = LowercaseWordView::new(modifier_tail);
+                    let modifier_word_view = ClauseDispatchCompatWords::new(modifier_tail);
                     let modifier_words = modifier_word_view.to_word_refs();
                     let duration = if starts_with_until_end_of_turn(&modifier_words)
                         || contains_until_end_of_turn(&modifier_words)
@@ -632,7 +634,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
     }
 
     let subject_tokens = &tokens[..verb_idx];
-    let subject_word_view = LowercaseWordView::new(subject_tokens);
+    let subject_word_view = ClauseDispatchCompatWords::new(subject_tokens);
     let subject_words = subject_word_view.to_word_refs();
     if is_target_player_dealt_damage_by_this_turn_subject(&subject_words) {
         return Err(CardTextError::ParseError(format!(
@@ -641,7 +643,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         )));
     }
     if matches!(verb, Verb::Gain) && !subject_tokens.is_empty() {
-        let rest_word_view = LowercaseWordView::new(&tokens[verb_idx + 1..]);
+        let rest_word_view = ClauseDispatchCompatWords::new(&tokens[verb_idx + 1..]);
         let rest_words = rest_word_view.to_word_refs();
         let has_protection = word_slice_contains(&rest_words, "protection");
         let has_choice = word_slice_contains(&rest_words, "choice");
@@ -661,7 +663,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         return Ok(effect);
     }
     if matches!(verb, Verb::Gain) {
-        let rest_word_view = LowercaseWordView::new(&tokens[verb_idx + 1..]);
+        let rest_word_view = ClauseDispatchCompatWords::new(&tokens[verb_idx + 1..]);
         let rest_words = rest_word_view.to_word_refs();
         let duration_phrase = super::gain_ability::parse_simple_ability_duration(&rest_words);
         let duration = duration_phrase
@@ -677,7 +679,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         let ability_tokens = trim_commas(&tokens[verb_idx + 1..ability_end_token_idx]);
         let trailing_tokens = trim_commas(&tokens[ability_end_token_idx..]);
         let parsed_actions = parse_ability_line(&ability_tokens).or_else(|| {
-            let ability_word_view = LowercaseWordView::new(&ability_tokens);
+            let ability_word_view = ClauseDispatchCompatWords::new(&ability_tokens);
             let ability_words = ability_word_view.to_word_refs();
             if ability_words.len() == 1 {
                 parse_single_word_keyword_action(ability_words[0]).map(|action| vec![action])
@@ -725,8 +727,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
 fn parse_next_turn_cant_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let lowered_tokens = lowercase_word_tokens(tokens);
-    let lowered_word_view = LowercaseWordView::new(&lowered_tokens);
+    let lowered_word_view = ClauseDispatchCompatWords::new(tokens);
     let lowered_words = lowered_word_view.to_word_refs();
     for suffix in [
         ["during", "that", "players", "next", "turn"].as_slice(),
@@ -740,8 +741,8 @@ fn parse_next_turn_cant_clause(
         let prefix_word_len = lowered_words.len().saturating_sub(suffix.len());
         let prefix_end = lowered_word_view
             .token_index_for_word_index(prefix_word_len)
-            .unwrap_or(lowered_tokens.len());
-        let prefix_tokens = &lowered_tokens[..prefix_end];
+            .unwrap_or(tokens.len());
+        let prefix_tokens = &tokens[..prefix_end];
         let Some(parsed) = parse_cant_restriction_clause(prefix_tokens)? else {
             continue;
         };
@@ -810,8 +811,7 @@ fn parse_next_turn_cant_clause(
 pub(crate) fn parse_effect_clause_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<EffectAst, CardTextError> {
-    let lowered = lowercase_word_tokens(tokens);
-    parse_effect_clause(&lowered)
+    parse_effect_clause(tokens)
 }
 
 pub(crate) fn parse_become_clause(
@@ -831,12 +831,12 @@ pub(crate) fn parse_become_clause(
             )
         };
     let subject_tokens = subject_tokens_vec.as_slice();
-    let subject_word_view = LowercaseWordView::new(subject_tokens);
+    let subject_word_view = ClauseDispatchCompatWords::new(subject_tokens);
     let subject_words = subject_word_view.to_word_refs();
     let subject_targets_base_pt = subject_references_base_power_toughness(&subject_words);
     let target_subject_tokens =
         strip_base_power_toughness_subject_tokens(subject_tokens, &subject_words);
-    let target_subject_word_view = LowercaseWordView::new(target_subject_tokens);
+    let target_subject_word_view = ClauseDispatchCompatWords::new(target_subject_tokens);
     let target_subject_words = target_subject_word_view.to_word_refs();
     let subject = parse_subject(subject_tokens);
     let become_body_tokens = if become_tokens
@@ -848,7 +848,7 @@ pub(crate) fn parse_become_clause(
     } else {
         &become_tokens[..]
     };
-    let become_word_view = LowercaseWordView::new(become_body_tokens);
+    let become_word_view = ClauseDispatchCompatWords::new(become_body_tokens);
     let become_words_vec = become_word_view.to_word_refs();
     let become_words = &become_words_vec[..];
 

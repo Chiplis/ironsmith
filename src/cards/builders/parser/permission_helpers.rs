@@ -1,23 +1,24 @@
-use crate::cards::builders::scan_helpers::{
+use crate::cards::builders::{CardTextError, EffectAst, IT_TAG, PlayerAst, PredicateAst, TagKey};
+use crate::cards::builders::{
     contains_window as word_slice_has_sequence, find_index as find_token_index,
     slice_contains as word_slice_has, slice_ends_with as word_slice_has_suffix,
     slice_starts_with as word_slice_has_prefix,
 };
-use crate::cards::builders::{CardTextError, EffectAst, IT_TAG, PlayerAst, PredicateAst, TagKey};
 use crate::effect::{Until, Value, ValueComparisonOperator};
 use crate::target::ObjectFilter;
 use crate::zone::Zone;
 
-use super::lexer::{OwnedLexToken, trim_lexed_commas};
-use super::native_tokens::LowercaseWordView;
-use super::object_filters::{
-    merge_spell_filters, parse_object_filter_lexed, parse_spell_filter_lexed,
+use super::grammar::filters::{
+    parse_object_filter_with_grammar_entrypoint_lexed,
+    parse_spell_filter_with_grammar_entrypoint_lexed,
 };
+use super::grammar::primitives as grammar;
+use super::grammar::values::parse_value_comparison_tokens;
+use super::lexer::{OwnedLexToken, trim_lexed_commas};
+use super::object_filters::merge_spell_filters;
 use super::token_primitives::{
     TurnDurationPhrase, parse_i32_word_token, parse_lexed_prefix, parse_turn_duration_prefix,
-    parse_turn_duration_suffix, parse_value_comparison_tokens,
-    strip_lexed_prefix_phrase as strip_prefix_phrase,
-    strip_lexed_suffix_phrase as strip_suffix_phrase,
+    parse_turn_duration_suffix,
 };
 use super::util::trim_commas;
 use super::value_helpers::parse_value_from_lexed;
@@ -80,6 +81,20 @@ fn permission_lifetime_from_turn_duration(duration: TurnDurationPhrase) -> Permi
         TurnDurationPhrase::UntilEndOfTurn => PermissionLifetime::UntilEndOfTurn,
         TurnDurationPhrase::UntilYourNextTurn => PermissionLifetime::UntilYourNextTurn,
     }
+}
+
+fn strip_prefix_phrase<'a>(
+    tokens: &'a [OwnedLexToken],
+    phrase: &'static [&'static str],
+) -> Option<&'a [OwnedLexToken]> {
+    grammar::parse_prefix(tokens, grammar::phrase(phrase)).map(|(_, rest)| rest)
+}
+
+fn strip_suffix_phrase<'a>(
+    tokens: &'a [OwnedLexToken],
+    phrase: &[&str],
+) -> Option<&'a [OwnedLexToken]> {
+    grammar::strip_lexed_suffix_phrase(tokens, phrase)
 }
 
 fn parse_permission_lead_tokens<'a>(
@@ -196,8 +211,8 @@ fn parse_permission_tail_tokens(
     tokens: &[OwnedLexToken],
     default_lifetime: PermissionLifetime,
 ) -> Option<(PermissionLifetime, bool)> {
-    let word_view = LowercaseWordView::new(tokens);
-    let words = word_view.to_word_refs();
+    let words_view = grammar::CompatWordIndex::new(tokens);
+    let words = words_view.word_refs();
     if words.is_empty() {
         return Some((default_lifetime, false));
     }
@@ -206,8 +221,8 @@ fn parse_permission_tail_tokens(
     }
 
     if let Some((duration, rest)) = parse_turn_duration_prefix(tokens) {
-        let rest_word_view = LowercaseWordView::new(rest);
-        let rest_words = rest_word_view.to_word_refs();
+        let rest_words_view = grammar::CompatWordIndex::new(rest);
+        let rest_words = rest_words_view.word_refs();
         if rest_words.is_empty() {
             return Some((permission_lifetime_from_turn_duration(duration), false));
         }
@@ -217,8 +232,8 @@ fn parse_permission_tail_tokens(
     }
 
     if let Some((rest, duration)) = parse_turn_duration_suffix(tokens) {
-        let rest_word_view = LowercaseWordView::new(rest);
-        let rest_words = rest_word_view.to_word_refs();
+        let rest_words_view = grammar::CompatWordIndex::new(rest);
+        let rest_words = rest_words_view.word_refs();
         if rest_words.is_empty() {
             return Some((permission_lifetime_from_turn_duration(duration), false));
         }
@@ -244,7 +259,7 @@ fn parse_permission_subject_filter_tokens_lexed(
         return Ok(None);
     }
 
-    let filter_words = LowercaseWordView::new(filter_tokens);
+    let filter_words = grammar::CompatWordIndex::new(filter_tokens);
     for separator in ["and", "or"] {
         let Some(split_idx) = filter_words.find_word(separator) else {
             continue;
@@ -257,10 +272,11 @@ fn parse_permission_subject_filter_tokens_lexed(
         if left_tokens.is_empty() || right_tokens.is_empty() {
             continue;
         }
-        let Ok(left) = parse_object_filter_lexed(left_tokens, false) else {
+        let Ok(left) = parse_object_filter_with_grammar_entrypoint_lexed(left_tokens, false) else {
             continue;
         };
-        let Ok(right) = parse_object_filter_lexed(right_tokens, false) else {
+        let Ok(right) = parse_object_filter_with_grammar_entrypoint_lexed(right_tokens, false)
+        else {
             continue;
         };
         return Ok(Some(ObjectFilter {
@@ -272,7 +288,7 @@ fn parse_permission_subject_filter_tokens_lexed(
         }));
     }
 
-    if let Ok(filter) = parse_object_filter_lexed(filter_tokens, false) {
+    if let Ok(filter) = parse_object_filter_with_grammar_entrypoint_lexed(filter_tokens, false) {
         return Ok(Some(normalize_permission_subject_filter(filter)));
     }
 
@@ -294,8 +310,8 @@ pub(crate) fn parse_unsupported_play_cast_permission_clause(
 pub(crate) fn parse_permission_clause_spec_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PermissionClauseSpec>, CardTextError> {
-    let clause_words = LowercaseWordView::new(tokens);
-    let clause_refs = clause_words.to_word_refs();
+    let clause_words = grammar::CompatWordIndex::new(tokens);
+    let clause_refs = clause_words.word_refs();
     if clause_refs.is_empty() {
         return Ok(None);
     }
@@ -336,9 +352,9 @@ pub(crate) fn parse_permission_clause_spec_lexed(
             return Ok(None);
         };
 
-        let target_words = LowercaseWordView::new(target_tokens);
+        let target_words = grammar::CompatWordIndex::new(target_tokens);
         let single_tagged_target = matches!(
-            target_words.to_word_refs().as_slice(),
+            target_words.word_refs().as_slice(),
             ["it"] | ["that", "card"] | ["that", "spell"]
         );
         if matches!(
@@ -393,12 +409,12 @@ pub(crate) fn parse_permission_clause_spec_lexed(
         && let Some(from_idx) =
             find_token_index(after_lands_and_cast, |token| token.is_word("from"))
     {
-        let zone_word_view = LowercaseWordView::new(&after_lands_and_cast[from_idx..]);
-        let zone_words = zone_word_view.to_word_refs();
+        let zone_words_view = grammar::CompatWordIndex::new(&after_lands_and_cast[from_idx..]);
+        let zone_words = zone_words_view.word_refs();
         if zone_words == ["from", "the", "top", "of", "your", "library"] {
             let subject_tokens = trim_lexed_commas(&after_lands_and_cast[..from_idx]);
-            let subject_word_view = LowercaseWordView::new(subject_tokens);
-            let subject_words = subject_word_view.to_word_refs();
+            let subject_words_view = grammar::CompatWordIndex::new(subject_tokens);
+            let subject_words = subject_words_view.word_refs();
             let filter = if subject_words == ["spells"] {
                 ObjectFilter::default()
             } else {
@@ -439,8 +455,8 @@ pub(crate) fn parse_permission_clause_spec_lexed(
             (crate::grant::GrantSpec::flash_to_spells(), None)
         };
         if let Some(tail_tokens) = subject_tokens {
-            let tail_word_view = LowercaseWordView::new(tail_tokens);
-            let tail_words = tail_word_view.to_word_refs();
+            let tail_words_view = grammar::CompatWordIndex::new(tail_tokens);
+            let tail_words = tail_words_view.word_refs();
             if matches!(
                 tail_words.as_slice(),
                 ["as", "though", "they", "had", "flash"]
@@ -537,8 +553,8 @@ pub(crate) fn parse_permission_clause_spec_lexed(
                 continue;
             };
             let filter_tokens = trim_lexed_commas(filter_tokens);
-            let filter_words = LowercaseWordView::new(filter_tokens);
-            let filter_refs = filter_words.to_word_refs();
+            let filter_words = grammar::CompatWordIndex::new(filter_tokens);
+            let filter_refs = filter_words.word_refs();
             if filter_refs.is_empty()
                 || !filter_refs
                     .iter()
@@ -548,7 +564,10 @@ pub(crate) fn parse_permission_clause_spec_lexed(
             }
 
             let mut filter = ObjectFilter::nonland();
-            merge_spell_filters(&mut filter, parse_spell_filter_lexed(filter_tokens));
+            merge_spell_filters(
+                &mut filter,
+                parse_spell_filter_with_grammar_entrypoint_lexed(filter_tokens),
+            );
             return Ok(Some(PermissionClauseSpec::GrantBySpec {
                 player,
                 spec: crate::grant::GrantSpec::cast_from_hand_without_paying_mana_cost_matching(
@@ -565,8 +584,8 @@ pub(crate) fn parse_permission_clause_spec_lexed(
 pub(crate) fn parse_unsupported_play_cast_permission_clause_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let clause_words = LowercaseWordView::new(tokens);
-    let clause_refs = clause_words.to_word_refs();
+    let clause_words = grammar::CompatWordIndex::new(tokens);
+    let clause_refs = clause_words.word_refs();
     if clause_refs.is_empty() {
         return Ok(None);
     }
@@ -660,8 +679,8 @@ pub(crate) fn parse_additional_land_plays_clause(
 pub(crate) fn parse_additional_land_plays_clause_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let clause_words = LowercaseWordView::new(tokens);
-    let clause_refs = clause_words.to_word_refs();
+    let clause_words = grammar::CompatWordIndex::new(tokens);
+    let clause_refs = clause_words.word_refs();
     if clause_refs.first().copied() != Some("play") {
         return Ok(None);
     }
@@ -740,8 +759,8 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
     ];
     let mut allow_any_color_for_cast = false;
     for suffix in any_color_suffixes {
-        let lowered = LowercaseWordView::new(&trimmed);
-        let clause_refs = lowered.to_word_refs();
+        let lowered = grammar::CompatWordIndex::new(&trimmed);
+        let clause_refs = lowered.word_refs();
         if word_slice_has_suffix(&clause_refs, suffix) {
             allow_any_color_for_cast = true;
             let kept_word_count = clause_refs.len() - suffix.len();

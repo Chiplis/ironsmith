@@ -30,7 +30,7 @@ fn scale_value_by_factor(base: Value, factor: u32) -> Option<Value> {
 }
 
 fn token_words(tokens: &[OwnedLexToken]) -> Vec<&str> {
-    crate::cards::builders::parser::lexer::lexed_words(tokens)
+    crate::cards::builders::parser::lexer::token_word_refs(tokens)
 }
 
 fn str_ends_with_char(text: &str, suffix: char) -> bool {
