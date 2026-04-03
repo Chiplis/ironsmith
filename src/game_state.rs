@@ -1402,6 +1402,10 @@ pub struct GameState {
     objects: HashMap<ObjectId, Object>,
     // Fast index: stable id -> current object id.
     stable_id_index: HashMap<StableId, ObjectId>,
+    /// Game-local cache for linked-face definitions so transform/split/disturb
+    /// resolution doesn't depend on the shared runtime custom-card registry.
+    linked_face_definitions_by_id: HashMap<crate::ids::CardId, crate::cards::CardDefinition>,
+    linked_face_definitions_by_name: HashMap<String, crate::cards::CardDefinition>,
 
     // The stack
     pub stack: Vec<StackEntry>,
@@ -1676,6 +1680,8 @@ impl GameState {
             turn_order,
             objects: HashMap::new(),
             stable_id_index: HashMap::new(),
+            linked_face_definitions_by_id: HashMap::new(),
+            linked_face_definitions_by_name: HashMap::new(),
             stack: Vec::new(),
             battlefield: Vec::new(),
             command_zone: Vec::new(),
@@ -2358,6 +2364,7 @@ impl GameState {
         owner: PlayerId,
         zone: Zone,
     ) -> ObjectId {
+        self.prime_linked_face_lookup(card.other_face_name.as_deref(), card.other_face);
         let id = self.new_object_id();
         let mut object = Object::from_card(id, card, owner, zone);
         if zone == Zone::Battlefield
@@ -2382,6 +2389,7 @@ impl GameState {
         owner: PlayerId,
         zone: Zone,
     ) -> ObjectId {
+        self.prime_linked_face_definitions(def);
         let id = self.new_object_id();
         let mut object = Object::from_card_definition(id, def, owner, zone);
         if zone == Zone::Battlefield
@@ -2465,13 +2473,55 @@ impl GameState {
         component: &MeldComponentState,
         zone: Zone,
     ) -> Option<ObjectId> {
-        let def = crate::cards::linked_face_definition_by_name_or_id(Some(&component.name), None)?;
+        let def = self.linked_face_definition_by_name_or_id(Some(&component.name), None)?;
         let new_id = self.new_object_id();
         let mut object =
             crate::object::Object::from_card_definition(new_id, &def, component.owner, zone);
         object.stable_id = component.stable_id;
         self.add_object(object);
         Some(new_id)
+    }
+
+    fn cache_linked_face_definition(&mut self, def: &crate::cards::CardDefinition) {
+        self.linked_face_definitions_by_id
+            .insert(def.card.id, def.clone());
+        self.linked_face_definitions_by_name
+            .insert(def.card.name.clone(), def.clone());
+    }
+
+    fn prime_linked_face_lookup(&mut self, name: Option<&str>, id: Option<crate::ids::CardId>) {
+        if let Some(other_def) = crate::cards::linked_face_definition_by_name_or_id(name, id) {
+            self.cache_linked_face_definition(&other_def);
+        }
+    }
+
+    fn prime_linked_face_definitions(&mut self, def: &crate::cards::CardDefinition) {
+        if def.card.other_face.is_none() && def.card.other_face_name.is_none() {
+            return;
+        }
+
+        self.cache_linked_face_definition(def);
+        self.prime_linked_face_lookup(def.card.other_face_name.as_deref(), def.card.other_face);
+    }
+
+    pub fn linked_face_definition_by_name_or_id(
+        &self,
+        name: Option<&str>,
+        id: Option<crate::ids::CardId>,
+    ) -> Option<crate::cards::CardDefinition> {
+        if let Some(card_id) = id
+            && let Some(definition) = self.linked_face_definitions_by_id.get(&card_id)
+        {
+            return Some(definition.clone());
+        }
+
+        if let Some(face_name) = name
+            && let Some(definition) = self.linked_face_definitions_by_name.get(face_name)
+        {
+            return Some(definition.clone());
+        }
+
+        crate::cards::linked_face_definition_by_name_or_id(name, id)
     }
 
     pub fn move_object(

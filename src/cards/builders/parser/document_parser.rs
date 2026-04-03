@@ -60,10 +60,6 @@ fn lexed_tokens(text: &str, line_index: usize) -> Result<Vec<OwnedLexToken>, Car
     lex_line(text, line_index)
 }
 
-fn normalized_token_words(tokens: &[OwnedLexToken]) -> Vec<String> {
-    grammar::CompatWordIndex::new(tokens).owned_words()
-}
-
 fn is_bullet_line(line: &str) -> bool {
     let trimmed = line.trim_start();
     if str_starts_with_char(trimmed, '•') || str_starts_with_char(trimmed, '*') {
@@ -191,15 +187,14 @@ fn is_activate_only_once_each_turn_tokens(tokens: &[OwnedLexToken]) -> bool {
 }
 
 fn is_doesnt_untap_during_your_untap_step_tokens(tokens: &[OwnedLexToken]) -> bool {
-    let words = normalized_token_words(tokens);
+    let word_view = grammar::CompatWordIndex::new(tokens);
+    let words = word_view.word_refs();
     words.len() >= 5
         && words[words.len() - 5..]
             .iter()
             .zip(["untap", "during", "your", "untap", "step"])
-            .all(|(actual, expected)| actual == expected)
-        && words
-            .iter()
-            .any(|word| matches!(word.as_str(), "dont" | "doesnt"))
+            .all(|(actual, expected)| *actual == expected)
+        && words.iter().any(|word| matches!(*word, "dont" | "doesnt"))
 }
 
 fn looks_like_untap_all_during_each_other_players_untap_step_tokens(

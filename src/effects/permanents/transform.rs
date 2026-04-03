@@ -144,10 +144,9 @@ fn execute_transform_like_action(
         return Ok(EffectOutcome::resolved());
     }
 
-    let Some(other_def) = crate::cards::linked_face_definition_by_name_or_id(
-        target.other_face_name.as_deref(),
-        target.other_face,
-    ) else {
+    let Some(other_def) = game
+        .linked_face_definition_by_name_or_id(target.other_face_name.as_deref(), target.other_face)
+    else {
         return Ok(EffectOutcome::resolved());
     };
     if other_def.card.card_types.contains(&CardType::Instant)
@@ -500,6 +499,37 @@ mod tests {
         assert_eq!(
             game.object(source).expect("source should still exist").name,
             "Ground Patrol"
+        );
+    }
+
+    #[test]
+    fn transform_uses_game_local_linked_face_cache_after_runtime_registry_is_cleared() {
+        crate::cards::clear_runtime_custom_cards();
+
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let front = register_transform_pair(
+            CardId::from_raw(79_113),
+            "Cache Runner",
+            CardId::from_raw(79_114),
+            "Cache Cruiser",
+            vec![CardType::Artifact],
+            "Flying",
+        );
+        let source = game.create_object_from_definition(&front, alice, Zone::Battlefield);
+
+        crate::cards::clear_runtime_custom_cards();
+
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let outcome = TransformEffect::source()
+            .execute(&mut game, &mut ctx)
+            .expect("transform should still resolve from the game-local linked-face cache");
+
+        assert_eq!(outcome.events.len(), 1);
+        assert!(game.is_face_down(source));
+        assert_eq!(
+            game.object(source).expect("source should still exist").name,
+            "Cache Cruiser"
         );
     }
 

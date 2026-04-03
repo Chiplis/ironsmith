@@ -28,11 +28,17 @@ manual_scan|src/cards/builders/parser/value_helpers.rs|9|Replace legacy parser c
 manual_scan|src/cards/builders/parser/parser_support.rs|5|Replace legacy parser control flow with token_primitives-based lexed grammar.
 manual_scan|src/cards/builders/parser/native_tokens.rs|5|Replace legacy parser control flow with token_primitives-based lexed grammar.
 manual_scan|src/cards/builders/parser/document_parser.rs|4|Replace legacy parser control flow with token_primitives-based lexed grammar.
+manual_scan|src/cards/builders/parser/grammar/structure.rs|4|Replace the remaining shared grammar line/prefix scans with dedicated token combinators once the structural helper surface stabilizes.
+manual_scan|src/cards/builders/parser/grammar/primitives.rs|1|Replace the remaining shared grammar phrase scan with a dedicated combinator once CompatWordIndex consumers no longer need it.
 manual_scan|src/cards/builders/parser/lower.rs|3|Replace legacy parser control flow with token_primitives-based lexed grammar.
 manual_scan|src/cards/builders/parser/effect_sentences/gain_ability.rs|3|Replace legacy parser control flow with token_primitives-based lexed grammar.
 manual_scan|src/cards/builders/parser/token_primitives.rs|1|Replace legacy parser control flow with token_primitives-based lexed grammar.
 manual_scan|src/cards/builders/parser/rule_engine.rs|1|Replace legacy parser control flow with token_primitives-based lexed grammar.
 manual_scan|src/cards/builders/parser/lexer.rs|1|Replace legacy parser control flow with token_primitives-based lexed grammar.
+raw_string_after_lex|src/cards/builders/parser/grammar/effects.rs|2|Replace the remaining grammar-owned search/replacement string probes with token combinators once the sentence-family extraction fully settles.
+raw_string_after_lex|src/cards/builders/parser/object_filters.rs|2|Replace the remaining object-filter string probes with token-aware boundary helpers after the shared filter grammar cutover is fully complete.
+raw_string_after_lex|src/cards/builders/parser/grammar/abilities.rs|1|Replace the remaining exact-shape static probe with a token combinator once the shared ability grammar stabilizes.
+raw_string_after_lex|src/cards/builders/parser/grammar/structure.rs|1|Replace the raw metadata-label fallback once metadata lines with `//` and other unlexable value text have a token-safe structural entrypoint.
 control_flow_helpers|src/cards/builders/parser/keyword_static/mod.rs|124|Replace legacy parser control flow with token_primitives-based lexed grammar.
 control_flow_helpers|src/cards/builders/parser/activation_and_restrictions.rs|107|Replace legacy parser control flow with token_primitives-based lexed grammar.
 control_flow_helpers|src/cards/builders/parser/effect_sentences/sentence_primitives.rs|103|Replace legacy parser control flow with token_primitives-based lexed grammar.

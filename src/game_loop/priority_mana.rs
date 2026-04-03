@@ -2927,6 +2927,59 @@ pub(super) fn propose_spell_cast(
         } => crate::decision::resolve_play_from_alternative_method(game, caster, obj, *zone, *idx),
         _ => None,
     });
+    let disturb_other_def = if matches!(
+        selected_method,
+        Some(crate::alternative_cast::AlternativeCastingMethod::Disturb { .. })
+    ) {
+        let obj = game.object(new_id).ok_or_else(|| {
+            GameLoopError::InvalidState(
+                "Disturb spell should exist before cast overlays".to_string(),
+            )
+        })?;
+        Some(
+            game.linked_face_definition_by_name_or_id(
+                obj.other_face_name.as_deref(),
+                obj.other_face,
+            )
+            .ok_or_else(|| {
+                GameLoopError::InvalidState(
+                    "Disturb back face definition could not be resolved".to_string(),
+                )
+            })?,
+        )
+    } else {
+        None
+    };
+    let split_other_def = match casting_method {
+        CastingMethod::SplitOtherHalf | CastingMethod::Fuse => {
+            let obj = game.object(new_id).ok_or_else(|| {
+                GameLoopError::InvalidState(
+                    "Split spell should exist before cast overlays".to_string(),
+                )
+            })?;
+            Some(
+                game.linked_face_definition_by_name_or_id(
+                    obj.other_face_name.as_deref(),
+                    obj.other_face,
+                )
+                .ok_or_else(|| {
+                    GameLoopError::InvalidState(
+                        match casting_method {
+                            CastingMethod::SplitOtherHalf => {
+                                "Split back face definition could not be resolved"
+                            }
+                            CastingMethod::Fuse => {
+                                "Fused split back face definition could not be resolved"
+                            }
+                            _ => unreachable!(),
+                        }
+                        .to_string(),
+                    )
+                })?,
+            )
+        }
+        _ => None,
+    };
 
     let mut mark_face_down = false;
     if let Some(obj) = game.object_mut(new_id) {
@@ -2938,15 +2991,9 @@ pub(super) fn propose_spell_cast(
             }
 
             if let crate::alternative_cast::AlternativeCastingMethod::Disturb { .. } = method {
-                let other_def = crate::cards::linked_face_definition_by_name_or_id(
-                    obj.other_face_name.as_deref(),
-                    obj.other_face,
-                )
-                .ok_or_else(|| {
-                    GameLoopError::InvalidState(
-                        "Disturb back face definition could not be resolved".to_string(),
-                    )
-                })?;
+                let other_def = disturb_other_def
+                    .as_ref()
+                    .expect("disturb linked face should be resolved before mutating the spell");
                 obj.apply_definition_face(&other_def);
             }
 
@@ -2965,27 +3012,15 @@ pub(super) fn propose_spell_cast(
                 mark_face_down = true;
             }
             CastingMethod::SplitOtherHalf => {
-                let other_def = crate::cards::linked_face_definition_by_name_or_id(
-                    obj.other_face_name.as_deref(),
-                    obj.other_face,
-                )
-                .ok_or_else(|| {
-                    GameLoopError::InvalidState(
-                        "Split back face definition could not be resolved".to_string(),
-                    )
-                })?;
+                let other_def = split_other_def
+                    .as_ref()
+                    .expect("split linked face should be resolved before mutating the spell");
                 obj.apply_definition_face(&other_def);
             }
             CastingMethod::Fuse => {
-                let other_def = crate::cards::linked_face_definition_by_name_or_id(
-                    obj.other_face_name.as_deref(),
-                    obj.other_face,
-                )
-                .ok_or_else(|| {
-                    GameLoopError::InvalidState(
-                        "Fused split back face definition could not be resolved".to_string(),
-                    )
-                })?;
+                let other_def = split_other_def
+                    .as_ref()
+                    .expect("fuse linked face should be resolved before mutating the spell");
                 obj.apply_fused_split_spell_overlay(&other_def);
             }
             _ => {}

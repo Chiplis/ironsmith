@@ -58,13 +58,9 @@ fn contains_char(text: &str, expected: char) -> bool {
     false
 }
 
-fn normalized_token_words(tokens: &[OwnedLexToken]) -> Vec<String> {
-    CompatWordIndex::new(tokens).owned_words()
-}
-
 fn starts_like_create_fragment_lexed(tokens: &[OwnedLexToken]) -> bool {
-    let words_storage = normalized_token_words(tokens);
-    let words = words_storage.iter().map(String::as_str).collect::<Vec<_>>();
+    let word_view = CompatWordIndex::new(tokens);
+    let words = word_view.word_refs();
     let Some(first_word) = words.first().copied() else {
         return false;
     };
@@ -1540,8 +1536,8 @@ fn parse_leading_player_may_words(words: &[&str]) -> Option<PlayerAst> {
 }
 
 pub(crate) fn parse_leading_player_may_lexed(tokens: &[OwnedLexToken]) -> Option<PlayerAst> {
-    let words_storage = normalized_token_words(tokens);
-    let words = words_storage.iter().map(String::as_str).collect::<Vec<_>>();
+    let word_view = CompatWordIndex::new(tokens);
+    let words = word_view.word_refs();
     parse_leading_player_may_words(&words)
 }
 

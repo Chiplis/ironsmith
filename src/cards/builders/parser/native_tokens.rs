@@ -121,15 +121,15 @@ pub(crate) fn compat_word_pieces_for_token(token: &OwnedLexToken) -> Vec<CompatW
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct LowercaseWordView {
-    lower_words: Vec<String>,
+pub(crate) struct NormalizedWordView {
+    words: Vec<String>,
     token_start_indices: Vec<usize>,
     token_end_indices: Vec<usize>,
 }
 
-impl LowercaseWordView {
+impl NormalizedWordView {
     pub(crate) fn new(tokens: TokInput<'_>) -> Self {
-        let mut lower_words = Vec::new();
+        let mut words = Vec::new();
         let mut token_start_indices = Vec::new();
         let mut token_end_indices = Vec::new();
         let mut token_idx = 0usize;
@@ -141,14 +141,14 @@ impl LowercaseWordView {
                 continue;
             }
             for piece in pieces {
-                lower_words.push(piece.text);
+                words.push(piece.text);
                 token_start_indices.push(token_idx);
                 token_end_indices.push(token_idx + 1);
             }
             token_idx += 1;
         }
         Self {
-            lower_words,
+            words,
             token_start_indices,
             token_end_indices,
         }
@@ -156,15 +156,15 @@ impl LowercaseWordView {
 
     #[allow(dead_code)]
     pub(crate) fn is_empty(&self) -> bool {
-        self.lower_words.is_empty()
+        self.words.is_empty()
     }
 
     pub(crate) fn len(&self) -> usize {
-        self.lower_words.len()
+        self.words.len()
     }
 
     pub(crate) fn get(&self, idx: usize) -> Option<&str> {
-        self.lower_words.get(idx).map(String::as_str)
+        self.words.get(idx).map(String::as_str)
     }
 
     pub(crate) fn starts_with(&self, expected: &[&str]) -> bool {
@@ -172,7 +172,7 @@ impl LowercaseWordView {
     }
 
     pub(crate) fn slice_eq(&self, start: usize, expected: &[&str]) -> bool {
-        self.lower_words
+        self.words
             .get(start..start.saturating_add(expected.len()))
             .is_some_and(|slice| {
                 slice
@@ -184,11 +184,11 @@ impl LowercaseWordView {
     }
 
     pub(crate) fn find_phrase_start(&self, expected: &[&str]) -> Option<usize> {
-        if expected.is_empty() || self.lower_words.len() < expected.len() {
+        if expected.is_empty() || self.words.len() < expected.len() {
             return None;
         }
         let mut idx = 0usize;
-        let last_start = self.lower_words.len() - expected.len();
+        let last_start = self.words.len() - expected.len();
         while idx <= last_start {
             if self.slice_eq(idx, expected) {
                 return Some(idx);
@@ -204,8 +204,8 @@ impl LowercaseWordView {
 
     pub(crate) fn find_word(&self, expected: &str) -> Option<usize> {
         let mut idx = 0usize;
-        while idx < self.lower_words.len() {
-            if self.lower_words[idx] == expected {
+        while idx < self.words.len() {
+            if self.words[idx] == expected {
                 return Some(idx);
             }
             idx += 1;
@@ -214,12 +214,36 @@ impl LowercaseWordView {
         None
     }
 
+    pub(crate) fn has_word(&self, expected: &str) -> bool {
+        self.find_word(expected).is_some()
+    }
+
+    pub(crate) fn has_any_word(&self, expected: &[&str]) -> bool {
+        expected.iter().any(|word| self.has_word(word))
+    }
+
+    pub(crate) fn first(&self) -> Option<&str> {
+        self.get(0)
+    }
+
+    pub(crate) fn word_refs(&self) -> Vec<&str> {
+        self.words.iter().map(String::as_str).collect()
+    }
+
+    pub(crate) fn owned_words(&self) -> Vec<String> {
+        self.words.clone()
+    }
+
     pub(crate) fn to_word_refs(&self) -> Vec<&str> {
-        self.lower_words.iter().map(String::as_str).collect()
+        self.word_refs()
     }
 
     pub(crate) fn token_index_for_word_index(&self, word_idx: usize) -> Option<usize> {
         self.token_start_indices.get(word_idx).copied()
+    }
+
+    pub(crate) fn token_start_indices(&self) -> Vec<usize> {
+        self.token_start_indices.clone()
     }
 
     pub(crate) fn token_index_after_words(&self, word_count: usize) -> Option<usize> {
@@ -232,3 +256,5 @@ impl LowercaseWordView {
         self.token_end_indices.get(word_count - 1).copied()
     }
 }
+
+pub(crate) type LowercaseWordView = NormalizedWordView;

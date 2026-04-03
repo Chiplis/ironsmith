@@ -1,4 +1,4 @@
-use winnow::combinator::{alt, eof};
+use winnow::combinator::{alt, eof, peek};
 use winnow::error::{ContextError, ErrMode, ParseError, StrContext, StrContextValue};
 use winnow::prelude::*;
 use winnow::stream::Stream;
@@ -7,7 +7,7 @@ use winnow::token::{any, literal};
 use crate::cards::builders::{CardTextError, TextSpan};
 
 use super::super::lexer::{LexStream, LexToken, TokenKind};
-use super::super::native_tokens::compat_word_pieces_for_token;
+pub(crate) type CompatWordIndex = super::super::native_tokens::NormalizedWordView;
 
 fn failure_location<'a>(
     tokens: &'a LexStream<'a>,
@@ -82,123 +82,6 @@ pub(crate) fn parse_prefix<'a, O>(
     let parsed = parser.parse_next(&mut input).ok()?;
     let consumed = tokens.len().checked_sub(input.len())?;
     Some((parsed, &tokens[consumed..]))
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct CompatWordIndex {
-    words: Vec<String>,
-    token_start_indices: Vec<usize>,
-    token_end_indices: Vec<usize>,
-}
-
-impl CompatWordIndex {
-    pub(crate) fn new(tokens: &[LexToken]) -> Self {
-        let mut words = Vec::new();
-        let mut token_start_indices = Vec::new();
-        let mut token_end_indices = Vec::new();
-
-        for (token_idx, token) in tokens.iter().enumerate() {
-            for piece in compat_word_pieces_for_token(token) {
-                words.push(piece.text);
-                token_start_indices.push(token_idx);
-                token_end_indices.push(token_idx + 1);
-            }
-        }
-
-        Self {
-            words,
-            token_start_indices,
-            token_end_indices,
-        }
-    }
-
-    pub(crate) fn word_refs(&self) -> Vec<&str> {
-        self.words.iter().map(String::as_str).collect()
-    }
-
-    pub(crate) fn owned_words(&self) -> Vec<String> {
-        self.words.clone()
-    }
-
-    pub(crate) fn to_word_refs(&self) -> Vec<&str> {
-        self.word_refs()
-    }
-
-    pub(crate) fn len(&self) -> usize {
-        self.words.len()
-    }
-
-    pub(crate) fn is_empty(&self) -> bool {
-        self.words.is_empty()
-    }
-
-    pub(crate) fn get(&self, idx: usize) -> Option<&str> {
-        self.words.get(idx).map(String::as_str)
-    }
-
-    pub(crate) fn first(&self) -> Option<&str> {
-        self.get(0)
-    }
-
-    pub(crate) fn slice_eq(&self, start: usize, expected: &[&str]) -> bool {
-        self.words
-            .get(start..start.saturating_add(expected.len()))
-            .is_some_and(|slice| {
-                slice
-                    .iter()
-                    .map(String::as_str)
-                    .zip(expected.iter().copied())
-                    .all(|(actual, expected)| actual == expected)
-            })
-    }
-
-    pub(crate) fn find_word(&self, expected: &str) -> Option<usize> {
-        self.words.iter().position(|word| word == expected)
-    }
-
-    pub(crate) fn find_phrase_start(&self, expected: &[&str]) -> Option<usize> {
-        if expected.is_empty() || self.words.len() < expected.len() {
-            return None;
-        }
-
-        let last_start = self.words.len() - expected.len();
-        let mut idx = 0usize;
-        while idx <= last_start {
-            if self.slice_eq(idx, expected) {
-                return Some(idx);
-            }
-            idx += 1;
-        }
-
-        None
-    }
-
-    pub(crate) fn has_phrase(&self, expected: &[&str]) -> bool {
-        self.find_phrase_start(expected).is_some()
-    }
-
-    pub(crate) fn has_word(&self, expected: &str) -> bool {
-        self.find_word(expected).is_some()
-    }
-
-    pub(crate) fn has_any_word(&self, expected: &[&str]) -> bool {
-        expected.iter().any(|word| self.has_word(word))
-    }
-
-    pub(crate) fn token_index_for_word_index(&self, word_idx: usize) -> Option<usize> {
-        self.token_start_indices.get(word_idx).copied()
-    }
-
-    pub(crate) fn token_start_indices(&self) -> Vec<usize> {
-        self.token_start_indices.clone()
-    }
-
-    pub(crate) fn token_index_after_words(&self, word_count: usize) -> Option<usize> {
-        if word_count == 0 {
-            return Some(0);
-        }
-        self.token_end_indices.get(word_count - 1).copied()
-    }
 }
 
 pub(crate) fn token_kind<'a>(
@@ -326,37 +209,64 @@ fn split_lexed_slices_on_separator<'a, P, F>(
     make_separator: F,
 ) -> Vec<&'a [LexToken]>
 where
-    F: Fn() -> P,
+    F: Fn() -> P + Copy,
     P: Parser<LexStream<'a>, (), ErrMode<ContextError>>,
 {
+    split_lexed_slices_with_parser(tokens, || {
+        move |input: &mut LexStream<'a>| parse_segment_len_until_separator(input, make_separator)
+    })
+}
+
+fn split_lexed_slices_with_parser<'a, P, F>(
+    tokens: &'a [LexToken],
+    make_segment_parser: F,
+) -> Vec<&'a [LexToken]>
+where
+    F: Fn() -> P,
+    P: Parser<LexStream<'a>, usize, ErrMode<ContextError>>,
+{
     let mut segments = Vec::new();
-    let mut segment_start = 0usize;
-    let mut cursor = 0usize;
+    let mut remaining = tokens;
 
-    while cursor < tokens.len() {
-        let tail = &tokens[cursor..];
-        if let Some((_, rest)) = parse_prefix(tail, make_separator()) {
-            if segment_start < cursor {
-                segments.push(&tokens[segment_start..cursor]);
-            }
+    while !remaining.is_empty() {
+        let Some((segment_len, rest)) = parse_prefix(remaining, make_segment_parser()) else {
+            break;
+        };
 
-            let consumed = tail.len().saturating_sub(rest.len());
-            if consumed == 0 {
-                cursor += 1;
-            } else {
-                cursor += consumed;
-            }
-            segment_start = cursor;
-        } else {
-            cursor += 1;
+        if segment_len > 0 {
+            segments.push(&remaining[..segment_len]);
         }
-    }
 
-    if segment_start < tokens.len() {
-        segments.push(&tokens[segment_start..]);
+        if rest.len() == remaining.len() {
+            break;
+        }
+        remaining = rest;
     }
 
     segments
+}
+
+fn parse_segment_len_until_separator<'a, P, F>(
+    input: &mut LexStream<'a>,
+    make_separator: F,
+) -> Result<usize, ErrMode<ContextError>>
+where
+    F: Fn() -> P + Copy,
+    P: Parser<LexStream<'a>, (), ErrMode<ContextError>>,
+{
+    let initial_len = input.len();
+
+    while input.peek_token().is_some() {
+        if peek(make_separator()).parse_next(input).is_ok() {
+            let segment_len = initial_len - input.len();
+            make_separator().parse_next(input)?;
+            return Ok(segment_len);
+        }
+
+        any.parse_next(input)?;
+    }
+
+    Ok(initial_len - input.len())
 }
 
 pub(crate) fn split_lexed_slices_on_and<'a>(tokens: &'a [LexToken]) -> Vec<&'a [LexToken]> {
@@ -367,14 +277,7 @@ pub(crate) fn split_lexed_slices_on_comma<'a>(tokens: &'a [LexToken]) -> Vec<&'a
     split_lexed_slices_on_separator(tokens, || comma().map(|_| ()))
 }
 
-fn is_comparison_or_delimiter(tokens: &[LexToken], idx: usize) -> bool {
-    if !tokens.get(idx).is_some_and(|token| token.is_word("or")) {
-        return false;
-    }
-
-    let previous_word = (0..idx).rev().find_map(|i| tokens[i].as_word());
-    let next_word = tokens.get(idx + 1).and_then(LexToken::as_word);
-
+fn is_comparison_or_delimiter(previous_word: Option<&str>, next_word: Option<&str>) -> bool {
     if matches!(next_word, Some("less" | "greater" | "more" | "fewer")) {
         return true;
     }
@@ -383,27 +286,7 @@ fn is_comparison_or_delimiter(tokens: &[LexToken], idx: usize) -> bool {
 }
 
 pub(crate) fn split_lexed_slices_on_or<'a>(tokens: &'a [LexToken]) -> Vec<&'a [LexToken]> {
-    let mut segments = Vec::new();
-    let mut segment_start = 0usize;
-
-    for (idx, token) in tokens.iter().enumerate() {
-        let is_separator =
-            token.is_comma() || (token.is_word("or") && !is_comparison_or_delimiter(tokens, idx));
-        if !is_separator {
-            continue;
-        }
-
-        if segment_start < idx {
-            segments.push(&tokens[segment_start..idx]);
-        }
-        segment_start = idx + 1;
-    }
-
-    if segment_start < tokens.len() {
-        segments.push(&tokens[segment_start..]);
-    }
-
-    segments
+    split_lexed_slices_with_parser(tokens, || parse_segment_len_until_or_separator)
 }
 
 pub(crate) fn split_lexed_slices_on_commas_or_semicolons<'a>(
@@ -415,29 +298,61 @@ pub(crate) fn split_lexed_slices_on_commas_or_semicolons<'a>(
 }
 
 pub(crate) fn split_lexed_slices_on_period<'a>(tokens: &'a [LexToken]) -> Vec<&'a [LexToken]> {
-    let mut segments = Vec::new();
-    let mut segment_start = 0usize;
-    let mut quote_depth = 0u32;
+    split_lexed_slices_with_parser(tokens, || parse_period_segment_len)
+}
 
-    for (idx, token) in tokens.iter().enumerate() {
+fn parse_segment_len_until_or_separator<'a>(
+    input: &mut LexStream<'a>,
+) -> Result<usize, ErrMode<ContextError>> {
+    let initial_len = input.len();
+    let mut previous_word = None;
+
+    while let Some(token) = input.peek_token() {
+        if token.is_comma() {
+            comma().parse_next(input)?;
+            let consumed = initial_len - input.len();
+            return Ok(consumed.saturating_sub(1));
+        }
+
+        if token.is_word("or") {
+            let next_word = input.get(1).and_then(LexToken::as_word);
+            if !is_comparison_or_delimiter(previous_word, next_word) {
+                kw("or").parse_next(input)?;
+                let consumed = initial_len - input.len();
+                return Ok(consumed.saturating_sub(1));
+            }
+        }
+
+        let consumed_token: &'a LexToken = any.parse_next(input)?;
+        if let Some(word) = consumed_token.as_word() {
+            previous_word = Some(word);
+        }
+    }
+
+    Ok(initial_len - input.len())
+}
+
+fn parse_period_segment_len<'a>(input: &mut LexStream<'a>) -> Result<usize, ErrMode<ContextError>> {
+    let initial_len = input.len();
+    let mut inside_quotes = false;
+
+    while let Some(token) = input.peek_token() {
         if token.is_quote() {
-            quote_depth = if quote_depth == 0 { 1 } else { 0 };
+            quote().parse_next(input)?;
+            inside_quotes = !inside_quotes;
             continue;
         }
 
-        if token.is_period() && quote_depth == 0 {
-            if segment_start < idx {
-                segments.push(&tokens[segment_start..idx]);
-            }
-            segment_start = idx + 1;
+        if token.is_period() && !inside_quotes {
+            period().parse_next(input)?;
+            let consumed = initial_len - input.len();
+            return Ok(consumed.saturating_sub(1));
         }
+
+        any.parse_next(input)?;
     }
 
-    if segment_start < tokens.len() {
-        segments.push(&tokens[segment_start..]);
-    }
-
-    segments
+    Ok(initial_len - input.len())
 }
 
 pub(crate) fn strip_lexed_prefix_phrase<'a>(
@@ -458,11 +373,7 @@ pub(crate) fn strip_lexed_suffix_phrase<'a>(
     }
 
     let suffix_start = word_refs.len() - phrase.len();
-    if word_refs[suffix_start..]
-        .iter()
-        .copied()
-        .ne(phrase.iter().copied())
-    {
+    if !words.slice_eq(suffix_start, phrase) {
         return None;
     }
 

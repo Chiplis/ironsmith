@@ -838,6 +838,19 @@ fn rewrite_winnow_separator_slice_helpers_split_keyword_lists() {
         vec![vec!["mana", "value", "3", "or", "less"],]
     );
 
+    let comparison_equal = lex_line("mana value less than or equal to 3", 0)
+        .expect("rewrite lexer should classify comparison or-equal phrase");
+    let comparison_equal_words: Vec<Vec<&str>> = split_lexed_slices_on_or(&comparison_equal)
+        .into_iter()
+        .map(super::token_word_refs)
+        .collect();
+    assert_eq!(
+        comparison_equal_words,
+        vec![vec![
+            "mana", "value", "less", "than", "or", "equal", "to", "3"
+        ],]
+    );
+
     let comma_separated = lex_line(
         "if turning artifact creatures you control face up causes an ability, that ability triggers an additional time",
         0,
@@ -882,6 +895,25 @@ fn rewrite_winnow_separator_slice_helpers_split_keyword_lists() {
             vec!["Choose", "a", "color", "before", "the", "game", "begins"],
             vec!["This", "card", "is", "the", "chosen", "color"],
         ]
+    );
+
+    let repeated = lex_line(", flying, vigilance,", 0)
+        .expect("rewrite lexer should classify repeated separators");
+    let repeated_words: Vec<Vec<&str>> = split_lexed_slices_on_comma(&repeated)
+        .into_iter()
+        .map(super::token_word_refs)
+        .collect();
+    assert_eq!(repeated_words, vec![vec!["flying"], vec!["vigilance"],]);
+
+    let quoted_period = lex_line("Choose \"one.\" Then choose another.", 0)
+        .expect("rewrite lexer should classify quoted period separators");
+    let quoted_period_words: Vec<Vec<&str>> = split_lexed_slices_on_period(&quoted_period)
+        .into_iter()
+        .map(super::token_word_refs)
+        .collect();
+    assert_eq!(
+        quoted_period_words,
+        vec![vec!["Choose", "one", "Then", "choose", "another"],]
     );
 }
 
@@ -1427,6 +1459,17 @@ fn rewrite_modal_header_parser_supports_activated_choose_header_directly() {
 
     assert!(header.activated.is_some(), "{header:?}");
     assert!(header.trigger.is_none(), "{header:?}");
+    assert_eq!(header.min, crate::effect::Value::Fixed(1));
+    assert_eq!(header.max, Some(crate::effect::Value::Fixed(1)));
+}
+
+#[test]
+fn rewrite_modal_header_parser_keeps_choose_one_when_later_choose_both_is_present() {
+    let text = "Choose one. If you control a commander as you cast this spell, you may choose both instead.";
+    let header = super::modal_support::parse_modal_header(&rewrite_line_info(text))
+        .expect("modal header should parse")
+        .expect("modal header should be recognized");
+
     assert_eq!(header.min, crate::effect::Value::Fixed(1));
     assert_eq!(header.max, Some(crate::effect::Value::Fixed(1)));
 }
@@ -5257,6 +5300,23 @@ fn rewrite_grammar_exile_to_countered_exile_instead_of_graveyard_splitter_matche
 }
 
 #[test]
+fn rewrite_grammar_exile_to_countered_exile_splitter_accepts_instead_lead_word_order() {
+    let tokens = lex_line(
+        "If a card would be put into an opponent's graveyard from anywhere, instead exile it with a void counter on it.",
+        0,
+    )
+    .expect("rewrite lexer should classify exile-replacement static line");
+
+    let spec =
+        super::grammar::abilities::parse_exile_to_countered_exile_instead_of_graveyard_spec_lexed(
+            &tokens,
+        )
+        .expect("grammar-owned exile-replacement splitter should match");
+    assert_eq!(spec.player, crate::target::PlayerFilter::Opponent);
+    assert_eq!(spec.counter_type, crate::object::CounterType::Void);
+}
+
+#[test]
 fn rewrite_grammar_draw_replace_exile_top_face_down_probe_matches_static_shape() {
     let tokens = lex_line(
         "If you would draw a card, exile the top card of your library face down instead.",
@@ -7461,6 +7521,26 @@ fn rewrite_parser_root_values_entrypoints_match_grammar_outputs() {
 }
 
 #[test]
+fn rewrite_shared_mana_cost_parser_keeps_scryfall_and_rewrite_entrypoints_in_sync() {
+    let rewrite = parse_mana_cost_rewrite("{2}{W/U}{B}")
+        .expect("rewrite mana-cost entrypoint should succeed");
+    let scryfall = super::util::parse_scryfall_mana_cost("{2}{W/U}{B}")
+        .expect("scryfall mana-cost entrypoint should succeed");
+
+    assert_eq!(rewrite, scryfall);
+    assert_eq!(
+        super::util::parse_scryfall_mana_cost("").expect("blank scryfall mana cost is empty"),
+        crate::mana::ManaCost::new()
+    );
+
+    let error = parse_error_message(parse_mana_cost_rewrite("—"));
+    assert!(
+        error.contains("mana-cost"),
+        "expected rewrite mana-cost parser context, got {error}"
+    );
+}
+
+#[test]
 fn rewrite_type_line_parser_handles_supertypes_types_and_subtypes() {
     let parsed = parse_type_line_rewrite("Legendary Creature — Elf Druid")
         .expect("rewrite type-line parser should succeed");
@@ -7505,7 +7585,7 @@ fn rewrite_shared_type_line_parser_keeps_conditionals_entrypoint_in_sync() {
 }
 
 #[test]
-fn rewrite_shared_scryfall_mana_cost_parser_uses_lexed_mana_groups() {
+fn rewrite_shared_scryfall_mana_cost_parser_handles_grouped_and_empty_costs() {
     let parsed = super::util::parse_scryfall_mana_cost("{2}{W/U}{B}")
         .expect("shared mana-cost parser should parse grouped mana costs");
 

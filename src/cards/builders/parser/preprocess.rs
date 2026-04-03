@@ -8,7 +8,9 @@ use crate::cards::builders::{
 };
 
 use super::activation_and_restrictions::parse_single_word_keyword_action;
-use super::grammar::structure::{MetadataLineKind, split_metadata_line_lexed};
+use super::grammar::structure::{
+    MetadataLineKind, split_metadata_line_lexed, split_metadata_line_raw,
+};
 use super::lexer::lex_line;
 use super::parser_support::{
     looks_like_spell_resolution_followup_intro_lexed, spell_card_prefers_resolution_line_merge,
@@ -138,30 +140,38 @@ fn parse_metadata_line(line: &str) -> Result<Option<MetadataLine>, CardTextError
         return Ok(None);
     }
 
-    let Ok(tokens) = lex_line(trimmed, 0) else {
+    if let Ok(tokens) = lex_line(trimmed, 0)
+        && let Some(spec) = split_metadata_line_lexed(&tokens)
+    {
+        let value = spec
+            .value_tokens
+            .first()
+            .and_then(|token| trimmed.get(token.span.start..))
+            .unwrap_or("")
+            .trim()
+            .to_string();
+
+        let metadata = match spec.kind {
+            MetadataLineKind::ManaCost => MetadataLine::ManaCost(value),
+            MetadataLineKind::TypeLine => MetadataLine::TypeLine(value),
+            MetadataLineKind::PowerToughness => MetadataLine::PowerToughness(value),
+            MetadataLineKind::Loyalty => MetadataLine::Loyalty(value),
+            MetadataLineKind::Defense => MetadataLine::Defense(value),
+        };
+
+        return Ok(Some(metadata));
+    }
+
+    let Some((kind, value)) = split_metadata_line_raw(trimmed) else {
         return Ok(None);
     };
-    let Some(spec) = split_metadata_line_lexed(&tokens) else {
-        return Ok(None);
-    };
-
-    let value = spec
-        .value_tokens
-        .first()
-        .and_then(|token| trimmed.get(token.span.start..))
-        .unwrap_or("")
-        .trim()
-        .to_string();
-
-    let metadata = match spec.kind {
-        MetadataLineKind::ManaCost => MetadataLine::ManaCost(value),
-        MetadataLineKind::TypeLine => MetadataLine::TypeLine(value),
-        MetadataLineKind::PowerToughness => MetadataLine::PowerToughness(value),
-        MetadataLineKind::Loyalty => MetadataLine::Loyalty(value),
-        MetadataLineKind::Defense => MetadataLine::Defense(value),
-    };
-
-    Ok(Some(metadata))
+    Ok(Some(match kind {
+        MetadataLineKind::ManaCost => MetadataLine::ManaCost(value.to_string()),
+        MetadataLineKind::TypeLine => MetadataLine::TypeLine(value.to_string()),
+        MetadataLineKind::PowerToughness => MetadataLine::PowerToughness(value.to_string()),
+        MetadataLineKind::Loyalty => MetadataLine::Loyalty(value.to_string()),
+        MetadataLineKind::Defense => MetadataLine::Defense(value.to_string()),
+    }))
 }
 
 fn replace_names_with_map(

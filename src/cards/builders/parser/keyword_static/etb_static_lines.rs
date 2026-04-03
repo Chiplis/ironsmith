@@ -2,13 +2,6 @@ fn etb_token_words(tokens: &[OwnedLexToken]) -> Vec<&str> {
     crate::cards::builders::parser::lexer::token_word_refs(tokens)
 }
 
-fn etb_normalized_token_words(tokens: &[OwnedLexToken]) -> (Vec<String>, Vec<usize>) {
-    let word_view = crate::cards::builders::parser::grammar::primitives::CompatWordIndex::new(
-        tokens,
-    );
-    (word_view.owned_words(), word_view.token_start_indices())
-}
-
 fn etb_word_slice_starts_with(words: &[&str], prefix: &[&str]) -> bool {
     if prefix.len() > words.len() {
         return false;
@@ -141,8 +134,7 @@ pub(crate) fn parse_enters_tapped_with_counters_line(
         return Ok(None);
     }
 
-    let enters_idx =
-        etb_find_word_index(&clause_words, |word| matches!(word, "enter" | "enters"));
+    let enters_idx = etb_find_word_index(&clause_words, |word| matches!(word, "enter" | "enters"));
     let Some(enters_idx) = enters_idx else {
         return Ok(None);
     };
@@ -207,9 +199,10 @@ pub(crate) fn parse_enters_with_counters_line(
     let Some(enter_token_idx) = token_index_for_word_index(&clause_tokens, enters_idx) else {
         return Ok(None);
     };
-    if clause_tokens[..enter_token_idx].iter().any(|token| {
-        token.is_period() || token.is_colon() || token.is_semicolon()
-    }) {
+    if clause_tokens[..enter_token_idx]
+        .iter()
+        .any(|token| token.is_period() || token.is_colon() || token.is_semicolon())
+    {
         return Ok(None);
     }
     let subject_words = clause_words.get(..enters_idx).unwrap_or_default();
@@ -224,8 +217,8 @@ pub(crate) fn parse_enters_with_counters_line(
         return Ok(None);
     }
 
-    let with_idx = etb_find_token_index(&clause_tokens, |token| token.is_word("with"))
-        .ok_or_else(|| {
+    let with_idx =
+        etb_find_token_index(&clause_tokens, |token| token.is_word("with")).ok_or_else(|| {
             CardTextError::ParseError("missing 'with' in enters-with-counters clause".to_string())
         })?;
     let after_with = &clause_tokens[with_idx + 1..];
@@ -260,12 +253,12 @@ pub(crate) fn parse_enters_with_counters_line(
     let counter_idx = etb_find_token_index(after_with, |token| {
         token.is_word("counter") || token.is_word("counters")
     })
-        .ok_or_else(|| {
-            CardTextError::ParseError(format!(
-                "missing counter keyword for self ETB counters (clause: '{}')",
-                full_words.join(" ")
-            ))
-        })?;
+    .ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "missing counter keyword for self ETB counters (clause: '{}')",
+            full_words.join(" ")
+        ))
+    })?;
     let mut tail = &after_with[counter_idx + 1..];
     if tail.first().is_some_and(|token| token.is_word("on")) {
         tail = &tail[1..];
@@ -289,7 +282,10 @@ pub(crate) fn parse_enters_with_counters_line(
     let tail = trim_commas(tail);
     let tail_has_words = tail.iter().any(|token| token.as_word().is_some());
     if tail_has_words {
-        let tail_words = tail.iter().filter_map(OwnedLexToken::as_word).collect::<Vec<_>>();
+        let tail_words = tail
+            .iter()
+            .filter_map(OwnedLexToken::as_word)
+            .collect::<Vec<_>>();
         let scaled_for_each_count = |dynamic: Value, base_count: &Value| match base_count {
             Value::Fixed(multiplier) => scale_dynamic_cost_modifier_value(dynamic, *multiplier),
             _ => dynamic,
@@ -346,36 +342,52 @@ pub(crate) fn parse_enters_with_counters_line(
         ) || etb_word_slice_starts_with(
             &tail_words,
             &["for", "each", "creatures", "that", "died", "this", "turn"],
-        )
-        {
+        ) {
             count = scaled_for_each_count(Value::CreaturesDiedThisTurn, &count);
-        } else if etb_word_slice_starts_with(&tail_words, &[
-            "for", "each", "color", "of", "mana", "spent", "to", "cast", "it",
-        ]) || etb_word_slice_starts_with(&tail_words, &[
-            "for", "each", "colour", "of", "mana", "spent", "to", "cast", "it",
-        ]) {
+        } else if etb_word_slice_starts_with(
+            &tail_words,
+            &[
+                "for", "each", "color", "of", "mana", "spent", "to", "cast", "it",
+            ],
+        ) || etb_word_slice_starts_with(
+            &tail_words,
+            &[
+                "for", "each", "colour", "of", "mana", "spent", "to", "cast", "it",
+            ],
+        ) {
             count = scaled_for_each_count(Value::ColorsOfManaSpentToCastThisSpell, &count);
-        } else if etb_word_slice_starts_with(&tail_words, &[
-            "for", "each", "creature", "that", "died", "under", "your", "control", "this", "turn",
-        ]) || etb_word_slice_starts_with(&tail_words, &[
-            "for",
-            "each",
-            "creatures",
-            "that",
-            "died",
-            "under",
-            "your",
-            "control",
-            "this",
-            "turn",
-        ]) {
+        } else if etb_word_slice_starts_with(
+            &tail_words,
+            &[
+                "for", "each", "creature", "that", "died", "under", "your", "control", "this",
+                "turn",
+            ],
+        ) || etb_word_slice_starts_with(
+            &tail_words,
+            &[
+                "for",
+                "each",
+                "creatures",
+                "that",
+                "died",
+                "under",
+                "your",
+                "control",
+                "this",
+                "turn",
+            ],
+        ) {
             count = scaled_for_each_count(
                 Value::CreaturesDiedThisTurnControlledBy(PlayerFilter::You),
                 &count,
             );
-        } else if etb_word_slice_starts_with(&tail_words, &["for", "each", "time", "it", "was", "kicked"])
-            || etb_word_slice_starts_with(&tail_words, &["for", "each", "time", "this", "spell", "was", "kicked"])
-        {
+        } else if etb_word_slice_starts_with(
+            &tail_words,
+            &["for", "each", "time", "it", "was", "kicked"],
+        ) || etb_word_slice_starts_with(
+            &tail_words,
+            &["for", "each", "time", "this", "spell", "was", "kicked"],
+        ) {
             count = scaled_for_each_count(Value::KickCount, &count);
         } else if tail_words
             == [
@@ -508,7 +520,9 @@ fn parse_unless_enters_with_counter_condition_display(tokens: &[OwnedLexToken]) 
     None
 }
 
-fn parse_enters_with_counter_condition_clause(tokens: &[OwnedLexToken]) -> Option<crate::ConditionExpr> {
+fn parse_enters_with_counter_condition_clause(
+    tokens: &[OwnedLexToken],
+) -> Option<crate::ConditionExpr> {
     let condition_tokens = trim_edge_punctuation(tokens);
     let condition_words = etb_token_words(&condition_tokens);
     if condition_words.is_empty() {
@@ -611,19 +625,20 @@ fn parse_enters_with_counter_condition_clause(tokens: &[OwnedLexToken]) -> Optio
     }
 
     if condition_words.len() >= 7 {
-        let (count_word_idx, valid_prefix) = if etb_word_slice_starts_with(&condition_words, &["youve", "cast"])
-            || etb_word_slice_starts_with(&condition_words, &["you've", "cast"])
-        {
-            (2usize, true)
-        } else if etb_word_slice_starts_with(&condition_words, &["you", "ve", "cast"]) {
-            (3usize, true)
-        } else if etb_word_slice_starts_with(&condition_words, &["you", "cast"]) {
-            (2usize, true)
-        } else if etb_word_slice_starts_with(&condition_words, &["you", "have", "cast"]) {
-            (3usize, true)
-        } else {
-            (0usize, false)
-        };
+        let (count_word_idx, valid_prefix) =
+            if etb_word_slice_starts_with(&condition_words, &["youve", "cast"])
+                || etb_word_slice_starts_with(&condition_words, &["you've", "cast"])
+            {
+                (2usize, true)
+            } else if etb_word_slice_starts_with(&condition_words, &["you", "ve", "cast"]) {
+                (3usize, true)
+            } else if etb_word_slice_starts_with(&condition_words, &["you", "cast"]) {
+                (2usize, true)
+            } else if etb_word_slice_starts_with(&condition_words, &["you", "have", "cast"]) {
+                (3usize, true)
+            } else {
+                (0usize, false)
+            };
         if valid_prefix
             && condition_words.get(count_word_idx + 1).copied() == Some("or")
             && condition_words.get(count_word_idx + 2).copied() == Some("more")
@@ -671,22 +686,25 @@ fn parse_enters_with_counter_condition_clause(tokens: &[OwnedLexToken]) -> Optio
     }
 
     // Cast-time reveal/control checks aren't yet tracked as structured state.
-    if etb_word_slice_starts_with(&condition_words, &[
-        "you",
-        "revealed",
-        "a",
-        "dragon",
-        "card",
-        "or",
-        "controlled",
-        "a",
-        "dragon",
-        "as",
-        "you",
-        "cast",
-        "this",
-        "spell",
-    ]) {
+    if etb_word_slice_starts_with(
+        &condition_words,
+        &[
+            "you",
+            "revealed",
+            "a",
+            "dragon",
+            "card",
+            "or",
+            "controlled",
+            "a",
+            "dragon",
+            "as",
+            "you",
+            "cast",
+            "this",
+            "spell",
+        ],
+    ) {
         return Some(crate::ConditionExpr::Unmodeled(condition_words.join(" ")));
     }
 
@@ -705,7 +723,10 @@ fn parse_enters_with_counter_equal_to_value_clause(tokens: &[OwnedLexToken]) -> 
     }
 
     let mut where_tokens = Vec::with_capacity(trimmed.len() + 1);
-    where_tokens.push(OwnedLexToken::word("where".to_string(), TextSpan::synthetic()));
+    where_tokens.push(OwnedLexToken::word(
+        "where".to_string(),
+        TextSpan::synthetic(),
+    ));
     where_tokens.push(OwnedLexToken::word("x".to_string(), TextSpan::synthetic()));
     where_tokens.push(OwnedLexToken::word("is".to_string(), TextSpan::synthetic()));
     where_tokens.extend_from_slice(&trimmed[2..]);
@@ -739,11 +760,9 @@ fn parse_equal_to_greatest_cards_drawn_this_turn_value(tokens: &[OwnedLexToken])
 }
 
 pub(crate) fn parse_where_x_value_clause(tokens: &[OwnedLexToken]) -> Option<Value> {
-    let (normalized_words, _) = etb_normalized_token_words(tokens);
-    let words = normalized_words
-        .iter()
-        .map(String::as_str)
-        .collect::<Vec<_>>();
+    let word_view =
+        crate::cards::builders::parser::grammar::primitives::CompatWordIndex::new(tokens);
+    let words = word_view.word_refs();
     if !etb_word_slice_starts_with(&words, &["where", "x", "is"]) {
         return None;
     }
@@ -850,11 +869,9 @@ pub(crate) fn parse_where_x_value_clause_lexed(
 }
 
 pub(crate) fn parse_where_x_source_stat_value(tokens: &[OwnedLexToken]) -> Option<Value> {
-    let (normalized_words, _) = etb_normalized_token_words(tokens);
-    let words = normalized_words
-        .iter()
-        .map(String::as_str)
-        .collect::<Vec<_>>();
+    let word_view =
+        crate::cards::builders::parser::grammar::primitives::CompatWordIndex::new(tokens);
+    let words = word_view.word_refs();
     if !etb_word_slice_starts_with(&words, &["where", "x", "is"]) {
         return None;
     }
@@ -880,9 +897,7 @@ pub(crate) fn parse_where_x_source_stat_value(tokens: &[OwnedLexToken]) -> Optio
         | Some(["thiss", "creature", "mana", "value"])
         | Some(["this", "creatures", "mana", "value"])
         | Some(["thiss", "creatures", "mana", "value"])
-        | Some(["its", "mana", "value"]) => {
-            Some(Value::ManaValueOf(Box::new(ChooseSpec::Source)))
-        }
+        | Some(["its", "mana", "value"]) => Some(Value::ManaValueOf(Box::new(ChooseSpec::Source))),
         Some(["that", "creature", "power"])
         | Some(["that", "creatures", "power"])
         | Some(["that", "object", "power"])
@@ -931,7 +946,18 @@ pub(crate) fn parse_where_x_source_stat_value(tokens: &[OwnedLexToken]) -> Optio
         | Some(["the", "mana", "value", "of", "the", "amassed", "armys"])
         | Some(["mana", "value", "of", "the", "amassed", "army"])
         | Some(["mana", "value", "of", "the", "amassed", "armys"])
-        | Some(["the", "mana", "value", "of", "the", "army", "you", "amassed"])
+        | Some(
+            [
+                "the",
+                "mana",
+                "value",
+                "of",
+                "the",
+                "army",
+                "you",
+                "amassed",
+            ],
+        )
         | Some(["mana", "value", "of", "the", "army", "you", "amassed"]) => {
             Some(Value::ManaValueOf(Box::new(tagged_it)))
         }
@@ -964,42 +990,61 @@ pub(crate) fn parse_where_x_is_fixed_plus_reference_value(
             || etb_word_slice_starts_with(value_words, &["sacrificed", "creatures", "power"])
         {
             Value::PowerOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))))
-        } else if etb_word_slice_starts_with(value_words, &["the", "sacrificed", "creature", "toughness"])
-            || etb_word_slice_starts_with(value_words, &["the", "sacrificed", "creatures", "toughness"])
-            || etb_word_slice_starts_with(value_words, &["sacrificed", "creature", "toughness"])
-            || etb_word_slice_starts_with(value_words, &["sacrificed", "creatures", "toughness"])
-        {
+        } else if etb_word_slice_starts_with(
+            value_words,
+            &["the", "sacrificed", "creature", "toughness"],
+        ) || etb_word_slice_starts_with(
+            value_words,
+            &["the", "sacrificed", "creatures", "toughness"],
+        ) || etb_word_slice_starts_with(
+            value_words,
+            &["sacrificed", "creature", "toughness"],
+        ) || etb_word_slice_starts_with(
+            value_words,
+            &["sacrificed", "creatures", "toughness"],
+        ) {
             Value::ToughnessOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))))
-        } else if etb_word_slice_starts_with(value_words, &[
-            "the",
-            "mana",
-            "value",
-            "of",
-            "the",
-            "sacrificed",
-            "creature",
-        ]) || etb_word_slice_starts_with(value_words, &[
-            "the",
-            "mana",
-            "value",
-            "of",
-            "the",
-            "sacrificed",
-            "creatures",
-        ]) || etb_word_slice_starts_with(value_words, &["mana", "value", "of", "the", "sacrificed", "creature"])
-            || etb_word_slice_starts_with(value_words, &[
+        } else if etb_word_slice_starts_with(
+            value_words,
+            &[
+                "the",
+                "mana",
+                "value",
+                "of",
+                "the",
+                "sacrificed",
+                "creature",
+            ],
+        ) || etb_word_slice_starts_with(
+            value_words,
+            &[
+                "the",
                 "mana",
                 "value",
                 "of",
                 "the",
                 "sacrificed",
                 "creatures",
-            ])
-            || etb_word_slice_starts_with(value_words, &["the", "sacrificed", "creature", "mana", "value"])
-            || etb_word_slice_starts_with(value_words, &["the", "sacrificed", "creatures", "mana", "value"])
-            || etb_word_slice_starts_with(value_words, &["sacrificed", "creature", "mana", "value"])
-            || etb_word_slice_starts_with(value_words, &["sacrificed", "creatures", "mana", "value"])
-        {
+            ],
+        ) || etb_word_slice_starts_with(
+            value_words,
+            &["mana", "value", "of", "the", "sacrificed", "creature"],
+        ) || etb_word_slice_starts_with(
+            value_words,
+            &["mana", "value", "of", "the", "sacrificed", "creatures"],
+        ) || etb_word_slice_starts_with(
+            value_words,
+            &["the", "sacrificed", "creature", "mana", "value"],
+        ) || etb_word_slice_starts_with(
+            value_words,
+            &["the", "sacrificed", "creatures", "mana", "value"],
+        ) || etb_word_slice_starts_with(
+            value_words,
+            &["sacrificed", "creature", "mana", "value"],
+        ) || etb_word_slice_starts_with(
+            value_words,
+            &["sacrificed", "creatures", "mana", "value"],
+        ) {
             Value::ManaValueOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))))
         } else {
             return None;
@@ -1127,7 +1172,9 @@ pub(crate) fn parse_where_x_opponents_dealt_combat_damage_this_turn_value(
     }
 }
 
-pub(crate) fn parse_where_x_noncombat_damage_to_opponents_value(tokens: &[OwnedLexToken]) -> Option<Value> {
+pub(crate) fn parse_where_x_noncombat_damage_to_opponents_value(
+    tokens: &[OwnedLexToken],
+) -> Option<Value> {
     let words = crate::cards::builders::parser::token_word_refs(tokens);
     if !etb_word_slice_starts_with(&words, &["where", "x", "is"]) {
         return None;
@@ -1329,8 +1376,7 @@ pub(crate) fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) 
         return None;
     }
 
-    if etb_word_slice_contains_all(&clause_words, &["creature", "type", "common"])
-    {
+    if etb_word_slice_contains_all(&clause_words, &["creature", "type", "common"]) {
         return None;
     }
 
@@ -1535,10 +1581,11 @@ pub(crate) fn parse_where_x_is_number_of_filter_plus_or_minus_fixed_value(
     }
 
     let filter_start_word_idx = number_word_idx + 2;
-    let operator_word_idx = etb_find_word_index(&clause_words[filter_start_word_idx + 1..], |word| {
-        matches!(word, "plus" | "minus")
-    })
-    .map(|idx| filter_start_word_idx + 1 + idx)?;
+    let operator_word_idx =
+        etb_find_word_index(&clause_words[filter_start_word_idx + 1..], |word| {
+            matches!(word, "plus" | "minus")
+        })
+        .map(|idx| filter_start_word_idx + 1 + idx)?;
     let operator = clause_words[operator_word_idx];
 
     let filter_start_token_idx = token_index_for_word_index(tokens, filter_start_word_idx)?;
@@ -1573,7 +1620,10 @@ pub(crate) fn parse_where_x_is_number_of_filter_plus_or_minus_fixed_value(
     ))
 }
 
-pub(crate) fn token_index_for_word_index(tokens: &[OwnedLexToken], word_index: usize) -> Option<usize> {
+pub(crate) fn token_index_for_word_index(
+    tokens: &[OwnedLexToken],
+    word_index: usize,
+) -> Option<usize> {
     let mut seen_words = 0usize;
     for (idx, token) in tokens.iter().enumerate() {
         if token.as_word().is_none() {
@@ -1598,8 +1648,7 @@ pub(crate) fn parse_enters_tapped_for_filter_line(
         return Ok(None);
     }
     if is_negated_untap_clause(&clause_words) {
-        let has_enters_tapped =
-            etb_word_slice_contains_any(&clause_words, &["enter", "enters"]);
+        let has_enters_tapped = etb_word_slice_contains_any(&clause_words, &["enter", "enters"]);
         let has_tapped = etb_word_slice_contains(&clause_words, "tapped");
         if has_enters_tapped && has_tapped {
             return Err(CardTextError::ParseError(format!(
@@ -1612,9 +1661,8 @@ pub(crate) fn parse_enters_tapped_for_filter_line(
     if etb_word_slice_contains(&clause_words, "unless") {
         return Ok(None);
     }
-    let enter_word_idx = etb_find_word_index(&clause_words, |word| {
-        matches!(word, "enter" | "enters")
-    });
+    let enter_word_idx =
+        etb_find_word_index(&clause_words, |word| matches!(word, "enter" | "enters"));
     let Some(enter_word_idx) = enter_word_idx else {
         return Ok(None);
     };
@@ -1638,12 +1686,9 @@ pub(crate) fn parse_enters_tapped_for_filter_line(
         )));
     }
     let before_enter = &tokens[..enter_token_idx];
-    let (normalized_before_words, before_token_start_indices) =
-        etb_normalized_token_words(before_enter);
-    let before_words = normalized_before_words
-        .iter()
-        .map(String::as_str)
-        .collect::<Vec<_>>();
+    let before_word_view =
+        crate::cards::builders::parser::grammar::primitives::CompatWordIndex::new(before_enter);
+    let before_words = before_word_view.word_refs();
     let mut controller_override: Option<PlayerFilter> = None;
     let mut filter_end = before_enter.len();
     let find_suffix_cut = |suffix_len: usize| {
@@ -1651,7 +1696,8 @@ pub(crate) fn parse_enters_tapped_for_filter_line(
         if keep_word_count == 0 {
             0
         } else {
-            before_token_start_indices
+            before_word_view
+                .token_start_indices()
                 .get(keep_word_count)
                 .copied()
                 .unwrap_or(before_enter.len())
@@ -1686,13 +1732,14 @@ pub(crate) fn parse_enters_untapped_for_filter_line(
     ) {
         return Ok(None);
     }
-    if etb_word_slice_contains(&clause_words, "unless") || clause_words.first().copied() == Some("this") {
+    if etb_word_slice_contains(&clause_words, "unless")
+        || clause_words.first().copied() == Some("this")
+    {
         return Ok(None);
     }
 
-    let Some(enter_word_idx) = etb_find_word_index(&clause_words, |word| {
-        matches!(word, "enter" | "enters")
-    })
+    let Some(enter_word_idx) =
+        etb_find_word_index(&clause_words, |word| matches!(word, "enter" | "enters"))
     else {
         return Ok(None);
     };
@@ -1722,8 +1769,7 @@ pub(crate) fn parse_reveal_from_hand_or_enters_tapped_line(
     if !etb_word_slice_starts_with(&clause_words, &["as", "this", "land", "enters"]) {
         return Ok(None);
     }
-    if !etb_word_slice_contains_all(&clause_words, &["reveal", "from", "hand"])
-    {
+    if !etb_word_slice_contains_all(&clause_words, &["reveal", "from", "hand"]) {
         return Ok(None);
     }
 
@@ -1733,10 +1779,11 @@ pub(crate) fn parse_reveal_from_hand_or_enters_tapped_line(
             clause_words.join(" ")
         )));
     };
-    let Some(from_hand_word_idx) =
-        etb_find_word_sequence_index(&clause_words[reveal_word_idx + 1..], &["from", "your", "hand"])
-            .map(|idx| reveal_word_idx + 1 + idx)
-    else {
+    let Some(from_hand_word_idx) = etb_find_word_sequence_index(
+        &clause_words[reveal_word_idx + 1..],
+        &["from", "your", "hand"],
+    )
+    .map(|idx| reveal_word_idx + 1 + idx) else {
         return Err(CardTextError::ParseError(format!(
             "unsupported reveal source in land ETB reveal clause (clause: '{}')",
             clause_words.join(" ")
@@ -1774,12 +1821,19 @@ pub(crate) fn parse_reveal_from_hand_or_enters_tapped_line(
             .or_else(|| etb_find_word_sequence_index(&clause_words, &["if", "you", "don't"]))
     {
         let trailing = &clause_words[if_you_dont_idx + 3..];
-        let valid_trailing = etb_word_slice_starts_with(trailing, &["this", "land", "enters", "tapped"])
-            || etb_word_slice_starts_with(trailing, &["this", "land", "enter", "tapped"])
-            || etb_word_slice_starts_with(trailing, &["it", "enters", "tapped"])
-            || etb_word_slice_starts_with(trailing, &["it", "enter", "tapped"])
-            || etb_word_slice_starts_with(trailing, &["it", "enters", "the", "battlefield", "tapped"])
-            || etb_word_slice_starts_with(trailing, &["it", "enter", "the", "battlefield", "tapped"]);
+        let valid_trailing =
+            etb_word_slice_starts_with(trailing, &["this", "land", "enters", "tapped"])
+                || etb_word_slice_starts_with(trailing, &["this", "land", "enter", "tapped"])
+                || etb_word_slice_starts_with(trailing, &["it", "enters", "tapped"])
+                || etb_word_slice_starts_with(trailing, &["it", "enter", "tapped"])
+                || etb_word_slice_starts_with(
+                    trailing,
+                    &["it", "enters", "the", "battlefield", "tapped"],
+                )
+                || etb_word_slice_starts_with(
+                    trailing,
+                    &["it", "enter", "the", "battlefield", "tapped"],
+                );
         if !valid_trailing {
             return Err(CardTextError::ParseError(format!(
                 "unsupported land ETB reveal trailing clause (clause: '{}')",
@@ -1811,15 +1865,14 @@ pub(crate) fn parse_reveal_from_hand_or_enters_tapped_line(
     }
 
     let mut condition = reveal_condition;
-    if let Some(or_idx_rel) = etb_find_word_index(&clause_words[unless_idx + 1..], |word| word == "or")
+    if let Some(or_idx_rel) =
+        etb_find_word_index(&clause_words[unless_idx + 1..], |word| word == "or")
     {
         let or_idx = unless_idx + 1 + or_idx_rel;
-        let Some(control_word_idx) =
-            etb_find_word_index(&clause_words[or_idx + 1..], |word| {
-                matches!(word, "control" | "controls")
-            })
-            .map(|idx| or_idx + 1 + idx)
-        else {
+        let Some(control_word_idx) = etb_find_word_index(&clause_words[or_idx + 1..], |word| {
+            matches!(word, "control" | "controls")
+        })
+        .map(|idx| or_idx + 1 + idx) else {
             return Err(CardTextError::ParseError(format!(
                 "unsupported land ETB reveal disjunction (clause: '{}')",
                 clause_words.join(" ")
@@ -1869,39 +1922,62 @@ pub(crate) fn parse_conditional_enters_tapped_unless_line(
     let Some(unless_idx) = etb_find_token_index(tokens, |token| token.is_word("unless")) else {
         return Ok(None);
     };
-    let condition_words = crate::cards::builders::parser::token_word_refs(&tokens[unless_idx + 1..]);
-    if etb_word_slice_starts_with(&condition_words, &["you", "control", "two", "or", "more", "other", "lands"]) {
+    let condition_words =
+        crate::cards::builders::parser::token_word_refs(&tokens[unless_idx + 1..]);
+    if etb_word_slice_starts_with(
+        &condition_words,
+        &["you", "control", "two", "or", "more", "other", "lands"],
+    ) {
         return Ok(Some(
             StaticAbility::enters_tapped_unless_control_two_or_more_other_lands(),
         ));
     }
-    if etb_word_slice_starts_with(&condition_words, &["you", "control", "two", "or", "fewer", "other", "lands"]) {
+    if etb_word_slice_starts_with(
+        &condition_words,
+        &["you", "control", "two", "or", "fewer", "other", "lands"],
+    ) {
         return Ok(Some(
             StaticAbility::enters_tapped_unless_control_two_or_fewer_other_lands(),
         ));
     }
-    if etb_word_slice_starts_with(&condition_words, &["you", "control", "two", "or", "more", "basic", "lands"]) {
+    if etb_word_slice_starts_with(
+        &condition_words,
+        &["you", "control", "two", "or", "more", "basic", "lands"],
+    ) {
         return Ok(Some(
             StaticAbility::enters_tapped_unless_control_two_or_more_basic_lands(),
         ));
     }
-    if etb_word_slice_starts_with(&condition_words, &["a", "player", "has", "13", "or", "less", "life"])
-        || etb_word_slice_starts_with(&condition_words, &["a", "player", "has", "thirteen", "or", "less", "life"])
-    {
+    if etb_word_slice_starts_with(
+        &condition_words,
+        &["a", "player", "has", "13", "or", "less", "life"],
+    ) || etb_word_slice_starts_with(
+        &condition_words,
+        &["a", "player", "has", "thirteen", "or", "less", "life"],
+    ) {
         return Ok(Some(
             StaticAbility::enters_tapped_unless_a_player_has_13_or_less_life(),
         ));
     }
-    if etb_word_slice_starts_with(&condition_words, &["you", "have", "two", "or", "more", "opponents"]) {
+    if etb_word_slice_starts_with(
+        &condition_words,
+        &["you", "have", "two", "or", "more", "opponents"],
+    ) {
         return Ok(Some(
             StaticAbility::enters_tapped_unless_two_or_more_opponents(),
         ));
     }
-    if etb_word_slice_starts_with(&condition_words, &[
-        "it", "s", "your", "first", "second", "or", "third", "turn", "of", "the", "game",
-    ]) || etb_word_slice_starts_with(&condition_words, &[
-        "it's", "your", "first", "second", "or", "third", "turn", "of", "the", "game",
-    ]) {
+    if etb_word_slice_starts_with(
+        &condition_words,
+        &[
+            "it", "s", "your", "first", "second", "or", "third", "turn", "of", "the", "game",
+        ],
+    ) || etb_word_slice_starts_with(
+        &condition_words,
+        &[
+            "it's", "your", "first", "second", "or", "third", "turn", "of", "the", "game",
+        ],
+    ) {
         return Ok(Some(StaticAbility::enters_tapped_unless_condition(
             crate::ConditionExpr::YourFirstTurnsOfTheGameOrFewer(3),
             clause_words.join(" "),
@@ -1939,16 +2015,18 @@ pub(crate) fn parse_enters_with_additional_counter_for_filter_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
-    let enter_word_idx = etb_find_word_index(&clause_words, |word| matches!(word, "enter" | "enters"));
+    let enter_word_idx =
+        etb_find_word_index(&clause_words, |word| matches!(word, "enter" | "enters"));
     let Some(enter_word_idx) = enter_word_idx else {
         return Ok(None);
     };
     let Some(enter_token_idx) = token_index_for_word_index(tokens, enter_word_idx) else {
         return Ok(None);
     };
-    if tokens[..enter_token_idx].iter().any(|token| {
-        token.is_period() || token.is_colon() || token.is_semicolon()
-    }) {
+    if tokens[..enter_token_idx]
+        .iter()
+        .any(|token| token.is_period() || token.is_colon() || token.is_semicolon())
+    {
         return Ok(None);
     }
 

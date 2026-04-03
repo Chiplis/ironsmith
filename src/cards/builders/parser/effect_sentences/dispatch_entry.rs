@@ -1017,11 +1017,6 @@ fn parse_consult_condition_value(tokens: &[&str]) -> Option<Value> {
     Some(Value::Count(filter))
 }
 
-fn normalized_token_words(tokens: &[OwnedLexToken]) -> (Vec<String>, Vec<usize>) {
-    let word_view = CompatWordIndex::new(tokens);
-    (word_view.owned_words(), word_view.token_start_indices())
-}
-
 fn strip_prefix_phrases<'a>(
     tokens: &'a [OwnedLexToken],
     phrases: &[&'static [&'static str]],
@@ -1048,8 +1043,8 @@ fn parse_consult_mana_value_condition_tokens(
     )?;
 
     let (operator, right_tokens) = parse_value_comparison_tokens(after_prefix)?;
-    let (right_words, _) = normalized_token_words(right_tokens);
-    let right_word_refs = right_words.iter().map(String::as_str).collect::<Vec<_>>();
+    let right_word_view = CompatWordIndex::new(right_tokens);
+    let right_word_refs = right_word_view.word_refs();
     let right = parse_consult_condition_value(&right_word_refs)?;
     Some(ConsultCastManaValueCondition { operator, right })
 }
@@ -1086,11 +1081,8 @@ fn parse_consult_cast_clause(tokens: &[OwnedLexToken]) -> Option<ConsultCastClau
         ],
     )?;
     let allow_land = matches!(matched_phrase, ["play", ..]);
-    let (remainder_words, _) = normalized_token_words(remainder_tokens);
-    let remainder = remainder_words
-        .iter()
-        .map(String::as_str)
-        .collect::<Vec<_>>();
+    let remainder_word_view = CompatWordIndex::new(remainder_tokens);
+    let remainder = remainder_word_view.word_refs();
     if remainder == ["this", "turn"] {
         return Some(ConsultCastClause {
             caster,
@@ -2980,17 +2972,17 @@ fn split_reveal_filter_segments(tokens: &[OwnedLexToken]) -> Vec<Vec<OwnedLexTok
 
 fn parse_looked_card_reveal_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
     let mut filter_tokens = trim_commas(tokens).to_vec();
-    let (raw_words, raw_token_start_indices) = normalized_token_words(&filter_tokens);
-    let raw_word_refs = raw_words.iter().map(String::as_str).collect::<Vec<_>>();
-    let same_name_suffix_len = if raw_words.len() >= 3
+    let raw_word_view = CompatWordIndex::new(&filter_tokens);
+    let raw_word_refs = raw_word_view.word_refs();
+    let same_name_suffix_len = if raw_word_refs.len() >= 3
         && raw_word_refs[raw_word_refs.len() - 3..] == ["with", "that", "name"]
     {
         Some(3usize)
-    } else if raw_words.len() >= 4
+    } else if raw_word_refs.len() >= 4
         && raw_word_refs[raw_word_refs.len() - 4..] == ["with", "the", "chosen", "name"]
     {
         Some(4usize)
-    } else if raw_words.len() >= 3
+    } else if raw_word_refs.len() >= 3
         && raw_word_refs[raw_word_refs.len() - 3..] == ["with", "chosen", "name"]
     {
         Some(3usize)
@@ -2998,11 +2990,12 @@ fn parse_looked_card_reveal_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFil
         None
     };
     if let Some(suffix_len) = same_name_suffix_len {
-        let keep_word_count = raw_words.len().saturating_sub(suffix_len);
+        let keep_word_count = raw_word_refs.len().saturating_sub(suffix_len);
         let base_end = if keep_word_count == 0 {
             0
         } else {
-            raw_token_start_indices
+            raw_word_view
+                .token_start_indices()
                 .get(keep_word_count)
                 .copied()
                 .unwrap_or(filter_tokens.len())

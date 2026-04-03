@@ -405,7 +405,10 @@ fn parse_exile_to_countered_exile_instead_of_graveyard_suffix<'a>(
         parse_exile_replacement_graveyard_player,
         primitives::phrase(&["from", "anywhere"]),
         opt(primitives::comma()),
-        primitives::phrase(&["exile", "it", "instead", "with"]),
+        winnow::combinator::alt((
+            primitives::phrase(&["exile", "it", "instead", "with"]),
+            primitives::phrase(&["instead", "exile", "it", "with"]),
+        )),
         opt(winnow::combinator::alt((
             primitives::kw("a"),
             primitives::kw("an"),

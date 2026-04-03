@@ -64,7 +64,7 @@ pub(super) fn collect_available_casting_methods(
 
         if spell.linked_face_layout == crate::card::LinkedFaceLayout::Split {
             if can_cast_spell(game, player, spell, &CastingMethod::SplitOtherHalf)
-                && let Some(other_def) = crate::cards::linked_face_definition_by_name_or_id(
+                && let Some(other_def) = game.linked_face_definition_by_name_or_id(
                     spell.other_face_name.as_deref(),
                     spell.other_face,
                 )

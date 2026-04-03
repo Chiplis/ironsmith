@@ -2668,10 +2668,10 @@ pub fn spell_mana_cost_for_cast(
         CastingMethod::Normal => spell.mana_cost.clone(),
         CastingMethod::FaceDown => Some(face_down_cast_mana_cost()),
         CastingMethod::SplitOtherHalf => {
-            linked_face_definition(spell).and_then(|def| def.card.mana_cost)
+            linked_face_definition(game, spell).and_then(|def| def.card.mana_cost)
         }
         CastingMethod::Fuse => {
-            spell_view_for_fused_split_cast(spell).and_then(|view| view.mana_cost)
+            spell_view_for_fused_split_cast(game, spell).and_then(|view| view.mana_cost)
         }
         CastingMethod::Alternative(idx) => {
             if let Some(method) = spell.alternative_casts.get(*idx) {
@@ -2855,11 +2855,11 @@ fn can_cast_spell_with_context(
             }
             Some(spell_view_for_face_down_cast(spell))
         }
-        CastingMethod::SplitOtherHalf => match spell_view_for_split_other_half_cast(spell) {
+        CastingMethod::SplitOtherHalf => match spell_view_for_split_other_half_cast(game, spell) {
             Some(view) => Some(view),
             None => return false,
         },
-        CastingMethod::Fuse => match spell_view_for_fused_split_cast(spell) {
+        CastingMethod::Fuse => match spell_view_for_fused_split_cast(game, spell) {
             Some(view) => Some(view),
             None => return false,
         },
@@ -3202,11 +3202,12 @@ fn get_mana_cost_for_method<'a>(
     method.mana_cost().or(spell.mana_cost.as_ref())
 }
 
-fn spell_view_for_disturb_cast(spell: &crate::object::Object) -> Option<crate::object::Object> {
-    let other_def = crate::cards::linked_face_definition_by_name_or_id(
-        spell.other_face_name.as_deref(),
-        spell.other_face,
-    )?;
+fn spell_view_for_disturb_cast(
+    game: &GameState,
+    spell: &crate::object::Object,
+) -> Option<crate::object::Object> {
+    let other_def = game
+        .linked_face_definition_by_name_or_id(spell.other_face_name.as_deref(), spell.other_face)?;
     let mut view = spell.clone();
     view.apply_definition_face(&other_def);
     view.ensure_aura_cast_spell_effect();
@@ -3219,31 +3220,35 @@ fn spell_view_for_face_down_cast(spell: &crate::object::Object) -> crate::object
     view
 }
 
-fn linked_face_definition(spell: &crate::object::Object) -> Option<crate::cards::CardDefinition> {
-    crate::cards::linked_face_definition_by_name_or_id(
-        spell.other_face_name.as_deref(),
-        spell.other_face,
-    )
+fn linked_face_definition(
+    game: &GameState,
+    spell: &crate::object::Object,
+) -> Option<crate::cards::CardDefinition> {
+    game.linked_face_definition_by_name_or_id(spell.other_face_name.as_deref(), spell.other_face)
 }
 
 fn spell_view_for_split_other_half_cast(
+    game: &GameState,
     spell: &crate::object::Object,
 ) -> Option<crate::object::Object> {
     if spell.linked_face_layout != crate::card::LinkedFaceLayout::Split {
         return None;
     }
-    let other_def = linked_face_definition(spell)?;
+    let other_def = linked_face_definition(game, spell)?;
     let mut view = spell.clone();
     view.apply_definition_face(&other_def);
     view.ensure_aura_cast_spell_effect();
     Some(view)
 }
 
-fn spell_view_for_fused_split_cast(spell: &crate::object::Object) -> Option<crate::object::Object> {
+fn spell_view_for_fused_split_cast(
+    game: &GameState,
+    spell: &crate::object::Object,
+) -> Option<crate::object::Object> {
     if spell.linked_face_layout != crate::card::LinkedFaceLayout::Split || !spell.has_fuse {
         return None;
     }
-    let other_def = linked_face_definition(spell)?;
+    let other_def = linked_face_definition(game, spell)?;
     let mut view = spell.clone();
     view.apply_fused_split_spell_overlay(&other_def);
     Some(view)
@@ -3270,10 +3275,12 @@ fn can_cast_with_alternative_with_context(
     let player = ctx.player;
 
     let disturbed_view = match method {
-        AlternativeCastingMethod::Disturb { .. } => match spell_view_for_disturb_cast(spell) {
-            Some(view) => Some(view),
-            None => return false,
-        },
+        AlternativeCastingMethod::Disturb { .. } => {
+            match spell_view_for_disturb_cast(game, spell) {
+                Some(view) => Some(view),
+                None => return false,
+            }
+        }
         _ => None,
     };
     let spell_for_checks = disturbed_view.as_ref().unwrap_or(spell);
@@ -7599,7 +7606,7 @@ pub(crate) fn format_action_short(game: &GameState, action: &LegalAction) -> Str
                         format!("{} [Face down] ({})", obj.name, "{3}")
                     }
                     crate::alternative_cast::CastingMethod::SplitOtherHalf => {
-                        if let Some(other_def) = crate::cards::linked_face_definition_by_name_or_id(
+                        if let Some(other_def) = game.linked_face_definition_by_name_or_id(
                             obj.other_face_name.as_deref(),
                             obj.other_face,
                         ) {
@@ -7625,7 +7632,7 @@ pub(crate) fn format_action_short(game: &GameState, action: &LegalAction) -> Str
                         .as_ref()
                         .map(format_mana_cost_from_cost)
                         .unwrap_or_else(|| format_mana_cost(obj));
-                        if let Some(other_def) = crate::cards::linked_face_definition_by_name_or_id(
+                        if let Some(other_def) = game.linked_face_definition_by_name_or_id(
                             obj.other_face_name.as_deref(),
                             obj.other_face,
                         ) {

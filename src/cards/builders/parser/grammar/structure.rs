@@ -1124,34 +1124,62 @@ fn parse_modal_header_choose_spec_inner<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<Option<ModalHeaderChooseSpec>, ErrMode<ContextError>> {
     let tokens = input.peek_finish();
-    let Some(choose_idx) = rfind_token_index(tokens, |token| token.is_word("choose")) else {
+    let choose_indices = tokens
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, token)| token.is_word("choose").then_some(idx))
+        .collect::<Vec<_>>();
+    if choose_indices.is_empty() {
         input.finish();
         return Ok(None);
-    };
+    }
 
-    let choose_tail = &tokens[choose_idx + 1..];
-    let Some((Some(min), max)) = values::parse_modal_choose_range(choose_tail).ok().flatten()
-    else {
-        input.next_slice(choose_idx + 1);
-        let mut err = ContextError::new();
-        err.push(StrContext::Label("modal header choose clause"));
-        err.push(StrContext::Expected(StrContextValue::Description(
-            "modal choice range",
-        )));
-        return Err(ErrMode::Cut(err));
-    };
-    let x_clause_start = choose_tail.iter().enumerate().find_map(|(idx, _)| {
-        primitives::parse_prefix(&choose_tail[idx..], primitives::phrase(&["x", "is"]))
-            .map(|_| choose_idx + 1 + idx)
-    });
+    for choose_idx in choose_indices.iter().copied() {
+        let choose_tail = &tokens[choose_idx + 1..];
+        let Some((Some(min), max)) = values::parse_modal_choose_range(choose_tail).ok().flatten()
+        else {
+            continue;
+        };
+        let x_clause_start = choose_tail.iter().enumerate().find_map(|(idx, _)| {
+            primitives::parse_prefix(&choose_tail[idx..], primitives::phrase(&["x", "is"]))
+                .map(|_| choose_idx + 1 + idx)
+        });
 
-    input.finish();
-    Ok(Some(ModalHeaderChooseSpec {
-        choose_idx,
-        min,
-        max,
-        x_clause_start,
-    }))
+        input.finish();
+        return Ok(Some(ModalHeaderChooseSpec {
+            choose_idx,
+            min,
+            max,
+            x_clause_start,
+        }));
+    }
+
+    let choose_idx = *choose_indices.last().expect("checked non-empty");
+    input.next_slice(choose_idx + 1);
+    let mut err = ContextError::new();
+    err.push(StrContext::Label("modal header choose clause"));
+    err.push(StrContext::Expected(StrContextValue::Description(
+        "modal choice range",
+    )));
+    Err(ErrMode::Cut(err))
+}
+
+pub(crate) fn split_metadata_line_raw(line: &str) -> Option<(MetadataLineKind, &str)> {
+    let (label, value) = line.split_once(':')?;
+    let normalized = label
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_ascii_lowercase();
+    let kind = match normalized.as_str() {
+        "mana cost" => MetadataLineKind::ManaCost,
+        "type line" | "type" => MetadataLineKind::TypeLine,
+        "power/toughness" => MetadataLineKind::PowerToughness,
+        "loyalty" => MetadataLineKind::Loyalty,
+        "defense" => MetadataLineKind::Defense,
+        _ => return None,
+    };
+    Some((kind, value.trim()))
 }
 
 pub(crate) fn parse_modal_header_choose_spec<'a>(

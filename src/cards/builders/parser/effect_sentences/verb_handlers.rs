@@ -53,10 +53,6 @@ use super::zone_handlers::{
     wrap_return_with_delayed_timing,
 };
 
-fn normalized_token_words(tokens: &[OwnedLexToken]) -> Vec<String> {
-    CompatWordIndex::new(tokens).owned_words()
-}
-
 pub(crate) fn parse_effect_with_verb(
     verb: Verb,
     subject: Option<SubjectAst>,
@@ -309,7 +305,7 @@ pub(crate) fn parse_look(
     {
         clause_tokens = trim_commas(&clause_tokens[1..]);
     }
-    let clause_word_storage = normalized_token_words(&clause_tokens);
+    let clause_word_storage = CompatWordIndex::new(&clause_tokens).owned_words();
     let clause_words = clause_word_storage
         .iter()
         .map(String::as_str)
@@ -322,7 +318,7 @@ pub(crate) fn parse_look(
     {
         hand_tokens = hand_tokens[1..].to_vec();
     }
-    let hand_word_storage = normalized_token_words(&hand_tokens);
+    let hand_word_storage = CompatWordIndex::new(&hand_tokens).owned_words();
     let hand_words = hand_word_storage
         .iter()
         .map(String::as_str)
@@ -425,7 +421,7 @@ pub(crate) fn parse_look(
     {
         owner_tokens = &owner_tokens[1..];
     }
-    let owner_word_storage = normalized_token_words(owner_tokens);
+    let owner_word_storage = CompatWordIndex::new(owner_tokens).owned_words();
     let owner_words = owner_word_storage
         .iter()
         .map(String::as_str)
