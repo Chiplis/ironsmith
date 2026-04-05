@@ -43,9 +43,10 @@ use super::effect_pipeline::{
     NormalizedParsedAbility, NormalizedPreparedAbility,
 };
 use super::grammar::filters::parse_spell_filter_with_grammar_entrypoint_lexed;
-use super::grammar::primitives::CompatWordIndex;
 use super::keyword_static::parse_if_this_spell_costs_less_to_cast_line_lexed;
-use super::lexer::{OwnedLexToken, TokenKind, lex_line, split_lexed_sentences, trim_lexed_commas};
+use super::lexer::{
+    OwnedLexToken, TokenKind, lex_line, split_lexed_sentences, token_word_refs, trim_lexed_commas,
+};
 use super::lowering_support::{
     rewrite_apply_instead_followup_statement_to_last_ability, rewrite_lower_prepared_ability,
     rewrite_lower_prepared_additional_cost_choice_modes_with_exports,
@@ -109,6 +110,22 @@ fn parse_trigger_clause_from_text(
 fn parse_triggered_line_from_text(text: &str, line_index: usize) -> Result<LineAst, CardTextError> {
     let tokens = lexed_tokens(text, line_index)?;
     parse_triggered_line_lexed(&tokens)
+}
+
+fn full_text_has_triggered_intervening_if_clause(text: &str, line_index: usize) -> bool {
+    let Ok(tokens) = lexed_tokens(text, line_index) else {
+        return false;
+    };
+    let start_idx = if tokens.first().is_some_and(|token| {
+        token.is_word("whenever") || token.is_word("at") || token.is_word("when")
+    }) {
+        1
+    } else {
+        0
+    };
+
+    super::grammar::structure::split_triggered_conditional_clause_lexed(&tokens, start_idx)
+        .is_some()
 }
 
 fn word_refs_have_prefix(words: &[&str], prefix: &[&str]) -> bool {
@@ -2010,6 +2027,10 @@ fn lower_rewrite_triggered_to_chunk_impl(
     let normalized_full_text = line.full_text.to_ascii_lowercase();
     let normalized_effect_text = line.effect_text.trim().to_ascii_lowercase();
     if !line.effect_text.trim().is_empty()
+        && !full_text_has_triggered_intervening_if_clause(
+            line.full_text.as_str(),
+            line.info.line_index,
+        )
         && !str_contains(normalized_full_text.as_str(), "if you do")
         && !str_contains(normalized_full_text.as_str(), "if you don't")
         && !str_contains(normalized_full_text.as_str(), "if you dont")
@@ -3114,11 +3135,11 @@ fn try_lower_optional_cost_with_cast_trigger(
     let head_effect_text = str_strip_prefix(head, prefix).unwrap_or(head);
     let head_tokens = lexed_tokens(head_effect_text, line.info.line_index)?;
     let stripped_head_tokens = trim_lexed_commas(&head_tokens);
-    let stripped_head_view = LowerRewriteNormalizedWords::new(stripped_head_tokens);
-    if !stripped_head_view.slice_eq(0, &["you", "may"]) {
+    let stripped_head_words = token_word_refs(stripped_head_tokens);
+    if !slice_starts_with(&stripped_head_words, &["you", "may"]) {
         return Ok(None);
     }
-    let Some(head_effect_start) = stripped_head_view.token_index_for_word_index(2) else {
+    let Some(head_effect_start) = token_index_for_word_index(stripped_head_tokens, 2) else {
         return Ok(None);
     };
 
@@ -3147,8 +3168,7 @@ fn try_lower_optional_cost_with_cast_trigger(
         return Ok(None);
     }
 
-    let head_word_view = LowerRewriteNormalizedWords::new(&head_tokens);
-    let head_words = head_word_view.to_word_refs();
+    let head_words = token_word_refs(&head_tokens);
     let label = format!(
         "As an additional cost to cast this spell, {}",
         head_words.join(" ")
@@ -3161,8 +3181,7 @@ fn try_lower_optional_cost_with_cast_trigger(
     let followup_tokens = lexed_tokens(followup, line.info.line_index)?;
     let mut effects = parse_effect_sentences_lexed(&followup_tokens)?;
     rewrite_copy_count_to_times_paid_label_rewrite(&mut effects, &label);
-    let followup_word_view = LowerRewriteNormalizedWords::new(&followup_tokens);
-    let followup_words = followup_word_view.to_word_refs();
+    let followup_words = token_word_refs(&followup_tokens);
 
     Ok(Some(LineAst::OptionalCostWithCastTrigger {
         cost,
@@ -3170,8 +3189,6 @@ fn try_lower_optional_cost_with_cast_trigger(
         followup_text: format!("When you do, {}", followup_words.join(" ")),
     }))
 }
-
-type LowerRewriteNormalizedWords = CompatWordIndex;
 
 fn try_lower_optional_behold_additional_cost(
     line: &super::RewriteKeywordLine,
@@ -3190,8 +3207,8 @@ fn try_lower_optional_behold_additional_cost(
         return Ok(None);
     };
     let stripped = trim_lexed_commas(effect_tokens);
-    let view = LowerRewriteNormalizedWords::new(stripped);
-    if !view.slice_eq(0, &["you", "may", "behold"]) {
+    let words = token_word_refs(stripped);
+    if !slice_starts_with(&words, &["you", "may", "behold"]) {
         return Ok(None);
     }
 
@@ -3324,8 +3341,7 @@ fn activated_effect_may_be_mana_ability(effect_text: &str, line_index: usize) ->
     let Ok(tokens) = lexed_tokens(effect_text, line_index) else {
         return false;
     };
-    let line_view = LowerRewriteNormalizedWords::new(&tokens);
-    let line_words = line_view.to_word_refs();
+    let line_words = token_word_refs(&tokens);
     word_refs_find(line_words.as_slice(), "add").is_some()
         && matches!(
             line_words.as_slice(),
@@ -3389,8 +3405,7 @@ fn extract_fixed_mana_output(effect_text: &str, line_index: usize) -> Option<Vec
     }) else {
         return None;
     };
-    let prefix_view = LowerRewriteNormalizedWords::new(&tokens[..add_idx]);
-    let prefix_words = prefix_view.to_word_refs();
+    let prefix_words = token_word_refs(&tokens[..add_idx]);
     if !matches!(
         prefix_words.as_slice(),
         [] | ["you"] | ["that", "player"] | ["target", "player"]
@@ -3466,8 +3481,7 @@ fn split_rewrite_activated_effect_text(
             mana_restrictions.push(sentence);
             continue;
         };
-        let sentence_view = LowerRewriteNormalizedWords::new(&tokens);
-        let sentence_words = sentence_view.to_word_refs();
+        let sentence_words = token_word_refs(&tokens);
         if parse_mana_usage_restriction_sentence_lexed(&tokens).is_some()
             || word_refs_have_prefix(
                 sentence_words.as_slice(),
@@ -3514,8 +3528,7 @@ fn apply_pending_mana_restrictions(
 }
 
 fn parse_next_spell_cost_reduction_sentence_rewrite(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
-    let word_view = LowerRewriteNormalizedWords::new(tokens);
-    let clause_words = word_view.to_word_refs();
+    let clause_words = token_word_refs(tokens);
     if !word_refs_have_prefix(clause_words.as_slice(), &["the", "next"]) {
         return None;
     }
@@ -3534,14 +3547,13 @@ fn parse_next_spell_cost_reduction_sentence_rewrite(tokens: &[OwnedLexToken]) ->
         return None;
     }
 
-    let spell_filter_start = word_view.token_index_for_word_index(2)?;
-    let spell_filter_end = word_view.token_index_for_word_index(spell_idx)?;
+    let spell_token_idx = find_index(tokens, |token| token.is_word("spell"))?;
     let costs_token_idx = find_index(tokens, |token| token.is_word("costs"))?;
     let less_token_idx = find_index(tokens, |token| token.is_word("less"))?;
     if less_token_idx <= costs_token_idx + 1 {
         return None;
     }
-    let spell_filter_tokens = trim_lexed_commas(&tokens[spell_filter_start..spell_filter_end]);
+    let spell_filter_tokens = trim_lexed_commas(&tokens[2..spell_token_idx]);
     let reduction_tokens = trim_lexed_commas(&tokens[costs_token_idx + 1..less_token_idx]);
     let filter = parse_spell_filter_with_grammar_entrypoint_lexed(spell_filter_tokens);
     let reduction_symbols = reduction_tokens
@@ -3628,12 +3640,11 @@ fn parse_each_player_and_their_creatures_damage_sentence_rewrite(
     if !matches_shape {
         return None;
     }
-    let word_view = LowerRewriteNormalizedWords::new(tokens);
-    let clause_words = word_view.to_word_refs();
+    let clause_words = token_word_refs(tokens);
     let deals_idx = find_index(clause_words.as_slice(), |word| {
         matches!(*word, "deal" | "deals")
     })?;
-    let amount_start = word_view.token_index_for_word_index(deals_idx + 1)?;
+    let amount_start = token_index_for_word_index(tokens, deals_idx + 1)?;
     let (amount, _used) = parse_number_or_x_value_lexed(&tokens[amount_start..])?;
 
     let mut filter = crate::filter::ObjectFilter::default();
@@ -3676,8 +3687,7 @@ fn lower_rewrite_pact_statement_to_chunk(
             let upkeep_raw = raw_segments[1].trim();
             let upkeep_segment = lexed_tokens(upkeep_raw, line.info.line_index)?;
             let upkeep_tokens = trim_lexed_commas(&upkeep_segment);
-            let upkeep_word_view = LowerRewriteNormalizedWords::new(upkeep_tokens);
-            let upkeep_words = upkeep_word_view.to_word_refs();
+            let upkeep_words = token_word_refs(upkeep_tokens);
             let pay_prefix = if word_refs_have_prefix(
                 upkeep_words.as_slice(),
                 &[
@@ -3718,8 +3728,7 @@ fn lower_rewrite_pact_statement_to_chunk(
             {
                 let lose_segment = lexed_tokens(raw_segments[2], line.info.line_index)?;
                 let lose_tokens = trim_lexed_commas(&lose_segment);
-                let lose_word_view = LowerRewriteNormalizedWords::new(lose_tokens);
-                let lose_words = lose_word_view.to_word_refs();
+                let lose_words = token_word_refs(lose_tokens);
                 if lose_words == ["if", "you", "don't", "you", "lose", "the", "game"]
                     || lose_words == ["if", "you", "do", "not", "you", "lose", "the", "game"]
                 {
@@ -3752,8 +3761,7 @@ fn lower_rewrite_pact_statement_to_chunk(
 
     let tokens = lexed_tokens(line.text.as_str(), line.info.line_index)?;
     let tokens = trim_lexed_commas(&tokens);
-    let token_word_view = LowerRewriteNormalizedWords::new(tokens);
-    let token_words = token_word_view.to_word_refs();
+    let token_words = token_word_refs(tokens);
     let upkeep_marker = [
         "at",
         "the",

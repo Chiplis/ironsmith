@@ -10,7 +10,7 @@ use super::activation_and_restrictions::{
     parse_ability_phrase, parse_single_word_keyword_action, parse_triggered_times_each_turn_lexed,
 };
 use super::grammar::primitives::{
-    CompatWordIndex, split_lexed_slices_on_and, split_lexed_slices_on_commas_or_semicolons,
+    TokenWordView, split_lexed_slices_on_and, split_lexed_slices_on_commas_or_semicolons,
 };
 use super::grammar::structure::{
     split_state_triggered_clause_lexed, split_triggered_conditional_clause_lexed,
@@ -109,7 +109,7 @@ fn contains_keyword_action(actions: &[KeywordAction], expected: &KeywordAction) 
 }
 
 fn token_index_after_word_count(
-    words: &CompatWordIndex,
+    words: &TokenWordView,
     word_count: usize,
     token_len: usize,
 ) -> Option<usize> {
@@ -136,7 +136,7 @@ fn trim_plural_s(word: &str) -> Option<&str> {
 }
 
 fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
-    let words_view = CompatWordIndex::new(tokens);
+    let words_view = TokenWordView::new(tokens);
     let words = words_view.word_refs();
     let first_word_idx = if words.first().copied() == Some("and") {
         1
@@ -251,7 +251,7 @@ pub(crate) fn rewrite_parse_ability_line(tokens: &[OwnedLexToken]) -> Option<Vec
 
 pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
     fn parse_simple_keyword_phrase_lexed(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
-        let words_view = CompatWordIndex::new(tokens);
+        let words_view = TokenWordView::new(tokens);
         let mut words = words_view.word_refs();
         if words.first().copied() == Some("and") {
             words.remove(0);
@@ -363,7 +363,7 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
             return None;
         }
 
-        let tail_view = CompatWordIndex::new(&tokens[idx..]);
+        let tail_view = TokenWordView::new(&tokens[idx..]);
         let tail = tail_view.word_refs();
         let mut text = format!("Flashback {cost}");
         if !tail.is_empty() {
@@ -380,7 +380,7 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
     }
 
     fn parse_protection_chain_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
-        let words_view = CompatWordIndex::new(tokens);
+        let words_view = TokenWordView::new(tokens);
         let words = words_view.word_refs();
         let first_word_idx = if words.first().copied() == Some("and") {
             1
@@ -563,7 +563,7 @@ pub(crate) fn parse_effect_sentences_lexed(
 pub(crate) fn parse_triggered_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
-    let clause_word_view = CompatWordIndex::new(tokens);
+    let clause_word_view = TokenWordView::new(tokens);
     let clause_words = clause_word_view.word_refs();
     if word_slice_starts_with(
         &clause_words,
@@ -609,7 +609,7 @@ pub(crate) fn parse_triggered_line_lexed(
         if tokens.is_empty() {
             return false;
         }
-        let words_view = CompatWordIndex::new(tokens);
+        let words_view = TokenWordView::new(tokens);
         let words = words_view.word_refs();
         if words.is_empty() {
             return false;
@@ -636,7 +636,7 @@ pub(crate) fn parse_triggered_line_lexed(
             return false;
         }
 
-        let prefix_words_view = CompatWordIndex::new(trigger_prefix_tokens);
+        let prefix_words_view = TokenWordView::new(trigger_prefix_tokens);
         let prefix_words = prefix_words_view.word_refs();
         if !(word_slice_contains(&prefix_words, "discard")
             || word_slice_contains(&prefix_words, "discards"))
@@ -644,7 +644,7 @@ pub(crate) fn parse_triggered_line_lexed(
             return false;
         }
 
-        let tail_words_view = CompatWordIndex::new(tail_tokens);
+        let tail_words_view = TokenWordView::new(tail_tokens);
         let tail_words = tail_words_view.word_refs();
         if tail_words.is_empty() {
             return false;
@@ -665,7 +665,7 @@ pub(crate) fn parse_triggered_line_lexed(
 
         find_token_index(tail_tokens, |token| token.kind == TokenKind::Comma).is_some_and(
             |comma_idx| {
-                let before_words_view = CompatWordIndex::new(&tail_tokens[..comma_idx]);
+                let before_words_view = TokenWordView::new(&tail_tokens[..comma_idx]);
                 let before_words = before_words_view.word_refs();
                 word_slice_contains(&before_words, "card")
                     || word_slice_contains(&before_words, "cards")
@@ -677,7 +677,7 @@ pub(crate) fn parse_triggered_line_lexed(
         if tokens.is_empty() {
             return false;
         }
-        let words_view = CompatWordIndex::new(tokens);
+        let words_view = TokenWordView::new(tokens);
         let words = words_view.word_refs();
         if words.is_empty() {
             return false;
@@ -697,7 +697,7 @@ pub(crate) fn parse_triggered_line_lexed(
         if tokens.is_empty() {
             return false;
         }
-        let words_view = CompatWordIndex::new(tokens);
+        let words_view = TokenWordView::new(tokens);
         let words = words_view.word_refs();
         if words.is_empty() {
             return false;
@@ -711,7 +711,7 @@ pub(crate) fn parse_triggered_line_lexed(
         if tokens.is_empty() {
             return false;
         }
-        let words_view = CompatWordIndex::new(tokens);
+        let words_view = TokenWordView::new(tokens);
         let words = words_view.word_refs();
         if words.len() < 3 || words[0].parse::<i32>().is_err() {
             return false;
@@ -723,7 +723,7 @@ pub(crate) fn parse_triggered_line_lexed(
     fn trim_first_time_each_turn_suffix_lexed(
         trigger_tokens: &[OwnedLexToken],
     ) -> (&[OwnedLexToken], Option<u32>) {
-        let trigger_words = CompatWordIndex::new(trigger_tokens);
+        let trigger_words = TokenWordView::new(trigger_tokens);
         let words = trigger_words.word_refs();
         for suffix in [
             ["for", "the", "first", "time", "each", "turn"].as_slice(),
@@ -744,7 +744,7 @@ pub(crate) fn parse_triggered_line_lexed(
         trigger_tokens: &[OwnedLexToken],
         effects_tokens: &[OwnedLexToken],
     ) -> Vec<OwnedLexToken> {
-        let trigger_words_view = CompatWordIndex::new(trigger_tokens);
+        let trigger_words_view = TokenWordView::new(trigger_tokens);
         let trigger_words = trigger_words_view.word_refs();
         let mut references_enchanted_controller = false;
         let mut idx = 0usize;
@@ -782,8 +782,7 @@ pub(crate) fn parse_triggered_line_lexed(
                 && effects_tokens[idx + 1].is_word("creature")
             {
                 let mut enchanted = effects_tokens[idx].clone();
-                enchanted.kind = TokenKind::Word;
-                enchanted.slice = "enchanted".to_string();
+                let _ = enchanted.replace_word("enchanted");
                 rewritten.push(enchanted);
                 rewritten.push(effects_tokens[idx + 1].clone());
                 idx += 2;
@@ -794,8 +793,7 @@ pub(crate) fn parse_triggered_line_lexed(
                 && effects_tokens[idx + 1].is_word("permanent")
             {
                 let mut enchanted = effects_tokens[idx].clone();
-                enchanted.kind = TokenKind::Word;
-                enchanted.slice = "enchanted".to_string();
+                let _ = enchanted.replace_word("enchanted");
                 rewritten.push(enchanted);
                 rewritten.push(effects_tokens[idx + 1].clone());
                 idx += 2;
@@ -826,7 +824,7 @@ pub(crate) fn parse_triggered_line_lexed(
 
     if start_idx < tokens.len() {
         let trigger_body = &tokens[start_idx..];
-        let trigger_body_view = CompatWordIndex::new(trigger_body);
+        let trigger_body_view = TokenWordView::new(trigger_body);
         let trigger_body_words = trigger_body_view.word_refs();
         let blocked_prefix_len = if word_slice_starts_with(
             &trigger_body_words,
@@ -910,7 +908,7 @@ pub(crate) fn parse_triggered_line_lexed(
 
     if let Some(split_idx) = find_token_index(tokens, |token| token.kind == TokenKind::Comma) {
         let trigger_tokens = &tokens[start_idx..split_idx];
-        let trigger_word_view = CompatWordIndex::new(trigger_tokens);
+        let trigger_word_view = TokenWordView::new(trigger_tokens);
         let trigger_words = trigger_word_view.word_refs();
         let mut attack_idx = None;
         let mut word_idx = 0usize;
@@ -1016,7 +1014,7 @@ pub(crate) fn parse_triggered_line_lexed(
                         if token.kind != TokenKind::Comma {
                             return None;
                         }
-                        let before_words_view = CompatWordIndex::new(&tail[..idx]);
+                        let before_words_view = TokenWordView::new(&tail[..idx]);
                         let before_words = before_words_view.word_refs();
                         if word_slice_contains(&before_words, "card")
                             || word_slice_contains(&before_words, "cards")
@@ -1038,7 +1036,7 @@ pub(crate) fn parse_triggered_line_lexed(
                             if token.kind != TokenKind::Comma {
                                 return None;
                             }
-                            let before_words_view = CompatWordIndex::new(&tail[..idx]);
+                            let before_words_view = TokenWordView::new(&tail[..idx]);
                             let before_words = before_words_view.word_refs();
                             if word_slice_contains(&before_words, "spell")
                                 || word_slice_contains(&before_words, "spells")
@@ -1176,7 +1174,7 @@ pub(crate) fn parse_triggered_line_lexed(
 
     Err(CardTextError::ParseError(format!(
         "unsupported triggered line (clause: '{}')",
-        CompatWordIndex::new(tokens).word_refs().join(" ")
+        TokenWordView::new(tokens).word_refs().join(" ")
     )))
 }
 

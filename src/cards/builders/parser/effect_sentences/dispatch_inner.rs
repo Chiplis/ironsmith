@@ -4,7 +4,7 @@ use super::super::grammar::effects::{
     parse_search_library_sentence_with_grammar_entrypoint_lexed,
 };
 use super::super::grammar::primitives::{
-    CompatWordIndex, split_lexed_slices_on_and, split_lexed_slices_on_comma,
+    TokenWordView, split_lexed_slices_on_and, split_lexed_slices_on_comma,
     split_lexed_slices_on_commas_or_semicolons,
 };
 use super::super::grammar::structure::{
@@ -46,7 +46,7 @@ use crate::target::{
 use crate::types::CardType;
 use crate::zone::Zone;
 
-type DispatchInnerNormalizedWords = CompatWordIndex;
+type DispatchInnerNormalizedWords = TokenWordView;
 
 const SENTENCE_PRIMITIVE_RULE_HEADS: &[&str] = &[
     "if",

@@ -18,7 +18,7 @@ use crate::zone::Zone;
 
 use super::super::activation_and_restrictions::parse_devotion_value_from_add_clause;
 use super::super::activation_helpers::parse_add_mana;
-use super::super::grammar::primitives::CompatWordIndex;
+use super::super::grammar::primitives::TokenWordView;
 use super::super::grammar::structure::{
     parse_trailing_if_predicate_lexed, parse_trailing_instead_if_predicate_lexed,
     parse_who_player_predicate_lexed, split_trailing_if_clause_lexed,
@@ -305,7 +305,7 @@ pub(crate) fn parse_look(
     {
         clause_tokens = trim_commas(&clause_tokens[1..]);
     }
-    let clause_word_storage = CompatWordIndex::new(&clause_tokens).owned_words();
+    let clause_word_storage = TokenWordView::new(&clause_tokens).owned_words();
     let clause_words = clause_word_storage
         .iter()
         .map(String::as_str)
@@ -318,7 +318,7 @@ pub(crate) fn parse_look(
     {
         hand_tokens = hand_tokens[1..].to_vec();
     }
-    let hand_word_storage = CompatWordIndex::new(&hand_tokens).owned_words();
+    let hand_word_storage = TokenWordView::new(&hand_tokens).owned_words();
     let hand_words = hand_word_storage
         .iter()
         .map(String::as_str)
@@ -421,7 +421,7 @@ pub(crate) fn parse_look(
     {
         owner_tokens = &owner_tokens[1..];
     }
-    let owner_word_storage = CompatWordIndex::new(owner_tokens).owned_words();
+    let owner_word_storage = TokenWordView::new(owner_tokens).owned_words();
     let owner_words = owner_word_storage
         .iter()
         .map(String::as_str)

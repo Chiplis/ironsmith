@@ -22,7 +22,6 @@ mod lowering_support;
 mod migration_audit;
 mod modal_helpers;
 mod modal_support;
-mod native_tokens;
 mod object_filters;
 mod parser_support;
 mod permission_helpers;
@@ -54,9 +53,10 @@ pub(crate) use ir::*;
 pub(crate) use keyword_static::*;
 #[cfg(test)]
 pub(crate) use leaf::*;
-pub(crate) use lexer::{OwnedLexToken, lex_line, split_lexed_sentences, token_word_refs};
+pub(crate) use lexer::{
+    OwnedLexToken, TokenWordView, lex_line, split_lexed_sentences, token_word_refs,
+};
 pub(crate) use lower::*;
-pub(crate) use native_tokens::TokInput;
 pub(crate) use object_filters::{
     is_comparison_or_delimiter, merge_spell_filters, parse_object_filter_lexed,
     spell_filter_has_identity,

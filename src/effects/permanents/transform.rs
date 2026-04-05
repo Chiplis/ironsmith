@@ -217,8 +217,16 @@ mod tests {
     use crate::ids::{CardId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::snapshot::ObjectSnapshot;
+    use std::sync::{Mutex, MutexGuard, OnceLock};
     use crate::triggers::{TransformsTrigger, TriggerContext, TriggerMatcher};
     use crate::types::{CardType, Subtype};
+
+    fn runtime_custom_registry_test_guard() -> MutexGuard<'static, ()> {
+        static GUARD: OnceLock<Mutex<()>> = OnceLock::new();
+        GUARD.get_or_init(|| Mutex::new(())).lock().expect(
+            "transform registry tests should acquire the runtime custom-card test mutex",
+        )
+    }
 
     fn register_transform_pair(
         front_id: CardId,
@@ -264,6 +272,7 @@ mod tests {
 
     #[test]
     fn transform_swaps_faces_and_refreshes_timestamp() {
+        let _guard = runtime_custom_registry_test_guard();
         crate::cards::clear_runtime_custom_cards();
 
         let mut game = crate::tests::test_helpers::setup_two_player_game();
@@ -353,6 +362,7 @@ mod tests {
 
     #[test]
     fn transform_does_nothing_if_other_face_is_an_instant_or_sorcery() {
+        let _guard = runtime_custom_registry_test_guard();
         crate::cards::clear_runtime_custom_cards();
 
         let mut game = crate::tests::test_helpers::setup_two_player_game();
@@ -383,6 +393,7 @@ mod tests {
 
     #[test]
     fn transform_source_ability_fizzles_if_source_already_transformed_since_it_was_stacked() {
+        let _guard = runtime_custom_registry_test_guard();
         crate::cards::clear_runtime_custom_cards();
 
         let mut game = crate::tests::test_helpers::setup_two_player_game();
@@ -422,6 +433,7 @@ mod tests {
 
     #[test]
     fn convert_swaps_faces_emits_converted_event_and_not_transform_event() {
+        let _guard = runtime_custom_registry_test_guard();
         crate::cards::clear_runtime_custom_cards();
 
         let mut game = crate::tests::test_helpers::setup_two_player_game();
@@ -473,6 +485,7 @@ mod tests {
 
     #[test]
     fn convert_respects_cant_transform_restrictions() {
+        let _guard = runtime_custom_registry_test_guard();
         crate::cards::clear_runtime_custom_cards();
 
         let mut game = crate::tests::test_helpers::setup_two_player_game();
@@ -504,6 +517,7 @@ mod tests {
 
     #[test]
     fn transform_uses_game_local_linked_face_cache_after_runtime_registry_is_cleared() {
+        let _guard = runtime_custom_registry_test_guard();
         crate::cards::clear_runtime_custom_cards();
 
         let mut game = crate::tests::test_helpers::setup_two_player_game();
@@ -535,6 +549,7 @@ mod tests {
 
     #[test]
     fn convert_source_ability_fizzles_if_source_already_transformed_since_it_was_stacked() {
+        let _guard = runtime_custom_registry_test_guard();
         crate::cards::clear_runtime_custom_cards();
 
         let mut game = crate::tests::test_helpers::setup_two_player_game();

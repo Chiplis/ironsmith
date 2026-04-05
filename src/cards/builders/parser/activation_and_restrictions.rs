@@ -57,7 +57,7 @@ use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 
-type ActivationRestrictionCompatWords = grammar::CompatWordIndex;
+type ActivationRestrictionCompatWords = grammar::TokenWordView;
 
 fn strip_prefix_phrase<'a>(
     tokens: &'a [OwnedLexToken],
@@ -73,6 +73,92 @@ fn strip_prefix_phrases<'a>(
     phrases
         .iter()
         .find_map(|phrase| strip_prefix_phrase(tokens, phrase).map(|rest| (*phrase, rest)))
+}
+
+fn joined_activation_clause_text(tokens: &[OwnedLexToken]) -> String {
+    crate::cards::builders::parser::token_word_refs(tokens).join(" ")
+}
+
+fn parse_prefixed_activated_ability_label(
+    tokens: &[OwnedLexToken],
+    cost_start: usize,
+) -> Option<String> {
+    if cost_start == 0 {
+        return None;
+    }
+
+    let prefix = ActivationRestrictionCompatWords::new(&tokens[..cost_start]);
+    match prefix.get(prefix.len().saturating_sub(1)) {
+        Some("boast") => Some("Boast".to_string()),
+        Some("renew") => Some("Renew".to_string()),
+        _ => None,
+    }
+}
+
+struct ActivateOnlySentenceDetails {
+    timing: ActivationTiming,
+    condition: Option<crate::ConditionExpr>,
+    normalized_restriction: Option<String>,
+}
+
+fn parse_activate_only_sentence_details_lexed(
+    tokens: &[OwnedLexToken],
+    current_timing: &ActivationTiming,
+) -> Option<ActivateOnlySentenceDetails> {
+    if !is_activate_only_restriction_sentence_lexed(tokens) {
+        return None;
+    }
+
+    let timing = parse_activate_only_timing_lexed(tokens).unwrap_or_else(|| current_timing.clone());
+    Some(ActivateOnlySentenceDetails {
+        condition: parse_activation_condition_lexed(tokens),
+        normalized_restriction: normalize_activate_only_restriction(tokens, &timing),
+        timing,
+    })
+}
+
+fn contains_granted_keyword_before_word(
+    words: &ActivationRestrictionCompatWords,
+    keyword_idx: usize,
+) -> bool {
+    (0..keyword_idx)
+        .filter_map(|idx| words.get(idx))
+        .any(|word| matches!(word, "has" | "have"))
+}
+
+fn find_cycling_keyword_word_index(words: &ActivationRestrictionCompatWords) -> Option<usize> {
+    let mut idx = 0usize;
+    while idx < words.len() {
+        if words
+            .get(idx)
+            .is_some_and(|word| str_strip_suffix(word, "cycling").is_some())
+        {
+            return Some(idx);
+        }
+        idx += 1;
+    }
+    None
+}
+
+fn parse_hand_keyword_activated_body_lexed(
+    body_tokens: &[OwnedLexToken],
+    keyword: &str,
+    display_label: &str,
+    clause_text: &str,
+) -> Result<Option<ParsedAbility>, CardTextError> {
+    if body_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "{keyword} line missing activated ability body (clause: '{clause_text}')",
+        )));
+    }
+
+    let ability_tokens = trim_commas(body_tokens);
+    let Some(mut parsed) = parse_activated_line_with_raw(&ability_tokens, None)? else {
+        return Ok(None);
+    };
+    parsed.ability.text = Some(display_label.to_string());
+    parsed.ability.functional_zones = vec![Zone::Hand];
+    Ok(Some(parsed))
 }
 
 pub(crate) fn parse_activated_line(
@@ -96,18 +182,7 @@ pub(crate) fn parse_activated_line_with_raw(
         return Ok(None);
     }
     let loyalty_shorthand_cost = parse_loyalty_shorthand_activation_cost(cost_tokens, raw_line);
-    let ability_label = if cost_start > 0 {
-        let prefix = crate::cards::builders::parser::token_word_refs(&tokens[..cost_start]);
-        if prefix == ["boast"] || prefix.last() == Some(&"boast") {
-            Some("Boast".to_string())
-        } else if prefix == ["renew"] || prefix.last() == Some(&"renew") {
-            Some("Renew".to_string())
-        } else {
-            None
-        }
-    } else {
-        None
-    };
+    let ability_label = parse_prefixed_activated_ability_label(tokens, cost_start);
     let apply_ability_label = |ability: &mut Ability| {
         if ability.text.is_none() {
             if let Some(label) = &ability_label {
@@ -124,17 +199,13 @@ pub(crate) fn parse_activated_line_with_raw(
     let mut mana_usage_restrictions = Vec::new();
     let mut inline_effects_ast: Vec<EffectAst> = Vec::new();
     effect_sentences.retain(|sentence| {
-        if is_activate_only_restriction_sentence_lexed(sentence) {
-            if let Some(parsed_timing) = parse_activate_only_timing_lexed(sentence) {
-                timing = parsed_timing;
-            }
-            if let Some(condition) = parse_activation_condition_lexed(sentence) {
+        if let Some(parsed) = parse_activate_only_sentence_details_lexed(sentence, &timing) {
+            timing = parsed.timing;
+            if let Some(condition) = parsed.condition {
                 mana_activation_condition =
                     merge_mana_activation_conditions(mana_activation_condition.clone(), condition);
             }
-            if let Some(restriction) =
-                normalize_activate_only_restriction(sentence, &timing.clone())
-            {
+            if let Some(restriction) = parsed.normalized_restriction {
                 additional_activation_restrictions.push(restriction);
             }
             return false;
@@ -143,14 +214,12 @@ pub(crate) fn parse_activated_line_with_raw(
             if let Some(restriction) = parse_mana_usage_restriction_sentence_lexed(sentence) {
                 mana_usage_restrictions.push(restriction);
             } else {
-                additional_activation_restrictions
-                    .push(crate::cards::builders::parser::token_word_refs(sentence).join(" "));
+                additional_activation_restrictions.push(joined_activation_clause_text(sentence));
             }
             return false;
         }
         if is_any_player_may_activate_sentence_lexed(sentence) {
-            additional_activation_restrictions
-                .push(crate::cards::builders::parser::token_word_refs(sentence).join(" "));
+            additional_activation_restrictions.push(joined_activation_clause_text(sentence));
             return false;
         }
         if is_trigger_only_restriction_sentence_lexed(sentence) {
@@ -161,8 +230,7 @@ pub(crate) fn parse_activated_line_with_raw(
                 inline_effects_ast.push(effect);
                 return false;
             }
-            additional_activation_restrictions
-                .push(crate::cards::builders::parser::token_word_refs(sentence).join(" "));
+            additional_activation_restrictions.push(joined_activation_clause_text(sentence));
             return false;
         }
         true
@@ -172,16 +240,13 @@ pub(crate) fn parse_activated_line_with_raw(
     if !effect_sentences.is_empty() {
         let primary_sentence = &effect_sentences[0];
         let x_defined_by_cost = activation_cost_mentions_x(cost_tokens);
-        let effect_words = crate::cards::builders::parser::token_word_refs(primary_sentence);
+        let effect_words = ActivationRestrictionCompatWords::new(primary_sentence);
         let is_primary_add_clause = matches!(
-            effect_words.as_slice(),
-            ["add", ..]
-                | ["adds", ..]
-                | ["you", "add", ..]
-                | ["that", "player", "add", ..]
-                | ["that", "player", "adds", ..]
-                | ["target", "player", "add", ..]
-                | ["target", "player", "adds", ..]
+            (effect_words.get(0), effect_words.get(1), effect_words.get(2)),
+            (Some("add" | "adds"), _, _)
+                | (Some("you"), Some("add"), _)
+                | (Some("that"), Some("player"), Some("add" | "adds"))
+                | (Some("target"), Some("player"), Some("add" | "adds"))
         );
         if is_primary_add_clause {
             let mana_cost = if let Some(cost) = &loyalty_shorthand_cost {
@@ -212,18 +277,15 @@ pub(crate) fn parse_activated_line_with_raw(
             let mana_tokens = &primary_sentence[add_token_idx + 1..];
             let mana_subject =
                 (add_token_idx > 0).then(|| parse_subject(&primary_sentence[..add_token_idx]));
-            let mana_words = crate::cards::builders::parser::token_word_refs(mana_tokens);
-            let has_for_each_tail = find_window_by(mana_tokens, 2, |window| {
-                window[0].is_word("for") && window[1].is_word("each")
-            })
-            .is_some();
+            let mana_words_view = ActivationRestrictionCompatWords::new(mana_tokens);
+            let mana_words = mana_words_view.to_word_refs();
+            let has_for_each_tail = mana_words_view.has_phrase(&["for", "each"]);
             let dynamic_amount = if has_for_each_tail {
                 Some(
                     parse_dynamic_cost_modifier_value(mana_tokens)?.ok_or_else(|| {
                         CardTextError::ParseError(format!(
                             "unsupported dynamic mana amount (clause: '{}')",
-                            crate::cards::builders::parser::token_word_refs(primary_sentence)
-                                .join(" ")
+                            joined_activation_clause_text(primary_sentence)
                         ))
                     })?,
                 )
@@ -1007,28 +1069,28 @@ pub(crate) fn parse_named_number(word: &str) -> Option<u32> {
 pub(crate) fn parse_cycling_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
-    let words_view = ActivationRestrictionCompatWords::new(tokens);
-    let words_all = words_view.to_word_refs();
-    if words_all.is_empty() {
+    parse_cycling_line_lexed(tokens)
+}
+
+pub(crate) fn parse_cycling_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<ParsedAbility>, CardTextError> {
+    let words = ActivationRestrictionCompatWords::new(tokens);
+    if words.is_empty() {
         return Ok(None);
     }
 
-    let Some(cycling_idx) = find_index(&words_all, |word| {
-        str_strip_suffix(word, "cycling").is_some()
-    }) else {
+    let Some(cycling_idx) = find_cycling_keyword_word_index(&words) else {
         return Ok(None);
     };
     // Static grant clauses like "Each Sliver card in each player's hand has slivercycling {3}."
     // must be handled by parse_filter_has_granted_ability_line, not parsed as a standalone
     // cycling keyword ability on this card.
-    if words_all
-        .iter()
-        .take(cycling_idx)
-        .any(|word| *word == "has" || *word == "have")
-    {
+    if contains_granted_keyword_before_word(&words, cycling_idx) {
         return Ok(None);
     }
 
+    let clause_text = joined_activation_clause_text(tokens);
     let cycling_groups = parse_cycling_keyword_cost_groups(tokens);
     let Some((first_keyword_tokens, first_cost_tokens)) = cycling_groups.first() else {
         return Ok(None);
@@ -1042,8 +1104,7 @@ pub(crate) fn parse_cycling_line(
         crate::cards::builders::parser::token_word_refs(cost_tokens) != base_cost_words
     }) {
         return Err(CardTextError::ParseError(format!(
-            "unsupported mixed cycling costs (clause: '{}')",
-            crate::cards::builders::parser::token_word_refs(tokens).join(" ")
+            "unsupported mixed cycling costs (clause: '{clause_text}')",
         )));
     }
 
@@ -1067,8 +1128,7 @@ pub(crate) fn parse_cycling_line(
             (None, None) => {}
             _ => {
                 return Err(CardTextError::ParseError(format!(
-                    "unsupported mixed cycling variants (clause: '{}')",
-                    crate::cards::builders::parser::token_word_refs(tokens).join(" ")
+                    "unsupported mixed cycling variants (clause: '{clause_text}')",
                 )));
             }
         }
@@ -1116,46 +1176,22 @@ pub(crate) fn parse_cycling_line(
     }))
 }
 
-pub(crate) fn parse_cycling_line_lexed(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<ParsedAbility>, CardTextError> {
-    parse_cycling_line(tokens)
-}
-
 pub(crate) fn parse_channel_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
-    let words_view = ActivationRestrictionCompatWords::new(tokens);
-    let words_all = words_view.to_word_refs();
-    if words_all.first().copied() != Some("channel") {
-        return Ok(None);
-    }
-    if words_all
-        .iter()
-        .any(|word| *word == "has" || *word == "have")
-    {
-        return Ok(None);
-    }
-    if tokens.len() <= 1 {
-        return Err(CardTextError::ParseError(format!(
-            "channel line missing activated ability body (clause: '{}')",
-            words_all.join(" ")
-        )));
-    }
-
-    let ability_tokens = trim_commas(&tokens[1..]).to_vec();
-    let Some(mut parsed) = parse_activated_line_with_raw(&ability_tokens, None)? else {
-        return Ok(None);
-    };
-    parsed.ability.text = Some("Channel".to_string());
-    parsed.ability.functional_zones = vec![Zone::Hand];
-    Ok(Some(parsed))
+    parse_channel_line_lexed(tokens)
 }
 
 pub(crate) fn parse_channel_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
-    parse_channel_line(tokens)
+    let words = ActivationRestrictionCompatWords::new(tokens);
+    if words.first() != Some("channel") {
+        return Ok(None);
+    }
+
+    let clause_text = joined_activation_clause_text(tokens);
+    parse_hand_keyword_activated_body_lexed(&tokens[1..], "channel", "Channel", &clause_text)
 }
 
 pub(crate) fn parse_cycling_keyword_cost_groups(

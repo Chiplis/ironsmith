@@ -1,6 +1,7 @@
 use winnow::combinator::{alt, dispatch, fail, opt, peek, seq};
 use winnow::error::{ContextError, ErrMode, ModalResult as WResult, StrContext, StrContextValue};
 use winnow::prelude::*;
+use winnow::token::any;
 
 use crate::effect::Until;
 
@@ -105,9 +106,7 @@ pub(crate) fn split_lexed_once_on_delimiter(
     tokens: &[OwnedLexToken],
     delimiter: TokenKind,
 ) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
-    tokens.iter().enumerate().find_map(|(idx, token)| {
-        (token.kind == delimiter).then_some((&tokens[..idx], &tokens[idx + 1..]))
-    })
+    grammar::split_lexed_once_on_delimiter(tokens, delimiter)
 }
 
 #[allow(dead_code)]
@@ -124,16 +123,30 @@ pub(crate) fn split_lexed_once_on_period(
     split_lexed_once_on_delimiter(tokens, TokenKind::Period)
 }
 
+fn parse_segment_len_until_comma_then<'a>(input: &mut LexedInput<'a>) -> WResult<usize> {
+    let initial_len = input.len();
+
+    while input.peek_token().is_some() {
+        if input.peek_token().is_some_and(|token| token.is_comma())
+            && input.get(1).is_some_and(|token| token.is_word("then"))
+        {
+            let head_len = initial_len - input.len();
+            grammar::comma().parse_next(input)?;
+            parse_word_eq("then").parse_next(input)?;
+            return Ok(head_len);
+        }
+
+        any.parse_next(input)?;
+    }
+
+    Err(ErrMode::Backtrack(ContextError::new()))
+}
+
 pub(crate) fn split_lexed_once_on_comma_then(
     tokens: &[OwnedLexToken],
 ) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
-    tokens.iter().enumerate().find_map(|(idx, _)| {
-        grammar::parse_prefix(
-            &tokens[idx..],
-            seq!(_: grammar::comma(), _: parse_word_eq("then")),
-        )
-        .map(|(_, rest)| (&tokens[..idx], rest))
-    })
+    let (head_len, rest) = parse_lexed_prefix(tokens, parse_segment_len_until_comma_then)?;
+    Some((&tokens[..head_len], rest))
 }
 
 pub(crate) fn parse_i32_word_token<'a>(input: &mut LexedInput<'a>) -> WResult<i32> {
@@ -148,138 +161,114 @@ pub(crate) fn parse_i32_word_token<'a>(input: &mut LexedInput<'a>) -> WResult<i3
     })
 }
 
+fn parse_turn_duration_phrase_inner<'a>(input: &mut LexedInput<'a>) -> WResult<TurnDurationPhrase> {
+    alt((
+        grammar::phrase(&["until", "your", "next", "turn"])
+            .value(TurnDurationPhrase::UntilYourNextTurn),
+        grammar::phrase(&["until", "the", "end", "of", "your", "next", "turn"])
+            .value(TurnDurationPhrase::UntilYourNextTurn),
+        grammar::phrase(&["until", "end", "of", "your", "next", "turn"])
+            .value(TurnDurationPhrase::UntilYourNextTurn),
+        grammar::phrase(&["until", "the", "end", "of", "turn"])
+            .value(TurnDurationPhrase::UntilEndOfTurn),
+        grammar::phrase(&["until", "end", "of", "turn"]).value(TurnDurationPhrase::UntilEndOfTurn),
+        grammar::phrase(&["this", "turn"]).value(TurnDurationPhrase::ThisTurn),
+    ))
+    .parse_next(input)
+}
+
+fn turn_duration_from_suffix_phrase(phrase: &[&str]) -> Option<TurnDurationPhrase> {
+    match phrase {
+        ["until", "your", "next", "turn"]
+        | ["until", "the", "end", "of", "your", "next", "turn"]
+        | ["until", "end", "of", "your", "next", "turn"] => {
+            Some(TurnDurationPhrase::UntilYourNextTurn)
+        }
+        ["until", "the", "end", "of", "turn"] | ["until", "end", "of", "turn"] => {
+            Some(TurnDurationPhrase::UntilEndOfTurn)
+        }
+        ["this", "turn"] => Some(TurnDurationPhrase::ThisTurn),
+        _ => None,
+    }
+}
+
 pub(crate) fn parse_turn_duration_prefix<'a>(
     tokens: &'a [OwnedLexToken],
 ) -> Option<(TurnDurationPhrase, &'a [OwnedLexToken])> {
-    for (phrase, duration) in [
-        (
-            &["until", "your", "next", "turn"][..],
-            TurnDurationPhrase::UntilYourNextTurn,
-        ),
-        (
-            &["until", "the", "end", "of", "your", "next", "turn"][..],
-            TurnDurationPhrase::UntilYourNextTurn,
-        ),
-        (
-            &["until", "end", "of", "your", "next", "turn"][..],
-            TurnDurationPhrase::UntilYourNextTurn,
-        ),
-        (
-            &["until", "the", "end", "of", "turn"][..],
-            TurnDurationPhrase::UntilEndOfTurn,
-        ),
-        (
-            &["until", "end", "of", "turn"][..],
-            TurnDurationPhrase::UntilEndOfTurn,
-        ),
-        (&["this", "turn"][..], TurnDurationPhrase::ThisTurn),
-    ] {
-        if let Some(rest) = grammar::strip_lexed_prefix_phrase(tokens, phrase) {
-            return Some((duration, rest));
-        }
-    }
-
-    None
+    parse_lexed_prefix(tokens, parse_turn_duration_phrase_inner)
 }
 
 pub(crate) fn parse_turn_duration_suffix<'a>(
     tokens: &'a [OwnedLexToken],
 ) -> Option<(&'a [OwnedLexToken], TurnDurationPhrase)> {
-    for (phrase, duration) in [
-        (
-            &["until", "your", "next", "turn"][..],
-            TurnDurationPhrase::UntilYourNextTurn,
-        ),
-        (
-            &["until", "the", "end", "of", "your", "next", "turn"][..],
-            TurnDurationPhrase::UntilYourNextTurn,
-        ),
-        (
-            &["until", "end", "of", "your", "next", "turn"][..],
-            TurnDurationPhrase::UntilYourNextTurn,
-        ),
-        (
-            &["until", "the", "end", "of", "turn"][..],
-            TurnDurationPhrase::UntilEndOfTurn,
-        ),
-        (
-            &["until", "end", "of", "turn"][..],
-            TurnDurationPhrase::UntilEndOfTurn,
-        ),
-        (&["this", "turn"][..], TurnDurationPhrase::ThisTurn),
-    ] {
-        if let Some(rest) = grammar::strip_lexed_suffix_phrase(tokens, phrase) {
-            return Some((rest, duration));
-        }
-    }
+    let phrases = [
+        &["until", "your", "next", "turn"][..],
+        &["until", "the", "end", "of", "your", "next", "turn"][..],
+        &["until", "end", "of", "your", "next", "turn"][..],
+        &["until", "the", "end", "of", "turn"][..],
+        &["until", "end", "of", "turn"][..],
+        &["this", "turn"][..],
+    ];
+    let (phrase, rest) = grammar::strip_lexed_suffix_phrases(tokens, &phrases)?;
+    Some((rest, turn_duration_from_suffix_phrase(phrase)?))
+}
 
-    None
+fn parse_simple_restriction_duration_prefix_inner<'a>(
+    input: &mut LexedInput<'a>,
+) -> WResult<Until> {
+    alt((
+        parse_turn_duration_phrase_inner.map(until_from_turn_duration_phrase),
+        grammar::phrase(&["until", "the", "end", "of", "combat"]).value(Until::EndOfCombat),
+        grammar::phrase(&["until", "end", "of", "combat"]).value(Until::EndOfCombat),
+    ))
+    .parse_next(input)
+}
+
+fn simple_restriction_duration_from_suffix_phrase(phrase: &[&str]) -> Option<Until> {
+    match phrase {
+        ["until", "the", "end", "of", "combat"] | ["until", "end", "of", "combat"] => {
+            Some(Until::EndOfCombat)
+        }
+        ["during", "your", "next", "untap", "step"]
+        | ["during", "its", "controller", "next", "untap", "step"]
+        | ["during", "its", "controllers", "next", "untap", "step"]
+        | ["during", "their", "controller", "next", "untap", "step"]
+        | ["during", "their", "controllers", "next", "untap", "step"] => {
+            Some(Until::ControllersNextUntapStep)
+        }
+        ["for", "the", "rest", "of", "the", "game"] => Some(Until::Forever),
+        _ => turn_duration_from_suffix_phrase(phrase).map(until_from_turn_duration_phrase),
+    }
 }
 
 pub(crate) fn parse_simple_restriction_duration_prefix<'a>(
     tokens: &'a [OwnedLexToken],
 ) -> Option<(Until, &'a [OwnedLexToken])> {
-    if let Some((duration, rest)) = parse_turn_duration_prefix(tokens) {
-        return Some((until_from_turn_duration_phrase(duration), rest));
-    }
-
-    for (phrase, duration) in [
-        (
-            &["until", "the", "end", "of", "combat"][..],
-            Until::EndOfCombat,
-        ),
-        (&["until", "end", "of", "combat"][..], Until::EndOfCombat),
-    ] {
-        if let Some(rest) = grammar::strip_lexed_prefix_phrase(tokens, phrase) {
-            return Some((duration, rest));
-        }
-    }
-
-    None
+    parse_lexed_prefix(tokens, parse_simple_restriction_duration_prefix_inner)
 }
 
 pub(crate) fn parse_simple_restriction_duration_suffix<'a>(
     tokens: &'a [OwnedLexToken],
 ) -> Option<(&'a [OwnedLexToken], Until)> {
-    if let Some((rest, duration)) = parse_turn_duration_suffix(tokens) {
-        return Some((rest, until_from_turn_duration_phrase(duration)));
-    }
-
-    for (phrase, duration) in [
-        (
-            &["until", "the", "end", "of", "combat"][..],
-            Until::EndOfCombat,
-        ),
-        (&["until", "end", "of", "combat"][..], Until::EndOfCombat),
-        (
-            &["during", "your", "next", "untap", "step"][..],
-            Until::ControllersNextUntapStep,
-        ),
-        (
-            &["during", "its", "controller", "next", "untap", "step"][..],
-            Until::ControllersNextUntapStep,
-        ),
-        (
-            &["during", "its", "controllers", "next", "untap", "step"][..],
-            Until::ControllersNextUntapStep,
-        ),
-        (
-            &["during", "their", "controller", "next", "untap", "step"][..],
-            Until::ControllersNextUntapStep,
-        ),
-        (
-            &["during", "their", "controllers", "next", "untap", "step"][..],
-            Until::ControllersNextUntapStep,
-        ),
-        (
-            &["for", "the", "rest", "of", "the", "game"][..],
-            Until::Forever,
-        ),
-    ] {
-        if let Some(rest) = grammar::strip_lexed_suffix_phrase(tokens, phrase) {
-            return Some((rest, duration));
-        }
-    }
-
-    None
+    let phrases = [
+        &["until", "your", "next", "turn"][..],
+        &["until", "the", "end", "of", "your", "next", "turn"][..],
+        &["until", "end", "of", "your", "next", "turn"][..],
+        &["until", "the", "end", "of", "turn"][..],
+        &["until", "end", "of", "turn"][..],
+        &["this", "turn"][..],
+        &["until", "the", "end", "of", "combat"][..],
+        &["until", "end", "of", "combat"][..],
+        &["during", "your", "next", "untap", "step"][..],
+        &["during", "its", "controller", "next", "untap", "step"][..],
+        &["during", "its", "controllers", "next", "untap", "step"][..],
+        &["during", "their", "controller", "next", "untap", "step"][..],
+        &["during", "their", "controllers", "next", "untap", "step"][..],
+        &["for", "the", "rest", "of", "the", "game"][..],
+    ];
+    let (phrase, rest) = grammar::strip_lexed_suffix_phrases(tokens, &phrases)?;
+    Some((
+        rest,
+        simple_restriction_duration_from_suffix_phrase(phrase)?,
+    ))
 }

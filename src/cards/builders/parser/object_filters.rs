@@ -7,16 +7,16 @@ use crate::{
 };
 
 use super::effect_sentences::{parse_subtype_word, parse_supertype_word};
-use super::grammar::primitives::{CompatWordIndex, split_lexed_slices_on_or};
+use super::grammar::primitives::split_lexed_slices_on_or;
 use super::keyword_static::parse_pt_modifier;
-use super::lexer::OwnedLexToken;
+use super::lexer::{OwnedLexToken, TokenWordView};
 use super::util::{
     apply_filter_keyword_constraint, is_article, is_demonstrative_object_head, is_non_outlaw_word,
     is_outlaw_word, is_permanent_type, is_source_reference_words, parse_alternative_cast_words,
     parse_card_type, parse_color, parse_counter_type_word, parse_filter_counter_constraint_words,
     parse_filter_keyword_constraint_words, parse_non_color, parse_non_subtype, parse_non_supertype,
     parse_non_type, parse_subtype_flexible, parse_unsigned_pt_word, parse_zone_word,
-    push_outlaw_subtypes, trim_commas, words,
+    push_outlaw_subtypes, token_index_for_word_index, trim_commas,
 };
 use super::value_helpers::parse_filter_comparison_tokens;
 
@@ -24,14 +24,25 @@ pub(super) fn normalized_token_index_for_word_index(
     tokens: &[OwnedLexToken],
     word_idx: usize,
 ) -> Option<usize> {
-    CompatWordIndex::new(tokens).token_index_for_word_index(word_idx)
+    token_index_for_word_index(tokens, word_idx)
 }
 
 pub(super) fn normalized_token_index_after_words(
     tokens: &[OwnedLexToken],
     word_count: usize,
 ) -> Option<usize> {
-    CompatWordIndex::new(tokens).token_index_after_words(word_count)
+    if word_count == 0 {
+        return Some(0);
+    }
+
+    let word_view = TokenWordView::new(tokens);
+    let word_refs = word_view.to_word_refs();
+    if word_count > word_refs.len() {
+        return None;
+    }
+
+    token_index_for_word_index(tokens, word_count)
+        .or_else(|| (word_count == word_refs.len()).then_some(tokens.len()))
 }
 
 fn lower_words_end_with(words: &[&str], suffix: &[&str]) -> bool {
@@ -172,8 +183,8 @@ pub(super) fn strip_not_on_battlefield_phrase(tokens: &mut Vec<OwnedLexToken>) -
         &["is", "not", "on", "the", "battlefield"],
     ];
 
-    let word_storage = CompatWordIndex::new(tokens);
-    let words = word_storage.word_refs();
+    let word_view = TokenWordView::new(tokens);
+    let words = word_view.to_word_refs();
     for pattern in patterns {
         let Some(word_start) = lower_words_find_sequence(&words, pattern) else {
             continue;
@@ -190,8 +201,8 @@ pub(super) fn strip_not_on_battlefield_phrase(tokens: &mut Vec<OwnedLexToken>) -
 }
 
 pub(super) fn trim_vote_winner_suffix(tokens: &[OwnedLexToken]) -> (Vec<OwnedLexToken>, bool) {
-    let word_storage = CompatWordIndex::new(tokens);
-    let words = word_storage.word_refs();
+    let word_view = TokenWordView::new(tokens);
+    let words = word_view.to_word_refs();
     let suffix = [
         "with", "most", "votes", "or", "tied", "for", "most", "votes",
     ];
@@ -280,9 +291,9 @@ pub(super) fn apply_parity_filter_phrases(words: &[&str], filter: &mut ObjectFil
 }
 
 fn parse_simple_object_filter_lexed(tokens: &[OwnedLexToken], other: bool) -> Option<ObjectFilter> {
-    let word_storage = CompatWordIndex::new(tokens);
-    let mut words: Vec<&str> = word_storage
-        .word_refs()
+    let word_view = TokenWordView::new(tokens);
+    let mut words: Vec<&str> = word_view
+        .to_word_refs()
         .into_iter()
         .filter(|word| *word != "instead")
         .filter(|word| !is_article(word))
@@ -599,15 +610,15 @@ pub(super) fn parse_attached_reference_or_another_disjunction(
         return Ok(None);
     }
 
-    let first_storage = CompatWordIndex::new(segments[0]);
-    let first_words: Vec<&str> = first_storage
-        .word_refs()
+    let first_word_view = TokenWordView::new(segments[0]);
+    let first_words: Vec<&str> = first_word_view
+        .to_word_refs()
         .into_iter()
         .filter(|word| !is_article(word))
         .collect();
-    let second_storage = CompatWordIndex::new(segments[1]);
-    let second_words: Vec<&str> = second_storage
-        .word_refs()
+    let second_word_view = TokenWordView::new(segments[1]);
+    let second_words: Vec<&str> = second_word_view
+        .to_word_refs()
         .into_iter()
         .filter(|word| !is_article(word))
         .collect();
@@ -766,12 +777,17 @@ mod tests {
         let filter = parse_attached_reference_or_another_disjunction(&tokens)
             .expect("attached-reference disjunction should parse")
             .expect("attached-reference disjunction should be recognized");
-        let debug = format!("{filter:?}");
 
         assert_eq!(filter.any_of.len(), 2);
         assert!(
-            debug.contains("enchanted") || debug.contains("Enchant"),
-            "{debug}"
+            filter.any_of[0]
+                .tagged_constraints
+                .iter()
+                .any(|constraint| {
+                    constraint.tag.as_str() == "enchanted"
+                        && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                }),
+            "{filter:?}"
         );
         assert_eq!(filter.any_of[0].card_types, vec![CardType::Creature]);
         assert_eq!(filter.any_of[1].card_types, vec![CardType::Creature]);

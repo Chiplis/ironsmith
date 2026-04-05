@@ -8,9 +8,7 @@ use crate::cards::builders::{
 };
 
 use super::activation_and_restrictions::parse_single_word_keyword_action;
-use super::grammar::structure::{
-    MetadataLineKind, split_metadata_line_lexed, split_metadata_line_raw,
-};
+use super::grammar::structure::{MetadataLineKind, split_metadata_line_lexed};
 use super::lexer::lex_line;
 use super::parser_support::{
     looks_like_spell_resolution_followup_intro_lexed, spell_card_prefers_resolution_line_merge,
@@ -140,38 +138,30 @@ fn parse_metadata_line(line: &str) -> Result<Option<MetadataLine>, CardTextError
         return Ok(None);
     }
 
-    if let Ok(tokens) = lex_line(trimmed, 0)
-        && let Some(spec) = split_metadata_line_lexed(&tokens)
-    {
-        let value = spec
-            .value_tokens
-            .first()
-            .and_then(|token| trimmed.get(token.span.start..))
-            .unwrap_or("")
-            .trim()
-            .to_string();
-
-        let metadata = match spec.kind {
-            MetadataLineKind::ManaCost => MetadataLine::ManaCost(value),
-            MetadataLineKind::TypeLine => MetadataLine::TypeLine(value),
-            MetadataLineKind::PowerToughness => MetadataLine::PowerToughness(value),
-            MetadataLineKind::Loyalty => MetadataLine::Loyalty(value),
-            MetadataLineKind::Defense => MetadataLine::Defense(value),
-        };
-
-        return Ok(Some(metadata));
-    }
-
-    let Some((kind, value)) = split_metadata_line_raw(trimmed) else {
+    let Some((label, value)) = str_split_once_char(trimmed, ':') else {
         return Ok(None);
     };
-    Ok(Some(match kind {
-        MetadataLineKind::ManaCost => MetadataLine::ManaCost(value.to_string()),
-        MetadataLineKind::TypeLine => MetadataLine::TypeLine(value.to_string()),
-        MetadataLineKind::PowerToughness => MetadataLine::PowerToughness(value.to_string()),
-        MetadataLineKind::Loyalty => MetadataLine::Loyalty(value.to_string()),
-        MetadataLineKind::Defense => MetadataLine::Defense(value.to_string()),
-    }))
+
+    // Parse only the structural label token-first so metadata values such as `*/*`
+    // can remain opaque here without falling back to post-lex string probing.
+    let label_tokens = match lex_line(format!("{}:", label.trim()).as_str(), 0) {
+        Ok(tokens) => tokens,
+        Err(_) => return Ok(None),
+    };
+    let Some(spec) = split_metadata_line_lexed(&label_tokens) else {
+        return Ok(None);
+    };
+
+    let value = value.trim().to_string();
+    let metadata = match spec.kind {
+        MetadataLineKind::ManaCost => MetadataLine::ManaCost(value),
+        MetadataLineKind::TypeLine => MetadataLine::TypeLine(value),
+        MetadataLineKind::PowerToughness => MetadataLine::PowerToughness(value),
+        MetadataLineKind::Loyalty => MetadataLine::Loyalty(value),
+        MetadataLineKind::Defense => MetadataLine::Defense(value),
+    };
+
+    Ok(Some(metadata))
 }
 
 fn replace_names_with_map(
@@ -1373,6 +1363,22 @@ mod tests {
             Ok(Some(MetadataLine::Defense(value))) if value == "5"
         ));
         assert!(matches!(parse_metadata_line("Draw a card."), Ok(None)));
+    }
+
+    #[test]
+    fn parse_metadata_line_keeps_unlexable_values_by_parsing_only_the_label() {
+        assert!(matches!(
+            parse_metadata_line("Power/Toughness: */*"),
+            Ok(Some(MetadataLine::PowerToughness(value))) if value == "*/*"
+        ));
+        assert!(matches!(
+            parse_metadata_line("Power/Toughness: 1+*/1+*"),
+            Ok(Some(MetadataLine::PowerToughness(value))) if value == "1+*/1+*"
+        ));
+        assert!(matches!(
+            parse_metadata_line("Type Line: Artifact // Creature"),
+            Ok(Some(MetadataLine::TypeLine(value))) if value == "Artifact // Creature"
+        ));
     }
 
     #[test]

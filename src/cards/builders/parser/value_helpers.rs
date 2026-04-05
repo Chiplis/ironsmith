@@ -5,7 +5,7 @@ use crate::effect::{Value, ValueComparisonOperator};
 use crate::target::{ChooseSpec, PlayerFilter};
 
 use super::effect_sentences::trim_edge_punctuation;
-use super::grammar::primitives::CompatWordIndex;
+use super::grammar::primitives::TokenWordView;
 pub(crate) use super::grammar::values::{
     parse_number_from_lexed, parse_value_comparison_tokens, parse_value_from_lexed,
 };
@@ -16,7 +16,7 @@ use super::util::{
     parse_value_expr_words, token_index_for_word_index, trim_commas,
 };
 
-type ValueHelperCompatWords = CompatWordIndex;
+type ValueHelperCompatWords = TokenWordView;
 
 fn word_refs_have(words: &[&str], expected: &str) -> bool {
     let mut idx = 0usize;

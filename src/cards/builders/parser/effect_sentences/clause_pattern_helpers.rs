@@ -18,7 +18,7 @@ use crate::{ChoiceCount, Supertype};
 use super::super::activation_and_restrictions::{
     starts_with_target_indicator, title_case_token_word,
 };
-use super::super::grammar::primitives::CompatWordIndex;
+use super::super::grammar::primitives::TokenWordView;
 use super::super::grammar::structure::split_trailing_if_clause_lexed;
 use super::super::object_filters::parse_object_filter;
 use super::super::util::{
@@ -31,7 +31,7 @@ use super::parse_subtype_word;
 use super::sentence_primitives::parse_distribute_counters_sentence;
 use super::verb_dispatch::parse_effect_with_verb;
 
-type ClausePatternCompatWords = CompatWordIndex;
+type ClausePatternCompatWords = TokenWordView;
 
 fn find_token_word_sequence_index(tokens: &[OwnedLexToken], sequence: &[&str]) -> Option<usize> {
     if sequence.is_empty() {

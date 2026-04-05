@@ -14,7 +14,7 @@ use crate::zone::Zone;
 use crate::{ChooseSpec, CounterType, TagKey, Value};
 
 use super::super::activation_and_restrictions::parse_devotion_value_from_add_clause;
-use super::super::grammar::primitives::CompatWordIndex;
+use super::super::grammar::primitives::TokenWordView;
 use super::super::grammar::structure::split_trailing_if_clause_lexed;
 use super::super::keyword_static::{
     parse_add_mana_equal_amount_value, parse_dynamic_cost_modifier_value,
@@ -28,7 +28,7 @@ use super::super::value_helpers::{
     parse_equal_to_aggregate_filter_value, parse_equal_to_number_of_filter_value,
 };
 
-type ZoneCounterCompatWords = CompatWordIndex;
+type ZoneCounterCompatWords = TokenWordView;
 
 fn render_clause_words(tokens: &[OwnedLexToken]) -> String {
     ZoneCounterCompatWords::new(tokens).to_word_refs().join(" ")

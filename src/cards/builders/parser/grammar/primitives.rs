@@ -2,12 +2,12 @@ use winnow::combinator::{alt, eof, peek};
 use winnow::error::{ContextError, ErrMode, ParseError, StrContext, StrContextValue};
 use winnow::prelude::*;
 use winnow::stream::Stream;
-use winnow::token::{any, literal};
+use winnow::token::{any, literal, take_till};
 
 use crate::cards::builders::{CardTextError, TextSpan};
 
+pub(crate) use super::super::lexer::TokenWordView;
 use super::super::lexer::{LexStream, LexToken, TokenKind};
-pub(crate) type CompatWordIndex = super::super::native_tokens::NormalizedWordView;
 
 fn failure_location<'a>(
     tokens: &'a LexStream<'a>,
@@ -78,10 +78,23 @@ pub(crate) fn parse_prefix<'a, O>(
     tokens: &'a [LexToken],
     mut parser: impl Parser<LexStream<'a>, O, ErrMode<ContextError>>,
 ) -> Option<(O, &'a [LexToken])> {
-    let mut input = LexStream::new(tokens);
-    let parsed = parser.parse_next(&mut input).ok()?;
-    let consumed = tokens.len().checked_sub(input.len())?;
-    Some((parsed, &tokens[consumed..]))
+    let (rest, parsed) = parser.parse_peek(LexStream::new(tokens)).ok()?;
+    let remaining = tokens.get(tokens.len().checked_sub(rest.len())?..)?;
+    Some((parsed, remaining))
+}
+
+pub(crate) fn token_slice_span(tokens: &[LexToken]) -> Option<TextSpan> {
+    let line = tokens.first()?.span().line;
+    let (_, span) =
+        take_till::<_, LexStream<'_>, ErrMode<ContextError>>(0.., |_token: &LexToken| false)
+            .span()
+            .parse_peek(LexStream::new(tokens))
+            .ok()?;
+    Some(TextSpan {
+        line,
+        start: span.start,
+        end: span.end,
+    })
 }
 
 pub(crate) fn token_kind<'a>(
@@ -213,7 +226,7 @@ where
     P: Parser<LexStream<'a>, (), ErrMode<ContextError>>,
 {
     split_lexed_slices_with_parser(tokens, || {
-        move |input: &mut LexStream<'a>| parse_segment_len_until_separator(input, make_separator)
+        move |input: &mut LexStream<'a>| parse_segment_until_separator(input, make_separator)
     })
 }
 
@@ -223,18 +236,18 @@ fn split_lexed_slices_with_parser<'a, P, F>(
 ) -> Vec<&'a [LexToken]>
 where
     F: Fn() -> P,
-    P: Parser<LexStream<'a>, usize, ErrMode<ContextError>>,
+    P: Parser<LexStream<'a>, &'a [LexToken], ErrMode<ContextError>>,
 {
     let mut segments = Vec::new();
     let mut remaining = tokens;
 
     while !remaining.is_empty() {
-        let Some((segment_len, rest)) = parse_prefix(remaining, make_segment_parser()) else {
+        let Some((segment, rest)) = parse_prefix(remaining, make_segment_parser()) else {
             break;
         };
 
-        if segment_len > 0 {
-            segments.push(&remaining[..segment_len]);
+        if !segment.is_empty() {
+            segments.push(segment);
         }
 
         if rest.len() == remaining.len() {
@@ -246,27 +259,50 @@ where
     segments
 }
 
-fn parse_segment_len_until_separator<'a, P, F>(
+fn parse_segment_until_separator<'a, P, F>(
     input: &mut LexStream<'a>,
     make_separator: F,
-) -> Result<usize, ErrMode<ContextError>>
+) -> Result<&'a [LexToken], ErrMode<ContextError>>
 where
     F: Fn() -> P + Copy,
     P: Parser<LexStream<'a>, (), ErrMode<ContextError>>,
 {
-    let initial_len = input.len();
+    let segment = (move |input: &mut LexStream<'a>| {
+        while input.peek_token().is_some() {
+            if peek(make_separator()).parse_next(input).is_ok() {
+                return Ok(());
+            }
 
-    while input.peek_token().is_some() {
-        if peek(make_separator()).parse_next(input).is_ok() {
-            let segment_len = initial_len - input.len();
-            make_separator().parse_next(input)?;
-            return Ok(segment_len);
+            any.parse_next(input)?;
         }
+        Ok(())
+    })
+    .take()
+    .parse_next(input)?;
 
-        any.parse_next(input)?;
+    if input.peek_token().is_some() {
+        make_separator().parse_next(input)?;
     }
 
-    Ok(initial_len - input.len())
+    Ok(segment)
+}
+
+pub(crate) fn split_lexed_once_on_delimiter<'a>(
+    tokens: &'a [LexToken],
+    delimiter: TokenKind,
+) -> Option<(&'a [LexToken], &'a [LexToken])> {
+    let parser = take_till(0.., move |token: &LexToken| token.kind == delimiter).with_taken();
+    let (rest, ((_, head), _)) = (parser, token_kind(delimiter))
+        .parse_peek(LexStream::new(tokens))
+        .ok()?;
+    let remaining = tokens.get(tokens.len().checked_sub(rest.len())?..)?;
+    Some((head, remaining))
+}
+
+pub(crate) fn split_lexed_once_on_comma<'a>(
+    tokens: &'a [LexToken],
+) -> Option<(&'a [LexToken], &'a [LexToken])> {
+    split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
 }
 
 pub(crate) fn split_lexed_slices_on_and<'a>(tokens: &'a [LexToken]) -> Vec<&'a [LexToken]> {
@@ -286,7 +322,7 @@ fn is_comparison_or_delimiter(previous_word: Option<&str>, next_word: Option<&st
 }
 
 pub(crate) fn split_lexed_slices_on_or<'a>(tokens: &'a [LexToken]) -> Vec<&'a [LexToken]> {
-    split_lexed_slices_with_parser(tokens, || parse_segment_len_until_or_separator)
+    split_lexed_slices_with_parser(tokens, || parse_segment_until_or_separator)
 }
 
 pub(crate) fn split_lexed_slices_on_commas_or_semicolons<'a>(
@@ -298,61 +334,83 @@ pub(crate) fn split_lexed_slices_on_commas_or_semicolons<'a>(
 }
 
 pub(crate) fn split_lexed_slices_on_period<'a>(tokens: &'a [LexToken]) -> Vec<&'a [LexToken]> {
-    split_lexed_slices_with_parser(tokens, || parse_period_segment_len)
+    split_lexed_slices_with_parser(tokens, || parse_segment_until_period)
 }
 
-fn parse_segment_len_until_or_separator<'a>(
+fn parse_segment_until_or_separator<'a>(
     input: &mut LexStream<'a>,
-) -> Result<usize, ErrMode<ContextError>> {
-    let initial_len = input.len();
-    let mut previous_word = None;
+) -> Result<&'a [LexToken], ErrMode<ContextError>> {
+    let segment = (|input: &mut LexStream<'a>| {
+        let mut previous_word = None;
 
-    while let Some(token) = input.peek_token() {
-        if token.is_comma() {
-            comma().parse_next(input)?;
-            let consumed = initial_len - input.len();
-            return Ok(consumed.saturating_sub(1));
-        }
+        while let Some(token) = input.peek_token() {
+            if token.is_comma() {
+                return Ok(());
+            }
 
-        if token.is_word("or") {
-            let next_word = input.get(1).and_then(LexToken::as_word);
-            if !is_comparison_or_delimiter(previous_word, next_word) {
-                kw("or").parse_next(input)?;
-                let consumed = initial_len - input.len();
-                return Ok(consumed.saturating_sub(1));
+            if token.is_word("or") {
+                let next_word = input.get(1).and_then(LexToken::as_word);
+                if !is_comparison_or_delimiter(previous_word, next_word) {
+                    return Ok(());
+                }
+            }
+
+            let consumed_token: &'a LexToken = any.parse_next(input)?;
+            if let Some(word) = consumed_token.as_word() {
+                previous_word = Some(word);
             }
         }
 
-        let consumed_token: &'a LexToken = any.parse_next(input)?;
-        if let Some(word) = consumed_token.as_word() {
-            previous_word = Some(word);
+        Ok(())
+    })
+    .take()
+    .parse_next(input)?;
+
+    if let Some(token) = input.peek_token() {
+        if token.is_comma() {
+            comma().parse_next(input)?;
+        } else if token.is_word("or") {
+            let previous_word = segment.iter().rev().find_map(|token| token.as_word());
+            let next_word = input.get(1).and_then(LexToken::as_word);
+            if !is_comparison_or_delimiter(previous_word, next_word) {
+                kw("or").parse_next(input)?;
+            }
         }
     }
 
-    Ok(initial_len - input.len())
+    Ok(segment)
 }
 
-fn parse_period_segment_len<'a>(input: &mut LexStream<'a>) -> Result<usize, ErrMode<ContextError>> {
-    let initial_len = input.len();
-    let mut inside_quotes = false;
+fn parse_segment_until_period<'a>(
+    input: &mut LexStream<'a>,
+) -> Result<&'a [LexToken], ErrMode<ContextError>> {
+    let segment = (|input: &mut LexStream<'a>| {
+        let mut inside_quotes = false;
 
-    while let Some(token) = input.peek_token() {
-        if token.is_quote() {
-            quote().parse_next(input)?;
-            inside_quotes = !inside_quotes;
-            continue;
+        while let Some(token) = input.peek_token() {
+            if token.is_quote() {
+                quote().parse_next(input)?;
+                inside_quotes = !inside_quotes;
+                continue;
+            }
+
+            if token.is_period() && !inside_quotes {
+                return Ok(());
+            }
+
+            any.parse_next(input)?;
         }
 
-        if token.is_period() && !inside_quotes {
-            period().parse_next(input)?;
-            let consumed = initial_len - input.len();
-            return Ok(consumed.saturating_sub(1));
-        }
+        Ok(())
+    })
+    .take()
+    .parse_next(input)?;
 
-        any.parse_next(input)?;
+    if input.peek_token().is_some_and(|token| token.is_period()) {
+        period().parse_next(input)?;
     }
 
-    Ok(initial_len - input.len())
+    Ok(segment)
 }
 
 pub(crate) fn strip_lexed_prefix_phrase<'a>(
@@ -366,7 +424,7 @@ pub(crate) fn strip_lexed_suffix_phrase<'a>(
     tokens: &'a [LexToken],
     phrase: &[&str],
 ) -> Option<&'a [LexToken]> {
-    let words = CompatWordIndex::new(tokens);
+    let words = TokenWordView::new(tokens);
     let word_refs = words.word_refs();
     if word_refs.len() < phrase.len() {
         return None;

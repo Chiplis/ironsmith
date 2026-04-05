@@ -1,4 +1,4 @@
-use super::super::grammar::primitives::{CompatWordIndex, split_lexed_slices_on_or};
+use super::super::grammar::primitives::{self as grammar, split_lexed_slices_on_or};
 use super::super::grammar::values::parse_value_comparison_tokens;
 use super::super::lexer::{OwnedLexToken, TokenKind, lex_line, token_word_refs, trim_lexed_commas};
 use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed};
@@ -39,10 +39,42 @@ pub(crate) enum SearchLibraryManaConstraint {
     OneOf(Vec<u32>),
 }
 
-pub(crate) type SearchLibraryCompatWords = CompatWordIndex;
-
 fn token_words<'a>(tokens: &'a [OwnedLexToken]) -> Vec<&'a str> {
     token_word_refs(tokens)
+}
+
+fn token_slice_contains_word(tokens: &[OwnedLexToken], expected: &'static str) -> bool {
+    tokens
+        .iter()
+        .enumerate()
+        .any(|(idx, _)| grammar::parse_prefix(&tokens[idx..], grammar::kw(expected)).is_some())
+}
+
+fn token_slice_contains_phrase(tokens: &[OwnedLexToken], phrase: &'static [&'static str]) -> bool {
+    tokens
+        .iter()
+        .enumerate()
+        .any(|(idx, _)| grammar::parse_prefix(&tokens[idx..], grammar::phrase(phrase)).is_some())
+}
+
+fn find_phrase_token_bounds(
+    tokens: &[OwnedLexToken],
+    phrase: &'static [&'static str],
+) -> Option<(usize, usize)> {
+    if phrase.is_empty() {
+        return None;
+    }
+
+    let mut idx = 0usize;
+    while idx < tokens.len() {
+        if let Some((_, rest)) = grammar::parse_prefix(&tokens[idx..], grammar::phrase(phrase)) {
+            let end_idx = idx + (tokens[idx..].len() - rest.len());
+            return Some((idx, end_idx));
+        }
+        idx += 1;
+    }
+
+    None
 }
 
 pub(crate) fn word_slice_starts_with_any(words: &[&str], prefixes: &[&[&str]]) -> bool {
@@ -62,26 +94,30 @@ pub(crate) fn word_slice_mentions_nth_from_top(words: &[&str]) -> bool {
     false
 }
 
-fn is_source_reference_duration_words(words: &SearchLibraryCompatWords) -> bool {
-    words.has_any_word(&[
+fn is_source_reference_duration_tokens(tokens: &[OwnedLexToken]) -> bool {
+    [
         "this",
         "thiss",
         "source",
         "artifact",
         "creature",
         "permanent",
-    ])
+    ]
+    .iter()
+    .any(|word| token_slice_contains_word(tokens, word))
 }
 
-fn is_as_long_as_you_control_duration_words(words: &SearchLibraryCompatWords) -> bool {
-    words.has_word("you") && words.has_word("control") && is_source_reference_duration_words(words)
+fn is_as_long_as_you_control_duration_tokens(tokens: &[OwnedLexToken]) -> bool {
+    token_slice_contains_word(tokens, "you")
+        && token_slice_contains_word(tokens, "control")
+        && is_source_reference_duration_tokens(tokens)
 }
 
-fn is_source_remains_tapped_duration_words(words: &SearchLibraryCompatWords) -> bool {
-    words.has_phrase(&["for", "as", "long", "as"])
-        && words.has_word("remains")
-        && words.has_word("tapped")
-        && is_source_reference_duration_words(words)
+fn is_source_remains_tapped_duration_tokens(tokens: &[OwnedLexToken]) -> bool {
+    token_slice_contains_phrase(tokens, &["for", "as", "long", "as"])
+        && token_slice_contains_word(tokens, "remains")
+        && token_slice_contains_word(tokens, "tapped")
+        && is_source_reference_duration_tokens(tokens)
 }
 
 fn remove_this_turn_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
@@ -167,19 +203,15 @@ pub(crate) fn parse_restriction_duration_lexed(
         return Ok(Some((duration, trim_lexed_commas(rest).to_vec())));
     }
 
-    let words = SearchLibraryCompatWords::new(tokens);
-    if words.len() < 2 {
+    if token_words(tokens).len() < 2 {
         return Ok(None);
     }
 
-    if words.slice_eq(0, &["for", "as", "long", "as"]) {
-        if !is_as_long_as_you_control_duration_words(&words) {
+    if grammar::parse_prefix(tokens, grammar::phrase(&["for", "as", "long", "as"])).is_some() {
+        if !is_as_long_as_you_control_duration_tokens(tokens) {
             return Ok(None);
         }
-        let Some(comma_idx) = tokens
-            .iter()
-            .enumerate()
-            .find_map(|(idx, token)| (token.kind == TokenKind::Comma).then_some(idx))
+        let Some(comma_idx) = find_token_index(tokens, |token| token.kind == TokenKind::Comma)
         else {
             return Err(CardTextError::ParseError(
                 "missing comma after duration prefix".to_string(),
@@ -196,22 +228,19 @@ pub(crate) fn parse_restriction_duration_lexed(
         }
     }
 
-    if let Some(word_idx) = words.find_phrase_start(&["for", "as", "long", "as"]) {
-        let token_idx = words
-            .token_index_for_word_index(word_idx)
-            .unwrap_or(tokens.len());
-        let suffix_words = SearchLibraryCompatWords::new(&tokens[token_idx..]);
-        if is_source_remains_tapped_duration_words(&suffix_words) {
+    if let Some((token_idx, _)) = find_phrase_token_bounds(tokens, &["for", "as", "long", "as"]) {
+        let suffix_tokens = &tokens[token_idx..];
+        if is_source_remains_tapped_duration_tokens(suffix_tokens) {
             let remainder = trim_lexed_commas(&tokens[..token_idx]).to_vec();
             return Ok(Some((Until::ThisLeavesTheBattlefield, remainder)));
         }
-        if is_as_long_as_you_control_duration_words(&suffix_words) {
+        if is_as_long_as_you_control_duration_tokens(suffix_tokens) {
             let remainder = trim_lexed_commas(&tokens[..token_idx]).to_vec();
             return Ok(Some((Until::YouStopControllingThis, remainder)));
         }
     }
 
-    if words.has_phrase(&["this", "turn"]) {
+    if token_slice_contains_phrase(tokens, &["this", "turn"]) {
         let cleaned = remove_this_turn_tokens(tokens);
         let remainder = trim_lexed_commas(&cleaned).to_vec();
         if !remainder.is_empty() {
@@ -225,15 +254,9 @@ pub(crate) fn parse_restriction_duration_lexed(
 pub(crate) fn extract_search_library_mana_constraint(
     filter_tokens: &[OwnedLexToken],
 ) -> Option<(Vec<OwnedLexToken>, SearchLibraryManaConstraint)> {
-    let filter_word_view = SearchLibraryCompatWords::new(filter_tokens);
-    let with_idx = filter_word_view
-        .find_phrase_start(&["with", "mana", "cost"])
-        .or_else(|| filter_word_view.find_phrase_start(&["with", "mana", "value"]))?;
-    let clause_word_start = with_idx + 3;
-    let clause_token_start = filter_word_view.token_index_for_word_index(with_idx)?;
-    let clause_token_end = filter_word_view
-        .token_index_for_word_index(clause_word_start)
-        .unwrap_or(filter_tokens.len());
+    let (clause_token_start, clause_token_end) =
+        find_phrase_token_bounds(filter_tokens, &["with", "mana", "cost"])
+            .or_else(|| find_phrase_token_bounds(filter_tokens, &["with", "mana", "value"]))?;
     let base_filter_tokens = trim_commas(&filter_tokens[..clause_token_start]);
     if base_filter_tokens.is_empty() {
         return None;
@@ -244,12 +267,11 @@ pub(crate) fn extract_search_library_mana_constraint(
         return None;
     }
 
-    let parse_single_u32_clause = |tokens: &[OwnedLexToken]| {
-        let clause_words = SearchLibraryCompatWords::new(tokens);
-        if clause_words.len() != 1 {
+    let parse_single_u32_clause = |tokens: &[OwnedLexToken]| -> Option<u32> {
+        let [token] = tokens else {
             return None;
-        }
-        clause_words.get(0)?.parse::<u32>().ok()
+        };
+        token.parser_text().parse::<u32>().ok()
     };
     let constraint = if let Some(value) = parse_single_u32_clause(clause_tokens) {
         SearchLibraryManaConstraint::Equal(value)
@@ -265,13 +287,15 @@ pub(crate) fn extract_search_library_mana_constraint(
             _ => return None,
         }
     } else {
-        let clause_words = SearchLibraryCompatWords::new(clause_tokens);
-        if clause_words.len() != 3 || clause_words.get(1) != Some("or") {
+        let [left, middle, right] = clause_tokens else {
+            return None;
+        };
+        if !middle.is_word("or") {
             return None;
         }
         SearchLibraryManaConstraint::OneOf(vec![
-            clause_words.get(0)?.parse::<u32>().ok()?,
-            clause_words.get(2)?.parse::<u32>().ok()?,
+            left.parser_text().parse::<u32>().ok()?,
+            right.parser_text().parse::<u32>().ok()?,
         ])
     };
 
@@ -327,23 +351,9 @@ pub(crate) fn apply_search_library_mana_constraint(
 pub(crate) fn split_search_same_name_reference_filter(
     tokens: &[OwnedLexToken],
 ) -> Option<(Vec<OwnedLexToken>, Vec<OwnedLexToken>)> {
-    let word_view = SearchLibraryCompatWords::new(tokens);
-    let words_all = word_view.to_word_refs();
-    let (start_word_idx, phrase_len) = if let Some(idx) =
-        word_slice_find_sequence(&words_all, &["with", "the", "same", "name", "as"])
-    {
-        (idx, 5usize)
-    } else if let Some(idx) = word_slice_find_sequence(&words_all, &["with", "same", "name", "as"])
-    {
-        (idx, 4usize)
-    } else {
-        return None;
-    };
-
-    let start_token_idx = word_view.token_index_for_word_index(start_word_idx)?;
-    let end_token_idx = word_view
-        .token_index_for_word_index(start_word_idx + phrase_len)
-        .unwrap_or(tokens.len());
+    let (start_token_idx, end_token_idx) =
+        find_phrase_token_bounds(tokens, &["with", "the", "same", "name", "as"])
+            .or_else(|| find_phrase_token_bounds(tokens, &["with", "same", "name", "as"]))?;
     let base_filter_tokens = trim_commas(&tokens[..start_token_idx]);
     let reference_tokens = trim_commas(&tokens[end_token_idx..]);
     Some((base_filter_tokens, reference_tokens))

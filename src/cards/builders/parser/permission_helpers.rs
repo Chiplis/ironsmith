@@ -14,13 +14,13 @@ use super::grammar::filters::{
 };
 use super::grammar::primitives as grammar;
 use super::grammar::values::parse_value_comparison_tokens;
-use super::lexer::{OwnedLexToken, trim_lexed_commas};
+use super::lexer::{OwnedLexToken, token_word_refs, trim_lexed_commas};
 use super::object_filters::merge_spell_filters;
 use super::token_primitives::{
     TurnDurationPhrase, parse_i32_word_token, parse_lexed_prefix, parse_turn_duration_prefix,
     parse_turn_duration_suffix,
 };
-use super::util::trim_commas;
+use super::util::{token_index_for_word_index, trim_commas};
 use super::value_helpers::parse_value_from_lexed;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -211,8 +211,7 @@ fn parse_permission_tail_tokens(
     tokens: &[OwnedLexToken],
     default_lifetime: PermissionLifetime,
 ) -> Option<(PermissionLifetime, bool)> {
-    let words_view = grammar::CompatWordIndex::new(tokens);
-    let words = words_view.word_refs();
+    let words = token_word_refs(tokens);
     if words.is_empty() {
         return Some((default_lifetime, false));
     }
@@ -221,8 +220,7 @@ fn parse_permission_tail_tokens(
     }
 
     if let Some((duration, rest)) = parse_turn_duration_prefix(tokens) {
-        let rest_words_view = grammar::CompatWordIndex::new(rest);
-        let rest_words = rest_words_view.word_refs();
+        let rest_words = token_word_refs(rest);
         if rest_words.is_empty() {
             return Some((permission_lifetime_from_turn_duration(duration), false));
         }
@@ -232,8 +230,7 @@ fn parse_permission_tail_tokens(
     }
 
     if let Some((rest, duration)) = parse_turn_duration_suffix(tokens) {
-        let rest_words_view = grammar::CompatWordIndex::new(rest);
-        let rest_words = rest_words_view.word_refs();
+        let rest_words = token_word_refs(rest);
         if rest_words.is_empty() {
             return Some((permission_lifetime_from_turn_duration(duration), false));
         }
@@ -259,12 +256,13 @@ fn parse_permission_subject_filter_tokens_lexed(
         return Ok(None);
     }
 
-    let filter_words = grammar::CompatWordIndex::new(filter_tokens);
+    let filter_words = token_word_refs(filter_tokens);
     for separator in ["and", "or"] {
-        let Some(split_idx) = filter_words.find_word(separator) else {
+        let Some(split_idx) = find_token_index(filter_words.as_slice(), |word| *word == separator)
+        else {
             continue;
         };
-        let Some(split_token_idx) = filter_words.token_index_for_word_index(split_idx) else {
+        let Some(split_token_idx) = token_index_for_word_index(filter_tokens, split_idx) else {
             continue;
         };
         let left_tokens = trim_lexed_commas(&filter_tokens[..split_token_idx]);
@@ -310,8 +308,7 @@ pub(crate) fn parse_unsupported_play_cast_permission_clause(
 pub(crate) fn parse_permission_clause_spec_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PermissionClauseSpec>, CardTextError> {
-    let clause_words = grammar::CompatWordIndex::new(tokens);
-    let clause_refs = clause_words.word_refs();
+    let clause_refs = token_word_refs(tokens);
     if clause_refs.is_empty() {
         return Ok(None);
     }
@@ -352,9 +349,8 @@ pub(crate) fn parse_permission_clause_spec_lexed(
             return Ok(None);
         };
 
-        let target_words = grammar::CompatWordIndex::new(target_tokens);
         let single_tagged_target = matches!(
-            target_words.word_refs().as_slice(),
+            token_word_refs(target_tokens).as_slice(),
             ["it"] | ["that", "card"] | ["that", "spell"]
         );
         if matches!(
@@ -409,12 +405,10 @@ pub(crate) fn parse_permission_clause_spec_lexed(
         && let Some(from_idx) =
             find_token_index(after_lands_and_cast, |token| token.is_word("from"))
     {
-        let zone_words_view = grammar::CompatWordIndex::new(&after_lands_and_cast[from_idx..]);
-        let zone_words = zone_words_view.word_refs();
+        let zone_words = token_word_refs(&after_lands_and_cast[from_idx..]);
         if zone_words == ["from", "the", "top", "of", "your", "library"] {
             let subject_tokens = trim_lexed_commas(&after_lands_and_cast[..from_idx]);
-            let subject_words_view = grammar::CompatWordIndex::new(subject_tokens);
-            let subject_words = subject_words_view.word_refs();
+            let subject_words = token_word_refs(subject_tokens);
             let filter = if subject_words == ["spells"] {
                 ObjectFilter::default()
             } else {
@@ -455,8 +449,7 @@ pub(crate) fn parse_permission_clause_spec_lexed(
             (crate::grant::GrantSpec::flash_to_spells(), None)
         };
         if let Some(tail_tokens) = subject_tokens {
-            let tail_words_view = grammar::CompatWordIndex::new(tail_tokens);
-            let tail_words = tail_words_view.word_refs();
+            let tail_words = token_word_refs(tail_tokens);
             if matches!(
                 tail_words.as_slice(),
                 ["as", "though", "they", "had", "flash"]
@@ -553,8 +546,7 @@ pub(crate) fn parse_permission_clause_spec_lexed(
                 continue;
             };
             let filter_tokens = trim_lexed_commas(filter_tokens);
-            let filter_words = grammar::CompatWordIndex::new(filter_tokens);
-            let filter_refs = filter_words.word_refs();
+            let filter_refs = token_word_refs(filter_tokens);
             if filter_refs.is_empty()
                 || !filter_refs
                     .iter()
@@ -584,8 +576,7 @@ pub(crate) fn parse_permission_clause_spec_lexed(
 pub(crate) fn parse_unsupported_play_cast_permission_clause_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let clause_words = grammar::CompatWordIndex::new(tokens);
-    let clause_refs = clause_words.word_refs();
+    let clause_refs = token_word_refs(tokens);
     if clause_refs.is_empty() {
         return Ok(None);
     }
@@ -679,13 +670,12 @@ pub(crate) fn parse_additional_land_plays_clause(
 pub(crate) fn parse_additional_land_plays_clause_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let clause_words = grammar::CompatWordIndex::new(tokens);
-    let clause_refs = clause_words.word_refs();
+    let clause_refs = token_word_refs(tokens);
     if clause_refs.first().copied() != Some("play") {
         return Ok(None);
     }
 
-    let Some(rest_start) = clause_words.token_index_for_word_index(1) else {
+    let Some(rest_start) = token_index_for_word_index(tokens, 1) else {
         return Ok(None);
     };
     let rest_tokens = &tokens[rest_start..];
@@ -759,12 +749,13 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
     ];
     let mut allow_any_color_for_cast = false;
     for suffix in any_color_suffixes {
-        let lowered = grammar::CompatWordIndex::new(&trimmed);
-        let clause_refs = lowered.word_refs();
+        let clause_refs = token_word_refs(&trimmed);
         if word_slice_has_suffix(&clause_refs, suffix) {
             allow_any_color_for_cast = true;
             let kept_word_count = clause_refs.len() - suffix.len();
-            let Some(keep_until) = lowered.token_index_for_word_index(kept_word_count) else {
+            let Some(keep_until) = token_index_for_word_index(&trimmed, kept_word_count)
+                .or_else(|| (kept_word_count == clause_refs.len()).then_some(trimmed.len()))
+            else {
                 return Err(CardTextError::ParseError(
                     "failed to split tagged cast clause before mana-spend suffix".to_string(),
                 ));

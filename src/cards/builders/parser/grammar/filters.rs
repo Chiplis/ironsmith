@@ -19,7 +19,7 @@ use super::super::util::{
     parse_unsigned_pt_word, parse_zone_word, push_outlaw_subtypes, trim_commas,
 };
 use super::super::value_helpers::parse_filter_comparison_tokens;
-use super::primitives::{CompatWordIndex, split_lexed_slices_on_and, split_lexed_slices_on_or};
+use super::primitives::{TokenWordView, split_lexed_slices_on_and, split_lexed_slices_on_or};
 use super::values::parse_mana_symbol;
 use crate::cards::TextSpan;
 use crate::cards::builders::{CardTextError, IT_TAG, PlayerAst, PredicateAst, TagKey};
@@ -36,7 +36,7 @@ use crate::target::{ObjectFilter, PlayerFilter, TaggedOpbjectRelation};
 use crate::types::{CardType, Supertype};
 use crate::zone::Zone;
 
-type GrammarFilterNormalizedWords = CompatWordIndex;
+type GrammarFilterNormalizedWords = TokenWordView;
 
 fn synth_words_as_tokens(words: &[&str]) -> Vec<OwnedLexToken> {
     words

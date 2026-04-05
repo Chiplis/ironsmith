@@ -18,8 +18,12 @@ use crate::types::{CardType, Subtype, Supertype};
 
 #[cfg(test)]
 use super::super::effect_sentences::parse_subtype_word;
-use super::super::lexer::{LexStream, OwnedLexToken, TokenKind, lex_line};
-use super::super::util::{parse_number_word_i32, parse_value_expr_words};
+use super::super::lexer::{
+    LexStream, OwnedLexToken, TokenKind, lex_line, parser_token_word_refs,
+};
+use super::super::util::{
+    parse_number_word_i32, parse_value_expr_words, token_index_for_word_index,
+};
 use super::primitives;
 
 type LexedInput<'a> = LexStream<'a>;
@@ -199,6 +203,26 @@ pub(crate) fn parse_count_word_rewrite(raw: &str) -> Result<u32, CardTextError> 
     parse_count_text(raw, "count-word")
 }
 
+fn parse_count_token<'a>(input: &mut LexedInput<'a>) -> WResult<u32> {
+    let word = primitives::word_text.parse_next(input)?;
+    if let Ok(value) = word.parse::<u32>() {
+        return Ok(value);
+    }
+
+    count_word_value(word).ok_or_else(|| {
+        let mut err = ContextError::new();
+        err.push(StrContext::Label("count"));
+        err.push(StrContext::Expected(StrContextValue::Description(
+            "numeric or counted quantity",
+        )));
+        ErrMode::Backtrack(err)
+    })
+}
+
+pub(crate) fn parse_count_word_tokens(tokens: &[OwnedLexToken]) -> Result<u32, CardTextError> {
+    finish_lexed_parse(tokens, parse_count_token, "count-word")
+}
+
 fn parse_mana_group_inner(input: &mut &str) -> WResult<Vec<ManaSymbol>> {
     preceded(
         spaced("{"),
@@ -241,6 +265,32 @@ pub(crate) fn parse_scryfall_mana_cost(raw: &str) -> Result<ManaCost, CardTextEr
 
 pub(crate) fn parse_mana_cost_rewrite(raw: &str) -> Result<ManaCost, CardTextError> {
     parse_mana_cost_text(raw, false)
+}
+
+fn parse_mana_group_token<'a>(input: &mut LexedInput<'a>) -> WResult<Vec<ManaSymbol>> {
+    let token = primitives::token_kind(TokenKind::ManaGroup).parse_next(input)?;
+    parse_mana_symbol_group(token.slice.as_str()).map_err(|_| {
+        let mut err = ContextError::new();
+        err.push(StrContext::Label("mana group"));
+        err.push(StrContext::Expected(StrContextValue::Description(
+            "braced mana symbols",
+        )));
+        ErrMode::Backtrack(err)
+    })
+}
+
+fn parse_mana_cost_tokens_inner<'a>(input: &mut LexedInput<'a>) -> WResult<ManaCost> {
+    repeat(1.., parse_mana_group_token)
+        .map(ManaCost::from_pips)
+        .context(StrContext::Label("mana cost"))
+        .context(StrContext::Expected(StrContextValue::Description(
+            "mana group",
+        )))
+        .parse_next(input)
+}
+
+pub(crate) fn parse_mana_cost_tokens(tokens: &[OwnedLexToken]) -> Result<ManaCost, CardTextError> {
+    finish_lexed_parse(tokens, parse_mana_cost_tokens_inner, "mana-cost")
 }
 
 fn parse_modal_value_token<'a>(input: &mut LexedInput<'a>) -> WResult<Value> {
@@ -299,8 +349,7 @@ fn strip_lexed_suffix_phrase<'a>(
     tokens: &'a [OwnedLexToken],
     phrase: &[&str],
 ) -> Option<&'a [OwnedLexToken]> {
-    let word_view = primitives::CompatWordIndex::new(tokens);
-    let word_refs = word_view.word_refs();
+    let word_refs = parser_token_word_refs(tokens);
     if word_refs.len() < phrase.len() {
         return None;
     }
@@ -317,8 +366,10 @@ fn strip_lexed_suffix_phrase<'a>(
     let keep_word_count = word_refs.len().checked_sub(phrase.len())?;
     let keep_until = if keep_word_count == 0 {
         0
+    } else if keep_word_count == word_refs.len() {
+        tokens.len()
     } else {
-        word_view.token_index_for_word_index(keep_word_count)?
+        token_index_for_word_index(tokens, keep_word_count)?
     };
     Some(&tokens[..keep_until])
 }
@@ -553,20 +604,14 @@ pub(crate) fn parse_number_from_lexed(tokens: &[OwnedLexToken]) -> Option<(u32, 
 
 pub(crate) fn parse_value_from_lexed(tokens: &[OwnedLexToken]) -> Option<(Value, usize)> {
     let trimmed = trim_lexed_edge_punctuation(tokens);
-    let word_view = primitives::CompatWordIndex::new(trimmed);
-    let word_refs = word_view.word_refs();
+    let word_refs = parser_token_word_refs(trimmed);
     let (value, used_words) = parse_value_expr_words(&word_refs)?;
-    let used_tokens = word_view
-        .token_start_indices()
-        .get(used_words)
-        .copied()
-        .unwrap_or(trimmed.len());
+    let used_tokens = token_index_for_word_index(trimmed, used_words).unwrap_or(trimmed.len());
     Some((value, used_tokens))
 }
 
 pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) -> Option<Value> {
-    let word_view = primitives::CompatWordIndex::new(tokens);
-    let words_all = word_view.word_refs();
+    let words_all = parser_token_word_refs(tokens);
     let equal_idx = find_window_index(&words_all, &["equal", "to"])?;
     let tail = &words_all[equal_idx + 2..];
     if tail.is_empty() {

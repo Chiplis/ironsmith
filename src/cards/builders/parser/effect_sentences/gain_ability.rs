@@ -4,7 +4,7 @@ use super::super::clause_support::{
 };
 use super::super::compile_support::compile_statement_effects;
 use super::super::grammar::primitives::{
-    CompatWordIndex, split_lexed_slices_on_and, split_lexed_slices_on_or,
+    TokenWordView, split_lexed_slices_on_and, split_lexed_slices_on_or,
 };
 use super::super::lexer::{OwnedLexToken, TokenKind, trim_lexed_commas};
 use super::super::lowering_support::{
@@ -35,7 +35,7 @@ use crate::mana::ManaCost;
 use crate::target::PlayerFilter;
 use crate::zone::Zone;
 
-type GainAbilityCompatWords = CompatWordIndex;
+type GainAbilityCompatWords = TokenWordView;
 
 fn display_text_for_tokens(tokens: &[OwnedLexToken]) -> String {
     let mut text = String::new();

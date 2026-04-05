@@ -123,7 +123,7 @@ fn anthem_rfind_index(limit: usize, mut predicate: impl FnMut(usize) -> bool) ->
     None
 }
 
-type AnthemNormalizedWords = crate::cards::builders::parser::grammar::primitives::CompatWordIndex;
+type AnthemNormalizedWords = crate::cards::builders::parser::grammar::primitives::TokenWordView;
 
 pub(crate) fn parse_subject_cant_be_blocked_line(
     tokens: &[OwnedLexToken],
@@ -2648,7 +2648,8 @@ pub(crate) fn parse_anthem_and_keyword_line(
         return Ok(None);
     };
 
-    let pre_grant_words = crate::cards::builders::parser::token_word_refs(&tokens[..have_token_idx]);
+    let pre_grant_words =
+        crate::cards::builders::parser::token_word_refs(&tokens[..have_token_idx]);
     // "until end of turn" in the pump clause indicates a one-shot effect.
     // Ignore timing text that appears only inside a quoted granted ability.
     if contains_until_end_of_turn(&pre_grant_words) {

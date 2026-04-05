@@ -22,17 +22,19 @@ use super::super::activation_and_restrictions::{
     parse_cant_restriction_clause, parse_cant_restrictions,
 };
 use super::super::effect_sentences::{
-    SearchLibraryCompatWords, apply_search_library_mana_constraint,
-    extract_search_library_mana_constraint, find_verb_lexed, is_same_name_that_reference_words,
-    normalize_search_library_filter, parse_effect_chain_lexed,
+    apply_search_library_mana_constraint, extract_search_library_mana_constraint, find_verb_lexed,
+    is_same_name_that_reference_words, normalize_search_library_filter, parse_effect_chain_lexed,
     parse_effect_chain_with_sentence_primitives_lexed, parse_effect_clause_lexed,
     parse_restriction_duration_lexed, parse_search_library_disjunction_filter,
     split_search_same_name_reference_filter, word_slice_mentions_nth_from_top,
     word_slice_starts_with_any, zone_slice_contains,
 };
 use super::super::grammar::structure::{IfClausePredicateSpec, split_if_clause_lexed};
-use super::super::lexer::{LexStream, OwnedLexToken, TokenKind, token_word_refs};
-use super::super::util::parse_subject;
+use super::super::lexer::{
+    LexStream, OwnedLexToken, TokenKind, parser_token_word_positions, parser_token_word_refs,
+    token_word_refs,
+};
+use super::super::util::{is_article, parse_subject};
 use super::super::{parse_number, parse_object_filter, parse_object_filter_lexed};
 use super::super::{parse_target_phrase, span_from_tokens, trim_commas};
 use super::primitives;
@@ -40,21 +42,46 @@ use super::primitives;
 const CHOSEN_NAME_TAG: &str = "__chosen_name__";
 
 fn parser_text_word_refs(tokens: &[OwnedLexToken]) -> Vec<&str> {
-    tokens
-        .iter()
-        .filter_map(|token| match token.kind {
-            TokenKind::Word | TokenKind::Number | TokenKind::Tilde => Some(token.parser_text()),
-            _ => None,
-        })
-        .collect()
+    parser_token_word_refs(tokens)
+}
+
+fn parser_word_token_positions(tokens: &[OwnedLexToken]) -> Vec<(usize, &str)> {
+    parser_token_word_positions(tokens)
+}
+
+fn find_parser_word_position(parser_words: &[(usize, &str)], expected: &str) -> Option<usize> {
+    let mut idx = 0usize;
+    while idx < parser_words.len() {
+        if parser_words[idx].1 == expected {
+            return Some(idx);
+        }
+        idx += 1;
+    }
+    None
+}
+
+fn last_non_article_parser_word_token_idx(
+    parser_words: &[(usize, &str)],
+    end_exclusive: usize,
+) -> Option<usize> {
+    let mut idx = end_exclusive;
+    while idx > 0 {
+        idx -= 1;
+        if !is_article(parser_words[idx].1) {
+            return Some(parser_words[idx].0);
+        }
+    }
+    None
 }
 
 fn normalize_subject_routing_word(word: &str) -> String {
-    if let Some(stem) = word.strip_suffix("'s") {
+    let bytes = word.as_bytes();
+    if bytes.len() >= 2 && bytes[bytes.len() - 2] == b'\'' && bytes[bytes.len() - 1] == b's' {
+        let stem = &word[..word.len() - 2];
         return format!("{stem}s");
     }
-    if let Some(stem) = word.strip_suffix('\'') {
-        return stem.to_string();
+    if bytes.last() == Some(&b'\'') {
+        return word[..word.len() - 1].to_string();
     }
     word.to_string()
 }
@@ -345,6 +372,27 @@ fn strip_search_library_suffix_lexed(
     }
 
     None
+}
+
+fn strip_search_library_leading_count_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+    let tokens = trim_commas(tokens);
+    if let Some((_, rest)) = primitives::parse_prefix(&tokens, primitives::kw("exactly"))
+        && let Some((_, used)) = parse_number(rest)
+    {
+        return trim_commas(&rest[used..]);
+    }
+    if let Some((_, used)) = parse_number(&tokens) {
+        return trim_commas(&tokens[used..]);
+    }
+    tokens
+}
+
+fn is_default_search_library_card_selector(tokens: &[OwnedLexToken]) -> bool {
+    let words = parser_text_word_refs(tokens)
+        .into_iter()
+        .filter(|word| !is_article(word))
+        .collect::<Vec<_>>();
+    words.is_empty() || words.as_slice() == ["card"] || words.as_slice() == ["cards"]
 }
 
 fn find_search_library_marker_lexed(
@@ -941,24 +989,29 @@ pub(crate) fn parse_search_library_object_filter_lexed(
     filter_tokens: &[OwnedLexToken],
     words_all: &[&str],
 ) -> Result<ObjectFilter, CardTextError> {
-    let filter_words: Vec<&str> = parser_text_word_refs(filter_tokens)
+    let filter_words = parser_text_word_refs(filter_tokens)
         .into_iter()
-        .into_iter()
-        .filter(|word| !super::super::util::is_article(word))
-        .collect();
+        .filter(|word| !is_article(word))
+        .collect::<Vec<_>>();
+    let parser_words = parser_word_token_positions(filter_tokens);
 
-    if let Some(named_idx) = word_slice_find(&filter_words, "named") {
-        let negated_named = named_idx > 0 && filter_words[named_idx - 1] == "not";
-        let base_words_end = if negated_named {
-            named_idx.saturating_sub(1)
+    if let Some(named_idx) = find_parser_word_position(&parser_words, "named") {
+        let negated_named = parser_words[..named_idx]
+            .iter()
+            .rev()
+            .find_map(|(_, word)| (!is_article(word)).then_some(*word))
+            == Some("not");
+        let base_token_end = if negated_named {
+            last_non_article_parser_word_token_idx(&parser_words, named_idx).unwrap_or(0)
         } else {
-            named_idx
+            parser_words[named_idx].0
         };
-        let name_words = filter_words
+        let name_words = parser_words
             .iter()
             .skip(named_idx + 1)
-            .copied()
+            .map(|(_, word)| *word)
             .take_while(|word| !matches!(*word, "that" | "with"))
+            .filter(|word| !is_article(word))
             .collect::<Vec<_>>();
         let name = name_words.join(" ");
         if name.is_empty() {
@@ -967,33 +1020,11 @@ pub(crate) fn parse_search_library_object_filter_lexed(
                 words_all.join(" ")
             )));
         }
-        let mut base_words = filter_words[..base_words_end].to_vec();
-        if base_words.first().copied() == Some("exactly") {
-            let count_tokens = base_words[1..]
-                .iter()
-                .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
-                .collect::<Vec<_>>();
-            if let Some((_, used)) = parse_number(&count_tokens) {
-                base_words = base_words[1 + used..].to_vec();
-            }
-        } else {
-            let count_tokens = base_words
-                .iter()
-                .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
-                .collect::<Vec<_>>();
-            if let Some((_, used)) = parse_number(&count_tokens) {
-                base_words = base_words[used..].to_vec();
-            }
-        }
-        let mut base_filter = if base_words.is_empty()
-            || (base_words.len() == 1 && (base_words[0] == "card" || base_words[0] == "cards"))
-        {
+        let base_tokens =
+            strip_search_library_leading_count_tokens(&filter_tokens[..base_token_end]);
+        let mut base_filter = if is_default_search_library_card_selector(&base_tokens) {
             ObjectFilter::default()
         } else {
-            let base_tokens: Vec<OwnedLexToken> = base_words
-                .iter()
-                .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
-                .collect();
             parse_object_filter(&base_tokens, false).map_err(|_| {
                 CardTextError::ParseError(format!(
                     "unsupported named search filter in search-library sentence (clause: '{}')",

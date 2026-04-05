@@ -5,7 +5,7 @@ use super::super::activation_and_restrictions::{
     parse_target_player_choose_objects_clause, parse_you_choose_objects_clause,
     parse_you_choose_player_clause,
 };
-use super::super::grammar::primitives::CompatWordIndex;
+use super::super::grammar::primitives::TokenWordView;
 use super::super::keyword_static::{
     keyword_action_to_static_ability, parse_ability_line, parse_pt_modifier,
     parse_pt_modifier_values,
@@ -48,7 +48,7 @@ use crate::effect::{Until, Value};
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype};
 
-type ClauseDispatchCompatWords = CompatWordIndex;
+type ClauseDispatchCompatWords = TokenWordView;
 
 fn render_lower_words(tokens: &[OwnedLexToken]) -> String {
     let word_view = ClauseDispatchCompatWords::new(tokens);

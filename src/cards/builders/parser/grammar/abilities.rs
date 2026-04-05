@@ -455,6 +455,10 @@ fn last_parser_word_text_lexed(tokens: &[OwnedLexToken]) -> Option<&str> {
     })
 }
 
+fn parser_text_contains_char(text: &str, expected: char) -> bool {
+    text.chars().any(|ch| ch == expected)
+}
+
 fn contains_any_word_lexed(tokens: &[OwnedLexToken], expected: &[&str]) -> bool {
     expected
         .iter()
@@ -601,7 +605,8 @@ pub(crate) fn is_mana_group_slash_marker_line_lexed(tokens: &[OwnedLexToken]) ->
     tokens
         .iter()
         .any(|token| token.kind == TokenKind::ManaGroup)
-        && last_parser_word_text_lexed(tokens).is_some_and(|word| word.contains('/'))
+        && last_parser_word_text_lexed(tokens)
+            .is_some_and(|word| parser_text_contains_char(word, '/'))
 }
 
 pub(crate) fn parse_ward_pay_life_amount_lexed(tokens: &[OwnedLexToken]) -> Option<u32> {

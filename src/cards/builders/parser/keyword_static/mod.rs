@@ -57,7 +57,9 @@ use super::grammar::primitives::{
 pub(crate) use super::grammar::values::parse_add_mana_equal_amount_value_lexed as parse_add_mana_equal_amount_value;
 use super::grammar::values::parse_max_cards_in_hand_value_lexed;
 use super::keyword_static_helpers::*;
-use super::lexer::{OwnedLexToken, TokenKind, split_lexed_sentences, trim_lexed_commas};
+use super::lexer::{
+    OwnedLexToken, TokenKind, render_token_slice, split_lexed_sentences, trim_lexed_commas,
+};
 use super::lowering_support::rewrite_parsed_triggered_ability as parsed_triggered_ability;
 use super::object_filters::{parse_object_filter, parse_object_filter_lexed};
 use super::token_primitives::lexed_head_words;
@@ -109,6 +111,25 @@ include!("anthem_grant_lines.rs");
 include!("etb_static_lines.rs");
 include!("attached_object_static_lines.rs");
 
+const AS_ENTERS_AURA_SUBJECTS: &[(&str, &str)] = &[("aura", "this Aura")];
+
+const AS_ENTERS_STANDARD_SUBJECTS: &[(&str, &str)] = &[
+    ("land", "this land"),
+    ("creature", "this creature"),
+    ("artifact", "this artifact"),
+    ("enchantment", "this enchantment"),
+    ("permanent", "this permanent"),
+];
+
+const AS_ENTERS_STANDARD_SUBJECTS_WITH_AURA: &[(&str, &str)] = &[
+    ("land", "this land"),
+    ("creature", "this creature"),
+    ("artifact", "this artifact"),
+    ("enchantment", "this enchantment"),
+    ("aura", "this aura"),
+    ("permanent", "this permanent"),
+];
+
 fn parser_text_word_refs(tokens: &[OwnedLexToken]) -> Vec<&str> {
     tokens
         .iter()
@@ -117,6 +138,14 @@ fn parser_text_word_refs(tokens: &[OwnedLexToken]) -> Vec<&str> {
             _ => None,
         })
         .collect()
+}
+
+fn keyword_static_clause_text(tokens: &[OwnedLexToken]) -> String {
+    render_token_slice(tokens).trim().to_string()
+}
+
+fn keyword_static_marker(tokens: &[OwnedLexToken]) -> StaticAbility {
+    StaticAbility::keyword_marker(keyword_static_clause_text(tokens))
 }
 
 #[derive(Clone, Copy)]
@@ -154,6 +183,27 @@ fn run_static_ability_ast_line_rule(
         }
         StaticAbilityLineRuleAst::Multi(parse) => parse(tokens),
     }
+}
+
+fn try_static_ability_ast_line_rule_indices(
+    rules: &'static [StaticAbilityLineRuleDef],
+    tokens: &[OwnedLexToken],
+    tried: &mut [bool],
+    deferred_error: &mut Option<CardTextError>,
+    candidate_indices: &[usize],
+) -> Option<Vec<StaticAbilityAst>> {
+    for &idx in candidate_indices {
+        tried[idx] = true;
+        match run_static_ability_ast_line_rule(rules[idx].rule, tokens) {
+            Ok(Some(abilities)) => return Some(abilities),
+            Ok(None) => {}
+            Err(err) => {
+                deferred_error.get_or_insert(err);
+            }
+        }
+    }
+
+    None
 }
 
 fn build_static_ability_line_rule_index(
@@ -571,28 +621,26 @@ fn parse_static_ability_ast_line_lowered(
             .by_head_pair
             .get(&(head, second))
     {
-        for &idx in candidate_indices {
-            tried[idx] = true;
-            match run_static_ability_ast_line_rule(rules[idx].rule, tokens) {
-                Ok(Some(abilities)) => return Ok(Some(abilities)),
-                Ok(None) => {}
-                Err(err) => {
-                    deferred_error.get_or_insert(err);
-                }
-            }
+        if let Some(abilities) = try_static_ability_ast_line_rule_indices(
+            rules,
+            tokens,
+            &mut tried,
+            &mut deferred_error,
+            candidate_indices,
+        ) {
+            return Ok(Some(abilities));
         }
     }
 
     if let Some(candidate_indices) = STATIC_ABILITY_AST_LINE_RULE_INDEX.by_head.get(head) {
-        for &idx in candidate_indices {
-            tried[idx] = true;
-            match run_static_ability_ast_line_rule(rules[idx].rule, tokens) {
-                Ok(Some(abilities)) => return Ok(Some(abilities)),
-                Ok(None) => {}
-                Err(err) => {
-                    deferred_error.get_or_insert(err);
-                }
-            }
+        if let Some(abilities) = try_static_ability_ast_line_rule_indices(
+            rules,
+            tokens,
+            &mut tried,
+            &mut deferred_error,
+            candidate_indices,
+        ) {
+            return Ok(Some(abilities));
         }
     }
 
@@ -616,75 +664,7 @@ fn parse_static_ability_ast_line_lowered(
     Ok(None)
 }
 
-pub(crate) fn parse_damage_doubling_mana_value_marker_line(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<StaticAbility>, CardTextError> {
-    let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
-    if !slice_starts_with(
-        &clause_words,
-        &["if", "a", "source", "you", "control", "with"],
-    ) || !slice_contains(&clause_words, &"mana")
-        || !slice_contains(&clause_words, &"value")
-        || find_window_by(&clause_words, 5, |window| {
-            window == ["would", "deal", "damage", "to", "a"]
-                || window == ["would", "deal", "damage", "to", "target"]
-        })
-        .is_none()
-        || !slice_contains(&clause_words, &"double")
-        || clause_words.last().copied() != Some("instead")
-    {
-        return Ok(None);
-    }
-
-    let mut text = String::new();
-    for token in tokens {
-        let attach_to_prev = matches!(
-            token.kind,
-            TokenKind::Comma
-                | TokenKind::Period
-                | TokenKind::Semicolon
-                | TokenKind::Colon
-                | TokenKind::Question
-                | TokenKind::Bang
-                | TokenKind::RBracket
-        );
-        let spaced_dash = matches!(token.kind, TokenKind::Dash | TokenKind::EmDash);
-        if spaced_dash {
-            if !text.is_empty() && text.chars().last() != Some(' ') {
-                text.push(' ');
-            }
-            text.push_str(token.slice.as_str());
-            text.push(' ');
-            continue;
-        }
-        if !text.is_empty() && !attach_to_prev && text.chars().last() != Some(' ') {
-            text.push(' ');
-        }
-        text.push_str(token.slice.as_str());
-    }
-
-    Ok(Some(StaticAbility::keyword_marker(text.trim().to_string())))
-}
-
-pub(crate) fn parse_static_ability_ast_line_lexed(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
-    let sentences = split_lexed_sentences(tokens);
-    if sentences.len() > 1 {
-        let mut combined = Vec::new();
-        for sentence in sentences {
-            match parse_static_ability_ast_line_lexed_single(sentence) {
-                Ok(Some(mut parsed)) => combined.append(&mut parsed),
-                Ok(None) | Err(_) => return parse_static_ability_ast_line_lexed_single(tokens),
-            }
-        }
-        return Ok((!combined.is_empty()).then_some(combined));
-    }
-
-    parse_static_ability_ast_line_lexed_single(tokens)
-}
-
-fn parse_static_ability_ast_line_lexed_single(
+fn parse_static_ability_ast_line_early_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     if let Some(spec) = parse_reveal_first_card_you_draw_each_turn_spec_lexed(tokens) {
@@ -697,43 +677,9 @@ fn parse_static_ability_ast_line_lexed_single(
         ]));
     }
 
-    let words = tokens
-        .iter()
-        .filter_map(|token| match token.kind {
-            TokenKind::Word | TokenKind::Number | TokenKind::Tilde => Some(token.parser_text()),
-            _ => None,
-        })
-        .collect::<Vec<_>>();
+    let words = parser_text_word_refs(tokens);
     if slice_starts_with(&words, &["craft", "with"]) {
-        let mut text = String::new();
-        for token in tokens {
-            let attach_to_prev = matches!(
-                token.kind,
-                TokenKind::Comma
-                    | TokenKind::Period
-                    | TokenKind::Semicolon
-                    | TokenKind::Colon
-                    | TokenKind::Question
-                    | TokenKind::Bang
-                    | TokenKind::RBracket
-            );
-            let spaced_dash = matches!(token.kind, TokenKind::Dash | TokenKind::EmDash);
-            if spaced_dash {
-                if !text.is_empty() && text.chars().last() != Some(' ') {
-                    text.push(' ');
-                }
-                text.push_str(token.slice.as_str());
-                text.push(' ');
-                continue;
-            }
-            if !text.is_empty() && !attach_to_prev && text.chars().last() != Some(' ') {
-                text.push(' ');
-            }
-            text.push_str(token.slice.as_str());
-        }
-        return Ok(Some(vec![
-            StaticAbility::keyword_marker(text.trim().to_string()).into(),
-        ]));
+        return Ok(Some(vec![keyword_static_marker(tokens).into()]));
     }
     if is_minimum_spell_total_mana_three_line_lexed(tokens) {
         return Ok(Some(vec![
@@ -770,6 +716,57 @@ fn parse_static_ability_ast_line_lexed_single(
     }
     if let Some(ability) = parse_if_this_spell_costs_less_to_cast_line_lexed(tokens)? {
         return Ok(Some(vec![ability.into()]));
+    }
+
+    Ok(None)
+}
+
+pub(crate) fn parse_damage_doubling_mana_value_marker_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
+    if !slice_starts_with(
+        &clause_words,
+        &["if", "a", "source", "you", "control", "with"],
+    ) || !slice_contains(&clause_words, &"mana")
+        || !slice_contains(&clause_words, &"value")
+        || find_window_by(&clause_words, 5, |window| {
+            window == ["would", "deal", "damage", "to", "a"]
+                || window == ["would", "deal", "damage", "to", "target"]
+        })
+        .is_none()
+        || !slice_contains(&clause_words, &"double")
+        || clause_words.last().copied() != Some("instead")
+    {
+        return Ok(None);
+    }
+
+    Ok(Some(keyword_static_marker(tokens)))
+}
+
+pub(crate) fn parse_static_ability_ast_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let sentences = split_lexed_sentences(tokens);
+    if sentences.len() > 1 {
+        let mut combined = Vec::new();
+        for sentence in sentences {
+            match parse_static_ability_ast_line_lexed_single(sentence) {
+                Ok(Some(mut parsed)) => combined.append(&mut parsed),
+                Ok(None) | Err(_) => return parse_static_ability_ast_line_lexed_single(tokens),
+            }
+        }
+        return Ok((!combined.is_empty()).then_some(combined));
+    }
+
+    parse_static_ability_ast_line_lexed_single(tokens)
+}
+
+fn parse_static_ability_ast_line_lexed_single(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    if let Some(abilities) = parse_static_ability_ast_line_early_lexed(tokens)? {
+        return Ok(Some(abilities));
     }
 
     parse_static_ability_ast_line_lowered(tokens)
@@ -1366,36 +1363,6 @@ pub(crate) fn parse_static_text_marker_line(tokens: &[OwnedLexToken]) -> Option<
         return None;
     }
 
-    let marker_text = || {
-        let mut text = String::new();
-        for token in tokens {
-            let attach_to_prev = matches!(
-                token.kind,
-                TokenKind::Comma
-                    | TokenKind::Period
-                    | TokenKind::Semicolon
-                    | TokenKind::Colon
-                    | TokenKind::Question
-                    | TokenKind::Bang
-                    | TokenKind::RBracket
-            );
-            let spaced_dash = matches!(token.kind, TokenKind::Dash | TokenKind::EmDash);
-            if spaced_dash {
-                if !text.is_empty() && text.chars().last() != Some(' ') {
-                    text.push(' ');
-                }
-                text.push_str(token.slice.as_str());
-                text.push(' ');
-                continue;
-            }
-            if !text.is_empty() && !attach_to_prev && text.chars().last() != Some(' ') {
-                text.push(' ');
-            }
-            text.push_str(token.slice.as_str());
-        }
-        StaticAbility::keyword_marker(text.trim().to_string())
-    };
-
     if is_once_each_turn_play_from_exile_marker_guard_lexed(tokens) {
         return None;
     }
@@ -1405,35 +1372,35 @@ pub(crate) fn parse_static_text_marker_line(tokens: &[OwnedLexToken]) -> Option<
     }
 
     if is_companion_marker_line_lexed(tokens) {
-        return Some(marker_text());
+        return Some(keyword_static_marker(tokens));
     }
 
     if is_more_than_meets_the_eye_marker_line_lexed(tokens) {
-        return Some(marker_text());
+        return Some(keyword_static_marker(tokens));
     }
 
     if is_protection_mana_value_marker_line_lexed(tokens) {
-        return Some(marker_text());
+        return Some(keyword_static_marker(tokens));
     }
 
     if is_mana_group_slash_marker_line_lexed(tokens) {
-        return Some(marker_text());
+        return Some(keyword_static_marker(tokens));
     }
 
     if is_if_source_you_control_with_mana_value_double_instead_marker_line_lexed(tokens) {
-        return Some(marker_text());
+        return Some(keyword_static_marker(tokens));
     }
 
     if is_as_long_as_power_odd_or_even_flash_marker_line_lexed(tokens) {
-        return Some(marker_text());
+        return Some(keyword_static_marker(tokens));
     }
 
     if is_attack_as_haste_unless_entered_this_turn_marker_line_lexed(tokens) {
-        return Some(marker_text());
+        return Some(keyword_static_marker(tokens));
     }
 
     if is_sab_sunen_cant_attack_or_block_unless_line_lexed(tokens) {
-        return Some(marker_text());
+        return Some(keyword_static_marker(tokens));
     }
 
     if is_you_have_shroud_line_lexed(tokens) {
@@ -1754,7 +1721,7 @@ pub(crate) fn parse_choose_basic_land_type_as_enters_line(
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = crate::cards::builders::parser::token_word_refs(tokens);
     let Some((idx, display_subject)) =
-        parse_as_enters_choice_subject_words(&words, &[("aura", "this Aura")])
+        parse_as_enters_choice_subject_words(&words, AS_ENTERS_AURA_SUBJECTS)
     else {
         return Ok(None);
     };
@@ -1842,13 +1809,7 @@ pub(crate) fn parse_choose_creature_type_as_enters_line(
     let words = crate::cards::builders::parser::token_word_refs(tokens);
     let Some((idx, display_subject)) = parse_as_enters_choice_subject_words(
         &words,
-        &[
-            ("land", "this land"),
-            ("creature", "this creature"),
-            ("artifact", "this artifact"),
-            ("enchantment", "this enchantment"),
-            ("permanent", "this permanent"),
-        ],
+        AS_ENTERS_STANDARD_SUBJECTS,
     ) else {
         return Ok(None);
     };
@@ -1875,13 +1836,7 @@ pub(crate) fn parse_choose_named_options_as_enters_line(
     let words = crate::cards::builders::parser::token_word_refs(tokens);
     let Some((idx, display_subject)) = parse_as_enters_choice_subject_words(
         &words,
-        &[
-            ("land", "this land"),
-            ("creature", "this creature"),
-            ("artifact", "this artifact"),
-            ("enchantment", "this enchantment"),
-            ("permanent", "this permanent"),
-        ],
+        AS_ENTERS_STANDARD_SUBJECTS,
     ) else {
         return Ok(None);
     };
@@ -2380,14 +2335,7 @@ pub(crate) fn parse_choose_color_as_enters_line(
     let words = crate::cards::builders::parser::token_word_refs(tokens);
     let Some((idx, display_subject)) = parse_as_enters_choice_subject_words(
         &words,
-        &[
-            ("land", "this land"),
-            ("creature", "this creature"),
-            ("artifact", "this artifact"),
-            ("enchantment", "this enchantment"),
-            ("aura", "this aura"),
-            ("permanent", "this permanent"),
-        ],
+        AS_ENTERS_STANDARD_SUBJECTS_WITH_AURA,
     ) else {
         return Ok(None);
     };
@@ -2428,14 +2376,7 @@ pub(crate) fn parse_choose_player_as_enters_line(
     let words = crate::cards::builders::parser::token_word_refs(tokens);
     let Some((idx, display_subject)) = parse_as_enters_choice_subject_words(
         &words,
-        &[
-            ("land", "this land"),
-            ("creature", "this creature"),
-            ("artifact", "this artifact"),
-            ("enchantment", "this enchantment"),
-            ("aura", "this aura"),
-            ("permanent", "this permanent"),
-        ],
+        AS_ENTERS_STANDARD_SUBJECTS_WITH_AURA,
     ) else {
         return Ok(None);
     };
@@ -3004,7 +2945,9 @@ pub(crate) fn parse_if_this_spell_costs_less_to_cast_line(
     let remaining_words = crate::cards::builders::parser::token_word_refs(
         amount_tokens.get(used..).unwrap_or_default(),
     );
-    if !slice_contains(&remaining_words, &"less") || !slice_contains(&remaining_words, &"cast") {
+    if parse_cost_modifier_direction(&remaining_words) != Some(CostModifierDirection::Less)
+        || !slice_contains(&remaining_words, &"cast")
+    {
         return Ok(None);
     }
 
@@ -3050,7 +2993,9 @@ pub(crate) fn parse_if_this_spell_costs_less_to_cast_line_lexed(
         ));
     };
     let remaining_words = parser_text_word_refs(amount_tokens.get(used..).unwrap_or_default());
-    if !slice_contains(&remaining_words, &"less") || !slice_contains(&remaining_words, &"cast") {
+    if parse_cost_modifier_direction(&remaining_words) != Some(CostModifierDirection::Less)
+        || !slice_contains(&remaining_words, &"cast")
+    {
         return Ok(None);
     }
 
@@ -3557,6 +3502,44 @@ pub(crate) fn parse_trailing_this_spell_cost_condition(
     Ok(Some(condition))
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum CostModifierDirection {
+    Less,
+    More,
+}
+
+fn parse_cost_modifier_direction(words: &[&str]) -> Option<CostModifierDirection> {
+    match (slice_contains(words, &"less"), slice_contains(words, &"more")) {
+        (true, false) => Some(CostModifierDirection::Less),
+        (false, true) => Some(CostModifierDirection::More),
+        _ => None,
+    }
+}
+
+fn parse_cost_modifier_target_spec(
+    target_tokens: &[OwnedLexToken],
+) -> Result<(Option<PlayerFilter>, Option<Box<ObjectFilter>>), CardTextError> {
+    let target_words = crate::cards::builders::parser::token_word_refs(target_tokens);
+    if slice_starts_with(&target_words, &["you"]) {
+        return Ok((Some(PlayerFilter::You), None));
+    }
+    if slice_starts_with(&target_words, &["opponent"])
+        || slice_starts_with(&target_words, &["opponents"])
+    {
+        return Ok((Some(PlayerFilter::Opponent), None));
+    }
+    if slice_starts_with(&target_words, &["player"])
+        || slice_starts_with(&target_words, &["players"])
+    {
+        return Ok((Some(PlayerFilter::Any), None));
+    }
+
+    Ok((
+        None,
+        Some(Box::new(parse_object_filter(target_tokens, false)?)),
+    ))
+}
+
 pub(crate) fn parse_cost_modifier_prefix_condition(
     tokens: &[OwnedLexToken],
     spells_token_idx: usize,
@@ -3724,8 +3707,6 @@ pub(crate) fn parse_spells_cost_modifier_line(
         {
             filter.cast_by = Some(PlayerFilter::Opponent);
         }
-        let mut target_player: Option<PlayerFilter> = None;
-        let mut target_object: Option<Box<ObjectFilter>> = None;
         let mut targets_idx = None;
         for (idx, token) in between_tokens.iter().enumerate() {
             if token.is_word("target") || token.is_word("targets") {
@@ -3743,20 +3724,7 @@ pub(crate) fn parse_spells_cost_modifier_line(
                     clause_words.join(" ")
                 )));
             }
-            let target_words = crate::cards::builders::parser::token_word_refs(target_tokens);
-            if slice_starts_with(&target_words, &["you"]) {
-                target_player = Some(PlayerFilter::You);
-            } else if slice_starts_with(&target_words, &["opponent"])
-                || slice_starts_with(&target_words, &["opponents"])
-            {
-                target_player = Some(PlayerFilter::Opponent);
-            } else if slice_starts_with(&target_words, &["player"])
-                || slice_starts_with(&target_words, &["players"])
-            {
-                target_player = Some(PlayerFilter::Any);
-            } else {
-                target_object = Some(Box::new(parse_object_filter(target_tokens, false)?));
-            }
+            let (target_player, target_object) = parse_cost_modifier_target_spec(target_tokens)?;
             filter.targets_player = target_player;
             filter.targets_object = target_object;
         }
@@ -3776,11 +3744,9 @@ pub(crate) fn parse_spells_cost_modifier_line(
         });
     let remaining_tokens = &amount_tokens[used..];
     let remaining_words = crate::cards::builders::parser::token_word_refs(remaining_tokens);
-    let is_less = slice_contains(&remaining_words, &"less");
-    let is_more = slice_contains(&remaining_words, &"more");
-    if !is_less && !is_more {
+    let Some(direction) = parse_cost_modifier_direction(&remaining_words) else {
         return Ok(None);
-    }
+    };
 
     if let Some(dynamic_value) = parse_dynamic_cost_modifier_value(remaining_tokens)? {
         // Wording like "{G} less for each green creature you control" is still a dynamic
@@ -3872,7 +3838,7 @@ pub(crate) fn parse_spells_cost_modifier_line(
         prefix_condition.clone()
     };
 
-    if is_less {
+    if direction == CostModifierDirection::Less {
         // "This spell costs {N} less to cast" is a self-only modifier that should not
         // apply from the permanent on the battlefield after it resolves.
         if is_this_spell && parsed_mana_cost.is_none() {
@@ -3964,29 +3930,9 @@ pub(crate) fn parse_trailing_targets_condition_in_cost_modifier(
         )));
     }
 
-    let target_words = crate::cards::builders::parser::token_word_refs(target_tokens);
-    if slice_starts_with(&target_words, &["you"]) {
-        filter.targets_player = Some(PlayerFilter::You);
-        filter.targets_object = None;
-        return Ok(());
-    }
-    if slice_starts_with(&target_words, &["opponent"])
-        || slice_starts_with(&target_words, &["opponents"])
-    {
-        filter.targets_player = Some(PlayerFilter::Opponent);
-        filter.targets_object = None;
-        return Ok(());
-    }
-    if slice_starts_with(&target_words, &["player"])
-        || slice_starts_with(&target_words, &["players"])
-    {
-        filter.targets_player = Some(PlayerFilter::Any);
-        filter.targets_object = None;
-        return Ok(());
-    }
-
-    filter.targets_object = Some(Box::new(parse_object_filter(target_tokens, false)?));
-    filter.targets_player = None;
+    let (targets_player, targets_object) = parse_cost_modifier_target_spec(target_tokens)?;
+    filter.targets_player = targets_player;
+    filter.targets_object = targets_object;
     Ok(())
 }
 
@@ -4011,11 +3957,9 @@ pub(crate) fn parse_flashback_cost_modifier_line(
         .unwrap_or((Value::Fixed(1), 0));
     let remaining_tokens = &amount_tokens[used..];
     let remaining_words = crate::cards::builders::parser::token_word_refs(remaining_tokens);
-    let is_less = slice_contains(&remaining_words, &"less");
-    let is_more = slice_contains(&remaining_words, &"more");
-    if !is_less && !is_more {
+    let Some(direction) = parse_cost_modifier_direction(&remaining_words) else {
         return Ok(None);
-    }
+    };
     if parsed_amount.is_none() {
         return Err(CardTextError::ParseError(
             "missing flashback cost modifier amount".to_string(),
@@ -4035,7 +3979,7 @@ pub(crate) fn parse_flashback_cost_modifier_line(
         filter.cast_by = Some(PlayerFilter::Opponent);
     }
 
-    if is_less {
+    if direction == CostModifierDirection::Less {
         return Ok(Some(StaticAbility::new(
             crate::static_abilities::CostReduction::new(filter, amount_value),
         )));
@@ -4059,13 +4003,14 @@ pub(crate) fn parse_foretelling_cards_cost_modifier_line(
         return Ok(None);
     }
 
-    let has_less = slice_contains(&clause_words, &"less");
     let has_any_players_turn = find_window_by(&clause_words, 5, |window| {
         window == ["on", "any", "players", "turn"] || window == ["on", "any", "player", "turn"]
     })
     .is_some()
         || contains_window(&clause_words, &["on", "any", "player", "s", "turn"]);
-    if !has_less || !has_any_players_turn {
+    if parse_cost_modifier_direction(&clause_words) != Some(CostModifierDirection::Less)
+        || !has_any_players_turn
+    {
         return Ok(None);
     }
 

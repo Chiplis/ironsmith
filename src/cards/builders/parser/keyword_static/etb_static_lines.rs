@@ -760,8 +760,7 @@ fn parse_equal_to_greatest_cards_drawn_this_turn_value(tokens: &[OwnedLexToken])
 }
 
 pub(crate) fn parse_where_x_value_clause(tokens: &[OwnedLexToken]) -> Option<Value> {
-    let word_view =
-        crate::cards::builders::parser::grammar::primitives::CompatWordIndex::new(tokens);
+    let word_view = crate::cards::builders::parser::grammar::primitives::TokenWordView::new(tokens);
     let words = word_view.word_refs();
     if !etb_word_slice_starts_with(&words, &["where", "x", "is"]) {
         return None;
@@ -869,8 +868,7 @@ pub(crate) fn parse_where_x_value_clause_lexed(
 }
 
 pub(crate) fn parse_where_x_source_stat_value(tokens: &[OwnedLexToken]) -> Option<Value> {
-    let word_view =
-        crate::cards::builders::parser::grammar::primitives::CompatWordIndex::new(tokens);
+    let word_view = crate::cards::builders::parser::grammar::primitives::TokenWordView::new(tokens);
     let words = word_view.word_refs();
     if !etb_word_slice_starts_with(&words, &["where", "x", "is"]) {
         return None;
@@ -1687,7 +1685,7 @@ pub(crate) fn parse_enters_tapped_for_filter_line(
     }
     let before_enter = &tokens[..enter_token_idx];
     let before_word_view =
-        crate::cards::builders::parser::grammar::primitives::CompatWordIndex::new(before_enter);
+        crate::cards::builders::parser::grammar::primitives::TokenWordView::new(before_enter);
     let before_words = before_word_view.word_refs();
     let mut controller_override: Option<PlayerFilter> = None;
     let mut filter_end = before_enter.len();

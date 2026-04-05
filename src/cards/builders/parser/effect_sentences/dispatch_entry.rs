@@ -1,7 +1,7 @@
 use super::super::effect_ast_traversal::{
     for_each_nested_effects, for_each_nested_effects_mut, try_for_each_nested_effects_mut,
 };
-use super::super::grammar::primitives::{self as grammar, CompatWordIndex};
+use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::keyword_static::parse_where_x_value_clause;
 use super::super::lexer::{OwnedLexToken, TokenKind, split_lexed_sentences};
 use super::super::object_filters::{is_comparison_or_delimiter, parse_object_filter};
@@ -760,33 +760,48 @@ struct ConsultCastManaValueCondition {
     right: Value,
 }
 
-fn parse_exile_top_library_prefix(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
+fn parse_prefixed_top_of_your_library_count<T: Copy>(
+    tokens: &[OwnedLexToken],
+    prefixes: &[(&[&str], T)],
+) -> Option<(T, u32)> {
     let tokens = trim_commas(tokens);
-    let token_words = crate::cards::builders::parser::token_word_refs(&tokens);
-    let count_word_idx = if slice_starts_with(&token_words, &["exile", "the", "top"]) {
-        3usize
-    } else if slice_starts_with(&token_words, &["exile", "top"]) {
-        2usize
-    } else {
-        return None;
-    };
+    let word_view = TokenWordView::new(&tokens);
+    let (count_word_idx, marker) = prefixes.iter().find_map(|(prefix, marker)| {
+        word_view
+            .starts_with(prefix)
+            .then_some((prefix.len(), *marker))
+    })?;
+    let count_start = word_view.token_index_for_word_index(count_word_idx)?;
+    let count_tokens = &tokens[count_start..];
+    let (count, used) = parse_number(count_tokens)?;
+    let tail_word_view = TokenWordView::new(&count_tokens[used..]);
+    let tail_words = tail_word_view.word_refs();
+    matches!(
+        tail_words.as_slice(),
+        ["card", "of", "your", "library"] | ["cards", "of", "your", "library"]
+    )
+    .then_some((marker, count))
+}
 
-    let count_tokens = token_words[count_word_idx..]
-        .iter()
-        .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
-        .collect::<Vec<_>>();
-    let (count, used) = parse_number(&count_tokens)?;
-    if count_tokens
-        .get(used)
-        .and_then(OwnedLexToken::as_word)
-        .is_none_or(|word| word != "card" && word != "cards")
-    {
-        return None;
-    }
-    let tail_words = crate::cards::builders::parser::token_word_refs(&count_tokens[used + 1..]);
-    if tail_words != ["of", "your", "library"] {
-        return None;
-    }
+fn find_from_among_looked_cards_phrase(word_view: &TokenWordView) -> Option<(usize, usize)> {
+    word_view
+        .find_phrase_start(&["from", "among", "those", "cards"])
+        .map(|idx| (idx, 4usize))
+        .or_else(|| {
+            word_view
+                .find_phrase_start(&["from", "among", "them"])
+                .map(|idx| (idx, 3usize))
+        })
+}
+
+fn parse_exile_top_library_prefix(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
+    let (_, count) = parse_prefixed_top_of_your_library_count(
+        tokens,
+        &[
+            (&["exile", "the", "top"][..], ()),
+            (&["exile", "top"][..], ()),
+        ],
+    )?;
 
     Some(vec![EffectAst::ExileTopOfLibrary {
         count: Value::Fixed(count as i32),
@@ -800,16 +815,13 @@ fn parse_consult_traversal_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ConsultSentenceParts>, CardTextError> {
     let mut sentence_tokens = trim_commas(tokens);
-    let sentence_words = crate::cards::builders::parser::token_word_refs(&sentence_tokens);
-    let leading_if_you_do = slice_starts_with(&sentence_words, &["if", "you", "do"])
-        || slice_starts_with(&sentence_words, &["if", "they", "do"]);
+    let sentence_words = TokenWordView::new(&sentence_tokens);
+    let leading_if_you_do = sentence_words.starts_with(&["if", "you", "do"])
+        || sentence_words.starts_with(&["if", "they", "do"]);
     if leading_if_you_do {
-        let start_word_idx = 3usize;
-        let Some(start_token_idx) = token_index_for_word_index(&sentence_tokens, start_word_idx)
-            .or(Some(sentence_tokens.len()))
-        else {
-            return Ok(None);
-        };
+        let start_token_idx = sentence_words
+            .token_index_after_words(3)
+            .unwrap_or(sentence_tokens.len());
         sentence_tokens = trim_commas(&sentence_tokens[start_token_idx..]);
     }
     if sentence_tokens.is_empty() {
@@ -874,12 +886,12 @@ fn parse_consult_traversal_sentence(
         return Ok(None);
     }
 
-    let prefix_words: Vec<&str> = crate::cards::builders::parser::token_word_refs(
-        &consult_tokens[consult_verb_idx + 1..until_idx],
-    )
-    .into_iter()
-    .filter(|word| !is_article(word))
-    .collect();
+    let consult_prefix_words = TokenWordView::new(&consult_tokens[consult_verb_idx + 1..until_idx]);
+    let prefix_words: Vec<&str> = consult_prefix_words
+        .word_refs()
+        .into_iter()
+        .filter(|word| !is_article(word))
+        .collect();
     if !slice_starts_with(&prefix_words, &["cards", "from", "top", "of"])
         || !slice_ends_with(&prefix_words, &["library"])
     {
@@ -982,37 +994,32 @@ fn consult_stop_rule_is_single_match(stop_rule: &LibraryConsultStopRuleAst) -> b
     )
 }
 
-fn parse_consult_condition_value(tokens: &[&str]) -> Option<Value> {
-    if matches!(tokens, ["this's", "power"]) {
+fn parse_consult_condition_value(tokens: &[OwnedLexToken]) -> Option<Value> {
+    let word_view = TokenWordView::new(tokens);
+    let word_refs = word_view.word_refs();
+    if matches!(word_refs.as_slice(), ["thiss", "power"] | ["this", "power"]) {
         return Some(Value::SourcePower);
     }
 
-    let value_tokens = tokens
-        .iter()
-        .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
-        .collect::<Vec<_>>();
-    if let Some((value, used)) = parse_value_from_lexed(&value_tokens)
-        && crate::cards::builders::parser::token_word_refs(&value_tokens[used..]).is_empty()
+    if let Some((value, used)) = parse_value_from_lexed(tokens)
+        && TokenWordView::new(&tokens[used..]).is_empty()
     {
         return Some(value);
     }
 
-    let (filter_tokens, had_number_prefix) = if slice_starts_with(tokens, &["the", "number", "of"])
-    {
-        (&tokens[3..], true)
-    } else if slice_starts_with(tokens, &["number", "of"]) {
-        (&tokens[2..], true)
+    let filter_start_word_idx = if word_view.starts_with(&["the", "number", "of"]) {
+        Some(3usize)
+    } else if word_view.starts_with(&["number", "of"]) {
+        Some(2usize)
     } else {
-        (tokens, false)
-    };
-    if !had_number_prefix || filter_tokens.is_empty() {
+        None
+    }?;
+    if filter_start_word_idx >= word_view.len() {
         return None;
     }
 
-    let filter_tokens = filter_tokens
-        .iter()
-        .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
-        .collect::<Vec<_>>();
+    let filter_start_token_idx = word_view.token_index_for_word_index(filter_start_word_idx)?;
+    let filter_tokens = &tokens[filter_start_token_idx..];
     let filter = parse_object_filter(&filter_tokens, false).ok()?;
     Some(Value::Count(filter))
 }
@@ -1043,9 +1050,7 @@ fn parse_consult_mana_value_condition_tokens(
     )?;
 
     let (operator, right_tokens) = parse_value_comparison_tokens(after_prefix)?;
-    let right_word_view = CompatWordIndex::new(right_tokens);
-    let right_word_refs = right_word_view.word_refs();
-    let right = parse_consult_condition_value(&right_word_refs)?;
+    let right = parse_consult_condition_value(right_tokens)?;
     Some(ConsultCastManaValueCondition { operator, right })
 }
 
@@ -1081,7 +1086,7 @@ fn parse_consult_cast_clause(tokens: &[OwnedLexToken]) -> Option<ConsultCastClau
         ],
     )?;
     let allow_land = matches!(matched_phrase, ["play", ..]);
-    let remainder_word_view = CompatWordIndex::new(remainder_tokens);
+    let remainder_word_view = TokenWordView::new(remainder_tokens);
     let remainder = remainder_word_view.word_refs();
     if remainder == ["this", "turn"] {
         return Some(ConsultCastClause {
@@ -1790,62 +1795,35 @@ fn parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard(
     first: &[OwnedLexToken],
     second: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let first_tokens = trim_commas(first);
-    let first_words = crate::cards::builders::parser::token_word_refs(&first_tokens);
-    let count_word_idx = if slice_starts_with(&first_words, &["reveal", "the", "top"]) {
-        3usize
-    } else if slice_starts_with(&first_words, &["reveal", "top"]) {
-        2usize
-    } else {
+    let Some((_, count)) = parse_prefixed_top_of_your_library_count(
+        first,
+        &[
+            (&["reveal", "the", "top"][..], ()),
+            (&["reveal", "top"][..], ()),
+        ],
+    ) else {
         return Ok(None);
     };
-
-    let count_tokens = first_words[count_word_idx..]
-        .iter()
-        .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
-        .collect::<Vec<_>>();
-    if count_tokens
-        .first()
-        .and_then(OwnedLexToken::as_word)
-        .is_some_and(|word| word == "card" || word == "cards")
-    {
-        return Ok(None);
-    }
-    let Some((count, used)) = parse_number(&count_tokens) else {
-        return Ok(None);
-    };
-    if count_tokens
-        .get(used)
-        .and_then(OwnedLexToken::as_word)
-        .is_none_or(|word| word != "card" && word != "cards")
-    {
-        return Ok(None);
-    }
-    let reveal_tail = crate::cards::builders::parser::token_word_refs(&count_tokens[used + 1..]);
-    if reveal_tail != ["of", "your", "library"] {
-        return Ok(None);
-    }
 
     let second_tokens = trim_commas(second);
-    let second_words = crate::cards::builders::parser::token_word_refs(&second_tokens);
-    if !matches!(
-        second_words.get(..2),
-        Some(["put", "all"] | ["puts", "all"])
-    ) {
+    let second_words = TokenWordView::new(&second_tokens);
+    if !(second_words.starts_with(&["put", "all"]) || second_words.starts_with(&["puts", "all"])) {
         return Ok(None);
     }
-    let Some(revealed_idx) = find_window_index(&second_words, &["revealed", "this", "way"]) else {
+    let second_word_refs = second_words.word_refs();
+    let Some(revealed_idx) = second_words.find_phrase_start(&["revealed", "this", "way"]) else {
         return Ok(None);
     };
     if revealed_idx <= 2 {
         return Ok(None);
     }
 
-    let Some(filter_start) = token_index_for_word_index(&second_tokens, 2) else {
+    let Some(filter_start) = second_words.token_index_for_word_index(2) else {
         return Ok(None);
     };
-    let filter_end =
-        token_index_for_word_index(&second_tokens, revealed_idx).unwrap_or(second_tokens.len());
+    let filter_end = second_words
+        .token_index_for_word_index(revealed_idx)
+        .unwrap_or(second_tokens.len());
     let filter_tokens = trim_commas(&second_tokens[filter_start..filter_end]);
     if filter_tokens.is_empty() {
         return Ok(None);
@@ -1858,7 +1836,7 @@ fn parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard(
     normalize_search_library_filter(&mut filter);
     filter.zone = None;
 
-    let after_revealed = &second_words[revealed_idx + 3..];
+    let after_revealed = &second_word_refs[revealed_idx + 3..];
     let has_hand_clause = find_window_index(after_revealed, &["into", "your", "hand"]).is_some();
     let has_rest_clause =
         find_window_index(after_revealed, &["and", "the", "rest", "into", "your"]).is_some()
@@ -2325,38 +2303,40 @@ fn parse_look_at_top_reveal_match_put_rest_bottom(
     };
 
     let second_tokens = trim_commas(second);
-    let second_words = crate::cards::builders::parser::token_word_refs(&second_tokens);
+    let second_words = TokenWordView::new(&second_tokens);
     if second_words.is_empty() {
         return Ok(None);
     }
+    let second_word_refs = second_words.word_refs();
 
-    let (chooser, reveal_word_idx) = if slice_starts_with(&second_words, &["you", "may", "reveal"])
-    {
+    let (chooser, reveal_word_idx) = if second_words.starts_with(&["you", "may", "reveal"]) {
         (PlayerAst::You, 2usize)
-    } else if slice_starts_with(&second_words, &["that", "player", "may", "reveal"]) {
+    } else if second_words.starts_with(&["that", "player", "may", "reveal"]) {
         (PlayerAst::That, 3usize)
-    } else if slice_starts_with(&second_words, &["they", "may", "reveal"]) {
+    } else if second_words.starts_with(&["they", "may", "reveal"]) {
         (PlayerAst::That, 2usize)
-    } else if slice_starts_with(&second_words, &["may", "reveal"]) {
+    } else if second_words.starts_with(&["may", "reveal"]) {
         (*player, 1usize)
-    } else if slice_starts_with(&second_words, &["reveal"]) {
+    } else if second_words.starts_with(&["reveal"]) {
         (*player, 0usize)
     } else {
         return Ok(None);
     };
 
-    let from_among_word_idx = find_window_index(&second_words, &["from", "among", "them"])
-        .or_else(|| find_window_index(&second_words, &["from", "among", "those", "cards"]));
-    let Some(from_among_word_idx) = from_among_word_idx else {
+    let Some((from_among_word_idx, from_among_len)) =
+        find_from_among_looked_cards_phrase(&second_words)
+    else {
         return Ok(None);
     };
     if from_among_word_idx <= reveal_word_idx {
         return Ok(None);
     }
 
-    let filter_start = token_index_for_word_index(&second_tokens, reveal_word_idx + 1)
+    let filter_start = second_words
+        .token_index_for_word_index(reveal_word_idx + 1)
         .unwrap_or(second_tokens.len());
-    let filter_end = token_index_for_word_index(&second_tokens, from_among_word_idx)
+    let filter_end = second_words
+        .token_index_for_word_index(from_among_word_idx)
         .unwrap_or(second_tokens.len());
     let filter_tokens = trim_commas(&second_tokens[filter_start..filter_end]);
     if filter_tokens.is_empty() {
@@ -2370,13 +2350,7 @@ fn parse_look_at_top_reveal_match_put_rest_bottom(
     normalize_search_library_filter(&mut filter);
     filter.zone = None;
 
-    let after_from_word_idx =
-        if find_window_index(&second_words, &["from", "among", "those", "cards"]).is_some() {
-            from_among_word_idx + 4
-        } else {
-            from_among_word_idx + 3
-        };
-    let after_from_words = &second_words[after_from_word_idx..];
+    let after_from_words = &second_word_refs[from_among_word_idx + from_among_len..];
     let puts_into_hand = (slice_starts_with(after_from_words, &["and", "put", "it", "into"])
         || slice_starts_with(after_from_words, &["put", "it", "into"]))
         && slice_contains(after_from_words, &"hand");
@@ -2384,11 +2358,11 @@ fn parse_look_at_top_reveal_match_put_rest_bottom(
         return Ok(None);
     }
 
-    let third_words = crate::cards::builders::parser::token_word_refs(third);
-    let puts_rest_bottom = matches!(third_words.first().copied(), Some("put" | "puts"))
-        && slice_contains(&third_words, &"rest")
-        && slice_contains(&third_words, &"bottom")
-        && slice_contains(&third_words, &"library");
+    let third_words = TokenWordView::new(third);
+    let puts_rest_bottom = matches!(third_words.first(), Some("put" | "puts"))
+        && third_words.find_word("rest").is_some()
+        && third_words.find_word("bottom").is_some()
+        && third_words.find_word("library").is_some();
     if !puts_rest_bottom {
         return Ok(None);
     }
@@ -2410,78 +2384,57 @@ fn parse_look_at_top_reveal_match_put_rest_bottom(
 }
 
 fn parse_top_cards_view_sentence(tokens: &[OwnedLexToken]) -> Option<(PlayerAst, Value, bool)> {
-    let tokens = trim_commas(tokens);
-    let clause_words = crate::cards::builders::parser::token_word_refs(&tokens);
-    if clause_words.is_empty() {
-        return None;
-    }
-
-    let (count_word_idx, revealed) =
-        if slice_starts_with(&clause_words, &["look", "at", "the", "top"]) {
-            (4usize, false)
-        } else if slice_starts_with(&clause_words, &["look", "at", "top"]) {
-            (3usize, false)
-        } else if slice_starts_with(&clause_words, &["reveal", "the", "top"]) {
-            (3usize, true)
-        } else if slice_starts_with(&clause_words, &["reveal", "top"]) {
-            (2usize, true)
-        } else {
-            return None;
-        };
-
-    let count_start = token_index_for_word_index(&tokens, count_word_idx)?;
-    let count_tokens = &tokens[count_start..];
-    let (count, used) = parse_number(count_tokens)?;
-    let count_tail = crate::cards::builders::parser::token_word_refs(&count_tokens[used..]);
-    if !matches!(count_tail.first().copied(), Some("card" | "cards")) {
-        return None;
-    }
-
-    let owner_tail = &count_tail[1..];
-    if owner_tail != ["of", "your", "library"] {
-        return None;
-    }
-
+    let (revealed, count) = parse_prefixed_top_of_your_library_count(
+        tokens,
+        &[
+            (&["look", "at", "the", "top"][..], false),
+            (&["look", "at", "top"][..], false),
+            (&["reveal", "the", "top"][..], true),
+            (&["reveal", "top"][..], true),
+        ],
+    )?;
     Some((PlayerAst::You, Value::Fixed(count as i32), revealed))
 }
 
-fn parse_counted_looked_cards_into_your_hand_words(words: &[&str]) -> Option<u32> {
-    if !slice_starts_with(words, &["put"]) {
+fn parse_counted_looked_cards_into_your_hand_tokens(tokens: &[OwnedLexToken]) -> Option<u32> {
+    let tokens = trim_commas(tokens);
+    let word_view = TokenWordView::new(&tokens);
+    if !word_view.starts_with(&["put"]) {
         return None;
     }
 
-    let count_tokens = words[1..]
-        .iter()
-        .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
-        .collect::<Vec<_>>();
-    let (count, used) = parse_number(&count_tokens)?;
+    let count_start = word_view.token_index_for_word_index(1)?;
+    let count_tokens = &tokens[count_start..];
+    let (count, used) = parse_number(count_tokens)?;
+    let tail_word_view = TokenWordView::new(&count_tokens[used..]);
+    let tail_words = tail_word_view.word_refs();
 
-    let mut idx = 1 + used;
-    if words.get(idx).copied() == Some("of") {
+    let mut idx = 0usize;
+    if tail_words.get(idx).copied() == Some("of") {
         idx += 1;
     }
 
-    match words.get(idx).copied() {
+    match tail_words.get(idx).copied() {
         Some("them") => idx += 1,
         Some("those") => {
             idx += 1;
-            if words.get(idx).copied() == Some("card") || words.get(idx).copied() == Some("cards") {
+            if matches!(tail_words.get(idx).copied(), Some("card" | "cards")) {
                 idx += 1;
             }
         }
         _ => return None,
     }
 
-    if words.get(idx..idx + 3) != Some(&["into", "your", "hand"]) {
+    if tail_words.get(idx..idx + 3) != Some(&["into", "your", "hand"]) {
         return None;
     }
     idx += 3;
 
-    if idx == words.len() {
-        return Some(count as u32);
+    if idx == tail_words.len() {
+        return Some(count);
     }
-    if idx + 1 == words.len() && words[idx] == "instead" {
-        return Some(count as u32);
+    if idx + 1 == tail_words.len() && tail_words[idx] == "instead" {
+        return Some(count);
     }
 
     None
@@ -2491,50 +2444,52 @@ fn parse_if_this_spell_was_kicked_counted_looked_cards_into_hand(
     tokens: &[OwnedLexToken],
 ) -> Option<u32> {
     let trimmed = trim_commas(tokens);
-    let clause_words = crate::cards::builders::parser::token_word_refs(&trimmed);
-    if !slice_starts_with(&clause_words, &["if", "this", "spell", "was", "kicked"]) {
+    let clause_words = TokenWordView::new(&trimmed);
+    if !clause_words.starts_with(&["if", "this", "spell", "was", "kicked"]) {
         return None;
     }
 
-    let tail_start = token_index_for_word_index(&trimmed, 5).unwrap_or(trimmed.len());
+    let tail_start = clause_words.token_index_after_words(5).unwrap_or(trimmed.len());
     let tail = trim_commas(&trimmed[tail_start..]);
-    let tail_words = crate::cards::builders::parser::token_word_refs(&tail);
-    parse_counted_looked_cards_into_your_hand_words(&tail_words)
+    parse_counted_looked_cards_into_your_hand_tokens(&tail)
 }
 
 fn parse_may_put_filtered_looked_card_onto_battlefield(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(PlayerAst, ObjectFilter, bool)>, CardTextError> {
     let sentence_tokens = trim_commas(tokens);
-    let sentence_words = crate::cards::builders::parser::token_word_refs(&sentence_tokens);
+    let sentence_words = TokenWordView::new(&sentence_tokens);
     if sentence_words.is_empty() {
         return Ok(None);
     }
+    let sentence_word_refs = sentence_words.word_refs();
 
-    let (chooser, action_word_idx) = if slice_starts_with(&sentence_words, &["you", "may", "put"]) {
+    let (chooser, action_word_idx) = if sentence_words.starts_with(&["you", "may", "put"]) {
         (PlayerAst::You, 2usize)
-    } else if slice_starts_with(&sentence_words, &["that", "player", "may", "put"]) {
+    } else if sentence_words.starts_with(&["that", "player", "may", "put"]) {
         (PlayerAst::That, 3usize)
-    } else if slice_starts_with(&sentence_words, &["they", "may", "put"]) {
+    } else if sentence_words.starts_with(&["they", "may", "put"]) {
         (PlayerAst::That, 2usize)
-    } else if slice_starts_with(&sentence_words, &["may", "put"]) {
+    } else if sentence_words.starts_with(&["may", "put"]) {
         (PlayerAst::You, 1usize)
     } else {
         return Ok(None);
     };
 
-    let from_among_word_idx = find_window_index(&sentence_words, &["from", "among", "them"])
-        .or_else(|| find_window_index(&sentence_words, &["from", "among", "those", "cards"]));
-    let Some(from_among_word_idx) = from_among_word_idx else {
+    let Some((from_among_word_idx, from_among_len)) =
+        find_from_among_looked_cards_phrase(&sentence_words)
+    else {
         return Ok(None);
     };
     if from_among_word_idx <= action_word_idx {
         return Ok(None);
     }
 
-    let filter_start = token_index_for_word_index(&sentence_tokens, action_word_idx + 1)
+    let filter_start = sentence_words
+        .token_index_for_word_index(action_word_idx + 1)
         .unwrap_or(sentence_tokens.len());
-    let filter_end = token_index_for_word_index(&sentence_tokens, from_among_word_idx)
+    let filter_end = sentence_words
+        .token_index_for_word_index(from_among_word_idx)
         .unwrap_or(sentence_tokens.len());
     let filter_tokens = trim_commas(&sentence_tokens[filter_start..filter_end]);
     if filter_tokens.is_empty() {
@@ -2548,13 +2503,7 @@ fn parse_may_put_filtered_looked_card_onto_battlefield(
     normalize_search_library_filter(&mut filter);
     filter.zone = None;
 
-    let after_from_word_idx =
-        if find_window_index(&sentence_words, &["from", "among", "those", "cards"]).is_some() {
-            from_among_word_idx + 4
-        } else {
-            from_among_word_idx + 3
-        };
-    let after_from_words = &sentence_words[after_from_word_idx..];
+    let after_from_words = &sentence_word_refs[from_among_word_idx + from_among_len..];
     let tapped = match after_from_words {
         ["onto", "the", "battlefield"] | ["onto", "battlefield"] => false,
         ["onto", "the", "battlefield", "tapped"] | ["onto", "battlefield", "tapped"] => true,
@@ -2566,7 +2515,9 @@ fn parse_may_put_filtered_looked_card_onto_battlefield(
 
 fn parse_if_you_dont_put_card_from_among_them_into_your_hand(tokens: &[OwnedLexToken]) -> bool {
     let trimmed = trim_commas(tokens);
-    let words: Vec<&str> = crate::cards::builders::parser::token_word_refs(&trimmed)
+    let word_view = TokenWordView::new(&trimmed);
+    let words: Vec<&str> = word_view
+        .word_refs()
         .into_iter()
         .filter(|word| !is_article(word))
         .collect();
@@ -2603,11 +2554,11 @@ fn parse_if_you_dont_put_card_from_among_them_into_your_hand(tokens: &[OwnedLexT
 
 fn is_put_rest_on_bottom_of_library_sentence(tokens: &[OwnedLexToken]) -> bool {
     let trimmed = trim_commas(tokens);
-    let words = crate::cards::builders::parser::token_word_refs(&trimmed);
-    matches!(words.first().copied(), Some("put" | "puts"))
-        && slice_contains(&words, &"rest")
-        && slice_contains(&words, &"bottom")
-        && slice_contains(&words, &"library")
+    let words = TokenWordView::new(&trimmed);
+    matches!(words.first(), Some("put" | "puts"))
+        && words.find_word("rest").is_some()
+        && words.find_word("bottom").is_some()
+        && words.find_word("library").is_some()
 }
 
 fn parse_look_at_top_put_counted_into_hand_rest_bottom_with_kicker_override(
@@ -2623,9 +2574,7 @@ fn parse_look_at_top_put_counted_into_hand_rest_bottom_with_kicker_override(
         return Ok(None);
     };
 
-    let Some(base_count) = parse_counted_looked_cards_into_your_hand_words(
-        &crate::cards::builders::parser::token_word_refs(&trim_commas(second)),
-    ) else {
+    let Some(base_count) = parse_counted_looked_cards_into_your_hand_tokens(second) else {
         return Ok(None);
     };
     let Some(kicked_count) = parse_if_this_spell_was_kicked_counted_looked_cards_into_hand(third)
@@ -2697,48 +2646,50 @@ fn parse_top_cards_put_match_into_hand_rest_graveyard(
     };
 
     let second_tokens = trim_commas(second);
-    let second_words = crate::cards::builders::parser::token_word_refs(&second_tokens);
+    let second_words = TokenWordView::new(&second_tokens);
     if second_words.is_empty() {
         return Ok(None);
     }
+    let second_word_refs = second_words.word_refs();
 
-    let (chooser, action_word_idx, reveal_chosen) =
-        if slice_starts_with(&second_words, &["you", "may", "reveal"]) {
+    let (chooser, action_word_idx, reveal_chosen) = if second_words.starts_with(&["you", "may", "reveal"]) {
             (PlayerAst::You, 2usize, true)
-        } else if slice_starts_with(&second_words, &["you", "may", "put"]) {
+        } else if second_words.starts_with(&["you", "may", "put"]) {
             (PlayerAst::You, 2usize, false)
-        } else if slice_starts_with(&second_words, &["that", "player", "may", "reveal"]) {
+        } else if second_words.starts_with(&["that", "player", "may", "reveal"]) {
             (PlayerAst::That, 3usize, true)
-        } else if slice_starts_with(&second_words, &["that", "player", "may", "put"]) {
+        } else if second_words.starts_with(&["that", "player", "may", "put"]) {
             (PlayerAst::That, 3usize, false)
-        } else if slice_starts_with(&second_words, &["they", "may", "reveal"]) {
+        } else if second_words.starts_with(&["they", "may", "reveal"]) {
             (PlayerAst::That, 2usize, true)
-        } else if slice_starts_with(&second_words, &["they", "may", "put"]) {
+        } else if second_words.starts_with(&["they", "may", "put"]) {
             (PlayerAst::That, 2usize, false)
-        } else if slice_starts_with(&second_words, &["may", "reveal"]) {
+        } else if second_words.starts_with(&["may", "reveal"]) {
             (player, 1usize, true)
-        } else if slice_starts_with(&second_words, &["may", "put"]) {
+        } else if second_words.starts_with(&["may", "put"]) {
             (player, 1usize, false)
-        } else if slice_starts_with(&second_words, &["reveal"]) {
+        } else if second_words.starts_with(&["reveal"]) {
             (player, 0usize, true)
-        } else if slice_starts_with(&second_words, &["put"]) {
+        } else if second_words.starts_with(&["put"]) {
             (player, 0usize, false)
         } else {
             return Ok(None);
         };
 
-    let from_among_word_idx = find_window_index(&second_words, &["from", "among", "them"])
-        .or_else(|| find_window_index(&second_words, &["from", "among", "those", "cards"]));
-    let Some(from_among_word_idx) = from_among_word_idx else {
+    let Some((from_among_word_idx, from_among_len)) =
+        find_from_among_looked_cards_phrase(&second_words)
+    else {
         return Ok(None);
     };
     if from_among_word_idx <= action_word_idx {
         return Ok(None);
     }
 
-    let filter_start = token_index_for_word_index(&second_tokens, action_word_idx + 1)
+    let filter_start = second_words
+        .token_index_for_word_index(action_word_idx + 1)
         .unwrap_or(second_tokens.len());
-    let filter_end = token_index_for_word_index(&second_tokens, from_among_word_idx)
+    let filter_end = second_words
+        .token_index_for_word_index(from_among_word_idx)
         .unwrap_or(second_tokens.len());
     let filter_tokens = trim_commas(&second_tokens[filter_start..filter_end]);
     if filter_tokens.is_empty() {
@@ -2752,13 +2703,7 @@ fn parse_top_cards_put_match_into_hand_rest_graveyard(
     normalize_search_library_filter(&mut filter);
     filter.zone = None;
 
-    let after_from_word_idx =
-        if find_window_index(&second_words, &["from", "among", "those", "cards"]).is_some() {
-            from_among_word_idx + 4
-        } else {
-            from_among_word_idx + 3
-        };
-    let after_from_words = &second_words[after_from_word_idx..];
+    let after_from_words = &second_word_refs[from_among_word_idx + from_among_len..];
     let moves_into_hand = if reveal_chosen {
         (slice_starts_with(after_from_words, &["and", "put", "it", "into"])
             || slice_starts_with(after_from_words, &["put", "it", "into"]))
@@ -2770,10 +2715,10 @@ fn parse_top_cards_put_match_into_hand_rest_graveyard(
         return Ok(None);
     }
 
-    let third_words = crate::cards::builders::parser::token_word_refs(third);
-    let puts_rest_graveyard = matches!(third_words.first().copied(), Some("put" | "puts"))
-        && slice_contains(&third_words, &"rest")
-        && slice_contains(&third_words, &"graveyard");
+    let third_words = TokenWordView::new(third);
+    let puts_rest_graveyard = matches!(third_words.first(), Some("put" | "puts"))
+        && third_words.find_word("rest").is_some()
+        && third_words.find_word("graveyard").is_some();
     if !puts_rest_graveyard {
         return Ok(None);
     }
@@ -2972,7 +2917,7 @@ fn split_reveal_filter_segments(tokens: &[OwnedLexToken]) -> Vec<Vec<OwnedLexTok
 
 fn parse_looked_card_reveal_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
     let mut filter_tokens = trim_commas(tokens).to_vec();
-    let raw_word_view = CompatWordIndex::new(&filter_tokens);
+    let raw_word_view = TokenWordView::new(&filter_tokens);
     let raw_word_refs = raw_word_view.word_refs();
     let same_name_suffix_len = if raw_word_refs.len() >= 3
         && raw_word_refs[raw_word_refs.len() - 3..] == ["with", "that", "name"]
@@ -2991,20 +2936,15 @@ fn parse_looked_card_reveal_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFil
     };
     if let Some(suffix_len) = same_name_suffix_len {
         let keep_word_count = raw_word_refs.len().saturating_sub(suffix_len);
-        let base_end = if keep_word_count == 0 {
-            0
-        } else {
-            raw_word_view
-                .token_start_indices()
-                .get(keep_word_count)
-                .copied()
-                .unwrap_or(filter_tokens.len())
-        };
+        let base_end = raw_word_view
+            .token_index_after_words(keep_word_count)
+            .unwrap_or(filter_tokens.len());
         filter_tokens = trim_commas(&filter_tokens[..base_end]).to_vec();
     }
 
-    let words_all = crate::cards::builders::parser::token_word_refs(&filter_tokens);
-    let non_article_words = words_all
+    let words_all = TokenWordView::new(&filter_tokens);
+    let words_all_refs = words_all.word_refs();
+    let non_article_words = words_all_refs
         .iter()
         .copied()
         .filter(|word| !is_article(word))
@@ -3031,7 +2971,7 @@ fn parse_looked_card_reveal_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFil
         return Some(filter);
     }
     if matches!(
-        words_all.as_slice(),
+        words_all_refs.as_slice(),
         ["permanent", "card"] | ["permanent", "cards"]
     ) {
         let mut filter = ObjectFilter::permanent_card();
@@ -3048,7 +2988,7 @@ fn parse_looked_card_reveal_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFil
         token.is_word("or") && !is_comparison_or_delimiter(&filter_tokens, idx)
     });
     if has_noncomparison_or {
-        let shared_card_suffix = matches!(words_all.last().copied(), Some("card" | "cards"));
+        let shared_card_suffix = matches!(words_all_refs.last().copied(), Some("card" | "cards"));
         let segments = split_reveal_filter_segments(&filter_tokens);
         if segments.len() >= 2 {
             let mut branches = Vec::new();
@@ -3102,37 +3042,40 @@ fn parse_may_put_filtered_card_from_among_into_hand(
     zone: Zone,
 ) -> Result<Option<(PlayerAst, ObjectFilter)>, CardTextError> {
     let sentence_tokens = trim_commas(tokens);
-    let sentence_words = crate::cards::builders::parser::token_word_refs(&sentence_tokens);
+    let sentence_words = TokenWordView::new(&sentence_tokens);
     if sentence_words.is_empty() {
         return Ok(None);
     }
+    let sentence_word_refs = sentence_words.word_refs();
 
-    let (chooser, action_word_idx) = if slice_starts_with(&sentence_words, &["you", "may", "put"]) {
+    let (chooser, action_word_idx) = if sentence_words.starts_with(&["you", "may", "put"]) {
         (PlayerAst::You, 2usize)
-    } else if slice_starts_with(&sentence_words, &["that", "player", "may", "put"]) {
+    } else if sentence_words.starts_with(&["that", "player", "may", "put"]) {
         (PlayerAst::That, 3usize)
-    } else if slice_starts_with(&sentence_words, &["they", "may", "put"]) {
+    } else if sentence_words.starts_with(&["they", "may", "put"]) {
         (PlayerAst::That, 2usize)
-    } else if slice_starts_with(&sentence_words, &["may", "put"]) {
+    } else if sentence_words.starts_with(&["may", "put"]) {
         (default_player, 1usize)
-    } else if slice_starts_with(&sentence_words, &["put"]) {
+    } else if sentence_words.starts_with(&["put"]) {
         (default_player, 0usize)
     } else {
         return Ok(None);
     };
 
-    let from_among_word_idx = find_window_index(&sentence_words, &["from", "among", "them"])
-        .or_else(|| find_window_index(&sentence_words, &["from", "among", "those", "cards"]));
-    let Some(from_among_word_idx) = from_among_word_idx else {
+    let Some((from_among_word_idx, from_among_len)) =
+        find_from_among_looked_cards_phrase(&sentence_words)
+    else {
         return Ok(None);
     };
     if from_among_word_idx <= action_word_idx {
         return Ok(None);
     }
 
-    let filter_start = token_index_for_word_index(&sentence_tokens, action_word_idx + 1)
+    let filter_start = sentence_words
+        .token_index_for_word_index(action_word_idx + 1)
         .unwrap_or(sentence_tokens.len());
-    let filter_end = token_index_for_word_index(&sentence_tokens, from_among_word_idx)
+    let filter_end = sentence_words
+        .token_index_for_word_index(from_among_word_idx)
         .unwrap_or(sentence_tokens.len());
     let filter_tokens = trim_commas(&sentence_tokens[filter_start..filter_end]);
     if filter_tokens.is_empty() {
@@ -3147,13 +3090,7 @@ fn parse_may_put_filtered_card_from_among_into_hand(
     normalize_search_library_filter(&mut filter);
     filter.zone = Some(zone);
 
-    let after_from_word_idx =
-        if find_window_index(&sentence_words, &["from", "among", "those", "cards"]).is_some() {
-            from_among_word_idx + 4
-        } else {
-            from_among_word_idx + 3
-        };
-    let after_from_words = &sentence_words[after_from_word_idx..];
+    let after_from_words = &sentence_word_refs[from_among_word_idx + from_among_len..];
     let moves_into_hand =
         slice_starts_with(after_from_words, &["into"]) && slice_contains(after_from_words, &"hand");
     if !moves_into_hand {
@@ -4267,7 +4204,10 @@ mod tests {
     use super::super::super::lexer::lex_line;
     use super::{
         ConsultCastCost, ConsultCastTiming, parse_consult_cast_clause,
-        parse_consult_mana_value_condition_tokens, parse_looked_card_reveal_filter,
+        parse_consult_condition_value, parse_consult_mana_value_condition_tokens,
+        parse_counted_looked_cards_into_your_hand_tokens, parse_looked_card_reveal_filter,
+        parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard,
+        parse_top_cards_view_sentence,
     };
 
     #[test]
@@ -4309,6 +4249,68 @@ mod tests {
             parsed.tagged_constraints[0].relation,
             TaggedOpbjectRelation::SameNameAsTagged
         );
+    }
+
+    #[test]
+    fn consult_condition_value_reads_source_power_from_token_view() {
+        let tokens =
+            lex_line("this's power", 0).expect("rewrite lexer should classify consult value clause");
+
+        let parsed =
+            parse_consult_condition_value(&tokens).expect("consult value clause should parse");
+
+        assert_eq!(parsed, Value::SourcePower);
+    }
+
+    #[test]
+    fn top_cards_view_sentence_reads_reveal_count_from_token_view() {
+        let tokens = lex_line("Reveal the top two cards of your library", 0)
+            .expect("rewrite lexer should classify top-cards reveal clause");
+
+        let parsed =
+            parse_top_cards_view_sentence(&tokens).expect("top-cards reveal clause should parse");
+
+        assert_eq!(
+            parsed,
+            (crate::cards::builders::PlayerAst::You, Value::Fixed(2), true)
+        );
+    }
+
+    #[test]
+    fn counted_looked_cards_into_hand_tokens_parse_those_cards_instead() {
+        let tokens = lex_line("Put two of those cards into your hand instead", 0)
+            .expect("rewrite lexer should classify counted looked-cards clause");
+
+        let parsed = parse_counted_looked_cards_into_your_hand_tokens(&tokens)
+            .expect("counted looked-cards clause should parse");
+
+        assert_eq!(parsed, 2);
+    }
+
+    #[test]
+    fn reveal_top_put_all_matching_into_hand_rest_graveyard_stays_token_aware() {
+        let first = lex_line("Reveal the top three cards of your library", 0)
+            .expect("rewrite lexer should classify reveal-top clause");
+        let second = lex_line(
+            "Put all land cards revealed this way into your hand and the rest into your graveyard",
+            0,
+        )
+        .expect("rewrite lexer should classify reveal follow-up clause");
+
+        let parsed = parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard(
+            &first, &second,
+        )
+        .expect("reveal-top follow-up parser should not error")
+        .expect("reveal-top follow-up should parse");
+
+        assert!(matches!(
+            parsed.as_slice(),
+            [crate::cards::builders::EffectAst::RevealTopPutMatchingIntoHandRestIntoGraveyard {
+                player: crate::cards::builders::PlayerAst::You,
+                count: 3,
+                ..
+            }]
+        ));
     }
 }
 

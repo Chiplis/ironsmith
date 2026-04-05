@@ -26,53 +26,25 @@ use crate::{ChoiceCount, PowerToughness, PtValue, TagKey};
 use super::activation_and_restrictions::{parse_ability_phrase, parse_activation_cost};
 use super::clause_support::parse_effect_sentences_lexed;
 use super::effect_sentences::{find_verb, parse_subtype_word, parse_supertype_word};
-use super::grammar::primitives::{CompatWordIndex, split_lexed_slices_on_or};
+use super::grammar::primitives::{split_lexed_slices_on_or, token_slice_span};
 use super::keyword_static::keyword_action_to_static_ability;
 use super::keyword_static::parse_this_spell_cost_condition;
-use super::lexer::{OwnedLexToken, TokenKind, lex_line};
-use super::native_tokens::compat_word_pieces_for_token;
+use super::lexer::{OwnedLexToken, TokenKind, TokenWordView, lex_line};
 use super::object_filters::parse_object_filter;
 use super::token_primitives as shared_tokens;
 
 #[cfg(test)]
-fn test_tokens_from_lexed(lexed: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
-    let mut tokens = Vec::new();
-    for token in lexed {
-        match token.kind {
-            TokenKind::Word
-            | TokenKind::Number
-            | TokenKind::Tilde
-            | TokenKind::ManaGroup
-            | TokenKind::Half => {
-                for piece in compat_word_pieces_for_token(token) {
-                    tokens.push(OwnedLexToken::word(piece.text, piece.span));
-                }
-            }
-            TokenKind::Comma => tokens.push(OwnedLexToken::comma(token.span)),
-            TokenKind::Period => tokens.push(OwnedLexToken::period(token.span)),
-            TokenKind::Colon => tokens.push(OwnedLexToken::colon(token.span)),
-            TokenKind::Semicolon => tokens.push(OwnedLexToken::semicolon(token.span)),
-            TokenKind::Quote => {
-                if matches!(token.slice.as_str(), "\"" | "“" | "”") {
-                    tokens.push(OwnedLexToken::quote(token.span));
-                }
-            }
-            _ => {}
-        }
+pub(crate) fn tokenize_line(line: &str, line_index: usize) -> Vec<OwnedLexToken> {
+    let mut tokens = lex_line(line, line_index).expect("test tokenization helper should lex input");
+    for token in &mut tokens {
+        token.lowercase_word();
     }
-
     tokens
 }
 
-#[cfg(test)]
-pub(crate) fn tokenize_line(line: &str, line_index: usize) -> Vec<OwnedLexToken> {
-    let lexed = lex_line(line, line_index).expect("test tokenization helper should lex input");
-    test_tokens_from_lexed(&lexed)
-}
+pub(crate) use super::lexer::parser_token_word_refs as words;
 
-pub(crate) use super::lexer::token_word_refs as words;
-
-type UtilCompatWords = CompatWordIndex;
+type UtilWordView = TokenWordView;
 
 fn words_have_prefix(words: &[&str], prefix: &[&str]) -> bool {
     slice_starts_with(words, prefix)
@@ -105,22 +77,11 @@ fn strip_possessive_suffix(word: &str) -> &str {
 const SENTENCE_HELPER_TAG_PREFIX: &str = "__sentence_helper_";
 
 pub(crate) fn helper_tag_for_tokens(tokens: &[OwnedLexToken], prefix: &str) -> TagKey {
-    let span = match (tokens.first(), tokens.last()) {
-        (Some(first), Some(last)) => {
-            let first_span = first.span();
-            let last_span = last.span();
-            TextSpan {
-                line: first_span.line,
-                start: first_span.start,
-                end: last_span.end,
-            }
-        }
-        _ => TextSpan {
-            line: 0,
-            start: 0,
-            end: 0,
-        },
-    };
+    let span = span_from_tokens(tokens).unwrap_or(TextSpan {
+        line: 0,
+        start: 0,
+        end: 0,
+    });
 
     TagKey::from(format!(
         "{SENTENCE_HELPER_TAG_PREFIX}{prefix}_l{}_s{}_e{}",
@@ -397,7 +358,7 @@ pub(crate) fn token_index_for_word_index(
     tokens: &[OwnedLexToken],
     word_index: usize,
 ) -> Option<usize> {
-    UtilCompatWords::new(tokens).token_index_for_word_index(word_index)
+    UtilWordView::new(tokens).token_index_for_word_index(word_index)
 }
 
 pub(crate) fn trim_commas(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
@@ -748,7 +709,7 @@ pub(crate) fn parse_counter_type_word(word: &str) -> Option<CounterType> {
 }
 
 pub(crate) fn parse_counter_type_from_tokens(tokens: &[OwnedLexToken]) -> Option<CounterType> {
-    let token_word_view = UtilCompatWords::new(tokens);
+    let token_word_view = UtilWordView::new(tokens);
     let token_words = token_word_view.to_word_refs();
 
     if let Some(counter_idx) = find_index(token_words.as_slice(), |word| {
@@ -1400,7 +1361,7 @@ pub(crate) fn parse_value_expr_words(words: &[&str]) -> Option<(Value, usize)> {
 }
 
 pub(crate) fn parse_value_expr(tokens: &[OwnedLexToken]) -> Option<(Value, usize)> {
-    let word_view = UtilCompatWords::new(tokens);
+    let word_view = UtilWordView::new(tokens);
     let words = word_view.to_word_refs();
     let (value, used_words) = parse_value_expr_words(&words)?;
     let used = token_index_for_word_index(tokens, used_words).unwrap_or(tokens.len());
@@ -1431,7 +1392,7 @@ pub(crate) enum SubjectAst {
 }
 
 pub(crate) fn parse_subject(tokens: &[OwnedLexToken]) -> SubjectAst {
-    let word_view = UtilCompatWords::new(tokens);
+    let word_view = UtilWordView::new(tokens);
     let words = word_view.to_word_refs();
     if words.is_empty() {
         return SubjectAst::This;
@@ -1573,15 +1534,7 @@ pub(crate) fn parse_subject(tokens: &[OwnedLexToken]) -> SubjectAst {
 }
 
 pub(crate) fn span_from_tokens(tokens: &[OwnedLexToken]) -> Option<TextSpan> {
-    let first = tokens.first()?;
-    let last = tokens.last()?;
-    let first_span = first.span();
-    let last_span = last.span();
-    Some(TextSpan {
-        line: first_span.line,
-        start: first_span.start,
-        end: last_span.end,
-    })
+    token_slice_span(tokens)
 }
 
 pub(crate) fn parse_number(tokens: &[OwnedLexToken]) -> Option<(u32, usize)> {
@@ -1743,7 +1696,7 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
     }
 
     let mut random_choice = false;
-    let token_word_view = UtilCompatWords::new(tokens);
+    let token_word_view = UtilWordView::new(tokens);
     let token_words = token_word_view.to_word_refs();
     if words_contain(token_words.as_slice(), "defending")
         && words_contain(token_words.as_slice(), "player")
@@ -2762,7 +2715,7 @@ fn parse_pt_value(raw: &str) -> Option<PtValue> {
 pub(crate) fn parse_level_up_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
-    let word_view = UtilCompatWords::new(tokens);
+    let word_view = UtilWordView::new(tokens);
     if !word_view.slice_eq(0, &["level", "up"]) {
         return Ok(None);
     }
@@ -2836,7 +2789,7 @@ pub(crate) fn preserve_keyword_prefix_for_parse(prefix: &str) -> bool {
 pub(crate) fn parse_self_free_cast_alternative_cost_line(
     tokens: &[OwnedLexToken],
 ) -> Option<AlternativeCastingMethod> {
-    let clause_word_view = UtilCompatWords::new(tokens);
+    let clause_word_view = UtilWordView::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
     let is_self_free_cast_clause = clause_words
         == [
@@ -3000,7 +2953,7 @@ pub(crate) fn parse_buyback_line_lexed(
 pub(crate) fn parse_bargain_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<OptionalCost>, CardTextError> {
-    let clause_view = UtilCompatWords::new(tokens);
+    let clause_view = UtilWordView::new(tokens);
     let clause_words = clause_view.to_word_refs();
     if clause_words.first().copied() != Some("bargain") {
         return Ok(None);
@@ -3134,7 +3087,7 @@ pub(crate) fn parse_entwine_line_lexed(
 pub(crate) fn parse_morph_keyword_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
-    let word_view = UtilCompatWords::new(tokens);
+    let word_view = UtilWordView::new(tokens);
     let Some(first_word) = word_view.first() else {
         return Ok(None);
     };
@@ -3155,7 +3108,7 @@ pub(crate) fn parse_morph_keyword_line(
     };
     let consumed = 1 + consumed_cost_tokens;
 
-    let trailing_view = UtilCompatWords::new(tokens.get(consumed..).unwrap_or_default());
+    let trailing_view = UtilWordView::new(tokens.get(consumed..).unwrap_or_default());
     let trailing_words = trailing_view.to_word_refs();
     if !trailing_words.is_empty() {
         let mechanic = if is_megamorph { "megamorph" } else { "morph" };
@@ -3419,7 +3372,7 @@ pub(crate) fn parse_bestow_line_lexed(
 pub(crate) fn parse_transmute_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
-    let word_view = UtilCompatWords::new(tokens);
+    let word_view = UtilWordView::new(tokens);
     let words_all = word_view.to_word_refs();
     if words_all.first().copied() != Some("transmute") {
         return Ok(None);
@@ -3502,7 +3455,7 @@ pub(crate) fn parse_transmute_line_lexed(
 pub(crate) fn parse_reinforce_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
-    let words_view = UtilCompatWords::new(tokens);
+    let words_view = UtilWordView::new(tokens);
     let words_all = words_view.to_word_refs();
     if words_all.first().copied() != Some("reinforce") {
         return Ok(None);
@@ -3591,7 +3544,7 @@ pub(crate) fn parse_reinforce_line_lexed(
 pub(crate) fn parse_cast_this_spell_only_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
-    let line_word_view = UtilCompatWords::new(tokens);
+    let line_word_view = UtilWordView::new(tokens);
     let line_words = line_word_view.to_word_refs();
     if !words_have_prefix(line_words.as_slice(), &["cast", "this", "spell", "only"]) {
         return Ok(None);
@@ -3833,7 +3786,7 @@ pub(crate) fn parse_you_may_rather_than_spell_cost_line(
     let Some(rather_idx) = find_index(tokens, |token| token.is_word("rather")) else {
         return Ok(None);
     };
-    let rather_tail_view = UtilCompatWords::new(tokens.get(rather_idx + 1..).unwrap_or_default());
+    let rather_tail_view = UtilWordView::new(tokens.get(rather_idx + 1..).unwrap_or_default());
     let rather_tail = rather_tail_view.to_word_refs();
     let is_spell_cost_clause = words_have_prefix(rather_tail.as_slice(), &["than", "pay", "this"])
         && words_contain(rather_tail.as_slice(), "mana")
@@ -3897,7 +3850,7 @@ pub(crate) fn parse_additional_cost_choice_options(
             .join(" ")
     }
 
-    let clause_view = UtilCompatWords::new(tokens);
+    let clause_view = UtilWordView::new(tokens);
     let clause_words = clause_view.to_word_refs();
     if contains_words_sequence(clause_words.as_slice(), &["one", "or", "more"]) {
         return Ok(None);
@@ -3997,7 +3950,7 @@ pub(crate) fn parse_if_conditional_alternative_cost_line(
     tokens: &[OwnedLexToken],
     line: &str,
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
-    let clause_word_view = UtilCompatWords::new(tokens);
+    let clause_word_view = UtilWordView::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
     if !words_have_prefix(clause_words.as_slice(), &["if"]) {
         return Ok(None);
@@ -4027,7 +3980,7 @@ pub(crate) fn parse_if_conditional_alternative_cost_line(
     let condition = if let Some(condition) = parse_this_spell_cost_condition(&condition_tokens) {
         condition
     } else {
-        let condition_words_view = UtilCompatWords::new(&condition_tokens);
+        let condition_words_view = UtilWordView::new(&condition_tokens);
         let condition_words = condition_words_view.to_word_refs();
         if (words_have_prefix(
             condition_words.as_slice(),

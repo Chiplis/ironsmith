@@ -22,7 +22,7 @@ use crate::zone::Zone;
 use super::super::activation_and_restrictions::{
     controller_filter_for_token_player, parse_devotion_value_from_add_clause,
 };
-use super::super::grammar::primitives::CompatWordIndex;
+use super::super::grammar::primitives::TokenWordView;
 use super::super::grammar::structure::{
     ConditionalPredicateTailSpec, parse_conditional_predicate_tail_lexed,
     parse_trailing_instead_if_predicate_lexed, split_trailing_if_clause_lexed,
@@ -44,7 +44,7 @@ use super::clause_pattern_helpers::extract_subject_player;
 use super::conditionals::{parse_mana_symbol_group, parse_subtype_word};
 use super::dispatch_inner::trim_edge_punctuation;
 
-type ZoneHandlerNormalizedWords = CompatWordIndex;
+type ZoneHandlerNormalizedWords = TokenWordView;
 use super::for_each_helpers::parse_get_modifier_values_with_tail;
 use super::search_library::parse_restriction_duration;
 use super::sentence_primitives::find_color_choice_phrase;

@@ -1,6 +1,6 @@
 use super::super::grammar::effects::parse_conditional_sentence_with_grammar_entrypoint_lexed;
 use super::super::grammar::primitives::{
-    CompatWordIndex, split_lexed_slices_on_and, split_lexed_slices_on_comma,
+    TokenWordView, split_lexed_slices_on_and, split_lexed_slices_on_comma,
     split_lexed_slices_on_period,
 };
 use super::super::keyword_static::parse_where_x_value_clause;
@@ -67,7 +67,7 @@ use std::sync::LazyLock;
 pub(crate) type SentencePrimitiveParser =
     fn(&[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError>;
 
-type SentencePrimitiveNormalizedWords = CompatWordIndex;
+type SentencePrimitiveNormalizedWords = TokenWordView;
 
 pub(crate) struct SentencePrimitive {
     pub(crate) name: &'static str,

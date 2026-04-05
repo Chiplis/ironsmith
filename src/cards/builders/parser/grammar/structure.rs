@@ -9,7 +9,6 @@ use crate::cards::builders::{CardTextError, EffectAst, IfResultPredicate, Predic
 use crate::effect::Value;
 
 use super::super::lexer::{LexStream, LexToken, OwnedLexToken, TokenKind, trim_lexed_commas};
-use super::super::native_tokens::compat_word_pieces_for_token;
 use super::{primitives, values};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -158,24 +157,23 @@ fn rfind_token_index(
     None
 }
 
-fn find_word_phrase_token_index(tokens: &[OwnedLexToken], phrase: &[&str]) -> Option<usize> {
+fn find_word_phrase_token_index(
+    tokens: &[OwnedLexToken],
+    phrase: &'static [&'static str],
+) -> Option<usize> {
     if phrase.is_empty() {
         return None;
     }
 
-    let mut word_token_indices = Vec::new();
-    let mut words = Vec::new();
-    for (idx, token) in tokens.iter().enumerate() {
-        if let Some(word) = token.as_word() {
-            word_token_indices.push(idx);
-            words.push(word);
+    let mut idx = 0usize;
+    while idx < tokens.len() {
+        if primitives::parse_prefix(&tokens[idx..], primitives::phrase(phrase)).is_some() {
+            return Some(idx);
         }
+        idx += 1;
     }
 
-    let word_idx = words
-        .windows(phrase.len())
-        .position(|window| window == phrase)?;
-    word_token_indices.get(word_idx).copied()
+    None
 }
 
 fn parse_remove_mode_only_prefix<'a>(
@@ -186,11 +184,23 @@ fn parse_remove_mode_only_prefix<'a>(
     Ok(())
 }
 
-fn compat_non_article_words(tokens: &[LexToken]) -> Vec<String> {
+fn compat_normalized_parser_word(token: &LexToken) -> Option<String> {
+    match token.kind {
+        TokenKind::Word | TokenKind::Number | TokenKind::Tilde | TokenKind::Half => Some(
+            token
+                .parser_text()
+                .chars()
+                .filter(|ch| !matches!(*ch, '\'' | '’' | '‘'))
+                .collect(),
+        ),
+        _ => None,
+    }
+}
+
+fn parser_text_non_article_words(tokens: &[LexToken]) -> Vec<String> {
     tokens
         .iter()
-        .flat_map(compat_word_pieces_for_token)
-        .map(|piece| piece.text)
+        .filter_map(compat_normalized_parser_word)
         .filter(|word| !matches!(word.as_str(), "a" | "an" | "the"))
         .collect()
 }
@@ -572,7 +582,7 @@ fn parse_if_result_predicate_inner<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<IfResultPredicate, ErrMode<ContextError>> {
     let tokens = input.peek_finish();
-    let words = compat_non_article_words(tokens);
+    let words = parser_text_non_article_words(tokens);
     let word_refs: Vec<&str> = words.iter().map(String::as_str).collect();
     let Some(predicate) = classify_if_result_predicate(&word_refs) else {
         let mut err = ContextError::new();
@@ -912,9 +922,20 @@ pub(crate) fn parse_conditional_predicate_tail_lexed(
         return None;
     }
 
-    let instead_if_idx = trimmed
-        .windows(2)
-        .position(|window| window[0].is_word("instead") && window[1].is_word("if"));
+    let mut instead_if_idx = None;
+    let mut idx = 0usize;
+    while idx < trimmed.len() {
+        if primitives::parse_prefix(
+            &trimmed[idx..],
+            (primitives::kw("instead"), primitives::kw("if")),
+        )
+        .is_some()
+        {
+            instead_if_idx = Some(idx);
+            break;
+        }
+        idx += 1;
+    }
 
     if let Some(instead_if_idx) = instead_if_idx {
         let base_predicate_tokens = trim_lexed_commas(&trimmed[..instead_if_idx]);
@@ -1012,24 +1033,18 @@ pub(crate) fn split_triggered_conditional_clause_lexed<'a>(
     tokens: &'a [OwnedLexToken],
     start_idx: usize,
 ) -> Option<TriggeredConditionalClauseSpec<'a>> {
-    let first_comma_idx = find_token_index(tokens, |token| token.kind == TokenKind::Comma)?;
-    if first_comma_idx <= start_idx {
+    let (leading_tokens, after_first_comma) = primitives::split_lexed_once_on_comma(tokens)?;
+    if leading_tokens.len() <= start_idx {
         return None;
     }
 
-    let trigger_tokens = &tokens[start_idx..first_comma_idx];
-    let after_first_comma = trim_lexed_commas(&tokens[first_comma_idx + 1..]);
-    if !after_first_comma
-        .first()
-        .is_some_and(|token| token.is_word("if"))
-    {
-        return None;
-    }
+    let trigger_tokens = &leading_tokens[start_idx..];
+    let after_first_comma = trim_lexed_commas(after_first_comma);
+    let (_, after_if) = primitives::parse_prefix(after_first_comma, primitives::kw("if"))?;
 
-    let second_comma_rel =
-        find_token_index(after_first_comma, |token| token.kind == TokenKind::Comma)?;
-    let predicate_tokens = trim_lexed_commas(after_first_comma.get(1..second_comma_rel)?);
-    let effects_tokens = trim_lexed_commas(&after_first_comma[second_comma_rel + 1..]);
+    let (predicate_tokens, effects_tokens) = primitives::split_lexed_once_on_comma(after_if)?;
+    let predicate_tokens = trim_lexed_commas(predicate_tokens);
+    let effects_tokens = trim_lexed_commas(effects_tokens);
     if predicate_tokens.is_empty() || effects_tokens.is_empty() {
         return None;
     }
@@ -1080,25 +1095,21 @@ pub(crate) fn split_trailing_modal_gate_clause<'a>(
     if sentence_tokens.is_empty() {
         return None;
     }
-    if !sentence_tokens
-        .first()
-        .is_some_and(|token| token.is_word("if") || token.is_word("when"))
+    let (_, predicate_tail) = primitives::parse_prefix(
+        sentence_tokens,
+        alt((primitives::kw("if"), primitives::kw("when"))),
+    )?;
+    let (predicate_tokens, trailing_tokens) = if let Some((predicate_tokens, trailing_tokens)) =
+        primitives::split_lexed_once_on_comma(predicate_tail)
     {
-        return None;
-    }
-
-    let comma_idx = find_token_index(sentence_tokens, |token| token.kind == TokenKind::Comma)
-        .unwrap_or(sentence_tokens.len());
-    if comma_idx <= 1 {
-        return None;
-    }
-
-    let trailing_tokens = if comma_idx < sentence_tokens.len() {
-        trim_lexed_commas(&sentence_tokens[comma_idx + 1..])
+        (
+            trim_lexed_commas(predicate_tokens),
+            trim_lexed_commas(trailing_tokens),
+        )
     } else {
-        &[]
+        (trim_lexed_commas(predicate_tail), &[][..])
     };
-    if !trailing_tokens.is_empty() {
+    if predicate_tokens.is_empty() || !trailing_tokens.is_empty() {
         return None;
     }
 
@@ -1107,16 +1118,13 @@ pub(crate) fn split_trailing_modal_gate_clause<'a>(
         prefix_end -= 1;
     }
 
-    let predicate = parse_if_result_predicate(&sentence_tokens[1..comma_idx])?;
+    let predicate = parse_if_result_predicate(predicate_tokens)?;
 
     Some(TrailingModalGateSpec {
         prefix_tokens: &tokens[..prefix_end],
         predicate,
-        remove_mode_only: primitives::parse_prefix(
-            &sentence_tokens[1..comma_idx],
-            parse_remove_mode_only_prefix,
-        )
-        .is_some(),
+        remove_mode_only: primitives::parse_prefix(predicate_tokens, parse_remove_mode_only_prefix)
+            .is_some(),
     })
 }
 
@@ -1162,24 +1170,6 @@ fn parse_modal_header_choose_spec_inner<'a>(
         "modal choice range",
     )));
     Err(ErrMode::Cut(err))
-}
-
-pub(crate) fn split_metadata_line_raw(line: &str) -> Option<(MetadataLineKind, &str)> {
-    let (label, value) = line.split_once(':')?;
-    let normalized = label
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-        .to_ascii_lowercase();
-    let kind = match normalized.as_str() {
-        "mana cost" => MetadataLineKind::ManaCost,
-        "type line" | "type" => MetadataLineKind::TypeLine,
-        "power/toughness" => MetadataLineKind::PowerToughness,
-        "loyalty" => MetadataLineKind::Loyalty,
-        "defense" => MetadataLineKind::Defense,
-        _ => return None,
-    };
-    Some((kind, value.trim()))
 }
 
 pub(crate) fn parse_modal_header_choose_spec<'a>(

@@ -6,7 +6,7 @@ use super::super::grammar::effects::{
     parse_cant_effect_sentence_with_grammar_entrypoint_lexed,
     parse_search_library_sentence_with_grammar_entrypoint_lexed,
 };
-use super::super::grammar::primitives::CompatWordIndex;
+use super::super::grammar::primitives::TokenWordView;
 use super::super::grammar::structure::{
     LeadingResultPrefixKind, split_leading_result_prefix_lexed, split_trailing_if_clause_lexed,
 };
@@ -59,7 +59,7 @@ fn contains_char(text: &str, expected: char) -> bool {
 }
 
 fn starts_like_create_fragment_lexed(tokens: &[OwnedLexToken]) -> bool {
-    let word_view = CompatWordIndex::new(tokens);
+    let word_view = TokenWordView::new(tokens);
     let words = word_view.word_refs();
     let Some(first_word) = words.first().copied() else {
         return false;
@@ -1536,7 +1536,7 @@ fn parse_leading_player_may_words(words: &[&str]) -> Option<PlayerAst> {
 }
 
 pub(crate) fn parse_leading_player_may_lexed(tokens: &[OwnedLexToken]) -> Option<PlayerAst> {
-    let word_view = CompatWordIndex::new(tokens);
+    let word_view = TokenWordView::new(tokens);
     let words = word_view.word_refs();
     parse_leading_player_may_words(&words)
 }

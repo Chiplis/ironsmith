@@ -100,7 +100,53 @@ pub(crate) struct OwnedLexToken {
     pub(crate) kind: TokenKind,
     pub(crate) slice: String,
     pub(crate) parser_text: String,
+    parser_word_pieces: Box<[TokenWordPiece]>,
     pub(crate) span: TextSpan,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct TokenWordPiece {
+    pub(crate) text: String,
+    pub(crate) span: TextSpan,
+}
+
+fn build_token_word_pieces(
+    kind: TokenKind,
+    slice: &str,
+    parser_text: &str,
+    span: TextSpan,
+) -> Box<[TokenWordPiece]> {
+    let mut pieces = Vec::new();
+    match kind {
+        TokenKind::Word | TokenKind::Number => {
+            push_normalized_token_words(parser_text, span, false, &mut pieces);
+        }
+        TokenKind::Tilde => pieces.push(TokenWordPiece {
+            text: "this".to_string(),
+            span,
+        }),
+        TokenKind::ManaGroup => {
+            let inner = slice.trim_start_matches('{').trim_end_matches('}');
+            if !inner.is_empty() {
+                push_normalized_token_words(
+                    inner,
+                    TextSpan {
+                        line: span.line,
+                        start: span.start.saturating_add(1),
+                        end: span.end.saturating_sub(1),
+                    },
+                    true,
+                    &mut pieces,
+                );
+            }
+        }
+        TokenKind::Half => pieces.push(TokenWordPiece {
+            text: "1/2".to_string(),
+            span,
+        }),
+        _ => {}
+    }
+    pieces.into_boxed_slice()
 }
 
 pub(crate) type LexToken = OwnedLexToken;
@@ -125,10 +171,13 @@ impl OwnedLexToken {
     pub(crate) fn new(kind: TokenKind, slice: impl Into<String>, span: TextSpan) -> Self {
         let slice = slice.into();
         let parser_text = parser_text_for_token(kind, slice.as_str());
+        let parser_word_pieces =
+            build_token_word_pieces(kind, slice.as_str(), parser_text.as_str(), span);
         Self {
             kind,
             slice,
             parser_text,
+            parser_word_pieces,
             span,
         }
     }
@@ -179,16 +228,31 @@ impl OwnedLexToken {
         self.parser_text.as_str()
     }
 
+    pub(crate) fn parser_word_pieces(&self) -> &[TokenWordPiece] {
+        &self.parser_word_pieces
+    }
+
+    fn refresh_parser_word_pieces(&mut self) {
+        self.parser_word_pieces = build_token_word_pieces(
+            self.kind,
+            self.slice.as_str(),
+            self.parser_text.as_str(),
+            self.span,
+        );
+    }
+
     pub(crate) fn replace_word(&mut self, slice: impl Into<String>) -> bool {
         match self.kind {
             TokenKind::Word | TokenKind::Number => {
                 let slice = slice.into();
                 self.parser_text = parser_text_for_token(self.kind, slice.as_str());
                 self.slice = slice;
+                self.refresh_parser_word_pieces();
                 true
             }
             TokenKind::Tilde => {
                 self.parser_text = "this".to_string();
+                self.refresh_parser_word_pieces();
                 true
             }
             _ => false,
@@ -238,6 +302,217 @@ impl OwnedLexToken {
     }
 }
 
+fn push_normalized_token_words(
+    slice: &str,
+    base_span: TextSpan,
+    in_mana_braces: bool,
+    out: &mut Vec<TokenWordPiece>,
+) {
+    let mut buffer = String::new();
+    let mut piece_start: Option<usize> = None;
+    let mut piece_end = base_span.start;
+    let chars: Vec<(usize, char)> = slice.char_indices().collect();
+
+    let flush = |buffer: &mut String,
+                 out: &mut Vec<TokenWordPiece>,
+                 piece_start: &mut Option<usize>,
+                 piece_end: &mut usize| {
+        if !buffer.is_empty() {
+            out.push(TokenWordPiece {
+                text: std::mem::take(buffer),
+                span: TextSpan {
+                    line: base_span.line,
+                    start: piece_start.unwrap_or(base_span.start),
+                    end: *piece_end,
+                },
+            });
+        }
+        *piece_start = None;
+    };
+
+    for (idx, (rel_idx, original_ch)) in chars.iter().copied().enumerate() {
+        let mut normalized_ch = original_ch;
+        if normalized_ch == '−' {
+            normalized_ch = '-';
+        }
+        let prev = if idx > 0 { chars[idx - 1].1 } else { '\0' };
+        let next = if idx + 1 < chars.len() {
+            chars[idx + 1].1
+        } else {
+            '\0'
+        };
+        let is_counter_char = match normalized_ch {
+            '+' | '-' => next.is_ascii_digit() || next == 'x' || next == 'X',
+            '/' => {
+                (prev.is_ascii_digit() || prev == 'x' || prev == 'X')
+                    && (next.is_ascii_digit()
+                        || next == '-'
+                        || next == '+'
+                        || next == 'x'
+                        || next == 'X')
+            }
+            _ => false,
+        };
+        let is_mana_hybrid_slash = normalized_ch == '/' && in_mana_braces;
+
+        if normalized_ch.is_ascii_alphanumeric() || is_counter_char || is_mana_hybrid_slash {
+            if piece_start.is_none() {
+                piece_start = Some(base_span.start + rel_idx);
+            }
+            piece_end = base_span.start + rel_idx + original_ch.len_utf8();
+            buffer.push(normalized_ch.to_ascii_lowercase());
+            continue;
+        }
+
+        if matches!(normalized_ch, '\'' | '’' | '‘') {
+            if piece_start.is_some() {
+                piece_end = base_span.start + rel_idx + original_ch.len_utf8();
+            }
+            continue;
+        }
+
+        flush(&mut buffer, out, &mut piece_start, &mut piece_end);
+    }
+
+    flush(&mut buffer, out, &mut piece_start, &mut piece_end);
+}
+
+pub(crate) fn token_word_pieces_for_token(token: &OwnedLexToken) -> &[TokenWordPiece] {
+    token.parser_word_pieces()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct TokenWordView {
+    words: Vec<String>,
+    token_start_indices: Vec<usize>,
+    token_end_indices: Vec<usize>,
+}
+
+impl TokenWordView {
+    pub(crate) fn new(tokens: &[OwnedLexToken]) -> Self {
+        let mut words = Vec::new();
+        let mut token_start_indices = Vec::new();
+        let mut token_end_indices = Vec::new();
+        let mut token_idx = 0usize;
+        while token_idx < tokens.len() {
+            let token = &tokens[token_idx];
+            let pieces = token_word_pieces_for_token(token);
+            if pieces.is_empty() {
+                token_idx += 1;
+                continue;
+            }
+            for piece in pieces {
+                words.push(piece.text.clone());
+                token_start_indices.push(token_idx);
+                token_end_indices.push(token_idx + 1);
+            }
+            token_idx += 1;
+        }
+        Self {
+            words,
+            token_start_indices,
+            token_end_indices,
+        }
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.words.is_empty()
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.words.len()
+    }
+
+    pub(crate) fn get(&self, idx: usize) -> Option<&str> {
+        self.words.get(idx).map(String::as_str)
+    }
+
+    pub(crate) fn starts_with(&self, expected: &[&str]) -> bool {
+        self.slice_eq(0, expected)
+    }
+
+    pub(crate) fn slice_eq(&self, start: usize, expected: &[&str]) -> bool {
+        self.words
+            .get(start..start.saturating_add(expected.len()))
+            .is_some_and(|slice| {
+                slice
+                    .iter()
+                    .map(String::as_str)
+                    .zip(expected.iter().copied())
+                    .all(|(actual, expected)| actual == expected)
+            })
+    }
+
+    pub(crate) fn find_phrase_start(&self, expected: &[&str]) -> Option<usize> {
+        if expected.is_empty() || self.words.len() < expected.len() {
+            return None;
+        }
+        let mut idx = 0usize;
+        let last_start = self.words.len() - expected.len();
+        while idx <= last_start {
+            if self.slice_eq(idx, expected) {
+                return Some(idx);
+            }
+            idx += 1;
+        }
+        None
+    }
+
+    pub(crate) fn has_phrase(&self, expected: &[&str]) -> bool {
+        self.find_phrase_start(expected).is_some()
+    }
+
+    pub(crate) fn find_word(&self, expected: &str) -> Option<usize> {
+        let mut idx = 0usize;
+        while idx < self.words.len() {
+            if self.words[idx] == expected {
+                return Some(idx);
+            }
+            idx += 1;
+        }
+
+        None
+    }
+
+    pub(crate) fn first(&self) -> Option<&str> {
+        self.get(0)
+    }
+
+    pub(crate) fn word_refs(&self) -> Vec<&str> {
+        self.words.iter().map(String::as_str).collect()
+    }
+
+    pub(crate) fn join(&self, separator: &str) -> String {
+        self.words.join(separator)
+    }
+
+    pub(crate) fn owned_words(&self) -> Vec<String> {
+        self.words.clone()
+    }
+
+    pub(crate) fn to_word_refs(&self) -> Vec<&str> {
+        self.word_refs()
+    }
+
+    pub(crate) fn token_index_for_word_index(&self, word_idx: usize) -> Option<usize> {
+        self.token_start_indices.get(word_idx).copied()
+    }
+
+    pub(crate) fn token_start_indices(&self) -> &[usize] {
+        &self.token_start_indices
+    }
+
+    pub(crate) fn token_index_after_words(&self, word_count: usize) -> Option<usize> {
+        if word_count == 0 {
+            return Some(0);
+        }
+        if word_count > self.len() {
+            return None;
+        }
+        self.token_end_indices.get(word_count - 1).copied()
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct LexCursor<'a> {
     tokens: &'a [OwnedLexToken],
@@ -276,6 +551,28 @@ impl<'a> LexCursor<'a> {
 
 pub(crate) fn token_word_refs(tokens: &[OwnedLexToken]) -> Vec<&str> {
     tokens.iter().filter_map(OwnedLexToken::as_word).collect()
+}
+
+pub(crate) fn parser_token_word_refs<'a>(tokens: &'a [OwnedLexToken]) -> Vec<&'a str> {
+    let mut words = Vec::new();
+    for token in tokens {
+        for piece in token.parser_word_pieces() {
+            words.push(piece.text.as_str());
+        }
+    }
+    words
+}
+
+pub(crate) fn parser_token_word_positions<'a>(
+    tokens: &'a [OwnedLexToken],
+) -> Vec<(usize, &'a str)> {
+    let mut positions = Vec::new();
+    for (token_idx, token) in tokens.iter().enumerate() {
+        for piece in token.parser_word_pieces() {
+            positions.push((token_idx, piece.text.as_str()));
+        }
+    }
+    positions
 }
 
 pub(crate) fn render_token_slice(tokens: &[OwnedLexToken]) -> String {
