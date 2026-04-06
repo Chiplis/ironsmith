@@ -32,6 +32,12 @@ const LEXED_CONTEXT_MARKERS: &[&str] = &[
     "line.tokens",
     "lexed",
 ];
+/// Substrings that, when found anywhere on the same line as a raw-string pattern
+/// hit, suppress the hit because the receiver is a token-aware abstraction.
+const RAW_STRING_LINE_EXCLUSIONS: &[&str] = &["TokenWordView"];
+/// Prefixes that, when found immediately before a raw-string pattern, suppress
+/// the hit (e.g. `words.starts_with(...)` where `words` is a `TokenWordView`).
+const RAW_STRING_RECEIVER_EXCLUSIONS: &[&str] = &["words"];
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 enum AuditKind {
@@ -279,8 +285,31 @@ fn count_manual_patterns(source: &str) -> usize {
 fn count_string_patterns(source: &str, patterns: &[&str]) -> usize {
     patterns
         .iter()
-        .map(|pattern| source.match_indices(pattern).count())
+        .map(|pattern| {
+            source
+                .match_indices(pattern)
+                .filter(|(start, _)| !is_excluded_raw_string_hit(source, *start))
+                .count()
+        })
         .sum()
+}
+
+fn is_excluded_raw_string_hit(source: &str, hit_start: usize) -> bool {
+    if RAW_STRING_RECEIVER_EXCLUSIONS.iter().any(|prefix| {
+        hit_start
+            .checked_sub(prefix.len())
+            .is_some_and(|off| &source[off..hit_start] == *prefix)
+    }) {
+        return true;
+    }
+    let line_start = source[..hit_start].rfind('\n').map_or(0, |pos| pos + 1);
+    let line_end = source[hit_start..]
+        .find('\n')
+        .map_or(source.len(), |pos| hit_start + pos);
+    let line = &source[line_start..line_end];
+    RAW_STRING_LINE_EXCLUSIONS
+        .iter()
+        .any(|marker| line.contains(marker))
 }
 
 fn count_pattern(source: &str, pattern: Pattern) -> usize {

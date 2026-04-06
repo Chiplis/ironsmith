@@ -9,6 +9,7 @@ use crate::target::{ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 
+use super::super::grammar::primitives as grammar;
 use super::super::lexer::token_word_refs;
 use super::super::object_filters::parse_object_filter;
 use super::super::token_primitives::{
@@ -406,8 +407,8 @@ pub(crate) fn split_copy_source_tail_modifiers(
         if !starts_reference {
             continue;
         }
-        if !word_slice_contains(&tail_words, "tapped")
-            && !word_slice_contains(&tail_words, "attacking")
+        if !grammar::contains_word(&tail_tokens, "tapped")
+            && !grammar::contains_word(&tail_tokens, "attacking")
         {
             continue;
         }
@@ -420,9 +421,8 @@ pub(crate) fn split_copy_source_tail_modifiers(
     };
 
     let modifier_tokens = trim_commas(&source_tokens[split_idx + 1..]);
-    let modifier_words = token_word_refs(&modifier_tokens);
-    let enters_tapped = word_slice_contains(&modifier_words, "tapped");
-    let enters_attacking = word_slice_contains(&modifier_words, "attacking");
+    let enters_tapped = grammar::contains_word(&modifier_tokens, "tapped");
+    let enters_attacking = grammar::contains_word(&modifier_tokens, "attacking");
     let source_tokens = trim_commas(&source_tokens[..split_idx]).to_vec();
     (source_tokens, enters_tapped, enters_attacking)
 }
@@ -517,8 +517,8 @@ pub(crate) fn parse_create(
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
     let clause_words = token_word_refs(tokens);
     let has_unsupported_dynamic_count =
-        word_slice_starts_with(&clause_words, &["a", "number", "of"])
-            || word_slice_starts_with(&clause_words, &["the", "number", "of"]);
+        grammar::words_match_prefix(tokens, &["a", "number", "of"]).is_some()
+            || grammar::words_match_prefix(tokens, &["the", "number", "of"]).is_some();
     if has_unsupported_dynamic_count {
         return Err(CardTextError::ParseError(format!(
             "unsupported dynamic token count in create clause (clause: '{}')",
@@ -750,13 +750,13 @@ pub(crate) fn parse_create(
                 set_base_power_toughness,
                 granted_abilities,
             ) = parse_copy_modifiers_from_tail(&tail_words);
-            let half_pt = word_slice_contains(&tail_words, "half")
-                && word_slice_contains(&tail_words, "power")
-                && word_slice_contains(&tail_words, "toughness");
-            let has_haste = word_slice_contains_sequence(&tail_words, &["has", "haste"])
-                || word_slice_contains_sequence(&tail_words, &["gain", "haste"])
-                || word_slice_contains_sequence(&tail_words, &["gains", "haste"])
-                || word_slice_contains(&tail_words, "haste");
+            let half_pt = grammar::contains_word(&tail_tokens, "half")
+                && grammar::contains_word(&tail_tokens, "power")
+                && grammar::contains_word(&tail_tokens, "toughness");
+            let has_haste = grammar::words_find_phrase(&tail_tokens, &["has", "haste"]).is_some()
+                || grammar::words_find_phrase(&tail_tokens, &["gain", "haste"]).is_some()
+                || grammar::words_find_phrase(&tail_tokens, &["gains", "haste"]).is_some()
+                || grammar::contains_word(&tail_tokens, "haste");
             let mut enters_tapped = false;
             let mut enters_attacking = false;
             let mut attack_target_player_or_planeswalker_controlled_by = None;
@@ -770,12 +770,11 @@ pub(crate) fn parse_create(
                 .unwrap_or(source_tokens.len());
                 let mut source_end = source_end;
                 for idx in 1..source_end {
-                    let remaining_words = token_word_refs(&source_tokens[idx..]);
-                    if starts_with_inline_token_rules_tail(&remaining_words)
+                    if starts_with_inline_token_rules_tail(&source_tokens[idx..])
                         || (source_tokens[idx].is_word("and")
-                            && starts_with_inline_token_rules_tail(&token_word_refs(
+                            && starts_with_inline_token_rules_tail(
                                 &source_tokens[idx + 1..],
-                            )))
+                            ))
                     {
                         source_end = idx;
                         break;
@@ -978,19 +977,19 @@ pub(crate) fn parse_create(
 }
 
 pub(crate) fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> Option<Value> {
-    let clause_words = token_word_refs(tokens);
-    if word_slice_starts_with(&clause_words, &["creature", "that", "died", "this", "turn"])
-        || word_slice_starts_with(
-            &clause_words,
+    if grammar::words_match_prefix(tokens, &["creature", "that", "died", "this", "turn"]).is_some()
+        || grammar::words_match_prefix(
+            tokens,
             &["creatures", "that", "died", "this", "turn"],
-        )
+        ).is_some()
     {
         return Some(Value::CreaturesDiedThisTurn);
     }
-    if (word_slice_contains(&clause_words, "spell") || word_slice_contains(&clause_words, "spells"))
-        && (word_slice_contains(&clause_words, "cast")
-            || word_slice_contains(&clause_words, "casts"))
-        && word_slice_contains(&clause_words, "turn")
+    let clause_words = token_word_refs(tokens);
+    if (grammar::contains_word(tokens, "spell") || grammar::contains_word(tokens, "spells"))
+        && (grammar::contains_word(tokens, "cast")
+            || grammar::contains_word(tokens, "casts"))
+        && grammar::contains_word(tokens, "turn")
     {
         let player = if clause_words
             .iter()
@@ -1007,56 +1006,56 @@ pub(crate) fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> O
         };
 
         let other_than_first =
-            word_slice_contains_sequence(&clause_words, &["other", "than", "the", "first"]);
+            grammar::words_find_phrase(tokens, &["other", "than", "the", "first"]).is_some();
         if other_than_first {
             return Some(Value::Add(
                 Box::new(Value::SpellsCastThisTurn(player)),
                 Box::new(Value::Fixed(-1)),
             ));
         }
-        if word_slice_contains(&clause_words, "this") && word_slice_contains(&clause_words, "turn")
+        if grammar::contains_word(tokens, "this") && grammar::contains_word(tokens, "turn")
         {
             return Some(Value::SpellsCastThisTurn(player));
         }
     }
-    if word_slice_starts_with(
-        &clause_words,
+    if grammar::words_match_prefix(
+        tokens,
         &[
             "color", "of", "mana", "spent", "to", "cast", "this", "spell",
         ],
-    ) || word_slice_starts_with(
-        &clause_words,
+    ).is_some() || grammar::words_match_prefix(
+        tokens,
         &[
             "colors", "of", "mana", "spent", "to", "cast", "this", "spell",
         ],
-    ) || word_slice_starts_with(
-        &clause_words,
+    ).is_some() || grammar::words_match_prefix(
+        tokens,
         &["color", "of", "mana", "used", "to", "cast", "this", "spell"],
-    ) || word_slice_starts_with(
-        &clause_words,
+    ).is_some() || grammar::words_match_prefix(
+        tokens,
         &[
             "colors", "of", "mana", "used", "to", "cast", "this", "spell",
         ],
-    ) {
+    ).is_some() {
         return Some(Value::ColorsOfManaSpentToCastThisSpell);
     }
-    if word_slice_starts_with(
-        &clause_words,
+    if grammar::words_match_prefix(
+        tokens,
         &["basic", "land", "type", "among", "lands", "you", "control"],
-    ) || word_slice_starts_with(
-        &clause_words,
+    ).is_some() || grammar::words_match_prefix(
+        tokens,
         &["basic", "land", "types", "among", "lands", "you", "control"],
-    ) || word_slice_starts_with(
-        &clause_words,
+    ).is_some() || grammar::words_match_prefix(
+        tokens,
         &[
             "basic", "land", "type", "among", "the", "lands", "you", "control",
         ],
-    ) || word_slice_starts_with(
-        &clause_words,
+    ).is_some() || grammar::words_match_prefix(
+        tokens,
         &[
             "basic", "land", "types", "among", "the", "lands", "you", "control",
         ],
-    ) {
+    ).is_some() {
         return Some(Value::BasicLandTypesAmong(
             ObjectFilter::land().you_control(),
         ));
@@ -1087,7 +1086,7 @@ pub(crate) fn parse_investigate(tokens: &[OwnedLexToken]) -> Result<EffectAst, C
         }
 
         let count =
-            if word_slice_contains_sequence(&token_word_refs(filter_tokens), &["this", "way"]) {
+            if grammar::words_find_phrase(filter_tokens, &["this", "way"]).is_some() {
                 Value::EventValue(EventValueSpec::Amount)
             } else if let Some(dynamic) = parse_create_for_each_dynamic_count(filter_tokens) {
                 dynamic

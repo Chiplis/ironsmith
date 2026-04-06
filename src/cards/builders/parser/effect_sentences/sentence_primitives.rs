@@ -1,6 +1,6 @@
 use super::super::grammar::effects::parse_conditional_sentence_with_grammar_entrypoint_lexed;
 use super::super::grammar::primitives::{
-    TokenWordView, split_lexed_slices_on_and, split_lexed_slices_on_comma,
+    self as grammar, TokenWordView, split_lexed_slices_on_and, split_lexed_slices_on_comma,
     split_lexed_slices_on_period,
 };
 use super::super::keyword_static::parse_where_x_value_clause;
@@ -63,6 +63,7 @@ use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 use std::cell::OnceCell;
 use std::sync::LazyLock;
+use winnow::Parser as _;
 
 pub(crate) type SentencePrimitiveParser =
     fn(&[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError>;
@@ -329,7 +330,7 @@ pub(crate) fn parse_you_and_target_player_each_draw_sentence(
     if clause_words.len() < 6 {
         return Ok(None);
     }
-    if !slice_starts_with(&clause_words, &["you", "and", "target"]) {
+    if grammar::words_match_prefix(tokens, &["you", "and", "target"]).is_none() {
         return Ok(None);
     }
 
@@ -426,6 +427,8 @@ pub(crate) fn parse_sentence_you_and_target_player_each_draw(
 pub(crate) fn parse_sentence_choose_player_to_effect(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    use super::super::grammar::primitives as grammar;
+
     let mut stripped = trim_commas(tokens);
     while stripped
         .first()
@@ -437,15 +440,17 @@ pub(crate) fn parse_sentence_choose_player_to_effect(
         return Ok(None);
     }
 
-    let Some(to_idx) = find_index(&stripped, |token| token.is_word("to")) else {
+    let Some((choose_slice, tail_slice)) =
+        grammar::split_lexed_once_on_separator(&stripped, || grammar::kw("to").void())
+    else {
         return Ok(None);
     };
-    if to_idx == 0 || to_idx + 1 >= stripped.len() {
+
+    let choose_tokens = trim_commas(choose_slice);
+    let tail_tokens = trim_commas(tail_slice);
+    if choose_tokens.is_empty() || tail_tokens.is_empty() {
         return Ok(None);
     }
-
-    let choose_tokens = trim_commas(&stripped[..to_idx]);
-    let tail_tokens = trim_commas(&stripped[to_idx + 1..]);
     let Some((chooser, filter, random, exclude_previous_choices)) =
         parse_you_choose_player_clause(&choose_tokens)?
     else {
@@ -482,12 +487,14 @@ pub(crate) fn parse_sentence_damage_to_that_player_half_damage_of_those_spells(
         return Ok(None);
     }
 
-    let Some(deals_idx) = find_index(&stripped, |token| {
-        token.is_word("deal") || token.is_word("deals")
-    }) else {
+    use super::super::grammar::primitives as grammar;
+
+    let deal_split = grammar::split_lexed_once_on_separator(&stripped, || grammar::kw("deal").void())
+        .or_else(|| grammar::split_lexed_once_on_separator(&stripped, || grammar::kw("deals").void()));
+    let Some((_before_deal, after_deal)) = deal_split else {
         return Ok(None);
     };
-    let tail_words = crate::cards::builders::parser::token_word_refs(&stripped[deals_idx + 1..]);
+    let tail_words = crate::cards::builders::parser::token_word_refs(after_deal);
     if tail_words.len() != 20 {
         return Ok(None);
     }
@@ -653,7 +660,7 @@ pub(crate) fn parse_sentence_you_and_attacking_player_each_draw_and_lose(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
-    if clause_words.len() < 11 || !slice_starts_with(&clause_words, &["you", "and"]) {
+    if clause_words.len() < 11 || grammar::words_match_prefix(tokens, &["you", "and"]).is_none() {
         return Ok(None);
     }
 
@@ -765,29 +772,27 @@ pub(crate) fn parse_sentence_you_and_attacking_player_each_draw_and_lose(
 pub(crate) fn parse_sentence_sacrifice_it_next_end_step(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if !tokens
-        .first()
-        .is_some_and(|token| token.is_word("sacrifice"))
-    {
-        return Ok(None);
-    }
+    use super::super::grammar::primitives as grammar;
 
-    let Some(at_idx) = find_index(tokens, |token| token.is_word("at")) else {
+    // "sacrifice <object> at the beginning of [the] next end step"
+    let Some(object_tokens) = grammar::strip_lexed_prefix_phrase(tokens, &["sacrifice"]) else {
         return Ok(None);
     };
-    if at_idx <= 1 {
+    let Some((object_tokens, _timing)) = grammar::split_lexed_once_on_separator(
+        object_tokens,
+        || {
+            winnow::combinator::alt((
+                grammar::phrase(&[
+                    "at", "the", "beginning", "of", "the", "next", "end", "step",
+                ]),
+                grammar::phrase(&["at", "the", "beginning", "of", "next", "end", "step"]),
+            ))
+        },
+    ) else {
         return Ok(None);
-    }
+    };
 
-    let timing_words = crate::cards::builders::parser::token_word_refs(&tokens[at_idx..]);
-    let matches_sacrifice_delay = timing_words.as_slice()
-        == ["at", "the", "beginning", "of", "the", "next", "end", "step"]
-        || timing_words.as_slice() == ["at", "the", "beginning", "of", "next", "end", "step"];
-    if !matches_sacrifice_delay {
-        return Ok(None);
-    }
-
-    let object_tokens = trim_commas(&tokens[1..at_idx]);
+    let object_tokens = trim_commas(object_tokens);
     if object_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing sacrifice object in delayed next-end-step clause (clause: '{}')",
@@ -825,20 +830,26 @@ pub(crate) fn parse_sentence_sacrifice_it_next_end_step(
 pub(crate) fn parse_sentence_if_tagged_cards_remain_exiled(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let clause_word_storage = SentencePrimitiveNormalizedWords::new(tokens);
-    let clause_words = clause_word_storage.to_word_refs();
-    let matches_supported_prefix =
-        slice_starts_with(
-            clause_words.as_slice(),
-            &["if", "any", "of", "those", "cards", "remain", "exiled"],
-        ) || slice_starts_with(
-            clause_words.as_slice(),
+    use super::super::grammar::primitives as grammar;
+
+    let has_prefix = grammar::strip_lexed_prefix_phrase(
+        tokens,
+        &["if", "any", "of", "those", "cards", "remain", "exiled"],
+    )
+    .is_some()
+        || grammar::strip_lexed_prefix_phrase(
+            tokens,
             &["if", "those", "cards", "remain", "exiled"],
-        ) || slice_starts_with(
-            clause_words.as_slice(),
+        )
+        .is_some()
+        || grammar::strip_lexed_prefix_phrase(
+            tokens,
             &["if", "that", "card", "remains", "exiled"],
-        ) || slice_starts_with(clause_words.as_slice(), &["if", "it", "remains", "exiled"]);
-    if !matches_supported_prefix {
+        )
+        .is_some()
+        || grammar::strip_lexed_prefix_phrase(tokens, &["if", "it", "remains", "exiled"])
+            .is_some();
+    if !has_prefix {
         return Ok(None);
     }
 
@@ -849,27 +860,25 @@ pub(crate) fn parse_sentence_if_tagged_cards_remain_exiled(
 pub(crate) fn parse_sentence_sacrifice_at_end_of_combat(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if !tokens
-        .first()
-        .is_some_and(|token| token.is_word("sacrifice"))
-    {
-        return Ok(None);
-    }
-    let Some(at_idx) = find_index(tokens, |token| token.is_word("at")) else {
+    use super::super::grammar::primitives as grammar;
+
+    // "sacrifice <object> at [the] end of combat"
+    let Some(object_tokens) = grammar::strip_lexed_prefix_phrase(tokens, &["sacrifice"]) else {
         return Ok(None);
     };
-    if at_idx <= 1 {
+    let Some((object_tokens, _timing)) = grammar::split_lexed_once_on_separator(
+        object_tokens,
+        || {
+            winnow::combinator::alt((
+                grammar::phrase(&["at", "end", "of", "combat"]),
+                grammar::phrase(&["at", "the", "end", "of", "combat"]),
+            ))
+        },
+    ) else {
         return Ok(None);
-    }
+    };
 
-    let timing_words = crate::cards::builders::parser::token_word_refs(&tokens[at_idx..]);
-    let matches_end_of_combat = timing_words.as_slice() == ["at", "end", "of", "combat"]
-        || timing_words.as_slice() == ["at", "the", "end", "of", "combat"];
-    if !matches_end_of_combat {
-        return Ok(None);
-    }
-
-    let object_tokens = trim_commas(&tokens[1..at_idx]);
+    let object_tokens = trim_commas(object_tokens);
     if object_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing sacrifice object in end-of-combat clause (clause: '{}')",
@@ -928,37 +937,34 @@ pub(crate) fn parse_sentence_for_each_counter_removed(
 pub(crate) fn parse_sentence_for_each_counter_kind_put_or_remove(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
-    if !slice_starts_with(
-        &clause_words,
+    use super::super::grammar::primitives as grammar;
+
+    // "for each kind of counter on <target>, put another counter of that kind on it or remove one from it"
+    let Some(after_prefix) = grammar::strip_lexed_prefix_phrase(
+        tokens,
         &["for", "each", "kind", "of", "counter", "on"],
-    ) {
-        return Ok(None);
-    }
-    let Some(comma_idx) = find_index(tokens, |token| token.is_comma()) else {
+    ) else {
         return Ok(None);
     };
-    if comma_idx <= 6 || comma_idx + 1 >= tokens.len() {
+    let Some((target_tokens, tail_tokens)) =
+        grammar::split_lexed_once_on_delimiter(after_prefix, super::super::lexer::TokenKind::Comma)
+    else {
         return Ok(None);
-    }
+    };
 
-    let target_tokens = trim_commas(&tokens[6..comma_idx]);
+    let target_tokens = trim_commas(target_tokens);
     if target_tokens.is_empty() {
         return Ok(None);
     }
     let target = parse_target_phrase(&target_tokens)?;
 
-    let tail_tokens = trim_commas(&tokens[comma_idx + 1..]);
-    let tail_words = crate::cards::builders::parser::token_word_refs(&tail_tokens);
-    if !slice_starts_with(
-        &tail_words,
+    if !grammar::contains_phrase(
+        tail_tokens,
         &[
-            "put", "another", "counter", "of", "that", "kind", "on", "it", "or", "remove",
+            "put", "another", "counter", "of", "that", "kind", "on", "it", "or", "remove", "one",
+            "from",
         ],
     ) {
-        return Ok(None);
-    }
-    if tail_words.len() < 12 || tail_words[10] != "one" || tail_words[11] != "from" {
         return Ok(None);
     }
 
@@ -1168,8 +1174,7 @@ pub(crate) fn parse_sentence_put_counter_sequence(
             return Ok(None);
         }
 
-        let clause_words = crate::cards::builders::parser::token_word_refs(&clause);
-        if !slice_contains(&clause_words, &"counter") && !slice_contains(&clause_words, &"counters")
+        if !grammar::contains_word(&clause, "counter") && !grammar::contains_word(&clause, "counters")
         {
             return Ok(None);
         }
@@ -1200,51 +1205,43 @@ pub(crate) fn is_pump_like_effect(effect: &EffectAst) -> bool {
 pub(crate) fn parse_gets_then_fights_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let mut body_tokens = tokens;
-    if body_tokens
-        .first()
-        .is_some_and(|token| token.is_word("then"))
-    {
-        body_tokens = &body_tokens[1..];
-    }
+    use super::super::grammar::primitives as grammar;
+
+    let body_tokens = grammar::strip_lexed_prefix_phrase(tokens, &["then"]).unwrap_or(tokens);
     if body_tokens.is_empty() {
         return Ok(None);
     }
 
-    let Some(fight_idx) = find_index(&body_tokens, |token| {
-        token.is_word("fight") || token.is_word("fights")
-    }) else {
+    // Split on "fight"/"fights"
+    let fight_split = grammar::split_lexed_once_on_separator(body_tokens, || grammar::kw("fight").void())
+        .or_else(|| grammar::split_lexed_once_on_separator(body_tokens, || grammar::kw("fights").void()));
+    let Some((left_slice, right_slice)) = fight_split else {
         return Ok(None);
     };
-    if fight_idx == 0 || fight_idx + 1 >= body_tokens.len() {
-        return Ok(None);
-    }
 
-    let mut left_tokens = trim_commas(&body_tokens[..fight_idx]).to_vec();
+    let mut left_tokens = trim_commas(left_slice).to_vec();
     while left_tokens.last().is_some_and(|token| token.is_word("and")) {
         left_tokens.pop();
     }
     let left_tokens = trim_commas(&left_tokens);
-    let right_tokens = trim_commas(&body_tokens[fight_idx + 1..]);
+    let right_tokens = trim_commas(right_slice);
     if left_tokens.is_empty() || right_tokens.is_empty() {
         return Ok(None);
     }
 
-    let Some(get_idx) = find_index(&left_tokens, |token| {
-        token.is_word("get") || token.is_word("gets")
-    }) else {
+    // Split left side on "get"/"gets" to extract subject
+    let get_split = grammar::split_lexed_once_on_separator(&left_tokens, || grammar::kw("get").void())
+        .or_else(|| grammar::split_lexed_once_on_separator(&left_tokens, || grammar::kw("gets").void()));
+    let Some((subject_slice, _modifier_slice)) = get_split else {
         return Ok(None);
     };
-    if get_idx == 0 {
-        return Ok(None);
-    }
 
     let pump_effect = parse_effect_clause(&left_tokens)?;
     if !is_pump_like_effect(&pump_effect) {
         return Ok(None);
     }
 
-    let subject_tokens = trim_commas(&left_tokens[..get_idx]);
+    let subject_tokens = trim_commas(subject_slice);
     if subject_tokens.is_empty() {
         return Ok(None);
     }
@@ -1316,10 +1313,7 @@ pub(crate) fn parse_return_with_counters_on_it_sentence(
     if destination_tokens.is_empty() {
         return Ok(None);
     }
-    if !slice_contains(
-        &crate::cards::builders::parser::token_word_refs(&destination_tokens),
-        &"battlefield",
-    ) {
+    if !grammar::contains_word(&destination_tokens, "battlefield") {
         return Ok(None);
     }
 
@@ -1459,10 +1453,7 @@ pub(crate) fn parse_put_onto_battlefield_with_counters_on_it_sentence(
     if destination_tokens.is_empty() {
         return Ok(None);
     }
-    if !slice_contains(
-        &crate::cards::builders::parser::token_word_refs(&destination_tokens),
-        &"battlefield",
-    ) {
+    if !grammar::contains_word(&destination_tokens, "battlefield") {
         return Ok(None);
     }
 
@@ -1515,8 +1506,7 @@ pub(crate) fn parse_put_onto_battlefield_with_counters_on_it_sentence(
     }
 
     let descriptor_tokens = trim_commas(&counter_clause_tokens[..on_idx]);
-    let descriptor_words = crate::cards::builders::parser::token_word_refs(&descriptor_tokens);
-    if descriptor_tokens.is_empty() || !slice_contains(&descriptor_words, &"counter") {
+    if descriptor_tokens.is_empty() || !grammar::contains_word(&descriptor_tokens, "counter") {
         return Ok(None);
     }
 
@@ -1668,18 +1658,20 @@ pub(crate) fn parse_sentence_draw_then_connive(
 pub(crate) fn parse_if_enters_with_additional_counter_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if !tokens.first().is_some_and(|token| token.is_word("if")) {
-        return Ok(None);
-    }
+    use super::super::grammar::primitives as grammar;
+    use super::super::lexer::TokenKind;
 
-    let Some(comma_idx) = find_index(tokens, |token| token.is_comma()) else {
+    // "if <predicate>, it enters with <counter descriptor> on it"
+    let Some(after_if) = grammar::strip_lexed_prefix_phrase(tokens, &["if"]) else {
         return Ok(None);
     };
-    if comma_idx <= 1 || comma_idx + 1 >= tokens.len() {
+    let Some((predicate_slice, followup_slice)) =
+        grammar::split_lexed_once_on_delimiter(after_if, TokenKind::Comma)
+    else {
         return Ok(None);
-    }
+    };
 
-    let predicate_tokens = trim_commas(&tokens[1..comma_idx]);
+    let predicate_tokens = trim_commas(predicate_slice);
     let predicate_words: Vec<&str> =
         crate::cards::builders::parser::token_word_refs(&predicate_tokens)
             .into_iter()
@@ -1692,20 +1684,14 @@ pub(crate) fn parse_if_enters_with_additional_counter_sentence(
         return Ok(None);
     }
 
-    let followup_tokens = trim_commas(&tokens[comma_idx + 1..]);
-    let followup_words = crate::cards::builders::parser::token_word_refs(&followup_tokens);
-    if !slice_starts_with(&followup_words, &["it", "enters", "with"]) {
-        return Ok(None);
-    }
-
-    let Some(with_idx) = find_token_word(&followup_tokens, "with") else {
+    let followup_tokens = trim_commas(followup_slice);
+    let Some(counter_clause_slice) =
+        grammar::strip_lexed_prefix_phrase(&followup_tokens, &["it", "enters", "with"])
+    else {
         return Ok(None);
     };
-    if with_idx + 1 >= followup_tokens.len() {
-        return Ok(None);
-    }
 
-    let counter_clause_tokens = trim_commas(&followup_tokens[with_idx + 1..]);
+    let counter_clause_tokens = trim_commas(counter_clause_slice);
     let Some(on_idx) = rfind_token_word(&counter_clause_tokens, "on") else {
         return Ok(None);
     };
@@ -1720,8 +1706,9 @@ pub(crate) fn parse_if_enters_with_additional_counter_sentence(
     }
 
     let descriptor_tokens = trim_commas(&counter_clause_tokens[..on_idx]);
-    let descriptor_words = crate::cards::builders::parser::token_word_refs(&descriptor_tokens);
-    if descriptor_tokens.is_empty() || !slice_contains(&descriptor_words, &"additional") {
+    if descriptor_tokens.is_empty()
+        || !grammar::contains_word(&descriptor_tokens, "additional")
+    {
         return Ok(None);
     }
 
@@ -1749,12 +1736,12 @@ pub(crate) fn parse_each_player_return_with_additional_counter_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
-    let inner_start_word_idx = if slice_starts_with(&clause_words, &["for", "each", "player"])
-        || slice_starts_with(&clause_words, &["for", "each", "players"])
+    let inner_start_word_idx = if grammar::words_match_prefix(tokens, &["for", "each", "player"]).is_some()
+        || grammar::words_match_prefix(tokens, &["for", "each", "players"]).is_some()
     {
         3
-    } else if slice_starts_with(&clause_words, &["each", "player"])
-        || slice_starts_with(&clause_words, &["each", "players"])
+    } else if grammar::words_match_prefix(tokens, &["each", "player"]).is_some()
+        || grammar::words_match_prefix(tokens, &["each", "players"]).is_some()
     {
         2
     } else {
@@ -1803,8 +1790,7 @@ pub(crate) fn parse_each_player_return_with_additional_counter_sentence(
     }
 
     let descriptor_tokens = trim_commas(&counter_clause_tokens[..on_idx]);
-    let descriptor_words = crate::cards::builders::parser::token_word_refs(&descriptor_tokens);
-    if descriptor_tokens.is_empty() || !slice_contains(&descriptor_words, &"additional") {
+    if descriptor_tokens.is_empty() || !grammar::contains_word(&descriptor_tokens, "additional") {
         return Ok(None);
     }
 
@@ -1873,10 +1859,9 @@ pub(crate) fn parse_sentence_each_player_reveals_top_count_put_permanents_onto_b
     };
 
     let put_tokens = trim_commas(&segments[1]);
-    let put_words = crate::cards::builders::parser::token_word_refs(&put_tokens);
-    if !slice_starts_with(&put_words, &["puts", "all", "permanent", "cards"])
-        || !contains_word_window(&put_words, &["revealed", "this", "way"])
-        || !contains_word_window(&put_words, &["onto", "the", "battlefield"])
+    if grammar::words_match_prefix(&put_tokens, &["puts", "all", "permanent", "cards"]).is_none()
+        || grammar::words_find_phrase(&put_tokens, &["revealed", "this", "way"]).is_none()
+        || grammar::words_find_phrase(&put_tokens, &["onto", "the", "battlefield"]).is_none()
     {
         return Ok(None);
     }
@@ -1948,7 +1933,7 @@ pub(crate) fn parse_return_then_do_same_for_subtypes_sentence(
     }
 
     let tail_words = crate::cards::builders::parser::token_word_refs(&tail_tokens);
-    if !slice_starts_with(&tail_words, &["do", "the", "same", "for"]) {
+    if grammar::words_match_prefix(&tail_tokens, &["do", "the", "same", "for"]).is_none() {
         return Ok(None);
     }
     let subtype_words = &tail_words[4..];
@@ -1994,18 +1979,18 @@ pub(crate) fn parse_sentence_return_then_do_same_for_subtypes(
 pub(crate) fn parse_sacrifice_any_number_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let (head_tokens, tail_tokens) =
-        if let Some(then_idx) = find_index(tokens, |token| token.is_word("then")) {
-            if then_idx == 0 {
-                return Ok(None);
-            }
-            (
-                trim_commas(&tokens[..then_idx]),
-                Some(trim_commas(&tokens[then_idx + 1..])),
-            )
-        } else {
-            (tokens.to_vec(), None)
-        };
+    use super::super::grammar::primitives as grammar;
+
+    let (head_tokens, tail_tokens) = if let Some((head, tail)) =
+        grammar::split_lexed_once_on_separator(tokens, || grammar::kw("then").void())
+    {
+        if head.is_empty() {
+            return Ok(None);
+        }
+        (trim_commas(head), Some(trim_commas(tail)))
+    } else {
+        (tokens.to_vec(), None)
+    };
 
     if !head_tokens
         .first()
@@ -2142,19 +2127,20 @@ pub(crate) fn parse_sentence_sacrifice_one_or_more(
 pub(crate) fn parse_sentence_keyword_then_chain(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(then_idx) = find_index(tokens, |token| token.is_word("then")) else {
+    use super::super::grammar::primitives as grammar;
+
+    let Some((head_slice, tail_slice)) =
+        grammar::split_lexed_once_on_separator(tokens, || grammar::kw("then").void())
+    else {
         return Ok(None);
     };
-    if then_idx == 0 || then_idx + 1 >= tokens.len() {
-        return Ok(None);
-    }
 
-    let head_tokens = trim_commas(&tokens[..then_idx]);
+    let head_tokens = trim_commas(head_slice);
     let Some(head_effect) = parse_keyword_mechanic_clause(&head_tokens)? else {
         return Ok(None);
     };
 
-    let tail_tokens = trim_commas(&tokens[then_idx + 1..]);
+    let tail_tokens = trim_commas(tail_slice);
     if tail_tokens.is_empty() {
         return Ok(Some(vec![head_effect]));
     }
@@ -2203,25 +2189,23 @@ pub(crate) fn parse_sentence_chain_then_keyword(
 pub(crate) fn parse_sentence_return_then_create(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let split = find_comma_then_idx(tokens)
-        .map(|idx| (idx, idx + 2))
-        .or_else(|| {
-            find_token_word(tokens, "then")
-                .and_then(|idx| (idx > 0 && idx + 1 < tokens.len()).then_some((idx, idx + 1)))
-        });
-    let Some((head_end, tail_start)) = split else {
+    use super::super::grammar::primitives as grammar;
+
+    let split = split_lexed_once_on_comma_then(tokens)
+        .or_else(|| grammar::split_lexed_once_on_separator(tokens, || grammar::kw("then").void()));
+    let Some((head_slice, tail_slice)) = split else {
         return Ok(None);
     };
 
-    let head_tokens = trim_commas(&tokens[..head_end]);
-    let tail_tokens = trim_commas(&tokens[tail_start..]);
+    let head_tokens = trim_commas(head_slice);
+    let tail_tokens = trim_commas(tail_slice);
     if head_tokens.is_empty() || tail_tokens.is_empty() {
         return Ok(None);
     }
 
-    let head_words = crate::cards::builders::parser::token_word_refs(&head_tokens);
-    let tail_words = crate::cards::builders::parser::token_word_refs(&tail_tokens);
-    if head_words.first() != Some(&"return") || tail_words.first() != Some(&"create") {
+    if !head_tokens.first().is_some_and(|t| t.is_word("return"))
+        || !tail_tokens.first().is_some_and(|t| t.is_word("create"))
+    {
         return Ok(None);
     }
 
@@ -2242,27 +2226,28 @@ pub(crate) fn parse_sentence_return_then_create(
 pub(crate) fn parse_sentence_exile_then_may_put_from_exile(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let split = find_comma_then_idx(tokens)
-        .map(|idx| (idx, idx + 2))
-        .or_else(|| {
-            find_token_word(tokens, "then")
-                .and_then(|idx| (idx > 0 && idx + 1 < tokens.len()).then_some((idx, idx + 1)))
-        });
-    let Some((head_end, tail_start)) = split else {
+    use super::super::grammar::primitives as grammar;
+
+    let split = split_lexed_once_on_comma_then(tokens)
+        .or_else(|| grammar::split_lexed_once_on_separator(tokens, || grammar::kw("then").void()));
+    let Some((head_slice, tail_slice)) = split else {
         return Ok(None);
     };
 
-    let head_tokens = trim_commas(&tokens[..head_end]);
-    let tail_tokens = trim_commas(&tokens[tail_start..]);
+    let head_tokens = trim_commas(head_slice);
+    let tail_tokens = trim_commas(tail_slice);
     if head_tokens.is_empty() || tail_tokens.is_empty() {
         return Ok(None);
     }
 
-    let tail_words = crate::cards::builders::parser::token_word_refs(&tail_tokens);
-    if !slice_starts_with(&tail_words, &["you", "may", "put", "any", "number", "of"])
-        || !slice_contains(&tail_words, &"from")
-        || !slice_contains(&tail_words, &"exile")
-        || !slice_contains(&tail_words, &"battlefield")
+    if !grammar::strip_lexed_prefix_phrase(
+        &tail_tokens,
+        &["you", "may", "put", "any", "number", "of"],
+    )
+    .is_some()
+        || !grammar::contains_word(&tail_tokens, "from")
+        || !grammar::contains_word(&tail_tokens, "exile")
+        || !grammar::contains_word(&tail_tokens, "battlefield")
     {
         return Ok(None);
     }
@@ -2283,18 +2268,19 @@ pub(crate) fn parse_sentence_exile_then_may_put_from_exile(
 pub(crate) fn parse_exile_source_with_counters_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if !tokens.first().is_some_and(|token| token.is_word("exile")) {
-        return Ok(None);
-    }
+    use super::super::grammar::primitives as grammar;
 
-    let Some(with_idx) = find_index(tokens, |token| token.is_word("with")) else {
+    // "exile <source> with <counter descriptor> on it/them"
+    let Some(after_exile) = grammar::strip_lexed_prefix_phrase(tokens, &["exile"]) else {
         return Ok(None);
     };
-    if with_idx <= 1 || with_idx + 1 >= tokens.len() {
+    let Some((source_name_slice, counter_clause_slice)) =
+        grammar::split_lexed_once_on_separator(after_exile, || grammar::kw("with").void())
+    else {
         return Ok(None);
-    }
+    };
 
-    let source_name_tokens = trim_commas(&tokens[1..with_idx]);
+    let source_name_tokens = trim_commas(source_name_slice);
     if source_name_tokens.is_empty() {
         return Ok(None);
     }
@@ -2303,7 +2289,7 @@ pub(crate) fn parse_exile_source_with_counters_sentence(
         return Ok(None);
     }
 
-    let counter_clause_tokens = trim_commas(&tokens[with_idx + 1..]);
+    let counter_clause_tokens = trim_commas(counter_clause_slice);
     let Some(on_idx) = rfind_token_word(&counter_clause_tokens, "on") else {
         return Ok(None);
     };
@@ -2487,8 +2473,10 @@ pub(crate) fn parse_destroy_then_land_controller_graveyard_count_damage_sentence
 pub(crate) fn parse_sentence_destroy_all_attached_to_target(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let sentence_words = crate::cards::builders::parser::token_word_refs(tokens);
-    if sentence_words.first().copied() != Some("destroy") {
+    use super::super::grammar::primitives as grammar;
+
+    // "destroy all/each <filter> attached to <target>"
+    if !tokens.first().is_some_and(|token| token.is_word("destroy")) {
         return Ok(None);
     }
     if !tokens
@@ -2497,20 +2485,15 @@ pub(crate) fn parse_sentence_destroy_all_attached_to_target(
     {
         return Ok(None);
     }
-    let Some(attached_idx) = find_index(tokens, |token| token.is_word("attached")) else {
+
+    let Some((filter_slice, target_slice)) = grammar::split_lexed_once_on_separator(
+        &tokens[2..],
+        || grammar::phrase(&["attached", "to"]).void(),
+    ) else {
         return Ok(None);
     };
-    if !tokens
-        .get(attached_idx + 1)
-        .is_some_and(|token| token.is_word("to"))
-    {
-        return Ok(None);
-    }
-    if attached_idx <= 2 || attached_idx + 2 >= tokens.len() {
-        return Ok(None);
-    }
 
-    let mut filter_tokens = trim_commas(&tokens[2..attached_idx]).to_vec();
+    let mut filter_tokens = trim_commas(filter_slice).to_vec();
     while filter_tokens
         .last()
         .and_then(OwnedLexToken::as_word)
@@ -2518,21 +2501,20 @@ pub(crate) fn parse_sentence_destroy_all_attached_to_target(
     {
         filter_tokens.pop();
     }
-    let target_tokens = trim_commas(&tokens[attached_idx + 2..]);
-    let target_words = crate::cards::builders::parser::token_word_refs(&target_tokens);
-    let has_timing_tail = target_words.iter().any(|word| {
-        matches!(
-            *word,
-            "at" | "beginning" | "end" | "combat" | "turn" | "step" | "until"
-        )
+    let target_tokens = trim_commas(target_slice);
+    let has_timing_tail = target_tokens.iter().any(|token| {
+        token
+            .as_word()
+            .is_some_and(|w| matches!(w, "at" | "beginning" | "end" | "combat" | "turn" | "step" | "until"))
     });
-    let supported_target = slice_starts_with(&target_words, &["target"])
-        || target_words == ["it"]
-        || slice_starts_with(&target_words, &["that", "creature"])
-        || slice_starts_with(&target_words, &["that", "permanent"])
-        || slice_starts_with(&target_words, &["that", "land"])
-        || slice_starts_with(&target_words, &["that", "artifact"])
-        || slice_starts_with(&target_words, &["that", "enchantment"]);
+    let supported_target = target_tokens.first().is_some_and(|t| t.is_word("target"))
+        || grammar::contains_word(&target_tokens, "it")
+            && target_tokens.len() == 1
+        || grammar::strip_lexed_prefix_phrase(&target_tokens, &["that", "creature"]).is_some()
+        || grammar::strip_lexed_prefix_phrase(&target_tokens, &["that", "permanent"]).is_some()
+        || grammar::strip_lexed_prefix_phrase(&target_tokens, &["that", "land"]).is_some()
+        || grammar::strip_lexed_prefix_phrase(&target_tokens, &["that", "artifact"]).is_some()
+        || grammar::strip_lexed_prefix_phrase(&target_tokens, &["that", "enchantment"]).is_some();
     if filter_tokens.is_empty() || target_tokens.is_empty() || !supported_target || has_timing_tail
     {
         return Ok(None);
@@ -2652,8 +2634,9 @@ pub(crate) fn find_color_choice_phrase(tokens: &[OwnedLexToken]) -> Option<(usiz
 pub(crate) fn parse_sentence_destroy_creature_type_of_choice(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
-    if !slice_starts_with(&clause_words, &["destroy", "all", "creatures"]) {
+    use super::super::grammar::primitives as grammar;
+
+    if grammar::strip_lexed_prefix_phrase(tokens, &["destroy", "all", "creatures"]).is_none() {
         return Ok(None);
     }
     if find_creature_type_choice_phrase(tokens).is_none() {
@@ -2804,8 +2787,7 @@ pub(crate) fn parse_sentence_return_targets_of_creature_type_of_choice(
         return Ok(None);
     }
 
-    let destination_words = crate::cards::builders::parser::token_word_refs(&tokens[to_idx + 1..]);
-    if !slice_contains(&destination_words, &"hand") && !slice_contains(&destination_words, &"hands")
+    if !grammar::contains_word(&tokens[to_idx + 1..], "hand") && !grammar::contains_word(&tokens[to_idx + 1..], "hands")
     {
         return Ok(None);
     }
@@ -2854,15 +2836,15 @@ pub(crate) fn parse_sentence_choose_all_from_battlefield_and_graveyard_to_hand(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
-    let starts_choose_all = slice_starts_with(&clause_words, &["choose", "all"]);
-    let starts_put_all = slice_starts_with(&clause_words, &["put", "all"]);
+    let starts_choose_all = grammar::words_match_prefix(tokens, &["choose", "all"]).is_some();
+    let starts_put_all = grammar::words_match_prefix(tokens, &["put", "all"]).is_some();
     if !starts_choose_all && !starts_put_all {
         return Ok(None);
     }
-    if !((slice_contains(&clause_words, &"battlefield")
-        || slice_contains(&clause_words, &"command"))
-        && slice_contains(&clause_words, &"graveyard")
-        && slice_contains(&clause_words, &"hand"))
+    if !((grammar::contains_word(tokens, "battlefield")
+        || grammar::contains_word(tokens, "command"))
+        && grammar::contains_word(tokens, "graveyard")
+        && grammar::contains_word(tokens, "hand"))
     {
         return Ok(None);
     }
@@ -2923,14 +2905,21 @@ pub(crate) fn parse_sentence_choose_all_from_battlefield_and_graveyard_to_hand(
         let Some(put_token_idx) = token_index_for_word_index(tokens, put_idx) else {
             return Ok(None);
         };
-        let tail_words = crate::cards::builders::parser::token_word_refs(&tokens[put_token_idx..]);
-        if !slice_starts_with(&tail_words, &["put", "them", "into", "your", "hand"])
-            && !slice_starts_with(&tail_words, &["put", "them", "in", "your", "hand"])
+        if grammar::words_match_prefix(
+            &tokens[put_token_idx..],
+            &["put", "them", "into", "your", "hand"],
+        )
+        .is_none()
+            && grammar::words_match_prefix(
+                &tokens[put_token_idx..],
+                &["put", "them", "in", "your", "hand"],
+            )
+            .is_none()
         {
             return Ok(None);
         }
-    } else if !slice_ends_with(&clause_words, &["into", "your", "hand"])
-        && !slice_ends_with(&clause_words, &["in", "your", "hand"])
+    } else if grammar::words_match_suffix(tokens, &["into", "your", "hand"]).is_none()
+        && grammar::words_match_suffix(tokens, &["in", "your", "hand"]).is_none()
     {
         return Ok(None);
     }
@@ -2960,15 +2949,14 @@ pub(crate) fn parse_sentence_choose_all_from_battlefield_and_graveyard_to_hand(
 }
 
 pub(crate) fn return_segment_mentions_zone(tokens: &[OwnedLexToken]) -> bool {
-    let segment_words = crate::cards::builders::parser::token_word_refs(tokens);
-    slice_contains(&segment_words, &"graveyard")
-        || slice_contains(&segment_words, &"graveyards")
-        || slice_contains(&segment_words, &"battlefield")
-        || slice_contains(&segment_words, &"hand")
-        || slice_contains(&segment_words, &"hands")
-        || slice_contains(&segment_words, &"library")
-        || slice_contains(&segment_words, &"libraries")
-        || slice_contains(&segment_words, &"exile")
+    grammar::contains_word(tokens, "graveyard")
+        || grammar::contains_word(tokens, "graveyards")
+        || grammar::contains_word(tokens, "battlefield")
+        || grammar::contains_word(tokens, "hand")
+        || grammar::contains_word(tokens, "hands")
+        || grammar::contains_word(tokens, "library")
+        || grammar::contains_word(tokens, "libraries")
+        || grammar::contains_word(tokens, "exile")
 }
 
 pub(crate) fn parse_sentence_return_multiple_targets(
@@ -2984,11 +2972,11 @@ pub(crate) fn parse_sentence_return_multiple_targets(
         return Ok(None);
     }
 
-    let destination_words = crate::cards::builders::parser::token_word_refs(&tokens[to_idx + 1..]);
+    let dest_tokens = &tokens[to_idx + 1..];
     let is_hand =
-        slice_contains(&destination_words, &"hand") || slice_contains(&destination_words, &"hands");
-    let is_battlefield = slice_contains(&destination_words, &"battlefield");
-    let tapped = slice_contains(&destination_words, &"tapped");
+        grammar::contains_word(dest_tokens, "hand") || grammar::contains_word(dest_tokens, "hands");
+    let is_battlefield = grammar::contains_word(dest_tokens, "battlefield");
+    let tapped = grammar::contains_word(dest_tokens, "tapped");
     if !is_hand && !is_battlefield {
         return Ok(None);
     }
@@ -3022,7 +3010,7 @@ pub(crate) fn parse_sentence_return_multiple_targets(
                             | "each"
                     )
                 });
-                let mentions_target = slice_contains(&trimmed_words, &"target");
+                let mentions_target = grammar::contains_word(&trimmed, "target");
                 let starts_like_zone_suffix = trimmed_words
                     .first()
                     .is_some_and(|word| matches!(*word, "from" | "to" | "in" | "on" | "under"));
@@ -3073,7 +3061,7 @@ pub(crate) fn parse_sentence_return_multiple_targets(
             );
             if !has_explicit_quantifier
                 && !starts_like_target_reference
-                && !slice_contains(&segment_words, &"target")
+                && !grammar::contains_word(&segment, "target")
             {
                 segment.insert(
                     0,
@@ -3120,21 +3108,22 @@ pub(crate) fn parse_sentence_return_multiple_targets(
 pub(crate) fn parse_sentence_for_each_of_target_objects(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
-    if !(slice_starts_with(&clause_words, &["for", "each"])
-        || clause_words.first() == Some(&"each"))
+    use super::super::grammar::primitives as grammar;
+
+    if grammar::strip_lexed_prefix_phrase(tokens, &["for", "each"]).is_none()
+        && !tokens.first().is_some_and(|t| t.is_word("each"))
     {
         return Ok(None);
     }
 
-    let Some(comma_idx) = find_index(tokens, |token| token.is_comma()) else {
+    let Some((subject_slice, effect_slice)) = grammar::split_lexed_once_on_delimiter(
+        tokens,
+        super::super::lexer::TokenKind::Comma,
+    ) else {
         return Ok(None);
     };
-    if comma_idx == 0 || comma_idx + 1 >= tokens.len() {
-        return Ok(None);
-    }
 
-    let subject_tokens = trim_commas(&tokens[..comma_idx]);
+    let subject_tokens = trim_commas(subject_slice);
     let Some((mut filter, count)) = parse_for_each_targeted_object_subject(&subject_tokens)? else {
         return Ok(None);
     };
@@ -3147,7 +3136,8 @@ pub(crate) fn parse_sentence_for_each_of_target_objects(
         filter.controller = Some(PlayerFilter::Any);
     }
 
-    let effect_tokens = trim_commas(&tokens[comma_idx + 1..]);
+    let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
+    let effect_tokens = trim_commas(effect_slice);
     if effect_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing effect after for-each target subject (clause: '{}')",
@@ -3241,16 +3231,16 @@ pub(crate) fn parse_distribute_counters_sentence(
 pub(crate) fn parse_sentence_distribute_counters(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let mut head_tokens = tokens.to_vec();
-    let mut tail_tokens: Vec<OwnedLexToken> = Vec::new();
+    use super::super::grammar::primitives as grammar;
 
-    if let Some(comma_then_idx) = find_comma_then_idx(tokens) {
-        head_tokens = tokens[..comma_then_idx].to_vec();
-        tail_tokens = trim_commas(&tokens[comma_then_idx + 2..]);
-    } else if let Some(then_idx) = find_index(tokens, |token| token.is_word("then")) {
-        head_tokens = tokens[..then_idx].to_vec();
-        tail_tokens = trim_commas(&tokens[then_idx + 1..]);
-    }
+    let (head_tokens, tail_tokens) = if let Some((head, tail)) =
+        split_lexed_once_on_comma_then(tokens)
+            .or_else(|| grammar::split_lexed_once_on_separator(tokens, || grammar::kw("then").void()))
+    {
+        (head.to_vec(), trim_commas(tail))
+    } else {
+        (tokens.to_vec(), Vec::new())
+    };
 
     let Some(primary) = parse_distribute_counters_sentence(&head_tokens)? else {
         return Ok(None);
@@ -3306,15 +3296,16 @@ pub(crate) fn parse_sentence_transform_with_followup(
         return Ok(None);
     }
 
-    let mut head_tokens = tokens.to_vec();
-    let mut tail_tokens: Vec<OwnedLexToken> = Vec::new();
-    if let Some(comma_then_idx) = find_comma_then_idx(tokens) {
-        head_tokens = tokens[..comma_then_idx].to_vec();
-        tail_tokens = trim_commas(&tokens[comma_then_idx + 2..]).to_vec();
-    } else if let Some(then_idx) = find_index(tokens, |token| token.is_word("then")) {
-        head_tokens = tokens[..then_idx].to_vec();
-        tail_tokens = trim_commas(&tokens[then_idx + 1..]).to_vec();
-    }
+    let (head_tokens, tail_tokens) = if let Some((head, tail)) =
+        split_lexed_once_on_comma_then(tokens).or_else(|| {
+            super::super::grammar::primitives::split_lexed_once_on_separator(tokens, || {
+                super::super::grammar::primitives::kw("then").void()
+            })
+        }) {
+        (head.to_vec(), trim_commas(tail))
+    } else {
+        (tokens.to_vec(), Vec::new())
+    };
 
     let target_tokens = trim_commas(&head_tokens[1..]);
     let transform = if is_transform {
@@ -3472,31 +3463,27 @@ pub(crate) fn parse_sentence_for_each_player_doesnt(
 pub(crate) fn parse_sentence_each_opponent_loses_x_and_you_gain_x(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let sentence_words = crate::cards::builders::parser::token_word_refs(tokens);
-    if !(slice_starts_with(&sentence_words, &["each", "opponent"])
-        || slice_starts_with(&sentence_words, &["each", "opponents"]))
+    use super::super::grammar::primitives as grammar;
+
+    if grammar::strip_lexed_prefix_phrase(tokens, &["each", "opponent"]).is_none()
+        && grammar::strip_lexed_prefix_phrase(tokens, &["each", "opponents"]).is_none()
     {
         return Ok(None);
     }
 
+    let sentence_words = crate::cards::builders::parser::token_word_refs(tokens);
     let has_lose_x = find_window_by(&sentence_words, 3, |window| {
         (window[0] == "lose" || window[0] == "loses") && window[1] == "x" && window[2] == "life"
     })
     .is_some();
-    let has_gain_x = contains_word_window(&sentence_words, &["you", "gain", "x", "life"]);
-    let Some(where_idx) = find_window_index(&sentence_words, &["where", "x", "is"]) else {
+    let has_gain_x = grammar::contains_phrase(tokens, &["you", "gain", "x", "life"]);
+    let Some(where_token_idx) = grammar::find_phrase_start(tokens, &["where", "x", "is"]) else {
         return Ok(None);
     };
     if !has_lose_x || !has_gain_x {
         return Ok(None);
     }
 
-    let where_token_idx = token_index_for_word_index(tokens, where_idx).ok_or_else(|| {
-        CardTextError::ParseError(format!(
-            "missing where-x clause in opponent life-drain clause (clause: '{}')",
-            sentence_words.join(" ")
-        ))
-    })?;
     let where_tokens = &tokens[where_token_idx..];
     let where_value = parse_where_x_value_clause(where_tokens).ok_or_else(|| {
         CardTextError::ParseError(format!(
@@ -3582,8 +3569,11 @@ pub(crate) fn parse_sentence_exile_up_to_one_each_target_type(
 pub(crate) fn parse_sentence_exile_multi_target(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
-    if clause_words.first() != Some(&"exile") || slice_contains(&clause_words, &"unless") {
+    use super::super::grammar::primitives as grammar;
+
+    if !tokens.first().is_some_and(|t| t.is_word("exile"))
+        || grammar::contains_word(tokens, "unless")
+    {
         return Ok(None);
     }
 
@@ -3592,10 +3582,10 @@ pub(crate) fn parse_sentence_exile_multi_target(
         if !token.is_word("and") || idx == 0 || idx + 1 >= tokens.len() {
             continue;
         }
-        let tail_words = crate::cards::builders::parser::token_word_refs(&tokens[idx + 1..]);
-        let starts_second_target = tail_words.first() == Some(&"target")
-            || (slice_starts_with(&tail_words, &["up", "to"])
-                && slice_contains(&tail_words, &"target"));
+        let tail = &tokens[idx + 1..];
+        let starts_second_target = tail.first().is_some_and(|t| t.is_word("target"))
+            || (grammar::strip_lexed_prefix_phrase(tail, &["up", "to"]).is_some()
+                && grammar::contains_word(tail, "target"));
         if starts_second_target {
             split_idx = Some(idx);
             break;
@@ -3613,13 +3603,12 @@ pub(crate) fn parse_sentence_exile_multi_target(
     }
 
     let first_words = crate::cards::builders::parser::token_word_refs(&first_tokens);
-    let second_words = crate::cards::builders::parser::token_word_refs(&second_tokens);
-    let first_is_explicit_target = first_words.first() == Some(&"target")
-        || (slice_starts_with(&first_words, &["up", "to"])
-            && slice_contains(&first_words, &"target"));
-    let second_is_explicit_target = second_words.first() == Some(&"target")
-        || (slice_starts_with(&second_words, &["up", "to"])
-            && slice_contains(&second_words, &"target"));
+    let first_is_explicit_target = first_tokens.first().is_some_and(|t| t.is_word("target"))
+        || (grammar::strip_lexed_prefix_phrase(&first_tokens, &["up", "to"]).is_some()
+            && grammar::contains_word(&first_tokens, "target"));
+    let second_is_explicit_target = second_tokens.first().is_some_and(|t| t.is_word("target"))
+        || (grammar::strip_lexed_prefix_phrase(&second_tokens, &["up", "to"]).is_some()
+            && grammar::contains_word(&second_tokens, "target"));
 
     let mut first_target = match parse_target_phrase(&first_tokens) {
         Ok(target) => target,
@@ -3733,17 +3722,18 @@ pub(crate) fn split_destroy_target_segments(tokens: &[OwnedLexToken]) -> Vec<Vec
 pub(crate) fn parse_sentence_destroy_multi_target(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
-    if clause_words.first() != Some(&"destroy") {
+    use super::super::grammar::primitives as grammar;
+
+    if !tokens.first().is_some_and(|t| t.is_word("destroy")) {
         return Ok(None);
     }
-    if clause_words
+    if tokens
         .get(1)
-        .is_some_and(|word| matches!(*word, "all" | "each"))
+        .is_some_and(|t| t.is_word("all") || t.is_word("each"))
     {
         return Ok(None);
     }
-    if slice_contains(&clause_words, &"unless") || slice_contains(&clause_words, &"if") {
+    if grammar::contains_word(tokens, "unless") || grammar::contains_word(tokens, "if") {
         return Ok(None);
     }
 
@@ -3790,8 +3780,8 @@ pub(crate) fn parse_sentence_destroy_multi_target(
             return Ok(None);
         }
         let is_explicit_target = segment_words.first() == Some(&"target")
-            || (slice_starts_with(&segment_words, &["up", "to"])
-                && slice_contains(&segment_words, &"target"));
+            || (grammar::words_match_prefix(&segment, &["up", "to"]).is_some()
+                && grammar::contains_word(&segment, "target"));
         if !is_explicit_target && !is_likely_named_or_source_reference_words(&segment_words) {
             return Ok(None);
         }
@@ -3830,33 +3820,28 @@ pub(crate) fn parse_sentence_reveal_selected_cards_in_your_hand(
         return Ok(None);
     }
 
-    let Some(in_idx) = find_index(tokens, |token| token.is_word("in")) else {
+    use super::super::grammar::primitives as grammar;
+
+    let in_your_hand = grammar::strip_lexed_suffix_phrase(tokens, &["in", "your", "hand"])
+        .or_else(|| grammar::strip_lexed_suffix_phrase(tokens, &["in", "your", "hands"]));
+    let Some(before_in) = in_your_hand else {
         return Ok(None);
     };
-    if in_idx == 0 || in_idx + 2 >= tokens.len() {
-        return Ok(None);
-    }
-    if !tokens
-        .get(in_idx + 1)
-        .is_some_and(|token| token.is_word("your"))
-        || !tokens
-            .get(in_idx + 2)
-            .is_some_and(|token| token.is_word("hand") || token.is_word("hands"))
-    {
+    if before_in.is_empty() {
         return Ok(None);
     }
 
-    let mut descriptor_tokens = trim_commas(&tokens[1..in_idx]);
+    let mut descriptor_tokens = trim_commas(&before_in[1..]);
     if descriptor_tokens.is_empty() {
         return Ok(None);
     }
 
     let mut count = ChoiceCount::exactly(1);
     let descriptor_words = crate::cards::builders::parser::token_word_refs(&descriptor_tokens);
-    if slice_starts_with(&descriptor_words, &["any", "number", "of"]) {
+    if grammar::words_match_prefix(&descriptor_tokens, &["any", "number", "of"]).is_some() {
         count = ChoiceCount::any_number();
         descriptor_tokens = trim_commas(&descriptor_tokens[3..]);
-    } else if slice_starts_with(&descriptor_words, &["up", "to"]) {
+    } else if grammar::words_match_prefix(&descriptor_tokens, &["up", "to"]).is_some() {
         if let Some((value, used)) = parse_number(&descriptor_tokens[2..]) {
             count = ChoiceCount::up_to(value as usize);
             descriptor_tokens = trim_commas(&descriptor_tokens[2 + used..]);
@@ -4013,14 +3998,15 @@ pub(crate) fn is_likely_named_or_source_reference_words(words: &[&str]) -> bool 
 pub(crate) fn parse_sentence_damage_unless_controller_has_source_deal_damage(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(unless_idx) = find_index(tokens, |token| token.is_word("unless")) else {
+    use super::super::grammar::primitives as grammar;
+
+    let Some((before_slice, after_unless_slice)) =
+        grammar::split_lexed_once_on_separator(tokens, || grammar::kw("unless").void())
+    else {
         return Ok(None);
     };
-    if unless_idx == 0 || unless_idx + 1 >= tokens.len() {
-        return Ok(None);
-    }
 
-    let before_tokens = trim_commas(&tokens[..unless_idx]);
+    let before_tokens = trim_commas(before_slice);
     if before_tokens.is_empty() {
         return Ok(None);
     }
@@ -4045,12 +4031,9 @@ pub(crate) fn parse_sentence_damage_unless_controller_has_source_deal_damage(
         return Ok(None);
     }
 
-    let after_unless = trim_commas(&tokens[unless_idx + 1..]);
-    let after_words = crate::cards::builders::parser::token_word_refs(&after_unless);
-    let has_controller_clause = slice_starts_with(&after_words, &["that"])
-        && after_words
-            .iter()
-            .any(|word| *word == "controller" || *word == "controllers");
+    let after_unless = trim_commas(after_unless_slice);
+    let has_controller_clause = grammar::words_match_prefix(&after_unless, &["that"]).is_some()
+        && (grammar::contains_word(&after_unless, "controller") || grammar::contains_word(&after_unless, "controllers"));
     if !has_controller_clause {
         return Ok(None);
     }
@@ -4113,12 +4096,16 @@ pub(crate) fn parse_sentence_damage_unless_controller_has_source_deal_damage(
 pub(crate) fn parse_sentence_damage_to_that_player_unless_enchanted_attacked(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(unless_idx) = find_index(tokens, |token| token.is_word("unless")) else {
+    use super::super::grammar::primitives as grammar;
+
+    let Some((before_slice, after_slice)) =
+        grammar::split_lexed_once_on_separator(tokens, || grammar::kw("unless").void())
+    else {
         return Ok(None);
     };
 
-    let before_tokens = trim_commas(&tokens[..unless_idx]);
-    let after_tokens = trim_commas(&tokens[unless_idx + 1..]);
+    let before_tokens = trim_commas(before_slice);
+    let after_tokens = trim_commas(after_slice);
     if before_tokens.is_empty() || after_tokens.is_empty() {
         return Ok(None);
     }
@@ -4131,20 +4118,18 @@ pub(crate) fn parse_sentence_damage_to_that_player_unless_enchanted_attacked(
         return Ok(None);
     }
 
-    let Some(deal_idx) = find_index(&before_tokens, |token| {
-        token.is_word("deal") || token.is_word("deals")
-    }) else {
+    let deal_split = grammar::split_lexed_once_on_separator(&before_tokens, || grammar::kw("deal").void())
+        .or_else(|| grammar::split_lexed_once_on_separator(&before_tokens, || grammar::kw("deals").void()));
+    let Some((subject_slice, damage_tokens)) = deal_split else {
         return Ok(None);
     };
 
     if !matches!(
-        crate::cards::builders::parser::token_word_refs(&before_tokens[..deal_idx]).as_slice(),
+        crate::cards::builders::parser::token_word_refs(subject_slice).as_slice(),
         ["this", "aura"] | ["this", "permanent"] | ["this", "enchantment"]
     ) {
         return Ok(None);
     }
-
-    let damage_tokens = &before_tokens[deal_idx + 1..];
     let Some((amount, used)) = parse_value(damage_tokens) else {
         return Ok(None);
     };
@@ -4224,20 +4209,20 @@ pub(crate) fn parse_sentence_unless_pays(
     // Ignore "unless ... pays" that appears inside quoted token rules text.
     // Example: create token with "{1}, Sacrifice this token: Counter ... unless ...".
     if before_words.first() == Some(&"create")
-        && slice_contains(&before_words, &"token")
-        && slice_contains(&before_words, &"sacrifice")
-        && slice_contains(&before_words, &"counter")
+        && grammar::contains_word(&tokens[..unless_idx], "token")
+        && grammar::contains_word(&tokens[..unless_idx], "sacrifice")
+        && grammar::contains_word(&tokens[..unless_idx], "counter")
     {
         return Ok(None);
     }
 
     // Handle "each opponent/player ... unless" by wrapping in ForEachOpponent/ForEachPlayer.
     // Structure: ForEachOpponent { [UnlessPays/UnlessAction { per-player effects }] }
-    let each_prefix = if slice_starts_with(&before_words, &["each", "opponent"])
-        || slice_starts_with(&before_words, &["each", "opponents"])
+    let each_prefix = if grammar::words_match_prefix(&tokens[..unless_idx], &["each", "opponent"]).is_some()
+        || grammar::words_match_prefix(&tokens[..unless_idx], &["each", "opponents"]).is_some()
     {
         Some("opponent")
-    } else if slice_starts_with(&before_words, &["each", "player"]) {
+    } else if grammar::words_match_prefix(&tokens[..unless_idx], &["each", "player"]).is_some() {
         Some("player")
     } else {
         None
@@ -4531,8 +4516,8 @@ pub(crate) fn parse_sentence_delayed_next_upkeep_unless_pays_lose_game(
         )
     };
     let upkeep_words = crate::cards::builders::parser::token_word_refs(&upkeep_tokens);
-    let pay_idx = if slice_starts_with(
-        &upkeep_words,
+    let pay_idx = if grammar::words_match_prefix(
+        &upkeep_tokens,
         &[
             "at",
             "the",
@@ -4543,10 +4528,10 @@ pub(crate) fn parse_sentence_delayed_next_upkeep_unless_pays_lose_game(
             "upkeep",
             "pay",
         ],
-    ) {
+    ).is_some() {
         7usize
-    } else if slice_starts_with(
-        &upkeep_words,
+    } else if grammar::words_match_prefix(
+        &upkeep_tokens,
         &[
             "at",
             "the",
@@ -4557,7 +4542,7 @@ pub(crate) fn parse_sentence_delayed_next_upkeep_unless_pays_lose_game(
             "upkeep",
             "pay",
         ],
-    ) {
+    ).is_some() {
         8usize
     } else {
         return Ok(None);
@@ -4980,17 +4965,18 @@ pub(crate) fn parse_sentence_fallback_mechanic_marker(
 
     let is_match = clause_words.as_slice() == ["its", "still", "a", "land"]
         || clause_words.as_slice() == ["it", "still", "a", "land"]
-        || slice_starts_with(&clause_words, &["you", "choose", "one", "of", "them"])
-        || slice_starts_with(
-            &clause_words,
+        || grammar::words_match_prefix(tokens, &["you", "choose", "one", "of", "them"]).is_some()
+        || grammar::words_match_prefix(
+            tokens,
             &[
                 "you", "may", "put", "a", "land", "card", "from", "among", "them", "into", "your",
                 "hand",
             ],
         )
-        || slice_starts_with(&clause_words, &["stand", "and", "fight"])
-        || slice_starts_with(
-            &clause_words,
+        .is_some()
+        || grammar::words_match_prefix(tokens, &["stand", "and", "fight"]).is_some()
+        || grammar::words_match_prefix(
+            tokens,
             &[
                 "chooses",
                 "any",
@@ -5001,8 +4987,9 @@ pub(crate) fn parse_sentence_fallback_mechanic_marker(
                 "control",
             ],
         )
-        || slice_starts_with(
-            &clause_words,
+        .is_some()
+        || grammar::words_match_prefix(
+            tokens,
             &[
                 "each",
                 "player",
@@ -5015,27 +5002,32 @@ pub(crate) fn parse_sentence_fallback_mechanic_marker(
                 "control",
             ],
         )
-        || slice_starts_with(
-            &clause_words,
+        .is_some()
+        || grammar::words_match_prefix(
+            tokens,
             &["an", "opponent", "chooses", "one", "of", "those", "piles"],
         )
-        || slice_starts_with(
-            &clause_words,
+        .is_some()
+        || grammar::words_match_prefix(
+            tokens,
             &["put", "that", "pile", "into", "your", "hand"],
         )
-        || slice_starts_with(
-            &clause_words,
+        .is_some()
+        || grammar::words_match_prefix(
+            tokens,
             &["cast", "that", "card", "for", "as", "long", "as"],
         )
-        || slice_starts_with(
-            &clause_words,
+        .is_some()
+        || grammar::words_match_prefix(
+            tokens,
             &[
                 "until", "end", "of", "turn", "this", "creature", "loses", "prevent", "all",
                 "damage",
             ],
         )
-        || slice_starts_with(
-            &clause_words,
+        .is_some()
+        || grammar::words_match_prefix(
+            tokens,
             &[
                 "until",
                 "end",
@@ -5054,40 +5046,47 @@ pub(crate) fn parse_sentence_fallback_mechanic_marker(
                 "toughness",
             ],
         )
-        || slice_starts_with(
-            &clause_words,
+        .is_some()
+        || grammar::words_match_prefix(
+            tokens,
             &["for", "each", "1", "damage", "prevented", "this", "way"],
         )
-        || slice_starts_with(
-            &clause_words,
+        .is_some()
+        || grammar::words_match_prefix(
+            tokens,
             &[
                 "for", "each", "card", "less", "than", "two", "a", "player", "draws", "this", "way",
             ],
         )
-        || slice_starts_with(
-            &clause_words,
+        .is_some()
+        || grammar::words_match_prefix(
+            tokens,
             &["this", "deals", "4", "damage", "if", "there", "are"],
         )
-        || slice_starts_with(
-            &clause_words,
+        .is_some()
+        || grammar::words_match_prefix(
+            tokens,
             &[
                 "this", "deals", "4", "damage", "instead", "if", "there", "are",
             ],
         )
-        || slice_starts_with(
-            &clause_words,
+        .is_some()
+        || grammar::words_match_prefix(
+            tokens,
             &[
                 "that", "spell", "deals", "damage", "to", "each", "opponent", "equal", "to",
             ],
         )
-        || slice_starts_with(
-            &clause_words,
+        .is_some()
+        || grammar::words_match_prefix(
+            tokens,
             &[
                 "the", "next", "spell", "you", "cast", "this", "turn", "costs",
             ],
         )
-        || slice_starts_with(
-            &clause_words,
+        .is_some()
+        || grammar::words_match_prefix(
+            tokens,
             &[
                 "there",
                 "is",
@@ -5100,8 +5099,9 @@ pub(crate) fn parse_sentence_fallback_mechanic_marker(
                 "phase",
             ],
         )
-        || slice_starts_with(
-            &clause_words,
+        .is_some()
+        || grammar::words_match_prefix(
+            tokens,
             &[
                 "that",
                 "creature",
@@ -5116,17 +5116,19 @@ pub(crate) fn parse_sentence_fallback_mechanic_marker(
                 "able",
             ],
         )
-        || slice_starts_with(
-            &clause_words,
+        .is_some()
+        || grammar::words_match_prefix(
+            tokens,
             &[
                 "all", "damage", "that", "would", "be", "dealt", "this", "turn", "to", "target",
                 "creature", "you", "control", "by", "a", "source", "of", "your", "choice", "is",
                 "dealt", "to", "another", "target", "creature", "instead",
             ],
         )
-        || (slice_starts_with(&clause_words, &["it", "doesnt", "untap", "during"])
-            && slice_contains(&clause_words, &"remains")
-            && slice_contains(&clause_words, &"tapped"));
+        .is_some()
+        || (grammar::words_match_prefix(tokens, &["it", "doesnt", "untap", "during"]).is_some()
+            && grammar::contains_word(tokens, "remains")
+            && grammar::contains_word(tokens, "tapped"));
     if !is_match {
         return Ok(None);
     }
@@ -5139,42 +5141,41 @@ pub(crate) fn parse_sentence_fallback_mechanic_marker(
 pub(crate) fn parse_sentence_implicit_become_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
-    let target = if slice_starts_with(&clause_words, &["its"])
-        || slice_starts_with(&clause_words, &["it", "is"])
-        || slice_starts_with(&clause_words, &["it", "s"])
-        || slice_starts_with(&clause_words, &["it's"])
-        || slice_starts_with(&clause_words, &["it’s"])
+    let target = if grammar::words_match_prefix(tokens, &["its"]).is_some()
+        || grammar::words_match_prefix(tokens, &["it", "is"]).is_some()
+        || grammar::words_match_prefix(tokens, &["it", "s"]).is_some()
+        || grammar::words_match_prefix(tokens, &["it\u{2019}s"]).is_some()
+        || grammar::words_match_prefix(tokens, &["it’s"]).is_some()
     {
         TargetAst::Tagged(TagKey::from(IT_TAG), None)
-    } else if slice_starts_with(&clause_words, &["each", "of", "them", "is"])
-        || slice_starts_with(&clause_words, &["they", "are"])
-        || slice_starts_with(&clause_words, &["they", "re"])
-        || slice_starts_with(&clause_words, &["theyre"])
-        || slice_starts_with(&clause_words, &["they're"])
-        || slice_starts_with(&clause_words, &["they’re"])
+    } else if grammar::words_match_prefix(tokens, &["each", "of", "them", "is"]).is_some()
+        || grammar::words_match_prefix(tokens, &["they", "are"]).is_some()
+        || grammar::words_match_prefix(tokens, &["they", "re"]).is_some()
+        || grammar::words_match_prefix(tokens, &["theyre"]).is_some()
+        || grammar::words_match_prefix(tokens, &["they\u{2019}re"]).is_some()
+        || grammar::words_match_prefix(tokens, &["they’re"]).is_some()
     {
         TargetAst::Tagged(TagKey::from(IT_TAG), None)
     } else {
         return Ok(None);
     };
-    let rest_word_idx = if slice_starts_with(&clause_words, &["its"]) {
+    let rest_word_idx = if grammar::words_match_prefix(tokens, &["its"]).is_some() {
         1usize
-    } else if slice_starts_with(&clause_words, &["it", "is"]) {
+    } else if grammar::words_match_prefix(tokens, &["it", "is"]).is_some() {
         2usize
-    } else if slice_starts_with(&clause_words, &["it", "s"]) {
+    } else if grammar::words_match_prefix(tokens, &["it", "s"]).is_some() {
         2usize
-    } else if slice_starts_with(&clause_words, &["it's"])
-        || slice_starts_with(&clause_words, &["it’s"])
+    } else if grammar::words_match_prefix(tokens, &["it\u{2019}s"]).is_some()
+        || grammar::words_match_prefix(tokens, &["it’s"]).is_some()
     {
         1usize
-    } else if slice_starts_with(&clause_words, &["they", "are"]) {
+    } else if grammar::words_match_prefix(tokens, &["they", "are"]).is_some() {
         2usize
-    } else if slice_starts_with(&clause_words, &["they", "re"]) {
+    } else if grammar::words_match_prefix(tokens, &["they", "re"]).is_some() {
         2usize
-    } else if slice_starts_with(&clause_words, &["theyre"])
-        || slice_starts_with(&clause_words, &["they're"])
-        || slice_starts_with(&clause_words, &["they’re"])
+    } else if grammar::words_match_prefix(tokens, &["theyre"]).is_some()
+        || grammar::words_match_prefix(tokens, &["they\u{2019}re"]).is_some()
+        || grammar::words_match_prefix(tokens, &["they’re"]).is_some()
     {
         1usize
     } else {

@@ -83,6 +83,48 @@ pub(crate) fn parse_prefix<'a, O>(
     Some((parsed, remaining))
 }
 
+/// Adapts a winnow parser into the `SentencePrimitiveParser` convention:
+///
+/// - Winnow backtrack (pattern mismatch) → `Ok(None)`
+/// - Winnow cut (hard parse error) → `Err(CardTextError)`
+/// - Winnow success with trailing tokens → `Err(CardTextError)`
+/// - Winnow success consuming all input → `Ok(Some(value))`
+pub(crate) fn try_parse_all<'a, O>(
+    tokens: &'a [LexToken],
+    mut parser: impl Parser<LexStream<'a>, O, ErrMode<ContextError>>,
+    label: &str,
+) -> Result<Option<O>, CardTextError> {
+    let mut input = LexStream::new(tokens);
+    match parser.parse_next(&mut input) {
+        Ok(value) => {
+            if input.is_empty() {
+                Ok(Some(value))
+            } else {
+                let (span, token) = failure_location(&input, 0);
+                let found = token
+                    .map(|t| format!(" near {:?}", t.slice))
+                    .unwrap_or_default();
+                Err(CardTextError::ParseError(format!(
+                    "rewrite {label} parse matched but has trailing tokens at {}..{}{found}",
+                    span.start, span.end,
+                )))
+            }
+        }
+        Err(ErrMode::Backtrack(_)) => Ok(None),
+        Err(ErrMode::Cut(inner)) => {
+            let (span, token) = failure_location(&input, 0);
+            let found = token
+                .map(|t| format!(" near {:?}", t.slice))
+                .unwrap_or_else(|| " at end of input".to_string());
+            Err(CardTextError::ParseError(format!(
+                "rewrite {label} parse failed at {}..{}{found}: {inner}",
+                span.start, span.end,
+            )))
+        }
+        Err(ErrMode::Incomplete(_)) => Ok(None),
+    }
+}
+
 pub(crate) fn find_prefix<'a, O, P, F>(
     tokens: &'a [LexToken],
     make_parser: F,
@@ -537,4 +579,150 @@ pub(crate) fn strip_lexed_suffix_phrases<'a, 'b>(
     phrases
         .iter()
         .find_map(|phrase| strip_lexed_suffix_phrase(tokens, phrase).map(|rest| (*phrase, rest)))
+}
+
+// ---------------------------------------------------------------------------
+// Word-level bridge functions
+//
+// These operate on `&[LexToken]` but match words while skipping non-word
+// tokens (commas, etc.), mirroring the behavior of `token_word_refs` +
+// `slice_starts_with`.  They bridge the gap between old word-slice-based
+// code and the token-stream-based grammar primitives.
+// ---------------------------------------------------------------------------
+
+/// Checks whether the word pieces at the start of `tokens` match `expected`,
+/// using `TokenWordView` for proper multi-word token splitting (e.g.,
+/// hyphenated words like "life-gaining" → ["life", "gaining"]).
+/// Returns the token slice after the matched prefix.
+pub(crate) fn words_match_prefix<'a>(tokens: &'a [LexToken], expected: &[&str]) -> Option<&'a [LexToken]> {
+    if expected.is_empty() {
+        return Some(tokens);
+    }
+    let view = TokenWordView::new(tokens);
+    if !view.starts_with(expected) {
+        return None;
+    }
+    let token_end = view.token_index_after_words(expected.len())?;
+    Some(&tokens[token_end..])
+}
+
+/// Checks whether the word pieces at the end of `tokens` match `expected`,
+/// using `TokenWordView` for proper multi-word token splitting.
+/// Returns the token slice before the matched suffix.
+pub(crate) fn words_match_suffix<'a>(tokens: &'a [LexToken], expected: &[&str]) -> Option<&'a [LexToken]> {
+    if expected.is_empty() {
+        return Some(tokens);
+    }
+    let view = TokenWordView::new(tokens);
+    if view.len() < expected.len() {
+        return None;
+    }
+    let suffix_start_word = view.len() - expected.len();
+    if !view.slice_eq(suffix_start_word, expected) {
+        return None;
+    }
+    let token_start = view.token_index_for_word_index(suffix_start_word)?;
+    Some(&tokens[..token_start])
+}
+
+/// Finds the first occurrence of `expected` word sequence in `tokens`,
+/// using `TokenWordView` for proper multi-word token splitting.
+/// Returns the token index where the match starts.
+pub(crate) fn words_find_phrase(tokens: &[LexToken], expected: &[&str]) -> Option<usize> {
+    if expected.is_empty() {
+        return Some(0);
+    }
+    let view = TokenWordView::new(tokens);
+    let word_idx = view.find_phrase_start(expected)?;
+    view.token_index_for_word_index(word_idx)
+}
+
+/// Splits `tokens` at the first occurrence of word sequence `separator`,
+/// using `TokenWordView` for proper multi-word token splitting.
+/// Returns `(before, after)` where `before` ends just before the separator
+/// and `after` starts just after it.
+pub(crate) fn words_split_once<'a>(
+    tokens: &'a [LexToken],
+    separator: &[&str],
+) -> Option<(&'a [LexToken], &'a [LexToken])> {
+    if separator.is_empty() {
+        return Some((&[], tokens));
+    }
+    let view = TokenWordView::new(tokens);
+    let word_idx = view.find_phrase_start(separator)?;
+    let token_start = view.token_index_for_word_index(word_idx)?;
+    let after_word_idx = word_idx + separator.len();
+    let token_end = view.token_index_after_words(after_word_idx)?;
+    Some((&tokens[..token_start], &tokens[token_end..]))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cards::builders::parser::lexer::lex_line;
+    use winnow::combinator::cut_err;
+
+    #[test]
+    fn words_match_prefix_basic() {
+        let tokens = lex_line("target creature gets", 0).unwrap();
+        assert!(words_match_prefix(&tokens, &["target", "creature"]).is_some());
+        assert!(words_match_prefix(&tokens, &["target", "gets"]).is_none());
+        assert!(words_match_prefix(&tokens, &[]).is_some());
+    }
+
+    #[test]
+    fn words_match_suffix_basic() {
+        let tokens = lex_line("target creature gets", 0).unwrap();
+        assert!(words_match_suffix(&tokens, &["creature", "gets"]).is_some());
+        assert!(words_match_suffix(&tokens, &["target", "gets"]).is_none());
+    }
+
+    #[test]
+    fn words_find_phrase_basic() {
+        let tokens = lex_line("target creature gets big", 0).unwrap();
+        assert_eq!(words_find_phrase(&tokens, &["creature", "gets"]), Some(1));
+        assert_eq!(words_find_phrase(&tokens, &["target"]), Some(0));
+        assert_eq!(words_find_phrase(&tokens, &["nope"]), None);
+    }
+
+    #[test]
+    fn words_split_once_basic() {
+        let tokens = lex_line("exile target creature from graveyard", 0).unwrap();
+        let (before, after) = words_split_once(&tokens, &["from"]).unwrap();
+        assert_eq!(before.len(), 3); // "exile", "target", "creature"
+        assert_eq!(after.len(), 1); // "graveyard"
+    }
+
+    #[test]
+    fn try_parse_all_returns_some_on_full_match() {
+        let tokens = lex_line("target creature", 0).unwrap();
+        let result = try_parse_all(&tokens, phrase(&["target", "creature"]), "test");
+        assert!(result.unwrap().is_some());
+    }
+
+    #[test]
+    fn try_parse_all_returns_none_on_backtrack() {
+        let tokens = lex_line("target creature", 0).unwrap();
+        let result = try_parse_all(&tokens, phrase(&["exile", "creature"]), "test");
+        assert!(result.unwrap().is_none());
+    }
+
+    #[test]
+    fn try_parse_all_returns_err_on_trailing_tokens() {
+        let tokens = lex_line("target creature gets", 0).unwrap();
+        let result = try_parse_all(&tokens, phrase(&["target", "creature"]), "test");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn try_parse_all_returns_err_on_cut() {
+        let tokens = lex_line("target creature", 0).unwrap();
+        let parser = |input: &mut LexStream<'_>| -> Result<(), ErrMode<ContextError>> {
+            kw("target").void().parse_next(input)?;
+            cut_err(kw("opponent")).void().parse_next(input)?;
+            Ok(())
+        };
+        let result = try_parse_all(&tokens, parser, "test");
+        assert!(result.is_err());
+    }
 }

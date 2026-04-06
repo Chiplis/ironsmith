@@ -5,7 +5,7 @@ use super::super::activation_and_restrictions::{
     parse_target_player_choose_objects_clause, parse_you_choose_objects_clause,
     parse_you_choose_player_clause,
 };
-use super::super::grammar::primitives::TokenWordView;
+use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::keyword_static::{
     keyword_action_to_static_ability, parse_ability_line, parse_pt_modifier,
     parse_pt_modifier_values,
@@ -253,8 +253,12 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         return Ok(effect);
     }
 
-    if let Some(unless_idx) = find_token_index(tokens, |token| token.is_word("unless")) {
-        let main_tokens = trim_commas(&tokens[..unless_idx]);
+    if let Some((main_slice, _after_unless)) = super::super::grammar::primitives::split_lexed_once_on_separator(
+        tokens,
+        || { use winnow::Parser as _; super::super::grammar::primitives::kw("unless").void() },
+    ) {
+        let unless_idx = main_slice.len();
+        let main_tokens = trim_commas(main_slice);
         if !main_tokens.is_empty()
             && let Ok(main_effect) = parse_effect_clause(&main_tokens)
             && let Some(unless_effect) = try_build_unless(vec![main_effect], tokens, unless_idx)?
@@ -372,7 +376,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         let tail_tokens = trim_commas(&tokens[assigns_idx + 1..]);
         let tail_word_view = ClauseDispatchCompatWords::new(&tail_tokens);
         let tail_words = tail_word_view.to_word_refs();
-        if !word_slice_starts_with(&tail_words, &["no", "combat", "damage"]) {
+        if grammar::words_match_prefix(&tail_tokens, &["no", "combat", "damage"]).is_none() {
             return Err(CardTextError::ParseError(format!(
                 "unsupported assigns-no-combat-damage clause (clause: '{}') [rule=assigns-no-combat-damage]",
                 clause_words.join(" ")
@@ -925,7 +929,7 @@ pub(crate) fn parse_become_clause(
         });
     }
 
-    if word_slice_starts_with(become_words, &["copy", "of"]) {
+    if grammar::words_match_prefix(become_body_tokens, &["copy", "of"]).is_some() {
         let Some(source_start) = token_index_for_word_index(become_body_tokens, 2) else {
             return Err(CardTextError::ParseError(format!(
                 "missing copy source in become clause (clause: '{}')",
@@ -951,7 +955,7 @@ pub(crate) fn parse_become_clause(
         return Ok(EffectAst::MakeColorless { target, duration });
     }
 
-    if word_slice_starts_with(become_words, &["equal", "to"]) {
+    if grammar::words_match_prefix(become_body_tokens, &["equal", "to"]).is_some() {
         let rhs = &become_words[2..];
         if rhs == ["this", "power", "and", "toughness"]
             || rhs == ["thiss", "power", "and", "toughness"]

@@ -9,7 +9,7 @@ use crate::zone::Zone;
 use crate::{ChooseSpec, CounterType, TagKey, Value};
 
 use super::super::activation_and_restrictions::parse_devotion_value_from_add_clause;
-use super::super::grammar::primitives::TokenWordView;
+use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::grammar::structure::split_trailing_if_clause_lexed;
 use super::super::keyword_static::{
     parse_add_mana_equal_amount_value, parse_dynamic_cost_modifier_value,
@@ -37,11 +37,9 @@ fn render_clause_words(tokens: &[OwnedLexToken]) -> String {
 fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> Option<Value> {
     let clause_word_view = ZoneCounterCompatWords::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
-    if word_slice_starts_with(&clause_words, &["creature", "that", "died", "this", "turn"])
-        || word_slice_starts_with(
-            &clause_words,
-            &["creatures", "that", "died", "this", "turn"],
-        )
+    if grammar::words_match_prefix(tokens, &["creature", "that", "died", "this", "turn"]).is_some()
+        || grammar::words_match_prefix(tokens, &["creatures", "that", "died", "this", "turn"])
+            .is_some()
     {
         return Some(Value::CreaturesDiedThisTurn);
     }
@@ -77,44 +75,60 @@ fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> Option<Value
             return Some(Value::SpellsCastThisTurn(player));
         }
     }
-    if word_slice_starts_with(
-        &clause_words,
+    if grammar::words_match_prefix(
+        tokens,
         &[
             "color", "of", "mana", "spent", "to", "cast", "this", "spell",
         ],
-    ) || word_slice_starts_with(
-        &clause_words,
-        &[
-            "colors", "of", "mana", "spent", "to", "cast", "this", "spell",
-        ],
-    ) || word_slice_starts_with(
-        &clause_words,
-        &["color", "of", "mana", "used", "to", "cast", "this", "spell"],
-    ) || word_slice_starts_with(
-        &clause_words,
-        &[
-            "colors", "of", "mana", "used", "to", "cast", "this", "spell",
-        ],
-    ) {
+    )
+    .is_some()
+        || grammar::words_match_prefix(
+            tokens,
+            &[
+                "colors", "of", "mana", "spent", "to", "cast", "this", "spell",
+            ],
+        )
+        .is_some()
+        || grammar::words_match_prefix(
+            tokens,
+            &["color", "of", "mana", "used", "to", "cast", "this", "spell"],
+        )
+        .is_some()
+        || grammar::words_match_prefix(
+            tokens,
+            &[
+                "colors", "of", "mana", "used", "to", "cast", "this", "spell",
+            ],
+        )
+        .is_some()
+    {
         return Some(Value::ColorsOfManaSpentToCastThisSpell);
     }
-    if word_slice_starts_with(
-        &clause_words,
+    if grammar::words_match_prefix(
+        tokens,
         &["basic", "land", "type", "among", "lands", "you", "control"],
-    ) || word_slice_starts_with(
-        &clause_words,
-        &["basic", "land", "types", "among", "lands", "you", "control"],
-    ) || word_slice_starts_with(
-        &clause_words,
-        &[
-            "basic", "land", "type", "among", "the", "lands", "you", "control",
-        ],
-    ) || word_slice_starts_with(
-        &clause_words,
-        &[
-            "basic", "land", "types", "among", "the", "lands", "you", "control",
-        ],
-    ) {
+    )
+    .is_some()
+        || grammar::words_match_prefix(
+            tokens,
+            &["basic", "land", "types", "among", "lands", "you", "control"],
+        )
+        .is_some()
+        || grammar::words_match_prefix(
+            tokens,
+            &[
+                "basic", "land", "type", "among", "the", "lands", "you", "control",
+            ],
+        )
+        .is_some()
+        || grammar::words_match_prefix(
+            tokens,
+            &[
+                "basic", "land", "types", "among", "the", "lands", "you", "control",
+            ],
+        )
+        .is_some()
+    {
         return Some(Value::BasicLandTypesAmong(
             ObjectFilter::land().you_control(),
         ));
@@ -184,12 +198,12 @@ fn parse_referential_counter_count_value(tokens: &[OwnedLexToken]) -> Option<(Va
     }
 
     let (source_spec, mut idx): (ChooseSpec, usize) =
-        if word_slice_starts_with(&words_all, &["its"])
-            || word_slice_starts_with(&words_all, &["those"])
-            || word_slice_starts_with(&words_all, &["thiss"])
+        if grammar::words_match_prefix(tokens, &["its"]).is_some()
+            || grammar::words_match_prefix(tokens, &["those"]).is_some()
+            || grammar::words_match_prefix(tokens, &["thiss"]).is_some()
         {
             (ChooseSpec::Tagged(TagKey::from(IT_TAG)), 1)
-        } else if word_slice_starts_with(&words_all, &["this"]) {
+        } else if grammar::words_match_prefix(tokens, &["this"]).is_some() {
             (ChooseSpec::Source, 1)
         } else {
             return None;
@@ -222,21 +236,19 @@ fn parse_put_counter_count_value(
     tokens: &[OwnedLexToken],
 ) -> Result<(Value, usize), CardTextError> {
     let clause = render_clause_words(tokens);
-    let words_view = ZoneCounterCompatWords::new(tokens);
-    let words_all = words_view.to_word_refs();
 
-    if word_slice_starts_with(&words_all, &["that", "many"])
-        || word_slice_starts_with(&words_all, &["that", "much"])
+    if grammar::words_match_prefix(tokens, &["that", "many"]).is_some()
+        || grammar::words_match_prefix(tokens, &["that", "much"]).is_some()
     {
         return Ok((Value::EventValue(EventValueSpec::Amount), 2));
     }
-    if word_slice_starts_with(&words_all, &["another"]) {
+    if grammar::words_match_prefix(tokens, &["another"]).is_some() {
         return Ok((Value::Fixed(1), 1));
     }
     if let Some((value, used)) = parse_referential_counter_count_value(tokens) {
         return Ok((value, used));
     }
-    if word_slice_starts_with(&words_all, &["a", "number", "of"]) {
+    if grammar::words_match_prefix(tokens, &["a", "number", "of"]).is_some() {
         if let Some(value) = parse_add_mana_equal_amount_value(tokens)
             .or_else(|| parse_equal_to_aggregate_filter_value(tokens))
             .or_else(|| parse_equal_to_number_of_filter_value(tokens))
@@ -544,23 +556,22 @@ pub(crate) fn parse_sentence_put_multiple_counters_on_target(
         return Ok(None);
     }
 
-    let Some(on_idx) = find_token_index(tokens, |token| token.is_word("on")) else {
+    let Some((before_on_raw, _after_on)) = super::super::grammar::primitives::split_lexed_once_on_separator(
+        &tokens[1..],
+        || { use winnow::Parser as _; super::super::grammar::primitives::kw("on").void() },
+    ) else {
         return Ok(None);
     };
-    if on_idx < 2 {
-        return Ok(None);
-    }
 
-    let before_on = trim_commas(&tokens[1..on_idx]);
-    let Some(and_idx) = find_token_index(&before_on, |token| token.is_word("and")) else {
+    let before_on = trim_commas(before_on_raw);
+    let Some((first_slice, second_slice)) = super::super::grammar::primitives::split_lexed_once_on_separator(
+        &before_on,
+        || { use winnow::Parser as _; super::super::grammar::primitives::kw("and").void() },
+    ) else {
         return Ok(None);
     };
-    if and_idx == 0 || and_idx + 1 >= before_on.len() {
-        return Ok(None);
-    }
-
-    let first_desc = trim_commas(&before_on[..and_idx]);
-    let second_desc = trim_commas(&before_on[and_idx + 1..]);
+    let first_desc = trim_commas(first_slice);
+    let second_desc = trim_commas(second_slice);
     if first_desc.is_empty() || second_desc.is_empty() {
         return Ok(None);
     }
@@ -592,7 +603,7 @@ pub(crate) fn parse_sentence_put_multiple_counters_on_target(
         Err(_) => return Ok(None),
     };
 
-    let target_tokens = trim_commas(&tokens[on_idx + 1..]);
+    let target_tokens = trim_commas(_after_on);
     if target_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing counter target after on clause (clause: '{}')",

@@ -6,7 +6,7 @@ use super::super::grammar::effects::{
     parse_cant_effect_sentence_with_grammar_entrypoint_lexed,
     parse_search_library_sentence_with_grammar_entrypoint_lexed,
 };
-use super::super::grammar::primitives::TokenWordView;
+use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::grammar::structure::{
     LeadingResultPrefixKind, split_leading_result_prefix_lexed, split_trailing_if_clause_lexed,
 };
@@ -86,7 +86,7 @@ pub(crate) fn parse_effect_chain_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
     let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
-    if word_slice_starts_with(&clause_words, &["exile", "them"])
+    if grammar::words_match_prefix(tokens, &["exile", "them"]).is_some()
         && let Some(meld_idx) =
             find_word_sequence_index(&clause_words, &["then", "meld", "them", "into"])
     {
@@ -107,10 +107,10 @@ pub(crate) fn parse_effect_chain_lexed(
     if let Some(stripped) = strip_leading_instead_prefix_lexed(tokens) {
         return parse_effect_chain_lexed(stripped);
     }
-    let starts_with_each_opponent = word_slice_starts_with(&clause_words, &["each", "opponent"])
-        || word_slice_starts_with(&clause_words, &["each", "opponents"]);
-    let starts_with_each_player = word_slice_starts_with(&clause_words, &["each", "player"])
-        || word_slice_starts_with(&clause_words, &["each", "players"]);
+    let starts_with_each_opponent = grammar::words_match_prefix(tokens, &["each", "opponent"]).is_some()
+        || grammar::words_match_prefix(tokens, &["each", "opponents"]).is_some();
+    let starts_with_each_player = grammar::words_match_prefix(tokens, &["each", "player"]).is_some()
+        || grammar::words_match_prefix(tokens, &["each", "players"]).is_some();
 
     if let Some(player) = parse_leading_player_may_lexed(tokens) {
         let mut stripped = remove_through_first_word_lexed(tokens, "may");
@@ -225,8 +225,7 @@ fn normalize_or_action_option_lexed(mut option: &[OwnedLexToken]) -> &[OwnedLexT
 pub(crate) fn parse_or_action_clause_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let clause_words = token_word_refs(tokens);
-    if !word_slice_contains(&clause_words, "or") {
+    if !grammar::contains_word(tokens, "or") {
         return Ok(None);
     }
 
@@ -609,8 +608,8 @@ pub(crate) fn collapse_token_copy_next_end_step_exile_followup_lexed(
     tokens: &[OwnedLexToken],
 ) {
     let chain_words = token_word_refs(tokens);
-    if !word_slice_contains(&chain_words, "exile")
-        || !word_slice_contains(&chain_words, "token")
+    if !grammar::contains_word(tokens, "exile")
+        || !grammar::contains_word(tokens, "token")
         || !is_beginning_of_end_step_words(&chain_words)
     {
         return;
@@ -661,9 +660,9 @@ pub(crate) fn collapse_token_copy_next_end_step_sacrifice_followup_lexed(
     tokens: &[OwnedLexToken],
 ) {
     let chain_words = token_word_refs(tokens);
-    if !word_slice_contains(&chain_words, "sacrifice")
-        || !word_slice_contains(&chain_words, "token")
-        || find_word_sequence_index(&chain_words, &["next", "end", "step", "repeat"]).is_none()
+    if !grammar::contains_word(tokens, "sacrifice")
+        || !grammar::contains_word(tokens, "token")
+        || grammar::words_find_phrase(tokens, &["next", "end", "step", "repeat"]).is_none()
             && !is_beginning_of_end_step_words(&chain_words)
     {
         return;
@@ -706,8 +705,8 @@ pub(crate) fn collapse_token_copy_end_of_combat_exile_followup_lexed(
     tokens: &[OwnedLexToken],
 ) {
     let chain_words = token_word_refs(tokens);
-    if !word_slice_contains(&chain_words, "exile")
-        || !word_slice_contains(&chain_words, "token")
+    if !grammar::contains_word(tokens, "exile")
+        || !grammar::contains_word(tokens, "token")
         || !is_end_of_combat_words(&chain_words)
     {
         return;
@@ -787,11 +786,10 @@ pub(crate) fn expand_segments_with_comma_action_clauses_lexed(
     let mut expanded = Vec::new();
 
     for segment in segments {
-        let segment_words = token_word_refs(&segment);
-        let looks_like_sac_discard_chain = (word_slice_contains(&segment_words, "sacrifice")
-            || word_slice_contains(&segment_words, "sacrifices"))
-            && (word_slice_contains(&segment_words, "discard")
-                || word_slice_contains(&segment_words, "discards"));
+        let looks_like_sac_discard_chain = (grammar::contains_word(&segment, "sacrifice")
+            || grammar::contains_word(&segment, "sacrifices"))
+            && (grammar::contains_word(&segment, "discard")
+                || grammar::contains_word(&segment, "discards"));
         if !looks_like_sac_discard_chain {
             expanded.push(segment);
             continue;
@@ -850,20 +848,20 @@ pub(crate) fn expand_segments_with_multi_create_clauses_lexed(
             expanded.push(segment);
             continue;
         };
-        let segment_words = token_word_refs(&segment);
         let has_token_rules_tail =
-            find_word_sequence_index(&segment_words, &["when", "this", "token"]).is_some()
-                || find_word_sequence_index(&segment_words, &["whenever", "this", "token"])
+            grammar::words_find_phrase(&segment, &["when", "this", "token"]).is_some()
+                || grammar::words_find_phrase(&segment, &["whenever", "this", "token"])
                     .is_some()
-                || find_word_sequence_index(&segment_words, &["this", "token"]).is_some()
-                || find_word_sequence_index(&segment_words, &["that", "token"]).is_some()
-                || find_word_sequence_index(&segment_words, &["those", "tokens"]).is_some()
-                || find_word_sequence_index(&segment_words, &["it", "has"]).is_some()
-                || find_word_sequence_index(&segment_words, &["they", "have"]).is_some();
+                || grammar::words_find_phrase(&segment, &["this", "token"]).is_some()
+                || grammar::words_find_phrase(&segment, &["that", "token"]).is_some()
+                || grammar::words_find_phrase(&segment, &["those", "tokens"]).is_some()
+                || grammar::words_find_phrase(&segment, &["it", "has"]).is_some()
+                || grammar::words_find_phrase(&segment, &["they", "have"]).is_some();
         if has_token_rules_tail {
             expanded.push(segment);
             continue;
         }
+        let segment_words = token_word_refs(&segment);
         let token_mentions = segment_words
             .iter()
             .filter(|word| matches!(**word, "token" | "tokens"))
@@ -888,10 +886,9 @@ pub(crate) fn expand_segments_with_multi_create_clauses_lexed(
             if part.is_empty() {
                 continue;
             }
-            let part_words = token_word_refs(&part);
             if let Some(previous) = local_parts.last()
-                && is_token_creation_context(&token_word_refs(previous))
-                && starts_with_inline_token_rules_tail(&part_words)
+                && is_token_creation_context(previous)
+                && starts_with_inline_token_rules_tail(&part)
             {
                 if let Some(last) = local_parts.last_mut() {
                     last.push(OwnedLexToken::comma(TextSpan::synthetic()));
@@ -934,9 +931,8 @@ pub(crate) fn expand_missing_verb_segment_lexed(
     let (verb, verb_idx) = find_verb_lexed(previous)?;
     match verb {
         Verb::Deal => {
-            let segment_words = token_word_refs(segment);
             if parse_value_from_lexed(segment).is_none()
-                || !word_slice_contains(&segment_words, "damage")
+                || !grammar::contains_word(segment, "damage")
             {
                 return None;
             }

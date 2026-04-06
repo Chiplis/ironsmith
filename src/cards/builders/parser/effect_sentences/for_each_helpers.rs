@@ -6,6 +6,7 @@ use crate::effect::{Until, Value};
 use crate::target::{ObjectFilter, PlayerFilter};
 
 use super::super::effect_ast_traversal::for_each_nested_effects_mut;
+use super::super::grammar::primitives as grammar;
 use super::super::keyword_static::{
     parse_pt_modifier, parse_pt_modifier_values, parse_where_x_value_clause,
 };
@@ -47,15 +48,14 @@ pub(crate) fn parse_for_each_object_subject(
     if subject_tokens.is_empty() {
         return Ok(None);
     }
-    let subject_words = token_words(subject_tokens);
-    if subject_words.is_empty() {
+    if subject_tokens.is_empty() {
         return Ok(None);
     }
 
-    let mut filter_tokens = if word_slice_starts_with(&subject_words, &["for", "each"]) {
-        &subject_tokens[2..]
-    } else if subject_words.first() == Some(&"each") {
-        &subject_tokens[1..]
+    let mut filter_tokens = if let Some(rest) = grammar::words_match_prefix(subject_tokens, &["for", "each"]) {
+        rest
+    } else if let Some(rest) = grammar::words_match_prefix(subject_tokens, &["each"]) {
+        rest
     } else {
         return Ok(None);
     };
@@ -76,27 +76,25 @@ pub(crate) fn parse_for_each_object_subject(
             .is_some_and(|token| token.is_word("to"))
         && attached_idx > 0
     {
-        let attached_tail_words = token_words(&filter_tokens[attached_idx + 2..]);
-        let attached_to_creature = word_slice_starts_with(&attached_tail_words, &["creature"])
-            || word_slice_starts_with(&attached_tail_words, &["a", "creature"]);
+        let attached_to_creature = grammar::words_match_prefix(&filter_tokens[attached_idx + 2..], &["creature"]).is_some()
+            || grammar::words_match_prefix(&filter_tokens[attached_idx + 2..], &["a", "creature"]).is_some();
         if attached_to_creature {
             normalized_filter_tokens = trim_commas(&filter_tokens[..attached_idx]);
         }
     }
 
-    let filter_words = token_words(&normalized_filter_tokens);
-    if filter_words.is_empty() {
+    if normalized_filter_tokens.is_empty() {
         return Ok(None);
     }
 
-    if word_slice_starts_with(&filter_words, &["player"])
-        || word_slice_starts_with(&filter_words, &["players"])
-        || word_slice_starts_with(&filter_words, &["opponent"])
-        || word_slice_starts_with(&filter_words, &["opponents"])
-        || word_slice_starts_with(&filter_words, &["target", "player"])
-        || word_slice_starts_with(&filter_words, &["target", "players"])
-        || word_slice_starts_with(&filter_words, &["target", "opponent"])
-        || word_slice_starts_with(&filter_words, &["target", "opponents"])
+    if grammar::words_match_prefix(&normalized_filter_tokens, &["player"]).is_some()
+        || grammar::words_match_prefix(&normalized_filter_tokens, &["players"]).is_some()
+        || grammar::words_match_prefix(&normalized_filter_tokens, &["opponent"]).is_some()
+        || grammar::words_match_prefix(&normalized_filter_tokens, &["opponents"]).is_some()
+        || grammar::words_match_prefix(&normalized_filter_tokens, &["target", "player"]).is_some()
+        || grammar::words_match_prefix(&normalized_filter_tokens, &["target", "players"]).is_some()
+        || grammar::words_match_prefix(&normalized_filter_tokens, &["target", "opponent"]).is_some()
+        || grammar::words_match_prefix(&normalized_filter_tokens, &["target", "opponents"]).is_some()
     {
         return Ok(None);
     }
@@ -110,15 +108,14 @@ pub(crate) fn parse_for_each_targeted_object_subject(
     if subject_tokens.is_empty() {
         return Ok(None);
     }
-    let subject_words = token_words(subject_tokens);
-    if subject_words.is_empty() {
+    if subject_tokens.is_empty() {
         return Ok(None);
     }
 
-    let mut target_tokens = if word_slice_starts_with(&subject_words, &["for", "each"]) {
-        &subject_tokens[2..]
-    } else if subject_words.first() == Some(&"each") {
-        &subject_tokens[1..]
+    let mut target_tokens = if let Some(rest) = grammar::words_match_prefix(subject_tokens, &["for", "each"]) {
+        rest
+    } else if let Some(rest) = grammar::words_match_prefix(subject_tokens, &["each"]) {
+        rest
     } else {
         return Ok(None);
     };
@@ -264,11 +261,11 @@ pub(crate) fn parse_has_base_power_clause(
         .filter_map(OwnedLexToken::as_word)
         .collect();
     if tail_words.is_empty() {
-        let has_target_subject = word_slice_contains(&subject_words, "target");
+        let has_target_subject = grammar::contains_word(subject_tokens, "target");
         let has_leading_until_eot = starts_with_until_end_of_turn(&subject_words);
         let has_temporal_words = contains_until_end_of_turn(&words_all)
-            || word_slice_contains_sequence(&words_all, &["this", "turn"])
-            || word_slice_contains_sequence(&words_all, &["next", "turn"]);
+            || grammar::words_find_phrase(tokens, &["this", "turn"]).is_some()
+            || grammar::words_find_phrase(tokens, &["next", "turn"]).is_some();
         if !has_target_subject && !has_leading_until_eot && !has_temporal_words {
             return Ok(None);
         }
@@ -328,11 +325,11 @@ pub(crate) fn parse_has_base_power_toughness_clause(
 
     let tail = &rest_words[5..];
     if tail.is_empty() {
-        let has_target_subject = word_slice_contains(&subject_words, "target");
+        let has_target_subject = grammar::contains_word(subject_tokens, "target");
         let has_leading_until_eot = starts_with_until_end_of_turn(&subject_words);
         let has_temporal_words = contains_until_end_of_turn(&words_all)
-            || word_slice_contains_sequence(&words_all, &["this", "turn"])
-            || word_slice_contains_sequence(&words_all, &["next", "turn"]);
+            || grammar::words_find_phrase(tokens, &["this", "turn"]).is_some()
+            || grammar::words_find_phrase(tokens, &["next", "turn"]).is_some();
         if !has_target_subject && !has_leading_until_eot && !has_temporal_words {
             return Ok(None);
         }
@@ -402,11 +399,10 @@ pub(crate) fn parse_get_for_each_count_value(
         ));
     }
 
-    let filter_words = token_words(filter_tokens);
-    if word_slice_starts_with(&filter_words, &["basic", "land", "type", "among"])
-        || word_slice_starts_with(&filter_words, &["basic", "land", "types", "among"])
+    if let Some(scope_rest) = grammar::words_match_prefix(filter_tokens, &["basic", "land", "type", "among"])
+        .or_else(|| grammar::words_match_prefix(filter_tokens, &["basic", "land", "types", "among"]))
     {
-        let mut scope_tokens = &filter_tokens[4..];
+        let mut scope_tokens = scope_rest;
         if scope_tokens
             .first()
             .is_some_and(|token| token.is_word("the"))
@@ -421,10 +417,10 @@ pub(crate) fn parse_get_for_each_count_value(
         let filter = parse_object_filter(scope_tokens, false)?;
         return Ok(Some(Value::BasicLandTypesAmong(filter)));
     }
-    if word_slice_starts_with(&filter_words, &["color", "among"])
-        || word_slice_starts_with(&filter_words, &["colors", "among"])
+    if let Some(scope_rest) = grammar::words_match_prefix(filter_tokens, &["color", "among"])
+        .or_else(|| grammar::words_match_prefix(filter_tokens, &["colors", "among"]))
     {
-        let mut scope_tokens = &filter_tokens[2..];
+        let mut scope_tokens = scope_rest;
         if scope_tokens
             .first()
             .is_some_and(|token| token.is_word("the"))
@@ -466,10 +462,10 @@ pub(crate) fn parse_get_modifier_values_with_tail(
     let until_word_count = if starts_with_until_end_of_turn(&after_modifier_words) {
         duration = Until::EndOfTurn;
         4usize
-    } else if word_slice_starts_with(&after_modifier_words, &["until", "your", "next", "turn"]) {
+    } else if grammar::words_match_prefix(after_modifier, &["until", "your", "next", "turn"]).is_some() {
         duration = Until::YourNextTurn;
         4usize
-    } else if word_slice_starts_with(&after_modifier_words, &["until", "end", "of", "combat"]) {
+    } else if grammar::words_match_prefix(after_modifier, &["until", "end", "of", "combat"]).is_some() {
         duration = Until::EndOfCombat;
         4usize
     } else {
@@ -487,13 +483,13 @@ pub(crate) fn parse_get_modifier_values_with_tail(
     if tail_words.as_slice() == ["instead"] {
         return Ok((out_power, out_toughness, duration, condition));
     }
-    if word_slice_starts_with(&tail_words, &["instead", "if"]) {
+    if grammar::words_match_prefix(&tail_tokens, &["instead", "if"]).is_some() {
         return Ok((out_power, out_toughness, duration, condition));
     }
-    if word_slice_starts_with(&tail_words, &["for", "as", "long", "as"])
-        && word_slice_contains(&tail_words, "this")
-        && word_slice_contains(&tail_words, "remains")
-        && word_slice_contains(&tail_words, "tapped")
+    if grammar::words_match_prefix(&tail_tokens, &["for", "as", "long", "as"]).is_some()
+        && grammar::contains_word(&tail_tokens, "this")
+        && grammar::contains_word(&tail_tokens, "remains")
+        && grammar::contains_word(&tail_tokens, "tapped")
     {
         condition = Some(crate::ConditionExpr::SourceIsTapped);
         return Ok((
@@ -518,7 +514,7 @@ pub(crate) fn parse_get_modifier_values_with_tail(
             return Ok((out_power, out_toughness, duration, condition));
         }
     }
-    if word_slice_starts_with(&tail_words, &["for", "each"])
+    if grammar::words_match_prefix(&tail_tokens, &["for", "each"]).is_some()
         && let Some(count) = parse_get_for_each_count_value(&tail_tokens)?
     {
         let scale_modifier = |modifier: Value| -> Result<Value, CardTextError> {
@@ -539,7 +535,7 @@ pub(crate) fn parse_get_modifier_values_with_tail(
         out_toughness = scale_modifier(out_toughness)?;
         return Ok((out_power, out_toughness, duration, condition));
     }
-    if !word_slice_starts_with(&tail_words, &["where", "x", "is"]) {
+    if grammar::words_match_prefix(&tail_tokens, &["where", "x", "is"]).is_none() {
         return Err(CardTextError::ParseError(format!(
             "unsupported trailing gets clause (clause: '{}')",
             clause
@@ -595,22 +591,21 @@ pub(crate) fn parse_for_each_opponent_clause(
         return Ok(None);
     }
 
-    let start = if word_slice_starts_with(&clause_words, &["for", "each", "opponent"])
-        || word_slice_starts_with(&clause_words, &["for", "each", "opponents"])
+    let after_prefix = if let Some(rest) = grammar::words_match_prefix(clause_tokens, &["for", "each", "opponent"])
+        .or_else(|| grammar::words_match_prefix(clause_tokens, &["for", "each", "opponents"]))
     {
-        3
-    } else if word_slice_starts_with(&clause_words, &["each", "opponent"])
-        || word_slice_starts_with(&clause_words, &["each", "opponents"])
+        rest
+    } else if let Some(rest) = grammar::words_match_prefix(clause_tokens, &["each", "opponent"])
+        .or_else(|| grammar::words_match_prefix(clause_tokens, &["each", "opponents"]))
     {
-        2
+        rest
     } else {
         return Ok(None);
     };
 
-    let mut inner_tokens = trim_commas(&clause_tokens[start..]).to_vec();
-    let inner_words = token_words(&inner_tokens);
+    let mut inner_tokens = trim_commas(after_prefix).to_vec();
     let mut iteration_filter = PlayerFilter::Opponent;
-    if word_slice_starts_with(&inner_words, &["other", "than", "defending", "player"]) {
+    if grammar::words_match_prefix(&inner_tokens, &["other", "than", "defending", "player"]).is_some() {
         let strip_start =
             token_index_for_word_index(&inner_tokens, 4).unwrap_or(inner_tokens.len());
         inner_tokens = trim_commas(&inner_tokens[strip_start..]).to_vec();
@@ -627,10 +622,8 @@ pub(crate) fn parse_for_each_opponent_clause(
         }
     };
     let inner_words = token_words(&inner_tokens);
-    if word_slice_starts_with(&inner_words, &["who", "has", "less", "life", "than", "you"]) {
-        let effect_start =
-            token_index_for_word_index(&inner_tokens, 6).unwrap_or(inner_tokens.len());
-        let effect_tokens = trim_commas(&inner_tokens[effect_start..]);
+    if let Some(after_who) = grammar::words_match_prefix(&inner_tokens, &["who", "has", "less", "life", "than", "you"]) {
+        let effect_tokens = trim_commas(after_who);
         if effect_tokens.is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "missing effect after 'each opponent who has less life than you' (clause: '{}')",
@@ -702,9 +695,9 @@ pub(crate) fn parse_for_each_opponent_clause(
         let predicate = parse_who_did_this_way_predicate(&inner_tokens)?;
         return Ok(Some(EffectAst::ForEachOpponentDid { effects, predicate }));
     }
-    if word_slice_starts_with(&inner_words, &["who", "does"])
-        || word_slice_starts_with(&inner_words, &["who", "do"])
-        || word_slice_starts_with(&inner_words, &["who", "did"])
+    if grammar::words_match_prefix(&inner_tokens, &["who", "does"]).is_some()
+        || grammar::words_match_prefix(&inner_tokens, &["who", "do"]).is_some()
+        || grammar::words_match_prefix(&inner_tokens, &["who", "did"]).is_some()
     {
         let effect_token_start =
             if let Some(comma_idx) = find_token_index(&inner_tokens, |token| token.is_comma()) {
@@ -805,9 +798,9 @@ pub(crate) fn parse_for_each_opponent_clause(
         let predicate = parse_who_did_this_way_predicate(&inner_tokens)?;
         return Ok(Some(EffectAst::ForEachPlayerDid { effects, predicate }));
     }
-    if word_slice_starts_with(&inner_words, &["who", "does"])
-        || word_slice_starts_with(&inner_words, &["who", "do"])
-        || word_slice_starts_with(&inner_words, &["who", "did"])
+    if grammar::words_match_prefix(&inner_tokens, &["who", "does"]).is_some()
+        || grammar::words_match_prefix(&inner_tokens, &["who", "do"]).is_some()
+        || grammar::words_match_prefix(&inner_tokens, &["who", "did"]).is_some()
     {
         let effect_token_start =
             if let Some(comma_idx) = find_token_index(&inner_tokens, |token| token.is_comma()) {
@@ -908,9 +901,9 @@ pub(crate) fn parse_for_each_opponent_clause(
         let predicate = parse_who_did_this_way_predicate(&inner_tokens)?;
         return Ok(Some(EffectAst::ForEachPlayerDid { effects, predicate }));
     }
-    if word_slice_starts_with(&inner_words, &["who", "does"])
-        || word_slice_starts_with(&inner_words, &["who", "do"])
-        || word_slice_starts_with(&inner_words, &["who", "did"])
+    if grammar::words_match_prefix(&inner_tokens, &["who", "does"]).is_some()
+        || grammar::words_match_prefix(&inner_tokens, &["who", "do"]).is_some()
+        || grammar::words_match_prefix(&inner_tokens, &["who", "did"]).is_some()
     {
         let effect_token_start =
             if let Some(comma_idx) = find_token_index(&inner_tokens, |token| token.is_comma()) {
@@ -962,10 +955,10 @@ pub(crate) fn parse_for_each_target_players_clause(
 
     let mut start = 0usize;
     let mut count = ChoiceCount::exactly(1);
-    if word_slice_starts_with(&clause_words, &["any", "number", "of"]) {
+    if grammar::words_match_prefix(clause_tokens, &["any", "number", "of"]).is_some() {
         count = ChoiceCount::any_number();
         start = 3;
-    } else if word_slice_starts_with(&clause_words, &["up", "to"])
+    } else if grammar::words_match_prefix(clause_tokens, &["up", "to"]).is_some()
         && let Some((value, used)) = parse_number(&clause_tokens[2..])
     {
         count = ChoiceCount::up_to(value as usize);
@@ -1114,19 +1107,19 @@ pub(crate) fn parse_for_each_player_clause(
         return Ok(None);
     }
 
-    let start = if word_slice_starts_with(&clause_words, &["for", "each", "player"])
-        || word_slice_starts_with(&clause_words, &["for", "each", "players"])
+    let after_prefix = if let Some(rest) = grammar::words_match_prefix(clause_tokens, &["for", "each", "player"])
+        .or_else(|| grammar::words_match_prefix(clause_tokens, &["for", "each", "players"]))
     {
-        3
-    } else if word_slice_starts_with(&clause_words, &["each", "player"])
-        || word_slice_starts_with(&clause_words, &["each", "players"])
+        rest
+    } else if let Some(rest) = grammar::words_match_prefix(clause_tokens, &["each", "player"])
+        .or_else(|| grammar::words_match_prefix(clause_tokens, &["each", "players"]))
     {
-        2
+        rest
     } else {
         return Ok(None);
     };
 
-    let inner_tokens = trim_commas(&clause_tokens[start..]);
+    let inner_tokens = trim_commas(after_prefix);
     if inner_tokens.len() > 3
         && inner_tokens[0].is_word("who")
         && inner_tokens[1].is_word("controls")
@@ -1156,16 +1149,11 @@ pub(crate) fn parse_for_each_player_clause(
                 clause_words.join(" ")
             )));
         }
-        let filter_words = token_words(&filter_tokens);
         let (controls_most, normalized_filter_tokens) =
-            if word_slice_starts_with(&filter_words, &["the", "most"]) {
-                let start_idx =
-                    token_index_for_word_index(&filter_tokens, 2).unwrap_or(filter_tokens.len());
-                (true, trim_commas(&filter_tokens[start_idx..]))
-            } else if word_slice_starts_with(&filter_words, &["most"]) {
-                let start_idx =
-                    token_index_for_word_index(&filter_tokens, 1).unwrap_or(filter_tokens.len());
-                (true, trim_commas(&filter_tokens[start_idx..]))
+            if let Some(rest) = grammar::words_match_prefix(&filter_tokens, &["the", "most"]) {
+                (true, trim_commas(rest))
+            } else if let Some(rest) = grammar::words_match_prefix(&filter_tokens, &["most"]) {
+                (true, trim_commas(rest))
             } else {
                 (false, filter_tokens)
             };
@@ -1283,9 +1271,9 @@ pub(crate) fn parse_for_each_player_clause(
         let predicate = parse_who_did_this_way_predicate(&inner_tokens)?;
         return Ok(Some(EffectAst::ForEachPlayerDid { effects, predicate }));
     }
-    if word_slice_starts_with(&inner_words, &["who", "does"])
-        || word_slice_starts_with(&inner_words, &["who", "do"])
-        || word_slice_starts_with(&inner_words, &["who", "did"])
+    if grammar::words_match_prefix(&inner_tokens, &["who", "does"]).is_some()
+        || grammar::words_match_prefix(&inner_tokens, &["who", "do"]).is_some()
+        || grammar::words_match_prefix(&inner_tokens, &["who", "did"]).is_some()
     {
         let effect_token_start =
             if let Some(comma_idx) = find_token_index(&inner_tokens, |token| token.is_comma()) {

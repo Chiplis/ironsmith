@@ -1,4 +1,5 @@
 use super::super::activation_and_restrictions::{contains_word_sequence, parse_named_number};
+use super::super::grammar::primitives as grammar;
 use super::super::grammar::values as shared_values;
 use super::super::lexer::OwnedLexToken;
 use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed};
@@ -360,12 +361,12 @@ pub(crate) fn parse_for_each_opponent_doesnt(
         return Ok(None);
     }
 
-    let start = if slice_starts_with(&clause_words, &["for", "each", "opponent"])
-        || slice_starts_with(&clause_words, &["for", "each", "opponents"])
+    let start = if grammar::words_match_prefix(clause_tokens, &["for", "each", "opponent"]).is_some()
+        || grammar::words_match_prefix(clause_tokens, &["for", "each", "opponents"]).is_some()
     {
         3
-    } else if slice_starts_with(&clause_words, &["each", "opponent"])
-        || slice_starts_with(&clause_words, &["each", "opponents"])
+    } else if grammar::words_match_prefix(clause_tokens, &["each", "opponent"]).is_some()
+        || grammar::words_match_prefix(clause_tokens, &["each", "opponents"]).is_some()
     {
         2
     } else {
@@ -421,12 +422,12 @@ pub(crate) fn parse_for_each_player_doesnt(
         return Ok(None);
     }
 
-    let start = if slice_starts_with(&clause_words, &["for", "each", "player"])
-        || slice_starts_with(&clause_words, &["for", "each", "players"])
+    let start = if grammar::words_match_prefix(clause_tokens, &["for", "each", "player"]).is_some()
+        || grammar::words_match_prefix(clause_tokens, &["for", "each", "players"]).is_some()
     {
         3
-    } else if slice_starts_with(&clause_words, &["each", "player"])
-        || slice_starts_with(&clause_words, &["each", "players"])
+    } else if grammar::words_match_prefix(clause_tokens, &["each", "player"]).is_some()
+        || grammar::words_match_prefix(clause_tokens, &["each", "players"]).is_some()
     {
         2
     } else {
@@ -619,7 +620,7 @@ pub(crate) fn parse_for_each_vote_clause(
         return Ok(None);
     }
 
-    if !slice_starts_with(&words, &["for", "each"]) {
+    if grammar::words_match_prefix(tokens, &["for", "each"]).is_none() {
         return Ok(None);
     }
 
@@ -645,11 +646,14 @@ pub(crate) fn parse_for_each_vote_clause(
     }
     let option = option_words.join(" ");
 
-    let comma_idx = find_index(tokens, |token| token.is_comma()).ok_or_else(|| {
+    let (_before, effect_tokens) = super::super::grammar::primitives::split_lexed_once_on_delimiter(
+        tokens,
+        super::super::lexer::TokenKind::Comma,
+    )
+    .ok_or_else(|| {
         CardTextError::ParseError("missing comma in for each vote clause".to_string())
     })?;
 
-    let effect_tokens = &tokens[comma_idx + 1..];
     let effects = parse_effect_chain(effect_tokens)?;
     Ok(Some(EffectAst::VoteOption { option, effects }))
 }
@@ -661,13 +665,13 @@ pub(crate) fn parse_vote_extra_sentence(tokens: &[OwnedLexToken]) -> Option<Effe
     }
 
     let has_vote = words.iter().any(|word| *word == "vote" || *word == "votes");
-    let has_additional = slice_contains(&words, &"additional");
+    let has_additional = grammar::contains_word(tokens, "additional");
     let has_time = words.iter().any(|word| *word == "time" || *word == "times");
     if !has_vote || !has_additional || !has_time {
         return None;
     }
 
-    let optional = slice_contains(&words, &"may");
+    let optional = grammar::contains_word(tokens, "may");
     Some(EffectAst::VoteExtra { count: 1, optional })
 }
 
@@ -683,9 +687,12 @@ pub(crate) fn parse_after_turn_sentence(
         return Ok(None);
     }
 
-    let comma_idx = find_index(tokens, |token| token.is_comma());
-    let remainder = if let Some(idx) = comma_idx {
-        &tokens[idx + 1..]
+    let remainder = if let Some((_before, after)) =
+        super::super::grammar::primitives::split_lexed_once_on_delimiter(
+            tokens,
+            super::super::lexer::TokenKind::Comma,
+        ) {
+        after
     } else {
         &tokens[3..]
     };
@@ -773,11 +780,11 @@ pub(crate) fn parse_sentence_counter_target_spell_thats_second_cast_this_turn(
 pub(crate) fn parse_sentence_exile_target_creature_with_greatest_power(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
-    let is_shape = slice_starts_with(&clause_words, &["exile", "target", "creature"])
-        && contains_word_sequence(&clause_words, &["greatest", "power", "among", "creatures"])
-        && (contains_window(&clause_words, &["on", "battlefield"])
-            || contains_window(&clause_words, &["on", "the", "battlefield"]));
+    let is_shape = grammar::words_match_prefix(tokens, &["exile", "target", "creature"]).is_some()
+        && grammar::words_find_phrase(tokens, &["greatest", "power", "among", "creatures"])
+            .is_some()
+        && (grammar::words_find_phrase(tokens, &["on", "battlefield"]).is_some()
+            || grammar::words_find_phrase(tokens, &["on", "the", "battlefield"]).is_some());
     if !is_shape {
         return Ok(None);
     }

@@ -4,7 +4,7 @@ use super::super::clause_support::{
 };
 use super::super::compile_support::compile_statement_effects;
 use super::super::grammar::primitives::{
-    TokenWordView, split_lexed_slices_on_and, split_lexed_slices_on_or,
+    self as grammar, TokenWordView, split_lexed_slices_on_and, split_lexed_slices_on_or,
 };
 use super::super::lexer::{OwnedLexToken, TokenKind, trim_lexed_commas};
 use super::super::lowering_support::{
@@ -176,9 +176,7 @@ fn parse_granted_ability_component_for_gain(
         return Ok(None);
     }
 
-    let ability_word_view = GainAbilityWordView::new(&ability_tokens);
-    let ability_words = ability_word_view.to_word_refs();
-    if word_slice_starts_with(&ability_words, &["hexproof", "from"]) {
+    if grammar::words_match_prefix(&ability_tokens, &["hexproof", "from"]).is_some() {
         let filter_tokens = ability_tokens[2..]
             .iter()
             .filter(|token| !token.is_word("and") && !token.is_word("from"))
@@ -677,12 +675,14 @@ pub(crate) fn parse_gain_ability_sentence(
 
     let leading_duration_phrase = if starts_with_until_end_of_turn(&word_list) {
         Some((4usize, Until::EndOfTurn))
-    } else if word_slice_starts_with(&word_list, &["until", "your", "next", "turn"])
-        || word_slice_starts_with(&word_list, &["until", "your", "next", "upkeep"])
+    } else if grammar::words_match_prefix(tokens, &["until", "your", "next", "turn"]).is_some()
+        || grammar::words_match_prefix(tokens, &["until", "your", "next", "upkeep"]).is_some()
     {
         Some((4usize, Until::YourNextTurn))
-    } else if word_slice_starts_with(&word_list, &["until", "your", "next", "untap", "step"])
-        || word_slice_starts_with(&word_list, &["during", "your", "next", "untap", "step"])
+    } else if grammar::words_match_prefix(tokens, &["until", "your", "next", "untap", "step"])
+        .is_some()
+        || grammar::words_match_prefix(tokens, &["during", "your", "next", "untap", "step"])
+            .is_some()
     {
         Some((5usize, Until::YourNextTurn))
     } else {
@@ -1095,9 +1095,10 @@ pub(crate) fn parse_choice_of_abilities(tokens: &[OwnedLexToken]) -> Option<Vec<
     let tokens = trim_commas(tokens);
     let word_view = GainAbilityWordView::new(&tokens);
     let word_list = word_view.to_word_refs();
-    let prefix_words = if word_slice_starts_with(&word_list, &["your", "choice", "of"]) {
+    let prefix_words = if grammar::words_match_prefix(&tokens, &["your", "choice", "of"]).is_some()
+    {
         3usize
-    } else if word_slice_starts_with(&word_list, &["your", "choice", "from"]) {
+    } else if grammar::words_match_prefix(&tokens, &["your", "choice", "from"]).is_some() {
         3usize
     } else {
         return None;

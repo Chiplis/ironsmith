@@ -209,13 +209,14 @@ pub(crate) fn parse_restriction_duration_lexed(
         if !is_as_long_as_you_control_duration_tokens(tokens) {
             return Ok(None);
         }
-        let Some(comma_idx) = find_token_index(tokens, |token| token.kind == TokenKind::Comma)
+        let Some((_before, after)) =
+            grammar::split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
         else {
             return Err(CardTextError::ParseError(
                 "missing comma after duration prefix".to_string(),
             ));
         };
-        let remainder = trim_lexed_commas(&tokens[comma_idx + 1..]).to_vec();
+        let remainder = trim_lexed_commas(after).to_vec();
         return Ok(Some((Until::YouStopControllingThis, remainder)));
     }
 
@@ -431,8 +432,8 @@ pub(crate) fn parse_shuffle_graveyard_into_library_sentence(
     if !clause_words
         .iter()
         .any(|word| *word == "shuffle" || *word == "shuffles")
-        || !word_slice_contains(&clause_words, "graveyard")
-        || !word_slice_contains(&clause_words, "library")
+        || !grammar::contains_word(&clause_tokens, "graveyard")
+        || !grammar::contains_word(&clause_tokens, "library")
     {
         return Ok(None);
     }
@@ -480,7 +481,7 @@ pub(crate) fn parse_shuffle_graveyard_into_library_sentence(
 
     let destination_tokens = trim_commas(&body_tokens[into_idx + 1..]);
     let destination_words = token_words(&destination_tokens);
-    if !word_slice_contains(&destination_words, "library") {
+    if !grammar::contains_word(&destination_tokens, "library") {
         return Ok(None);
     }
     let owner_library_destination = destination_words
@@ -519,11 +520,11 @@ pub(crate) fn parse_shuffle_graveyard_into_library_sentence(
         return Ok(None);
     }
     let target_words = token_words(&target_tokens);
-    if !word_slice_contains(&target_words, "graveyard") {
+    if !grammar::contains_word(&target_tokens, "graveyard") {
         return Ok(None);
     }
 
-    let has_target_selector = word_slice_contains(&target_words, "target");
+    let has_target_selector = grammar::contains_word(&target_tokens, "target");
     if !has_target_selector {
         let mut effects = Vec::new();
         let has_source_and_graveyard_clause = word_slice_starts_with_any(
@@ -549,7 +550,7 @@ pub(crate) fn parse_shuffle_graveyard_into_library_sentence(
                 });
             }
         }
-        if each_player_subject && word_slice_contains(&target_words, "hand") {
+        if each_player_subject && grammar::contains_word(&target_tokens, "hand") {
             let mut hand_filter = ObjectFilter::default();
             hand_filter.zone = Some(Zone::Hand);
             hand_filter.owner = Some(PlayerFilter::IteratedPlayer);
@@ -600,8 +601,8 @@ pub(crate) fn parse_shuffle_object_into_library_sentence(
     if !clause_words
         .iter()
         .any(|word| *word == "shuffle" || *word == "shuffles")
-        || !word_slice_contains(&clause_words, "library")
-        || word_slice_contains(&clause_words, "graveyard")
+        || !grammar::contains_word(&clause_tokens, "library")
+        || grammar::contains_word(&clause_tokens, "graveyard")
     {
         return Ok(None);
     }
@@ -635,7 +636,7 @@ pub(crate) fn parse_shuffle_object_into_library_sentence(
     }
 
     let destination_tokens = trim_commas(&body_tokens[into_idx + 1..]);
-    if !word_slice_contains(&token_words(&destination_tokens), "library") {
+    if !grammar::contains_word(&destination_tokens, "library") {
         return Ok(None);
     }
 
@@ -707,16 +708,20 @@ pub(crate) fn parse_exile_hand_and_graveyard_bundle_sentence(
         return Ok(None);
     }
 
+    if grammar::words_match_prefix(&clause_tokens, &["exile", "all", "cards", "from"]).is_none() {
+        return Ok(None);
+    }
+    if !grammar::contains_word(&clause_tokens, "hand")
+        && !grammar::contains_word(&clause_tokens, "hands")
+    {
+        return Ok(None);
+    }
+    if !grammar::contains_word(&clause_tokens, "graveyard")
+        && !grammar::contains_word(&clause_tokens, "graveyards")
+    {
+        return Ok(None);
+    }
     let clause_words = token_words(&clause_tokens);
-    if !word_slice_starts_with(&clause_words, &["exile", "all", "cards", "from"]) {
-        return Ok(None);
-    }
-    if !word_slice_contains_any(&clause_words, &["hand", "hands"]) {
-        return Ok(None);
-    }
-    if !word_slice_contains_any(&clause_words, &["graveyard", "graveyards"]) {
-        return Ok(None);
-    }
 
     let first_zone_idx =
         word_slice_find_any(&clause_words, &["hand", "hands", "graveyard", "graveyards"])
@@ -799,9 +804,9 @@ pub(crate) fn parse_target_player_exiles_creature_and_graveyard_sentence(
     }
 
     let (subject_player, subject_filter) =
-        if word_slice_starts_with(&clause_words, &["target", "opponent"]) {
+        if grammar::words_match_prefix(&clause_tokens, &["target", "opponent"]).is_some() {
             (PlayerAst::TargetOpponent, PlayerFilter::target_opponent())
-        } else if word_slice_starts_with(&clause_words, &["target", "player"]) {
+        } else if grammar::words_match_prefix(&clause_tokens, &["target", "player"]).is_some() {
             (PlayerAst::Target, PlayerFilter::target_player())
         } else {
             return Ok(None);
@@ -864,18 +869,17 @@ pub(crate) fn parse_target_player_exiles_creature_and_graveyard_sentence(
 pub(crate) fn parse_for_each_exiled_this_way_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let words_all = token_words(tokens);
-    if !word_slice_starts_with(
-        &words_all,
-        &["for", "each", "permanent", "exiled", "this", "way"],
-    ) {
+    if grammar::words_match_prefix(tokens, &["for", "each", "permanent", "exiled", "this", "way"])
+        .is_none()
+    {
         return Ok(None);
     }
-    if !word_slice_contains_any(&words_all, &["shares"])
-        || !word_slice_contains_any(&words_all, &["card"])
-        || !word_slice_contains_any(&words_all, &["type"])
-        || !word_slice_contains_any(&words_all, &["library"])
-        || !word_slice_contains_any(&words_all, &["battlefield"])
+    let words_all = token_words(tokens);
+    if !grammar::contains_word(tokens, "shares")
+        || !grammar::contains_word(tokens, "card")
+        || !grammar::contains_word(tokens, "type")
+        || !grammar::contains_word(tokens, "library")
+        || !grammar::contains_word(tokens, "battlefield")
     {
         return Ok(None);
     }
@@ -918,26 +922,26 @@ pub(crate) fn parse_each_player_put_permanent_cards_exiled_with_source_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let words_all = token_words(tokens);
-    let starts_with_each_player_turns_face_up = word_slice_starts_with(
-        &words_all,
+    let starts_with_each_player_turns_face_up = grammar::words_match_prefix(
+        tokens,
         &["each", "player", "turns", "face", "up", "all", "cards"],
-    );
+    ).is_some();
     if !starts_with_each_player_turns_face_up {
         return Ok(None);
     }
     let has_exiled_with_this =
-        word_slice_contains_sequence(&words_all, &["exiled", "with", "this"]);
+        grammar::words_find_phrase(tokens, &["exiled", "with", "this"]).is_some();
     if !has_exiled_with_this {
         return Ok(None);
     }
     let has_puts_all_permanent_cards =
-        word_slice_contains_sequence(&words_all, &["then", "puts", "all", "permanent", "cards"]);
+        grammar::words_find_phrase(tokens, &["then", "puts", "all", "permanent", "cards"]).is_some();
     let has_among_them_onto_battlefield =
-        word_slice_contains_sequence(&words_all, &["among", "them", "onto", "battlefield"])
-            || word_slice_contains_sequence(
-                &words_all,
+        grammar::words_find_phrase(tokens, &["among", "them", "onto", "battlefield"]).is_some()
+            || grammar::words_find_phrase(
+                tokens,
                 &["among", "them", "onto", "the", "battlefield"],
-            );
+            ).is_some();
     if !has_puts_all_permanent_cards || !has_among_them_onto_battlefield {
         return Ok(None);
     }
@@ -968,24 +972,26 @@ pub(crate) fn parse_each_player_put_permanent_cards_exiled_with_source_sentence(
 pub(crate) fn parse_for_each_destroyed_this_way_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let words_all = token_words(tokens);
-    if !word_slice_starts_with(&words_all, &["for", "each"]) {
+    if grammar::words_match_prefix(tokens, &["for", "each"]).is_none() {
         return Ok(None);
     }
     let refers_to_destroyed =
-        word_slice_contains_sequence(&words_all, &["destroyed", "this", "way"]);
-    let refers_to_died = word_slice_contains_sequence(&words_all, &["died", "this", "way"]);
+        grammar::words_find_phrase(tokens, &["destroyed", "this", "way"]).is_some();
+    let refers_to_died =
+        grammar::words_find_phrase(tokens, &["died", "this", "way"]).is_some();
+    let words_all = token_words(tokens);
     if !refers_to_destroyed && !refers_to_died {
         return Ok(None);
     }
 
-    let comma_idx = find_token_index(tokens, OwnedLexToken::is_comma).ok_or_else(|| {
-        CardTextError::ParseError(format!(
-            "missing comma after 'for each ... this way' clause (clause: '{}')",
-            words_all.join(" ")
-        ))
-    })?;
-    let effect_tokens = trim_commas(&tokens[comma_idx + 1..]);
+    let (_before, after_comma) = grammar::split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
+        .ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "missing comma after 'for each ... this way' clause (clause: '{}')",
+                words_all.join(" ")
+            ))
+        })?;
+    let effect_tokens = trim_commas(after_comma);
     if effect_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing effect after 'for each ... this way' clause (clause: '{}')",
@@ -1097,20 +1103,21 @@ pub(crate) fn parse_exile_instead_of_graveyard_sentence(
     }
 
     let has_graveyard_clause =
-        word_slice_contains_sequence(&line_words, &["into", "your", "graveyard", "from"])
-            || word_slice_contains_sequence(&line_words, &["your", "graveyard", "from"])
-            || (word_slice_contains(&line_words, "your")
-                && word_slice_contains(&line_words, "graveyard"));
-    let has_would_put = word_slice_contains_sequence(&line_words, &["card", "would", "be", "put"]);
+        grammar::words_find_phrase(tokens, &["into", "your", "graveyard", "from"]).is_some()
+            || grammar::words_find_phrase(tokens, &["your", "graveyard", "from"]).is_some()
+            || (grammar::contains_word(tokens, "your")
+                && grammar::contains_word(tokens, "graveyard"));
+    let has_would_put = grammar::words_find_phrase(tokens, &["card", "would", "be", "put"]).is_some();
     let has_this_turn =
-        word_slice_contains(&line_words, "this") && word_slice_contains(&line_words, "turn");
+        grammar::contains_word(tokens, "this") && grammar::contains_word(tokens, "turn");
     if !has_graveyard_clause || !has_would_put || !has_this_turn {
         return Ok(None);
     }
 
-    let comma_idx = find_token_index(tokens, OwnedLexToken::is_comma);
-    let remainder = if let Some(idx) = comma_idx {
-        &tokens[idx + 1..]
+    let remainder = if let Some((_before, after)) =
+        grammar::split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
+    {
+        after
     } else {
         return Ok(None);
     };

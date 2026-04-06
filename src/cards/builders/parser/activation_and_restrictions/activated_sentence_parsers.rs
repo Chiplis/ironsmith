@@ -1,7 +1,7 @@
 use super::super::activation_helpers::parse_subtype_flexible;
 use super::super::effect_sentences::parse_subtype_word;
 use super::super::grammar::filters::parse_spell_filter_with_grammar_entrypoint;
-use super::super::grammar::primitives::TokenWordView;
+use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::keyword_static::parse_cost_modifier_mana_cost;
 use super::super::lexer::OwnedLexToken;
 use super::super::token_primitives::{
@@ -60,7 +60,7 @@ fn parse_activate_only_sentence_details_lexed(
 fn parse_next_spell_cost_reduction_sentence(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     let words = TokenWordView::new(tokens);
     let clause_words = words.to_word_refs();
-    if !words.starts_with(&["the", "next"]) {
+    if grammar::words_match_prefix(tokens, &["the", "next"]).is_none() {
         return None;
     }
 
@@ -99,18 +99,17 @@ fn parse_next_spell_cost_reduction_sentence(tokens: &[OwnedLexToken]) -> Option<
 }
 
 fn is_inline_activated_text_modifier_sentence(tokens: &[OwnedLexToken]) -> bool {
-    let words = TokenWordView::new(tokens);
-    if words.starts_with(&["this", "ability", "costs"])
-        && words.has_phrase(&["less", "to", "activate"])
+    if grammar::words_match_prefix(tokens, &["this", "ability", "costs"]).is_some()
+        && grammar::words_find_phrase(tokens, &["less", "to", "activate"]).is_some()
     {
         return true;
     }
 
-    words.starts_with(&["the", "next"])
-        && words.has_phrase(&["spell"])
-        && words.has_phrase(&["costs"])
-        && words.has_phrase(&["less"])
-        && words.has_phrase(&["cast"])
+    grammar::words_match_prefix(tokens, &["the", "next"]).is_some()
+        && grammar::words_find_phrase(tokens, &["spell"]).is_some()
+        && grammar::words_find_phrase(tokens, &["costs"]).is_some()
+        && grammar::words_find_phrase(tokens, &["less"]).is_some()
+        && grammar::words_find_phrase(tokens, &["cast"]).is_some()
 }
 
 fn parse_activated_sentence_modifier_lexed(
@@ -212,31 +211,37 @@ pub(super) fn collect_activated_sentence_modifiers<'a>(
 pub(crate) fn parse_activate_only_timing_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<ActivationTiming> {
-    let words = TokenWordView::new(tokens);
-    if words.slice_eq(0, &["activate", "only", "as", "a", "sorcery"]) {
+    if grammar::words_match_prefix(tokens, &["activate", "only", "as", "a", "sorcery"]).is_some() {
         return Some(ActivationTiming::SorcerySpeed);
     }
-    if words.slice_eq(0, &["activate", "only", "once", "each", "turn"])
-        || words.has_phrase(&["once", "each", "turn"])
+    if grammar::words_match_prefix(tokens, &["activate", "only", "once", "each", "turn"]).is_some()
+        || grammar::words_find_phrase(tokens, &["once", "each", "turn"]).is_some()
     {
         return Some(ActivationTiming::OncePerTurn);
     }
-    if words.slice_eq(0, &["activate", "only", "during", "combat"])
-        || words.has_phrase(&["during", "combat"])
+    if grammar::words_match_prefix(tokens, &["activate", "only", "during", "combat"]).is_some()
+        || grammar::words_find_phrase(tokens, &["during", "combat"]).is_some()
     {
         return Some(ActivationTiming::DuringCombat);
     }
-    if words.slice_eq(0, &["activate", "only", "during", "your", "turn"])
-        || words.has_phrase(&["during", "your", "turn"])
+    if grammar::words_match_prefix(tokens, &["activate", "only", "during", "your", "turn"])
+        .is_some()
+        || grammar::words_find_phrase(tokens, &["during", "your", "turn"]).is_some()
     {
         return Some(ActivationTiming::DuringYourTurn);
     }
-    if words.slice_eq(
-        0,
+    if grammar::words_match_prefix(
+        tokens,
         &["activate", "only", "during", "an", "opponents", "turn"],
-    ) || words.slice_eq(0, &["activate", "only", "during", "opponents", "turn"])
-        || words.has_phrase(&["during", "an", "opponents", "turn"])
-        || words.has_phrase(&["during", "opponents", "turn"])
+    )
+    .is_some()
+        || grammar::words_match_prefix(
+            tokens,
+            &["activate", "only", "during", "opponents", "turn"],
+        )
+        .is_some()
+        || grammar::words_find_phrase(tokens, &["during", "an", "opponents", "turn"]).is_some()
+        || grammar::words_find_phrase(tokens, &["during", "opponents", "turn"]).is_some()
     {
         return Some(ActivationTiming::DuringOpponentsTurn);
     }
@@ -280,23 +285,23 @@ pub(crate) fn normalize_activate_only_restriction(
 }
 
 pub(crate) fn is_activate_only_restriction_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
-    let words = TokenWordView::new(tokens);
-    words.slice_eq(0, &["activate", "only"])
-        || words.slice_eq(0, &["activate", "no", "more", "than"])
+    grammar::words_match_prefix(tokens, &["activate", "only"]).is_some()
+        || grammar::words_match_prefix(tokens, &["activate", "no", "more", "than"]).is_some()
 }
 
 pub(crate) fn is_spend_mana_restriction_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
-    let words = TokenWordView::new(tokens);
-    words.slice_eq(0, &["spend", "this", "mana", "only"])
-        || words.slice_eq(0, &["spend", "that", "mana", "only"])
+    grammar::words_match_prefix(tokens, &["spend", "this", "mana", "only"]).is_some()
+        || grammar::words_match_prefix(tokens, &["spend", "that", "mana", "only"]).is_some()
 }
 
 pub(crate) fn parse_mana_usage_restriction_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<crate::ability::ManaUsageRestriction> {
     let words = TokenWordView::new(tokens);
-    if !(words.slice_eq(0, &["spend", "this", "mana", "only", "to", "cast"])
-        || words.slice_eq(0, &["spend", "that", "mana", "only", "to", "cast"]))
+    if !(grammar::words_match_prefix(tokens, &["spend", "this", "mana", "only", "to", "cast"])
+        .is_some()
+        || grammar::words_match_prefix(tokens, &["spend", "that", "mana", "only", "to", "cast"])
+            .is_some())
     {
         return None;
     }
@@ -363,11 +368,16 @@ pub(crate) fn parse_mana_usage_restriction_sentence_lexed(
 
 pub(crate) fn is_any_player_may_activate_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
     let words = TokenWordView::new(tokens);
-    words.len() == 6 && words.slice_eq(0, &["any", "player", "may", "activate", "this", "ability"])
+    words.len() == 6
+        && grammar::words_match_prefix(
+            tokens,
+            &["any", "player", "may", "activate", "this", "ability"],
+        )
+        .is_some()
 }
 
 pub(crate) fn is_trigger_only_restriction_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
-    TokenWordView::new(tokens).slice_eq(0, &["this", "ability", "triggers", "only"])
+    grammar::words_match_prefix(tokens, &["this", "ability", "triggers", "only"]).is_some()
 }
 
 pub(crate) fn parse_triggered_times_each_turn_sentence(
@@ -416,7 +426,7 @@ pub(crate) fn parse_activation_condition_lexed(
         return None;
     }
 
-    if words.slice_eq(0, &["activate", "no", "more", "than"]) {
+    if grammar::words_match_prefix(tokens, &["activate", "no", "more", "than"]).is_some() {
         let count_word = words.get(4)?;
         let count = match count_word {
             "once" => 1,
@@ -438,15 +448,16 @@ pub(crate) fn parse_activation_condition_lexed(
     if let Some(count) = parse_activation_count_per_turn(&after_activate_only) {
         return Some(crate::ConditionExpr::MaxActivationsPerTurn(count));
     }
-    if words.slice_eq(0, &["activate", "only", "as", "an", "instant"])
-        || words.slice_eq(0, &["activate", "only", "as", "instant"])
+    if grammar::words_match_prefix(tokens, &["activate", "only", "as", "an", "instant"]).is_some()
+        || grammar::words_match_prefix(tokens, &["activate", "only", "as", "instant"]).is_some()
     {
         return Some(crate::ConditionExpr::ActivationTiming(
             ActivationTiming::AnyTime,
         ));
     }
-    if words.slice_eq(0, &["activate", "only", "if", "there", "is"])
-        || words.slice_eq(0, &["activate", "only", "if", "there", "are"])
+    if grammar::words_match_prefix(tokens, &["activate", "only", "if", "there", "is"]).is_some()
+        || grammar::words_match_prefix(tokens, &["activate", "only", "if", "there", "are"])
+            .is_some()
     {
         let descriptor_start = 5usize;
         let mut in_idx = None;
@@ -499,8 +510,8 @@ pub(crate) fn parse_activation_condition_lexed(
             subtypes,
         });
     }
-    if words.slice_eq(
-        0,
+    if grammar::words_match_prefix(
+        tokens,
         &[
             "activate",
             "only",
@@ -512,7 +523,9 @@ pub(crate) fn parse_activation_condition_lexed(
             "total",
             "power",
         ],
-    ) {
+    )
+    .is_some()
+    {
         let threshold_word = words.get(9)?;
         let threshold = parse_number_word_u32(threshold_word)?;
         let tail = (10..words.len())
@@ -525,7 +538,8 @@ pub(crate) fn parse_activation_condition_lexed(
         }
         return None;
     }
-    if !words.slice_eq(0, &["activate", "only", "if", "you", "control"]) {
+    if grammar::words_match_prefix(tokens, &["activate", "only", "if", "you", "control"]).is_none()
+    {
         return None;
     }
 

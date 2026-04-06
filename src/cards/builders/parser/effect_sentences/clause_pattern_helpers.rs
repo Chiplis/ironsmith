@@ -12,7 +12,7 @@ use crate::{ChoiceCount, Supertype};
 use super::super::activation_and_restrictions::{
     starts_with_target_indicator, title_case_token_word,
 };
-use super::super::grammar::primitives::TokenWordView;
+use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::grammar::structure::split_trailing_if_clause_lexed;
 use super::super::object_filters::parse_object_filter;
 use super::super::token_primitives::{
@@ -33,26 +33,11 @@ use super::verb_dispatch::parse_effect_with_verb;
 
 type ClausePatternCompatWords = TokenWordView;
 
-fn find_token_word_sequence_index(tokens: &[OwnedLexToken], sequence: &[&str]) -> Option<usize> {
-    if sequence.is_empty() {
-        return Some(0);
-    }
-    if sequence.len() > tokens.len() {
-        return None;
-    }
-    for start in 0..=tokens.len() - sequence.len() {
-        let mut matches = true;
-        for (offset, expected) in sequence.iter().enumerate() {
-            if !tokens[start + offset].is_word(expected) {
-                matches = false;
-                break;
-            }
-        }
-        if matches {
-            return Some(start);
-        }
-    }
-    None
+fn find_token_word_sequence_index(
+    tokens: &[OwnedLexToken],
+    sequence: &'static [&'static str],
+) -> Option<usize> {
+    super::super::grammar::primitives::find_phrase_start(tokens, sequence)
 }
 
 fn strip_suffix_char<'a>(word: &'a str, suffix: char) -> Option<&'a str> {
@@ -177,7 +162,7 @@ pub(crate) fn parse_double_counters_clause(
 ) -> Result<Option<EffectAst>, CardTextError> {
     let clause_word_view = ClausePatternCompatWords::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
-    if !word_slice_starts_with(&clause_words, &["double", "the", "number", "of"]) {
+    if grammar::words_match_prefix(tokens, &["double", "the", "number", "of"]).is_none() {
         return Ok(None);
     }
 
@@ -320,20 +305,22 @@ pub(crate) fn is_simple_chosen_object_reference(tokens: &[OwnedLexToken]) -> boo
 pub(crate) fn parse_choose_target_and_verb_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    use super::super::grammar::primitives as grammar;
+
     let clause_word_view = ClausePatternCompatWords::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
-    if !word_slice_starts_with(&clause_words, &["choose", "target"]) {
+    if grammar::strip_lexed_prefix_phrase(tokens, &["choose", "target"]).is_none() {
         return Ok(None);
     }
 
-    let Some(and_idx) = find_token_index(tokens, |token| token.is_word("and")) else {
+    let Some((before_and, after_and)) = grammar::split_lexed_once_on_separator(
+        tokens,
+        || { use winnow::Parser as _; grammar::kw("and").void() },
+    ) else {
         return Ok(None);
     };
-    if and_idx <= 1 {
-        return Ok(None);
-    }
 
-    let target_tokens = trim_commas(&tokens[1..and_idx]);
+    let target_tokens = trim_commas(&before_and[1..]);
     if target_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing target after choose clause (clause: '{}')",
@@ -344,7 +331,7 @@ pub(crate) fn parse_choose_target_and_verb_clause(
         return Ok(None);
     }
 
-    let mut tail_tokens = trim_commas(&tokens[and_idx + 1..]);
+    let mut tail_tokens = trim_commas(after_and);
     if tail_tokens
         .first()
         .is_some_and(|token| token.is_word("then"))
@@ -956,12 +943,14 @@ pub(crate) fn parse_prevent_all_damage_clause(
     let prefix_duration_then_target = [
         "prevent", "all", "damage", "that", "would", "be", "dealt", "this", "turn", "to",
     ];
-    if !word_slice_starts_with(&clause_words, &prefix_target_then_duration)
-        && !word_slice_starts_with(&clause_words, &prefix_duration_then_target)
+    if grammar::words_match_prefix(tokens, &prefix_target_then_duration).is_none()
+        && grammar::words_match_prefix(tokens, &prefix_duration_then_target).is_none()
     {
         return Ok(None);
     }
-    let target_words = if word_slice_starts_with(&clause_words, &prefix_duration_then_target) {
+    let target_words = if grammar::words_match_prefix(tokens, &prefix_duration_then_target)
+        .is_some()
+    {
         &clause_words[prefix_duration_then_target.len()..]
     } else {
         if clause_words.len() <= prefix_target_then_duration.len() + 1 {
@@ -1038,7 +1027,7 @@ pub(crate) fn parse_prevent_next_time_damage_sentence(
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let clause_word_view = ClausePatternCompatWords::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
-    if !word_slice_starts_with(&clause_words, &["the", "next", "time"]) {
+    if grammar::words_match_prefix(tokens, &["the", "next", "time"]).is_none() {
         return Ok(None);
     }
 
@@ -1141,7 +1130,7 @@ pub(crate) fn parse_redirect_next_damage_sentence(
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let clause_word_view = ClausePatternCompatWords::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
-    if word_slice_starts_with(&clause_words, &["the", "next", "time"]) {
+    if grammar::words_match_prefix(tokens, &["the", "next", "time"]).is_some() {
         let Some(would_idx) = find_word_index(&clause_words, |word| word == "would") else {
             return Ok(None);
         };
@@ -1249,7 +1238,7 @@ pub(crate) fn parse_redirect_next_damage_sentence(
         }]));
     }
 
-    if !word_slice_starts_with(&clause_words, &["the", "next"]) {
+    if grammar::words_match_prefix(tokens, &["the", "next"]).is_none() {
         return Ok(None);
     }
 
@@ -1382,7 +1371,7 @@ pub(crate) fn parse_win_the_game_clause(
     let clause_word_view = ClausePatternCompatWords::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
     if clause_words.len() < 4
-        || !word_slice_starts_with(&clause_words, &["you", "win", "the", "game"])
+        || grammar::words_match_prefix(tokens, &["you", "win", "the", "game"]).is_none()
     {
         return Ok(None);
     }
@@ -1530,8 +1519,8 @@ pub(crate) fn parse_keyword_mechanic_clause(
             clause_words.join(" ")
         )));
     }
-    if word_slice_starts_with(&clause_words, &["for", "each", "odd", "result"])
-        || word_slice_starts_with(&clause_words, &["for", "each", "even", "result"])
+    if grammar::words_match_prefix(clause_tokens, &["for", "each", "odd", "result"]).is_some()
+        || grammar::words_match_prefix(clause_tokens, &["for", "each", "even", "result"]).is_some()
     {
         return Err(CardTextError::ParseError(format!(
             "unsupported odd/even-result clause (clause: '{}')",
@@ -1564,8 +1553,8 @@ pub(crate) fn parse_keyword_mechanic_clause(
         return Ok(Some(EffectAst::PhaseOut { target }));
     }
 
-    if word_slice_starts_with(&clause_words, &["open", "an", "attraction"])
-        || word_slice_starts_with(&clause_words, &["opens", "an", "attraction"])
+    if grammar::words_match_prefix(clause_tokens, &["open", "an", "attraction"]).is_some()
+        || grammar::words_match_prefix(clause_tokens, &["opens", "an", "attraction"]).is_some()
     {
         return Ok(Some(EffectAst::OpenAttraction));
     }
