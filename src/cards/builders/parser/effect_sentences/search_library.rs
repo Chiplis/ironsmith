@@ -869,8 +869,11 @@ pub(crate) fn parse_target_player_exiles_creature_and_graveyard_sentence(
 pub(crate) fn parse_for_each_exiled_this_way_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if grammar::words_match_prefix(tokens, &["for", "each", "permanent", "exiled", "this", "way"])
-        .is_none()
+    if grammar::words_match_prefix(
+        tokens,
+        &["for", "each", "permanent", "exiled", "this", "way"],
+    )
+    .is_none()
     {
         return Ok(None);
     }
@@ -925,7 +928,8 @@ pub(crate) fn parse_each_player_put_permanent_cards_exiled_with_source_sentence(
     let starts_with_each_player_turns_face_up = grammar::words_match_prefix(
         tokens,
         &["each", "player", "turns", "face", "up", "all", "cards"],
-    ).is_some();
+    )
+    .is_some();
     if !starts_with_each_player_turns_face_up {
         return Ok(None);
     }
@@ -935,13 +939,12 @@ pub(crate) fn parse_each_player_put_permanent_cards_exiled_with_source_sentence(
         return Ok(None);
     }
     let has_puts_all_permanent_cards =
-        grammar::words_find_phrase(tokens, &["then", "puts", "all", "permanent", "cards"]).is_some();
+        grammar::words_find_phrase(tokens, &["then", "puts", "all", "permanent", "cards"])
+            .is_some();
     let has_among_them_onto_battlefield =
         grammar::words_find_phrase(tokens, &["among", "them", "onto", "battlefield"]).is_some()
-            || grammar::words_find_phrase(
-                tokens,
-                &["among", "them", "onto", "the", "battlefield"],
-            ).is_some();
+            || grammar::words_find_phrase(tokens, &["among", "them", "onto", "the", "battlefield"])
+                .is_some();
     if !has_puts_all_permanent_cards || !has_among_them_onto_battlefield {
         return Ok(None);
     }
@@ -977,8 +980,7 @@ pub(crate) fn parse_for_each_destroyed_this_way_sentence(
     }
     let refers_to_destroyed =
         grammar::words_find_phrase(tokens, &["destroyed", "this", "way"]).is_some();
-    let refers_to_died =
-        grammar::words_find_phrase(tokens, &["died", "this", "way"]).is_some();
+    let refers_to_died = grammar::words_find_phrase(tokens, &["died", "this", "way"]).is_some();
     let words_all = token_words(tokens);
     if !refers_to_destroyed && !refers_to_died {
         return Ok(None);
@@ -986,11 +988,11 @@ pub(crate) fn parse_for_each_destroyed_this_way_sentence(
 
     let (_before, after_comma) = grammar::split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
         .ok_or_else(|| {
-            CardTextError::ParseError(format!(
-                "missing comma after 'for each ... this way' clause (clause: '{}')",
-                words_all.join(" ")
-            ))
-        })?;
+        CardTextError::ParseError(format!(
+            "missing comma after 'for each ... this way' clause (clause: '{}')",
+            words_all.join(" ")
+        ))
+    })?;
     let effect_tokens = trim_commas(after_comma);
     if effect_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
@@ -1107,7 +1109,8 @@ pub(crate) fn parse_exile_instead_of_graveyard_sentence(
             || grammar::words_find_phrase(tokens, &["your", "graveyard", "from"]).is_some()
             || (grammar::contains_word(tokens, "your")
                 && grammar::contains_word(tokens, "graveyard"));
-    let has_would_put = grammar::words_find_phrase(tokens, &["card", "would", "be", "put"]).is_some();
+    let has_would_put =
+        grammar::words_find_phrase(tokens, &["card", "would", "be", "put"]).is_some();
     let has_this_turn =
         grammar::contains_word(tokens, "this") && grammar::contains_word(tokens, "turn");
     if !has_graveyard_clause || !has_would_put || !has_this_turn {

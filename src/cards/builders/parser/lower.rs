@@ -3376,8 +3376,12 @@ fn try_lower_optional_cost_with_cast_trigger(
         return Ok(None);
     };
 
+<<<<<<< Updated upstream
     let head_effects =
         parse_effect_sentences_lexed(&stripped_head_tokens[optional_effect_start..])?;
+=======
+    let head_effects = parse_effect_sentences_lexed(&stripped_head_tokens[head_effect_start..])?;
+>>>>>>> Stashed changes
     let [
         EffectAst::ChooseObjects {
             filter,

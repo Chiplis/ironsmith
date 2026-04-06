@@ -26,8 +26,8 @@ use super::super::keyword_static::{
 };
 use super::super::object_filters::parse_object_filter;
 use super::super::token_primitives::{
-    find_index, find_window_by, find_window_index, rfind_index, slice_contains,
-    slice_starts_with, str_strip_suffix,
+    find_index, find_window_by, find_window_index, rfind_index, slice_contains, slice_starts_with,
+    str_strip_suffix,
 };
 use super::super::util::{
     is_article, is_source_reference_words, mana_pips_from_token, parse_card_type,
@@ -870,11 +870,8 @@ pub(crate) fn parse_deal_damage(tokens: &[OwnedLexToken]) -> Result<EffectAst, C
         tokens
     };
     let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
-    if grammar::words_match_prefix(
-        tokens,
-        &["damage", "to", "each", "opponent", "equal", "to"],
-    )
-    .is_some()
+    if grammar::words_match_prefix(tokens, &["damage", "to", "each", "opponent", "equal", "to"])
+        .is_some()
         && grammar::contains_word(tokens, "number")
         && grammar::contains_word(tokens, "cards")
         && grammar::contains_word(tokens, "hand")
@@ -1096,8 +1093,10 @@ pub(crate) fn parse_deal_damage_equal_to_clause(
     }
     if grammar::words_match_prefix(normalized_target_tokens, &["each", "opponent"]).is_some()
         || grammar::words_match_prefix(normalized_target_tokens, &["each", "opponents"]).is_some()
-        || grammar::words_match_prefix(normalized_target_tokens, &["each", "other", "player"]).is_some()
-        || grammar::words_match_prefix(normalized_target_tokens, &["each", "other", "players"]).is_some()
+        || grammar::words_match_prefix(normalized_target_tokens, &["each", "other", "player"])
+            .is_some()
+        || grammar::words_match_prefix(normalized_target_tokens, &["each", "other", "players"])
+            .is_some()
     {
         return Ok(Some(EffectAst::ForEachOpponent {
             effects: vec![EffectAst::DealDamage {
@@ -1136,7 +1135,9 @@ fn parse_divided_damage_target(
         .filter_map(|word| parse_number_word_u32(word))
         .max()
         .unwrap_or(0);
-    if max_targets == 0 && grammar::words_match_prefix(&among_tail, &["any", "number", "of"]).is_none() {
+    if max_targets == 0
+        && grammar::words_match_prefix(&among_tail, &["any", "number", "of"]).is_none()
+    {
         return Err(CardTextError::ParseError(format!(
             "missing divided-damage target count (clause: '{}')",
             crate::cards::builders::parser::token_word_refs(target_tokens).join(" ")
@@ -1459,9 +1460,9 @@ pub(crate) fn parse_deal_damage_with_amount(
 pub(crate) fn parse_instead_if_control_predicate(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PredicateAst>, CardTextError> {
-    let starts_with_you_control =
-        grammar::words_match_prefix(tokens, &["you", "control"]).is_some()
-            || grammar::words_match_prefix(tokens, &["you", "controlled"]).is_some();
+    let starts_with_you_control = grammar::words_match_prefix(tokens, &["you", "control"])
+        .is_some()
+        || grammar::words_match_prefix(tokens, &["you", "controlled"]).is_some();
     if !starts_with_you_control {
         return Ok(None);
     }
@@ -2744,7 +2745,8 @@ pub(crate) fn parse_reveal(
             tag: TagKey::from(IT_TAG),
         });
     }
-    let reveals_conditional_it = words.first() == Some(&"it") && grammar::contains_word(tokens, "if");
+    let reveals_conditional_it =
+        words.first() == Some(&"it") && grammar::contains_word(tokens, "if");
     if reveals_conditional_it {
         return Ok(EffectAst::RevealTagged {
             tag: TagKey::from(IT_TAG),
@@ -2767,8 +2769,10 @@ pub(crate) fn parse_reveal(
         return Ok(EffectAst::RevealHand { player });
     }
 
-    let has_card = grammar::contains_word(tokens, "card") || grammar::contains_word(tokens, "cards");
-    let has_library = grammar::contains_word(tokens, "library") || grammar::contains_word(tokens, "libraries");
+    let has_card =
+        grammar::contains_word(tokens, "card") || grammar::contains_word(tokens, "cards");
+    let has_library =
+        grammar::contains_word(tokens, "library") || grammar::contains_word(tokens, "libraries");
     let explicit_top_card =
         words.as_slice() == ["top", "card"] || words.as_slice() == ["the", "top", "card"];
 
@@ -3170,7 +3174,8 @@ pub(crate) fn parse_control_duration(
         return Ok(ControlDurationAst::Forever);
     }
 
-    let has_for_as_long_as = grammar::words_find_phrase(tokens, &["for", "as", "long", "as"]).is_some();
+    let has_for_as_long_as =
+        grammar::words_find_phrase(tokens, &["for", "as", "long", "as"]).is_some();
     if has_for_as_long_as
         && grammar::contains_word(tokens, "you")
         && grammar::contains_word(tokens, "control")
@@ -3435,18 +3440,33 @@ pub(crate) fn parse_put_into_hand(
 
         let mut battlefield_controller = ReturnControllerAst::Preserve;
         if tokens.get(idx).is_some_and(|token| token.is_word("under")) {
-            let consumed = if grammar::words_match_prefix(&tokens[idx..], &["under", "your", "control"]).is_some() {
-                battlefield_controller = ReturnControllerAst::You;
-                Some(3usize)
-            } else if grammar::words_match_prefix(&tokens[idx..], &["under", "its", "owners", "control"]).is_some()
-                || grammar::words_match_prefix(&tokens[idx..], &["under", "their", "owners", "control"]).is_some()
-                || grammar::words_match_prefix(&tokens[idx..], &["under", "that", "players", "control"]).is_some()
-            {
-                battlefield_controller = ReturnControllerAst::Owner;
-                Some(4usize)
-            } else {
-                None
-            };
+            let consumed =
+                if grammar::words_match_prefix(&tokens[idx..], &["under", "your", "control"])
+                    .is_some()
+                {
+                    battlefield_controller = ReturnControllerAst::You;
+                    Some(3usize)
+                } else if grammar::words_match_prefix(
+                    &tokens[idx..],
+                    &["under", "its", "owners", "control"],
+                )
+                .is_some()
+                    || grammar::words_match_prefix(
+                        &tokens[idx..],
+                        &["under", "their", "owners", "control"],
+                    )
+                    .is_some()
+                    || grammar::words_match_prefix(
+                        &tokens[idx..],
+                        &["under", "that", "players", "control"],
+                    )
+                    .is_some()
+                {
+                    battlefield_controller = ReturnControllerAst::Owner;
+                    Some(4usize)
+                } else {
+                    None
+                };
             if let Some(consumed) = consumed {
                 idx += consumed;
             }
@@ -3807,9 +3827,13 @@ pub(crate) fn parse_put_into_hand(
         }
 
         let mut target = parse_target_phrase(&target_tokens)?;
-        if super::super::grammar::primitives::contains_phrase(dest_slice, &["from", "the", "command", "zone"])
-            || super::super::grammar::primitives::contains_phrase(dest_slice, &["from", "command", "zone"])
-        {
+        if super::super::grammar::primitives::contains_phrase(
+            dest_slice,
+            &["from", "the", "command", "zone"],
+        ) || super::super::grammar::primitives::contains_phrase(
+            dest_slice,
+            &["from", "command", "zone"],
+        ) {
             apply_source_zone_constraint(&mut target, Zone::Command);
         }
 

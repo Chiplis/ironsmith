@@ -1,3 +1,7 @@
+use winnow::Parser;
+use winnow::combinator::alt;
+use winnow::error::{ContextError, ErrMode, StrContext, StrContextValue};
+
 use super::super::activation_and_restrictions::parse_named_number;
 use super::super::effect_sentences::{conditionals::parse_subtype_word, parse_supertype_word};
 use super::super::keyword_static::parse_pt_modifier;
@@ -7,8 +11,8 @@ use super::super::object_filters::{
     lower_words_find_sequence, lower_words_find_window, lower_words_has_window,
     lower_words_starts_with, normalized_token_index_after_words,
     normalized_token_index_for_word_index, parse_attached_reference_or_another_disjunction,
-    parse_object_filter_lexed, push_unique, set_has, slice_has, strip_not_on_battlefield_phrase,
-    token_find_index, token_find_window, trim_vote_winner_suffix,
+    parse_filter_face_state_words, parse_object_filter_lexed, push_unique, set_has, slice_has,
+    strip_not_on_battlefield_phrase, token_find_index, token_find_window, trim_vote_winner_suffix,
 };
 use super::super::token_primitives::{
     contains_window, find_index, find_window_index, rfind_index, slice_contains, slice_ends_with,
@@ -38,6 +42,8 @@ use crate::zone::Zone;
 
 type GrammarFilterNormalizedWords = TokenWordView;
 
+type FilterWordInput<'a> = &'a [&'a str];
+
 fn synth_words_as_tokens(words: &[&str]) -> Vec<OwnedLexToken> {
     words
         .iter()
@@ -49,6 +55,1478 @@ fn push_unique_filter_value<T: Copy + PartialEq>(items: &mut Vec<T>, value: T) {
     if !items.iter().any(|item| *item == value) {
         items.push(value);
     }
+}
+
+fn filter_word_eq<'a>(
+    expected: &'static str,
+) -> impl Parser<FilterWordInput<'a>, (), ErrMode<ContextError>> {
+    move |input: &mut FilterWordInput<'a>| {
+        let Some((word, rest)) = input.split_first() else {
+            let mut err = ContextError::new();
+            err.push(StrContext::Label("word"));
+            err.push(StrContext::Expected(StrContextValue::Description(expected)));
+            return Err(ErrMode::Backtrack(err));
+        };
+        if word.eq_ignore_ascii_case(expected) {
+            *input = rest;
+            Ok(())
+        } else {
+            let mut err = ContextError::new();
+            err.push(StrContext::Label("word"));
+            err.push(StrContext::Expected(StrContextValue::Description(expected)));
+            Err(ErrMode::Backtrack(err))
+        }
+    }
+}
+
+fn parse_filter_prefix_words<'a, O>(
+    words: &'a [&'a str],
+    mut parser: impl Parser<FilterWordInput<'a>, O, ErrMode<ContextError>>,
+) -> Option<(O, usize)> {
+    let mut input = words;
+    let parsed = parser.parse_next(&mut input).ok()?;
+    Some((parsed, words.len().saturating_sub(input.len())))
+}
+
+#[derive(Clone, Copy)]
+enum SpellFilterComparisonAxis {
+    Power,
+    Toughness,
+    ManaValue,
+}
+
+#[derive(Clone, Copy)]
+enum PlayerRelationVerb {
+    Cast,
+    Control,
+    Own,
+}
+
+#[derive(Clone, Copy)]
+struct SegmentPhraseVariant {
+    words: &'static [&'static str],
+    drain_start_offset: usize,
+}
+
+impl SpellFilterComparisonAxis {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Power => "power",
+            Self::Toughness => "toughness",
+            Self::ManaValue => "mana value",
+        }
+    }
+
+    fn assign(self, filter: &mut ObjectFilter, comparison: crate::target::Comparison) {
+        match self {
+            Self::Power => filter.power = Some(comparison),
+            Self::Toughness => filter.toughness = Some(comparison),
+            Self::ManaValue => filter.mana_value = Some(comparison),
+        }
+    }
+}
+
+fn parse_spell_filter_comparison_axis_words(
+    words: &[&str],
+) -> Option<(SpellFilterComparisonAxis, usize)> {
+    parse_filter_prefix_words(
+        words,
+        alt((
+            filter_word_eq("power").value(SpellFilterComparisonAxis::Power),
+            filter_word_eq("toughness").value(SpellFilterComparisonAxis::Toughness),
+            (filter_word_eq("mana"), filter_word_eq("value"))
+                .value(SpellFilterComparisonAxis::ManaValue),
+        )),
+    )
+}
+
+fn parse_player_relation_verb(words: &[&str]) -> Option<(PlayerRelationVerb, usize)> {
+    parse_filter_prefix_words(
+        words,
+        alt((
+            alt((filter_word_eq("cast"), filter_word_eq("casts"))).value(PlayerRelationVerb::Cast),
+            alt((filter_word_eq("control"), filter_word_eq("controls")))
+                .value(PlayerRelationVerb::Control),
+            alt((filter_word_eq("own"), filter_word_eq("owns"))).value(PlayerRelationVerb::Own),
+        )),
+    )
+}
+
+fn parse_player_relation_subject(
+    words: &[&str],
+    pronoun_player_filter: &PlayerFilter,
+) -> Option<(PlayerFilter, usize)> {
+    if let Some((_, consumed)) = parse_filter_prefix_words(words, filter_word_eq("you")) {
+        return Some((PlayerFilter::You, consumed));
+    }
+    if let Some((_, consumed)) = parse_filter_prefix_words(
+        words,
+        alt((filter_word_eq("opponent"), filter_word_eq("opponents"))),
+    ) {
+        return Some((PlayerFilter::Opponent, consumed));
+    }
+    if let Some((_, consumed)) = parse_filter_prefix_words(words, filter_word_eq("they")) {
+        return Some((pronoun_player_filter.clone(), consumed));
+    }
+    if let Some((_, consumed)) =
+        parse_filter_prefix_words(words, (filter_word_eq("your"), filter_word_eq("team")))
+    {
+        return Some((PlayerFilter::You, consumed));
+    }
+    if let Some((_, consumed)) =
+        parse_filter_prefix_words(words, (filter_word_eq("your"), filter_word_eq("opponents")))
+    {
+        return Some((PlayerFilter::Opponent, consumed));
+    }
+    if let Some((_, consumed)) =
+        parse_filter_prefix_words(words, (filter_word_eq("that"), filter_word_eq("player")))
+    {
+        return Some((PlayerFilter::IteratedPlayer, consumed));
+    }
+    if let Some((_, consumed)) =
+        parse_filter_prefix_words(words, (filter_word_eq("target"), filter_word_eq("player")))
+    {
+        return Some((PlayerFilter::target_player(), consumed));
+    }
+    if let Some((_, consumed)) = parse_filter_prefix_words(
+        words,
+        (filter_word_eq("target"), filter_word_eq("opponent")),
+    ) {
+        return Some((PlayerFilter::target_opponent(), consumed));
+    }
+    if let Some((_, consumed)) = parse_filter_prefix_words(
+        words,
+        (filter_word_eq("defending"), filter_word_eq("player")),
+    ) {
+        return Some((PlayerFilter::Defending, consumed));
+    }
+    if let Some((_, consumed)) = parse_filter_prefix_words(
+        words,
+        (filter_word_eq("attacking"), filter_word_eq("player")),
+    ) {
+        return Some((PlayerFilter::Attacking, consumed));
+    }
+    if let Some((_, consumed)) = parse_filter_prefix_words(
+        words,
+        (
+            alt((filter_word_eq("its"), filter_word_eq("their"))),
+            alt((filter_word_eq("controller"), filter_word_eq("controllers"))),
+        ),
+    ) {
+        return Some((
+            PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target),
+            consumed,
+        ));
+    }
+
+    None
+}
+
+fn apply_player_relation(
+    filter: &mut ObjectFilter,
+    player: PlayerFilter,
+    verb: PlayerRelationVerb,
+) {
+    match verb {
+        PlayerRelationVerb::Cast => filter.cast_by = Some(player),
+        PlayerRelationVerb::Control => filter.controller = Some(player),
+        PlayerRelationVerb::Own => filter.owner = Some(player),
+    }
+}
+
+fn try_apply_player_relation_clause(
+    filter: &mut ObjectFilter,
+    words: &[&str],
+    pronoun_player_filter: &PlayerFilter,
+) -> Option<usize> {
+    let (player, subject_consumed) = parse_player_relation_subject(words, pronoun_player_filter)?;
+    let (verb, verb_consumed) = parse_player_relation_verb(&words[subject_consumed..])?;
+
+    if matches!(player, PlayerFilter::Defending | PlayerFilter::Attacking)
+        && !matches!(verb, PlayerRelationVerb::Control)
+    {
+        return None;
+    }
+    if matches!(player, PlayerFilter::ControllerOf(_))
+        && !matches!(verb, PlayerRelationVerb::Control)
+    {
+        return None;
+    }
+
+    apply_player_relation(filter, player, verb);
+    Some(subject_consumed + verb_consumed)
+}
+
+fn try_apply_negated_you_relation_clause(
+    filter: &mut ObjectFilter,
+    words: &[&str],
+) -> Option<usize> {
+    if let Some((_, consumed)) = parse_filter_prefix_words(
+        words,
+        (
+            filter_word_eq("you"),
+            alt((filter_word_eq("dont"), filter_word_eq("don't"))),
+            alt((filter_word_eq("control"), filter_word_eq("controls"))),
+        ),
+    ) {
+        filter.controller = Some(PlayerFilter::NotYou);
+        return Some(consumed);
+    }
+    if let Some((_, consumed)) = parse_filter_prefix_words(
+        words,
+        (
+            filter_word_eq("you"),
+            alt((filter_word_eq("dont"), filter_word_eq("don't"))),
+            alt((filter_word_eq("own"), filter_word_eq("owns"))),
+        ),
+    ) {
+        filter.owner = Some(PlayerFilter::NotYou);
+        return Some(consumed);
+    }
+    if let Some((_, consumed)) = parse_filter_prefix_words(
+        words,
+        (
+            filter_word_eq("you"),
+            filter_word_eq("do"),
+            filter_word_eq("not"),
+            alt((filter_word_eq("control"), filter_word_eq("controls"))),
+        ),
+    ) {
+        filter.controller = Some(PlayerFilter::NotYou);
+        return Some(consumed);
+    }
+    if let Some((_, consumed)) = parse_filter_prefix_words(
+        words,
+        (
+            filter_word_eq("you"),
+            filter_word_eq("do"),
+            filter_word_eq("not"),
+            alt((filter_word_eq("own"), filter_word_eq("owns"))),
+        ),
+    ) {
+        filter.owner = Some(PlayerFilter::NotYou);
+        return Some(consumed);
+    }
+
+    None
+}
+
+fn try_apply_chosen_player_graveyard_clause(
+    filter: &mut ObjectFilter,
+    words: &[&str],
+) -> Option<usize> {
+    if let Some((_, consumed)) = parse_filter_prefix_words(
+        words,
+        alt((
+            (
+                filter_word_eq("chosen"),
+                alt((filter_word_eq("player"), filter_word_eq("players"))),
+                filter_word_eq("graveyard"),
+            )
+                .void(),
+            (
+                filter_word_eq("the"),
+                filter_word_eq("chosen"),
+                alt((filter_word_eq("player"), filter_word_eq("players"))),
+                filter_word_eq("graveyard"),
+            )
+                .void(),
+        )),
+    ) {
+        filter.owner = Some(PlayerFilter::ChosenPlayer);
+        filter.zone = Some(Zone::Graveyard);
+        return Some(consumed);
+    }
+
+    None
+}
+
+fn try_apply_joint_owner_controller_clause(
+    filter: &mut ObjectFilter,
+    words: &[&str],
+    pronoun_player_filter: &PlayerFilter,
+) -> Option<usize> {
+    let (player, subject_consumed) = parse_player_relation_subject(words, pronoun_player_filter)?;
+    let (_, consumed) = parse_filter_prefix_words(
+        &words[subject_consumed..],
+        alt((
+            (
+                filter_word_eq("both"),
+                alt((filter_word_eq("own"), filter_word_eq("owns"))),
+                filter_word_eq("and"),
+                alt((filter_word_eq("control"), filter_word_eq("controls"))),
+            ),
+            (
+                filter_word_eq("both"),
+                alt((filter_word_eq("control"), filter_word_eq("controls"))),
+                filter_word_eq("and"),
+                alt((filter_word_eq("own"), filter_word_eq("owns"))),
+            ),
+        )),
+    )?;
+    filter.owner = Some(player.clone());
+    filter.controller = Some(player);
+    Some(subject_consumed + consumed)
+}
+
+fn parse_owner_or_controller_disjunction_player(
+    words: &[&str],
+    pronoun_player_filter: &PlayerFilter,
+) -> Option<(PlayerFilter, usize)> {
+    let (player, subject_consumed) = parse_player_relation_subject(words, pronoun_player_filter)?;
+    if matches!(
+        player,
+        PlayerFilter::Defending | PlayerFilter::Attacking | PlayerFilter::ControllerOf(_)
+    ) {
+        return None;
+    }
+    let (_, consumed) = parse_filter_prefix_words(
+        &words[subject_consumed..],
+        alt((
+            (
+                alt((filter_word_eq("own"), filter_word_eq("owns"))),
+                filter_word_eq("or"),
+                alt((filter_word_eq("control"), filter_word_eq("controls"))),
+            ),
+            (
+                alt((filter_word_eq("control"), filter_word_eq("controls"))),
+                filter_word_eq("or"),
+                alt((filter_word_eq("own"), filter_word_eq("owns"))),
+            ),
+        )),
+    )?;
+    Some((player, subject_consumed + consumed))
+}
+
+fn find_filter_prefix_consumed<F>(words: &[&str], parser: F) -> Option<(usize, usize)>
+where
+    F: Fn(&[&str]) -> Option<usize>,
+{
+    words
+        .iter()
+        .enumerate()
+        .find_map(|(idx, _)| parser(&words[idx..]).map(|consumed| (idx, consumed)))
+}
+
+fn drain_segment_phrase_variants(
+    segment_tokens: &mut Vec<OwnedLexToken>,
+    variants: &[SegmentPhraseVariant],
+) {
+    let segment_words_view = GrammarFilterNormalizedWords::new(segment_tokens.as_slice());
+    let segment_words = segment_words_view.to_word_refs();
+    let mut segment_match: Option<(usize, usize)> = None;
+    for variant in variants {
+        if let Some(seg_start) = lower_words_find_sequence(&segment_words, variant.words) {
+            segment_match = Some((
+                seg_start + variant.drain_start_offset,
+                seg_start + variant.words.len(),
+            ));
+            break;
+        }
+    }
+    if let Some((start_word_idx, end_word_idx)) = segment_match
+        && let Some(start_token_idx) =
+            normalized_token_index_for_word_index(segment_tokens.as_slice(), start_word_idx)
+    {
+        let end_token_idx =
+            normalized_token_index_after_words(segment_tokens.as_slice(), end_word_idx)
+                .unwrap_or(segment_tokens.len());
+        segment_tokens.drain(start_token_idx..end_token_idx);
+    }
+}
+
+fn parse_put_there_from_battlefield_this_turn_words(words: &[&str]) -> Option<usize> {
+    parse_filter_prefix_words(
+        words,
+        (
+            filter_word_eq("that"),
+            alt((filter_word_eq("was"), filter_word_eq("were"))),
+            filter_word_eq("put"),
+            filter_word_eq("there"),
+            filter_word_eq("from"),
+            filter_word_eq("battlefield"),
+            filter_word_eq("this"),
+            filter_word_eq("turn"),
+        )
+            .void(),
+    )
+    .map(|(_, consumed)| consumed)
+}
+
+fn parse_put_there_from_anywhere_this_turn_words(words: &[&str]) -> Option<usize> {
+    parse_filter_prefix_words(
+        words,
+        (
+            filter_word_eq("that"),
+            alt((filter_word_eq("was"), filter_word_eq("were"))),
+            filter_word_eq("put"),
+            filter_word_eq("there"),
+            filter_word_eq("from"),
+            filter_word_eq("anywhere"),
+            filter_word_eq("this"),
+            filter_word_eq("turn"),
+        )
+            .void(),
+    )
+    .map(|(_, consumed)| consumed)
+}
+
+fn parse_graveyard_from_battlefield_this_turn_words(words: &[&str]) -> Option<usize> {
+    parse_filter_prefix_words(
+        words,
+        (
+            alt((filter_word_eq("graveyard"), filter_word_eq("graveyards"))),
+            filter_word_eq("from"),
+            filter_word_eq("battlefield"),
+            filter_word_eq("this"),
+            filter_word_eq("turn"),
+        )
+            .void(),
+    )
+    .map(|(_, consumed)| consumed)
+}
+
+fn parse_entered_battlefield_this_turn_words(
+    words: &[&str],
+) -> Option<(Option<PlayerFilter>, usize)> {
+    if let Some((_, consumed)) = parse_filter_prefix_words(
+        words,
+        alt((
+            (
+                filter_word_eq("entered"),
+                filter_word_eq("the"),
+                filter_word_eq("battlefield"),
+                filter_word_eq("under"),
+                filter_word_eq("your"),
+                filter_word_eq("control"),
+                filter_word_eq("this"),
+                filter_word_eq("turn"),
+            )
+                .void(),
+            (
+                filter_word_eq("entered"),
+                filter_word_eq("battlefield"),
+                filter_word_eq("under"),
+                filter_word_eq("your"),
+                filter_word_eq("control"),
+                filter_word_eq("this"),
+                filter_word_eq("turn"),
+            )
+                .void(),
+        )),
+    ) {
+        return Some((Some(PlayerFilter::You), consumed));
+    }
+    if let Some((_, consumed)) = parse_filter_prefix_words(
+        words,
+        alt((
+            (
+                filter_word_eq("entered"),
+                filter_word_eq("the"),
+                filter_word_eq("battlefield"),
+                filter_word_eq("under"),
+                alt((filter_word_eq("opponent"), filter_word_eq("opponents"))),
+                filter_word_eq("control"),
+                filter_word_eq("this"),
+                filter_word_eq("turn"),
+            )
+                .void(),
+            (
+                filter_word_eq("entered"),
+                filter_word_eq("battlefield"),
+                filter_word_eq("under"),
+                alt((filter_word_eq("opponent"), filter_word_eq("opponents"))),
+                filter_word_eq("control"),
+                filter_word_eq("this"),
+                filter_word_eq("turn"),
+            )
+                .void(),
+        )),
+    ) {
+        return Some((Some(PlayerFilter::Opponent), consumed));
+    }
+    if let Some((_, consumed)) = parse_filter_prefix_words(
+        words,
+        alt((
+            (
+                filter_word_eq("entered"),
+                filter_word_eq("the"),
+                filter_word_eq("battlefield"),
+                filter_word_eq("this"),
+                filter_word_eq("turn"),
+            )
+                .void(),
+            (
+                filter_word_eq("entered"),
+                filter_word_eq("battlefield"),
+                filter_word_eq("this"),
+                filter_word_eq("turn"),
+            )
+                .void(),
+        )),
+    ) {
+        return Some((None, consumed));
+    }
+
+    None
+}
+
+fn try_apply_put_there_from_battlefield_this_turn_clause(
+    filter: &mut ObjectFilter,
+    all_words: &mut Vec<&str>,
+    segment_tokens: &mut Vec<OwnedLexToken>,
+) -> bool {
+    let Some((word_start, consumed)) = find_filter_prefix_consumed(
+        all_words.as_slice(),
+        parse_put_there_from_battlefield_this_turn_words,
+    ) else {
+        return false;
+    };
+    filter.entered_graveyard_this_turn = true;
+    filter.entered_graveyard_from_battlefield_this_turn = true;
+    all_words.drain(word_start..word_start + consumed);
+    drain_segment_phrase_variants(
+        segment_tokens,
+        &[
+            SegmentPhraseVariant {
+                words: &[
+                    "that",
+                    "was",
+                    "put",
+                    "there",
+                    "from",
+                    "the",
+                    "battlefield",
+                    "this",
+                    "turn",
+                ],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &[
+                    "that",
+                    "was",
+                    "put",
+                    "there",
+                    "from",
+                    "battlefield",
+                    "this",
+                    "turn",
+                ],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &[
+                    "that",
+                    "were",
+                    "put",
+                    "there",
+                    "from",
+                    "the",
+                    "battlefield",
+                    "this",
+                    "turn",
+                ],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &[
+                    "that",
+                    "were",
+                    "put",
+                    "there",
+                    "from",
+                    "battlefield",
+                    "this",
+                    "turn",
+                ],
+                drain_start_offset: 0,
+            },
+        ],
+    );
+    true
+}
+
+fn try_apply_put_there_from_anywhere_this_turn_clause(
+    filter: &mut ObjectFilter,
+    all_words: &mut Vec<&str>,
+    segment_tokens: &mut Vec<OwnedLexToken>,
+) -> bool {
+    let Some((word_start, consumed)) = find_filter_prefix_consumed(
+        all_words.as_slice(),
+        parse_put_there_from_anywhere_this_turn_words,
+    ) else {
+        return false;
+    };
+    filter.entered_graveyard_this_turn = true;
+    all_words.drain(word_start..word_start + consumed);
+    drain_segment_phrase_variants(
+        segment_tokens,
+        &[
+            SegmentPhraseVariant {
+                words: &[
+                    "that", "was", "put", "there", "from", "anywhere", "this", "turn",
+                ],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &[
+                    "that", "were", "put", "there", "from", "anywhere", "this", "turn",
+                ],
+                drain_start_offset: 0,
+            },
+        ],
+    );
+    true
+}
+
+fn try_apply_graveyard_from_battlefield_this_turn_clause(
+    filter: &mut ObjectFilter,
+    all_words: &mut Vec<&str>,
+    segment_tokens: &mut Vec<OwnedLexToken>,
+) -> bool {
+    let Some((word_start, consumed)) = find_filter_prefix_consumed(
+        all_words.as_slice(),
+        parse_graveyard_from_battlefield_this_turn_words,
+    ) else {
+        return false;
+    };
+    filter.entered_graveyard_from_battlefield_this_turn = true;
+    all_words.drain(word_start + 1..word_start + consumed);
+    drain_segment_phrase_variants(
+        segment_tokens,
+        &[
+            SegmentPhraseVariant {
+                words: &["graveyard", "from", "the", "battlefield", "this", "turn"],
+                drain_start_offset: 1,
+            },
+            SegmentPhraseVariant {
+                words: &["graveyard", "from", "battlefield", "this", "turn"],
+                drain_start_offset: 1,
+            },
+            SegmentPhraseVariant {
+                words: &["graveyards", "from", "the", "battlefield", "this", "turn"],
+                drain_start_offset: 1,
+            },
+            SegmentPhraseVariant {
+                words: &["graveyards", "from", "battlefield", "this", "turn"],
+                drain_start_offset: 1,
+            },
+        ],
+    );
+    true
+}
+
+fn try_apply_entered_battlefield_this_turn_clause(
+    filter: &mut ObjectFilter,
+    all_words: &mut Vec<&str>,
+    segment_tokens: &mut Vec<OwnedLexToken>,
+) -> bool {
+    let Some((word_start, (controller, consumed))) =
+        all_words.iter().enumerate().find_map(|(idx, _)| {
+            parse_entered_battlefield_this_turn_words(&all_words[idx..])
+                .map(|matched| (idx, matched))
+        })
+    else {
+        return false;
+    };
+    filter.entered_battlefield_this_turn = true;
+    filter.entered_battlefield_controller = controller;
+    filter.zone = Some(Zone::Battlefield);
+    all_words.drain(word_start..word_start + consumed);
+    drain_segment_phrase_variants(
+        segment_tokens,
+        &[
+            SegmentPhraseVariant {
+                words: &[
+                    "entered",
+                    "the",
+                    "battlefield",
+                    "under",
+                    "your",
+                    "control",
+                    "this",
+                    "turn",
+                ],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &[
+                    "entered",
+                    "battlefield",
+                    "under",
+                    "your",
+                    "control",
+                    "this",
+                    "turn",
+                ],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &[
+                    "entered",
+                    "the",
+                    "battlefield",
+                    "under",
+                    "opponent",
+                    "control",
+                    "this",
+                    "turn",
+                ],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &[
+                    "entered",
+                    "the",
+                    "battlefield",
+                    "under",
+                    "opponents",
+                    "control",
+                    "this",
+                    "turn",
+                ],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &[
+                    "entered",
+                    "battlefield",
+                    "under",
+                    "opponent",
+                    "control",
+                    "this",
+                    "turn",
+                ],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &[
+                    "entered",
+                    "battlefield",
+                    "under",
+                    "opponents",
+                    "control",
+                    "this",
+                    "turn",
+                ],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &["entered", "the", "battlefield", "this", "turn"],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &["entered", "battlefield", "this", "turn"],
+                drain_start_offset: 0,
+            },
+        ],
+    );
+    true
+}
+
+fn push_it_tagged_object_constraint(filter: &mut ObjectFilter) {
+    filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: TagKey::from(IT_TAG),
+        relation: TaggedOpbjectRelation::IsTaggedObject,
+    });
+}
+
+fn try_apply_leading_tagged_reference_prefix(
+    filter: &mut ObjectFilter,
+    all_words: &mut Vec<&str>,
+) -> bool {
+    if all_words.len() >= 2 && matches!(all_words[0], "that" | "those" | "chosen") {
+        let noun_idx = if all_words.get(1).is_some_and(|word| *word == "other") {
+            2
+        } else {
+            1
+        };
+        if all_words
+            .get(noun_idx)
+            .is_some_and(|word| is_demonstrative_object_head(word))
+        {
+            push_it_tagged_object_constraint(filter);
+            all_words.remove(0);
+            return true;
+        }
+    }
+
+    if all_words
+        .first()
+        .is_some_and(|word| matches!(*word, "it" | "them"))
+    {
+        push_it_tagged_object_constraint(filter);
+        all_words.remove(0);
+        return true;
+    }
+
+    false
+}
+
+fn is_name_clause_boundary(word: &str) -> bool {
+    matches!(
+        word,
+        "in" | "from"
+            | "with"
+            | "without"
+            | "that"
+            | "which"
+            | "who"
+            | "whose"
+            | "under"
+            | "among"
+            | "on"
+            | "you"
+            | "your"
+            | "opponent"
+            | "opponents"
+            | "their"
+            | "its"
+            | "controller"
+            | "controllers"
+            | "owner"
+            | "owners"
+    )
+}
+
+fn find_name_clause_end(all_words: &[&str], name_start: usize) -> usize {
+    let mut name_end = all_words.len();
+    for idx in (name_start + 1)..all_words.len() {
+        if is_name_clause_boundary(all_words[idx]) {
+            name_end = idx;
+            break;
+        }
+    }
+    name_end
+}
+
+fn extract_name_clause_text<'a, F, G>(
+    all_words: &[&'a str],
+    all_words_with_articles: &[&'a str],
+    marker_idx: usize,
+    marker_len: usize,
+    map_non_article_index: &F,
+    map_non_article_end: &G,
+    error_label: &str,
+) -> Result<(String, usize), CardTextError>
+where
+    F: Fn(usize) -> Option<usize>,
+    G: Fn(usize) -> Option<usize>,
+{
+    let name_start = marker_idx + marker_len;
+    let name_end = find_name_clause_end(all_words, name_start);
+    let full_marker_idx = map_non_article_index(marker_idx).unwrap_or(marker_idx);
+    let full_name_end = map_non_article_end(name_end).unwrap_or(name_end);
+    let name_words = if full_marker_idx + marker_len <= full_name_end
+        && full_name_end <= all_words_with_articles.len()
+    {
+        &all_words_with_articles[full_marker_idx + marker_len..full_name_end]
+    } else {
+        &all_words[name_start..name_end]
+    };
+    if name_words.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing card name in {error_label} object filter (clause: '{}')",
+            all_words.join(" ")
+        )));
+    }
+
+    Ok((name_words.join(" "), name_end))
+}
+
+fn remove_word_range(words: &mut Vec<&str>, start: usize, end: usize) {
+    let mut remaining = Vec::with_capacity(words.len());
+    remaining.extend_from_slice(&words[..start]);
+    remaining.extend_from_slice(&words[end..]);
+    *words = remaining;
+}
+
+fn try_apply_not_named_clause<'a, F, G>(
+    filter: &mut ObjectFilter,
+    all_words: &mut Vec<&'a str>,
+    all_words_with_articles: &[&'a str],
+    map_non_article_index: &F,
+    map_non_article_end: &G,
+) -> Result<bool, CardTextError>
+where
+    F: Fn(usize) -> Option<usize>,
+    G: Fn(usize) -> Option<usize>,
+{
+    let Some(not_named_idx) = lower_words_find_sequence(all_words.as_slice(), &["not", "named"])
+    else {
+        return Ok(false);
+    };
+    let (name, name_end) = extract_name_clause_text(
+        all_words.as_slice(),
+        all_words_with_articles,
+        not_named_idx,
+        2,
+        map_non_article_index,
+        map_non_article_end,
+        "not-named",
+    )?;
+    filter.excluded_name = Some(name);
+    remove_word_range(all_words, not_named_idx, name_end);
+    Ok(true)
+}
+
+fn try_apply_named_clause<'a, F, G>(
+    filter: &mut ObjectFilter,
+    all_words: &mut Vec<&'a str>,
+    all_words_with_articles: &[&'a str],
+    map_non_article_index: &F,
+    map_non_article_end: &G,
+) -> Result<bool, CardTextError>
+where
+    F: Fn(usize) -> Option<usize>,
+    G: Fn(usize) -> Option<usize>,
+{
+    let Some(named_idx) = lower_words_find_index(all_words.as_slice(), |word| word == "named")
+    else {
+        return Ok(false);
+    };
+    let (name, name_end) = extract_name_clause_text(
+        all_words.as_slice(),
+        all_words_with_articles,
+        named_idx,
+        1,
+        map_non_article_index,
+        map_non_article_end,
+        "named",
+    )?;
+    filter.name = Some(name);
+    remove_word_range(all_words, named_idx, name_end);
+    Ok(true)
+}
+
+fn parse_entered_since_your_last_turn_ended_words(words: &[&str]) -> Option<usize> {
+    if let Some((_, consumed)) = parse_filter_prefix_words(
+        words,
+        (
+            filter_word_eq("that"),
+            filter_word_eq("entered"),
+            filter_word_eq("since"),
+            filter_word_eq("your"),
+            filter_word_eq("last"),
+            filter_word_eq("turn"),
+            filter_word_eq("ended"),
+        )
+            .void(),
+    ) {
+        return Some(consumed);
+    }
+    parse_filter_prefix_words(
+        words,
+        (
+            filter_word_eq("entered"),
+            filter_word_eq("since"),
+            filter_word_eq("your"),
+            filter_word_eq("last"),
+            filter_word_eq("turn"),
+            filter_word_eq("ended"),
+        )
+            .void(),
+    )
+    .map(|(_, consumed)| consumed)
+}
+
+fn try_apply_entered_since_your_last_turn_ended_clause(
+    filter: &mut ObjectFilter,
+    all_words: &mut Vec<&str>,
+) -> bool {
+    let Some((idx, consumed)) = find_filter_prefix_consumed(
+        all_words.as_slice(),
+        parse_entered_since_your_last_turn_ended_words,
+    ) else {
+        return false;
+    };
+    filter.entered_since_your_last_turn_ended = true;
+    all_words.drain(idx..idx + consumed);
+    true
+}
+
+fn strip_object_filter_face_state_words(filter: &mut ObjectFilter, all_words: &mut Vec<&str>) {
+    let mut idx = 0usize;
+    while idx < all_words.len() {
+        let Some((face_down, consumed)) = parse_filter_face_state_words(&all_words[idx..]) else {
+            idx += 1;
+            continue;
+        };
+        filter.face_down = Some(face_down);
+        all_words.drain(idx..idx + consumed);
+    }
+}
+
+fn strip_single_graveyard_phrase(filter: &mut ObjectFilter, all_words: &mut Vec<&str>) {
+    let mut idx = 0usize;
+    while idx + 1 < all_words.len() {
+        if all_words[idx] == "single" && all_words[idx + 1] == "graveyard" {
+            filter.single_graveyard = true;
+            all_words.remove(idx);
+            continue;
+        }
+        idx += 1;
+    }
+}
+
+fn try_apply_color_count_phrase(
+    filter: &mut ObjectFilter,
+    all_words: &mut Vec<&str>,
+) -> Result<bool, CardTextError> {
+    let Some(color_count_idx) = lower_words_find_window(all_words, 4, |window| {
+        matches!(
+            window,
+            ["one", "or", "more", "colors"]
+                | ["one", "or", "more", "color"]
+                | ["two", "or", "more", "colors"]
+                | ["two", "or", "more", "color"]
+                | ["three", "or", "more", "colors"]
+                | ["three", "or", "more", "color"]
+                | ["four", "or", "more", "colors"]
+                | ["four", "or", "more", "color"]
+                | ["five", "or", "more", "colors"]
+                | ["five", "or", "more", "color"]
+        )
+    }) else {
+        return Ok(false);
+    };
+
+    let count_word = all_words[color_count_idx];
+    if count_word == "one" {
+        let any_color: ColorSet = Color::ALL.into_iter().collect();
+        filter.colors = Some(any_color);
+        all_words.drain(color_count_idx..color_count_idx + 4);
+        return Ok(true);
+    }
+
+    Err(CardTextError::ParseError(format!(
+        "unsupported color-count object filter (clause: '{}')",
+        all_words.join(" ")
+    )))
+}
+
+fn try_apply_pt_literal_prefix(filter: &mut ObjectFilter, all_words: &mut Vec<&str>) -> bool {
+    let Some((power, toughness)) = all_words
+        .first()
+        .and_then(|word| parse_unsigned_pt_word(word))
+    else {
+        return false;
+    };
+    filter.power = Some(crate::filter::Comparison::Equal(power));
+    filter.toughness = Some(crate::filter::Comparison::Equal(toughness));
+    all_words.remove(0);
+    true
+}
+
+fn parse_not_all_colors_words(words: &[&str]) -> Option<usize> {
+    if let Some((_, consumed)) = parse_filter_prefix_words(
+        words,
+        (
+            filter_word_eq("that"),
+            filter_word_eq("isnt"),
+            filter_word_eq("all"),
+            filter_word_eq("colors"),
+        )
+            .void(),
+    ) {
+        return Some(consumed);
+    }
+    parse_filter_prefix_words(
+        words,
+        (
+            filter_word_eq("isnt"),
+            filter_word_eq("all"),
+            filter_word_eq("colors"),
+        )
+            .void(),
+    )
+    .map(|(_, consumed)| consumed)
+}
+
+fn try_apply_not_all_colors_clause(filter: &mut ObjectFilter, all_words: &mut Vec<&str>) -> bool {
+    let Some((idx, consumed)) =
+        find_filter_prefix_consumed(all_words.as_slice(), parse_not_all_colors_words)
+    else {
+        return false;
+    };
+    filter.all_colors = Some(false);
+    all_words.drain(idx..idx + consumed);
+    true
+}
+
+fn parse_not_exactly_two_colors_words(words: &[&str]) -> Option<usize> {
+    if let Some((_, consumed)) = parse_filter_prefix_words(
+        words,
+        (
+            filter_word_eq("that"),
+            filter_word_eq("isnt"),
+            filter_word_eq("exactly"),
+            filter_word_eq("two"),
+            filter_word_eq("colors"),
+        )
+            .void(),
+    ) {
+        return Some(consumed);
+    }
+    parse_filter_prefix_words(
+        words,
+        (
+            filter_word_eq("isnt"),
+            filter_word_eq("exactly"),
+            filter_word_eq("two"),
+            filter_word_eq("colors"),
+        )
+            .void(),
+    )
+    .map(|(_, consumed)| consumed)
+}
+
+fn try_apply_not_exactly_two_colors_clause(
+    filter: &mut ObjectFilter,
+    all_words: &mut Vec<&str>,
+) -> bool {
+    let Some((idx, consumed)) =
+        find_filter_prefix_consumed(all_words.as_slice(), parse_not_exactly_two_colors_words)
+    else {
+        return false;
+    };
+    filter.exactly_two_colors = Some(false);
+    all_words.drain(idx..idx + consumed);
+    true
+}
+
+fn parse_mana_value_eq_counters_on_source_words(
+    words: &[&str],
+) -> Option<(crate::object::CounterType, usize)> {
+    let window = words.get(..12)?;
+    if window[0] != "with"
+        || window[1] != "mana"
+        || window[2] != "value"
+        || window[3] != "equal"
+        || window[4] != "to"
+        || window[5] != "number"
+        || window[6] != "of"
+        || !matches!(window[8], "counter" | "counters")
+        || window[9] != "on"
+        || window[10] != "this"
+        || window[11] != "artifact"
+    {
+        return None;
+    }
+    let counter_type = parse_counter_type_word(window[7])?;
+    Some((counter_type, 12))
+}
+
+fn try_apply_mana_value_eq_counters_on_source_clause(
+    filter: &mut ObjectFilter,
+    all_words: &mut Vec<&str>,
+    segment_tokens: &mut Vec<OwnedLexToken>,
+) -> bool {
+    let Some((idx, (counter_type, consumed))) =
+        all_words.iter().enumerate().find_map(|(idx, _)| {
+            parse_mana_value_eq_counters_on_source_words(&all_words[idx..])
+                .map(|matched| (idx, matched))
+        })
+    else {
+        return false;
+    };
+    filter.mana_value_eq_counters_on_source = Some(counter_type);
+    all_words.drain(idx..idx + consumed);
+
+    let segment_words_view = GrammarFilterNormalizedWords::new(segment_tokens.as_slice());
+    let segment_words = segment_words_view.to_word_refs();
+    let segment_match = [13usize, 12].into_iter().find_map(|len| {
+        lower_words_find_window(&segment_words, len, |window| {
+            if len == 13 {
+                window[0] == "with"
+                    && window[1] == "mana"
+                    && window[2] == "value"
+                    && window[3] == "equal"
+                    && window[4] == "to"
+                    && window[5] == "the"
+                    && window[6] == "number"
+                    && window[7] == "of"
+                    && matches!(window[9], "counter" | "counters")
+                    && window[10] == "on"
+                    && window[11] == "this"
+                    && window[12] == "artifact"
+                    && parse_counter_type_word(window[8]).is_some()
+            } else {
+                window[0] == "with"
+                    && window[1] == "mana"
+                    && window[2] == "value"
+                    && window[3] == "equal"
+                    && window[4] == "to"
+                    && window[5] == "number"
+                    && window[6] == "of"
+                    && matches!(window[8], "counter" | "counters")
+                    && window[9] == "on"
+                    && window[10] == "this"
+                    && window[11] == "artifact"
+                    && parse_counter_type_word(window[7]).is_some()
+            }
+        })
+        .map(|start_word_idx| (start_word_idx, start_word_idx + len))
+    });
+    if let Some((start_word_idx, end_word_idx)) = segment_match
+        && let Some(start_token_idx) =
+            normalized_token_index_for_word_index(segment_tokens.as_slice(), start_word_idx)
+    {
+        let end_token_idx =
+            normalized_token_index_after_words(segment_tokens.as_slice(), end_word_idx)
+                .unwrap_or(segment_tokens.len());
+        if start_token_idx < end_token_idx && end_token_idx <= segment_tokens.len() {
+            segment_tokens.drain(start_token_idx..end_token_idx);
+        }
+    }
+
+    true
+}
+
+fn try_apply_attached_exclusion_phrases(filter: &mut ObjectFilter, all_words: &mut Vec<&str>) {
+    let mut idx = 0usize;
+    while idx + 2 < all_words.len() {
+        if all_words[idx] != "other" || all_words[idx + 1] != "than" {
+            idx += 1;
+            continue;
+        }
+
+        let Some(tag) = (match all_words.get(idx + 2).copied() {
+            Some("enchanted") => Some(TagKey::from("enchanted")),
+            Some("equipped") => Some(TagKey::from("equipped")),
+            _ => None,
+        }) else {
+            idx += 1;
+            continue;
+        };
+
+        let mut drain_end = idx + 3;
+        if all_words
+            .get(drain_end)
+            .is_some_and(|word| is_demonstrative_object_head(word))
+        {
+            drain_end += 1;
+        }
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag,
+            relation: TaggedOpbjectRelation::IsNotTaggedObject,
+        });
+        all_words.drain(idx..drain_end);
+    }
+}
+
+fn strip_object_filter_leading_prefixes(all_words: &mut Vec<&str>) {
+    while all_words.len() >= 2 && all_words[0] == "one" && all_words[1] == "of" {
+        all_words.drain(0..2);
+    }
+    while all_words.len() >= 3
+        && all_words[0] == "different"
+        && all_words[1] == "one"
+        && all_words[2] == "of"
+    {
+        all_words.drain(0..3);
+    }
+    while all_words
+        .first()
+        .is_some_and(|word| matches!(*word, "of" | "from"))
+    {
+        all_words.remove(0);
+    }
+}
+
+fn parse_spell_filter_power_or_toughness_words(words: &[&str]) -> Option<usize> {
+    parse_filter_prefix_words(
+        words,
+        (
+            filter_word_eq("power"),
+            filter_word_eq("or"),
+            filter_word_eq("toughness"),
+        ),
+    )
+    .map(|(_, consumed)| consumed)
+}
+
+fn apply_spell_filter_word_atoms(filter: &mut ObjectFilter, words: &[&str]) {
+    let mut idx = 0usize;
+    while idx < words.len() {
+        if let Some((kind, consumed)) = parse_alternative_cast_words(&words[idx..]) {
+            filter.alternative_cast = Some(kind);
+            idx += consumed;
+            continue;
+        }
+
+        let word = words[idx];
+        if let Some((face_down, consumed)) = parse_filter_face_state_words(&words[idx..]) {
+            filter.face_down = Some(face_down);
+            idx += consumed;
+            continue;
+        }
+        if let Some(card_type) = parse_card_type(word) {
+            push_unique_filter_value(&mut filter.card_types, card_type);
+        }
+        if let Some(card_type) = parse_non_type(word) {
+            push_unique_filter_value(&mut filter.excluded_card_types, card_type);
+        }
+        if let Some(subtype) = parse_subtype_flexible(word) {
+            push_unique_filter_value(&mut filter.subtypes, subtype);
+        }
+        if let Some(color) = parse_color(word) {
+            let existing = filter.colors.unwrap_or(ColorSet::new());
+            filter.colors = Some(existing.union(color));
+        }
+        idx += 1;
+    }
+}
+
+fn apply_spell_filter_comparisons(
+    filter: &mut ObjectFilter,
+    words: &[&str],
+    clause_words: &[&str],
+) {
+    let mut cmp_idx = 0usize;
+    while cmp_idx < words.len() {
+        let Some((axis, axis_word_count)) =
+            parse_spell_filter_comparison_axis_words(&words[cmp_idx..])
+        else {
+            cmp_idx += 1;
+            continue;
+        };
+
+        let value_tokens = if cmp_idx + axis_word_count < words.len() {
+            &words[cmp_idx + axis_word_count..]
+        } else {
+            &[]
+        };
+        let parsed = parse_filter_comparison_tokens(axis.as_str(), value_tokens, clause_words)
+            .ok()
+            .flatten();
+        let Some((cmp, consumed)) = parsed else {
+            cmp_idx += 1;
+            continue;
+        };
+
+        axis.assign(filter, cmp);
+        cmp_idx += axis_word_count + consumed;
+    }
+}
+
+fn build_spell_filter_power_or_toughness_disjunction(
+    filter: &ObjectFilter,
+    words: &[&str],
+    clause_words: &[&str],
+) -> Option<ObjectFilter> {
+    for idx in 0..words.len() {
+        let Some(consumed) = parse_spell_filter_power_or_toughness_words(&words[idx..]) else {
+            continue;
+        };
+        let value_tokens = if idx + consumed < words.len() {
+            &words[idx + consumed..]
+        } else {
+            &[]
+        };
+        let Some((cmp, _)) = parse_filter_comparison_tokens("power", value_tokens, clause_words)
+            .ok()
+            .flatten()
+        else {
+            continue;
+        };
+
+        let mut base = filter.clone();
+        base.any_of.clear();
+        base.power = None;
+        base.toughness = None;
+
+        let mut power_branch = base.clone();
+        power_branch.power = Some(cmp.clone());
+
+        let mut toughness_branch = base;
+        toughness_branch.toughness = Some(cmp);
+
+        let mut disjunction = ObjectFilter::default();
+        disjunction.any_of = vec![power_branch, toughness_branch];
+        return Some(disjunction);
+    }
+
+    None
+}
+
+fn parse_spell_filter_from_words(words: &[&str]) -> ObjectFilter {
+    let mut filter = ObjectFilter::default();
+
+    apply_spell_filter_word_atoms(&mut filter, words);
+    apply_spell_filter_comparisons(&mut filter, words, words);
+    apply_spell_filter_parity_phrases(words, &mut filter);
+
+    build_spell_filter_power_or_toughness_disjunction(&filter, words, words).unwrap_or(filter)
+}
+
+fn parse_with_no_abilities_words(words: &[&str]) -> Option<usize> {
+    parse_filter_prefix_words(
+        words,
+        (
+            filter_word_eq("no"),
+            alt((filter_word_eq("ability"), filter_word_eq("abilities"))),
+        ),
+    )
+    .map(|(_, consumed)| consumed)
+}
+
+fn try_apply_with_clause_tail(filter: &mut ObjectFilter, words: &[&str]) -> Option<usize> {
+    if let Some(consumed) = parse_with_no_abilities_words(words) {
+        filter.no_abilities = true;
+        return Some(consumed);
+    }
+
+    if let Some((_, no_consumed)) = parse_filter_prefix_words(words, filter_word_eq("no"))
+        && let Some((counter_constraint, consumed)) =
+            parse_filter_counter_constraint_words(&words[no_consumed..])
+    {
+        filter.without_counter = Some(counter_constraint);
+        return Some(no_consumed + consumed);
+    }
+
+    if let Some((kind, consumed)) = parse_alternative_cast_words(words) {
+        filter.alternative_cast = Some(kind);
+        return Some(consumed);
+    }
+    if let Some((counter_constraint, consumed)) = parse_filter_counter_constraint_words(words) {
+        filter.with_counter = Some(counter_constraint);
+        return Some(consumed);
+    }
+
+    if let Some((constraint, consumed)) = parse_filter_keyword_constraint_words(words) {
+        if let Some((_, or_consumed)) =
+            parse_filter_prefix_words(&words[consumed..], filter_word_eq("or"))
+            && let Some((rhs_constraint, rhs_consumed)) =
+                parse_filter_keyword_constraint_words(&words[consumed + or_consumed..])
+        {
+            let mut left = ObjectFilter::default();
+            apply_filter_keyword_constraint(&mut left, constraint, false);
+            let mut right = ObjectFilter::default();
+            apply_filter_keyword_constraint(&mut right, rhs_constraint, false);
+            filter.any_of = vec![left, right];
+            return Some(consumed + or_consumed + rhs_consumed);
+        }
+
+        apply_filter_keyword_constraint(filter, constraint, false);
+        return Some(consumed);
+    }
+
+    None
+}
+
+fn try_apply_without_clause_tail(filter: &mut ObjectFilter, words: &[&str]) -> Option<usize> {
+    if let Some((constraint, consumed)) = parse_filter_keyword_constraint_words(words) {
+        apply_filter_keyword_constraint(filter, constraint, true);
+        return Some(consumed);
+    }
+    if let Some((counter_constraint, consumed)) = parse_filter_counter_constraint_words(words) {
+        filter.without_counter = Some(counter_constraint);
+        return Some(consumed);
+    }
+
+    None
 }
 
 fn parse_spell_filter_parity_word(word: &str) -> Option<crate::filter::ParityRequirement> {
@@ -291,115 +1769,11 @@ fn parse_object_filter(
 
     // "that were put there from the battlefield this turn" means the card entered
     // a graveyard from the battlefield this turn.
-    for phrase in [
-        [
-            "that",
-            "was",
-            "put",
-            "there",
-            "from",
-            "battlefield",
-            "this",
-            "turn",
-        ],
-        [
-            "that",
-            "were",
-            "put",
-            "there",
-            "from",
-            "battlefield",
-            "this",
-            "turn",
-        ],
-    ] {
-        if let Some(word_start) = lower_words_find_sequence(&all_words, &phrase) {
-            filter.entered_graveyard_this_turn = true;
-            filter.entered_graveyard_from_battlefield_this_turn = true;
-            all_words.drain(word_start..word_start + 8);
-
-            let segment_words_view = GrammarFilterNormalizedWords::new(&segment_tokens);
-            let segment_words = segment_words_view.to_word_refs();
-            let mut segment_match: Option<(usize, usize)> = None;
-            for (len, segment_phrase) in if phrase[1] == "was" {
-                vec![
-                    (
-                        9usize,
-                        &[
-                            "that",
-                            "was",
-                            "put",
-                            "there",
-                            "from",
-                            "the",
-                            "battlefield",
-                            "this",
-                            "turn",
-                        ][..],
-                    ),
-                    (
-                        8usize,
-                        &[
-                            "that",
-                            "was",
-                            "put",
-                            "there",
-                            "from",
-                            "battlefield",
-                            "this",
-                            "turn",
-                        ][..],
-                    ),
-                ]
-            } else {
-                vec![
-                    (
-                        9usize,
-                        &[
-                            "that",
-                            "were",
-                            "put",
-                            "there",
-                            "from",
-                            "the",
-                            "battlefield",
-                            "this",
-                            "turn",
-                        ][..],
-                    ),
-                    (
-                        8usize,
-                        &[
-                            "that",
-                            "were",
-                            "put",
-                            "there",
-                            "from",
-                            "battlefield",
-                            "this",
-                            "turn",
-                        ][..],
-                    ),
-                ]
-            } {
-                if let Some(seg_start) = lower_words_find_sequence(&segment_words, segment_phrase) {
-                    segment_match = Some((seg_start, len));
-                    break;
-                }
-            }
-            if let Some((seg_start, len)) = segment_match
-                && let Some(start_token_idx) =
-                    normalized_token_index_for_word_index(&segment_tokens, seg_start)
-            {
-                let end_word_idx = seg_start + len;
-                let end_token_idx =
-                    normalized_token_index_after_words(&segment_tokens, end_word_idx)
-                        .unwrap_or(segment_tokens.len());
-                segment_tokens.drain(start_token_idx..end_token_idx);
-            }
-            break;
-        }
-    }
+    try_apply_put_there_from_battlefield_this_turn_clause(
+        &mut filter,
+        &mut all_words,
+        &mut segment_tokens,
+    );
 
     // "legendary or Rat card" (Nashi, Moon's Legacy) is a supertype/subtype disjunction.
     // We parse it by collecting both selectors and then expanding into an `any_of` filter
@@ -411,438 +1785,52 @@ fn parse_object_filter(
 
     // "in a graveyard that was put there from anywhere this turn" (Reenact the Crime)
     // means the card entered a graveyard this turn.
-    for phrase in [
-        [
-            "that", "was", "put", "there", "from", "anywhere", "this", "turn",
-        ],
-        [
-            "that", "were", "put", "there", "from", "anywhere", "this", "turn",
-        ],
-    ] {
-        if let Some(word_start) = lower_words_find_sequence(&all_words, &phrase) {
-            filter.entered_graveyard_this_turn = true;
-            all_words.drain(word_start..word_start + 8);
-
-            let segment_words_view = GrammarFilterNormalizedWords::new(&segment_tokens);
-            let segment_words = segment_words_view.to_word_refs();
-            if let Some(seg_start) = lower_words_find_sequence(&segment_words, &phrase)
-                && let Some(start_token_idx) =
-                    normalized_token_index_for_word_index(&segment_tokens, seg_start)
-            {
-                let end_word_idx = seg_start + 8;
-                let end_token_idx =
-                    normalized_token_index_after_words(&segment_tokens, end_word_idx)
-                        .unwrap_or(segment_tokens.len());
-                segment_tokens.drain(start_token_idx..end_token_idx);
-            }
-            break;
-        }
-    }
+    try_apply_put_there_from_anywhere_this_turn_clause(
+        &mut filter,
+        &mut all_words,
+        &mut segment_tokens,
+    );
 
     // "... graveyard from the battlefield this turn" means the card entered a graveyard
     // from the battlefield this turn.
-    for phrase in [
-        ["graveyard", "from", "battlefield", "this", "turn"],
-        ["graveyards", "from", "battlefield", "this", "turn"],
-    ] {
-        if let Some(word_start) = lower_words_find_sequence(&all_words, &phrase) {
-            filter.entered_graveyard_from_battlefield_this_turn = true;
-            all_words.drain(word_start + 1..word_start + 5);
-
-            let segment_words_view = GrammarFilterNormalizedWords::new(&segment_tokens);
-            let segment_words = segment_words_view.to_word_refs();
-            let mut segment_match: Option<(usize, usize)> = None;
-            for (len, phrase) in [
-                (
-                    6,
-                    &["graveyard", "from", "the", "battlefield", "this", "turn"][..],
-                ),
-                (5, &["graveyard", "from", "battlefield", "this", "turn"][..]),
-                (
-                    6,
-                    &["graveyards", "from", "the", "battlefield", "this", "turn"][..],
-                ),
-                (
-                    5,
-                    &["graveyards", "from", "battlefield", "this", "turn"][..],
-                ),
-            ] {
-                if let Some(seg_start) = lower_words_find_sequence(&segment_words, phrase) {
-                    segment_match = Some((seg_start, len));
-                    break;
-                }
-            }
-            if let Some((seg_start, len)) = segment_match
-                && let Some(start_token_idx) =
-                    normalized_token_index_for_word_index(&segment_tokens, seg_start + 1)
-            {
-                let end_word_idx = seg_start + len;
-                let end_token_idx =
-                    normalized_token_index_after_words(&segment_tokens, end_word_idx)
-                        .unwrap_or(segment_tokens.len());
-                segment_tokens.drain(start_token_idx..end_token_idx);
-            }
-            break;
-        }
-    }
+    try_apply_graveyard_from_battlefield_this_turn_clause(
+        &mut filter,
+        &mut all_words,
+        &mut segment_tokens,
+    );
 
     // "... entered the battlefield ... this turn" marks a battlefield entry this turn.
-    let mut entered_battlefield_match: Option<(usize, usize, Option<PlayerFilter>)> = None;
-    if let Some(idx) = lower_words_find_window(&all_words, 7, |window| {
-        window[0] == "entered"
-            && window[1] == "battlefield"
-            && window[2] == "under"
-            && window[4] == "control"
-            && window[5] == "this"
-            && window[6] == "turn"
-    }) {
-        let controller = match all_words[idx + 3] {
-            "your" => Some(PlayerFilter::You),
-            "opponent" | "opponents" => Some(PlayerFilter::Opponent),
-            _ => None,
-        };
-        entered_battlefield_match = Some((idx, 7, controller));
-    }
-    if entered_battlefield_match.is_none() {
-        if let Some(idx) =
-            lower_words_find_sequence(&all_words, &["entered", "battlefield", "this", "turn"])
-        {
-            entered_battlefield_match = Some((idx, 4, None));
-        }
-    }
-    if let Some((word_start, len, controller)) = entered_battlefield_match {
-        filter.entered_battlefield_this_turn = true;
-        filter.entered_battlefield_controller = controller;
-        filter.zone = Some(Zone::Battlefield);
-        all_words.drain(word_start..word_start + len);
-
-        let segment_words_view = GrammarFilterNormalizedWords::new(&segment_tokens);
-        let segment_words = segment_words_view.to_word_refs();
-        let mut segment_match: Option<(usize, usize)> = None;
-        for (len, phrase) in [
-            (
-                8,
-                &[
-                    "entered",
-                    "the",
-                    "battlefield",
-                    "under",
-                    "your",
-                    "control",
-                    "this",
-                    "turn",
-                ][..],
-            ),
-            (
-                7,
-                &[
-                    "entered",
-                    "battlefield",
-                    "under",
-                    "your",
-                    "control",
-                    "this",
-                    "turn",
-                ][..],
-            ),
-            (
-                8,
-                &[
-                    "entered",
-                    "the",
-                    "battlefield",
-                    "under",
-                    "opponent",
-                    "control",
-                    "this",
-                    "turn",
-                ][..],
-            ),
-            (
-                8,
-                &[
-                    "entered",
-                    "the",
-                    "battlefield",
-                    "under",
-                    "opponents",
-                    "control",
-                    "this",
-                    "turn",
-                ][..],
-            ),
-            (
-                7,
-                &[
-                    "entered",
-                    "battlefield",
-                    "under",
-                    "opponent",
-                    "control",
-                    "this",
-                    "turn",
-                ][..],
-            ),
-            (
-                7,
-                &[
-                    "entered",
-                    "battlefield",
-                    "under",
-                    "opponents",
-                    "control",
-                    "this",
-                    "turn",
-                ][..],
-            ),
-            (5, &["entered", "the", "battlefield", "this", "turn"][..]),
-            (4, &["entered", "battlefield", "this", "turn"][..]),
-        ] {
-            if let Some(seg_start) = lower_words_find_sequence(&segment_words, phrase) {
-                segment_match = Some((seg_start, len));
-                break;
-            }
-        }
-        if let Some((seg_start, len)) = segment_match
-            && let Some(start_token_idx) =
-                normalized_token_index_for_word_index(&segment_tokens, seg_start)
-        {
-            let end_word_idx = seg_start + len;
-            let end_token_idx = normalized_token_index_after_words(&segment_tokens, end_word_idx)
-                .unwrap_or(segment_tokens.len());
-            segment_tokens.drain(start_token_idx..end_token_idx);
-        }
-    }
+    try_apply_entered_battlefield_this_turn_clause(
+        &mut filter,
+        &mut all_words,
+        &mut segment_tokens,
+    );
 
     // Avoid treating reference phrases like "... with mana value equal to the number of charge
     // counters on this artifact" as additional type selectors on the filtered object.
     // (Aether Vial: "put a creature card with mana value equal to the number of charge counters
     // on this artifact from your hand onto the battlefield.")
-    let mut mv_eq_counter_idx = 0usize;
-    while mv_eq_counter_idx + 11 < all_words.len() {
-        let window = &all_words[mv_eq_counter_idx..mv_eq_counter_idx + 12];
-        if window[0] == "with"
-            && window[1] == "mana"
-            && window[2] == "value"
-            && window[3] == "equal"
-            && window[4] == "to"
-            && window[5] == "number"
-            && window[6] == "of"
-            && matches!(window[8], "counter" | "counters")
-            && window[9] == "on"
-            && window[10] == "this"
-            && window[11] == "artifact"
-            && let Some(counter_type) = parse_counter_type_word(window[7])
-        {
-            filter.mana_value_eq_counters_on_source = Some(counter_type);
-            all_words.drain(mv_eq_counter_idx..mv_eq_counter_idx + 12);
+    let _ = try_apply_mana_value_eq_counters_on_source_clause(
+        &mut filter,
+        &mut all_words,
+        &mut segment_tokens,
+    );
 
-            // Also drop the reference phrase from the token-backed segment list so later
-            // card-type/subtype extraction doesn't incorrectly treat "artifact" as part of the
-            // filtered object's identity.
-            let segment_words_view = GrammarFilterNormalizedWords::new(&segment_tokens);
-            let segment_words = segment_words_view.to_word_refs();
-            let mut segment_match: Option<(usize, usize)> = None;
-            for len in [13usize, 12usize] {
-                let Some(idx) = lower_words_find_window(&segment_words, len, |window| {
-                    if len == 13 {
-                        window[0] == "with"
-                            && window[1] == "mana"
-                            && window[2] == "value"
-                            && window[3] == "equal"
-                            && window[4] == "to"
-                            && window[5] == "the"
-                            && window[6] == "number"
-                            && window[7] == "of"
-                            && matches!(window[9], "counter" | "counters")
-                            && window[10] == "on"
-                            && window[11] == "this"
-                            && window[12] == "artifact"
-                            && parse_counter_type_word(window[8]).is_some()
-                    } else {
-                        window[0] == "with"
-                            && window[1] == "mana"
-                            && window[2] == "value"
-                            && window[3] == "equal"
-                            && window[4] == "to"
-                            && window[5] == "number"
-                            && window[6] == "of"
-                            && matches!(window[8], "counter" | "counters")
-                            && window[9] == "on"
-                            && window[10] == "this"
-                            && window[11] == "artifact"
-                            && parse_counter_type_word(window[7]).is_some()
-                    }
-                }) else {
-                    continue;
-                };
-                segment_match = Some((idx, len));
-                break;
-            }
-            if let Some((start_word_idx, len)) = segment_match
-                && let Some(start_token_idx) =
-                    normalized_token_index_for_word_index(&segment_tokens, start_word_idx)
-            {
-                let end_word_idx = start_word_idx + len;
-                let end_token_idx =
-                    normalized_token_index_after_words(&segment_tokens, end_word_idx)
-                        .unwrap_or(segment_tokens.len());
-                if start_token_idx < end_token_idx && end_token_idx <= segment_tokens.len() {
-                    segment_tokens.drain(start_token_idx..end_token_idx);
-                }
-            }
+    try_apply_attached_exclusion_phrases(&mut filter, &mut all_words);
 
-            continue;
-        }
-        mv_eq_counter_idx += 1;
-    }
+    let _ = try_apply_pt_literal_prefix(&mut filter, &mut all_words);
 
-    let mut attached_exclusion_idx = 0usize;
-    while attached_exclusion_idx + 2 < all_words.len() {
-        if all_words[attached_exclusion_idx] != "other"
-            || all_words[attached_exclusion_idx + 1] != "than"
-        {
-            attached_exclusion_idx += 1;
-            continue;
-        }
+    strip_object_filter_leading_prefixes(&mut all_words);
 
-        let Some((tag, mut drain_end)) = (match all_words.get(attached_exclusion_idx + 2).copied() {
-            Some("enchanted") => Some((TagKey::from("enchanted"), attached_exclusion_idx + 3)),
-            Some("equipped") => Some((TagKey::from("equipped"), attached_exclusion_idx + 3)),
-            _ => None,
-        }) else {
-            attached_exclusion_idx += 1;
-            continue;
-        };
+    let _ = try_apply_not_all_colors_clause(&mut filter, &mut all_words);
 
-        if all_words
-            .get(drain_end)
-            .is_some_and(|word| is_demonstrative_object_head(word))
-        {
-            drain_end += 1;
-        }
-        filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag,
-            relation: TaggedOpbjectRelation::IsNotTaggedObject,
-        });
-        all_words.drain(attached_exclusion_idx..drain_end);
-    }
+    let _ = try_apply_not_exactly_two_colors_clause(&mut filter, &mut all_words);
 
-    if let Some((power, toughness)) = all_words
-        .first()
-        .and_then(|word| parse_unsigned_pt_word(word))
-    {
-        filter.power = Some(crate::filter::Comparison::Equal(power));
-        filter.toughness = Some(crate::filter::Comparison::Equal(toughness));
-        all_words.remove(0);
-    }
+    let _ = try_apply_leading_tagged_reference_prefix(&mut filter, &mut all_words);
 
-    while all_words.len() >= 2 && all_words[0] == "one" && all_words[1] == "of" {
-        all_words.drain(0..2);
-    }
-    while all_words.len() >= 3
-        && all_words[0] == "different"
-        && all_words[1] == "one"
-        && all_words[2] == "of"
-    {
-        all_words.drain(0..3);
-    }
-    while all_words
-        .first()
-        .is_some_and(|word| matches!(*word, "of" | "from"))
-    {
-        all_words.remove(0);
-    }
+    let _ = try_apply_entered_since_your_last_turn_ended_clause(&mut filter, &mut all_words);
 
-    if let Some(idx) = lower_words_find_sequence(&all_words, &["that", "isnt", "all", "colors"]) {
-        filter.all_colors = Some(false);
-        all_words.drain(idx..idx + 4);
-    } else if let Some(idx) = lower_words_find_sequence(&all_words, &["isnt", "all", "colors"]) {
-        filter.all_colors = Some(false);
-        all_words.drain(idx..idx + 3);
-    }
-
-    if let Some(idx) =
-        lower_words_find_sequence(&all_words, &["that", "isnt", "exactly", "two", "colors"])
-    {
-        filter.exactly_two_colors = Some(false);
-        all_words.drain(idx..idx + 5);
-    } else if let Some(idx) =
-        lower_words_find_sequence(&all_words, &["isnt", "exactly", "two", "colors"])
-    {
-        filter.exactly_two_colors = Some(false);
-        all_words.drain(idx..idx + 4);
-    }
-
-    if all_words.len() >= 2 && matches!(all_words[0], "that" | "those" | "chosen") {
-        let noun_idx = if all_words.get(1).is_some_and(|word| *word == "other") {
-            2
-        } else {
-            1
-        };
-        if all_words
-            .get(noun_idx)
-            .is_some_and(|word| is_demonstrative_object_head(word))
-        {
-            filter.tagged_constraints.push(TaggedObjectConstraint {
-                tag: TagKey::from(IT_TAG),
-                relation: TaggedOpbjectRelation::IsTaggedObject,
-            });
-            all_words.remove(0);
-        }
-    }
-
-    if all_words
-        .first()
-        .is_some_and(|word| matches!(*word, "it" | "them"))
-    {
-        filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: TagKey::from(IT_TAG),
-            relation: TaggedOpbjectRelation::IsTaggedObject,
-        });
-        all_words.remove(0);
-    }
-
-    if let Some(idx) = lower_words_find_sequence(
-        &all_words,
-        &["that", "entered", "since", "your", "last", "turn", "ended"],
-    ) {
-        filter.entered_since_your_last_turn_ended = true;
-        all_words.drain(idx..idx + 7);
-    } else if let Some(idx) = lower_words_find_sequence(
-        &all_words,
-        &["entered", "since", "your", "last", "turn", "ended"],
-    ) {
-        filter.entered_since_your_last_turn_ended = true;
-        all_words.drain(idx..idx + 6);
-    }
-
-    let mut face_state_idx = 0usize;
-    while face_state_idx < all_words.len() {
-        if matches!(all_words[face_state_idx], "face-down" | "facedown") {
-            filter.face_down = Some(true);
-            all_words.remove(face_state_idx);
-            continue;
-        }
-        if matches!(all_words[face_state_idx], "face-up" | "faceup") {
-            filter.face_down = Some(false);
-            all_words.remove(face_state_idx);
-            continue;
-        }
-        if face_state_idx + 1 < all_words.len() && all_words[face_state_idx] == "face" {
-            if all_words[face_state_idx + 1] == "down" {
-                filter.face_down = Some(true);
-                all_words.drain(face_state_idx..face_state_idx + 2);
-                continue;
-            }
-            if all_words[face_state_idx + 1] == "up" {
-                filter.face_down = Some(false);
-                all_words.drain(face_state_idx..face_state_idx + 2);
-                continue;
-            }
-        }
-        face_state_idx += 1;
-    }
+    strip_object_filter_face_state_words(&mut filter, &mut all_words);
 
     if lower_words_has_window(&all_words, 3, |window| {
         window == ["entered", "this", "turn"]
@@ -860,158 +1848,25 @@ fn parse_object_filter(
             all_words.join(" ")
         )));
     }
-    if all_words.first().is_some_and(|word| *word == "single")
-        && all_words.get(1).is_some_and(|word| *word == "graveyard")
-    {
-        filter.single_graveyard = true;
-        all_words.remove(0);
-    }
-    let mut single_idx = 0usize;
-    while single_idx + 1 < all_words.len() {
-        if all_words[single_idx] == "single" && all_words[single_idx + 1] == "graveyard" {
-            filter.single_graveyard = true;
-            all_words.remove(single_idx);
-            continue;
-        }
-        single_idx += 1;
-    }
+    strip_single_graveyard_phrase(&mut filter, &mut all_words);
 
-    if let Some(not_named_idx) = lower_words_find_sequence(&all_words, &["not", "named"]) {
-        let mut name_end = all_words.len();
-        for idx in (not_named_idx + 2)..all_words.len() {
-            if idx == not_named_idx + 2 {
-                continue;
-            }
-            if matches!(
-                all_words[idx],
-                "in" | "from"
-                    | "with"
-                    | "without"
-                    | "that"
-                    | "which"
-                    | "who"
-                    | "whose"
-                    | "under"
-                    | "among"
-                    | "on"
-                    | "you"
-                    | "your"
-                    | "opponent"
-                    | "opponents"
-                    | "their"
-                    | "its"
-                    | "controller"
-                    | "controllers"
-                    | "owner"
-                    | "owners"
-            ) {
-                name_end = idx;
-                break;
-            }
-        }
-        let full_not_named_idx = map_non_article_index(not_named_idx).unwrap_or(not_named_idx);
-        let full_name_end = map_non_article_end(name_end).unwrap_or(name_end);
-        let name_words = if full_not_named_idx + 2 <= full_name_end
-            && full_name_end <= all_words_with_articles.len()
-        {
-            &all_words_with_articles[full_not_named_idx + 2..full_name_end]
-        } else {
-            &all_words[not_named_idx + 2..name_end]
-        };
-        if name_words.is_empty() {
-            return Err(CardTextError::ParseError(format!(
-                "missing card name in not-named object filter (clause: '{}')",
-                all_words.join(" ")
-            )));
-        }
-        filter.excluded_name = Some(name_words.join(" "));
-        let mut remaining = Vec::with_capacity(all_words.len());
-        remaining.extend_from_slice(&all_words[..not_named_idx]);
-        remaining.extend_from_slice(&all_words[name_end..]);
-        all_words = remaining;
-    }
+    let _ = try_apply_not_named_clause(
+        &mut filter,
+        &mut all_words,
+        &all_words_with_articles,
+        &map_non_article_index,
+        &map_non_article_end,
+    )?;
 
-    if let Some(named_idx) = lower_words_find_index(&all_words, |word| word == "named") {
-        let mut name_end = all_words.len();
-        for idx in (named_idx + 1)..all_words.len() {
-            if idx == named_idx + 1 {
-                continue;
-            }
-            if matches!(
-                all_words[idx],
-                "in" | "from"
-                    | "with"
-                    | "without"
-                    | "that"
-                    | "which"
-                    | "who"
-                    | "whose"
-                    | "under"
-                    | "among"
-                    | "on"
-                    | "you"
-                    | "your"
-                    | "opponent"
-                    | "opponents"
-                    | "their"
-                    | "its"
-                    | "controller"
-                    | "controllers"
-                    | "owner"
-                    | "owners"
-            ) {
-                name_end = idx;
-                break;
-            }
-        }
-        let full_named_idx = map_non_article_index(named_idx).unwrap_or(named_idx);
-        let full_name_end = map_non_article_end(name_end).unwrap_or(name_end);
-        let name_words = if full_named_idx + 1 <= full_name_end
-            && full_name_end <= all_words_with_articles.len()
-        {
-            &all_words_with_articles[full_named_idx + 1..full_name_end]
-        } else {
-            &all_words[named_idx + 1..name_end]
-        };
-        if name_words.is_empty() {
-            return Err(CardTextError::ParseError(format!(
-                "missing card name in named object filter (clause: '{}')",
-                all_words.join(" ")
-            )));
-        }
-        filter.name = Some(name_words.join(" "));
-        let mut remaining = Vec::with_capacity(all_words.len());
-        remaining.extend_from_slice(&all_words[..named_idx]);
-        remaining.extend_from_slice(&all_words[name_end..]);
-        all_words = remaining;
-    }
+    let _ = try_apply_named_clause(
+        &mut filter,
+        &mut all_words,
+        &all_words_with_articles,
+        &map_non_article_index,
+        &map_non_article_end,
+    )?;
 
-    if let Some(color_count_idx) = lower_words_find_window(&all_words, 4, |window| {
-        matches!(
-            window,
-            ["one", "or", "more", "colors"]
-                | ["one", "or", "more", "color"]
-                | ["two", "or", "more", "colors"]
-                | ["two", "or", "more", "color"]
-                | ["three", "or", "more", "colors"]
-                | ["three", "or", "more", "color"]
-                | ["four", "or", "more", "colors"]
-                | ["four", "or", "more", "color"]
-                | ["five", "or", "more", "colors"]
-                | ["five", "or", "more", "color"]
-        )
-    }) {
-        let count_word = all_words[color_count_idx];
-        if count_word == "one" {
-            let any_color: ColorSet = Color::ALL.into_iter().collect();
-            filter.colors = Some(any_color);
-        } else {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported color-count object filter (clause: '{}')",
-                all_words.join(" ")
-            )));
-        }
-    }
+    let _ = try_apply_color_count_phrase(&mut filter, &mut all_words)?;
     let has_power_or_toughness_clause = lower_words_has_window(&all_words, 3, |window| {
         window == ["power", "or", "toughness"] || window == ["toughness", "or", "power"]
     });
@@ -1434,183 +2289,15 @@ fn parse_object_filter(
         filter.has_mana_cost = true;
     }
 
-    if all_words.len() >= 5 {
+    if !all_words.is_empty() {
         let mut idx = 0usize;
-        while idx + 4 < all_words.len() {
-            let window = &all_words[idx..idx + 5];
-            match window {
-                ["you", "both", "own", "and", "control"]
-                | ["you", "both", "own", "and", "controls"]
-                | ["you", "both", "control", "and", "own"]
-                | ["you", "both", "controls", "and", "own"] => {
-                    filter.owner = Some(PlayerFilter::You);
-                    filter.controller = Some(PlayerFilter::You);
-                }
-                ["opponent", "both", "own", "and", "control"]
-                | ["opponent", "both", "own", "and", "controls"]
-                | ["opponent", "both", "control", "and", "own"]
-                | ["opponent", "both", "controls", "and", "own"]
-                | ["opponents", "both", "own", "and", "control"]
-                | ["opponents", "both", "own", "and", "controls"]
-                | ["opponents", "both", "control", "and", "own"]
-                | ["opponents", "both", "controls", "and", "own"] => {
-                    filter.owner = Some(PlayerFilter::Opponent);
-                    filter.controller = Some(PlayerFilter::Opponent);
-                }
-                ["they", "both", "own", "and", "control"]
-                | ["they", "both", "own", "and", "controls"]
-                | ["they", "both", "control", "and", "own"]
-                | ["they", "both", "controls", "and", "own"] => {
-                    filter.owner = Some(pronoun_player_filter.clone());
-                    filter.controller = Some(pronoun_player_filter.clone());
-                }
-                _ => {}
-            }
-            idx += 1;
-        }
-    }
-    if all_words.len() >= 2 {
-        let mut idx = 0usize;
-        while idx + 1 < all_words.len() {
-            let window = &all_words[idx..idx + 2];
-            match window {
-                ["you", "cast"] | ["you", "casts"] => {
-                    filter.cast_by = Some(PlayerFilter::You);
-                }
-                ["opponent", "cast"]
-                | ["opponent", "casts"]
-                | ["opponents", "cast"]
-                | ["opponents", "casts"] => {
-                    filter.cast_by = Some(PlayerFilter::Opponent);
-                }
-                ["they", "cast"] | ["they", "casts"] => {
-                    filter.cast_by = Some(pronoun_player_filter.clone());
-                }
-                ["you", "control"] | ["you", "controls"] => {
-                    filter.controller = Some(PlayerFilter::You);
-                }
-                ["you", "own"] | ["you", "owns"] => {
-                    filter.owner = Some(PlayerFilter::You);
-                }
-                ["opponent", "control"]
-                | ["opponent", "controls"]
-                | ["opponents", "control"]
-                | ["opponents", "controls"] => {
-                    filter.controller = Some(PlayerFilter::Opponent);
-                }
-                ["opponent", "own"]
-                | ["opponent", "owns"]
-                | ["opponents", "own"]
-                | ["opponents", "owns"] => {
-                    filter.owner = Some(PlayerFilter::Opponent);
-                }
-                ["they", "control"] | ["they", "controls"] => {
-                    filter.controller = Some(pronoun_player_filter.clone());
-                }
-                ["they", "own"] | ["they", "owns"] => {
-                    filter.owner = Some(pronoun_player_filter.clone());
-                }
-                _ => {}
-            }
-            idx += 1;
-        }
-    }
-    if all_words.len() >= 3 {
-        let mut idx = 0usize;
-        while idx + 2 < all_words.len() {
-            let window = &all_words[idx..idx + 3];
-            match window {
-                ["chosen", "player", "graveyard"] | ["chosen", "players", "graveyard"] => {
-                    filter.owner = Some(PlayerFilter::ChosenPlayer);
-                    filter.zone = Some(Zone::Graveyard);
-                }
-                ["your", "team", "control"] | ["your", "team", "controls"] => {
-                    filter.controller = Some(PlayerFilter::You);
-                }
-                ["your", "team", "own"] | ["your", "team", "owns"] => {
-                    filter.owner = Some(PlayerFilter::You);
-                }
-                ["that", "player", "control"] | ["that", "player", "controls"] => {
-                    filter.controller = Some(PlayerFilter::IteratedPlayer);
-                }
-                ["that", "player", "cast"] | ["that", "player", "casts"] => {
-                    filter.cast_by = Some(PlayerFilter::IteratedPlayer);
-                }
-                ["defending", "player", "control"] | ["defending", "player", "controls"] => {
-                    filter.controller = Some(PlayerFilter::Defending);
-                }
-                ["attacking", "player", "control"] | ["attacking", "player", "controls"] => {
-                    filter.controller = Some(PlayerFilter::Attacking);
-                }
-                ["that", "player", "own"] | ["that", "player", "owns"] => {
-                    filter.owner = Some(PlayerFilter::IteratedPlayer);
-                }
-                ["target", "player", "control"] | ["target", "player", "controls"] => {
-                    filter.controller = Some(PlayerFilter::target_player());
-                }
-                ["target", "player", "cast"] | ["target", "player", "casts"] => {
-                    filter.cast_by = Some(PlayerFilter::target_player());
-                }
-                ["target", "opponent", "control"] | ["target", "opponent", "controls"] => {
-                    filter.controller = Some(PlayerFilter::target_opponent());
-                }
-                ["target", "opponent", "cast"] | ["target", "opponent", "casts"] => {
-                    filter.cast_by = Some(PlayerFilter::target_opponent());
-                }
-                ["target", "player", "own"] | ["target", "player", "owns"] => {
-                    filter.owner = Some(PlayerFilter::target_player());
-                }
-                ["target", "opponent", "own"] | ["target", "opponent", "owns"] => {
-                    filter.owner = Some(PlayerFilter::target_opponent());
-                }
-                ["its", "controller", "control"]
-                | ["its", "controller", "controls"]
-                | ["its", "controllers", "control"]
-                | ["its", "controllers", "controls"]
-                | ["their", "controller", "control"]
-                | ["their", "controller", "controls"]
-                | ["their", "controllers", "control"]
-                | ["their", "controllers", "controls"] => {
-                    filter.controller =
-                        Some(PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target));
-                }
-                ["you", "dont", "control"] | ["you", "don't", "control"] => {
-                    filter.controller = Some(PlayerFilter::NotYou);
-                }
-                ["you", "dont", "own"] | ["you", "don't", "own"] => {
-                    filter.owner = Some(PlayerFilter::NotYou);
-                }
-                _ => {}
-            }
-            idx += 1;
-        }
-    }
-    if all_words.len() >= 4 {
-        let mut idx = 0usize;
-        while idx + 3 < all_words.len() {
-            let window = &all_words[idx..idx + 4];
-            if window[1..] == ["your", "team", "control"]
-                || window[1..] == ["your", "team", "controls"]
-            {
-                filter.controller = Some(PlayerFilter::You);
-            } else if window == ["your", "opponents", "cast", "from"]
-                || window == ["your", "opponents", "casts", "from"]
-            {
-                filter.cast_by = Some(PlayerFilter::Opponent);
-            } else if window == ["the", "chosen", "player", "graveyard"]
-                || window == ["the", "chosen", "players", "graveyard"]
-            {
-                filter.owner = Some(PlayerFilter::ChosenPlayer);
-                filter.zone = Some(Zone::Graveyard);
-            } else if window[1..] == ["your", "team", "own"]
-                || window[1..] == ["your", "team", "owns"]
-            {
-                filter.owner = Some(PlayerFilter::You);
-            } else if window == ["you", "do", "not", "control"] {
-                filter.controller = Some(PlayerFilter::NotYou);
-            } else if window == ["you", "do", "not", "own"] {
-                filter.owner = Some(PlayerFilter::NotYou);
-            }
+        while idx < all_words.len() {
+            let slice = &all_words[idx..];
+            let _ =
+                try_apply_joint_owner_controller_clause(&mut filter, slice, &pronoun_player_filter);
+            let _ = try_apply_chosen_player_graveyard_clause(&mut filter, slice);
+            let _ = try_apply_negated_you_relation_clause(&mut filter, slice);
+            let _ = try_apply_player_relation_clause(&mut filter, slice, &pronoun_player_filter);
             idx += 1;
         }
     }
@@ -1622,67 +2309,8 @@ fn parse_object_filter(
             continue;
         }
 
-        if all_words
-            .get(with_idx + 1)
-            .is_some_and(|word| *word == "no")
-            && all_words
-                .get(with_idx + 2)
-                .is_some_and(|word| matches!(*word, "ability" | "abilities"))
+        if let Some(consumed) = try_apply_with_clause_tail(&mut filter, &all_words[with_idx + 1..])
         {
-            filter.no_abilities = true;
-            with_idx += 3;
-            continue;
-        }
-
-        if all_words
-            .get(with_idx + 1)
-            .is_some_and(|word| *word == "no")
-            && let Some((counter_constraint, consumed)) =
-                parse_filter_counter_constraint_words(&all_words[with_idx + 2..])
-        {
-            filter.without_counter = Some(counter_constraint);
-            with_idx += 2 + consumed;
-            continue;
-        }
-
-        if let Some((kind, consumed)) = parse_alternative_cast_words(&all_words[with_idx + 1..]) {
-            filter.alternative_cast = Some(kind);
-            with_idx += 1 + consumed;
-            continue;
-        }
-        if let Some((counter_constraint, consumed)) =
-            parse_filter_counter_constraint_words(&all_words[with_idx + 1..])
-        {
-            filter.with_counter = Some(counter_constraint);
-            with_idx += 1 + consumed;
-            continue;
-        }
-
-        if let Some((constraint, consumed)) =
-            parse_filter_keyword_constraint_words(&all_words[with_idx + 1..])
-        {
-            let after_constraint = with_idx + 1 + consumed;
-            if all_words
-                .get(after_constraint)
-                .is_some_and(|word| *word == "or")
-                && let Some((rhs_constraint, rhs_consumed)) =
-                    parse_filter_keyword_constraint_words(&all_words[after_constraint + 1..])
-            {
-                // Model "with <keyword> or <keyword>" as an any-of filter.
-                //
-                // Each branch is deliberately "keyword-only"; the outer filter
-                // keeps controller/type/etc qualifiers. Rendering is handled by
-                // ObjectFilter::description() for simple any-of keyword lists.
-                let mut left = ObjectFilter::default();
-                apply_filter_keyword_constraint(&mut left, constraint, false);
-                let mut right = ObjectFilter::default();
-                apply_filter_keyword_constraint(&mut right, rhs_constraint, false);
-                filter.any_of = vec![left, right];
-                with_idx += 1 + consumed + 1 + rhs_consumed;
-                continue;
-            }
-
-            apply_filter_keyword_constraint(&mut filter, constraint, false);
             with_idx += 1 + consumed;
             continue;
         }
@@ -1714,17 +2342,9 @@ fn parse_object_filter(
             continue;
         }
 
-        if let Some((constraint, consumed)) =
-            parse_filter_keyword_constraint_words(&all_words[without_idx + 1..])
+        if let Some(consumed) =
+            try_apply_without_clause_tail(&mut filter, &all_words[without_idx + 1..])
         {
-            apply_filter_keyword_constraint(&mut filter, constraint, true);
-            without_idx += 1 + consumed;
-            continue;
-        }
-        if let Some((counter_constraint, consumed)) =
-            parse_filter_counter_constraint_words(&all_words[without_idx + 1..])
-        {
-            filter.without_counter = Some(counter_constraint);
             without_idx += 1 + consumed;
             continue;
         }
@@ -2465,62 +3085,9 @@ fn parse_object_filter(
         filter = disjunction;
     }
 
-    let owner_or_controller_player = lower_words_find_window(&all_words, 4, |window| {
-        matches!(
-            window,
-            ["you", "own", "or", "control"]
-                | ["you", "owns", "or", "controls"]
-                | ["you", "control", "or", "own"]
-                | ["you", "controls", "or", "owns"]
-                | ["opponent", "own", "or", "control"]
-                | ["opponent", "owns", "or", "controls"]
-                | ["opponents", "own", "or", "control"]
-                | ["opponents", "owns", "or", "controls"]
-                | ["opponent", "control", "or", "own"]
-                | ["opponent", "controls", "or", "owns"]
-                | ["opponents", "control", "or", "own"]
-                | ["opponents", "controls", "or", "owns"]
-                | ["they", "own", "or", "control"]
-                | ["they", "owns", "or", "controls"]
-                | ["they", "control", "or", "own"]
-                | ["they", "controls", "or", "owns"]
-        )
-    })
-    .map(|idx| match &all_words[idx..idx + 4] {
-        ["you", ..] => PlayerFilter::You,
-        ["opponent", ..] | ["opponents", ..] => PlayerFilter::Opponent,
-        ["they", ..] => pronoun_player_filter.clone(),
-        _ => unreachable!("matched 4-word owner/controller phrase"),
-    })
-    .or_else(|| {
-        lower_words_find_window(&all_words, 5, |window| {
-            matches!(
-                window,
-                ["your", "team", "own", "or", "control"]
-                    | ["your", "team", "owns", "or", "controls"]
-                    | ["your", "team", "control", "or", "own"]
-                    | ["your", "team", "controls", "or", "owns"]
-                    | ["that", "player", "own", "or", "control"]
-                    | ["that", "player", "owns", "or", "controls"]
-                    | ["that", "player", "control", "or", "own"]
-                    | ["that", "player", "controls", "or", "owns"]
-                    | ["target", "player", "own", "or", "control"]
-                    | ["target", "player", "owns", "or", "controls"]
-                    | ["target", "player", "control", "or", "own"]
-                    | ["target", "player", "controls", "or", "owns"]
-                    | ["target", "opponent", "own", "or", "control"]
-                    | ["target", "opponent", "owns", "or", "controls"]
-                    | ["target", "opponent", "control", "or", "own"]
-                    | ["target", "opponent", "controls", "or", "owns"]
-            )
-        })
-        .map(|idx| match &all_words[idx..idx + 5] {
-            ["your", "team", ..] => PlayerFilter::You,
-            ["that", "player", ..] => PlayerFilter::IteratedPlayer,
-            ["target", "player", ..] => PlayerFilter::target_player(),
-            ["target", "opponent", ..] => PlayerFilter::target_opponent(),
-            _ => unreachable!("matched 5-word owner/controller phrase"),
-        })
+    let owner_or_controller_player = all_words.iter().enumerate().find_map(|(idx, _)| {
+        parse_owner_or_controller_disjunction_player(&all_words[idx..], &pronoun_player_filter)
+            .map(|(player_filter, _)| player_filter)
     });
     if let Some(player_filter) = owner_or_controller_player
         && filter.any_of.is_empty()
@@ -2746,263 +3313,23 @@ pub(crate) fn parse_object_filter_with_grammar_entrypoint(
 pub(crate) fn parse_spell_filter_with_grammar_entrypoint_lexed(
     tokens: &[OwnedLexToken],
 ) -> ObjectFilter {
-    let mut filter = ObjectFilter::default();
     let words_view = GrammarFilterNormalizedWords::new(tokens);
     let words: Vec<&str> = words_view
         .to_word_refs()
         .into_iter()
         .filter(|word| !is_article(word))
         .collect();
-    let clause_words = words.clone();
 
-    let mut idx = 0usize;
-    while idx < words.len() {
-        if let Some((kind, consumed)) = parse_alternative_cast_words(&words[idx..]) {
-            filter.alternative_cast = Some(kind);
-            idx += consumed;
-            continue;
-        }
-
-        let word = words[idx];
-        if matches!(word, "face-down" | "facedown") {
-            filter.face_down = Some(true);
-            idx += 1;
-            continue;
-        }
-        if matches!(word, "face-up" | "faceup") {
-            filter.face_down = Some(false);
-            idx += 1;
-            continue;
-        }
-        if word == "face" && idx + 1 < words.len() {
-            if words[idx + 1] == "down" {
-                filter.face_down = Some(true);
-                idx += 2;
-                continue;
-            }
-            if words[idx + 1] == "up" {
-                filter.face_down = Some(false);
-                idx += 2;
-                continue;
-            }
-        }
-        if let Some(card_type) = parse_card_type(word) {
-            push_unique_filter_value(&mut filter.card_types, card_type);
-        }
-        if let Some(card_type) = parse_non_type(word) {
-            push_unique_filter_value(&mut filter.excluded_card_types, card_type);
-        }
-        if let Some(subtype) = parse_subtype_flexible(word) {
-            push_unique_filter_value(&mut filter.subtypes, subtype);
-        }
-        if let Some(color) = parse_color(word) {
-            let existing = filter.colors.unwrap_or(ColorSet::new());
-            filter.colors = Some(existing.union(color));
-        }
-        idx += 1;
-    }
-
-    let mut cmp_idx = 0usize;
-    while cmp_idx < words.len() {
-        let axis = match words[cmp_idx] {
-            "power" => Some("power"),
-            "toughness" => Some("toughness"),
-            "mana" if cmp_idx + 1 < words.len() && words[cmp_idx + 1] == "value" => {
-                Some("mana value")
-            }
-            _ => None,
-        };
-        let Some(axis) = axis else {
-            cmp_idx += 1;
-            continue;
-        };
-
-        let axis_word_count = usize::from(axis == "mana value") + 1;
-        let value_tokens = if cmp_idx + axis_word_count < words.len() {
-            &words[cmp_idx + axis_word_count..]
-        } else {
-            &[]
-        };
-        let parsed = parse_filter_comparison_tokens(axis, value_tokens, &clause_words)
-            .ok()
-            .flatten();
-        let Some((cmp, consumed)) = parsed else {
-            cmp_idx += 1;
-            continue;
-        };
-
-        match axis {
-            "power" => filter.power = Some(cmp),
-            "toughness" => filter.toughness = Some(cmp),
-            "mana value" => filter.mana_value = Some(cmp),
-            _ => {}
-        }
-        cmp_idx += axis_word_count + consumed;
-    }
-
-    apply_spell_filter_parity_phrases(&clause_words, &mut filter);
-
-    for idx in 0..words.len() {
-        let Some(value_tokens) = (match words.get(idx..) {
-            Some(["power", "or", "toughness", rest @ ..]) => Some(rest),
-            _ => None,
-        }) else {
-            continue;
-        };
-        let Some((cmp, _)) = parse_filter_comparison_tokens("power", value_tokens, &clause_words)
-            .ok()
-            .flatten()
-        else {
-            continue;
-        };
-
-        let mut base = filter.clone();
-        base.any_of.clear();
-        base.power = None;
-        base.toughness = None;
-
-        let mut power_branch = base.clone();
-        power_branch.power = Some(cmp.clone());
-
-        let mut toughness_branch = base;
-        toughness_branch.toughness = Some(cmp);
-
-        let mut disjunction = ObjectFilter::default();
-        disjunction.any_of = vec![power_branch, toughness_branch];
-        return disjunction;
-    }
-
-    filter
+    parse_spell_filter_from_words(&words)
 }
 
 pub(crate) fn parse_spell_filter_with_grammar_entrypoint(tokens: &[OwnedLexToken]) -> ObjectFilter {
-    let mut filter = ObjectFilter::default();
     let words: Vec<&str> = crate::cards::builders::parser::token_word_refs(tokens)
         .into_iter()
         .filter(|word| !is_article(word))
         .collect();
-    let clause_words = words.clone();
 
-    let mut idx = 0usize;
-    while idx < words.len() {
-        if let Some((kind, consumed)) = parse_alternative_cast_words(&words[idx..]) {
-            filter.alternative_cast = Some(kind);
-            idx += consumed;
-            continue;
-        }
-
-        let word = words[idx];
-        if matches!(word, "face-down" | "facedown") {
-            filter.face_down = Some(true);
-            idx += 1;
-            continue;
-        }
-        if matches!(word, "face-up" | "faceup") {
-            filter.face_down = Some(false);
-            idx += 1;
-            continue;
-        }
-        if word == "face" && idx + 1 < words.len() {
-            if words[idx + 1] == "down" {
-                filter.face_down = Some(true);
-                idx += 2;
-                continue;
-            }
-            if words[idx + 1] == "up" {
-                filter.face_down = Some(false);
-                idx += 2;
-                continue;
-            }
-        }
-        if let Some(card_type) = parse_card_type(word) {
-            push_unique_filter_value(&mut filter.card_types, card_type);
-        }
-        if let Some(card_type) = parse_non_type(word) {
-            push_unique_filter_value(&mut filter.excluded_card_types, card_type);
-        }
-        if let Some(subtype) = parse_subtype_flexible(word) {
-            push_unique_filter_value(&mut filter.subtypes, subtype);
-        }
-        if let Some(color) = parse_color(word) {
-            let existing = filter.colors.unwrap_or(ColorSet::new());
-            filter.colors = Some(existing.union(color));
-        }
-        idx += 1;
-    }
-
-    apply_spell_filter_parity_phrases(&words, &mut filter);
-
-    let mut cmp_idx = 0usize;
-    while cmp_idx < words.len() {
-        let axis = match words[cmp_idx] {
-            "power" => Some("power"),
-            "toughness" => Some("toughness"),
-            "mana" if cmp_idx + 1 < words.len() && words[cmp_idx + 1] == "value" => {
-                Some("mana value")
-            }
-            _ => None,
-        };
-        let Some(axis) = axis else {
-            cmp_idx += 1;
-            continue;
-        };
-
-        let axis_word_count = usize::from(axis == "mana value") + 1;
-        let value_tokens = if cmp_idx + axis_word_count < words.len() {
-            &words[cmp_idx + axis_word_count..]
-        } else {
-            &[]
-        };
-        let parsed = parse_filter_comparison_tokens(axis, value_tokens, &clause_words)
-            .ok()
-            .flatten();
-        let Some((cmp, consumed)) = parsed else {
-            cmp_idx += 1;
-            continue;
-        };
-
-        match axis {
-            "power" => filter.power = Some(cmp),
-            "toughness" => filter.toughness = Some(cmp),
-            "mana value" => filter.mana_value = Some(cmp),
-            _ => {}
-        }
-        cmp_idx += axis_word_count + consumed;
-    }
-
-    apply_spell_filter_parity_phrases(&clause_words, &mut filter);
-
-    for idx in 0..words.len() {
-        let Some(value_tokens) = (match words.get(idx..) {
-            Some(["power", "or", "toughness", rest @ ..]) => Some(rest),
-            _ => None,
-        }) else {
-            continue;
-        };
-        let Some((cmp, _)) = parse_filter_comparison_tokens("power", value_tokens, &clause_words)
-            .ok()
-            .flatten()
-        else {
-            continue;
-        };
-
-        let mut base = filter.clone();
-        base.any_of.clear();
-        base.power = None;
-        base.toughness = None;
-
-        let mut power_branch = base.clone();
-        power_branch.power = Some(cmp.clone());
-
-        let mut toughness_branch = base;
-        toughness_branch.toughness = Some(cmp);
-
-        let mut disjunction = ObjectFilter::default();
-        disjunction.any_of = vec![power_branch, toughness_branch];
-        return disjunction;
-    }
-
-    filter
+    parse_spell_filter_from_words(&words)
 }
 
 fn parse_meld_subject_filter(words: &[&str]) -> Result<ObjectFilter, CardTextError> {
@@ -4881,4 +5208,310 @@ fn parse_mana_spent_to_cast_predicate(words: &[&str]) -> Option<(u32, Option<Man
 
 fn parse_mana_symbol_word(word: &str) -> Option<ManaSymbol> {
     parse_mana_symbol_word_flexible(word)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cards::builders::parser::lexer::lex_line;
+    use crate::static_abilities::StaticAbilityId;
+
+    #[test]
+    fn parse_object_filter_lexed_handles_with_keyword_disjunction() {
+        let tokens = lex_line("creatures with flying or reach", 0).unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert_eq!(filter.any_of.len(), 2);
+        assert_eq!(
+            filter.any_of[0].static_abilities,
+            vec![StaticAbilityId::Flying]
+        );
+        assert_eq!(
+            filter.any_of[1].static_abilities,
+            vec![StaticAbilityId::Reach]
+        );
+    }
+
+    #[test]
+    fn parse_object_filter_lexed_handles_without_keyword_clause() {
+        let tokens = lex_line("creatures without flying", 0).unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert_eq!(
+            filter.excluded_static_abilities,
+            vec![StaticAbilityId::Flying]
+        );
+    }
+
+    #[test]
+    fn parse_object_filter_lexed_handles_with_no_abilities_clause() {
+        let tokens = lex_line("creatures with no abilities", 0).unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert!(filter.no_abilities);
+    }
+
+    #[test]
+    fn parse_object_filter_lexed_handles_joint_owner_controller_clause() {
+        let tokens = lex_line("permanents you both own and control", 0).unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert_eq!(filter.owner, Some(PlayerFilter::You));
+        assert_eq!(filter.controller, Some(PlayerFilter::You));
+        assert_eq!(filter.zone, Some(Zone::Battlefield));
+    }
+
+    #[test]
+    fn parse_object_filter_lexed_handles_chosen_player_graveyard_clause() {
+        let tokens = lex_line("artifact card in the chosen player's graveyard", 0).unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert_eq!(filter.card_types, vec![CardType::Artifact]);
+        assert_eq!(filter.owner, Some(PlayerFilter::ChosenPlayer));
+        assert_eq!(filter.zone, Some(Zone::Graveyard));
+    }
+
+    #[test]
+    fn parse_object_filter_lexed_handles_owner_or_controller_disjunction() {
+        let tokens = lex_line("artifacts target opponent owns or controls", 0).unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert_eq!(filter.any_of.len(), 2);
+        assert_eq!(filter.any_of[0].card_types, vec![CardType::Artifact]);
+        assert_eq!(
+            filter.any_of[0].owner,
+            Some(PlayerFilter::target_opponent())
+        );
+        assert_eq!(filter.any_of[0].controller, None);
+        assert_eq!(filter.any_of[1].card_types, vec![CardType::Artifact]);
+        assert_eq!(filter.any_of[1].owner, None);
+        assert_eq!(
+            filter.any_of[1].controller,
+            Some(PlayerFilter::target_opponent())
+        );
+    }
+
+    #[test]
+    fn temporal_graveyard_from_battlefield_phrase_parser_matches() {
+        assert_eq!(
+            parse_graveyard_from_battlefield_this_turn_words(&[
+                "graveyard",
+                "from",
+                "battlefield",
+                "this",
+                "turn",
+            ]),
+            Some(5)
+        );
+    }
+
+    #[test]
+    fn parse_object_filter_lexed_handles_put_there_from_anywhere_this_turn_clause() {
+        let tokens = lex_line(
+            "creature cards in a graveyard that were put there from anywhere this turn",
+            0,
+        )
+        .unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert_eq!(filter.zone, Some(Zone::Graveyard));
+        assert!(filter.entered_graveyard_this_turn);
+    }
+
+    #[test]
+    fn parse_object_filter_lexed_handles_entered_battlefield_this_turn_clause() {
+        let tokens = lex_line(
+            "creatures that entered the battlefield under your control this turn",
+            0,
+        )
+        .unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert_eq!(filter.zone, Some(Zone::Battlefield));
+        assert!(filter.entered_battlefield_this_turn);
+        assert_eq!(
+            filter.entered_battlefield_controller,
+            Some(PlayerFilter::You)
+        );
+    }
+
+    #[test]
+    fn parse_object_filter_lexed_handles_named_clause_with_trailing_zone() {
+        let tokens = lex_line("artifact card named Sol Ring from your graveyard", 0).unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert_eq!(filter.card_types, vec![CardType::Artifact]);
+        assert_eq!(filter.name.as_deref(), Some("sol ring"));
+        assert_eq!(filter.owner, Some(PlayerFilter::You));
+        assert_eq!(filter.zone, Some(Zone::Graveyard));
+    }
+
+    #[test]
+    fn parse_object_filter_lexed_handles_not_named_clause_with_trailing_zone() {
+        let tokens = lex_line("artifact card not named Sol Ring from your graveyard", 0).unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert_eq!(filter.card_types, vec![CardType::Artifact]);
+        assert_eq!(filter.excluded_name.as_deref(), Some("sol ring"));
+        assert_eq!(filter.owner, Some(PlayerFilter::You));
+        assert_eq!(filter.zone, Some(Zone::Graveyard));
+    }
+
+    #[test]
+    fn parse_object_filter_lexed_handles_tagged_reference_prefix() {
+        let tokens = lex_line("that creature", 0).unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert_eq!(
+            filter.tagged_constraints,
+            vec![TaggedObjectConstraint {
+                tag: TagKey::from(IT_TAG),
+                relation: TaggedOpbjectRelation::IsTaggedObject,
+            }]
+        );
+    }
+
+    #[test]
+    fn parse_object_filter_lexed_handles_entered_since_your_last_turn_ended_clause() {
+        let tokens = lex_line("creatures that entered since your last turn ended", 0).unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert!(filter.entered_since_your_last_turn_ended);
+    }
+
+    #[test]
+    fn parse_object_filter_lexed_handles_split_face_state_words() {
+        let tokens = lex_line("face up creature cards", 0).unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert_eq!(filter.face_down, Some(false));
+    }
+
+    #[test]
+    fn parse_object_filter_lexed_handles_single_graveyard_phrase() {
+        let tokens = lex_line("creature cards in a single graveyard", 0).unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert_eq!(filter.zone, Some(Zone::Graveyard));
+        assert!(filter.single_graveyard);
+    }
+
+    #[test]
+    fn parse_object_filter_lexed_handles_one_or_more_colors_phrase() {
+        let tokens = lex_line("creatures of one or more colors", 0).unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        let any_color: ColorSet = Color::ALL.into_iter().collect();
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert_eq!(filter.colors, Some(any_color));
+    }
+
+    #[test]
+    fn parse_object_filter_lexed_handles_mana_value_eq_counters_on_source_clause() {
+        let tokens = lex_line(
+            "creature card with mana value equal to the number of charge counters on this artifact",
+            0,
+        )
+        .unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert_eq!(
+            filter.mana_value_eq_counters_on_source,
+            Some(crate::object::CounterType::Charge)
+        );
+    }
+
+    #[test]
+    fn parse_object_filter_lexed_handles_attached_exclusion_phrase() {
+        let tokens = lex_line("creatures other than enchanted creature", 0).unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert!(filter.tagged_constraints.contains(&TaggedObjectConstraint {
+            tag: TagKey::from("enchanted"),
+            relation: TaggedOpbjectRelation::IsNotTaggedObject,
+        }));
+    }
+
+    #[test]
+    fn parse_object_filter_lexed_handles_different_one_of_prefix() {
+        let tokens = lex_line("different one of those creatures", 0).unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert!(filter.tagged_constraints.contains(&TaggedObjectConstraint {
+            tag: TagKey::from(IT_TAG),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        }));
+    }
+
+    #[test]
+    fn parse_object_filter_lexed_handles_pt_literal_prefix() {
+        let tokens = lex_line("2/2 creature token", 0).unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert_eq!(filter.power, Some(crate::filter::Comparison::Equal(2)));
+        assert_eq!(filter.toughness, Some(crate::filter::Comparison::Equal(2)));
+    }
+
+    #[test]
+    fn parse_object_filter_lexed_handles_not_all_colors_clause() {
+        let tokens = lex_line("creature that isnt all colors", 0).unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert_eq!(filter.all_colors, Some(false));
+    }
+
+    #[test]
+    fn parse_object_filter_lexed_handles_not_exactly_two_colors_clause() {
+        let tokens = lex_line("creature that isnt exactly two colors", 0).unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert_eq!(filter.exactly_two_colors, Some(false));
+    }
+
+    #[test]
+    fn parse_spell_filter_lexed_handles_split_face_state_words() {
+        let tokens = lex_line("Face up noncreature spells", 0).unwrap();
+
+        let filter = parse_spell_filter_with_grammar_entrypoint_lexed(&tokens);
+        assert_eq!(filter.face_down, Some(false));
+        assert_eq!(filter.excluded_card_types, vec![CardType::Creature]);
+    }
+
+    #[test]
+    fn parse_spell_filter_raw_handles_hyphenated_face_state_words() {
+        let tokens = lex_line("face-down noncreature spells", 0).unwrap();
+
+        let filter = parse_spell_filter_with_grammar_entrypoint(&tokens);
+        assert_eq!(filter.face_down, Some(true));
+        assert_eq!(filter.excluded_card_types, vec![CardType::Creature]);
+    }
+
+    #[test]
+    fn parse_spell_filter_lexed_builds_power_or_toughness_disjunction() {
+        let tokens = lex_line("creature spells with power or toughness 2 or less", 0).unwrap();
+
+        let filter = parse_spell_filter_with_grammar_entrypoint_lexed(&tokens);
+        assert_eq!(filter.any_of.len(), 2);
+        assert_eq!(filter.any_of[0].card_types, vec![CardType::Creature]);
+        assert!(filter.any_of[0].power.is_some());
+        assert!(filter.any_of[0].toughness.is_none());
+        assert_eq!(filter.any_of[1].card_types, vec![CardType::Creature]);
+        assert!(filter.any_of[1].power.is_none());
+        assert!(filter.any_of[1].toughness.is_some());
+    }
 }

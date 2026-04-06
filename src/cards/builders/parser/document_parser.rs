@@ -477,12 +477,31 @@ fn parse_triggered_line_cst(line: &PreprocessedLine) -> Result<TriggeredLineCst,
             continue;
         }
 
+<<<<<<< Updated upstream
         if best_probe_error.is_none() {
             best_probe_error = probe.preferred_error();
         }
 
         if whole_line_parse.is_ok() && best_fallback_split.is_none() {
             best_fallback_split = probe.fallback_cst(line, tokens_without_cap);
+=======
+        let full_text = format!(
+            "{} {}, {}",
+            first_token.slice.as_str(),
+            trigger_text,
+            effect_candidate
+        );
+        let full_tokens = lexed_tokens(full_text.as_str(), line.info.line_index)?;
+        if parse_triggered_line_lexed(&full_tokens).is_ok() && best_fallback_split.is_none() {
+            best_fallback_split = Some(TriggeredLineCst {
+                info: line.info.clone(),
+                full_text,
+                trigger_text,
+                effect_text: effect_candidate.to_string(),
+                max_triggers_per_turn,
+                chosen_option_label: None,
+            });
+>>>>>>> Stashed changes
         }
     }
 

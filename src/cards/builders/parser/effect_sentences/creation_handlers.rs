@@ -516,9 +516,9 @@ pub(crate) fn parse_create(
 ) -> Result<EffectAst, CardTextError> {
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
     let clause_words = token_word_refs(tokens);
-    let has_unsupported_dynamic_count =
-        grammar::words_match_prefix(tokens, &["a", "number", "of"]).is_some()
-            || grammar::words_match_prefix(tokens, &["the", "number", "of"]).is_some();
+    let has_unsupported_dynamic_count = grammar::words_match_prefix(tokens, &["a", "number", "of"])
+        .is_some()
+        || grammar::words_match_prefix(tokens, &["the", "number", "of"]).is_some();
     if has_unsupported_dynamic_count {
         return Err(CardTextError::ParseError(format!(
             "unsupported dynamic token count in create clause (clause: '{}')",
@@ -772,9 +772,7 @@ pub(crate) fn parse_create(
                 for idx in 1..source_end {
                     if starts_with_inline_token_rules_tail(&source_tokens[idx..])
                         || (source_tokens[idx].is_word("and")
-                            && starts_with_inline_token_rules_tail(
-                                &source_tokens[idx + 1..],
-                            ))
+                            && starts_with_inline_token_rules_tail(&source_tokens[idx + 1..]))
                     {
                         source_end = idx;
                         break;
@@ -978,17 +976,14 @@ pub(crate) fn parse_create(
 
 pub(crate) fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> Option<Value> {
     if grammar::words_match_prefix(tokens, &["creature", "that", "died", "this", "turn"]).is_some()
-        || grammar::words_match_prefix(
-            tokens,
-            &["creatures", "that", "died", "this", "turn"],
-        ).is_some()
+        || grammar::words_match_prefix(tokens, &["creatures", "that", "died", "this", "turn"])
+            .is_some()
     {
         return Some(Value::CreaturesDiedThisTurn);
     }
     let clause_words = token_word_refs(tokens);
     if (grammar::contains_word(tokens, "spell") || grammar::contains_word(tokens, "spells"))
-        && (grammar::contains_word(tokens, "cast")
-            || grammar::contains_word(tokens, "casts"))
+        && (grammar::contains_word(tokens, "cast") || grammar::contains_word(tokens, "casts"))
         && grammar::contains_word(tokens, "turn")
     {
         let player = if clause_words
@@ -1013,8 +1008,7 @@ pub(crate) fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> O
                 Box::new(Value::Fixed(-1)),
             ));
         }
-        if grammar::contains_word(tokens, "this") && grammar::contains_word(tokens, "turn")
-        {
+        if grammar::contains_word(tokens, "this") && grammar::contains_word(tokens, "turn") {
             return Some(Value::SpellsCastThisTurn(player));
         }
     }
@@ -1023,39 +1017,55 @@ pub(crate) fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> O
         &[
             "color", "of", "mana", "spent", "to", "cast", "this", "spell",
         ],
-    ).is_some() || grammar::words_match_prefix(
-        tokens,
-        &[
-            "colors", "of", "mana", "spent", "to", "cast", "this", "spell",
-        ],
-    ).is_some() || grammar::words_match_prefix(
-        tokens,
-        &["color", "of", "mana", "used", "to", "cast", "this", "spell"],
-    ).is_some() || grammar::words_match_prefix(
-        tokens,
-        &[
-            "colors", "of", "mana", "used", "to", "cast", "this", "spell",
-        ],
-    ).is_some() {
+    )
+    .is_some()
+        || grammar::words_match_prefix(
+            tokens,
+            &[
+                "colors", "of", "mana", "spent", "to", "cast", "this", "spell",
+            ],
+        )
+        .is_some()
+        || grammar::words_match_prefix(
+            tokens,
+            &["color", "of", "mana", "used", "to", "cast", "this", "spell"],
+        )
+        .is_some()
+        || grammar::words_match_prefix(
+            tokens,
+            &[
+                "colors", "of", "mana", "used", "to", "cast", "this", "spell",
+            ],
+        )
+        .is_some()
+    {
         return Some(Value::ColorsOfManaSpentToCastThisSpell);
     }
     if grammar::words_match_prefix(
         tokens,
         &["basic", "land", "type", "among", "lands", "you", "control"],
-    ).is_some() || grammar::words_match_prefix(
-        tokens,
-        &["basic", "land", "types", "among", "lands", "you", "control"],
-    ).is_some() || grammar::words_match_prefix(
-        tokens,
-        &[
-            "basic", "land", "type", "among", "the", "lands", "you", "control",
-        ],
-    ).is_some() || grammar::words_match_prefix(
-        tokens,
-        &[
-            "basic", "land", "types", "among", "the", "lands", "you", "control",
-        ],
-    ).is_some() {
+    )
+    .is_some()
+        || grammar::words_match_prefix(
+            tokens,
+            &["basic", "land", "types", "among", "lands", "you", "control"],
+        )
+        .is_some()
+        || grammar::words_match_prefix(
+            tokens,
+            &[
+                "basic", "land", "type", "among", "the", "lands", "you", "control",
+            ],
+        )
+        .is_some()
+        || grammar::words_match_prefix(
+            tokens,
+            &[
+                "basic", "land", "types", "among", "the", "lands", "you", "control",
+            ],
+        )
+        .is_some()
+    {
         return Some(Value::BasicLandTypesAmong(
             ObjectFilter::land().you_control(),
         ));
@@ -1085,14 +1095,13 @@ pub(crate) fn parse_investigate(tokens: &[OwnedLexToken]) -> Result<EffectAst, C
             )));
         }
 
-        let count =
-            if grammar::words_find_phrase(filter_tokens, &["this", "way"]).is_some() {
-                Value::EventValue(EventValueSpec::Amount)
-            } else if let Some(dynamic) = parse_create_for_each_dynamic_count(filter_tokens) {
-                dynamic
-            } else {
-                Value::Count(parse_object_filter(filter_tokens, false)?)
-            };
+        let count = if grammar::words_find_phrase(filter_tokens, &["this", "way"]).is_some() {
+            Value::EventValue(EventValueSpec::Amount)
+        } else if let Some(dynamic) = parse_create_for_each_dynamic_count(filter_tokens) {
+            dynamic
+        } else {
+            Value::Count(parse_object_filter(filter_tokens, false)?)
+        };
 
         return Ok(EffectAst::Investigate { count });
     }

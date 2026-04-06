@@ -1,3 +1,7 @@
+use winnow::Parser;
+use winnow::combinator::alt;
+use winnow::error::{ContextError, ErrMode, StrContext, StrContextValue};
+
 use crate::cards::builders::{CardTextError, IT_TAG};
 use crate::effects::VOTE_WINNERS_TAG;
 use crate::filter::ParityRequirement;
@@ -45,8 +49,182 @@ pub(super) fn normalized_token_index_after_words(
         .or_else(|| (word_count == word_refs.len()).then_some(tokens.len()))
 }
 
-fn lower_words_end_with(words: &[&str], suffix: &[&str]) -> bool {
-    words.len() >= suffix.len() && words[words.len() - suffix.len()..] == *suffix
+type WordInput<'a> = &'a [&'a str];
+
+fn word_eq<'a>(expected: &'static str) -> impl Parser<WordInput<'a>, (), ErrMode<ContextError>> {
+    move |input: &mut WordInput<'a>| {
+        let Some((word, rest)) = input.split_first() else {
+            let mut err = ContextError::new();
+            err.push(StrContext::Label("word"));
+            err.push(StrContext::Expected(StrContextValue::Description(expected)));
+            return Err(ErrMode::Backtrack(err));
+        };
+        if word.eq_ignore_ascii_case(expected) {
+            *input = rest;
+            Ok(())
+        } else {
+            let mut err = ContextError::new();
+            err.push(StrContext::Label("word"));
+            err.push(StrContext::Expected(StrContextValue::Description(expected)));
+            Err(ErrMode::Backtrack(err))
+        }
+    }
+}
+
+fn words_eof<'a>(input: &mut WordInput<'a>) -> Result<(), ErrMode<ContextError>> {
+    if input.is_empty() {
+        Ok(())
+    } else {
+        let mut err = ContextError::new();
+        err.push(StrContext::Label("word input"));
+        err.push(StrContext::Expected(StrContextValue::Description(
+            "end of words",
+        )));
+        Err(ErrMode::Backtrack(err))
+    }
+}
+
+fn parse_full_words<'a, O>(
+    words: &'a [&'a str],
+    parser: impl Parser<WordInput<'a>, O, ErrMode<ContextError>>,
+) -> Option<O> {
+    let mut input = words;
+    (parser, words_eof)
+        .map(|(parsed, ())| parsed)
+        .parse_next(&mut input)
+        .ok()
+}
+
+fn parse_prefix_words<'a, O>(
+    words: &'a [&'a str],
+    mut parser: impl Parser<WordInput<'a>, O, ErrMode<ContextError>>,
+) -> Option<O> {
+    let mut input = words;
+    parser.parse_next(&mut input).ok()
+}
+
+#[derive(Clone)]
+enum SimpleObjectFilterSuffix {
+    Controller(PlayerFilter),
+    Owner(PlayerFilter),
+    OwnerZone(PlayerFilter, Zone),
+    Zone(Zone),
+}
+
+#[derive(Clone, Copy)]
+enum NamedObjectFilterWordAtom {
+    ChosenColor,
+    ChosenType,
+    NonChosenType,
+}
+
+pub(super) fn parse_filter_face_state_words(words: &[&str]) -> Option<(bool, usize)> {
+    parse_prefix_words(
+        words,
+        alt((
+            alt((word_eq("face-down"), word_eq("facedown"))).value((true, 1usize)),
+            alt((word_eq("face-up"), word_eq("faceup"))).value((false, 1usize)),
+            (word_eq("face"), word_eq("down")).value((true, 2usize)),
+            (word_eq("face"), word_eq("up")).value((false, 2usize)),
+        )),
+    )
+}
+
+fn parse_named_object_filter_word_atom(
+    words: &[&str],
+) -> Option<(NamedObjectFilterWordAtom, usize)> {
+    parse_prefix_words(
+        words,
+        alt((
+            (word_eq("chosen"), word_eq("color"))
+                .value((NamedObjectFilterWordAtom::ChosenColor, 2usize)),
+            (word_eq("chosen"), word_eq("type"))
+                .value((NamedObjectFilterWordAtom::ChosenType, 2usize)),
+            (word_eq("nonchosen"), word_eq("type"))
+                .value((NamedObjectFilterWordAtom::NonChosenType, 2usize)),
+        )),
+    )
+}
+
+fn parse_simple_object_filter_suffix_inner<'a>(
+    input: &mut WordInput<'a>,
+) -> Result<SimpleObjectFilterSuffix, ErrMode<ContextError>> {
+    alt((
+        alt((
+            (word_eq("you"), word_eq("control"))
+                .value(SimpleObjectFilterSuffix::Controller(PlayerFilter::You)),
+            (
+                word_eq("you"),
+                alt((word_eq("dont"), word_eq("don't"))),
+                word_eq("control"),
+            )
+                .value(SimpleObjectFilterSuffix::Controller(PlayerFilter::NotYou)),
+            (
+                word_eq("you"),
+                word_eq("do"),
+                word_eq("not"),
+                word_eq("control"),
+            )
+                .value(SimpleObjectFilterSuffix::Controller(PlayerFilter::NotYou)),
+            alt((
+                (word_eq("opponents"), word_eq("control")),
+                (word_eq("opponent"), word_eq("controls")),
+            ))
+            .value(SimpleObjectFilterSuffix::Controller(PlayerFilter::Opponent)),
+            (word_eq("you"), word_eq("own"))
+                .value(SimpleObjectFilterSuffix::Owner(PlayerFilter::You)),
+        )),
+        alt((
+            (
+                alt((word_eq("in"), word_eq("from"))),
+                word_eq("your"),
+                word_eq("graveyard"),
+            )
+                .value(SimpleObjectFilterSuffix::OwnerZone(
+                    PlayerFilter::You,
+                    Zone::Graveyard,
+                )),
+            (
+                alt((word_eq("in"), word_eq("from"))),
+                word_eq("your"),
+                word_eq("hand"),
+            )
+                .value(SimpleObjectFilterSuffix::OwnerZone(
+                    PlayerFilter::You,
+                    Zone::Hand,
+                )),
+            (
+                alt((word_eq("in"), word_eq("from"))),
+                word_eq("your"),
+                word_eq("library"),
+            )
+                .value(SimpleObjectFilterSuffix::OwnerZone(
+                    PlayerFilter::You,
+                    Zone::Library,
+                )),
+        )),
+        alt((
+            (alt((word_eq("in"), word_eq("from"))), word_eq("graveyard"))
+                .value(SimpleObjectFilterSuffix::Zone(Zone::Graveyard)),
+            (alt((word_eq("in"), word_eq("from"))), word_eq("hand"))
+                .value(SimpleObjectFilterSuffix::Zone(Zone::Hand)),
+            (alt((word_eq("in"), word_eq("from"))), word_eq("library"))
+                .value(SimpleObjectFilterSuffix::Zone(Zone::Library)),
+            (alt((word_eq("in"), word_eq("from"))), word_eq("exile"))
+                .value(SimpleObjectFilterSuffix::Zone(Zone::Exile)),
+        )),
+    ))
+    .parse_next(input)
+}
+
+fn parse_simple_object_filter_suffix(words: &[&str]) -> Option<(SimpleObjectFilterSuffix, usize)> {
+    for suffix_len in [4usize, 3, 2] {
+        let tail = words.get(words.len().checked_sub(suffix_len)?..)?;
+        if let Some(parsed) = parse_full_words(tail, parse_simple_object_filter_suffix_inner) {
+            return Some((parsed, suffix_len));
+        }
+    }
+    None
 }
 
 pub(super) fn lower_words_starts_with(words: &[&str], prefix: &[&str]) -> bool {
@@ -339,79 +517,24 @@ fn parse_simple_object_filter_lexed(tokens: &[OwnedLexToken], other: bool) -> Op
         words.truncate(new_len);
     };
 
-    let apply_owner_zone_suffix = |filter: &mut ObjectFilter,
-                                   owner: PlayerFilter,
-                                   zone: Zone,
-                                   words: &mut Vec<&str>,
-                                   suffix_len: usize| {
-        filter.owner = Some(owner);
-        filter.zone = Some(zone);
-        trim_suffix(words, suffix_len);
-    };
-
-    if lower_words_end_with(&words, &["you", "control"]) {
-        filter.controller = Some(PlayerFilter::You);
-        filter.zone = Some(Zone::Battlefield);
-        trim_suffix(&mut words, 2);
-    } else if lower_words_end_with(&words, &["you", "dont", "control"])
-        || lower_words_end_with(&words, &["you", "don't", "control"])
-        || lower_words_end_with(&words, &["you", "do", "not", "control"])
-    {
-        filter.controller = Some(PlayerFilter::NotYou);
-        filter.zone = Some(Zone::Battlefield);
-        let suffix_len = if lower_words_end_with(&words, &["you", "do", "not", "control"]) {
-            4
-        } else {
-            3
-        };
+    if let Some((suffix, suffix_len)) = parse_simple_object_filter_suffix(&words) {
+        match suffix {
+            SimpleObjectFilterSuffix::Controller(controller) => {
+                filter.controller = Some(controller);
+                filter.zone = Some(Zone::Battlefield);
+            }
+            SimpleObjectFilterSuffix::Owner(owner) => {
+                filter.owner = Some(owner);
+            }
+            SimpleObjectFilterSuffix::OwnerZone(owner, zone) => {
+                filter.owner = Some(owner);
+                filter.zone = Some(zone);
+            }
+            SimpleObjectFilterSuffix::Zone(zone) => {
+                filter.zone = Some(zone);
+            }
+        }
         trim_suffix(&mut words, suffix_len);
-    } else if lower_words_end_with(&words, &["opponents", "control"])
-        || lower_words_end_with(&words, &["opponent", "controls"])
-    {
-        filter.controller = Some(PlayerFilter::Opponent);
-        filter.zone = Some(Zone::Battlefield);
-        trim_suffix(&mut words, 2);
-    } else if lower_words_end_with(&words, &["you", "own"]) {
-        filter.owner = Some(PlayerFilter::You);
-        trim_suffix(&mut words, 2);
-    } else if lower_words_end_with(&words, &["in", "your", "graveyard"])
-        || lower_words_end_with(&words, &["from", "your", "graveyard"])
-    {
-        apply_owner_zone_suffix(
-            &mut filter,
-            PlayerFilter::You,
-            Zone::Graveyard,
-            &mut words,
-            3,
-        );
-    } else if lower_words_end_with(&words, &["in", "your", "hand"])
-        || lower_words_end_with(&words, &["from", "your", "hand"])
-    {
-        apply_owner_zone_suffix(&mut filter, PlayerFilter::You, Zone::Hand, &mut words, 3);
-    } else if lower_words_end_with(&words, &["in", "your", "library"])
-        || lower_words_end_with(&words, &["from", "your", "library"])
-    {
-        apply_owner_zone_suffix(&mut filter, PlayerFilter::You, Zone::Library, &mut words, 3);
-    } else if lower_words_end_with(&words, &["in", "graveyard"])
-        || lower_words_end_with(&words, &["from", "graveyard"])
-    {
-        filter.zone = Some(Zone::Graveyard);
-        trim_suffix(&mut words, 2);
-    } else if lower_words_end_with(&words, &["in", "hand"])
-        || lower_words_end_with(&words, &["from", "hand"])
-    {
-        filter.zone = Some(Zone::Hand);
-        trim_suffix(&mut words, 2);
-    } else if lower_words_end_with(&words, &["in", "library"])
-        || lower_words_end_with(&words, &["from", "library"])
-    {
-        filter.zone = Some(Zone::Library);
-        trim_suffix(&mut words, 2);
-    } else if lower_words_end_with(&words, &["in", "exile"])
-        || lower_words_end_with(&words, &["from", "exile"])
-    {
-        filter.zone = Some(Zone::Exile);
-        trim_suffix(&mut words, 2);
     }
 
     let mut idx = 0usize;
@@ -427,27 +550,10 @@ fn parse_simple_object_filter_lexed(tokens: &[OwnedLexToken], other: bool) -> Op
             idx += consumed;
             continue;
         }
-        if matches!(word, "face-down" | "facedown") {
-            filter.face_down = Some(true);
-            idx += 1;
+        if let Some((face_down, consumed)) = parse_filter_face_state_words(&words[idx..]) {
+            filter.face_down = Some(face_down);
+            idx += consumed;
             continue;
-        }
-        if matches!(word, "face-up" | "faceup") {
-            filter.face_down = Some(false);
-            idx += 1;
-            continue;
-        }
-        if word == "face" && idx + 1 < words.len() {
-            if words[idx + 1] == "down" {
-                filter.face_down = Some(true);
-                idx += 2;
-                continue;
-            }
-            if words[idx + 1] == "up" {
-                filter.face_down = Some(false);
-                idx += 2;
-                continue;
-            }
         }
         if matches!(word, "other" | "another") {
             filter.other = true;
@@ -509,21 +615,15 @@ fn parse_simple_object_filter_lexed(tokens: &[OwnedLexToken], other: bool) -> Op
             idx += 1;
             continue;
         }
-        if word == "chosen" && idx + 1 < words.len() {
-            if words[idx + 1] == "color" {
-                filter.chosen_color = true;
-                idx += 2;
-                continue;
+        if let Some((atom, consumed)) = parse_named_object_filter_word_atom(&words[idx..]) {
+            match atom {
+                NamedObjectFilterWordAtom::ChosenColor => filter.chosen_color = true,
+                NamedObjectFilterWordAtom::ChosenType => filter.chosen_creature_type = true,
+                NamedObjectFilterWordAtom::NonChosenType => {
+                    filter.excluded_chosen_creature_type = true
+                }
             }
-            if words[idx + 1] == "type" {
-                filter.chosen_creature_type = true;
-                idx += 2;
-                continue;
-            }
-        }
-        if word == "nonchosen" && idx + 1 < words.len() && words[idx + 1] == "type" {
-            filter.excluded_chosen_creature_type = true;
-            idx += 2;
+            idx += consumed;
             continue;
         }
         if let Some(card_type) = parse_card_type(word) {
@@ -792,6 +892,41 @@ mod tests {
         assert_eq!(filter.any_of[0].card_types, vec![CardType::Creature]);
         assert_eq!(filter.any_of[1].card_types, vec![CardType::Creature]);
         assert!(filter.any_of[1].other);
+    }
+
+    #[test]
+    fn parse_object_filter_lexed_parses_suffix_owned_zone() {
+        let tokens = tokenize_line("artifact card from your graveyard", 0);
+
+        let filter = parse_object_filter_lexed(&tokens, false).expect("object filter should parse");
+
+        assert_eq!(filter.owner, Some(PlayerFilter::You));
+        assert_eq!(filter.zone, Some(Zone::Graveyard));
+        assert_eq!(filter.card_types, vec![CardType::Artifact]);
+    }
+
+    #[test]
+    fn parse_object_filter_lexed_parses_split_face_state_and_chosen_type_atoms() {
+        let tokens = tokenize_line("face down chosen type creatures", 0);
+
+        let filter = parse_object_filter_lexed(&tokens, false).expect("object filter should parse");
+
+        assert_eq!(filter.face_down, Some(true));
+        assert!(filter.chosen_creature_type);
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert_eq!(filter.zone, Some(Zone::Battlefield));
+    }
+
+    #[test]
+    fn parse_object_filter_lexed_parses_hyphenated_face_state_and_nonchosen_type_atoms() {
+        let tokens = tokenize_line("face-up nonchosen type creatures", 0);
+
+        let filter = parse_object_filter_lexed(&tokens, false).expect("object filter should parse");
+
+        assert_eq!(filter.face_down, Some(false));
+        assert!(filter.excluded_chosen_creature_type);
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert_eq!(filter.zone, Some(Zone::Battlefield));
     }
 }
 

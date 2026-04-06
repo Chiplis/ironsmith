@@ -235,11 +235,8 @@ pub(crate) fn parse_activate_only_timing_lexed(
         &["activate", "only", "during", "an", "opponents", "turn"],
     )
     .is_some()
-        || grammar::words_match_prefix(
-            tokens,
-            &["activate", "only", "during", "opponents", "turn"],
-        )
-        .is_some()
+        || grammar::words_match_prefix(tokens, &["activate", "only", "during", "opponents", "turn"])
+            .is_some()
         || grammar::words_find_phrase(tokens, &["during", "an", "opponents", "turn"]).is_some()
         || grammar::words_find_phrase(tokens, &["during", "opponents", "turn"]).is_some()
     {

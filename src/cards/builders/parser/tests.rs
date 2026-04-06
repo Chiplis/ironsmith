@@ -5834,6 +5834,7 @@ fn rewrite_lexed_triggered_line_parses_state_trigger_condition() {
     let parsed = super::clause_support::parse_triggered_line_lexed(&tokens)
         .expect("state-triggered line should parse");
 
+<<<<<<< Updated upstream
     match parsed {
         crate::cards::builders::LineAst::Triggered { trigger, .. } => {
             assert!(
@@ -5845,6 +5846,67 @@ fn rewrite_lexed_triggered_line_parses_state_trigger_condition() {
             );
         }
         other => panic!("expected triggered line, got {other:?}"),
+=======
+    assert_eq!(format!("{native:?}"), format!("{wrapper:?}"));
+}
+
+#[test]
+fn rewrite_lexed_effect_entrypoint_matches_wrapper_comma_then_chain() {
+    let text = "Discard your hand, then draw four cards.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify comma-then effect");
+    let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
+
+    let wrapper = super::clause_support::parse_effect_sentences_lexed(&compat)
+        .expect("wrapper effect sentence parser should succeed");
+    let native = super::clause_support::parse_effect_sentences_lexed(&lexed)
+        .expect("lexed effect sentence parser should succeed");
+
+    assert_eq!(format!("{native:?}"), format!("{wrapper:?}"));
+}
+
+#[test]
+fn rewrite_lexed_effect_sentence_matches_wrapper_conditional_dispatch() {
+    let text = "If you control an artifact, draw a card.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify conditional sentence");
+    let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
+
+    let wrapper = super::clause_support::parse_effect_sentences_lexed(&compat)
+        .expect("wrapper conditional sentence should parse");
+    let native = super::clause_support::parse_effect_sentences_lexed(&lexed)
+        .expect("lexed conditional sentence should parse");
+
+    assert_eq!(format!("{native:?}"), format!("{wrapper:?}"));
+}
+
+#[test]
+fn rewrite_lexed_predicate_parser_matches_wrapper_output() {
+    let text = "it's your turn";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify predicate text");
+    let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
+
+    let native = super::parse_predicate_lexed(&lexed).expect("lexed predicate should parse");
+    let wrapper =
+        super::conditionals::parse_predicate(&compat).expect("wrapper predicate should parse");
+
+    assert_eq!(format!("{native:?}"), format!("{wrapper:?}"));
+}
+
+#[test]
+fn rewrite_lexed_effect_sentence_matches_wrapper_pre_diagnostic_clause_helpers() {
+    for text in [
+        "The next time a red source of your choice would deal damage to you this turn, prevent that damage.",
+        "Double target creature's power until end of turn.",
+    ] {
+        let lexed = lex_line(text, 0).expect("rewrite lexer should classify clause helper probe");
+        let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
+
+        let wrapper = parse_effect_sentence_lexed(&compat)
+            .expect("wrapper clause helper sentence should parse");
+        let native =
+            parse_effect_sentence_lexed(&lexed).expect("lexed clause helper sentence should parse");
+
+        assert_eq!(format!("{native:?}"), format!("{wrapper:?}"), "{text}");
+>>>>>>> Stashed changes
     }
 }
 
@@ -5868,9 +5930,15 @@ fn rewrite_lexed_triggered_line_lifts_intervening_if_with_multisentence_body() {
     let tokens =
         lex_line(text, 0).expect("rewrite lexer should classify postcombat intervening-if trigger");
 
+<<<<<<< Updated upstream
     let parsed = super::clause_support::parse_triggered_line_lexed(&tokens)
         .expect("intervening-if trigger should parse");
     let debug = format!("{parsed:?}");
+=======
+    let native = parse_effect_sentence_lexed(&lexed).expect("lexed where-x sentence should parse");
+    let wrapper =
+        parse_effect_sentence_lexed(&compat).expect("wrapper where-x sentence should parse");
+>>>>>>> Stashed changes
 
     assert!(debug.contains("BeginningOfPostcombatMain"), "{debug}");
     assert!(debug.contains("Conditional"), "{debug}");

@@ -253,10 +253,12 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         return Ok(effect);
     }
 
-    if let Some((main_slice, _after_unless)) = super::super::grammar::primitives::split_lexed_once_on_separator(
-        tokens,
-        || { use winnow::Parser as _; super::super::grammar::primitives::kw("unless").void() },
-    ) {
+    if let Some((main_slice, _after_unless)) =
+        super::super::grammar::primitives::split_lexed_once_on_separator(tokens, || {
+            use winnow::Parser as _;
+            super::super::grammar::primitives::kw("unless").void()
+        })
+    {
         let unless_idx = main_slice.len();
         let main_tokens = trim_commas(main_slice);
         if !main_tokens.is_empty()

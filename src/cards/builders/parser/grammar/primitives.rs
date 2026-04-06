@@ -415,6 +415,23 @@ where
     (head.len() + rest.len() < tokens.len()).then_some((head, rest))
 }
 
+pub(crate) fn split_lexed_once_before_suffix<'a, O, P, F>(
+    tokens: &'a [LexToken],
+    min_prefix_len: usize,
+    make_suffix_parser: F,
+) -> Option<(&'a [LexToken], O)>
+where
+    F: Fn() -> P + Copy,
+    P: Parser<LexStream<'a>, O, ErrMode<ContextError>>,
+{
+    let search = tokens.get(min_prefix_len..)?;
+    let (relative_idx, parsed, _) = find_prefix(search, || {
+        (make_suffix_parser(), eof).map(|(parsed, _)| parsed)
+    })?;
+    let split_idx = min_prefix_len + relative_idx;
+    Some((&tokens[..split_idx], parsed))
+}
+
 pub(crate) fn split_lexed_once_on_delimiter<'a>(
     tokens: &'a [LexToken],
     delimiter: TokenKind,
@@ -594,7 +611,10 @@ pub(crate) fn strip_lexed_suffix_phrases<'a, 'b>(
 /// using `TokenWordView` for proper multi-word token splitting (e.g.,
 /// hyphenated words like "life-gaining" → ["life", "gaining"]).
 /// Returns the token slice after the matched prefix.
-pub(crate) fn words_match_prefix<'a>(tokens: &'a [LexToken], expected: &[&str]) -> Option<&'a [LexToken]> {
+pub(crate) fn words_match_prefix<'a>(
+    tokens: &'a [LexToken],
+    expected: &[&str],
+) -> Option<&'a [LexToken]> {
     if expected.is_empty() {
         return Some(tokens);
     }
@@ -609,7 +629,10 @@ pub(crate) fn words_match_prefix<'a>(tokens: &'a [LexToken], expected: &[&str]) 
 /// Checks whether the word pieces at the end of `tokens` match `expected`,
 /// using `TokenWordView` for proper multi-word token splitting.
 /// Returns the token slice before the matched suffix.
-pub(crate) fn words_match_suffix<'a>(tokens: &'a [LexToken], expected: &[&str]) -> Option<&'a [LexToken]> {
+pub(crate) fn words_match_suffix<'a>(
+    tokens: &'a [LexToken],
+    expected: &[&str],
+) -> Option<&'a [LexToken]> {
     if expected.is_empty() {
         return Some(tokens);
     }
@@ -691,6 +714,24 @@ mod tests {
         let (before, after) = words_split_once(&tokens, &["from"]).unwrap();
         assert_eq!(before.len(), 3); // "exile", "target", "creature"
         assert_eq!(after.len(), 1); // "graveyard"
+    }
+
+    #[test]
+    fn split_lexed_once_before_suffix_finds_prefix_before_full_tail_match() {
+        let tokens = lex_line(
+            "untap all creatures during each other player's untap step",
+            0,
+        )
+        .unwrap();
+        let remainder = words_match_prefix(&tokens, &["untap", "all"]).unwrap();
+        let (subject_tokens, ()) = split_lexed_once_before_suffix(remainder, 1, || {
+            phrase(&["during", "each", "other", "player's", "untap", "step"])
+        })
+        .unwrap();
+        assert_eq!(
+            TokenWordView::new(subject_tokens).word_refs(),
+            ["creatures"]
+        );
     }
 
     #[test]

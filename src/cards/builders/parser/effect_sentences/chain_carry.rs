@@ -1,5 +1,9 @@
 #![allow(dead_code)]
 
+use winnow::Parser;
+use winnow::combinator::{alt, repeat};
+use winnow::error::{ContextError, ErrMode, StrContext, StrContextValue};
+
 use super::super::compile_support::effects_reference_it_tag;
 use super::super::effect_ast_traversal::for_each_nested_effects_mut;
 use super::super::grammar::effects::{
@@ -107,9 +111,11 @@ pub(crate) fn parse_effect_chain_lexed(
     if let Some(stripped) = strip_leading_instead_prefix_lexed(tokens) {
         return parse_effect_chain_lexed(stripped);
     }
-    let starts_with_each_opponent = grammar::words_match_prefix(tokens, &["each", "opponent"]).is_some()
+    let starts_with_each_opponent = grammar::words_match_prefix(tokens, &["each", "opponent"])
+        .is_some()
         || grammar::words_match_prefix(tokens, &["each", "opponents"]).is_some();
-    let starts_with_each_player = grammar::words_match_prefix(tokens, &["each", "player"]).is_some()
+    let starts_with_each_player = grammar::words_match_prefix(tokens, &["each", "player"])
+        .is_some()
         || grammar::words_match_prefix(tokens, &["each", "players"]).is_some();
 
     if let Some(player) = parse_leading_player_may_lexed(tokens) {
@@ -305,6 +311,42 @@ mod tests {
         assert_eq!(
             parse_leading_player_may_lexed(&tokens),
             Some(PlayerAst::Opponent)
+        );
+    }
+
+    #[test]
+    fn leading_player_may_probe_accepts_then_target_player_clauses() {
+        let tokens = lex_line("Then target player may draw a card", 0)
+            .expect("rewrite lexer should classify target-player may text");
+
+        assert_eq!(
+            parse_leading_player_may_lexed(&tokens),
+            Some(PlayerAst::Target)
+        );
+    }
+
+    #[test]
+    fn leading_player_may_probe_accepts_possessive_controller_clauses() {
+        let tokens = lex_line("That creature's controller may cast it", 0)
+            .expect("rewrite lexer should classify possessive controller text");
+
+        assert_eq!(
+            parse_leading_player_may_lexed(&tokens),
+            Some(PlayerAst::ItsController)
+        );
+    }
+
+    #[test]
+    fn leading_player_may_probe_accepts_that_player_or_target_controller_clauses() {
+        let tokens = lex_line(
+            "That player or that permanent's controller may draw a card",
+            0,
+        )
+        .expect("rewrite lexer should classify split controller text");
+
+        assert_eq!(
+            parse_leading_player_may_lexed(&tokens),
+            Some(PlayerAst::ThatPlayerOrTargetController)
         );
     }
 }
@@ -848,15 +890,14 @@ pub(crate) fn expand_segments_with_multi_create_clauses_lexed(
             expanded.push(segment);
             continue;
         };
-        let has_token_rules_tail =
-            grammar::words_find_phrase(&segment, &["when", "this", "token"]).is_some()
-                || grammar::words_find_phrase(&segment, &["whenever", "this", "token"])
-                    .is_some()
-                || grammar::words_find_phrase(&segment, &["this", "token"]).is_some()
-                || grammar::words_find_phrase(&segment, &["that", "token"]).is_some()
-                || grammar::words_find_phrase(&segment, &["those", "tokens"]).is_some()
-                || grammar::words_find_phrase(&segment, &["it", "has"]).is_some()
-                || grammar::words_find_phrase(&segment, &["they", "have"]).is_some();
+        let has_token_rules_tail = grammar::words_find_phrase(&segment, &["when", "this", "token"])
+            .is_some()
+            || grammar::words_find_phrase(&segment, &["whenever", "this", "token"]).is_some()
+            || grammar::words_find_phrase(&segment, &["this", "token"]).is_some()
+            || grammar::words_find_phrase(&segment, &["that", "token"]).is_some()
+            || grammar::words_find_phrase(&segment, &["those", "tokens"]).is_some()
+            || grammar::words_find_phrase(&segment, &["it", "has"]).is_some()
+            || grammar::words_find_phrase(&segment, &["they", "have"]).is_some();
         if has_token_rules_tail {
             expanded.push(segment);
             continue;
@@ -1440,99 +1481,143 @@ pub(crate) fn bind_implicit_player_context(effect: &mut EffectAst, player: Playe
 }
 
 fn parse_leading_player_may_words(words: &[&str]) -> Option<PlayerAst> {
-    let mut words = words.to_vec();
-    while words
-        .first()
-        .is_some_and(|word| *word == "then" || *word == "and")
-    {
-        words.remove(0);
-    }
-    if words.len() < 2 {
-        return None;
+    type WordInput<'a> = &'a [&'a str];
+
+    fn word_eq<'a>(
+        expected: &'static str,
+    ) -> impl Parser<WordInput<'a>, &'a str, ErrMode<ContextError>> {
+        move |input: &mut WordInput<'a>| {
+            let Some((word, rest)) = input.split_first() else {
+                let mut err = ContextError::new();
+                err.push(StrContext::Label("word"));
+                err.push(StrContext::Expected(StrContextValue::Description(expected)));
+                return Err(ErrMode::Backtrack(err));
+            };
+            if *word == expected {
+                *input = rest;
+                Ok(*word)
+            } else {
+                let mut err = ContextError::new();
+                err.push(StrContext::Label("word"));
+                err.push(StrContext::Expected(StrContextValue::Description(expected)));
+                Err(ErrMode::Backtrack(err))
+            }
+        }
     }
 
-    if word_slice_starts_with(&words, &["you", "may"]) {
-        return Some(PlayerAst::You);
+    fn player_word<'a>() -> impl Parser<WordInput<'a>, (), ErrMode<ContextError>> {
+        alt((word_eq("player"), word_eq("players"))).void()
     }
-    if word_slice_starts_with(&words, &["target", "opponent", "may"])
-        || word_slice_starts_with(&words, &["target", "opponents", "may"])
-    {
-        return Some(PlayerAst::TargetOpponent);
+
+    fn opponent_word<'a>() -> impl Parser<WordInput<'a>, (), ErrMode<ContextError>> {
+        alt((word_eq("opponent"), word_eq("opponents"))).void()
     }
-    if word_slice_starts_with(&words, &["target", "player", "may"])
-        || word_slice_starts_with(&words, &["target", "players", "may"])
-    {
-        return Some(PlayerAst::Target);
+
+    fn controller_subject_word<'a>() -> impl Parser<WordInput<'a>, (), ErrMode<ContextError>> {
+        alt((
+            word_eq("creatures"),
+            word_eq("permanents"),
+            word_eq("planeswalkers"),
+            word_eq("sources"),
+            word_eq("spells"),
+        ))
+        .void()
     }
-    if word_slice_starts_with(&words, &["that", "player", "may"])
-        || word_slice_starts_with(&words, &["that", "players", "may"])
-    {
-        return Some(PlayerAst::That);
+
+    fn controller_or_owner_subject_word<'a>()
+    -> impl Parser<WordInput<'a>, (), ErrMode<ContextError>> {
+        alt((
+            word_eq("creatures"),
+            word_eq("permanents"),
+            word_eq("sources"),
+            word_eq("spells"),
+        ))
+        .void()
     }
-    if word_slice_starts_with(&words, &["they", "may"]) {
-        return Some(PlayerAst::That);
+
+    fn leading_conjunctions<'a>(input: &mut WordInput<'a>) -> Result<(), ErrMode<ContextError>> {
+        repeat::<_, _, (), _, _>(0.., alt((word_eq("then"), word_eq("and")))).parse_next(input)
     }
-    if words.len() >= 7
-        && words[0] == "that"
-        && words[1] == "player"
-        && words[2] == "or"
-        && words[3] == "that"
-        && matches!(
-            words[4],
-            "creatures" | "permanents" | "planeswalkers" | "sources" | "spells"
+
+    fn parse_player_may_prefix<'a>(
+        input: &mut WordInput<'a>,
+    ) -> Result<PlayerAst, ErrMode<ContextError>> {
+        (
+            leading_conjunctions,
+            alt((
+                alt((
+                    (word_eq("you"), word_eq("may")).value(PlayerAst::You),
+                    (word_eq("target"), opponent_word(), word_eq("may"))
+                        .value(PlayerAst::TargetOpponent),
+                    (word_eq("target"), player_word(), word_eq("may")).value(PlayerAst::Target),
+                    (word_eq("that"), player_word(), word_eq("may")).value(PlayerAst::That),
+                    (word_eq("they"), word_eq("may")).value(PlayerAst::That),
+                    (
+                        word_eq("that"),
+                        word_eq("player"),
+                        word_eq("or"),
+                        word_eq("that"),
+                        controller_subject_word(),
+                        word_eq("controller"),
+                        word_eq("may"),
+                    )
+                        .value(PlayerAst::ThatPlayerOrTargetController),
+                    (
+                        word_eq("that"),
+                        controller_or_owner_subject_word(),
+                        word_eq("controller"),
+                        word_eq("may"),
+                    )
+                        .value(PlayerAst::ItsController),
+                    (
+                        word_eq("that"),
+                        controller_or_owner_subject_word(),
+                        word_eq("owner"),
+                        word_eq("may"),
+                    )
+                        .value(PlayerAst::ItsOwner),
+                )),
+                alt((
+                    (word_eq("the"), player_word(), word_eq("may")).value(PlayerAst::That),
+                    (word_eq("defending"), word_eq("player"), word_eq("may"))
+                        .value(PlayerAst::Defending),
+                    alt((
+                        (word_eq("attacking"), word_eq("player"), word_eq("may"))
+                            .value(PlayerAst::Attacking),
+                        (
+                            word_eq("the"),
+                            word_eq("attacking"),
+                            word_eq("player"),
+                            word_eq("may"),
+                        )
+                            .value(PlayerAst::Attacking),
+                    )),
+                    (
+                        alt((word_eq("its"), word_eq("their"))),
+                        word_eq("controller"),
+                        word_eq("may"),
+                    )
+                        .value(PlayerAst::ItsController),
+                    (
+                        alt((word_eq("its"), word_eq("their"))),
+                        word_eq("owner"),
+                        word_eq("may"),
+                    )
+                        .value(PlayerAst::ItsOwner),
+                    alt((
+                        (opponent_word(), word_eq("may")).value(PlayerAst::Opponent),
+                        (word_eq("an"), word_eq("opponent"), word_eq("may"))
+                            .value(PlayerAst::Opponent),
+                    )),
+                )),
+            )),
         )
-        && words[5] == "controller"
-        && words[6] == "may"
-    {
-        return Some(PlayerAst::ThatPlayerOrTargetController);
-    }
-    if words.len() >= 4
-        && words[0] == "that"
-        && matches!(words[1], "creatures" | "permanents" | "sources" | "spells")
-        && words[2] == "controller"
-        && words[3] == "may"
-    {
-        return Some(PlayerAst::ItsController);
-    }
-    if words.len() >= 4
-        && words[0] == "that"
-        && matches!(words[1], "creatures" | "permanents" | "sources" | "spells")
-        && words[2] == "owner"
-        && words[3] == "may"
-    {
-        return Some(PlayerAst::ItsOwner);
-    }
-    if word_slice_starts_with(&words, &["the", "player", "may"])
-        || word_slice_starts_with(&words, &["the", "players", "may"])
-    {
-        return Some(PlayerAst::That);
-    }
-    if word_slice_starts_with(&words, &["defending", "player", "may"]) {
-        return Some(PlayerAst::Defending);
-    }
-    if word_slice_starts_with(&words, &["attacking", "player", "may"])
-        || word_slice_starts_with(&words, &["the", "attacking", "player", "may"])
-    {
-        return Some(PlayerAst::Attacking);
-    }
-    if word_slice_starts_with(&words, &["its", "controller", "may"])
-        || word_slice_starts_with(&words, &["their", "controller", "may"])
-    {
-        return Some(PlayerAst::ItsController);
-    }
-    if word_slice_starts_with(&words, &["its", "owner", "may"])
-        || word_slice_starts_with(&words, &["their", "owner", "may"])
-    {
-        return Some(PlayerAst::ItsOwner);
-    }
-    if word_slice_starts_with(&words, &["opponent", "may"])
-        || word_slice_starts_with(&words, &["opponents", "may"])
-        || word_slice_starts_with(&words, &["an", "opponent", "may"])
-    {
-        return Some(PlayerAst::Opponent);
+            .map(|(_, player)| player)
+            .parse_next(input)
     }
 
-    None
+    let mut input = words;
+    parse_player_may_prefix(&mut input).ok()
 }
 
 pub(crate) fn parse_leading_player_may_lexed(tokens: &[OwnedLexToken]) -> Option<PlayerAst> {
@@ -1605,11 +1690,7 @@ pub(crate) fn maybe_apply_carried_player_with_clause(
 }
 
 pub(crate) fn parse_leading_player_may(tokens: &[OwnedLexToken]) -> Option<PlayerAst> {
-    let token_words = tokens
-        .iter()
-        .filter_map(OwnedLexToken::as_word)
-        .collect::<Vec<_>>();
-    parse_leading_player_may_words(&token_words)
+    parse_leading_player_may_lexed(tokens)
 }
 
 pub(crate) fn remove_first_word(tokens: &[OwnedLexToken], word: &str) -> Vec<OwnedLexToken> {

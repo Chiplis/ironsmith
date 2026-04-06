@@ -290,7 +290,8 @@ pub(crate) fn parse_sacrifice(
 pub(crate) fn trim_sacrifice_choice_suffix_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     let word_storage = ZoneHandlerNormalizedWords::new(tokens);
     let token_words = word_storage.to_word_refs();
-    let suffix_word_count = if grammar::words_match_suffix(tokens, &["of", "their", "choice"]).is_some()
+    let suffix_word_count = if grammar::words_match_suffix(tokens, &["of", "their", "choice"])
+        .is_some()
         || grammar::words_match_suffix(tokens, &["of", "your", "choice"]).is_some()
         || grammar::words_match_suffix(tokens, &["of", "its", "choice"]).is_some()
     {
@@ -1194,16 +1195,17 @@ fn parse_exchange_life_totals(
 
 fn parse_exchange_text_boxes(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
-    let remainder = if grammar::words_match_prefix(tokens, &["the", "text", "boxes", "of"]).is_some() {
-        &tokens[4..]
-    } else if grammar::words_match_prefix(tokens, &["text", "boxes", "of"]).is_some() {
-        &tokens[3..]
-    } else {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported text-box exchange clause (clause: '{}')",
-            clause_words.join(" ")
-        )));
-    };
+    let remainder =
+        if grammar::words_match_prefix(tokens, &["the", "text", "boxes", "of"]).is_some() {
+            &tokens[4..]
+        } else if grammar::words_match_prefix(tokens, &["text", "boxes", "of"]).is_some() {
+            &tokens[3..]
+        } else {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported text-box exchange clause (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        };
 
     let target = parse_target_phrase(remainder).map_err(|_| {
         CardTextError::ParseError(format!(
@@ -1243,13 +1245,14 @@ pub(crate) fn parse_exchange(
             clause_words.join(" ")
         )));
     }
-    if let Some((before_and, after_and)) = super::super::grammar::primitives::split_lexed_once_on_separator(
-        tokens,
-        || { use winnow::Parser as _; super::super::grammar::primitives::kw("and").void() },
-    ) {
+    if let Some((before_and, after_and)) =
+        super::super::grammar::primitives::split_lexed_once_on_separator(tokens, || {
+            use winnow::Parser as _;
+            super::super::grammar::primitives::kw("and").void()
+        })
+    {
         let left_target = parse_target_phrase(&before_and[2..]).ok();
-        let (right_tokens, shared_type) =
-            parse_exchange_shared_type_clause(after_and)?;
+        let (right_tokens, shared_type) = parse_exchange_shared_type_clause(after_and)?;
         let right_target = parse_target_phrase(right_tokens).ok();
         if let (Some(permanent1), Some(permanent2)) = (left_target, right_target) {
             return Ok(EffectAst::ExchangeControlHeterogeneous {
@@ -2155,7 +2158,9 @@ pub(crate) fn parse_get(
         && let Ok((power_per, toughness_per)) = parse_pt_modifier(mod_token)
     {
         let tail_tokens = tokens.get(modifier_start + 1..).unwrap_or_default();
-        if grammar::words_match_prefix(tail_tokens, &["until", "end", "of", "turn", "for", "each"]).is_some() {
+        if grammar::words_match_prefix(tail_tokens, &["until", "end", "of", "turn", "for", "each"])
+            .is_some()
+        {
             let filter_tokens = &tail_tokens[6..];
             let filter = parse_object_filter(filter_tokens, false).map_err(|_| {
                 CardTextError::ParseError(format!(
@@ -2344,7 +2349,9 @@ pub(crate) fn parse_add_mana(
     if grammar::words_match_prefix(
         tokens,
         &["an", "amount", "of", "mana", "of", "that", "color"],
-    ).is_some() {
+    )
+    .is_some()
+    {
         let amount = parse_devotion_value_from_add_clause(tokens)?
             .or_else(|| parse_add_mana_equal_amount_value(tokens))
             .unwrap_or(Value::Fixed(1));
@@ -2589,7 +2596,8 @@ pub(crate) fn parse_add_mana(
             let chosen_color_tail = grammar::words_match_prefix(
                 trailing_token_slice,
                 &["or", "one", "mana", "of", "the", "chosen", "color"],
-            ).is_some();
+            )
+            .is_some();
             let pool_tail = if chosen_color_tail {
                 trailing_words[7..].to_vec()
             } else {
@@ -3147,7 +3155,8 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
                     "at" | "beginning" | "end" | "combat" | "turn" | "step" | "until"
                 )
             });
-            let supported_target = grammar::words_match_prefix(&target_tokens, &["target"]).is_some()
+            let supported_target = grammar::words_match_prefix(&target_tokens, &["target"])
+                .is_some()
                 || target_words == ["it"]
                 || grammar::words_match_prefix(&target_tokens, &["that", "creature"]).is_some()
                 || grammar::words_match_prefix(&target_tokens, &["that", "permanent"]).is_some()
@@ -3454,14 +3463,19 @@ pub(crate) fn parse_exile(
         )));
     }
 
-    if let Some((before_and, after_and)) = super::super::grammar::primitives::split_lexed_once_on_separator(
-        tokens,
-        || { use winnow::Parser as _; super::super::grammar::primitives::kw("and").void() },
-    )
+    if let Some((before_and, after_and)) =
+        super::super::grammar::primitives::split_lexed_once_on_separator(tokens, || {
+            use winnow::Parser as _;
+            super::super::grammar::primitives::kw("and").void()
+        })
         && !before_and.is_empty()
     {
         let starts_multi_target = after_and.first().is_some_and(|t| t.is_word("target"))
-            || (super::super::grammar::primitives::strip_lexed_prefix_phrase(after_and, &["up", "to"]).is_some()
+            || (super::super::grammar::primitives::strip_lexed_prefix_phrase(
+                after_and,
+                &["up", "to"],
+            )
+            .is_some()
                 && super::super::grammar::primitives::contains_word(after_and, "target"));
         if starts_multi_target {
             return Err(CardTextError::ParseError(format!(
@@ -3584,9 +3598,10 @@ pub(crate) fn parse_same_name_exile_hand_and_graveyard_clause(
 pub(crate) fn split_until_source_leaves_tail(tokens: &[OwnedLexToken]) -> (&[OwnedLexToken], bool) {
     use super::super::grammar::primitives as grammar;
 
-    if let Some(before) =
-        grammar::strip_lexed_suffix_phrase(tokens, &["until", "this", "leaves", "the", "battlefield"])
-    {
+    if let Some(before) = grammar::strip_lexed_suffix_phrase(
+        tokens,
+        &["until", "this", "leaves", "the", "battlefield"],
+    ) {
         if !before.is_empty() {
             return (before, true);
         }
@@ -3636,10 +3651,10 @@ pub(crate) fn split_exile_graveyard_replacement_suffix(
 ) -> &[OwnedLexToken] {
     use super::super::grammar::primitives as grammar;
 
-    let Some((main_slice, tail_slice)) = grammar::split_lexed_once_on_separator(
-        tokens,
-        || { use winnow::Parser as _; grammar::kw("instead").void() },
-    ) else {
+    let Some((main_slice, tail_slice)) = grammar::split_lexed_once_on_separator(tokens, || {
+        use winnow::Parser as _;
+        grammar::kw("instead").void()
+    }) else {
         return tokens;
     };
     if main_slice.is_empty() {

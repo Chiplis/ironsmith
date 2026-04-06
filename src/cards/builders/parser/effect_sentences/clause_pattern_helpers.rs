@@ -313,10 +313,10 @@ pub(crate) fn parse_choose_target_and_verb_clause(
         return Ok(None);
     }
 
-    let Some((before_and, after_and)) = grammar::split_lexed_once_on_separator(
-        tokens,
-        || { use winnow::Parser as _; grammar::kw("and").void() },
-    ) else {
+    let Some((before_and, after_and)) = grammar::split_lexed_once_on_separator(tokens, || {
+        use winnow::Parser as _;
+        grammar::kw("and").void()
+    }) else {
         return Ok(None);
     };
 
@@ -948,25 +948,24 @@ pub(crate) fn parse_prevent_all_damage_clause(
     {
         return Ok(None);
     }
-    let target_words = if grammar::words_match_prefix(tokens, &prefix_duration_then_target)
-        .is_some()
-    {
-        &clause_words[prefix_duration_then_target.len()..]
-    } else {
-        if clause_words.len() <= prefix_target_then_duration.len() + 1 {
-            return Err(CardTextError::ParseError(format!(
-                "missing prevent-all damage target (clause: '{}')",
-                clause_words.join(" ")
-            )));
-        }
-        if clause_words[clause_words.len().saturating_sub(2)..] != ["this", "turn"] {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported prevent-all damage duration (clause: '{}')",
-                clause_words.join(" ")
-            )));
-        }
-        &clause_words[prefix_target_then_duration.len()..clause_words.len() - 2]
-    };
+    let target_words =
+        if grammar::words_match_prefix(tokens, &prefix_duration_then_target).is_some() {
+            &clause_words[prefix_duration_then_target.len()..]
+        } else {
+            if clause_words.len() <= prefix_target_then_duration.len() + 1 {
+                return Err(CardTextError::ParseError(format!(
+                    "missing prevent-all damage target (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            }
+            if clause_words[clause_words.len().saturating_sub(2)..] != ["this", "turn"] {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported prevent-all damage duration (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            }
+            &clause_words[prefix_target_then_duration.len()..clause_words.len() - 2]
+        };
     if target_words.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing prevent-all damage target (clause: '{}')",

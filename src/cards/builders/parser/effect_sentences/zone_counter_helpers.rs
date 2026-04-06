@@ -556,18 +556,22 @@ pub(crate) fn parse_sentence_put_multiple_counters_on_target(
         return Ok(None);
     }
 
-    let Some((before_on_raw, _after_on)) = super::super::grammar::primitives::split_lexed_once_on_separator(
-        &tokens[1..],
-        || { use winnow::Parser as _; super::super::grammar::primitives::kw("on").void() },
-    ) else {
+    let Some((before_on_raw, _after_on)) =
+        super::super::grammar::primitives::split_lexed_once_on_separator(&tokens[1..], || {
+            use winnow::Parser as _;
+            super::super::grammar::primitives::kw("on").void()
+        })
+    else {
         return Ok(None);
     };
 
     let before_on = trim_commas(before_on_raw);
-    let Some((first_slice, second_slice)) = super::super::grammar::primitives::split_lexed_once_on_separator(
-        &before_on,
-        || { use winnow::Parser as _; super::super::grammar::primitives::kw("and").void() },
-    ) else {
+    let Some((first_slice, second_slice)) =
+        super::super::grammar::primitives::split_lexed_once_on_separator(&before_on, || {
+            use winnow::Parser as _;
+            super::super::grammar::primitives::kw("and").void()
+        })
+    else {
         return Ok(None);
     };
     let first_desc = trim_commas(first_slice);

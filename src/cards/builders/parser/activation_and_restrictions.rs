@@ -3442,6 +3442,23 @@ fn parse_cant_cast_restriction_words(words: &[&str]) -> Option<crate::effect::Re
         {
             return Some(Restriction::cast_creature_spells(player));
         }
+        if cant_tail.first() == Some(&"cast") {
+            let mut idx = 1usize;
+            if let Some((spell_filter, used)) = parse_cast_limit_qualifier(&cant_tail[idx..]) {
+                idx += used;
+                if cant_tail.get(idx) == Some(&"spell") || cant_tail.get(idx) == Some(&"spells") {
+                    idx += 1;
+                    if cant_tail.get(idx) == Some(&"this")
+                        && cant_tail.get(idx + 1) == Some(&"turn")
+                    {
+                        idx += 2;
+                    }
+                    if idx == cant_tail.len() {
+                        return Some(Restriction::cast_spells_matching(player, spell_filter));
+                    }
+                }
+            }
+        }
         if let Some(spell_filter) = parse_cast_more_than_one_limit_filter(cant_tail) {
             return Some(restriction_from_cast_limit_filter(player, spell_filter));
         }

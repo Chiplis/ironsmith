@@ -361,7 +361,8 @@ pub(crate) fn parse_for_each_opponent_doesnt(
         return Ok(None);
     }
 
-    let start = if grammar::words_match_prefix(clause_tokens, &["for", "each", "opponent"]).is_some()
+    let start = if grammar::words_match_prefix(clause_tokens, &["for", "each", "opponent"])
+        .is_some()
         || grammar::words_match_prefix(clause_tokens, &["for", "each", "opponents"]).is_some()
     {
         3
@@ -646,13 +647,14 @@ pub(crate) fn parse_for_each_vote_clause(
     }
     let option = option_words.join(" ");
 
-    let (_before, effect_tokens) = super::super::grammar::primitives::split_lexed_once_on_delimiter(
-        tokens,
-        super::super::lexer::TokenKind::Comma,
-    )
-    .ok_or_else(|| {
-        CardTextError::ParseError("missing comma in for each vote clause".to_string())
-    })?;
+    let (_before, effect_tokens) =
+        super::super::grammar::primitives::split_lexed_once_on_delimiter(
+            tokens,
+            super::super::lexer::TokenKind::Comma,
+        )
+        .ok_or_else(|| {
+            CardTextError::ParseError("missing comma in for each vote clause".to_string())
+        })?;
 
     let effects = parse_effect_chain(effect_tokens)?;
     Ok(Some(EffectAst::VoteOption { option, effects }))

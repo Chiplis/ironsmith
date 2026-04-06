@@ -119,9 +119,7 @@ fn parse_same_sentence_copy_and_may_cast_copy(
     use super::super::grammar::primitives as grammar;
 
     let split = grammar::split_lexed_once_on_separator(tokens, || grammar::kw("and").void())
-        .or_else(|| {
-            grammar::split_lexed_once_on_separator(tokens, || grammar::kw("then").void())
-        });
+        .or_else(|| grammar::split_lexed_once_on_separator(tokens, || grammar::kw("then").void()));
     let Some((copy_slice, tail_slice)) = split else {
         return Ok(None);
     };
@@ -671,8 +669,11 @@ fn parse_consult_cast_clause(tokens: &[OwnedLexToken]) -> Option<ConsultCastClau
         });
     }
 
-    if grammar::words_match_prefix(remainder_tokens, &["without", "paying", "its", "mana", "cost"])
-        .is_none()
+    if grammar::words_match_prefix(
+        remainder_tokens,
+        &["without", "paying", "its", "mana", "cost"],
+    )
+    .is_none()
     {
         return None;
     }
@@ -716,7 +717,8 @@ fn parse_consult_bottom_remainder_clause(
     if !grammar::contains_word(tokens, mode_word) {
         return None;
     }
-    let mentions_cast_window = grammar::words_find_phrase(tokens, &["not", "cast", "this"]).is_some()
+    let mentions_cast_window = grammar::words_find_phrase(tokens, &["not", "cast", "this"])
+        .is_some()
         || find_window_by(&clause_words, 4, |window| {
             window == ["werent", "cast", "this", "way"]
                 || window == ["weren't", "cast", "this", "way"]
@@ -787,20 +789,46 @@ fn parse_if_declined_put_match_into_hand(
         || grammar::words_match_prefix(
             tokens,
             &[
-                "if", "you", "don\u{2019}t", "put", "that", "card", "into", "your", "hand",
+                "if",
+                "you",
+                "don\u{2019}t",
+                "put",
+                "that",
+                "card",
+                "into",
+                "your",
+                "hand",
             ],
         )
         .is_some()
         || grammar::words_match_prefix(
             tokens,
             &[
-                "if", "you", "don\u{2019}t", "put", "the", "exiled", "card", "into", "your", "hand",
+                "if",
+                "you",
+                "don\u{2019}t",
+                "put",
+                "the",
+                "exiled",
+                "card",
+                "into",
+                "your",
+                "hand",
             ],
         )
         .is_some()
         || grammar::words_match_prefix(
             tokens,
-            &["if", "you", "don\u{2019}t", "put", "it", "into", "your", "hand"],
+            &[
+                "if",
+                "you",
+                "don\u{2019}t",
+                "put",
+                "it",
+                "into",
+                "your",
+                "hand",
+            ],
         )
         .is_some()
         || grammar::words_match_prefix(
@@ -843,16 +871,39 @@ fn parse_if_declined_put_match_into_hand(
         || grammar::words_match_prefix(
             tokens,
             &[
-                "if", "you", "don\u{2019}t", "cast", "that", "card", "this", "way", "put", "it", "into",
-                "your", "hand",
+                "if",
+                "you",
+                "don\u{2019}t",
+                "cast",
+                "that",
+                "card",
+                "this",
+                "way",
+                "put",
+                "it",
+                "into",
+                "your",
+                "hand",
             ],
         )
         .is_some()
         || grammar::words_match_prefix(
             tokens,
             &[
-                "if", "you", "don\u{2019}t", "cast", "the", "exiled", "card", "this", "way", "put", "it",
-                "into", "your", "hand",
+                "if",
+                "you",
+                "don\u{2019}t",
+                "cast",
+                "the",
+                "exiled",
+                "card",
+                "this",
+                "way",
+                "put",
+                "it",
+                "into",
+                "your",
+                "hand",
             ],
         )
         .is_some()
@@ -883,7 +934,17 @@ fn parse_if_declined_put_match_into_hand(
         || grammar::words_match_prefix(
             tokens,
             &[
-                "if", "you", "don\u{2019}t", "cast", "it", "this", "way", "put", "it", "into", "your",
+                "if",
+                "you",
+                "don\u{2019}t",
+                "cast",
+                "it",
+                "this",
+                "way",
+                "put",
+                "it",
+                "into",
+                "your",
                 "hand",
             ],
         )
@@ -1035,11 +1096,8 @@ fn parse_consult_match_move_and_bottom_remainder(
         &["put", "that", "card", "onto", "the", "battlefield"],
     )
     .is_some()
-        || grammar::words_match_prefix(
-            &second_tokens,
-            &["put", "it", "onto", "the", "battlefield"],
-        )
-        .is_some()
+        || grammar::words_match_prefix(&second_tokens, &["put", "it", "onto", "the", "battlefield"])
+            .is_some()
         || grammar::words_match_prefix(
             &second_tokens,
             &["put", "that", "card", "onto", "battlefield"],
@@ -1053,7 +1111,9 @@ fn parse_consult_match_move_and_bottom_remainder(
         return Ok(None);
     };
 
-    if !grammar::contains_word(&second_tokens, "rest") && !grammar::contains_word(&second_tokens, "other") {
+    if !grammar::contains_word(&second_tokens, "rest")
+        && !grammar::contains_word(&second_tokens, "other")
+    {
         return Ok(None);
     }
     let Some(order) = parse_consult_remainder_order(&second_words) else {
@@ -1823,26 +1883,22 @@ fn parse_tap_all_then_they_dont_untap_while_source_tapped(
     let second_tokens = trim_commas(second);
     let second_words = crate::cards::builders::parser::token_word_refs(&second_tokens);
     let starts_with_supported_pronoun_clause =
-        grammar::words_match_prefix(&second_tokens, &["they", "dont", "untap", "during"])
-            .is_some()
+        grammar::words_match_prefix(&second_tokens, &["they", "dont", "untap", "during"]).is_some()
             || grammar::words_match_prefix(
                 &second_tokens,
                 &["they", "do", "not", "untap", "during"],
             )
             .is_some();
-    let has_source_tapped_duration = grammar::words_find_phrase(
-        &second_tokens,
-        &["for", "as", "long", "as"],
-    )
-    .is_some()
-        && grammar::contains_word(&second_tokens, "remains")
-        && grammar::contains_word(&second_tokens, "tapped")
-        && (grammar::contains_word(&second_tokens, "this")
-            || grammar::contains_word(&second_tokens, "thiss")
-            || grammar::contains_word(&second_tokens, "source")
-            || grammar::contains_word(&second_tokens, "artifact")
-            || grammar::contains_word(&second_tokens, "creature")
-            || grammar::contains_word(&second_tokens, "permanent"));
+    let has_source_tapped_duration =
+        grammar::words_find_phrase(&second_tokens, &["for", "as", "long", "as"]).is_some()
+            && grammar::contains_word(&second_tokens, "remains")
+            && grammar::contains_word(&second_tokens, "tapped")
+            && (grammar::contains_word(&second_tokens, "this")
+                || grammar::contains_word(&second_tokens, "thiss")
+                || grammar::contains_word(&second_tokens, "source")
+                || grammar::contains_word(&second_tokens, "artifact")
+                || grammar::contains_word(&second_tokens, "creature")
+                || grammar::contains_word(&second_tokens, "permanent"));
     if !starts_with_supported_pronoun_clause || !has_source_tapped_duration {
         return Ok(None);
     }
@@ -1850,16 +1906,13 @@ fn parse_tap_all_then_they_dont_untap_while_source_tapped(
     let Some((duration, clause_tokens)) = parse_restriction_duration(&second_tokens)? else {
         return Ok(None);
     };
-    let valid_untap_clause = grammar::words_match_prefix(
-        &clause_tokens,
-        &["they", "dont", "untap", "during"],
-    )
-    .is_some()
-        || grammar::words_match_prefix(
-            &clause_tokens,
-            &["they", "do", "not", "untap", "during"],
-        )
-        .is_some();
+    let valid_untap_clause =
+        grammar::words_match_prefix(&clause_tokens, &["they", "dont", "untap", "during"]).is_some()
+            || grammar::words_match_prefix(
+                &clause_tokens,
+                &["they", "do", "not", "untap", "during"],
+            )
+            .is_some();
     if !valid_untap_clause {
         return Ok(None);
     }
@@ -2858,11 +2911,8 @@ fn parse_search_face_down_exile_conditional_cast_else_hand(
 
     let second_tokens = trim_commas(second);
     let second_words = crate::cards::builders::parser::token_word_refs(&second_tokens);
-    if grammar::words_match_prefix(
-        &second_tokens,
-        &["if", "this", "spell", "was", "bargained"],
-    )
-    .is_none()
+    if grammar::words_match_prefix(&second_tokens, &["if", "this", "spell", "was", "bargained"])
+        .is_none()
     {
         return Ok(None);
     }
@@ -2984,7 +3034,9 @@ fn parse_search_then_delayed_next_upkeep_unless_pays_lose_game(
             "upkeep",
             "pay",
         ],
-    ).is_some() {
+    )
+    .is_some()
+    {
         7usize
     } else if grammar::words_match_prefix(
         &upkeep_tokens,
@@ -2998,7 +3050,9 @@ fn parse_search_then_delayed_next_upkeep_unless_pays_lose_game(
             "upkeep",
             "pay",
         ],
-    ).is_some() {
+    )
+    .is_some()
+    {
         7usize
     } else {
         return Ok(None);
@@ -3081,8 +3135,7 @@ fn parse_if_no_card_into_hand_this_way_sentence(
         return Ok(None);
     }
 
-    let Some((_before, after)) =
-        grammar::split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
+    let Some((_before, after)) = grammar::split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
     else {
         return Ok(None);
     };
@@ -3108,8 +3161,7 @@ fn parse_if_you_dont_sentence(
         return Ok(None);
     }
 
-    let Some((_before, after)) =
-        grammar::split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
+    let Some((_before, after)) = grammar::split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
     else {
         return Ok(None);
     };
@@ -4494,8 +4546,7 @@ pub(crate) fn rewrite_when_one_or_more_this_way_clause_prefix(
     // "If you do, ..." against the immediately previous effect result.
     let has_this_way = grammar::contains_phrase(tokens, &["this", "way"]);
     if (grammar::strip_lexed_prefix_phrase(tokens, &["when", "one", "or", "more"]).is_some()
-        || grammar::strip_lexed_prefix_phrase(tokens, &["whenever", "one", "or", "more"])
-            .is_some())
+        || grammar::strip_lexed_prefix_phrase(tokens, &["whenever", "one", "or", "more"]).is_some())
         && has_this_way
     {
         let Some((_before, after)) =

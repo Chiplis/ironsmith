@@ -15843,6 +15843,76 @@ fn render_if_they_dont_uses_negative_may_condition() {
 }
 
 #[test]
+fn parse_smothering_tithe_if_the_player_doesnt_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Smothering Tithe Variant")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Whenever an opponent draws a card, that player may pay {2}. If the player doesn't, you create a Treasure token.",
+        )
+        .expect("smothering tithe trigger should parse");
+
+    let rendered = compiled_lines(&def).join(" ");
+    let lower = rendered.to_ascii_lowercase();
+    assert!(
+        lower.contains("whenever an opponent draws a card")
+            && lower.contains("may pay {2}")
+            && lower.contains("treasure token"),
+        "expected Smothering Tithe trigger to render its payment and Treasure branch, got {rendered}"
+    );
+    assert!(
+        lower.contains("if they don't") || lower.contains("if that player doesn't"),
+        "expected negative may branch wording, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("PayManaEffect") && debug.contains("CreateTokenEffect"),
+        "expected trigger to include mana payment and Treasure creation, got {debug}"
+    );
+}
+
+#[test]
+fn parse_ranger_captain_of_eos_search_and_silence_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Ranger-Captain of Eos Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "When this creature enters, you may search your library for a creature card with mana value 1 or less, reveal it, put it into your hand, then shuffle.\nSacrifice this creature: Your opponents can't cast noncreature spells this turn.",
+        )
+        .expect("ranger-captain should parse");
+
+    let rendered = compiled_lines(&def).join(" ");
+    let lower = rendered.to_ascii_lowercase();
+    assert!(
+        lower.contains("search your library for a creature card with mana value 1 or less")
+            && lower.contains("reveal it")
+            && lower.contains("put it into your hand"),
+        "expected search trigger wording, got {rendered}"
+    );
+    assert!(
+        lower.contains("sacrifice this creature")
+            && lower.contains("opponents can't cast noncreature spells this turn"),
+        "expected sacrifice silence ability wording, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_tainted_pact_uses_handwritten_runtime_definition() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Tainted Pact")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Exile the top card of your library. You may put that card into your hand unless it has the same name as another card exiled this way. Repeat this process until you put a card into your hand or you exile two cards with the same name, whichever comes first.",
+        )
+        .expect("tainted pact should use handwritten runtime support");
+
+    assert_eq!(def.name(), "Tainted Pact");
+    let spell_debug = format!("{:#?}", def.spell_effect).to_ascii_lowercase();
+    assert!(
+        spell_debug.contains("taintedpacteffect"),
+        "expected handwritten Tainted Pact runtime effect, got {spell_debug}"
+    );
+}
+
+#[test]
 fn render_cost_prefixed_each_player_draw_discard_compacts() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Lore Broker Variant")
         .parse_text("{T}: Each player draws a card, then discards a card.")
@@ -18239,6 +18309,7 @@ fn parse_your_opponents_cant_cast_creature_spells_this_turn() {
 }
 
 #[test]
+<<<<<<< Updated upstream
 fn parse_render_silent_uses_controller_subject_for_cast_restriction() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Render Silent")
         .card_types(vec![CardType::Instant])
@@ -18329,6 +18400,22 @@ fn parse_grand_abolisher_conditioned_or_restrictions_keep_opponent_subject() {
             && abilities_debug.contains("Opponent")
             && abilities_debug.contains("ActivateAbilitiesOf"),
         "expected cast and activation restrictions for opponents, got {abilities_debug}"
+=======
+fn parse_your_opponents_cant_cast_noncreature_spells_this_turn() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Noncreature Silence Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Your opponents can't cast noncreature spells this turn.")
+        .expect("this-turn noncreature-spell restriction should parse");
+
+    let spell_debug = format!("{:#?}", def.spell_effect).to_ascii_lowercase();
+    assert!(
+        spell_debug.contains("some(") && spell_debug.contains("canteffect"),
+        "expected cant effect for noncreature-spell restriction, got {spell_debug}"
+    );
+    assert!(
+        spell_debug.contains("excluded_card_types") && spell_debug.contains("creature"),
+        "expected noncreature spell filter, got {spell_debug}"
+>>>>>>> Stashed changes
     );
 }
 

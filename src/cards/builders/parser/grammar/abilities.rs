@@ -129,21 +129,10 @@ pub(crate) fn split_untap_each_other_players_untap_step_line_lexed(
 ) -> Option<UntapEachOtherPlayersUntapStepSpec<'_>> {
     let (_, remainder) =
         primitives::parse_prefix(tokens, (primitives::kw("untap"), primitives::kw("all")))?;
-
-    for idx in 0..=remainder.len() {
-        let subject_tokens = &remainder[..idx];
-        if subject_tokens.is_empty() {
-            continue;
-        }
-        if let Some(((), [])) = primitives::parse_prefix(
-            &remainder[idx..],
-            parse_each_other_players_untap_step_suffix,
-        ) {
-            return Some(UntapEachOtherPlayersUntapStepSpec { subject_tokens });
-        }
-    }
-
-    None
+    let (subject_tokens, ()) = primitives::split_lexed_once_before_suffix(remainder, 1, || {
+        parse_each_other_players_untap_step_suffix
+    })?;
+    Some(UntapEachOtherPlayersUntapStepSpec { subject_tokens })
 }
 
 fn parse_activated_abilities_cant_be_activated_suffix<'a>(
@@ -177,25 +166,15 @@ pub(crate) fn parse_activated_abilities_cant_be_activated_spec_lexed(
         tokens,
         primitives::phrase(&["activated", "abilities", "of"]),
     )?;
-
-    for idx in 1..=remainder.len() {
-        let subject_tokens = trim_lexed_commas(&remainder[..idx]);
-        if subject_tokens.is_empty() {
-            continue;
-        }
-
-        if let Some((non_mana_only, [])) = primitives::parse_prefix(
-            &remainder[idx..],
-            parse_activated_abilities_cant_be_activated_suffix,
-        ) {
-            return Some(ActivatedAbilitiesCantBeActivatedSpec {
-                subject_tokens,
-                non_mana_only,
-            });
-        }
-    }
-
-    None
+    let (subject_tokens, non_mana_only) =
+        primitives::split_lexed_once_before_suffix(remainder, 1, || {
+            parse_activated_abilities_cant_be_activated_suffix
+        })?;
+    let subject_tokens = trim_lexed_commas(subject_tokens);
+    (!subject_tokens.is_empty()).then_some(ActivatedAbilitiesCantBeActivatedSpec {
+        subject_tokens,
+        non_mana_only,
+    })
 }
 
 fn parse_trigger_suppression_negation_prefix<'a>(
@@ -254,19 +233,22 @@ fn parse_trigger_suppression_filter_suffix<'a>(
 pub(crate) fn parse_trigger_suppression_spec_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<TriggerSuppressionSpec<'_>> {
-    for idx in 1..tokens.len() {
-        let cause_tokens = trim_lexed_commas(&tokens[..idx]);
-        if cause_tokens.is_empty() {
-            continue;
-        }
-
-        if let Some(((), [])) =
-            primitives::parse_prefix(&tokens[idx..], parse_trigger_suppression_plain_suffix)
-        {
+    if let Some((cause_tokens, ())) = primitives::split_lexed_once_before_suffix(tokens, 1, || {
+        parse_trigger_suppression_plain_suffix
+    }) {
+        let cause_tokens = trim_lexed_commas(cause_tokens);
+        if !cause_tokens.is_empty() {
             return Some(TriggerSuppressionSpec {
                 cause_tokens,
                 source_filter_tokens: None,
             });
+        }
+    }
+
+    for idx in 1..tokens.len() {
+        let cause_tokens = trim_lexed_commas(&tokens[..idx]);
+        if cause_tokens.is_empty() {
+            continue;
         }
 
         let Some(((), remainder)) =
@@ -275,16 +257,13 @@ pub(crate) fn parse_trigger_suppression_spec_lexed(
             continue;
         };
 
-        for filter_end in 1..=remainder.len() {
-            let source_filter_tokens = trim_lexed_commas(&remainder[..filter_end]);
-            if source_filter_tokens.is_empty() {
-                continue;
-            }
-
-            if let Some(((), [])) = primitives::parse_prefix(
-                &remainder[filter_end..],
-                parse_trigger_suppression_filter_suffix,
-            ) {
+        if let Some((source_filter_tokens, ())) =
+            primitives::split_lexed_once_before_suffix(remainder, 1, || {
+                parse_trigger_suppression_filter_suffix
+            })
+        {
+            let source_filter_tokens = trim_lexed_commas(source_filter_tokens);
+            if !source_filter_tokens.is_empty() {
                 return Some(TriggerSuppressionSpec {
                     cause_tokens,
                     source_filter_tokens: Some(source_filter_tokens),
@@ -431,17 +410,72 @@ pub(crate) fn parse_exile_to_countered_exile_instead_of_graveyard_spec_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<ExileToCounteredExileInsteadOfGraveyardSpec> {
     let (_, remainder) = primitives::parse_prefix(tokens, primitives::kw("if"))?;
+    let (_, spec) = primitives::split_lexed_once_before_suffix(remainder, 1, || {
+        parse_exile_to_countered_exile_instead_of_graveyard_suffix
+    })?;
+    Some(spec)
+}
 
-    for idx in 1..=remainder.len() {
-        if let Some((spec, [])) = primitives::parse_prefix(
-            &remainder[idx..],
-            parse_exile_to_countered_exile_instead_of_graveyard_suffix,
-        ) {
-            return Some(spec);
-        }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cards::builders::parser::lexer::TokenWordView;
+    use crate::cards::builders::parser::lexer::lex_line;
+
+    #[test]
+    fn untap_each_other_players_untap_step_extracts_subject_tokens() {
+        let tokens = lex_line(
+            "Untap all creatures during each other player's untap step.",
+            0,
+        )
+        .unwrap();
+        let spec = split_untap_each_other_players_untap_step_line_lexed(&tokens).unwrap();
+        assert_eq!(
+            TokenWordView::new(spec.subject_tokens).word_refs(),
+            ["creatures"]
+        );
     }
 
-    None
+    #[test]
+    fn activated_abilities_cant_be_activated_extracts_subject_tokens() {
+        let tokens = lex_line("Activated abilities of artifacts can't be activated.", 0).unwrap();
+        let spec = parse_activated_abilities_cant_be_activated_spec_lexed(&tokens).unwrap();
+        assert_eq!(
+            TokenWordView::new(spec.subject_tokens).word_refs(),
+            ["artifacts"]
+        );
+        assert!(!spec.non_mana_only);
+    }
+
+    #[test]
+    fn trigger_suppression_with_source_filter_extracts_both_sides() {
+        let tokens = lex_line(
+            "Creatures don't cause abilities of enchantments to trigger.",
+            0,
+        )
+        .unwrap();
+        let spec = parse_trigger_suppression_spec_lexed(&tokens).unwrap();
+        assert_eq!(
+            TokenWordView::new(spec.cause_tokens).word_refs(),
+            ["creatures"]
+        );
+        assert_eq!(
+            TokenWordView::new(spec.source_filter_tokens.unwrap()).word_refs(),
+            ["enchantments"]
+        );
+    }
+
+    #[test]
+    fn exile_to_countered_exile_skips_condition_prefix() {
+        let tokens = lex_line(
+            "If a card would be put into your graveyard from anywhere, exile it instead with a charge counter on it.",
+            0,
+        )
+        .unwrap();
+        let spec = parse_exile_to_countered_exile_instead_of_graveyard_spec_lexed(&tokens).unwrap();
+        assert_eq!(spec.player, PlayerFilter::You);
+        assert_eq!(spec.counter_type, CounterType::Charge);
+    }
 }
 
 fn contains_word_lexed(tokens: &[OwnedLexToken], expected: &str) -> bool {

@@ -1,6 +1,7 @@
 use winnow::Parser as _;
 
 use super::super::clause_support::parse_triggered_line_lexed;
+use super::super::grammar::primitives as grammar;
 use super::super::lexer::token_word_refs;
 use super::super::lowering_support::rewrite_parsed_triggered_ability as parsed_triggered_ability;
 use super::super::object_filters::parse_object_filter;
@@ -10,7 +11,6 @@ use super::super::permission_helpers::{
     parse_unsupported_play_cast_permission_clause, parse_until_end_of_turn_may_play_tagged_clause,
     parse_until_your_next_turn_may_play_tagged_clause,
 };
-use super::super::grammar::primitives as grammar;
 use super::super::token_primitives::{
     find_index as find_token_index, slice_starts_with as word_slice_starts_with,
 };
@@ -58,11 +58,13 @@ pub(crate) fn parse_retarget_clause(
 pub(crate) fn parse_choose_new_targets_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let is_choose = grammar::words_match_prefix(tokens, &["choose", "new", "targets", "for"]).is_some()
+    let is_choose = grammar::words_match_prefix(tokens, &["choose", "new", "targets", "for"])
+        .is_some()
         || grammar::words_match_prefix(tokens, &["chooses", "new", "targets", "for"]).is_some();
     let is_choose_single_target =
         grammar::words_match_prefix(tokens, &["choose", "a", "new", "target", "for"]).is_some()
-            || grammar::words_match_prefix(tokens, &["chooses", "a", "new", "target", "for"]).is_some();
+            || grammar::words_match_prefix(tokens, &["chooses", "a", "new", "target", "for"])
+                .is_some();
     if !is_choose && !is_choose_single_target {
         return Ok(None);
     }
@@ -169,7 +171,8 @@ pub(crate) fn parse_change_target_clause_inner(
     let (mode, after_of_idx) =
         if grammar::words_match_prefix(tokens, &["change", "the", "target", "of"]).is_some() {
             (RetargetModeAst::All, 4)
-        } else if grammar::words_match_prefix(tokens, &["change", "the", "targets", "of"]).is_some() {
+        } else if grammar::words_match_prefix(tokens, &["change", "the", "targets", "of"]).is_some()
+        {
             (RetargetModeAst::All, 4)
         } else if grammar::words_match_prefix(tokens, &["change", "a", "target", "of"]).is_some() {
             (RetargetModeAst::All, 4)
@@ -202,13 +205,19 @@ pub(crate) fn parse_change_target_clause_inner(
     if grammar::words_find_phrase(&tail_tokens, &["with", "a", "single", "target"]).is_some() {
         filter = filter.target_count_exact(1);
     }
-    if grammar::words_find_phrase(&tail_tokens, &["targets", "only", "a", "single", "creature"]).is_some() {
+    if grammar::words_find_phrase(
+        &tail_tokens,
+        &["targets", "only", "a", "single", "creature"],
+    )
+    .is_some()
+    {
         filter = filter
             .targeting_only_object(ObjectFilter::creature())
             .target_count_exact(1);
     }
     if grammar::words_find_phrase(&tail_tokens, &["targets", "only", "this", "creature"]).is_some()
-        || grammar::words_find_phrase(&tail_tokens, &["targets", "only", "this", "permanent"]).is_some()
+        || grammar::words_find_phrase(&tail_tokens, &["targets", "only", "this", "permanent"])
+            .is_some()
     {
         filter = filter
             .targeting_only_object(ObjectFilter::source())
@@ -570,12 +579,15 @@ pub(crate) fn parse_attack_or_block_this_turn_if_able_clause(
     use super::super::grammar::primitives as grammar;
 
     let clause_words = token_word_refs(tokens);
-    let suffix = grammar::strip_lexed_suffix_phrases(tokens, &[
-        &["attack", "or", "block", "this", "turn", "if", "able"],
-        &["attacks", "or", "blocks", "this", "turn", "if", "able"],
-        &["attacks", "or", "block", "this", "turn", "if", "able"],
-        &["attack", "or", "blocks", "this", "turn", "if", "able"],
-    ]);
+    let suffix = grammar::strip_lexed_suffix_phrases(
+        tokens,
+        &[
+            &["attack", "or", "block", "this", "turn", "if", "able"],
+            &["attacks", "or", "blocks", "this", "turn", "if", "able"],
+            &["attacks", "or", "block", "this", "turn", "if", "able"],
+            &["attack", "or", "blocks", "this", "turn", "if", "able"],
+        ],
+    );
     let Some((_matched, subject_part)) = suffix else {
         return Ok(None);
     };
@@ -613,13 +625,19 @@ pub(crate) fn parse_attack_or_block_this_turn_if_able_clause(
 pub(crate) fn parse_attack_this_turn_if_able_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    use crate::effect::Until;
     use super::super::grammar::primitives as grammar;
+    use crate::effect::Until;
 
     let clause_words = token_word_refs(tokens);
     // Try splitting on "attack(s) this turn if able" suffix
-    let suffix = grammar::strip_lexed_suffix_phrase(tokens, &["attack", "this", "turn", "if", "able"])
-        .or_else(|| grammar::strip_lexed_suffix_phrase(tokens, &["attacks", "this", "turn", "if", "able"]));
+    let suffix =
+        grammar::strip_lexed_suffix_phrase(tokens, &["attack", "this", "turn", "if", "able"])
+            .or_else(|| {
+                grammar::strip_lexed_suffix_phrase(
+                    tokens,
+                    &["attacks", "this", "turn", "if", "able"],
+                )
+            });
     let Some(subject_part) = suffix else {
         return Ok(None);
     };
@@ -662,8 +680,14 @@ pub(crate) fn parse_must_be_blocked_if_able_clause(
     use super::super::grammar::primitives as grammar;
 
     let clause_words = token_word_refs(tokens);
-    let suffix = grammar::strip_lexed_suffix_phrase(tokens, &["must", "be", "blocked", "if", "able"])
-        .or_else(|| grammar::strip_lexed_suffix_phrase(tokens, &["must", "be", "blocked", "this", "turn", "if", "able"]));
+    let suffix =
+        grammar::strip_lexed_suffix_phrase(tokens, &["must", "be", "blocked", "if", "able"])
+            .or_else(|| {
+                grammar::strip_lexed_suffix_phrase(
+                    tokens,
+                    &["must", "be", "blocked", "this", "turn", "if", "able"],
+                )
+            });
     let Some(subject_part) = suffix else {
         return Ok(None);
     };
@@ -841,8 +865,10 @@ pub(crate) fn parse_until_duration_triggered_clause(
     let has_leading_duration = starts_with_until_end_of_turn(&clause_words)
         || grammar::words_match_prefix(tokens, &["until", "your", "next", "turn"]).is_some()
         || grammar::words_match_prefix(tokens, &["until", "your", "next", "upkeep"]).is_some()
-        || grammar::words_match_prefix(tokens, &["until", "your", "next", "untap", "step"]).is_some()
-        || grammar::words_match_prefix(tokens, &["during", "your", "next", "untap", "step"]).is_some();
+        || grammar::words_match_prefix(tokens, &["until", "your", "next", "untap", "step"])
+            .is_some()
+        || grammar::words_match_prefix(tokens, &["during", "your", "next", "untap", "step"])
+            .is_some();
     if !has_leading_duration {
         return Ok(None);
     }
@@ -946,10 +972,9 @@ pub(crate) fn parse_deal_damage_equal_to_power_clause(
         return Ok(None);
     }
 
-    let Some((_before_equal, _after_equal_to)) = grammar::split_lexed_once_on_separator(
-        &rest,
-        || grammar::phrase(&["equal", "to"]).void(),
-    ) else {
+    let Some((_before_equal, _after_equal_to)) =
+        grammar::split_lexed_once_on_separator(&rest, || grammar::phrase(&["equal", "to"]).void())
+    else {
         return Ok(None);
     };
     let equal_idx = _before_equal.len();
@@ -1068,16 +1093,17 @@ pub(crate) fn parse_fight_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let clause_words = token_word_refs(tokens);
-    let fight_split = super::super::grammar::primitives::split_lexed_once_on_separator(
-        tokens,
-        || { use winnow::Parser as _; super::super::grammar::primitives::kw("fight").void() },
-    )
-    .or_else(|| {
+    let fight_split =
         super::super::grammar::primitives::split_lexed_once_on_separator(tokens, || {
             use winnow::Parser as _;
-            super::super::grammar::primitives::kw("fights").void()
+            super::super::grammar::primitives::kw("fight").void()
         })
-    });
+        .or_else(|| {
+            super::super::grammar::primitives::split_lexed_once_on_separator(tokens, || {
+                use winnow::Parser as _;
+                super::super::grammar::primitives::kw("fights").void()
+            })
+        });
     let Some((left_of_fight, right_of_fight)) = fight_split else {
         return Ok(None);
     };

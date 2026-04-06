@@ -489,8 +489,10 @@ pub(crate) fn parse_sentence_damage_to_that_player_half_damage_of_those_spells(
 
     use super::super::grammar::primitives as grammar;
 
-    let deal_split = grammar::split_lexed_once_on_separator(&stripped, || grammar::kw("deal").void())
-        .or_else(|| grammar::split_lexed_once_on_separator(&stripped, || grammar::kw("deals").void()));
+    let deal_split =
+        grammar::split_lexed_once_on_separator(&stripped, || grammar::kw("deal").void()).or_else(
+            || grammar::split_lexed_once_on_separator(&stripped, || grammar::kw("deals").void()),
+        );
     let Some((_before_deal, after_deal)) = deal_split else {
         return Ok(None);
     };
@@ -778,17 +780,14 @@ pub(crate) fn parse_sentence_sacrifice_it_next_end_step(
     let Some(object_tokens) = grammar::strip_lexed_prefix_phrase(tokens, &["sacrifice"]) else {
         return Ok(None);
     };
-    let Some((object_tokens, _timing)) = grammar::split_lexed_once_on_separator(
-        object_tokens,
-        || {
+    let Some((object_tokens, _timing)) =
+        grammar::split_lexed_once_on_separator(object_tokens, || {
             winnow::combinator::alt((
-                grammar::phrase(&[
-                    "at", "the", "beginning", "of", "the", "next", "end", "step",
-                ]),
+                grammar::phrase(&["at", "the", "beginning", "of", "the", "next", "end", "step"]),
                 grammar::phrase(&["at", "the", "beginning", "of", "next", "end", "step"]),
             ))
-        },
-    ) else {
+        })
+    else {
         return Ok(None);
     };
 
@@ -842,13 +841,9 @@ pub(crate) fn parse_sentence_if_tagged_cards_remain_exiled(
             &["if", "those", "cards", "remain", "exiled"],
         )
         .is_some()
-        || grammar::strip_lexed_prefix_phrase(
-            tokens,
-            &["if", "that", "card", "remains", "exiled"],
-        )
-        .is_some()
-        || grammar::strip_lexed_prefix_phrase(tokens, &["if", "it", "remains", "exiled"])
-            .is_some();
+        || grammar::strip_lexed_prefix_phrase(tokens, &["if", "that", "card", "remains", "exiled"])
+            .is_some()
+        || grammar::strip_lexed_prefix_phrase(tokens, &["if", "it", "remains", "exiled"]).is_some();
     if !has_prefix {
         return Ok(None);
     }
@@ -866,15 +861,14 @@ pub(crate) fn parse_sentence_sacrifice_at_end_of_combat(
     let Some(object_tokens) = grammar::strip_lexed_prefix_phrase(tokens, &["sacrifice"]) else {
         return Ok(None);
     };
-    let Some((object_tokens, _timing)) = grammar::split_lexed_once_on_separator(
-        object_tokens,
-        || {
+    let Some((object_tokens, _timing)) =
+        grammar::split_lexed_once_on_separator(object_tokens, || {
             winnow::combinator::alt((
                 grammar::phrase(&["at", "end", "of", "combat"]),
                 grammar::phrase(&["at", "the", "end", "of", "combat"]),
             ))
-        },
-    ) else {
+        })
+    else {
         return Ok(None);
     };
 
@@ -940,10 +934,9 @@ pub(crate) fn parse_sentence_for_each_counter_kind_put_or_remove(
     use super::super::grammar::primitives as grammar;
 
     // "for each kind of counter on <target>, put another counter of that kind on it or remove one from it"
-    let Some(after_prefix) = grammar::strip_lexed_prefix_phrase(
-        tokens,
-        &["for", "each", "kind", "of", "counter", "on"],
-    ) else {
+    let Some(after_prefix) =
+        grammar::strip_lexed_prefix_phrase(tokens, &["for", "each", "kind", "of", "counter", "on"])
+    else {
         return Ok(None);
     };
     let Some((target_tokens, tail_tokens)) =
@@ -1174,7 +1167,8 @@ pub(crate) fn parse_sentence_put_counter_sequence(
             return Ok(None);
         }
 
-        if !grammar::contains_word(&clause, "counter") && !grammar::contains_word(&clause, "counters")
+        if !grammar::contains_word(&clause, "counter")
+            && !grammar::contains_word(&clause, "counters")
         {
             return Ok(None);
         }
@@ -1213,8 +1207,11 @@ pub(crate) fn parse_gets_then_fights_sentence(
     }
 
     // Split on "fight"/"fights"
-    let fight_split = grammar::split_lexed_once_on_separator(body_tokens, || grammar::kw("fight").void())
-        .or_else(|| grammar::split_lexed_once_on_separator(body_tokens, || grammar::kw("fights").void()));
+    let fight_split =
+        grammar::split_lexed_once_on_separator(body_tokens, || grammar::kw("fight").void())
+            .or_else(|| {
+                grammar::split_lexed_once_on_separator(body_tokens, || grammar::kw("fights").void())
+            });
     let Some((left_slice, right_slice)) = fight_split else {
         return Ok(None);
     };
@@ -1230,8 +1227,10 @@ pub(crate) fn parse_gets_then_fights_sentence(
     }
 
     // Split left side on "get"/"gets" to extract subject
-    let get_split = grammar::split_lexed_once_on_separator(&left_tokens, || grammar::kw("get").void())
-        .or_else(|| grammar::split_lexed_once_on_separator(&left_tokens, || grammar::kw("gets").void()));
+    let get_split =
+        grammar::split_lexed_once_on_separator(&left_tokens, || grammar::kw("get").void()).or_else(
+            || grammar::split_lexed_once_on_separator(&left_tokens, || grammar::kw("gets").void()),
+        );
     let Some((subject_slice, _modifier_slice)) = get_split else {
         return Ok(None);
     };
@@ -1706,9 +1705,7 @@ pub(crate) fn parse_if_enters_with_additional_counter_sentence(
     }
 
     let descriptor_tokens = trim_commas(&counter_clause_tokens[..on_idx]);
-    if descriptor_tokens.is_empty()
-        || !grammar::contains_word(&descriptor_tokens, "additional")
-    {
+    if descriptor_tokens.is_empty() || !grammar::contains_word(&descriptor_tokens, "additional") {
         return Ok(None);
     }
 
@@ -1736,7 +1733,8 @@ pub(crate) fn parse_each_player_return_with_additional_counter_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
-    let inner_start_word_idx = if grammar::words_match_prefix(tokens, &["for", "each", "player"]).is_some()
+    let inner_start_word_idx = if grammar::words_match_prefix(tokens, &["for", "each", "player"])
+        .is_some()
         || grammar::words_match_prefix(tokens, &["for", "each", "players"]).is_some()
     {
         3
@@ -2486,10 +2484,11 @@ pub(crate) fn parse_sentence_destroy_all_attached_to_target(
         return Ok(None);
     }
 
-    let Some((filter_slice, target_slice)) = grammar::split_lexed_once_on_separator(
-        &tokens[2..],
-        || grammar::phrase(&["attached", "to"]).void(),
-    ) else {
+    let Some((filter_slice, target_slice)) =
+        grammar::split_lexed_once_on_separator(&tokens[2..], || {
+            grammar::phrase(&["attached", "to"]).void()
+        })
+    else {
         return Ok(None);
     };
 
@@ -2503,13 +2502,15 @@ pub(crate) fn parse_sentence_destroy_all_attached_to_target(
     }
     let target_tokens = trim_commas(target_slice);
     let has_timing_tail = target_tokens.iter().any(|token| {
-        token
-            .as_word()
-            .is_some_and(|w| matches!(w, "at" | "beginning" | "end" | "combat" | "turn" | "step" | "until"))
+        token.as_word().is_some_and(|w| {
+            matches!(
+                w,
+                "at" | "beginning" | "end" | "combat" | "turn" | "step" | "until"
+            )
+        })
     });
     let supported_target = target_tokens.first().is_some_and(|t| t.is_word("target"))
-        || grammar::contains_word(&target_tokens, "it")
-            && target_tokens.len() == 1
+        || grammar::contains_word(&target_tokens, "it") && target_tokens.len() == 1
         || grammar::strip_lexed_prefix_phrase(&target_tokens, &["that", "creature"]).is_some()
         || grammar::strip_lexed_prefix_phrase(&target_tokens, &["that", "permanent"]).is_some()
         || grammar::strip_lexed_prefix_phrase(&target_tokens, &["that", "land"]).is_some()
@@ -2787,7 +2788,8 @@ pub(crate) fn parse_sentence_return_targets_of_creature_type_of_choice(
         return Ok(None);
     }
 
-    if !grammar::contains_word(&tokens[to_idx + 1..], "hand") && !grammar::contains_word(&tokens[to_idx + 1..], "hands")
+    if !grammar::contains_word(&tokens[to_idx + 1..], "hand")
+        && !grammar::contains_word(&tokens[to_idx + 1..], "hands")
     {
         return Ok(None);
     }
@@ -3116,10 +3118,9 @@ pub(crate) fn parse_sentence_for_each_of_target_objects(
         return Ok(None);
     }
 
-    let Some((subject_slice, effect_slice)) = grammar::split_lexed_once_on_delimiter(
-        tokens,
-        super::super::lexer::TokenKind::Comma,
-    ) else {
+    let Some((subject_slice, effect_slice)) =
+        grammar::split_lexed_once_on_delimiter(tokens, super::super::lexer::TokenKind::Comma)
+    else {
         return Ok(None);
     };
 
@@ -3234,9 +3235,9 @@ pub(crate) fn parse_sentence_distribute_counters(
     use super::super::grammar::primitives as grammar;
 
     let (head_tokens, tail_tokens) = if let Some((head, tail)) =
-        split_lexed_once_on_comma_then(tokens)
-            .or_else(|| grammar::split_lexed_once_on_separator(tokens, || grammar::kw("then").void()))
-    {
+        split_lexed_once_on_comma_then(tokens).or_else(|| {
+            grammar::split_lexed_once_on_separator(tokens, || grammar::kw("then").void())
+        }) {
         (head.to_vec(), trim_commas(tail))
     } else {
         (tokens.to_vec(), Vec::new())
@@ -4033,7 +4034,8 @@ pub(crate) fn parse_sentence_damage_unless_controller_has_source_deal_damage(
 
     let after_unless = trim_commas(after_unless_slice);
     let has_controller_clause = grammar::words_match_prefix(&after_unless, &["that"]).is_some()
-        && (grammar::contains_word(&after_unless, "controller") || grammar::contains_word(&after_unless, "controllers"));
+        && (grammar::contains_word(&after_unless, "controller")
+            || grammar::contains_word(&after_unless, "controllers"));
     if !has_controller_clause {
         return Ok(None);
     }
@@ -4118,8 +4120,13 @@ pub(crate) fn parse_sentence_damage_to_that_player_unless_enchanted_attacked(
         return Ok(None);
     }
 
-    let deal_split = grammar::split_lexed_once_on_separator(&before_tokens, || grammar::kw("deal").void())
-        .or_else(|| grammar::split_lexed_once_on_separator(&before_tokens, || grammar::kw("deals").void()));
+    let deal_split =
+        grammar::split_lexed_once_on_separator(&before_tokens, || grammar::kw("deal").void())
+            .or_else(|| {
+                grammar::split_lexed_once_on_separator(&before_tokens, || {
+                    grammar::kw("deals").void()
+                })
+            });
     let Some((subject_slice, damage_tokens)) = deal_split else {
         return Ok(None);
     };
@@ -4218,7 +4225,8 @@ pub(crate) fn parse_sentence_unless_pays(
 
     // Handle "each opponent/player ... unless" by wrapping in ForEachOpponent/ForEachPlayer.
     // Structure: ForEachOpponent { [UnlessPays/UnlessAction { per-player effects }] }
-    let each_prefix = if grammar::words_match_prefix(&tokens[..unless_idx], &["each", "opponent"]).is_some()
+    let each_prefix = if grammar::words_match_prefix(&tokens[..unless_idx], &["each", "opponent"])
+        .is_some()
         || grammar::words_match_prefix(&tokens[..unless_idx], &["each", "opponents"]).is_some()
     {
         Some("opponent")
@@ -4528,7 +4536,9 @@ pub(crate) fn parse_sentence_delayed_next_upkeep_unless_pays_lose_game(
             "upkeep",
             "pay",
         ],
-    ).is_some() {
+    )
+    .is_some()
+    {
         7usize
     } else if grammar::words_match_prefix(
         &upkeep_tokens,
@@ -4542,7 +4552,9 @@ pub(crate) fn parse_sentence_delayed_next_upkeep_unless_pays_lose_game(
             "upkeep",
             "pay",
         ],
-    ).is_some() {
+    )
+    .is_some()
+    {
         8usize
     } else {
         return Ok(None);
@@ -5008,11 +5020,8 @@ pub(crate) fn parse_sentence_fallback_mechanic_marker(
             &["an", "opponent", "chooses", "one", "of", "those", "piles"],
         )
         .is_some()
-        || grammar::words_match_prefix(
-            tokens,
-            &["put", "that", "pile", "into", "your", "hand"],
-        )
-        .is_some()
+        || grammar::words_match_prefix(tokens, &["put", "that", "pile", "into", "your", "hand"])
+            .is_some()
         || grammar::words_match_prefix(
             tokens,
             &["cast", "that", "card", "for", "as", "long", "as"],

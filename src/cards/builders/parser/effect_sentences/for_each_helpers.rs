@@ -52,13 +52,14 @@ pub(crate) fn parse_for_each_object_subject(
         return Ok(None);
     }
 
-    let mut filter_tokens = if let Some(rest) = grammar::words_match_prefix(subject_tokens, &["for", "each"]) {
-        rest
-    } else if let Some(rest) = grammar::words_match_prefix(subject_tokens, &["each"]) {
-        rest
-    } else {
-        return Ok(None);
-    };
+    let mut filter_tokens =
+        if let Some(rest) = grammar::words_match_prefix(subject_tokens, &["for", "each"]) {
+            rest
+        } else if let Some(rest) = grammar::words_match_prefix(subject_tokens, &["each"]) {
+            rest
+        } else {
+            return Ok(None);
+        };
     if filter_tokens
         .first()
         .is_some_and(|token| token.is_word("of"))
@@ -76,8 +77,14 @@ pub(crate) fn parse_for_each_object_subject(
             .is_some_and(|token| token.is_word("to"))
         && attached_idx > 0
     {
-        let attached_to_creature = grammar::words_match_prefix(&filter_tokens[attached_idx + 2..], &["creature"]).is_some()
-            || grammar::words_match_prefix(&filter_tokens[attached_idx + 2..], &["a", "creature"]).is_some();
+        let attached_to_creature =
+            grammar::words_match_prefix(&filter_tokens[attached_idx + 2..], &["creature"])
+                .is_some()
+                || grammar::words_match_prefix(
+                    &filter_tokens[attached_idx + 2..],
+                    &["a", "creature"],
+                )
+                .is_some();
         if attached_to_creature {
             normalized_filter_tokens = trim_commas(&filter_tokens[..attached_idx]);
         }
@@ -94,7 +101,8 @@ pub(crate) fn parse_for_each_object_subject(
         || grammar::words_match_prefix(&normalized_filter_tokens, &["target", "player"]).is_some()
         || grammar::words_match_prefix(&normalized_filter_tokens, &["target", "players"]).is_some()
         || grammar::words_match_prefix(&normalized_filter_tokens, &["target", "opponent"]).is_some()
-        || grammar::words_match_prefix(&normalized_filter_tokens, &["target", "opponents"]).is_some()
+        || grammar::words_match_prefix(&normalized_filter_tokens, &["target", "opponents"])
+            .is_some()
     {
         return Ok(None);
     }
@@ -112,13 +120,14 @@ pub(crate) fn parse_for_each_targeted_object_subject(
         return Ok(None);
     }
 
-    let mut target_tokens = if let Some(rest) = grammar::words_match_prefix(subject_tokens, &["for", "each"]) {
-        rest
-    } else if let Some(rest) = grammar::words_match_prefix(subject_tokens, &["each"]) {
-        rest
-    } else {
-        return Ok(None);
-    };
+    let mut target_tokens =
+        if let Some(rest) = grammar::words_match_prefix(subject_tokens, &["for", "each"]) {
+            rest
+        } else if let Some(rest) = grammar::words_match_prefix(subject_tokens, &["each"]) {
+            rest
+        } else {
+            return Ok(None);
+        };
     if target_tokens
         .first()
         .is_some_and(|token| token.is_word("of"))
@@ -399,8 +408,10 @@ pub(crate) fn parse_get_for_each_count_value(
         ));
     }
 
-    if let Some(scope_rest) = grammar::words_match_prefix(filter_tokens, &["basic", "land", "type", "among"])
-        .or_else(|| grammar::words_match_prefix(filter_tokens, &["basic", "land", "types", "among"]))
+    if let Some(scope_rest) =
+        grammar::words_match_prefix(filter_tokens, &["basic", "land", "type", "among"]).or_else(
+            || grammar::words_match_prefix(filter_tokens, &["basic", "land", "types", "among"]),
+        )
     {
         let mut scope_tokens = scope_rest;
         if scope_tokens
@@ -462,10 +473,14 @@ pub(crate) fn parse_get_modifier_values_with_tail(
     let until_word_count = if starts_with_until_end_of_turn(&after_modifier_words) {
         duration = Until::EndOfTurn;
         4usize
-    } else if grammar::words_match_prefix(after_modifier, &["until", "your", "next", "turn"]).is_some() {
+    } else if grammar::words_match_prefix(after_modifier, &["until", "your", "next", "turn"])
+        .is_some()
+    {
         duration = Until::YourNextTurn;
         4usize
-    } else if grammar::words_match_prefix(after_modifier, &["until", "end", "of", "combat"]).is_some() {
+    } else if grammar::words_match_prefix(after_modifier, &["until", "end", "of", "combat"])
+        .is_some()
+    {
         duration = Until::EndOfCombat;
         4usize
     } else {
@@ -591,8 +606,9 @@ pub(crate) fn parse_for_each_opponent_clause(
         return Ok(None);
     }
 
-    let after_prefix = if let Some(rest) = grammar::words_match_prefix(clause_tokens, &["for", "each", "opponent"])
-        .or_else(|| grammar::words_match_prefix(clause_tokens, &["for", "each", "opponents"]))
+    let after_prefix = if let Some(rest) =
+        grammar::words_match_prefix(clause_tokens, &["for", "each", "opponent"])
+            .or_else(|| grammar::words_match_prefix(clause_tokens, &["for", "each", "opponents"]))
     {
         rest
     } else if let Some(rest) = grammar::words_match_prefix(clause_tokens, &["each", "opponent"])
@@ -605,7 +621,9 @@ pub(crate) fn parse_for_each_opponent_clause(
 
     let mut inner_tokens = trim_commas(after_prefix).to_vec();
     let mut iteration_filter = PlayerFilter::Opponent;
-    if grammar::words_match_prefix(&inner_tokens, &["other", "than", "defending", "player"]).is_some() {
+    if grammar::words_match_prefix(&inner_tokens, &["other", "than", "defending", "player"])
+        .is_some()
+    {
         let strip_start =
             token_index_for_word_index(&inner_tokens, 4).unwrap_or(inner_tokens.len());
         inner_tokens = trim_commas(&inner_tokens[strip_start..]).to_vec();
@@ -622,7 +640,10 @@ pub(crate) fn parse_for_each_opponent_clause(
         }
     };
     let inner_words = token_words(&inner_tokens);
-    if let Some(after_who) = grammar::words_match_prefix(&inner_tokens, &["who", "has", "less", "life", "than", "you"]) {
+    if let Some(after_who) = grammar::words_match_prefix(
+        &inner_tokens,
+        &["who", "has", "less", "life", "than", "you"],
+    ) {
         let effect_tokens = trim_commas(after_who);
         if effect_tokens.is_empty() {
             return Err(CardTextError::ParseError(format!(
@@ -1107,8 +1128,9 @@ pub(crate) fn parse_for_each_player_clause(
         return Ok(None);
     }
 
-    let after_prefix = if let Some(rest) = grammar::words_match_prefix(clause_tokens, &["for", "each", "player"])
-        .or_else(|| grammar::words_match_prefix(clause_tokens, &["for", "each", "players"]))
+    let after_prefix = if let Some(rest) =
+        grammar::words_match_prefix(clause_tokens, &["for", "each", "player"])
+            .or_else(|| grammar::words_match_prefix(clause_tokens, &["for", "each", "players"]))
     {
         rest
     } else if let Some(rest) = grammar::words_match_prefix(clause_tokens, &["each", "player"])
