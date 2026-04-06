@@ -1,17 +1,16 @@
-use crate::cards::builders::{
-    CardDefinitionBuilder, CardTextError, LineInfo, MetadataLine, NormalizedLine, OwnedLexToken,
-    ParseAnnotations,
-};
-use crate::cards::builders::{
-    str_contains, str_ends_with, str_ends_with_char, str_find, str_find_char, str_split_once,
-    str_split_once_char, str_starts_with, str_starts_with_char, str_strip_prefix, str_strip_suffix,
-};
-
 use super::activation_and_restrictions::parse_single_word_keyword_action;
 use super::grammar::structure::{MetadataLineKind, split_metadata_line_lexed};
 use super::lexer::lex_line;
 use super::parser_support::{
     looks_like_spell_resolution_followup_intro_lexed, spell_card_prefers_resolution_line_merge,
+};
+use super::token_primitives::{
+    str_contains, str_ends_with, str_ends_with_char, str_find, str_find_char, str_split_once,
+    str_split_once_char, str_starts_with, str_starts_with_char, str_strip_prefix, str_strip_suffix,
+};
+use crate::cards::builders::{
+    CardDefinitionBuilder, CardTextError, LineInfo, MetadataLine, NormalizedLine, OwnedLexToken,
+    ParseAnnotations,
 };
 
 #[derive(Debug, Clone)]

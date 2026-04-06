@@ -5,11 +5,6 @@ use crate::cards::builders::{
     AdditionalCostChoiceOptionAst, CardTextError, IT_TAG, KeywordAction, ParsedAbility, PlayerAst,
     ReferenceImports, TargetAst,
 };
-use crate::cards::builders::{
-    find_index, find_window_by, find_window_index, slice_contains, slice_ends_with,
-    slice_starts_with, str_contains, str_ends_with, str_split_once, str_starts_with,
-    str_strip_prefix, str_strip_suffix,
-};
 use crate::cost::OptionalCost;
 use crate::cost::TotalCost;
 use crate::costs::Cost;
@@ -31,7 +26,11 @@ use super::keyword_static::keyword_action_to_static_ability;
 use super::keyword_static::parse_this_spell_cost_condition;
 use super::lexer::{OwnedLexToken, TokenKind, TokenWordView, lex_line};
 use super::object_filters::parse_object_filter;
-use super::token_primitives as shared_tokens;
+use super::token_primitives::{
+    self as shared_tokens, find_index, find_window_by, find_window_index, slice_contains,
+    slice_ends_with, slice_starts_with, str_contains, str_ends_with, str_split_once,
+    str_starts_with, str_strip_prefix, str_strip_suffix,
+};
 
 #[cfg(test)]
 pub(crate) fn tokenize_line(line: &str, line_index: usize) -> Vec<OwnedLexToken> {

@@ -62,7 +62,11 @@ use super::lexer::{
 };
 use super::lowering_support::rewrite_parsed_triggered_ability as parsed_triggered_ability;
 use super::object_filters::{parse_object_filter, parse_object_filter_lexed};
-use super::token_primitives::lexed_head_words;
+use super::token_primitives::{
+    contains_window, find_index, find_window_by, find_window_index, lexed_head_words, rfind_index,
+    slice_contains, slice_ends_with, slice_starts_with, slice_strip_prefix, slice_strip_suffix,
+    str_strip_prefix, str_strip_suffix,
+};
 use super::util::{
     is_source_reference_words, mana_pips_from_token, parse_card_type, parse_color,
     parse_counter_type_from_tokens, parse_counter_type_word, parse_flashback_keyword_line,
@@ -76,11 +80,6 @@ use crate::alternative_cast::AlternativeCastingMethod;
 use crate::cards::builders::{
     CardTextError, GrantedAbilityAst, IT_TAG, KeywordAction, LineAst, ParsedAbility,
     ReferenceImports, StaticAbilityAst, TagKey, TextSpan,
-};
-use crate::cards::builders::{
-    contains_window, find_index, find_window_by, find_window_index, rfind_index, slice_contains,
-    slice_ends_with, slice_starts_with, slice_strip_prefix, slice_strip_suffix, str_strip_prefix,
-    str_strip_suffix,
 };
 #[allow(unused_imports)]
 use crate::color::ColorSet;
@@ -1807,10 +1806,9 @@ pub(crate) fn parse_choose_creature_type_as_enters_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = crate::cards::builders::parser::token_word_refs(tokens);
-    let Some((idx, display_subject)) = parse_as_enters_choice_subject_words(
-        &words,
-        AS_ENTERS_STANDARD_SUBJECTS,
-    ) else {
+    let Some((idx, display_subject)) =
+        parse_as_enters_choice_subject_words(&words, AS_ENTERS_STANDARD_SUBJECTS)
+    else {
         return Ok(None);
     };
     let Some((consumed, excluded_subtypes)) =
@@ -1834,10 +1832,9 @@ pub(crate) fn parse_choose_named_options_as_enters_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = crate::cards::builders::parser::token_word_refs(tokens);
-    let Some((idx, display_subject)) = parse_as_enters_choice_subject_words(
-        &words,
-        AS_ENTERS_STANDARD_SUBJECTS,
-    ) else {
+    let Some((idx, display_subject)) =
+        parse_as_enters_choice_subject_words(&words, AS_ENTERS_STANDARD_SUBJECTS)
+    else {
         return Ok(None);
     };
     let Some(choice_offset) = find_index(&words[idx..], |word| *word == "choose") else {
@@ -2333,10 +2330,9 @@ pub(crate) fn parse_choose_color_as_enters_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = crate::cards::builders::parser::token_word_refs(tokens);
-    let Some((idx, display_subject)) = parse_as_enters_choice_subject_words(
-        &words,
-        AS_ENTERS_STANDARD_SUBJECTS_WITH_AURA,
-    ) else {
+    let Some((idx, display_subject)) =
+        parse_as_enters_choice_subject_words(&words, AS_ENTERS_STANDARD_SUBJECTS_WITH_AURA)
+    else {
         return Ok(None);
     };
     let Some((consumed, excluded_color_set)) = parse_choose_color_phrase_words(&words[idx..])?
@@ -2374,10 +2370,9 @@ pub(crate) fn parse_choose_player_as_enters_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = crate::cards::builders::parser::token_word_refs(tokens);
-    let Some((idx, display_subject)) = parse_as_enters_choice_subject_words(
-        &words,
-        AS_ENTERS_STANDARD_SUBJECTS_WITH_AURA,
-    ) else {
+    let Some((idx, display_subject)) =
+        parse_as_enters_choice_subject_words(&words, AS_ENTERS_STANDARD_SUBJECTS_WITH_AURA)
+    else {
         return Ok(None);
     };
     let Some(consumed) = parse_choose_player_phrase_words(&words[idx..]) else {
@@ -3509,7 +3504,10 @@ enum CostModifierDirection {
 }
 
 fn parse_cost_modifier_direction(words: &[&str]) -> Option<CostModifierDirection> {
-    match (slice_contains(words, &"less"), slice_contains(words, &"more")) {
+    match (
+        slice_contains(words, &"less"),
+        slice_contains(words, &"more"),
+    ) {
         (true, false) => Some(CostModifierDirection::Less),
         (false, true) => Some(CostModifierDirection::More),
         _ => None,

@@ -18,10 +18,6 @@ use crate::cards::builders::{
     PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst, RetargetModeAst,
     ReturnControllerAst, SharedTypeConstraintAst, TagKey, TargetAst, TriggerSpec,
 };
-use crate::cards::builders::{
-    find_index, find_window_by, find_window_index, slice_contains, str_contains, str_find,
-    str_split_once, str_split_once_char, str_starts_with, str_strip_suffix,
-};
 #[allow(unused_imports)]
 use crate::color::ColorSet;
 #[allow(unused_imports)]
@@ -53,6 +49,11 @@ use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 #[allow(unused_imports)]
 use std::collections::HashMap;
+
+use super::token_primitives::{
+    find_index, find_window_by, find_window_index, slice_contains, str_contains, str_find,
+    str_split_once, str_split_once_char, str_starts_with, str_strip_suffix,
+};
 
 use super::effect_ast_traversal::{
     assert_effect_ast_variant_coverage, for_each_nested_effects, for_each_nested_effects_mut,
@@ -11345,14 +11346,18 @@ mod parse_compile_tests {
         let for_each = effects[0]
             .downcast_ref::<ForEachObject>()
             .expect("non-target object damage should lower through ForEachObject");
-        assert!(crate::cards::builders::iter_contains(
-            &for_each.filter.card_types,
-            &CardType::Creature,
-        ));
-        assert!(crate::cards::builders::iter_contains(
-            &for_each.filter.excluded_subtypes,
-            &Subtype::Army,
-        ));
+        assert!(
+            crate::cards::builders::parser::token_primitives::iter_contains(
+                &for_each.filter.card_types,
+                &CardType::Creature,
+            )
+        );
+        assert!(
+            crate::cards::builders::parser::token_primitives::iter_contains(
+                &for_each.filter.excluded_subtypes,
+                &Subtype::Army,
+            )
+        );
         assert_eq!(for_each.effects.len(), 1);
 
         let with_source = for_each.effects[0]

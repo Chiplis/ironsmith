@@ -3,12 +3,6 @@ use crate::cards::builders::{
     PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst, SubjectAst, TagKey, TargetAst,
     TextSpan, Verb,
 };
-use crate::cards::builders::{
-    contains_window as word_slice_contains_sequence, find_index as find_token_index,
-    find_str_by as find_word_index, find_window_index as find_word_sequence_index,
-    rfind_index as find_token_index_rev, slice_contains_str as word_slice_contains,
-    slice_ends_with as word_slice_ends_with, slice_starts_with as word_slice_starts_with,
-};
 use crate::effect::{EventValueSpec, Until, Value};
 use crate::static_abilities::StaticAbilityId;
 use crate::target::ObjectFilter;
@@ -21,6 +15,12 @@ use super::super::activation_and_restrictions::{
 use super::super::grammar::primitives::TokenWordView;
 use super::super::grammar::structure::split_trailing_if_clause_lexed;
 use super::super::object_filters::parse_object_filter;
+use super::super::token_primitives::{
+    contains_window as word_slice_contains_sequence, find_index as find_token_index,
+    find_str_by as find_word_index, find_window_index as find_word_sequence_index,
+    rfind_index as find_token_index_rev, slice_contains_str as word_slice_contains,
+    slice_ends_with as word_slice_ends_with, slice_starts_with as word_slice_starts_with,
+};
 use super::super::util::{
     parse_card_type, parse_color, parse_counter_type_from_tokens, parse_counter_type_word,
     parse_number, parse_subject, parse_target_count_range_prefix, parse_target_phrase, parse_value,

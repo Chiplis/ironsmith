@@ -217,15 +217,16 @@ mod tests {
     use crate::ids::{CardId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::snapshot::ObjectSnapshot;
-    use std::sync::{Mutex, MutexGuard, OnceLock};
     use crate::triggers::{TransformsTrigger, TriggerContext, TriggerMatcher};
     use crate::types::{CardType, Subtype};
+    use std::sync::{Mutex, MutexGuard, OnceLock};
 
     fn runtime_custom_registry_test_guard() -> MutexGuard<'static, ()> {
         static GUARD: OnceLock<Mutex<()>> = OnceLock::new();
-        GUARD.get_or_init(|| Mutex::new(())).lock().expect(
-            "transform registry tests should acquire the runtime custom-card test mutex",
-        )
+        GUARD
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("transform registry tests should acquire the runtime custom-card test mutex")
     }
 
     fn register_transform_pair(

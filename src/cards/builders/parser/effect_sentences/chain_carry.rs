@@ -15,6 +15,11 @@ use super::super::permission_helpers::{
     parse_additional_land_plays_clause_lexed, parse_permission_clause_spec_lexed,
     parse_unsupported_play_cast_permission_clause_lexed,
 };
+use super::super::token_primitives::{
+    find_window_index as find_word_sequence_index, rfind_index as find_last_token_index,
+    slice_contains_str as word_slice_contains, slice_starts_with as word_slice_starts_with,
+    str_contains as string_contains,
+};
 use super::super::value_helpers::{parse_number_from_lexed, parse_value_from_lexed};
 use super::lex_chain_helpers::{
     find_verb_lexed, has_effect_head_without_verb_lexed, segment_has_effect_head_lexed,
@@ -33,11 +38,6 @@ use super::{
 #[allow(unused_imports)]
 use crate::cards::builders::{
     CardTextError, EffectAst, PlayerAst, PredicateAst, TargetAst, TextSpan,
-};
-use crate::cards::builders::{
-    find_window_index as find_word_sequence_index, rfind_index as find_last_token_index,
-    slice_contains_str as word_slice_contains, slice_starts_with as word_slice_starts_with,
-    str_contains as string_contains,
 };
 use crate::effect::ChoiceCount;
 use crate::target::PlayerFilter;
@@ -1392,6 +1392,10 @@ pub(crate) fn bind_implicit_player_context(effect: &mut EffectAst, player: Playe
             player: effect_player,
         }
         | EffectAst::AdditionalLandPlays {
+            player: effect_player,
+            ..
+        }
+        | EffectAst::GrantBySpec {
             player: effect_player,
             ..
         }

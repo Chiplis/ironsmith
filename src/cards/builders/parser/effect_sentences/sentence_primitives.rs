@@ -6,7 +6,11 @@ use super::super::grammar::primitives::{
 use super::super::keyword_static::parse_where_x_value_clause;
 use super::super::lexer::OwnedLexToken;
 use super::super::object_filters::parse_object_filter;
-use super::super::token_primitives::{lexed_head_words, split_lexed_once_on_comma_then};
+use super::super::token_primitives::{
+    find_index, find_window_by, find_window_index, iter_contains, lexed_head_words, rfind_index,
+    slice_contains, slice_ends_with, slice_starts_with, split_lexed_once_on_comma_then,
+    str_strip_suffix,
+};
 use super::super::util::{
     is_article, is_source_reference_words, mana_pips_from_token, parse_card_type, parse_color,
     parse_counter_type_from_tokens, token_index_for_word_index, words,
@@ -47,10 +51,6 @@ use super::{
 use crate::cards::builders::{
     CardTextError, EffectAst, IT_TAG, IfResultPredicate, PlayerAst, PredicateAst,
     ReturnControllerAst, SubjectAst, TagKey, TargetAst, TextSpan,
-};
-use crate::cards::builders::{
-    find_index, find_window_by, find_window_index, iter_contains, rfind_index, slice_contains,
-    slice_ends_with, slice_starts_with, str_strip_suffix,
 };
 #[allow(unused_imports)]
 use crate::effect::{ChoiceCount, Until, Value};

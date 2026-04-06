@@ -10,6 +10,10 @@ use super::super::object_filters::{
     parse_object_filter_lexed, push_unique, set_has, slice_has, strip_not_on_battlefield_phrase,
     token_find_index, token_find_window, trim_vote_winner_suffix,
 };
+use super::super::token_primitives::{
+    contains_window, find_index, find_window_index, rfind_index, slice_contains, slice_ends_with,
+    slice_starts_with, slice_strip_prefix,
+};
 use super::super::util::{
     apply_filter_keyword_constraint, is_article, is_demonstrative_object_head, is_non_outlaw_word,
     is_outlaw_word, is_permanent_type, is_source_reference_words, parse_alternative_cast_words,
@@ -23,10 +27,6 @@ use super::primitives::{TokenWordView, split_lexed_slices_on_and, split_lexed_sl
 use super::values::parse_mana_symbol;
 use crate::cards::TextSpan;
 use crate::cards::builders::{CardTextError, IT_TAG, PlayerAst, PredicateAst, TagKey};
-use crate::cards::builders::{
-    contains_window, find_index, find_window_index, rfind_index, slice_contains, slice_ends_with,
-    slice_starts_with, slice_strip_prefix,
-};
 use crate::color::{Color, ColorSet};
 use crate::effect::Value;
 use crate::effects::VOTE_WINNERS_TAG;

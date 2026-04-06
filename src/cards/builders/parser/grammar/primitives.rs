@@ -83,6 +83,78 @@ pub(crate) fn parse_prefix<'a, O>(
     Some((parsed, remaining))
 }
 
+pub(crate) fn find_prefix<'a, O, P, F>(
+    tokens: &'a [LexToken],
+    make_parser: F,
+) -> Option<(usize, O, &'a [LexToken])>
+where
+    F: Fn() -> P,
+    P: Parser<LexStream<'a>, O, ErrMode<ContextError>>,
+{
+    let mut idx = 0usize;
+    loop {
+        if let Some((parsed, rest)) = parse_prefix(&tokens[idx..], make_parser()) {
+            return Some((idx, parsed, rest));
+        }
+        if idx == tokens.len() {
+            return None;
+        }
+        idx += 1;
+    }
+}
+
+pub(crate) fn find_token_index(
+    tokens: &[LexToken],
+    mut predicate: impl FnMut(&LexToken) -> bool,
+) -> Option<usize> {
+    let mut idx = 0usize;
+    while idx < tokens.len() {
+        if predicate(&tokens[idx]) {
+            return Some(idx);
+        }
+        idx += 1;
+    }
+    None
+}
+
+pub(crate) fn rfind_token_index(
+    tokens: &[LexToken],
+    mut predicate: impl FnMut(&LexToken) -> bool,
+) -> Option<usize> {
+    let mut idx = tokens.len();
+    while idx > 0 {
+        idx -= 1;
+        if predicate(&tokens[idx]) {
+            return Some(idx);
+        }
+    }
+    None
+}
+
+pub(crate) fn contains_word(tokens: &[LexToken], expected: &'static str) -> bool {
+    find_prefix(tokens, || kw(expected)).is_some()
+}
+
+pub(crate) fn contains_phrase(tokens: &[LexToken], expected: &'static [&'static str]) -> bool {
+    find_phrase_start(tokens, expected).is_some()
+}
+
+pub(crate) fn contains_any_phrase(
+    tokens: &[LexToken],
+    phrases: &'static [&'static [&'static str]],
+) -> bool {
+    phrases
+        .iter()
+        .any(|phrase_words| contains_phrase(tokens, phrase_words))
+}
+
+pub(crate) fn find_phrase_start(
+    tokens: &[LexToken],
+    expected: &'static [&'static str],
+) -> Option<usize> {
+    find_prefix(tokens, || phrase(expected)).map(|(idx, _, _)| idx)
+}
+
 pub(crate) fn token_slice_span(tokens: &[LexToken]) -> Option<TextSpan> {
     let line = tokens.first()?.span().line;
     let (_, span) =
@@ -285,6 +357,20 @@ where
     }
 
     Ok(segment)
+}
+
+pub(crate) fn split_lexed_once_on_separator<'a, P, F>(
+    tokens: &'a [LexToken],
+    make_separator: F,
+) -> Option<(&'a [LexToken], &'a [LexToken])>
+where
+    F: Fn() -> P + Copy,
+    P: Parser<LexStream<'a>, (), ErrMode<ContextError>>,
+{
+    let (head, rest) = parse_prefix(tokens, move |input: &mut LexStream<'a>| {
+        parse_segment_until_separator(input, make_separator)
+    })?;
+    (head.len() + rest.len() < tokens.len()).then_some((head, rest))
 }
 
 pub(crate) fn split_lexed_once_on_delimiter<'a>(

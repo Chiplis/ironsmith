@@ -6,12 +6,7 @@ use winnow::token::take_till;
 use crate::cards::builders::{
     CardTextError, ChoiceCount, EffectAst, IT_TAG, LibraryBottomOrderAst, LibraryConsultModeAst,
     LibraryConsultStopRuleAst, PlayerAst, ReturnControllerAst, SubjectAst, TagKey, TargetAst,
-    TextSpan, contains_window as word_slice_contains_sequence,
-    find_any_str_index as word_slice_find_any, find_index as find_token_index,
-    find_str_index as word_slice_find, find_window_index as word_slice_find_sequence,
-    rfind_index as rfind_token_index, slice_contains_all as word_slice_has_all,
-    slice_contains_any as word_slice_contains_any, slice_contains_str as word_slice_contains,
-    slice_ends_with as word_slice_ends_with, slice_starts_with as word_slice_starts_with,
+    TextSpan,
 };
 use crate::effect::SearchSelectionMode;
 use crate::target::PlayerFilter;
@@ -33,6 +28,14 @@ use super::super::grammar::structure::{IfClausePredicateSpec, split_if_clause_le
 use super::super::lexer::{
     LexStream, OwnedLexToken, TokenKind, parser_token_word_positions, parser_token_word_refs,
     token_word_refs,
+};
+use super::super::token_primitives::{
+    contains_window as word_slice_contains_sequence, find_any_str_index as word_slice_find_any,
+    find_index as find_token_index, find_str_index as word_slice_find,
+    find_window_index as word_slice_find_sequence, rfind_index as rfind_token_index,
+    slice_contains_all as word_slice_has_all, slice_contains_any as word_slice_contains_any,
+    slice_contains_str as word_slice_contains, slice_ends_with as word_slice_ends_with,
+    slice_starts_with as word_slice_starts_with,
 };
 use super::super::util::{is_article, parse_subject};
 use super::super::{parse_number, parse_object_filter, parse_object_filter_lexed};

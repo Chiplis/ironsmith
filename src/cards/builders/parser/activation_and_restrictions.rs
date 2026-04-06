@@ -17,7 +17,6 @@ use super::effect_sentences::{
     parse_subtype_word, parse_supertype_word, replace_unbound_x_in_effect_anywhere,
     strip_leading_articles, trim_edge_punctuation,
 };
-use super::grammar::filters::parse_spell_filter_with_grammar_entrypoint;
 use super::grammar::primitives as grammar;
 use super::keyword_static::{
     parse_add_mana_equal_amount_value, parse_cost_modifier_amount, parse_cost_modifier_mana_cost,
@@ -27,7 +26,11 @@ use super::keyword_static::{
 use super::leaf::{lower_activation_cost_cst, parse_activation_cost_tokens_rewrite};
 use super::lexer::{OwnedLexToken, TokenKind};
 use super::object_filters::{parse_object_filter, parse_object_filter_lexed};
-use super::token_primitives::lexed_head_words;
+use super::token_primitives::{
+    contains_window, find_index, find_window_by, find_window_index, lexed_head_words, rfind_index,
+    slice_contains, slice_ends_with, slice_starts_with, slice_strip_prefix, slice_strip_suffix,
+    str_strip_prefix, str_strip_suffix,
+};
 use super::util::{
     is_source_reference_words, mana_pips_from_token, parse_card_type, parse_color,
     parse_counter_type_from_tokens, parse_non_type, parse_number, parse_number_word_u32,
@@ -41,11 +44,6 @@ use crate::cards::builders::{
     PlayerAst, PredicateAst, ReferenceImports, ReturnControllerAst, StaticAbilityAst, TagKey,
     TargetAst, TextSpan, TriggerSpec,
 };
-use crate::cards::builders::{
-    contains_window, find_index, find_window_by, find_window_index, rfind_index, slice_contains,
-    slice_ends_with, slice_starts_with, slice_strip_prefix, slice_strip_suffix, str_strip_prefix,
-    str_strip_suffix,
-};
 use crate::color::ColorSet;
 use crate::cost::TotalCost;
 use crate::effect::{ChoiceCount, Effect, Until, Value};
@@ -56,6 +54,10 @@ use crate::static_abilities::StaticAbility;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
+
+mod activated_sentence_parsers;
+
+use activated_sentence_parsers::collect_activated_sentence_modifiers;
 
 type ActivationRestrictionCompatWords = grammar::TokenWordView;
 
@@ -93,28 +95,6 @@ fn parse_prefixed_activated_ability_label(
         Some("renew") => Some("Renew".to_string()),
         _ => None,
     }
-}
-
-struct ActivateOnlySentenceDetails {
-    timing: ActivationTiming,
-    condition: Option<crate::ConditionExpr>,
-    normalized_restriction: Option<String>,
-}
-
-fn parse_activate_only_sentence_details_lexed(
-    tokens: &[OwnedLexToken],
-    current_timing: &ActivationTiming,
-) -> Option<ActivateOnlySentenceDetails> {
-    if !is_activate_only_restriction_sentence_lexed(tokens) {
-        return None;
-    }
-
-    let timing = parse_activate_only_timing_lexed(tokens).unwrap_or_else(|| current_timing.clone());
-    Some(ActivateOnlySentenceDetails {
-        condition: parse_activation_condition_lexed(tokens),
-        normalized_restriction: normalize_activate_only_restriction(tokens, &timing),
-        timing,
-    })
 }
 
 fn contains_granted_keyword_before_word(
@@ -194,47 +174,14 @@ pub(crate) fn parse_activated_line_with_raw(
     let mut effect_sentences = grammar::split_lexed_slices_on_period(effect_tokens);
     let functional_zones = infer_activated_functional_zones_lexed(cost_tokens, &effect_sentences);
     let mut timing = ActivationTiming::AnyTime;
-    let mut mana_activation_condition: Option<crate::ConditionExpr> = None;
-    let mut additional_activation_restrictions: Vec<String> = Vec::new();
-    let mut mana_usage_restrictions = Vec::new();
-    let mut inline_effects_ast: Vec<EffectAst> = Vec::new();
-    effect_sentences.retain(|sentence| {
-        if let Some(parsed) = parse_activate_only_sentence_details_lexed(sentence, &timing) {
-            timing = parsed.timing;
-            if let Some(condition) = parsed.condition {
-                mana_activation_condition =
-                    merge_mana_activation_conditions(mana_activation_condition.clone(), condition);
-            }
-            if let Some(restriction) = parsed.normalized_restriction {
-                additional_activation_restrictions.push(restriction);
-            }
-            return false;
-        }
-        if is_spend_mana_restriction_sentence_lexed(sentence) {
-            if let Some(restriction) = parse_mana_usage_restriction_sentence_lexed(sentence) {
-                mana_usage_restrictions.push(restriction);
-            } else {
-                additional_activation_restrictions.push(joined_activation_clause_text(sentence));
-            }
-            return false;
-        }
-        if is_any_player_may_activate_sentence_lexed(sentence) {
-            additional_activation_restrictions.push(joined_activation_clause_text(sentence));
-            return false;
-        }
-        if is_trigger_only_restriction_sentence_lexed(sentence) {
-            return false;
-        }
-        if is_inline_activated_text_modifier_sentence(sentence) {
-            if let Some(effect) = parse_next_spell_cost_reduction_sentence(sentence) {
-                inline_effects_ast.push(effect);
-                return false;
-            }
-            additional_activation_restrictions.push(joined_activation_clause_text(sentence));
-            return false;
-        }
-        true
-    });
+    let scanned_modifiers = collect_activated_sentence_modifiers(&effect_sentences, timing.clone());
+    let mana_activation_condition = scanned_modifiers.mana_activation_condition;
+    let mut additional_activation_restrictions =
+        scanned_modifiers.additional_activation_restrictions;
+    let mana_usage_restrictions = scanned_modifiers.mana_usage_restrictions;
+    let inline_effects_ast = scanned_modifiers.inline_effects_ast;
+    effect_sentences = scanned_modifiers.kept_sentences;
+    timing = scanned_modifiers.timing;
     let mana_activation_condition =
         combine_mana_activation_condition(mana_activation_condition, timing.clone());
     if !effect_sentences.is_empty() {
@@ -242,7 +189,11 @@ pub(crate) fn parse_activated_line_with_raw(
         let x_defined_by_cost = activation_cost_mentions_x(cost_tokens);
         let effect_words = ActivationRestrictionCompatWords::new(primary_sentence);
         let is_primary_add_clause = matches!(
-            (effect_words.get(0), effect_words.get(1), effect_words.get(2)),
+            (
+                effect_words.get(0),
+                effect_words.get(1),
+                effect_words.get(2)
+            ),
             (Some("add" | "adds"), _, _)
                 | (Some("you"), Some("add"), _)
                 | (Some("that"), Some("player"), Some("add" | "adds"))
@@ -259,7 +210,7 @@ pub(crate) fn parse_activated_line_with_raw(
                 .map(ReferenceImports::with_last_object_tag)
                 .unwrap_or_default();
 
-            let mut extra_effects_ast = Vec::new();
+            let mut extra_effects_ast = inline_effects_ast.clone();
             if effect_sentences.len() > 1 {
                 for sentence in &effect_sentences[1..] {
                     if sentence.is_empty() {
@@ -526,57 +477,6 @@ pub(crate) fn parse_activated_line_with_raw(
     }))
 }
 
-fn parse_next_spell_cost_reduction_sentence(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
-    let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
-    if !slice_starts_with(&clause_words, &["the", "next"]) {
-        return None;
-    }
-
-    let spell_idx = find_index(&clause_words, |word| *word == "spell")?;
-    let costs_idx = find_index(&clause_words, |word| *word == "costs")?;
-    let less_idx = find_index(&clause_words, |word| *word == "less")?;
-    if clause_words.get(spell_idx + 1).copied() != Some("you")
-        || clause_words.get(spell_idx + 2).copied() != Some("cast")
-        || clause_words.get(spell_idx + 3).copied() != Some("this")
-        || clause_words.get(spell_idx + 4).copied() != Some("turn")
-        || clause_words.get(less_idx + 1).copied() != Some("to")
-        || clause_words.get(less_idx + 2).copied() != Some("cast")
-        || costs_idx <= spell_idx
-    {
-        return None;
-    }
-
-    let spell_filter_tokens = trim_commas(&tokens[2..spell_idx]).to_vec();
-    let reduction_tokens = trim_commas(&tokens[costs_idx + 1..less_idx]).to_vec();
-    let filter = parse_spell_filter_with_grammar_entrypoint(&spell_filter_tokens);
-    let (reduction, consumed) = parse_cost_modifier_mana_cost(&reduction_tokens)?;
-    if consumed != reduction_tokens.len() {
-        return None;
-    }
-
-    Some(EffectAst::ReduceNextSpellCostThisTurn {
-        player: PlayerAst::You,
-        filter,
-        reduction,
-    })
-}
-
-fn is_inline_activated_text_modifier_sentence(tokens: &[OwnedLexToken]) -> bool {
-    let line_words = crate::cards::builders::parser::token_word_refs(tokens);
-    if slice_starts_with(&line_words, &["this", "ability", "costs"])
-        && slice_contains(&line_words, &"less")
-        && slice_contains(&line_words, &"activate")
-    {
-        return true;
-    }
-
-    slice_starts_with(&line_words, &["the", "next"])
-        && slice_contains(&line_words, &"spell")
-        && slice_contains(&line_words, &"costs")
-        && slice_contains(&line_words, &"less")
-        && slice_contains(&line_words, &"cast")
-}
-
 fn activation_cost_mentions_x(tokens: &[OwnedLexToken]) -> bool {
     tokens
         .iter()
@@ -786,77 +686,20 @@ pub(crate) fn infer_activated_functional_zones_lexed(
 }
 
 pub(crate) fn parse_activate_only_timing(tokens: &[OwnedLexToken]) -> Option<ActivationTiming> {
-    parse_activate_only_timing_lexed(tokens)
+    activated_sentence_parsers::parse_activate_only_timing_lexed(tokens)
 }
 
 pub(crate) fn parse_activate_only_timing_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<ActivationTiming> {
-    let words = ActivationRestrictionCompatWords::new(tokens);
-    if words.slice_eq(0, &["activate", "only", "as", "a", "sorcery"]) {
-        return Some(ActivationTiming::SorcerySpeed);
-    }
-    if words.slice_eq(0, &["activate", "only", "once", "each", "turn"])
-        || words.has_phrase(&["once", "each", "turn"])
-    {
-        return Some(ActivationTiming::OncePerTurn);
-    }
-    if words.slice_eq(0, &["activate", "only", "during", "combat"])
-        || words.has_phrase(&["during", "combat"])
-    {
-        return Some(ActivationTiming::DuringCombat);
-    }
-    if words.slice_eq(0, &["activate", "only", "during", "your", "turn"])
-        || words.has_phrase(&["during", "your", "turn"])
-    {
-        return Some(ActivationTiming::DuringYourTurn);
-    }
-    if words.slice_eq(
-        0,
-        &["activate", "only", "during", "an", "opponents", "turn"],
-    ) || words.slice_eq(0, &["activate", "only", "during", "opponents", "turn"])
-        || words.has_phrase(&["during", "an", "opponents", "turn"])
-        || words.has_phrase(&["during", "opponents", "turn"])
-    {
-        return Some(ActivationTiming::DuringOpponentsTurn);
-    }
-    None
+    activated_sentence_parsers::parse_activate_only_timing_lexed(tokens)
 }
 
 pub(crate) fn normalize_activate_only_restriction(
     tokens: &[OwnedLexToken],
     timing: &ActivationTiming,
 ) -> Option<String> {
-    if timing != &ActivationTiming::OncePerTurn {
-        return Some(crate::cards::builders::parser::token_word_refs(tokens).join(" "));
-    }
-
-    let mut words = crate::cards::builders::parser::token_word_refs(tokens)
-        .into_iter()
-        .map(|word| word.to_ascii_lowercase())
-        .collect::<Vec<_>>();
-    if words.is_empty() {
-        return None;
-    }
-    if words == ["activate", "only", "once", "each", "turn"] {
-        return None;
-    }
-    if words.len() >= 6 && words[0..6] == ["activate", "only", "once", "each", "turn", "and"] {
-        words.drain(0..6);
-    }
-    let mut index = 0usize;
-    while index + 5 <= words.len() {
-        if words[index..index + 5] == ["and", "only", "once", "each", "turn"] {
-            words.drain(index..index + 5);
-        } else {
-            index += 1;
-        }
-    }
-    if words.is_empty() {
-        None
-    } else {
-        Some(words.join(" "))
-    }
+    activated_sentence_parsers::normalize_activate_only_restriction(tokens, timing)
 }
 
 pub(crate) fn contains_word_sequence(words: &[&str], sequence: &[&str]) -> bool {
@@ -911,155 +754,61 @@ pub(crate) fn merge_mana_activation_conditions(
 }
 
 pub(crate) fn is_activate_only_restriction_sentence(tokens: &[OwnedLexToken]) -> bool {
-    is_activate_only_restriction_sentence_lexed(tokens)
+    activated_sentence_parsers::is_activate_only_restriction_sentence_lexed(tokens)
 }
 
 pub(crate) fn is_activate_only_restriction_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
-    let words = ActivationRestrictionCompatWords::new(tokens);
-    words.slice_eq(0, &["activate", "only"])
-        || words.slice_eq(0, &["activate", "no", "more", "than"])
+    activated_sentence_parsers::is_activate_only_restriction_sentence_lexed(tokens)
 }
 
 pub(crate) fn is_spend_mana_restriction_sentence(tokens: &[OwnedLexToken]) -> bool {
-    is_spend_mana_restriction_sentence_lexed(tokens)
+    activated_sentence_parsers::is_spend_mana_restriction_sentence_lexed(tokens)
 }
 
 pub(crate) fn is_spend_mana_restriction_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
-    let words = ActivationRestrictionCompatWords::new(tokens);
-    words.slice_eq(0, &["spend", "this", "mana", "only"])
-        || words.slice_eq(0, &["spend", "that", "mana", "only"])
+    activated_sentence_parsers::is_spend_mana_restriction_sentence_lexed(tokens)
 }
 
 pub(crate) fn parse_mana_usage_restriction_sentence(
     tokens: &[OwnedLexToken],
 ) -> Option<crate::ability::ManaUsageRestriction> {
-    parse_mana_usage_restriction_sentence_lexed(tokens)
+    activated_sentence_parsers::parse_mana_usage_restriction_sentence_lexed(tokens)
 }
 
 pub(crate) fn parse_mana_usage_restriction_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<crate::ability::ManaUsageRestriction> {
-    let words = ActivationRestrictionCompatWords::new(tokens);
-    if !(words.slice_eq(0, &["spend", "this", "mana", "only", "to", "cast"])
-        || words.slice_eq(0, &["spend", "that", "mana", "only", "to", "cast"]))
-    {
-        return None;
-    }
-
-    let mut spell_idx = None;
-    for idx in 0..words.len() {
-        if matches!(words.get(idx), Some("spell" | "spells")) {
-            spell_idx = Some(idx);
-            break;
-        }
-    }
-    let spell_idx = spell_idx?;
-    let spec_words = (6..spell_idx)
-        .filter_map(|idx| words.get(idx))
-        .collect::<Vec<_>>();
-    if spec_words.is_empty() {
-        return None;
-    }
-
-    let mut idx = 0usize;
-    if matches!(spec_words.first().copied(), Some("a" | "an")) {
-        idx += 1;
-    }
-
-    let card_type = match spec_words.get(idx).copied()? {
-        "artifact" => crate::types::CardType::Artifact,
-        "battle" => crate::types::CardType::Battle,
-        "creature" => crate::types::CardType::Creature,
-        "enchantment" => crate::types::CardType::Enchantment,
-        "instant" => crate::types::CardType::Instant,
-        "land" => crate::types::CardType::Land,
-        "planeswalker" => crate::types::CardType::Planeswalker,
-        "sorcery" => crate::types::CardType::Sorcery,
-        _ => return None,
-    };
-    idx += 1;
-
-    if idx != spec_words.len() {
-        return None;
-    }
-
-    let mut tail = ((spell_idx + 1)..words.len())
-        .filter_map(|word_idx| words.get(word_idx))
-        .collect::<Vec<_>>();
-    let subtype_requirement = if slice_starts_with(&tail, &["of", "the", "chosen", "type"]) {
-        tail.drain(0..4);
-        Some(crate::ability::ManaUsageSubtypeRequirement::ChosenTypeOfSource)
-    } else {
-        None
-    };
-
-    let grant_uncounterable = tail == ["and", "that", "spell", "can't", "be", "countered"]
-        || tail == ["and", "that", "spell", "cant", "be", "countered"];
-    if !grant_uncounterable && !tail.is_empty() {
-        return None;
-    }
-
-    Some(crate::ability::ManaUsageRestriction::CastSpell {
-        card_types: vec![card_type],
-        subtype_requirement,
-        grant_uncounterable,
-    })
+    activated_sentence_parsers::parse_mana_usage_restriction_sentence_lexed(tokens)
 }
 
 pub(crate) fn is_any_player_may_activate_sentence(tokens: &[OwnedLexToken]) -> bool {
-    is_any_player_may_activate_sentence_lexed(tokens)
+    activated_sentence_parsers::is_any_player_may_activate_sentence_lexed(tokens)
 }
 
 pub(crate) fn is_any_player_may_activate_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
-    let words = ActivationRestrictionCompatWords::new(tokens);
-    words.len() == 6 && words.slice_eq(0, &["any", "player", "may", "activate", "this", "ability"])
+    activated_sentence_parsers::is_any_player_may_activate_sentence_lexed(tokens)
 }
 
 pub(crate) fn is_trigger_only_restriction_sentence(tokens: &[OwnedLexToken]) -> bool {
-    is_trigger_only_restriction_sentence_lexed(tokens)
+    activated_sentence_parsers::is_trigger_only_restriction_sentence_lexed(tokens)
 }
 
 pub(crate) fn is_trigger_only_restriction_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
-    ActivationRestrictionCompatWords::new(tokens)
-        .slice_eq(0, &["this", "ability", "triggers", "only"])
+    activated_sentence_parsers::is_trigger_only_restriction_sentence_lexed(tokens)
 }
 
 pub(crate) fn parse_triggered_times_each_turn_sentence(
     sentences: &[Vec<OwnedLexToken>],
 ) -> Option<u32> {
-    sentences
-        .iter()
-        .find_map(|sentence| parse_triggered_times_each_turn_lexed(sentence))
+    activated_sentence_parsers::parse_triggered_times_each_turn_sentence(sentences)
 }
 
 pub(crate) fn parse_triggered_times_each_turn_from_words(words: &[&str]) -> Option<u32> {
-    if words.len() < 7 || !slice_starts_with(&words, &["this", "ability", "triggers", "only"]) {
-        return None;
-    }
-
-    let mut index = 4usize;
-    let count = match words.get(index) {
-        Some(word) if *word == "once" => Some(1),
-        Some(word) if *word == "twice" => Some(2),
-        Some(word) => parse_named_number(word),
-        None => None,
-    }?;
-    index += 1;
-
-    if words.get(index) == Some(&"time") || words.get(index) == Some(&"times") {
-        index += 1;
-    }
-
-    if words.get(index) == Some(&"each") && words.get(index + 1) == Some(&"turn") {
-        Some(count)
-    } else {
-        None
-    }
+    activated_sentence_parsers::parse_triggered_times_each_turn_from_words(words)
 }
 
 pub(crate) fn parse_triggered_times_each_turn_lexed(tokens: &[OwnedLexToken]) -> Option<u32> {
-    let words = ActivationRestrictionCompatWords::new(tokens);
-    parse_triggered_times_each_turn_from_words(&words.to_word_refs())
+    activated_sentence_parsers::parse_triggered_times_each_turn_lexed(tokens)
 }
 
 pub(crate) fn parse_named_number(word: &str) -> Option<u32> {
@@ -1675,216 +1424,13 @@ pub(crate) fn color_from_color_set(colors: ColorSet) -> Option<crate::color::Col
 }
 
 pub(crate) fn parse_activation_condition(tokens: &[OwnedLexToken]) -> Option<crate::ConditionExpr> {
-    parse_activation_condition_lexed(tokens)
+    activated_sentence_parsers::parse_activation_condition_lexed(tokens)
 }
 
 pub(crate) fn parse_activation_condition_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<crate::ConditionExpr> {
-    let words = ActivationRestrictionCompatWords::new(tokens);
-    if words.len() < 5 {
-        return None;
-    }
-
-    if words.slice_eq(0, &["activate", "no", "more", "than"]) {
-        let count_word = words.get(4)?;
-        let count = match count_word {
-            "once" => 1,
-            "twice" => 2,
-            other => parse_named_number(other)?,
-        };
-        let mut index = 5usize;
-        if matches!(words.get(index), Some("time" | "times")) {
-            index += 1;
-        }
-        if words.get(index) == Some("each") && words.get(index + 1) == Some("turn") {
-            return Some(crate::ConditionExpr::MaxActivationsPerTurn(count));
-        }
-    }
-
-    let after_activate_only = (2..words.len())
-        .filter_map(|idx| words.get(idx))
-        .collect::<Vec<_>>();
-    if let Some(count) = parse_activation_count_per_turn(&after_activate_only) {
-        return Some(crate::ConditionExpr::MaxActivationsPerTurn(count));
-    }
-    if words.slice_eq(0, &["activate", "only", "as", "an", "instant"])
-        || words.slice_eq(0, &["activate", "only", "as", "instant"])
-    {
-        return Some(crate::ConditionExpr::ActivationTiming(
-            ActivationTiming::AnyTime,
-        ));
-    }
-    if words.slice_eq(0, &["activate", "only", "if", "there", "is"])
-        || words.slice_eq(0, &["activate", "only", "if", "there", "are"])
-    {
-        let descriptor_start = 5usize;
-        let mut in_idx = None;
-        for idx in descriptor_start..words.len() {
-            if words.get(idx) == Some("in") {
-                in_idx = Some(idx);
-                break;
-            }
-        }
-        let in_idx = in_idx?;
-        let zone_tail = (in_idx..words.len())
-            .filter_map(|idx| words.get(idx))
-            .collect::<Vec<_>>();
-        let points_to_your_graveyard = zone_tail == ["in", "your", "graveyard"]
-            || zone_tail == ["in", "graveyard"]
-            || zone_tail == ["in", "the", "graveyard"];
-        if !points_to_your_graveyard {
-            return None;
-        }
-
-        let descriptor_words = (descriptor_start..in_idx)
-            .filter_map(|idx| words.get(idx))
-            .collect::<Vec<_>>();
-        if descriptor_words.is_empty() {
-            return None;
-        }
-
-        let mut card_types = Vec::new();
-        let mut subtypes = Vec::new();
-        for word in descriptor_words {
-            if let Some(card_type) = parse_card_type(word)
-                && !slice_contains(&card_types, &card_type)
-            {
-                card_types.push(card_type);
-            }
-            if let Some(subtype) = parse_subtype_word(word)
-                .or_else(|| str_strip_suffix(word, "s").and_then(parse_subtype_word))
-                && !slice_contains(&subtypes, &subtype)
-            {
-                subtypes.push(subtype);
-            }
-        }
-
-        if card_types.is_empty() && subtypes.is_empty() {
-            return None;
-        }
-
-        return Some(crate::ConditionExpr::CardInYourGraveyard {
-            card_types,
-            subtypes,
-        });
-    }
-    if words.slice_eq(
-        0,
-        &[
-            "activate",
-            "only",
-            "if",
-            "creatures",
-            "you",
-            "control",
-            "have",
-            "total",
-            "power",
-        ],
-    ) {
-        let threshold_word = words.get(9)?;
-        let threshold = parse_number_word_u32(threshold_word)?;
-        let tail = (10..words.len())
-            .filter_map(|idx| words.get(idx))
-            .collect::<Vec<_>>();
-        if tail == ["or", "greater"] {
-            return Some(crate::ConditionExpr::ControlCreaturesTotalPowerAtLeast(
-                threshold,
-            ));
-        }
-        return None;
-    }
-    if !words.slice_eq(0, &["activate", "only", "if", "you", "control"]) {
-        return None;
-    }
-
-    let control_tail = (5..words.len())
-        .filter_map(|idx| words.get(idx))
-        .collect::<Vec<_>>();
-    if slice_starts_with(&control_tail, &["a", "creature", "with", "power"])
-        || slice_starts_with(&control_tail, &["creature", "with", "power"])
-    {
-        let power_idx = find_index(&control_tail, |word| *word == "power")?;
-        let threshold = parse_number_word_u32(control_tail.get(power_idx + 1)?)?;
-        let tail = &control_tail[power_idx + 2..];
-        if tail == ["or", "greater"] {
-            return Some(crate::ConditionExpr::YouControl(
-                ObjectFilter::creature().with_power(crate::filter::Comparison::GreaterThanOrEqual(
-                    threshold as i32,
-                )),
-            ));
-        }
-        return None;
-    }
-    if let Some(count) = control_tail
-        .first()
-        .and_then(|word| parse_number_word_u32(word))
-    {
-        let tail = &control_tail[1..];
-        if tail == ["or", "more", "artifact"] || tail == ["or", "more", "artifacts"] {
-            let mut filter = ObjectFilter::artifact();
-            filter.zone = Some(Zone::Battlefield);
-            return Some(crate::ConditionExpr::PlayerControlsAtLeast {
-                player: PlayerFilter::You,
-                filter,
-                count,
-            });
-        }
-        if tail == ["or", "more", "land"] || tail == ["or", "more", "lands"] {
-            let mut filter = ObjectFilter::default().with_type(crate::types::CardType::Land);
-            filter.zone = Some(Zone::Battlefield);
-            return Some(crate::ConditionExpr::PlayerControlsAtLeast {
-                player: PlayerFilter::You,
-                filter,
-                count,
-            });
-        }
-    }
-    if control_tail == ["an", "artifact"]
-        || control_tail == ["a", "artifact"]
-        || control_tail == ["artifact"]
-        || control_tail == ["artifacts"]
-    {
-        let mut filter = ObjectFilter::artifact();
-        filter.zone = Some(Zone::Battlefield);
-        return Some(crate::ConditionExpr::PlayerControlsAtLeast {
-            player: PlayerFilter::You,
-            filter,
-            count: 1,
-        });
-    }
-
-    let mut subtypes = Vec::new();
-    for idx in 0..words.len() {
-        let Some(word) = words.get(idx) else {
-            continue;
-        };
-        if let Some(subtype) = parse_subtype_flexible(word)
-            && !slice_contains(&subtypes, &subtype)
-        {
-            subtypes.push(subtype);
-        }
-    }
-
-    if subtypes.is_empty() {
-        return None;
-    }
-
-    let mut combined: Option<crate::ConditionExpr> = None;
-    for subtype in subtypes {
-        let next = crate::ConditionExpr::YouControl(
-            ObjectFilter::default()
-                .with_type(crate::types::CardType::Land)
-                .with_subtype(subtype),
-        );
-        combined = Some(match combined {
-            Some(existing) => crate::ConditionExpr::Or(Box::new(existing), Box::new(next)),
-            None => next,
-        });
-    }
-
-    combined
+    activated_sentence_parsers::parse_activation_condition_lexed(tokens)
 }
 
 pub(crate) fn parse_cardinal_u32(word: &str) -> Option<u32> {
@@ -1893,19 +1439,7 @@ pub(crate) fn parse_cardinal_u32(word: &str) -> Option<u32> {
 }
 
 pub(crate) fn parse_activation_count_per_turn(words: &[&str]) -> Option<u32> {
-    let count = parse_named_number(words.first()?)?;
-    let mut index = 1usize;
-    if words
-        .get(index)
-        .is_some_and(|word| *word == "time" || *word == "times")
-    {
-        index += 1;
-    }
-    if words.get(index) == Some(&"each") && words.get(index + 1) == Some(&"turn") {
-        Some(count)
-    } else {
-        None
-    }
+    activated_sentence_parsers::parse_activation_count_per_turn(words)
 }
 
 pub(crate) fn parse_enters_tapped_line(

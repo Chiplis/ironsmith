@@ -1,12 +1,10 @@
 use crate::cards::builders::{CardTextError, EffectAst, IT_TAG, PlayerAst, PredicateAst, TagKey};
-use crate::cards::builders::{
-    contains_window as word_slice_has_sequence, find_index as find_token_index,
-    slice_contains as word_slice_has, slice_ends_with as word_slice_has_suffix,
-    slice_starts_with as word_slice_has_prefix,
-};
 use crate::effect::{Until, Value, ValueComparisonOperator};
 use crate::target::ObjectFilter;
 use crate::zone::Zone;
+use winnow::combinator::alt;
+use winnow::error::{ContextError, ErrMode};
+use winnow::prelude::*;
 
 use super::grammar::filters::{
     parse_object_filter_with_grammar_entrypoint_lexed,
@@ -14,11 +12,13 @@ use super::grammar::filters::{
 };
 use super::grammar::primitives as grammar;
 use super::grammar::values::parse_value_comparison_tokens;
-use super::lexer::{OwnedLexToken, token_word_refs, trim_lexed_commas};
+use super::lexer::{LexStream, OwnedLexToken, TokenKind, token_word_refs, trim_lexed_commas};
 use super::object_filters::merge_spell_filters;
 use super::token_primitives::{
-    TurnDurationPhrase, parse_i32_word_token, parse_lexed_prefix, parse_turn_duration_prefix,
-    parse_turn_duration_suffix,
+    TurnDurationPhrase, contains_window as word_slice_has_sequence, find_index as find_token_index,
+    parse_i32_word_token, parse_lexed_prefix, parse_turn_duration_prefix,
+    parse_turn_duration_suffix, slice_contains as word_slice_has,
+    slice_starts_with as word_slice_has_prefix,
 };
 use super::util::{token_index_for_word_index, trim_commas};
 use super::value_helpers::parse_value_from_lexed;
@@ -54,15 +54,222 @@ struct PermissionLead {
     allow_land: bool,
 }
 
-fn is_without_paying_mana_cost_tail(words: &[&str]) -> bool {
-    matches!(
-        words,
-        ["without", "paying", "its", "mana", "cost"]
-            | ["without", "paying", "their", "mana", "cost"]
-            | ["without", "paying", "their", "mana", "costs"]
-            | ["without", "paying", "that", "card", "mana", "cost"]
-            | ["without", "paying", "that", "cards", "mana", "cost"]
+fn parse_permission_lead_inner<'a>(
+    input: &mut LexStream<'a>,
+) -> Result<PermissionLead, ErrMode<ContextError>> {
+    alt((
+        grammar::phrase(&["you", "may", "cast"]).value(PermissionLead {
+            player: PlayerAst::You,
+            allow_land: false,
+        }),
+        grammar::phrase(&["you", "may", "play"]).value(PermissionLead {
+            player: PlayerAst::You,
+            allow_land: true,
+        }),
+        grammar::phrase(&["any", "player", "may", "cast"]).value(PermissionLead {
+            player: PlayerAst::Any,
+            allow_land: false,
+        }),
+        grammar::phrase(&["any", "player", "may", "play"]).value(PermissionLead {
+            player: PlayerAst::Any,
+            allow_land: true,
+        }),
+        grammar::phrase(&["cast"]).value(PermissionLead {
+            player: PlayerAst::Implicit,
+            allow_land: false,
+        }),
+        grammar::phrase(&["play"]).value(PermissionLead {
+            player: PlayerAst::Implicit,
+            allow_land: true,
+        }),
+    ))
+    .parse_next(input)
+}
+
+fn parse_tagged_cast_or_play_target_inner<'a>(
+    input: &mut LexStream<'a>,
+) -> Result<bool, ErrMode<ContextError>> {
+    alt((
+        alt((
+            grammar::phrase(&["spells", "from", "among", "those", "cards"]).value(false),
+            grammar::phrase(&["spells", "from", "among", "them"]).value(false),
+            grammar::phrase(&["one", "of", "those", "cards"]).value(false),
+            grammar::phrase(&["one", "of", "those", "card"]).value(false),
+            grammar::phrase(&["one", "of", "them"]).value(false),
+            grammar::phrase(&["it"]).value(false),
+            grammar::phrase(&["them"]).value(false),
+            grammar::phrase(&["that", "card"]).value(false),
+            grammar::phrase(&["those", "cards"]).value(false),
+        )),
+        alt((
+            grammar::phrase(&["that", "spell"]).value(false),
+            grammar::phrase(&["those", "spells"]).value(false),
+            grammar::phrase(&["that", "exiled", "card"]).value(false),
+            grammar::phrase(&["the", "exiled", "card"]).value(false),
+            grammar::phrase(&["the", "card"]).value(false),
+            grammar::phrase(&["the", "cards"]).value(false),
+            grammar::phrase(&["the", "copy"]).value(true),
+            grammar::phrase(&["that", "copy"]).value(true),
+            grammar::phrase(&["a", "copy"]).value(true),
+        )),
+    ))
+    .parse_next(input)
+}
+
+fn parse_without_paying_mana_cost_tail_inner<'a>(
+    input: &mut LexStream<'a>,
+) -> Result<(), ErrMode<ContextError>> {
+    alt((
+        grammar::phrase(&["without", "paying", "its", "mana", "cost"]),
+        grammar::phrase(&["without", "paying", "their", "mana", "cost"]),
+        grammar::phrase(&["without", "paying", "their", "mana", "costs"]),
+        grammar::phrase(&["without", "paying", "that", "card", "mana", "cost"]),
+        grammar::phrase(&["without", "paying", "that", "cards", "mana", "cost"]),
+    ))
+    .void()
+    .parse_next(input)
+}
+
+fn parse_tagged_permission_mana_value_condition_prefix_inner<'a>(
+    input: &mut LexStream<'a>,
+) -> Result<(), ErrMode<ContextError>> {
+    alt((
+        grammar::phrase(&["if", "it's", "a", "spell", "with", "mana", "value"]),
+        grammar::phrase(&["if", "it", "is", "a", "spell", "with", "mana", "value"]),
+        grammar::phrase(&["if", "the", "spell's", "mana", "value"]),
+        grammar::phrase(&["if", "the", "spells", "mana", "value"]),
+        grammar::phrase(&["if", "that", "spell's", "mana", "value"]),
+        grammar::phrase(&["if", "that", "spells", "mana", "value"]),
+        grammar::phrase(&["if", "its", "mana", "value"]),
+    ))
+    .void()
+    .parse_next(input)
+}
+
+fn parse_flash_tail_inner<'a>(
+    input: &mut LexStream<'a>,
+) -> Result<PermissionLifetime, ErrMode<ContextError>> {
+    alt((
+        grammar::phrase(&["as", "though", "they", "had", "flash"])
+            .value(PermissionLifetime::Static),
+        grammar::phrase(&["as", "though", "they", "have", "flash"])
+            .value(PermissionLifetime::Static),
+        grammar::phrase(&["this", "turn", "as", "though", "they", "had", "flash"])
+            .value(PermissionLifetime::ThisTurn),
+        grammar::phrase(&["this", "turn", "as", "though", "they", "have", "flash"])
+            .value(PermissionLifetime::ThisTurn),
+        grammar::phrase(&[
+            "until", "end", "of", "turn", "as", "though", "they", "had", "flash",
+        ])
+        .value(PermissionLifetime::UntilEndOfTurn),
+        grammar::phrase(&[
+            "until", "the", "end", "of", "turn", "as", "though", "they", "had", "flash",
+        ])
+        .value(PermissionLifetime::UntilEndOfTurn),
+    ))
+    .parse_next(input)
+}
+
+fn parse_exact_lexed_prefix<'a, O>(
+    tokens: &'a [OwnedLexToken],
+    parser: impl Parser<LexStream<'a>, O, ErrMode<ContextError>>,
+) -> Option<O> {
+    parse_lexed_prefix(tokens, parser).and_then(|(parsed, rest)| rest.is_empty().then_some(parsed))
+}
+
+fn strip_flash_tail_tokens<'a>(
+    tokens: &'a [OwnedLexToken],
+) -> Option<(&'a [OwnedLexToken], PermissionLifetime)> {
+    const PHRASES: &[&[&str]] = &[
+        &["as", "though", "they", "had", "flash"],
+        &["as", "though", "they", "have", "flash"],
+        &["this", "turn", "as", "though", "they", "had", "flash"],
+        &["this", "turn", "as", "though", "they", "have", "flash"],
+        &[
+            "until", "end", "of", "turn", "as", "though", "they", "had", "flash",
+        ],
+        &[
+            "until", "the", "end", "of", "turn", "as", "though", "they", "had", "flash",
+        ],
+    ];
+    let (phrase, rest) = grammar::strip_lexed_suffix_phrases(tokens, PHRASES)?;
+    let lifetime = match *phrase {
+        ["as", "though", "they", "had", "flash"] | ["as", "though", "they", "have", "flash"] => {
+            PermissionLifetime::Static
+        }
+        ["this", "turn", "as", "though", "they", "had", "flash"]
+        | ["this", "turn", "as", "though", "they", "have", "flash"] => PermissionLifetime::ThisTurn,
+        [
+            "until",
+            "end",
+            "of",
+            "turn",
+            "as",
+            "though",
+            "they",
+            "had",
+            "flash",
+        ]
+        | [
+            "until",
+            "the",
+            "end",
+            "of",
+            "turn",
+            "as",
+            "though",
+            "they",
+            "had",
+            "flash",
+        ] => PermissionLifetime::UntilEndOfTurn,
+        _ => return None,
+    };
+    Some((rest, lifetime))
+}
+
+fn strip_cast_from_hand_without_paying_mana_cost_suffix_tokens<'a>(
+    tokens: &'a [OwnedLexToken],
+) -> Option<&'a [OwnedLexToken]> {
+    grammar::strip_lexed_suffix_phrases(
+        tokens,
+        &[
+            &[
+                "from", "your", "hand", "without", "paying", "their", "mana", "costs",
+            ][..],
+            &[
+                "from", "your", "hand", "without", "paying", "their", "mana", "cost",
+            ][..],
+            &[
+                "from", "your", "hand", "without", "paying", "its", "mana", "cost",
+            ][..],
+        ],
     )
+    .map(|(_, rest)| rest)
+}
+
+fn strip_allow_any_color_for_cast_suffix_tokens<'a>(
+    tokens: &'a [OwnedLexToken],
+) -> Option<&'a [OwnedLexToken]> {
+    grammar::strip_lexed_suffix_phrases(
+        tokens,
+        &[
+            &[
+                "and", "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "them",
+            ][..],
+            &[
+                "and", "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "it",
+            ][..],
+            &[
+                "and", "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "that",
+                "spell",
+            ][..],
+        ],
+    )
+    .map(|(_, rest)| rest)
+}
+
+fn parse_without_paying_mana_cost_tail_tokens(tokens: &[OwnedLexToken]) -> bool {
+    parse_exact_lexed_prefix(tokens, parse_without_paying_mana_cost_tail_inner).is_some()
 }
 
 fn parse_permission_duration_prefix_tokens<'a>(
@@ -90,114 +297,25 @@ fn strip_prefix_phrase<'a>(
     grammar::parse_prefix(tokens, grammar::phrase(phrase)).map(|(_, rest)| rest)
 }
 
-fn strip_suffix_phrase<'a>(
-    tokens: &'a [OwnedLexToken],
-    phrase: &[&str],
-) -> Option<&'a [OwnedLexToken]> {
-    grammar::strip_lexed_suffix_phrase(tokens, phrase)
-}
-
 fn parse_permission_lead_tokens<'a>(
     tokens: &'a [OwnedLexToken],
 ) -> Option<(PermissionLead, &'a [OwnedLexToken])> {
-    for (phrase, lead) in [
-        (
-            &["you", "may", "cast"][..],
-            PermissionLead {
-                player: PlayerAst::You,
-                allow_land: false,
-            },
-        ),
-        (
-            &["you", "may", "play"][..],
-            PermissionLead {
-                player: PlayerAst::You,
-                allow_land: true,
-            },
-        ),
-        (
-            &["any", "player", "may", "cast"][..],
-            PermissionLead {
-                player: PlayerAst::Any,
-                allow_land: false,
-            },
-        ),
-        (
-            &["any", "player", "may", "play"][..],
-            PermissionLead {
-                player: PlayerAst::Any,
-                allow_land: true,
-            },
-        ),
-        (
-            &["cast"][..],
-            PermissionLead {
-                player: PlayerAst::Implicit,
-                allow_land: false,
-            },
-        ),
-        (
-            &["play"][..],
-            PermissionLead {
-                player: PlayerAst::Implicit,
-                allow_land: true,
-            },
-        ),
-    ] {
-        if let Some(rest) = strip_prefix_phrase(tokens, phrase) {
-            return Some((lead, rest));
-        }
-    }
-
-    None
+    parse_lexed_prefix(tokens, parse_permission_lead_inner)
 }
 
 fn parse_tagged_cast_or_play_target_tokens<'a>(
     tokens: &'a [OwnedLexToken],
 ) -> Option<(bool, &'a [OwnedLexToken])> {
-    for (phrase, as_copy) in [
-        (&["spells", "from", "among", "those", "cards"][..], false),
-        (&["spells", "from", "among", "them"][..], false),
-        (&["one", "of", "those", "cards"][..], false),
-        (&["one", "of", "those", "card"][..], false),
-        (&["one", "of", "them"][..], false),
-        (&["it"][..], false),
-        (&["them"][..], false),
-        (&["that", "card"][..], false),
-        (&["those", "cards"][..], false),
-        (&["that", "spell"][..], false),
-        (&["those", "spells"][..], false),
-        (&["that", "exiled", "card"][..], false),
-        (&["the", "exiled", "card"][..], false),
-        (&["the", "card"][..], false),
-        (&["the", "cards"][..], false),
-        (&["the", "copy"][..], true),
-        (&["that", "copy"][..], true),
-        (&["a", "copy"][..], true),
-    ] {
-        if let Some(rest) = strip_prefix_phrase(tokens, phrase) {
-            return Some((as_copy, rest));
-        }
-    }
-
-    None
+    parse_lexed_prefix(tokens, parse_tagged_cast_or_play_target_inner)
 }
 
 fn parse_tagged_permission_mana_value_condition_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<(ValueComparisonOperator, Value)> {
-    let after_prefix = [
-        &["if", "it's", "a", "spell", "with", "mana", "value"][..],
-        &["if", "it", "is", "a", "spell", "with", "mana", "value"][..],
-        &["if", "the", "spell's", "mana", "value"][..],
-        &["if", "the", "spells", "mana", "value"][..],
-        &["if", "that", "spell's", "mana", "value"][..],
-        &["if", "that", "spells", "mana", "value"][..],
-        &["if", "its", "mana", "value"][..],
-    ]
-    .into_iter()
-    .find_map(|phrase| strip_prefix_phrase(tokens, phrase))?;
-
+    let (_, after_prefix) = parse_lexed_prefix(
+        tokens,
+        parse_tagged_permission_mana_value_condition_prefix_inner,
+    )?;
     let (operator, operand_tokens) = parse_value_comparison_tokens(after_prefix)?;
     let (value, trailing) = parse_lexed_prefix(operand_tokens, parse_i32_word_token)?;
     if trailing.is_empty() {
@@ -211,30 +329,27 @@ fn parse_permission_tail_tokens(
     tokens: &[OwnedLexToken],
     default_lifetime: PermissionLifetime,
 ) -> Option<(PermissionLifetime, bool)> {
-    let words = token_word_refs(tokens);
-    if words.is_empty() {
+    if tokens.is_empty() {
         return Some((default_lifetime, false));
     }
-    if is_without_paying_mana_cost_tail(&words) {
+    if parse_without_paying_mana_cost_tail_tokens(tokens) {
         return Some((default_lifetime, true));
     }
 
     if let Some((duration, rest)) = parse_turn_duration_prefix(tokens) {
-        let rest_words = token_word_refs(rest);
-        if rest_words.is_empty() {
+        if rest.is_empty() {
             return Some((permission_lifetime_from_turn_duration(duration), false));
         }
-        if is_without_paying_mana_cost_tail(&rest_words) {
+        if parse_without_paying_mana_cost_tail_tokens(rest) {
             return Some((permission_lifetime_from_turn_duration(duration), true));
         }
     }
 
     if let Some((rest, duration)) = parse_turn_duration_suffix(tokens) {
-        let rest_words = token_word_refs(rest);
-        if rest_words.is_empty() {
+        if rest.is_empty() {
             return Some((permission_lifetime_from_turn_duration(duration), false));
         }
-        if is_without_paying_mana_cost_tail(&rest_words) {
+        if parse_without_paying_mana_cost_tail_tokens(rest) {
             return Some((permission_lifetime_from_turn_duration(duration), true));
         }
     }
@@ -308,6 +423,15 @@ pub(crate) fn parse_unsupported_play_cast_permission_clause(
 pub(crate) fn parse_permission_clause_spec_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PermissionClauseSpec>, CardTextError> {
+    let mut tokens = trim_lexed_commas(tokens);
+    while tokens
+        .last()
+        .is_some_and(|token| matches!(token.kind, TokenKind::Period))
+    {
+        tokens = &tokens[..tokens.len() - 1];
+        tokens = trim_lexed_commas(tokens);
+    }
+
     let clause_refs = token_word_refs(tokens);
     if clause_refs.is_empty() {
         return Ok(None);
@@ -449,28 +573,7 @@ pub(crate) fn parse_permission_clause_spec_lexed(
             (crate::grant::GrantSpec::flash_to_spells(), None)
         };
         if let Some(tail_tokens) = subject_tokens {
-            let tail_words = token_word_refs(tail_tokens);
-            if matches!(
-                tail_words.as_slice(),
-                ["as", "though", "they", "had", "flash"]
-                    | ["as", "though", "they", "have", "flash"]
-                    | ["this", "turn", "as", "though", "they", "had", "flash"]
-                    | ["this", "turn", "as", "though", "they", "have", "flash"]
-                    | [
-                        "until", "end", "of", "turn", "as", "though", "they", "had", "flash"
-                    ]
-                    | [
-                        "until", "the", "end", "of", "turn", "as", "though", "they", "had",
-                        "flash",
-                    ]
-            ) {
-                let lifetime = if word_slice_has_prefix(&tail_words, &["this", "turn"]) {
-                    PermissionLifetime::ThisTurn
-                } else if word_slice_has_prefix(&tail_words, &["until"]) {
-                    PermissionLifetime::UntilEndOfTurn
-                } else {
-                    PermissionLifetime::Static
-                };
+            if let Some(lifetime) = parse_exact_lexed_prefix(tail_tokens, parse_flash_tail_inner) {
                 return Ok(Some(PermissionClauseSpec::GrantBySpec {
                     player,
                     spec,
@@ -479,72 +582,24 @@ pub(crate) fn parse_permission_clause_spec_lexed(
             }
         }
 
-        let flash_tail_specs: &[(&[&str], PermissionLifetime)] = &[
-            (
-                &["as", "though", "they", "had", "flash"],
-                PermissionLifetime::Static,
-            ),
-            (
-                &["as", "though", "they", "have", "flash"],
-                PermissionLifetime::Static,
-            ),
-            (
-                &["this", "turn", "as", "though", "they", "had", "flash"],
-                PermissionLifetime::ThisTurn,
-            ),
-            (
-                &["this", "turn", "as", "though", "they", "have", "flash"],
-                PermissionLifetime::ThisTurn,
-            ),
-            (
-                &[
-                    "until", "end", "of", "turn", "as", "though", "they", "had", "flash",
-                ],
-                PermissionLifetime::UntilEndOfTurn,
-            ),
-            (
-                &[
-                    "until", "the", "end", "of", "turn", "as", "though", "they", "had", "flash",
-                ],
-                PermissionLifetime::UntilEndOfTurn,
-            ),
-        ];
-        for (tail, lifetime) in flash_tail_specs {
-            let Some(filter_tokens) = strip_suffix_phrase(rest_tokens, tail) else {
-                continue;
-            };
+        if let Some((filter_tokens, lifetime)) = strip_flash_tail_tokens(rest_tokens) {
             let filter_tokens = trim_lexed_commas(filter_tokens);
-            if filter_tokens.is_empty() {
-                continue;
+            if !filter_tokens.is_empty()
+                && let Some(filter) = parse_permission_subject_filter_tokens_lexed(filter_tokens)?
+            {
+                return Ok(Some(PermissionClauseSpec::GrantBySpec {
+                    player,
+                    spec: crate::grant::GrantSpec::flash_to_spells_matching(filter),
+                    lifetime,
+                }));
             }
-
-            let Some(filter) = parse_permission_subject_filter_tokens_lexed(filter_tokens)? else {
-                continue;
-            };
-
-            return Ok(Some(PermissionClauseSpec::GrantBySpec {
-                player,
-                spec: crate::grant::GrantSpec::flash_to_spells_matching(filter),
-                lifetime: *lifetime,
-            }));
         }
     }
 
     if prefixed_lifetime.is_none() && !allow_land {
-        for suffix in [
-            &[
-                "from", "your", "hand", "without", "paying", "their", "mana", "costs",
-            ][..],
-            &[
-                "from", "your", "hand", "without", "paying", "their", "mana", "cost",
-            ][..],
-            &[
-                "from", "your", "hand", "without", "paying", "its", "mana", "cost",
-            ][..],
-        ] {
-            let Some(filter_tokens) = strip_suffix_phrase(rest_tokens, suffix) else {
-                continue;
-            };
+        if let Some(filter_tokens) =
+            strip_cast_from_hand_without_paying_mana_cost_suffix_tokens(rest_tokens)
+        {
             let filter_tokens = trim_lexed_commas(filter_tokens);
             let filter_refs = token_word_refs(filter_tokens);
             if filter_refs.is_empty()
@@ -552,7 +607,7 @@ pub(crate) fn parse_permission_clause_spec_lexed(
                     .iter()
                     .any(|word| *word == "spell" || *word == "spells")
             {
-                continue;
+                return Ok(None);
             }
 
             let mut filter = ObjectFilter::nonland();
@@ -736,33 +791,10 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
         trimmed.remove(0);
     }
 
-    let any_color_suffixes: [&[&str]; 3] = [
-        &[
-            "and", "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "them",
-        ],
-        &[
-            "and", "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "it",
-        ],
-        &[
-            "and", "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "that", "spell",
-        ],
-    ];
     let mut allow_any_color_for_cast = false;
-    for suffix in any_color_suffixes {
-        let clause_refs = token_word_refs(&trimmed);
-        if word_slice_has_suffix(&clause_refs, suffix) {
-            allow_any_color_for_cast = true;
-            let kept_word_count = clause_refs.len() - suffix.len();
-            let Some(keep_until) = token_index_for_word_index(&trimmed, kept_word_count)
-                .or_else(|| (kept_word_count == clause_refs.len()).then_some(trimmed.len()))
-            else {
-                return Err(CardTextError::ParseError(
-                    "failed to split tagged cast clause before mana-spend suffix".to_string(),
-                ));
-            };
-            trimmed.truncate(keep_until);
-            break;
-        }
+    if let Some(stripped) = strip_allow_any_color_for_cast_suffix_tokens(&trimmed) {
+        allow_any_color_for_cast = true;
+        trimmed.truncate(stripped.len());
     }
 
     let conditional_tagged_permission = parse_permission_lead_tokens(&trimmed)

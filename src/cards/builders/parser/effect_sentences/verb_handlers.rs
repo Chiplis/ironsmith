@@ -4,10 +4,6 @@ use crate::cards::builders::{
     OwnedLexToken, PlayerAst, PredicateAst, ReturnControllerAst, SubjectAst, TagKey, TargetAst,
     TextSpan, Verb,
 };
-use crate::cards::builders::{
-    find_index, find_window_by, find_window_index, rfind_index, slice_contains, slice_ends_with,
-    slice_starts_with, str_strip_suffix,
-};
 use crate::effect::{ChoiceCount, Until, Value};
 use crate::mana::ManaSymbol;
 use crate::target::{
@@ -29,6 +25,10 @@ use super::super::keyword_static::{
     parse_where_x_value_clause,
 };
 use super::super::object_filters::parse_object_filter;
+use super::super::token_primitives::{
+    find_index, find_window_by, find_window_index, rfind_index, slice_contains, slice_ends_with,
+    slice_starts_with, str_strip_suffix,
+};
 use super::super::util::{
     is_article, is_source_reference_words, mana_pips_from_token, parse_card_type,
     parse_mana_symbol, parse_number, parse_number_word_u32, parse_target_count_range_prefix,

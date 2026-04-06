@@ -3,7 +3,13 @@ use super::super::grammar::values::parse_value_comparison_tokens;
 use super::super::lexer::{OwnedLexToken, TokenKind, lex_line, token_word_refs, trim_lexed_commas};
 use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed};
 use super::super::token_primitives::{
-    parse_simple_restriction_duration_prefix, parse_simple_restriction_duration_suffix,
+    contains_window as word_slice_contains_sequence, find_any_str_index as word_slice_find_any,
+    find_index as find_token_index, find_str_index as word_slice_find,
+    find_window_index as word_slice_find_sequence, parse_simple_restriction_duration_prefix,
+    parse_simple_restriction_duration_suffix, rfind_index as rfind_token_index,
+    slice_contains_all as word_slice_has_all, slice_contains_any as word_slice_contains_any,
+    slice_contains_str as word_slice_contains, slice_ends_with as word_slice_ends_with,
+    slice_starts_with as word_slice_starts_with,
 };
 use super::super::util::{
     helper_tag_for_tokens, is_article, parse_number, parse_subject, parse_target_phrase,
@@ -17,14 +23,6 @@ use crate::cards::builders::{
     CardTextError, CarryContext, ChoiceCount, EffectAst, IT_TAG, LibraryBottomOrderAst,
     LibraryConsultModeAst, LibraryConsultStopRuleAst, PlayerAst, ReturnControllerAst, SubjectAst,
     TagKey, TargetAst, TextSpan,
-};
-use crate::cards::builders::{
-    contains_window as word_slice_contains_sequence, find_any_str_index as word_slice_find_any,
-    find_index as find_token_index, find_str_index as word_slice_find,
-    find_window_index as word_slice_find_sequence, rfind_index as rfind_token_index,
-    slice_contains_all as word_slice_has_all, slice_contains_any as word_slice_contains_any,
-    slice_contains_str as word_slice_contains, slice_ends_with as word_slice_ends_with,
-    slice_starts_with as word_slice_starts_with,
 };
 use crate::effect::SearchSelectionMode;
 use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};

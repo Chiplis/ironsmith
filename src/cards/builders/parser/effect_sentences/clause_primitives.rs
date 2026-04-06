@@ -8,6 +8,11 @@ use super::super::permission_helpers::{
     parse_unsupported_play_cast_permission_clause, parse_until_end_of_turn_may_play_tagged_clause,
     parse_until_your_next_turn_may_play_tagged_clause,
 };
+use super::super::token_primitives::{
+    contains_window as word_slice_contains_sequence, find_index as find_token_index,
+    slice_contains_str as word_slice_contains, slice_ends_with as word_slice_ends_with,
+    slice_starts_with as word_slice_starts_with,
+};
 use super::super::util::{
     is_article, parse_subject, parse_target_phrase, span_from_tokens, trim_commas,
 };
@@ -18,11 +23,6 @@ use crate::cards::builders::{
     CardTextError, ClashOpponentAst, EffectAst, GrantedAbilityAst, IT_TAG, LineAst, OwnedLexToken,
     PlayerAst, PredicateAst, ReferenceImports, RetargetModeAst, SubjectAst, TagKey, TargetAst,
     TextSpan, TriggerSpec,
-};
-use crate::cards::builders::{
-    contains_window as word_slice_contains_sequence, find_index as find_token_index,
-    slice_contains_str as word_slice_contains, slice_ends_with as word_slice_ends_with,
-    slice_starts_with as word_slice_starts_with,
 };
 use crate::effect::ChoiceCount;
 use crate::mana::ManaSymbol;

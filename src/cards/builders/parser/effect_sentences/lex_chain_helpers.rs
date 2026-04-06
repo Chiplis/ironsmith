@@ -2,6 +2,11 @@
 
 use super::super::clause_support::parse_ability_line_lexed;
 use super::super::lexer::{OwnedLexToken, TokenKind, token_word_refs, trim_lexed_commas};
+use super::super::token_primitives::{
+    contains_window as word_slice_contains_sequence, find_str_by as find_word_index,
+    slice_contains_str as word_slice_contains, slice_ends_with as word_slice_ends_with,
+    slice_starts_with as word_slice_starts_with,
+};
 use super::super::util::{parse_zone_word, trim_commas};
 use super::chain_carry::{Verb, find_verb};
 use super::clause_pattern_helpers::{
@@ -11,11 +16,6 @@ use super::clause_pattern_helpers::{
 use super::clause_primitives::{
     parse_attack_or_block_this_turn_if_able_clause, parse_attack_this_turn_if_able_clause,
     parse_must_block_if_able_clause,
-};
-use crate::cards::builders::{
-    contains_window as word_slice_contains_sequence, find_str_by as find_word_index,
-    slice_contains_str as word_slice_contains, slice_ends_with as word_slice_ends_with,
-    slice_starts_with as word_slice_starts_with,
 };
 
 pub(crate) fn strip_leading_instead_prefix(tokens: &[OwnedLexToken]) -> Option<Vec<OwnedLexToken>> {

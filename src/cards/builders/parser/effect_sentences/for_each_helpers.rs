@@ -2,11 +2,6 @@ use crate::cards::builders::{
     CardTextError, ChoiceCount, EffectAst, IT_TAG, OwnedLexToken, PlayerAst, PredicateAst, TagKey,
     TargetAst,
 };
-use crate::cards::builders::{
-    contains_window as word_slice_contains_sequence, find_index as find_token_index,
-    find_str_by as find_word_index, find_window_index as find_word_sequence_index,
-    slice_contains_str as word_slice_contains, slice_starts_with as word_slice_starts_with,
-};
 use crate::effect::{Until, Value};
 use crate::target::{ObjectFilter, PlayerFilter};
 
@@ -15,6 +10,11 @@ use super::super::keyword_static::{
     parse_pt_modifier, parse_pt_modifier_values, parse_where_x_value_clause,
 };
 use super::super::parse_object_filter;
+use super::super::token_primitives::{
+    contains_window as word_slice_contains_sequence, find_index as find_token_index,
+    find_str_by as find_word_index, find_window_index as find_word_sequence_index,
+    slice_contains_str as word_slice_contains, slice_starts_with as word_slice_starts_with,
+};
 use super::super::util::{
     contains_until_end_of_turn, is_until_end_of_turn, parse_number,
     parse_target_count_range_prefix, parse_target_phrase, parse_value,

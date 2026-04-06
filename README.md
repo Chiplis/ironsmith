@@ -49,24 +49,25 @@ The entry point most tooling uses is `CardDefinitionBuilder::parse_text(...)` in
 The main hubs for that pipeline are:
 
 - [`src/cards/builders.rs`](src/cards/builders.rs): public builder surface and parser entrypoints
-- [`src/cards/builders/parse_rewrite/effect_pipeline.rs`](src/cards/builders/parse_rewrite/effect_pipeline.rs): rewrite parser/lowering orchestration used by the public builder APIs
-- [`src/cards/builders/parse_rewrite/parse.rs`](src/cards/builders/parse_rewrite/parse.rs): preprocessing, CST construction, semantic IR construction, and unsupported classification
-- [`src/cards/builders/parse_rewrite/lower.rs`](src/cards/builders/parse_rewrite/lower.rs): normalization and lowering from rewrite semantic items into runtime abilities/effects
-- [`src/cards/builders/parse_rewrite/lexer.rs`](src/cards/builders/parse_rewrite/lexer.rs): `logos` lexer and token/cursor types
-- [`src/cards/builders/parse_rewrite/leaf.rs`](src/cards/builders/parse_rewrite/leaf.rs): `winnow` leaf parsers for costs, mana groups, counts, and type-line structure
-- [`src/cards/builders/parse_rewrite/effect_sentences/`](src/cards/builders/parse_rewrite/effect_sentences): rewrite-owned effect sentence parsing
-- [`src/cards/builders/parse_rewrite/activation_and_restrictions.rs`](src/cards/builders/parse_rewrite/activation_and_restrictions.rs): rewrite-owned trigger, activation, and restriction parsing
-- [`src/cards/builders/parse_rewrite/keyword_static/`](src/cards/builders/parse_rewrite/keyword_static): rewrite-owned keyword and static-line parsing
-- [`src/cards/builders/parse_rewrite/object_filters.rs`](src/cards/builders/parse_rewrite/object_filters.rs): rewrite-owned object/filter parsing
-- [`src/cards/builders/parse_rewrite/reference_model.rs`](src/cards/builders/parse_rewrite/reference_model.rs): import/export model for pronoun and tag resolution across effect sequences
+- [`src/cards/builders/parser/effect_pipeline.rs`](src/cards/builders/parser/effect_pipeline.rs): parser/lowering orchestration used by the public builder APIs
+- [`src/cards/builders/parser/document_parser.rs`](src/cards/builders/parser/document_parser.rs): preprocessing, CST construction, semantic IR construction, and unsupported classification
+- [`src/cards/builders/parser/lower.rs`](src/cards/builders/parser/lower.rs): normalization and lowering from parser semantic items into runtime abilities/effects
+- [`src/cards/builders/parser/lexer.rs`](src/cards/builders/parser/lexer.rs): `logos` lexer and token/cursor types
+- [`src/cards/builders/parser/grammar/`](src/cards/builders/parser/grammar): `winnow` token-stream grammars and shared parser primitives
+- [`src/cards/builders/parser/effect_sentences/`](src/cards/builders/parser/effect_sentences): parser-owned effect sentence parsing
+- [`src/cards/builders/parser/activation_and_restrictions.rs`](src/cards/builders/parser/activation_and_restrictions.rs): parser-owned trigger, activation, and restriction parsing
+- [`src/cards/builders/parser/keyword_static/`](src/cards/builders/parser/keyword_static): parser-owned keyword and static-line parsing
+- [`src/cards/builders/parser/object_filters.rs`](src/cards/builders/parser/object_filters.rs): parser-owned object/filter parsing
+- [`src/cards/builders/parser/reference_model.rs`](src/cards/builders/parser/reference_model.rs): import/export model for pronoun and tag resolution across effect sequences
 
 ### Parser Design Notes
 
 Several project choices are worth calling out because they strongly shape how parser work gets added:
 
-- The parser is rule-index driven, not a giant chain of ad hoc `if` statements. [`src/cards/builders/parse_rewrite/rule_engine.rs`](src/cards/builders/parse_rewrite/rule_engine.rs) defines reusable keyed rule tables with priorities and diagnostics for unsupported patterns.
+- The parser is rule-index driven, not a giant chain of ad hoc `if` statements. [`src/cards/builders/parser/rule_engine.rs`](src/cards/builders/parser/rule_engine.rs) defines reusable keyed rule tables with priorities and diagnostics for unsupported patterns.
+- Tokenization and parsing are intentionally separate: [`src/cards/builders/parser/lexer.rs`](src/cards/builders/parser/lexer.rs) owns `logos` tokenization, while the `grammar` and `token_primitives` modules provide the shared `winnow` token-stream parser toolkit used above that boundary.
 - Reference tracking is explicit. The `ReferenceEnv`, `ReferenceImports`, and `ReferenceExports` model lets a sequence like “destroy target creature. Its controller loses 2 life.” carry meaning across clauses without fragile string hacks.
-- The pipeline distinguishes parsing from lowering, and rewrite semantic items already carry parsed runtime payloads for the main line families. Lowering consumes those payloads directly instead of reparsing semantic line text.
+- The pipeline distinguishes parsing from lowering, and parser semantic items already carry parsed runtime payloads for the main line families. Lowering consumes those payloads directly instead of reparsing semantic line text.
 - Unsupported content can be preserved intentionally. `parse_text_allow_unsupported(...)` and parser annotations are there so tooling can keep moving while coverage improves.
 
 ### Hand-Written Definitions Still Go Through The Parser
@@ -613,7 +614,7 @@ That is why the repo contains both:
 If you are new to the codebase, the most productive reading order is usually:
 
 1. [`src/cards/builders.rs`](src/cards/builders.rs)
-2. [`src/cards/builders/parse_rewrite/effect_pipeline.rs`](src/cards/builders/parse_rewrite/effect_pipeline.rs)
+2. [`src/cards/builders/parser/effect_pipeline.rs`](src/cards/builders/parser/effect_pipeline.rs)
 3. [`src/effect.rs`](src/effect.rs)
 4. [`src/events/mod.rs`](src/events/mod.rs)
 5. [`src/event_processor.rs`](src/event_processor.rs)

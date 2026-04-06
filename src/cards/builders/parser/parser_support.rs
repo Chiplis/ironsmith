@@ -1,10 +1,14 @@
 use crate::cards::builders::{CardDefinitionBuilder, ParsedRestrictions};
 use crate::types::CardType;
+use winnow::combinator::{alt, opt};
+use winnow::error::{ContextError, ErrMode};
+use winnow::prelude::*;
 
 use super::activation_and_restrictions::{
     is_activate_only_restriction_sentence_lexed, is_trigger_only_restriction_sentence_lexed,
 };
-use super::lexer::{OwnedLexToken, lex_line};
+use super::grammar::primitives as grammar;
+use super::lexer::{LexStream, OwnedLexToken, lex_line, render_token_slice, split_lexed_sentences};
 
 pub(crate) fn split_text_for_parse(
     raw_text: &str,
@@ -53,6 +57,22 @@ pub(crate) fn looks_like_reflexive_followup_intro_lexed(tokens: &[OwnedLexToken]
 }
 
 fn split_sentences_for_parse(line: &str, _line_index: usize) -> Vec<String> {
+    if let Ok(tokens) = lex_line(line, _line_index) {
+        let sentences = split_lexed_sentences(&tokens)
+            .into_iter()
+            .map(render_token_slice)
+            .map(|sentence| sentence.trim().to_string())
+            .filter(|sentence| !sentence.is_empty())
+            .collect::<Vec<_>>();
+        if !sentences.is_empty() {
+            return sentences;
+        }
+    }
+
+    split_sentences_for_parse_fallback(line)
+}
+
+fn split_sentences_for_parse_fallback(line: &str) -> Vec<String> {
     let mut sentences = Vec::new();
     let mut current = String::new();
     let mut paren_depth = 0u32;
@@ -95,121 +115,108 @@ fn split_sentences_for_parse(line: &str, _line_index: usize) -> Vec<String> {
     sentences
 }
 
-pub(crate) fn is_at_trigger_intro(tokens: &[OwnedLexToken], idx: usize) -> bool {
-    if !tokens.get(idx).is_some_and(|token| token.is_word("at")) {
-        return false;
-    }
-
-    let second = tokens.get(idx + 1).and_then(OwnedLexToken::as_word);
-    let third = tokens.get(idx + 2).and_then(OwnedLexToken::as_word);
-    matches!(
-        (second, third),
-        (Some("beginning"), _)
-            | (Some("end"), _)
-            | (Some("the"), Some("beginning"))
-            | (Some("the"), Some("end"))
+fn parse_at_trigger_intro_inner<'a>(
+    input: &mut LexStream<'a>,
+) -> Result<(), ErrMode<ContextError>> {
+    (
+        grammar::kw("at"),
+        opt(grammar::kw("the")),
+        alt((grammar::kw("beginning"), grammar::kw("end"))),
     )
+        .void()
+        .parse_next(input)
+}
+
+fn starts_with_lexed_parser<'a>(
+    tokens: &'a [OwnedLexToken],
+    start_idx: usize,
+    parser: impl Parser<LexStream<'a>, (), ErrMode<ContextError>>,
+) -> bool {
+    tokens
+        .get(start_idx..)
+        .is_some_and(|tail| grammar::parse_prefix(tail, parser).is_some())
+}
+
+pub(crate) fn is_at_trigger_intro(tokens: &[OwnedLexToken], idx: usize) -> bool {
+    starts_with_lexed_parser(tokens, idx, parse_at_trigger_intro_inner)
 }
 
 pub(crate) fn is_at_trigger_intro_lexed(tokens: &[OwnedLexToken], idx: usize) -> bool {
-    if !tokens.get(idx).is_some_and(|token| token.is_word("at")) {
-        return false;
-    }
+    starts_with_lexed_parser(tokens, idx, parse_at_trigger_intro_inner)
+}
 
-    let second = tokens.get(idx + 1).and_then(OwnedLexToken::as_word);
-    let third = tokens.get(idx + 2).and_then(OwnedLexToken::as_word);
-    matches!(
-        (second, third),
-        (Some("beginning"), _)
-            | (Some("end"), _)
-            | (Some("the"), Some("beginning"))
-            | (Some("the"), Some("end"))
+fn parse_delayed_next_turn_intro_inner<'a>(
+    input: &mut LexStream<'a>,
+) -> Result<(), ErrMode<ContextError>> {
+    (
+        grammar::kw("at"),
+        opt(grammar::kw("the")),
+        grammar::kw("beginning"),
+        grammar::kw("of"),
+        opt(grammar::kw("the")),
+        opt(grammar::kw("your")),
+        grammar::kw("next"),
+        alt((
+            grammar::phrase(&["end", "step"]),
+            grammar::kw("upkeep").void(),
+        )),
     )
+        .void()
+        .parse_next(input)
 }
 
 fn looks_like_delayed_next_turn_intro_lexed(tokens: &[OwnedLexToken]) -> bool {
-    let mut idx = 0usize;
-    if !tokens.get(idx).is_some_and(|token| token.is_word("at")) {
-        return false;
-    }
-    idx += 1;
+    grammar::parse_prefix(tokens, parse_delayed_next_turn_intro_inner).is_some()
+}
 
-    if tokens.get(idx).is_some_and(|token| token.is_word("the")) {
-        idx += 1;
-    }
-    if !tokens
-        .get(idx)
-        .is_some_and(|token| token.is_word("beginning"))
-    {
-        return false;
-    }
-    idx += 1;
-    if !tokens.get(idx).is_some_and(|token| token.is_word("of")) {
-        return false;
-    }
-    idx += 1;
+fn parse_when_one_or_more_followup_head_inner<'a>(
+    input: &mut LexStream<'a>,
+) -> Result<(), ErrMode<ContextError>> {
+    (
+        alt((grammar::kw("when"), grammar::kw("whenever"))),
+        grammar::kw("one"),
+        grammar::kw("or"),
+        grammar::kw("more"),
+    )
+        .void()
+        .parse_next(input)
+}
 
-    if tokens.get(idx).is_some_and(|token| token.is_word("the")) {
-        idx += 1;
-    }
-    if tokens.get(idx).is_some_and(|token| token.is_word("your")) {
-        idx += 1;
-    }
-
-    if !tokens.get(idx).is_some_and(|token| token.is_word("next")) {
-        return false;
-    }
-
-    if tokens
-        .get(idx + 1)
-        .is_some_and(|token| token.is_word("end"))
-        && tokens
-            .get(idx + 2)
-            .is_some_and(|token| token.is_word("step"))
-    {
-        return true;
-    }
-
+fn token_slice_contains_phrase(tokens: &[OwnedLexToken], phrase: &'static [&'static str]) -> bool {
     tokens
-        .get(idx + 1)
-        .is_some_and(|token| token.is_word("upkeep"))
+        .iter()
+        .enumerate()
+        .any(|(idx, _)| grammar::parse_prefix(&tokens[idx..], grammar::phrase(phrase)).is_some())
 }
 
 fn looks_like_when_one_or_more_this_way_followup_lexed(tokens: &[OwnedLexToken]) -> bool {
-    if !(starts_with_token_word_refs(tokens, &["when", "one", "or", "more"])
-        || starts_with_token_word_refs(tokens, &["whenever", "one", "or", "more"]))
-    {
-        return false;
-    }
+    starts_with_lexed_parser(tokens, 0, parse_when_one_or_more_followup_head_inner)
+        && token_slice_contains_phrase(tokens, &["this", "way"])
+}
 
-    let mut idx = 0usize;
-    while idx + 1 < tokens.len() {
-        if tokens[idx].is_word("this") && tokens[idx + 1].is_word("way") {
-            return true;
-        }
-        idx += 1;
-    }
-
-    false
+fn parse_when_you_do_followup_intro_inner<'a>(
+    input: &mut LexStream<'a>,
+) -> Result<(), ErrMode<ContextError>> {
+    alt((
+        grammar::phrase(&["when", "you", "do"]),
+        grammar::phrase(&["whenever", "you", "do"]),
+    ))
+    .void()
+    .parse_next(input)
 }
 
 fn looks_like_when_you_do_followup_lexed(tokens: &[OwnedLexToken]) -> bool {
-    starts_with_token_word_refs(tokens, &["when", "you", "do"])
-        || starts_with_token_word_refs(tokens, &["whenever", "you", "do"])
+    starts_with_lexed_parser(tokens, 0, parse_when_you_do_followup_intro_inner)
+}
+
+fn parse_otherwise_followup_intro_inner<'a>(
+    input: &mut LexStream<'a>,
+) -> Result<(), ErrMode<ContextError>> {
+    grammar::kw("otherwise").void().parse_next(input)
 }
 
 fn looks_like_otherwise_followup_lexed(tokens: &[OwnedLexToken]) -> bool {
-    tokens
-        .first()
-        .is_some_and(|token| token.is_word("otherwise"))
-}
-
-fn starts_with_token_word_refs(tokens: &[OwnedLexToken], expected: &[&str]) -> bool {
-    tokens.len() >= expected.len()
-        && tokens
-            .iter()
-            .zip(expected.iter())
-            .all(|(token, expected)| token.is_word(expected))
+    starts_with_lexed_parser(tokens, 0, parse_otherwise_followup_intro_inner)
 }
 
 fn queue_restriction(

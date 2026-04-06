@@ -108,74 +108,6 @@ fn is_sentence_quote(token: &LexToken) -> bool {
     token.kind == TokenKind::Quote && matches!(token.slice.as_str(), "\"" | "“" | "”")
 }
 
-fn token_slice_contains_word(tokens: &[LexToken], expected: &'static str) -> bool {
-    tokens.iter().enumerate().any(|(idx, _)| {
-        primitives::parse_prefix(&tokens[idx..], primitives::kw(expected)).is_some()
-    })
-}
-
-fn token_slice_contains_phrase(tokens: &[LexToken], phrase: &'static [&'static str]) -> bool {
-    tokens.iter().enumerate().any(|(idx, _)| {
-        primitives::parse_prefix(&tokens[idx..], primitives::phrase(phrase)).is_some()
-    })
-}
-
-fn token_slice_contains_any_phrase(
-    tokens: &[LexToken],
-    phrases: &'static [&'static [&'static str]],
-) -> bool {
-    phrases
-        .iter()
-        .any(|phrase| token_slice_contains_phrase(tokens, phrase))
-}
-
-fn find_token_index(
-    tokens: &[LexToken],
-    mut predicate: impl FnMut(&LexToken) -> bool,
-) -> Option<usize> {
-    let mut idx = 0usize;
-    while idx < tokens.len() {
-        if predicate(&tokens[idx]) {
-            return Some(idx);
-        }
-        idx += 1;
-    }
-    None
-}
-
-fn rfind_token_index(
-    tokens: &[LexToken],
-    mut predicate: impl FnMut(&LexToken) -> bool,
-) -> Option<usize> {
-    let mut idx = tokens.len();
-    while idx > 0 {
-        idx -= 1;
-        if predicate(&tokens[idx]) {
-            return Some(idx);
-        }
-    }
-    None
-}
-
-fn find_word_phrase_token_index(
-    tokens: &[OwnedLexToken],
-    phrase: &'static [&'static str],
-) -> Option<usize> {
-    if phrase.is_empty() {
-        return None;
-    }
-
-    let mut idx = 0usize;
-    while idx < tokens.len() {
-        if primitives::parse_prefix(&tokens[idx..], primitives::phrase(phrase)).is_some() {
-            return Some(idx);
-        }
-        idx += 1;
-    }
-
-    None
-}
-
 fn parse_remove_mode_only_prefix<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<(), ErrMode<ContextError>> {
@@ -184,7 +116,7 @@ fn parse_remove_mode_only_prefix<'a>(
     Ok(())
 }
 
-fn compat_normalized_parser_word(token: &LexToken) -> Option<String> {
+fn normalized_parser_word(token: &LexToken) -> Option<String> {
     match token.kind {
         TokenKind::Word | TokenKind::Number | TokenKind::Tilde | TokenKind::Half => Some(
             token
@@ -200,7 +132,7 @@ fn compat_normalized_parser_word(token: &LexToken) -> Option<String> {
 fn parser_text_non_article_words(tokens: &[LexToken]) -> Vec<String> {
     tokens
         .iter()
-        .filter_map(compat_normalized_parser_word)
+        .filter_map(normalized_parser_word)
         .filter(|word| !matches!(word.as_str(), "a" | "an" | "the"))
         .collect()
 }
@@ -231,20 +163,20 @@ pub(crate) fn split_metadata_line_lexed(tokens: &[OwnedLexToken]) -> Option<Meta
 }
 
 pub(crate) fn looks_like_pact_next_upkeep_line_lexed(tokens: &[OwnedLexToken]) -> bool {
-    token_slice_contains_phrase(
+    primitives::contains_phrase(
         tokens,
         &["at", "the", "beginning", "of", "your", "next", "upkeep"],
-    ) && token_slice_contains_phrase(tokens, &["lose", "the", "game"])
-        && (token_slice_contains_phrase(tokens, &["if", "you", "dont"])
-            || token_slice_contains_phrase(tokens, &["if", "you", "don't"])
-            || token_slice_contains_phrase(tokens, &["if", "you", "do", "not"]))
+    ) && primitives::contains_phrase(tokens, &["lose", "the", "game"])
+        && (primitives::contains_phrase(tokens, &["if", "you", "dont"])
+            || primitives::contains_phrase(tokens, &["if", "you", "don't"])
+            || primitives::contains_phrase(tokens, &["if", "you", "do", "not"]))
 }
 
 pub(crate) fn looks_like_untap_all_during_each_other_players_untap_step_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {
     primitives::parse_prefix(tokens, primitives::phrase(&["untap", "all"])).is_some()
-        && token_slice_contains_any_phrase(
+        && primitives::contains_any_phrase(
             tokens,
             &[
                 &["during", "each", "other", "player's", "untap", "step"],
@@ -254,13 +186,13 @@ pub(crate) fn looks_like_untap_all_during_each_other_players_untap_step_line_lex
 }
 
 pub(crate) fn looks_like_next_turn_cant_cast_line_lexed(tokens: &[OwnedLexToken]) -> bool {
-    token_slice_contains_any_phrase(
+    primitives::contains_any_phrase(
         tokens,
         &[
             &["during", "that", "player's", "next", "turn"],
             &["during", "that", "players", "next", "turn"],
         ],
-    ) && token_slice_contains_any_phrase(
+    ) && primitives::contains_any_phrase(
         tokens,
         &[
             &["can't", "cast"],
@@ -271,7 +203,7 @@ pub(crate) fn looks_like_next_turn_cant_cast_line_lexed(tokens: &[OwnedLexToken]
 }
 
 pub(crate) fn looks_like_divvy_statement_line_lexed(tokens: &[OwnedLexToken]) -> bool {
-    token_slice_contains_any_phrase(
+    primitives::contains_any_phrase(
         tokens,
         &[
             &["into", "two", "piles"],
@@ -295,9 +227,9 @@ pub(crate) fn looks_like_vote_statement_line_lexed(tokens: &[OwnedLexToken]) -> 
             primitives::phrase(&["each", "player", "secretly", "votes"]),
         )
         .is_some())
-        && (token_slice_contains_word(tokens, "vote")
-            || token_slice_contains_word(tokens, "votes")
-            || token_slice_contains_word(tokens, "voting"))
+        && (primitives::contains_word(tokens, "vote")
+            || primitives::contains_word(tokens, "votes")
+            || primitives::contains_word(tokens, "voting"))
 }
 
 fn is_statement_verb_word(word: &str) -> bool {
@@ -392,11 +324,11 @@ pub(crate) fn looks_like_generic_static_line_lexed(tokens: &[OwnedLexToken]) -> 
         || primitives::parse_prefix(tokens, primitives::phrase(&["other"])).is_some()
         || primitives::parse_prefix(tokens, primitives::phrase(&["each"])).is_some()
         || primitives::parse_prefix(tokens, primitives::phrase(&["as", "long", "as"])).is_some()
-        || token_slice_contains_word(tokens, "can't")
-        || token_slice_contains_word(tokens, "can")
-        || token_slice_contains_word(tokens, "has")
-        || token_slice_contains_word(tokens, "have")
-        || token_slice_contains_phrase(tokens, &["maximum", "hand", "size"])
+        || primitives::contains_word(tokens, "can't")
+        || primitives::contains_word(tokens, "can")
+        || primitives::contains_word(tokens, "has")
+        || primitives::contains_word(tokens, "have")
+        || primitives::contains_phrase(tokens, &["maximum", "hand", "size"])
 }
 
 fn parse_modeled_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -605,6 +537,22 @@ pub(crate) fn parse_if_result_predicate(tokens: &[OwnedLexToken]) -> Option<IfRe
 fn parse_sentence_segment_len<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<usize, ErrMode<ContextError>> {
+    fn quoted_period_continues_sentence(next: Option<&LexToken>) -> bool {
+        match next {
+            Some(token) if token.kind == TokenKind::Comma => true,
+            Some(token)
+                if token.kind == TokenKind::Word
+                    && matches!(
+                        token.parser_text(),
+                        "and" | "during" | "for" | "this" | "until" | "where" | "with" | "without"
+                    ) =>
+            {
+                true
+            }
+            _ => false,
+        }
+    }
+
     let initial_len = input.len();
     let mut inside_quotes = false;
     let mut last_inner_token_was_period = false;
@@ -612,7 +560,10 @@ fn parse_sentence_segment_len<'a>(
     while let Some(token) = input.peek_token() {
         if is_sentence_quote(token) {
             primitives::quote().parse_next(input)?;
-            if inside_quotes && last_inner_token_was_period {
+            if inside_quotes
+                && last_inner_token_was_period
+                && !quoted_period_continues_sentence(input.peek_token())
+            {
                 let consumed = initial_len - input.len();
                 return Ok(consumed);
             }
@@ -664,7 +615,7 @@ pub(crate) fn split_lexed_sentences<'a>(tokens: &'a [OwnedLexToken]) -> Vec<&'a 
 }
 
 pub(crate) fn scan_modal_header_flags(tokens: &[OwnedLexToken]) -> ModalHeaderFlags {
-    let mode_must_be_unchosen_this_turn = token_slice_contains_any_phrase(
+    let mode_must_be_unchosen_this_turn = primitives::contains_any_phrase(
         tokens,
         &[
             &["that", "hasnt", "been", "chosen", "this", "turn"],
@@ -673,7 +624,7 @@ pub(crate) fn scan_modal_header_flags(tokens: &[OwnedLexToken]) -> ModalHeaderFl
         ],
     );
     let mode_must_be_unchosen = mode_must_be_unchosen_this_turn
-        || token_slice_contains_any_phrase(
+        || primitives::contains_any_phrase(
             tokens,
             &[
                 &["that", "hasnt", "been", "chosen"],
@@ -683,9 +634,9 @@ pub(crate) fn scan_modal_header_flags(tokens: &[OwnedLexToken]) -> ModalHeaderFl
         );
 
     ModalHeaderFlags {
-        commander_allows_both: token_slice_contains_word(tokens, "commander")
-            && token_slice_contains_word(tokens, "both"),
-        same_mode_more_than_once: token_slice_contains_phrase(
+        commander_allows_both: primitives::contains_word(tokens, "commander")
+            && primitives::contains_word(tokens, "both"),
+        same_mode_more_than_once: primitives::contains_phrase(
             tokens,
             &["same", "mode", "more", "than", "once"],
         ),
@@ -706,7 +657,7 @@ pub(crate) fn split_leading_result_prefix_lexed<'a>(
         return None;
     };
 
-    let comma_idx = find_token_index(trimmed, |token| token.kind == TokenKind::Comma)?;
+    let comma_idx = primitives::find_token_index(trimmed, |token| token.kind == TokenKind::Comma)?;
     if comma_idx <= 1 || comma_idx + 1 >= trimmed.len() {
         return None;
     }
@@ -746,7 +697,7 @@ pub(crate) fn split_if_clause_lexed(
     mut parse_effects: impl FnMut(&[OwnedLexToken]) -> Result<Vec<EffectAst>, CardTextError>,
 ) -> Result<IfClauseSplitSpec, CardTextError> {
     if let Some(effect_token_idx) =
-        find_word_phrase_token_index(tokens, &["exile", "them", "then", "meld", "them", "into"])
+        primitives::find_phrase_start(tokens, &["exile", "them", "then", "meld", "them", "into"])
     {
         let predicate_tokens = trim_lexed_commas(&tokens[1..effect_token_idx]);
         let predicate_tokens_without_commas = predicate_tokens
@@ -962,7 +913,7 @@ fn split_trailing_predicate_clause_lexed<'a>(
     tokens: &'a [OwnedLexToken],
     keyword: &'static str,
 ) -> Option<TrailingIfClauseSpec<'a>> {
-    let split_idx = rfind_token_index(tokens, |token| token.is_word(keyword))?;
+    let split_idx = primitives::rfind_token_index(tokens, |token| token.is_word(keyword))?;
     if split_idx == 0 || split_idx + 1 >= tokens.len() {
         return None;
     }
@@ -1088,9 +1039,10 @@ pub(crate) fn split_state_triggered_clause_lexed<'a>(
 pub(crate) fn split_trailing_modal_gate_clause<'a>(
     tokens: &'a [OwnedLexToken],
 ) -> Option<TrailingModalGateSpec<'a>> {
-    let sentence_start = rfind_token_index(tokens, |token| token.kind == TokenKind::Period)
-        .map(|idx| idx + 1)
-        .unwrap_or(0);
+    let sentence_start =
+        primitives::rfind_token_index(tokens, |token| token.kind == TokenKind::Period)
+            .map(|idx| idx + 1)
+            .unwrap_or(0);
     let sentence_tokens = trim_lexed_commas(&tokens[sentence_start..]);
     if sentence_tokens.is_empty() {
         return None;
@@ -1148,10 +1100,8 @@ fn parse_modal_header_choose_spec_inner<'a>(
         else {
             continue;
         };
-        let x_clause_start = choose_tail.iter().enumerate().find_map(|(idx, _)| {
-            primitives::parse_prefix(&choose_tail[idx..], primitives::phrase(&["x", "is"]))
-                .map(|_| choose_idx + 1 + idx)
-        });
+        let x_clause_start = primitives::find_phrase_start(choose_tail, &["x", "is"])
+            .map(|idx| choose_idx + 1 + idx);
 
         input.finish();
         return Ok(Some(ModalHeaderChooseSpec {

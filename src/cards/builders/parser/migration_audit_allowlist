@@ -1,3 +1,3 @@
 # Format: kind|path|max_hits|remove_when
-# Remaining debt is intentionally tracked per file until the follow-up migration lands.
-raw_string_after_lex|src/cards/builders/parser/effect_sentences/dispatch_entry.rs|33|PR4-followup-remove-lexed-string-probes-from-dispatch-entry
+# Keep this file even when empty so new parser debt has an obvious place to be
+# documented, reviewed, and removed intentionally.

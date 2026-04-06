@@ -44,6 +44,7 @@ pub(crate) mod conditionals;
 mod creation_handlers;
 mod dispatch_entry;
 mod dispatch_inner;
+mod divvy;
 mod for_each_helpers;
 mod gain_ability;
 mod lex_chain_helpers;

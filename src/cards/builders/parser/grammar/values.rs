@@ -6,11 +6,9 @@ use winnow::error::{
     ContextError, ErrMode, ModalResult as WResult, ParserError, StrContext, StrContextValue,
 };
 use winnow::prelude::*;
-use winnow::token::{one_of, take_while};
+use winnow::token::one_of;
 
-use crate::cards::builders::{
-    CardTextError, IT_TAG, TagKey, find_index, find_window_index, slice_contains, slice_starts_with,
-};
+use crate::cards::builders::{CardTextError, IT_TAG, TagKey};
 use crate::effect::{Value, ValueComparisonOperator};
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::target::{ChooseSpec, PlayerFilter};
@@ -18,8 +16,9 @@ use crate::types::{CardType, Subtype, Supertype};
 
 #[cfg(test)]
 use super::super::effect_sentences::parse_subtype_word;
-use super::super::lexer::{
-    LexStream, OwnedLexToken, TokenKind, lex_line, parser_token_word_refs,
+use super::super::lexer::{LexStream, OwnedLexToken, TokenKind, lex_line, parser_token_word_refs};
+use super::super::token_primitives::{
+    find_index, find_window_index, slice_contains, slice_starts_with,
 };
 use super::super::util::{
     parse_number_word_i32, parse_value_expr_words, token_index_for_word_index,
@@ -36,15 +35,6 @@ pub(crate) struct TypeLineCst {
     pub(crate) subtypes: Vec<Subtype>,
 }
 
-fn parse_count_word<'a>(input: &mut &'a str) -> WResult<&'a str> {
-    take_while(1.., |ch: char| {
-        ch.is_ascii_alphabetic() || ch == '\'' || ch == '-'
-    })
-    .context(StrContext::Label("word"))
-    .context(StrContext::Expected(StrContextValue::Description("word")))
-    .parse_next(input)
-}
-
 pub(crate) fn count_word_value(word: &str) -> Option<u32> {
     match word.to_ascii_lowercase().as_str() {
         "a" | "an" | "one" => Some(1),
@@ -59,18 +49,6 @@ pub(crate) fn count_word_value(word: &str) -> Option<u32> {
         "ten" => Some(10),
         _ => None,
     }
-}
-
-pub(crate) fn parse_count_inner(input: &mut &str) -> WResult<u32> {
-    alt((
-        digit1.try_map(str::parse::<u32>),
-        parse_count_word.verify_map(count_word_value),
-    ))
-    .context(StrContext::Label("count"))
-    .context(StrContext::Expected(StrContextValue::Description(
-        "numeric or counted quantity",
-    )))
-    .parse_next(input)
 }
 
 fn spaced<'a, O, E, P>(parser: P) -> impl Parser<&'a str, O, E>
@@ -192,15 +170,13 @@ pub(crate) fn parse_mana_symbol_group(raw: &str) -> Result<Vec<ManaSymbol>, Card
 
 #[cfg(test)]
 pub(crate) fn parse_mana_symbol_group_rewrite(raw: &str) -> Result<Vec<ManaSymbol>, CardTextError> {
-    parse_mana_symbol_group(raw)
-}
-
-fn parse_count_text(raw: &str, label: &str) -> Result<u32, CardTextError> {
-    finish_text_parse(raw, spaced(parse_count_inner), label)
+    let tokens = lex_line(raw.trim(), 0)?;
+    parse_mana_symbol_group_tokens(&tokens)
 }
 
 pub(crate) fn parse_count_word_rewrite(raw: &str) -> Result<u32, CardTextError> {
-    parse_count_text(raw, "count-word")
+    let tokens = lex_line(raw.trim(), 0)?;
+    parse_count_word_tokens(&tokens)
 }
 
 fn parse_count_token<'a>(input: &mut LexedInput<'a>) -> WResult<u32> {
@@ -223,48 +199,22 @@ pub(crate) fn parse_count_word_tokens(tokens: &[OwnedLexToken]) -> Result<u32, C
     finish_lexed_parse(tokens, parse_count_token, "count-word")
 }
 
-fn parse_mana_group_inner(input: &mut &str) -> WResult<Vec<ManaSymbol>> {
-    preceded(
-        spaced("{"),
-        cut_err(terminated(
-            separated(1.., parse_mana_symbol_inner, spaced('/')).context(StrContext::Expected(
-                StrContextValue::Description("mana symbols"),
-            )),
-            spaced("}").context(StrContext::Expected('}'.into())),
-        )),
-    )
-    .context(StrContext::Label("mana group"))
-    .context(StrContext::Expected(StrContextValue::Description(
-        "braced mana symbols",
-    )))
-    .parse_next(input)
-}
-
-pub(crate) fn parse_mana_cost_inner(input: &mut &str) -> WResult<ManaCost> {
-    repeat(1.., parse_mana_group_inner)
-        .map(ManaCost::from_pips)
-        .context(StrContext::Label("mana cost"))
-        .context(StrContext::Expected(StrContextValue::Description(
-            "mana group",
-        )))
-        .parse_next(input)
-}
-
-fn parse_mana_cost_text(raw: &str, allow_empty: bool) -> Result<ManaCost, CardTextError> {
+fn parse_mana_cost_tokens_text(raw: &str, allow_empty: bool) -> Result<ManaCost, CardTextError> {
     let trimmed = raw.trim();
     if allow_empty && (trimmed.is_empty() || trimmed == "—") {
         return Ok(ManaCost::new());
     }
 
-    finish_text_parse(trimmed, spaced(parse_mana_cost_inner), "mana-cost")
+    let tokens = lex_line(trimmed, 0)?;
+    parse_mana_cost_tokens(&tokens)
 }
 
 pub(crate) fn parse_scryfall_mana_cost(raw: &str) -> Result<ManaCost, CardTextError> {
-    parse_mana_cost_text(raw, true)
+    parse_mana_cost_tokens_text(raw, true)
 }
 
 pub(crate) fn parse_mana_cost_rewrite(raw: &str) -> Result<ManaCost, CardTextError> {
-    parse_mana_cost_text(raw, false)
+    parse_mana_cost_tokens_text(raw, false)
 }
 
 fn parse_mana_group_token<'a>(input: &mut LexedInput<'a>) -> WResult<Vec<ManaSymbol>> {
@@ -277,6 +227,12 @@ fn parse_mana_group_token<'a>(input: &mut LexedInput<'a>) -> WResult<Vec<ManaSym
         )));
         ErrMode::Backtrack(err)
     })
+}
+
+pub(crate) fn parse_mana_symbol_group_tokens(
+    tokens: &[OwnedLexToken],
+) -> Result<Vec<ManaSymbol>, CardTextError> {
+    finish_lexed_parse(tokens, parse_mana_group_token, "mana-group")
 }
 
 fn parse_mana_cost_tokens_inner<'a>(input: &mut LexedInput<'a>) -> WResult<ManaCost> {

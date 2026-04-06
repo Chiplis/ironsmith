@@ -3,11 +3,6 @@ use crate::cards::builders::{
     CardTextError, ChoiceCount, EffectAst, IT_TAG, OwnedLexToken, PlayerAst, PredicateAst,
     SubjectAst, TargetAst,
 };
-use crate::cards::builders::{
-    find_index as find_token_index, find_window_index as find_word_sequence_index,
-    rfind_index as find_last_token_index, slice_contains_str as word_slice_contains,
-    slice_ends_with as word_slice_ends_with, slice_starts_with as word_slice_starts_with,
-};
 use crate::effect::EventValueSpec;
 use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::zone::Zone;
@@ -20,6 +15,11 @@ use super::super::keyword_static::{
     parse_add_mana_equal_amount_value, parse_dynamic_cost_modifier_value,
 };
 use super::super::object_filters::parse_object_filter;
+use super::super::token_primitives::{
+    find_index as find_token_index, find_window_index as find_word_sequence_index,
+    rfind_index as find_last_token_index, slice_contains_str as word_slice_contains,
+    slice_ends_with as word_slice_ends_with, slice_starts_with as word_slice_starts_with,
+};
 use super::super::util::{
     parse_counter_type_from_tokens, parse_counter_type_word, parse_number, parse_target_phrase,
     parse_value, span_from_tokens, trim_commas,

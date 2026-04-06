@@ -199,6 +199,9 @@ fn collect_findings(repo_root: &Path, kind: AuditKind) -> BTreeMap<String, usize
 
     let mut findings = BTreeMap::new();
     for path in files {
+        if is_shared_toolkit_file(&path) {
+            continue;
+        }
         let source = fs::read_to_string(&path)
             .unwrap_or_else(|err| panic!("failed reading {}: {err}", path.display()));
         if kind.requires_lexed_context() && !has_lexed_context(&source) {
@@ -227,6 +230,19 @@ fn collect_findings(repo_root: &Path, kind: AuditKind) -> BTreeMap<String, usize
     }
 
     findings
+}
+
+fn is_shared_toolkit_file(path: &Path) -> bool {
+    match path.file_name().and_then(|name| name.to_str()) {
+        Some("token_primitives.rs") => true,
+        Some("primitives.rs") => {
+            path.parent()
+                .and_then(|parent| parent.file_name())
+                .and_then(|name| name.to_str())
+                == Some("grammar")
+        }
+        _ => false,
+    }
 }
 
 fn collect_parser_files(dir: &Path, out: &mut Vec<PathBuf>) {

@@ -2,12 +2,6 @@ use crate::cards::builders::{
     CardTextError, EffectAst, IT_TAG, ObjectRefAst, OwnedLexToken, PlayerAst, SubjectAst, TagKey,
     TargetAst,
 };
-use crate::cards::builders::{
-    contains_window as word_slice_contains_sequence, find_index as find_token_index,
-    find_str_by as find_word_index, find_window_index as find_word_sequence_index,
-    rfind_str_by as find_word_index_rev, slice_contains_str as word_slice_contains,
-    slice_starts_with as word_slice_starts_with, str_split_once_char, str_starts_with_char,
-};
 use crate::color::ColorSet;
 use crate::effect::{EventValueSpec, Value};
 use crate::static_abilities::{Anthem, AnthemCountExpression, AnthemValue, StaticAbility};
@@ -17,6 +11,12 @@ use crate::zone::Zone;
 
 use super::super::lexer::token_word_refs;
 use super::super::object_filters::parse_object_filter;
+use super::super::token_primitives::{
+    contains_window as word_slice_contains_sequence, find_index as find_token_index,
+    find_str_by as find_word_index, find_window_index as find_word_sequence_index,
+    rfind_str_by as find_word_index_rev, slice_contains_str as word_slice_contains,
+    slice_starts_with as word_slice_starts_with, str_split_once_char, str_starts_with_char,
+};
 use super::super::util::{
     is_article, parse_card_type, parse_color, parse_number, parse_target_phrase, parse_value,
     token_index_for_word_index, trim_commas,

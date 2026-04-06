@@ -2,6 +2,10 @@ use super::super::activation_and_restrictions::{contains_word_sequence, parse_na
 use super::super::grammar::values as shared_values;
 use super::super::lexer::OwnedLexToken;
 use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed};
+use super::super::token_primitives::{
+    contains_window, find_index, find_window_index, rfind_index, slice_contains, slice_ends_with,
+    slice_starts_with, slice_strip_prefix, str_strip_prefix, str_strip_suffix,
+};
 use super::super::util::{
     is_article, is_permanent_type, is_source_reference_words, parse_card_type,
     parse_counter_type_word, parse_mana_symbol_word_flexible, parse_number, parse_target_phrase,
@@ -14,10 +18,6 @@ use crate::card::{PowerToughness, PtValue};
 use crate::cards::builders::{
     CardTextError, EffectAst, ExtraTurnAnchorAst, IT_TAG, IfResultPredicate, PlayerAst,
     PredicateAst, TagKey, TargetAst, TextSpan,
-};
-use crate::cards::builders::{
-    contains_window, find_index, find_window_index, rfind_index, slice_contains, slice_ends_with,
-    slice_starts_with, slice_strip_prefix, str_strip_prefix, str_strip_suffix,
 };
 use crate::effect::{ChoiceCount, Value};
 use crate::mana::{ManaCost, ManaSymbol};

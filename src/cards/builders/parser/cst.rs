@@ -1,4 +1,5 @@
 use super::leaf::ActivationCostCst;
+use super::lexer::OwnedLexToken;
 use super::shared_types::{LineInfo, MetadataLine};
 
 #[derive(Debug, Clone)]
@@ -29,6 +30,7 @@ pub(crate) struct MetadataLineCst {
 pub(crate) struct KeywordLineCst {
     pub(crate) info: LineInfo,
     pub(crate) text: String,
+    pub(crate) parse_tokens: Vec<OwnedLexToken>,
     pub(crate) kind: KeywordLineKindCst,
 }
 
@@ -65,7 +67,9 @@ pub(crate) enum KeywordLineKindCst {
 pub(crate) struct ActivatedLineCst {
     pub(crate) info: LineInfo,
     pub(crate) cost: ActivationCostCst,
+    pub(crate) cost_parse_tokens: Vec<OwnedLexToken>,
     pub(crate) effect_text: String,
+    pub(crate) effect_parse_tokens: Vec<OwnedLexToken>,
     pub(crate) chosen_option_label: Option<String>,
 }
 
@@ -80,8 +84,11 @@ pub(crate) enum TriggerIntroCst {
 pub(crate) struct TriggeredLineCst {
     pub(crate) info: LineInfo,
     pub(crate) full_text: String,
+    pub(crate) full_parse_tokens: Vec<OwnedLexToken>,
     pub(crate) trigger_text: String,
+    pub(crate) trigger_parse_tokens: Vec<OwnedLexToken>,
     pub(crate) effect_text: String,
+    pub(crate) effect_parse_tokens: Vec<OwnedLexToken>,
     pub(crate) max_triggers_per_turn: Option<u32>,
     pub(crate) chosen_option_label: Option<String>,
 }
@@ -90,6 +97,7 @@ pub(crate) struct TriggeredLineCst {
 pub(crate) struct StaticLineCst {
     pub(crate) info: LineInfo,
     pub(crate) text: String,
+    pub(crate) parse_tokens: Vec<OwnedLexToken>,
     pub(crate) chosen_option_label: Option<String>,
 }
 
@@ -97,6 +105,8 @@ pub(crate) struct StaticLineCst {
 pub(crate) struct StatementLineCst {
     pub(crate) info: LineInfo,
     pub(crate) text: String,
+    pub(crate) parse_tokens: Vec<OwnedLexToken>,
+    pub(crate) parse_groups: Vec<Vec<OwnedLexToken>>,
 }
 
 #[derive(Debug, Clone)]
@@ -109,6 +119,7 @@ pub(crate) struct ModalBlockCst {
 pub(crate) struct ModalModeCst {
     pub(crate) info: LineInfo,
     pub(crate) text: String,
+    pub(crate) parse_tokens: Vec<OwnedLexToken>,
 }
 
 #[derive(Debug, Clone)]
@@ -129,6 +140,7 @@ pub(crate) enum LevelItemKindCst {
 pub(crate) struct LevelItemCst {
     pub(crate) info: LineInfo,
     pub(crate) text: String,
+    pub(crate) parse_tokens: Vec<OwnedLexToken>,
     pub(crate) kind: LevelItemKindCst,
 }
 
@@ -137,6 +149,7 @@ pub(crate) struct SagaChapterLineCst {
     pub(crate) info: LineInfo,
     pub(crate) chapters: Vec<u32>,
     pub(crate) text: String,
+    pub(crate) parse_tokens: Vec<OwnedLexToken>,
 }
 
 #[derive(Debug, Clone)]

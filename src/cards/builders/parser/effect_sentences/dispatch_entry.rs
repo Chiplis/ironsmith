@@ -6,13 +6,18 @@ use super::super::keyword_static::parse_where_x_value_clause;
 use super::super::lexer::{OwnedLexToken, TokenKind, split_lexed_sentences};
 use super::super::object_filters::{is_comparison_or_delimiter, parse_object_filter};
 use super::super::token_primitives::{
-    TurnDurationPhrase, lexed_head_words, parse_turn_duration_prefix, parse_value_comparison_tokens,
+    LeadingMayActor, TurnDurationPhrase, find_index, find_window_by, find_window_index,
+    lexed_head_words, parse_leading_may_action_lexed, parse_turn_duration_prefix,
+    parse_value_comparison_tokens, slice_contains, slice_ends_with, slice_starts_with,
+    str_contains, str_ends_with, str_starts_with, strip_leading_if_you_do_lexed,
+    word_view_has_any_prefix, word_view_has_prefix,
 };
 use super::super::util::{
     helper_tag_for_tokens, is_article, mana_pips_from_token, parse_number, parse_subject,
     parse_target_phrase, span_from_tokens, token_index_for_word_index, trim_commas, words,
 };
 use super::super::value_helpers::parse_value_from_lexed;
+use super::divvy::try_parse_divvy_sentence_sequence;
 use super::sentence_helpers::*;
 use super::{
     find_verb, parse_effect_sentence_lexed, parse_search_library_disjunction_filter,
@@ -24,10 +29,6 @@ use crate::cards::builders::{
     InsteadSemantics, KeywordAction, LibraryBottomOrderAst, LibraryConsultModeAst,
     LibraryConsultStopRuleAst, PlayerAst, PredicateAst, ReturnControllerAst, SubjectAst, TagKey,
     TargetAst, TextSpan, TokenCopyFollowup, ZoneReplacementDurationAst,
-};
-use crate::cards::builders::{
-    find_index, find_window_by, find_window_index, slice_contains, slice_ends_with,
-    slice_starts_with, str_contains, str_ends_with, str_starts_with,
 };
 use crate::effect::{ChoiceCount, Until, Value};
 use crate::filter::Comparison;
@@ -53,11 +54,12 @@ type QuadSentenceRule = fn(
     &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError>;
 
-fn membership_predicate_for_iterated_object(tag: &str) -> PredicateAst {
-    PredicateAst::TaggedMatches(
-        TagKey::from(tag),
-        ObjectFilter::default().same_stable_id_as_tagged(TagKey::from(IT_TAG)),
-    )
+fn leading_may_actor_to_player(actor: LeadingMayActor, default_player: PlayerAst) -> PlayerAst {
+    match actor {
+        LeadingMayActor::You => PlayerAst::You,
+        LeadingMayActor::ThatPlayer => PlayerAst::That,
+        LeadingMayActor::Default => default_player,
+    }
 }
 
 fn attach_copy_cost_reduction_to_effect(
@@ -133,446 +135,6 @@ fn parse_same_sentence_copy_and_may_cast_copy(
 
     let copy_effects = parse_effect_sentence_lexed(&copy_tokens)?;
     Ok(Some((copy_effects, spec)))
-}
-
-fn parse_single_effect_sentence(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
-    parse_effect_sentence_lexed(tokens)?
-        .into_iter()
-        .next()
-        .ok_or_else(|| CardTextError::ParseError("missing effect sentence".to_string()))
-}
-
-fn try_parse_divvy_sentence_sequence(
-    sentences: &[SentenceInput],
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let normalized = sentences
-        .iter()
-        .map(|sentence| {
-            crate::cards::builders::parser::token_word_refs(sentence.lowered()).join(" ")
-        })
-        .collect::<Vec<_>>();
-    let joined = normalized.join(". ");
-
-    if joined
-        == "separate all creatures target player controls into two piles. destroy all creatures in the pile of that player's choice. they can't be regenerated"
-    {
-        return Ok(Some(vec![
-            EffectAst::ChooseObjects {
-                filter: ObjectFilter::creature().controlled_by(PlayerFilter::target_player()),
-                count: ChoiceCount::any_number(),
-                player: PlayerAst::Target,
-                tag: TagKey::from("divvy_chosen"),
-            },
-            EffectAst::DestroyNoRegeneration {
-                target: TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
-            },
-        ]));
-    }
-
-    if joined
-        == "separate all creature cards in your graveyard into two piles. exile the pile of an opponent's choice and return the other to the battlefield"
-    {
-        let mut graveyard_creatures = ObjectFilter::creature();
-        graveyard_creatures.zone = Some(Zone::Graveyard);
-        graveyard_creatures.owner = Some(PlayerFilter::You);
-        let rest_filter = graveyard_creatures
-            .clone()
-            .not_tagged(TagKey::from("divvy_chosen"));
-        return Ok(Some(vec![
-            EffectAst::ChooseObjects {
-                filter: graveyard_creatures,
-                count: ChoiceCount::any_number(),
-                player: PlayerAst::Opponent,
-                tag: TagKey::from("divvy_chosen"),
-            },
-            EffectAst::Exile {
-                target: TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
-                face_down: false,
-            },
-            EffectAst::ReturnAllToBattlefield {
-                filter: rest_filter,
-                tapped: false,
-            },
-        ]));
-    }
-
-    if str_starts_with(
-        &joined,
-        "each opponent separates the creatures they control into two piles",
-    ) && str_contains(&joined, "for each opponent")
-        && str_contains(
-            &joined,
-            "each opponent sacrifices the creatures in their chosen pile",
-        )
-    {
-        return Ok(Some(vec![EffectAst::ForEachPlayersFiltered {
-            filter: PlayerFilter::Opponent,
-            effects: vec![
-                EffectAst::ChooseObjects {
-                    filter: ObjectFilter::creature().controlled_by(PlayerFilter::IteratedPlayer),
-                    count: ChoiceCount::any_number(),
-                    player: PlayerAst::You,
-                    tag: TagKey::from("divvy_chosen"),
-                },
-                EffectAst::SacrificeAll {
-                    filter: ObjectFilter::creature()
-                        .controlled_by(PlayerFilter::IteratedPlayer)
-                        .match_tagged(
-                            TagKey::from("divvy_chosen"),
-                            TaggedOpbjectRelation::IsTaggedObject,
-                        ),
-                    player: PlayerAst::Implicit,
-                },
-            ],
-        }]));
-    }
-
-    if str_starts_with(
-        &joined,
-        "separate all permanents target player controls into two piles",
-    ) && str_contains(
-        &joined,
-        "that player sacrifices all permanents in the pile of their choice",
-    ) {
-        return Ok(Some(vec![
-            EffectAst::ChooseObjects {
-                filter: ObjectFilter::permanent().controlled_by(PlayerFilter::target_player()),
-                count: ChoiceCount::any_number(),
-                player: PlayerAst::Target,
-                tag: TagKey::from("divvy_chosen"),
-            },
-            EffectAst::SacrificeAll {
-                filter: ObjectFilter::tagged(TagKey::from("divvy_chosen")),
-                player: PlayerAst::Target,
-            },
-        ]));
-    }
-
-    if joined
-        == "for each defending player separate all creatures that player controls into two piles and that player chooses one. only creatures in the chosen piles can block this turn"
-    {
-        return Ok(Some(vec![EffectAst::ForEachPlayersFiltered {
-            filter: PlayerFilter::Defending,
-            effects: vec![
-                EffectAst::ChooseObjects {
-                    filter: ObjectFilter::creature().controlled_by(PlayerFilter::IteratedPlayer),
-                    count: ChoiceCount::any_number(),
-                    player: PlayerAst::That,
-                    tag: TagKey::from("divvy_chosen"),
-                },
-                EffectAst::Cant {
-                    restriction: crate::effect::Restriction::block(
-                        ObjectFilter::creature()
-                            .controlled_by(PlayerFilter::IteratedPlayer)
-                            .not_tagged(TagKey::from("divvy_chosen")),
-                    ),
-                    duration: Until::EndOfTurn,
-                    condition: None,
-                },
-            ],
-        }]));
-    }
-
-    if str_starts_with(
-        &joined,
-        "separate all creatures that player controls into two piles",
-    ) && str_contains(
-        &joined,
-        "only creatures in the pile of their choice can attack this turn",
-    ) {
-        return Ok(Some(vec![
-            EffectAst::ChooseObjects {
-                filter: ObjectFilter::creature().controlled_by(PlayerFilter::IteratedPlayer),
-                count: ChoiceCount::any_number(),
-                player: PlayerAst::That,
-                tag: TagKey::from("divvy_chosen"),
-            },
-            EffectAst::Cant {
-                restriction: crate::effect::Restriction::attack(
-                    ObjectFilter::creature()
-                        .controlled_by(PlayerFilter::IteratedPlayer)
-                        .not_tagged(TagKey::from("divvy_chosen")),
-                ),
-                duration: Until::EndOfTurn,
-                condition: None,
-            },
-        ]));
-    }
-
-    if joined
-        == "each player separates all nontoken lands they control into two piles. for each player one of their piles is chosen by one of their opponents of their choice. destroy all lands in the chosen piles. tap all lands in the other piles"
-    {
-        return Ok(Some(vec![EffectAst::ForEachPlayer {
-            effects: vec![
-                EffectAst::ChoosePlayer {
-                    chooser: PlayerAst::Implicit,
-                    filter: PlayerFilter::Opponent,
-                    tag: TagKey::from("divvy_opponent"),
-                    random: false,
-                    exclude_previous_choices: 0,
-                },
-                EffectAst::ChooseObjects {
-                    filter: ObjectFilter::land()
-                        .nontoken()
-                        .controlled_by(PlayerFilter::IteratedPlayer),
-                    count: ChoiceCount::any_number(),
-                    player: PlayerAst::Chosen,
-                    tag: TagKey::from("divvy_chosen"),
-                },
-                EffectAst::Destroy {
-                    target: TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
-                },
-                EffectAst::TapAll {
-                    filter: ObjectFilter::land()
-                        .nontoken()
-                        .controlled_by(PlayerFilter::IteratedPlayer)
-                        .not_tagged(TagKey::from("divvy_chosen")),
-                },
-            ],
-        }]));
-    }
-
-    if str_starts_with(
-        &joined,
-        "exile up to five target permanent cards from your graveyard and separate them into two piles",
-    ) && str_contains(&joined, "an opponent chooses one of those piles")
-        && str_contains(&joined, "put that pile into your hand")
-        && str_contains(&joined, "the other into your graveyard")
-    {
-        return Ok(Some(vec![
-            parse_single_effect_sentence(sentences[0].lowered())?,
-            EffectAst::TagMatchingObjects {
-                filter: ObjectFilter::tagged(TagKey::from(IT_TAG)),
-                zones: vec![Zone::Exile],
-                tag: TagKey::from("divvy_source"),
-            },
-            EffectAst::ChooseObjectsAcrossZones {
-                filter: ObjectFilter::tagged(TagKey::from("divvy_source")),
-                count: ChoiceCount::any_number(),
-                player: PlayerAst::Opponent,
-                tag: TagKey::from("divvy_chosen"),
-                zones: vec![Zone::Exile],
-                search_mode: None,
-            },
-            EffectAst::ReturnToHand {
-                target: TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
-                random: false,
-            },
-            EffectAst::ForEachTagged {
-                tag: TagKey::from("divvy_source"),
-                effects: vec![EffectAst::Conditional {
-                    predicate: membership_predicate_for_iterated_object("divvy_chosen"),
-                    if_true: Vec::new(),
-                    if_false: vec![EffectAst::MoveToZone {
-                        target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
-                        zone: Zone::Graveyard,
-                        to_top: false,
-                        battlefield_controller: ReturnControllerAst::Preserve,
-                        battlefield_tapped: false,
-                        attached_to: None,
-                    }],
-                }],
-            },
-        ]));
-    }
-
-    if joined
-        == "exile up to five target creature cards from graveyards. an opponent separates those cards into two piles. put all cards from the pile of your choice onto the battlefield under your control and the rest into their owners' graveyards"
-    {
-        return Ok(Some(vec![
-            parse_single_effect_sentence(sentences[0].lowered())?,
-            EffectAst::TagMatchingObjects {
-                filter: ObjectFilter::tagged(TagKey::from(IT_TAG)),
-                zones: vec![Zone::Exile],
-                tag: TagKey::from("divvy_source"),
-            },
-            EffectAst::ChooseObjectsAcrossZones {
-                filter: ObjectFilter::tagged(TagKey::from("divvy_source")),
-                count: ChoiceCount::any_number(),
-                player: PlayerAst::Opponent,
-                tag: TagKey::from("divvy_chosen"),
-                zones: vec![Zone::Exile],
-                search_mode: None,
-            },
-            EffectAst::MoveToZone {
-                target: TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
-                zone: Zone::Battlefield,
-                to_top: false,
-                battlefield_controller: ReturnControllerAst::You,
-                battlefield_tapped: false,
-                attached_to: None,
-            },
-            EffectAst::ForEachTagged {
-                tag: TagKey::from("divvy_source"),
-                effects: vec![EffectAst::Conditional {
-                    predicate: membership_predicate_for_iterated_object("divvy_chosen"),
-                    if_true: Vec::new(),
-                    if_false: vec![EffectAst::MoveToZone {
-                        target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
-                        zone: Zone::Graveyard,
-                        to_top: false,
-                        battlefield_controller: ReturnControllerAst::Preserve,
-                        battlefield_tapped: false,
-                        attached_to: None,
-                    }],
-                }],
-            },
-        ]));
-    }
-
-    if str_starts_with(
-        &joined,
-        "search your library and graveyard for up to four creature cards with different names that each have mana value x or less and reveal them",
-    ) && str_contains(&joined, "an opponent chooses two of those cards")
-        && str_contains(&joined, "shuffle the chosen cards into your library")
-        && str_contains(&joined, "put the rest onto the battlefield")
-    {
-        return Ok(Some(vec![
-            parse_single_effect_sentence(sentences[0].lowered())?,
-            EffectAst::TagMatchingObjects {
-                filter: ObjectFilter::tagged(TagKey::from(IT_TAG)),
-                zones: vec![Zone::Library, Zone::Graveyard],
-                tag: TagKey::from("divvy_source"),
-            },
-            EffectAst::ChooseObjectsAcrossZones {
-                filter: ObjectFilter::tagged(TagKey::from("divvy_source")),
-                count: ChoiceCount::exactly(2),
-                player: PlayerAst::Opponent,
-                tag: TagKey::from("divvy_chosen"),
-                zones: vec![Zone::Library, Zone::Graveyard],
-                search_mode: None,
-            },
-            EffectAst::MoveToZone {
-                target: TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
-                zone: Zone::Library,
-                to_top: false,
-                battlefield_controller: ReturnControllerAst::Preserve,
-                battlefield_tapped: false,
-                attached_to: None,
-            },
-            EffectAst::ShuffleLibrary {
-                player: PlayerAst::You,
-            },
-            EffectAst::ForEachTagged {
-                tag: TagKey::from("divvy_source"),
-                effects: vec![EffectAst::Conditional {
-                    predicate: membership_predicate_for_iterated_object("divvy_chosen"),
-                    if_true: Vec::new(),
-                    if_false: vec![EffectAst::MoveToZone {
-                        target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
-                        zone: Zone::Battlefield,
-                        to_top: false,
-                        battlefield_controller: ReturnControllerAst::You,
-                        battlefield_tapped: false,
-                        attached_to: None,
-                    }],
-                }],
-            },
-            EffectAst::Exile {
-                target: TargetAst::Source(None),
-                face_down: false,
-            },
-        ]));
-    }
-
-    if str_contains(&joined, "an opponent chooses one of them")
-        && str_contains(&joined, "put the chosen card into your hand")
-        && str_contains(&joined, "the other into your graveyard")
-    {
-        let mut prefix = Vec::new();
-        prefix.extend(parse_effect_sentence_lexed(sentences[0].lowered())?);
-        prefix.extend(parse_effect_sentence_lexed(sentences[1].lowered())?);
-        let mut effects = prefix;
-        effects.push(EffectAst::TagMatchingObjects {
-            filter: ObjectFilter::tagged(TagKey::from(IT_TAG)),
-            zones: vec![Zone::Library],
-            tag: TagKey::from("divvy_source"),
-        });
-        effects.push(EffectAst::ChooseObjectsAcrossZones {
-            filter: ObjectFilter::tagged(TagKey::from("divvy_source")),
-            count: ChoiceCount::exactly(1),
-            player: PlayerAst::Opponent,
-            tag: TagKey::from("divvy_chosen"),
-            zones: vec![Zone::Library],
-            search_mode: None,
-        });
-        effects.push(EffectAst::MoveToZone {
-            target: TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
-            zone: Zone::Hand,
-            to_top: false,
-            battlefield_controller: ReturnControllerAst::Preserve,
-            battlefield_tapped: false,
-            attached_to: None,
-        });
-        effects.push(EffectAst::ForEachTagged {
-            tag: TagKey::from("divvy_source"),
-            effects: vec![EffectAst::Conditional {
-                predicate: membership_predicate_for_iterated_object("divvy_chosen"),
-                if_true: Vec::new(),
-                if_false: vec![EffectAst::MoveToZone {
-                    target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
-                    zone: Zone::Graveyard,
-                    to_top: false,
-                    battlefield_controller: ReturnControllerAst::Preserve,
-                    battlefield_tapped: false,
-                    attached_to: None,
-                }],
-            }],
-        });
-        effects.push(EffectAst::ShuffleLibrary {
-            player: PlayerAst::You,
-        });
-        return Ok(Some(effects));
-    }
-
-    if str_contains(&joined, "target opponent chooses one")
-        && str_contains(&joined, "put that card into your hand")
-        && str_contains(&joined, "the rest into your graveyard")
-    {
-        let mut effects = parse_effect_sentence_lexed(sentences[0].lowered())?;
-        effects.push(EffectAst::TagMatchingObjects {
-            filter: ObjectFilter::tagged(TagKey::from(IT_TAG)),
-            zones: vec![Zone::Library],
-            tag: TagKey::from("divvy_source"),
-        });
-        effects.push(EffectAst::ChooseObjectsAcrossZones {
-            filter: ObjectFilter::tagged(TagKey::from("divvy_source")),
-            count: ChoiceCount::exactly(1),
-            player: PlayerAst::TargetOpponent,
-            tag: TagKey::from("divvy_chosen"),
-            zones: vec![Zone::Library],
-            search_mode: None,
-        });
-        effects.push(EffectAst::MoveToZone {
-            target: TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
-            zone: Zone::Hand,
-            to_top: false,
-            battlefield_controller: ReturnControllerAst::Preserve,
-            battlefield_tapped: false,
-            attached_to: None,
-        });
-        effects.push(EffectAst::ForEachTagged {
-            tag: TagKey::from("divvy_source"),
-            effects: vec![EffectAst::Conditional {
-                predicate: membership_predicate_for_iterated_object("divvy_chosen"),
-                if_true: Vec::new(),
-                if_false: vec![EffectAst::MoveToZone {
-                    target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
-                    zone: Zone::Graveyard,
-                    to_top: false,
-                    battlefield_controller: ReturnControllerAst::Preserve,
-                    battlefield_tapped: false,
-                    attached_to: None,
-                }],
-            }],
-        });
-        effects.push(EffectAst::ShuffleLibrary {
-            player: PlayerAst::You,
-        });
-        return Ok(Some(effects));
-    }
-
-    Ok(None)
 }
 
 const CHOSEN_NAME_TAG: &str = "__chosen_name__";
@@ -767,9 +329,7 @@ fn parse_prefixed_top_of_your_library_count<T: Copy>(
     let tokens = trim_commas(tokens);
     let word_view = TokenWordView::new(&tokens);
     let (count_word_idx, marker) = prefixes.iter().find_map(|(prefix, marker)| {
-        word_view
-            .starts_with(prefix)
-            .then_some((prefix.len(), *marker))
+        word_view_has_prefix(&word_view, prefix).then_some((prefix.len(), *marker))
     })?;
     let count_start = word_view.token_index_for_word_index(count_word_idx)?;
     let count_tokens = &tokens[count_start..];
@@ -815,15 +375,7 @@ fn parse_consult_traversal_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ConsultSentenceParts>, CardTextError> {
     let mut sentence_tokens = trim_commas(tokens);
-    let sentence_words = TokenWordView::new(&sentence_tokens);
-    let leading_if_you_do = sentence_words.starts_with(&["if", "you", "do"])
-        || sentence_words.starts_with(&["if", "they", "do"]);
-    if leading_if_you_do {
-        let start_token_idx = sentence_words
-            .token_index_after_words(3)
-            .unwrap_or(sentence_tokens.len());
-        sentence_tokens = trim_commas(&sentence_tokens[start_token_idx..]);
-    }
+    sentence_tokens = trim_commas(strip_leading_if_you_do_lexed(&sentence_tokens));
     if sentence_tokens.is_empty() {
         return Ok(None);
     }
@@ -1007,9 +559,9 @@ fn parse_consult_condition_value(tokens: &[OwnedLexToken]) -> Option<Value> {
         return Some(value);
     }
 
-    let filter_start_word_idx = if word_view.starts_with(&["the", "number", "of"]) {
+    let filter_start_word_idx = if word_view_has_prefix(&word_view, &["the", "number", "of"]) {
         Some(3usize)
-    } else if word_view.starts_with(&["number", "of"]) {
+    } else if word_view_has_prefix(&word_view, &["number", "of"]) {
         Some(2usize)
     } else {
         None
@@ -1688,7 +1240,7 @@ fn parse_prefix_then_consult_match_into_hand_exile_others(
     )
 }
 
-struct SentenceInput {
+pub(super) struct SentenceInput {
     lowered: OnceCell<Vec<OwnedLexToken>>,
     lexed: Vec<OwnedLexToken>,
 }
@@ -1701,7 +1253,7 @@ impl SentenceInput {
         }
     }
 
-    fn lowered(&self) -> &[OwnedLexToken] {
+    pub(super) fn lowered(&self) -> &[OwnedLexToken] {
         self.lowered
             .get_or_init(|| normalize_parser_tokens(&self.lexed))
             .as_slice()
@@ -1807,7 +1359,7 @@ fn parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard(
 
     let second_tokens = trim_commas(second);
     let second_words = TokenWordView::new(&second_tokens);
-    if !(second_words.starts_with(&["put", "all"]) || second_words.starts_with(&["puts", "all"])) {
+    if !word_view_has_any_prefix(&second_words, &[&["put", "all"], &["puts", "all"]]) {
         return Ok(None);
     }
     let second_word_refs = second_words.word_refs();
@@ -2303,42 +1855,28 @@ fn parse_look_at_top_reveal_match_put_rest_bottom(
     };
 
     let second_tokens = trim_commas(second);
-    let second_words = TokenWordView::new(&second_tokens);
-    if second_words.is_empty() {
-        return Ok(None);
-    }
-    let second_word_refs = second_words.word_refs();
-
-    let (chooser, reveal_word_idx) = if second_words.starts_with(&["you", "may", "reveal"]) {
-        (PlayerAst::You, 2usize)
-    } else if second_words.starts_with(&["that", "player", "may", "reveal"]) {
-        (PlayerAst::That, 3usize)
-    } else if second_words.starts_with(&["they", "may", "reveal"]) {
-        (PlayerAst::That, 2usize)
-    } else if second_words.starts_with(&["may", "reveal"]) {
-        (*player, 1usize)
-    } else if second_words.starts_with(&["reveal"]) {
-        (*player, 0usize)
-    } else {
-        return Ok(None);
-    };
-
-    let Some((from_among_word_idx, from_among_len)) =
-        find_from_among_looked_cards_phrase(&second_words)
+    let Some(action_match) = parse_leading_may_action_lexed(&second_tokens, &["reveal"], true)
     else {
         return Ok(None);
     };
-    if from_among_word_idx <= reveal_word_idx {
+    let chooser = leading_may_actor_to_player(action_match.actor, *player);
+    let reveal_tokens = trim_commas(action_match.tail_tokens);
+    let reveal_words = TokenWordView::new(&reveal_tokens);
+    if reveal_words.is_empty() {
         return Ok(None);
     }
+    let reveal_word_refs = reveal_words.word_refs();
 
-    let filter_start = second_words
-        .token_index_for_word_index(reveal_word_idx + 1)
-        .unwrap_or(second_tokens.len());
-    let filter_end = second_words
+    let Some((from_among_word_idx, from_among_len)) =
+        find_from_among_looked_cards_phrase(&reveal_words)
+    else {
+        return Ok(None);
+    };
+
+    let filter_end = reveal_words
         .token_index_for_word_index(from_among_word_idx)
-        .unwrap_or(second_tokens.len());
-    let filter_tokens = trim_commas(&second_tokens[filter_start..filter_end]);
+        .unwrap_or(reveal_tokens.len());
+    let filter_tokens = trim_commas(&reveal_tokens[..filter_end]);
     if filter_tokens.is_empty() {
         return Ok(None);
     }
@@ -2350,7 +1888,7 @@ fn parse_look_at_top_reveal_match_put_rest_bottom(
     normalize_search_library_filter(&mut filter);
     filter.zone = None;
 
-    let after_from_words = &second_word_refs[from_among_word_idx + from_among_len..];
+    let after_from_words = &reveal_word_refs[from_among_word_idx + from_among_len..];
     let puts_into_hand = (slice_starts_with(after_from_words, &["and", "put", "it", "into"])
         || slice_starts_with(after_from_words, &["put", "it", "into"]))
         && slice_contains(after_from_words, &"hand");
@@ -2399,7 +1937,7 @@ fn parse_top_cards_view_sentence(tokens: &[OwnedLexToken]) -> Option<(PlayerAst,
 fn parse_counted_looked_cards_into_your_hand_tokens(tokens: &[OwnedLexToken]) -> Option<u32> {
     let tokens = trim_commas(tokens);
     let word_view = TokenWordView::new(&tokens);
-    if !word_view.starts_with(&["put"]) {
+    if !word_view_has_prefix(&word_view, &["put"]) {
         return None;
     }
 
@@ -2445,11 +1983,13 @@ fn parse_if_this_spell_was_kicked_counted_looked_cards_into_hand(
 ) -> Option<u32> {
     let trimmed = trim_commas(tokens);
     let clause_words = TokenWordView::new(&trimmed);
-    if !clause_words.starts_with(&["if", "this", "spell", "was", "kicked"]) {
+    if !word_view_has_prefix(&clause_words, &["if", "this", "spell", "was", "kicked"]) {
         return None;
     }
 
-    let tail_start = clause_words.token_index_after_words(5).unwrap_or(trimmed.len());
+    let tail_start = clause_words
+        .token_index_after_words(5)
+        .unwrap_or(trimmed.len());
     let tail = trim_commas(&trimmed[tail_start..]);
     parse_counted_looked_cards_into_your_hand_tokens(&tail)
 }
@@ -2458,40 +1998,28 @@ fn parse_may_put_filtered_looked_card_onto_battlefield(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(PlayerAst, ObjectFilter, bool)>, CardTextError> {
     let sentence_tokens = trim_commas(tokens);
-    let sentence_words = TokenWordView::new(&sentence_tokens);
-    if sentence_words.is_empty() {
-        return Ok(None);
-    }
-    let sentence_word_refs = sentence_words.word_refs();
-
-    let (chooser, action_word_idx) = if sentence_words.starts_with(&["you", "may", "put"]) {
-        (PlayerAst::You, 2usize)
-    } else if sentence_words.starts_with(&["that", "player", "may", "put"]) {
-        (PlayerAst::That, 3usize)
-    } else if sentence_words.starts_with(&["they", "may", "put"]) {
-        (PlayerAst::That, 2usize)
-    } else if sentence_words.starts_with(&["may", "put"]) {
-        (PlayerAst::You, 1usize)
-    } else {
-        return Ok(None);
-    };
-
-    let Some((from_among_word_idx, from_among_len)) =
-        find_from_among_looked_cards_phrase(&sentence_words)
+    let Some(action_match) = parse_leading_may_action_lexed(&sentence_tokens, &["put"], false)
     else {
         return Ok(None);
     };
-    if from_among_word_idx <= action_word_idx {
+    let chooser = leading_may_actor_to_player(action_match.actor, PlayerAst::You);
+    let action_tokens = trim_commas(action_match.tail_tokens);
+    let action_words = TokenWordView::new(&action_tokens);
+    if action_words.is_empty() {
         return Ok(None);
     }
+    let action_word_refs = action_words.word_refs();
 
-    let filter_start = sentence_words
-        .token_index_for_word_index(action_word_idx + 1)
-        .unwrap_or(sentence_tokens.len());
-    let filter_end = sentence_words
+    let Some((from_among_word_idx, from_among_len)) =
+        find_from_among_looked_cards_phrase(&action_words)
+    else {
+        return Ok(None);
+    };
+
+    let filter_end = action_words
         .token_index_for_word_index(from_among_word_idx)
-        .unwrap_or(sentence_tokens.len());
-    let filter_tokens = trim_commas(&sentence_tokens[filter_start..filter_end]);
+        .unwrap_or(action_tokens.len());
+    let filter_tokens = trim_commas(&action_tokens[..filter_end]);
     if filter_tokens.is_empty() {
         return Ok(None);
     }
@@ -2503,7 +2031,7 @@ fn parse_may_put_filtered_looked_card_onto_battlefield(
     normalize_search_library_filter(&mut filter);
     filter.zone = None;
 
-    let after_from_words = &sentence_word_refs[from_among_word_idx + from_among_len..];
+    let after_from_words = &action_word_refs[from_among_word_idx + from_among_len..];
     let tapped = match after_from_words {
         ["onto", "the", "battlefield"] | ["onto", "battlefield"] => false,
         ["onto", "the", "battlefield", "tapped"] | ["onto", "battlefield", "tapped"] => true,
@@ -2646,52 +2174,30 @@ fn parse_top_cards_put_match_into_hand_rest_graveyard(
     };
 
     let second_tokens = trim_commas(second);
-    let second_words = TokenWordView::new(&second_tokens);
-    if second_words.is_empty() {
-        return Ok(None);
-    }
-    let second_word_refs = second_words.word_refs();
-
-    let (chooser, action_word_idx, reveal_chosen) = if second_words.starts_with(&["you", "may", "reveal"]) {
-            (PlayerAst::You, 2usize, true)
-        } else if second_words.starts_with(&["you", "may", "put"]) {
-            (PlayerAst::You, 2usize, false)
-        } else if second_words.starts_with(&["that", "player", "may", "reveal"]) {
-            (PlayerAst::That, 3usize, true)
-        } else if second_words.starts_with(&["that", "player", "may", "put"]) {
-            (PlayerAst::That, 3usize, false)
-        } else if second_words.starts_with(&["they", "may", "reveal"]) {
-            (PlayerAst::That, 2usize, true)
-        } else if second_words.starts_with(&["they", "may", "put"]) {
-            (PlayerAst::That, 2usize, false)
-        } else if second_words.starts_with(&["may", "reveal"]) {
-            (player, 1usize, true)
-        } else if second_words.starts_with(&["may", "put"]) {
-            (player, 1usize, false)
-        } else if second_words.starts_with(&["reveal"]) {
-            (player, 0usize, true)
-        } else if second_words.starts_with(&["put"]) {
-            (player, 0usize, false)
-        } else {
-            return Ok(None);
-        };
-
-    let Some((from_among_word_idx, from_among_len)) =
-        find_from_among_looked_cards_phrase(&second_words)
+    let Some(action_match) =
+        parse_leading_may_action_lexed(&second_tokens, &["reveal", "put"], true)
     else {
         return Ok(None);
     };
-    if from_among_word_idx <= action_word_idx {
+    let chooser = leading_may_actor_to_player(action_match.actor, player);
+    let reveal_chosen = action_match.verb == "reveal";
+    let action_tokens = trim_commas(action_match.tail_tokens);
+    let action_words = TokenWordView::new(&action_tokens);
+    if action_words.is_empty() {
         return Ok(None);
     }
+    let action_word_refs = action_words.word_refs();
 
-    let filter_start = second_words
-        .token_index_for_word_index(action_word_idx + 1)
-        .unwrap_or(second_tokens.len());
-    let filter_end = second_words
+    let Some((from_among_word_idx, from_among_len)) =
+        find_from_among_looked_cards_phrase(&action_words)
+    else {
+        return Ok(None);
+    };
+
+    let filter_end = action_words
         .token_index_for_word_index(from_among_word_idx)
-        .unwrap_or(second_tokens.len());
-    let filter_tokens = trim_commas(&second_tokens[filter_start..filter_end]);
+        .unwrap_or(action_tokens.len());
+    let filter_tokens = trim_commas(&action_tokens[..filter_end]);
     if filter_tokens.is_empty() {
         return Ok(None);
     }
@@ -2703,7 +2209,7 @@ fn parse_top_cards_put_match_into_hand_rest_graveyard(
     normalize_search_library_filter(&mut filter);
     filter.zone = None;
 
-    let after_from_words = &second_word_refs[from_among_word_idx + from_among_len..];
+    let after_from_words = &action_word_refs[from_among_word_idx + from_among_len..];
     let moves_into_hand = if reveal_chosen {
         (slice_starts_with(after_from_words, &["and", "put", "it", "into"])
             || slice_starts_with(after_from_words, &["put", "it", "into"]))
@@ -3042,42 +2548,27 @@ fn parse_may_put_filtered_card_from_among_into_hand(
     zone: Zone,
 ) -> Result<Option<(PlayerAst, ObjectFilter)>, CardTextError> {
     let sentence_tokens = trim_commas(tokens);
-    let sentence_words = TokenWordView::new(&sentence_tokens);
-    if sentence_words.is_empty() {
-        return Ok(None);
-    }
-    let sentence_word_refs = sentence_words.word_refs();
-
-    let (chooser, action_word_idx) = if sentence_words.starts_with(&["you", "may", "put"]) {
-        (PlayerAst::You, 2usize)
-    } else if sentence_words.starts_with(&["that", "player", "may", "put"]) {
-        (PlayerAst::That, 3usize)
-    } else if sentence_words.starts_with(&["they", "may", "put"]) {
-        (PlayerAst::That, 2usize)
-    } else if sentence_words.starts_with(&["may", "put"]) {
-        (default_player, 1usize)
-    } else if sentence_words.starts_with(&["put"]) {
-        (default_player, 0usize)
-    } else {
-        return Ok(None);
-    };
-
-    let Some((from_among_word_idx, from_among_len)) =
-        find_from_among_looked_cards_phrase(&sentence_words)
+    let Some(action_match) = parse_leading_may_action_lexed(&sentence_tokens, &["put"], true)
     else {
         return Ok(None);
     };
-    if from_among_word_idx <= action_word_idx {
+    let chooser = leading_may_actor_to_player(action_match.actor, default_player);
+    let action_tokens = trim_commas(action_match.tail_tokens);
+    let action_words = TokenWordView::new(&action_tokens);
+    if action_words.is_empty() {
         return Ok(None);
     }
+    let action_word_refs = action_words.word_refs();
 
-    let filter_start = sentence_words
-        .token_index_for_word_index(action_word_idx + 1)
-        .unwrap_or(sentence_tokens.len());
-    let filter_end = sentence_words
+    let Some((from_among_word_idx, from_among_len)) =
+        find_from_among_looked_cards_phrase(&action_words)
+    else {
+        return Ok(None);
+    };
+    let filter_end = action_words
         .token_index_for_word_index(from_among_word_idx)
-        .unwrap_or(sentence_tokens.len());
-    let filter_tokens = trim_commas(&sentence_tokens[filter_start..filter_end]);
+        .unwrap_or(action_tokens.len());
+    let filter_tokens = trim_commas(&action_tokens[..filter_end]);
     if filter_tokens.is_empty() {
         return Ok(None);
     }
@@ -3090,7 +2581,7 @@ fn parse_may_put_filtered_card_from_among_into_hand(
     normalize_search_library_filter(&mut filter);
     filter.zone = Some(zone);
 
-    let after_from_words = &sentence_word_refs[from_among_word_idx + from_among_len..];
+    let after_from_words = &action_word_refs[from_among_word_idx + from_among_len..];
     let moves_into_hand =
         slice_starts_with(after_from_words, &["into"]) && slice_contains(after_from_words, &"hand");
     if !moves_into_hand {
@@ -4253,8 +3744,8 @@ mod tests {
 
     #[test]
     fn consult_condition_value_reads_source_power_from_token_view() {
-        let tokens =
-            lex_line("this's power", 0).expect("rewrite lexer should classify consult value clause");
+        let tokens = lex_line("this's power", 0)
+            .expect("rewrite lexer should classify consult value clause");
 
         let parsed =
             parse_consult_condition_value(&tokens).expect("consult value clause should parse");
@@ -4272,7 +3763,11 @@ mod tests {
 
         assert_eq!(
             parsed,
-            (crate::cards::builders::PlayerAst::You, Value::Fixed(2), true)
+            (
+                crate::cards::builders::PlayerAst::You,
+                Value::Fixed(2),
+                true
+            )
         );
     }
 
@@ -4297,19 +3792,20 @@ mod tests {
         )
         .expect("rewrite lexer should classify reveal follow-up clause");
 
-        let parsed = parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard(
-            &first, &second,
-        )
-        .expect("reveal-top follow-up parser should not error")
-        .expect("reveal-top follow-up should parse");
+        let parsed =
+            parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard(&first, &second)
+                .expect("reveal-top follow-up parser should not error")
+                .expect("reveal-top follow-up should parse");
 
         assert!(matches!(
             parsed.as_slice(),
-            [crate::cards::builders::EffectAst::RevealTopPutMatchingIntoHandRestIntoGraveyard {
-                player: crate::cards::builders::PlayerAst::You,
-                count: 3,
-                ..
-            }]
+            [
+                crate::cards::builders::EffectAst::RevealTopPutMatchingIntoHandRestIntoGraveyard {
+                    player: crate::cards::builders::PlayerAst::You,
+                    count: 3,
+                    ..
+                }
+            ]
         ));
     }
 }
