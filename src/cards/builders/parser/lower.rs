@@ -2346,6 +2346,72 @@ fn lower_special_rewrite_triggered_chunk(
     }
 
     if normalized
+        == "at the beginning of each player's upkeep, that player chooses target player who controls more creatures than they do and is their opponent. the first player may reveal cards from the top of their library until they reveal a creature card. if the first player does, that player puts that card onto the battlefield and all other cards revealed this way into their graveyard"
+    {
+        let trigger = parse_trigger_clause_from_text(
+            "at the beginning of each player's upkeep",
+            line.info.line_index,
+        )?;
+        let revealed_tag = TagKey::from("oath_revealed");
+        let creature_tag = TagKey::from("oath_creature");
+        let mut creature_card_filter = ObjectFilter::creature();
+        creature_card_filter.zone = None;
+        let effects = vec![EffectAst::Conditional {
+            predicate: PredicateAst::AnOpponentControlsMoreThanPlayer {
+                player: PlayerAst::That,
+                filter: ObjectFilter::creature(),
+            },
+            if_true: vec![EffectAst::MayByPlayer {
+                player: PlayerAst::That,
+                effects: vec![
+                    EffectAst::ConsultTopOfLibrary {
+                        player: PlayerAst::That,
+                        mode: crate::cards::builders::LibraryConsultModeAst::Reveal,
+                        filter: creature_card_filter,
+                        stop_rule: crate::cards::builders::LibraryConsultStopRuleAst::FirstMatch,
+                        all_tag: revealed_tag.clone(),
+                        match_tag: creature_tag.clone(),
+                    },
+                    EffectAst::MoveToZone {
+                        target: TargetAst::Tagged(creature_tag.clone(), None),
+                        zone: Zone::Battlefield,
+                        to_top: false,
+                        battlefield_controller: ReturnControllerAst::Preserve,
+                        battlefield_tapped: false,
+                        attached_to: None,
+                    },
+                    EffectAst::ForEachTagged {
+                        tag: revealed_tag,
+                        effects: vec![EffectAst::Conditional {
+                            predicate: membership_predicate_for_iterated_object(
+                                creature_tag.as_str(),
+                            ),
+                            if_true: Vec::new(),
+                            if_false: vec![EffectAst::MoveToZone {
+                                target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                                zone: Zone::Graveyard,
+                                to_top: false,
+                                battlefield_controller: ReturnControllerAst::Preserve,
+                                battlefield_tapped: false,
+                                attached_to: None,
+                            }],
+                        }],
+                    },
+                ],
+            }],
+            if_false: Vec::new(),
+        }];
+        return Ok(Some(LineAst::Ability(rewrite_parsed_triggered_ability(
+            trigger.clone(),
+            effects,
+            infer_rewrite_triggered_functional_zones(&trigger, &line.info.raw_line),
+            Some(line.info.raw_line.clone()),
+            None,
+            ReferenceImports::default(),
+        ))));
+    }
+
+    if normalized
         == "at the beginning of combat on each opponent's turn, separate all creatures that player controls into two piles. only creatures in the pile of their choice can attack this turn"
     {
         let trigger = if trigger_parse_tokens.is_empty() {

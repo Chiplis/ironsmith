@@ -102,6 +102,50 @@ fn evaluate_value_comparison(
     operator.evaluate(left_value, right_value)
 }
 
+fn condition_count_for_player(
+    game: &GameState,
+    source: ObjectId,
+    player_filter: &PlayerFilter,
+    candidate: PlayerId,
+    filter: &crate::target::ObjectFilter,
+) -> usize {
+    let opponents: Vec<PlayerId> = game
+        .players
+        .iter()
+        .filter(|p| p.id != candidate)
+        .map(|p| p.id)
+        .collect();
+    let mut filter_ctx = crate::filter::FilterContext::new(candidate)
+        .with_source(source)
+        .with_opponents(opponents);
+    if *player_filter == PlayerFilter::IteratedPlayer {
+        filter_ctx = filter_ctx.with_iterated_player(Some(candidate));
+    }
+    condition_candidate_ids_for_zone(game, filter.zone)
+        .iter()
+        .filter_map(|&id| game.object(id))
+        .filter(|obj| condition_object_matches_player_zone(obj, candidate, filter.zone))
+        .filter(|obj| filter.matches(obj, &filter_ctx, game))
+        .count()
+}
+
+fn any_opponent_controls_more_than_player(
+    game: &GameState,
+    source: ObjectId,
+    player_filter: &PlayerFilter,
+    player_id: PlayerId,
+    filter: &crate::target::ObjectFilter,
+) -> bool {
+    let player_count = condition_count_for_player(game, source, player_filter, player_id, filter);
+    game.players
+        .iter()
+        .filter(|p| p.id != player_id && p.is_in_game())
+        .any(|opponent| {
+            condition_count_for_player(game, source, player_filter, opponent.id, filter)
+                > player_count
+        })
+}
+
 #[derive(Debug, Clone, Copy)]
 struct SharedConditionContext<'a> {
     controller: PlayerId,
@@ -267,6 +311,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::PlayerControlsAtLeastWithDifferentPowers { .. } => {}
         Condition::PlayerControlsMost { .. } => {}
         Condition::PlayerControlsMoreThanYou { .. } => {}
+        Condition::AnOpponentControlsMoreThanPlayer { .. } => {}
         Condition::PlayerLifeAtMostHalfStartingLifeTotal { .. } => {}
         Condition::PlayerLifeLessThanHalfStartingLifeTotal { .. } => {}
         Condition::LifeTotalOrLess(..) => {}
@@ -870,6 +915,15 @@ pub fn evaluate_condition_external(
             matching_condition_players_external(game, ctx, player)
                 .into_iter()
                 .any(|player_id| count_for(player_id) > count_for(ctx.controller))
+        }
+        Condition::AnOpponentControlsMoreThanPlayer { player, filter } => {
+            matching_condition_players_external(game, ctx, player)
+                .into_iter()
+                .any(|player_id| {
+                    any_opponent_controls_more_than_player(
+                        game, ctx.source, player, player_id, filter,
+                    )
+                })
         }
         Condition::PlayerOwnsCardNamedInZones {
             player,
@@ -1524,6 +1578,13 @@ fn evaluate_condition_simple(
                 .into_iter()
                 .any(|player_id| count_for(player_id) > count_for(controller))
         }
+        Condition::AnOpponentControlsMoreThanPlayer { player, filter } => {
+            matching_condition_players_simple(game, controller, player)
+                .into_iter()
+                .any(|player_id| {
+                    any_opponent_controls_more_than_player(game, source, player, player_id, filter)
+                })
+        }
         Condition::PlayerLifeAtMostHalfStartingLifeTotal { player } => {
             matching_condition_players_simple(game, controller, player)
                 .into_iter()
@@ -2073,6 +2134,15 @@ fn evaluate_condition(
             Ok(matching_condition_players_exec(game, ctx, player)?
                 .into_iter()
                 .any(|player_id| count_for(player_id) > count_for(ctx.controller)))
+        }
+        Condition::AnOpponentControlsMoreThanPlayer { player, filter } => {
+            Ok(matching_condition_players_exec(game, ctx, player)?
+                .into_iter()
+                .any(|player_id| {
+                    any_opponent_controls_more_than_player(
+                        game, ctx.source, player, player_id, filter,
+                    )
+                }))
         }
         Condition::PlayerLifeAtMostHalfStartingLifeTotal { player } => {
             Ok(matching_condition_players_exec(game, ctx, player)?

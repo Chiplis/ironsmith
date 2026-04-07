@@ -2018,6 +2018,12 @@ pub enum Condition {
         filter: ObjectFilter,
     },
 
+    /// An opponent of a specific player controls more matching objects than that player.
+    AnOpponentControlsMoreThanPlayer {
+        player: PlayerFilter,
+        filter: ObjectFilter,
+    },
+
     /// A specific player's life total is less than or equal to half their starting life total.
     PlayerLifeAtMostHalfStartingLifeTotal { player: PlayerFilter },
 

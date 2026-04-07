@@ -1331,6 +1331,10 @@ pub(crate) enum PredicateAst {
         player: PlayerAst,
         filter: ObjectFilter,
     },
+    AnOpponentControlsMoreThanPlayer {
+        player: PlayerAst,
+        filter: ObjectFilter,
+    },
     PlayerLifeAtMostHalfStartingLifeTotal {
         player: PlayerAst,
     },

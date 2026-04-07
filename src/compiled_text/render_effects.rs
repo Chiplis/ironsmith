@@ -243,6 +243,11 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             let reveal_verb = player_verb(&player, "reveal", "reveals");
             let put_verb = player_verb(&player, "put", "puts");
             let pronoun = if player == "you" { "you" } else { "they" };
+            let pronoun_reveal_verb = if pronoun == "you" || pronoun == "they" {
+                "reveal"
+            } else {
+                "reveals"
+            };
             let selection = describe_search_selection_with_cards(&consult.filter.description());
             let stop_text = match &consult.stop_rule {
                 crate::effects::ConsultTopOfLibraryStopRule::FirstMatch => selection,
@@ -267,17 +272,123 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
 
             if player == "you" {
                 Some(format!(
-                    "{player} {reveal_verb} cards from the top of {library_owner} library until {pronoun} {reveal_verb} {stop_text}, put that card into your hand, and put the rest on the bottom of {library_owner} library{order_text}"
+                    "{player} {reveal_verb} cards from the top of {library_owner} library until {pronoun} {pronoun_reveal_verb} {stop_text}, put that card into your hand, and put the rest on the bottom of {library_owner} library{order_text}"
                 ))
             } else {
                 Some(format!(
-                    "{player} {reveal_verb} cards from the top of {library_owner} library until {pronoun} {reveal_verb} {stop_text}, then {player} {put_verb} that card into their hand and {put_verb} the rest on the bottom of {library_owner} library{order_text}"
+                    "{player} {reveal_verb} cards from the top of {library_owner} library until {pronoun} {pronoun_reveal_verb} {stop_text}, then {player} {put_verb} that card into their hand and {put_verb} the rest on the bottom of {library_owner} library{order_text}"
+                ))
+            }
+        }
+
+        fn render_consult_reveal_put_battlefield_rest_graveyard(
+            effects: &[&Effect],
+        ) -> Option<String> {
+            if effects.len() != 3 {
+                return None;
+            }
+
+            let consult = effects[0].downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>()?;
+            if consult.mode != crate::effects::consult_helpers::LibraryConsultMode::Reveal {
+                return None;
+            }
+
+            let move_effect = unwrap_tag_wrappers(effects[1]);
+            let move_to_zone = move_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+            if move_to_zone.zone != Zone::Battlefield || move_to_zone.to_top {
+                return None;
+            }
+            if !matches!(
+                &move_to_zone.target,
+                ChooseSpec::Tagged(tag) if tag == &consult.match_tag
+            ) {
+                return None;
+            }
+
+            let remainder = effects[2].downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+            if remainder.tag != consult.all_tag {
+                return None;
+            }
+            let [conditional_effect] = remainder.effects.as_slice() else {
+                return None;
+            };
+            let conditional =
+                conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+            if !matches!(
+                &conditional.condition,
+                crate::ConditionExpr::TaggedObjectMatches(tag, filter)
+                    if tag == &consult.match_tag
+                        && *filter
+                            == ObjectFilter::default()
+                                .same_stable_id_as_tagged(crate::tag::TagKey::from("__it__"))
+            ) {
+                return None;
+            }
+            if !conditional.if_true.is_empty() || conditional.if_false.len() != 1 {
+                return None;
+            }
+            let graveyard_effect = unwrap_tag_wrappers(&conditional.if_false[0]);
+            let move_remainder =
+                graveyard_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+            if move_remainder.zone != Zone::Graveyard || move_remainder.to_top {
+                return None;
+            }
+            if !matches!(
+                &move_remainder.target,
+                ChooseSpec::Tagged(tag) if tag.as_str() == "__it__"
+            ) && !matches!(&move_remainder.target, ChooseSpec::Iterated)
+            {
+                return None;
+            }
+
+            let player = describe_player_filter(&consult.player);
+            let library_owner = describe_possessive_player_filter(&consult.player);
+            let reveal_verb = player_verb(&player, "reveal", "reveals");
+            let put_verb = player_verb(&player, "put", "puts");
+            let pronoun = if player == "you" { "you" } else { "they" };
+            let pronoun_reveal_verb = if pronoun == "you" || pronoun == "they" {
+                "reveal"
+            } else {
+                "reveals"
+            };
+            let selection = describe_search_selection_with_cards(&consult.filter.description());
+            let stop_text = match &consult.stop_rule {
+                crate::effects::ConsultTopOfLibraryStopRule::FirstMatch => selection,
+                crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1)) => {
+                    selection
+                }
+                crate::effects::ConsultTopOfLibraryStopRule::MatchCount(count) => format!(
+                    "{} {}",
+                    describe_value(count),
+                    pluralize_noun_phrase(&selection)
+                ),
+            };
+
+            if player == "you" {
+                Some(format!(
+                    "{player} {reveal_verb} cards from the top of {library_owner} library until {pronoun} {pronoun_reveal_verb} {stop_text}, put that card onto the battlefield, and put all other cards revealed this way into your graveyard"
+                ))
+            } else {
+                Some(format!(
+                    "{player} {reveal_verb} cards from the top of {library_owner} library until {pronoun} {pronoun_reveal_verb} {stop_text}, then {player} {put_verb} that card onto the battlefield and {put_verb} all other cards revealed this way into their graveyard"
                 ))
             }
         }
 
         if idx + 2 < filtered.len()
             && let Some(rendered) = render_consult_reveal_put_hand_then_bottom(&[
+                filtered[idx],
+                filtered[idx + 1],
+                filtered[idx + 2],
+            ])
+        {
+            parts.push(rendered);
+            idx += 3;
+            continue;
+        }
+
+        if idx + 2 < filtered.len()
+            && let Some(rendered) = render_consult_reveal_put_battlefield_rest_graveyard(&[
                 filtered[idx],
                 filtered[idx + 1],
                 filtered[idx + 2],

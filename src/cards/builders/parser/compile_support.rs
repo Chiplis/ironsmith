@@ -1209,6 +1209,15 @@ pub(crate) fn compile_condition_from_predicate_ast(
                 filter: resolved,
             }
         }
+        PredicateAst::AnOpponentControlsMoreThanPlayer { player, filter } => {
+            let player = resolve_non_target_player_filter(*player, &refs)?;
+            let mut resolved = resolve_it_tag(filter, &refs)?;
+            resolved.zone = None;
+            Condition::AnOpponentControlsMoreThanPlayer {
+                player,
+                filter: resolved,
+            }
+        }
         PredicateAst::PlayerLifeAtMostHalfStartingLifeTotal { player } => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerLifeAtMostHalfStartingLifeTotal { player }

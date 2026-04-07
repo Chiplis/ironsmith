@@ -568,11 +568,15 @@ pub(super) fn normalize_you_verb_phrase(text: &str) -> String {
         ("loses ", "lose "),
         ("gains ", "gain "),
         ("draws ", "draw "),
+        ("puts ", "put "),
         ("discards ", "discard "),
         ("sacrifices ", "sacrifice "),
         ("chooses ", "choose "),
         ("mills ", "mill "),
+        ("reveals ", "reveal "),
         ("scries ", "scry "),
+        ("searches ", "search "),
+        ("shuffles ", "shuffle "),
         ("surveils ", "surveil "),
     ];
     for (from, to) in replacements {
@@ -7309,6 +7313,19 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 player_verb(&controller, "control", "controls"),
                 subject
             )
+        }
+        Condition::AnOpponentControlsMoreThanPlayer { player, filter } => {
+            let compared_player = describe_player_filter(player);
+            let described_filter = filter.clone();
+            let mut subject = strip_indefinite_article(&described_filter.description()).to_string();
+            if !subject.ends_with('s') {
+                subject.push('s');
+            }
+            if compared_player == "you" {
+                format!("an opponent controls more {subject} than you do")
+            } else {
+                format!("an opponent controls more {subject} than {compared_player} does")
+            }
         }
         Condition::PlayerLifeAtMostHalfStartingLifeTotal { player } => {
             let subject = if *player == PlayerFilter::You {

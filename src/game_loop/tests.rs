@@ -418,6 +418,115 @@ fn test_suspend_declined_cast_does_not_keep_triggering_without_time_counters() {
 }
 
 #[test]
+fn oath_of_druids_upkeep_trigger_puts_revealed_creature_onto_battlefield() {
+    struct AcceptMayDecisionMaker;
+
+    impl DecisionMaker for AcceptMayDecisionMaker {
+        fn decide_boolean(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            true
+        }
+    }
+
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let oath = CardDefinitionBuilder::new(CardId::from_raw(99_100), "Oath of Druids")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "At the beginning of each player's upkeep, that player chooses target player who controls more creatures than they do and is their opponent. The first player may reveal cards from the top of their library until they reveal a creature card. If the first player does, that player puts that card onto the battlefield and all other cards revealed this way into their graveyard.",
+        )
+        .expect("Oath of Druids should parse for runtime test");
+    let _oath_id = game.create_object_from_definition(&oath, alice, Zone::Battlefield);
+
+    create_creature(&mut game, "Alice Bear", alice, 2, 2);
+    create_creature(&mut game, "Alice Wolf", alice, 2, 2);
+    create_creature(&mut game, "Bob Scout", bob, 1, 1);
+
+    let bottom_library_id = game.create_object_from_card(
+        &CardBuilder::new(CardId::from_raw(99_101), "Bottom Forest")
+            .card_types(vec![CardType::Land])
+            .build(),
+        bob,
+        Zone::Library,
+    );
+    let _creature_library_id = game.create_object_from_card(
+        &CardBuilder::new(CardId::from_raw(99_102), "Revealed Beast")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(4, 4))
+            .build(),
+        bob,
+        Zone::Library,
+    );
+    let _top_library_id = game.create_object_from_card(
+        &CardBuilder::new(CardId::from_raw(99_103), "Top Relic")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        bob,
+        Zone::Library,
+    );
+
+    game.turn.phase = Phase::Beginning;
+    game.turn.step = Some(crate::game_state::Step::Upkeep);
+    game.turn.active_player = bob;
+    game.turn.priority_player = Some(bob);
+
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Oath of Druids should trigger on the upkeep where an opponent has more creatures"
+    );
+
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Oath of Druids trigger should go on the stack");
+
+    let mut dm = AcceptMayDecisionMaker;
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Oath of Druids trigger should resolve when accepted");
+
+    assert!(
+        game.battlefield.iter().any(|&id| {
+            game.object(id)
+                .is_some_and(|obj| obj.name == "Revealed Beast" && obj.controller == bob)
+        }),
+        "the first revealed creature should enter under the active player's control"
+    );
+    assert!(
+        game.player(bob)
+            .expect("bob exists")
+            .graveyard
+            .iter()
+            .any(|&id| {
+                game.object(id)
+                    .is_some_and(|obj| obj.name == "Top Relic" && obj.owner == bob)
+            }),
+        "noncreature cards revealed before the creature should go to that player's graveyard"
+    );
+    assert!(
+        game.object(bottom_library_id)
+            .is_some_and(|obj| obj.zone == Zone::Library && obj.owner == bob),
+        "cards below the first revealed creature should stay in the library"
+    );
+    assert_eq!(
+        game.player(bob).expect("bob exists").graveyard.len(),
+        1,
+        "only the noncreature card revealed before the creature should hit the graveyard"
+    );
+    assert_eq!(
+        game.player(bob).expect("bob exists").library.len(),
+        1,
+        "resolving Oath should stop after the first creature is revealed"
+    );
+}
+
+#[test]
 fn test_queue_triggers_tracks_noncombat_damage_to_players_this_turn() {
     let mut game = setup_game();
     let mut trigger_queue = TriggerQueue::new();

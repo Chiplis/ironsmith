@@ -21351,6 +21351,39 @@ fn parse_tithe_separate_searches_then_reveal_to_hand() {
 }
 
 #[test]
+fn parse_oath_of_druids_maps_to_upkeep_consult_effects() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Oath of Druids")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "At the beginning of each player's upkeep, that player chooses target player who controls more creatures than they do and is their opponent. The first player may reveal cards from the top of their library until they reveal a creature card. If the first player does, that player puts that card onto the battlefield and all other cards revealed this way into their graveyard.",
+        )
+        .expect("Oath of Druids should parse into its consult trigger");
+
+    let raw = format!("{:?}", def.abilities);
+    assert!(
+        raw.contains("BeginningOfUpkeepTrigger")
+            && raw.contains("player: Any")
+            && raw.contains("AnOpponentControlsMoreThanPlayer")
+            && raw.contains("ConsultTopOfLibraryEffect")
+            && raw.contains("MayEffect")
+            && raw.contains("zone: Battlefield")
+            && raw.contains("zone: Graveyard"),
+        "expected Oath of Druids to keep its upkeep consult structure, got {raw}"
+    );
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("each player's upkeep")
+            && rendered.contains("an opponent controls more creatures than that player")
+            && rendered.contains("that player may reveal cards from the top of")
+            && rendered.contains("until they reveal a creature card")
+            && rendered.contains("that card onto the battlefield")
+            && rendered.contains("all other cards revealed this way into their graveyard"),
+        "expected Oath of Druids oracle-like text to stay close to the oracle, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_last_march_of_the_ents_draws_greatest_toughness() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Last March Variant")
         .card_types(vec![CardType::Sorcery])
