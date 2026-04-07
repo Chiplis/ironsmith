@@ -68,6 +68,16 @@ pub(crate) fn slice_contains_all<T: PartialEq>(items: &[T], expected: &[T]) -> b
         .all(|candidate| slice_contains(items, candidate))
 }
 
+pub(crate) fn slice_eq_any<T: PartialEq>(items: &[T], patterns: &[&[T]]) -> bool {
+    patterns.iter().any(|pattern| items == *pattern)
+}
+
+pub(crate) fn slice_starts_with_any<T: PartialEq>(items: &[T], patterns: &[&[T]]) -> bool {
+    patterns
+        .iter()
+        .any(|pattern| slice_starts_with(items, pattern))
+}
+
 pub(crate) fn iter_contains<I, T>(items: I, expected: &T) -> bool
 where
     I: IntoIterator,

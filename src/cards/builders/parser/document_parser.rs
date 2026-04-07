@@ -538,8 +538,17 @@ fn parse_triggered_line_cst(line: &PreprocessedLine) -> Result<TriggeredLineCst,
         );
 
         if let Some(parsed) = probe.supported_cst(line, tokens_without_cap) {
-            if best_supported_split.is_none() {
-                best_supported_split = Some(parsed);
+            // Prefer the split with the most effect tokens (latest separator
+            // = largest effects portion).  This prevents silent truncation
+            // where an early split absorbs most content into the trigger.
+            let effect_len = parsed.effect_parse_tokens.len();
+            if best_supported_split
+                .as_ref()
+                .map_or(true, |(_, prev): &(usize, TriggeredLineCst)| {
+                    effect_len > prev.effect_parse_tokens.len()
+                })
+            {
+                best_supported_split = Some((separator_idx, parsed));
             }
             continue;
         }
@@ -553,22 +562,69 @@ fn parse_triggered_line_cst(line: &PreprocessedLine) -> Result<TriggeredLineCst,
         }
     }
 
-    if let Some(split) = best_supported_split.or(best_fallback_split) {
+    if let Some(split) = best_supported_split
+        .map(|(_, cst)| cst)
+        .or(best_fallback_split)
+    {
+        // Reject splits where effects cover too little of a multi-sentence
+        // line — this catches silent truncation where voting, conditional, or
+        // other unsupported clauses are absorbed into the trigger.
+        let total_tokens = tokens_without_cap.len();
+        let effect_tokens = split.effect_parse_tokens.len();
+        let period_count = tokens_without_cap
+            .iter()
+            .filter(|t| t.kind == TokenKind::Period)
+            .count();
+        if period_count >= 2 && total_tokens > 15 && effect_tokens * 4 < total_tokens {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported triggered line: effects cover too few tokens ({effect_tokens}/{total_tokens}), \
+                 likely missing unsupported clauses (line: '{}')",
+                line.info.raw_line
+            )));
+        }
         return Ok(split);
     }
 
     match whole_line_parse {
-        Ok(_) => Ok(TriggeredLineCst {
-            info: line.info.clone(),
-            full_text: normalized.to_string(),
-            full_parse_tokens: tokens_without_cap.to_vec(),
-            trigger_text: render_token_slice(condition_tokens).trim().to_string(),
-            trigger_parse_tokens: condition_tokens.to_vec(),
-            effect_text: String::new(),
-            effect_parse_tokens: Vec::new(),
-            max_triggers_per_turn: trailing_cap,
-            chosen_option_label: None,
-        }),
+        Ok(line_ast) => {
+            // The whole-line parser found a valid split internally.
+            // Apply the same coverage validation: reject if the line has
+            // multiple sentences and the effects from the internal split
+            // are too small relative to the total.
+            let effect_token_count = match &line_ast {
+                LineAst::Triggered { effects, .. } => {
+                    if effects.is_empty() {
+                        0
+                    } else {
+                        tokens_without_cap.len() / 2
+                    }
+                }
+                _ => tokens_without_cap.len(),
+            };
+            let period_count = tokens_without_cap
+                .iter()
+                .filter(|t| t.kind == TokenKind::Period)
+                .count();
+            let total_tokens = tokens_without_cap.len();
+            if period_count >= 2 && total_tokens > 15 && effect_token_count * 4 < total_tokens {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported triggered line: whole-line parse covers too little of multi-sentence \
+                     ability (line: '{}')",
+                    line.info.raw_line
+                )));
+            }
+            Ok(TriggeredLineCst {
+                info: line.info.clone(),
+                full_text: normalized.to_string(),
+                full_parse_tokens: tokens_without_cap.to_vec(),
+                trigger_text: render_token_slice(condition_tokens).trim().to_string(),
+                trigger_parse_tokens: condition_tokens.to_vec(),
+                effect_text: String::new(),
+                effect_parse_tokens: Vec::new(),
+                max_triggers_per_turn: trailing_cap,
+                chosen_option_label: None,
+            })
+        }
         Err(err) => Err(best_probe_error.unwrap_or(err)),
     }
 }

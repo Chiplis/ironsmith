@@ -84,14 +84,7 @@ pub(crate) fn parse_prefix<'a, O>(
     Some((parsed, remaining))
 }
 
-#[cfg(test)]
-/// Adapts a winnow parser into the `SentencePrimitiveParser` convention:
-///
-/// - Winnow backtrack (pattern mismatch) → `Ok(None)`
-/// - Winnow cut (hard parse error) → `Err(CardTextError)`
-/// - Winnow success with trailing tokens → `Err(CardTextError)`
-/// - Winnow success consuming all input → `Ok(Some(value))`
-pub(crate) fn try_parse_all<'a, O>(
+pub(crate) fn parse_all_or_none<'a, O>(
     tokens: &'a [LexToken],
     mut parser: impl Parser<LexStream<'a>, O, ErrMode<ContextError>>,
     label: &str,
@@ -125,6 +118,21 @@ pub(crate) fn try_parse_all<'a, O>(
         }
         Err(ErrMode::Incomplete(_)) => Ok(None),
     }
+}
+
+#[cfg(test)]
+/// Adapts a winnow parser into the `SentencePrimitiveParser` convention:
+///
+/// - Winnow backtrack (pattern mismatch) → `Ok(None)`
+/// - Winnow cut (hard parse error) → `Err(CardTextError)`
+/// - Winnow success with trailing tokens → `Err(CardTextError)`
+/// - Winnow success consuming all input → `Ok(Some(value))`
+pub(crate) fn try_parse_all<'a, O>(
+    tokens: &'a [LexToken],
+    parser: impl Parser<LexStream<'a>, O, ErrMode<ContextError>>,
+    label: &str,
+) -> Result<Option<O>, CardTextError> {
+    parse_all_or_none(tokens, parser, label)
 }
 
 pub(crate) fn find_prefix<'a, O, P, F>(

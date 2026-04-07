@@ -3345,6 +3345,39 @@ fn is_stopword(token: &str) -> bool {
     )
 }
 
+/// Returns true when a clause's tokens look like a bare keyword ability name
+/// (optionally followed by a numeric parameter), rather than a real sentence.
+///
+/// Examples: `["enlist"]`, `["fabricate", "1"]`, `["spectacle", "{2}{r}"]`.
+fn is_bare_keyword_clause(tokens: &[String]) -> bool {
+    if tokens.is_empty() {
+        return false;
+    }
+    let keyword = &tokens[0];
+    let is_keyword = !keyword.is_empty()
+        && keyword.chars().all(|ch| ch.is_ascii_lowercase())
+        && !matches!(
+            keyword.as_str(),
+            "draw" | "discard" | "tap" | "untap" | "sacrifice" | "destroy" | "exile" | "attack"
+                | "block" | "cast" | "counter" | "pay" | "search" | "shuffle" | "reveal"
+                | "scry" | "create" | "gain" | "lose" | "deal" | "prevent" | "return"
+                | "put" | "add" | "remove" | "choose" | "target" | "copy" | "fight"
+                | "when" | "whenever" | "at" | "if" | "each" | "all" | "has" | "gets"
+                | "is" | "are" | "can" | "may" | "must" | "enters" | "leaves" | "dies"
+        );
+    if !is_keyword {
+        return false;
+    }
+    // Bare keyword alone, or keyword + numeric/mana parameter(s)
+    tokens.len() == 1
+        || tokens[1..].iter().all(|t| {
+            t == "<num>" || t == "<mana>" || t == "<pt>"
+                || t.chars().all(|ch| {
+                    ch.is_ascii_digit() || ch == 'x' || ch == '{' || ch == '}' || ch == '/'
+                })
+        })
+}
+
 fn comparison_tokens(clause: &str) -> Vec<String> {
     let tokens = tokenize_text(clause)
         .into_iter()
@@ -4543,6 +4576,24 @@ pub fn compare_semantics_scored(
 
     // Parenthetical-only oracle text (typically reminder text) carries no
     // semantic clauses after normalization, so don't flag as mismatch.
+    if oracle_tokens.is_empty() {
+        return (1.0, 1.0, 1.0, 0, false);
+    }
+
+    // Keyword expansion handling: when an oracle clause is a bare keyword name
+    // (e.g. "Enlist") whose reminder text was compiled into the expansion, the
+    // compiled clauses that matched the reminder were already filtered out
+    // above.  Exclude these bare-keyword oracle clauses from the coverage
+    // calculation since their semantics are fully captured by the expansion.
+    let has_reminder = !reminder_tokens.is_empty();
+    let oracle_tokens: Vec<Vec<String>> = if has_reminder {
+        oracle_tokens
+            .into_iter()
+            .filter(|tokens| !is_bare_keyword_clause(tokens))
+            .collect()
+    } else {
+        oracle_tokens
+    };
     if oracle_tokens.is_empty() {
         return (1.0, 1.0, 1.0, 0, false);
     }

@@ -1,4 +1,4 @@
 # Format: kind|path|max_hits|remove_when
 # Keep this file even when empty so new parser debt has an obvious place to be
 # documented, reviewed, and removed intentionally.
-
+raw_string_after_lex|src/cards/builders/parser/effect_sentences/dispatch_entry.rs|1|.contains() on error string for control flow, replace with structured error matching

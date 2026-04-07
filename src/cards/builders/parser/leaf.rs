@@ -139,34 +139,23 @@ fn parse_color_word(word: &str) -> Option<ColorSet> {
 }
 
 fn str_starts_with(text: &str, prefix: &str) -> bool {
-    text.get(..prefix.len()) == Some(prefix)
+    super::token_primitives::str_starts_with(text, prefix)
 }
 
 fn str_ends_with(text: &str, suffix: &str) -> bool {
-    if suffix.len() > text.len() {
-        return false;
-    }
-    text.get(text.len() - suffix.len()..) == Some(suffix)
+    super::token_primitives::str_ends_with(text, suffix)
 }
 
 fn str_strip_prefix<'a>(text: &'a str, prefix: &str) -> Option<&'a str> {
-    str_starts_with(text, prefix).then(|| &text[prefix.len()..])
+    super::token_primitives::str_strip_prefix(text, prefix)
 }
 
 fn str_strip_suffix<'a>(text: &'a str, suffix: &str) -> Option<&'a str> {
-    str_ends_with(text, suffix).then(|| &text[..text.len().saturating_sub(suffix.len())])
+    super::token_primitives::str_strip_suffix(text, suffix)
 }
 
 fn word_slice_starts_with(words: &[&str], prefix: &[&str]) -> bool {
-    if prefix.len() > words.len() {
-        return false;
-    }
-    for (idx, expected) in prefix.iter().enumerate() {
-        if words[idx] != *expected {
-            return false;
-        }
-    }
-    true
+    super::token_primitives::slice_starts_with(words, prefix)
 }
 
 fn trim_plural_s(word: &str) -> Option<&str> {
@@ -175,12 +164,7 @@ fn trim_plural_s(word: &str) -> Option<&str> {
 }
 
 fn find_word_index(words: &[&str], mut predicate: impl FnMut(&str) -> bool) -> Option<usize> {
-    for (idx, word) in words.iter().enumerate() {
-        if predicate(word) {
-            return Some(idx);
-        }
-    }
-    None
+    super::token_primitives::find_str_by(words, |word| predicate(word))
 }
 
 fn push_unique_card_type(card_types: &mut Vec<CardType>, card_type: CardType) {
@@ -247,17 +231,15 @@ fn render_lower_lexed_tokens(tokens: &[OwnedLexToken]) -> String {
 }
 
 fn word_slice_ends_with(words: &[&str], suffix: &[&str]) -> bool {
-    words.len() >= suffix.len() && words[words.len() - suffix.len()..] == *suffix
+    super::token_primitives::slice_ends_with(words, suffix)
 }
 
 fn words_match_any(words: &[&str], patterns: &[&[&str]]) -> bool {
-    patterns.iter().any(|pattern| words == *pattern)
+    super::token_primitives::slice_eq_any(words, patterns)
 }
 
 fn words_start_with_any(words: &[&str], patterns: &[&[&str]]) -> bool {
-    patterns
-        .iter()
-        .any(|pattern| word_slice_starts_with(words, pattern))
+    super::token_primitives::slice_starts_with_any(words, patterns)
 }
 
 fn parse_count_prefix_words(words: &[&str]) -> Option<(u32, usize)> {

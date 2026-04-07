@@ -1135,6 +1135,11 @@ pub(crate) fn parse_triggered_line_lexed(
         }
     }
 
+    // Try every comma as a trigger/effects split point.  Prefer the split
+    // that produces the **longest** effects (earliest split_idx) rather than
+    // the shortest (latest split_idx).  This prevents silent truncation where
+    // only the last sentence parses and the rest is absorbed into the trigger.
+    let mut best_result: Option<(usize, LineAst)> = None;
     for split_idx in ((start_idx + 1)..tokens.len()).rev() {
         let (trigger_tokens, max_triggers_from_trigger_clause) =
             trim_first_time_each_turn_suffix_lexed(&tokens[start_idx..split_idx]);
@@ -1163,13 +1168,42 @@ pub(crate) fn parse_triggered_line_lexed(
                     max_triggers_per_turn =
                         Some(max_triggers_per_turn.map_or(max, |existing| existing.min(max)));
                 }
-                return Ok(LineAst::Triggered {
+                let effect_token_count = effects_tokens.len();
+                let line_ast = LineAst::Triggered {
                     trigger,
                     effects,
                     max_triggers_per_turn,
-                });
+                };
+                // Keep the split that produces the most effect tokens
+                // (earliest split point = most effects).
+                if best_result
+                    .as_ref()
+                    .map_or(true, |(prev_count, _)| effect_token_count > *prev_count)
+                {
+                    best_result = Some((effect_token_count, line_ast));
+                }
             }
         }
+    }
+    if let Some((effect_count, line_ast)) = best_result {
+        // Reject splits where the effects cover too little of the total line
+        // AND there are multiple sentences (periods) in the line.  A single-
+        // sentence triggered ability can legitimately have a long trigger and
+        // short effect; the truncation problem only arises when multi-sentence
+        // lines silently lose entire sentences.
+        let total_token_count = tokens.len().saturating_sub(start_idx);
+        let period_count = tokens
+            .iter()
+            .filter(|t| t.kind == crate::cards::builders::parser::lexer::TokenKind::Period)
+            .count();
+        if period_count >= 2 && total_token_count > 15 && effect_count * 4 < total_token_count {
+            return Err(CardTextError::ParseError(format!(
+                "triggered line effects cover too few tokens ({effect_count}/{total_token_count}), \
+                 likely missing unsupported clauses (line: '{}')",
+                TokenWordView::new(tokens).word_refs().join(" ")
+            )));
+        }
+        return Ok(line_ast);
     }
 
     Err(CardTextError::ParseError(format!(

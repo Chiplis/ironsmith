@@ -2120,6 +2120,21 @@ fn parse_object_filter(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    parse_object_filter_inner(tokens, other, true)
+}
+
+fn parse_object_filter_permissive(
+    tokens: &[OwnedLexToken],
+    other: bool,
+) -> Result<ObjectFilter, CardTextError> {
+    parse_object_filter_inner(tokens, other, false)
+}
+
+fn parse_object_filter_inner(
+    tokens: &[OwnedLexToken],
+    other: bool,
+    strict: bool,
+) -> Result<ObjectFilter, CardTextError> {
     let (tokens, vote_winners_only) = trim_vote_winner_suffix(tokens);
     let mut filter = ObjectFilter::default();
     if other {
@@ -2170,7 +2185,7 @@ fn parse_object_filter(
             }
             Ok((
                 None,
-                Some(parse_object_filter(target_filter_tokens, false)?),
+                Some(parse_object_filter_permissive(target_filter_tokens, false)?),
             ))
         };
 
@@ -3489,6 +3504,59 @@ fn parse_object_filter(
         })
         .collect();
         filter = disjunction;
+    }
+
+    // Strict mode: detect structural patterns in the input that indicate
+    // unconsumed compound content (e.g. "for each card in your hand AND EACH
+    // foretold card you own in exile" where the second clause was silently
+    // absorbed into the first filter).
+    if strict {
+        let input_words_view = GrammarFilterNormalizedWords::new(&tokens);
+        let input_words: Vec<&str> = input_words_view
+            .to_word_refs()
+            .into_iter()
+            .filter(|word| !is_article(word))
+            .collect();
+
+        // "and each" / "and every" signals a compound count source when
+        // the word after "each"/"every" introduces a new filter (type word,
+        // zone word, etc.) rather than qualifying the current subject
+        // (e.g. "and each other creature" is a subject qualifier, but
+        // "and each foretold card you own in exile" is a new clause).
+        for (idx, word) in input_words.iter().enumerate() {
+            if *word != "and" {
+                continue;
+            }
+            let next = input_words.get(idx + 1).copied();
+            if !next.is_some_and(|n| matches!(n, "each" | "every")) {
+                continue;
+            }
+            // "and each other" is typically a subject qualifier, allow it.
+            let after_each = input_words.get(idx + 2).copied();
+            if after_each.is_some_and(|w| matches!(w, "other" | "another")) {
+                continue;
+            }
+            return Err(CardTextError::ParseError(format!(
+                "object filter has unconsumed compound clause '{}' (full input: '{}')",
+                input_words[idx..].join(" "),
+                input_words.join(" "),
+            )));
+        }
+
+        // "for each" signals a trailing iteration clause that should have
+        // been split out by the caller before passing to the filter parser.
+        for (idx, word) in input_words.iter().enumerate() {
+            if *word == "for"
+                && idx > 0
+                && input_words.get(idx + 1).is_some_and(|next| *next == "each")
+            {
+                return Err(CardTextError::ParseError(format!(
+                    "object filter has unconsumed 'for each' clause '{}' (full input: '{}')",
+                    input_words[idx..].join(" "),
+                    input_words.join(" "),
+                )));
+            }
+        }
     }
 
     Ok(filter)

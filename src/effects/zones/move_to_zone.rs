@@ -113,9 +113,7 @@ impl EffectExecutor for MoveToZoneEffect {
         if let ChooseSpec::Tagged(tag) = &self.target {
             if let Some(tagged) = ctx.get_tagged_all(tag) {
                 for (idx, snapshot) in tagged.iter().enumerate() {
-                    if idx < object_ids.len()
-                        && game.object(object_ids[idx]).is_none()
-                    {
+                    if idx < object_ids.len() && game.object(object_ids[idx]).is_none() {
                         if let Some(resolved) =
                             crate::effects::helpers::resolve_tagged_object_id(game, snapshot)
                         {

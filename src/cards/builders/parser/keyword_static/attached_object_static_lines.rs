@@ -39,80 +39,32 @@ fn str_ends_with_char(text: &str, suffix: char) -> bool {
 }
 
 fn word_slice_starts_with(words: &[&str], prefix: &[&str]) -> bool {
-    if prefix.len() > words.len() {
-        return false;
-    }
-    for (idx, expected) in prefix.iter().enumerate() {
-        if words[idx] != *expected {
-            return false;
-        }
-    }
-    true
+    crate::cards::builders::parser::token_primitives::slice_starts_with(words, prefix)
 }
 
 fn word_slice_ends_with(words: &[&str], suffix: &[&str]) -> bool {
-    if suffix.len() > words.len() {
-        return false;
-    }
-    let start = words.len() - suffix.len();
-    for (offset, expected) in suffix.iter().enumerate() {
-        if words[start + offset] != *expected {
-            return false;
-        }
-    }
-    true
+    crate::cards::builders::parser::token_primitives::slice_ends_with(words, suffix)
 }
 
 fn word_slice_contains(words: &[&str], expected: &str) -> bool {
-    for word in words {
-        if *word == expected {
-            return true;
-        }
-    }
-    false
+    crate::cards::builders::parser::token_primitives::slice_contains_str(words, expected)
 }
 
 fn word_slice_contains_sequence(words: &[&str], sequence: &[&str]) -> bool {
-    if sequence.is_empty() {
-        return true;
-    }
-    if sequence.len() > words.len() {
-        return false;
-    }
-    for start in 0..=words.len() - sequence.len() {
-        let mut matches = true;
-        for (offset, expected) in sequence.iter().enumerate() {
-            if words[start + offset] != *expected {
-                matches = false;
-                break;
-            }
-        }
-        if matches {
-            return true;
-        }
-    }
-    false
+    crate::cards::builders::parser::token_primitives::contains_window(words, sequence)
 }
 
 fn find_word_index(words: &[&str], mut predicate: impl FnMut(&str) -> bool) -> Option<usize> {
-    for (idx, word) in words.iter().enumerate() {
-        if predicate(word) {
-            return Some(idx);
-        }
-    }
-    None
+    crate::cards::builders::parser::token_primitives::find_str_by(words, |word| predicate(word))
 }
 
 fn find_token_index(
     tokens: &[OwnedLexToken],
     mut predicate: impl FnMut(&OwnedLexToken) -> bool,
 ) -> Option<usize> {
-    for (idx, token) in tokens.iter().enumerate() {
-        if predicate(token) {
-            return Some(idx);
-        }
-    }
-    None
+    crate::cards::builders::parser::grammar::primitives::find_token_index(tokens, |token| {
+        predicate(token)
+    })
 }
 
 fn strip_suffix_char<'a>(word: &'a str, suffix: char) -> Option<&'a str> {
@@ -448,12 +400,13 @@ pub(crate) fn parse_enchanted_creature_has_line(
     }
 
     let ability_words = token_words(&ability_tokens);
-    if matches!(ability_words.as_slice(), ["landwalk", "of", "the", "chosen", "type"])
-        || matches!(
-            ability_words.as_slice(),
-            ["snow", "landwalk", "of", "the", "chosen", "type"]
-        )
-    {
+    if matches!(
+        ability_words.as_slice(),
+        ["landwalk", "of", "the", "chosen", "type"]
+    ) || matches!(
+        ability_words.as_slice(),
+        ["snow", "landwalk", "of", "the", "chosen", "type"]
+    ) {
         let snow = ability_words.first().copied() == Some("snow");
         let display = if snow {
             format!("{subject} has snow landwalk of the chosen type")
@@ -610,8 +563,7 @@ pub(crate) fn parse_attached_cant_attack_or_block_line(
     }
 
     let is_enchanted_creature = word_slice_starts_with(&normalized, &["enchanted", "creature"]);
-    let is_enchanted_permanent =
-        word_slice_starts_with(&normalized, &["enchanted", "permanent"]);
+    let is_enchanted_permanent = word_slice_starts_with(&normalized, &["enchanted", "permanent"]);
     let is_equipped_creature = word_slice_starts_with(&normalized, &["equipped", "creature"]);
     if !is_enchanted_creature && !is_enchanted_permanent && !is_equipped_creature {
         return Ok(None);
@@ -769,8 +721,7 @@ pub(crate) fn parse_attached_gets_and_cant_block_line(
 
     let Some(get_idx) = find_token_index(tokens, |token| {
         token.is_word("get") || token.is_word("gets")
-    })
-    else {
+    }) else {
         return Ok(None);
     };
     let Some(and_idx) = find_token_index(tokens, |token| token.is_word("and")) else {
@@ -1043,8 +994,7 @@ pub(crate) fn parse_attached_type_transform_line(
             out.push(StaticAbility::remove_all_abilities(filter.clone()).into());
         } else if !matches!(
             loss_words.as_slice(),
-            ["lose", "all", "other", "card", "types"]
-                | ["loses", "all", "other", "card", "types"]
+            ["lose", "all", "other", "card", "types"] | ["loses", "all", "other", "card", "types"]
         ) {
             return Err(CardTextError::ParseError(format!(
                 "unsupported attached transform loss clause (clause: '{}')",
@@ -1085,8 +1035,7 @@ pub(crate) fn parse_prevent_damage_to_source_remove_counter_line(
     let Some(counter_word_idx) = find_word_index(&line_words[remove_word_idx + 1..], |word| {
         matches!(word, "counter" | "counters")
     })
-        .map(|idx| remove_word_idx + 1 + idx)
-    else {
+    .map(|idx| remove_word_idx + 1 + idx) else {
         return Ok(None);
     };
 
@@ -1167,65 +1116,22 @@ pub(crate) fn parse_prevent_damage_to_source_put_counters_line(
         };
         if let Some(source_words_used) = source_words_used {
             let generic_tail = [
-                "prevent",
-                "that",
-                "damage",
-                "and",
-                "put",
-                "that",
-                "many",
-                "+1/+1",
-                "counters",
-                "on",
-                "it",
+                "prevent", "that", "damage", "and", "put", "that", "many", "+1/+1", "counters",
+                "on", "it",
             ];
             let generic_tail_alt = [
-                "prevent",
-                "that",
-                "damage",
-                "and",
-                "put",
-                "that",
-                "many",
-                "+1/+1",
-                "counters",
-                "on",
-                "this",
-                "creature",
+                "prevent", "that", "damage", "and", "put", "that", "many", "+1/+1", "counters",
+                "on", "this", "creature",
             ];
             let generic_tail_pronoun = [
-                "prevent",
-                "that",
-                "damage",
-                "and",
-                "put",
-                "that",
-                "many",
-                "+1/+1",
-                "counters",
-                "on",
-                "him",
+                "prevent", "that", "damage", "and", "put", "that", "many", "+1/+1", "counters",
+                "on", "him",
             ];
             let instead_tail = [
-                "put",
-                "that",
-                "many",
-                "+1/+1",
-                "counters",
-                "on",
-                "it",
-                "instead",
+                "put", "that", "many", "+1/+1", "counters", "on", "it", "instead",
             ];
             let instead_tail_alt = [
-                "put",
-                "that",
-                "many",
-                "+1/+1",
-                "counters",
-                "on",
-                "this",
-                "creature",
-                "instead",
+                "put", "that", "many", "+1/+1", "counters", "on", "this", "creature", "instead",
             ];
 
             let tail_word_start = 6 + source_words_used;
@@ -1336,28 +1242,10 @@ pub(crate) fn parse_prevent_damage_to_source_put_counters_line(
     }
 
     let combat_creature_prefix = [
-        "if",
-        "a",
-        "creature",
-        "would",
-        "deal",
-        "combat",
-        "damage",
-        "to",
-        "this",
-        "creature",
+        "if", "a", "creature", "would", "deal", "combat", "damage", "to", "this", "creature",
     ];
     let combat_creature_tail = [
-        "prevent",
-        "that",
-        "damage",
-        "and",
-        "put",
-        "a",
-        "+1/+1",
-        "counter",
-        "on",
-        "this",
+        "prevent", "that", "damage", "and", "put", "a", "+1/+1", "counter", "on", "this",
         "creature",
     ];
     if word_slice_starts_with(&line_words, &combat_creature_prefix)
@@ -1530,7 +1418,10 @@ pub(crate) fn parse_attached_has_keywords_and_triggered_ability_line(
     }
     static_abilities.extend(extra_grants);
     let subject_text = token_words(&tokens[..has_idx]).join(" ");
-    let display = format!("{subject_text} has {}", token_words(&trigger_tokens).join(" "));
+    let display = format!(
+        "{subject_text} has {}",
+        token_words(&trigger_tokens).join(" ")
+    );
     static_abilities.push(StaticAbilityAst::AttachedObjectAbilityGrant {
         ability: triggered,
         display,
@@ -1567,8 +1458,7 @@ pub(crate) fn parse_attached_is_legendary_gets_and_has_keywords_line(
 
     let Some(get_idx) = find_token_index(tokens, |token| {
         token.is_word("get") || token.is_word("gets")
-    })
-    else {
+    }) else {
         return Ok(None);
     };
     let Some(has_idx) = find_token_index(tokens, |token| token.is_word("has")) else {
@@ -1647,8 +1537,7 @@ pub(crate) fn parse_attached_gets_and_has_ability_line(
 
     let Some(get_idx) = find_token_index(tokens, |token| {
         token.is_word("get") || token.is_word("gets")
-    })
-    else {
+    }) else {
         return Ok(None);
     };
     let Some(has_idx) = find_token_index(tokens, |token| token.is_word("has")) else {
@@ -1743,9 +1632,9 @@ pub(crate) fn parse_attached_gets_and_has_ability_line(
         trigger,
         effects,
         max_triggers_per_turn,
-    } = crate::cards::builders::parser::clause_support::parse_triggered_line_lexed(
-        &ability_tokens,
-    )? {
+    } =
+        crate::cards::builders::parser::clause_support::parse_triggered_line_lexed(&ability_tokens)?
+    {
         let parsed = parsed_triggered_ability(
             trigger,
             effects,
@@ -1803,8 +1692,7 @@ pub(crate) fn parse_equipped_gets_and_has_activated_ability_line(
     let mut static_abilities = Vec::new();
     if let Some(get_idx) = find_token_index(tokens, |token| {
         token.is_word("get") || token.is_word("gets")
-    })
-        && get_idx < has_idx
+    }) && get_idx < has_idx
     {
         let clause_tail_end = if has_idx > get_idx + 2
             && tokens

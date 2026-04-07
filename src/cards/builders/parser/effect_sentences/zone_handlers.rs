@@ -280,7 +280,20 @@ pub(crate) fn parse_sacrifice(
         idx += used;
     }
 
-    let filter_tokens = trim_sacrifice_choice_suffix_tokens(&tokens[idx..]);
+    // Split off a trailing "for each ..." suffix before parsing the filter.
+    let remaining_tokens = &tokens[idx..];
+    let for_each_idx = grammar::find_prefix(remaining_tokens, || grammar::phrase(&["for", "each"]))
+        .map(|(idx, _, _)| idx);
+
+    let (object_tokens, for_each_filter) = if let Some(fe_idx) = for_each_idx {
+        let fe_count_tokens = &remaining_tokens[fe_idx..];
+        let fe_value = super::for_each_helpers::parse_get_for_each_count_value(fe_count_tokens)?;
+        (&remaining_tokens[..fe_idx], fe_value)
+    } else {
+        (remaining_tokens, None)
+    };
+
+    let filter_tokens = trim_sacrifice_choice_suffix_tokens(object_tokens);
     if filter_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing sacrifice object after chooser suffix (clause: '{}')",
@@ -315,11 +328,22 @@ pub(crate) fn parse_sacrifice(
         filter.controller = Some(controller);
     }
 
-    Ok(EffectAst::Sacrifice {
+    let sacrifice = EffectAst::Sacrifice {
         filter,
         player,
         count,
-    })
+    };
+
+    // Wrap in ForEachObject when the clause has a "for each <filter>" suffix,
+    // e.g. "sacrifices a land for each card in your hand".
+    if let Some(Value::Count(fe_filter)) = for_each_filter {
+        Ok(EffectAst::ForEachObject {
+            filter: fe_filter,
+            effects: vec![sacrifice],
+        })
+    } else {
+        Ok(sacrifice)
+    }
 }
 
 pub(crate) fn trim_sacrifice_choice_suffix_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {

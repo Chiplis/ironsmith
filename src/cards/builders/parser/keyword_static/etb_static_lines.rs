@@ -3,123 +3,57 @@ fn etb_token_words(tokens: &[OwnedLexToken]) -> Vec<&str> {
 }
 
 fn etb_word_slice_starts_with(words: &[&str], prefix: &[&str]) -> bool {
-    if prefix.len() > words.len() {
-        return false;
-    }
-    for (idx, expected) in prefix.iter().enumerate() {
-        if words[idx] != *expected {
-            return false;
-        }
-    }
-    true
+    crate::cards::builders::parser::token_primitives::slice_starts_with(words, prefix)
 }
 
 fn etb_word_slice_ends_with(words: &[&str], suffix: &[&str]) -> bool {
-    if suffix.len() > words.len() {
-        return false;
-    }
-    let start = words.len() - suffix.len();
-    for (offset, expected) in suffix.iter().enumerate() {
-        if words[start + offset] != *expected {
-            return false;
-        }
-    }
-    true
+    crate::cards::builders::parser::token_primitives::slice_ends_with(words, suffix)
 }
 
 fn etb_word_slice_contains(words: &[&str], expected: &str) -> bool {
-    for word in words {
-        if *word == expected {
-            return true;
-        }
-    }
-    false
+    crate::cards::builders::parser::token_primitives::slice_contains_str(words, expected)
 }
 
 fn etb_word_slice_contains_all(words: &[&str], expected: &[&str]) -> bool {
-    for word in expected {
-        if !etb_word_slice_contains(words, word) {
-            return false;
-        }
-    }
-    true
+    crate::cards::builders::parser::token_primitives::slice_contains_all(words, expected)
 }
 
 fn etb_word_slice_contains_any(words: &[&str], expected: &[&str]) -> bool {
-    for word in expected {
-        if etb_word_slice_contains(words, word) {
-            return true;
-        }
-    }
-    false
+    crate::cards::builders::parser::token_primitives::slice_contains_any(words, expected)
 }
 
 fn etb_word_offset(words: &[&str], mut predicate: impl FnMut(&str) -> bool) -> Option<usize> {
-    for (idx, word) in words.iter().enumerate() {
-        if predicate(word) {
-            return Some(idx);
-        }
-    }
-    None
+    crate::cards::builders::parser::token_primitives::find_str_by(words, |word| predicate(word))
 }
 
 fn etb_find_token_index(
     tokens: &[OwnedLexToken],
     mut predicate: impl FnMut(&OwnedLexToken) -> bool,
 ) -> Option<usize> {
-    for (idx, token) in tokens.iter().enumerate() {
-        if predicate(token) {
-            return Some(idx);
-        }
-    }
-    None
+    crate::cards::builders::parser::grammar::primitives::find_token_index(tokens, |token| {
+        predicate(token)
+    })
 }
 
 fn etb_find_token_word_sequence_index(
     tokens: &[OwnedLexToken],
     sequence: &[&str],
 ) -> Option<usize> {
-    if sequence.is_empty() {
-        return Some(0);
-    }
-    if sequence.len() > tokens.len() {
-        return None;
-    }
-    for start in 0..=tokens.len() - sequence.len() {
-        let mut matches = true;
-        for (offset, expected) in sequence.iter().enumerate() {
-            if !tokens[start + offset].is_word(expected) {
-                matches = false;
-                break;
-            }
-        }
-        if matches {
-            return Some(start);
-        }
-    }
-    None
+    crate::cards::builders::parser::token_primitives::find_window_by(
+        tokens,
+        sequence.len(),
+        |window| {
+            window.len() == sequence.len()
+                && window
+                    .iter()
+                    .zip(sequence.iter())
+                    .all(|(token, expected)| token.is_word(expected))
+        },
+    )
 }
 
 fn etb_find_word_sequence_index(words: &[&str], sequence: &[&str]) -> Option<usize> {
-    if sequence.is_empty() {
-        return Some(0);
-    }
-    if sequence.len() > words.len() {
-        return None;
-    }
-    for start in 0..=words.len() - sequence.len() {
-        let mut matches = true;
-        for (offset, expected) in sequence.iter().enumerate() {
-            if words[start + offset] != *expected {
-                matches = false;
-                break;
-            }
-        }
-        if matches {
-            return Some(start);
-        }
-    }
-    None
+    crate::cards::builders::parser::token_primitives::find_window_index(words, sequence)
 }
 
 fn etb_has_word_sequence(words: &[&str], sequence: &[&str]) -> bool {

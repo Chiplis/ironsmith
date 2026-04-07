@@ -1,4 +1,8 @@
 use winnow::Parser as _;
+use winnow::combinator::{alt, cut_err, dispatch, fail, opt, peek};
+use winnow::error::{ContextError, ErrMode, StrContext, StrContextValue};
+use winnow::prelude::*;
+use winnow::token::{any, take_till};
 
 use super::super::activation_and_restrictions::{contains_word_sequence, find_word_sequence_start};
 use super::super::effect_ast_traversal::{
@@ -6,7 +10,7 @@ use super::super::effect_ast_traversal::{
 };
 use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::keyword_static::parse_where_x_value_clause;
-use super::super::lexer::{OwnedLexToken, TokenKind, split_lexed_sentences};
+use super::super::lexer::{LexStream, OwnedLexToken, TokenKind, split_lexed_sentences};
 use super::super::object_filters::{is_comparison_or_delimiter, parse_object_filter};
 use super::super::token_primitives::{
     LeadingMayActor, TurnDurationPhrase, find_index, find_window_by, lexed_head_words,
@@ -597,6 +601,147 @@ fn strip_prefix_phrases<'a>(
     phrases.iter().find_map(|phrase| {
         grammar::parse_prefix(tokens, grammar::phrase(phrase)).map(|(_, rest)| (*phrase, rest))
     })
+}
+
+fn take_remaining_clause_tokens<'a>(
+    input: &mut LexStream<'a>,
+) -> Result<&'a [OwnedLexToken], ErrMode<ContextError>> {
+    take_till(0.., |_token: &OwnedLexToken| false).parse_next(input)
+}
+
+fn parse_face_down_search_cast_mana_value_gate_inner<'a>(
+    input: &mut LexStream<'a>,
+) -> Result<(crate::effect::ValueComparisonOperator, Value), ErrMode<ContextError>> {
+    dispatch! {peek(grammar::word_parser_text);
+        "you" => (
+            alt((
+                grammar::phrase(&["you", "may", "cast", "the", "exiled", "card"]),
+                grammar::phrase(&["you", "may", "cast", "that", "card"]),
+                grammar::phrase(&["you", "may", "cast", "it"]),
+            ))
+            .context(StrContext::Label("face-down cast target"))
+            .context(StrContext::Expected(StrContextValue::Description(
+                "supported face-down cast target",
+            ))),
+            cut_err(grammar::phrase(&["without", "paying", "its", "mana", "cost"]))
+                .context(StrContext::Label("face-down cast cost clause"))
+                .context(StrContext::Expected(StrContextValue::Description(
+                    "without paying its mana cost",
+                ))),
+            cut_err(|input: &mut LexStream<'a>| {
+                let condition_tokens = take_remaining_clause_tokens(input)?;
+                let condition = parse_consult_mana_value_condition_tokens(condition_tokens)
+                    .ok_or_else(|| {
+                        grammar::cut_err_ctx(
+                            "mana value condition",
+                            "supported mana value condition",
+                        )
+                    })?;
+                Ok((condition.operator, condition.right))
+            })
+            .context(StrContext::Label("mana value condition"))
+            .context(StrContext::Expected(StrContextValue::Description(
+                "supported mana value condition",
+            ))),
+        )
+            .map(|(_, _, parsed)| parsed),
+        _ => fail::<_, (crate::effect::ValueComparisonOperator, Value), _>,
+    }
+    .parse_next(input)
+}
+
+fn parse_bargained_face_down_cast_mana_value_gate_inner<'a>(
+    input: &mut LexStream<'a>,
+) -> Result<(crate::effect::ValueComparisonOperator, Value), ErrMode<ContextError>> {
+    dispatch! {peek(grammar::word_parser_text);
+        "if" => (
+            grammar::phrase(&["if", "this", "spell", "was", "bargained"])
+                .context(StrContext::Label("bargain prefix"))
+                .context(StrContext::Expected(StrContextValue::Description(
+                    "if this spell was bargained",
+                ))),
+            opt(grammar::comma()),
+            cut_err(parse_face_down_search_cast_mana_value_gate_inner)
+                .context(StrContext::Label("face-down cast clause"))
+                .context(StrContext::Expected(StrContextValue::Description(
+                    "bargained face-down cast clause",
+                ))),
+        )
+            .map(|(_, _, parsed)| parsed),
+        _ => fail::<_, (crate::effect::ValueComparisonOperator, Value), _>,
+    }
+    .parse_next(input)
+}
+
+fn parse_bargained_face_down_cast_mana_value_gate(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<(crate::effect::ValueComparisonOperator, Value)>, CardTextError> {
+    grammar::parse_all_or_none(
+        tokens,
+        parse_bargained_face_down_cast_mana_value_gate_inner,
+        "bargained face-down cast clause",
+    )
+}
+
+fn parse_if_no_card_into_hand_this_way_remainder_inner<'a>(
+    input: &mut LexStream<'a>,
+) -> Result<&'a [OwnedLexToken], ErrMode<ContextError>> {
+    dispatch! {peek(grammar::word_parser_text);
+        "if" => (
+            (
+                alt((
+                    grammar::phrase(&["if", "you", "didnt"]),
+                    grammar::phrase(&["if", "you", "didn't"]),
+                    grammar::phrase(&["if", "you", "did", "not"]),
+                )),
+                grammar::kw("put"),
+                opt(alt((grammar::kw("a"), grammar::kw("an"), grammar::kw("the")))),
+                grammar::kw("card"),
+                grammar::phrase(&["into", "your", "hand", "this", "way"]),
+            )
+                .void()
+                .context(StrContext::Label("if-no-card prefix"))
+                .context(StrContext::Expected(StrContextValue::Description(
+                    "if you didn't put a card into your hand this way",
+                ))),
+            cut_err(grammar::comma())
+                .context(StrContext::Label("if-no-card separator"))
+                .context(StrContext::Expected(StrContextValue::Description(
+                    "comma after if-no-card clause",
+                ))),
+            cut_err(take_remaining_clause_tokens),
+        )
+            .map(|(_, _, remainder)| remainder),
+        _ => fail::<_, &'a [OwnedLexToken], _>,
+    }
+    .parse_next(input)
+}
+
+fn parse_if_you_dont_remainder_inner<'a>(
+    input: &mut LexStream<'a>,
+) -> Result<&'a [OwnedLexToken], ErrMode<ContextError>> {
+    dispatch! {peek(grammar::word_parser_text);
+        "if" => (
+            alt((
+                grammar::phrase(&["if", "you", "dont"]),
+                grammar::phrase(&["if", "you", "don't"]),
+                grammar::phrase(&["if", "you", "do", "not"]),
+            ))
+            .context(StrContext::Label("if-you-don't prefix"))
+            .context(StrContext::Expected(StrContextValue::Description(
+                "if you don't",
+            ))),
+            cut_err(grammar::comma())
+                .context(StrContext::Label("if-you-don't separator"))
+                .context(StrContext::Expected(StrContextValue::Description(
+                    "comma after if-you-don't clause",
+                ))),
+            cut_err(take_remaining_clause_tokens),
+        )
+            .map(|(_, _, remainder)| remainder),
+        _ => fail::<_, &'a [OwnedLexToken], _>,
+    }
+    .parse_next(input)
 }
 
 fn parse_consult_mana_value_condition_tokens(
@@ -2908,17 +3053,8 @@ fn parse_search_face_down_exile_conditional_cast_else_hand(
     };
 
     let second_tokens = trim_commas(second);
-    let second_words = crate::cards::builders::parser::token_word_refs(&second_tokens);
-    if grammar::words_match_prefix(&second_tokens, &["if", "this", "spell", "was", "bargained"])
-        .is_none()
-    {
-        return Ok(None);
-    }
-    let Some(effect_start_word_idx) = find_index(&second_words, |word| *word == "you") else {
-        return Ok(None);
-    };
-    let effect_words = &second_words[effect_start_word_idx..];
-    let Some((operator, right)) = parse_face_down_search_cast_mana_value_gate(effect_words) else {
+    let Some((operator, right)) = parse_bargained_face_down_cast_mana_value_gate(&second_tokens)?
+    else {
         return Ok(None);
     };
     let combined_predicate = PredicateAst::And(
@@ -2952,59 +3088,6 @@ fn parse_search_face_down_exile_conditional_cast_else_hand(
         if_false: hand_effects,
     });
     Ok(Some(effects))
-}
-
-fn parse_face_down_search_cast_mana_value_gate(
-    words: &[&str],
-) -> Option<(crate::effect::ValueComparisonOperator, Value)> {
-    let remainder = if slice_starts_with(words, &["you", "may", "cast", "the", "exiled", "card"]) {
-        &words[6..]
-    } else if slice_starts_with(words, &["you", "may", "cast", "that", "card"]) {
-        &words[5..]
-    } else if slice_starts_with(words, &["you", "may", "cast", "it"]) {
-        &words[4..]
-    } else {
-        return None;
-    };
-
-    if !slice_starts_with(
-        remainder,
-        &["without", "paying", "its", "mana", "cost", "if"],
-    ) {
-        return None;
-    }
-    let condition = &remainder[5..];
-    if (slice_starts_with(condition, &["if", "that", "spell's", "mana", "value", "is"])
-        || slice_starts_with(condition, &["if", "that", "spells", "mana", "value", "is"]))
-        && condition.len() == 9
-        && condition[7] == "or"
-        && condition[8] == "less"
-    {
-        let value = condition[6].parse::<i32>().ok()?;
-        return Some((
-            crate::effect::ValueComparisonOperator::LessThanOrEqual,
-            Value::Fixed(value),
-        ));
-    }
-    if (slice_starts_with(
-        condition,
-        &[
-            "if", "that", "spell's", "mana", "value", "is", "less", "than", "or", "equal", "to",
-        ],
-    ) || slice_starts_with(
-        condition,
-        &[
-            "if", "that", "spells", "mana", "value", "is", "less", "than", "or", "equal", "to",
-        ],
-    )) && condition.len() == 12
-    {
-        let value = condition[11].parse::<i32>().ok()?;
-        return Some((
-            crate::effect::ValueComparisonOperator::LessThanOrEqual,
-            Value::Fixed(value),
-        ));
-    }
-    None
 }
 
 fn parse_search_then_delayed_next_upkeep_unless_pays_lose_game(
@@ -3108,32 +3191,11 @@ fn parse_search_then_delayed_next_upkeep_unless_pays_lose_game(
 fn parse_if_no_card_into_hand_this_way_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let words: Vec<&str> = crate::cards::builders::parser::token_word_refs(tokens)
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect();
-
-    let has_expected_prefix = slice_starts_with(
-        &words,
-        &[
-            "if", "you", "didnt", "put", "card", "into", "your", "hand", "this", "way",
-        ],
-    ) || slice_starts_with(
-        &words,
-        &[
-            "if", "you", "didn't", "put", "card", "into", "your", "hand", "this", "way",
-        ],
-    ) || slice_starts_with(
-        &words,
-        &[
-            "if", "you", "did", "not", "put", "card", "into", "your", "hand", "this", "way",
-        ],
-    );
-    if !has_expected_prefix {
-        return Ok(None);
-    }
-
-    let Some((_before, after)) = grammar::split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
+    let Some(after) = grammar::parse_all_or_none(
+        tokens,
+        parse_if_no_card_into_hand_this_way_remainder_inner,
+        "if-no-card-into-hand-this-way clause",
+    )?
     else {
         return Ok(None);
     };
@@ -3148,18 +3210,11 @@ fn parse_if_no_card_into_hand_this_way_sentence(
 fn parse_if_you_dont_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let words: Vec<&str> = crate::cards::builders::parser::token_word_refs(tokens)
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect();
-    let has_expected_prefix = slice_starts_with(&words, &["if", "you", "dont"])
-        || slice_starts_with(&words, &["if", "you", "don't"])
-        || slice_starts_with(&words, &["if", "you", "do", "not"]);
-    if !has_expected_prefix {
-        return Ok(None);
-    }
-
-    let Some((_before, after)) = grammar::split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
+    let Some(after) = grammar::parse_all_or_none(
+        tokens,
+        parse_if_you_dont_remainder_inner,
+        "if-you-don't clause",
+    )?
     else {
         return Ok(None);
     };
@@ -3806,9 +3861,12 @@ mod tests {
 
     use super::super::super::lexer::lex_line;
     use super::{
-        ConsultCastCost, ConsultCastTiming, parse_consult_cast_clause,
-        parse_consult_condition_value, parse_consult_mana_value_condition_tokens,
-        parse_counted_looked_cards_into_your_hand_tokens, parse_looked_card_reveal_filter,
+        ConsultCastCost, ConsultCastTiming, parse_bargained_face_down_cast_mana_value_gate,
+        parse_consult_cast_clause, parse_consult_condition_value,
+        parse_consult_mana_value_condition_tokens,
+        parse_counted_looked_cards_into_your_hand_tokens,
+        parse_if_no_card_into_hand_this_way_sentence, parse_if_you_dont_sentence,
+        parse_looked_card_reveal_filter,
         parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard,
         parse_top_cards_view_sentence,
     };
@@ -3919,6 +3977,51 @@ mod tests {
                 }
             ]
         ));
+    }
+
+    #[test]
+    fn bargained_face_down_cast_gate_parses_with_winnow_clause_parser() {
+        let tokens = lex_line(
+            "If this spell was bargained, you may cast the exiled card without paying its mana cost if that spell's mana value is 3 or less",
+            0,
+        )
+        .expect("rewrite lexer should classify bargained face-down cast clause");
+
+        let parsed = parse_bargained_face_down_cast_mana_value_gate(&tokens)
+            .expect("bargained face-down cast clause should not error")
+            .expect("bargained face-down cast clause should parse");
+
+        assert_eq!(parsed.0, ValueComparisonOperator::LessThanOrEqual);
+        assert_eq!(parsed.1, Value::Fixed(3));
+    }
+
+    #[test]
+    fn if_no_card_into_hand_clause_accepts_article_before_card() {
+        let tokens = lex_line(
+            "If you didn't put a card into your hand this way, draw a card",
+            0,
+        )
+        .expect("rewrite lexer should classify if-no-card clause");
+
+        let parsed = parse_if_no_card_into_hand_this_way_sentence(&tokens)
+            .expect("if-no-card clause should not error")
+            .expect("if-no-card clause should parse");
+
+        assert_eq!(parsed.len(), 1);
+    }
+
+    #[test]
+    fn if_you_dont_clause_reports_missing_comma_after_matched_prefix() {
+        let tokens = lex_line("If you don't draw a card", 0)
+            .expect("rewrite lexer should classify if-you-don't clause");
+
+        let err = parse_if_you_dont_sentence(&tokens)
+            .expect_err("matched if-you-don't clause without comma should cut");
+
+        assert!(
+            err.to_string().contains("comma after if-you-don't clause"),
+            "unexpected error: {err}"
+        );
     }
 }
 
