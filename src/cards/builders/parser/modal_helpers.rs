@@ -1,15 +1,17 @@
 #![allow(dead_code, unused_imports)]
 
+use crate::cards::builders::IfResultPredicate;
+
+use super::lexer::{OwnedLexToken, TokenWordView};
 pub(crate) use super::util::{
     find_activation_cost_start, replace_unbound_x_with_value, starts_with_activation_cost,
     value_contains_unbound_x,
 };
-<<<<<<< Updated upstream
-=======
-use super::{LowercaseWordView, lexer::OwnedLexToken};
 
 pub(crate) fn parse_if_result_predicate(tokens: &[OwnedLexToken]) -> Option<IfResultPredicate> {
-    let words: Vec<&str> = super::util::words(tokens)
+    let word_view = TokenWordView::new(tokens);
+    let words: Vec<&str> = word_view
+        .to_word_refs()
         .into_iter()
         .filter(|word| !super::util::is_article(word))
         .collect();
@@ -89,7 +91,7 @@ pub(crate) fn parse_if_result_predicate(tokens: &[OwnedLexToken]) -> Option<IfRe
 pub(crate) fn parse_if_result_predicate_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<IfResultPredicate> {
-    let word_view = LowercaseWordView::new(tokens);
+    let word_view = TokenWordView::new(tokens);
     let words: Vec<&str> = word_view
         .to_word_refs()
         .into_iter()
@@ -245,4 +247,3 @@ pub(crate) fn parse_if_result_predicate_lexed(
 
     None
 }
->>>>>>> Stashed changes

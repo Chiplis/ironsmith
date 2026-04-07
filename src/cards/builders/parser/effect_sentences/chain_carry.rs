@@ -2,7 +2,7 @@
 
 use winnow::Parser;
 use winnow::combinator::{alt, repeat};
-use winnow::error::{ContextError, ErrMode, StrContext, StrContextValue};
+use winnow::error::{ContextError, ErrMode};
 
 use super::super::compile_support::effects_reference_it_tag;
 use super::super::effect_ast_traversal::for_each_nested_effects_mut;
@@ -47,6 +47,9 @@ use crate::effect::ChoiceCount;
 use crate::target::PlayerFilter;
 use crate::zone::Zone;
 
+const EACH_OPPONENT_PREFIXES: &[&[&str]] = &[&["each", "opponent"], &["each", "opponents"]];
+const EACH_PLAYER_PREFIXES: &[&[&str]] = &[&["each", "player"], &["each", "players"]];
+
 fn synthetic_lexed_word(word: &str) -> OwnedLexToken {
     OwnedLexToken::word(word, TextSpan::synthetic())
 }
@@ -90,7 +93,7 @@ pub(crate) fn parse_effect_chain_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
     let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
-    if grammar::words_match_prefix(tokens, &["exile", "them"]).is_some()
+    if word_slice_starts_with(&clause_words, &["exile", "them"])
         && let Some(meld_idx) =
             find_word_sequence_index(&clause_words, &["then", "meld", "them", "into"])
     {
@@ -111,12 +114,10 @@ pub(crate) fn parse_effect_chain_lexed(
     if let Some(stripped) = strip_leading_instead_prefix_lexed(tokens) {
         return parse_effect_chain_lexed(stripped);
     }
-    let starts_with_each_opponent = grammar::words_match_prefix(tokens, &["each", "opponent"])
-        .is_some()
-        || grammar::words_match_prefix(tokens, &["each", "opponents"]).is_some();
-    let starts_with_each_player = grammar::words_match_prefix(tokens, &["each", "player"])
-        .is_some()
-        || grammar::words_match_prefix(tokens, &["each", "players"]).is_some();
+    let starts_with_each_opponent =
+        grammar::words_match_any_prefix(tokens, EACH_OPPONENT_PREFIXES).is_some();
+    let starts_with_each_player =
+        grammar::words_match_any_prefix(tokens, EACH_PLAYER_PREFIXES).is_some();
 
     if let Some(player) = parse_leading_player_may_lexed(tokens) {
         let mut stripped = remove_through_first_word_lexed(tokens, "may");
@@ -1481,29 +1482,8 @@ pub(crate) fn bind_implicit_player_context(effect: &mut EffectAst, player: Playe
 }
 
 fn parse_leading_player_may_words(words: &[&str]) -> Option<PlayerAst> {
-    type WordInput<'a> = &'a [&'a str];
-
-    fn word_eq<'a>(
-        expected: &'static str,
-    ) -> impl Parser<WordInput<'a>, &'a str, ErrMode<ContextError>> {
-        move |input: &mut WordInput<'a>| {
-            let Some((word, rest)) = input.split_first() else {
-                let mut err = ContextError::new();
-                err.push(StrContext::Label("word"));
-                err.push(StrContext::Expected(StrContextValue::Description(expected)));
-                return Err(ErrMode::Backtrack(err));
-            };
-            if *word == expected {
-                *input = rest;
-                Ok(*word)
-            } else {
-                let mut err = ContextError::new();
-                err.push(StrContext::Label("word"));
-                err.push(StrContext::Expected(StrContextValue::Description(expected)));
-                Err(ErrMode::Backtrack(err))
-            }
-        }
-    }
+    type WordInput<'a> = grammar::WordSliceInput<'a>;
+    use grammar::word_slice_exact as word_eq;
 
     fn player_word<'a>() -> impl Parser<WordInput<'a>, (), ErrMode<ContextError>> {
         alt((word_eq("player"), word_eq("players"))).void()

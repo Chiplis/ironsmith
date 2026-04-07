@@ -1,7 +1,7 @@
 use std::borrow::Borrow;
 
 use winnow::combinator::{alt, dispatch, fail, opt, peek, seq};
-use winnow::error::{ContextError, ErrMode, ModalResult as WResult, StrContext, StrContextValue};
+use winnow::error::{ContextError, ErrMode, ModalResult as WResult};
 use winnow::prelude::*;
 
 use crate::cards::builders::TextSpan;
@@ -181,9 +181,22 @@ pub(crate) fn find_window_by<T>(
     None
 }
 
-pub(crate) fn contains_window<T: PartialEq>(items: &[T], window: &[T]) -> bool {
-    find_window_index(items, window).is_some()
+pub(crate) fn contains_sequence<T: PartialEq>(items: &[T], window: &[T]) -> bool {
+    if window.is_empty() {
+        return true;
+    }
+    if window.len() > items.len() {
+        return false;
+    }
+    for start in 0..=items.len() - window.len() {
+        if items[start..start + window.len()] == *window {
+            return true;
+        }
+    }
+    false
 }
+
+pub(crate) use contains_sequence as contains_window;
 
 pub(crate) fn str_contains(text: &str, needle: &str) -> bool {
     text.contains(needle)
@@ -243,7 +256,7 @@ pub(crate) fn parse_word_token<'a>(input: &mut LexedInput<'a>) -> WResult<&'a st
 pub(crate) fn parse_word_eq<'a>(
     expected: &'static str,
 ) -> impl Parser<LexedInput<'a>, (), ErrMode<ContextError>> {
-    grammar::kw(expected).map(|_| ())
+    grammar::kw(expected).void()
 }
 
 pub(crate) fn parse_word_phrase<'a>(
@@ -516,7 +529,7 @@ pub(crate) fn lexed_head_words(tokens: &[OwnedLexToken]) -> Option<(&str, Option
 fn parse_common_sentence_head_inner<'a>(input: &mut LexedInput<'a>) -> WResult<CommonSentenceHead> {
     use CommonSentenceHead::{CountPrefix, ForEach, If, Target, Until, WhereXIs};
 
-    dispatch! {peek(parse_word_token);
+    dispatch! {peek(grammar::word_parser_text);
         "for" => parse_word_phrase(&["for", "each"]).value(ForEach),
         "each" => parse_word_eq("each").value(ForEach),
         "if" => parse_word_eq("if").value(If),
@@ -575,29 +588,27 @@ pub(crate) fn split_lexed_once_on_comma_then(
 
 pub(crate) fn parse_i32_word_token<'a>(input: &mut LexedInput<'a>) -> WResult<i32> {
     let word = parse_word_token.parse_next(input)?;
-    word.parse::<i32>().map_err(|_| {
-        let mut err = ContextError::new();
-        err.push(StrContext::Label("integer word"));
-        err.push(StrContext::Expected(StrContextValue::Description(
-            "integer",
-        )));
-        ErrMode::Backtrack(err)
-    })
+    word.parse::<i32>()
+        .map_err(|_| grammar::backtrack_err("integer word", "integer"))
 }
 
 fn parse_turn_duration_phrase_inner<'a>(input: &mut LexedInput<'a>) -> WResult<TurnDurationPhrase> {
-    alt((
-        grammar::phrase(&["until", "your", "next", "turn"])
-            .value(TurnDurationPhrase::UntilYourNextTurn),
-        grammar::phrase(&["until", "the", "end", "of", "your", "next", "turn"])
-            .value(TurnDurationPhrase::UntilYourNextTurn),
-        grammar::phrase(&["until", "end", "of", "your", "next", "turn"])
-            .value(TurnDurationPhrase::UntilYourNextTurn),
-        grammar::phrase(&["until", "the", "end", "of", "turn"])
-            .value(TurnDurationPhrase::UntilEndOfTurn),
-        grammar::phrase(&["until", "end", "of", "turn"]).value(TurnDurationPhrase::UntilEndOfTurn),
-        grammar::phrase(&["this", "turn"]).value(TurnDurationPhrase::ThisTurn),
-    ))
+    dispatch! {peek(grammar::word_parser_text);
+        "until" => alt((
+            grammar::phrase(&["until", "your", "next", "turn"])
+                .value(TurnDurationPhrase::UntilYourNextTurn),
+            grammar::phrase(&["until", "the", "end", "of", "your", "next", "turn"])
+                .value(TurnDurationPhrase::UntilYourNextTurn),
+            grammar::phrase(&["until", "end", "of", "your", "next", "turn"])
+                .value(TurnDurationPhrase::UntilYourNextTurn),
+            grammar::phrase(&["until", "the", "end", "of", "turn"])
+                .value(TurnDurationPhrase::UntilEndOfTurn),
+            grammar::phrase(&["until", "end", "of", "turn"])
+                .value(TurnDurationPhrase::UntilEndOfTurn),
+        )),
+        "this" => grammar::phrase(&["this", "turn"]).value(TurnDurationPhrase::ThisTurn),
+        _ => fail::<_, TurnDurationPhrase, _>,
+    }
     .parse_next(input)
 }
 
@@ -640,11 +651,17 @@ pub(crate) fn parse_turn_duration_suffix<'a>(
 fn parse_simple_restriction_duration_prefix_inner<'a>(
     input: &mut LexedInput<'a>,
 ) -> WResult<Until> {
-    alt((
-        parse_turn_duration_phrase_inner.map(until_from_turn_duration_phrase),
-        grammar::phrase(&["until", "the", "end", "of", "combat"]).value(Until::EndOfCombat),
-        grammar::phrase(&["until", "end", "of", "combat"]).value(Until::EndOfCombat),
-    ))
+    dispatch! {peek(grammar::word_parser_text);
+        "until" => alt((
+            grammar::phrase(&["until", "the", "end", "of", "combat"]).value(Until::EndOfCombat),
+            grammar::phrase(&["until", "end", "of", "combat"]).value(Until::EndOfCombat),
+            parse_turn_duration_phrase_inner.map(until_from_turn_duration_phrase),
+        )),
+        "this" => grammar::phrase(&["this", "turn"])
+            .value(TurnDurationPhrase::ThisTurn)
+            .map(until_from_turn_duration_phrase),
+        _ => fail::<_, Until, _>,
+    }
     .parse_next(input)
 }
 

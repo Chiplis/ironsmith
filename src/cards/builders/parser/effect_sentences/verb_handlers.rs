@@ -12,7 +12,9 @@ use crate::target::{
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 
-use super::super::activation_and_restrictions::parse_devotion_value_from_add_clause;
+use super::super::activation_and_restrictions::{
+    find_word_sequence_start, parse_devotion_value_from_add_clause,
+};
 use super::super::activation_helpers::parse_add_mana;
 use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::grammar::structure::{
@@ -26,8 +28,7 @@ use super::super::keyword_static::{
 };
 use super::super::object_filters::parse_object_filter;
 use super::super::token_primitives::{
-    find_index, find_window_by, find_window_index, rfind_index, slice_contains, slice_starts_with,
-    str_strip_suffix,
+    find_index, find_window_by, rfind_index, slice_contains, slice_starts_with, str_strip_suffix,
 };
 use super::super::util::{
     is_article, is_source_reference_words, mana_pips_from_token, parse_card_type,
@@ -52,6 +53,35 @@ use super::zone_handlers::{
     parse_skip, parse_surveil, parse_switch, parse_tap, parse_untap,
     wrap_return_with_delayed_timing,
 };
+
+const SOURCE_ATTACHMENT_PREFIXES: &[&[&str]] = &[
+    &["this", "equipment"],
+    &["this", "aura"],
+    &["this", "enchantment"],
+    &["this", "artifact"],
+];
+const ADDITIONAL_PREFIXES: &[&[&str]] = &[&["an", "additional"], &["additional"]];
+const FOR_EACH_OPPONENT_WHO_PREFIXES: &[&[&str]] = &[
+    &["for", "each", "opponent", "who"],
+    &["for", "each", "opponents", "who"],
+];
+const FOR_EACH_PLAYER_WHO_PREFIXES: &[&[&str]] = &[
+    &["for", "each", "player", "who"],
+    &["for", "each", "players", "who"],
+];
+const EACH_OPPONENT_WHO_PREFIXES: &[&[&str]] =
+    &[&["each", "opponent", "who"], &["each", "opponents", "who"]];
+const EACH_PLAYER_WHO_PREFIXES: &[&[&str]] =
+    &[&["each", "player", "who"], &["each", "players", "who"]];
+const THAT_PLAYER_PREFIXES: &[&[&str]] = &[&["that", "player"], &["that", "players"]];
+const EVENT_AMOUNT_PREFIXES: &[&[&str]] = &[&["that", "much"], &["that", "many"]];
+const DAMAGE_TO_EACH_OPPONENT_PREFIXES: &[&[&str]] = &[&["damage", "to", "each", "opponent"]];
+const EACH_OF_PREFIXES: &[&[&str]] = &[&["each", "of"]];
+const ANY_NUMBER_OF_PREFIXES: &[&[&str]] = &[&["any", "number", "of"]];
+const YOU_CONTROL_PREFIXES: &[&[&str]] = &[&["you", "control"], &["you", "controlled"]];
+const FOR_EACH_PREFIXES: &[&[&str]] = &[&["for", "each"]];
+const EACH_OPPONENT_AND_EACH_PREFIXES: &[&[&str]] = &[&["each", "opponent", "and", "each"]];
+const FIRST_CARD_YOU_DRAW_PREFIXES: &[&[&str]] = &[&["the", "first", "card", "you", "draw"]];
 
 pub(crate) fn parse_effect_with_verb(
     verb: Verb,
@@ -733,10 +763,7 @@ pub(crate) fn parse_attach_object_phrase(
     }
 
     let is_source_attachment = is_source_reference_words(&object_words)
-        || grammar::words_match_prefix(tokens, &["this", "equipment"]).is_some()
-        || grammar::words_match_prefix(tokens, &["this", "aura"]).is_some()
-        || grammar::words_match_prefix(tokens, &["this", "enchantment"]).is_some()
-        || grammar::words_match_prefix(tokens, &["this", "artifact"]).is_some();
+        || grammar::words_match_any_prefix(tokens, SOURCE_ATTACHMENT_PREFIXES).is_some();
     if is_source_attachment {
         return Ok(TargetAst::Source(object_span));
     }
@@ -862,13 +889,12 @@ pub(crate) fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
 }
 
 pub(crate) fn parse_deal_damage(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
-    let tokens = if grammar::words_match_prefix(tokens, &["an", "additional"]).is_some() {
-        &tokens[2..]
-    } else if grammar::words_match_prefix(tokens, &["additional"]).is_some() {
-        &tokens[1..]
-    } else {
-        tokens
-    };
+    let tokens =
+        if let Some((_, rest)) = grammar::words_match_any_prefix(tokens, ADDITIONAL_PREFIXES) {
+            rest
+        } else {
+            tokens
+        };
     let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
     if grammar::words_match_prefix(tokens, &["damage", "to", "each", "opponent", "equal", "to"])
         .is_some()
@@ -901,15 +927,19 @@ pub(crate) fn parse_deal_damage(tokens: &[OwnedLexToken]) -> Result<EffectAst, C
     if let Some(effect) = parse_deal_damage_to_target_equal_to_clause(tokens)? {
         return Ok(effect);
     }
-    if grammar::words_match_prefix(tokens, &["that", "much"]).is_some() {
-        return parse_deal_damage_with_amount(tokens, Value::EventValue(EventValueSpec::Amount), 2);
+    if let Some((prefix, _)) = grammar::words_match_any_prefix(tokens, EVENT_AMOUNT_PREFIXES) {
+        return parse_deal_damage_with_amount(
+            tokens,
+            Value::EventValue(EventValueSpec::Amount),
+            prefix.len(),
+        );
     }
 
     if let Some((value, used)) = parse_value(tokens) {
         return parse_deal_damage_with_amount(tokens, value, used);
     }
 
-    if grammar::words_match_prefix(tokens, &["damage", "to", "each", "opponent"]).is_some()
+    if grammar::words_match_any_prefix(tokens, DAMAGE_TO_EACH_OPPONENT_PREFIXES).is_some()
         && grammar::contains_word(tokens, "number")
         && grammar::contains_word(tokens, "cards")
         && grammar::contains_word(tokens, "hand")
@@ -1075,14 +1105,17 @@ pub(crate) fn parse_deal_damage_equal_to_clause(
         )));
     }
     let mut normalized_target_tokens = target_tokens;
-    if grammar::words_match_prefix(target_tokens, &["each", "of"]).is_some() {
+    if grammar::words_match_any_prefix(target_tokens, EACH_OF_PREFIXES).is_some() {
         let each_of_tokens = &target_tokens[2..];
         if grammar::contains_word(each_of_tokens, "target") {
             normalized_target_tokens = each_of_tokens;
         }
     }
-    if grammar::words_match_prefix(normalized_target_tokens, &["each", "player"]).is_some()
-        || grammar::words_match_prefix(normalized_target_tokens, &["each", "players"]).is_some()
+    if grammar::words_match_any_prefix(
+        normalized_target_tokens,
+        &[&["each", "player"], &["each", "players"]],
+    )
+    .is_some()
     {
         return Ok(Some(EffectAst::ForEachPlayer {
             effects: vec![EffectAst::DealDamage {
@@ -1091,12 +1124,16 @@ pub(crate) fn parse_deal_damage_equal_to_clause(
             }],
         }));
     }
-    if grammar::words_match_prefix(normalized_target_tokens, &["each", "opponent"]).is_some()
-        || grammar::words_match_prefix(normalized_target_tokens, &["each", "opponents"]).is_some()
-        || grammar::words_match_prefix(normalized_target_tokens, &["each", "other", "player"])
-            .is_some()
-        || grammar::words_match_prefix(normalized_target_tokens, &["each", "other", "players"])
-            .is_some()
+    if grammar::words_match_any_prefix(
+        normalized_target_tokens,
+        &[
+            &["each", "opponent"],
+            &["each", "opponents"],
+            &["each", "other", "player"],
+            &["each", "other", "players"],
+        ],
+    )
+    .is_some()
     {
         return Ok(Some(EffectAst::ForEachOpponent {
             effects: vec![EffectAst::DealDamage {
@@ -1136,7 +1173,7 @@ fn parse_divided_damage_target(
         .max()
         .unwrap_or(0);
     if max_targets == 0
-        && grammar::words_match_prefix(&among_tail, &["any", "number", "of"]).is_none()
+        && grammar::words_match_any_prefix(&among_tail, ANY_NUMBER_OF_PREFIXES).is_none()
     {
         return Err(CardTextError::ParseError(format!(
             "missing divided-damage target count (clause: '{}')",
@@ -1151,7 +1188,7 @@ fn parse_divided_damage_target(
         } else {
             parse_target_phrase(target_phrase_tokens)?
         };
-    let count = if grammar::words_match_prefix(&among_tail, &["any", "number", "of"]).is_some() {
+    let count = if grammar::words_match_any_prefix(&among_tail, ANY_NUMBER_OF_PREFIXES).is_some() {
         ChoiceCount::any_number()
     } else {
         ChoiceCount::up_to(max_targets as usize)
@@ -1310,7 +1347,7 @@ pub(crate) fn parse_deal_damage_with_amount(
             target: TargetAst::PlayerOrPlaneswalker(PlayerFilter::Any, None),
         });
     }
-    if grammar::words_match_prefix(target_tokens, &["each", "of"]).is_some() {
+    if grammar::words_match_any_prefix(target_tokens, EACH_OF_PREFIXES).is_some() {
         let each_of_tokens = &target_tokens[2..];
         let each_of_words = crate::cards::builders::parser::token_word_refs(each_of_tokens);
         if matches!(
@@ -1349,7 +1386,7 @@ pub(crate) fn parse_deal_damage_with_amount(
             }],
         });
     }
-    if grammar::words_match_prefix(target_tokens, &["each", "opponent", "who"]).is_some()
+    if grammar::words_match_any_prefix(target_tokens, EACH_OPPONENT_WHO_PREFIXES).is_some()
         && grammar::words_find_phrase(target_tokens, &["this", "way"]).is_some()
     {
         let predicate = parse_who_did_this_way_predicate(&target_tokens[2..])?;
@@ -1361,7 +1398,7 @@ pub(crate) fn parse_deal_damage_with_amount(
             predicate,
         });
     }
-    if grammar::words_match_prefix(target_tokens, &["each", "player", "who"]).is_some()
+    if grammar::words_match_any_prefix(target_tokens, EACH_PLAYER_WHO_PREFIXES).is_some()
         && grammar::words_find_phrase(target_tokens, &["this", "way"]).is_some()
     {
         let predicate = parse_who_did_this_way_predicate(&target_tokens[2..])?;
@@ -1400,7 +1437,7 @@ pub(crate) fn parse_deal_damage_with_amount(
         });
     }
 
-    if grammar::words_match_prefix(target_tokens, &["each", "opponent", "and", "each"]).is_some()
+    if grammar::words_match_any_prefix(target_tokens, EACH_OPPONENT_AND_EACH_PREFIXES).is_some()
         && grammar::contains_word(target_tokens, "creature")
         && grammar::contains_word(target_tokens, "planeswalker")
         && (grammar::words_find_phrase(target_tokens, &["they", "control"]).is_some()
@@ -1460,9 +1497,8 @@ pub(crate) fn parse_deal_damage_with_amount(
 pub(crate) fn parse_instead_if_control_predicate(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PredicateAst>, CardTextError> {
-    let starts_with_you_control = grammar::words_match_prefix(tokens, &["you", "control"])
-        .is_some()
-        || grammar::words_match_prefix(tokens, &["you", "controlled"]).is_some();
+    let starts_with_you_control =
+        grammar::words_match_any_prefix(tokens, YOU_CONTROL_PREFIXES).is_some();
     if !starts_with_you_control {
         return Ok(None);
     }
@@ -1589,83 +1625,84 @@ pub(crate) fn parse_draw(
     let mut parsed_that_many_minus_one = false;
     let mut parsed_that_many_plus_one = false;
     let mut consumed_embedded_card_keyword = false;
-    let (mut count, used) = if grammar::words_match_prefix(tokens, &["that", "many"]).is_some() {
-        let mut value = Value::EventValue(EventValueSpec::Amount);
-        let consumed = 2usize;
-        let rest = &tokens[consumed..];
-        if rest
+    let (mut count, used) =
+        if let Some((prefix, _)) = grammar::words_match_any_prefix(tokens, EVENT_AMOUNT_PREFIXES) {
+            let mut value = Value::EventValue(EventValueSpec::Amount);
+            let consumed = prefix.len();
+            let rest = &tokens[consumed..];
+            if rest
+                .first()
+                .is_some_and(|token| token.is_word("card") || token.is_word("cards"))
+            {
+                let trailing = trim_commas(&rest[1..]);
+                let trailing_words = crate::cards::builders::parser::token_word_refs(&trailing);
+                if trailing_words.as_slice() == ["minus", "one"] {
+                    value = Value::EventValueOffset(EventValueSpec::Amount, -1);
+                    parsed_that_many_minus_one = true;
+                } else if trailing_words.as_slice() == ["plus", "one"] {
+                    value = Value::EventValueOffset(EventValueSpec::Amount, 1);
+                    parsed_that_many_plus_one = true;
+                } else if !trailing_words.is_empty()
+                    && find_window_by(&trailing_words, 2, |window| {
+                        window[0] == "for" && window[1] == "each"
+                    })
+                    .is_none()
+                {
+                    return Err(CardTextError::ParseError(format!(
+                        "unsupported trailing draw clause (clause: '{}')",
+                        clause_words.join(" ")
+                    )));
+                }
+            }
+            (value, consumed)
+        } else if let Some((value, used_words)) =
+            parse_half_rounded_down_draw_count_words(&clause_words)
+        {
+            consumed_embedded_card_keyword = true;
+            (
+                value,
+                token_index_for_word_index(tokens, used_words).unwrap_or(tokens.len()),
+            )
+        } else if let Some(value) = parse_draw_as_many_cards_value(tokens) {
+            consumed_embedded_card_keyword = true;
+            (value, tokens.len())
+        } else if tokens.first().is_some_and(|token| token.is_word("another"))
+            && tokens
+                .get(1)
+                .is_some_and(|token| token.is_word("card") || token.is_word("cards"))
+        {
+            (Value::Fixed(1), 1)
+        } else if tokens
             .first()
             .is_some_and(|token| token.is_word("card") || token.is_word("cards"))
         {
-            let trailing = trim_commas(&rest[1..]);
-            let trailing_words = crate::cards::builders::parser::token_word_refs(&trailing);
-            if trailing_words.as_slice() == ["minus", "one"] {
-                value = Value::EventValueOffset(EventValueSpec::Amount, -1);
-                parsed_that_many_minus_one = true;
-            } else if trailing_words.as_slice() == ["plus", "one"] {
-                value = Value::EventValueOffset(EventValueSpec::Amount, 1);
-                parsed_that_many_plus_one = true;
-            } else if !trailing_words.is_empty()
-                && find_window_by(&trailing_words, 2, |window| {
-                    window[0] == "for" && window[1] == "each"
-                })
-                .is_none()
-            {
+            let tail = trim_commas(&tokens[1..]);
+            let value = parse_draw_card_prefixed_count_value(&tail)?.ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "missing draw count (clause: '{}')",
+                    clause_words.join(" ")
+                ))
+            })?;
+            consumed_embedded_card_keyword = true;
+            (value, tokens.len())
+        } else if tokens.first().is_some_and(|token| token.is_word("up"))
+            && tokens.get(1).is_some_and(|token| token.is_word("to"))
+        {
+            let Some((amount, used_amount)) = parse_number(&tokens[2..]) else {
                 return Err(CardTextError::ParseError(format!(
-                    "unsupported trailing draw clause (clause: '{}')",
+                    "missing draw count (clause: '{}')",
                     clause_words.join(" ")
                 )));
-            }
-        }
-        (value, consumed)
-    } else if let Some((value, used_words)) =
-        parse_half_rounded_down_draw_count_words(&clause_words)
-    {
-        consumed_embedded_card_keyword = true;
-        (
-            value,
-            token_index_for_word_index(tokens, used_words).unwrap_or(tokens.len()),
-        )
-    } else if let Some(value) = parse_draw_as_many_cards_value(tokens) {
-        consumed_embedded_card_keyword = true;
-        (value, tokens.len())
-    } else if tokens.first().is_some_and(|token| token.is_word("another"))
-        && tokens
-            .get(1)
-            .is_some_and(|token| token.is_word("card") || token.is_word("cards"))
-    {
-        (Value::Fixed(1), 1)
-    } else if tokens
-        .first()
-        .is_some_and(|token| token.is_word("card") || token.is_word("cards"))
-    {
-        let tail = trim_commas(&tokens[1..]);
-        let value = parse_draw_card_prefixed_count_value(&tail)?.ok_or_else(|| {
-            CardTextError::ParseError(format!(
-                "missing draw count (clause: '{}')",
-                clause_words.join(" ")
-            ))
-        })?;
-        consumed_embedded_card_keyword = true;
-        (value, tokens.len())
-    } else if tokens.first().is_some_and(|token| token.is_word("up"))
-        && tokens.get(1).is_some_and(|token| token.is_word("to"))
-    {
-        let Some((amount, used_amount)) = parse_number(&tokens[2..]) else {
-            return Err(CardTextError::ParseError(format!(
-                "missing draw count (clause: '{}')",
-                clause_words.join(" ")
-            )));
+            };
+            (Value::Fixed(amount as i32), 2 + used_amount)
+        } else {
+            parse_value(tokens).ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "missing draw count (clause: '{}')",
+                    clause_words.join(" ")
+                ))
+            })?
         };
-        (Value::Fixed(amount as i32), 2 + used_amount)
-    } else {
-        parse_value(tokens).ok_or_else(|| {
-            CardTextError::ParseError(format!(
-                "missing draw count (clause: '{}')",
-                clause_words.join(" ")
-            ))
-        })?
-    };
 
     let rest = &tokens[used..];
     let tail = if consumed_embedded_card_keyword {
@@ -1829,26 +1866,25 @@ fn parse_draw_for_each_player_condition(
     }
 
     let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
-    let (start, opponents_only) =
-        if grammar::words_match_prefix(tokens, &["for", "each", "opponent", "who"]).is_some()
-            || grammar::words_match_prefix(tokens, &["for", "each", "opponents", "who"]).is_some()
-        {
-            (3usize, true)
-        } else if grammar::words_match_prefix(tokens, &["for", "each", "player", "who"]).is_some()
-            || grammar::words_match_prefix(tokens, &["for", "each", "players", "who"]).is_some()
-        {
-            (3usize, false)
-        } else if grammar::words_match_prefix(tokens, &["each", "opponent", "who"]).is_some()
-            || grammar::words_match_prefix(tokens, &["each", "opponents", "who"]).is_some()
-        {
-            (2usize, true)
-        } else if grammar::words_match_prefix(tokens, &["each", "player", "who"]).is_some()
-            || grammar::words_match_prefix(tokens, &["each", "players", "who"]).is_some()
-        {
-            (2usize, false)
-        } else {
-            return Ok(None);
-        };
+    let (start, opponents_only) = if let Some((prefix, _)) =
+        grammar::words_match_any_prefix(tokens, FOR_EACH_OPPONENT_WHO_PREFIXES)
+    {
+        (prefix.len() - 1, true)
+    } else if let Some((prefix, _)) =
+        grammar::words_match_any_prefix(tokens, FOR_EACH_PLAYER_WHO_PREFIXES)
+    {
+        (prefix.len() - 1, false)
+    } else if let Some((prefix, _)) =
+        grammar::words_match_any_prefix(tokens, EACH_OPPONENT_WHO_PREFIXES)
+    {
+        (prefix.len() - 1, true)
+    } else if let Some((prefix, _)) =
+        grammar::words_match_any_prefix(tokens, EACH_PLAYER_WHO_PREFIXES)
+    {
+        (prefix.len() - 1, false)
+    } else {
+        return Ok(None);
+    };
 
     let inner_tokens = trim_commas(&tokens[start..]);
     let inner_words = crate::cards::builders::parser::token_word_refs(&inner_tokens);
@@ -2170,7 +2206,8 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
                 parse_counter_unless_additional_generic_value(&trailing_tokens)?
             {
                 additional_generic = Some(value);
-            } else if grammar::words_match_prefix(&trailing_tokens, &["for", "each"]).is_some() {
+            } else if grammar::words_match_any_prefix(&trailing_tokens, FOR_EACH_PREFIXES).is_some()
+            {
                 if let Some(dynamic) = parse_dynamic_cost_modifier_value(&trailing_tokens)? {
                     if let [ManaSymbol::Generic(multiplier)] = mana.as_slice() {
                         additional_generic =
@@ -2731,7 +2768,7 @@ pub(crate) fn parse_reveal(
         });
     }
     let reveals_first_draw =
-        grammar::words_match_prefix(tokens, &["the", "first", "card", "you", "draw"]).is_some();
+        grammar::words_match_any_prefix(tokens, FIRST_CARD_YOU_DRAW_PREFIXES).is_some();
     if reveals_first_draw {
         return Ok(EffectAst::RevealTagged {
             tag: TagKey::from(IT_TAG),
@@ -3344,8 +3381,7 @@ pub(crate) fn parse_put_into_hand(
             let dest_player = if grammar::contains_word(tokens, "your") {
                 PlayerAst::You
             } else if grammar::contains_word(tokens, "their")
-                || grammar::words_match_prefix(tokens, &["that", "player"]).is_some()
-                || grammar::words_match_prefix(tokens, &["that", "players"]).is_some()
+                || grammar::words_match_any_prefix(tokens, THAT_PLAYER_PREFIXES).is_some()
             {
                 PlayerAst::That
             } else {
@@ -3386,8 +3422,7 @@ pub(crate) fn parse_put_into_hand(
             let dest_player = if grammar::contains_word(tokens, "your") {
                 PlayerAst::You
             } else if grammar::contains_word(tokens, "their")
-                || grammar::words_match_prefix(tokens, &["that", "player"]).is_some()
-                || grammar::words_match_prefix(tokens, &["that", "players"]).is_some()
+                || grammar::words_match_any_prefix(tokens, THAT_PLAYER_PREFIXES).is_some()
             {
                 PlayerAst::That
             } else {
@@ -3755,7 +3790,9 @@ pub(crate) fn parse_put_into_hand(
         let mut destination_tail: Vec<&str> = destination_words[1..].to_vec();
         let battlefield_attacking = slice_contains(&destination_tail, &"attacking");
         let battlefield_tapped = slice_contains(&destination_tail, &"tapped");
-        if let Some(from_idx) = find_window_index(&destination_tail, &["from", "command", "zone"]) {
+        if let Some(from_idx) =
+            find_word_sequence_start(&destination_tail, &["from", "command", "zone"])
+        {
             destination_tail.drain(from_idx..from_idx + 3);
         }
         destination_tail.retain(|word| *word != "and");

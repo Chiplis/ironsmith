@@ -18,10 +18,47 @@ use crate::game_event::DamageTarget;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::object_query::candidate_ids_for_filter;
+use crate::snapshot::ObjectSnapshot;
 use crate::target::{ChooseSpec, FilterContext, ObjectRef, PlayerFilter};
 use crate::triggers::AttackEventTarget;
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
+
+// ============================================================================
+// Tagged Object Resolution
+// ============================================================================
+
+/// Resolve the current `ObjectId` for a tagged snapshot, following through a
+/// single zone change via `stable_id` when the snapshot's `object_id` is stale.
+///
+/// Zone changes create a new `ObjectId` (Magic rule 400.7). Tag snapshots
+/// captured before the move still carry the old id. This helper tries the
+/// snapshot's `object_id` first; when that object no longer exists it falls
+/// back to `stable_id` — but only if the object has moved to a *different*
+/// zone than the snapshot recorded. If the object is back in the same zone
+/// (e.g. graveyard → exile → graveyard) it has changed zones multiple times
+/// and the original reference is lost per rule 400.7.
+///
+/// Use this only for effects that need to **physically locate** an object in
+/// order to move it (e.g. `MoveToZoneEffect`). Effects that read
+/// characteristics from a tag should use the snapshot's `object_id` directly
+/// to preserve last-known-information semantics.
+pub(crate) fn resolve_tagged_object_id(
+    game: &GameState,
+    snapshot: &ObjectSnapshot,
+) -> Option<ObjectId> {
+    if game.object(snapshot.object_id).is_some() {
+        return Some(snapshot.object_id);
+    }
+    let current_id = game.find_object_by_stable_id(snapshot.stable_id)?;
+    let current_obj = game.object(current_id)?;
+    if current_obj.zone != snapshot.zone {
+        Some(current_id)
+    } else {
+        None
+    }
+}
+
 // ============================================================================
 // Value Resolution
 // ============================================================================

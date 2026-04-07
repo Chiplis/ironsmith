@@ -1,6 +1,6 @@
 use winnow::ascii::{digit1, multispace0};
 use winnow::combinator::{
-    alt, cut_err, delimited, eof, opt, preceded, repeat, separated, terminated,
+    alt, cut_err, delimited, dispatch, eof, fail, opt, peek, preceded, repeat, separated,
 };
 use winnow::error::{
     ContextError, ErrMode, ModalResult as WResult, ParserError, StrContext, StrContextValue,
@@ -14,12 +14,11 @@ use crate::mana::{ManaCost, ManaSymbol};
 use crate::target::{ChooseSpec, PlayerFilter};
 use crate::types::{CardType, Subtype, Supertype};
 
+use super::super::activation_and_restrictions::find_word_sequence_start;
 #[cfg(test)]
 use super::super::effect_sentences::parse_subtype_word;
 use super::super::lexer::{LexStream, OwnedLexToken, TokenKind, lex_line, parser_token_word_refs};
-use super::super::token_primitives::{
-    find_index, find_window_index, slice_contains, slice_starts_with,
-};
+use super::super::token_primitives::{find_index, slice_contains, slice_starts_with};
 use super::super::util::{
     parse_number_word_i32, parse_value_expr_words, token_index_for_word_index,
 };
@@ -174,6 +173,7 @@ pub(crate) fn parse_mana_symbol_group_rewrite(raw: &str) -> Result<Vec<ManaSymbo
     parse_mana_symbol_group_tokens(&tokens)
 }
 
+#[cfg(test)]
 pub(crate) fn parse_count_word_rewrite(raw: &str) -> Result<u32, CardTextError> {
     let tokens = lex_line(raw.trim(), 0)?;
     parse_count_word_tokens(&tokens)
@@ -185,14 +185,8 @@ fn parse_count_token<'a>(input: &mut LexedInput<'a>) -> WResult<u32> {
         return Ok(value);
     }
 
-    count_word_value(word).ok_or_else(|| {
-        let mut err = ContextError::new();
-        err.push(StrContext::Label("count"));
-        err.push(StrContext::Expected(StrContextValue::Description(
-            "numeric or counted quantity",
-        )));
-        ErrMode::Backtrack(err)
-    })
+    count_word_value(word)
+        .ok_or_else(|| primitives::backtrack_err("count", "numeric or counted quantity"))
 }
 
 pub(crate) fn parse_count_word_tokens(tokens: &[OwnedLexToken]) -> Result<u32, CardTextError> {
@@ -213,22 +207,18 @@ pub(crate) fn parse_scryfall_mana_cost(raw: &str) -> Result<ManaCost, CardTextEr
     parse_mana_cost_tokens_text(raw, true)
 }
 
+#[cfg(test)]
 pub(crate) fn parse_mana_cost_rewrite(raw: &str) -> Result<ManaCost, CardTextError> {
     parse_mana_cost_tokens_text(raw, false)
 }
 
 fn parse_mana_group_token<'a>(input: &mut LexedInput<'a>) -> WResult<Vec<ManaSymbol>> {
     let token = primitives::token_kind(TokenKind::ManaGroup).parse_next(input)?;
-    parse_mana_symbol_group(token.slice.as_str()).map_err(|_| {
-        let mut err = ContextError::new();
-        err.push(StrContext::Label("mana group"));
-        err.push(StrContext::Expected(StrContextValue::Description(
-            "braced mana symbols",
-        )));
-        ErrMode::Backtrack(err)
-    })
+    parse_mana_symbol_group(token.slice.as_str())
+        .map_err(|_| primitives::backtrack_err("mana group", "braced mana symbols"))
 }
 
+#[cfg(test)]
 pub(crate) fn parse_mana_symbol_group_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<ManaSymbol>, CardTextError> {
@@ -269,7 +259,12 @@ fn parse_modal_value_token<'a>(input: &mut LexedInput<'a>) -> WResult<Value> {
         "eight" => 8,
         "nine" => 9,
         "ten" => 10,
-        _ => return Err(ErrMode::Backtrack(ContextError::new())),
+        _ => {
+            return Err(primitives::backtrack_err(
+                "digit word",
+                "number word (one–ten)",
+            ));
+        }
     };
 
     Ok(Value::Fixed(value))
@@ -278,18 +273,21 @@ fn parse_modal_value_token<'a>(input: &mut LexedInput<'a>) -> WResult<Value> {
 pub(crate) fn parse_count_range_prefix(
     tokens: &[OwnedLexToken],
 ) -> Option<((Option<Value>, Option<Value>), &[OwnedLexToken])> {
-    let parser = alt((
-        primitives::phrase(&["one", "or", "more"]).value((Some(Value::Fixed(1)), None)),
-        primitives::phrase(&["one", "or", "both"])
-            .value((Some(Value::Fixed(1)), Some(Value::Fixed(2)))),
-        (
+    let parser = dispatch! {peek(primitives::word_parser_text);
+        "one" => alt((
+            primitives::phrase(&["one", "or", "more"]).value((Some(Value::Fixed(1)), None)),
+            primitives::phrase(&["one", "or", "both"])
+                .value((Some(Value::Fixed(1)), Some(Value::Fixed(2)))),
+            primitives::kw("one").value((Some(Value::Fixed(1)), Some(Value::Fixed(1)))),
+        )),
+        "up" => (
             primitives::kw("up"),
             primitives::kw("to"),
             parse_modal_value_token,
         )
             .map(|(_, _, value)| (Some(Value::Fixed(0)), Some(value))),
-        parse_modal_value_token.map(|value| (Some(value.clone()), Some(value))),
-    ));
+        _ => parse_modal_value_token.map(|value| (Some(value.clone()), Some(value))),
+    };
 
     primitives::parse_prefix(tokens, parser)
 }
@@ -450,24 +448,22 @@ pub(crate) fn parse_type_line_with(
     let (left_words, right_words) =
         finish_lexed_parse(&tokens, parse_type_line_tokens, "type-line")?;
 
-    let mut supertypes = Vec::new();
-    let mut card_types = Vec::new();
-    for word in left_words {
-        if let Some(supertype) = parse_supertype(word) {
-            supertypes.push(supertype);
-            continue;
-        }
-        if let Some(card_type) = parse_card_type(word) {
-            card_types.push(card_type);
-        }
-    }
+    let (supertypes, card_types) =
+        left_words
+            .iter()
+            .fold((Vec::new(), Vec::new()), |(mut supers, mut types), word| {
+                if let Some(supertype) = parse_supertype(word) {
+                    supers.push(supertype);
+                } else if let Some(card_type) = parse_card_type(word) {
+                    types.push(card_type);
+                }
+                (supers, types)
+            });
 
-    let mut subtypes = Vec::new();
-    for word in right_words {
-        if let Some(subtype) = parse_subtype(word) {
-            subtypes.push(subtype);
-        }
-    }
+    let subtypes: Vec<_> = right_words
+        .iter()
+        .filter_map(|word| parse_subtype(word))
+        .collect();
 
     Ok((supertypes, card_types, subtypes))
 }
@@ -568,7 +564,7 @@ pub(crate) fn parse_value_from_lexed(tokens: &[OwnedLexToken]) -> Option<(Value,
 
 pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) -> Option<Value> {
     let words_all = parser_token_word_refs(tokens);
-    let equal_idx = find_window_index(&words_all, &["equal", "to"])?;
+    let equal_idx = find_word_sequence_start(&words_all, &["equal", "to"])?;
     let tail = &words_all[equal_idx + 2..];
     if tail.is_empty() {
         return None;

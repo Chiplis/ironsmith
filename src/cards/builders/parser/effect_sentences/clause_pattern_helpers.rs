@@ -33,6 +33,15 @@ use super::verb_dispatch::parse_effect_with_verb;
 
 type ClausePatternCompatWords = TokenWordView;
 
+const ODD_EVEN_RESULT_PREFIXES: &[&[&str]] = &[
+    &["for", "each", "odd", "result"],
+    &["for", "each", "even", "result"],
+];
+const OPEN_ATTRACTION_PREFIXES: &[&[&str]] = &[
+    &["open", "an", "attraction"],
+    &["opens", "an", "attraction"],
+];
+
 fn find_token_word_sequence_index(
     tokens: &[OwnedLexToken],
     sequence: &'static [&'static str],
@@ -651,160 +660,112 @@ fn parse_counter_ability_target_phrase(
         Spell,
     }
 
-    let mut term_filters: Vec<(ObjectFilter, CounterTargetTerm)> = Vec::new();
     let mut list_end = clause_tokens.len();
     let mut scan = idx;
     while scan < clause_tokens.len() {
-        if clause_tokens
-            .get(scan)
-            .is_some_and(|token| token.is_word("from"))
-        {
-            list_end = scan;
-            break;
-        }
-        if is_you_control_tail(scan) {
+        if clause_tokens[scan].is_word("from") || is_you_control_tail(scan) {
             list_end = scan;
             break;
         }
         scan += 1;
     }
 
-    while idx < list_end {
-        let Some(word) = clause_tokens.get(idx).and_then(OwnedLexToken::as_word) else {
-            idx += 1;
-            continue;
+    // Parse counter target terms using winnow phrase matching on a sub-stream.
+    use super::super::lexer::LexStream;
+    use winnow::combinator::{alt, opt, repeat};
+    use winnow::prelude::*;
+
+    fn parse_counter_term<'a>(
+        input: &mut LexStream<'a>,
+    ) -> Result<
+        Vec<(ObjectFilter, CounterTargetTerm)>,
+        winnow::error::ErrMode<winnow::error::ContextError>,
+    > {
+        let make_triggered = || {
+            let mut f = ObjectFilter::ability();
+            f.stack_kind = Some(crate::filter::StackObjectKind::TriggeredAbility);
+            f
         };
-        if matches!(word, "or" | "and") {
-            idx += 1;
-            continue;
-        }
 
-        if word == "activated"
-            && clause_tokens
-                .get(idx + 1)
-                .is_some_and(|token| token.is_word("or"))
-            && clause_tokens
-                .get(idx + 2)
-                .is_some_and(|token| token.is_word("triggered"))
-            && clause_tokens
-                .get(idx + 3)
-                .is_some_and(|token| token.is_word("ability"))
-        {
-            term_filters.push((
-                ObjectFilter::activated_ability(),
-                CounterTargetTerm::Ability,
-            ));
-            let mut triggered = ObjectFilter::ability();
-            triggered.stack_kind = Some(crate::filter::StackObjectKind::TriggeredAbility);
-            term_filters.push((triggered, CounterTargetTerm::Ability));
-            idx += 4;
-            continue;
-        }
+        alt((
+            // "activated or triggered ability" / "triggered or activated ability"
+            alt((
+                grammar::phrase(&["activated", "or", "triggered", "ability"]),
+                grammar::phrase(&["triggered", "or", "activated", "ability"]),
+            ))
+            .map(move |_| {
+                vec![
+                    (
+                        ObjectFilter::activated_ability(),
+                        CounterTargetTerm::Ability,
+                    ),
+                    (make_triggered(), CounterTargetTerm::Ability),
+                ]
+            }),
+            grammar::phrase(&["activated", "ability"]).map(|_| {
+                vec![(
+                    ObjectFilter::activated_ability(),
+                    CounterTargetTerm::Ability,
+                )]
+            }),
+            grammar::phrase(&["triggered", "ability"]).map(move |_| {
+                let mut f = ObjectFilter::ability();
+                f.stack_kind = Some(crate::filter::StackObjectKind::TriggeredAbility);
+                vec![(f, CounterTargetTerm::Ability)]
+            }),
+            grammar::phrase(&["instant", "spell"]).map(|_| {
+                vec![(
+                    ObjectFilter::spell().with_type(crate::types::CardType::Instant),
+                    CounterTargetTerm::Spell,
+                )]
+            }),
+            grammar::phrase(&["sorcery", "spell"]).map(|_| {
+                vec![(
+                    ObjectFilter::spell().with_type(crate::types::CardType::Sorcery),
+                    CounterTargetTerm::Spell,
+                )]
+            }),
+            grammar::phrase(&["legendary", "spell"]).map(|_| {
+                vec![(
+                    ObjectFilter::spell().with_supertype(Supertype::Legendary),
+                    CounterTargetTerm::Spell,
+                )]
+            }),
+            grammar::phrase(&["noncreature", "spell"]).map(|_| {
+                let mut f = ObjectFilter::noncreature_spell().in_zone(Zone::Stack);
+                f.stack_kind = Some(crate::filter::StackObjectKind::Spell);
+                vec![(f, CounterTargetTerm::Spell)]
+            }),
+            grammar::kw("spell").map(|_| vec![(ObjectFilter::spell(), CounterTargetTerm::Spell)]),
+        ))
+        .parse_next(input)
+    }
 
-        if word == "triggered"
-            && clause_tokens
-                .get(idx + 1)
-                .is_some_and(|token| token.is_word("or"))
-            && clause_tokens
-                .get(idx + 2)
-                .is_some_and(|token| token.is_word("activated"))
-            && clause_tokens
-                .get(idx + 3)
-                .is_some_and(|token| token.is_word("ability"))
-        {
-            let mut triggered = ObjectFilter::ability();
-            triggered.stack_kind = Some(crate::filter::StackObjectKind::TriggeredAbility);
-            term_filters.push((triggered, CounterTargetTerm::Ability));
-            term_filters.push((
-                ObjectFilter::activated_ability(),
-                CounterTargetTerm::Ability,
-            ));
-            idx += 4;
-            continue;
-        }
+    let term_slice = &clause_tokens[idx..list_end];
+    let mut stream = LexStream::new(term_slice);
+    let mut term_filters: Vec<(ObjectFilter, CounterTargetTerm)> = Vec::new();
 
-        if word == "activated"
-            && clause_tokens
-                .get(idx + 1)
-                .is_some_and(|token| token.is_word("ability"))
-        {
-            term_filters.push((
-                ObjectFilter::activated_ability(),
-                CounterTargetTerm::Ability,
-            ));
-            idx += 2;
-            continue;
-        }
+    type TermGroup = Vec<(ObjectFilter, CounterTargetTerm)>;
+    let parsed_terms: Option<Vec<TermGroup>> = opt(|input: &mut LexStream<'_>| -> Result<Vec<TermGroup>, winnow::error::ErrMode<winnow::error::ContextError>> {
+        let first = parse_counter_term.parse_next(input)?;
+        let rest: Vec<TermGroup> = repeat(
+            0..,
+            (grammar::list_separator, parse_counter_term).map(|(_, t)| t),
+        )
+        .parse_next(input)?;
+        let mut all = vec![first];
+        all.extend(rest);
+        Ok(all)
+    })
+    .parse_next(&mut stream)
+    .unwrap_or(None);
 
-        if word == "triggered"
-            && clause_tokens
-                .get(idx + 1)
-                .is_some_and(|token| token.is_word("ability"))
-        {
-            let mut triggered = ObjectFilter::ability();
-            triggered.stack_kind = Some(crate::filter::StackObjectKind::TriggeredAbility);
-            term_filters.push((triggered, CounterTargetTerm::Ability));
-            idx += 2;
-            continue;
+    if let Some(groups) = parsed_terms {
+        for group in groups {
+            term_filters.extend(group);
         }
-
-        if word == "spell" {
-            term_filters.push((ObjectFilter::spell(), CounterTargetTerm::Spell));
-            idx += 1;
-            continue;
-        }
-
-        if word == "instant"
-            && clause_tokens
-                .get(idx + 1)
-                .is_some_and(|token| token.is_word("spell"))
-        {
-            term_filters.push((
-                ObjectFilter::spell().with_type(crate::types::CardType::Instant),
-                CounterTargetTerm::Spell,
-            ));
-            idx += 2;
-            continue;
-        }
-
-        if word == "sorcery"
-            && clause_tokens
-                .get(idx + 1)
-                .is_some_and(|token| token.is_word("spell"))
-        {
-            term_filters.push((
-                ObjectFilter::spell().with_type(crate::types::CardType::Sorcery),
-                CounterTargetTerm::Spell,
-            ));
-            idx += 2;
-            continue;
-        }
-
-        if word == "legendary"
-            && clause_tokens
-                .get(idx + 1)
-                .is_some_and(|token| token.is_word("spell"))
-        {
-            term_filters.push((
-                ObjectFilter::spell().with_supertype(Supertype::Legendary),
-                CounterTargetTerm::Spell,
-            ));
-            idx += 2;
-            continue;
-        }
-
-        if word == "noncreature"
-            && clause_tokens
-                .get(idx + 1)
-                .is_some_and(|token| token.is_word("spell"))
-        {
-            let mut filter = ObjectFilter::noncreature_spell().in_zone(Zone::Stack);
-            filter.stack_kind = Some(crate::filter::StackObjectKind::Spell);
-            term_filters.push((filter, CounterTargetTerm::Spell));
-            idx += 2;
-            continue;
-        }
-
+        idx += term_slice.len() - stream.len();
+    } else {
         return Ok(None);
     }
 
@@ -943,29 +904,28 @@ pub(crate) fn parse_prevent_all_damage_clause(
     let prefix_duration_then_target = [
         "prevent", "all", "damage", "that", "would", "be", "dealt", "this", "turn", "to",
     ];
-    if grammar::words_match_prefix(tokens, &prefix_target_then_duration).is_none()
-        && grammar::words_match_prefix(tokens, &prefix_duration_then_target).is_none()
+    if !word_slice_starts_with(&clause_words, &prefix_target_then_duration)
+        && !word_slice_starts_with(&clause_words, &prefix_duration_then_target)
     {
         return Ok(None);
     }
-    let target_words =
-        if grammar::words_match_prefix(tokens, &prefix_duration_then_target).is_some() {
-            &clause_words[prefix_duration_then_target.len()..]
-        } else {
-            if clause_words.len() <= prefix_target_then_duration.len() + 1 {
-                return Err(CardTextError::ParseError(format!(
-                    "missing prevent-all damage target (clause: '{}')",
-                    clause_words.join(" ")
-                )));
-            }
-            if clause_words[clause_words.len().saturating_sub(2)..] != ["this", "turn"] {
-                return Err(CardTextError::ParseError(format!(
-                    "unsupported prevent-all damage duration (clause: '{}')",
-                    clause_words.join(" ")
-                )));
-            }
-            &clause_words[prefix_target_then_duration.len()..clause_words.len() - 2]
-        };
+    let target_words = if word_slice_starts_with(&clause_words, &prefix_duration_then_target) {
+        &clause_words[prefix_duration_then_target.len()..]
+    } else {
+        if clause_words.len() <= prefix_target_then_duration.len() + 1 {
+            return Err(CardTextError::ParseError(format!(
+                "missing prevent-all damage target (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+        if clause_words[clause_words.len().saturating_sub(2)..] != ["this", "turn"] {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported prevent-all damage duration (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+        &clause_words[prefix_target_then_duration.len()..clause_words.len() - 2]
+    };
     if target_words.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing prevent-all damage target (clause: '{}')",
@@ -1129,7 +1089,7 @@ pub(crate) fn parse_redirect_next_damage_sentence(
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let clause_word_view = ClausePatternCompatWords::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
-    if grammar::words_match_prefix(tokens, &["the", "next", "time"]).is_some() {
+    if word_slice_starts_with(&clause_words, &["the", "next", "time"]) {
         let Some(would_idx) = find_word_index(&clause_words, |word| word == "would") else {
             return Ok(None);
         };
@@ -1518,9 +1478,7 @@ pub(crate) fn parse_keyword_mechanic_clause(
             clause_words.join(" ")
         )));
     }
-    if grammar::words_match_prefix(clause_tokens, &["for", "each", "odd", "result"]).is_some()
-        || grammar::words_match_prefix(clause_tokens, &["for", "each", "even", "result"]).is_some()
-    {
+    if grammar::words_match_any_prefix(clause_tokens, ODD_EVEN_RESULT_PREFIXES).is_some() {
         return Err(CardTextError::ParseError(format!(
             "unsupported odd/even-result clause (clause: '{}')",
             clause_words.join(" ")
@@ -1552,9 +1510,7 @@ pub(crate) fn parse_keyword_mechanic_clause(
         return Ok(Some(EffectAst::PhaseOut { target }));
     }
 
-    if grammar::words_match_prefix(clause_tokens, &["open", "an", "attraction"]).is_some()
-        || grammar::words_match_prefix(clause_tokens, &["opens", "an", "attraction"]).is_some()
-    {
+    if grammar::words_match_any_prefix(clause_tokens, OPEN_ATTRACTION_PREFIXES).is_some() {
         return Ok(Some(EffectAst::OpenAttraction));
     }
 

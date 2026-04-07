@@ -2985,6 +2985,8 @@ fn rewrite_lexed_permission_helpers_cover_until_next_turn_tagged_play() {
 fn rewrite_token_primitives_cover_count_range_prefixes() {
     let up_to = lex_line("up to three target creatures", 0)
         .expect("rewrite lexer should classify up-to count range");
+    let one = lex_line("one target creature", 0)
+        .expect("rewrite lexer should classify exact-one count range");
     let one_or_more = lex_line("one or more creatures", 0)
         .expect("rewrite lexer should classify one-or-more count range");
     let one_or_both = lex_line("one or both modes", 0)
@@ -2992,6 +2994,8 @@ fn rewrite_token_primitives_cover_count_range_prefixes() {
 
     let up_to_range = super::token_primitives::parse_count_range_prefix(&up_to)
         .expect("up-to prefix should parse");
+    let one_range =
+        super::token_primitives::parse_count_range_prefix(&one).expect("one prefix should parse");
     let one_or_more_range = super::token_primitives::parse_count_range_prefix(&one_or_more)
         .expect("one-or-more prefix should parse");
     let one_or_both_range = super::token_primitives::parse_count_range_prefix(&one_or_both)
@@ -3007,6 +3011,17 @@ fn rewrite_token_primitives_cover_count_range_prefixes() {
     assert_eq!(
         TokenWordView::new(up_to_range.1).to_word_refs(),
         vec!["target", "creatures"]
+    );
+    assert_eq!(
+        one_range.0,
+        (
+            Some(crate::effect::Value::Fixed(1)),
+            Some(crate::effect::Value::Fixed(1))
+        )
+    );
+    assert_eq!(
+        TokenWordView::new(one_range.1).to_word_refs(),
+        vec!["target", "creature"]
     );
     assert_eq!(
         one_or_more_range.0,
@@ -3172,12 +3187,15 @@ fn rewrite_token_primitives_cover_bare_value_comparison_phrases() {
 #[test]
 fn rewrite_values_count_range_prefix_parses_modal_ranges_directly() {
     let up_to_two = lex_line("up to two", 0).expect("rewrite lexer should classify count range");
+    let one = lex_line("one target", 0).expect("rewrite lexer should classify choose range");
     let one_or_both =
         lex_line("one or both targets", 0).expect("rewrite lexer should classify choose range");
 
     let (up_to_range, up_to_remainder) =
         super::grammar::values::parse_count_range_prefix(&up_to_two)
             .expect("direct values count-range parser should accept up-to phrase");
+    let (one_range, one_remainder) = super::grammar::values::parse_count_range_prefix(&one)
+        .expect("direct values count-range parser should accept bare one");
     let (one_or_both_range, one_or_both_remainder) =
         super::grammar::values::parse_count_range_prefix(&one_or_both)
             .expect("direct values count-range parser should accept one-or-both phrase");
@@ -3190,6 +3208,17 @@ fn rewrite_values_count_range_prefix_parses_modal_ranges_directly() {
         )
     );
     assert!(up_to_remainder.is_empty());
+    assert_eq!(
+        one_range,
+        (
+            Some(crate::effect::Value::Fixed(1)),
+            Some(crate::effect::Value::Fixed(1))
+        )
+    );
+    assert_eq!(
+        TokenWordView::new(one_remainder).to_word_refs(),
+        vec!["target"]
+    );
     assert_eq!(
         one_or_both_range,
         (
@@ -5834,7 +5863,6 @@ fn rewrite_lexed_triggered_line_parses_state_trigger_condition() {
     let parsed = super::clause_support::parse_triggered_line_lexed(&tokens)
         .expect("state-triggered line should parse");
 
-<<<<<<< Updated upstream
     match parsed {
         crate::cards::builders::LineAst::Triggered { trigger, .. } => {
             assert!(
@@ -5846,8 +5874,7 @@ fn rewrite_lexed_triggered_line_parses_state_trigger_condition() {
             );
         }
         other => panic!("expected triggered line, got {other:?}"),
-=======
-    assert_eq!(format!("{native:?}"), format!("{wrapper:?}"));
+    }
 }
 
 #[test]
@@ -5885,8 +5912,7 @@ fn rewrite_lexed_predicate_parser_matches_wrapper_output() {
     let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
 
     let native = super::parse_predicate_lexed(&lexed).expect("lexed predicate should parse");
-    let wrapper =
-        super::conditionals::parse_predicate(&compat).expect("wrapper predicate should parse");
+    let wrapper = super::parse_predicate_lexed(&compat).expect("wrapper predicate should parse");
 
     assert_eq!(format!("{native:?}"), format!("{wrapper:?}"));
 }
@@ -5906,7 +5932,6 @@ fn rewrite_lexed_effect_sentence_matches_wrapper_pre_diagnostic_clause_helpers()
             parse_effect_sentence_lexed(&lexed).expect("lexed clause helper sentence should parse");
 
         assert_eq!(format!("{native:?}"), format!("{wrapper:?}"), "{text}");
->>>>>>> Stashed changes
     }
 }
 
@@ -5930,15 +5955,9 @@ fn rewrite_lexed_triggered_line_lifts_intervening_if_with_multisentence_body() {
     let tokens =
         lex_line(text, 0).expect("rewrite lexer should classify postcombat intervening-if trigger");
 
-<<<<<<< Updated upstream
     let parsed = super::clause_support::parse_triggered_line_lexed(&tokens)
         .expect("intervening-if trigger should parse");
     let debug = format!("{parsed:?}");
-=======
-    let native = parse_effect_sentence_lexed(&lexed).expect("lexed where-x sentence should parse");
-    let wrapper =
-        parse_effect_sentence_lexed(&compat).expect("wrapper where-x sentence should parse");
->>>>>>> Stashed changes
 
     assert!(debug.contains("BeginningOfPostcombatMain"), "{debug}");
     assert!(debug.contains("Conditional"), "{debug}");

@@ -32,6 +32,39 @@ enum ActivatedSentenceModifier {
     InlineEffect(EffectAst),
 }
 
+const ACTIVATE_ONLY_RESTRICTION_PREFIXES: &[&[&str]] =
+    &[&["activate", "only"], &["activate", "no", "more", "than"]];
+const SPEND_MANA_RESTRICTION_PREFIXES: &[&[&str]] = &[
+    &["spend", "this", "mana", "only"],
+    &["spend", "that", "mana", "only"],
+];
+const SPEND_MANA_CAST_PREFIXES: &[&[&str]] = &[
+    &["spend", "this", "mana", "only", "to", "cast"],
+    &["spend", "that", "mana", "only", "to", "cast"],
+];
+const DURING_OPPONENTS_TURN_PREFIXES: &[&[&str]] = &[
+    &["activate", "only", "during", "an", "opponents", "turn"],
+    &["activate", "only", "during", "opponents", "turn"],
+];
+const ACTIVATE_ONLY_INSTANT_PREFIXES: &[&[&str]] = &[
+    &["activate", "only", "as", "an", "instant"],
+    &["activate", "only", "as", "instant"],
+];
+const ACTIVATE_ONLY_IF_THERE_PREFIXES: &[&[&str]] = &[
+    &["activate", "only", "if", "there", "is"],
+    &["activate", "only", "if", "there", "are"],
+];
+const THIS_ABILITY_COSTS_PREFIXES: &[&[&str]] = &[&["this", "ability", "costs"]];
+const THE_NEXT_PREFIXES: &[&[&str]] = &[&["the", "next"]];
+const ACTIVATE_ONLY_SORCERY_PREFIXES: &[&[&str]] = &[&["activate", "only", "as", "a", "sorcery"]];
+const ACTIVATE_ONLY_ONCE_EACH_TURN_PREFIXES: &[&[&str]] =
+    &[&["activate", "only", "once", "each", "turn"]];
+const ACTIVATE_ONLY_DURING_COMBAT_PREFIXES: &[&[&str]] =
+    &[&["activate", "only", "during", "combat"]];
+const ACTIVATE_ONLY_DURING_YOUR_TURN_PREFIXES: &[&[&str]] =
+    &[&["activate", "only", "during", "your", "turn"]];
+const THIS_ABILITY_TRIGGERS_ONLY_PREFIXES: &[&[&str]] = &[&["this", "ability", "triggers", "only"]];
+
 pub(super) struct ActivatedSentenceScan<'a> {
     pub(super) kept_sentences: Vec<&'a [OwnedLexToken]>,
     pub(super) timing: ActivationTiming,
@@ -99,13 +132,13 @@ fn parse_next_spell_cost_reduction_sentence(tokens: &[OwnedLexToken]) -> Option<
 }
 
 fn is_inline_activated_text_modifier_sentence(tokens: &[OwnedLexToken]) -> bool {
-    if grammar::words_match_prefix(tokens, &["this", "ability", "costs"]).is_some()
+    if grammar::words_match_any_prefix(tokens, THIS_ABILITY_COSTS_PREFIXES).is_some()
         && grammar::words_find_phrase(tokens, &["less", "to", "activate"]).is_some()
     {
         return true;
     }
 
-    grammar::words_match_prefix(tokens, &["the", "next"]).is_some()
+    grammar::words_match_any_prefix(tokens, THE_NEXT_PREFIXES).is_some()
         && grammar::words_find_phrase(tokens, &["spell"]).is_some()
         && grammar::words_find_phrase(tokens, &["costs"]).is_some()
         && grammar::words_find_phrase(tokens, &["less"]).is_some()
@@ -211,32 +244,25 @@ pub(super) fn collect_activated_sentence_modifiers<'a>(
 pub(crate) fn parse_activate_only_timing_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<ActivationTiming> {
-    if grammar::words_match_prefix(tokens, &["activate", "only", "as", "a", "sorcery"]).is_some() {
+    if grammar::words_match_any_prefix(tokens, ACTIVATE_ONLY_SORCERY_PREFIXES).is_some() {
         return Some(ActivationTiming::SorcerySpeed);
     }
-    if grammar::words_match_prefix(tokens, &["activate", "only", "once", "each", "turn"]).is_some()
+    if grammar::words_match_any_prefix(tokens, ACTIVATE_ONLY_ONCE_EACH_TURN_PREFIXES).is_some()
         || grammar::words_find_phrase(tokens, &["once", "each", "turn"]).is_some()
     {
         return Some(ActivationTiming::OncePerTurn);
     }
-    if grammar::words_match_prefix(tokens, &["activate", "only", "during", "combat"]).is_some()
+    if grammar::words_match_any_prefix(tokens, ACTIVATE_ONLY_DURING_COMBAT_PREFIXES).is_some()
         || grammar::words_find_phrase(tokens, &["during", "combat"]).is_some()
     {
         return Some(ActivationTiming::DuringCombat);
     }
-    if grammar::words_match_prefix(tokens, &["activate", "only", "during", "your", "turn"])
-        .is_some()
+    if grammar::words_match_any_prefix(tokens, ACTIVATE_ONLY_DURING_YOUR_TURN_PREFIXES).is_some()
         || grammar::words_find_phrase(tokens, &["during", "your", "turn"]).is_some()
     {
         return Some(ActivationTiming::DuringYourTurn);
     }
-    if grammar::words_match_prefix(
-        tokens,
-        &["activate", "only", "during", "an", "opponents", "turn"],
-    )
-    .is_some()
-        || grammar::words_match_prefix(tokens, &["activate", "only", "during", "opponents", "turn"])
-            .is_some()
+    if grammar::words_match_any_prefix(tokens, DURING_OPPONENTS_TURN_PREFIXES).is_some()
         || grammar::words_find_phrase(tokens, &["during", "an", "opponents", "turn"]).is_some()
         || grammar::words_find_phrase(tokens, &["during", "opponents", "turn"]).is_some()
     {
@@ -282,24 +308,18 @@ pub(crate) fn normalize_activate_only_restriction(
 }
 
 pub(crate) fn is_activate_only_restriction_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
-    grammar::words_match_prefix(tokens, &["activate", "only"]).is_some()
-        || grammar::words_match_prefix(tokens, &["activate", "no", "more", "than"]).is_some()
+    grammar::words_match_any_prefix(tokens, ACTIVATE_ONLY_RESTRICTION_PREFIXES).is_some()
 }
 
 pub(crate) fn is_spend_mana_restriction_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
-    grammar::words_match_prefix(tokens, &["spend", "this", "mana", "only"]).is_some()
-        || grammar::words_match_prefix(tokens, &["spend", "that", "mana", "only"]).is_some()
+    grammar::words_match_any_prefix(tokens, SPEND_MANA_RESTRICTION_PREFIXES).is_some()
 }
 
 pub(crate) fn parse_mana_usage_restriction_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<crate::ability::ManaUsageRestriction> {
     let words = TokenWordView::new(tokens);
-    if !(grammar::words_match_prefix(tokens, &["spend", "this", "mana", "only", "to", "cast"])
-        .is_some()
-        || grammar::words_match_prefix(tokens, &["spend", "that", "mana", "only", "to", "cast"])
-            .is_some())
-    {
+    if grammar::words_match_any_prefix(tokens, SPEND_MANA_CAST_PREFIXES).is_none() {
         return None;
     }
 
@@ -374,7 +394,7 @@ pub(crate) fn is_any_player_may_activate_sentence_lexed(tokens: &[OwnedLexToken]
 }
 
 pub(crate) fn is_trigger_only_restriction_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
-    grammar::words_match_prefix(tokens, &["this", "ability", "triggers", "only"]).is_some()
+    grammar::words_match_any_prefix(tokens, THIS_ABILITY_TRIGGERS_ONLY_PREFIXES).is_some()
 }
 
 pub(crate) fn parse_triggered_times_each_turn_sentence(
@@ -423,7 +443,7 @@ pub(crate) fn parse_activation_condition_lexed(
         return None;
     }
 
-    if grammar::words_match_prefix(tokens, &["activate", "no", "more", "than"]).is_some() {
+    if grammar::words_match_any_prefix(tokens, &[&["activate", "no", "more", "than"]]).is_some() {
         let count_word = words.get(4)?;
         let count = match count_word {
             "once" => 1,
@@ -445,17 +465,12 @@ pub(crate) fn parse_activation_condition_lexed(
     if let Some(count) = parse_activation_count_per_turn(&after_activate_only) {
         return Some(crate::ConditionExpr::MaxActivationsPerTurn(count));
     }
-    if grammar::words_match_prefix(tokens, &["activate", "only", "as", "an", "instant"]).is_some()
-        || grammar::words_match_prefix(tokens, &["activate", "only", "as", "instant"]).is_some()
-    {
+    if grammar::words_match_any_prefix(tokens, ACTIVATE_ONLY_INSTANT_PREFIXES).is_some() {
         return Some(crate::ConditionExpr::ActivationTiming(
             ActivationTiming::AnyTime,
         ));
     }
-    if grammar::words_match_prefix(tokens, &["activate", "only", "if", "there", "is"]).is_some()
-        || grammar::words_match_prefix(tokens, &["activate", "only", "if", "there", "are"])
-            .is_some()
-    {
+    if grammar::words_match_any_prefix(tokens, ACTIVATE_ONLY_IF_THERE_PREFIXES).is_some() {
         let descriptor_start = 5usize;
         let mut in_idx = None;
         for idx in descriptor_start..words.len() {

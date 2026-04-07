@@ -3,6 +3,7 @@
 #[allow(unused_imports)]
 use self::sentence_helpers::*;
 #[allow(unused_imports)]
+#[cfg(test)]
 use super::keyword_static::parse_where_x_value_clause;
 #[allow(unused_imports)]
 use super::object_filters::parse_object_filter;
@@ -58,6 +59,7 @@ mod zone_handlers;
 
 pub(crate) use super::grammar::effects::parse_cant_effect_sentence;
 pub(crate) use super::grammar::effects::parse_cant_effect_sentence_with_grammar_entrypoint_lexed as parse_cant_effect_sentence_lexed;
+#[cfg(test)]
 pub(crate) use super::grammar::effects::parse_conditional_sentence_lexed;
 pub(crate) use super::grammar::effects::parse_search_library_sentence;
 pub(crate) use super::grammar::effects::parse_search_library_sentence_with_grammar_entrypoint_lexed as parse_search_library_sentence_lexed;

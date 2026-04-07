@@ -30,6 +30,24 @@ fn token_words(tokens: &[OwnedLexToken]) -> Vec<&str> {
     crate::cards::builders::parser::lexer::token_word_refs(tokens)
 }
 
+const PLAYER_OR_OPPONENT_PREFIXES: &[&[&str]] = &[
+    &["player"],
+    &["players"],
+    &["opponent"],
+    &["opponents"],
+    &["target", "player"],
+    &["target", "players"],
+    &["target", "opponent"],
+    &["target", "opponents"],
+];
+
+const FOR_EACH_PREFIXES: &[&[&str]] = &[&["for", "each"], &["each"]];
+const WHO_ACTION_PREFIXES: &[&[&str]] = &[&["who", "does"], &["who", "do"], &["who", "did"]];
+const INSTEAD_IF_PREFIXES: &[&[&str]] = &[&["instead", "if"]];
+const FOR_AS_LONG_AS_PREFIXES: &[&[&str]] = &[&["for", "as", "long", "as"]];
+const ANY_NUMBER_OF_PREFIXES: &[&[&str]] = &[&["any", "number", "of"]];
+const UP_TO_PREFIXES: &[&[&str]] = &[&["up", "to"]];
+
 fn find_tapped_land_for_mana_this_turn_end(words: &[&str]) -> Option<usize> {
     find_word_sequence_index(
         words,
@@ -94,15 +112,8 @@ pub(crate) fn parse_for_each_object_subject(
         return Ok(None);
     }
 
-    if grammar::words_match_prefix(&normalized_filter_tokens, &["player"]).is_some()
-        || grammar::words_match_prefix(&normalized_filter_tokens, &["players"]).is_some()
-        || grammar::words_match_prefix(&normalized_filter_tokens, &["opponent"]).is_some()
-        || grammar::words_match_prefix(&normalized_filter_tokens, &["opponents"]).is_some()
-        || grammar::words_match_prefix(&normalized_filter_tokens, &["target", "player"]).is_some()
-        || grammar::words_match_prefix(&normalized_filter_tokens, &["target", "players"]).is_some()
-        || grammar::words_match_prefix(&normalized_filter_tokens, &["target", "opponent"]).is_some()
-        || grammar::words_match_prefix(&normalized_filter_tokens, &["target", "opponents"])
-            .is_some()
+    if grammar::words_match_any_prefix(&normalized_filter_tokens, PLAYER_OR_OPPONENT_PREFIXES)
+        .is_some()
     {
         return Ok(None);
     }
@@ -120,14 +131,11 @@ pub(crate) fn parse_for_each_targeted_object_subject(
         return Ok(None);
     }
 
-    let mut target_tokens =
-        if let Some(rest) = grammar::words_match_prefix(subject_tokens, &["for", "each"]) {
-            rest
-        } else if let Some(rest) = grammar::words_match_prefix(subject_tokens, &["each"]) {
-            rest
-        } else {
-            return Ok(None);
-        };
+    let Some((_, mut target_tokens)) =
+        grammar::words_match_any_prefix(subject_tokens, FOR_EACH_PREFIXES)
+    else {
+        return Ok(None);
+    };
     if target_tokens
         .first()
         .is_some_and(|token| token.is_word("of"))
@@ -374,13 +382,8 @@ pub(crate) fn parse_has_base_power_toughness_clause(
 pub(crate) fn parse_get_for_each_count_value(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Value>, CardTextError> {
-    let mut for_each_idx = None;
-    for idx in 0..tokens.len().saturating_sub(1) {
-        if tokens[idx].is_word("for") && tokens[idx + 1].is_word("each") {
-            for_each_idx = Some(idx);
-            break;
-        }
-    }
+    let for_each_idx =
+        grammar::find_prefix(tokens, || grammar::phrase(&["for", "each"])).map(|(idx, _, _)| idx);
 
     let Some(idx) = for_each_idx else {
         return Ok(None);
@@ -498,10 +501,10 @@ pub(crate) fn parse_get_modifier_values_with_tail(
     if tail_words.as_slice() == ["instead"] {
         return Ok((out_power, out_toughness, duration, condition));
     }
-    if grammar::words_match_prefix(&tail_tokens, &["instead", "if"]).is_some() {
+    if grammar::words_match_any_prefix(&tail_tokens, INSTEAD_IF_PREFIXES).is_some() {
         return Ok((out_power, out_toughness, duration, condition));
     }
-    if grammar::words_match_prefix(&tail_tokens, &["for", "as", "long", "as"]).is_some()
+    if grammar::words_match_any_prefix(&tail_tokens, FOR_AS_LONG_AS_PREFIXES).is_some()
         && grammar::contains_word(&tail_tokens, "this")
         && grammar::contains_word(&tail_tokens, "remains")
         && grammar::contains_word(&tail_tokens, "tapped")
@@ -529,7 +532,7 @@ pub(crate) fn parse_get_modifier_values_with_tail(
             return Ok((out_power, out_toughness, duration, condition));
         }
     }
-    if grammar::words_match_prefix(&tail_tokens, &["for", "each"]).is_some()
+    if grammar::words_match_any_prefix(&tail_tokens, FOR_EACH_PREFIXES).is_some()
         && let Some(count) = parse_get_for_each_count_value(&tail_tokens)?
     {
         let scale_modifier = |modifier: Value| -> Result<Value, CardTextError> {
@@ -716,10 +719,7 @@ pub(crate) fn parse_for_each_opponent_clause(
         let predicate = parse_who_did_this_way_predicate(&inner_tokens)?;
         return Ok(Some(EffectAst::ForEachOpponentDid { effects, predicate }));
     }
-    if grammar::words_match_prefix(&inner_tokens, &["who", "does"]).is_some()
-        || grammar::words_match_prefix(&inner_tokens, &["who", "do"]).is_some()
-        || grammar::words_match_prefix(&inner_tokens, &["who", "did"]).is_some()
-    {
+    if grammar::words_match_any_prefix(&inner_tokens, WHO_ACTION_PREFIXES).is_some() {
         let effect_token_start =
             if let Some(comma_idx) = find_token_index(&inner_tokens, |token| token.is_comma()) {
                 comma_idx + 1
@@ -819,10 +819,7 @@ pub(crate) fn parse_for_each_opponent_clause(
         let predicate = parse_who_did_this_way_predicate(&inner_tokens)?;
         return Ok(Some(EffectAst::ForEachPlayerDid { effects, predicate }));
     }
-    if grammar::words_match_prefix(&inner_tokens, &["who", "does"]).is_some()
-        || grammar::words_match_prefix(&inner_tokens, &["who", "do"]).is_some()
-        || grammar::words_match_prefix(&inner_tokens, &["who", "did"]).is_some()
-    {
+    if grammar::words_match_any_prefix(&inner_tokens, WHO_ACTION_PREFIXES).is_some() {
         let effect_token_start =
             if let Some(comma_idx) = find_token_index(&inner_tokens, |token| token.is_comma()) {
                 comma_idx + 1
@@ -922,10 +919,7 @@ pub(crate) fn parse_for_each_opponent_clause(
         let predicate = parse_who_did_this_way_predicate(&inner_tokens)?;
         return Ok(Some(EffectAst::ForEachPlayerDid { effects, predicate }));
     }
-    if grammar::words_match_prefix(&inner_tokens, &["who", "does"]).is_some()
-        || grammar::words_match_prefix(&inner_tokens, &["who", "do"]).is_some()
-        || grammar::words_match_prefix(&inner_tokens, &["who", "did"]).is_some()
-    {
+    if grammar::words_match_any_prefix(&inner_tokens, WHO_ACTION_PREFIXES).is_some() {
         let effect_token_start =
             if let Some(comma_idx) = find_token_index(&inner_tokens, |token| token.is_comma()) {
                 comma_idx + 1
@@ -976,10 +970,10 @@ pub(crate) fn parse_for_each_target_players_clause(
 
     let mut start = 0usize;
     let mut count = ChoiceCount::exactly(1);
-    if grammar::words_match_prefix(clause_tokens, &["any", "number", "of"]).is_some() {
+    if grammar::words_match_any_prefix(clause_tokens, ANY_NUMBER_OF_PREFIXES).is_some() {
         count = ChoiceCount::any_number();
         start = 3;
-    } else if grammar::words_match_prefix(clause_tokens, &["up", "to"]).is_some()
+    } else if grammar::words_match_any_prefix(clause_tokens, UP_TO_PREFIXES).is_some()
         && let Some((value, used)) = parse_number(&clause_tokens[2..])
     {
         count = ChoiceCount::up_to(value as usize);
@@ -1293,10 +1287,7 @@ pub(crate) fn parse_for_each_player_clause(
         let predicate = parse_who_did_this_way_predicate(&inner_tokens)?;
         return Ok(Some(EffectAst::ForEachPlayerDid { effects, predicate }));
     }
-    if grammar::words_match_prefix(&inner_tokens, &["who", "does"]).is_some()
-        || grammar::words_match_prefix(&inner_tokens, &["who", "do"]).is_some()
-        || grammar::words_match_prefix(&inner_tokens, &["who", "did"]).is_some()
-    {
+    if grammar::words_match_any_prefix(&inner_tokens, WHO_ACTION_PREFIXES).is_some() {
         let effect_token_start =
             if let Some(comma_idx) = find_token_index(&inner_tokens, |token| token.is_comma()) {
                 comma_idx + 1

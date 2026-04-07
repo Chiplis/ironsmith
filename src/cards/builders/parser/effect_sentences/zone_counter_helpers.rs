@@ -9,11 +9,15 @@ use crate::zone::Zone;
 use crate::{ChooseSpec, CounterType, TagKey, Value};
 
 use super::super::activation_and_restrictions::parse_devotion_value_from_add_clause;
+use winnow::combinator::separated;
+use winnow::prelude::*;
+
 use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::grammar::structure::split_trailing_if_clause_lexed;
 use super::super::keyword_static::{
     parse_add_mana_equal_amount_value, parse_dynamic_cost_modifier_value,
 };
+use super::super::lexer::LexStream;
 use super::super::object_filters::parse_object_filter;
 use super::super::token_primitives::{
     find_index as find_token_index, find_window_index as find_word_sequence_index,
@@ -30,6 +34,14 @@ use super::super::value_helpers::{
 
 type ZoneCounterCompatWords = TokenWordView;
 
+const CREATURES_DIED_THIS_TURN_PREFIXES: &[&[&str]] = &[
+    &["creature", "that", "died", "this", "turn"],
+    &["creatures", "that", "died", "this", "turn"],
+];
+
+const REFERENTIAL_TAGGED_PREFIXES: &[&[&str]] = &[&["its"], &["those"], &["thiss"]];
+const EVENT_AMOUNT_PREFIXES: &[&[&str]] = &[&["that", "many"], &["that", "much"]];
+
 fn render_clause_words(tokens: &[OwnedLexToken]) -> String {
     ZoneCounterCompatWords::new(tokens).to_word_refs().join(" ")
 }
@@ -37,10 +49,7 @@ fn render_clause_words(tokens: &[OwnedLexToken]) -> String {
 fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> Option<Value> {
     let clause_word_view = ZoneCounterCompatWords::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
-    if grammar::words_match_prefix(tokens, &["creature", "that", "died", "this", "turn"]).is_some()
-        || grammar::words_match_prefix(tokens, &["creatures", "that", "died", "this", "turn"])
-            .is_some()
-    {
+    if grammar::words_match_any_prefix(tokens, CREATURES_DIED_THIS_TURN_PREFIXES).is_some() {
         return Some(Value::CreaturesDiedThisTurn);
     }
     if (word_slice_contains(&clause_words, "spell") || word_slice_contains(&clause_words, "spells"))
@@ -197,17 +206,15 @@ fn parse_referential_counter_count_value(tokens: &[OwnedLexToken]) -> Option<(Va
         return None;
     }
 
-    let (source_spec, mut idx): (ChooseSpec, usize) =
-        if grammar::words_match_prefix(tokens, &["its"]).is_some()
-            || grammar::words_match_prefix(tokens, &["those"]).is_some()
-            || grammar::words_match_prefix(tokens, &["thiss"]).is_some()
-        {
-            (ChooseSpec::Tagged(TagKey::from(IT_TAG)), 1)
-        } else if grammar::words_match_prefix(tokens, &["this"]).is_some() {
-            (ChooseSpec::Source, 1)
-        } else {
-            return None;
-        };
+    let (source_spec, mut idx): (ChooseSpec, usize) = if let Some((prefix, _)) =
+        grammar::words_match_any_prefix(tokens, REFERENTIAL_TAGGED_PREFIXES)
+    {
+        (ChooseSpec::Tagged(TagKey::from(IT_TAG)), prefix.len())
+    } else if let Some((prefix, _)) = grammar::words_match_any_prefix(tokens, &[&["this"]]) {
+        (ChooseSpec::Source, prefix.len())
+    } else {
+        return None;
+    };
 
     let Some(word) = words_all.get(idx).copied() else {
         return None;
@@ -237,18 +244,16 @@ fn parse_put_counter_count_value(
 ) -> Result<(Value, usize), CardTextError> {
     let clause = render_clause_words(tokens);
 
-    if grammar::words_match_prefix(tokens, &["that", "many"]).is_some()
-        || grammar::words_match_prefix(tokens, &["that", "much"]).is_some()
-    {
-        return Ok((Value::EventValue(EventValueSpec::Amount), 2));
+    if let Some((prefix, _)) = grammar::words_match_any_prefix(tokens, EVENT_AMOUNT_PREFIXES) {
+        return Ok((Value::EventValue(EventValueSpec::Amount), prefix.len()));
     }
-    if grammar::words_match_prefix(tokens, &["another"]).is_some() {
+    if grammar::words_match_any_prefix(tokens, &[&["another"]]).is_some() {
         return Ok((Value::Fixed(1), 1));
     }
     if let Some((value, used)) = parse_referential_counter_count_value(tokens) {
         return Ok((value, used));
     }
-    if grammar::words_match_prefix(tokens, &["a", "number", "of"]).is_some() {
+    if grammar::words_match_any_prefix(tokens, &[&["a", "number", "of"]]).is_some() {
         if let Some(value) = parse_add_mana_equal_amount_value(tokens)
             .or_else(|| parse_equal_to_aggregate_filter_value(tokens))
             .or_else(|| parse_equal_to_number_of_filter_value(tokens))
@@ -470,15 +475,8 @@ pub(crate) fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, 
             filter,
         }));
     }
-    let mut for_each_idx = None;
-    let mut idx = 0usize;
-    while idx + 1 < target_tokens.len() {
-        if target_tokens[idx].is_word("for") && target_tokens[idx + 1].is_word("each") {
-            for_each_idx = Some(idx);
-            break;
-        }
-        idx += 1;
-    }
+    let for_each_idx = grammar::find_prefix(&target_tokens, || grammar::phrase(&["for", "each"]))
+        .map(|(idx, _, _)| idx);
     if let Some(for_each_idx) = for_each_idx {
         let base_target_tokens = trim_commas(&target_tokens[..for_each_idx]);
         let count_filter_tokens = trim_commas(&target_tokens[for_each_idx + 2..]);
@@ -653,15 +651,8 @@ fn parse_put_or_remove_counter_choice(
     target_tokens: &[OwnedLexToken],
     clause_tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let mut or_idx = None;
-    let mut idx = 0usize;
-    while idx + 1 < target_tokens.len() {
-        if target_tokens[idx].is_word("or") && target_tokens[idx + 1].is_word("remove") {
-            or_idx = Some(idx);
-            break;
-        }
-        idx += 1;
-    }
+    let or_idx = grammar::find_prefix(target_tokens, || grammar::phrase(&["or", "remove"]))
+        .map(|(idx, _, _)| idx);
     let Some(or_idx) = or_idx else {
         return Ok(None);
     };
@@ -840,43 +831,31 @@ pub(crate) fn parse_counter_target_count_prefix(
         return Ok(Some((ChoiceCount::up_to(value as usize), idx)));
     }
 
-    if let Some((first, used_first)) = parse_number(&tokens[idx..]) {
-        let mut pos = idx + used_first;
-        let mut values = vec![first];
-        loop {
-            while tokens.get(pos).is_some_and(OwnedLexToken::is_comma) {
-                pos += 1;
-            }
-            if tokens.get(pos).is_some_and(|token| token.is_word("or")) {
-                pos += 1;
-                while tokens.get(pos).is_some_and(OwnedLexToken::is_comma) {
+    {
+        let tail = &tokens[idx..];
+        let mut stream = LexStream::new(tail);
+        let mut sep_parser = separated(1.., grammar::number_token, grammar::comma_or_separator);
+        if let Ok(values) = sep_parser.parse_next(&mut stream).map(|v: Vec<u32>| v) {
+            let consumed = tail.len() - stream.len();
+            let mut pos = idx + consumed;
+
+            if values.len() >= 2 {
+                if tokens.get(pos).is_some_and(|token| token.is_word("of")) {
                     pos += 1;
                 }
+                let min = values.iter().copied().min().unwrap() as usize;
+                let max = values.iter().copied().max().unwrap() as usize;
+                return Ok(Some((
+                    ChoiceCount {
+                        min,
+                        max: Some(max),
+                        dynamic_x: false,
+                        up_to_x: false,
+                        random: false,
+                    },
+                    pos,
+                )));
             }
-
-            let Some((next, used_next)) = parse_number(&tokens[pos..]) else {
-                break;
-            };
-            values.push(next);
-            pos += used_next;
-        }
-
-        if values.len() >= 2 {
-            if tokens.get(pos).is_some_and(|token| token.is_word("of")) {
-                pos += 1;
-            }
-            let min = values.iter().copied().min().unwrap_or(first) as usize;
-            let max = values.iter().copied().max().unwrap_or(first) as usize;
-            return Ok(Some((
-                ChoiceCount {
-                    min,
-                    max: Some(max),
-                    dynamic_x: false,
-                    up_to_x: false,
-                    random: false,
-                },
-                pos,
-            )));
         }
     }
 

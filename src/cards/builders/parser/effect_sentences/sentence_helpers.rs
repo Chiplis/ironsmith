@@ -18,6 +18,7 @@ pub(crate) use super::super::activation_and_restrictions::{
     target_ast_to_object_filter,
 };
 pub(crate) use super::super::grammar::effects::parse_cant_effect_sentence_with_grammar_entrypoint_lexed as parse_cant_effect_sentence_lexed;
+#[cfg(test)]
 pub(crate) use super::super::grammar::effects::parse_conditional_sentence_lexed;
 pub(crate) use super::super::grammar::effects::parse_search_library_sentence_with_grammar_entrypoint_lexed as parse_search_library_sentence_lexed;
 pub(crate) use super::super::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed as parse_predicate_lexed;

@@ -5,7 +5,7 @@ use crate::cards::builders::{
     TextSpan,
 };
 use winnow::Parser;
-use winnow::error::{ContextError, ErrMode, ModalResult as WResult};
+use winnow::error::ModalResult as WResult;
 use winnow::stream::Stream;
 use winnow::token::any;
 
@@ -205,20 +205,17 @@ fn is_doesnt_untap_during_your_untap_step_tokens(tokens: &[OwnedLexToken]) -> bo
         return false;
     }
 
-    head_tokens.iter().enumerate().any(|(idx, _)| {
-        grammar::parse_prefix(
-            &head_tokens[idx..],
-            winnow::combinator::alt((
-                grammar::kw("don't").void(),
-                grammar::kw("dont").void(),
-                grammar::kw("doesn't").void(),
-                grammar::kw("doesnt").void(),
-                (grammar::kw("do"), grammar::kw("not")).void(),
-                (grammar::kw("does"), grammar::kw("not")).void(),
-            )),
-        )
-        .is_some()
+    grammar::find_prefix(head_tokens, || {
+        winnow::combinator::alt((
+            grammar::kw("don't").void(),
+            grammar::kw("dont").void(),
+            grammar::kw("doesn't").void(),
+            grammar::kw("doesnt").void(),
+            (grammar::kw("do"), grammar::kw("not")).void(),
+            (grammar::kw("does"), grammar::kw("not")).void(),
+        ))
     })
+    .is_some()
 }
 
 fn looks_like_untap_all_during_each_other_players_untap_step_tokens(
@@ -251,6 +248,76 @@ fn looks_like_generic_statement_line_tokens(tokens: &[OwnedLexToken]) -> bool {
 
 fn looks_like_generic_static_line_tokens(tokens: &[OwnedLexToken]) -> bool {
     super::grammar::structure::looks_like_generic_static_line_lexed(tokens)
+}
+
+fn parse_dont_word<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    winnow::combinator::alt((grammar::kw("don't"), grammar::kw("dont")))
+        .void()
+        .parse_next(input)
+}
+
+fn is_ward_or_echo_static_prefix_tokens(tokens: &[OwnedLexToken]) -> bool {
+    grammar::parse_prefix(
+        tokens,
+        winnow::combinator::alt((grammar::kw("ward"), grammar::kw("echo"))),
+    )
+    .is_some()
+}
+
+fn is_land_reveal_enters_static_tokens(tokens: &[OwnedLexToken]) -> bool {
+    grammar::parse_prefix(tokens, grammar::phrase(&["as", "this", "land", "enters"])).is_some()
+        && grammar::contains_phrase(tokens, &["you", "may", "reveal"])
+        && grammar::contains_phrase(tokens, &["from", "your", "hand"])
+}
+
+fn is_land_reveal_enters_tapped_followup_tokens(tokens: &[OwnedLexToken]) -> bool {
+    grammar::parse_prefix(tokens, |input: &mut LexStream<'_>| {
+        (
+            grammar::phrase(&["if", "you"]),
+            parse_dont_word,
+            winnow::combinator::opt(grammar::comma()),
+            winnow::combinator::alt((
+                grammar::phrase(&["this", "land", "enters", "tapped"]),
+                grammar::phrase(&["it", "enters", "tapped"]),
+            )),
+        )
+            .void()
+            .parse_next(input)
+    })
+    .is_some()
+}
+
+fn is_opening_hand_begin_game_static_tokens(tokens: &[OwnedLexToken]) -> bool {
+    grammar::parse_prefix(
+        tokens,
+        grammar::phrase(&["if", "this", "card", "is", "in", "your", "opening", "hand"]),
+    )
+    .is_some()
+        && grammar::contains_phrase(tokens, &["you", "may", "begin", "the", "game", "with"])
+        && grammar::contains_phrase(tokens, &["on", "the", "battlefield"])
+}
+
+fn is_if_you_do_exile_followup_tokens(tokens: &[OwnedLexToken]) -> bool {
+    grammar::parse_prefix(tokens, |input: &mut LexStream<'_>| {
+        (
+            grammar::phrase(&["if", "you", "do"]),
+            winnow::combinator::opt(grammar::comma()),
+            grammar::kw("exile"),
+        )
+            .void()
+            .parse_next(input)
+    })
+    .is_some()
+}
+
+fn should_try_combined_static_tokens(
+    line_tokens: &[OwnedLexToken],
+    next_line_tokens: &[OwnedLexToken],
+) -> bool {
+    (is_land_reveal_enters_static_tokens(line_tokens)
+        && is_land_reveal_enters_tapped_followup_tokens(next_line_tokens))
+        || (is_opening_hand_begin_game_static_tokens(line_tokens)
+            && is_if_you_do_exile_followup_tokens(next_line_tokens))
 }
 
 #[derive(Debug, Clone)]
@@ -477,31 +544,12 @@ fn parse_triggered_line_cst(line: &PreprocessedLine) -> Result<TriggeredLineCst,
             continue;
         }
 
-<<<<<<< Updated upstream
         if best_probe_error.is_none() {
             best_probe_error = probe.preferred_error();
         }
 
         if whole_line_parse.is_ok() && best_fallback_split.is_none() {
             best_fallback_split = probe.fallback_cst(line, tokens_without_cap);
-=======
-        let full_text = format!(
-            "{} {}, {}",
-            first_token.slice.as_str(),
-            trigger_text,
-            effect_candidate
-        );
-        let full_tokens = lexed_tokens(full_text.as_str(), line.info.line_index)?;
-        if parse_triggered_line_lexed(&full_tokens).is_ok() && best_fallback_split.is_none() {
-            best_fallback_split = Some(TriggeredLineCst {
-                info: line.info.clone(),
-                full_text,
-                trigger_text,
-                effect_text: effect_candidate.to_string(),
-                max_triggers_per_turn,
-                chosen_option_label: None,
-            });
->>>>>>> Stashed changes
         }
     }
 
@@ -652,10 +700,7 @@ fn token_words_have_suffix(tokens: &[OwnedLexToken], expected: &[&str]) -> bool 
 }
 
 fn tokens_before_kind(tokens: &[OwnedLexToken], kind: TokenKind) -> &[OwnedLexToken] {
-    let end = tokens
-        .iter()
-        .position(|token| token.kind == kind)
-        .unwrap_or(tokens.len());
+    let end = grammar::find_token_index(tokens, |token| token.kind == kind).unwrap_or(tokens.len());
     &tokens[..end]
 }
 
@@ -1333,7 +1378,7 @@ fn parse_segment_len_until_colon_outside_quotes<'a>(input: &mut LexStream<'a>) -
         any.parse_next(input)?;
     }
 
-    Err(ErrMode::Backtrack(ContextError::new()))
+    Err(grammar::backtrack_err("colon", "colon outside quotes"))
 }
 
 pub(crate) fn split_lexed_once_on_colon_outside_quotes(
@@ -1614,10 +1659,13 @@ mod tests {
     use super::{
         PreprocessedItem, TriggeredSplitProbe, classify_unsupported_line_reason,
         diagnose_known_unsupported_rewrite_line, is_doesnt_untap_during_your_untap_step_tokens,
-        lex_line, looks_like_divvy_statement_line_tokens, looks_like_generic_statement_line_tokens,
-        looks_like_generic_static_line_tokens, looks_like_next_turn_cant_cast_line_tokens,
-        looks_like_pact_next_upkeep_line_tokens, looks_like_statement_line,
-        looks_like_statement_line_lexed, looks_like_static_line, looks_like_static_line_lexed,
+        is_if_you_do_exile_followup_tokens, is_land_reveal_enters_static_tokens,
+        is_land_reveal_enters_tapped_followup_tokens, is_opening_hand_begin_game_static_tokens,
+        is_ward_or_echo_static_prefix_tokens, lex_line, looks_like_divvy_statement_line_tokens,
+        looks_like_generic_statement_line_tokens, looks_like_generic_static_line_tokens,
+        looks_like_next_turn_cant_cast_line_tokens, looks_like_pact_next_upkeep_line_tokens,
+        looks_like_statement_line, looks_like_statement_line_lexed, looks_like_static_line,
+        looks_like_static_line_lexed,
         looks_like_untap_all_during_each_other_players_untap_step_tokens,
         looks_like_vote_statement_line_tokens, parse_colon_nonactivation_statement_fallback,
         parse_keyword_line_cst, parse_level_item_cst, parse_statement_line_cst,
@@ -1739,6 +1787,45 @@ mod tests {
         );
 
         Ok(())
+    }
+
+    #[test]
+    fn ward_and_echo_static_prefixes_are_token_classified() {
+        let ward = lex_line("Ward — Pay 3 life.", 0)
+            .expect("rewrite lexer should classify ward static prefix");
+        let echo =
+            lex_line("Echo {2}{R}", 0).expect("rewrite lexer should classify echo static prefix");
+
+        assert!(is_ward_or_echo_static_prefix_tokens(&ward));
+        assert!(is_ward_or_echo_static_prefix_tokens(&echo));
+    }
+
+    #[test]
+    fn land_reveal_combined_static_pair_is_token_classified() {
+        let first = lex_line(
+            "As this land enters, you may reveal an Island card from your hand.",
+            0,
+        )
+        .expect("rewrite lexer should classify first static line");
+        let second = lex_line("If you don't, it enters tapped.", 0)
+            .expect("rewrite lexer should classify followup static line");
+
+        assert!(is_land_reveal_enters_static_tokens(&first));
+        assert!(is_land_reveal_enters_tapped_followup_tokens(&second));
+    }
+
+    #[test]
+    fn opening_hand_begin_game_combined_static_pair_is_token_classified() {
+        let first = lex_line(
+            "If this card is in your opening hand, you may begin the game with it on the battlefield.",
+            0,
+        )
+        .expect("rewrite lexer should classify opening-hand static line");
+        let second = lex_line("If you do exile a card from your hand.", 0)
+            .expect("rewrite lexer should classify if-you-do followup line");
+
+        assert!(is_opening_hand_begin_game_static_tokens(&first));
+        assert!(is_if_you_do_exile_followup_tokens(&second));
     }
 
     #[test]
@@ -2979,6 +3066,7 @@ fn parse_colon_nonactivation_statement_fallback(
     Ok(None)
 }
 
+#[cfg(test)]
 fn split_activation_text_parts_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<(Vec<OwnedLexToken>, String)> {
@@ -3444,11 +3532,7 @@ pub(crate) fn parse_document_cst(
                     continue;
                 }
 
-                if str_starts_with(normalized, "ward—")
-                    || str_starts_with(normalized, "ward ")
-                    || str_starts_with(normalized, "echo—")
-                    || str_starts_with(normalized, "echo ")
-                {
+                if is_ward_or_echo_static_prefix_tokens(&line.tokens) {
                     lines.push(RewriteLineCst::Static(StaticLineCst {
                         info: line.info.clone(),
                         text: normalized.to_string(),
@@ -3492,37 +3576,11 @@ pub(crate) fn parse_document_cst(
                 }
 
                 if let Some(PreprocessedItem::Line(next_line)) = preprocessed.items.get(idx + 1) {
-                    let normalized_next = next_line.info.normalized.normalized.as_str();
-                    let should_try_combined_static =
-                        (str_starts_with(normalized, "as this land enters")
-                            && str_contains(normalized, "you may reveal")
-                            && str_contains(normalized, "from your hand")
-                            && (str_starts_with(
-                                normalized_next,
-                                "if you dont, this land enters tapped",
-                            ) || str_starts_with(
-                                normalized_next,
-                                "if you don't, this land enters tapped",
-                            ) || str_starts_with(
-                                normalized_next,
-                                "if you dont, it enters tapped",
-                            ) || str_starts_with(
-                                normalized_next,
-                                "if you don't, it enters tapped",
-                            )))
-                            || (str_starts_with(
-                                normalized,
-                                "if this card is in your opening hand",
-                            ) && str_contains(normalized, "you may begin the game with")
-                                && str_contains(normalized, "on the battlefield")
-                                && (str_starts_with(normalized_next, "if you do, exile ")
-                                    || str_starts_with(normalized_next, "if you do exile ")));
-
-                    if should_try_combined_static {
+                    if should_try_combined_static_tokens(&line.tokens, &next_line.tokens) {
                         let combined_text = format!(
                             "{}. {}",
                             normalized.trim_end_matches('.'),
-                            normalized_next.trim_end_matches('.')
+                            next_line.info.normalized.normalized.trim_end_matches('.')
                         );
                         let combined_line = rewrite_line_normalized(line, combined_text.as_str())?;
                         if let Some(static_line) = parse_static_line_cst(&combined_line)? {

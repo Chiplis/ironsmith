@@ -516,9 +516,11 @@ pub(crate) fn parse_create(
 ) -> Result<EffectAst, CardTextError> {
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
     let clause_words = token_word_refs(tokens);
-    let has_unsupported_dynamic_count = grammar::words_match_prefix(tokens, &["a", "number", "of"])
-        .is_some()
-        || grammar::words_match_prefix(tokens, &["the", "number", "of"]).is_some();
+    let has_unsupported_dynamic_count = grammar::words_match_any_prefix(
+        tokens,
+        &[&["a", "number", "of"], &["the", "number", "of"]],
+    )
+    .is_some();
     if has_unsupported_dynamic_count {
         return Err(CardTextError::ParseError(format!(
             "unsupported dynamic token count in create clause (clause: '{}')",
@@ -975,9 +977,14 @@ pub(crate) fn parse_create(
 }
 
 pub(crate) fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> Option<Value> {
-    if grammar::words_match_prefix(tokens, &["creature", "that", "died", "this", "turn"]).is_some()
-        || grammar::words_match_prefix(tokens, &["creatures", "that", "died", "this", "turn"])
-            .is_some()
+    if grammar::words_match_any_prefix(
+        tokens,
+        &[
+            &["creature", "that", "died", "this", "turn"],
+            &["creatures", "that", "died", "this", "turn"],
+        ],
+    )
+    .is_some()
     {
         return Some(Value::CreaturesDiedThisTurn);
     }

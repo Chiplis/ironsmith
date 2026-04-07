@@ -18,7 +18,9 @@ use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 use crate::{ChoiceCount, PowerToughness, PtValue, TagKey};
 
-use super::activation_and_restrictions::{parse_ability_phrase, parse_activation_cost};
+use super::activation_and_restrictions::{
+    contains_word_sequence, parse_ability_phrase, parse_activation_cost,
+};
 use super::clause_support::parse_effect_sentences_lexed;
 use super::effect_sentences::{find_verb, parse_subtype_word, parse_supertype_word};
 use super::grammar::primitives::{split_lexed_slices_on_or, token_slice_span};
@@ -27,9 +29,9 @@ use super::keyword_static::parse_this_spell_cost_condition;
 use super::lexer::{OwnedLexToken, TokenKind, TokenWordView, lex_line};
 use super::object_filters::parse_object_filter;
 use super::token_primitives::{
-    self as shared_tokens, find_index, find_window_by, find_window_index, slice_contains,
-    slice_ends_with, slice_starts_with, str_contains, str_ends_with, str_split_once,
-    str_starts_with, str_strip_prefix, str_strip_suffix,
+    self as shared_tokens, find_index, find_window_by, slice_contains, slice_ends_with,
+    slice_starts_with, str_contains, str_ends_with, str_split_once, str_starts_with,
+    str_strip_prefix, str_strip_suffix,
 };
 
 #[cfg(test)]
@@ -58,7 +60,7 @@ fn words_contain(words: &[&str], expected: &str) -> bool {
 }
 
 fn contains_words_sequence(words: &[&str], pattern: &[&str]) -> bool {
-    find_window_index(words, pattern).is_some()
+    contains_word_sequence(words, pattern)
 }
 
 pub(crate) fn is_article(word: &str) -> bool {

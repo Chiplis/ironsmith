@@ -54,7 +54,7 @@ fn etb_word_slice_contains_any(words: &[&str], expected: &[&str]) -> bool {
     false
 }
 
-fn etb_find_word_index(words: &[&str], mut predicate: impl FnMut(&str) -> bool) -> Option<usize> {
+fn etb_word_offset(words: &[&str], mut predicate: impl FnMut(&str) -> bool) -> Option<usize> {
     for (idx, word) in words.iter().enumerate() {
         if predicate(word) {
             return Some(idx);
@@ -134,11 +134,11 @@ pub(crate) fn parse_enters_tapped_with_counters_line(
         return Ok(None);
     }
 
-    let enters_idx = etb_find_word_index(&clause_words, |word| matches!(word, "enter" | "enters"));
+    let enters_idx = etb_word_offset(&clause_words, |word| matches!(word, "enter" | "enters"));
     let Some(enters_idx) = enters_idx else {
         return Ok(None);
     };
-    let with_idx = etb_find_word_index(&clause_words, |word| word == "with");
+    let with_idx = etb_word_offset(&clause_words, |word| word == "with");
     let Some(with_idx) = with_idx else {
         return Ok(None);
     };
@@ -194,8 +194,7 @@ pub(crate) fn parse_enters_with_counters_line(
     }
 
     let clause_words = etb_token_words(&clause_tokens);
-    let enters_idx =
-        etb_find_word_index(&clause_words, |word| word == "enters").unwrap_or(usize::MAX);
+    let enters_idx = etb_word_offset(&clause_words, |word| word == "enters").unwrap_or(usize::MAX);
     let Some(enter_token_idx) = token_index_for_word_index(&clause_tokens, enters_idx) else {
         return Ok(None);
     };
@@ -1350,7 +1349,7 @@ pub(crate) fn parse_where_x_is_number_of_differently_named_filter_value(
         return None;
     }
 
-    let number_idx = etb_find_word_index(&clause_words, |word| word == "number")?;
+    let number_idx = etb_word_offset(&clause_words, |word| word == "number")?;
     if clause_words.get(number_idx + 1).copied() != Some("of") {
         return None;
     }
@@ -1378,7 +1377,7 @@ pub(crate) fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) 
         return None;
     }
 
-    let number_idx = etb_find_word_index(&clause_words, |word| word == "number")?;
+    let number_idx = etb_word_offset(&clause_words, |word| word == "number")?;
     if clause_words.get(number_idx + 1).copied() != Some("of") {
         return None;
     }
@@ -1579,11 +1578,10 @@ pub(crate) fn parse_where_x_is_number_of_filter_plus_or_minus_fixed_value(
     }
 
     let filter_start_word_idx = number_word_idx + 2;
-    let operator_word_idx =
-        etb_find_word_index(&clause_words[filter_start_word_idx + 1..], |word| {
-            matches!(word, "plus" | "minus")
-        })
-        .map(|idx| filter_start_word_idx + 1 + idx)?;
+    let operator_word_idx = etb_word_offset(&clause_words[filter_start_word_idx + 1..], |word| {
+        matches!(word, "plus" | "minus")
+    })
+    .map(|idx| filter_start_word_idx + 1 + idx)?;
     let operator = clause_words[operator_word_idx];
 
     let filter_start_token_idx = token_index_for_word_index(tokens, filter_start_word_idx)?;
@@ -1659,8 +1657,7 @@ pub(crate) fn parse_enters_tapped_for_filter_line(
     if etb_word_slice_contains(&clause_words, "unless") {
         return Ok(None);
     }
-    let enter_word_idx =
-        etb_find_word_index(&clause_words, |word| matches!(word, "enter" | "enters"));
+    let enter_word_idx = etb_word_offset(&clause_words, |word| matches!(word, "enter" | "enters"));
     let Some(enter_word_idx) = enter_word_idx else {
         return Ok(None);
     };
@@ -1737,7 +1734,7 @@ pub(crate) fn parse_enters_untapped_for_filter_line(
     }
 
     let Some(enter_word_idx) =
-        etb_find_word_index(&clause_words, |word| matches!(word, "enter" | "enters"))
+        etb_word_offset(&clause_words, |word| matches!(word, "enter" | "enters"))
     else {
         return Ok(None);
     };
@@ -1771,7 +1768,7 @@ pub(crate) fn parse_reveal_from_hand_or_enters_tapped_line(
         return Ok(None);
     }
 
-    let Some(reveal_word_idx) = etb_find_word_index(&clause_words, |word| word == "reveal") else {
+    let Some(reveal_word_idx) = etb_word_offset(&clause_words, |word| word == "reveal") else {
         return Err(CardTextError::ParseError(format!(
             "missing 'reveal' keyword in land ETB reveal clause (clause: '{}')",
             clause_words.join(" ")
@@ -1846,7 +1843,7 @@ pub(crate) fn parse_reveal_from_hand_or_enters_tapped_line(
     }
 
     // Pattern B: "... This land enters tapped unless you revealed ... this way or you control ..."
-    let Some(unless_idx) = etb_find_word_index(&clause_words, |word| word == "unless") else {
+    let Some(unless_idx) = etb_word_offset(&clause_words, |word| word == "unless") else {
         return Err(CardTextError::ParseError(format!(
             "unsupported land ETB reveal clause (expected 'if you don't' or 'unless') (clause: '{}')",
             clause_words.join(" ")
@@ -1863,11 +1860,10 @@ pub(crate) fn parse_reveal_from_hand_or_enters_tapped_line(
     }
 
     let mut condition = reveal_condition;
-    if let Some(or_idx_rel) =
-        etb_find_word_index(&clause_words[unless_idx + 1..], |word| word == "or")
+    if let Some(or_idx_rel) = etb_word_offset(&clause_words[unless_idx + 1..], |word| word == "or")
     {
         let or_idx = unless_idx + 1 + or_idx_rel;
-        let Some(control_word_idx) = etb_find_word_index(&clause_words[or_idx + 1..], |word| {
+        let Some(control_word_idx) = etb_word_offset(&clause_words[or_idx + 1..], |word| {
             matches!(word, "control" | "controls")
         })
         .map(|idx| or_idx + 1 + idx) else {
@@ -2013,8 +2009,7 @@ pub(crate) fn parse_enters_with_additional_counter_for_filter_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
-    let enter_word_idx =
-        etb_find_word_index(&clause_words, |word| matches!(word, "enter" | "enters"));
+    let enter_word_idx = etb_word_offset(&clause_words, |word| matches!(word, "enter" | "enters"));
     let Some(enter_word_idx) = enter_word_idx else {
         return Ok(None);
     };

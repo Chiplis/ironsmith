@@ -50,9 +50,10 @@ use crate::zone::Zone;
 #[allow(unused_imports)]
 use std::collections::HashMap;
 
+use super::activation_and_restrictions::{contains_word_sequence, find_word_sequence_start};
 use super::token_primitives::{
-    find_index, find_window_by, find_window_index, slice_contains, str_contains, str_find,
-    str_split_once, str_split_once_char, str_starts_with, str_strip_suffix,
+    find_index, find_window_by, slice_contains, str_contains, str_find, str_split_once,
+    str_split_once_char, str_starts_with, str_strip_suffix,
 };
 
 use super::effect_ast_traversal::{
@@ -10402,7 +10403,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
     let has_word = |needle: &str| slice_contains(words.as_slice(), &needle);
     let has_words = |needles: &[&str]| needles.iter().all(|needle| has_word(needle));
     let has_any_word = |needles: &[&str]| needles.iter().any(|needle| has_word(needle));
-    let has_phrase = |phrase: &[&str]| find_window_index(words.as_slice(), phrase).is_some();
+    let has_phrase = |phrase: &[&str]| contains_word_sequence(words.as_slice(), phrase);
     let has_text = |needle: &str| str_contains(lower.as_str(), needle);
     let has_explicit_pt = words.iter().any(|word| parse_token_pt(word).is_some());
     let has_equipment_rules_subject =
@@ -10813,7 +10814,9 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
         if has_word("reach") {
             builder = builder.reach();
         }
-        if let Some(upkeep_idx) = find_window_index(words.as_slice(), &["cumulative", "upkeep"]) {
+        if let Some(upkeep_idx) =
+            find_word_sequence_start(words.as_slice(), &["cumulative", "upkeep"])
+        {
             let mut cost_symbols = Vec::new();
             for word in &words[upkeep_idx + 2..] {
                 if matches!(*word, "when" | "whenever" | "at") {
@@ -11117,7 +11120,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
             "this", "token", "gets", "+1/+1", "for", "each", "card", "named",
         ]) && has_any_word(&["graveyard", "graveyards"])
         {
-            let card_name = find_window_index(words.as_slice(), &["card", "named"])
+            let card_name = find_word_sequence_start(words.as_slice(), &["card", "named"])
                 .and_then(|named_card_idx| {
                     let start = named_card_idx + 2;
                     let end = find_index(&words[start..], |word| {

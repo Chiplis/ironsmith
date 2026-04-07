@@ -15907,8 +15907,10 @@ fn parse_tainted_pact_uses_handwritten_runtime_definition() {
     assert_eq!(def.name(), "Tainted Pact");
     let spell_debug = format!("{:#?}", def.spell_effect).to_ascii_lowercase();
     assert!(
-        spell_debug.contains("taintedpacteffect"),
-        "expected handwritten Tainted Pact runtime effect, got {spell_debug}"
+        spell_debug.contains("repeatprocess")
+            && spell_debug.contains("distinctnames")
+            && spell_debug.contains("maymovetozone"),
+        "expected Tainted Pact runtime loop support, got {spell_debug}"
     );
 }
 
@@ -18309,7 +18311,6 @@ fn parse_your_opponents_cant_cast_creature_spells_this_turn() {
 }
 
 #[test]
-<<<<<<< Updated upstream
 fn parse_render_silent_uses_controller_subject_for_cast_restriction() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Render Silent")
         .card_types(vec![CardType::Instant])
@@ -18400,7 +18401,10 @@ fn parse_grand_abolisher_conditioned_or_restrictions_keep_opponent_subject() {
             && abilities_debug.contains("Opponent")
             && abilities_debug.contains("ActivateAbilitiesOf"),
         "expected cast and activation restrictions for opponents, got {abilities_debug}"
-=======
+    );
+}
+
+#[test]
 fn parse_your_opponents_cant_cast_noncreature_spells_this_turn() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Noncreature Silence Variant")
         .card_types(vec![CardType::Instant])
@@ -18415,7 +18419,6 @@ fn parse_your_opponents_cant_cast_noncreature_spells_this_turn() {
     assert!(
         spell_debug.contains("excluded_card_types") && spell_debug.contains("creature"),
         "expected noncreature spell filter, got {spell_debug}"
->>>>>>> Stashed changes
     );
 }
 
@@ -18977,7 +18980,7 @@ fn parse_oracle_smothering_tithe_player_doesnt_regression() {
         "expected Smothering Tithe to render the negative follow-up, got {rendered}"
     );
     assert!(
-        rendered.contains("If the player doesn't, you create a Treasure token"),
+        rendered.contains("If that player doesn't, you create a Treasure token"),
         "expected Smothering Tithe to keep the Treasure creation clause, got {rendered}"
     );
 }

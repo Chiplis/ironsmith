@@ -106,7 +106,25 @@ impl EffectExecutor for MoveToZoneEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let object_ids = resolve_objects_for_effect(game, ctx, &self.target)?;
+        let mut object_ids = resolve_objects_for_effect(game, ctx, &self.target)?;
+        // When a tag snapshot carries a stale ObjectId (the tagged object
+        // changed zones since the snapshot was taken), resolve through
+        // stable_id so the move can find the actual game object.
+        if let ChooseSpec::Tagged(tag) = &self.target {
+            if let Some(tagged) = ctx.get_tagged_all(tag) {
+                for (idx, snapshot) in tagged.iter().enumerate() {
+                    if idx < object_ids.len()
+                        && game.object(object_ids[idx]).is_none()
+                    {
+                        if let Some(resolved) =
+                            crate::effects::helpers::resolve_tagged_object_id(game, snapshot)
+                        {
+                            object_ids[idx] = resolved;
+                        }
+                    }
+                }
+            }
+        }
         if object_ids.is_empty() {
             return Ok(EffectOutcome::target_invalid());
         }

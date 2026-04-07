@@ -1,5 +1,6 @@
 use winnow::Parser as _;
 
+use super::super::activation_and_restrictions::{contains_word_sequence, find_word_sequence_start};
 use super::super::effect_ast_traversal::{
     for_each_nested_effects, for_each_nested_effects_mut, try_for_each_nested_effects_mut,
 };
@@ -8,11 +9,10 @@ use super::super::keyword_static::parse_where_x_value_clause;
 use super::super::lexer::{OwnedLexToken, TokenKind, split_lexed_sentences};
 use super::super::object_filters::{is_comparison_or_delimiter, parse_object_filter};
 use super::super::token_primitives::{
-    LeadingMayActor, TurnDurationPhrase, find_index, find_window_by, find_window_index,
-    lexed_head_words, parse_leading_may_action_lexed, parse_turn_duration_prefix,
-    parse_value_comparison_tokens, slice_contains, slice_ends_with, slice_starts_with,
-    str_contains, str_ends_with, str_starts_with, strip_leading_if_you_do_lexed,
-    word_view_has_any_prefix, word_view_has_prefix,
+    LeadingMayActor, TurnDurationPhrase, find_index, find_window_by, lexed_head_words,
+    parse_leading_may_action_lexed, parse_turn_duration_prefix, parse_value_comparison_tokens,
+    slice_contains, slice_ends_with, slice_starts_with, str_contains, str_ends_with,
+    str_starts_with, strip_leading_if_you_do_lexed, word_view_has_any_prefix, word_view_has_prefix,
 };
 use super::super::util::{
     helper_tag_for_tokens, is_article, mana_pips_from_token, parse_number, parse_subject,
@@ -142,6 +142,16 @@ fn parse_same_sentence_copy_and_may_cast_copy(
 }
 
 const CHOSEN_NAME_TAG: &str = "__chosen_name__";
+const THEY_DONT_UNTAP_DURING_PREFIXES: &[&[&str]] = &[
+    &["they", "dont", "untap", "during"],
+    &["they", "do", "not", "untap", "during"],
+];
+const PRONOUN_TRIGGER_PREFIXES: &[&[&str]] = &[
+    &["when", "it"],
+    &["whenever", "it"],
+    &["when", "they"],
+    &["whenever", "they"],
+];
 
 fn parse_exact_card_effect_bundle_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
     let sentences = split_lexed_sentences(tokens);
@@ -533,10 +543,10 @@ fn parse_consult_remainder_order(words: &[&str]) -> Option<LibraryBottomOrderAst
     if !slice_contains(words, &"bottom") || !slice_contains(words, &"library") {
         return None;
     }
-    if find_window_index(words, &["random", "order"]).is_some() {
+    if contains_word_sequence(words, &["random", "order"]) {
         return Some(LibraryBottomOrderAst::Random);
     }
-    if find_window_index(words, &["any", "order"]).is_some() {
+    if contains_word_sequence(words, &["any", "order"]) {
         return Some(LibraryBottomOrderAst::ChooserChooses);
     }
     None
@@ -1156,7 +1166,6 @@ fn parse_consult_match_into_hand_exile_others(
     }
 
     let second_tokens = trim_commas(second);
-    let second_words = crate::cards::builders::parser::token_word_refs(&second_tokens);
     let moves_to_hand = grammar::words_match_prefix(
         &second_tokens,
         &["put", "that", "card", "into", "your", "hand"],
@@ -1494,9 +1503,9 @@ fn parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard(
     filter.zone = None;
 
     let after_revealed = &second_word_refs[revealed_idx + 3..];
-    let has_hand_clause = find_window_index(after_revealed, &["into", "your", "hand"]).is_some();
+    let has_hand_clause = contains_word_sequence(after_revealed, &["into", "your", "hand"]);
     let has_rest_clause =
-        find_window_index(after_revealed, &["and", "the", "rest", "into", "your"]).is_some()
+        contains_word_sequence(after_revealed, &["and", "the", "rest", "into", "your"])
             && slice_contains(after_revealed, &"graveyard");
     if !has_hand_clause || !has_rest_clause {
         return Ok(None);
@@ -1881,14 +1890,8 @@ fn parse_tap_all_then_they_dont_untap_while_source_tapped(
     };
 
     let second_tokens = trim_commas(second);
-    let second_words = crate::cards::builders::parser::token_word_refs(&second_tokens);
     let starts_with_supported_pronoun_clause =
-        grammar::words_match_prefix(&second_tokens, &["they", "dont", "untap", "during"]).is_some()
-            || grammar::words_match_prefix(
-                &second_tokens,
-                &["they", "do", "not", "untap", "during"],
-            )
-            .is_some();
+        grammar::words_match_any_prefix(&second_tokens, THEY_DONT_UNTAP_DURING_PREFIXES).is_some();
     let has_source_tapped_duration =
         grammar::words_find_phrase(&second_tokens, &["for", "as", "long", "as"]).is_some()
             && grammar::contains_word(&second_tokens, "remains")
@@ -1907,12 +1910,7 @@ fn parse_tap_all_then_they_dont_untap_while_source_tapped(
         return Ok(None);
     };
     let valid_untap_clause =
-        grammar::words_match_prefix(&clause_tokens, &["they", "dont", "untap", "during"]).is_some()
-            || grammar::words_match_prefix(
-                &clause_tokens,
-                &["they", "do", "not", "untap", "during"],
-            )
-            .is_some();
+        grammar::words_match_any_prefix(&clause_tokens, THEY_DONT_UNTAP_DURING_PREFIXES).is_some();
     if !valid_untap_clause {
         return Ok(None);
     }
@@ -3546,11 +3544,8 @@ fn parse_effect_sentences_from_sentence_inputs(
                     && (grammar::contains_word(&sentence_tokens, "it")
                         || grammar::contains_word(&sentence_tokens, "them"));
             let pronoun_followup_clause =
-                grammar::words_match_prefix(&sentence_tokens, &["when", "it"]).is_some()
-                    || grammar::words_match_prefix(&sentence_tokens, &["whenever", "it"]).is_some()
-                    || grammar::words_match_prefix(&sentence_tokens, &["when", "they"]).is_some()
-                    || grammar::words_match_prefix(&sentence_tokens, &["whenever", "they"])
-                        .is_some();
+                grammar::words_match_any_prefix(&sentence_tokens, PRONOUN_TRIGGER_PREFIXES)
+                    .is_some();
             if delayed_pronoun_lifecycle || pronoun_followup_clause {
                 // Keep standalone pronoun-led followups on the normal parser path.
                 // They can be genuine tagged-object effects, not just token reminder text.
@@ -4293,7 +4288,7 @@ pub(crate) fn apply_where_x_to_damage_amounts(
     if !has_deal_x && !has_x_life {
         return Ok(());
     }
-    let Some(where_idx) = find_window_index(&clause_words, &["where", "x", "is"]) else {
+    let Some(where_idx) = find_word_sequence_start(&clause_words, &["where", "x", "is"]) else {
         return Ok(());
     };
     let Some(where_token_idx) = token_index_for_word_index(tokens, where_idx) else {

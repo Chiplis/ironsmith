@@ -1,11 +1,13 @@
-use super::super::activation_and_restrictions::{contains_word_sequence, parse_named_number};
+use super::super::activation_and_restrictions::{
+    contains_word_sequence, find_word_sequence_start, parse_named_number,
+};
 use super::super::grammar::primitives as grammar;
 use super::super::grammar::values as shared_values;
 use super::super::lexer::OwnedLexToken;
 use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed};
 use super::super::token_primitives::{
-    contains_window, find_index, find_window_index, rfind_index, slice_contains, slice_ends_with,
-    slice_starts_with, slice_strip_prefix, str_strip_prefix, str_strip_suffix,
+    find_index, rfind_index, slice_contains, slice_ends_with, slice_starts_with,
+    slice_strip_prefix, str_strip_prefix, str_strip_suffix,
 };
 use super::super::util::{
     is_article, is_permanent_type, is_source_reference_words, parse_card_type,
@@ -25,6 +27,20 @@ use crate::mana::{ManaCost, ManaSymbol};
 use crate::target::{ObjectFilter, PlayerFilter, TaggedOpbjectRelation};
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
+
+const FOR_EACH_OPPONENT_PREFIXES: &[&[&str]] = &[
+    &["for", "each", "opponent"],
+    &["for", "each", "opponents"],
+    &["each", "opponent"],
+    &["each", "opponents"],
+];
+
+const FOR_EACH_PLAYER_PREFIXES: &[&[&str]] = &[
+    &["for", "each", "player"],
+    &["for", "each", "players"],
+    &["each", "player"],
+    &["each", "players"],
+];
 
 pub(crate) fn parse_scryfall_mana_cost(raw: &str) -> Result<ManaCost, CardTextError> {
     shared_values::parse_scryfall_mana_cost(raw)
@@ -361,15 +377,10 @@ pub(crate) fn parse_for_each_opponent_doesnt(
         return Ok(None);
     }
 
-    let start = if grammar::words_match_prefix(clause_tokens, &["for", "each", "opponent"])
-        .is_some()
-        || grammar::words_match_prefix(clause_tokens, &["for", "each", "opponents"]).is_some()
+    let start = if let Some((prefix, _)) =
+        grammar::words_match_any_prefix(clause_tokens, FOR_EACH_OPPONENT_PREFIXES)
     {
-        3
-    } else if grammar::words_match_prefix(clause_tokens, &["each", "opponent"]).is_some()
-        || grammar::words_match_prefix(clause_tokens, &["each", "opponents"]).is_some()
-    {
-        2
+        prefix.len()
     } else {
         return Ok(None);
     };
@@ -388,7 +399,7 @@ pub(crate) fn parse_for_each_opponent_doesnt(
         find_index(&inner_tokens, |token| token.is_comma())
     {
         comma_idx + 1
-    } else if let Some(this_way_idx) = find_window_index(&inner_words, &["this", "way"]) {
+    } else if let Some(this_way_idx) = find_word_sequence_start(&inner_words, &["this", "way"]) {
         token_index_for_word_index(&inner_tokens, this_way_idx + 2).unwrap_or(inner_tokens.len())
     } else {
         token_index_for_word_index(&inner_tokens, negation_idx + negation_len)
@@ -423,14 +434,10 @@ pub(crate) fn parse_for_each_player_doesnt(
         return Ok(None);
     }
 
-    let start = if grammar::words_match_prefix(clause_tokens, &["for", "each", "player"]).is_some()
-        || grammar::words_match_prefix(clause_tokens, &["for", "each", "players"]).is_some()
+    let start = if let Some((prefix, _)) =
+        grammar::words_match_any_prefix(clause_tokens, FOR_EACH_PLAYER_PREFIXES)
     {
-        3
-    } else if grammar::words_match_prefix(clause_tokens, &["each", "player"]).is_some()
-        || grammar::words_match_prefix(clause_tokens, &["each", "players"]).is_some()
-    {
-        2
+        prefix.len()
     } else {
         return Ok(None);
     };
@@ -449,7 +456,7 @@ pub(crate) fn parse_for_each_player_doesnt(
         find_index(&inner_tokens, |token| token.is_comma())
     {
         comma_idx + 1
-    } else if let Some(this_way_idx) = find_window_index(&inner_words, &["this", "way"]) {
+    } else if let Some(this_way_idx) = find_word_sequence_start(&inner_words, &["this", "way"]) {
         token_index_for_word_index(&inner_tokens, this_way_idx + 2).unwrap_or(inner_tokens.len())
     } else {
         token_index_for_word_index(&inner_tokens, negation_idx + negation_len)
@@ -475,10 +482,10 @@ pub(crate) fn negated_action_word_index(words: &[&str]) -> Option<(usize, usize)
     }) {
         return Some((idx, 1));
     }
-    if let Some(idx) = find_window_index(words, &["do", "not"]) {
+    if let Some(idx) = find_word_sequence_start(words, &["do", "not"]) {
         return Some((idx, 2));
     }
-    if let Some(idx) = find_window_index(words, &["did", "not"]) {
+    if let Some(idx) = find_word_sequence_start(words, &["did", "not"]) {
         return Some((idx, 2));
     }
     None
@@ -491,7 +498,7 @@ fn parse_negated_who_this_way_predicate(
     if inner_words.first().copied() != Some("who") {
         return Ok(None);
     }
-    let Some(this_way_idx) = find_window_index(&inner_words, &["this", "way"]) else {
+    let Some(this_way_idx) = find_word_sequence_start(&inner_words, &["this", "way"]) else {
         return Ok(None);
     };
     let Some((negation_idx, negation_len)) = negated_action_word_index(&inner_words) else {
@@ -552,7 +559,9 @@ pub(crate) fn parse_vote_start_sentence(
     }
 
     let mut option_words = clause_words[for_idx + 1..].to_vec();
-    if let Some(reveal_idx) = find_window_index(&option_words, &["then", "those", "votes", "are"]) {
+    if let Some(reveal_idx) =
+        find_word_sequence_start(&option_words, &["then", "those", "votes", "are"])
+    {
         option_words.truncate(reveal_idx);
     }
     let option_tokens = option_words
@@ -782,7 +791,8 @@ pub(crate) fn parse_sentence_counter_target_spell_thats_second_cast_this_turn(
 pub(crate) fn parse_sentence_exile_target_creature_with_greatest_power(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let is_shape = grammar::words_match_prefix(tokens, &["exile", "target", "creature"]).is_some()
+    let is_shape = grammar::words_match_any_prefix(tokens, &[&["exile", "target", "creature"]])
+        .is_some()
         && grammar::words_find_phrase(tokens, &["greatest", "power", "among", "creatures"])
             .is_some()
         && (grammar::words_find_phrase(tokens, &["on", "battlefield"]).is_some()

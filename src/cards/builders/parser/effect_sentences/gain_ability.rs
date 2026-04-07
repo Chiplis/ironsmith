@@ -37,6 +37,19 @@ use crate::zone::Zone;
 
 type GainAbilityWordView = TokenWordView;
 
+const UNTIL_YOUR_NEXT_TURN_PREFIXES: &[&[&str]] = &[
+    &["until", "your", "next", "turn"],
+    &["until", "your", "next", "upkeep"],
+];
+
+const UNTIL_YOUR_NEXT_UNTAP_PREFIXES: &[&[&str]] = &[
+    &["until", "your", "next", "untap", "step"],
+    &["during", "your", "next", "untap", "step"],
+];
+
+const CHOICE_OF_ABILITY_PREFIXES: &[&[&str]] =
+    &[&["your", "choice", "of"], &["your", "choice", "from"]];
+
 fn display_text_for_tokens(tokens: &[OwnedLexToken]) -> String {
     let mut text = String::new();
     let mut needs_space = false;
@@ -176,7 +189,7 @@ fn parse_granted_ability_component_for_gain(
         return Ok(None);
     }
 
-    if grammar::words_match_prefix(&ability_tokens, &["hexproof", "from"]).is_some() {
+    if grammar::words_match_any_prefix(&ability_tokens, &[&["hexproof", "from"]]).is_some() {
         let filter_tokens = ability_tokens[2..]
             .iter()
             .filter(|token| !token.is_word("and") && !token.is_word("from"))
@@ -675,16 +688,14 @@ pub(crate) fn parse_gain_ability_sentence(
 
     let leading_duration_phrase = if starts_with_until_end_of_turn(&word_list) {
         Some((4usize, Until::EndOfTurn))
-    } else if grammar::words_match_prefix(tokens, &["until", "your", "next", "turn"]).is_some()
-        || grammar::words_match_prefix(tokens, &["until", "your", "next", "upkeep"]).is_some()
+    } else if let Some((prefix, _)) =
+        grammar::words_match_any_prefix(tokens, UNTIL_YOUR_NEXT_TURN_PREFIXES)
     {
-        Some((4usize, Until::YourNextTurn))
-    } else if grammar::words_match_prefix(tokens, &["until", "your", "next", "untap", "step"])
-        .is_some()
-        || grammar::words_match_prefix(tokens, &["during", "your", "next", "untap", "step"])
-            .is_some()
+        Some((prefix.len(), Until::YourNextTurn))
+    } else if let Some((prefix, _)) =
+        grammar::words_match_any_prefix(tokens, UNTIL_YOUR_NEXT_UNTAP_PREFIXES)
     {
-        Some((5usize, Until::YourNextTurn))
+        Some((prefix.len(), Until::YourNextTurn))
     } else {
         None
     };
@@ -1095,11 +1106,10 @@ pub(crate) fn parse_choice_of_abilities(tokens: &[OwnedLexToken]) -> Option<Vec<
     let tokens = trim_commas(tokens);
     let word_view = GainAbilityWordView::new(&tokens);
     let word_list = word_view.to_word_refs();
-    let prefix_words = if grammar::words_match_prefix(&tokens, &["your", "choice", "of"]).is_some()
+    let prefix_words = if let Some((prefix, _)) =
+        grammar::words_match_any_prefix(&tokens, CHOICE_OF_ABILITY_PREFIXES)
     {
-        3usize
-    } else if grammar::words_match_prefix(&tokens, &["your", "choice", "from"]).is_some() {
-        3usize
+        prefix.len()
     } else {
         return None;
     };

@@ -16,7 +16,8 @@ use crate::types::Subtype;
 use crate::zone::Zone;
 
 use super::super::activation_and_restrictions::{
-    controller_filter_for_token_player, parse_devotion_value_from_add_clause,
+    contains_word_sequence, controller_filter_for_token_player, find_word_sequence_start,
+    parse_devotion_value_from_add_clause,
 };
 use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::grammar::structure::{
@@ -28,11 +29,13 @@ use super::super::keyword_static::{
     parse_add_mana_equal_amount_value, parse_add_mana_that_much_value,
     parse_dynamic_cost_modifier_value, parse_pt_modifier, parse_pt_modifier_values,
 };
-use super::super::lexer::TokenKind;
-use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed};
+use super::super::lexer::{LexStream, TokenKind};
+use super::super::object_filters::{
+    find_word_slice_phrase_start, parse_object_filter, parse_object_filter_lexed,
+};
 use super::super::token_primitives::{
-    find_index, find_window_by, find_window_index, rfind_index, slice_contains, slice_ends_with,
-    slice_starts_with, str_strip_suffix,
+    find_index, find_window_by, rfind_index, slice_contains, slice_ends_with, slice_starts_with,
+    str_strip_suffix,
 };
 use super::super::util::{
     intern_counter_name, is_article, mana_pips_from_token, parse_color, parse_counter_type_word,
@@ -48,6 +51,38 @@ type ZoneHandlerNormalizedWords = TokenWordView;
 use super::for_each_helpers::parse_get_modifier_values_with_tail;
 use super::search_library::parse_restriction_duration;
 use super::sentence_primitives::find_color_choice_phrase;
+
+const SHARE_REL_PREFIXES: &[&[&str]] = &[&["that", "share"], &["that", "shares"]];
+const POWER_OF_PREFIXES: &[&[&str]] = &[&["the", "power", "of"], &["power", "of"]];
+const TOUGHNESS_OF_PREFIXES: &[&[&str]] = &[&["the", "toughness", "of"], &["toughness", "of"]];
+const TEXT_BOXES_OF_PREFIXES: &[&[&str]] =
+    &[&["the", "text", "boxes", "of"], &["text", "boxes", "of"]];
+const YOUR_PREFIXES: &[&[&str]] = &[&["your"]];
+const THEIR_PREFIXES: &[&[&str]] = &[&["their"]];
+const THAT_PLAYER_PREFIXES: &[&[&str]] = &[
+    &["that", "player"],
+    &["that", "players"],
+    &["his", "or", "her"],
+];
+const TARGET_PLAYER_PREFIXES: &[&[&str]] = &[&["target", "player"], &["target", "players"]];
+const TARGET_OPPONENT_PREFIXES: &[&[&str]] = &[&["target", "opponent"], &["target", "opponents"]];
+const TURN_PREFIXES: &[&[&str]] = &[&["that", "turn"], &["turn"]];
+const EMBLEM_WITH_PREFIXES: &[&[&str]] = &[&["an", "emblem", "with"], &["emblem", "with"]];
+const ADDITIONAL_PREFIXES: &[&[&str]] = &[&["an", "additional"], &["additional"]];
+const ATTACHED_REFERENCE_PREFIXES: &[&[&str]] = &[
+    &["that", "creature"],
+    &["that", "permanent"],
+    &["that", "land"],
+    &["that", "artifact"],
+    &["that", "enchantment"],
+];
+const ALL_CARD_PREFIXES: &[&[&str]] = &[&["all", "cards"], &["all", "card"]];
+const UP_TO_PREFIXES: &[&[&str]] = &[&["up", "to"]];
+const THAT_MANY_PREFIXES: &[&[&str]] = &[&["that", "many"]];
+const FOR_EACH_PREFIXES: &[&[&str]] = &[&["for", "each"]];
+const TARGET_BLOCKED_PREFIXES: &[&[&str]] = &[&["target", "blocked"]];
+const ANY_AMOUNT_OF_PREFIXES: &[&[&str]] = &[&["any", "amount", "of"]];
+const LIFE_TOTALS_PREFIXES: &[&[&str]] = &[&["life", "totals"]];
 
 pub(crate) fn collapse_leading_signed_pt_modifier_tokens(
     tokens: &[OwnedLexToken],
@@ -336,11 +371,12 @@ pub(crate) fn parse_discard(
         });
     }
 
-    let count_tokens = if grammar::words_match_prefix(tokens, &["up", "to"]).is_some() {
-        &tokens[2..]
-    } else {
-        tokens
-    };
+    let count_tokens =
+        if let Some((_, rest)) = grammar::words_match_any_prefix(tokens, UP_TO_PREFIXES) {
+            rest
+        } else {
+            tokens
+        };
     let count_offset = tokens.len().saturating_sub(count_tokens.len());
     let uses_all_count = count_tokens
         .first()
@@ -672,7 +708,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
 
     let mut destination_words = crate::cards::builders::parser::token_word_refs(destination_tokens);
     let mut destination_excluded_subtypes: Vec<Subtype> = Vec::new();
-    if let Some(except_idx) = find_window_index(&destination_words, &["except", "for"]) {
+    if let Some(except_idx) = find_word_sequence_start(&destination_words, &["except", "for"]) {
         let exception_words = &destination_words[except_idx + 2..];
         if exception_words.is_empty() {
             return Err(CardTextError::ParseError(format!(
@@ -714,7 +750,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     let transformed = grammar::contains_word(destination_tokens_full, "transformed");
     let converted = grammar::contains_word(destination_tokens_full, "converted");
     let return_controller =
-        if find_window_index(&destination_words, &["under", "your", "control"]).is_some() {
+        if contains_word_sequence(&destination_words, &["under", "your", "control"]) {
             ReturnControllerAst::You
         } else if destination_words
             .iter()
@@ -750,7 +786,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     {
         let tail_slice = &target_tokens[and_idx + 1..];
         let starts_multi_target = tail_slice.first().is_some_and(|t| t.is_word("target"))
-            || (grammar::words_match_prefix(tail_slice, &["up", "to"]).is_some()
+            || (grammar::words_match_any_prefix(tail_slice, UP_TO_PREFIXES).is_some()
                 && grammar::contains_word(tail_slice, "target"));
         if starts_multi_target {
             return Err(CardTextError::ParseError(format!(
@@ -973,13 +1009,12 @@ fn parse_exchange_shared_type_clause(
     let rel_token_idx = token_index_for_word_index(tokens, rel_word_idx).unwrap_or(tokens.len());
     let (head, tail) = tokens.split_at(rel_token_idx);
     let share_words = crate::cards::builders::parser::token_word_refs(tail);
-    let share_head = if grammar::words_match_prefix(tail, &["that", "share"]).is_some() {
-        &share_words[2..]
-    } else if grammar::words_match_prefix(tail, &["that", "shares"]).is_some() {
-        &share_words[2..]
-    } else {
-        &share_words[..]
-    };
+    let share_head =
+        if let Some((prefix, _)) = grammar::words_match_any_prefix(tail, SHARE_REL_PREFIXES) {
+            &share_words[prefix.len()..]
+        } else {
+            &share_words[..]
+        };
     let share_head = if share_head.first().copied() == Some("a") {
         &share_head[1..]
     } else {
@@ -1098,14 +1133,13 @@ fn parse_exchange_value_operand(tokens: &[OwnedLexToken]) -> Option<ExchangeValu
         _ => {}
     }
 
-    let power_prefix = if grammar::words_match_prefix(tokens, &["the", "power", "of"]).is_some() {
-        Some((ExchangeValueKindAst::Power, 3))
-    } else if grammar::words_match_prefix(tokens, &["power", "of"]).is_some() {
-        Some((ExchangeValueKindAst::Power, 2))
-    } else if grammar::words_match_prefix(tokens, &["the", "toughness", "of"]).is_some() {
-        Some((ExchangeValueKindAst::Toughness, 3))
-    } else if grammar::words_match_prefix(tokens, &["toughness", "of"]).is_some() {
-        Some((ExchangeValueKindAst::Toughness, 2))
+    let power_prefix = if let Some((prefix, _)) =
+        grammar::words_match_any_prefix(tokens, POWER_OF_PREFIXES)
+    {
+        Some((ExchangeValueKindAst::Power, prefix.len()))
+    } else if let Some((prefix, _)) = grammar::words_match_any_prefix(tokens, TOUGHNESS_OF_PREFIXES)
+    {
+        Some((ExchangeValueKindAst::Toughness, prefix.len()))
     } else {
         None
     }?;
@@ -1196,10 +1230,8 @@ fn parse_exchange_life_totals(
 fn parse_exchange_text_boxes(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
     let remainder =
-        if grammar::words_match_prefix(tokens, &["the", "text", "boxes", "of"]).is_some() {
-            &tokens[4..]
-        } else if grammar::words_match_prefix(tokens, &["text", "boxes", "of"]).is_some() {
-            &tokens[3..]
+        if let Some((_, rest)) = grammar::words_match_any_prefix(tokens, TEXT_BOXES_OF_PREFIXES) {
+            rest
         } else {
             return Err(CardTextError::ParseError(format!(
                 "unsupported text-box exchange clause (clause: '{}')",
@@ -1222,12 +1254,10 @@ pub(crate) fn parse_exchange(
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
     let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
-    if grammar::words_match_prefix(tokens, &["life", "totals"]).is_some() {
+    if grammar::words_match_any_prefix(tokens, LIFE_TOTALS_PREFIXES).is_some() {
         return parse_exchange_life_totals(tokens, subject);
     }
-    if grammar::words_match_prefix(tokens, &["the", "text", "boxes", "of"]).is_some()
-        || grammar::words_match_prefix(tokens, &["text", "boxes", "of"]).is_some()
-    {
+    if grammar::words_match_any_prefix(tokens, TEXT_BOXES_OF_PREFIXES).is_some() {
         return parse_exchange_text_boxes(tokens);
     }
     if let Some(effect) = parse_exchange_zones(tokens) {
@@ -1531,27 +1561,28 @@ pub(crate) fn parse_skip(
     let (player, words) = match subject {
         Some(SubjectAst::Player(player)) => (player, clause_words),
         _ => {
-            if grammar::words_match_prefix(tokens, &["your"]).is_some() {
-                (PlayerAst::You, clause_words[1..].to_vec())
-            } else if grammar::words_match_prefix(tokens, &["their"]).is_some() {
-                (PlayerAst::That, clause_words[1..].to_vec())
-            } else if grammar::words_match_prefix(tokens, &["that", "player"]).is_some()
-                || grammar::words_match_prefix(tokens, &["that", "players"]).is_some()
+            if let Some((prefix, _)) = grammar::words_match_any_prefix(tokens, YOUR_PREFIXES) {
+                (PlayerAst::You, clause_words[prefix.len()..].to_vec())
+            } else if let Some((prefix, _)) =
+                grammar::words_match_any_prefix(tokens, THEIR_PREFIXES)
             {
-                (PlayerAst::That, clause_words[2..].to_vec())
-            } else if grammar::words_match_prefix(tokens, &["his", "or", "her"]).is_some() {
-                (PlayerAst::That, clause_words[3..].to_vec())
-            } else if grammar::words_match_prefix(tokens, &["target", "player"]).is_some()
-                || grammar::words_match_prefix(tokens, &["target", "players"]).is_some()
+                (PlayerAst::That, clause_words[prefix.len()..].to_vec())
+            } else if let Some((prefix, _)) =
+                grammar::words_match_any_prefix(tokens, THAT_PLAYER_PREFIXES)
             {
-                (PlayerAst::Target, clause_words[2..].to_vec())
-            } else if grammar::words_match_prefix(tokens, &["target", "opponent"]).is_some()
-                || grammar::words_match_prefix(tokens, &["target", "opponents"]).is_some()
+                (PlayerAst::That, clause_words[prefix.len()..].to_vec())
+            } else if let Some((prefix, _)) =
+                grammar::words_match_any_prefix(tokens, TARGET_PLAYER_PREFIXES)
             {
-                (PlayerAst::TargetOpponent, clause_words[2..].to_vec())
-            } else if grammar::words_match_prefix(tokens, &["that", "turn"]).is_some()
-                || grammar::words_match_prefix(tokens, &["turn"]).is_some()
+                (PlayerAst::Target, clause_words[prefix.len()..].to_vec())
+            } else if let Some((prefix, _)) =
+                grammar::words_match_any_prefix(tokens, TARGET_OPPONENT_PREFIXES)
             {
+                (
+                    PlayerAst::TargetOpponent,
+                    clause_words[prefix.len()..].to_vec(),
+                )
+            } else if grammar::words_match_any_prefix(tokens, TURN_PREFIXES).is_some() {
                 (PlayerAst::Implicit, clause_words)
             } else {
                 return Err(CardTextError::ParseError(format!(
@@ -1706,28 +1737,29 @@ pub(crate) fn parse_mill(
         .and_then(OwnedLexToken::as_word)
         .is_some_and(|word| word == "card" || word == "cards");
 
-    let (count, used) = if grammar::words_match_prefix(tokens, &["that", "many"]).is_some() {
-        (Value::EventValue(EventValueSpec::Amount), 2usize)
-    } else if starts_with_card_keyword {
-        if let Some((count, used_after_cards)) = parse_value(&tokens[1..]) {
-            (count, 1 + used_after_cards)
-        } else if let Some(count) = parse_add_mana_equal_amount_value(&tokens[1..]) {
-            // Mill clauses like "cards equal to its toughness" place the amount after "cards".
-            (count, tokens.len())
+    let (count, used) =
+        if let Some((prefix, _)) = grammar::words_match_any_prefix(tokens, THAT_MANY_PREFIXES) {
+            (Value::EventValue(EventValueSpec::Amount), prefix.len())
+        } else if starts_with_card_keyword {
+            if let Some((count, used_after_cards)) = parse_value(&tokens[1..]) {
+                (count, 1 + used_after_cards)
+            } else if let Some(count) = parse_add_mana_equal_amount_value(&tokens[1..]) {
+                // Mill clauses like "cards equal to its toughness" place the amount after "cards".
+                (count, tokens.len())
+            } else {
+                return Err(CardTextError::ParseError(format!(
+                    "missing mill count (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            }
         } else {
-            return Err(CardTextError::ParseError(format!(
-                "missing mill count (clause: '{}')",
-                clause_words.join(" ")
-            )));
-        }
-    } else {
-        parse_value(tokens).ok_or_else(|| {
-            CardTextError::ParseError(format!(
-                "missing mill count (clause: '{}')",
-                clause_words.join(" ")
-            ))
-        })?
-    };
+            parse_value(tokens).ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "missing mill count (clause: '{}')",
+                    clause_words.join(" ")
+                ))
+            })?
+        };
 
     let rest = &tokens[used..];
     if starts_with_card_keyword {
@@ -1768,7 +1800,7 @@ pub(crate) fn parse_mill(
 
 pub(crate) fn parse_equal_to_number_of_filter_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     let words_all = crate::cards::builders::parser::token_word_refs(tokens);
-    let equal_idx = find_window_index(&words_all, &["equal", "to"])?;
+    let equal_idx = find_word_sequence_start(&words_all, &["equal", "to"])?;
     let mut number_word_idx = equal_idx + 2;
     if words_all.get(number_word_idx).copied() == Some("the") {
         number_word_idx += 1;
@@ -2013,7 +2045,7 @@ pub(crate) fn parse_equal_to_number_of_counters_on_reference_value(
 
 pub(crate) fn parse_equal_to_aggregate_filter_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
-    let equal_idx = find_window_index(&clause_words, &["equal", "to"])?;
+    let equal_idx = find_word_sequence_start(&clause_words, &["equal", "to"])?;
 
     let mut idx = equal_idx + 2;
     if clause_words.get(idx).copied() == Some("the") {
@@ -2113,15 +2145,9 @@ pub(crate) fn parse_get(
         });
     }
 
-    if grammar::words_match_prefix(tokens, &["an", "emblem", "with"]).is_some()
-        || grammar::words_match_prefix(tokens, &["emblem", "with"]).is_some()
-    {
+    if let Some((prefix, _)) = grammar::words_match_any_prefix(tokens, EMBLEM_WITH_PREFIXES) {
         let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
-        let text_words = if clause_words[0] == "an" {
-            &clause_words[3..]
-        } else {
-            &clause_words[2..]
-        };
+        let text_words = &clause_words[prefix.len()..];
         if text_words.is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "missing emblem text (clause: '{}')",
@@ -2146,13 +2172,12 @@ pub(crate) fn parse_get(
         return Ok(EffectAst::CreateEmblem { player, text });
     }
 
-    let modifier_start = if grammar::words_match_prefix(tokens, &["an", "additional"]).is_some() {
-        2usize
-    } else if grammar::words_match_prefix(tokens, &["additional"]).is_some() {
-        1usize
-    } else {
-        0usize
-    };
+    let modifier_start =
+        if let Some((prefix, _)) = grammar::words_match_any_prefix(tokens, ADDITIONAL_PREFIXES) {
+            prefix.len()
+        } else {
+            0usize
+        };
     if modifier_start > 0
         && let Some(mod_token) = tokens.get(modifier_start).and_then(OwnedLexToken::as_word)
         && let Ok((power_per, toughness_per)) = parse_pt_modifier(mod_token)
@@ -2313,7 +2338,7 @@ pub(crate) fn parse_add_mana(
         .iter()
         .any(|token| mana_pips_from_token(token).is_some());
     if !has_explicit_symbol
-        && let Some(chosen_idx) = find_window_index(&clause_words, &["chosen", "color"])
+        && let Some(chosen_idx) = find_word_sequence_start(&clause_words, &["chosen", "color"])
     {
         let prefix = &clause_words[..chosen_idx];
         let references_mana_of_chosen_color = slice_ends_with(prefix, &["mana", "of", "the"])
@@ -2465,7 +2490,7 @@ pub(crate) fn parse_add_mana(
                 available_colors: None,
             });
         }
-        if grammar::words_match_prefix(tail_tokens, &["for", "each"]).is_some()
+        if grammar::words_match_any_prefix(tail_tokens, FOR_EACH_PREFIXES).is_some()
             && grammar::words_match_suffix(tail_tokens, &["removed", "this", "way"]).is_some()
             && let Some(dynamic_amount) = parse_dynamic_cost_modifier_value(tail_tokens)?
         {
@@ -2675,41 +2700,64 @@ pub(crate) fn mana_symbol_to_color(symbol: ManaSymbol) -> Option<crate::color::C
 pub(crate) fn parse_or_mana_color_choices(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<crate::color::Color>>, CardTextError> {
+    use winnow::combinator::{alt, opt};
+    use winnow::prelude::*;
+
     if !grammar::contains_word(tokens, "or") {
         return Ok(None);
     }
 
-    let mut colors = Vec::new();
-    let mut has_or = false;
-    for token in tokens {
-        if token.is_word("or") {
-            has_or = true;
-            continue;
-        }
-        if let Some(group) = mana_pips_from_token(token) {
-            for symbol in group {
-                let Some(color) = mana_symbol_to_color(symbol) else {
-                    return Ok(None);
-                };
-                if !slice_contains(&colors, &color) {
-                    colors.push(color);
-                }
+    /// Parse one mana token and convert its symbols to colors, pushing unique
+    /// colors into the accumulator.  Returns `None` (backtrack) if any symbol
+    /// is not a valid color.
+    fn mana_color_token<'a>(
+        input: &mut LexStream<'a>,
+    ) -> Result<Vec<crate::color::Color>, winnow::error::ErrMode<winnow::error::ContextError>> {
+        let pips = grammar::mana_pips_token.parse_next(input)?;
+        let mut colors = Vec::new();
+        for symbol in pips {
+            let Some(color) = mana_symbol_to_color(symbol) else {
+                return Err(grammar::backtrack_err("color", "colored mana symbol"));
+            };
+            if !slice_contains(&colors, &color) {
+                colors.push(color);
             }
-            continue;
         }
-        let Some(word) = token.as_word() else {
-            continue;
-        };
-        if matches!(
-            word.to_ascii_lowercase().as_str(),
-            "to" | "your" | "their" | "its" | "mana" | "pool"
-        ) {
-            continue;
-        }
-        return Ok(None);
+        Ok(colors)
     }
 
-    if !has_or || colors.len() < 2 {
+    let mut stream = LexStream::new(tokens);
+    let mut colors = Vec::new();
+    while !stream.is_empty() {
+        // Skip noise words, "or", and commas
+        if opt(alt((
+            grammar::skip_mana_noise,
+            grammar::kw("or").void(),
+            grammar::comma().void(),
+        )))
+        .parse_next(&mut stream)
+        .unwrap_or(None)
+        .is_some()
+        {
+            continue;
+        }
+        // Try to parse a mana color token
+        if let Some(new_colors) = opt(mana_color_token)
+            .parse_next(&mut stream)
+            .unwrap_or(None)
+        {
+            for c in new_colors {
+                if !slice_contains(&colors, &c) {
+                    colors.push(c);
+                }
+            }
+        } else {
+            // Unrecognized token — bail
+            return Ok(None);
+        }
+    }
+
+    if colors.len() < 2 {
         return Ok(None);
     }
 
@@ -2721,16 +2769,18 @@ pub(crate) fn parse_any_combination_mana_colors(
 ) -> Result<Option<Vec<crate::color::Color>>, CardTextError> {
     let clause_word_storage = ZoneHandlerNormalizedWords::new(tokens);
     let clause_words = clause_word_storage.to_word_refs();
-    let Some(combination_idx) = find_window_index(&clause_words, &["any", "combination", "of"])
+    let Some(combination_idx) =
+        find_word_sequence_start(&clause_words, &["any", "combination", "of"])
     else {
         return Ok(None);
     };
 
+    let color_words = clause_words[combination_idx + 3..]
+        .iter()
+        .take_while(|w| **w != "where");
+
     let mut colors = Vec::new();
-    for word in &clause_words[combination_idx + 3..] {
-        if *word == "where" {
-            break;
-        }
+    for word in color_words {
         if matches!(
             *word,
             "and" | "or" | "and/or" | "mana" | "to" | "your" | "their" | "its" | "pool"
@@ -2738,13 +2788,7 @@ pub(crate) fn parse_any_combination_mana_colors(
             continue;
         }
         if matches!(*word, "color" | "colors") {
-            for color in [
-                crate::color::Color::White,
-                crate::color::Color::Blue,
-                crate::color::Color::Black,
-                crate::color::Color::Red,
-                crate::color::Color::Green,
-            ] {
+            for color in crate::color::Color::ALL {
                 if !slice_contains(&colors, &color) {
                     colors.push(color);
                 }
@@ -2811,26 +2855,26 @@ pub(crate) fn parse_land_could_produce_filter(
         return Ok(None);
     }
 
-    let marker_word_idx = if let Some(could_idx) = find_window_index(&words, &["could", "produce"])
-    {
-        if could_idx + 2 != words.len() {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported trailing mana clause (tail: '{}')",
-                words.join(" ")
-            )));
-        }
-        could_idx
-    } else if let Some(produced_idx) = find_index(&words, |word| *word == "produced") {
-        if produced_idx + 1 != words.len() {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported trailing mana clause (tail: '{}')",
-                words.join(" ")
-            )));
-        }
-        produced_idx
-    } else {
-        return Ok(None);
-    };
+    let marker_word_idx =
+        if let Some(could_idx) = find_word_sequence_start(&words, &["could", "produce"]) {
+            if could_idx + 2 != words.len() {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported trailing mana clause (tail: '{}')",
+                    words.join(" ")
+                )));
+            }
+            could_idx
+        } else if let Some(produced_idx) = find_index(&words, |word| *word == "produced") {
+            if produced_idx + 1 != words.len() {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported trailing mana clause (tail: '{}')",
+                    words.join(" ")
+                )));
+            }
+            produced_idx
+        } else {
+            return Ok(None);
+        };
 
     let marker_token_idx =
         token_index_for_word_index(tokens, marker_word_idx).ok_or_else(|| {
@@ -3158,11 +3202,8 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
             let supported_target = grammar::words_match_prefix(&target_tokens, &["target"])
                 .is_some()
                 || target_words == ["it"]
-                || grammar::words_match_prefix(&target_tokens, &["that", "creature"]).is_some()
-                || grammar::words_match_prefix(&target_tokens, &["that", "permanent"]).is_some()
-                || grammar::words_match_prefix(&target_tokens, &["that", "land"]).is_some()
-                || grammar::words_match_prefix(&target_tokens, &["that", "artifact"]).is_some()
-                || grammar::words_match_prefix(&target_tokens, &["that", "enchantment"]).is_some();
+                || grammar::words_match_any_prefix(&target_tokens, ATTACHED_REFERENCE_PREFIXES)
+                    .is_some();
             if !filter_tokens.is_empty()
                 && !target_tokens.is_empty()
                 && supported_target
@@ -3286,7 +3327,7 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
     if let Some(and_idx) = find_index(&core_tokens, |token: &OwnedLexToken| token.is_word("and")) {
         let tail_slice = &core_tokens[and_idx + 1..];
         let starts_multi_target = tail_slice.first().is_some_and(|t| t.is_word("target"))
-            || (grammar::words_match_prefix(tail_slice, &["up", "to"]).is_some()
+            || (grammar::words_match_any_prefix(tail_slice, UP_TO_PREFIXES).is_some()
                 && grammar::contains_word(tail_slice, "target"));
         if starts_multi_target {
             return Err(CardTextError::ParseError(format!(
@@ -3296,7 +3337,7 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
         }
     }
 
-    if grammar::words_match_prefix(&core_tokens, &["target", "blocked"]).is_some() {
+    if grammar::words_match_any_prefix(&core_tokens, TARGET_BLOCKED_PREFIXES).is_some() {
         let mut target_tokens = core_tokens.to_vec();
         if let Some(blocked_idx) = find_index(&target_tokens, |token: &OwnedLexToken| {
             token.is_word("blocked")
@@ -3325,7 +3366,7 @@ pub(crate) fn parse_destroy_combat_history_target(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<TargetAst>, CardTextError> {
     let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
-    let Some(that_idx) = find_window_index(
+    let Some(that_idx) = find_word_sequence_start(
         &clause_words,
         &["that", "was", "dealt", "damage", "this", "turn"],
     ) else {
@@ -3520,8 +3561,7 @@ pub(crate) fn parse_same_name_exile_hand_and_graveyard_clause(
     face_down: bool,
 ) -> Result<Option<EffectAst>, CardTextError> {
     let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
-    if !(grammar::words_match_prefix(tokens, &["all", "cards"]).is_some()
-        || grammar::words_match_prefix(tokens, &["all", "card"]).is_some())
+    if grammar::words_match_any_prefix(tokens, ALL_CARD_PREFIXES).is_none()
         || grammar::words_find_phrase(tokens, &["with", "that", "name"]).is_none()
     {
         return Ok(None);
@@ -4018,7 +4058,7 @@ pub(crate) fn parse_pay(
         .count();
 
     let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
-    if grammar::words_match_prefix(tokens, &["any", "amount", "of"]).is_some()
+    if grammar::words_match_any_prefix(tokens, ANY_AMOUNT_OF_PREFIXES).is_some()
         && (grammar::contains_word(tokens, "e") || energy_symbol_count > 0)
     {
         return Ok(EffectAst::PayEnergy {
@@ -4091,34 +4131,18 @@ pub(crate) fn parse_pay(
         }
     }
 
-    let mut pips = Vec::new();
-    for token in tokens {
-        if let Some(group) = mana_pips_from_token(token) {
-            pips.push(group);
-            continue;
-        }
-        let Some(word) = token.as_word() else {
-            continue;
-        };
-        if is_article(word) || word == "mana" {
-            continue;
-        }
-        if let Ok(symbols) = parse_mana_symbol_group(&word) {
-            pips.push(symbols);
-            continue;
-        }
-        return Err(CardTextError::ParseError(format!(
-            "unsupported pay clause token '{word}' (clause: '{}')",
-            crate::cards::builders::parser::token_word_refs(tokens).join(" ")
-        )));
-    }
-
-    if pips.is_empty() {
-        return Err(CardTextError::ParseError(format!(
-            "missing payment cost (clause: '{}')",
-            crate::cards::builders::parser::token_word_refs(tokens).join(" ")
-        )));
-    }
+    let pips = {
+        use winnow::prelude::*;
+        let mut stream = LexStream::new(tokens);
+        grammar::collect_mana_pip_groups
+            .parse_next(&mut stream)
+            .map_err(|_| {
+                CardTextError::ParseError(format!(
+                    "missing payment cost (clause: '{}')",
+                    crate::cards::builders::parser::token_word_refs(tokens).join(" ")
+                ))
+            })?
+    };
 
     Ok(EffectAst::PayMana {
         cost: ManaCost::from_pips(pips),

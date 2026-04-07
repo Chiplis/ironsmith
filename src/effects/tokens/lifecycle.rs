@@ -1,5 +1,6 @@
 //! Shared token lifecycle helpers.
 
+#[cfg(test)]
 use crate::ability::Ability;
 use crate::effect::Effect;
 use crate::effects::{EnterAttackingEffect, SacrificeTargetEffect, ScheduleDelayedTriggerEffect};
@@ -7,6 +8,7 @@ use crate::events::EnterBattlefieldEvent;
 use crate::executor::{ExecutionContext, ExecutionError, ResolvedTarget, execute_effect};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
+#[cfg(test)]
 use crate::static_abilities::StaticAbility;
 use crate::target::{ChooseSpec, PlayerFilter};
 use crate::triggers::{Trigger, TriggerEvent};
@@ -72,6 +74,7 @@ pub(crate) fn apply_token_battlefield_entry(
 }
 
 /// Grant a sequence of static abilities to a created token.
+#[cfg(test)]
 pub(crate) fn grant_token_static_abilities(
     game: &mut GameState,
     ctx: &mut ExecutionContext,

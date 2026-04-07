@@ -111,9 +111,12 @@ fn is_sentence_quote(token: &LexToken) -> bool {
 fn parse_remove_mode_only_prefix<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<(), ErrMode<ContextError>> {
-    let _ = alt((primitives::kw("you"), primitives::kw("they"))).parse_next(input)?;
-    let _ = alt((primitives::kw("remove"), primitives::kw("removed"))).parse_next(input)?;
-    Ok(())
+    (
+        alt((primitives::kw("you"), primitives::kw("they"))),
+        alt((primitives::kw("remove"), primitives::kw("removed"))),
+    )
+        .void()
+        .parse_next(input)
 }
 
 fn normalized_parser_word(token: &LexToken) -> Option<String> {
@@ -517,12 +520,10 @@ fn parse_if_result_predicate_inner<'a>(
     let words = parser_text_non_article_words(tokens);
     let word_refs: Vec<&str> = words.iter().map(String::as_str).collect();
     let Some(predicate) = classify_if_result_predicate(&word_refs) else {
-        let mut err = ContextError::new();
-        err.push(StrContext::Label("if-result predicate"));
-        err.push(StrContext::Expected(StrContextValue::Description(
+        return Err(primitives::backtrack_err(
+            "if-result predicate",
             "result predicate clause",
-        )));
-        return Err(ErrMode::Backtrack(err));
+        ));
     };
 
     input.finish();
@@ -1114,12 +1115,10 @@ fn parse_modal_header_choose_spec_inner<'a>(
 
     let choose_idx = *choose_indices.last().expect("checked non-empty");
     input.next_slice(choose_idx + 1);
-    let mut err = ContextError::new();
-    err.push(StrContext::Label("modal header choose clause"));
-    err.push(StrContext::Expected(StrContextValue::Description(
+    Err(primitives::cut_err_ctx(
+        "modal header choose clause",
         "modal choice range",
-    )));
-    Err(ErrMode::Cut(err))
+    ))
 }
 
 pub(crate) fn parse_modal_header_choose_spec<'a>(

@@ -18,8 +18,9 @@ use crate::types::CardType;
 use crate::zone::Zone;
 
 use super::activation_and_restrictions::{
-    infer_activated_functional_zones_lexed, is_any_player_may_activate_sentence_lexed,
-    parse_activation_cost, parse_mana_usage_restriction_sentence_lexed,
+    find_word_sequence_start, infer_activated_functional_zones_lexed,
+    is_any_player_may_activate_sentence_lexed, parse_activation_cost,
+    parse_mana_usage_restriction_sentence_lexed,
 };
 use super::activation_and_restrictions::{
     parse_channel_line_lexed, parse_cycling_line_lexed, parse_equip_line_lexed,
@@ -60,7 +61,7 @@ use super::restriction_support::{
     apply_pending_mana_restriction, apply_pending_restrictions_to_ability, is_restrictable_ability,
 };
 use super::token_primitives::{
-    find_index, find_window_index, iter_contains, lexed_tokens_contain_non_prefix_instead,
+    find_index, iter_contains, lexed_tokens_contain_non_prefix_instead,
     remove_copy_exception_type_removal_lexed, rewrite_followup_intro_to_if_lexed, slice_contains,
     slice_ends_with, slice_starts_with, split_em_dash_label_prefix, str_contains, str_ends_with,
     str_find, str_split_once, str_split_once_char, str_starts_with, str_strip_prefix,
@@ -3376,12 +3377,8 @@ fn try_lower_optional_cost_with_cast_trigger(
         return Ok(None);
     };
 
-<<<<<<< Updated upstream
     let head_effects =
         parse_effect_sentences_lexed(&stripped_head_tokens[optional_effect_start..])?;
-=======
-    let head_effects = parse_effect_sentences_lexed(&stripped_head_tokens[head_effect_start..])?;
->>>>>>> Stashed changes
     let [
         EffectAst::ChooseObjects {
             filter,
@@ -3614,21 +3611,17 @@ fn extract_fixed_mana_output_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<ManaS
         return None;
     }
 
-    let mut mana = Vec::new();
-    for token in &tokens[add_idx + 1..] {
-        match token.kind {
+    let mana: Vec<_> = tokens[add_idx + 1..]
+        .iter()
+        .try_fold(Vec::new(), |mut acc, token| match token.kind {
             TokenKind::ManaGroup => {
                 let inner = token.slice.trim_start_matches('{').trim_end_matches('}');
-                let Ok(symbol) = parse_mana_symbol(inner) else {
-                    return None;
-                };
-                mana.push(symbol);
+                acc.push(parse_mana_symbol(inner).ok()?);
+                Some(acc)
             }
-            TokenKind::Period | TokenKind::Comma => {}
-            TokenKind::Word | TokenKind::Number => return None,
-            _ => return None,
-        }
-    }
+            TokenKind::Period | TokenKind::Comma => Some(acc),
+            _ => None,
+        })?;
 
     if mana.is_empty() { None } else { Some(mana) }
 }
@@ -4169,10 +4162,10 @@ fn lower_rewrite_pact_statement_to_chunk(
         "pay",
     ];
     let Some((marker_start, marker_len)) =
-        find_window_index(token_words.as_slice(), upkeep_marker.as_slice())
+        find_word_sequence_start(token_words.as_slice(), upkeep_marker.as_slice())
             .map(|idx| (idx, upkeep_marker.len()))
             .or_else(|| {
-                find_window_index(token_words.as_slice(), upkeep_alt_marker.as_slice())
+                find_word_sequence_start(token_words.as_slice(), upkeep_alt_marker.as_slice())
                     .map(|idx| (idx, upkeep_alt_marker.len()))
             })
     else {

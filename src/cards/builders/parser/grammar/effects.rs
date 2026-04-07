@@ -1,4 +1,4 @@
-use winnow::combinator::{alt, opt};
+use winnow::combinator::{alt, dispatch, fail, opt, peek};
 use winnow::error::{ContextError, ErrMode};
 use winnow::prelude::*;
 use winnow::token::take_till;
@@ -177,32 +177,27 @@ pub(crate) struct SearchLibraryLeadingPrelude<'a> {
 }
 
 fn conditional_label_phrase<'a>(input: &mut LexStream<'a>) -> Result<(), ErrMode<ContextError>> {
-    alt((
-        alt((
-            primitives::phrase(&["adamant"]),
-            primitives::phrase(&["addendum"]),
-            primitives::phrase(&["ascend"]),
-            primitives::phrase(&["battalion"]),
-            primitives::phrase(&["delirium"]),
-            primitives::phrase(&["domain"]),
-        )),
-        alt((
-            primitives::phrase(&["ferocious"]),
-            primitives::phrase(&["formidable"]),
-            primitives::phrase(&["hellbent"]),
-            primitives::phrase(&["metalcraft"]),
-            primitives::phrase(&["morbid"]),
-            primitives::phrase(&["raid"]),
-        )),
-        alt((
-            primitives::phrase(&["revolt"]),
-            primitives::phrase(&["spectacle"]),
-            primitives::phrase(&["spell", "mastery"]),
-            primitives::phrase(&["surge"]),
-            primitives::phrase(&["threshold"]),
-            primitives::phrase(&["undergrowth"]),
-        )),
-    ))
+    dispatch! {peek(primitives::word_parser_text);
+        "adamant" => primitives::phrase(&["adamant"]),
+        "addendum" => primitives::phrase(&["addendum"]),
+        "ascend" => primitives::phrase(&["ascend"]),
+        "battalion" => primitives::phrase(&["battalion"]),
+        "delirium" => primitives::phrase(&["delirium"]),
+        "domain" => primitives::phrase(&["domain"]),
+        "ferocious" => primitives::phrase(&["ferocious"]),
+        "formidable" => primitives::phrase(&["formidable"]),
+        "hellbent" => primitives::phrase(&["hellbent"]),
+        "metalcraft" => primitives::phrase(&["metalcraft"]),
+        "morbid" => primitives::phrase(&["morbid"]),
+        "raid" => primitives::phrase(&["raid"]),
+        "revolt" => primitives::phrase(&["revolt"]),
+        "spectacle" => primitives::phrase(&["spectacle"]),
+        "spell" => primitives::phrase(&["spell", "mastery"]),
+        "surge" => primitives::phrase(&["surge"]),
+        "threshold" => primitives::phrase(&["threshold"]),
+        "undergrowth" => primitives::phrase(&["undergrowth"]),
+        _ => fail::<_, (), _>,
+    }
     .parse_next(input)
 }
 
@@ -222,9 +217,9 @@ fn search_library_sentence_head<'a>(
             primitives::kw("may"),
             alt((primitives::kw("search"), primitives::kw("searches"))),
         )
-            .map(|_| (subject_tokens, SearchLibrarySentenceHeadKind::DirectMay)),
+            .value((subject_tokens, SearchLibrarySentenceHeadKind::DirectMay)),
         alt((primitives::kw("search"), primitives::kw("searches")))
-            .map(|_| (subject_tokens, SearchLibrarySentenceHeadKind::Plain)),
+            .value((subject_tokens, SearchLibrarySentenceHeadKind::Plain)),
     ))
     .parse_next(input)
 }
@@ -249,13 +244,13 @@ pub(crate) fn split_search_library_sentence_head_lexed(
 
 fn search_library_search_verb<'a>(input: &mut LexStream<'a>) -> Result<(), ErrMode<ContextError>> {
     alt((primitives::kw("search"), primitives::kw("searches")))
-        .map(|_| ())
+        .void()
         .parse_next(input)
 }
 
 fn search_library_put_marker<'a>(input: &mut LexStream<'a>) -> Result<(), ErrMode<ContextError>> {
     alt((primitives::kw("put"), primitives::kw("puts")))
-        .map(|_| ())
+        .void()
         .parse_next(input)
 }
 
@@ -263,7 +258,7 @@ fn search_library_reveal_marker<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<(), ErrMode<ContextError>> {
     alt((primitives::kw("reveal"), primitives::kw("reveals")))
-        .map(|_| ())
+        .void()
         .parse_next(input)
 }
 
@@ -271,12 +266,12 @@ fn search_library_shuffle_marker<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<(), ErrMode<ContextError>> {
     alt((primitives::kw("shuffle"), primitives::kw("shuffles")))
-        .map(|_| ())
+        .void()
         .parse_next(input)
 }
 
 fn search_library_for_marker<'a>(input: &mut LexStream<'a>) -> Result<(), ErrMode<ContextError>> {
-    primitives::kw("for").map(|_| ()).parse_next(input)
+    primitives::kw("for").void().parse_next(input)
 }
 
 fn search_library_exile_destination_marker<'a>(
@@ -291,23 +286,23 @@ fn search_library_exile_destination_marker<'a>(
             primitives::phrase(&["those", "cards"]),
         )),
     )
-        .map(|_| ())
+        .void()
         .parse_next(input)
 }
 
 fn search_library_then_marker<'a>(input: &mut LexStream<'a>) -> Result<(), ErrMode<ContextError>> {
-    primitives::kw("then").map(|_| ()).parse_next(input)
+    primitives::kw("then").void().parse_next(input)
 }
 
 fn search_library_and_marker<'a>(input: &mut LexStream<'a>) -> Result<(), ErrMode<ContextError>> {
-    primitives::kw("and").map(|_| ()).parse_next(input)
+    primitives::kw("and").void().parse_next(input)
 }
 
 fn search_library_discard_marker<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<(), ErrMode<ContextError>> {
     alt((primitives::kw("discard"), primitives::kw("discards")))
-        .map(|_| ())
+        .void()
         .parse_next(input)
 }
 
@@ -328,7 +323,7 @@ fn search_library_comma_filter_break_marker<'a>(
             search_library_then_marker,
         )),
     )
-        .map(|_| ())
+        .void()
         .parse_next(input)
 }
 
@@ -336,7 +331,7 @@ fn search_library_with_that_name_suffix<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<(), ErrMode<ContextError>> {
     primitives::phrase(&["with", "that", "name"])
-        .map(|_| ())
+        .void()
         .parse_next(input)
 }
 
@@ -344,7 +339,7 @@ fn search_library_with_the_chosen_name_suffix<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<(), ErrMode<ContextError>> {
     primitives::phrase(&["with", "the", "chosen", "name"])
-        .map(|_| ())
+        .void()
         .parse_next(input)
 }
 
@@ -352,7 +347,7 @@ fn search_library_with_chosen_name_suffix<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<(), ErrMode<ContextError>> {
     primitives::phrase(&["with", "chosen", "name"])
-        .map(|_| ())
+        .void()
         .parse_next(input)
 }
 
@@ -1183,7 +1178,7 @@ fn cant_sentence_next_turn_suffix<'a>(
         primitives::phrase(&["during", "that", "player's", "next", "turn"]),
         primitives::phrase(&["during", "that", "player", "s", "next", "turn"]),
     ))
-    .map(|_| ())
+    .void()
     .parse_next(input)
 }
 
@@ -1191,7 +1186,7 @@ fn cant_sentence_for_as_long_as_marker<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<(), ErrMode<ContextError>> {
     primitives::phrase(&["for", "as", "long", "as"])
-        .map(|_| ())
+        .void()
         .parse_next(input)
 }
 
@@ -1253,8 +1248,8 @@ pub(crate) fn prepare_cant_sentence_restriction_clause_lexed(
 
 fn conditional_label_delimiter<'a>(input: &mut LexStream<'a>) -> Result<(), ErrMode<ContextError>> {
     alt((
-        primitives::token_kind(TokenKind::Dash).map(|_| ()),
-        primitives::token_kind(TokenKind::EmDash).map(|_| ()),
+        primitives::token_kind(TokenKind::Dash).void(),
+        primitives::token_kind(TokenKind::EmDash).void(),
     ))
     .parse_next(input)
 }
@@ -1269,8 +1264,8 @@ fn conditional_sentence_family_head<'a>(
             opt(conditional_label_delimiter),
             primitives::kw("if"),
         )
-            .map(|_| ()),
-        primitives::kw("if").map(|_| ()),
+            .void(),
+        primitives::kw("if").void(),
     ))
     .parse_next(input)
 }
@@ -1302,6 +1297,7 @@ pub(crate) fn parse_conditional_sentence_with_grammar_entrypoint_lexed(
     }])
 }
 
+#[cfg(test)]
 pub(crate) fn parse_conditional_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {

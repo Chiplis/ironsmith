@@ -162,18 +162,14 @@ fn parse_become_creature_descriptor_words(
         }
         if let Some(color) = parse_color(word) {
             colors = colors.union(color);
-            continue;
-        }
-        if let Some(card_type) = parse_card_type(word) {
+        } else if let Some(card_type) = parse_card_type(word) {
             push_unique_card_type(&mut card_types, card_type);
-            continue;
-        }
-        if let Some(subtype) = parse_subtype_word_or_plural(word) {
+        } else if let Some(subtype) = parse_subtype_word_or_plural(word) {
             push_unique_subtype(&mut subtypes, subtype);
             saw_subtype = true;
-            continue;
+        } else {
+            return None;
         }
-        return None;
     }
 
     if saw_subtype && !contains_card_type(&card_types, CardType::Creature) {
@@ -931,7 +927,7 @@ pub(crate) fn parse_become_clause(
         });
     }
 
-    if grammar::words_match_prefix(become_body_tokens, &["copy", "of"]).is_some() {
+    if word_slice_starts_with(&become_words, &["copy", "of"]) {
         let Some(source_start) = token_index_for_word_index(become_body_tokens, 2) else {
             return Err(CardTextError::ParseError(format!(
                 "missing copy source in become clause (clause: '{}')",
@@ -957,7 +953,7 @@ pub(crate) fn parse_become_clause(
         return Ok(EffectAst::MakeColorless { target, duration });
     }
 
-    if grammar::words_match_prefix(become_body_tokens, &["equal", "to"]).is_some() {
+    if word_slice_starts_with(&become_words, &["equal", "to"]) {
         let rhs = &become_words[2..];
         if rhs == ["this", "power", "and", "toughness"]
             || rhs == ["thiss", "power", "and", "toughness"]

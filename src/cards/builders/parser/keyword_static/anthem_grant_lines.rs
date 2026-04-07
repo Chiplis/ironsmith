@@ -10,7 +10,7 @@ fn anthem_word_slice_starts_with(words: &[&str], prefix: &[&str]) -> bool {
     true
 }
 
-fn anthem_word_slice_ends_with(words: &[&str], suffix: &[&str]) -> bool {
+fn anthem_ends_with_words(words: &[&str], suffix: &[&str]) -> bool {
     if suffix.len() > words.len() {
         return false;
     }
@@ -23,7 +23,7 @@ fn anthem_word_slice_ends_with(words: &[&str], suffix: &[&str]) -> bool {
     true
 }
 
-fn anthem_word_slice_contains(words: &[&str], expected: &str) -> bool {
+fn anthem_contains_word(words: &[&str], expected: &str) -> bool {
     for word in words {
         if *word == expected {
             return true;
@@ -32,9 +32,9 @@ fn anthem_word_slice_contains(words: &[&str], expected: &str) -> bool {
     false
 }
 
-fn anthem_word_slice_contains_any(words: &[&str], expected: &[&str]) -> bool {
+fn anthem_contains_any_word(words: &[&str], expected: &[&str]) -> bool {
     for word in expected {
-        if anthem_word_slice_contains(words, word) {
+        if anthem_contains_word(words, word) {
             return true;
         }
     }
@@ -53,7 +53,7 @@ fn anthem_find_word_index(
     None
 }
 
-fn anthem_find_token_index(
+fn anthem_token_offset(
     tokens: &[OwnedLexToken],
     mut predicate: impl FnMut(&OwnedLexToken) -> bool,
 ) -> Option<usize> {
@@ -65,7 +65,7 @@ fn anthem_find_token_index(
     None
 }
 
-fn anthem_rfind_token_index(
+fn anthem_last_token_offset(
     tokens: &[OwnedLexToken],
     mut predicate: impl FnMut(&OwnedLexToken) -> bool,
 ) -> Option<usize> {
@@ -103,7 +103,7 @@ fn anthem_has_word_sequence(words: &[&str], sequence: &[&str]) -> bool {
     anthem_find_word_sequence_index(words, sequence).is_some()
 }
 
-fn anthem_find_index(limit: usize, mut predicate: impl FnMut(usize) -> bool) -> Option<usize> {
+fn anthem_index_where(limit: usize, mut predicate: impl FnMut(usize) -> bool) -> Option<usize> {
     for idx in 0..limit {
         if predicate(idx) {
             return Some(idx);
@@ -112,7 +112,10 @@ fn anthem_find_index(limit: usize, mut predicate: impl FnMut(usize) -> bool) -> 
     None
 }
 
-fn anthem_rfind_index(limit: usize, mut predicate: impl FnMut(usize) -> bool) -> Option<usize> {
+fn anthem_last_index_where(
+    limit: usize,
+    mut predicate: impl FnMut(usize) -> bool,
+) -> Option<usize> {
     let mut idx = limit;
     while idx > 0 {
         idx -= 1;
@@ -133,8 +136,7 @@ pub(crate) fn parse_subject_cant_be_blocked_line(
         .iter()
         .map(String::as_str)
         .collect::<Vec<_>>();
-    if normalized.len() < 4 || !anthem_word_slice_ends_with(&normalized, &["cant", "be", "blocked"])
-    {
+    if normalized.len() < 4 || !anthem_ends_with_words(&normalized, &["cant", "be", "blocked"]) {
         return Ok(None);
     }
 
@@ -486,7 +488,7 @@ pub(crate) fn parse_granted_keyword_static_line(
         return Ok(None);
     }
 
-    let have_token_idx = anthem_rfind_token_index(tokens, |token| {
+    let have_token_idx = anthem_last_token_offset(tokens, |token| {
         token.is_word("have") || token.is_word("has")
     })
     .ok_or_else(|| CardTextError::ParseError("missing granted-keyword verb".to_string()))?;
@@ -523,8 +525,8 @@ pub(crate) fn parse_granted_keyword_static_line(
     }
 
     let subject_words = crate::cards::builders::parser::token_word_refs(&subject_tokens);
-    if anthem_word_slice_contains_any(&subject_words, &["equipped", "enchanted"])
-        || (anthem_word_slice_contains(&subject_words, "mana")
+    if anthem_contains_any_word(&subject_words, &["equipped", "enchanted"])
+        || (anthem_contains_word(&subject_words, "mana")
             && !anthem_has_word_sequence(&subject_words, &["mana", "value"]))
     {
         return Ok(None);
@@ -709,7 +711,7 @@ pub(crate) fn parse_all_creatures_lose_flying_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     let words = crate::cards::builders::parser::token_word_refs(tokens);
-    if words.as_slice() == ["all", "creatures", "lose", "flying"] {
+    if matches!(words.as_slice(), ["all", "creatures", "lose", "flying"]) {
         return Ok(Some(StaticAbilityAst::RemoveKeywordAction {
             filter: ObjectFilter::creature(),
             action: KeywordAction::Flying,
@@ -804,7 +806,7 @@ pub(crate) fn parse_each_creature_can_block_additional_creature_each_combat_line
     } else {
         return Ok(None);
     };
-    if !anthem_word_slice_ends_with(&clause_words, &["each", "combat"]) {
+    if !anthem_ends_with_words(&clause_words, &["each", "combat"]) {
         return Ok(None);
     }
     let Some(additional_word_idx) =
@@ -1025,7 +1027,7 @@ pub(crate) fn parse_lose_all_abilities_and_base_pt_line(
     if !anthem_has_word_sequence(&words[lose_idx + 1..], &["all", "abilities"]) {
         return Ok(None);
     }
-    if anthem_word_slice_contains(&words, "becomes") {
+    if anthem_contains_word(&words, "becomes") {
         return Err(CardTextError::ParseError(format!(
             "unsupported lose-all-abilities static becomes clause (clause: '{}')",
             words.join(" ")
@@ -1080,7 +1082,7 @@ pub(crate) fn parse_all_have_indestructible_line(
         return Ok(None);
     }
 
-    let have_token_idx = anthem_find_token_index(tokens, |token| {
+    let have_token_idx = anthem_token_offset(tokens, |token| {
         token.is_word("have") || token.is_word("has")
     })
     .ok_or_else(|| CardTextError::ParseError("missing granted-keyword verb".to_string()))?;
@@ -1984,7 +1986,7 @@ pub(crate) fn parse_anthem_for_each_expression(
         return Ok(AnthemCountExpression::BasicLandTypesAmong(filter));
     }
 
-    if let Some(attached_idx) = anthem_find_token_index(rest, |token| token.is_word("attached")) {
+    if let Some(attached_idx) = anthem_token_offset(rest, |token| token.is_word("attached")) {
         let filter_tokens = &rest[..attached_idx];
         let tail_words = crate::cards::builders::parser::token_word_refs(&rest[attached_idx + 1..]);
         let attached_to_source = tail_words == ["to", "it"]
@@ -2015,7 +2017,7 @@ pub(crate) fn parse_anthem_prefix_condition(
     get_idx: usize,
 ) -> Result<(Option<crate::ConditionExpr>, usize), CardTextError> {
     if words_start_with(tokens, &["during", "turns", "other", "than", "yours"]) {
-        let subject_start = anthem_find_token_index(&tokens[..get_idx], |token| token.is_comma())
+        let subject_start = anthem_token_offset(&tokens[..get_idx], |token| token.is_comma())
             .map(|idx| idx + 1)
             .or_else(|| find_source_reference_start(&tokens[..get_idx]))
             .unwrap_or(5);
@@ -2027,7 +2029,7 @@ pub(crate) fn parse_anthem_prefix_condition(
         ));
     }
     if words_start_with(tokens, &["during", "your", "turn"]) {
-        let subject_start = anthem_find_token_index(&tokens[..get_idx], |token| token.is_comma())
+        let subject_start = anthem_token_offset(&tokens[..get_idx], |token| token.is_comma())
             .map(|idx| idx + 1)
             .or_else(|| find_source_reference_start(&tokens[..get_idx]))
             .unwrap_or(3);
@@ -2035,7 +2037,7 @@ pub(crate) fn parse_anthem_prefix_condition(
     }
 
     if words_start_with(tokens, &["as", "long", "as"]) {
-        let subject_start = anthem_find_token_index(&tokens[..get_idx], |token| token.is_comma())
+        let subject_start = anthem_token_offset(&tokens[..get_idx], |token| token.is_comma())
             .map(|idx| idx + 1)
             .or_else(|| infer_as_long_as_subject_start(tokens, get_idx))
             .or_else(|| find_source_reference_start(&tokens[..get_idx]))
@@ -2568,7 +2570,7 @@ pub(crate) fn parse_anthem_and_type_color_addition_line(
         return Ok(None);
     }
 
-    let get_idx = anthem_find_token_index(tokens, |token| {
+    let get_idx = anthem_token_offset(tokens, |token| {
         token.is_word("get") || token.is_word("gets")
     });
     let Some(get_idx) = get_idx else {
@@ -2628,7 +2630,7 @@ pub(crate) fn parse_anthem_and_keyword_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
-    let get_idx = anthem_find_token_index(tokens, |token| {
+    let get_idx = anthem_token_offset(tokens, |token| {
         token.is_word("get") || token.is_word("gets")
     });
     let have_idx = anthem_find_word_index(&clause_words, |word| matches!(word, "have" | "has"));
@@ -2698,7 +2700,7 @@ pub(crate) fn parse_anthem_and_keyword_line(
     let mut granted_activated_ability: Option<ParsedAbility> = None;
     let mut granted_activated_display: Option<String> = None;
 
-    let and_has_idx = anthem_find_index(ability_tokens.len().saturating_sub(1), |idx| {
+    let and_has_idx = anthem_index_where(ability_tokens.len().saturating_sub(1), |idx| {
         ability_tokens[idx].is_word("and")
             && (ability_tokens[idx + 1].is_word("has") || ability_tokens[idx + 1].is_word("have"))
     });
@@ -2721,12 +2723,11 @@ pub(crate) fn parse_anthem_and_keyword_line(
         if !ability_tail_tokens.is_empty() {
             let mut handled_split_keyword_activation = false;
             if ability_tail_tokens.iter().any(|token| token.is_colon()) {
-                let colon_idx =
-                    anthem_find_token_index(&ability_tail_tokens, |token| token.is_colon())
-                        .expect("validated colon");
-                if let Some(split_and_idx) =
-                    anthem_rfind_index(colon_idx, |idx| ability_tail_tokens[idx].is_word("and"))
-                {
+                let colon_idx = anthem_token_offset(&ability_tail_tokens, |token| token.is_colon())
+                    .expect("validated colon");
+                if let Some(split_and_idx) = anthem_last_index_where(colon_idx, |idx| {
+                    ability_tail_tokens[idx].is_word("and")
+                }) {
                     let trailing_keyword_tokens =
                         trim_edge_punctuation(&ability_tail_tokens[..split_and_idx]);
                     let activated_tail =
@@ -2775,11 +2776,11 @@ pub(crate) fn parse_anthem_and_keyword_line(
             }
         }
     } else if ability_tokens.iter().any(|token| token.is_colon()) {
-        let Some(colon_idx) = anthem_find_token_index(&ability_tokens, |token| token.is_colon())
-        else {
+        let Some(colon_idx) = anthem_token_offset(&ability_tokens, |token| token.is_colon()) else {
             return Ok(None);
         };
-        let Some(and_idx) = anthem_rfind_index(colon_idx, |idx| ability_tokens[idx].is_word("and"))
+        let Some(and_idx) =
+            anthem_last_index_where(colon_idx, |idx| ability_tokens[idx].is_word("and"))
         else {
             return Ok(None);
         };
@@ -3126,7 +3127,7 @@ pub(crate) fn parse_anthem_with_trailing_segments_line(
         return Ok(None);
     }
 
-    let Some(get_idx) = anthem_find_token_index(tokens, |token| {
+    let Some(get_idx) = anthem_token_offset(tokens, |token| {
         token.is_word("get") || token.is_word("gets")
     }) else {
         return Ok(None);
@@ -3302,12 +3303,12 @@ pub(crate) fn parse_anthem_with_trailing_segments_line(
             let split_keyword_and_activated = if ability_tokens.iter().any(|token| token.is_colon())
             {
                 let Some(colon_idx) =
-                    anthem_find_token_index(&ability_tokens, |token| token.is_colon())
+                    anthem_token_offset(&ability_tokens, |token| token.is_colon())
                 else {
                     return Ok(None);
                 };
                 let and_idx =
-                    anthem_rfind_index(colon_idx, |idx| ability_tokens[idx].is_word("and"));
+                    anthem_last_index_where(colon_idx, |idx| ability_tokens[idx].is_word("and"));
                 if let Some(and_idx) = and_idx {
                     let keyword_head = trim_edge_punctuation(&ability_tokens[..and_idx]);
                     let activated_tail = trim_edge_punctuation(&ability_tokens[and_idx + 1..]);
@@ -3352,12 +3353,12 @@ pub(crate) fn parse_anthem_with_trailing_segments_line(
                 Some(actions)
             } else if ability_tokens.iter().any(|token| token.is_colon()) {
                 let Some(colon_idx) =
-                    anthem_find_token_index(&ability_tokens, |token| token.is_colon())
+                    anthem_token_offset(&ability_tokens, |token| token.is_colon())
                 else {
                     return Ok(None);
                 };
                 let and_idx =
-                    anthem_rfind_index(colon_idx, |idx| ability_tokens[idx].is_word("and"));
+                    anthem_last_index_where(colon_idx, |idx| ability_tokens[idx].is_word("and"));
                 let Some(and_idx) = and_idx else {
                     return Ok(None);
                 };
@@ -3462,7 +3463,7 @@ pub(crate) fn parse_conditional_all_creatures_able_to_block_line(
         return Ok(None);
     }
 
-    let Some(comma_idx) = anthem_find_token_index(tokens, |token| token.is_comma()) else {
+    let Some(comma_idx) = anthem_token_offset(tokens, |token| token.is_comma()) else {
         return Ok(None);
     };
     if comma_idx <= 3 {
@@ -3614,7 +3615,7 @@ pub(crate) fn parse_as_long_as_condition_can_attack_as_though_no_defender_line(
     ) else {
         return Ok(None);
     };
-    let Some(comma_idx) = anthem_find_token_index(tokens, |token| token.is_comma()) else {
+    let Some(comma_idx) = anthem_token_offset(tokens, |token| token.is_comma()) else {
         return Ok(None);
     };
     let Some(can_token_idx) = token_index_for_word_index(tokens, can_idx) else {
@@ -3657,7 +3658,7 @@ pub(crate) fn parse_gets_and_attacks_each_combat_if_able_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
-    let Some(get_idx) = anthem_find_token_index(tokens, |token| {
+    let Some(get_idx) = anthem_token_offset(tokens, |token| {
         token.is_word("get") || token.is_word("gets")
     }) else {
         return Ok(None);
@@ -3707,7 +3708,7 @@ pub(crate) fn parse_anthem_and_granted_ability_line(
         return Ok(None);
     }
 
-    let Some(get_idx) = anthem_find_token_index(tokens, |token| {
+    let Some(get_idx) = anthem_token_offset(tokens, |token| {
         token.is_word("get") || token.is_word("gets")
     }) else {
         return Ok(None);
@@ -3757,7 +3758,7 @@ pub(crate) fn parse_subject_is_every_subtype_family_line(
 
     let mut condition: Option<crate::ConditionExpr> = None;
     let clause_tokens_buf = if anthem_word_slice_starts_with(&all_words, &["as", "long", "as"]) {
-        let Some(comma_idx) = anthem_find_token_index(tokens, |token| token.is_comma()) else {
+        let Some(comma_idx) = anthem_token_offset(tokens, |token| token.is_comma()) else {
             return Ok(None);
         };
         if comma_idx <= 3 {
@@ -3809,7 +3810,7 @@ pub(crate) fn parse_anthem_line(
     let words = crate::cards::builders::parser::token_word_refs(tokens);
     // Targeted "gets +N/+N" text is usually a one-shot spell/ability effect,
     // not a global/static anthem.
-    if anthem_word_slice_contains(&words, "target") {
+    if anthem_contains_word(&words, "target") {
         return Ok(None);
     }
     // "until end of turn" indicates a temporary effect, not a permanent anthem.
@@ -3817,7 +3818,7 @@ pub(crate) fn parse_anthem_line(
         return Ok(None);
     }
 
-    let get_idx = anthem_find_token_index(tokens, |token| {
+    let get_idx = anthem_token_offset(tokens, |token| {
         token.is_word("get") || token.is_word("gets")
     });
     let Some(get_idx) = get_idx else {
@@ -3840,7 +3841,7 @@ pub(crate) fn parse_has_base_power_toughness_static_line(
         return Ok(None);
     }
     let subject_words = crate::cards::builders::parser::token_word_refs(&subject_tokens);
-    if anthem_word_slice_contains(&subject_words, "target") {
+    if anthem_contains_word(&subject_words, "target") {
         return Ok(None);
     }
     if starts_with_until_end_of_turn(&subject_words)
@@ -3914,13 +3915,13 @@ pub(crate) fn parse_isnt_creature_line(
     if all_words.len() < 3 {
         return Ok(None);
     }
-    if anthem_word_slice_contains(&all_words, "target") || contains_until_end_of_turn(&all_words) {
+    if anthem_contains_word(&all_words, "target") || contains_until_end_of_turn(&all_words) {
         return Ok(None);
     }
 
     let mut condition: Option<crate::ConditionExpr> = None;
     let clause_tokens_buf = if anthem_word_slice_starts_with(&all_words, &["as", "long", "as"]) {
-        let Some(comma_idx) = anthem_find_token_index(tokens, |token| token.is_comma()) else {
+        let Some(comma_idx) = anthem_token_offset(tokens, |token| token.is_comma()) else {
             return Ok(None);
         };
         if comma_idx <= 3 {
@@ -3991,7 +3992,7 @@ pub(crate) fn parse_has_base_power_toughness_and_granted_keywords_static_line(
         return Ok(None);
     }
 
-    let Some(has_idx) = anthem_find_token_index(tokens, |token| {
+    let Some(has_idx) = anthem_token_offset(tokens, |token| {
         token.is_word("has") || token.is_word("have")
     }) else {
         return Ok(None);
@@ -4005,7 +4006,7 @@ pub(crate) fn parse_has_base_power_toughness_and_granted_keywords_static_line(
         return Ok(None);
     }
     let subject_words = crate::cards::builders::parser::token_word_refs(&subject_tokens);
-    if anthem_word_slice_contains(&subject_words, "target") {
+    if anthem_contains_word(&subject_words, "target") {
         return Ok(None);
     }
     if starts_with_until_end_of_turn(&subject_words)
@@ -4096,7 +4097,7 @@ pub(crate) fn parse_filter_has_granted_ability_line(
         return Ok(None);
     }
 
-    let Some(has_idx) = anthem_rfind_token_index(tokens, |token| {
+    let Some(has_idx) = anthem_last_token_offset(tokens, |token| {
         token.is_word("has") || token.is_word("have")
     }) else {
         return Ok(None);
@@ -4155,7 +4156,7 @@ pub(crate) fn parse_filter_has_granted_ability_line(
     }) {
         return Ok(None);
     }
-    if anthem_word_slice_contains(&subject_words, "may") {
+    if anthem_contains_word(&subject_words, "may") {
         return Ok(None);
     }
     let ability_tokens_raw = &tokens[has_idx + 1..];

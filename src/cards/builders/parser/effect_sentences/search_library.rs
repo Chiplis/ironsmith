@@ -49,10 +49,7 @@ fn token_slice_contains_word(tokens: &[OwnedLexToken], expected: &'static str) -
 }
 
 fn token_slice_contains_phrase(tokens: &[OwnedLexToken], phrase: &'static [&'static str]) -> bool {
-    tokens
-        .iter()
-        .enumerate()
-        .any(|(idx, _)| grammar::parse_prefix(&tokens[idx..], grammar::phrase(phrase)).is_some())
+    grammar::find_prefix(tokens, || grammar::phrase(phrase)).is_some()
 }
 
 fn find_phrase_token_bounds(
@@ -62,17 +59,8 @@ fn find_phrase_token_bounds(
     if phrase.is_empty() {
         return None;
     }
-
-    let mut idx = 0usize;
-    while idx < tokens.len() {
-        if let Some((_, rest)) = grammar::parse_prefix(&tokens[idx..], grammar::phrase(phrase)) {
-            let end_idx = idx + (tokens[idx..].len() - rest.len());
-            return Some((idx, end_idx));
-        }
-        idx += 1;
-    }
-
-    None
+    let (idx, _, rest) = grammar::find_prefix(tokens, || grammar::phrase(phrase))?;
+    Some((idx, tokens.len() - rest.len()))
 }
 
 pub(crate) fn word_slice_starts_with_any(words: &[&str], prefixes: &[&[&str]]) -> bool {
@@ -803,14 +791,11 @@ pub(crate) fn parse_target_player_exiles_creature_and_graveyard_sentence(
         return Ok(None);
     }
 
-    let (subject_player, subject_filter) =
-        if grammar::words_match_prefix(&clause_tokens, &["target", "opponent"]).is_some() {
-            (PlayerAst::TargetOpponent, PlayerFilter::target_opponent())
-        } else if grammar::words_match_prefix(&clause_tokens, &["target", "player"]).is_some() {
-            (PlayerAst::Target, PlayerFilter::target_player())
-        } else {
-            return Ok(None);
-        };
+    let (subject_player, subject_filter) = match clause_words.as_slice() {
+        ["target", "opponent", ..] => (PlayerAst::TargetOpponent, PlayerFilter::target_opponent()),
+        ["target", "player", ..] => (PlayerAst::Target, PlayerFilter::target_player()),
+        _ => return Ok(None),
+    };
 
     let verb_idx = 2usize;
     if !matches!(
@@ -877,7 +862,6 @@ pub(crate) fn parse_for_each_exiled_this_way_sentence(
     {
         return Ok(None);
     }
-    let words_all = token_words(tokens);
     if !grammar::contains_word(tokens, "shares")
         || !grammar::contains_word(tokens, "card")
         || !grammar::contains_word(tokens, "type")
@@ -924,7 +908,6 @@ pub(crate) fn parse_for_each_exiled_this_way_sentence(
 pub(crate) fn parse_each_player_put_permanent_cards_exiled_with_source_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let words_all = token_words(tokens);
     let starts_with_each_player_turns_face_up = grammar::words_match_prefix(
         tokens,
         &["each", "player", "turns", "face", "up", "all", "cards"],

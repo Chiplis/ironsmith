@@ -1,4 +1,4 @@
-use winnow::combinator::{eof, opt};
+use winnow::combinator::{opt, seq};
 use winnow::error::{ContextError, ErrMode, StrContext, StrContextValue};
 use winnow::prelude::*;
 use winnow::token::any;
@@ -71,15 +71,12 @@ pub(crate) struct IfThisSpellCostsSplitSpec<'a> {
 }
 
 fn black_mana_group<'a>(input: &mut LexStream<'a>) -> Result<&'a LexToken, ErrMode<ContextError>> {
-    let token: &'a LexToken = any.parse_next(input)?;
-    if token.kind == TokenKind::ManaGroup && token.parser_text() == "{b}" {
-        Ok(token)
-    } else {
-        let mut err = ContextError::new();
-        err.push(StrContext::Label("black mana group"));
-        err.push(StrContext::Expected(StrContextValue::Description("{B}")));
-        Err(ErrMode::Backtrack(err))
-    }
+    any.verify(|token: &&LexToken| {
+        token.kind == TokenKind::ManaGroup && token.parser_text() == "{b}"
+    })
+    .context(StrContext::Label("black mana group"))
+    .context(StrContext::Expected(StrContextValue::Description("{B}")))
+    .parse_next(input)
 }
 
 fn parse_krrik_black_mana_life_payment_line<'a>(
@@ -93,8 +90,7 @@ fn parse_krrik_black_mana_life_payment_line<'a>(
         primitives::phrase(&[
             "you", "may", "pay", "2", "life", "rather", "than", "pay", "that", "mana",
         ]),
-        opt(primitives::period()),
-        eof,
+        primitives::sentence_end(),
     )
         .void()
         .parse_next(input)
@@ -117,8 +113,7 @@ fn parse_each_other_players_untap_step_suffix<'a>(
             primitives::phrase(&["player", "s", "untap", "step"]),
             primitives::phrase(&["player", "untap", "step"]),
         )),
-        opt(primitives::period()),
-        eof,
+        primitives::sentence_end(),
     )
         .void()
         .parse_next(input)
@@ -144,15 +139,13 @@ fn parse_activated_abilities_cant_be_activated_suffix<'a>(
             primitives::phrase(&["be", "activated", "unless"]),
             winnow::combinator::alt((primitives::kw("theyre"), primitives::kw("they're"))),
             primitives::phrase(&["mana", "abilities"]),
-            opt(primitives::period()),
-            eof,
+            primitives::sentence_end(),
         )
             .value(true),
         (
             winnow::combinator::alt((primitives::kw("cant"), primitives::kw("can't"))),
             primitives::phrase(&["be", "activated"]),
-            opt(primitives::period()),
-            eof,
+            primitives::sentence_end(),
         )
             .value(false),
     ))
@@ -200,8 +193,7 @@ fn parse_trigger_suppression_plain_suffix<'a>(
     (
         parse_trigger_suppression_negation_prefix,
         primitives::phrase(&["to", "trigger"]),
-        opt(primitives::period()),
-        eof,
+        primitives::sentence_end(),
     )
         .void()
         .parse_next(input)
@@ -223,8 +215,7 @@ fn parse_trigger_suppression_filter_suffix<'a>(
 ) -> Result<(), ErrMode<ContextError>> {
     (
         primitives::phrase(&["to", "trigger"]),
-        opt(primitives::period()),
-        eof,
+        primitives::sentence_end(),
     )
         .void()
         .parse_next(input)
@@ -282,8 +273,7 @@ fn parse_reveal_first_card_you_draw_each_turn_suffix<'a>(
         primitives::phrase(&["reveal", "the", "first", "card", "you", "draw"]),
         primitives::phrase(&["each", "turn"]),
         opt(primitives::phrase(&["as", "you", "draw", "it"])),
-        opt(primitives::period()),
-        eof,
+        primitives::sentence_end(),
     )
         .void()
         .parse_next(input)
@@ -296,8 +286,7 @@ fn parse_reveal_first_card_you_draw_on_your_turns_suffix<'a>(
         primitives::phrase(&["reveal", "the", "first", "card", "you", "draw"]),
         primitives::phrase(&["on", "each", "of", "your", "turns"]),
         opt(primitives::phrase(&["as", "you", "draw", "it"])),
-        opt(primitives::period()),
-        eof,
+        primitives::sentence_end(),
     )
         .void()
         .parse_next(input)
@@ -366,44 +355,31 @@ fn parse_counter_type_token<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<CounterType, ErrMode<ContextError>> {
     let token: &'a LexToken = any.parse_next(input)?;
-    parse_counter_type_word(token.parser_text()).ok_or_else(|| {
-        let mut err = ContextError::new();
-        err.push(StrContext::Label("counter type"));
-        err.push(StrContext::Expected(StrContextValue::Description(
-            "known counter type word",
-        )));
-        ErrMode::Backtrack(err)
-    })
+    parse_counter_type_word(token.parser_text())
+        .ok_or_else(|| primitives::backtrack_err("counter type", "known counter type word"))
 }
 
 fn parse_exile_to_countered_exile_instead_of_graveyard_suffix<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<ExileToCounteredExileInsteadOfGraveyardSpec, ErrMode<ContextError>> {
-    (
-        primitives::phrase(&["would", "be", "put", "into"]),
-        parse_exile_replacement_graveyard_player,
-        primitives::phrase(&["from", "anywhere"]),
-        opt(primitives::comma()),
-        winnow::combinator::alt((
+    seq!(ExileToCounteredExileInsteadOfGraveyardSpec {
+        _: primitives::phrase(&["would", "be", "put", "into"]),
+        player: parse_exile_replacement_graveyard_player,
+        _: primitives::phrase(&["from", "anywhere"]),
+        _: opt(primitives::comma()),
+        _: winnow::combinator::alt((
             primitives::phrase(&["exile", "it", "instead", "with"]),
             primitives::phrase(&["instead", "exile", "it", "with"]),
         )),
-        opt(winnow::combinator::alt((
+        _: opt(winnow::combinator::alt((
             primitives::kw("a"),
             primitives::kw("an"),
         ))),
-        parse_counter_type_token,
-        primitives::phrase(&["counter", "on", "it"]),
-        opt(primitives::period()),
-        eof,
-    )
-        .map(|(_, player, _, _, _, _, counter_type, _, _, _)| {
-            ExileToCounteredExileInsteadOfGraveyardSpec {
-                player,
-                counter_type,
-            }
-        })
-        .parse_next(input)
+        counter_type: parse_counter_type_token,
+        _: primitives::phrase(&["counter", "on", "it"]),
+        _: primitives::sentence_end(),
+    })
+    .parse_next(input)
 }
 
 pub(crate) fn parse_exile_to_countered_exile_instead_of_graveyard_spec_lexed(
@@ -562,14 +538,10 @@ fn parse_unsigned_integer_token<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<u32, ErrMode<ContextError>> {
     let token: &'a LexToken = any.parse_next(input)?;
-    token.parser_text().parse::<u32>().map_err(|_| {
-        let mut err = ContextError::new();
-        err.push(StrContext::Label("unsigned integer"));
-        err.push(StrContext::Expected(StrContextValue::Description(
-            "unsigned integer token",
-        )));
-        ErrMode::Backtrack(err)
-    })
+    token
+        .parser_text()
+        .parse::<u32>()
+        .map_err(|_| primitives::backtrack_err("unsigned integer", "unsigned integer token"))
 }
 
 pub(crate) fn is_protection_mana_value_marker_line_lexed(tokens: &[OwnedLexToken]) -> bool {
@@ -580,15 +552,13 @@ pub(crate) fn is_protection_mana_value_marker_line_lexed(tokens: &[OwnedLexToken
                 primitives::phrase(&["protection", "from"]),
                 winnow::combinator::alt((primitives::kw("odd"), primitives::kw("even"))),
                 primitives::phrase(&["mana", "values"]),
-                opt(primitives::period()),
-                eof,
+                primitives::sentence_end(),
             )
                 .void(),
             (
                 primitives::phrase(&["this", "creature", "has", "protection", "from"]),
                 primitives::phrase(&["each", "mana", "value", "of", "the", "chosen", "quality"]),
-                opt(primitives::period()),
-                eof,
+                primitives::sentence_end(),
             )
                 .void(),
         )),
@@ -646,17 +616,15 @@ pub(crate) fn is_mana_group_slash_marker_line_lexed(tokens: &[OwnedLexToken]) ->
 pub(crate) fn parse_ward_pay_life_amount_lexed(tokens: &[OwnedLexToken]) -> Option<u32> {
     primitives::parse_prefix(
         tokens,
-        (
-            primitives::kw("ward"),
-            primitives::kw("pay"),
+        seq!(
+            _: primitives::kw("ward"),
+            _: primitives::kw("pay"),
             parse_unsigned_integer_token,
-            primitives::kw("life"),
-            opt(primitives::period()),
-            eof,
-        )
-            .map(|(_, _, amount, _, _, _)| amount),
+            _: primitives::kw("life"),
+            _: primitives::sentence_end(),
+        ),
     )
-    .map(|(amount, _)| amount)
+    .map(|((amount,), _)| amount)
 }
 
 pub(crate) fn is_as_long_as_power_odd_or_even_flash_marker_line_lexed(
@@ -692,8 +660,7 @@ pub(crate) fn is_attack_as_haste_unless_entered_this_turn_marker_line_lexed(
                 "this", "creature", "can", "attack", "as", "though", "it", "had", "haste",
             ]),
             primitives::phrase(&["unless", "it", "entered", "this", "turn"]),
-            opt(primitives::period()),
-            eof,
+            primitives::sentence_end(),
         )
             .void(),
     )
@@ -787,8 +754,7 @@ fn parse_players_cant_pay_life_or_sacrifice_line<'a>(
             "activate",
             "abilities",
         ]),
-        opt(primitives::period()),
-        eof,
+        primitives::sentence_end(),
     )
         .void()
         .parse_next(input)
@@ -812,8 +778,7 @@ fn parse_minimum_spell_total_mana_three_line<'a>(
             "each", "spell", "that", "would", "cost", "less", "than", "three", "mana", "to",
             "cast", "costs", "three", "mana", "to", "cast",
         ]),
-        opt(primitives::period()),
-        eof,
+        primitives::sentence_end(),
     )
         .void()
         .parse_next(input)
@@ -830,8 +795,7 @@ fn parse_permanents_enter_tapped_line<'a>(
         primitives::kw("permanents"),
         winnow::combinator::alt((primitives::kw("enter"), primitives::kw("enters"))),
         primitives::kw("tapped"),
-        opt(primitives::period()),
-        eof,
+        primitives::sentence_end(),
     )
         .void()
         .parse_next(input)
@@ -849,8 +813,7 @@ fn parse_creatures_entering_dont_cause_abilities_to_trigger_line<'a>(
         primitives::kw("entering"),
         winnow::combinator::alt((primitives::kw("dont"), primitives::kw("don't"))),
         primitives::phrase(&["cause", "abilities", "to", "trigger"]),
-        opt(primitives::period()),
-        eof,
+        primitives::sentence_end(),
     )
         .void()
         .parse_next(input)
@@ -883,8 +846,7 @@ fn parse_assign_combat_damage_using_toughness_suffix<'a>(
             "its",
             "power",
         ]),
-        opt(primitives::period()),
-        eof,
+        primitives::sentence_end(),
     )
         .void()
         .parse_next(input)
@@ -927,8 +889,7 @@ fn parse_players_cant_cycle_line<'a>(
         primitives::kw("players"),
         winnow::combinator::alt((primitives::kw("cant"), primitives::kw("can't"))),
         primitives::phrase(&["cycle", "cards"]),
-        opt(primitives::period()),
-        eof,
+        primitives::sentence_end(),
     )
         .void()
         .parse_next(input)
@@ -944,7 +905,7 @@ fn matches_exact_phrase_line_lexed(
 ) -> bool {
     primitives::parse_prefix(
         tokens,
-        (primitives::phrase(phrase), opt(primitives::period()), eof),
+        (primitives::phrase(phrase), primitives::sentence_end()),
     )
     .is_some()
 }
@@ -990,8 +951,7 @@ fn parse_creatures_cant_block_line<'a>(
         primitives::kw("creatures"),
         winnow::combinator::alt((primitives::kw("cant"), primitives::kw("can't"))),
         primitives::kw("block"),
-        opt(primitives::period()),
-        eof,
+        primitives::sentence_end(),
     )
         .void()
         .parse_next(input)
@@ -1012,8 +972,7 @@ fn parse_creatures_without_flying_cant_attack_line<'a>(
         primitives::phrase(&["creatures", "without", "flying"]),
         winnow::combinator::alt((primitives::kw("cant"), primitives::kw("can't"))),
         primitives::kw("attack"),
-        opt(primitives::period()),
-        eof,
+        primitives::sentence_end(),
     )
         .void()
         .parse_next(input)
@@ -1030,8 +989,7 @@ fn parse_this_creature_cant_attack_alone_line<'a>(
         primitives::phrase(&["this", "creature"]),
         winnow::combinator::alt((primitives::kw("cant"), primitives::kw("can't"))),
         primitives::phrase(&["attack", "alone"]),
-        opt(primitives::period()),
-        eof,
+        primitives::sentence_end(),
     )
         .void()
         .parse_next(input)
@@ -1048,8 +1006,7 @@ fn parse_this_creature_cant_attack_its_owner_line<'a>(
         primitives::phrase(&["this", "creature"]),
         winnow::combinator::alt((primitives::kw("cant"), primitives::kw("can't"))),
         primitives::phrase(&["attack", "its", "owner"]),
-        opt(primitives::period()),
-        eof,
+        primitives::sentence_end(),
     )
         .void()
         .parse_next(input)
@@ -1074,8 +1031,7 @@ fn parse_lands_dont_untap_during_their_controllers_untap_steps_line<'a>(
         )),
         primitives::kw("untap"),
         winnow::combinator::alt((primitives::kw("step"), primitives::kw("steps"))),
-        opt(primitives::period()),
-        eof,
+        primitives::sentence_end(),
     )
         .void()
         .parse_next(input)
@@ -1108,8 +1064,7 @@ fn parse_may_assign_damage_as_unblocked_line<'a>(
             primitives::kw("wasn't"),
         )),
         primitives::kw("blocked"),
-        opt(primitives::period()),
-        eof,
+        primitives::sentence_end(),
     )
         .void()
         .parse_next(input)
@@ -1167,8 +1122,7 @@ fn parse_attached_doesnt_untap_during_controller_untap_step_line<'a>(
         )),
         primitives::kw("untap"),
         primitives::kw("step"),
-        opt(primitives::period()),
-        eof,
+        primitives::sentence_end(),
     )
         .void()
         .parse_next(input)
@@ -1476,8 +1430,7 @@ pub(crate) fn is_prevent_damage_to_other_creature_you_control_put_counters_line_
                 "this",
                 "way",
             ]),
-            opt(primitives::period()),
-            eof,
+            primitives::sentence_end(),
         ),
     )
     .is_some()

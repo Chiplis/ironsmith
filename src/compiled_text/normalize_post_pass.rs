@@ -2633,7 +2633,7 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
         && let Some((cost, tail)) = split_once_ascii_ci(rest, ". If that player doesn't, create ")
     {
         return format!(
-            "{prefix}, that player may pay {}. If the player doesn't, you create {}",
+            "{prefix}, that player may pay {}. If that player doesn't, you create {}",
             cost.trim(),
             tail.trim()
         );

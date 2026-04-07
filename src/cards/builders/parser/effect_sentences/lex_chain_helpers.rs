@@ -19,6 +19,87 @@ use super::clause_primitives::{
     parse_must_block_if_able_clause,
 };
 
+const EACH_PLAYER_OR_OPPONENT_PREFIXES: &[&[&str]] = &[
+    &["each", "player"],
+    &["each", "players"],
+    &["each", "opponent"],
+    &["each", "opponents"],
+    &["for", "each", "player"],
+    &["for", "each", "players"],
+    &["for", "each", "opponent"],
+    &["for", "each", "opponents"],
+];
+
+const INLINE_TOKEN_RULES_TAIL_PREFIXES: &[&[&str]] = &[
+    &["when"],
+    &["whenever"],
+    &["when", "this", "token"],
+    &["whenever", "this", "token"],
+    &["this", "token"],
+    &["that", "token"],
+    &["those", "tokens"],
+    &["except", "it"],
+    &["except", "they"],
+    &["except", "its"],
+    &["except", "their"],
+    &["this", "creature"],
+    &["that", "creature"],
+    &["at", "the", "beginning"],
+    &["at", "beginning"],
+    &["sacrifice", "this", "token"],
+    &["sacrifice", "that", "token"],
+    &["sacrifice", "this", "permanent"],
+    &["sacrifice", "that", "permanent"],
+    &["sacrifice", "it"],
+    &["sacrifice", "them"],
+    &["it", "has"],
+    &["it", "gains"],
+    &["they", "have"],
+    &["they", "gain"],
+    &["equip"],
+    &["equipped", "creature"],
+    &["enchanted", "creature"],
+    &["r"],
+    &["t"],
+];
+
+const DESTROY_EXILE_GAIN_CONTROL_ALL_PREFIXES: &[&[&str]] = &[
+    &["destroy", "all"],
+    &["exile", "all"],
+    &["gain", "control", "of", "all"],
+];
+const GENERIC_FOR_EACH_PREFIXES: &[&[&str]] = &[&["for", "each"], &["each"]];
+const REST_PREFIXES: &[&[&str]] = &[&["the", "rest"], &["rest"]];
+const PHASES_END_PREFIXES: &[&[&str]] = &[&["phases", "end"]];
+const CLASH_PREFIXES: &[&[&str]] = &[&["clash"], &["clashes"]];
+const THAT_MANY_FOLLOWUP_PREFIXES: &[&[&str]] = &[
+    &["draw", "that", "many"],
+    &["draws", "that", "many"],
+    &["create", "that", "many"],
+    &["creates", "that", "many"],
+];
+const LIFE_EQUAL_TO_THAT_PREFIXES: &[&[&str]] = &[
+    &["gain", "life", "equal", "to", "that"],
+    &["gains", "life", "equal", "to", "that"],
+    &["lose", "life", "equal", "to", "that"],
+    &["loses", "life", "equal", "to", "that"],
+];
+const DEAL_DAMAGE_EQUAL_TO_PREFIXES: &[&[&str]] = &[
+    &["it", "deal", "damage", "equal", "to"],
+    &["it", "deals", "damage", "equal", "to"],
+    &["that", "creature", "deal", "damage", "equal", "to"],
+    &["that", "creature", "deals", "damage", "equal", "to"],
+    &["that", "objects", "deal", "damage", "equal", "to"],
+    &["that", "objects", "deals", "damage", "equal", "to"],
+];
+const PUT_PREFIXES: &[&[&str]] = &[&["put"], &["puts"]];
+const PUT_BACK_PREFIXES: &[&[&str]] = &[
+    &["put", "it", "back"],
+    &["put", "them", "back"],
+    &["puts", "it", "back"],
+    &["puts", "them", "back"],
+];
+
 pub(crate) fn strip_leading_instead_prefix(tokens: &[OwnedLexToken]) -> Option<Vec<OwnedLexToken>> {
     if !tokens.first().is_some_and(|token| token.is_word("instead"))
         || tokens
@@ -63,47 +144,11 @@ fn is_basic_color_word(word: &str) -> bool {
 }
 
 fn starts_with_each_player_or_opponent(tokens: &[OwnedLexToken]) -> bool {
-    grammar::words_match_prefix(tokens, &["each", "player"]).is_some()
-        || grammar::words_match_prefix(tokens, &["each", "players"]).is_some()
-        || grammar::words_match_prefix(tokens, &["each", "opponent"]).is_some()
-        || grammar::words_match_prefix(tokens, &["each", "opponents"]).is_some()
-        || grammar::words_match_prefix(tokens, &["for", "each", "player"]).is_some()
-        || grammar::words_match_prefix(tokens, &["for", "each", "players"]).is_some()
-        || grammar::words_match_prefix(tokens, &["for", "each", "opponent"]).is_some()
-        || grammar::words_match_prefix(tokens, &["for", "each", "opponents"]).is_some()
+    grammar::words_match_any_prefix(tokens, EACH_PLAYER_OR_OPPONENT_PREFIXES).is_some()
 }
 
 pub(crate) fn starts_with_inline_token_rules_tail(tokens: &[OwnedLexToken]) -> bool {
-    grammar::words_match_prefix(tokens, &["when"]).is_some()
-        || grammar::words_match_prefix(tokens, &["whenever"]).is_some()
-        || grammar::words_match_prefix(tokens, &["when", "this", "token"]).is_some()
-        || grammar::words_match_prefix(tokens, &["whenever", "this", "token"]).is_some()
-        || grammar::words_match_prefix(tokens, &["this", "token"]).is_some()
-        || grammar::words_match_prefix(tokens, &["that", "token"]).is_some()
-        || grammar::words_match_prefix(tokens, &["those", "tokens"]).is_some()
-        || grammar::words_match_prefix(tokens, &["except", "it"]).is_some()
-        || grammar::words_match_prefix(tokens, &["except", "they"]).is_some()
-        || grammar::words_match_prefix(tokens, &["except", "its"]).is_some()
-        || grammar::words_match_prefix(tokens, &["except", "their"]).is_some()
-        || grammar::words_match_prefix(tokens, &["this", "creature"]).is_some()
-        || grammar::words_match_prefix(tokens, &["that", "creature"]).is_some()
-        || grammar::words_match_prefix(tokens, &["at", "the", "beginning"]).is_some()
-        || grammar::words_match_prefix(tokens, &["at", "beginning"]).is_some()
-        || grammar::words_match_prefix(tokens, &["sacrifice", "this", "token"]).is_some()
-        || grammar::words_match_prefix(tokens, &["sacrifice", "that", "token"]).is_some()
-        || grammar::words_match_prefix(tokens, &["sacrifice", "this", "permanent"]).is_some()
-        || grammar::words_match_prefix(tokens, &["sacrifice", "that", "permanent"]).is_some()
-        || grammar::words_match_prefix(tokens, &["sacrifice", "it"]).is_some()
-        || grammar::words_match_prefix(tokens, &["sacrifice", "them"]).is_some()
-        || grammar::words_match_prefix(tokens, &["it", "has"]).is_some()
-        || grammar::words_match_prefix(tokens, &["it", "gains"]).is_some()
-        || grammar::words_match_prefix(tokens, &["they", "have"]).is_some()
-        || grammar::words_match_prefix(tokens, &["they", "gain"]).is_some()
-        || grammar::words_match_prefix(tokens, &["equip"]).is_some()
-        || grammar::words_match_prefix(tokens, &["equipped", "creature"]).is_some()
-        || grammar::words_match_prefix(tokens, &["enchanted", "creature"]).is_some()
-        || grammar::words_match_prefix(tokens, &["r"]).is_some()
-        || grammar::words_match_prefix(tokens, &["t"]).is_some()
+    grammar::words_match_any_prefix(tokens, INLINE_TOKEN_RULES_TAIL_PREFIXES).is_some()
 }
 
 fn starts_with_inline_token_rules_continuation(words: &[&str]) -> bool {
@@ -324,7 +369,6 @@ fn should_keep_and_for_token_rules_lexed(
     if !is_token_creation_context(current) && !has_inline_token_rules_context(&current_words) {
         return false;
     }
-    let remaining_words = token_word_refs(remaining);
     starts_with_inline_token_rules_tail(remaining)
 }
 
@@ -358,9 +402,7 @@ fn should_keep_and_for_attachment_object_list_lexed(
         return false;
     }
 
-    grammar::words_match_prefix(current, &["destroy", "all"]).is_some()
-        || grammar::words_match_prefix(current, &["exile", "all"]).is_some()
-        || grammar::words_match_prefix(current, &["gain", "control", "of", "all"]).is_some()
+    grammar::words_match_any_prefix(current, DESTROY_EXILE_GAIN_CONTROL_ALL_PREFIXES).is_some()
 }
 
 fn should_keep_and_for_each_player_may_clause_lexed(
@@ -382,9 +424,7 @@ fn should_keep_and_for_each_player_may_clause_lexed(
     if remaining.is_empty() {
         return false;
     }
-    if grammar::words_match_prefix(remaining, &["for", "each"]).is_some()
-        || grammar::words_match_prefix(remaining, &["each"]).is_some()
-    {
+    if grammar::words_match_any_prefix(remaining, GENERIC_FOR_EACH_PREFIXES).is_some() {
         return false;
     }
 
@@ -404,8 +444,7 @@ fn should_keep_and_for_put_rest_clause_lexed(
         return false;
     }
 
-    let starts_with_rest = grammar::words_match_prefix(remaining, &["the", "rest"]).is_some()
-        || grammar::words_match_prefix(remaining, &["rest"]).is_some();
+    let starts_with_rest = grammar::words_match_any_prefix(remaining, REST_PREFIXES).is_some();
     if !starts_with_rest {
         return false;
     }
@@ -420,7 +459,7 @@ fn should_keep_and_for_steps_and_phases_end_lexed(
     remaining: &[OwnedLexToken],
 ) -> bool {
     grammar::words_match_suffix(current, &["as", "steps"]).is_some()
-        && grammar::words_match_prefix(remaining, &["phases", "end"]).is_some()
+        && grammar::words_match_any_prefix(remaining, PHASES_END_PREFIXES).is_some()
 }
 
 fn should_keep_and_for_exchange_zones_lexed(
@@ -673,7 +712,6 @@ pub(crate) fn split_segments_on_comma_then_lexed(
     let back_ref_words = ["that", "it", "them", "its"];
     let mut result = Vec::new();
     for segment in segments {
-        let segment_words = token_word_refs(segment);
         let starts_with_for_each_player_or_opponent = starts_with_each_player_or_opponent(segment);
         let mut split_point = None;
         for i in 0..segment.len().saturating_sub(1) {
@@ -681,9 +719,8 @@ pub(crate) fn split_segments_on_comma_then_lexed(
                 && segment.get(i + 1).is_some_and(|t| t.is_word("then"))
             {
                 let before_then = trim_lexed_commas(&segment[..i]);
-                let starts_with_clash = grammar::words_match_prefix(before_then, &["clash"])
-                    .is_some()
-                    || grammar::words_match_prefix(before_then, &["clashes"]).is_some();
+                let starts_with_clash =
+                    grammar::words_match_any_prefix(before_then, CLASH_PREFIXES).is_some();
                 let after_then = trim_lexed_commas(&segment[i + 2..]);
                 let after_words = token_word_refs(after_then);
                 let has_back_ref = after_words
@@ -718,73 +755,24 @@ pub(crate) fn split_segments_on_comma_then_lexed(
                     .is_some_and(|word| matches!(*word, "attach" | "attaches"));
                 let allow_that_many_followup = !starts_with_for_each_player_or_opponent
                     && has_back_ref
-                    && (grammar::words_match_prefix(after_then, &["draw", "that", "many"])
-                        .is_some()
-                        || grammar::words_match_prefix(after_then, &["draws", "that", "many"])
-                            .is_some()
-                        || grammar::words_match_prefix(after_then, &["create", "that", "many"])
-                            .is_some()
-                        || grammar::words_match_prefix(after_then, &["creates", "that", "many"])
-                            .is_some());
+                    && grammar::words_match_any_prefix(after_then, THAT_MANY_FOLLOWUP_PREFIXES)
+                        .is_some();
                 let allow_gain_or_lose_life_equal_followup =
                     !starts_with_for_each_player_or_opponent
                         && has_back_ref
-                        && (grammar::words_match_prefix(
-                            after_then,
-                            &["gain", "life", "equal", "to", "that"],
-                        )
-                        .is_some()
-                            || grammar::words_match_prefix(
-                                after_then,
-                                &["gains", "life", "equal", "to", "that"],
-                            )
-                            .is_some()
-                            || grammar::words_match_prefix(
-                                after_then,
-                                &["lose", "life", "equal", "to", "that"],
-                            )
-                            .is_some()
-                            || grammar::words_match_prefix(
-                                after_then,
-                                &["loses", "life", "equal", "to", "that"],
-                            )
-                            .is_some());
+                        && grammar::words_match_any_prefix(after_then, LIFE_EQUAL_TO_THAT_PREFIXES)
+                            .is_some();
                 let allow_deal_damage_equal_power_followup =
                     !starts_with_for_each_player_or_opponent
                         && has_back_ref
-                        && (grammar::words_match_prefix(
+                        && grammar::words_match_any_prefix(
                             after_then,
-                            &["it", "deal", "damage", "equal", "to"],
+                            DEAL_DAMAGE_EQUAL_TO_PREFIXES,
                         )
-                        .is_some()
-                            || grammar::words_match_prefix(
-                                after_then,
-                                &["it", "deals", "damage", "equal", "to"],
-                            )
-                            .is_some()
-                            || grammar::words_match_prefix(
-                                after_then,
-                                &["that", "creature", "deal", "damage", "equal", "to"],
-                            )
-                            .is_some()
-                            || grammar::words_match_prefix(
-                                after_then,
-                                &["that", "creature", "deals", "damage", "equal", "to"],
-                            )
-                            .is_some()
-                            || grammar::words_match_prefix(
-                                after_then,
-                                &["that", "objects", "deal", "damage", "equal", "to"],
-                            )
-                            .is_some()
-                            || grammar::words_match_prefix(
-                                after_then,
-                                &["that", "objects", "deals", "damage", "equal", "to"],
-                            )
-                            .is_some());
+                        .is_some();
                 let allow_for_each_damage_followup = has_back_ref
-                    && (grammar::words_match_prefix(after_then, &["each"]).is_some()
-                        || grammar::words_match_prefix(after_then, &["for", "each"]).is_some())
+                    && grammar::words_match_any_prefix(after_then, GENERIC_FOR_EACH_PREFIXES)
+                        .is_some()
                     && after_words
                         .iter()
                         .any(|word| *word == "deal" || *word == "deals")
@@ -798,18 +786,11 @@ pub(crate) fn split_segments_on_comma_then_lexed(
                     && (grammar::words_find_phrase(after_then, &["on", "it"]).is_some()
                         || grammar::words_find_phrase(after_then, &["on", "them"]).is_some());
                 let allow_put_into_hand_followup = has_back_ref
-                    && (grammar::words_match_prefix(after_then, &["put"]).is_some()
-                        || grammar::words_match_prefix(after_then, &["puts"]).is_some())
+                    && grammar::words_match_any_prefix(after_then, PUT_PREFIXES).is_some()
                     && grammar::contains_word(after_then, "into")
                     && grammar::contains_word(after_then, "hand");
                 let allow_put_back_in_any_order_followup = has_back_ref
-                    && (grammar::words_match_prefix(after_then, &["put", "it", "back"]).is_some()
-                        || grammar::words_match_prefix(after_then, &["put", "them", "back"])
-                            .is_some()
-                        || grammar::words_match_prefix(after_then, &["puts", "it", "back"])
-                            .is_some()
-                        || grammar::words_match_prefix(after_then, &["puts", "them", "back"])
-                            .is_some())
+                    && grammar::words_match_any_prefix(after_then, PUT_BACK_PREFIXES).is_some()
                     && grammar::contains_word(after_then, "any")
                     && grammar::contains_word(after_then, "order");
                 let allow_clash_followup = starts_with_clash;

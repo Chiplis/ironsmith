@@ -1,6 +1,6 @@
 use winnow::Parser;
 use winnow::combinator::alt;
-use winnow::error::{ContextError, ErrMode, StrContext, StrContextValue};
+use winnow::error::{ContextError, ErrMode};
 
 use crate::cards::builders::{CardTextError, IT_TAG};
 use crate::effects::VOTE_WINNERS_TAG;
@@ -11,7 +11,7 @@ use crate::{
 };
 
 use super::effect_sentences::{parse_subtype_word, parse_supertype_word};
-use super::grammar::primitives::split_lexed_slices_on_or;
+use super::grammar::primitives::{self as grammar_primitives, split_lexed_slices_on_or};
 use super::keyword_static::parse_pt_modifier;
 use super::lexer::{OwnedLexToken, TokenWordView};
 use super::util::{
@@ -49,58 +49,81 @@ pub(super) fn normalized_token_index_after_words(
         .or_else(|| (word_count == word_refs.len()).then_some(tokens.len()))
 }
 
-type WordInput<'a> = &'a [&'a str];
+use grammar_primitives::{
+    WordSliceInput, parse_full_word_slice, parse_prefix_word_slice, word_slice_eq,
+};
 
-fn word_eq<'a>(expected: &'static str) -> impl Parser<WordInput<'a>, (), ErrMode<ContextError>> {
+type WordInput<'a> = WordSliceInput<'a>;
+
+fn word_slice_match<'a>(
+    expected: &str,
+) -> impl Parser<WordInput<'a>, (), ErrMode<ContextError>> + '_ {
     move |input: &mut WordInput<'a>| {
         let Some((word, rest)) = input.split_first() else {
-            let mut err = ContextError::new();
-            err.push(StrContext::Label("word"));
-            err.push(StrContext::Expected(StrContextValue::Description(expected)));
-            return Err(ErrMode::Backtrack(err));
+            return Err(grammar_primitives::backtrack_err("word", "matching word"));
         };
         if word.eq_ignore_ascii_case(expected) {
             *input = rest;
             Ok(())
         } else {
-            let mut err = ContextError::new();
-            err.push(StrContext::Label("word"));
-            err.push(StrContext::Expected(StrContextValue::Description(expected)));
-            Err(ErrMode::Backtrack(err))
+            Err(grammar_primitives::backtrack_err("word", "matching word"))
         }
     }
 }
 
-fn words_eof<'a>(input: &mut WordInput<'a>) -> Result<(), ErrMode<ContextError>> {
-    if input.is_empty() {
+pub(super) fn word_slice_phrase<'a, 'b>(
+    expected: &'b [&'b str],
+) -> impl Parser<WordInput<'a>, (), ErrMode<ContextError>> + 'b {
+    move |input: &mut WordInput<'a>| {
+        for word in expected {
+            word_slice_match(word).parse_next(input)?;
+        }
         Ok(())
-    } else {
-        let mut err = ContextError::new();
-        err.push(StrContext::Label("word input"));
-        err.push(StrContext::Expected(StrContextValue::Description(
-            "end of words",
-        )));
-        Err(ErrMode::Backtrack(err))
     }
 }
 
-fn parse_full_words<'a, O>(
-    words: &'a [&'a str],
-    parser: impl Parser<WordInput<'a>, O, ErrMode<ContextError>>,
-) -> Option<O> {
-    let mut input = words;
-    (parser, words_eof)
-        .map(|(parsed, ())| parsed)
-        .parse_next(&mut input)
-        .ok()
+pub(super) fn word_slice_any_phrase<'a, 'b>(
+    phrases: &'b [&'b [&'b str]],
+) -> impl Parser<WordInput<'a>, &'b [&'b str], ErrMode<ContextError>> + 'b {
+    move |input: &mut WordInput<'a>| {
+        for phrase in phrases {
+            let mut probe = *input;
+            if word_slice_phrase(*phrase).parse_next(&mut probe).is_ok() {
+                *input = probe;
+                return Ok(*phrase);
+            }
+        }
+
+        Err(grammar_primitives::backtrack_err(
+            "word phrase choice",
+            "one of the expected word phrases",
+        ))
+    }
 }
 
-fn parse_prefix_words<'a, O>(
+pub(super) fn find_word_slice_parse<'a, O, P, F>(
     words: &'a [&'a str],
-    mut parser: impl Parser<WordInput<'a>, O, ErrMode<ContextError>>,
-) -> Option<O> {
-    let mut input = words;
-    parser.parse_next(&mut input).ok()
+    make_parser: F,
+) -> Option<(usize, O, usize)>
+where
+    F: Fn() -> P + Copy,
+    P: Parser<WordInput<'a>, O, ErrMode<ContextError>>,
+{
+    (0..words.len()).find_map(|idx| {
+        let mut input = &words[idx..];
+        let parsed = make_parser().parse_next(&mut input).ok()?;
+        Some((idx, parsed, words.len().saturating_sub(idx + input.len())))
+    })
+}
+
+pub(super) fn find_word_slice_phrase_start(words: &[&str], phrase: &[&str]) -> Option<usize> {
+    find_word_slice_parse(words, || word_slice_phrase(phrase).void()).map(|(idx, _, _)| idx)
+}
+
+fn contains_any_word_slice_phrase(words: &[&str], phrases: &[&[&str]]) -> bool {
+    phrases
+        .iter()
+        .any(|phrase| find_word_slice_phrase_start(words, phrase).is_some())
 }
 
 #[derive(Clone)]
@@ -119,13 +142,13 @@ enum NamedObjectFilterWordAtom {
 }
 
 pub(super) fn parse_filter_face_state_words(words: &[&str]) -> Option<(bool, usize)> {
-    parse_prefix_words(
+    parse_prefix_word_slice(
         words,
         alt((
-            alt((word_eq("face-down"), word_eq("facedown"))).value((true, 1usize)),
-            alt((word_eq("face-up"), word_eq("faceup"))).value((false, 1usize)),
-            (word_eq("face"), word_eq("down")).value((true, 2usize)),
-            (word_eq("face"), word_eq("up")).value((false, 2usize)),
+            alt((word_slice_eq("face-down"), word_slice_eq("facedown"))).value((true, 1usize)),
+            alt((word_slice_eq("face-up"), word_slice_eq("faceup"))).value((false, 1usize)),
+            (word_slice_eq("face"), word_slice_eq("down")).value((true, 2usize)),
+            (word_slice_eq("face"), word_slice_eq("up")).value((false, 2usize)),
         )),
     )
 }
@@ -133,14 +156,14 @@ pub(super) fn parse_filter_face_state_words(words: &[&str]) -> Option<(bool, usi
 fn parse_named_object_filter_word_atom(
     words: &[&str],
 ) -> Option<(NamedObjectFilterWordAtom, usize)> {
-    parse_prefix_words(
+    parse_prefix_word_slice(
         words,
         alt((
-            (word_eq("chosen"), word_eq("color"))
+            (word_slice_eq("chosen"), word_slice_eq("color"))
                 .value((NamedObjectFilterWordAtom::ChosenColor, 2usize)),
-            (word_eq("chosen"), word_eq("type"))
+            (word_slice_eq("chosen"), word_slice_eq("type"))
                 .value((NamedObjectFilterWordAtom::ChosenType, 2usize)),
-            (word_eq("nonchosen"), word_eq("type"))
+            (word_slice_eq("nonchosen"), word_slice_eq("type"))
                 .value((NamedObjectFilterWordAtom::NonChosenType, 2usize)),
         )),
     )
@@ -151,52 +174,52 @@ fn parse_simple_object_filter_suffix_inner<'a>(
 ) -> Result<SimpleObjectFilterSuffix, ErrMode<ContextError>> {
     alt((
         alt((
-            (word_eq("you"), word_eq("control"))
+            (word_slice_eq("you"), word_slice_eq("control"))
                 .value(SimpleObjectFilterSuffix::Controller(PlayerFilter::You)),
             (
-                word_eq("you"),
-                alt((word_eq("dont"), word_eq("don't"))),
-                word_eq("control"),
+                word_slice_eq("you"),
+                alt((word_slice_eq("dont"), word_slice_eq("don't"))),
+                word_slice_eq("control"),
             )
                 .value(SimpleObjectFilterSuffix::Controller(PlayerFilter::NotYou)),
             (
-                word_eq("you"),
-                word_eq("do"),
-                word_eq("not"),
-                word_eq("control"),
+                word_slice_eq("you"),
+                word_slice_eq("do"),
+                word_slice_eq("not"),
+                word_slice_eq("control"),
             )
                 .value(SimpleObjectFilterSuffix::Controller(PlayerFilter::NotYou)),
             alt((
-                (word_eq("opponents"), word_eq("control")),
-                (word_eq("opponent"), word_eq("controls")),
+                (word_slice_eq("opponents"), word_slice_eq("control")),
+                (word_slice_eq("opponent"), word_slice_eq("controls")),
             ))
             .value(SimpleObjectFilterSuffix::Controller(PlayerFilter::Opponent)),
-            (word_eq("you"), word_eq("own"))
+            (word_slice_eq("you"), word_slice_eq("own"))
                 .value(SimpleObjectFilterSuffix::Owner(PlayerFilter::You)),
         )),
         alt((
             (
-                alt((word_eq("in"), word_eq("from"))),
-                word_eq("your"),
-                word_eq("graveyard"),
+                alt((word_slice_eq("in"), word_slice_eq("from"))),
+                word_slice_eq("your"),
+                word_slice_eq("graveyard"),
             )
                 .value(SimpleObjectFilterSuffix::OwnerZone(
                     PlayerFilter::You,
                     Zone::Graveyard,
                 )),
             (
-                alt((word_eq("in"), word_eq("from"))),
-                word_eq("your"),
-                word_eq("hand"),
+                alt((word_slice_eq("in"), word_slice_eq("from"))),
+                word_slice_eq("your"),
+                word_slice_eq("hand"),
             )
                 .value(SimpleObjectFilterSuffix::OwnerZone(
                     PlayerFilter::You,
                     Zone::Hand,
                 )),
             (
-                alt((word_eq("in"), word_eq("from"))),
-                word_eq("your"),
-                word_eq("library"),
+                alt((word_slice_eq("in"), word_slice_eq("from"))),
+                word_slice_eq("your"),
+                word_slice_eq("library"),
             )
                 .value(SimpleObjectFilterSuffix::OwnerZone(
                     PlayerFilter::You,
@@ -204,13 +227,25 @@ fn parse_simple_object_filter_suffix_inner<'a>(
                 )),
         )),
         alt((
-            (alt((word_eq("in"), word_eq("from"))), word_eq("graveyard"))
+            (
+                alt((word_slice_eq("in"), word_slice_eq("from"))),
+                word_slice_eq("graveyard"),
+            )
                 .value(SimpleObjectFilterSuffix::Zone(Zone::Graveyard)),
-            (alt((word_eq("in"), word_eq("from"))), word_eq("hand"))
+            (
+                alt((word_slice_eq("in"), word_slice_eq("from"))),
+                word_slice_eq("hand"),
+            )
                 .value(SimpleObjectFilterSuffix::Zone(Zone::Hand)),
-            (alt((word_eq("in"), word_eq("from"))), word_eq("library"))
+            (
+                alt((word_slice_eq("in"), word_slice_eq("from"))),
+                word_slice_eq("library"),
+            )
                 .value(SimpleObjectFilterSuffix::Zone(Zone::Library)),
-            (alt((word_eq("in"), word_eq("from"))), word_eq("exile"))
+            (
+                alt((word_slice_eq("in"), word_slice_eq("from"))),
+                word_slice_eq("exile"),
+            )
                 .value(SimpleObjectFilterSuffix::Zone(Zone::Exile)),
         )),
     ))
@@ -220,27 +255,11 @@ fn parse_simple_object_filter_suffix_inner<'a>(
 fn parse_simple_object_filter_suffix(words: &[&str]) -> Option<(SimpleObjectFilterSuffix, usize)> {
     for suffix_len in [4usize, 3, 2] {
         let tail = words.get(words.len().checked_sub(suffix_len)?..)?;
-        if let Some(parsed) = parse_full_words(tail, parse_simple_object_filter_suffix_inner) {
+        if let Some(parsed) = parse_full_word_slice(tail, parse_simple_object_filter_suffix_inner) {
             return Some((parsed, suffix_len));
         }
     }
     None
-}
-
-pub(super) fn lower_words_starts_with(words: &[&str], prefix: &[&str]) -> bool {
-    if prefix.len() > words.len() {
-        return false;
-    }
-    for (idx, expected) in prefix.iter().enumerate() {
-        if words[idx] != *expected {
-            return false;
-        }
-    }
-    true
-}
-
-pub(super) fn lower_words_contains(words: &[&str], expected: &str) -> bool {
-    words.iter().any(|word| *word == expected)
 }
 
 pub(super) fn lower_words_find_index(
@@ -255,48 +274,6 @@ pub(super) fn lower_words_find_index(
     None
 }
 
-pub(super) fn lower_words_find_sequence(words: &[&str], sequence: &[&str]) -> Option<usize> {
-    if sequence.is_empty() {
-        return Some(0);
-    }
-    if sequence.len() > words.len() {
-        return None;
-    }
-    for start in 0..=words.len() - sequence.len() {
-        if words[start..start + sequence.len()] == *sequence {
-            return Some(start);
-        }
-    }
-    None
-}
-
-pub(super) fn lower_words_find_window(
-    words: &[&str],
-    window_len: usize,
-    mut predicate: impl FnMut(&[&str]) -> bool,
-) -> Option<usize> {
-    if window_len == 0 {
-        return Some(0);
-    }
-    if window_len > words.len() {
-        return None;
-    }
-    for start in 0..=words.len() - window_len {
-        if predicate(&words[start..start + window_len]) {
-            return Some(start);
-        }
-    }
-    None
-}
-
-pub(super) fn lower_words_has_window(
-    words: &[&str],
-    window_len: usize,
-    predicate: impl FnMut(&[&str]) -> bool,
-) -> bool {
-    lower_words_find_window(words, window_len, predicate).is_some()
-}
-
 pub(super) fn token_find_index(
     tokens: &[OwnedLexToken],
     mut predicate: impl FnMut(&OwnedLexToken) -> bool,
@@ -304,25 +281,6 @@ pub(super) fn token_find_index(
     for (idx, token) in tokens.iter().enumerate() {
         if predicate(token) {
             return Some(idx);
-        }
-    }
-    None
-}
-
-pub(super) fn token_find_window(
-    tokens: &[OwnedLexToken],
-    window_len: usize,
-    mut predicate: impl FnMut(&[OwnedLexToken]) -> bool,
-) -> Option<usize> {
-    if window_len == 0 {
-        return Some(0);
-    }
-    if window_len > tokens.len() {
-        return None;
-    }
-    for start in 0..=tokens.len() - window_len {
-        if predicate(&tokens[start..start + window_len]) {
-            return Some(start);
         }
     }
     None
@@ -363,19 +321,19 @@ pub(super) fn strip_not_on_battlefield_phrase(tokens: &mut Vec<OwnedLexToken>) -
 
     let word_view = TokenWordView::new(tokens);
     let words = word_view.to_word_refs();
-    for pattern in patterns {
-        let Some(word_start) = lower_words_find_sequence(&words, pattern) else {
-            continue;
-        };
-        let Some(token_start) = normalized_token_index_for_word_index(tokens, word_start) else {
-            continue;
-        };
-        let token_end = normalized_token_index_for_word_index(tokens, word_start + pattern.len())
+    let Some((word_start, matched_phrase, _)) =
+        find_word_slice_parse(&words, || word_slice_any_phrase(patterns))
+    else {
+        return false;
+    };
+    let Some(token_start) = normalized_token_index_for_word_index(tokens, word_start) else {
+        return false;
+    };
+    let token_end =
+        normalized_token_index_for_word_index(tokens, word_start + matched_phrase.len())
             .unwrap_or(tokens.len());
-        tokens.drain(token_start..token_end);
-        return true;
-    }
-    false
+    tokens.drain(token_start..token_end);
+    true
 }
 
 pub(super) fn trim_vote_winner_suffix(tokens: &[OwnedLexToken]) -> (Vec<OwnedLexToken>, bool) {
@@ -384,87 +342,73 @@ pub(super) fn trim_vote_winner_suffix(tokens: &[OwnedLexToken]) -> (Vec<OwnedLex
     let suffix = [
         "with", "most", "votes", "or", "tied", "for", "most", "votes",
     ];
-    if words.len() < suffix.len() || words[words.len() - suffix.len()..] != suffix {
+    let Some(suffix_start) = words.len().checked_sub(suffix.len()) else {
+        return (tokens.to_vec(), false);
+    };
+    if parse_full_word_slice(&words[suffix_start..], word_slice_phrase(&suffix)).is_none() {
         return (tokens.to_vec(), false);
     }
 
-    let Some(token_end) = normalized_token_index_for_word_index(tokens, words.len() - suffix.len())
-    else {
+    let Some(token_end) = normalized_token_index_for_word_index(tokens, suffix_start) else {
         return (tokens.to_vec(), false);
     };
     (trim_commas(&tokens[..token_end]), true)
 }
 
-fn parse_parity_word(word: &str) -> Option<ParityRequirement> {
-    match word {
-        "odd" => Some(ParityRequirement::Odd),
-        "even" => Some(ParityRequirement::Even),
-        _ => None,
-    }
-}
-
 pub(super) fn apply_parity_filter_phrases(words: &[&str], filter: &mut ObjectFilter) {
-    let mut idx = 0usize;
-    while idx + 2 < words.len() {
-        let window = &words[idx..idx + 3];
-        if let Some(parity) = parse_parity_word(window[0]) {
-            match &window[1..] {
-                ["mana", "value"] | ["mana", "values"] => filter.mana_value_parity = Some(parity),
-                ["power", _] => {}
-                _ => {}
-            }
+    for (parity, phrases) in [
+        (
+            ParityRequirement::Odd,
+            &[
+                &["odd", "mana", "value"][..],
+                &["odd", "mana", "values"][..],
+            ][..],
+        ),
+        (
+            ParityRequirement::Even,
+            &[
+                &["even", "mana", "value"][..],
+                &["even", "mana", "values"][..],
+            ][..],
+        ),
+    ] {
+        if contains_any_word_slice_phrase(words, phrases) {
+            filter.mana_value_parity = Some(parity);
         }
-        idx += 1;
     }
-    let mut idx = 0usize;
-    while idx + 1 < words.len() {
-        let window = &words[idx..idx + 2];
-        if let Some(parity) = parse_parity_word(window[0])
-            && window[1] == "power"
-        {
+
+    for (parity, phrases) in [
+        (ParityRequirement::Odd, &[&["odd", "power"][..]][..]),
+        (ParityRequirement::Even, &[&["even", "power"][..]][..]),
+    ] {
+        if contains_any_word_slice_phrase(words, phrases) {
             filter.power_parity = Some(parity);
         }
-        idx += 1;
     }
-    let mut idx = 0usize;
-    while idx + 3 < words.len() {
-        let window = &words[idx..idx + 4];
-        if matches!(
-            window,
-            ["power", "of", "chosen", "quality"] | ["power", "of", "that", "quality"]
-        ) {
-            filter.power_parity = Some(ParityRequirement::Chosen);
-        }
-        idx += 1;
+
+    if contains_any_word_slice_phrase(
+        words,
+        &[
+            &["power", "of", "chosen", "quality"],
+            &["power", "of", "that", "quality"],
+            &["power", "of", "the", "chosen", "quality"],
+        ],
+    ) {
+        filter.power_parity = Some(ParityRequirement::Chosen);
     }
-    let mut idx = 0usize;
-    while idx + 4 < words.len() {
-        let window = &words[idx..idx + 5];
-        if matches!(window, ["power", "of", "the", "chosen", "quality"]) {
-            filter.power_parity = Some(ParityRequirement::Chosen);
-        }
-        if matches!(
-            window,
-            ["mana", "value", "of", "chosen", "quality"]
-                | ["mana", "value", "of", "that", "quality"]
-                | ["mana", "values", "of", "chosen", "quality"]
-                | ["mana", "values", "of", "that", "quality"]
-        ) {
-            filter.mana_value_parity = Some(ParityRequirement::Chosen);
-        }
-        idx += 1;
-    }
-    let mut idx = 0usize;
-    while idx + 5 < words.len() {
-        let window = &words[idx..idx + 6];
-        if matches!(
-            window,
-            ["mana", "value", "of", "the", "chosen", "quality"]
-                | ["mana", "values", "of", "the", "chosen", "quality"]
-        ) {
-            filter.mana_value_parity = Some(ParityRequirement::Chosen);
-        }
-        idx += 1;
+
+    if contains_any_word_slice_phrase(
+        words,
+        &[
+            &["mana", "value", "of", "chosen", "quality"],
+            &["mana", "value", "of", "that", "quality"],
+            &["mana", "values", "of", "chosen", "quality"],
+            &["mana", "values", "of", "that", "quality"],
+            &["mana", "value", "of", "the", "chosen", "quality"],
+            &["mana", "values", "of", "the", "chosen", "quality"],
+        ],
+    ) {
+        filter.mana_value_parity = Some(ParityRequirement::Chosen);
     }
 }
 
@@ -927,6 +871,21 @@ mod tests {
         assert!(filter.excluded_chosen_creature_type);
         assert_eq!(filter.card_types, vec![CardType::Creature]);
         assert_eq!(filter.zone, Some(Zone::Battlefield));
+    }
+
+    #[test]
+    fn apply_parity_filter_phrases_detects_chosen_quality_and_odd_mana_value() {
+        let mut filter = ObjectFilter::default();
+
+        apply_parity_filter_phrases(
+            &[
+                "odd", "mana", "value", "and", "power", "of", "chosen", "quality",
+            ],
+            &mut filter,
+        );
+
+        assert_eq!(filter.mana_value_parity, Some(ParityRequirement::Odd));
+        assert_eq!(filter.power_parity, Some(ParityRequirement::Chosen));
     }
 }
 
