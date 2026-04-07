@@ -20,6 +20,7 @@ use super::super::util::{
     is_article, is_source_reference_words, parse_mana_symbol, parse_target_phrase,
     span_from_tokens, token_index_for_word_index, trim_commas,
 };
+use super::clause_dispatch::parse_become_clause;
 use super::dispatch_inner::trim_edge_punctuation;
 use super::lex_chain_helpers::find_verb_lexed;
 use super::sentence_helpers::*;
@@ -787,6 +788,34 @@ pub(crate) fn parse_gain_ability_sentence(
     // Check for "gets +X/+Y and gains/has/loses ..." patterns - if there's a pump
     // modifier before the ability verb, extract it as a separate Pump/PumpAll effect.
     let before_gain = &word_list[subject_start_word_idx..gain_idx];
+    let leading_become_effect = if let Some(become_idx) =
+        find_word_index_by(before_gain, |word| matches!(word, "become" | "becomes"))
+    {
+        let become_word_idx = subject_start_word_idx + become_idx;
+        let Some(become_token_idx) = token_index_for_word_index(tokens, become_word_idx) else {
+            return Ok(None);
+        };
+        let become_subject_tokens = trim_commas(&tokens[subject_start_token_idx..become_token_idx]);
+        let mut become_tail_tokens =
+            trim_commas(&tokens[become_token_idx + 1..gain_token_idx]).to_vec();
+        while become_tail_tokens
+            .last()
+            .is_some_and(|token| token.is_word("and") || token.is_word("then"))
+        {
+            become_tail_tokens.pop();
+        }
+        let become_tail_tokens = trim_commas(&become_tail_tokens);
+        if become_subject_tokens.is_empty() || become_tail_tokens.is_empty() {
+            None
+        } else {
+            Some(parse_become_clause(
+                &become_subject_tokens,
+                &become_tail_tokens,
+            )?)
+        }
+    } else {
+        None
+    };
     let get_idx = find_word_index_by(before_gain, |word| matches!(word, "get" | "gets"));
     let pump_effect = if let Some(gi) = get_idx {
         let mod_word = before_gain.get(gi + 1).copied().unwrap_or("");
@@ -826,6 +855,9 @@ pub(crate) fn parse_gain_ability_sentence(
     if is_pronoun_subject {
         let span = span_from_tokens(&real_subject_tokens);
         let target = TargetAst::Tagged(TagKey::from(IT_TAG), span);
+        if let Some(become_effect) = &leading_become_effect {
+            effects.push(become_effect.clone());
+        }
         if let Some((power, toughness, _)) = pump_effect {
             effects.push(EffectAst::Pump {
                 power,
@@ -863,6 +895,9 @@ pub(crate) fn parse_gain_ability_sentence(
         .is_some_and(|word| *word == "that" || *word == "those");
     if is_demonstrative_subject {
         let target = parse_target_phrase(&real_subject_tokens)?;
+        if let Some(become_effect) = &leading_become_effect {
+            effects.push(become_effect.clone());
+        }
         if let Some((power, toughness, _)) = pump_effect {
             effects.push(EffectAst::Pump {
                 power,
@@ -896,8 +931,11 @@ pub(crate) fn parse_gain_ability_sentence(
     }
 
     if word_slice_contains(before_gain, "target") {
-        let has_pump_effect = pump_effect.is_some();
+        let has_preceding_target_effect = pump_effect.is_some() || leading_become_effect.is_some();
         let target = parse_target_phrase(&real_subject_tokens)?;
+        if let Some(become_effect) = &leading_become_effect {
+            effects.push(become_effect.clone());
+        }
         if let Some((power, toughness, _)) = pump_effect {
             effects.push(EffectAst::Pump {
                 power,
@@ -907,7 +945,7 @@ pub(crate) fn parse_gain_ability_sentence(
                 condition: None,
             });
         }
-        let grant_target = if has_pump_effect {
+        let grant_target = if has_preceding_target_effect {
             TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&real_subject_tokens))
         } else {
             target
@@ -983,6 +1021,9 @@ pub(crate) fn parse_gain_ability_sentence(
         ))
     })?;
 
+    if let Some(become_effect) = &leading_become_effect {
+        effects.push(become_effect.clone());
+    }
     if let Some((power, toughness, _)) = pump_effect {
         effects.push(EffectAst::PumpAll {
             filter: filter.clone(),

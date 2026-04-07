@@ -6194,6 +6194,31 @@ pub(super) fn describe_apply_continuous_clauses(
             let verb = if plural_target { "become" } else { "becomes" };
             clauses.push(format!("{verb} {descriptor} in addition to {other_types}"));
         }
+        crate::continuous::Modification::AddSubtypes(subtypes) => {
+            let mut words: Vec<String> = subtypes
+                .iter()
+                .map(|subtype| subtype.to_string().to_ascii_lowercase())
+                .collect();
+            if words.is_empty() {
+                return;
+            }
+
+            let descriptor = if plural_target {
+                if let Some(last) = words.last_mut() {
+                    *last = pluralize_word(last);
+                }
+                words.join(" ")
+            } else {
+                with_indefinite_article(&words.join(" "))
+            };
+            let other_types = if plural_target {
+                "their other types"
+            } else {
+                "its other types"
+            };
+            let verb = if plural_target { "become" } else { "becomes" };
+            clauses.push(format!("{verb} {descriptor} in addition to {other_types}"));
+        }
         crate::continuous::Modification::RemoveCardTypes(card_types) => {
             let words = card_types
                 .iter()

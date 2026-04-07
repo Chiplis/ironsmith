@@ -21901,6 +21901,39 @@ fn strength_of_will_compiled_text_keeps_target_and_granted_trigger() {
 }
 
 #[test]
+fn enter_the_avatar_state_keeps_shared_duration_and_targeted_subtype_gain() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Enter the Avatar State")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Until end of turn, target creature you control becomes an Avatar in addition to its other types and gains flying, first strike, lifelink, and hexproof.",
+        )
+        .expect("Enter the Avatar State should parse");
+
+    let spell_debug = format!("{:?}", def.spell_effect);
+    assert!(
+        spell_debug.contains("AddSubtypes")
+            && spell_debug.contains("Avatar")
+            && spell_debug.contains("AddAbility")
+            && spell_debug.matches("EndOfTurn").count() >= 2,
+        "expected targeted subtype and keyword grants to share until-end-of-turn duration, got {spell_debug}"
+    );
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        !rendered.contains("unsupported effect")
+            && rendered.contains(
+                "target creature you control becomes an avatar in addition to its other types"
+            )
+            && rendered.contains("it gains flying")
+            && rendered.contains("first strike")
+            && rendered.contains("lifelink")
+            && rendered.contains("hexproof")
+            && rendered.matches("until end of turn").count() >= 2,
+        "expected clean compiled text for Enter the Avatar State, got {rendered}"
+    );
+}
+
+#[test]
 fn anti_venom_static_damage_replacement_compiles() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Anti-Venom, Horrifying Healer")
         .card_types(vec![CardType::Creature])
