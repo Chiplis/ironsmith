@@ -127,6 +127,13 @@ fn pluralized_subject_text(filter: &ObjectFilter) -> String {
     if subject.starts_with("another ") {
         subject = subject.replacen("another ", "other ", 1);
     }
+    if let Some((base, tail)) = subject.split_once(" blocking or blocked by ") {
+        return format!(
+            "{} blocking or blocked by {}",
+            pluralize_noun_phrase(base),
+            tail
+        );
+    }
     let should_preserve_singular = (subject.starts_with("enchanted ")
         || subject.starts_with("equipped "))
         && filter.controller.is_none()
@@ -750,6 +757,12 @@ fn describe_static_condition(condition: &crate::ConditionExpr) -> String {
         crate::ConditionExpr::PlayerHasInitiative { player } => match player {
             crate::target::PlayerFilter::You => "as long as you have the initiative".to_string(),
             _ => "as long as that player has the initiative".to_string(),
+        },
+        crate::ConditionExpr::PlayerCommittedCrimeThisTurn { player } => match player {
+            crate::target::PlayerFilter::You => {
+                "as long as you've committed a crime this turn".to_string()
+            }
+            _ => "as long as that player committed a crime this turn".to_string(),
         },
         crate::ConditionExpr::PlayerCompletedDungeon {
             player,

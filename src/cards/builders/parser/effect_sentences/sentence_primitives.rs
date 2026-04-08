@@ -1398,7 +1398,18 @@ pub(crate) fn parse_return_with_counters_on_it_sentence(
 
     let on_target_words =
         crate::cards::builders::parser::token_word_refs(&counter_clause_tokens[on_idx + 1..]);
-    if on_target_words != ["it"] && on_target_words != ["them"] {
+    let timing_words =
+        if on_target_words.starts_with(&["it"]) || on_target_words.starts_with(&["them"]) {
+            &on_target_words[1..]
+        } else {
+            return Ok(None);
+        };
+    let delayed_timing = if timing_words.is_empty() {
+        None
+    } else {
+        super::zone_handlers::parse_delayed_return_timing_words(timing_words)
+    };
+    if !timing_words.is_empty() && delayed_timing.is_none() {
         return Ok(None);
     }
 
@@ -1444,7 +1455,23 @@ pub(crate) fn parse_return_with_counters_on_it_sentence(
         });
     }
 
-    Ok(Some(effects))
+    let wrapped = if let Some(timing) = delayed_timing {
+        match timing {
+            super::zone_handlers::DelayedReturnTimingAst::NextEndStep(player) => {
+                vec![EffectAst::DelayedUntilNextEndStep { player, effects }]
+            }
+            super::zone_handlers::DelayedReturnTimingAst::NextUpkeep(player) => {
+                vec![EffectAst::DelayedUntilNextUpkeep { player, effects }]
+            }
+            super::zone_handlers::DelayedReturnTimingAst::EndOfCombat => {
+                vec![EffectAst::DelayedUntilEndOfCombat { effects }]
+            }
+        }
+    } else {
+        effects
+    };
+
+    Ok(Some(wrapped))
 }
 
 pub(crate) fn parse_put_onto_battlefield_with_counters_on_it_sentence(
@@ -2804,6 +2831,62 @@ pub(crate) fn parse_sentence_pump_creature_type_of_choice(
             duration,
         },
     ]))
+}
+
+pub(crate) fn parse_sentence_put_sticker_on(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
+    if !matches!(clause_words.first().copied(), Some("put" | "puts")) {
+        return Ok(None);
+    }
+    let Some(sticker_idx) = find_index(&clause_words, |word| {
+        matches!(*word, "sticker" | "stickers")
+    }) else {
+        return Ok(None);
+    };
+    let Some(on_idx) = rfind_index(&clause_words, |word| *word == "on") else {
+        return Ok(None);
+    };
+    if on_idx <= sticker_idx || on_idx + 1 >= clause_words.len() {
+        return Ok(None);
+    }
+
+    let action = if contains_word_sequence(&clause_words[..=sticker_idx], &["name", "sticker"]) {
+        crate::events::KeywordActionKind::NameSticker
+    } else if contains_word_sequence(&clause_words[..=sticker_idx], &["art", "sticker"]) {
+        crate::events::KeywordActionKind::ArtSticker
+    } else if contains_word_sequence(&clause_words[..=sticker_idx], &["ability", "sticker"]) {
+        crate::events::KeywordActionKind::AbilitySticker
+    } else {
+        crate::events::KeywordActionKind::Sticker
+    };
+
+    let Some(target_start) = token_index_for_word_index(tokens, on_idx + 1) else {
+        return Ok(None);
+    };
+    let target_tokens = trim_commas(&tokens[target_start..]);
+    if target_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let target_words = crate::cards::builders::parser::token_word_refs(&target_tokens);
+    if target_words
+        .first()
+        .is_some_and(|word| matches!(*word, "target" | "it" | "them" | "that" | "those" | "this"))
+    {
+        let target = parse_target_phrase(&target_tokens)?;
+        return Ok(Some(vec![EffectAst::PutSticker { target, action }]));
+    }
+
+    let mut filter = parse_object_filter(&target_tokens, false)?;
+    if filter.zone.is_none() {
+        filter.zone = Some(crate::zone::Zone::Battlefield);
+    }
+    Ok(Some(vec![EffectAst::PutSticker {
+        target: TargetAst::Object(filter, None, None),
+        action,
+    }]))
 }
 
 pub(crate) fn parse_sentence_return_targets_of_creature_type_of_choice(
@@ -5350,6 +5433,10 @@ pub(crate) const PRE_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
     SentencePrimitive {
         name: "put-multiple-counters-on-target",
         parser: parse_sentence_put_multiple_counters_on_target,
+    },
+    SentencePrimitive {
+        name: "put-sticker-on",
+        parser: parse_sentence_put_sticker_on,
     },
     SentencePrimitive {
         name: "you-and-target-player-each-draw",

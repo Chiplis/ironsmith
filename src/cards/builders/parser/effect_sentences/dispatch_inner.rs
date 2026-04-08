@@ -1145,6 +1145,38 @@ fn sentence_has_unsupported_negated_untap_clause(_: &[&str], tokens: &[OwnedLexT
 pub(crate) fn parse_effect_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    fn search_followup_shuffle_player(effect: &EffectAst) -> Option<PlayerAst> {
+        match effect {
+            EffectAst::SearchLibrary { player, .. } => Some(*player),
+            _ => None,
+        }
+    }
+
+    fn normalize_search_followup_shuffles(effects: &mut [EffectAst]) {
+        for idx in 0..effects.len() {
+            let is_default_shuffle = matches!(
+                effects.get(idx),
+                Some(EffectAst::ShuffleLibrary { player })
+                    if matches!(*player, PlayerAst::You | PlayerAst::Implicit)
+            );
+            if !is_default_shuffle {
+                continue;
+            }
+            let Some(search_player) = effects[..idx]
+                .iter()
+                .rev()
+                .find_map(search_followup_shuffle_player)
+            else {
+                continue;
+            };
+            if !matches!(search_player, PlayerAst::You | PlayerAst::Implicit) {
+                if let EffectAst::ShuffleLibrary { player } = &mut effects[idx] {
+                    *player = search_player;
+                }
+            }
+        }
+    }
+
     if let Some(meld_effect) = parse_exile_then_meld_sentence(tokens)? {
         return Ok(vec![meld_effect]);
     }
@@ -1157,9 +1189,13 @@ pub(crate) fn parse_effect_sentence_lexed(
     let clause_word_storage = DispatchInnerNormalizedWords::new(tokens);
     let clause_words = clause_word_storage.to_word_refs();
     if contains_word_window(clause_words.as_slice(), &["where", "x", "is"]) {
-        return parse_effect_sentence_with_where_x_lexed(tokens);
+        let mut effects = parse_effect_sentence_with_where_x_lexed(tokens)?;
+        normalize_search_followup_shuffles(&mut effects);
+        return Ok(effects);
     }
-    parse_effect_sentence_inner_lexed(tokens)
+    let mut effects = parse_effect_sentence_inner_lexed(tokens)?;
+    normalize_search_followup_shuffles(&mut effects);
+    Ok(effects)
 }
 
 fn parse_exile_then_meld_sentence(
@@ -1243,23 +1279,32 @@ fn parse_effect_sentence_with_where_x_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
     fn replace_search_filter_x(effect: &mut EffectAst, replacement: &Value) {
-        if let EffectAst::SearchLibrary { filter, .. } = effect
-            && let Some(mana_value) = filter.mana_value.as_mut()
+        if let EffectAst::SearchLibrary {
+            filter,
+            count,
+            count_value,
+            ..
+        } = effect
         {
-            use crate::filter::Comparison;
+            if count.dynamic_x && count_value.is_none() {
+                *count_value = Some(replacement.clone());
+            }
+            if let Some(mana_value) = filter.mana_value.as_mut() {
+                use crate::filter::Comparison;
 
-            match mana_value {
-                Comparison::EqualExpr(value)
-                | Comparison::NotEqualExpr(value)
-                | Comparison::LessThanExpr(value)
-                | Comparison::LessThanOrEqualExpr(value)
-                | Comparison::GreaterThanExpr(value)
-                | Comparison::GreaterThanOrEqualExpr(value)
-                    if matches!(value.as_ref(), Value::X) =>
-                {
-                    **value = replacement.clone();
+                match mana_value {
+                    Comparison::EqualExpr(value)
+                    | Comparison::NotEqualExpr(value)
+                    | Comparison::LessThanExpr(value)
+                    | Comparison::LessThanOrEqualExpr(value)
+                    | Comparison::GreaterThanExpr(value)
+                    | Comparison::GreaterThanOrEqualExpr(value)
+                        if matches!(value.as_ref(), Value::X) =>
+                    {
+                        **value = replacement.clone();
+                    }
+                    _ => {}
                 }
-                _ => {}
             }
         }
     }
@@ -1434,14 +1479,22 @@ fn parse_effect_sentence_with_where_x_lexed(
         })?,
     };
 
-    let mut effects = parse_effect_sentence_inner_lexed(&stripped)?;
+    let search_like = stripped_words.first().copied() == Some("search");
+    let mut effects = if search_like && !trailing_after_where.is_empty() {
+        let mut recombined = stripped.clone();
+        recombined.extend(trailing_after_where.clone());
+        parse_effect_sentence_lexed(&recombined)?
+    } else {
+        let mut parsed = parse_effect_sentence_inner_lexed(&stripped)?;
+        if !trailing_after_where.is_empty() {
+            let mut trailing_effects = parse_effect_sentence_lexed(&trailing_after_where)?;
+            parsed.append(&mut trailing_effects);
+        }
+        parsed
+    };
     replace_unbound_x_in_effects_anywhere(&mut effects, &where_value, &clause_words.join(" "))?;
     for effect in &mut effects {
         replace_search_filter_x(effect, &where_value);
-    }
-    if !trailing_after_where.is_empty() {
-        let mut trailing_effects = parse_effect_sentence_lexed(&trailing_after_where)?;
-        effects.append(&mut trailing_effects);
     }
     Ok(effects)
 }

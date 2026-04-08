@@ -756,6 +756,20 @@ impl Trigger {
         Self::new(YouDiscardCardTrigger::new(player, filter))
     }
 
+    pub fn player_discards_card_caused_by_controller(
+        player: PlayerFilter,
+        filter: Option<ObjectFilter>,
+        cause_controller: PlayerFilter,
+        effect_like_only: bool,
+    ) -> Self {
+        let mut trigger =
+            YouDiscardCardTrigger::new(player, filter).caused_by_controller(cause_controller);
+        if effect_like_only {
+            trigger = trigger.effect_like_only();
+        }
+        Self::new(trigger)
+    }
+
     /// Create a "whenever a card is put into your graveyard" trigger.
     pub fn card_put_into_your_graveyard() -> Self {
         Self::new(CardPutIntoYourGraveyardTrigger)

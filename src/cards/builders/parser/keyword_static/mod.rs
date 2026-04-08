@@ -265,6 +265,12 @@ fn static_ability_rule_head_hints(rule_id: &'static str) -> Vec<StaticAbilityLin
             StaticAbilityLineHeadHint::Single("as"),
             StaticAbilityLineHeadHint::Pair("as", "long"),
         ],
+        "parse_subject_has_keywords_and_cant_be_blocked_line" => vec![
+            StaticAbilityLineHeadHint::Single("as"),
+            StaticAbilityLineHeadHint::Pair("as", "long"),
+            StaticAbilityLineHeadHint::Single("this"),
+            StaticAbilityLineHeadHint::Pair("this", "creature"),
+        ],
         "parse_toph_first_metalbender_line" => vec![
             StaticAbilityLineHeadHint::Single("the"),
             StaticAbilityLineHeadHint::Pair("the", "first"),
@@ -527,6 +533,9 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
             rule: StaticAbilityLineRuleAst::Multi(parse_anthem_and_keyword_line),
         },
         multi_static_ability_ast_passthrough_rule!(parse_anthem_and_granted_ability_line),
+        multi_static_ability_ast_passthrough_rule!(
+            parse_subject_has_keywords_and_cant_be_blocked_line
+        ),
         single_static_ability_ast_passthrough_rule!(parse_subject_is_every_subtype_family_line),
         single_static_ability_ast_passthrough_rule!(parse_all_have_indestructible_line),
         single_static_ability_ast_passthrough_rule!(

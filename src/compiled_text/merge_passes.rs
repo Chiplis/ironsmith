@@ -632,6 +632,26 @@ pub(super) fn merge_subject_has_keyword_lines(lines: Vec<String>) -> Vec<String>
         if idx + 1 < lines.len() {
             let left = lines[idx].trim();
             let right = lines[idx + 1].trim();
+            if let Some((left_condition, left_body)) = left.split_once(", ")
+                && let Some((right_condition, right_body)) = right.split_once(", ")
+                && left_condition.eq_ignore_ascii_case(right_condition)
+                && left_condition
+                    .to_ascii_lowercase()
+                    .starts_with("as long as ")
+                && let Some((left_subject, left_tail)) = split_have_clause(left_body)
+                && let Some(right_subject) = right_body
+                    .strip_suffix(" can't be blocked")
+                    .or_else(|| right_body.strip_suffix(" cant be blocked"))
+                && left_subject.eq_ignore_ascii_case(right_subject.trim())
+            {
+                let verb = have_verb_for_subject(&left_subject);
+                let left_tail = normalize_keyword_predicate_case(&left_tail);
+                merged.push(format!(
+                    "{left_condition}, {left_subject} {verb} {left_tail} and can't be blocked"
+                ));
+                idx += 2;
+                continue;
+            }
             if let Some((left_subject, left_tail)) = split_have_clause(left)
                 && let Some((right_subject, right_tail)) = split_have_clause(right)
                 && left_subject.eq_ignore_ascii_case(&right_subject)
@@ -765,6 +785,44 @@ pub(super) fn merge_subject_is_legendary_gets_then_has_lines(lines: Vec<String>)
     vec![format!(
         "{subject} is legendary, gets {gets_tail}, and {verb} {right_tail}."
     )]
+}
+
+pub(super) fn merge_subject_animation_lines(lines: Vec<String>) -> Vec<String> {
+    let mut merged = Vec::with_capacity(lines.len());
+    let mut idx = 0usize;
+
+    while idx < lines.len() {
+        if idx + 1 < lines.len()
+            && let Some((left_subject, left_verb, left_rest)) =
+                split_subject_predicate_clause(lines[idx].trim().trim_end_matches('.'))
+            && matches!(left_verb, "is" | "are")
+            && let Some(pt) = extract_base_pt_tail_for_subject(
+                lines[idx + 1].trim().trim_end_matches('.'),
+                left_subject,
+            )
+        {
+            let lower_rest = left_rest.trim().to_ascii_lowercase();
+            if lower_rest == "a creature in addition to its other types" {
+                merged.push(format!(
+                    "{left_subject} {left_verb} a {pt} creature in addition to its other types"
+                ));
+                idx += 2;
+                continue;
+            }
+            if lower_rest == "creatures in addition to their other types" {
+                merged.push(format!(
+                    "{left_subject} {left_verb} {pt} creatures in addition to their other types"
+                ));
+                idx += 2;
+                continue;
+            }
+        }
+
+        merged.push(lines[idx].clone());
+        idx += 1;
+    }
+
+    merged
 }
 
 pub(super) fn drop_redundant_spell_cost_lines(lines: Vec<String>) -> Vec<String> {

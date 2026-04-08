@@ -13,7 +13,10 @@ use crate::tag::TagKey;
 /// Keyword actions that can be observed by triggers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum KeywordActionKind {
+    Sticker,
     Amass,
+    ArtSticker,
+    AbilitySticker,
     Bolster,
     Clash,
     CommitCrime,
@@ -48,6 +51,7 @@ impl KeywordActionKind {
     /// Parse the inflected trigger verb form.
     pub fn from_trigger_word(word: &str) -> Option<Self> {
         match word {
+            "sticker" | "stickers" | "stickered" => Some(Self::Sticker),
             "amass" | "amasses" | "amassed" | "amassing" => Some(Self::Amass),
             "bolster" | "bolsters" | "bolstered" | "bolstering" => Some(Self::Bolster),
             "clash" | "clashes" | "clashed" | "clashing" => Some(Self::Clash),
@@ -66,7 +70,6 @@ impl KeywordActionKind {
             "investigate" | "investigates" => Some(Self::Investigate),
             "manifest" | "manifests" | "manifested" | "manifesting" => Some(Self::Manifest),
             "populate" | "populates" | "populated" | "populating" => Some(Self::Populate),
-            "sticker" | "stickers" | "stickered" => Some(Self::NameSticker),
             "renown" | "renowned" => Some(Self::Renown),
             "connive" | "connives" | "connived" => Some(Self::Connive),
             "proliferate" | "proliferates" => Some(Self::Proliferate),
@@ -82,7 +85,10 @@ impl KeywordActionKind {
 
     pub fn infinitive(self) -> &'static str {
         match self {
+            Self::Sticker => "put a sticker",
             Self::Amass => "amass",
+            Self::ArtSticker => "put an art sticker",
+            Self::AbilitySticker => "put an ability sticker",
             Self::Bolster => "bolster",
             Self::Clash => "clash",
             Self::CommitCrime => "commit a crime",
@@ -116,7 +122,10 @@ impl KeywordActionKind {
 
     pub fn third_person(self) -> &'static str {
         match self {
+            Self::Sticker => "puts a sticker",
             Self::Amass => "amasses",
+            Self::ArtSticker => "puts an art sticker",
+            Self::AbilitySticker => "puts an ability sticker",
             Self::Bolster => "bolsters",
             Self::Clash => "clashes",
             Self::CommitCrime => "commits a crime",
@@ -295,7 +304,7 @@ mod tests {
         );
         assert_eq!(
             KeywordActionKind::from_trigger_word("sticker"),
-            Some(KeywordActionKind::NameSticker)
+            Some(KeywordActionKind::Sticker)
         );
         assert_eq!(KeywordActionKind::from_trigger_word("unknown"), None);
     }

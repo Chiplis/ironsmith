@@ -295,6 +295,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::RepeatProcess { .. } => {}
         EffectAst::Enchant { .. } => {}
         EffectAst::Attach { .. } => {}
+        EffectAst::PutSticker { .. } => {}
         EffectAst::Investigate { .. } => {}
         EffectAst::Amass { .. } => {}
         EffectAst::Destroy { .. } => {}

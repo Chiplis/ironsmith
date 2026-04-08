@@ -182,8 +182,22 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             player,
             card_number,
         } => Trigger::player_draws_nth_card_each_turn(player, card_number),
-        TriggerSpec::PlayerDiscardsCard { player, filter } => {
-            Trigger::player_discards_card(player, filter)
+        TriggerSpec::PlayerDiscardsCard {
+            player,
+            filter,
+            cause_controller,
+            effect_like_only,
+        } => {
+            if let Some(cause_controller) = cause_controller {
+                Trigger::player_discards_card_caused_by_controller(
+                    player,
+                    filter,
+                    cause_controller,
+                    effect_like_only,
+                )
+            } else {
+                Trigger::player_discards_card(player, filter)
+            }
         }
         TriggerSpec::PlayerRevealsCard {
             player,
@@ -1979,6 +1993,13 @@ pub(crate) fn effect_references_event_derived_amount(effect: &EffectAst) -> bool
         EffectAst::ScalePowerToughnessAll { .. } => false,
         EffectAst::SetBasePower { power, .. } => value_references_event_derived_amount(power),
         EffectAst::PumpForEach { count, .. } => value_references_event_derived_amount(count),
+        EffectAst::ConsultTopOfLibrary { stop_rule, .. } => {
+            matches!(
+                stop_rule,
+                crate::cards::builders::LibraryConsultStopRuleAst::MatchCount(value)
+                    if value_references_event_derived_amount(value)
+            )
+        }
         _ => {
             let mut references = false;
             for_each_nested_effects(effect, true, |nested| {
@@ -7444,6 +7465,32 @@ fn try_compile_attachment_and_setup_effect(
             }
             (vec![Effect::attach_objects(objects, target)], choices)
         }
+        EffectAst::PutSticker { target, action } => match target {
+            TargetAst::Object(filter, explicit_target_span, _)
+                if explicit_target_span.is_none() =>
+            {
+                let mut resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+                let choice_zone = resolved_filter.ensure_zone(Zone::Battlefield);
+                let tag = ctx.next_tag("stickered");
+                let tag_key = TagKey::from(tag.as_str());
+                let choose_effect = crate::effects::ChooseObjectsEffect::new(
+                    resolved_filter,
+                    ChoiceCount::exactly(1),
+                    PlayerFilter::You,
+                    tag_key.clone(),
+                )
+                .in_zone(choice_zone);
+                ctx.last_object_tag = Some(tag.as_str().to_string());
+                (
+                    vec![
+                        Effect::new(choose_effect),
+                        Effect::put_sticker(ChooseSpec::Tagged(tag_key), *action),
+                    ],
+                    Vec::new(),
+                )
+            }
+            _ => compile_effect_for_target(target, ctx, |spec| Effect::put_sticker(spec, *action))?,
+        },
         EffectAst::Investigate { count } => {
             let count = resolve_value_it_tag(count, &current_reference_env(ctx))?;
             (vec![Effect::investigate(count)], Vec::new())
@@ -8341,10 +8388,22 @@ fn try_compile_search_and_reorder_effect(
             reveal,
             shuffle,
             count,
+            count_value,
             tapped,
         } => {
-            let (chooser_filter, chooser_choices) =
-                resolve_effect_player_filter(*chooser, ctx, true, true, true)?;
+            let (chooser_filter, chooser_choices) = if matches!(*chooser, PlayerAst::Implicit)
+                && matches!(*player, PlayerAst::That)
+                && filter.owner.is_some()
+                && ctx.last_player_filter.as_ref().is_some_and(|filter| {
+                    !matches!(
+                        filter,
+                        PlayerFilter::IteratedPlayer | PlayerFilter::TaggedPlayer(_)
+                    )
+                }) {
+                (PlayerFilter::You, Vec::new())
+            } else {
+                resolve_effect_player_filter(*chooser, ctx, true, true, true)?
+            };
             let (player_filter, mut choices) =
                 resolve_effect_player_filter(*player, ctx, true, true, true)?;
             for choice in chooser_choices {
@@ -8364,6 +8423,7 @@ fn try_compile_search_and_reorder_effect(
             let use_search_effect = *shuffle
                 && count.min == 0
                 && count.max == Some(1)
+                && count_value.is_none()
                 && *destination != Zone::Battlefield;
             if use_search_effect {
                 let mut effect = Effect::new(
@@ -8405,6 +8465,7 @@ fn try_compile_search_and_reorder_effect(
                     chooser_filter.clone(),
                     tag.clone(),
                 )
+                .with_count_value_opt(count_value.clone())
                 .in_zone(Zone::Library)
                 .with_description(choose_description);
                 let choose = match search_mode {
@@ -8467,7 +8528,29 @@ fn try_compile_search_and_reorder_effect(
             )
         }
         EffectAst::ShuffleLibrary { player } => {
-            compile_player_effect_from_filter(*player, ctx, true, Effect::shuffle_library_player)?
+            if ctx
+                .last_object_tag
+                .as_ref()
+                .is_some_and(|tag| tag.starts_with("searched"))
+                && ctx
+                    .last_player_filter
+                    .as_ref()
+                    .is_some_and(|filter| *filter != PlayerFilter::You)
+            {
+                (
+                    vec![Effect::shuffle_library_player(
+                        ctx.last_player_filter.clone().expect("checked above"),
+                    )],
+                    Vec::new(),
+                )
+            } else {
+                compile_player_effect_from_filter(
+                    *player,
+                    ctx,
+                    true,
+                    Effect::shuffle_library_player,
+                )?
+            }
         }
         EffectAst::VoteOption { option, effects } => {
             let mut option_effects_ast = effects.clone();

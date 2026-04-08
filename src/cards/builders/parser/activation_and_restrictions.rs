@@ -6990,6 +6990,8 @@ pub(crate) fn parse_trigger_clause_lexed(
             Box::new(TriggerSpec::PlayerDiscardsCard {
                 player: PlayerFilter::You,
                 filter: None,
+                cause_controller: None,
+                effect_like_only: false,
             }),
         ));
     }
@@ -7434,6 +7436,20 @@ pub(crate) fn parse_trigger_clause_lexed(
         }
     }
 
+    if words.as_slice()
+        == [
+            "a", "spell", "or", "ability", "an", "opponent", "controls", "causes", "you", "to",
+            "discard", "this", "card",
+        ]
+    {
+        return Ok(TriggerSpec::PlayerDiscardsCard {
+            player: PlayerFilter::You,
+            filter: Some(ObjectFilter::source()),
+            cause_controller: Some(PlayerFilter::Opponent),
+            effect_like_only: true,
+        });
+    }
+
     if let Some(discard_word_idx) =
         find_index(&words, |word| *word == "discard" || *word == "discards")
         && let Some(discard_token_idx) = ActivationRestrictionCompatWords::new(tokens)
@@ -7444,7 +7460,12 @@ pub(crate) fn parse_trigger_clause_lexed(
             if let Ok(filter) =
                 parse_discard_trigger_card_filter(&tokens[discard_token_idx + 1..], &words)
             {
-                return Ok(TriggerSpec::PlayerDiscardsCard { player, filter });
+                return Ok(TriggerSpec::PlayerDiscardsCard {
+                    player,
+                    filter,
+                    cause_controller: None,
+                    effect_like_only: false,
+                });
             }
         }
     }

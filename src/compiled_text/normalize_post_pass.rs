@@ -1,5 +1,37 @@
 use super::*;
 
+fn normalize_committed_crime_reminder_surface(oracle_lower: &str, text: &str) -> String {
+    if !oracle_lower.contains("you've committed a crime this turn")
+        || !oracle_lower.contains("is a crime")
+    {
+        return text.to_string();
+    }
+    let lower = text.to_ascii_lowercase();
+    if !lower.contains("committed a crime this turn") || lower.contains("is a crime") {
+        return text.to_string();
+    }
+    format!(
+        "{} (Targeting opponents, anything they control, and/or cards in their graveyards is a crime.)",
+        text.trim().trim_end_matches('.')
+    )
+}
+
+fn normalize_metalcraft_label_surface(oracle_lower: &str, text: &str) -> String {
+    if !oracle_lower.contains("metalcraft") {
+        return text.to_string();
+    }
+    let lower = text.to_ascii_lowercase();
+    if lower.starts_with("metalcraft") {
+        return text.to_string();
+    }
+    if lower.contains("as long as you control three or more artifacts")
+        || lower.contains("if you control three or more artifacts")
+    {
+        return format!("Metalcraft — {}", text.trim().trim_end_matches('.'));
+    }
+    text.to_string()
+}
+
 pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str) -> String {
     let oracle_lower = def.card.oracle_text.to_ascii_lowercase();
     let oracle_has_fall_greatest_power =
@@ -23,6 +55,9 @@ pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str
         normalized_body = normalize_cost_subject_for_card(def, &normalized_body);
         normalized_body = normalize_spell_self_exile(def, &normalized_body);
         normalized_body = normalize_for_each_clause_surface(normalized_body);
+        normalized_body =
+            normalize_committed_crime_reminder_surface(&oracle_lower, &normalized_body);
+        normalized_body = normalize_metalcraft_label_surface(&oracle_lower, &normalized_body);
         if let Some(rewritten) =
             normalize_not_chosen_this_way_surface(&oracle_lower, &normalized_body)
         {
@@ -291,6 +326,8 @@ pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str
     normalized = normalize_cost_subject_for_card(def, &normalized);
     normalized = normalize_spell_self_exile(def, &normalized);
     normalized = normalize_for_each_clause_surface(normalized);
+    normalized = normalize_committed_crime_reminder_surface(&oracle_lower, &normalized);
+    normalized = normalize_metalcraft_label_surface(&oracle_lower, &normalized);
     normalized = normalize_known_low_tail_phrase(&normalized);
     normalized = normalize_each_opponent_dynamic_life_exchange(&normalized);
     normalized = normalize_triggered_self_deals_damage_phrase(def, &normalized);
@@ -1561,6 +1598,23 @@ pub(super) fn normalize_cost_subject_for_card(def: &CardDefinition, text: &str) 
         return text.to_string();
     };
     let effect = effect.trim();
+    let oracle_lower = def.card.oracle_text.to_ascii_lowercase();
+    let card_name = def.card.name.trim();
+    let card_name_lower = card_name.to_ascii_lowercase();
+    let short_name = card_name.split(',').next().unwrap_or(card_name).trim();
+    let short_name_lower = short_name.to_ascii_lowercase();
+    let oracle_uses_card_name = oracle_lower.contains(&format!("{card_name_lower} deals "))
+        || oracle_lower.contains(&format!("{short_name_lower} deals "));
+    if let Some(rest) = strip_prefix_ascii_ci(effect, "this creature deals ")
+        && oracle_uses_card_name
+    {
+        return format!("{cost}: {short_name} deals {rest}");
+    }
+    if let Some(rest) = strip_prefix_ascii_ci(effect, "this permanent deals ")
+        && oracle_uses_card_name
+    {
+        return format!("{cost}: {short_name} deals {rest}");
+    }
     if !effect.starts_with("Deal ") {
         return text.to_string();
     }

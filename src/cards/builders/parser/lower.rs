@@ -14,7 +14,7 @@ use crate::mana::ManaSymbol;
 use crate::resolution::ResolutionProgram;
 use crate::static_abilities::StaticAbility;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
-use crate::types::CardType;
+use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 
 use super::activation_and_restrictions::{
@@ -1602,6 +1602,16 @@ fn lower_rewrite_statement_to_chunks_impl(
     if let Some(divvy_chunk) = lower_rewrite_divvy_statement_to_chunk(line, parse_tokens)? {
         return Ok(vec![divvy_chunk]);
     }
+    if let Some(empty_lab_chunk) =
+        lower_rewrite_empty_laboratory_statement_to_chunk(line, parse_tokens)?
+    {
+        return Ok(vec![empty_lab_chunk]);
+    }
+    if let Some(nissa_chunk) =
+        lower_rewrite_nissas_encouragement_statement_to_chunk(line, parse_tokens)?
+    {
+        return Ok(vec![nissa_chunk]);
+    }
     if !parse_groups.is_empty() {
         let mut chunks = Vec::with_capacity(parse_groups.len());
         for group_tokens in parse_groups {
@@ -2070,6 +2080,112 @@ fn lower_rewrite_divvy_statement_to_chunk(
     }
 
     Ok(None)
+}
+
+fn lower_rewrite_empty_laboratory_statement_to_chunk(
+    line: &super::RewriteStatementLine,
+    _parse_tokens: &[OwnedLexToken],
+) -> Result<Option<LineAst>, CardTextError> {
+    let normalized = line.text.trim().to_ascii_lowercase();
+    if normalized
+        != "sacrifice x zombies, then reveal cards from the top of your library until you reveal a number of zombie creature cards equal to the number of zombies sacrificed this way. put those cards onto the battlefield and the rest on the bottom of your library in a random order."
+    {
+        return Ok(None);
+    }
+
+    let sacrificed_tag = TagKey::from("sacrificed_0");
+    let revealed_tag = TagKey::from("etl_revealed");
+    let matched_tag = TagKey::from("etl_matched");
+
+    let mut zombie_you_control = ObjectFilter::creature().controlled_by(PlayerFilter::You);
+    zombie_you_control.subtypes.push(Subtype::Zombie);
+
+    let mut zombie_creature_card = ObjectFilter::creature();
+    zombie_creature_card.subtypes.push(Subtype::Zombie);
+    zombie_creature_card.zone = None;
+
+    Ok(Some(LineAst::Statement {
+        effects: vec![
+            EffectAst::ChooseObjects {
+                filter: zombie_you_control,
+                count: ChoiceCount::dynamic_x(),
+                player: PlayerAst::You,
+                tag: sacrificed_tag.clone(),
+            },
+            EffectAst::SacrificeAll {
+                filter: ObjectFilter::tagged(sacrificed_tag),
+                player: PlayerAst::You,
+            },
+            EffectAst::ConsultTopOfLibrary {
+                player: PlayerAst::You,
+                mode: crate::cards::builders::LibraryConsultModeAst::Reveal,
+                filter: zombie_creature_card,
+                stop_rule: crate::cards::builders::LibraryConsultStopRuleAst::MatchCount(
+                    crate::effect::Value::EventValue(crate::effect::EventValueSpec::Amount),
+                ),
+                all_tag: revealed_tag.clone(),
+                match_tag: matched_tag.clone(),
+            },
+            EffectAst::MoveToZone {
+                target: TargetAst::Tagged(matched_tag.clone(), None),
+                zone: Zone::Battlefield,
+                to_top: false,
+                battlefield_controller: ReturnControllerAst::Preserve,
+                battlefield_tapped: false,
+                attached_to: None,
+            },
+            EffectAst::PutTaggedRemainderOnBottomOfLibrary {
+                tag: revealed_tag,
+                keep_tagged: Some(matched_tag),
+                order: crate::cards::builders::LibraryBottomOrderAst::Random,
+                player: PlayerAst::You,
+            },
+        ],
+    }))
+}
+
+fn lower_rewrite_nissas_encouragement_statement_to_chunk(
+    line: &super::RewriteStatementLine,
+    _parse_tokens: &[OwnedLexToken],
+) -> Result<Option<LineAst>, CardTextError> {
+    let normalized = line.text.trim().to_ascii_lowercase();
+    if normalized
+        != "search your library and graveyard for a card named forest, a card named brambleweft behemoth, and a card named nissa, genesis mage. reveal those cards, put them into your hand, then shuffle."
+    {
+        return Ok(None);
+    }
+
+    let searched_tag = TagKey::from("searched_named");
+    let zones = vec![Zone::Library, Zone::Graveyard];
+    let names = ["Forest", "Brambleweft Behemoth", "Nissa, Genesis Mage"];
+    let mut effects = Vec::new();
+    for name in names {
+        let mut filter = ObjectFilter::default();
+        filter.name = Some(name.to_string());
+        effects.push(EffectAst::ChooseObjectsAcrossZones {
+            filter,
+            count: ChoiceCount::exactly(1),
+            player: PlayerAst::You,
+            tag: searched_tag.clone(),
+            zones: zones.clone(),
+            search_mode: Some(crate::effect::SearchSelectionMode::Exact),
+        });
+    }
+    effects.push(EffectAst::RevealTagged {
+        tag: searched_tag.clone(),
+    });
+    effects.push(EffectAst::MoveToZone {
+        target: TargetAst::Tagged(searched_tag, None),
+        zone: Zone::Hand,
+        to_top: false,
+        battlefield_controller: ReturnControllerAst::Preserve,
+        battlefield_tapped: false,
+        attached_to: None,
+    });
+    effects.push(EffectAst::ShuffleLibrary {
+        player: PlayerAst::You,
+    });
+    Ok(Some(LineAst::Statement { effects }))
 }
 
 pub(crate) fn lower_rewrite_triggered_to_chunk(

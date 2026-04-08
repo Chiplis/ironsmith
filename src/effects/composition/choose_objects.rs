@@ -3,7 +3,7 @@
 //! This effect allows a player to choose objects matching a filter and tag them
 //! for reference by subsequent effects in the same spell/ability.
 
-use crate::effect::{ChoiceCount, EffectOutcome, SearchSelectionMode};
+use crate::effect::{ChoiceCount, EffectOutcome, SearchSelectionMode, Value};
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::filter::Comparison;
@@ -53,6 +53,8 @@ pub struct ChooseObjectsEffect {
     pub filter: ObjectFilter,
     /// Number of objects to choose.
     pub count: ChoiceCount,
+    /// Optional runtime-resolved count used when the printed amount is defined by a Value.
+    pub count_value: Option<Value>,
     /// Which player makes the choice.
     pub chooser: PlayerFilter,
     /// Fallback zone to search for objects when the filter has no explicit zone.
@@ -86,6 +88,7 @@ impl ChooseObjectsEffect {
         Self {
             filter,
             count: count.into(),
+            count_value: None,
             chooser,
             zone: None,
             additional_zones: Vec::new(),
@@ -122,6 +125,17 @@ impl ChooseObjectsEffect {
     /// Set a custom description for the decision prompt.
     pub fn with_description(mut self, description: &'static str) -> Self {
         self.description = description;
+        self
+    }
+
+    /// Use a runtime-resolved value for the choice count.
+    pub fn with_count_value(mut self, count_value: Value) -> Self {
+        self.count_value = Some(count_value);
+        self
+    }
+
+    pub fn with_count_value_opt(mut self, count_value: Option<Value>) -> Self {
+        self.count_value = count_value;
         self
     }
 

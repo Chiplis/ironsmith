@@ -10,11 +10,28 @@ use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
 pub struct YouDiscardCardTrigger {
     pub player: PlayerFilter,
     pub filter: Option<ObjectFilter>,
+    pub cause_controller: Option<PlayerFilter>,
+    pub effect_like_only: bool,
 }
 
 impl YouDiscardCardTrigger {
     pub fn new(player: PlayerFilter, filter: Option<ObjectFilter>) -> Self {
-        Self { player, filter }
+        Self {
+            player,
+            filter,
+            cause_controller: None,
+            effect_like_only: false,
+        }
+    }
+
+    pub fn caused_by_controller(mut self, player: PlayerFilter) -> Self {
+        self.cause_controller = Some(player);
+        self
+    }
+
+    pub fn effect_like_only(mut self) -> Self {
+        self.effect_like_only = true;
+        self
     }
 }
 
@@ -36,6 +53,30 @@ impl TriggerMatcher for YouDiscardCardTrigger {
         if !player_matches {
             return false;
         }
+        if self.effect_like_only
+            && !e
+                .cause
+                .as_ref()
+                .is_some_and(|cause| cause.cause_type.is_effect_like())
+        {
+            return false;
+        }
+        if let Some(controller_filter) = &self.cause_controller {
+            let Some(controller) = e.cause.as_ref().and_then(|cause| cause.source_controller)
+            else {
+                return false;
+            };
+            let controller_matches = match controller_filter {
+                PlayerFilter::You => controller == ctx.controller,
+                PlayerFilter::Opponent => controller != ctx.controller,
+                PlayerFilter::Any => true,
+                PlayerFilter::Specific(id) => controller == *id,
+                _ => true,
+            };
+            if !controller_matches {
+                return false;
+            }
+        }
         if let Some(filter) = &self.filter {
             let Some(card) = ctx.game.object(e.card) else {
                 return false;
@@ -46,6 +87,14 @@ impl TriggerMatcher for YouDiscardCardTrigger {
     }
 
     fn display(&self) -> String {
+        if self.effect_like_only
+            && matches!(self.player, PlayerFilter::You)
+            && self.filter.as_ref().is_some_and(|filter| filter.source)
+            && matches!(self.cause_controller, Some(PlayerFilter::Opponent))
+        {
+            return "Whenever a spell or ability an opponent controls causes you to discard this card"
+                .to_string();
+        }
         let player_text = match &self.player {
             PlayerFilter::You => "you".to_string(),
             PlayerFilter::Opponent => "an opponent".to_string(),
@@ -146,5 +195,52 @@ mod tests {
             ),
             &ctx
         ));
+    }
+
+    #[test]
+    fn test_matches_opponent_controlled_effect_discard() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let card = crate::card::CardBuilder::new(crate::ids::CardId::from_raw(2), "Sand Golem")
+            .card_types(vec![CardType::Artifact, CardType::Creature])
+            .build();
+        let card_id = game.create_object_from_card(&card, alice, crate::zone::Zone::Graveyard);
+        let source_id = card_id;
+
+        let trigger = YouDiscardCardTrigger::new(PlayerFilter::You, Some(ObjectFilter::source()))
+            .caused_by_controller(PlayerFilter::Opponent)
+            .effect_like_only();
+        let ctx = TriggerContext::for_source(source_id, alice, &game);
+
+        let matching = TriggerEvent::new_with_provenance(
+            CardDiscardedEvent::with_cause(
+                alice,
+                card_id,
+                crate::events::cause::EventCause::from_effect(source_id, bob),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        assert!(trigger.matches(&matching, &ctx));
+
+        let own_controller = TriggerEvent::new_with_provenance(
+            CardDiscardedEvent::with_cause(
+                alice,
+                card_id,
+                crate::events::cause::EventCause::from_effect(source_id, alice),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        assert!(!trigger.matches(&own_controller, &ctx));
+
+        let cost_discard = TriggerEvent::new_with_provenance(
+            CardDiscardedEvent::with_cause(
+                alice,
+                card_id,
+                crate::events::cause::EventCause::from_cost(source_id, bob),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        assert!(!trigger.matches(&cost_discard, &ctx));
     }
 }

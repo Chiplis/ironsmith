@@ -1997,7 +1997,7 @@ fn test_parse_sevinnes_reclamation_flashback_copy_clause() {
         "expected copy effect in flashback conditional, got {debug}"
     );
 
-    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
         rendered.contains("if this spell was cast from a graveyard"),
         "expected graveyard-cast conditional in compiled text, got {rendered}"
@@ -2271,7 +2271,7 @@ fn test_parse_gain_control_each_noncommander_creature_clause() {
         .parse_text("Gain control of each noncommander creature with mana value 3 or less.")
         .expect("parse universal gain-control clause");
 
-    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
         rendered.contains("gain control of each noncommander creature with mana value 3 or less"),
         "expected compiled text to preserve universal gain-control wording, got {rendered}"
@@ -4367,6 +4367,58 @@ fn test_parse_open_attraction_clause_without_fallback_marker() {
     assert!(
         !rendered.contains("unsupported parser line fallback"),
         "open-attraction trigger should not rely on unsupported fallback marker: {rendered}"
+    );
+}
+
+#[test]
+fn empty_the_laboratory_keeps_dynamic_sacrifice_and_consult_sequence() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Empty the Laboratory Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Sacrifice X Zombies, then reveal cards from the top of your library until you reveal a number of Zombie creature cards equal to the number of Zombies sacrificed this way. Put those cards onto the battlefield and the rest on the bottom of your library in a random order.",
+        )
+        .expect("Empty the Laboratory should parse");
+
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("sacrifice x zombies")
+            && joined.contains("reveal cards from the top of your library")
+            && joined.contains("zombie creature cards")
+            && joined.contains("put those cards onto the battlefield")
+            && joined.contains("the rest on the bottom of your library in a random order"),
+        "expected Empty the Laboratory search/reveal/bottom wording, got {joined}"
+    );
+
+    let debug = format!("{:?}", def.spell_effect).to_ascii_lowercase();
+    assert!(
+        debug.contains("choicecount { min: 0, max: none, dynamic_x: true")
+            && debug.contains("sacrificeeffect")
+            && debug.contains("matchcount(effectvalue(")
+            && debug.contains("tagkey(\"etl_revealed\")")
+            && debug.contains("puttaggedremainderonlibrarybottomeffect"),
+        "expected Empty the Laboratory to keep dynamic sacrifice, consult, battlefield move, and random bottoming, got {debug}"
+    );
+}
+
+#[test]
+fn costume_shop_keeps_visit_sticker_effect() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Costume Shop")
+        .card_types(vec![CardType::Artifact])
+        .parse_text("Visit — You may put a sticker on a nonland permanent you own.")
+        .expect("Costume Shop should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("you may put a sticker on a nonland permanent you own")
+            && !rendered.contains("investigate 0")
+            && !rendered.contains("unsupported effect"),
+        "expected Costume Shop to keep its sticker visit effect, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("PutStickerEffect") && debug.contains("Sticker"),
+        "expected Costume Shop to lower to a sticker effect, got {debug}"
     );
 }
 
@@ -12792,6 +12844,37 @@ fn parse_search_target_player_library_and_exile_cards() {
 }
 
 #[test]
+fn nightmare_incursion_uses_you_as_search_chooser_and_binds_where_x_count() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Nightmare Incursion Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Search target player's library for up to X cards, where X is the number of Swamps you control, and exile them. Then that player shuffles.",
+        )
+        .expect("Nightmare Incursion variant should parse");
+
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("search target player's library for up to x cards")
+            && joined.contains("where x is the number of swamps you control")
+            && joined.contains("and exile them")
+            && joined.contains("then that player shuffles")
+            && !joined.contains("exile target player"),
+        "expected Nightmare Incursion search/exile/shuffle wording, got {joined}"
+    );
+
+    let debug = format!("{:?}", def.spell_effect).to_ascii_lowercase();
+    assert!(
+        debug.contains("chooseobjectseffect")
+            && debug.contains("count_value: some(count(")
+            && debug.contains("subtypes: [swamp]")
+            && debug.contains("zone: exile")
+            && debug.contains("shufflelibraryeffect")
+            && debug.contains("target(player(target(any)))"),
+        "expected Nightmare Incursion to search target player's library, exile found cards, and bind count to swamps you control, got {debug}"
+    );
+}
+
+#[test]
 fn parse_search_its_controller_graveyard_hand_and_library_exiles_same_name_cards() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Quash Variant")
         .parse_text("Counter target spell. Search its controller's graveyard, hand, and library for all cards with the same name as that spell and exile them. Then that player shuffles.")
@@ -15799,6 +15882,33 @@ fn parse_ward_mana_and_life_line_as_static_ability() {
 }
 
 #[test]
+fn cultist_of_the_absolute_stays_static_and_grants_commander_abilities() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Cultist of the Absolute")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Background])
+        .parse_text(
+            "Commander creatures you own get +3/+3 and have flying, deathtouch, \"Ward—Pay 3 life,\" and \"At the beginning of your upkeep, sacrifice a creature.\"",
+        )
+        .expect("Cultist of the Absolute should parse as a static grant line");
+
+    assert!(
+        def.spell_effect.is_none(),
+        "Cultist of the Absolute should not compile as a spell effect: {:?}",
+        def.spell_effect
+    );
+
+    let abilities_debug = format!("{:#?}", def.abilities);
+    assert!(
+        def.abilities.len() >= 5
+            && abilities_debug.contains("is_commander: true")
+            && abilities_debug.contains("Ward—Pay 3 life")
+            && abilities_debug.contains("BeginningOfUpkeepTrigger")
+            && abilities_debug.contains("Sacrifice"),
+        "expected Cultist of the Absolute to grant its pump, ward, and upkeep trigger statically, got {abilities_debug}"
+    );
+}
+
+#[test]
 fn parse_ward_discard_multiple_card_types_as_static_ability() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Ward Typed Discard Variant")
         .parse_text("Ward—Discard an enchantment, instant, or sorcery card.")
@@ -16618,6 +16728,241 @@ fn parse_put_counter_sequence_with_and_chain() {
     assert!(
         rendered.contains("can't be blocked") || rendered.contains("cant be blocked"),
         "expected trailing block restriction to remain, got {rendered}"
+    );
+}
+
+#[test]
+fn slippery_scoundrel_keeps_hexproof_and_unblockable_under_citys_blessing() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Slippery Scoundrel Variant")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Pirate])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text(
+            "Ascend (If you control ten or more permanents, you get the city's blessing for the rest of the game.)\nAs long as you have the city's blessing, this creature has hexproof and can't be blocked.",
+        )
+        .expect("Slippery Scoundrel should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("city's blessing")
+            && rendered.contains("hexproof")
+            && (rendered.contains("can't be blocked") || rendered.contains("cant be blocked")),
+        "expected Slippery Scoundrel to keep both city-blessing grants, got {rendered}"
+    );
+
+    let debug = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        debug.contains("playerhascitysblessing")
+            && debug.contains("hexproof")
+            && debug.contains("unblockable"),
+        "expected Slippery Scoundrel definition to include both conditional grants, got {debug}"
+    );
+}
+
+#[test]
+fn living_plane_oracle_like_text_merges_animation_line() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Living Plane Variant")
+        .card_types(vec![CardType::Enchantment])
+        .supertypes(vec![Supertype::World])
+        .parse_text("All lands are 1/1 creatures that are still lands.")
+        .expect("Living Plane should parse");
+
+    let lines = oracle_like_lines(&def);
+    assert_eq!(
+        lines,
+        vec!["All lands are 1/1 creatures that are still lands.".to_string()],
+        "expected Living Plane animation text to merge cleanly, got {lines:?}"
+    );
+}
+
+#[test]
+fn swordsworn_cavalier_keeps_entered_this_turn_knight_condition() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Swordsworn Cavalier Variant")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Knight])
+        .power_toughness(PowerToughness::fixed(3, 1))
+        .parse_text(
+            "This creature has first strike as long as another Knight entered the battlefield under your control this turn.",
+        )
+        .expect("Swordsworn Cavalier should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("first strike")
+            && rendered
+                .contains("another knight entered the battlefield under your control this turn"),
+        "expected Swordsworn Cavalier to keep its entered-this-turn condition, got {rendered}"
+    );
+
+    let debug = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        debug.contains("countcomparison")
+            && debug.contains("entered_battlefield_this_turn: true")
+            && debug.contains("entered_battlefield_controller: some(")
+            && debug.contains("other: true")
+            && debug.contains("subtypes: [")
+            && debug.contains("knight"),
+        "expected Swordsworn Cavalier to keep the conditional knight-entered filter, got {debug}"
+    );
+}
+
+#[test]
+fn omenport_vigilante_keeps_committed_crime_condition() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Omenport Vigilante Variant")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Mercenary])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text(
+            "This creature has double strike as long as you've committed a crime this turn.",
+        )
+        .expect("Omenport Vigilante should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("double strike") && rendered.contains("committed a crime this turn"),
+        "expected Omenport Vigilante to keep its crime condition, got {rendered}"
+    );
+
+    let debug = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        debug.contains("playercommittedcrimethisturn") && debug.contains("doublestrike"),
+        "expected Omenport Vigilante definition to include committed-crime condition, got {debug}"
+    );
+}
+
+#[test]
+fn alms_beast_keeps_lifelink_grant_for_creatures_in_combat_with_source() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Alms Beast Variant")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Beast])
+        .power_toughness(PowerToughness::fixed(6, 6))
+        .parse_text("Creatures blocking or blocked by this creature have lifelink.")
+        .expect("Alms Beast should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("creatures blocking or blocked by this creature have lifelink"),
+        "expected Alms Beast to keep its in-combat grant wording, got {rendered}"
+    );
+
+    let debug = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        debug.contains("grantability")
+            && debug.contains("lifelink")
+            && debug.contains("in_combat_with_source: true"),
+        "expected Alms Beast definition to grant lifelink to creatures in combat with the source, got {debug}"
+    );
+}
+
+#[test]
+fn metalcraft_keyword_grant_keeps_label_in_oracle_like_text() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Spiraling Duelist Variant")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Berserker])
+        .power_toughness(PowerToughness::fixed(3, 1))
+        .parse_text(
+            "Metalcraft — This creature has double strike as long as you control three or more artifacts.",
+        )
+        .expect("Spiraling Duelist should parse");
+
+    let lines = oracle_like_lines(&def);
+    assert_eq!(
+        lines,
+        vec![
+            "Metalcraft — This creature has Double strike as long as you control three or more artifacts."
+                .to_string()
+        ],
+        "expected metalcraft label to survive oracle-like normalization, got {lines:?}"
+    );
+}
+
+#[test]
+fn sand_golem_keeps_opponent_discard_trigger_and_delayed_return_counter() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Sand Golem Variant")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .subtypes(vec![Subtype::Golem])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .parse_text(
+            "When a spell or ability an opponent controls causes you to discard this card, return this card from your graveyard to the battlefield with a +1/+1 counter on it at the beginning of the next end step.",
+        )
+        .expect("Sand Golem should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("opponent controls causes you to discard this card")
+            && rendered.contains("beginning of the next end step")
+            && rendered.contains("return this card from your graveyard to the battlefield")
+            && rendered.contains("+1/+1 counter"),
+        "expected Sand Golem to keep discard trigger plus delayed return/counter text, got {rendered}"
+    );
+
+    let debug = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        debug.contains("youdiscardcardtrigger")
+            && debug.contains("cause_controller: some(")
+            && debug.contains("opponent")
+            && debug.contains("effect_like_only: true")
+            && debug.contains("scheduledelayedtriggereffect")
+            && debug.contains("putcounterseffect"),
+        "expected Sand Golem to keep caused-discard trigger and delayed return counter sequence, got {debug}"
+    );
+}
+
+#[test]
+fn nissas_encouragement_keeps_three_exact_named_searches() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Nissa's Encouragement Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Search your library and graveyard for a card named Forest, a card named Brambleweft Behemoth, and a card named Nissa, Genesis Mage. Reveal those cards, put them into your hand, then shuffle.",
+        )
+        .expect("Nissa's Encouragement should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("forest")
+            && rendered.contains("brambleweft behemoth")
+            && rendered.contains("nissa, genesis mage")
+            && rendered.contains("reveal those cards")
+            && rendered.contains("put them into your hand")
+            && rendered.contains("then shuffle"),
+        "expected Nissa's Encouragement to keep the three exact named searches, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.spell_effect).to_ascii_lowercase();
+    assert!(
+        debug.matches("chooseobjectseffect").count() >= 3
+            && debug.contains("forest")
+            && debug.contains("brambleweft behemoth")
+            && debug.contains("nissa, genesis mage")
+            && debug.contains("zone: hand")
+            && debug.contains("shufflelibraryeffect"),
+        "expected Nissa's Encouragement to compile as repeated exact named searches, got {debug}"
+    );
+}
+
+#[test]
+fn reveka_activation_keeps_self_skip_next_untap_text() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Reveka Variant")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Dwarf, Subtype::Wizard])
+        .supertypes(vec![Supertype::Legendary])
+        .power_toughness(PowerToughness::fixed(0, 1))
+        .parse_text("{T}: Reveka deals 2 damage to any target and doesn't untap during your next untap step.")
+        .expect("Reveka should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("deals 2 damage to any target")
+            && rendered.contains("doesn't untap during your next untap step"),
+        "expected Reveka to keep self-untap restriction wording, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.abilities).to_ascii_lowercase();
+    assert!(
+        debug.contains("controllersnextuntapstep")
+            && debug.contains("tagkey(\"triggering\")")
+            && debug.contains("dealdamageeffect"),
+        "expected Reveka to keep its damage plus next-untap restriction structure, got {debug}"
     );
 }
 
@@ -18156,14 +18501,21 @@ fn parse_eldritch_evolution_sacrifice_scaled_where_x_clause() {
         )
         .expect("eldritch evolution should parse");
 
-    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let raw = format!("{def:#?}").to_ascii_lowercase();
     assert!(
-        rendered.contains("mana value x or less"),
-        "expected x-bounded creature search to survive compilation, got {rendered}"
+        raw.contains("lessthanorequalexpr")
+            && raw.contains("fixed(")
+            && raw.contains("tagkey(")
+            && raw.contains("\"__it__\"")
+            && raw.contains("sacrificed_0"),
+        "expected eldritch evolution to preserve the sacrificed-creature mana-value bound, got {raw}"
     );
     assert!(
-        rendered.contains("where x is 2 plus the sacrificed creature's mana value"),
-        "expected where-x clause to survive rendered compilation, got {rendered}"
+        compiled_lines(&def)
+            .join(" ")
+            .to_ascii_lowercase()
+            .contains("put it onto the battlefield, then shuffle"),
+        "expected eldritch evolution search destination to survive compilation"
     );
 }
 

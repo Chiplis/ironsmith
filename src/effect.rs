@@ -2045,6 +2045,9 @@ pub enum Condition {
     /// A specific player has the city's blessing designation.
     PlayerHasCitysBlessing { player: PlayerFilter },
 
+    /// A specific player committed a crime this turn.
+    PlayerCommittedCrimeThisTurn { player: PlayerFilter },
+
     /// A specific player has completed a dungeon, optionally by name.
     PlayerCompletedDungeon {
         player: PlayerFilter,
@@ -2446,6 +2449,12 @@ impl Effect {
     pub fn open_attraction() -> Self {
         use crate::effects::OpenAttractionEffect;
         Self::new(OpenAttractionEffect::new())
+    }
+
+    /// Create a "put a sticker on" effect.
+    pub fn put_sticker(target: ChooseSpec, action: crate::events::KeywordActionKind) -> Self {
+        use crate::effects::PutStickerEffect;
+        Self::new(PutStickerEffect::new(target, action))
     }
 
     /// Create a "manifest dread" effect.

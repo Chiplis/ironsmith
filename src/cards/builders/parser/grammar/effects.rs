@@ -686,6 +686,7 @@ pub(crate) fn derive_search_library_subject_routing_lexed(
             ],
         ],
     ) {
+        player = PlayerAst::That;
         search_player_target = Some(TargetAst::Player(
             PlayerFilter::target_player(),
             span_from_tokens(&search_tokens[1..3]),
@@ -715,6 +716,7 @@ pub(crate) fn derive_search_library_subject_routing_lexed(
             ],
         ],
     ) {
+        player = PlayerAst::That;
         search_player_target = Some(TargetAst::Player(
             PlayerFilter::target_opponent(),
             span_from_tokens(&search_tokens[1..3]),
@@ -728,6 +730,7 @@ pub(crate) fn derive_search_library_subject_routing_lexed(
             &["target", "players", "library", "for"],
         ],
     ) {
+        player = PlayerAst::That;
         search_player_target = Some(TargetAst::Player(
             PlayerFilter::target_player(),
             span_from_tokens(&search_tokens[1..3]),
@@ -740,6 +743,7 @@ pub(crate) fn derive_search_library_subject_routing_lexed(
             &["target", "opponents", "library", "for"],
         ],
     ) {
+        player = PlayerAst::That;
         search_player_target = Some(TargetAst::Player(
             PlayerFilter::target_opponent(),
             span_from_tokens(&search_tokens[1..3]),
@@ -1055,6 +1059,117 @@ pub(crate) fn parse_search_library_object_filter_lexed(
             ))
         })
     }
+}
+
+fn split_search_named_item_filters_lexed(
+    filter_tokens: &[OwnedLexToken],
+    words_all: &[&str],
+) -> Result<Option<Vec<ObjectFilter>>, CardTextError> {
+    if !filter_tokens.iter().any(|token| token.is_word("named")) {
+        return Ok(None);
+    }
+
+    let mut item_starts = Vec::new();
+    let mut cursor = 0usize;
+    while cursor < filter_tokens.len() {
+        while filter_tokens
+            .get(cursor)
+            .is_some_and(OwnedLexToken::is_comma)
+        {
+            cursor += 1;
+        }
+        if filter_tokens
+            .get(cursor)
+            .is_some_and(|token| token.is_word("and"))
+        {
+            cursor += 1;
+            while filter_tokens
+                .get(cursor)
+                .is_some_and(OwnedLexToken::is_comma)
+            {
+                cursor += 1;
+            }
+        }
+        if cursor >= filter_tokens.len() {
+            break;
+        }
+
+        let item_start = cursor;
+        if filter_tokens
+            .get(cursor)
+            .is_some_and(|token| token.is_word("a") || token.is_word("an"))
+        {
+            cursor += 1;
+        }
+        if !filter_tokens
+            .get(cursor)
+            .is_some_and(|token| token.is_word("card") || token.is_word("cards"))
+            || !filter_tokens
+                .get(cursor + 1)
+                .is_some_and(|token| token.is_word("named"))
+        {
+            return Ok(None);
+        }
+        item_starts.push(item_start);
+        cursor += 2;
+
+        while cursor < filter_tokens.len() {
+            let mut probe = cursor;
+            while filter_tokens
+                .get(probe)
+                .is_some_and(OwnedLexToken::is_comma)
+            {
+                probe += 1;
+            }
+            if filter_tokens
+                .get(probe)
+                .is_some_and(|token| token.is_word("and"))
+            {
+                probe += 1;
+                while filter_tokens
+                    .get(probe)
+                    .is_some_and(OwnedLexToken::is_comma)
+                {
+                    probe += 1;
+                }
+            }
+            let mut phrase_probe = probe;
+            if filter_tokens
+                .get(phrase_probe)
+                .is_some_and(|token| token.is_word("a") || token.is_word("an"))
+            {
+                phrase_probe += 1;
+            }
+            if filter_tokens
+                .get(phrase_probe)
+                .is_some_and(|token| token.is_word("card") || token.is_word("cards"))
+                && filter_tokens
+                    .get(phrase_probe + 1)
+                    .is_some_and(|token| token.is_word("named"))
+            {
+                break;
+            }
+            cursor += 1;
+        }
+    }
+    if item_starts.len() <= 1 {
+        return Ok(None);
+    }
+
+    let mut filters = Vec::new();
+    for (pos, start) in item_starts.iter().enumerate() {
+        let end = item_starts
+            .get(pos + 1)
+            .copied()
+            .unwrap_or(filter_tokens.len());
+        let item_tokens = trim_commas(&filter_tokens[*start..end]);
+        let item_filter = parse_search_library_object_filter_lexed(&item_tokens, words_all)?;
+        if item_filter.name.is_none() {
+            return Ok(None);
+        }
+        filters.push(item_filter);
+    }
+    Ok(Some(filters))
 }
 
 pub(crate) fn parse_search_library_leading_effect_prelude_lexed<'a>(
@@ -1444,6 +1559,17 @@ pub(crate) fn parse_cant_effect_sentence(
 pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    fn has_trailing_that_player_shuffle(tokens: &[OwnedLexToken]) -> bool {
+        super::primitives::words_find_phrase(tokens, &["then", "that", "player", "shuffle"])
+            .is_some()
+            || super::primitives::words_find_phrase(tokens, &["then", "that", "player", "shuffles"])
+                .is_some()
+            || super::primitives::words_find_phrase(tokens, &["that", "player", "shuffle"])
+                .is_some()
+            || super::primitives::words_find_phrase(tokens, &["that", "player", "shuffles"])
+                .is_some()
+    }
+
     let words_all = parser_text_word_refs(tokens);
     let Some(head_split) = split_search_library_sentence_head_lexed(tokens) else {
         return Ok(None);
@@ -1532,6 +1658,11 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     let filter_tokens = same_name_split.filter_tokens;
     let same_name_reference = same_name_split.same_name_reference;
 
+    let named_filters = if count_used == 0 {
+        split_search_named_item_filters_lexed(&filter_tokens, &words_all)?
+    } else {
+        None
+    };
     let mut filter = parse_search_library_object_filter_lexed(&filter_tokens, &words_all)?;
     if let Some(same_name_tag) = same_name_reference
         .as_ref()
@@ -1570,7 +1701,45 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     let face_down_exile = effect_routing.face_down_exile;
     let shuffle = effect_routing.shuffle;
     let split_battlefield_and_hand = effect_routing.split_battlefield_and_hand;
-    let mut effects = if !has_explicit_destination {
+    let mut effects = if let Some(named_filters) = named_filters {
+        let searched_tag: TagKey = "searched_named".into();
+        let zones = search_zones_override.unwrap_or_else(|| vec![Zone::Library]);
+        let mut sequence = Vec::new();
+        for mut named_filter in named_filters {
+            if named_filter.owner.is_none()
+                && let Some(owner) = forced_library_owner.clone()
+            {
+                named_filter.owner = Some(owner);
+            }
+            normalize_search_library_filter(&mut named_filter);
+            sequence.push(EffectAst::ChooseObjectsAcrossZones {
+                filter: named_filter,
+                count: ChoiceCount::exactly(1),
+                player: chooser,
+                tag: searched_tag.clone(),
+                zones: zones.clone(),
+                search_mode: Some(SearchSelectionMode::Exact),
+            });
+        }
+        if reveal {
+            sequence.push(EffectAst::RevealTagged {
+                tag: searched_tag.clone(),
+            });
+        }
+        sequence.push(EffectAst::MoveToZone {
+            target: TargetAst::Tagged(searched_tag, span_from_tokens(tokens)),
+            zone: destination,
+            to_top: matches!(destination, Zone::Library),
+            battlefield_controller: ReturnControllerAst::Preserve,
+            battlefield_tapped: destination == Zone::Battlefield
+                && effect_routing.has_tapped_modifier,
+            attached_to: None,
+        });
+        if shuffle && zones.contains(&Zone::Library) {
+            sequence.push(EffectAst::ShuffleLibrary { player });
+        }
+        sequence
+    } else if !has_explicit_destination {
         let chosen_tag: TagKey = "searched".into();
         let mut sequence = vec![EffectAst::ChooseObjectsAcrossZones {
             filter,
@@ -1646,6 +1815,7 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
                 reveal,
                 shuffle: false,
                 count: ChoiceCount::up_to(1),
+                count_value: None,
                 tapped: battlefield_tapped,
             },
             EffectAst::SearchLibrary {
@@ -1657,6 +1827,7 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
                 reveal,
                 shuffle,
                 count: ChoiceCount::up_to(1),
+                count_value: None,
                 tapped: false,
             },
         ]
@@ -1692,6 +1863,7 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
             reveal,
             shuffle,
             count,
+            count_value: None,
             tapped: battlefield_tapped,
         }]
     };
@@ -1703,6 +1875,23 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
             effects.push(parse_effect_clause_lexed(&discard_tokens)?);
         }
         effects.push(EffectAst::ShuffleLibrary { player });
+    }
+
+    if has_trailing_that_player_shuffle(tokens) {
+        let mut rewrote_existing_shuffle = false;
+        for effect in &mut effects {
+            if let EffectAst::ShuffleLibrary { player } = effect
+                && matches!(*player, PlayerAst::You | PlayerAst::Implicit)
+            {
+                *player = PlayerAst::That;
+                rewrote_existing_shuffle = true;
+            }
+        }
+        if !rewrote_existing_shuffle {
+            effects.push(EffectAst::ShuffleLibrary {
+                player: PlayerAst::That,
+            });
+        }
     }
 
     if let Some(target) = search_player_target {

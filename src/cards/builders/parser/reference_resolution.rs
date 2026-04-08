@@ -905,6 +905,7 @@ fn advance_reference_frame_for_effect(
         | EffectAst::ForEachPlayerDid { .. }
         | EffectAst::Enchant { .. }
         | EffectAst::Attach { .. }
+        | EffectAst::PutSticker { .. }
         | EffectAst::Investigate { .. }
         | EffectAst::Monstrosity { .. }
         | EffectAst::ConniveIterated
@@ -1297,6 +1298,12 @@ fn resolve_effect_result_values_in_fields(
         EffectAst::CreateTokenWithMods { count, .. } => {
             resolve_effect_result_value(count, state)?;
         }
+        EffectAst::ConsultTopOfLibrary { stop_rule, .. } => {
+            if let crate::cards::builders::LibraryConsultStopRuleAst::MatchCount(value) = stop_rule
+            {
+                resolve_effect_result_value(value, state)?;
+            }
+        }
         EffectAst::Pump {
             power, toughness, ..
         }
@@ -1317,6 +1324,11 @@ fn resolve_effect_result_values_in_fields(
         }
         EffectAst::PumpForEach { count, .. } => {
             resolve_effect_result_value(count, state)?;
+        }
+        EffectAst::SearchLibrary { count_value, .. } => {
+            if let Some(count_value) = count_value.as_mut() {
+                resolve_effect_result_value(count_value, state)?;
+            }
         }
         _ => {}
     }

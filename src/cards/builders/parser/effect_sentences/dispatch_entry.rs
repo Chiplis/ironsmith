@@ -3343,6 +3343,17 @@ fn parse_effect_sentences_from_sentence_inputs(
                 ]
     }
 
+    fn is_then_that_player_shuffles_sentence(tokens: &[OwnedLexToken]) -> bool {
+        let words = crate::cards::builders::parser::token_word_refs(tokens);
+        matches!(
+            words.as_slice(),
+            ["then", "that", "player", "shuffles"]
+                | ["that", "player", "shuffles"]
+                | ["then", "that", "player", "shuffle"]
+                | ["that", "player", "shuffle"]
+        )
+    }
+
     while sentence_idx < sentences.len() {
         let sentence = sentences[sentence_idx].lowered();
         if sentence.is_empty() {
@@ -3422,6 +3433,20 @@ fn parse_effect_sentences_from_sentence_inputs(
                 sentence_idx += 1;
                 continue;
             }
+        }
+
+        if is_then_that_player_shuffles_sentence(&sentence_tokens)
+            && effects.iter().any(effect_contains_search_library)
+        {
+            parser_trace(
+                "parse_effect_sentences:append:then-that-player-shuffles",
+                &sentence_tokens,
+            );
+            effects.push(EffectAst::ShuffleLibrary {
+                player: PlayerAst::That,
+            });
+            sentence_idx += 1;
+            continue;
         }
 
         let sentence_words = crate::cards::builders::parser::token_word_refs(&sentence_tokens);
@@ -4335,8 +4360,15 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
         | EffectAst::CreateTokenCopyFromSource { count, .. } => {
             replace_value(count, replacement, clause)?;
         }
-        EffectAst::SearchLibrary { filter, .. } => {
+        EffectAst::SearchLibrary {
+            filter,
+            count_value,
+            ..
+        } => {
             replace_in_filter(filter, replacement, clause)?;
+            if let Some(count_value) = count_value.as_mut() {
+                replace_value(count_value, replacement, clause)?;
+            }
         }
         EffectAst::CreateTokenWithMods {
             count,

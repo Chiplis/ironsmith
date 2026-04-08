@@ -4,6 +4,7 @@ use crate::effect::{EffectOutcome, ExecutionFact, Value};
 use crate::effects::helpers::{normalize_object_selection, resolve_player_filter, resolve_value};
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::events::cards::DiscardEvent;
+use crate::events::other::CardDiscardedEvent;
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::filter::ObjectFilter;
 use crate::game_state::GameState;
@@ -217,6 +218,10 @@ impl EffectExecutor for DiscardEffect {
                 discard_events.push(crate::triggers::TriggerEvent::new_with_provenance(
                     DiscardEvent::with_cause(card_id, player_id, cause.clone())
                         .with_destination(result.final_zone),
+                    ctx.provenance,
+                ));
+                discard_events.push(crate::triggers::TriggerEvent::new_with_provenance(
+                    CardDiscardedEvent::with_cause(player_id, card_id, cause.clone()),
                     ctx.provenance,
                 ));
                 let snapshot_id = result.new_id.unwrap_or(card_id);
@@ -552,11 +557,18 @@ mod tests {
                 .execution_facts()
                 .contains(&ExecutionFact::AffectedObjects(vec![first, second]))
         );
-        assert_eq!(result.events.len(), 2);
+        assert_eq!(result.events.len(), 4);
         assert_eq!(
             result.events[0]
                 .downcast::<DiscardEvent>()
                 .expect("discard event")
+                .player,
+            alice
+        );
+        assert_eq!(
+            result.events[1]
+                .downcast::<CardDiscardedEvent>()
+                .expect("card discarded event")
                 .player,
             alice
         );

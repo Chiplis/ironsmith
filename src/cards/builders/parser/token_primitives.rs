@@ -432,8 +432,16 @@ pub(crate) fn clone_sentence_chunk_tokens(
 pub(crate) fn split_em_dash_label_prefix_tokens<'a>(
     tokens: &'a [OwnedLexToken],
 ) -> Option<(&'a [OwnedLexToken], &'a [OwnedLexToken])> {
-    let (label_tokens, body_tokens) =
-        grammar::split_lexed_once_on_delimiter(tokens, TokenKind::EmDash)?;
+    let mut inside_quotes = false;
+    let split_idx = tokens.iter().enumerate().find_map(|(idx, token)| {
+        if token.kind == TokenKind::Quote {
+            inside_quotes = !inside_quotes;
+            return None;
+        }
+        (token.kind == TokenKind::EmDash && !inside_quotes).then_some(idx)
+    })?;
+    let label_tokens = &tokens[..split_idx];
+    let body_tokens = &tokens[split_idx + 1..];
     if label_tokens.is_empty()
         || body_tokens.is_empty()
         || label_tokens.iter().any(OwnedLexToken::is_period)

@@ -7389,6 +7389,9 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         Condition::PlayerHasCitysBlessing { player } => {
             format!("{} has the city's blessing", describe_player_filter(player))
         }
+        Condition::PlayerCommittedCrimeThisTurn { player } => {
+            format!("{} committed a crime this turn", describe_player_filter(player))
+        }
         Condition::PlayerCompletedDungeon {
             player,
             dungeon_name,

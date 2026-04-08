@@ -2,6 +2,7 @@
 
 use std::any::Any;
 
+use crate::events::cause::EventCause;
 use crate::events::traits::{EventKind, GameEventType};
 use crate::game_state::{GameState, Target};
 use crate::ids::{ObjectId, PlayerId};
@@ -17,12 +18,26 @@ pub struct CardDiscardedEvent {
     pub player: PlayerId,
     /// The card that was discarded
     pub card: ObjectId,
+    /// What caused the discard, if known.
+    pub cause: Option<EventCause>,
 }
 
 impl CardDiscardedEvent {
     /// Create a new card discarded event.
     pub fn new(player: PlayerId, card: ObjectId) -> Self {
-        Self { player, card }
+        Self {
+            player,
+            card,
+            cause: None,
+        }
+    }
+
+    pub fn with_cause(player: PlayerId, card: ObjectId, cause: EventCause) -> Self {
+        Self {
+            player,
+            card,
+            cause: Some(cause),
+        }
     }
 }
 
@@ -56,7 +71,9 @@ impl GameEventType for CardDiscardedEvent {
     }
 
     fn controller(&self) -> Option<PlayerId> {
-        None
+        self.cause
+            .as_ref()
+            .and_then(|cause| cause.source_controller)
     }
 
     fn snapshot(&self) -> Option<&ObjectSnapshot> {

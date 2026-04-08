@@ -1115,6 +1115,8 @@ pub(crate) enum TriggerSpec {
     PlayerDiscardsCard {
         player: PlayerFilter,
         filter: Option<ObjectFilter>,
+        cause_controller: Option<PlayerFilter>,
+        effect_like_only: bool,
     },
     PlayerRevealsCard {
         player: PlayerFilter,
@@ -2292,6 +2294,10 @@ pub(crate) enum EffectAst {
         object: TargetAst,
         target: TargetAst,
     },
+    PutSticker {
+        target: TargetAst,
+        action: crate::events::KeywordActionKind,
+    },
     Investigate {
         count: Value,
     },
@@ -2558,6 +2564,7 @@ pub(crate) enum EffectAst {
         reveal: bool,
         shuffle: bool,
         count: ChoiceCount,
+        count_value: Option<Value>,
         tapped: bool,
     },
     SearchLibrarySlotsToHand {

@@ -1222,10 +1222,10 @@ pub(crate) fn explicit_player_for_carry(effect: &EffectAst) -> Option<CarryConte
         EffectAst::SearchLibrary {
             chooser, player, ..
         } => {
-            if !matches!(chooser, PlayerAst::Implicit) {
-                *chooser
-            } else if !matches!(player, PlayerAst::Implicit) {
+            if !matches!(player, PlayerAst::Implicit) {
                 *player
+            } else if !matches!(chooser, PlayerAst::Implicit) {
+                *chooser
             } else {
                 return None;
             }

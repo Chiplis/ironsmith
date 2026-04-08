@@ -3,7 +3,9 @@
 use crate::decisions::make_decision;
 use crate::decisions::specs::ChooseObjectsSpec;
 use crate::effect::{ChoiceCount, EffectOutcome, ExecutionFact, SearchSelectionMode};
-use crate::effects::helpers::{resolve_player_filter, resolve_player_filter_to_list};
+use crate::effects::helpers::{
+    resolve_player_filter, resolve_player_filter_to_list, resolve_value,
+};
 use crate::events::SearchLibraryEvent;
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::filter::{ObjectFilter, PlayerFilter};
@@ -568,18 +570,22 @@ pub(crate) fn run_choose_objects(
         });
     }
 
-    let (base_min, max) = if effect.count.dynamic_x {
-        let x = ctx
-            .x_value
-            .ok_or_else(|| ExecutionError::UnresolvableValue("X value not set".to_string()))?
-            as usize;
+    let (base_min, max) = if effect.count.dynamic_x || effect.count_value.is_some() {
+        let x = if let Some(count_value) = effect.count_value.as_ref() {
+            resolve_value(game, count_value, ctx)?.max(0) as usize
+        } else {
+            ctx.x_value
+                .ok_or_else(|| ExecutionError::UnresolvableValue("X value not set".to_string()))?
+                as usize
+        };
 
-        if effect.count.up_to_x {
+        let optional_dynamic_choice = effect.count.up_to_x
+            || (effect.is_search && effect.search_mode == SearchSelectionMode::Optional);
+        if optional_dynamic_choice {
             (0, x.min(candidates.len()))
         } else if x > candidates.len() && !effect.is_search {
             return Err(ExecutionError::Impossible(format!(
-                "Not enough candidates to choose X objects (X={}, {} available)",
-                x,
+                "Not enough candidates to choose dynamic-count objects ({x}, {} available)",
                 candidates.len()
             )));
         } else {
@@ -1138,6 +1144,57 @@ mod tests {
         assert_eq!(chosen.len(), 2);
         assert!(chosen.contains(&card_a));
         assert!(chosen.contains(&card_b));
+    }
+
+    #[test]
+    fn test_value_backed_optional_search_uses_resolved_count() {
+        struct ChooseOneDecisionMaker;
+
+        impl DecisionMaker for ChooseOneDecisionMaker {
+            fn decide_objects(
+                &mut self,
+                _game: &GameState,
+                ctx: &crate::decisions::context::SelectObjectsContext,
+            ) -> Vec<ObjectId> {
+                assert_eq!(
+                    ctx.max,
+                    Some(2),
+                    "expected resolved count value to set max choices"
+                );
+                ctx.candidates
+                    .iter()
+                    .filter(|candidate| candidate.legal)
+                    .map(|candidate| candidate.id)
+                    .take(1)
+                    .collect()
+            }
+        }
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let first = create_library_card(&mut game, "First", alice);
+        let _second = create_library_card(&mut game, "Second", alice);
+        let _third = create_library_card(&mut game, "Third", alice);
+        let source = game.new_object_id();
+        let mut dm = ChooseOneDecisionMaker;
+        let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
+
+        let filter = ObjectFilter::default().in_zone(Zone::Library);
+        let effect = ChooseObjectsEffect::new(
+            filter,
+            ChoiceCount::dynamic_x(),
+            PlayerFilter::You,
+            "chosen",
+        )
+        .with_count_value(crate::effect::Value::Fixed(2))
+        .in_zone(Zone::Library)
+        .as_optional_search();
+        let outcome = run_choose_objects(&effect, &mut game, &mut ctx).expect("search resolves");
+
+        let crate::effect::OutcomeValue::Objects(chosen) = outcome.value else {
+            panic!("expected object selection result");
+        };
+        assert_eq!(chosen, vec![first]);
     }
 
     #[test]

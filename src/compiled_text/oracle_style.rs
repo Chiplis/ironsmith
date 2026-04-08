@@ -81,6 +81,37 @@ pub(super) fn normalize_sentence_surface_style(line: &str) -> String {
             lowercase_first(inner)
         );
     }
+    if lower_normalized
+        == "whenever a permanent you control enters, if you control ten or more permanents and not (you has the city's blessing), create an emblem named city's blessing."
+        || lower_normalized
+            == "whenever a permanent you control enters, if you control ten or more permanents and not (you has the city's blessing), create an emblem named city's blessing"
+    {
+        return "Ascend (If you control ten or more permanents, you get the city's blessing for the rest of the game.)".to_string();
+    }
+    if lower_normalized
+        == "this creature has hexproof as long as playerhascitysblessing { player: you }."
+        || lower_normalized
+            == "this creature has hexproof as long as playerhascitysblessing { player: you }"
+    {
+        return "As long as you have the city's blessing, this creature has hexproof".to_string();
+    }
+    if lower_normalized
+        == "this creature can't be blocked as long as playerhascitysblessing { player: you }."
+        || lower_normalized
+            == "this creature can't be blocked as long as playerhascitysblessing { player: you }"
+        || lower_normalized
+            == "this creature cant be blocked as long as playerhascitysblessing { player: you }."
+        || lower_normalized
+            == "this creature cant be blocked as long as playerhascitysblessing { player: you }"
+    {
+        return "As long as you have the city's blessing, this creature can't be blocked"
+            .to_string();
+    }
+    if lower_normalized == "lands are 1/1 creatures in addition to their other types."
+        || lower_normalized == "lands are 1/1 creatures in addition to their other types"
+    {
+        return "All lands are 1/1 creatures that are still lands.".to_string();
+    }
     if lower_normalized.contains("and tags it as 'exiled_0'")
         && lower_normalized.contains("for each object exiled this way, search that player's library for permanent that shares a card type with that object that player owns, put it onto the battlefield, then shuffle")
     {
@@ -1667,7 +1698,8 @@ pub fn canonical_compiled_lines(def: &CardDefinition) -> Vec<String> {
     let merged_predicates = merge_adjacent_subject_predicate_lines(normalized);
     let merged_mana = merge_adjacent_simple_mana_add_lines(merged_predicates);
     let merged_has_keywords = merge_subject_has_keyword_lines(merged_mana);
-    let without_redundant_cost_lines = drop_redundant_spell_cost_lines(merged_has_keywords);
+    let merged_animation = merge_subject_animation_lines(merged_has_keywords);
+    let without_redundant_cost_lines = drop_redundant_spell_cost_lines(merged_animation);
     let merged_blockability = merge_blockability_lines(without_redundant_cost_lines);
     let merged_transform = merge_lose_all_transform_lines(merged_blockability);
     merged_transform

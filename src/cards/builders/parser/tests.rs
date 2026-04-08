@@ -3897,7 +3897,7 @@ fn rewrite_search_library_subject_routing_tracks_zone_owner_prefixes() {
     )
     .expect("subject routing helper should parse target-opponent multi-zone prefix");
 
-    assert_eq!(routing.player, crate::cards::builders::PlayerAst::You);
+    assert_eq!(routing.player, crate::cards::builders::PlayerAst::That);
     assert!(routing.search_player_target.is_some());
     assert_eq!(
         routing.search_zones_override,
@@ -5167,6 +5167,46 @@ fn rewrite_grammar_minimum_spell_total_mana_probe_matches_static_line() {
         [crate::cards::builders::StaticAbilityAst::Static(ability)]
             if ability.id() == crate::static_abilities::StaticAbilityId::MinimumSpellTotalMana
     ));
+}
+
+#[test]
+fn cultist_of_the_absolute_static_line_parses_as_static_abilities() {
+    let tokens = lex_line(
+        "Commander creatures you own get +3/+3 and have flying, deathtouch, \"Ward—Pay 3 life,\" and \"At the beginning of your upkeep, sacrifice a creature.\"",
+        0,
+    )
+    .expect("Cultist of the Absolute static line should lex");
+
+    let trailing = super::keyword_static::parse_anthem_with_trailing_segments_line(&tokens)
+        .expect("trailing anthem rule should not error");
+    let trailing_debug = format!("{trailing:#?}");
+    assert!(
+        trailing.is_some(),
+        "expected trailing anthem rule to parse Cultist, got {trailing_debug}"
+    );
+
+    let parsed = super::keyword_static::parse_static_ability_ast_line_lexed(&tokens)
+        .expect("Cultist of the Absolute static line should not error");
+    let debug = format!("{parsed:#?}");
+
+    assert!(parsed.is_some(), "expected static abilities, got {debug}");
+
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Cultist of the Absolute")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Background]);
+    let preprocessed = super::preprocess::preprocess_document(
+        builder,
+        "Commander creatures you own get +3/+3 and have flying, deathtouch, \"Ward—Pay 3 life,\" and \"At the beginning of your upkeep, sacrifice a creature.\"",
+    )
+    .expect("Cultist document should preprocess");
+    let cst = super::document_parser::parse_document_cst(&preprocessed, false)
+        .expect("Cultist document should parse to CST");
+    assert!(
+        cst.lines
+            .iter()
+            .any(|line| matches!(line, super::cst::RewriteLineCst::Static(_))),
+        "expected Cultist line to classify as static, got {cst:?}"
+    );
 }
 
 #[test]

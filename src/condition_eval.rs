@@ -410,6 +410,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::PlayerIsMonarch { .. } => {}
         Condition::PlayerHasInitiative { .. } => {}
         Condition::PlayerHasCitysBlessing { .. } => {}
+        Condition::PlayerCommittedCrimeThisTurn { .. } => {}
         Condition::PlayerCompletedDungeon { .. } => {}
         Condition::PlayerGraveyardHasCardsAtLeast { .. } => {}
     }
@@ -641,6 +642,13 @@ pub fn evaluate_condition_external(
                 return false;
             };
             game.has_citys_blessing(player_id)
+        }
+        Condition::PlayerCommittedCrimeThisTurn { player } => {
+            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
+                return false;
+            };
+            game.turn_history
+                .player_committed_crime_this_turn(player_id)
         }
         Condition::PlayerCompletedDungeon {
             player,
@@ -1631,6 +1639,13 @@ fn evaluate_condition_simple(
             };
             game.has_citys_blessing(player_id)
         }
+        Condition::PlayerCommittedCrimeThisTurn { player } => {
+            let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
+                return false;
+            };
+            game.turn_history
+                .player_committed_crime_this_turn(player_id)
+        }
         Condition::PlayerCompletedDungeon {
             player,
             dungeon_name,
@@ -2177,6 +2192,12 @@ fn evaluate_condition(
         Condition::PlayerHasCitysBlessing { player } => {
             let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
             Ok(game.has_citys_blessing(player_id))
+        }
+        Condition::PlayerCommittedCrimeThisTurn { player } => {
+            let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
+            Ok(game
+                .turn_history
+                .player_committed_crime_this_turn(player_id))
         }
         Condition::PlayerCompletedDungeon {
             player,

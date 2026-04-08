@@ -3885,9 +3885,10 @@ pub(crate) fn parse_put_into_hand(
     }
 
     if grammar::contains_word(tokens, "sticker") {
-        return Ok(EffectAst::Investigate {
-            count: Value::Fixed(0),
-        });
+        return Err(CardTextError::ParseError(format!(
+            "unsupported sticker clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
     }
 
     Err(CardTextError::ParseError(format!(
