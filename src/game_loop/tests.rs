@@ -3377,7 +3377,10 @@ fn test_goddric_celebration_inactive_without_two_nonland_entries() {
         "Goddric should not be Dragon before celebration is active"
     );
     assert!(
-        !game.object_has_static_ability_id(goddric_id, crate::static_abilities::StaticAbilityId::Flying),
+        !game.object_has_static_ability_id(
+            goddric_id,
+            crate::static_abilities::StaticAbilityId::Flying
+        ),
         "Goddric should not have flying before celebration is active"
     );
     assert!(
@@ -3430,7 +3433,10 @@ fn test_goddric_celebration_grants_dragon_stats_flying_and_activation() {
         "Goddric should lose its other creature types once celebration is active: {subtypes:?}"
     );
     assert!(
-        game.object_has_static_ability_id(goddric_id, crate::static_abilities::StaticAbilityId::Flying),
+        game.object_has_static_ability_id(
+            goddric_id,
+            crate::static_abilities::StaticAbilityId::Flying
+        ),
         "Goddric should have flying once celebration is active"
     );
     assert!(
@@ -3466,8 +3472,7 @@ fn test_goddric_celebration_granted_ability_buffs_only_dragons() {
 
     let dragon_ally_id = game.create_object_from_card(&dragon_ally, alice, Zone::Battlefield);
     let human_ally_id = game.create_object_from_card(&human_ally, alice, Zone::Battlefield);
-    let artifact_id =
-        game.create_object_from_card(&celebration_artifact, alice, Zone::Battlefield);
+    let artifact_id = game.create_object_from_card(&celebration_artifact, alice, Zone::Battlefield);
     record_battlefield_entry_this_turn(&mut game, dragon_ally_id);
     record_battlefield_entry_this_turn(&mut game, artifact_id);
     game.refresh_continuous_state();
@@ -3479,10 +3484,12 @@ fn test_goddric_celebration_granted_ability_buffs_only_dragons() {
 
     let activate_action = crate::decision::compute_legal_actions(&game, alice)
         .into_iter()
-        .find(|action| matches!(
-            action,
-            LegalAction::ActivateAbility { source, .. } if *source == goddric_id
-        ))
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::ActivateAbility { source, .. } if *source == goddric_id
+            )
+        })
         .expect("celebrating Goddric should expose its granted red activation");
 
     let mut trigger_queue = TriggerQueue::new();

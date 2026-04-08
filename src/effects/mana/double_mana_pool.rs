@@ -141,7 +141,9 @@ mod tests {
             restrictions: vec![ManaUsageRestriction::CastSpell {
                 card_types: vec![CardType::Creature],
                 subtype_requirement: None,
+                restrict_to_matching_spell: true,
                 grant_uncounterable: true,
+                enters_with_counters: vec![],
             }],
         };
 

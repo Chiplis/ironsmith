@@ -991,7 +991,9 @@ fn test_parse_cavern_of_souls_generic_mana_usage_restriction() {
             subtype_requirement: Some(
                 crate::ability::ManaUsageSubtypeRequirement::ChosenTypeOfSource,
             ),
+            restrict_to_matching_spell: true,
             grant_uncounterable: true,
+            enters_with_counters: vec![],
         }]
     );
 }
@@ -3067,6 +3069,21 @@ fn test_parse_marker_keyword_with_cost_keeps_cost_in_render() {
         !debug.contains("unsupported"),
         "dash parse should avoid unsupported placeholders, got {debug}"
     );
+}
+
+#[test]
+fn compiled_lines_render_zurgo_restriction_before_dash() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Zurgo Bellstriker Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("This creature can't block creatures with power 2 or greater.\nDash {1}{R}")
+        .expect("zurgo-style text should parse");
+
+    let lines = compiled_lines(&def);
+    assert_eq!(
+        lines.first().map(String::as_str),
+        Some("Static ability 1: This creature can't block creatures with power 2 or greater.")
+    );
+    assert_eq!(lines.get(1).map(String::as_str), Some("Dash {1}{R}."));
 }
 
 #[test]
@@ -10054,6 +10071,35 @@ fn parse_phyrexian_metamorph_style_enter_as_copy_with_added_card_type() {
 }
 
 #[test]
+fn parse_omni_changeling_copy_exception_stays_localized() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Omni-Changeling")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Shapeshifter])
+        .power_toughness(crate::card::PowerToughness::fixed(0, 0))
+        .parse_text(
+            "Changeling (This card is every creature type.)\nConvoke (Your creatures can help cast this spell. Each creature you tap while casting this spell pays for {1} or one mana of that creature's color.)\nYou may have this creature enter as a copy of any creature on the battlefield, except it has changeling.",
+        )
+        .expect("omni-changeling copy exception should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "You may have this creature enter as a copy of any creature on the battlefield except it has changeling."
+        ),
+        "expected localized copy-exception text in render output, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("All creatures have changeling."),
+        "expected copy exception to avoid degrading into a global grant, got {rendered}"
+    );
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("added_abilities"),
+        "expected copy-as-enters lowering to record added ability support, got {debug}"
+    );
+}
+
+#[test]
 fn parse_reveal_card_this_way_trigger_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Primitive Etchings Variant")
         .parse_text(
@@ -13662,6 +13708,25 @@ fn parse_token_becomes_tapped_damage_trigger() {
 }
 
 #[test]
+fn parse_survivor_token_preserves_survivor_subtype() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Survivor Token Variant")
+        .parse_text("Create a 1/1 red Survivor creature token.")
+        .expect("survivor token clause should parse");
+
+    let spell_debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        spell_debug.contains("CreateTokenEffect") && spell_debug.contains("Survivor"),
+        "expected created token to keep Survivor subtype, got {spell_debug}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Survivor creature token"),
+        "expected compiled text to retain Survivor token wording, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_deathpact_style_token_activation_is_preserved() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Deathpact Angel")
         .card_types(vec![CardType::Creature])
@@ -13901,8 +13966,7 @@ fn parse_broken_visage_keeps_destroy_no_regen_and_token_followups_on_spell_effec
         "expected dynamic Spirit token wording in compiled output, got {rendered}"
     );
     assert!(
-        rendered.contains("sacrifice")
-            && rendered.contains("beginning of the next end step"),
+        rendered.contains("sacrifice") && rendered.contains("beginning of the next end step"),
         "expected delayed sacrifice wording in compiled output, got {rendered}"
     );
 }
@@ -18585,6 +18649,12 @@ fn parse_this_creature_cant_block_creatures_with_power_two_or_greater() {
         abilities_debug.contains("blockspecificattacker"),
         "expected blocker restriction by attacker power, got {abilities_debug}"
     );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("can't block creatures with power 2 or greater"),
+        "expected rendered blocker restriction text, got {rendered}"
+    );
 }
 
 #[test]
@@ -19875,7 +19945,11 @@ fn parse_oracle_soul_partition_exile_and_recast_regression() {
 
     let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        rendered.contains("nonland spells your opponents cast cost {2} more to cast"),
+        rendered.contains("that card's owner may play it for as long as it remains exiled"),
+        "expected Soul Partition to preserve the exile play permission, got {rendered}"
+    );
+    assert!(
+        rendered.contains("a spell cast by an opponent this way costs {2} more to cast"),
         "expected Soul Partition to preserve the opponent recast tax, got {rendered}"
     );
     assert!(
@@ -20344,6 +20418,27 @@ fn parse_oracle_grumgully_the_generous_etb_counter_regression() {
 }
 
 #[test]
+fn parse_oracle_biophagus_conditional_mana_bonus_regression() {
+    let def = parse_oracle_card_definition("Biophagus");
+
+    let raw = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        raw.contains("mana_usage_restrictions")
+            && raw.contains("restrict_to_matching_spell: false")
+            && raw.contains("plusoneplusone"),
+        "expected Biophagus to retain its conditional mana bonus metadata, got {raw}"
+    );
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("add one mana of any color")
+            && rendered.contains("if this mana is spent to cast a creature spell")
+            && rendered.contains("that creature enters with an additional +1/+1 counter on it"),
+        "expected Biophagus to render both its mana ability and creature ETB bonus, got {rendered}"
+    );
+}
+
+#[test]
 fn oracle_render_regression_named_cards_compile_cleanly() {
     let cultivator =
         oracle_like_lines(&parse_oracle_card_definition("Cultivator Colossus")).join("\n");
@@ -20759,6 +20854,7 @@ fn assert_oracle_card_fails_strict(name: &str) {
 const STRICT_PARSE_REGRESSION_SUCCESS_CARDS: &[&str] = &[
     "Banefire",
     "Barrowin of Clan Undurr",
+    "Biophagus",
     "Blast Zone",
     "Boseiju, Who Endures",
     "Cabal Ritual",

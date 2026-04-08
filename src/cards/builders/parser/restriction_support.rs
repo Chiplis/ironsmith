@@ -3,8 +3,8 @@ use crate::cards::builders::ParsedRestrictions;
 
 use super::activation_and_restrictions::{
     combine_mana_activation_condition, parse_activate_only_timing_lexed,
-    parse_activation_condition_lexed, parse_mana_usage_restriction_sentence_lexed,
-    parse_triggered_times_each_turn_lexed,
+    parse_activation_condition_lexed, parse_mana_spend_bonus_sentence_lexed,
+    parse_mana_usage_restriction_sentence_lexed, parse_triggered_times_each_turn_lexed,
 };
 use super::lexer::lex_line;
 
@@ -204,7 +204,8 @@ pub(crate) fn apply_pending_mana_restriction(ability: &mut ActivatedAbility, res
     }
     let tokens = lex_line(&normalized_restriction, 0).unwrap_or_default();
     let parsed_timing = parse_activate_only_timing_lexed(&tokens).unwrap_or_default();
-    let parsed_usage_restriction = parse_mana_usage_restriction_sentence_lexed(&tokens);
+    let parsed_usage_restriction = parse_mana_usage_restriction_sentence_lexed(&tokens)
+        .or_else(|| parse_mana_spend_bonus_sentence_lexed(&tokens));
     let has_usage_restriction = parsed_usage_restriction.is_some();
     let parsed_condition = parse_activation_condition_lexed(&tokens).or_else(|| {
         if parsed_timing == ActivationTiming::AnyTime && !has_usage_restriction {

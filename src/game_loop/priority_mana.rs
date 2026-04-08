@@ -643,7 +643,100 @@ pub(super) fn add_any_color_pool_options(
 #[derive(Clone)]
 pub(super) struct SpentManaInfo {
     symbol: crate::mana::ManaSymbol,
+    source: ObjectId,
+    source_chosen_creature_type: Option<crate::types::Subtype>,
     restrictions: Vec<crate::ability::ManaUsageRestriction>,
+}
+
+fn cast_spell_mana_rule_matches_payment_source(
+    game: &GameState,
+    unit: &crate::ability::RestrictedManaUnit,
+    card_types: &[crate::types::CardType],
+    subtype_requirement: &Option<crate::ability::ManaUsageSubtypeRequirement>,
+    payment_source: Option<ObjectId>,
+) -> bool {
+    let Some(source_id) = payment_source else {
+        return false;
+    };
+    let Some(source_obj) = game.object(source_id) else {
+        return false;
+    };
+
+    if source_obj.zone != Zone::Stack {
+        return false;
+    }
+    if !card_types
+        .iter()
+        .all(|card_type| game.current_has_card_type(source_obj.id, *card_type))
+    {
+        return false;
+    }
+
+    let required_subtype = match subtype_requirement {
+        Some(crate::ability::ManaUsageSubtypeRequirement::Exact(subtype)) => Some(*subtype),
+        Some(crate::ability::ManaUsageSubtypeRequirement::ChosenTypeOfSource) => {
+            unit.source_chosen_creature_type
+        }
+        None => None,
+    };
+    required_subtype.is_none_or(|subtype| game.current_has_subtype(source_obj.id, subtype))
+}
+
+fn restriction_requires_matching_spell(restriction: &crate::ability::ManaUsageRestriction) -> bool {
+    match restriction {
+        crate::ability::ManaUsageRestriction::CastSpell {
+            restrict_to_matching_spell,
+            ..
+        } => *restrict_to_matching_spell,
+    }
+}
+
+fn restriction_bonus_applies_to_payment_source(
+    game: &GameState,
+    unit: &crate::ability::RestrictedManaUnit,
+    restriction: &crate::ability::ManaUsageRestriction,
+    payment_source: Option<ObjectId>,
+) -> bool {
+    match restriction {
+        crate::ability::ManaUsageRestriction::CastSpell {
+            card_types,
+            subtype_requirement,
+            grant_uncounterable,
+            enters_with_counters,
+            ..
+        } => {
+            if !*grant_uncounterable && enters_with_counters.is_empty() {
+                return false;
+            }
+            cast_spell_mana_rule_matches_payment_source(
+                game,
+                unit,
+                card_types,
+                subtype_requirement,
+                payment_source,
+            )
+        }
+    }
+}
+
+fn restricted_unit_priority(
+    game: &GameState,
+    unit: &crate::ability::RestrictedManaUnit,
+    payment_source: Option<ObjectId>,
+) -> u8 {
+    if unit
+        .restrictions
+        .iter()
+        .any(restriction_requires_matching_spell)
+    {
+        return 0;
+    }
+    if unit.restrictions.iter().any(|restriction| {
+        restriction_bonus_applies_to_payment_source(game, unit, restriction, payment_source)
+    }) {
+        return 1;
+    }
+    2
 }
 
 pub(super) fn payment_source_matches_restriction(
@@ -663,26 +756,19 @@ pub(super) fn payment_source_matches_restriction(
         crate::ability::ManaUsageRestriction::CastSpell {
             card_types,
             subtype_requirement,
+            restrict_to_matching_spell,
             ..
         } => {
-            if source_obj.zone != Zone::Stack {
-                return false;
+            if !*restrict_to_matching_spell {
+                return true;
             }
-            if !card_types
-                .iter()
-                .all(|card_type| game.current_has_card_type(source_obj.id, *card_type))
-            {
-                return false;
-            }
-
-            let required_subtype = match subtype_requirement {
-                Some(crate::ability::ManaUsageSubtypeRequirement::Exact(subtype)) => Some(*subtype),
-                Some(crate::ability::ManaUsageSubtypeRequirement::ChosenTypeOfSource) => {
-                    unit.source_chosen_creature_type
-                }
-                None => None,
-            };
-            required_subtype.is_none_or(|subtype| game.current_has_subtype(source_obj.id, subtype))
+            cast_spell_mana_rule_matches_payment_source(
+                game,
+                unit,
+                card_types,
+                subtype_requirement,
+                Some(source_obj.id),
+            )
         }
     }
 }
@@ -735,17 +821,6 @@ pub(super) fn spend_pool_symbol(
     symbol: crate::mana::ManaSymbol,
     payment_source: Option<ObjectId>,
 ) -> Option<SpentManaInfo> {
-    let payable_restricted_index = game.player(player).and_then(|player_obj| {
-        player_obj
-            .restricted_mana
-            .iter()
-            .enumerate()
-            .find(|(_, unit)| {
-                unit.symbol == symbol && restricted_unit_is_payable(game, unit, payment_source)
-            })
-            .map(|(idx, _)| idx)
-    });
-
     let unrestricted_available = game.player(player).is_some_and(|player_obj| {
         let total = player_obj.mana_pool.amount(symbol);
         let restricted_total = player_obj
@@ -756,14 +831,30 @@ pub(super) fn spend_pool_symbol(
         total > restricted_total
     });
 
+    let payable_restricted = game.player(player).and_then(|player_obj| {
+        player_obj
+            .restricted_mana
+            .iter()
+            .enumerate()
+            .filter(|(_, unit)| {
+                unit.symbol == symbol && restricted_unit_is_payable(game, unit, payment_source)
+            })
+            .min_by_key(|(_, unit)| restricted_unit_priority(game, unit, payment_source))
+            .map(|(idx, unit)| (idx, restricted_unit_priority(game, unit, payment_source)))
+    });
+
     let player_obj = game.player_mut(player)?;
-    if let Some(idx) = payable_restricted_index {
+    if let Some((idx, priority)) = payable_restricted
+        && !(unrestricted_available && priority >= 2)
+    {
         if !player_obj.mana_pool.remove(symbol, 1) {
             return None;
         }
         let unit = player_obj.restricted_mana.remove(idx);
         return Some(SpentManaInfo {
             symbol,
+            source: unit.source,
+            source_chosen_creature_type: unit.source_chosen_creature_type,
             restrictions: unit.restrictions,
         });
     }
@@ -771,6 +862,8 @@ pub(super) fn spend_pool_symbol(
     if unrestricted_available && player_obj.mana_pool.remove(symbol, 1) {
         return Some(SpentManaInfo {
             symbol,
+            source: ObjectId::from_raw(0),
+            source_chosen_creature_type: None,
             restrictions: Vec::new(),
         });
     }
@@ -781,19 +874,29 @@ pub(super) fn spend_pool_symbol(
 pub(super) fn apply_spent_mana_bonuses(
     game: &mut GameState,
     payment_source: Option<ObjectId>,
-    restrictions: &[crate::ability::ManaUsageRestriction],
+    spent: &SpentManaInfo,
 ) {
     let Some(source_id) = payment_source else {
         return;
     };
-    let Some(source_obj) = game.object_mut(source_id) else {
-        return;
+    let unit = crate::ability::RestrictedManaUnit {
+        symbol: spent.symbol,
+        source: spent.source,
+        source_chosen_creature_type: spent.source_chosen_creature_type,
+        restrictions: spent.restrictions.clone(),
     };
 
-    for restriction in restrictions {
+    for restriction in &spent.restrictions {
+        if !restriction_bonus_applies_to_payment_source(game, &unit, restriction, payment_source) {
+            continue;
+        }
+        let Some(source_obj) = game.object_mut(source_id) else {
+            return;
+        };
         match restriction {
             crate::ability::ManaUsageRestriction::CastSpell {
                 grant_uncounterable: true,
+                enters_with_counters,
                 ..
             } => {
                 let already_uncounterable = source_obj.abilities.iter().any(|ability| {
@@ -810,8 +913,33 @@ pub(super) fn apply_spent_mana_bonuses(
                             crate::static_abilities::StaticAbility::uncounterable(),
                         ));
                 }
+                for (counter_type, count) in enters_with_counters {
+                    source_obj
+                        .abilities
+                        .push(crate::ability::Ability::static_ability(
+                            crate::static_abilities::StaticAbility::enters_with_counters(
+                                *counter_type,
+                                *count,
+                            ),
+                        ));
+                }
             }
-            _ => {}
+            crate::ability::ManaUsageRestriction::CastSpell {
+                grant_uncounterable: false,
+                enters_with_counters,
+                ..
+            } => {
+                for (counter_type, count) in enters_with_counters {
+                    source_obj
+                        .abilities
+                        .push(crate::ability::Ability::static_ability(
+                            crate::static_abilities::StaticAbility::enters_with_counters(
+                                *counter_type,
+                                *count,
+                            ),
+                        ));
+                }
+            }
         }
     }
 }
@@ -1041,7 +1169,7 @@ pub(super) fn execute_pip_payment_action(
             if let Some(spent) = mana_spent_to_cast.as_deref_mut() {
                 track_spent_mana_symbol(spent, spent_info.symbol);
             }
-            apply_spent_mana_bonuses(game, source, &spent_info.restrictions);
+            apply_spent_mana_bonuses(game, source, &spent_info);
             record_pip_payment_action(payment_trace, action);
             Ok(true) // Pip was paid
         }
@@ -1082,7 +1210,7 @@ pub(super) fn execute_pip_payment_action(
                 if let Some(spent) = mana_spent_to_cast.as_deref_mut() {
                     track_spent_mana_symbol(spent, spent_info.symbol);
                 }
-                apply_spent_mana_bonuses(game, source, &spent_info.restrictions);
+                apply_spent_mana_bonuses(game, source, &spent_info);
                 record_pip_payment_action(
                     payment_trace,
                     &ManaPipPaymentAction::UseFromPool(spent_info.symbol),
@@ -3830,7 +3958,9 @@ mod priority_mana_tests {
         let restriction = ManaUsageRestriction::CastSpell {
             card_types: vec![CardType::Creature],
             subtype_requirement: Some(ManaUsageSubtypeRequirement::ChosenTypeOfSource),
+            restrict_to_matching_spell: true,
             grant_uncounterable: true,
+            enters_with_counters: vec![],
         };
         game.object_mut(cavern_id)
             .expect("cavern test land should exist")
@@ -3898,7 +4028,7 @@ mod priority_mana_tests {
             });
         let spent = spend_pool_symbol(&mut game, alice, ManaSymbol::Green, Some(matching_spell_id))
             .expect("restricted mana should be spendable on matching spell");
-        apply_spent_mana_bonuses(&mut game, Some(matching_spell_id), &spent.restrictions);
+        apply_spent_mana_bonuses(&mut game, Some(matching_spell_id), &spent);
 
         assert!(
             game.object(matching_spell_id)
@@ -3911,6 +4041,93 @@ mod priority_mana_tests {
                         if static_ability.id() == StaticAbilityId::CantBeCountered
                 )),
             "spending restricted Cavern-style mana should make the matching spell uncounterable"
+        );
+    }
+
+    #[test]
+    fn test_bonus_mana_can_still_pay_noncreature_spells_but_only_buffs_matching_creatures() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        let source_id = game.new_object_id();
+        let restriction = ManaUsageRestriction::CastSpell {
+            card_types: vec![CardType::Creature],
+            subtype_requirement: None,
+            restrict_to_matching_spell: false,
+            grant_uncounterable: false,
+            enters_with_counters: vec![(crate::object::CounterType::PlusOnePlusOne, 1)],
+        };
+
+        game.player_mut(alice)
+            .expect("alice should exist")
+            .add_restricted_mana(RestrictedManaUnit {
+                symbol: ManaSymbol::Green,
+                source: source_id,
+                source_chosen_creature_type: None,
+                restrictions: vec![restriction.clone()],
+            });
+
+        let creature_spell = CardDefinitionBuilder::new(CardId::new(), "Creature Spell")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let creature_spell_id =
+            game.create_object_from_definition(&creature_spell, alice, Zone::Stack);
+        assert!(
+            pool_symbol_count(&game, alice, ManaSymbol::Green, Some(creature_spell_id)) >= 1,
+            "bonus-bearing mana should still be available for creature spells"
+        );
+
+        let spent = spend_pool_symbol(&mut game, alice, ManaSymbol::Green, Some(creature_spell_id))
+            .expect("bonus-bearing mana should be spendable on creature spells");
+        apply_spent_mana_bonuses(&mut game, Some(creature_spell_id), &spent);
+        assert!(
+            game.object(creature_spell_id)
+                .expect("creature spell should remain on stack")
+                .abilities
+                .iter()
+                .any(|ability| matches!(
+                    &ability.kind,
+                    AbilityKind::Static(static_ability)
+                        if static_ability.id() == StaticAbilityId::EnterWithCounters
+                )),
+            "spending bonus-bearing mana on a creature spell should grant an ETB counter bonus"
+        );
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        game.player_mut(alice)
+            .expect("alice should exist")
+            .add_restricted_mana(RestrictedManaUnit {
+                symbol: ManaSymbol::Green,
+                source: source_id,
+                source_chosen_creature_type: None,
+                restrictions: vec![restriction],
+            });
+
+        let noncreature_spell = CardDefinitionBuilder::new(CardId::new(), "Noncreature Spell")
+            .card_types(vec![CardType::Sorcery])
+            .build();
+        let noncreature_spell_id =
+            game.create_object_from_definition(&noncreature_spell, alice, Zone::Stack);
+        let spent = spend_pool_symbol(
+            &mut game,
+            alice,
+            ManaSymbol::Green,
+            Some(noncreature_spell_id),
+        )
+        .expect("bonus-bearing mana should still be spendable on noncreature spells");
+        apply_spent_mana_bonuses(&mut game, Some(noncreature_spell_id), &spent);
+        assert!(
+            game.object(noncreature_spell_id)
+                .expect("noncreature spell should remain on stack")
+                .abilities
+                .iter()
+                .all(|ability| !matches!(
+                    &ability.kind,
+                    AbilityKind::Static(static_ability)
+                        if static_ability.id() == StaticAbilityId::EnterWithCounters
+                )),
+            "bonus-bearing mana should not add ETB counter text to noncreature spells"
         );
     }
 

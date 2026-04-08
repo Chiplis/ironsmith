@@ -237,7 +237,7 @@ fn parse_granted_ability_component_for_gain(
     Ok(None)
 }
 
-fn parse_granted_abilities_for_gain_clause(
+pub(crate) fn parse_granted_abilities_for_gain_clause(
     ability_tokens: &[OwnedLexToken],
     clause_words: &[&str],
     allow_choice: bool,

@@ -877,6 +877,7 @@ fn apply_trait_replacement(
             enters_tapped,
             added_card_types,
             added_subtypes,
+            added_abilities,
         } => {
             let modified = apply_trait_enter_as_copy(
                 &event,
@@ -884,6 +885,7 @@ fn apply_trait_replacement(
                 *enters_tapped,
                 added_card_types,
                 added_subtypes,
+                added_abilities,
             );
             match modified {
                 Some(e) => TraitApplyResult::Modified(e),
@@ -1328,6 +1330,7 @@ fn apply_trait_enter_as_copy(
     enters_tapped: bool,
     added_card_types: &[crate::types::CardType],
     added_subtypes: &[crate::types::Subtype],
+    added_abilities: &[crate::ability::Ability],
 ) -> Option<Event> {
     use crate::events::{EnterBattlefieldEvent, ZoneChangeEvent, downcast_event};
 
@@ -1337,7 +1340,8 @@ fn apply_trait_enter_as_copy(
             let mut copied = etb
                 .with_copy_of(source_id)
                 .with_added_card_types(added_card_types)
-                .with_added_subtypes(added_subtypes);
+                .with_added_subtypes(added_subtypes)
+                .with_added_abilities(added_abilities);
             if enters_tapped {
                 copied = copied.with_tapped();
             }
@@ -1351,7 +1355,8 @@ fn apply_trait_enter_as_copy(
                 etb = etb
                     .with_copy_of(source_id)
                     .with_added_card_types(added_card_types)
-                    .with_added_subtypes(added_subtypes);
+                    .with_added_subtypes(added_subtypes)
+                    .with_added_abilities(added_abilities);
                 if enters_tapped {
                     etb = etb.with_tapped();
                 }
@@ -2098,6 +2103,8 @@ pub struct EtbEventResult {
     pub added_card_types: Vec<crate::types::CardType>,
     /// Additional subtypes granted by an ETB copy choice.
     pub added_subtypes: Vec<crate::types::Subtype>,
+    /// Additional abilities granted by an ETB copy choice.
+    pub added_abilities: Vec<crate::ability::Ability>,
     /// An interactive replacement that requires player input.
     ///
     /// If present, the caller must:
@@ -2672,6 +2679,7 @@ pub fn process_etb_with_event_and_dm(
                                     enters_tapped: spec.enters_tapped_if_chosen,
                                     added_card_types: spec.added_card_types.clone(),
                                     added_subtypes: spec.added_subtypes.clone(),
+                                    added_abilities: spec.added_abilities.clone(),
                                 },
                             )
                             .with_priority_override(crate::events::ReplacementPriority::CopyEffect),
@@ -2699,6 +2707,7 @@ pub fn process_etb_with_event_and_dm(
             enters_as_copy_of: None,
             added_card_types: Vec::new(),
             added_subtypes: Vec::new(),
+            added_abilities: Vec::new(),
         },
         etb_event_provenance,
     );
@@ -2746,6 +2755,7 @@ pub fn process_etb_with_event_and_dm(
                         enters_as_copy_of: etb.enters_as_copy_of,
                         added_card_types: etb.added_card_types.clone(),
                         added_subtypes: etb.added_subtypes.clone(),
+                        added_abilities: etb.added_abilities.clone(),
                         interactive_replacement: None,
                     };
                 }

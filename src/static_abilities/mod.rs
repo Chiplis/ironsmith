@@ -946,6 +946,7 @@ pub struct EnterAsCopyAsEntersSpec {
     pub enters_tapped_if_chosen: bool,
     pub added_card_types: Vec<crate::types::CardType>,
     pub added_subtypes: Vec<crate::types::Subtype>,
+    pub added_abilities: Vec<crate::ability::Ability>,
 }
 
 /// Spec for static abilities that duplicate matching triggered abilities.

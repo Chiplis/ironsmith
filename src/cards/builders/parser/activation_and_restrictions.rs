@@ -791,6 +791,12 @@ pub(crate) fn parse_mana_usage_restriction_sentence_lexed(
     activated_sentence_parsers::parse_mana_usage_restriction_sentence_lexed(tokens)
 }
 
+pub(crate) fn parse_mana_spend_bonus_sentence_lexed(
+    tokens: &[OwnedLexToken],
+) -> Option<crate::ability::ManaUsageRestriction> {
+    activated_sentence_parsers::parse_mana_spend_bonus_sentence_lexed(tokens)
+}
+
 pub(crate) fn is_any_player_may_activate_sentence(tokens: &[OwnedLexToken]) -> bool {
     activated_sentence_parsers::is_any_player_may_activate_sentence_lexed(tokens)
 }
@@ -2912,7 +2918,10 @@ pub(crate) fn parse_cant_clause(
                     ObjectFilter::source(),
                     attacker_filter,
                 ),
-                "this creature can't block those attackers".to_string(),
+                format!(
+                    "this creature can't block {}",
+                    crate::cards::builders::parser::token_word_refs(&attacker_tokens).join(" ")
+                ),
             )));
         }
         if remainder_words.as_slice() == ["transform"] {
@@ -4856,8 +4865,13 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
             {
                 text = format!("Cumulative upkeep {left} or {right}");
             } else {
-                text.push(' ');
-                text.push_str(&tail.join(" "));
+                let mut tail_text = tail.join(" ");
+                if let Some(first) = tail_text.chars().next() {
+                    let upper = first.to_ascii_uppercase().to_string();
+                    let rest = &tail_text[first.len_utf8()..];
+                    tail_text = format!("{upper}{rest}");
+                }
+                text = format!("Cumulative upkeep—{tail_text}");
             }
         }
         return Some(KeywordAction::MarkerText(text));
@@ -9432,7 +9446,16 @@ pub(crate) fn append_token_reminder_to_effect(
 
         if let Some(rhs_words) = slice_strip_prefix(
             reminder_words,
-            &["its", "power", "and", "toughness", "are", "each", "equal", "to"],
+            &[
+                "its",
+                "power",
+                "and",
+                "toughness",
+                "are",
+                "each",
+                "equal",
+                "to",
+            ],
         ) {
             let value = parse_rhs(rhs_words)?;
             return Some((value.clone(), value));
@@ -9449,8 +9472,7 @@ pub(crate) fn append_token_reminder_to_effect(
         if let Some(and_idx) = and_idx {
             let left = &reminder_words[..and_idx];
             let right = &reminder_words[and_idx + 1..];
-            let power_words =
-                slice_strip_prefix(left, &["its", "power", "is", "equal", "to"])?;
+            let power_words = slice_strip_prefix(left, &["its", "power", "is", "equal", "to"])?;
             let toughness_words =
                 slice_strip_prefix(right, &["its", "toughness", "is", "equal", "to"])?;
             return Some((parse_rhs(power_words)?, parse_rhs(toughness_words)?));

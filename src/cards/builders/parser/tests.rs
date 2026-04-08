@@ -1853,8 +1853,11 @@ fn rewrite_lexed_restriction_parsers_match_activation_trigger_and_mana_shapes() 
             subtype_requirement: Some(
                 crate::ability::ManaUsageSubtypeRequirement::ChosenTypeOfSource
             ),
+            restrict_to_matching_spell: true,
             grant_uncounterable: true,
+            enters_with_counters,
         }) if card_types == vec![CardType::Artifact]
+            && enters_with_counters.is_empty()
     ));
 }
 
@@ -4604,8 +4607,11 @@ fn rewrite_activation_line_collects_sentence_modifiers_via_activated_sentence_mo
                     subtype_requirement: Some(
                         crate::ability::ManaUsageSubtypeRequirement::ChosenTypeOfSource
                     ),
+                    restrict_to_matching_spell: true,
                     grant_uncounterable: true,
+                    enters_with_counters,
                 }] if card_types == &vec![CardType::Artifact]
+                    && enters_with_counters.is_empty()
             ));
             assert!(
                 activated.additional_restrictions.iter().any(|restriction| {
@@ -4621,6 +4627,37 @@ fn rewrite_activation_line_collects_sentence_modifiers_via_activated_sentence_mo
     assert!(debug.contains("ReduceNextSpellCostThisTurn"), "{debug}");
     assert!(debug.contains("excluded_card_types"), "{debug}");
     assert!(debug.contains("Creature"), "{debug}");
+}
+
+#[test]
+fn rewrite_activation_line_parses_biophagus_style_conditional_mana_bonus() {
+    let tokens = lex_line(
+        "{T}: Add one mana of any color. If this mana is spent to cast a creature spell, that creature enters with an additional +1/+1 counter on it.",
+        0,
+    )
+    .expect("rewrite lexer should classify Biophagus-style mana bonus");
+
+    let parsed = super::parse_activated_line(&tokens)
+        .expect("Biophagus-style line should parse")
+        .expect("Biophagus-style line should produce an ability");
+
+    match &parsed.ability.kind {
+        crate::ability::AbilityKind::Activated(activated) => {
+            assert!(matches!(
+                activated.mana_usage_restrictions.as_slice(),
+                [crate::ability::ManaUsageRestriction::CastSpell {
+                    card_types,
+                    subtype_requirement: None,
+                    restrict_to_matching_spell: false,
+                    grant_uncounterable: false,
+                    enters_with_counters,
+                }] if card_types == &vec![CardType::Creature]
+                    && enters_with_counters
+                        == &vec![(crate::object::CounterType::PlusOnePlusOne, 1)]
+            ));
+        }
+        other => panic!("expected activated ability, got {other:?}"),
+    }
 }
 
 #[test]

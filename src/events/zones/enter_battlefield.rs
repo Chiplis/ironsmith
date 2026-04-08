@@ -2,6 +2,7 @@
 
 use std::any::Any;
 
+use crate::ability::Ability;
 use crate::events::traits::{EventKind, GameEventType};
 use crate::game_state::{GameState, Target};
 use crate::ids::{ObjectId, PlayerId};
@@ -30,6 +31,8 @@ pub struct EnterBattlefieldEvent {
     pub added_card_types: Vec<CardType>,
     /// Additional subtypes granted by the copy-as-enters replacement.
     pub added_subtypes: Vec<Subtype>,
+    /// Additional abilities granted by the copy-as-enters replacement.
+    pub added_abilities: Vec<Ability>,
 }
 
 impl EnterBattlefieldEvent {
@@ -43,6 +46,7 @@ impl EnterBattlefieldEvent {
             enters_as_copy_of: None,
             added_card_types: Vec::new(),
             added_subtypes: Vec::new(),
+            added_abilities: Vec::new(),
         }
     }
 
@@ -56,6 +60,7 @@ impl EnterBattlefieldEvent {
             enters_as_copy_of: None,
             added_card_types: Vec::new(),
             added_subtypes: Vec::new(),
+            added_abilities: Vec::new(),
         }
     }
 
@@ -116,6 +121,20 @@ impl EnterBattlefieldEvent {
         }
         Self {
             added_subtypes,
+            ..self.clone()
+        }
+    }
+
+    /// Return a new event with additional abilities granted as it enters.
+    pub fn with_added_abilities(&self, abilities: &[Ability]) -> Self {
+        let mut added_abilities = self.added_abilities.clone();
+        for ability in abilities {
+            if !added_abilities.contains(ability) {
+                added_abilities.push(ability.clone());
+            }
+        }
+        Self {
+            added_abilities,
             ..self.clone()
         }
     }

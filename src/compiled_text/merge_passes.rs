@@ -398,8 +398,7 @@ pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<
             if let (Some(left_conditional), Some(right_conditional)) = (
                 parse_conditional_subject_predicate(&lines[idx]),
                 parse_conditional_subject_predicate(&lines[idx + 1]),
-            )
-                && can_merge_conditional_state_bundle(&left_conditional, &right_conditional)
+            ) && can_merge_conditional_state_bundle(&left_conditional, &right_conditional)
             {
                 merged.push(lines[idx].clone());
                 idx += 1;
@@ -895,15 +894,12 @@ pub(super) fn merge_subject_animation_lines(lines: Vec<String>) -> Vec<String> {
                         break;
                     }
                     "has" | "have" | "gains" | "gain" => {
-                        if let Some(pt) =
-                            next.predicate.strip_prefix("base power and toughness ")
-                        {
+                        if let Some(pt) = next.predicate.strip_prefix("base power and toughness ") {
                             base_pt = Some(pt.trim().to_string());
                             consumed += 1;
                             continue;
                         }
-                        granted_predicates
-                            .push(normalize_keyword_predicate_case(&next.predicate));
+                        granted_predicates.push(normalize_keyword_predicate_case(&next.predicate));
                         consumed += 1;
                         continue;
                     }

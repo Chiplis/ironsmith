@@ -2835,6 +2835,15 @@ impl GameState {
                 }
             }
         }
+        if !result.added_abilities.is_empty()
+            && let Some(new_obj) = self.object_mut(new_id)
+        {
+            for ability in &result.added_abilities {
+                if !new_obj.abilities.contains(ability) {
+                    new_obj.abilities.push(ability.clone());
+                }
+            }
+        }
 
         // Apply enters tapped
         if result.enters_tapped {

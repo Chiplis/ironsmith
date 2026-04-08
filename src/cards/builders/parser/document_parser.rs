@@ -1146,8 +1146,8 @@ fn parse_statement_line_cst(
         || grammar::contains_phrase(
             &line.tokens,
             &[
-                "ask", "a", "person", "outside", "the", "game", "to", "rate", "its", "new",
-                "art", "on", "a", "scale", "from", "1", "to", "5",
+                "ask", "a", "person", "outside", "the", "game", "to", "rate", "its", "new", "art",
+                "on", "a", "scale", "from", "1", "to", "5",
             ],
         )
         || looks_like_pact_next_upkeep_line_tokens(&line.tokens)
@@ -1292,7 +1292,9 @@ fn looks_like_granted_quoted_static_line_tokens(tokens: &[OwnedLexToken]) -> boo
         return false;
     };
     let head = trim_lexed_commas(&tokens[..quote_idx]);
-    if head.is_empty() || !token_words_have_any_prefix(head, &[&["this"], &["it"], &["all"], &["each"]]) {
+    if head.is_empty()
+        || !token_words_have_any_prefix(head, &[&["this"], &["it"], &["all"], &["each"]])
+    {
         return false;
     }
     let words = TokenWordView::new(head);
@@ -2147,8 +2149,8 @@ mod tests {
     }
 
     #[test]
-    fn parse_statement_line_cst_does_not_abort_on_broken_visage_static_probe_error(
-    ) -> Result<(), CardTextError> {
+    fn parse_statement_line_cst_does_not_abort_on_broken_visage_static_probe_error()
+    -> Result<(), CardTextError> {
         let line = single_preprocessed_line(
             "Destroy target nonartifact attacking creature. It can't be regenerated. Create a black Spirit creature token. Its power is equal to that creature's power and its toughness is equal to that creature's toughness. Sacrifice the token at the beginning of the next end step.",
         );
@@ -3474,25 +3476,25 @@ pub(crate) fn parse_document_cst(
                         labeled_choice_block_has_peer(&preprocessed.items, idx);
                     if !preserve_keyword_prefix_for_parse(label.as_str()) {
                         let body_line = rewrite_line_tokens(line, body_tokens);
-                        let labeled_activation = if (!str_starts_with_char(
-                            line.info.raw_line.trim_start(),
-                            '(',
-                        ) || is_fully_parenthetical_line(line.info.raw_line.as_str()))
-                            && let Some((cost_tokens, effect_parse_tokens)) =
-                                split_activation_text_tokens_lexed(&body_line.tokens)
-                        {
-                            let cost_text = render_token_slice(&cost_tokens);
-                            let effect_text =
-                                render_token_slice(&effect_parse_tokens).trim().to_string();
-                            Some((cost_tokens, effect_parse_tokens, cost_text, effect_text))
-                        } else {
-                            None
-                        };
-                        let prefer_activation = labeled_activation
-                            .as_ref()
-                            .is_some_and(|(_, _, cost_text, _)| {
-                                looks_like_activation_cost_prefix(cost_text.as_str())
-                            });
+                        let labeled_activation =
+                            if (!str_starts_with_char(line.info.raw_line.trim_start(), '(')
+                                || is_fully_parenthetical_line(line.info.raw_line.as_str()))
+                                && let Some((cost_tokens, effect_parse_tokens)) =
+                                    split_activation_text_tokens_lexed(&body_line.tokens)
+                            {
+                                let cost_text = render_token_slice(&cost_tokens);
+                                let effect_text =
+                                    render_token_slice(&effect_parse_tokens).trim().to_string();
+                                Some((cost_tokens, effect_parse_tokens, cost_text, effect_text))
+                            } else {
+                                None
+                            };
+                        let prefer_activation =
+                            labeled_activation
+                                .as_ref()
+                                .is_some_and(|(_, _, cost_text, _)| {
+                                    looks_like_activation_cost_prefix(cost_text.as_str())
+                                });
                         if line_starts_with_trigger_intro_tokens(&body_line.tokens) {
                             if let Ok(mut triggered) = parse_triggered_line_cst(&body_line) {
                                 if preserve_as_choice_label {

@@ -256,6 +256,7 @@ pub(crate) fn parse_subtype_word(word: &str) -> Option<Subtype> {
         "squirrel" => Some(Subtype::Squirrel),
         "starfish" => Some(Subtype::Starfish),
         "surrakar" => Some(Subtype::Surrakar),
+        "survivor" | "survivors" => Some(Subtype::Survivor),
         "thopter" => Some(Subtype::Thopter),
         "thrull" => Some(Subtype::Thrull),
         "tiefling" => Some(Subtype::Tiefling),

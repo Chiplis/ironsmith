@@ -3,6 +3,7 @@
 //! Replacement effects modify or replace events as they happen.
 //! Per MTG rule 614, they use "instead" or "as [event]" or "skip".
 
+use crate::ability::Ability;
 use crate::effect::{Effect, Value};
 use crate::events::cards::matchers::{WouldDiscardMatcher, WouldDrawCardMatcher};
 use crate::events::damage::matchers::{DamageFromSourceMatcher, DamageToPlayerMatcher};
@@ -109,6 +110,7 @@ pub enum ReplacementAction {
         enters_tapped: bool,
         added_card_types: Vec<CardType>,
         added_subtypes: Vec<Subtype>,
+        added_abilities: Vec<Ability>,
     },
 
     /// Double the effect (e.g., double damage, double counters)

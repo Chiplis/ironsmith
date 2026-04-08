@@ -20,7 +20,7 @@ use crate::zone::Zone;
 use super::activation_and_restrictions::{
     find_word_sequence_start, infer_activated_functional_zones_lexed,
     is_any_player_may_activate_sentence_lexed, parse_activation_cost,
-    parse_mana_usage_restriction_sentence_lexed,
+    parse_mana_spend_bonus_sentence_lexed, parse_mana_usage_restriction_sentence_lexed,
 };
 use super::activation_and_restrictions::{
     parse_channel_line_lexed, parse_cycling_line_lexed, parse_equip_line_lexed,
@@ -3854,6 +3854,7 @@ fn finalize_rewrite_activated_effect_sentences(
         let sentence = render_token_slice(&tokens).trim().to_string();
         let sentence_words = token_word_refs(&tokens);
         if parse_mana_usage_restriction_sentence_lexed(&tokens).is_some()
+            || parse_mana_spend_bonus_sentence_lexed(&tokens).is_some()
             || word_refs_have_prefix(
                 sentence_words.as_slice(),
                 &["spend", "this", "mana", "only"],
@@ -3969,6 +3970,7 @@ fn split_rewrite_activated_effect_text_fallback(
         };
         let sentence_words = token_word_refs(&tokens);
         if parse_mana_usage_restriction_sentence_lexed(&tokens).is_some()
+            || parse_mana_spend_bonus_sentence_lexed(&tokens).is_some()
             || word_refs_have_prefix(
                 sentence_words.as_slice(),
                 &["spend", "this", "mana", "only"],

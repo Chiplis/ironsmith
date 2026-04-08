@@ -9977,14 +9977,23 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
-    fn parse_rejects_enters_as_copy_with_except_ability_clause() {
-        let result = CardDefinitionBuilder::new(CardId::new(), "Evil Twin Variant")
+    fn parse_enters_as_copy_with_except_ability_clause() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Evil Twin Variant")
             .parse_text(
                 "You may have this creature enter as a copy of any creature on the battlefield, except it has \"{U}{B}, {T}: Destroy target creature with the same name as this creature.\"",
-            );
+            )
+            .expect("enters-as-copy replacement with added ability should parse");
+
+        let lines = compiled_lines(&def);
+        let joined = lines.join(" ");
         assert!(
-            result.is_err(),
-            "unsupported enters-as-copy replacement should fail parse instead of producing partial statement semantics"
+            joined.contains("copy of any creature on the battlefield, except it has"),
+            "expected copy-as-enters text in render output, got {joined}"
+        );
+        let debug = format!("{def:#?}");
+        assert!(
+            debug.contains("added_abilities"),
+            "expected copy-as-enters lowering to record added ability support, got {debug}"
         );
     }
 
@@ -10520,6 +10529,29 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
                 && !debug.contains("StaticAbilityId::KeywordFallbackText")
                 && !debug.contains("StaticAbilityId::RuleFallbackText"),
             "attached granted cumulative upkeep should not fallback to marker/static placeholder: {debug}"
+        );
+    }
+
+    #[test]
+    fn parse_nonstandard_cumulative_upkeep_line_stays_keyworded() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Varchild's War-Riders Probe")
+            .card_types(vec![CardType::Creature])
+            .parse_text(
+                "Cumulative upkeep—Have an opponent create a 1/1 red Survivor creature token. (At the beginning of your upkeep, put an age counter on this permanent, then sacrifice it unless you pay its upkeep cost for each age counter on it.)\nTrample; rampage 1",
+            )
+            .expect("nonstandard cumulative upkeep should still parse as a keyword line");
+
+        assert!(
+            def.spell_effect.is_none(),
+            "cumulative upkeep keyword line should not fall through as spell text: {:#?}",
+            def.spell_effect
+        );
+        let compiled = compiled_lines(&def).join(" ");
+        assert!(
+            compiled
+                .to_ascii_lowercase()
+                .contains("cumulative upkeep—have an opponent create a 1/1 red survivor creature token"),
+            "expected preserved cumulative upkeep text in compiled output, got {compiled}"
         );
     }
 

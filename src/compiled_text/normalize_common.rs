@@ -438,41 +438,42 @@ pub(super) fn describe_token_blueprint(token: &CardDefinition) -> String {
         if is_named_noncreature_subtype_token {
             parts.push(card.name.clone());
         } else {
-        let name_lower = card.name.to_ascii_lowercase();
-        let subtype_words_lower = card
-            .subtypes
-            .iter()
-            .map(|subtype| subtype.to_string().to_ascii_lowercase())
-            .collect::<Vec<_>>();
-        let subtype_text = card
-            .subtypes
-            .iter()
-            .map(std::string::ToString::to_string)
-            .collect::<Vec<_>>()
-            .join(" ");
-        let name_matches_any_subtype = subtype_words_lower.iter().any(|word| *word == name_lower);
-        let name_is_distinct = !card.name.trim().is_empty()
-            && name_lower != "token"
-            && name_lower != subtype_text.to_ascii_lowercase()
-            && !name_matches_any_subtype;
-        if name_is_distinct {
-            explicit_named_clause = Some(card.name.clone());
-        }
-        let use_name_for_creature = false;
-        let use_name_for_noncreature = false;
-        if use_name_for_creature {
-            creature_name_prefix = Some(card.name.clone());
-            if !subtype_text.is_empty() {
+            let name_lower = card.name.to_ascii_lowercase();
+            let subtype_words_lower = card
+                .subtypes
+                .iter()
+                .map(|subtype| subtype.to_string().to_ascii_lowercase())
+                .collect::<Vec<_>>();
+            let subtype_text = card
+                .subtypes
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(" ");
+            let name_matches_any_subtype =
+                subtype_words_lower.iter().any(|word| *word == name_lower);
+            let name_is_distinct = !card.name.trim().is_empty()
+                && name_lower != "token"
+                && name_lower != subtype_text.to_ascii_lowercase()
+                && !name_matches_any_subtype;
+            if name_is_distinct {
+                explicit_named_clause = Some(card.name.clone());
+            }
+            let use_name_for_creature = false;
+            let use_name_for_noncreature = false;
+            if use_name_for_creature {
+                creature_name_prefix = Some(card.name.clone());
+                if !subtype_text.is_empty() {
+                    parts.push(subtype_text);
+                }
+            } else if use_name_for_noncreature {
+                parts.push(card.name.clone());
+                if !subtype_text.is_empty() {
+                    parts.push(subtype_text);
+                }
+            } else {
                 parts.push(subtype_text);
             }
-        } else if use_name_for_noncreature {
-            parts.push(card.name.clone());
-            if !subtype_text.is_empty() {
-                parts.push(subtype_text);
-            }
-        } else {
-            parts.push(subtype_text);
-        }
         }
     }
 

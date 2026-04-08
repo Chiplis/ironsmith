@@ -3,6 +3,7 @@ use super::activation_and_restrictions::{
     normalize_cant_words, parse_ability_phrase, parse_activated_line, parse_activation_cost,
     parse_choose_land_type_phrase_words,
 };
+use super::effect_sentences::parse_granted_abilities_for_gain_clause;
 use super::grammar::abilities::{
     CombatDamageUsingToughnessSubject, DoesntUntapDuringUntapStepSpec, FlyingBlockRestrictionKind,
     is_all_permanents_colorless_line_lexed,
@@ -65,6 +66,7 @@ use super::lowering_support::rewrite_parsed_triggered_ability as parsed_triggere
 use super::object_filters::{
     find_word_slice_phrase_start, parse_object_filter, parse_object_filter_lexed,
 };
+use super::static_ability_helpers::lower_granted_abilities_ast_to_object_abilities;
 use super::token_primitives::{
     find_index, find_window_by, lexed_head_words, rfind_index, slice_contains, slice_ends_with,
     slice_starts_with, slice_strip_prefix, slice_strip_suffix, split_em_dash_label_prefix,
@@ -299,6 +301,10 @@ fn static_ability_rule_head_hints(rule_id: &'static str) -> Vec<StaticAbilityLin
             StaticAbilityLineHeadHint::Pair("untap", "all"),
         ],
         "parse_you_may_static_grant_line" => vec![
+            StaticAbilityLineHeadHint::Single("you"),
+            StaticAbilityLineHeadHint::Pair("you", "may"),
+        ],
+        "parse_enter_as_copy_as_enters_line" => vec![
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Pair("you", "may"),
         ],
@@ -604,6 +610,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_can_block_only_flying_line),
         single_static_ability_ast_rule!(parse_assign_damage_as_unblocked_line),
         single_static_ability_ast_rule!(parse_mana_value_instead_of_mana_cost_grant_line),
+        single_static_ability_ast_rule!(parse_enter_as_copy_as_enters_line),
         single_static_ability_ast_rule!(parse_you_may_static_grant_line),
         single_static_ability_ast_rule!(parse_grant_flash_to_noncreature_spells_line),
         single_static_ability_ast_rule!(parse_cast_this_spell_as_though_it_had_flash_line),
@@ -620,7 +627,6 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_reveal_from_hand_or_enters_tapped_line),
         single_static_ability_ast_rule!(parse_conditional_enters_tapped_unless_line),
         single_static_ability_ast_rule!(parse_enters_untapped_for_filter_line),
-        single_static_ability_ast_rule!(parse_enter_as_copy_as_enters_line),
         single_static_ability_ast_rule!(parse_enters_tapped_for_filter_line),
         single_static_ability_ast_rule!(parse_enters_tapped_line),
         multi_static_ability_ast_rule!(parse_additional_land_play_line),
@@ -2231,6 +2237,34 @@ pub(crate) fn parse_double_damage_from_sources_you_control_of_chosen_type_line(
 pub(crate) fn parse_enter_as_copy_as_enters_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
+    fn parse_added_copy_abilities(
+        tokens: &[OwnedLexToken],
+        clause_words: &[&str],
+        has_word_idx: usize,
+    ) -> Result<Vec<crate::ability::Ability>, CardTextError> {
+        let ability_start_token_idx = token_index_for_word_index(tokens, has_word_idx)
+            .map(|idx| idx + 1)
+            .unwrap_or(tokens.len());
+        let ability_tokens = trim_commas(&tokens[ability_start_token_idx..]);
+        if ability_tokens.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported empty enters-as-copy ability clause (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+
+        let (abilities, _choice) =
+            parse_granted_abilities_for_gain_clause(&ability_tokens, clause_words, false)?;
+        if abilities.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported enters-as-copy ability clause (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+
+        lower_granted_abilities_ast_to_object_abilities(&abilities)
+    }
+
     let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
     if clause_words.len() < 11 || !slice_starts_with(&clause_words, &["you", "may", "have"]) {
         return Ok(None);
@@ -2287,59 +2321,74 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
 
     let mut added_card_types = Vec::new();
     let mut added_subtypes = Vec::new();
+    let mut added_abilities = Vec::new();
     if let Some(except_idx) = except_idx {
-        let tail = &clause_words[except_idx..];
-        if tail.first().copied() != Some("except") {
+        let tail = &clause_words[except_idx + 1..];
+        if tail.is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "unsupported enters-as-copy exception clause (clause: '{}')",
                 clause_words.join(" ")
             )));
         }
 
-        let (article_idx, type_idx) = if tail.get(1).copied() == Some("its")
-            && matches!(tail.get(2).copied(), Some("a" | "an"))
-        {
-            (2usize, 3usize)
-        } else if (tail.get(1..3) == Some(&["it", "is"]) || tail.get(1..3) == Some(&["it", "s"]))
-            && matches!(tail.get(3).copied(), Some("a" | "an"))
-        {
-            (3usize, 4usize)
-        } else if matches!(tail.get(1).copied(), Some("it's" | "it’s"))
-            && matches!(tail.get(2).copied(), Some("a" | "an"))
-        {
-            (2usize, 3usize)
+        if slice_starts_with(tail, &["it", "has"]) {
+            added_abilities = parse_added_copy_abilities(tokens, &clause_words, except_idx + 2)?;
         } else {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported enters-as-copy exception clause (clause: '{}')",
-                clause_words.join(" ")
-            )));
-        };
+            let type_idx = if tail.first().copied() == Some("its")
+                && matches!(tail.get(1).copied(), Some("a" | "an"))
+            {
+                2usize
+            } else if (tail.get(0..2) == Some(&["it", "is"])
+                || tail.get(0..2) == Some(&["it", "s"]))
+                && matches!(tail.get(2).copied(), Some("a" | "an"))
+            {
+                3usize
+            } else if matches!(tail.first().copied(), Some("it's" | "it’s"))
+                && matches!(tail.get(1).copied(), Some("a" | "an"))
+            {
+                2usize
+            } else {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported enters-as-copy exception clause (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            };
 
-        let tail_after_type = tail.get(type_idx + 1..).unwrap_or_default();
-        let supported_tail = tail_after_type == ["in", "addition", "to", "its", "other", "types"]
-            || slice_starts_with(&tail_after_type, &["and", "it", "has"])
-            || slice_starts_with(&tail_after_type, &["and", "it", "s"])
-            || slice_starts_with(&tail_after_type, &["and", "it's"])
-            || slice_starts_with(&tail_after_type, &["and", "it’s"]);
-        if !matches!(tail.get(article_idx).copied(), Some("a" | "an")) || !supported_tail {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported enters-as-copy exception clause (clause: '{}')",
-                clause_words.join(" ")
-            )));
-        }
+            if let Some(card_type) = parse_card_type(tail[type_idx]) {
+                added_card_types.push(card_type);
+            } else if let Some(subtype) =
+                parse_subtype_word(tail[type_idx]).or_else(|| parse_subtype_flexible(tail[type_idx]))
+            {
+                added_subtypes.push(subtype);
+            } else {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported enters-as-copy type '{}' (clause: '{}')",
+                    tail[type_idx],
+                    clause_words.join(" ")
+                )));
+            }
 
-        if let Some(card_type) = parse_card_type(tail[type_idx]) {
-            added_card_types.push(card_type);
-        } else if let Some(subtype) =
-            parse_subtype_word(tail[type_idx]).or_else(|| parse_subtype_flexible(tail[type_idx]))
-        {
-            added_subtypes.push(subtype);
-        } else {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported enters-as-copy type '{}' (clause: '{}')",
-                tail[type_idx],
-                clause_words.join(" ")
-            )));
+            let mut remainder_start = type_idx + 1;
+            if slice_starts_with(
+                &tail[remainder_start..],
+                &["in", "addition", "to", "its", "other", "types"],
+            ) {
+                remainder_start += 6;
+            }
+
+            if !tail[remainder_start..].is_empty() {
+                if !slice_starts_with(&tail[remainder_start..], &["and", "it", "has"]) {
+                    return Err(CardTextError::ParseError(format!(
+                        "unsupported enters-as-copy exception clause (clause: '{}')",
+                        clause_words.join(" ")
+                    )));
+                }
+                added_abilities = parse_added_copy_abilities(
+                    tokens,
+                    &clause_words,
+                    except_idx + 1 + remainder_start + 2,
+                )?;
+            }
         }
     }
 
@@ -2350,6 +2399,7 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
             enters_tapped_if_chosen,
             added_card_types,
             added_subtypes,
+            added_abilities,
         },
         clause_words.join(" "),
     )))
@@ -4798,15 +4848,17 @@ pub(crate) fn parse_filter_is_pt_creature_in_addition_and_has_line(
         return Ok(None);
     };
 
-    Ok(Some(lower_static_animation_bundle(StaticAnimationBundleAst {
-        subject,
-        condition,
-        ensure_creature_type: true,
-        subtypes,
-        subtype_mode: AnimationSubtypeMode::Add,
-        base_power_toughness: Some((power, toughness)),
-        granted_tail,
-    })))
+    Ok(Some(lower_static_animation_bundle(
+        StaticAnimationBundleAst {
+            subject,
+            condition,
+            ensure_creature_type: true,
+            subtypes,
+            subtype_mode: AnimationSubtypeMode::Add,
+            base_power_toughness: Some((power, toughness)),
+            granted_tail,
+        },
+    )))
 }
 
 pub(crate) fn parse_subject_is_subtype_with_base_pt_and_granted_abilities_line(
@@ -4825,8 +4877,10 @@ pub(crate) fn parse_subject_is_subtype_with_base_pt_and_granted_abilities_line(
     else {
         return Ok(None);
     };
-    let Some(with_idx) =
-        tokens.iter().enumerate().find_map(|(idx, token)| (idx > be_idx && token.is_word("with")).then_some(idx))
+    let Some(with_idx) = tokens
+        .iter()
+        .enumerate()
+        .find_map(|(idx, token)| (idx > be_idx && token.is_word("with")).then_some(idx))
     else {
         return Ok(None);
     };
@@ -4909,10 +4963,7 @@ pub(crate) fn parse_subject_is_subtype_with_base_pt_and_granted_abilities_line(
     let after_with = trim_edge_punctuation(&after_with);
     let after_with_words = crate::cards::builders::parser::token_word_refs(&after_with);
     if after_with_words.len() < 5
-        || !anthem_word_slice_starts_with(
-            &after_with_words,
-            &["base", "power", "and", "toughness"],
-        )
+        || !anthem_word_slice_starts_with(&after_with_words, &["base", "power", "and", "toughness"])
     {
         return Ok(None);
     }
@@ -4940,15 +4991,17 @@ pub(crate) fn parse_subject_is_subtype_with_base_pt_and_granted_abilities_line(
         return Ok(None);
     };
 
-    Ok(Some(lower_static_animation_bundle(StaticAnimationBundleAst {
-        subject,
-        condition: _condition,
-        ensure_creature_type: true,
-        subtypes,
-        subtype_mode: AnimationSubtypeMode::ReplaceCreatureTypes,
-        base_power_toughness: Some((power, toughness)),
-        granted_tail,
-    })))
+    Ok(Some(lower_static_animation_bundle(
+        StaticAnimationBundleAst {
+            subject,
+            condition: _condition,
+            ensure_creature_type: true,
+            subtypes,
+            subtype_mode: AnimationSubtypeMode::ReplaceCreatureTypes,
+            base_power_toughness: Some((power, toughness)),
+            granted_tail,
+        },
+    )))
 }
 
 pub(crate) fn parse_creatures_cant_block_line(

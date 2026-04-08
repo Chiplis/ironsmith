@@ -127,6 +127,7 @@ fn should_suppress_rendered_ability_line(def: &CardDefinition, line: &str) -> bo
 
 pub(super) fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
     let mut out = Vec::new();
+    let mut alternative_cast_lines = Vec::new();
     let mut deferred_spell_optional_lines = Vec::new();
     let subject = subject_for_card(&def.card);
     let rewrite_it_deals = def.card.card_types.contains(&CardType::Creature)
@@ -171,28 +172,28 @@ pub(super) fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                 {
                     line = format!("If {condition_text}, {}", lowercase_first(&line));
                 }
-                out.push(line);
+                alternative_cast_lines.push(line);
             }
             AlternativeCastingMethod::Madness { cost } => {
-                out.push(format!("Madness {}", cost.to_oracle()));
+                alternative_cast_lines.push(format!("Madness {}", cost.to_oracle()));
             }
             AlternativeCastingMethod::Miracle { cost } => {
-                out.push(format!("Miracle {}", cost.to_oracle()));
+                alternative_cast_lines.push(format!("Miracle {}", cost.to_oracle()));
             }
             AlternativeCastingMethod::Plot { cost } => {
-                out.push(format!("Plot {}", cost.to_oracle()));
+                alternative_cast_lines.push(format!("Plot {}", cost.to_oracle()));
             }
             AlternativeCastingMethod::Warp { cost } => {
-                out.push(format!("Warp {}", cost.to_oracle()));
+                alternative_cast_lines.push(format!("Warp {}", cost.to_oracle()));
             }
             AlternativeCastingMethod::Suspend { cost, time } => {
-                out.push(format!("Suspend {time}—{}", cost.to_oracle()));
+                alternative_cast_lines.push(format!("Suspend {time}—{}", cost.to_oracle()));
             }
             AlternativeCastingMethod::Disturb { cost } => {
-                out.push(format!("Disturb {}", cost.to_oracle()));
+                alternative_cast_lines.push(format!("Disturb {}", cost.to_oracle()));
             }
             AlternativeCastingMethod::Overload { cost, .. } => {
-                out.push(format!("Overload {}", cost.to_oracle()));
+                alternative_cast_lines.push(format!("Overload {}", cost.to_oracle()));
             }
             AlternativeCastingMethod::Flashback { total_cost } => {
                 let costs = method.non_mana_costs();
@@ -201,10 +202,10 @@ pub(super) fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                     .map(|cost| cost.to_oracle())
                     .unwrap_or_else(|| "{0}".to_string());
                 if costs.is_empty() {
-                    out.push(format!("Flashback—{mana_cost}"));
+                    alternative_cast_lines.push(format!("Flashback—{mana_cost}"));
                 } else {
                     let extra = capitalize_first(&describe_alternative_costs(&costs));
-                    out.push(format!("Flashback—{mana_cost}, {extra}"));
+                    alternative_cast_lines.push(format!("Flashback—{mana_cost}, {extra}"));
                 }
             }
             AlternativeCastingMethod::Harmonize { total_cost } => {
@@ -214,32 +215,32 @@ pub(super) fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                     .map(|cost| cost.to_oracle())
                     .unwrap_or_else(|| "{0}".to_string());
                 if costs.is_empty() {
-                    out.push(format!("Harmonize {mana_cost}"));
+                    alternative_cast_lines.push(format!("Harmonize {mana_cost}"));
                 } else {
                     let extra = capitalize_first(&describe_alternative_costs(&costs));
-                    out.push(format!("Harmonize {mana_cost}, {extra}"));
+                    alternative_cast_lines.push(format!("Harmonize {mana_cost}, {extra}"));
                 }
             }
             AlternativeCastingMethod::JumpStart => {
-                out.push("Jump-start".to_string());
+                alternative_cast_lines.push("Jump-start".to_string());
             }
             AlternativeCastingMethod::Escape { cost, exile_count } => {
                 let count_text = small_number_word(*exile_count)
                     .map(str::to_string)
                     .unwrap_or_else(|| exile_count.to_string());
                 if let Some(cost) = cost {
-                    out.push(format!(
+                    alternative_cast_lines.push(format!(
                         "Escape—{}, Exile {count_text} other cards from your graveyard",
                         cost.to_oracle()
                     ));
                 } else {
-                    out.push(format!(
+                    alternative_cast_lines.push(format!(
                         "Escape—Exile {count_text} other cards from your graveyard"
                     ));
                 }
             }
             AlternativeCastingMethod::Dash { cost } => {
-                out.push(format!("Dash {}", cost.to_oracle()));
+                alternative_cast_lines.push(format!("Dash {}", cost.to_oracle()));
             }
             AlternativeCastingMethod::Bestow { total_cost } => {
                 let costs = method.non_mana_costs();
@@ -248,35 +249,39 @@ pub(super) fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                     .map(|cost| cost.to_oracle())
                     .unwrap_or_else(|| "{0}".to_string());
                 if costs.is_empty() {
-                    out.push(format!("Bestow {mana_cost}"));
+                    alternative_cast_lines.push(format!("Bestow {mana_cost}"));
                 } else {
                     let extra = capitalize_first(&describe_alternative_costs(&costs));
-                    out.push(format!("Bestow {mana_cost}, {extra}"));
+                    alternative_cast_lines.push(format!("Bestow {mana_cost}, {extra}"));
                 }
             }
             other => {
                 if other.name().eq_ignore_ascii_case("Parsed alternative cost") {
                     if let Some(cost) = other.mana_cost() {
-                        out.push(format!(
+                        alternative_cast_lines.push(format!(
                             "You may pay {} rather than pay this spell's mana cost",
                             cost.to_oracle()
                         ));
                     } else {
-                        out.push(
+                        alternative_cast_lines.push(
                             "You may cast this spell rather than pay its mana cost".to_string(),
                         );
                     }
                     continue;
                 }
                 if let Some(cost) = other.mana_cost() {
-                    out.push(format!(
+                    alternative_cast_lines.push(format!(
                         "Alternative cast {}: {} {}",
                         idx + 1,
                         other.name(),
                         cost.to_oracle()
                     ));
                 } else {
-                    out.push(format!("Alternative cast {}: {}", idx + 1, other.name()));
+                    alternative_cast_lines.push(format!(
+                        "Alternative cast {}: {}",
+                        idx + 1,
+                        other.name()
+                    ));
                 }
             }
         }
@@ -344,6 +349,8 @@ pub(super) fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                 && first.is_mana_ability()
                 && first.effects.is_empty()
                 && first.activation_condition.is_none()
+                && first.additional_restrictions.is_empty()
+                && first.mana_usage_restrictions.is_empty()
                 && first.mana_symbols().len() == 1
                 && ability.text.is_none()
             {
@@ -357,6 +364,8 @@ pub(super) fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                     if !next_mana.is_mana_ability()
                         || !next_mana.effects.is_empty()
                         || next_mana.activation_condition.is_some()
+                        || !next_mana.additional_restrictions.is_empty()
+                        || !next_mana.mana_usage_restrictions.is_empty()
                         || next_mana.mana_symbols().len() != 1
                         || next_mana.mana_cost != first.mana_cost
                         || next.text.is_some()
@@ -416,6 +425,7 @@ pub(super) fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
     if spell_like_card {
         push_abilities(&mut out);
     }
+    out.extend(alternative_cast_lines);
     let normalized = out
         .into_iter()
         .map(|line| normalize_rendered_line_for_card(def, &line))

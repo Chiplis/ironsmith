@@ -1614,6 +1614,14 @@ pub(super) fn describe_inline_ability(ability: &Ability) -> String {
                     line.push_str(&clause);
                 }
             }
+            for clause in
+                describe_mana_usage_restriction_clauses(&activated.mana_usage_restrictions)
+            {
+                if !line.is_empty() {
+                    line.push_str(". ");
+                }
+                line.push_str(&clause);
+            }
             if line.is_empty() {
                 "a mana ability".to_string()
             } else {
@@ -9169,6 +9177,18 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         );
     }
     if let Some(grant) = effect.downcast_ref::<crate::effects::GrantEffect>() {
+        if grant.duration == crate::grant::GrantDuration::Forever
+            && matches!(&grant.target, ChooseSpec::Tagged(_))
+            && let crate::grant::Grantable::Ability(ability) = &grant.grantable
+            && let Some(cost_increase) = ability.cost_increase_mana_cost()
+            && cost_increase.filter.stack_kind == Some(crate::filter::StackObjectKind::Spell)
+            && cost_increase.filter.cast_by == Some(crate::filter::PlayerFilter::Opponent)
+        {
+            return format!(
+                "A spell cast by an opponent this way costs {} more to cast",
+                cost_increase.increase.to_oracle()
+            );
+        }
         let duration = match grant.duration {
             crate::grant::GrantDuration::UntilEndOfTurn => " until end of turn",
             crate::grant::GrantDuration::Forever => "",
@@ -9188,6 +9208,16 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         );
     }
     if let Some(grant) = effect.downcast_ref::<crate::effects::GrantBySpecEffect>() {
+        if matches!(grant.spec.grantable, crate::grant::Grantable::PlayFrom)
+            && grant.spec.zone == Zone::Exile
+            && !grant.spec.filter.tagged_constraints.is_empty()
+            && matches!(
+                grant.player,
+                crate::filter::PlayerFilter::OwnerOf(crate::filter::ObjectRef::Tagged(_))
+            )
+        {
+            return "That card's owner may play it for as long as it remains exiled".to_string();
+        }
         let duration = match grant.duration {
             crate::grant::GrantDuration::UntilEndOfTurn => " until end of turn",
             crate::grant::GrantDuration::Forever => "",
@@ -9578,6 +9608,104 @@ pub(super) fn normalize_activation_restriction_clause(raw: &str) -> String {
         clause = capitalize_first(&clause);
     }
     clause
+}
+
+fn describe_mana_usage_restriction_clauses(
+    restrictions: &[crate::ability::ManaUsageRestriction],
+) -> Vec<String> {
+    restrictions
+        .iter()
+        .filter_map(describe_mana_usage_restriction)
+        .collect()
+}
+
+fn describe_mana_usage_restriction(
+    restriction: &crate::ability::ManaUsageRestriction,
+) -> Option<String> {
+    match restriction {
+        crate::ability::ManaUsageRestriction::CastSpell {
+            card_types,
+            subtype_requirement,
+            restrict_to_matching_spell,
+            grant_uncounterable,
+            enters_with_counters,
+        } => {
+            let spell_text = describe_mana_usage_spell_target(card_types, *subtype_requirement)?;
+            let mut line = if *restrict_to_matching_spell {
+                format!("Spend this mana only to cast {spell_text}")
+            } else if !*grant_uncounterable && enters_with_counters.is_empty() {
+                return None;
+            } else {
+                format!("If this mana is spent to cast {spell_text}")
+            };
+
+            let mut bonuses = Vec::new();
+            if *grant_uncounterable {
+                bonuses.push("that spell can't be countered".to_string());
+            }
+            bonuses.extend(
+                enters_with_counters.iter().map(|(counter_type, count)| {
+                    describe_mana_usage_etb_bonus(*counter_type, *count)
+                }),
+            );
+
+            if bonuses.is_empty() {
+                return Some(line);
+            }
+
+            if *restrict_to_matching_spell {
+                line.push_str(", and ");
+            } else {
+                line.push_str(", ");
+            }
+            line.push_str(&bonuses.join(" and "));
+            Some(line)
+        }
+    }
+}
+
+fn describe_mana_usage_spell_target(
+    card_types: &[crate::types::CardType],
+    subtype_requirement: Option<crate::ability::ManaUsageSubtypeRequirement>,
+) -> Option<String> {
+    let [card_type] = card_types else {
+        return None;
+    };
+    let article = match card_type {
+        crate::types::CardType::Artifact
+        | crate::types::CardType::Enchantment
+        | crate::types::CardType::Instant => "an",
+        _ => "a",
+    };
+    let type_text = match card_type {
+        crate::types::CardType::Artifact => "artifact",
+        crate::types::CardType::Battle => "battle",
+        crate::types::CardType::Creature => "creature",
+        crate::types::CardType::Enchantment => "enchantment",
+        crate::types::CardType::Instant => "instant",
+        crate::types::CardType::Kindred => "kindred",
+        crate::types::CardType::Land => "land",
+        crate::types::CardType::Planeswalker => "planeswalker",
+        crate::types::CardType::Sorcery => "sorcery",
+    };
+    let mut text = format!("{article} {type_text} spell");
+    if let Some(crate::ability::ManaUsageSubtypeRequirement::ChosenTypeOfSource) =
+        subtype_requirement
+    {
+        text.push_str(" of the chosen type");
+    }
+    Some(text)
+}
+
+fn describe_mana_usage_etb_bonus(counter_type: crate::object::CounterType, count: u32) -> String {
+    let counter_text = describe_counter_type(counter_type);
+    if count == 1 {
+        return format!("that creature enters with an additional {counter_text} counter on it");
+    }
+    let count_text = small_number_word(count)
+        .map(str::to_string)
+        .unwrap_or_else(|| count.to_string());
+    format!("that creature enters with {count_text} additional {counter_text} counters on it")
 }
 
 pub(super) fn collect_activation_restriction_clauses(
@@ -10109,6 +10237,12 @@ pub(super) fn describe_ability(
                     line.push_str(&clause);
                 }
             }
+            for clause in
+                describe_mana_usage_restriction_clauses(&activated.mana_usage_restrictions)
+            {
+                line.push_str(". ");
+                line.push_str(&clause);
+            }
             vec![line]
         }
         AbilityKind::Activated(activated) => {
@@ -10169,7 +10303,8 @@ pub(super) fn describe_ability(
             });
             if let Some(label) = reinforce_label {
                 let costs = describe_cost_list(activated.mana_cost.costs());
-                let effects = super::render_pipeline::describe_resolution_program(&activated.effects);
+                let effects =
+                    super::render_pipeline::describe_resolution_program(&activated.effects);
                 return vec![format!(
                     "Activated ability {index}: {} ({}: {}.)",
                     format_reinforce_label(label),

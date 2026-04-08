@@ -602,6 +602,7 @@ fn preserve_keyword_prefix_for_parse(prefix: &str) -> bool {
         first,
         "buyback"
             | "bestow"
+            | "cumulative"
             | "cycling"
             | "echo"
             | "equip"

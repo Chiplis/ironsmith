@@ -292,6 +292,7 @@ impl Event {
                 enters_as_copy_of: None,
                 added_card_types: Vec::new(),
                 added_subtypes: Vec::new(),
+                added_abilities: Vec::new(),
             },
             ProvNodeId::default(),
         )

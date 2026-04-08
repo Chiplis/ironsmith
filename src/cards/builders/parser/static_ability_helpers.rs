@@ -1,3 +1,4 @@
+use crate::ability::Ability;
 use crate::cards::builders::{CardTextError, GrantedAbilityAst, KeywordAction};
 use crate::cost::TotalCost;
 use crate::filter::ObjectFilter;
@@ -204,4 +205,51 @@ pub(crate) fn lower_granted_abilities_ast(
     abilities: &[GrantedAbilityAst],
 ) -> Result<Vec<StaticAbility>, CardTextError> {
     abilities.iter().map(lower_granted_ability_ast).collect()
+}
+
+pub(crate) fn lower_granted_ability_ast_to_object_ability(
+    ability: &GrantedAbilityAst,
+) -> Result<Ability, CardTextError> {
+    match ability {
+        GrantedAbilityAst::KeywordAction(action) => {
+            let static_ability = lower_keyword_action_or_err(action.clone())?;
+            let text = static_ability.display();
+            Ok(Ability::static_ability(static_ability).with_text(text.as_str()))
+        }
+        GrantedAbilityAst::MustAttack => {
+            let static_ability = StaticAbility::must_attack();
+            let text = static_ability.display();
+            Ok(Ability::static_ability(static_ability).with_text(text.as_str()))
+        }
+        GrantedAbilityAst::MustBlock => {
+            let static_ability = StaticAbility::must_block();
+            let text = static_ability.display();
+            Ok(Ability::static_ability(static_ability).with_text(text.as_str()))
+        }
+        GrantedAbilityAst::CanAttackAsThoughNoDefender => {
+            let static_ability = StaticAbility::can_attack_as_though_no_defender();
+            let text = static_ability.display();
+            Ok(Ability::static_ability(static_ability).with_text(text.as_str()))
+        }
+        GrantedAbilityAst::CanBlockAdditionalCreatureEachCombat { additional } => {
+            let static_ability =
+                StaticAbility::can_block_additional_creature_each_combat(*additional);
+            let text = static_ability.display();
+            Ok(Ability::static_ability(static_ability).with_text(text.as_str()))
+        }
+        GrantedAbilityAst::ParsedObjectAbility { ability, display } => {
+            let mut lowered = rewrite_lower_parsed_ability(ability.clone())?.ability;
+            lowered.text = Some(display.clone());
+            Ok(lowered)
+        }
+    }
+}
+
+pub(crate) fn lower_granted_abilities_ast_to_object_abilities(
+    abilities: &[GrantedAbilityAst],
+) -> Result<Vec<Ability>, CardTextError> {
+    abilities
+        .iter()
+        .map(lower_granted_ability_ast_to_object_ability)
+        .collect()
 }

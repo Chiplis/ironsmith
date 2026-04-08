@@ -321,6 +321,7 @@ pub enum Subtype {
     Squirrel,
     Starfish,
     Surrakar,
+    Survivor,
     Thopter,
     Thrull,
     Tiefling,
@@ -583,6 +584,7 @@ impl Subtype {
             Subtype::Squirrel,
             Subtype::Starfish,
             Subtype::Surrakar,
+            Subtype::Survivor,
             Subtype::Thopter,
             Subtype::Thrull,
             Subtype::Tiefling,
@@ -886,6 +888,7 @@ impl Subtype {
                 | Subtype::Squirrel
                 | Subtype::Starfish
                 | Subtype::Surrakar
+                | Subtype::Survivor
                 | Subtype::Thopter
                 | Subtype::Thrull
                 | Subtype::Tiefling

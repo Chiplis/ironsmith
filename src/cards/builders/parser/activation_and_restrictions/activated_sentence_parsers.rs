@@ -7,7 +7,7 @@ use super::super::lexer::OwnedLexToken;
 use super::super::token_primitives::{
     find_index, slice_contains, slice_starts_with, str_strip_suffix,
 };
-use super::super::util::{parse_card_type, parse_number_word_u32};
+use super::super::util::{parse_card_type, parse_counter_type_from_tokens, parse_number_word_u32};
 use super::{joined_activation_clause_text, merge_mana_activation_conditions, parse_named_number};
 use crate::ability::ActivationTiming;
 use crate::cards::builders::{CardTextError, EffectAst, PlayerAst};
@@ -41,6 +41,10 @@ const SPEND_MANA_RESTRICTION_PREFIXES: &[&[&str]] = &[
 const SPEND_MANA_CAST_PREFIXES: &[&[&str]] = &[
     &["spend", "this", "mana", "only", "to", "cast"],
     &["spend", "that", "mana", "only", "to", "cast"],
+];
+const IF_MANA_SPENT_TO_CAST_PREFIXES: &[&[&str]] = &[
+    &["if", "this", "mana", "is", "spent", "to", "cast"],
+    &["if", "that", "mana", "is", "spent", "to", "cast"],
 ];
 const DURING_OPPONENTS_TURN_PREFIXES: &[&[&str]] = &[
     &["activate", "only", "during", "an", "opponents", "turn"],
@@ -156,6 +160,13 @@ fn parse_activated_sentence_modifier_lexed(
     if is_spend_mana_restriction_sentence_lexed(tokens) {
         return Some(ActivatedSentenceModifier::ManaUsageRestriction {
             parsed: parse_mana_usage_restriction_sentence_lexed(tokens),
+            fallback_text: joined_activation_clause_text(tokens),
+        });
+    }
+
+    if grammar::words_match_any_prefix(tokens, IF_MANA_SPENT_TO_CAST_PREFIXES).is_some() {
+        return Some(ActivatedSentenceModifier::ManaUsageRestriction {
+            parsed: parse_mana_spend_bonus_sentence_lexed(tokens),
             fallback_text: joined_activation_clause_text(tokens),
         });
     }
@@ -379,7 +390,143 @@ pub(crate) fn parse_mana_usage_restriction_sentence_lexed(
     Some(crate::ability::ManaUsageRestriction::CastSpell {
         card_types: vec![card_type],
         subtype_requirement,
+        restrict_to_matching_spell: true,
         grant_uncounterable,
+        enters_with_counters: vec![],
+    })
+}
+
+pub(crate) fn parse_mana_spend_bonus_sentence_lexed(
+    tokens: &[OwnedLexToken],
+) -> Option<crate::ability::ManaUsageRestriction> {
+    if grammar::words_match_any_prefix(tokens, IF_MANA_SPENT_TO_CAST_PREFIXES).is_none() {
+        return None;
+    }
+
+    let words = TokenWordView::new(tokens);
+    let mut spell_idx = None;
+    for idx in 0..words.len() {
+        if matches!(words.get(idx), Some("spell" | "spells")) {
+            spell_idx = Some(idx);
+            break;
+        }
+    }
+    let spell_idx = spell_idx?;
+
+    let spec_words = (7..spell_idx)
+        .filter_map(|idx| words.get(idx))
+        .collect::<Vec<_>>();
+    if spec_words.is_empty() {
+        return None;
+    }
+
+    let mut idx = 0usize;
+    if matches!(spec_words.first().copied(), Some("a" | "an")) {
+        idx += 1;
+    }
+
+    let card_type = parse_card_type(spec_words.get(idx).copied()?)?;
+    idx += 1;
+    if idx != spec_words.len() {
+        return None;
+    }
+
+    let comma_idx = find_index(tokens, |token| token.is_comma())?;
+    let clause_tokens = super::trim_commas(&tokens[comma_idx + 1..]);
+    if clause_tokens.is_empty() {
+        return None;
+    }
+
+    let clause_word_view = TokenWordView::new(&clause_tokens);
+    let clause_words = clause_word_view.to_word_refs();
+    if clause_words.len() < 6 || clause_words.first().copied() != Some("that") {
+        return None;
+    }
+    if !matches!(
+        clause_words.get(1).copied(),
+        Some("creature" | "spell" | "permanent" | "card")
+    ) && parse_card_type(clause_words.get(1).copied()?).is_none()
+    {
+        return None;
+    }
+
+    let enters_idx = clause_words
+        .iter()
+        .position(|word| matches!(*word, "enter" | "enters"))?;
+    let with_token_idx = find_index(&clause_tokens, |token| token.is_word("with"))?;
+    let after_with = &clause_tokens[with_token_idx + 1..];
+    if after_with.is_empty() {
+        return None;
+    }
+
+    let (count, used) = if after_with
+        .first()
+        .is_some_and(|token| token.is_word("a") || token.is_word("an"))
+        && after_with
+            .get(1)
+            .is_some_and(|token| token.is_word("additional"))
+    {
+        (1, 2)
+    } else if after_with
+        .first()
+        .is_some_and(|token| token.is_word("additional"))
+    {
+        (1, 1)
+    } else if let Some(word) = after_with.first().and_then(OwnedLexToken::as_word) {
+        let parsed = parse_number_word_u32(word)?;
+        let used = if after_with
+            .get(1)
+            .is_some_and(|token| token.is_word("additional"))
+        {
+            2
+        } else {
+            1
+        };
+        (parsed, used)
+    } else {
+        return None;
+    };
+
+    let counter_type = parse_counter_type_from_tokens(&after_with[used..])?;
+    let counter_idx = find_index(after_with, |token| {
+        token.is_word("counter") || token.is_word("counters")
+    })?;
+    let tail_tokens = super::trim_commas(&after_with[counter_idx + 1..]);
+    let mut tail: &[OwnedLexToken] = &tail_tokens;
+    if tail.first().is_some_and(|token| token.is_word("on")) {
+        tail = &tail[1..];
+    }
+    if tail.first().is_some_and(|token| token.is_word("it")) {
+        tail = &tail[1..];
+    } else if tail.first().is_some_and(|token| token.is_word("that")) {
+        tail = &tail[1..];
+        if tail
+            .first()
+            .is_some_and(|token| token.as_word().and_then(parse_card_type).is_some())
+            || tail.first().is_some_and(|token| {
+                matches!(
+                    token.as_word(),
+                    Some("creature" | "spell" | "permanent" | "card")
+                )
+            })
+        {
+            tail = &tail[1..];
+        }
+    }
+    if tail.iter().any(|token| token.as_word().is_some()) {
+        return None;
+    }
+
+    if enters_idx <= 1 {
+        return None;
+    }
+
+    Some(crate::ability::ManaUsageRestriction::CastSpell {
+        card_types: vec![card_type],
+        subtype_requirement: None,
+        restrict_to_matching_spell: false,
+        grant_uncounterable: false,
+        enters_with_counters: vec![(counter_type, count)],
     })
 }
 

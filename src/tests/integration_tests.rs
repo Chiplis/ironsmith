@@ -1445,6 +1445,49 @@ mod tests {
     }
 
     #[test]
+    fn test_copy_as_enters_can_add_ability_to_copied_permanent() {
+        let omni = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Omni Replica")
+            .card_types(vec![crate::types::CardType::Creature])
+            .parse_text(
+                "You may have this creature enter as a copy of any creature on the battlefield, except it has changeling."
+                    .to_string(),
+            )
+            .expect("copy creature with added ability should parse");
+
+        let bear = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Runeclaw Bear")
+            .card_types(vec![crate::types::CardType::Creature])
+            .subtypes(vec![crate::types::Subtype::Bear])
+            .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+            .build();
+
+        let alice = PlayerId::from_index(0);
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        game.create_object_from_definition(&bear, alice, Zone::Battlefield);
+        let omni_id = game.create_object_from_definition(&omni, alice, Zone::Hand);
+        let cause = EventCause::from_special_action(Some(omni_id), alice);
+        let mut dm = ChooseLastReplacementDecisionMaker;
+
+        let result = game
+            .move_object_with_etb_processing_with_dm_and_cause(
+                omni_id,
+                Zone::Battlefield,
+                cause,
+                &mut dm,
+            )
+            .expect("copy creature should enter the battlefield");
+
+        let entered = game
+            .object(result.new_id)
+            .expect("copied permanent should exist on the battlefield");
+        assert_eq!(entered.name, "Runeclaw Bear");
+        assert!(entered.has_changeling());
+        assert!(
+            entered.has_subtype(crate::types::Subtype::Angel),
+            "changeling granted by the copy exception should give the entered permanent every creature type"
+        );
+    }
+
+    #[test]
     fn test_simple_play_land() {
         let result = GameScript::new()
             .player("Alice", &["Forest"])

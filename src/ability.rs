@@ -396,7 +396,9 @@ pub enum ManaUsageRestriction {
     CastSpell {
         card_types: Vec<CardType>,
         subtype_requirement: Option<ManaUsageSubtypeRequirement>,
+        restrict_to_matching_spell: bool,
         grant_uncounterable: bool,
+        enters_with_counters: Vec<(crate::object::CounterType, u32)>,
     },
 }
 
