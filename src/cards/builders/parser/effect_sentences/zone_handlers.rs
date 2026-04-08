@@ -47,7 +47,7 @@ use super::clause_pattern_helpers::extract_subject_player;
 use super::conditionals::{parse_mana_symbol_group, parse_subtype_word};
 use super::dispatch_inner::trim_edge_punctuation;
 
-type ZoneHandlerNormalizedWords = TokenWordView;
+type ZoneHandlerNormalizedWords<'a> = TokenWordView<'a>;
 use super::for_each_helpers::parse_get_modifier_values_with_tail;
 use super::search_library::parse_restriction_duration;
 use super::sentence_primitives::find_color_choice_phrase;
@@ -178,6 +178,9 @@ pub(crate) fn parse_tap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextE
             "tap clause missing target".to_string(),
         ));
     }
+    if let Some(effect) = parse_tap_or_untap_all(tokens)? {
+        return Ok(effect);
+    }
     let words = crate::cards::builders::parser::token_word_refs(tokens);
     if matches!(words.first().copied(), Some("all" | "each")) {
         let filter = parse_object_filter(&tokens[1..], false)?;
@@ -195,6 +198,98 @@ pub(crate) fn parse_tap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextE
     }
     let target = parse_target_phrase(tokens)?;
     Ok(EffectAst::Tap { target })
+}
+
+fn mentions_chosen_type_phrase(tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::cards::builders::parser::token_word_refs(tokens);
+    find_word_sequence_start(&words, &["of", "the", "chosen", "type"]).is_some()
+        || find_word_sequence_start(&words, &["of", "chosen", "type"]).is_some()
+        || find_word_sequence_start(&words, &["of", "that", "type"]).is_some()
+        || find_word_sequence_start(&words, &["that", "type"]).is_some()
+}
+
+fn strip_type_choice_qualifier(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+    let words = crate::cards::builders::parser::token_word_refs(tokens);
+    let qualifier = find_word_sequence_start(&words, &["of", "the", "chosen", "type"])
+        .map(|start| (start, 4usize))
+        .or_else(|| {
+            find_word_sequence_start(&words, &["of", "chosen", "type"])
+                .map(|start| (start, 3usize))
+        })
+        .or_else(|| {
+            find_word_sequence_start(&words, &["of", "that", "type"]).map(|start| (start, 3usize))
+        })
+        .or_else(|| find_word_sequence_start(&words, &["that", "type"]).map(|start| (start, 2usize)));
+    let Some((start, len)) = qualifier else {
+        return trim_commas(tokens).to_vec();
+    };
+    let token_start = token_index_for_word_index(tokens, start).unwrap_or(tokens.len());
+    let token_end = token_index_for_word_index(tokens, start + len).unwrap_or(tokens.len());
+    let mut stripped = tokens[..token_start].to_vec();
+    stripped.extend_from_slice(&tokens[token_end..]);
+    trim_commas(&stripped).to_vec()
+}
+
+fn parse_tap_or_untap_all(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
+    let words = crate::cards::builders::parser::token_word_refs(tokens);
+    if !matches!(words.first().copied(), Some("all" | "each")) {
+        return Ok(None);
+    }
+    let Some(or_idx) = find_word_sequence_start(&words, &["or", "untap", "all"]) else {
+        return Ok(None);
+    };
+    if or_idx <= 1 {
+        return Ok(None);
+    }
+
+    let left_start = token_index_for_word_index(tokens, 1).unwrap_or(tokens.len());
+    let left_end = token_index_for_word_index(tokens, or_idx).unwrap_or(tokens.len());
+    let right_start = token_index_for_word_index(tokens, or_idx + 3).unwrap_or(tokens.len());
+    if left_start >= left_end || right_start > tokens.len() {
+        return Ok(None);
+    }
+
+    let left_tokens = trim_commas(&tokens[left_start..left_end]).to_vec();
+    let right_tokens = trim_commas(&tokens[right_start..]).to_vec();
+    if left_tokens.is_empty() || right_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let left_words = crate::cards::builders::parser::token_word_refs(&left_tokens);
+    let right_words = crate::cards::builders::parser::token_word_refs(&right_tokens);
+    let left_mentions_chosen_type = mentions_chosen_type_phrase(&left_tokens)
+        || contains_word_sequence(&left_words, &["chosen", "type"])
+        || contains_word_sequence(&left_words, &["that", "type"]);
+    let right_mentions_chosen_type = mentions_chosen_type_phrase(&right_tokens)
+        || contains_word_sequence(&right_words, &["chosen", "type"])
+        || contains_word_sequence(&right_words, &["that", "type"]);
+    let cleaned_left = strip_type_choice_qualifier(&left_tokens);
+    let cleaned_right = strip_type_choice_qualifier(&right_tokens);
+
+    let mut tap_filter = parse_object_filter(&cleaned_left, false)?;
+    let mut untap_filter = parse_object_filter(&cleaned_right, false)?;
+    if left_mentions_chosen_type {
+        tap_filter.chosen_creature_type = true;
+    }
+    if right_mentions_chosen_type {
+        untap_filter.chosen_creature_type = true;
+    }
+    if contains_word_sequence(&left_words, &["target", "player", "controls"]) {
+        tap_filter.controller = Some(PlayerFilter::target_player());
+    }
+    if contains_word_sequence(&right_words, &["that", "player", "controls"])
+        || contains_word_sequence(&right_words, &["that", "players", "control"])
+    {
+        untap_filter.controller = tap_filter
+            .controller
+            .clone()
+            .or_else(|| Some(PlayerFilter::target_player()));
+    }
+
+    Ok(Some(EffectAst::TapOrUntapAll {
+        tap_filter,
+        untap_filter,
+    }))
 }
 
 pub(crate) fn parse_sacrifice(
@@ -1381,6 +1476,7 @@ fn player_filter_for_set_life_total_reference(player: PlayerAst) -> Option<Playe
         PlayerAst::Chosen => Some(PlayerFilter::ChosenPlayer),
         PlayerAst::Defending => Some(PlayerFilter::Defending),
         PlayerAst::Attacking => Some(PlayerFilter::Attacking),
+        PlayerAst::MostCardsInHand => Some(PlayerFilter::MostCardsInHand),
         PlayerAst::ThatPlayerOrTargetController
         | PlayerAst::ItsController
         | PlayerAst::ItsOwner => None,
@@ -1714,7 +1810,14 @@ pub(crate) fn parse_convert(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
     Ok(EffectAst::Convert { target })
 }
 
-pub(crate) fn parse_flip(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+pub(crate) fn parse_flip(
+    tokens: &[OwnedLexToken],
+    subject: Option<SubjectAst>,
+) -> Result<EffectAst, CardTextError> {
+    let player = match subject.unwrap_or(SubjectAst::This) {
+        SubjectAst::Player(player) => player,
+        SubjectAst::This => PlayerAst::Implicit,
+    };
     if tokens.is_empty() {
         return Ok(EffectAst::Flip {
             target: TargetAst::Source(None),
@@ -1722,6 +1825,9 @@ pub(crate) fn parse_flip(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardText
     }
 
     let target_words = crate::cards::builders::parser::token_word_refs(tokens);
+    if matches!(target_words.as_slice(), ["a", "coin"] | ["coin"]) {
+        return Ok(EffectAst::FlipCoin { player });
+    }
     if target_words == ["it"]
         || target_words == ["this"]
         || target_words == ["this", "creature"]

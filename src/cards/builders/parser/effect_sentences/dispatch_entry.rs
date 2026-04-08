@@ -4,7 +4,10 @@ use winnow::error::{ContextError, ErrMode, StrContext, StrContextValue};
 use winnow::prelude::*;
 use winnow::token::{any, take_till};
 
-use super::super::activation_and_restrictions::{contains_word_sequence, find_word_sequence_start};
+use super::super::activation_and_restrictions::{
+    contains_word_sequence, find_word_sequence_start, parse_choose_card_type_phrase_words,
+    parse_target_player_choose_objects_clause, parse_you_choose_objects_clause,
+};
 use super::super::effect_ast_traversal::{
     for_each_nested_effects, for_each_nested_effects_mut, try_for_each_nested_effects_mut,
 };
@@ -159,6 +162,12 @@ const PRONOUN_TRIGGER_PREFIXES: &[&[&str]] = &[
 
 fn parse_exact_card_effect_bundle_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
     let sentences = split_lexed_sentences(tokens);
+    if sentences.len() == 3
+        && let Ok(Some(effects)) =
+            parse_choose_objects_then_for_each_of_those_bundle(sentences[0], sentences[1], sentences[2])
+    {
+        return Some(effects);
+    }
     if sentences.len() == 2
         && let Ok(Some(effects)) = parse_choose_card_type_then_reveal_top_and_put_chosen_to_hand(
             sentences[0],
@@ -166,6 +175,42 @@ fn parse_exact_card_effect_bundle_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<
         )
     {
         return Some(effects);
+    }
+    if sentences.len() == 3
+        && {
+            let first_words = crate::cards::builders::parser::token_word_refs(sentences[0]);
+            let choice_words = if first_words.first().copied() == Some("you") {
+                &first_words[1..]
+            } else {
+                &first_words[..]
+            };
+            matches!(
+                parse_choose_card_type_phrase_words(choice_words),
+                Ok(Some((consumed, _))) if consumed == choice_words.len()
+            )
+        }
+        && let Ok(Some(mut effects)) =
+            parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard(
+                sentences[1],
+                sentences[2],
+            )
+    {
+        let first_words = crate::cards::builders::parser::token_word_refs(sentences[0]);
+        let choice_words = if first_words.first().copied() == Some("you") {
+            &first_words[1..]
+        } else {
+            &first_words[..]
+        };
+        let (_, options) = parse_choose_card_type_phrase_words(choice_words)
+            .ok()
+            .flatten()
+            .expect("validated choose-card-type bundle prefix");
+        let mut combined = vec![EffectAst::ChooseCardType {
+            player: PlayerAst::You,
+            options,
+        }];
+        combined.append(&mut effects);
+        return Some(combined);
     }
     let sentence_words = tokens
         .iter()
@@ -291,6 +336,73 @@ fn parse_exact_card_effect_bundle_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<
     None
 }
 
+fn parse_choose_objects_then_for_each_of_those_bundle(
+    first: &[OwnedLexToken],
+    second: &[OwnedLexToken],
+    third: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    fn word_is(word: Option<&str>, expected: &str) -> bool {
+        word.is_some_and(|word| word.eq_ignore_ascii_case(expected))
+    }
+
+    let mut normalized_first = first.to_vec();
+    for token in &mut normalized_first {
+        token.lowercase_word();
+    }
+
+    let Some((player, filter, count)) = parse_you_choose_objects_clause(&normalized_first)?
+        .or_else(|| {
+            parse_target_player_choose_objects_clause(&normalized_first)
+                .ok()
+                .flatten()
+        })
+    else {
+        return Ok(None);
+    };
+    let choose_tag = TagKey::from(IT_TAG);
+
+    let second_words = crate::cards::builders::parser::token_word_refs(second);
+    if second_words.len() < 5
+        || !word_is(second_words.first().copied(), "for")
+        || !word_is(second_words.get(1).copied(), "each")
+        || !word_is(second_words.get(2).copied(), "of")
+        || !word_is(second_words.get(3).copied(), "those")
+    {
+        return Ok(None);
+    }
+
+    let Some(comma_idx) = find_index(second, |token| token.is_comma()) else {
+        return Ok(None);
+    };
+    let loop_body_tokens = trim_commas(&second[comma_idx + 1..]);
+    if loop_body_tokens.is_empty() {
+        return Ok(None);
+    }
+    let loop_body_effects = parse_effect_sentence_lexed(&loop_body_tokens)?;
+    if loop_body_effects.is_empty() {
+        return Ok(None);
+    }
+
+    let trailing_effects = parse_effect_sentence_lexed(third)?;
+    if trailing_effects.is_empty() {
+        return Ok(None);
+    }
+
+    let mut combined = vec![EffectAst::ChooseObjects {
+        filter,
+        count,
+        count_value: None,
+        player,
+        tag: choose_tag.clone(),
+    }];
+    combined.push(EffectAst::ForEachTagged {
+        tag: choose_tag,
+        effects: loop_body_effects,
+    });
+    combined.extend(trailing_effects);
+    Ok(Some(combined))
+}
+
 fn normalize_parser_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     let mut normalized = tokens.to_vec();
     for token in &mut normalized {
@@ -361,7 +473,7 @@ fn parse_prefixed_top_of_your_library_count<T: Copy>(
     .then_some((marker, count))
 }
 
-fn find_from_among_looked_cards_phrase(word_view: &TokenWordView) -> Option<(usize, usize)> {
+fn find_from_among_looked_cards_phrase(word_view: &TokenWordView<'_>) -> Option<(usize, usize)> {
     word_view
         .find_phrase_start(&["from", "among", "those", "cards"])
         .map(|idx| (idx, 4usize))
@@ -1647,6 +1759,12 @@ fn parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard(
     } else {
         return Ok(None);
     };
+    let filter_words = crate::cards::builders::parser::token_word_refs(&filter_tokens);
+    if contains_word_sequence(&filter_words, &["chosen", "type"])
+        || contains_word_sequence(&filter_words, &["that", "type"])
+    {
+        filter.chosen_creature_type = true;
+    }
     normalize_search_library_filter(&mut filter);
     filter.zone = None;
 
@@ -1742,6 +1860,7 @@ fn parse_delayed_dies_exile_top_power_choose_play(
             EffectAst::ChooseObjects {
                 filter: exiled_filter,
                 count: ChoiceCount::exactly(1),
+                count_value: None,
                 player: PlayerAst::You,
                 tag: chosen_tag.clone(),
             },
@@ -1754,14 +1873,53 @@ fn parse_delayed_dies_exile_top_power_choose_play(
     }]))
 }
 
+fn parse_choose_then_do_same_for_filter_then_return_to_battlefield(
+    first: &[OwnedLexToken],
+    second: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(mut effects) = super::parse_sentence_choose_then_do_same_for_filter(first)? else {
+        return Ok(None);
+    };
+
+    let second_words: Vec<&str> = crate::cards::builders::parser::token_word_refs(second)
+        .into_iter()
+        .filter(|word| !is_article(word))
+        .collect();
+    let tapped = slice_contains(&second_words, &"tapped");
+    let second_without_tapped = second_words
+        .iter()
+        .copied()
+        .filter(|word| *word != "tapped")
+        .collect::<Vec<_>>();
+    if !matches!(
+        second_without_tapped.as_slice(),
+        ["return", "those", "cards", "to", "battlefield"] | ["return", "them", "to", "battlefield"]
+    ) {
+        return Ok(None);
+    }
+
+    effects.push(EffectAst::ReturnToBattlefield {
+        target: TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(second)),
+        tapped,
+        transformed: false,
+        converted: false,
+        controller: ReturnControllerAst::Preserve,
+    });
+    Ok(Some(effects))
+}
+
 fn parse_pair_sentence_sequence(
     first: &[OwnedLexToken],
     second: &[OwnedLexToken],
 ) -> Result<Option<(&'static str, Vec<EffectAst>)>, CardTextError> {
-    const RULES: [(&str, PairSentenceRule); 12] = [
+    const RULES: [(&str, PairSentenceRule); 13] = [
         (
             "damage-prevention-then-put-counters",
             parse_damage_prevention_then_put_counters,
+        ),
+        (
+            "choose-then-do-same-for-filter-then-return-to-battlefield",
+            parse_choose_then_do_same_for_filter_then_return_to_battlefield,
         ),
         (
             "delayed-dies-exile-top-power-choose-play",
@@ -1865,6 +2023,10 @@ fn parse_pair_sentence_sequence(
             parse_tap_all_then_they_dont_untap_while_source_tapped,
         )],
         Some(("choose", _)) => &[
+            (
+                "choose-then-do-same-for-filter-then-return-to-battlefield",
+                parse_choose_then_do_same_for_filter_then_return_to_battlefield,
+            ),
             (
                 "choose-card-type-then-reveal-and-put",
                 parse_choose_card_type_then_reveal_top_and_put_chosen_to_hand,
@@ -2194,6 +2356,37 @@ fn parse_top_cards_view_sentence(tokens: &[OwnedLexToken]) -> Option<(PlayerAst,
     Some((PlayerAst::You, Value::Fixed(count as i32), revealed))
 }
 
+fn strip_up_to_one_looked_card_choice_prefix(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+    let tokens = trim_commas(tokens);
+    let word_view = TokenWordView::new(&tokens);
+    if !word_view.word_refs().starts_with(&["up", "to"]) {
+        return tokens;
+    }
+
+    let count_start = word_view.token_index_after_words(2).unwrap_or(tokens.len());
+    let count_tokens = trim_commas(&tokens[count_start..]);
+    let Some((count, used)) = parse_number(&count_tokens) else {
+        return tokens;
+    };
+    if count != 1 {
+        return tokens;
+    }
+
+    trim_commas(&count_tokens[used..])
+}
+
+fn parse_looked_card_choice_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+    let filter_tokens = strip_up_to_one_looked_card_choice_prefix(tokens);
+    if filter_tokens.is_empty() {
+        return None;
+    }
+
+    let mut filter = parse_looked_card_reveal_filter(&filter_tokens)?;
+    normalize_search_library_filter(&mut filter);
+    filter.zone = None;
+    Some(filter)
+}
+
 fn parse_counted_looked_cards_into_your_hand_tokens(tokens: &[OwnedLexToken]) -> Option<u32> {
     let tokens = trim_commas(tokens);
     let word_view = TokenWordView::new(&tokens);
@@ -2279,17 +2472,11 @@ fn parse_may_put_filtered_looked_card_onto_battlefield(
     let filter_end = action_words
         .token_index_for_word_index(from_among_word_idx)
         .unwrap_or(action_tokens.len());
-    let filter_tokens = trim_commas(&action_tokens[..filter_end]);
-    if filter_tokens.is_empty() {
-        return Ok(None);
-    }
-    let mut filter = if let Some(filter) = parse_looked_card_reveal_filter(&filter_tokens) {
+    let filter = if let Some(filter) = parse_looked_card_choice_filter(&action_tokens[..filter_end]) {
         filter
     } else {
         return Ok(None);
     };
-    normalize_search_library_filter(&mut filter);
-    filter.zone = None;
 
     let after_from_words = &action_word_refs[from_among_word_idx + from_among_len..];
     let tapped = match after_from_words {
@@ -2299,6 +2486,100 @@ fn parse_may_put_filtered_looked_card_onto_battlefield(
     };
 
     Ok(Some((chooser, filter, tapped)))
+}
+
+fn parse_filtered_looked_card_into_hand_clause(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+    let action_tokens = trim_commas(tokens);
+    let action_words = TokenWordView::new(&action_tokens);
+    if action_words.is_empty() {
+        return None;
+    }
+    let action_word_refs = action_words.word_refs();
+
+    let Some((from_among_word_idx, from_among_len)) =
+        find_from_among_looked_cards_phrase(&action_words)
+    else {
+        return None;
+    };
+
+    let filter_end = action_words
+        .token_index_for_word_index(from_among_word_idx)
+        .unwrap_or(action_tokens.len());
+    let filter = parse_looked_card_choice_filter(&action_tokens[..filter_end])?;
+
+    let after_from_words = &action_word_refs[from_among_word_idx + from_among_len..];
+    let moves_into_hand =
+        slice_starts_with(after_from_words, &["into"]) && slice_contains(after_from_words, &"hand");
+    if !moves_into_hand {
+        return None;
+    }
+
+    Some(filter)
+}
+
+fn parse_may_put_filtered_looked_card_onto_battlefield_and_filtered_into_hand(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<(PlayerAst, ObjectFilter, bool, ObjectFilter)>, CardTextError> {
+    let sentence_tokens = trim_commas(tokens);
+    let Some(action_match) = parse_leading_may_action_lexed(&sentence_tokens, &["put"], false)
+    else {
+        return Ok(None);
+    };
+    let chooser = leading_may_actor_to_player(action_match.actor, PlayerAst::You);
+    let action_tokens = trim_commas(action_match.tail_tokens);
+    let action_words = TokenWordView::new(&action_tokens);
+    if action_words.is_empty() {
+        return Ok(None);
+    }
+
+    let Some((from_among_word_idx, from_among_len)) =
+        find_from_among_looked_cards_phrase(&action_words)
+    else {
+        return Ok(None);
+    };
+
+    let first_filter_end = action_words
+        .token_index_for_word_index(from_among_word_idx)
+        .unwrap_or(action_tokens.len());
+    let battlefield_filter = parse_looked_card_choice_filter(&action_tokens[..first_filter_end])
+        .ok_or_else(|| {
+            CardTextError::ParseError(
+                "unable to parse first looked-card choice filter".to_string(),
+            )
+        })?;
+
+    let after_first_from = action_words
+        .token_index_after_words(from_among_word_idx + from_among_len)
+        .unwrap_or(action_tokens.len());
+    let after_first_clause = trim_commas(&action_tokens[after_first_from..]);
+    let after_words = TokenWordView::new(&after_first_clause);
+    let after_refs = after_words.word_refs();
+
+    let (tapped, second_start_words) = if slice_starts_with(
+        &after_refs,
+        &["onto", "the", "battlefield", "tapped", "and"],
+    ) || slice_starts_with(&after_refs, &["onto", "battlefield", "tapped", "and"])
+    {
+        (true, 5usize)
+    } else if slice_starts_with(&after_refs, &["onto", "the", "battlefield", "and"])
+        || slice_starts_with(&after_refs, &["onto", "battlefield", "and"])
+    {
+        (false, 4usize)
+    } else {
+        return Ok(None);
+    };
+
+    let second_start = after_words
+        .token_index_after_words(second_start_words)
+        .unwrap_or(after_first_clause.len());
+    let hand_filter = parse_filtered_looked_card_into_hand_clause(&after_first_clause[second_start..])
+        .ok_or_else(|| {
+            CardTextError::ParseError(
+                "unable to parse second looked-card hand filter".to_string(),
+            )
+        })?;
+
+    Ok(Some((chooser, battlefield_filter, tapped, hand_filter)))
 }
 
 fn parse_if_you_dont_put_card_from_among_them_into_your_hand(tokens: &[OwnedLexToken]) -> bool {
@@ -2457,17 +2738,11 @@ fn parse_top_cards_put_match_into_hand_rest_graveyard(
     let filter_end = action_words
         .token_index_for_word_index(from_among_word_idx)
         .unwrap_or(action_tokens.len());
-    let filter_tokens = trim_commas(&action_tokens[..filter_end]);
-    if filter_tokens.is_empty() {
-        return Ok(None);
-    }
-    let mut filter = if let Some(filter) = parse_looked_card_reveal_filter(&filter_tokens) {
+    let filter = if let Some(filter) = parse_looked_card_choice_filter(&action_tokens[..filter_end]) {
         filter
     } else {
         return Ok(None);
     };
-    normalize_search_library_filter(&mut filter);
-    filter.zone = None;
 
     let after_from_words = &action_word_refs[from_among_word_idx + from_among_len..];
     let moves_into_hand = if reveal_chosen {
@@ -2505,6 +2780,52 @@ fn parse_top_cards_put_match_into_hand_rest_graveyard(
         reveal: reveal_chosen,
         if_not_chosen: Vec::new(),
     });
+    Ok(Some(effects))
+}
+
+fn parse_top_cards_put_match_onto_battlefield_and_match_into_hand_rest_bottom(
+    first: &[OwnedLexToken],
+    second: &[OwnedLexToken],
+    third: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some((player, count, reveal_top)) = parse_top_cards_view_sentence(first) else {
+        return Ok(None);
+    };
+    let Some((chooser, battlefield_filter, tapped, hand_filter)) =
+        parse_may_put_filtered_looked_card_onto_battlefield_and_filtered_into_hand(second)?
+    else {
+        return Ok(None);
+    };
+
+    let third_words = TokenWordView::new(third);
+    if !matches!(third_words.first(), Some("put" | "puts"))
+        || third_words.find_word("rest").is_none()
+    {
+        return Ok(None);
+    }
+    let Some(order) = parse_consult_remainder_order(&third_words.word_refs()) else {
+        return Ok(None);
+    };
+
+    let mut effects = vec![EffectAst::LookAtTopCards {
+        player,
+        count,
+        tag: TagKey::from(IT_TAG),
+    }];
+    if reveal_top {
+        effects.push(EffectAst::RevealTagged {
+            tag: TagKey::from(IT_TAG),
+        });
+    }
+    effects.push(
+        EffectAst::ChooseFromLookedCardsOntoBattlefieldAndIntoHandRestOnBottomOfLibrary {
+            player: chooser,
+            battlefield_filter,
+            hand_filter,
+            tapped,
+            order,
+        },
+    );
     Ok(Some(effects))
 }
 
@@ -2737,6 +3058,23 @@ fn parse_looked_card_reveal_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFil
         return Some(filter);
     }
     if matches!(
+        non_article_words.as_slice(),
+        ["card", "of", "chosen", "type"]
+            | ["cards", "of", "chosen", "type"]
+            | ["card", "of", "that", "type"]
+            | ["cards", "of", "that", "type"]
+    ) {
+        let mut filter = ObjectFilter::default();
+        filter.chosen_creature_type = true;
+        if same_name_suffix_len.is_some() {
+            filter = filter.match_tagged(
+                TagKey::from(CHOSEN_NAME_TAG),
+                TaggedOpbjectRelation::SameNameAsTagged,
+            );
+        }
+        return Some(filter);
+    }
+    if matches!(
         words_all_refs.as_slice(),
         ["permanent", "card"] | ["permanent", "cards"]
     ) {
@@ -2828,17 +3166,11 @@ fn parse_may_put_filtered_card_from_among_into_hand(
     let filter_end = action_words
         .token_index_for_word_index(from_among_word_idx)
         .unwrap_or(action_tokens.len());
-    let filter_tokens = trim_commas(&action_tokens[..filter_end]);
-    if filter_tokens.is_empty() {
-        return Ok(None);
-    }
-
-    let mut filter = if let Some(filter) = parse_looked_card_reveal_filter(&filter_tokens) {
+    let mut filter = if let Some(filter) = parse_looked_card_choice_filter(&action_tokens[..filter_end]) {
         filter
     } else {
         return Ok(None);
     };
-    normalize_search_library_filter(&mut filter);
     filter.zone = Some(zone);
 
     let after_from_words = &action_word_refs[from_among_word_idx + from_among_len..];
@@ -2907,7 +3239,7 @@ fn parse_triple_sentence_sequence(
     second: &[OwnedLexToken],
     third: &[OwnedLexToken],
 ) -> Result<Option<(&'static str, Vec<EffectAst>)>, CardTextError> {
-    const RULES: [(&str, TripleSentenceRule); 10] = [
+    const RULES: [(&str, TripleSentenceRule); 11] = [
         (
             "mill-then-put-from-among-into-hand-then-if-you-dont",
             parse_mill_then_may_put_from_among_into_hand_then_if_you_dont,
@@ -2931,6 +3263,10 @@ fn parse_triple_sentence_sequence(
         (
             "top-cards-put-match-into-hand-rest-graveyard",
             parse_top_cards_put_match_into_hand_rest_graveyard,
+        ),
+        (
+            "top-cards-put-match-onto-battlefield-and-into-hand-rest-bottom",
+            parse_top_cards_put_match_onto_battlefield_and_match_into_hand_rest_bottom,
         ),
         (
             "look-at-top-reveal-match-put-rest-bottom",
@@ -2990,6 +3326,10 @@ fn parse_triple_sentence_sequence(
         ],
         Some(("look", Some("at"))) => &[
             (
+                "top-cards-put-match-onto-battlefield-and-into-hand-rest-bottom",
+                parse_top_cards_put_match_onto_battlefield_and_match_into_hand_rest_bottom,
+            ),
+            (
                 "look-at-top-reveal-match-put-rest-bottom",
                 parse_look_at_top_reveal_match_put_rest_bottom,
             ),
@@ -3002,10 +3342,16 @@ fn parse_triple_sentence_sequence(
                 parse_prefix_then_consult_match_into_hand_exile_others,
             ),
         ],
-        Some(("reveal", Some("the"))) | Some(("reveal", Some("top"))) => &[(
-            "top-cards-put-match-into-hand-rest-graveyard",
-            parse_top_cards_put_match_into_hand_rest_graveyard,
-        )],
+        Some(("reveal", Some("the"))) | Some(("reveal", Some("top"))) => &[
+            (
+                "top-cards-put-match-onto-battlefield-and-into-hand-rest-bottom",
+                parse_top_cards_put_match_onto_battlefield_and_match_into_hand_rest_bottom,
+            ),
+            (
+                "top-cards-put-match-into-hand-rest-graveyard",
+                parse_top_cards_put_match_into_hand_rest_graveyard,
+            ),
+        ],
         _ => &[],
     };
 
@@ -3890,10 +4236,13 @@ fn apply_cant_be_regenerated_to_effect(effect: &mut EffectAst) -> bool {
 mod tests {
     use crate::effect::{Value, ValueComparisonOperator};
     use crate::filter::TaggedOpbjectRelation;
+    use crate::target::PlayerFilter;
 
     use super::super::super::lexer::lex_line;
+    use super::super::parse_effect_sentence_lexed;
     use super::{
         ConsultCastCost, ConsultCastTiming, parse_bargained_face_down_cast_mana_value_gate,
+        parse_exact_card_effect_bundle_lexed,
         parse_consult_cast_clause, parse_consult_condition_value,
         parse_consult_mana_value_condition_tokens,
         parse_counted_looked_cards_into_your_hand_tokens,
@@ -4007,6 +4356,52 @@ mod tests {
                     count: 3,
                     ..
                 }
+            ]
+        ));
+    }
+
+    #[test]
+    fn parse_turnabout_mass_tap_sentence_uses_tap_or_untap_all_ast() {
+        let tokens = lex_line(
+            "Tap all untapped permanents of the chosen type target player controls, or untap all tapped permanents of that type that player controls",
+            0,
+        )
+        .expect("rewrite lexer should classify turnabout mass-tap clause");
+
+        let parsed = parse_effect_sentence_lexed(&tokens)
+            .expect("turnabout mass-tap clause should parse");
+
+        let [crate::cards::builders::EffectAst::TapOrUntapAll {
+            tap_filter,
+            untap_filter,
+        }] = parsed.as_slice()
+        else {
+            panic!("expected shared tap-or-untap-all ast, got {parsed:?}");
+        };
+
+        assert_eq!(tap_filter.controller, Some(PlayerFilter::target_player()));
+        assert_eq!(untap_filter.controller, Some(PlayerFilter::target_player()));
+        assert!(tap_filter.chosen_creature_type, "{tap_filter:?}");
+        assert!(untap_filter.chosen_creature_type, "{untap_filter:?}");
+    }
+
+    #[test]
+    fn choose_then_for_each_of_those_bundle_builds_for_each_tagged_loop() {
+        let tokens = lex_line(
+            "Choose five permanents you control. For each of those permanents, you may search your library for a card with the same name as that permanent. Put those cards onto the battlefield tapped, then shuffle.",
+            0,
+        )
+        .expect("rewrite lexer should classify choose/for-each bundle");
+
+        let parsed = parse_exact_card_effect_bundle_lexed(&tokens)
+            .expect("choose/for-each bundle should parse");
+
+        assert!(matches!(
+            parsed.as_slice(),
+            [
+                crate::cards::builders::EffectAst::ChooseObjects { .. },
+                crate::cards::builders::EffectAst::ForEachTagged { .. },
+                ..,
             ]
         ));
     }

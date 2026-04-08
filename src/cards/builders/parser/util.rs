@@ -45,7 +45,7 @@ pub(crate) fn tokenize_line(line: &str, line_index: usize) -> Vec<OwnedLexToken>
 
 pub(crate) use super::lexer::parser_token_word_refs as words;
 
-type UtilWordView = TokenWordView;
+type UtilWordView<'a> = TokenWordView<'a>;
 
 fn words_have_prefix(words: &[&str], prefix: &[&str]) -> bool {
     slice_starts_with(words, prefix)
@@ -1424,6 +1424,23 @@ pub(crate) fn parse_subject(tokens: &[OwnedLexToken]) -> SubjectAst {
     {
         slice = &slice[1..];
     }
+
+    if words_have_prefix(
+        slice,
+        &["the", "player", "who", "has", "the", "most", "cards", "in", "hand"],
+    ) || words_have_prefix(
+        slice,
+        &["player", "who", "has", "the", "most", "cards", "in", "hand"],
+    ) || words_have_prefix(
+        slice,
+        &["the", "player", "with", "the", "most", "cards", "in", "hand"],
+    ) || words_have_prefix(
+        slice,
+        &["player", "with", "the", "most", "cards", "in", "hand"],
+    ) {
+        return SubjectAst::Player(PlayerAst::MostCardsInHand);
+    }
+
     if let Some(have_idx) = find_index(slice, |word| *word == "have" || *word == "has") {
         if have_idx + 1 < slice.len() {
             slice = &slice[have_idx + 1..];
@@ -2348,6 +2365,15 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
     if remaining_words.as_slice() == ["spell"] || remaining_words.as_slice() == ["spells"] {
         return Ok(wrap_target_count(
             TargetAst::Spell(target_span),
+            target_count,
+        ));
+    }
+    if matches!(
+        remaining_words.as_slice(),
+        ["that", "spell"] | ["those", "spells"]
+    ) {
+        return Ok(wrap_target_count(
+            TargetAst::Tagged(TagKey::from(IT_TAG), span),
             target_count,
         ));
     }

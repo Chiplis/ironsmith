@@ -740,6 +740,7 @@ fn object_matches_filter_with_chars(
             // these controller-relative player filters safely. Fail closed.
             PlayerFilter::NotYou
             | PlayerFilter::MostLifeTied
+            | PlayerFilter::MostCardsInHand
             | PlayerFilter::CastCardTypeThisTurn(_)
             | PlayerFilter::Teammate
             | PlayerFilter::Active

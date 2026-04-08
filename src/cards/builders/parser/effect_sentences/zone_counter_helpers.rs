@@ -32,7 +32,7 @@ use super::super::value_helpers::{
     parse_equal_to_aggregate_filter_value, parse_equal_to_number_of_filter_value,
 };
 
-type ZoneCounterCompatWords = TokenWordView;
+type ZoneCounterCompatWords<'a> = TokenWordView<'a>;
 
 const CREATURES_DIED_THIS_TURN_PREFIXES: &[&[&str]] = &[
     &["creature", "that", "died", "this", "turn"],
@@ -899,6 +899,7 @@ fn player_filter_for_set_life_total_reference(player: PlayerAst) -> Option<Playe
         PlayerAst::Chosen => Some(PlayerFilter::ChosenPlayer),
         PlayerAst::Defending => Some(PlayerFilter::Defending),
         PlayerAst::Attacking => Some(PlayerFilter::Attacking),
+        PlayerAst::MostCardsInHand => Some(PlayerFilter::MostCardsInHand),
         PlayerAst::ThatPlayerOrTargetController
         | PlayerAst::ItsController
         | PlayerAst::ItsOwner => None,

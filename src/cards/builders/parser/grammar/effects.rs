@@ -1922,6 +1922,7 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
                     EffectAst::ChooseObjects {
                         filter,
                         count: ChoiceCount::exactly(1),
+                        count_value: None,
                         player,
                         tag,
                     },

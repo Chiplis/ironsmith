@@ -25,6 +25,7 @@ mod scry;
 mod search_library;
 mod search_library_slots;
 mod shuffle_graveyard_into_library;
+mod shuffle_hand_and_graveyard_into_library;
 mod shuffle_library;
 mod surveil;
 
@@ -50,6 +51,7 @@ pub use scry::{EachPlayerScryEffect, FatesealEffect, ScryEffect};
 pub use search_library::SearchLibraryEffect;
 pub use search_library_slots::{SearchLibrarySlot, SearchLibrarySlotsEffect};
 pub use shuffle_graveyard_into_library::ShuffleGraveyardIntoLibraryEffect;
+pub use shuffle_hand_and_graveyard_into_library::ShuffleHandAndGraveyardIntoLibraryEffect;
 pub use shuffle_library::ShuffleLibraryEffect;
 pub use surveil::SurveilEffect;
 

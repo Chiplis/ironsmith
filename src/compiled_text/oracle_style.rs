@@ -47,6 +47,14 @@ pub(super) fn normalize_sentence_surface_style(line: &str) -> String {
     if let Some((prefix, tail)) = normalized.split_once("If you do, Untap it. it gets ") {
         return format!("{prefix}If you do, untap it and it gets {tail}");
     }
+    if let Some(head) = normalized.strip_suffix(". Untap them.") {
+        let lower_head = head.to_ascii_lowercase();
+        if (lower_head.starts_with("put ") || lower_head.contains(", put "))
+            && lower_head.contains(" on each ")
+        {
+            return format!("{head}, then untap them.");
+        }
+    }
     if normalized.starts_with("If ")
         && let Some((head, tail)) = normalized.split_once(". Surveil ")
         && !head.contains(". Otherwise,")
@@ -823,6 +831,26 @@ pub(super) fn normalize_sentence_surface_style(line: &str) -> String {
         return format!(
             "Prevent the next {amount} damage that would be dealt to {target} this turn."
         );
+    }
+    if let Some(target) = normalized
+        .strip_prefix("Prevent combat damage to ")
+        .or_else(|| normalized.strip_prefix("prevent combat damage to "))
+        .and_then(|rest| {
+            rest.strip_suffix(" until end of turn.")
+                .or_else(|| rest.strip_suffix(" until end of turn"))
+        })
+    {
+        return format!("Prevent all combat damage that would be dealt to {target} this turn.");
+    }
+    if let Some(target) = normalized
+        .strip_prefix("Prevent damage to ")
+        .or_else(|| normalized.strip_prefix("prevent damage to "))
+        .and_then(|rest| {
+            rest.strip_suffix(" until end of turn.")
+                .or_else(|| rest.strip_suffix(" until end of turn"))
+        })
+    {
+        return format!("Prevent all damage that would be dealt to {target} this turn.");
     }
 
     if let Some(rest) = normalized.strip_prefix("This creature has ")
@@ -4954,7 +4982,7 @@ mod tests {
         );
         assert_eq!(
             normalized,
-            "An opponent chooses any number of creature cards in your graveyard. Exile those cards. Return all other creature cards from your graveyard to the battlefield."
+            "Separate all creature cards in your graveyard into two piles. Exile the pile of an opponent's choice and return the other to the battlefield."
         );
     }
 

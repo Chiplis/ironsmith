@@ -275,11 +275,11 @@ pub(crate) fn parse_word_phrase<'a>(
     grammar::phrase(expected)
 }
 
-pub(crate) fn word_view_has_prefix(words: &TokenWordView, prefix: &[&str]) -> bool {
+pub(crate) fn word_view_has_prefix(words: &TokenWordView<'_>, prefix: &[&str]) -> bool {
     words.len() >= prefix.len() && words.slice_eq(0, prefix)
 }
 
-pub(crate) fn word_view_has_any_prefix(words: &TokenWordView, prefixes: &[&[&str]]) -> bool {
+pub(crate) fn word_view_has_any_prefix(words: &TokenWordView<'_>, prefixes: &[&[&str]]) -> bool {
     prefixes
         .iter()
         .any(|prefix| word_view_has_prefix(words, prefix))
@@ -304,7 +304,7 @@ pub(crate) fn rewrite_followup_intro_to_if_lexed(tokens: &[OwnedLexToken]) -> Ve
 
 fn token_range_for_word_span(
     tokens: &[OwnedLexToken],
-    words: &TokenWordView,
+    words: &TokenWordView<'_>,
     start_word_idx: usize,
     word_len: usize,
 ) -> Option<(usize, usize)> {

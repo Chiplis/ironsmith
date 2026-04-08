@@ -112,7 +112,7 @@ pub(crate) enum ActivationCostSegmentCst {
     },
 }
 
-type LeafCompatWords = TokenWordView;
+type LeafCompatWords<'a> = TokenWordView<'a>;
 
 fn parse_filter_text(text: &str, other: bool) -> Result<ObjectFilter, CardTextError> {
     let tokens = lex_line(text, 0)?;

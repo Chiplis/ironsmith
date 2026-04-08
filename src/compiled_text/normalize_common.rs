@@ -37,6 +37,7 @@ pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::MostLifeTied => {
             "a player with the most life or tied for most life".to_string()
         }
+        PlayerFilter::MostCardsInHand => "the player who has the most cards in hand".to_string(),
         PlayerFilter::CastCardTypeThisTurn(card_type) => format!(
             "a player who cast one or more {} spells this turn",
             card_type.to_string().to_ascii_lowercase()
@@ -5275,6 +5276,15 @@ pub(super) fn describe_search_selection_with_cards(selection: &str) -> String {
     if let Some(name) = selection.strip_prefix("permanent named ") {
         return format!("a card named {name}");
     }
+    if selection == "permanent" || selection == "permanent card" {
+        return "a card".to_string();
+    }
+    if let Some(tail) = selection.strip_prefix("permanent ") {
+        return format!("a card {tail}");
+    }
+    if let Some(tail) = selection.strip_prefix("card ") {
+        return format!("a card {tail}");
+    }
     if selection == "nonland permanent" || selection == "nonland permanent card" {
         return "a nonland card".to_string();
     }
@@ -7428,6 +7438,12 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         Condition::PlayerHasMoreCardsInHandThanYou { player } => {
             format!(
                 "{} has more cards in hand than you",
+                describe_player_filter(player)
+            )
+        }
+        Condition::PlayerHasMoreCardsInHandThanEachOtherPlayer { player } => {
+            format!(
+                "{} has more cards in hand than each other player",
                 describe_player_filter(player)
             )
         }

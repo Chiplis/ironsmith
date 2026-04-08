@@ -56,10 +56,10 @@ impl<'a> ClauseView<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct LexClauseWords(TokenWordView);
+pub(crate) struct LexClauseWords<'a>(TokenWordView<'a>);
 
-impl LexClauseWords {
-    pub(crate) fn new(tokens: &[OwnedLexToken]) -> Self {
+impl<'a> LexClauseWords<'a> {
+    pub(crate) fn new(tokens: &'a [OwnedLexToken]) -> Self {
         Self(TokenWordView::new(tokens))
     }
 
@@ -80,7 +80,7 @@ impl LexClauseWords {
 pub(crate) struct LexClauseView<'a> {
     pub(crate) raw: Option<&'a str>,
     pub(crate) tokens: &'a [OwnedLexToken],
-    pub(crate) words: LexClauseWords,
+    pub(crate) words: LexClauseWords<'a>,
     pub(crate) shape: u32,
 }
 

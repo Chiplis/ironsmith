@@ -61,7 +61,7 @@ mod activated_sentence_parsers;
 
 use activated_sentence_parsers::collect_activated_sentence_modifiers;
 
-type ActivationRestrictionCompatWords = grammar::TokenWordView;
+type ActivationRestrictionCompatWords<'a> = grammar::TokenWordView<'a>;
 
 fn strip_prefix_phrase<'a>(
     tokens: &'a [OwnedLexToken],
@@ -10066,6 +10066,7 @@ pub(crate) fn parse_target_player_chooses_then_other_cant_block(
         EffectAst::ChooseObjects {
             filter: choose_filter,
             count: choose_count,
+            count_value: None,
             player: chooser,
             tag: TagKey::from(IT_TAG),
         },
@@ -10139,6 +10140,19 @@ mod tests {
         assert_eq!(filter, PlayerFilter::Opponent);
         assert!(!random);
         assert_eq!(exclude_previous_choices, 0);
+    }
+
+    #[test]
+    fn parse_choose_card_type_phrase_words_supports_limited_type_lists() {
+        let parsed =
+            parse_choose_card_type_phrase_words(&["choose", "artifact", "creature", "or", "land"])
+                .expect("limited choose-card-type phrase should parse")
+                .expect("expected choose-card-type phrase");
+
+        assert_eq!(
+            parsed,
+            (5, vec![CardType::Artifact, CardType::Creature, CardType::Land])
+        );
     }
 
     #[test]
@@ -10299,6 +10313,40 @@ pub(crate) fn parse_choose_color_phrase_words(
     }
 
     Ok(Some((idx, excluded)))
+}
+
+pub(crate) fn parse_choose_card_type_phrase_words(
+    words: &[&str],
+) -> Result<Option<(usize, Vec<CardType>)>, CardTextError> {
+    let Some(mut idx) = parse_choose_phrase_prefix_words(words) else {
+        return Ok(None);
+    };
+    if words.get(idx) == Some(&"card") && words.get(idx + 1) == Some(&"type") {
+        return Ok(Some((idx + 2, Vec::new())));
+    }
+
+    let mut options = Vec::new();
+    let mut consumed_any = false;
+    while let Some(word) = words.get(idx).copied() {
+        if matches!(word, "or" | "and") {
+            idx += 1;
+            continue;
+        }
+        let Some(card_type) = parse_card_type(word) else {
+            break;
+        };
+        if !options.contains(&card_type) {
+            options.push(card_type);
+        }
+        consumed_any = true;
+        idx += 1;
+    }
+
+    if !consumed_any {
+        return Ok(None);
+    }
+
+    Ok(Some((idx, options)))
 }
 
 pub(crate) fn parse_choose_player_phrase_words(words: &[&str]) -> Option<usize> {
@@ -10466,6 +10514,7 @@ pub(crate) fn parse_sentence_target_player_chooses_then_puts_on_top_of_library(
         EffectAst::ChooseObjects {
             filter: choose_filter,
             count: choose_count,
+            count_value: None,
             player: chooser,
             tag: TagKey::from(IT_TAG),
         },
@@ -10560,6 +10609,7 @@ pub(crate) fn parse_sentence_target_player_chooses_then_you_put_it_onto_battlefi
         EffectAst::ChooseObjects {
             filter: choose_filter,
             count: choose_count,
+            count_value: None,
             player: chooser,
             tag: TagKey::from(IT_TAG),
         },

@@ -109,7 +109,7 @@ fn contains_keyword_action(actions: &[KeywordAction], expected: &KeywordAction) 
 }
 
 fn token_index_after_word_count(
-    words: &TokenWordView,
+    words: &TokenWordView<'_>,
     word_count: usize,
     token_len: usize,
 ) -> Option<usize> {

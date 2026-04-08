@@ -1564,6 +1564,9 @@ pub struct GameState {
     /// Chosen creature types for permanents ("as this enters, choose a creature type").
     pub chosen_creature_types: HashMap<ObjectId, crate::types::Subtype>,
 
+    /// Chosen card types for spells and abilities that ask a player to choose a card type.
+    pub chosen_card_types: HashMap<ObjectId, crate::types::CardType>,
+
     /// Chosen players for permanents ("as this enters, choose a player").
     pub chosen_players: HashMap<ObjectId, PlayerId>,
 
@@ -1733,6 +1736,7 @@ impl GameState {
             chosen_basic_land_types: HashMap::new(),
             chosen_land_types: HashMap::new(),
             chosen_creature_types: HashMap::new(),
+            chosen_card_types: HashMap::new(),
             chosen_players: HashMap::new(),
             chosen_named_options: HashMap::new(),
             regeneration_shields: HashMap::new(),
@@ -6006,6 +6010,7 @@ impl GameState {
         self.chosen_basic_land_types.remove(&id);
         self.chosen_land_types.remove(&id);
         self.chosen_creature_types.remove(&id);
+        self.chosen_card_types.remove(&id);
         self.chosen_players.remove(&id);
         self.chosen_named_options.remove(&id);
         self.chosen_modes_by_ability
@@ -6151,6 +6156,23 @@ impl GameState {
     /// Get a chosen creature type for a permanent, if any.
     pub fn chosen_creature_type(&self, permanent_id: ObjectId) -> Option<crate::types::Subtype> {
         self.chosen_creature_types.get(&permanent_id).copied()
+    }
+
+    // === Chosen card type helpers ===
+
+    /// Record a chosen card type for a source object.
+    pub fn set_chosen_card_type(
+        &mut self,
+        source_id: ObjectId,
+        card_type: crate::types::CardType,
+    ) {
+        self.mark_continuous_state_dirty();
+        self.chosen_card_types.insert(source_id, card_type);
+    }
+
+    /// Get a chosen card type for a source object, if any.
+    pub fn chosen_card_type(&self, source_id: ObjectId) -> Option<crate::types::CardType> {
+        self.chosen_card_types.get(&source_id).copied()
     }
 
     // === Chosen player helpers ===

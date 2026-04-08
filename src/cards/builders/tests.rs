@@ -1977,6 +1977,23 @@ fn test_parse_choose_new_targets_for_the_copy() {
 }
 
 #[test]
+fn test_parse_krark_coin_flip_trigger_keeps_both_flip_branches() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Krark, the Thumbless")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Goblin, Subtype::Wizard])
+        .parse_text(
+            "Whenever you cast an instant or sorcery spell, flip a coin. If you lose the flip, return that spell to its owner's hand. If you win the flip, copy that spell, and you may choose new targets for the copy.\nPartner (You can have two commanders if both have partner.)",
+        )
+        .expect("Krark should parse");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(debug.contains("FlipCoinEffect"), "{debug}");
+    assert!(debug.contains("ReturnToHandEffect"), "{debug}");
+    assert!(debug.contains("CopySpellEffect"), "{debug}");
+    assert!(debug.contains("ChooseNewTargetsEffect"), "{debug}");
+}
+
+#[test]
 fn test_parse_sevinnes_reclamation_flashback_copy_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Sevinne's Reclamation")
         .card_types(vec![CardType::Sorcery])
@@ -9352,6 +9369,37 @@ fn parse_each_player_discard_then_draw_keeps_each_player_scope() {
         compiled.contains("Each player discards their hand, then draws 7 cards")
             || compiled.contains("Each player discards their hand, then draws seven cards"),
         "expected each-player scope to carry into draw clause, got {compiled}"
+    );
+}
+
+#[test]
+fn parse_each_player_may_shuffle_hand_and_graveyard_keeps_player_scope() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Step Variant")
+        .parse_text(
+            "Each player may shuffle their hand and graveyard into their library. Each player who does draws seven cards.",
+        )
+        .expect("each-player may-shuffle clause should parse");
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("MayEffect") && debug.contains("ShuffleHandAndGraveyardIntoLibraryEffect"),
+        "{debug}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("may shuffle their hand and graveyard into their library"),
+        "{rendered}"
+    );
+    assert!(
+        rendered.contains("that player draws 7 cards")
+            || rendered.contains("that player draws seven cards"),
+        "{rendered}"
+    );
+    assert!(
+        !rendered.contains("if you do, draw 7 cards")
+            && !rendered.contains("if you do, draw seven cards"),
+        "{rendered}"
     );
 }
 
@@ -18244,6 +18292,24 @@ fn parse_tataru_taru_off_turn_draw_trigger_is_typed_and_capped() {
 }
 
 #[test]
+fn render_tataru_taru_draw_trigger_keeps_explicit_once_each_turn_suffix() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Tataru Taru Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "When this creature enters, you draw a card and target opponent may draw a card.\nScions' Secretary — Whenever an opponent draws a card, if it isn't that player's turn, create a tapped Treasure token. This ability triggers only once each turn.",
+        )
+        .expect("tataru taru-style trigger should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "Whenever an opponent draws a card, if it isn't that player's turn, create a tapped Treasure token. This ability triggers only once each turn."
+        ) && !rendered.contains("for the first time each turn"),
+        "expected render to keep explicit once-each-turn suffix, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_intuition_target_opponent_divvy_bundle() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Intuition Variant")
         .card_types(vec![CardType::Instant])
@@ -18264,6 +18330,25 @@ fn parse_intuition_target_opponent_divvy_bundle() {
     assert!(
         spell_debug.contains("ShuffleLibraryEffect"),
         "expected shuffle to remain in spell effect bundle, got {spell_debug}"
+    );
+}
+
+#[test]
+fn parse_oracle_death_or_glory_divvy_surface_regression() {
+    let def = parse_oracle_card_definition("Death or Glory");
+    let rendered = compiled_lines(&def).join(" ");
+
+    assert!(
+        rendered.contains(
+            "Separate all creature cards in your graveyard into two piles. Exile the pile of an opponent's choice and return the other to the battlefield."
+        ),
+        "expected Death or Glory to render its two-pile graveyard divvy wording, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("divvy_chosen") && debug.contains("ReturnAllToBattlefieldEffect"),
+        "expected Death or Glory to keep the underlying divvy/exile/return structure, got {debug}"
     );
 }
 
@@ -19823,6 +19908,83 @@ fn parse_oracle_scrapshooter_gift_etb_regression() {
     assert!(
         !rendered_lower.contains("chosen player draws a card"),
         "expected Scrapshooter compiled text to hide the synthetic Gift ETB line, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_longstalk_brawl_gift_spell_line_keeps_main_effects() {
+    let def = parse_oracle_card_definition("Longstalk Brawl");
+
+    assert_eq!(
+        def.optional_costs.len(),
+        1,
+        "expected Longstalk Brawl to lower Gift as one optional cost"
+    );
+    assert!(
+        def.optional_costs[0]
+            .label
+            .to_ascii_lowercase()
+            .starts_with("gift a tapped fish"),
+        "expected Longstalk Brawl gift label to preserve the gift descriptor, got {:?}",
+        def.optional_costs[0].label
+    );
+
+    let raw = format!("{def:#?}");
+    assert!(
+        raw.contains("ThisSpellPaidLabel") && raw.contains("Gift"),
+        "expected Longstalk Brawl to preserve the gift-was-promised condition, got {raw}"
+    );
+    assert!(
+        raw.contains("PutCountersEffect") && raw.contains("FightEffect"),
+        "expected Longstalk Brawl to keep its counter-plus-fight spell effects, got {raw}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    assert!(
+        rendered.contains("Gift a tapped Fish"),
+        "expected Longstalk Brawl compiled text to preserve the gift line, got {rendered}"
+    );
+    assert!(
+        rendered
+            .contains("Choose target creature you control and target creature you don't control.")
+            && rendered.contains(
+                "Put a +1/+1 counter on the creature you control if the gift was promised."
+            )
+            && rendered.contains("Then those creatures fight each other."),
+        "expected Longstalk Brawl compiled text to preserve the choose/counter/fight spell line, got {rendered}"
+    );
+    assert!(
+        !rendered_lower.contains("chosen player creates")
+            && !rendered_lower.contains(
+                "create a 1/1 blue fish creature token under the chosen player's control"
+            ),
+        "expected Longstalk Brawl compiled text to hide the synthetic Gift payload line, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_druids_deliverance_prevention_surface_regression() {
+    let def = parse_oracle_card_definition("Druid's Deliverance");
+
+    let raw = format!("{def:#?}");
+    assert!(
+        raw.contains("PreventAllDamageEffect") && raw.contains("combat_only: true"),
+        "expected Druid's Deliverance to compile into combat-damage prevention, got {raw}"
+    );
+    assert!(
+        raw.contains("PopulateEffect"),
+        "expected Druid's Deliverance to preserve populate, got {raw}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Prevent all combat damage that would be dealt to you this turn."),
+        "expected Druid's Deliverance compiled text to use oracle-style combat prevention wording, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Populate."),
+        "expected Druid's Deliverance compiled text to preserve populate, got {rendered}"
     );
 }
 
@@ -21933,6 +22095,120 @@ fn parse_planar_genesis_looked_card_fallback_sequence() {
 }
 
 #[test]
+fn parse_oracle_bounty_of_skemfar_split_reveal_selection_regression() {
+    let def = parse_oracle_card_definition("Bounty of Skemfar");
+    let rendered = compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        rendered_lower.contains(
+            "reveal the top six cards of your library. you may put up to one land card from among them onto the battlefield tapped and up to one elf card from among them into your hand. put the rest on the bottom of your library in a random order."
+        ),
+        "expected oracle-shaped bounty text, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("PutTaggedRemainderOnLibraryBottomEffect")
+            && debug.contains("TagAllEffect")
+            && debug.contains("LookAtTopCardsEffect"),
+        "expected structured looked-card split-choice lowering, got {debug}"
+    );
+}
+
+#[test]
+fn parse_oracle_winding_way_card_type_choice_regression() {
+    let def = parse_oracle_card_definition("Winding Way");
+    let rendered = compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        rendered_lower.contains(
+            "choose creature or land. reveal the top four cards of your library. put all cards of the chosen type revealed this way into your hand and the rest into your graveyard."
+        ),
+        "expected oracle-shaped winding way text, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("ChooseCardTypeEffect")
+            && debug.contains("LookAtTopCardsEffect")
+            && debug.contains("zone: Graveyard"),
+        "expected chosen-card-type looked-card lowering, got {debug}"
+    );
+}
+
+#[test]
+fn parse_oracle_turnabout_card_type_mass_tap_choice_regression() {
+    let def = parse_oracle_card_definition("Turnabout");
+    let rendered = compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        rendered_lower.contains("choose artifact, creature, or land"),
+        "expected explicit card-type choice, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains("tap all")
+            && rendered_lower.contains("untap all")
+            && rendered_lower.contains("chosen type"),
+        "expected tap/untap mass-action text to keep the chosen-type reference, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("ChooseCardTypeEffect")
+            && debug.contains("ChooseModeEffect")
+            && debug.contains("TapEffect")
+            && debug.contains("UntapEffect")
+            && !debug.contains("UnlessActionEffect"),
+        "expected modal mass tap/untap lowering without unless fallback, got {debug}"
+    );
+}
+
+#[test]
+fn parse_oracle_opaline_bracers_charge_counter_scaling_regression() {
+    let def = parse_oracle_card_definition("Opaline Bracers");
+    let rendered = compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        rendered_lower.contains(
+            "equipped creature gets +x/+x, where x is the number of charge counters on this"
+        ) && !rendered_lower.contains("for each equipment"),
+        "expected counter-based equipment scaling text, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("CountersOnSource(Charge)"),
+        "expected anthem scaling to count charge counters on the source, got {debug}"
+    );
+}
+
+#[test]
+fn parse_oracle_clarion_ultimatum_for_each_chosen_permanent_regression() {
+    let def = parse_oracle_card_definition("Clarion Ultimatum");
+    let rendered = compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        rendered_lower.contains("choose")
+            && rendered_lower.contains("search your library")
+            && rendered_lower.contains("same name")
+            && rendered_lower.contains("onto the battlefield tapped")
+            && rendered_lower.contains("shuffle"),
+        "expected clarion ultimatum text to keep choose/search/battlefield/shuffle sequence, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("ForEachTaggedEffect") && debug.contains("SameNameAsTagged"),
+        "expected same-name search to iterate once per chosen permanent, got {debug}"
+    );
+}
+
+#[test]
 fn planar_genesis_fallback_with_extra_tail_still_fails_loudly() {
     let err = CardDefinitionBuilder::new(CardId::new(), "Planar Genesis Variant")
         .card_types(vec![CardType::Instant])
@@ -22713,5 +22989,76 @@ fn jared_carthalion_true_heir_compiles_monarch_and_damage_replacement_text() {
             && lowered.contains("put that many +1/+1 counters on it")
             && !lowered.contains("unsupported effect"),
         "expected Jared to render monarch and prevention text cleanly, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_sokenzan_renegade_keeps_unique_hand_leader_upkeep_trigger() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Sokenzan Renegade")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Bushido 1 (Whenever this creature blocks or becomes blocked, it gets +1/+1 until end of turn.)\nAt the beginning of your upkeep, if a player has more cards in hand than each other player, the player who has the most cards in hand gains control of this creature.",
+        )
+        .expect("Sokenzan Renegade should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Bushido 1")
+            && rendered.contains(
+                "At the beginning of your upkeep, if a player has more cards in hand than each other player, the player who has the most cards in hand gains control of this creature."
+            ),
+        "expected oracle-like upkeep trigger rendering, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("PlayerHasMoreCardsInHandThanEachOtherPlayer { player: Any }")
+            && debug.contains("ChangeControllerToPlayer(MostCardsInHand)"),
+        "expected unique hand-leader trigger lowering, got {debug}"
+    );
+}
+
+#[test]
+fn parse_lulu_loyal_hollyphant_keeps_revolt_gate_and_untap_followup() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Lulu, Loyal Hollyphant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Flying\nAt the beginning of your end step, if a permanent you controlled left the battlefield this turn, put a +1/+1 counter on each tapped creature you control, then untap them.\nChoose a Background (You can have a Background as a second commander.)",
+        )
+        .expect("Lulu, Loyal Hollyphant should parse");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("PermanentLeftBattlefieldUnderYourControlThisTurn")
+            && debug.contains("UntapEffect"),
+        "expected Lulu to keep both the revolt-style gate and untap followup, got {debug}"
+    );
+
+    let rendered = oracle_like_lines(&def).join(" ");
+    assert!(
+        rendered.contains("At the beginning of your end step")
+            && (rendered.contains("a permanent left the battlefield under your control this turn")
+                || rendered.contains("a permanent you controlled left the battlefield this turn"))
+            && rendered.contains(
+                "put a +1/+1 counter on each tapped creature you control, then untap them"
+            ),
+        "expected Lulu oracle-like trigger rendering to keep the gate and untap followup, got {rendered}"
+    );
+}
+
+#[test]
+fn render_vanguard_seraph_preserves_first_time_trigger_surface() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Vanguard Seraph")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Flying\nWhenever you gain life for the first time each turn, surveil 1. (Look at the top card of your library. You may put it into your graveyard.)",
+        )
+        .expect("Vanguard Seraph should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Whenever you gain life for the first time each turn, surveil 1.")
+            && !rendered.contains("This ability triggers only once each turn"),
+        "expected render to preserve first-time trigger surface, got {rendered}"
     );
 }

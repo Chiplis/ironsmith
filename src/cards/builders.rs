@@ -1222,6 +1222,7 @@ pub(crate) enum PlayerAst {
     Chosen,
     Defending,
     Attacking,
+    MostCardsInHand,
     Target,
     TargetOpponent,
     Opponent,
@@ -1389,6 +1390,9 @@ pub(crate) enum PredicateAst {
         count: u32,
     },
     PlayerHasMoreCardsInHandThanYou {
+        player: PlayerAst,
+    },
+    PlayerHasMoreCardsInHandThanEachOtherPlayer {
         player: PlayerAst,
     },
     VoteOptionGetsMoreVotes {
@@ -1615,6 +1619,10 @@ pub(crate) enum EffectAst {
     },
     Untap {
         target: TargetAst,
+    },
+    TapOrUntapAll {
+        tap_filter: ObjectFilter,
+        untap_filter: ObjectFilter,
     },
     PhaseOut {
         target: TargetAst,
@@ -1975,12 +1983,22 @@ pub(crate) enum EffectAst {
         battlefield_filter: ObjectFilter,
         tapped: bool,
     },
+    ChooseFromLookedCardsOntoBattlefieldAndIntoHandRestOnBottomOfLibrary {
+        player: PlayerAst,
+        battlefield_filter: ObjectFilter,
+        hand_filter: ObjectFilter,
+        tapped: bool,
+        order: LibraryBottomOrderAst,
+    },
     PutRestOnBottomOfLibrary,
     CopySpell {
         target: TargetAst,
         count: Value,
         player: PlayerAst,
         may_choose_new_targets: bool,
+    },
+    FlipCoin {
+        player: PlayerAst,
     },
     RetargetStackObject {
         target: TargetAst,
@@ -2001,6 +2019,7 @@ pub(crate) enum EffectAst {
     ChooseObjects {
         filter: ObjectFilter,
         count: ChoiceCount,
+        count_value: Option<Value>,
         player: PlayerAst,
         tag: TagKey,
     },
@@ -2202,6 +2221,10 @@ pub(crate) enum EffectAst {
     },
     ChooseColor {
         player: PlayerAst,
+    },
+    ChooseCardType {
+        player: PlayerAst,
+        options: Vec<CardType>,
     },
     ChooseNamedOption {
         player: PlayerAst,
@@ -2576,6 +2599,9 @@ pub(crate) enum EffectAst {
     MayMoveToZone {
         target: TargetAst,
         zone: Zone,
+        player: PlayerAst,
+    },
+    ShuffleHandAndGraveyardIntoLibrary {
         player: PlayerAst,
     },
     ShuffleGraveyardIntoLibrary {
@@ -7211,6 +7237,64 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_cultural_exchange_from_text() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Cultural Exchange")
+            .parse_text(
+                "Choose any number of creatures target player controls. Choose the same number of creatures another target player controls. Those players exchange control of those creatures.",
+            )
+            .expect("parse cultural exchange");
+
+        let effects = def.spell_effect.as_ref().expect("spell effect");
+        let debug = format!("{effects:?}");
+        assert!(
+            debug.contains("TargetOnlyEffect")
+                && debug.contains("ChoosePlayerEffect")
+                && debug.contains("ForEachTaggedPlayerEffect")
+                && debug.contains("ChangeControllerToPlayer(IteratedPlayer)")
+                && debug.contains("count_value: Some("),
+            "expected grouped player-choice and control-swap shape, got {debug}"
+        );
+
+        let rendered = compiled_lines(&def).join(" ");
+        assert!(
+            rendered.contains("Choose any number of creatures target player controls.")
+                && rendered.contains(
+                    "Choose the same number of creatures another target player controls."
+                )
+                && rendered.contains("Those players exchange control of those creatures."),
+            "expected oracle-like compiled text, got {rendered}"
+        );
+    }
+
+    #[test]
+    fn parse_gruesome_menagerie_from_text() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Gruesome Menagerie")
+            .parse_text(
+                "Choose a creature card with mana value 1 in your graveyard, then do the same for creature cards with mana value 2 and 3. Return those cards to the battlefield.",
+            )
+            .expect("parse gruesome menagerie");
+
+        let effects = def.spell_effect.as_ref().expect("spell effect");
+        let debug = format!("{effects:?}");
+        assert!(
+            debug.matches("ChooseObjectsEffect").count() == 3
+                && debug.contains("mana_value: Some(Equal(1))")
+                && debug.contains("mana_value: Some(Equal(2))")
+                && debug.contains("mana_value: Some(Equal(3))")
+                && debug.contains("ReturnFromGraveyardToBattlefieldEffect"),
+            "expected three ordered graveyard choices and a shared return, got {debug}"
+        );
+
+        let rendered = compiled_lines(&def).join(" ");
+        assert!(
+            rendered.contains(
+                "Choose a creature card with mana value 1 in your graveyard, then do the same for creature cards with mana value 2 and 3."
+            ) && rendered.contains("Return those cards to the battlefield."),
+            "expected oracle-like compiled text, got {rendered}"
+        );
+    }
+
+    #[test]
     fn parse_exchange_life_totals_with_target_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Magus Variant")
             .parse_text("Exchange life totals with target opponent.")
@@ -10548,9 +10632,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
         let compiled = compiled_lines(&def).join(" ");
         assert!(
-            compiled
-                .to_ascii_lowercase()
-                .contains("cumulative upkeep—have an opponent create a 1/1 red survivor creature token"),
+            compiled.to_ascii_lowercase().contains(
+                "cumulative upkeep—have an opponent create a 1/1 red survivor creature token"
+            ),
             "expected preserved cumulative upkeep text in compiled output, got {compiled}"
         );
     }

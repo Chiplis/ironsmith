@@ -22,7 +22,7 @@ use crate::semantic_compare::{compare_card_semantics_scored, report_embedding_co
 pub const DEFAULT_DB_PATH: &str = "reports/engine-status.sqlite3";
 pub const SCRYFALL_TAGGER_TAGS_URL: &str = "https://scryfall.com/docs/tagger-tags";
 pub const TAGGER_BASE_URL: &str = "https://tagger.scryfall.com";
-const DB_SCHEMA_VERSION: i64 = 2;
+const DB_SCHEMA_VERSION: i64 = 4;
 const FIXED_SNAPSHOT_CARD_ID: u32 = 1;
 const SUPPORTED_PAPER_FORMATS: &[&str] = &["commander", "standard", "modern", "legacy", "vintage"];
 const TAGGER_FETCH_ORACLE_CARD_TAG_QUERY: &str = r#"
@@ -388,6 +388,20 @@ impl CardStatusDb {
             .into());
         }
 
+        // Migration: v3 -> v4: add agent_running column to latest_card_observation
+        if version == 3 {
+            // Check if column already exists (idempotent)
+            let has_column: bool = self
+                .conn
+                .prepare("SELECT agent_running FROM latest_card_observation LIMIT 0")
+                .is_ok();
+            if !has_column {
+                self.conn.execute_batch(
+                    "ALTER TABLE latest_card_observation ADD COLUMN agent_running INTEGER NOT NULL DEFAULT 0;",
+                )?;
+            }
+        }
+
         self.conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS card_compilation (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -409,6 +423,11 @@ impl CardStatusDb {
             );
             CREATE INDEX IF NOT EXISTS idx_card_compilation_name_compiled_at
                 ON card_compilation(card_name, compiled_at DESC);
+            CREATE TABLE IF NOT EXISTS latest_card_observation (
+                card_name TEXT PRIMARY KEY,
+                compilation_id INTEGER NOT NULL,
+                agent_running INTEGER NOT NULL DEFAULT 0
+            );
             CREATE TABLE IF NOT EXISTS card_tagging (
                 card_name TEXT NOT NULL,
                 tag TEXT NOT NULL,
@@ -438,14 +457,22 @@ impl CardStatusDb {
                 ON registry_card(content_hash);
             DROP VIEW IF EXISTS latest_card_compilation;
             CREATE VIEW latest_card_compilation AS
-            SELECT cc.*
-            FROM card_compilation cc
-            JOIN (
-                SELECT card_name, MAX(id) AS max_id
-                FROM card_compilation
-                GROUP BY card_name
-            ) latest
-            ON latest.max_id = cc.id;",
+            SELECT cc.*, latest.agent_running
+            FROM latest_card_observation latest
+            JOIN card_compilation cc
+            ON cc.id = latest.compilation_id;",
+        )?;
+        self.conn.execute(
+            "DELETE FROM latest_card_observation
+             WHERE compilation_id NOT IN (SELECT id FROM card_compilation)",
+            [],
+        )?;
+        self.conn.execute(
+            "INSERT OR IGNORE INTO latest_card_observation (card_name, compilation_id)
+             SELECT card_name, MAX(id) AS compilation_id
+             FROM card_compilation
+             GROUP BY card_name",
+            [],
         )?;
         self.conn
             .pragma_update(None, "user_version", DB_SCHEMA_VERSION)?;
@@ -456,7 +483,18 @@ impl CardStatusDb {
         &self,
         snapshot: &CompilationSnapshot,
     ) -> Result<bool, Box<dyn Error>> {
-        let rows = self.conn.execute(
+        let previous_latest_id = self
+            .conn
+            .query_row(
+                "SELECT compilation_id
+                 FROM latest_card_observation
+                 WHERE card_name = ?1",
+                [&snapshot.card_name],
+                |row| row.get::<_, i64>(0),
+            )
+            .optional()?;
+
+        self.conn.execute(
             "INSERT OR IGNORE INTO card_compilation (
                 card_name,
                 oracle_text,
@@ -488,7 +526,43 @@ impl CardStatusDb {
                 snapshot.content_hash,
             ],
         )?;
-        Ok(rows > 0)
+        let compilation_id: i64 = self.conn.query_row(
+            "SELECT id
+             FROM card_compilation
+             WHERE card_name = ?1
+               AND content_hash = ?2
+             ORDER BY id DESC
+             LIMIT 1",
+            params![snapshot.card_name, snapshot.content_hash],
+            |row| row.get(0),
+        )?;
+        self.conn.execute(
+            "INSERT INTO latest_card_observation (card_name, compilation_id, agent_running)
+             VALUES (?1, ?2, 0)
+             ON CONFLICT(card_name) DO UPDATE SET
+                 compilation_id = excluded.compilation_id",
+            params![snapshot.card_name, compilation_id],
+        )?;
+
+        Ok(previous_latest_id != Some(compilation_id))
+    }
+
+    pub fn set_agent_running(
+        &self,
+        card_name: &str,
+        running: bool,
+    ) -> Result<(), Box<dyn Error>> {
+        self.conn.execute(
+            "UPDATE latest_card_observation SET agent_running = ?1 WHERE card_name = ?2",
+            params![running as i32, card_name],
+        )?;
+        Ok(())
+    }
+
+    pub fn clear_all_agent_running(&self) -> Result<(), Box<dyn Error>> {
+        self.conn
+            .execute("UPDATE latest_card_observation SET agent_running = 0", [])?;
+        Ok(())
     }
 
     pub fn latest_snapshot_hash(&self, card_name: &str) -> Result<Option<String>, Box<dyn Error>> {
@@ -790,6 +864,15 @@ impl CardStatusDb {
         )?;
 
         tx.execute(
+            "DELETE FROM latest_card_observation
+             WHERE NOT EXISTS (
+                 SELECT 1
+                 FROM temp_allowed_card_name allowed
+                 WHERE allowed.card_name = latest_card_observation.card_name
+             )",
+            [],
+        )?;
+        tx.execute(
             "DELETE FROM card_tagging
              WHERE NOT EXISTS (
                  SELECT 1
@@ -830,12 +913,8 @@ impl CardStatusDb {
             "SELECT COUNT(*)
              FROM card_compilation
              WHERE id NOT IN (
-                 SELECT latest_id
-                 FROM (
-                     SELECT MAX(id) AS latest_id
-                     FROM card_compilation
-                     GROUP BY card_name
-                 )
+                 SELECT compilation_id
+                 FROM latest_card_observation
              )",
             [],
             |row| row.get(0),
@@ -844,12 +923,8 @@ impl CardStatusDb {
         tx.execute(
             "DELETE FROM card_compilation
              WHERE id NOT IN (
-                 SELECT latest_id
-                 FROM (
-                     SELECT MAX(id) AS latest_id
-                     FROM card_compilation
-                     GROUP BY card_name
-                 )
+                 SELECT compilation_id
+                 FROM latest_card_observation
              )",
             [],
         )?;
@@ -1503,7 +1578,7 @@ fn pick_field(card: &Value, face: Option<&Value>, key: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::semantic_compare::{compare_semantics_scored, report_embedding_config};
+    use crate::semantic_compare::report_embedding_config;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn unique_temp_path(name: &str) -> PathBuf {
@@ -1763,6 +1838,50 @@ mod tests {
             )
             .expect("latest row");
         assert_eq!(latest, 0.5);
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn historical_snapshot_can_become_latest_again_without_duplicate_row() {
+        let path = unique_temp_path("latest-revert");
+        let db = CardStatusDb::open(&path).expect("open db");
+        let base = compile_snapshot_from_payload(&lightning_bolt_payload());
+        let mut changed = base.clone();
+        changed.similarity_score = 0.5;
+        changed.content_hash = changed.compute_content_hash();
+
+        assert!(db.insert_snapshot_if_changed(&base).expect("insert base"));
+        assert!(
+            db.insert_snapshot_if_changed(&changed)
+                .expect("insert changed")
+        );
+        assert!(
+            db.insert_snapshot_if_changed(&base)
+                .expect("restore original snapshot")
+        );
+
+        let count: i64 = db
+            .connection()
+            .query_row("SELECT COUNT(*) FROM card_compilation", [], |row| {
+                row.get(0)
+            })
+            .expect("count rows");
+        assert_eq!(count, 2);
+
+        let latest: f32 = db
+            .connection()
+            .query_row(
+                "SELECT similarity_score FROM latest_card_compilation WHERE card_name = ?1",
+                ["Lightning Bolt"],
+                |row| row.get(0),
+            )
+            .expect("latest row");
+        assert_eq!(latest, 1.0);
+
+        let latest_hash = db
+            .latest_snapshot_hash("Lightning Bolt")
+            .expect("fetch latest lightning hash");
+        assert_eq!(latest_hash.as_deref(), Some(base.content_hash.as_str()));
         let _ = fs::remove_file(path);
     }
 

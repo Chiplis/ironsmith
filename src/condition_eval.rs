@@ -54,6 +54,55 @@ fn this_spell_was_cast_from_zone(
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::card::{CardBuilder, PowerToughness};
+    use crate::executor::ExecutionContext;
+    use crate::ids::CardId;
+    use crate::mana::{ManaCost, ManaSymbol};
+    use crate::types::CardType;
+    use crate::zone::Zone;
+
+    fn add_hand_card(game: &mut GameState, id_raw: u32, name: &str, owner_index: usize) {
+        let card = CardBuilder::new(CardId::from_raw(id_raw), name)
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        let owner = game.players[owner_index].id;
+        game.create_object_from_card(&card, owner, Zone::Hand);
+    }
+
+    #[test]
+    fn evaluate_player_has_more_cards_in_hand_than_each_other_player_requires_unique_leader() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = game.players[0].id;
+        let source = game.new_object_id();
+        let condition = Condition::PlayerHasMoreCardsInHandThanEachOtherPlayer {
+            player: PlayerFilter::Any,
+        };
+
+        add_hand_card(&mut game, 1, "Mountain", 0);
+        add_hand_card(&mut game, 2, "Island", 1);
+        add_hand_card(&mut game, 3, "Forest", 1);
+
+        let ctx = ExecutionContext::new_default(source, alice);
+        assert!(
+            evaluate_condition(&game, &condition, &ctx)
+                .expect("unique hand-size leader should evaluate"),
+            "expected Bob to satisfy the unique-leader condition"
+        );
+
+        add_hand_card(&mut game, 4, "Plains", 0);
+        assert!(
+            !evaluate_condition(&game, &condition, &ctx)
+                .expect("ties should evaluate cleanly"),
+            "expected tie for most cards in hand to fail the condition"
+        );
+    }
+}
+
 fn player_has_card_in_hand_matching(
     game: &GameState,
     player: PlayerId,
@@ -407,6 +456,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::PlayerHasLessLifeThanYou { .. } => {}
         Condition::PlayerHasMoreLifeThanYou { .. } => {}
         Condition::PlayerHasMoreCardsInHandThanYou { .. } => {}
+        Condition::PlayerHasMoreCardsInHandThanEachOtherPlayer { .. } => {}
         Condition::PlayerIsMonarch { .. } => {}
         Condition::PlayerHasInitiative { .. } => {}
         Condition::PlayerHasCitysBlessing { .. } => {}
@@ -623,6 +673,16 @@ pub fn evaluate_condition_external(
                 .into_iter()
                 .any(|player_id| {
                     game.player(player_id).map(|p| p.hand.len()).unwrap_or(0) > your_hand
+                })
+        }
+        Condition::PlayerHasMoreCardsInHandThanEachOtherPlayer { player } => {
+            matching_condition_players_external(game, ctx, player)
+                .into_iter()
+                .any(|player_id| {
+                    let hand = game.player(player_id).map(|p| p.hand.len()).unwrap_or(0);
+                    game.players.iter().filter(|candidate| candidate.is_in_game()).all(
+                        |candidate| candidate.id == player_id || hand > candidate.hand.len(),
+                    )
                 })
         }
         Condition::PlayerIsMonarch { player } => {
@@ -1680,6 +1740,16 @@ fn evaluate_condition_simple(
                     game.player(player_id).map(|p| p.hand.len()).unwrap_or(0) > your_hand
                 })
         }
+        Condition::PlayerHasMoreCardsInHandThanEachOtherPlayer { player } => {
+            matching_condition_players_simple(game, controller, player)
+                .into_iter()
+                .any(|player_id| {
+                    let hand = game.player(player_id).map(|p| p.hand.len()).unwrap_or(0);
+                    game.players.iter().filter(|candidate| candidate.is_in_game()).all(
+                        |candidate| candidate.id == player_id || hand > candidate.hand.len(),
+                    )
+                })
+        }
         Condition::PlayerCastSpellsThisTurnOrMore { player, count } => {
             let filter_ctx = game.filter_context_for(controller, Some(source));
             let players: Vec<PlayerId> = match player {
@@ -1841,6 +1911,24 @@ fn resolve_condition_player_simple(
             game.players.iter().find_map(|player| {
                 (player.is_in_game() && player.life == max_life).then_some(player.id)
             })
+        }
+        PlayerFilter::MostCardsInHand => {
+            let max_hand = game
+                .players
+                .iter()
+                .filter(|player| player.is_in_game())
+                .map(|player| player.hand.len())
+                .max()?;
+            let leaders = game
+                .players
+                .iter()
+                .filter(|player| player.is_in_game() && player.hand.len() == max_hand)
+                .map(|player| player.id)
+                .collect::<Vec<_>>();
+            match leaders.as_slice() {
+                [leader] => Some(*leader),
+                _ => None,
+            }
         }
         PlayerFilter::Any
         | PlayerFilter::CastCardTypeThisTurn(_)
@@ -2228,6 +2316,16 @@ fn evaluate_condition(
                 .into_iter()
                 .any(|player_id| {
                     game.player(player_id).map(|p| p.hand.len()).unwrap_or(0) > your_hand
+                }))
+        }
+        Condition::PlayerHasMoreCardsInHandThanEachOtherPlayer { player } => {
+            Ok(matching_condition_players_exec(game, ctx, player)?
+                .into_iter()
+                .any(|player_id| {
+                    let hand = game.player(player_id).map(|p| p.hand.len()).unwrap_or(0);
+                    game.players.iter().filter(|candidate| candidate.is_in_game()).all(
+                        |candidate| candidate.id == player_id || hand > candidate.hand.len(),
+                    )
                 }))
         }
         Condition::PlayerCastSpellsThisTurnOrMore { player, count } => {

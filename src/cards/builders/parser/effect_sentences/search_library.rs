@@ -438,7 +438,13 @@ pub(crate) fn parse_shuffle_graveyard_into_library_sentence(
         return Ok(None);
     }
 
-    let subject_tokens = trim_commas(&clause_tokens[..shuffle_idx]);
+    let mut subject_tokens = trim_commas(&clause_tokens[..shuffle_idx]);
+    let optional_shuffle = subject_tokens
+        .last()
+        .is_some_and(|token| token.is_word("may"));
+    if optional_shuffle {
+        subject_tokens.pop();
+    }
     let each_player_subject = {
         let subject_words = token_words(&subject_tokens);
         word_slice_starts_with_any(&subject_words, &[&["each", "player"], &["each", "players"]])
@@ -502,6 +508,13 @@ pub(crate) fn parse_shuffle_graveyard_into_library_sentence(
             effects.extend(trailing_effects);
             Ok(Some(effects))
         };
+    let wrap_optional = |effects: Vec<EffectAst>| -> Vec<EffectAst> {
+        if optional_shuffle {
+            vec![EffectAst::MayByPlayer { player, effects }]
+        } else {
+            effects
+        }
+    };
 
     let target_tokens = trim_commas(&body_tokens[..into_idx]);
     if target_tokens.is_empty() {
@@ -523,6 +536,7 @@ pub(crate) fn parse_shuffle_graveyard_into_library_sentence(
                 &["this", "card", "and"],
             ],
         );
+        let has_hand_clause = grammar::contains_word(&target_tokens, "hand");
         if has_source_and_graveyard_clause {
             effects.push(EffectAst::MoveToZone {
                 target: TargetAst::Source(None),
@@ -537,25 +551,17 @@ pub(crate) fn parse_shuffle_graveyard_into_library_sentence(
                     player: PlayerAst::ItsOwner,
                 });
             }
+        } else if has_hand_clause {
+            effects.push(EffectAst::ShuffleHandAndGraveyardIntoLibrary { player });
+        } else {
+            effects.push(EffectAst::ShuffleGraveyardIntoLibrary { player });
         }
-        if each_player_subject && grammar::contains_word(&target_tokens, "hand") {
-            let mut hand_filter = ObjectFilter::default();
-            hand_filter.zone = Some(Zone::Hand);
-            hand_filter.owner = Some(PlayerFilter::IteratedPlayer);
-            effects.push(EffectAst::MoveToZone {
-                target: TargetAst::Object(hand_filter, None, None),
-                zone: Zone::Library,
-                to_top: false,
-                battlefield_controller: ReturnControllerAst::Preserve,
-                battlefield_tapped: false,
-                attached_to: None,
-            });
-        }
-        effects.push(EffectAst::ShuffleGraveyardIntoLibrary { player });
         if each_player_subject {
-            return append_trailing(vec![EffectAst::ForEachPlayer { effects }]);
+            return append_trailing(vec![EffectAst::ForEachPlayer {
+                effects: wrap_optional(effects),
+            }]);
         }
-        return append_trailing(effects);
+        return append_trailing(wrap_optional(effects));
     }
 
     let mut target = parse_target_phrase(&target_tokens)?;
@@ -837,6 +843,7 @@ pub(crate) fn parse_target_player_exiles_creature_and_graveyard_sentence(
         EffectAst::ChooseObjects {
             filter: creature_filter,
             count: ChoiceCount::exactly(1),
+            count_value: None,
             player: subject_player,
             tag: TagKey::from(IT_TAG),
         },

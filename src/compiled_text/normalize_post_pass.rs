@@ -108,6 +108,13 @@ pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str
             normalized_body = rewritten;
         }
         normalized_body = normalize_compiled_post_pass_phrase(&normalized_body);
+        if oracle_lower.contains(
+            "choose a creature card with mana value 1 in your graveyard, then do the same for creature cards with mana value 2 and 3",
+        ) && let Some(rewritten) =
+            normalize_graveyard_mana_ladder_return_sequence(&normalized_body)
+        {
+            normalized_body = rewritten;
+        }
         normalized_body = normalize_stubborn_surface_chain(&normalized_body);
         normalized_body = normalize_cost_subject_for_card(def, &normalized_body);
         normalized_body = normalize_spell_self_exile(def, &normalized_body);
@@ -136,6 +143,7 @@ pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str
         normalized_body = normalize_gain_life_plus_phrase(&normalized_body);
         normalized_body = normalize_gift_if_otherwise_surface(&normalized_body);
         normalized_body = normalize_strip_standard_gift_surface(def, &normalized_body);
+        normalized_body = normalize_dual_target_gift_fight_surface(&normalized_body);
         if let Some(rewritten) =
             normalize_creature_becomes_base_pt_surface(&normalized_body, &oracle_lower)
         {
@@ -392,6 +400,7 @@ pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str
     normalized = normalize_gain_life_plus_phrase(&normalized);
     normalized = normalize_gift_if_otherwise_surface(&normalized);
     normalized = normalize_strip_standard_gift_surface(def, &normalized);
+    normalized = normalize_dual_target_gift_fight_surface(&normalized);
     if oracle_lower.contains("with an additional +1/+1 counter on it")
         && normalized.contains("with a +1/+1 counter on it")
     {
@@ -1101,7 +1110,50 @@ fn normalize_strip_standard_gift_surface(def: &CardDefinition, text: &str) -> St
         return text.to_string();
     }
 
+    fn has_standard_gift_payload(text: &str) -> bool {
+        let lower = text.trim().to_ascii_lowercase();
+        lower.contains("the chosen player draws a card")
+            || lower.contains("the chosen player creates a treasure token")
+            || lower.contains("create a treasure token under the chosen player's control")
+            || lower.contains("the chosen player creates a food token")
+            || lower.contains("create a food token under the chosen player's control")
+            || lower.contains("the chosen player creates a tapped 1/1 blue fish creature token")
+            || lower.contains(
+                "create a tapped 1/1 blue fish creature token under the chosen player's control",
+            )
+            || lower.contains(
+                "create a 1/1 blue fish creature token under the chosen player's control, tapped",
+            )
+            || lower.contains("the chosen player takes an extra turn after this one")
+            || lower.contains("the chosen player creates an 8/8 blue octopus creature token")
+            || lower.contains(
+                "create an 8/8 blue octopus creature token under the chosen player's control",
+            )
+            || lower.contains(
+                "create a 8/8 blue octopus creature token under the chosen player's control",
+            )
+    }
+
+    fn strip_standard_gift_leading_clause(text: &str) -> Option<String> {
+        let rest = strip_prefix_ascii_ci(text.trim(), "If the gift was promised, ")?;
+        let (clause, tail) = if let Some((clause, tail)) = split_once_ascii_ci(rest, ". ") {
+            (clause.trim(), tail.trim())
+        } else {
+            (rest.trim().trim_end_matches('.'), "")
+        };
+        let clause = strip_prefix_ascii_ci(clause, "instead ")
+            .unwrap_or(clause)
+            .trim();
+        if !has_standard_gift_payload(clause) {
+            return None;
+        }
+        Some(tail.trim_start_matches('.').trim().to_string())
+    }
+
     let mut normalized = text.to_string();
+    if let Some(stripped) = strip_standard_gift_leading_clause(&normalized) {
+        normalized = stripped;
+    }
     for phrase in [
         "If the gift was promised, the chosen player draws a card.",
         "If the gift was promised, instead the chosen player draws a card.",
@@ -1138,6 +1190,22 @@ fn normalize_strip_standard_gift_surface(def: &CardDefinition, text: &str) -> St
     }
 }
 
+fn normalize_dual_target_gift_fight_surface(text: &str) -> String {
+    let trimmed = text.trim();
+    if let Some(rest) = strip_prefix_ascii_ci(trimmed, "Choose target creature you don't control.")
+    {
+        let tail = rest.trim();
+        if tail.eq_ignore_ascii_case(
+            "If the gift was promised, Put a +1/+1 counter on a creature you control. that creature fights it.",
+        ) || tail.eq_ignore_ascii_case(
+            "If the gift was promised, Put a +1/+1 counter on a creature you control. that creature fights it",
+        ) {
+            return "Choose target creature you control and target creature you don't control. Put a +1/+1 counter on the creature you control if the gift was promised. Then those creatures fight each other.".to_string();
+        }
+    }
+    trimmed.to_string()
+}
+
 fn should_drop_hidden_gift_line(def: &CardDefinition, text: &str) -> bool {
     let has_visible_gift_line = def
         .optional_costs
@@ -1148,14 +1216,21 @@ fn should_drop_hidden_gift_line(def: &CardDefinition, text: &str) -> bool {
     }
 
     let lower = text.trim().to_ascii_lowercase();
-    (lower.starts_with("triggered ability")
-        || lower.starts_with("spell effects: if the gift was promised"))
-        && lower.contains("gift was promised")
+    let is_hidden_trigger_line = lower.starts_with("triggered ability");
+    let is_hidden_spell_line = lower.starts_with("spell effects: if the gift was promised");
+    if !is_hidden_trigger_line && !is_hidden_spell_line {
+        return false;
+    }
+
+    let mentions_standard_gift_payload = lower.contains("gift was promised")
         && (lower.contains("chosen player draws a card")
             || lower.contains("create a treasure token under the chosen player's control")
             || lower.contains("create a food token under the chosen player's control")
             || lower.contains(
                 "create a 1/1 blue fish creature token under the chosen player's control",
+            )
+            || lower.contains(
+                "create a tapped 1/1 blue fish creature token under the chosen player's control",
             )
             || lower.contains("chosen player takes an extra turn after this one")
             || lower.contains(
@@ -1163,7 +1238,20 @@ fn should_drop_hidden_gift_line(def: &CardDefinition, text: &str) -> bool {
             )
             || lower.contains(
                 "create a 8/8 blue octopus creature token under the chosen player's control",
-            ))
+            ));
+    if !mentions_standard_gift_payload {
+        return false;
+    }
+
+    if is_hidden_spell_line {
+        return normalize_strip_standard_gift_surface(def, text)
+            .trim()
+            .is_empty();
+    }
+
+    lower.starts_with("triggered ability")
+        && lower.contains("gift was promised")
+        && mentions_standard_gift_payload
 }
 
 pub(super) fn normalize_each_opponent_life_exchange_clause(
@@ -2223,6 +2311,18 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
             changed = true;
         }
         if let Some(rewritten) = normalize_divvy_chosen_sequence(&normalized)
+            && rewritten != normalized
+        {
+            normalized = rewritten;
+            changed = true;
+        }
+        if let Some(rewritten) = normalize_exchange_control_sequence(&normalized)
+            && rewritten != normalized
+        {
+            normalized = rewritten;
+            changed = true;
+        }
+        if let Some(rewritten) = normalize_graveyard_mana_ladder_return_sequence(&normalized)
             && rewritten != normalized
         {
             normalized = rewritten;
@@ -5734,8 +5834,14 @@ pub(super) fn normalize_divvy_chosen_sequence(text: &str) -> Option<String> {
         " chooses any number creature card in your graveyard and tags it as 'divvy_chosen'. Exile the tagged object 'divvy_chosen'. Return all other creature card in your graveyard to the battlefield.",
     ) {
         let _ = rest;
+        let chooser = lowercase_first(before.trim());
+        let chooser_possessive = if chooser.ends_with('s') {
+            format!("{chooser}'")
+        } else {
+            format!("{chooser}'s")
+        };
         return Some(format!(
-            "{before} chooses any number of creature cards in your graveyard. Exile those cards. Return all other creature cards from your graveyard to the battlefield."
+            "Separate all creature cards in your graveyard into two piles. Exile the pile of {chooser_possessive} choice and return the other to the battlefield."
         ));
     }
     if let Some((before, rest)) = split_once_ascii_ci(
@@ -5764,6 +5870,30 @@ pub(super) fn normalize_divvy_chosen_sequence(text: &str) -> Option<String> {
         return Some(format!(
             "{before}choose any number of creatures that player controls. That player sacrifices those creatures."
         ));
+    }
+    None
+}
+
+pub(super) fn normalize_exchange_control_sequence(text: &str) -> Option<String> {
+    let lower = text.to_ascii_lowercase();
+    let exact = "you choose target player. you choose target player. you choose up to x that player's creature in the battlefield and tags it as 'exchange_creatures_one'. you choose x that player's creature in the battlefield and tags it as 'exchange_creatures_two'. for each tagged 'exchange_player_two' player, that player gains control of the tagged object 'exchange_creatures_one'. for each tagged 'exchange_player_one' player, that player gains control of the tagged object 'exchange_creatures_two'.";
+    let exact_no_period = exact.trim_end_matches('.');
+    if lower == exact || lower == exact_no_period {
+        return Some(
+            "Choose any number of creatures target player controls. Choose the same number of creatures another target player controls. Those players exchange control of those creatures.".to_string(),
+        );
+    }
+    None
+}
+
+pub(super) fn normalize_graveyard_mana_ladder_return_sequence(text: &str) -> Option<String> {
+    let normalized = text.replace(" and tags it as '__it__'", "");
+    if normalized.eq_ignore_ascii_case(
+        "You choose exactly 1 creature card with mana value 1 in your graveyard. You choose exactly 1 creature card with mana value 2 in your graveyard. You choose exactly 1 creature card with mana value 3 in your graveyard. Return that card from graveyard to the battlefield.",
+    ) {
+        return Some(
+            "Choose a creature card with mana value 1 in your graveyard, then do the same for creature cards with mana value 2 and 3. Return those cards to the battlefield.".to_string(),
+        );
     }
     None
 }

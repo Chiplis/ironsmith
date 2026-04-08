@@ -503,6 +503,8 @@ pub enum AnthemCountExpression {
     MatchingFilter(ObjectFilter),
     /// Count attachments on the source that match a filter.
     AttachedToSource(ObjectFilter),
+    /// Count counters of a specific kind on the source.
+    CountersOnSource(CounterType),
     /// Count distinct basic land types among matching lands.
     BasicLandTypesAmong(ObjectFilter),
 }
@@ -555,6 +557,9 @@ fn describe_anthem_count_expression(expr: &AnthemCountExpression) -> String {
                 "{} attached to this creature",
                 strip_article(filter.description())
             )
+        }
+        AnthemCountExpression::CountersOnSource(counter_type) => {
+            format!("{} counter on this permanent", counter_type.description())
         }
         AnthemCountExpression::BasicLandTypesAmong(_) => {
             "basic land type among lands you control".to_string()
@@ -720,6 +725,9 @@ fn describe_static_condition(condition: &crate::ConditionExpr) -> String {
             crate::target::PlayerFilter::MostLifeTied => {
                 "as long as the player with the most life is the monarch".to_string()
             }
+            crate::target::PlayerFilter::MostCardsInHand => {
+                "as long as the player who has the most cards in hand is the monarch".to_string()
+            }
             crate::target::PlayerFilter::CastCardTypeThisTurn(_) => {
                 "as long as that player is the monarch".to_string()
             }
@@ -820,6 +828,9 @@ pub(crate) fn resolve_anthem_count_expression(
                     .count() as i32
             })
             .unwrap_or(0),
+        AnthemCountExpression::CountersOnSource(counter_type) => {
+            game.counter_count(source, *counter_type) as i32
+        }
         AnthemCountExpression::BasicLandTypesAmong(filter) => {
             use std::collections::HashSet;
 
@@ -981,6 +992,21 @@ impl StaticAbilityKind for Anthem {
                     "{subject} {verb} {}/{}",
                     signed(*power),
                     signed_toughness(*power, *toughness),
+                )
+            }
+            (
+                AnthemValue::PerCount {
+                    multiplier: power,
+                    count: AnthemCountExpression::CountersOnSource(power_counter),
+                },
+                AnthemValue::PerCount {
+                    multiplier: toughness,
+                    count: AnthemCountExpression::CountersOnSource(toughness_counter),
+                },
+            ) if power_counter == toughness_counter && *power == 1 && *toughness == 1 => {
+                format!(
+                    "{subject} {verb} +X/+X, where X is the number of {} counters on this permanent",
+                    power_counter.description(),
                 )
             }
             (

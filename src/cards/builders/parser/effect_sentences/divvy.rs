@@ -6,7 +6,7 @@ use crate::cards::builders::{
     CardTextError, EffectAst, IT_TAG, PlayerAst, PredicateAst, ReturnControllerAst, TagKey,
     TargetAst,
 };
-use crate::effect::{ChoiceCount, Until};
+use crate::effect::{ChoiceCount, Until, Value};
 use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::zone::Zone;
 
@@ -24,11 +24,11 @@ fn parse_single_effect_sentence(tokens: &[OwnedLexToken]) -> Result<EffectAst, C
         .ok_or_else(|| CardTextError::ParseError("missing effect sentence".to_string()))
 }
 
-fn matches_sentence(words: &TokenWordView, expected: &[&str]) -> bool {
+fn matches_sentence(words: &TokenWordView<'_>, expected: &[&str]) -> bool {
     words.len() == expected.len() && words.starts_with(expected)
 }
 
-fn matches_sentence_sequence(sentence_words: &[TokenWordView], expected: &[&[&str]]) -> bool {
+fn matches_sentence_sequence(sentence_words: &[TokenWordView<'_>], expected: &[&[&str]]) -> bool {
     sentence_words.len() == expected.len()
         && sentence_words
             .iter()
@@ -36,13 +36,13 @@ fn matches_sentence_sequence(sentence_words: &[TokenWordView], expected: &[&[&st
             .all(|(words, expected)| matches_sentence(words, expected))
 }
 
-fn first_sentence_has_prefix(sentence_words: &[TokenWordView], prefix: &[&str]) -> bool {
+fn first_sentence_has_prefix(sentence_words: &[TokenWordView<'_>], prefix: &[&str]) -> bool {
     sentence_words
         .first()
         .is_some_and(|words| words.starts_with(prefix))
 }
 
-fn sentence_has_phrase(sentence_words: &[TokenWordView], phrase: &[&str]) -> bool {
+fn sentence_has_phrase(sentence_words: &[TokenWordView<'_>], phrase: &[&str]) -> bool {
     sentence_words.iter().any(|words| words.has_phrase(phrase))
 }
 
@@ -53,6 +53,108 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         .iter()
         .map(|sentence| TokenWordView::new(sentence.lowered()))
         .collect::<Vec<_>>();
+
+    if matches_sentence_sequence(
+        &sentence_words,
+        &[
+            &[
+                "choose",
+                "any",
+                "number",
+                "of",
+                "creatures",
+                "target",
+                "player",
+                "controls",
+            ],
+            &[
+                "choose",
+                "the",
+                "same",
+                "number",
+                "of",
+                "creatures",
+                "another",
+                "target",
+                "player",
+                "controls",
+            ],
+            &[
+                "those",
+                "players",
+                "exchange",
+                "control",
+                "of",
+                "those",
+                "creatures",
+            ],
+        ],
+    ) {
+        let first_player_tag = TagKey::from("exchange_player_one");
+        let second_player_tag = TagKey::from("exchange_player_two");
+        let first_creatures_tag = TagKey::from("exchange_creatures_one");
+        let second_creatures_tag = TagKey::from("exchange_creatures_two");
+
+        return Ok(Some(vec![
+            EffectAst::TargetOnly {
+                target: TargetAst::WithCount(
+                    Box::new(TargetAst::Player(PlayerFilter::Any, None)),
+                    ChoiceCount::exactly(2),
+                ),
+            },
+            EffectAst::ChoosePlayer {
+                chooser: PlayerAst::You,
+                filter: PlayerFilter::target_player(),
+                tag: first_player_tag.clone(),
+                random: false,
+                exclude_previous_choices: 0,
+            },
+            EffectAst::ChoosePlayer {
+                chooser: PlayerAst::You,
+                filter: PlayerFilter::target_player(),
+                tag: second_player_tag.clone(),
+                random: false,
+                exclude_previous_choices: 1,
+            },
+            EffectAst::ChooseObjects {
+                filter: ObjectFilter::creature()
+                    .controlled_by(PlayerFilter::TaggedPlayer(first_player_tag.clone())),
+                count: ChoiceCount::up_to_dynamic_x(),
+                count_value: Some(Value::Count(
+                    ObjectFilter::creature()
+                        .controlled_by(PlayerFilter::TaggedPlayer(second_player_tag.clone())),
+                )),
+                player: PlayerAst::You,
+                tag: first_creatures_tag.clone(),
+            },
+            EffectAst::ChooseObjects {
+                filter: ObjectFilter::creature()
+                    .controlled_by(PlayerFilter::TaggedPlayer(second_player_tag.clone())),
+                count: ChoiceCount::dynamic_x(),
+                count_value: Some(Value::Count(ObjectFilter::tagged(
+                    first_creatures_tag.clone(),
+                ))),
+                player: PlayerAst::You,
+                tag: second_creatures_tag.clone(),
+            },
+            EffectAst::ForEachTaggedPlayer {
+                tag: second_player_tag,
+                effects: vec![EffectAst::GainControl {
+                    target: TargetAst::Tagged(first_creatures_tag, None),
+                    player: PlayerAst::That,
+                    duration: Until::Forever,
+                }],
+            },
+            EffectAst::ForEachTaggedPlayer {
+                tag: first_player_tag,
+                effects: vec![EffectAst::GainControl {
+                    target: TargetAst::Tagged(second_creatures_tag, None),
+                    player: PlayerAst::That,
+                    duration: Until::Forever,
+                }],
+            },
+        ]));
+    }
 
     if matches_sentence_sequence(
         &sentence_words,
@@ -87,6 +189,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
             EffectAst::ChooseObjects {
                 filter: ObjectFilter::creature().controlled_by(PlayerFilter::target_player()),
                 count: ChoiceCount::any_number(),
+                count_value: None,
                 player: PlayerAst::Target,
                 tag: TagKey::from("divvy_chosen"),
             },
@@ -139,6 +242,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
             EffectAst::ChooseObjects {
                 filter: graveyard_creatures,
                 count: ChoiceCount::any_number(),
+                count_value: None,
                 player: PlayerAst::Opponent,
                 tag: TagKey::from("divvy_chosen"),
             },
@@ -189,6 +293,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                 EffectAst::ChooseObjects {
                     filter: ObjectFilter::creature().controlled_by(PlayerFilter::IteratedPlayer),
                     count: ChoiceCount::any_number(),
+                    count_value: None,
                     player: PlayerAst::You,
                     tag: TagKey::from("divvy_chosen"),
                 },
@@ -238,6 +343,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
             EffectAst::ChooseObjects {
                 filter: ObjectFilter::permanent().controlled_by(PlayerFilter::target_player()),
                 count: ChoiceCount::any_number(),
+                count_value: None,
                 player: PlayerAst::Target,
                 tag: TagKey::from("divvy_chosen"),
             },
@@ -291,6 +397,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                 EffectAst::ChooseObjects {
                     filter: ObjectFilter::creature().controlled_by(PlayerFilter::IteratedPlayer),
                     count: ChoiceCount::any_number(),
+                    count_value: None,
                     player: PlayerAst::That,
                     tag: TagKey::from("divvy_chosen"),
                 },
@@ -341,6 +448,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
             EffectAst::ChooseObjects {
                 filter: ObjectFilter::creature().controlled_by(PlayerFilter::IteratedPlayer),
                 count: ChoiceCount::any_number(),
+                count_value: None,
                 player: PlayerAst::That,
                 tag: TagKey::from("divvy_chosen"),
             },
@@ -409,6 +517,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                         .nontoken()
                         .controlled_by(PlayerFilter::IteratedPlayer),
                     count: ChoiceCount::any_number(),
+                    count_value: None,
                     player: PlayerAst::Chosen,
                     tag: TagKey::from("divvy_chosen"),
                 },

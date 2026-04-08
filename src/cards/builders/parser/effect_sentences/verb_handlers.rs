@@ -140,7 +140,7 @@ pub(crate) fn parse_effect_with_verb(
         Verb::Discard => parse_discard(tokens, subject),
         Verb::Transform => parse_transform(tokens),
         Verb::Convert => parse_convert(tokens),
-        Verb::Flip => parse_flip(tokens),
+        Verb::Flip => parse_flip(tokens, subject),
         Verb::Regenerate => parse_regenerate(tokens),
         Verb::Mill => parse_mill(tokens, subject),
         Verb::Get => parse_get(tokens, subject),
@@ -1847,6 +1847,13 @@ fn parse_draw_for_each_player_condition(
                     player: PlayerAst::Implicit,
                 }
             }
+            PredicateAst::PlayerHasMoreCardsInHandThanEachOtherPlayer { player }
+                if player == PlayerAst::That =>
+            {
+                PredicateAst::PlayerHasMoreCardsInHandThanEachOtherPlayer {
+                    player: PlayerAst::Implicit,
+                }
+            }
             PredicateAst::PlayerTappedLandForManaThisTurn { player }
                 if player == PlayerAst::That =>
             {
@@ -2963,6 +2970,7 @@ fn player_filter_for_life_reference(player: PlayerAst) -> Option<PlayerFilter> {
         PlayerAst::Chosen => Some(PlayerFilter::ChosenPlayer),
         PlayerAst::Defending => Some(PlayerFilter::Defending),
         PlayerAst::Attacking => Some(PlayerFilter::Attacking),
+        PlayerAst::MostCardsInHand => Some(PlayerFilter::MostCardsInHand),
         PlayerAst::ThatPlayerOrTargetController => None,
         PlayerAst::ItsController | PlayerAst::ItsOwner => None,
     }

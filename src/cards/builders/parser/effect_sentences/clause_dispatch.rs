@@ -1,7 +1,8 @@
 use super::super::activation_and_restrictions::{
     find_negation_span, parse_cant_restriction_clause, parse_cant_restrictions,
-    parse_choose_color_phrase_words, parse_choose_creature_type_phrase_words,
-    parse_choose_player_phrase_words, parse_single_word_keyword_action,
+    parse_choose_card_type_phrase_words, parse_choose_color_phrase_words,
+    parse_choose_creature_type_phrase_words, parse_choose_player_phrase_words,
+    parse_single_word_keyword_action,
     parse_target_player_choose_objects_clause, parse_you_choose_objects_clause,
     parse_you_choose_player_clause,
 };
@@ -48,7 +49,7 @@ use crate::effect::{Until, Value};
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype};
 
-type ClauseDispatchCompatWords = TokenWordView;
+type ClauseDispatchCompatWords<'a> = TokenWordView<'a>;
 
 fn render_lower_words(tokens: &[OwnedLexToken]) -> String {
     let word_view = ClauseDispatchCompatWords::new(tokens);
@@ -305,6 +306,15 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         });
     }
 
+    if let Some((consumed, options)) = parse_choose_card_type_phrase_words(choice_words)?
+        && consumed == choice_words.len()
+    {
+        return Ok(EffectAst::ChooseCardType {
+            player: crate::cards::builders::PlayerAst::Implicit,
+            options,
+        });
+    }
+
     if let Some(consumed) = parse_choose_player_phrase_words(choice_words)
         && consumed == choice_words.len()
     {
@@ -351,6 +361,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         return Ok(EffectAst::ChooseObjects {
             filter: choose_filter,
             count: choose_count,
+            count_value: None,
             player: chooser,
             tag: TagKey::from(IT_TAG),
         });
@@ -360,6 +371,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         return Ok(EffectAst::ChooseObjects {
             filter: choose_filter,
             count: choose_count,
+            count_value: None,
             player: chooser,
             tag: TagKey::from(IT_TAG),
         });

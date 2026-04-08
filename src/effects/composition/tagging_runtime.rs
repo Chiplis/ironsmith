@@ -8,6 +8,7 @@ use crate::ids::StableId;
 use crate::snapshot::ObjectSnapshot;
 use crate::tag::TagKey;
 use crate::zone::Zone;
+use std::collections::HashSet;
 
 /// Runtime state captured before tagged effect execution.
 #[derive(Debug, Clone, Default)]
@@ -27,6 +28,35 @@ pub(crate) fn capture_target_object_snapshots(
             && let Some(obj) = game.object(*object_id)
         {
             snapshots.push(ObjectSnapshot::from_object(obj, game));
+        }
+    }
+    snapshots
+}
+
+pub(crate) fn capture_all_effect_target_snapshots(
+    game: &GameState,
+    effect: &Effect,
+    ctx: &ExecutionContext,
+) -> Vec<ObjectSnapshot> {
+    let mut snapshots = capture_target_object_snapshots(game, ctx);
+    if !snapshots.is_empty() {
+        return snapshots;
+    }
+
+    let Some(spec) = effect.0.get_target_spec() else {
+        return snapshots;
+    };
+    let Ok(object_ids) = resolve_objects_from_spec(game, spec, ctx) else {
+        return snapshots;
+    };
+
+    let mut seen = HashSet::new();
+    for object_id in object_ids {
+        if !seen.insert(object_id) {
+            continue;
+        }
+        if let Some(snapshot) = snapshot_for_object_reference(game, ctx, object_id) {
+            snapshots.push(snapshot);
         }
     }
     snapshots

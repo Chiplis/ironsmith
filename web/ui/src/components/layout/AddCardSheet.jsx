@@ -90,6 +90,7 @@ export default function AddCardSheet({
     game,
     state,
     refresh,
+    runWasmInteraction,
     setStatus,
     inspectorDebug,
     multiplayer,
@@ -178,62 +179,64 @@ export default function AddCardSheet({
   }, []);
 
   const handleAdd = useCallback(async (requestedName = cardName) => {
-    if (addLocked) {
-      setStatus("Card injection is disabled while a lobby is active", true);
-      return;
-    }
-    const name = String(requestedName || "").trim();
-    if (!name) {
-      setStatus("Enter a card name to add", true);
-      return;
-    }
-    if (!game || typeof game.addCardToZone !== "function") {
-      setStatus("This WASM build does not expose addCardToZone", true);
-      return;
-    }
-    try {
-      await game.addCardToZone(selectedPlayer, name, zone, skipTriggers);
-      let lowFidelityNotice = null;
-      if (game && typeof game.cardLoadDiagnostics === "function") {
-        try {
-          const diagnostics = await game.cardLoadDiagnostics(name);
-          lowFidelityNotice = buildLowFidelityNotice(diagnostics, name, zone, inspectorDebug);
-        } catch (diagnosticsError) {
-          console.warn("cardLoadDiagnostics failed:", diagnosticsError);
-        }
+    return runWasmInteraction(async () => {
+      if (addLocked) {
+        setStatus("Card injection is disabled while a lobby is active", true);
+        return;
       }
-      setCardName("");
-      setAutocompleteOptions([]);
-      setAutocompleteOpen(false);
-      setAutocompleteIndex(-1);
-      closeSheet();
-      await refresh(`Added ${name} to ${zone}`);
-      if (lowFidelityNotice && typeof onAddCardNotice === "function") {
-        onAddCardNotice(lowFidelityNotice);
+      const name = String(requestedName || "").trim();
+      if (!name) {
+        setStatus("Enter a card name to add", true);
+        return;
       }
-    } catch (err) {
-      const errMsg = String(err?.message || err);
-      setStatus(`Add card failed: ${errMsg}`, true);
-      if (typeof onAddCardNotice === "function") {
-        let copyText = `Card: ${name}\n\nError: ${errMsg}`;
+      if (!game || typeof game.addCardToZone !== "function") {
+        setStatus("This WASM build does not expose addCardToZone", true);
+        return;
+      }
+      try {
+        await game.addCardToZone(selectedPlayer, name, zone, skipTriggers);
+        let lowFidelityNotice = null;
         if (game && typeof game.cardLoadDiagnostics === "function") {
           try {
-            const diagnostics = await game.cardLoadDiagnostics(name, errMsg);
-            copyText = formatCardLoadDiagnosticsClipboard(diagnostics, name, errMsg, inspectorDebug);
+            const diagnostics = await game.cardLoadDiagnostics(name);
+            lowFidelityNotice = buildLowFidelityNotice(diagnostics, name, zone, inspectorDebug);
           } catch (diagnosticsError) {
             console.warn("cardLoadDiagnostics failed:", diagnosticsError);
           }
         }
+        setCardName("");
+        setAutocompleteOptions([]);
+        setAutocompleteOpen(false);
+        setAutocompleteIndex(-1);
+        closeSheet();
+        await refresh(`Added ${name} to ${zone}`);
+        if (lowFidelityNotice && typeof onAddCardNotice === "function") {
+          onAddCardNotice(lowFidelityNotice);
+        }
+      } catch (err) {
+        const errMsg = String(err?.message || err);
+        setStatus(`Add card failed: ${errMsg}`, true);
+        if (typeof onAddCardNotice === "function") {
+          let copyText = `Card: ${name}\n\nError: ${errMsg}`;
+          if (game && typeof game.cardLoadDiagnostics === "function") {
+            try {
+              const diagnostics = await game.cardLoadDiagnostics(name, errMsg);
+              copyText = formatCardLoadDiagnosticsClipboard(diagnostics, name, errMsg, inspectorDebug);
+            } catch (diagnosticsError) {
+              console.warn("cardLoadDiagnostics failed:", diagnosticsError);
+            }
+          }
 
-        onAddCardNotice({
-          tone: "error",
-          title: `Could not add ${name}`,
-          body: `${errMsg} Click to copy diagnostics.`,
-          copyText,
-          copyStatusMessage: `Copied diagnostics for ${name}`,
-        });
+          onAddCardNotice({
+            tone: "error",
+            title: `Could not add ${name}`,
+            body: `${errMsg} Click to copy diagnostics.`,
+            copyText,
+            copyStatusMessage: `Copied diagnostics for ${name}`,
+          });
+        }
       }
-    }
+    });
   }, [
     addLocked,
     cardName,
@@ -242,6 +245,7 @@ export default function AddCardSheet({
     inspectorDebug,
     onAddCardNotice,
     refresh,
+    runWasmInteraction,
     selectedPlayer,
     setStatus,
     skipTriggers,

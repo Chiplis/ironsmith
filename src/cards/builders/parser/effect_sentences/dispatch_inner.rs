@@ -60,7 +60,7 @@ use crate::target::{
 use crate::types::CardType;
 use crate::zone::Zone;
 
-type DispatchInnerNormalizedWords = TokenWordView;
+type DispatchInnerNormalizedWords<'a> = TokenWordView<'a>;
 
 fn contains_dispatch_inner_phrase(words: &[&str], phrase: &[&str]) -> bool {
     find_dispatch_inner_phrase_start(words, phrase).is_some()
@@ -1623,6 +1623,17 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
     }
+    if sentence_words.first() == Some(&"choose")
+        && contains_word_window(sentence_words.as_slice(), &["do", "the", "same", "for"])
+        && let Some(mut effects) = run_sentence_primitives_lexed(
+            tokens,
+            POST_CONDITIONAL_SENTENCE_PRIMITIVES,
+            &POST_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX,
+        )?
+    {
+        apply_where_x_to_damage_amounts(tokens, &mut effects)?;
+        return Ok(effects);
+    }
     if slice_starts_with_any(
         sentence_words.as_slice(),
         &[
@@ -2525,6 +2536,7 @@ pub(crate) fn parse_each_player_choose_and_sacrifice_rest(
         effects.push(EffectAst::ChooseObjects {
             filter: combined,
             count: ChoiceCount::exactly(1),
+            count_value: None,
             player: PlayerAst::Implicit,
             tag: keep_tag.clone(),
         });
@@ -4216,6 +4228,7 @@ pub(crate) fn parse_exile_up_to_one_each_target_type_sentence(
         .map(|filter| EffectAst::ChooseObjects {
             filter,
             count: ChoiceCount::up_to(1),
+            count_value: None,
             player: PlayerAst::You,
             tag: tag.clone(),
         })
@@ -4361,6 +4374,7 @@ pub(crate) fn parse_look_at_top_then_exile_one_sentence(
         EffectAst::ChooseObjects {
             filter: looked_filter,
             count: ChoiceCount::exactly(1),
+            count_value: None,
             player: PlayerAst::You,
             tag: chosen_tag.clone(),
         },

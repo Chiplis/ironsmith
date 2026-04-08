@@ -331,6 +331,9 @@ impl GrantSpec {
                 PlayerFilter::MostLifeTied => {
                     "The player with the most life or tied for most life may".to_string()
                 }
+                PlayerFilter::MostCardsInHand => {
+                    "The player who has the most cards in hand may".to_string()
+                }
                 PlayerFilter::CastCardTypeThisTurn(card_type) => format!(
                     "Any player who cast one or more {} spells this turn may",
                     card_type.to_string().to_ascii_lowercase()

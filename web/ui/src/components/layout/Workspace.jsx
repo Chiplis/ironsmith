@@ -443,6 +443,7 @@ export default function Workspace({
     state,
     dispatch,
     refresh,
+    runWasmInteraction,
     setStatus,
     inspectorDebug,
     multiplayer,
@@ -832,11 +833,18 @@ export default function Workspace({
         && Number.isFinite(Number(stackEntry.controller))
         && Number(stackEntry.controller) !== Number(state?.perspective)
       ) {
-        try {
-          await game.setPerspective(Number(stackEntry.controller));
-          await refresh(`Viewing as player ${Number(stackEntry.controller)}`);
-        } catch (err) {
-          setStatus(`Change player failed: ${err}`, true);
+        const nextPerspective = Number(stackEntry.controller);
+        const perspectiveChanged = await runWasmInteraction(async () => {
+          try {
+            await game.setPerspective(nextPerspective);
+            await refresh(`Viewing as player ${nextPerspective}`);
+            return true;
+          } catch (err) {
+            setStatus(`Change player failed: ${err}`, true);
+            return false;
+          }
+        });
+        if (!perspectiveChanged) {
           return;
         }
       }
@@ -855,6 +863,7 @@ export default function Workspace({
       legalTargetObjectIds,
       multiplayer.matchStarted,
       refresh,
+      runWasmInteraction,
       setStatus,
       state?.perspective,
       clearTransientInspectorPreviews,

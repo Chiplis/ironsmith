@@ -382,14 +382,14 @@ pub(crate) fn token_word_pieces_for_token(token: &OwnedLexToken) -> &[TokenWordP
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct TokenWordView {
-    words: Vec<String>,
+pub(crate) struct TokenWordView<'a> {
+    words: Vec<&'a str>,
     token_start_indices: Vec<usize>,
     token_end_indices: Vec<usize>,
 }
 
-impl TokenWordView {
-    pub(crate) fn new(tokens: &[OwnedLexToken]) -> Self {
+impl<'a> TokenWordView<'a> {
+    pub(crate) fn new(tokens: &'a [OwnedLexToken]) -> Self {
         let mut words = Vec::new();
         let mut token_start_indices = Vec::new();
         let mut token_end_indices = Vec::new();
@@ -402,7 +402,7 @@ impl TokenWordView {
                 continue;
             }
             for piece in pieces {
-                words.push(piece.text.clone());
+                words.push(piece.text.as_str());
                 token_start_indices.push(token_idx);
                 token_end_indices.push(token_idx + 1);
             }
@@ -423,8 +423,8 @@ impl TokenWordView {
         self.words.len()
     }
 
-    pub(crate) fn get(&self, idx: usize) -> Option<&str> {
-        self.words.get(idx).map(String::as_str)
+    pub(crate) fn get(&self, idx: usize) -> Option<&'a str> {
+        self.words.get(idx).copied()
     }
 
     pub(crate) fn starts_with(&self, expected: &[&str]) -> bool {
@@ -437,7 +437,7 @@ impl TokenWordView {
             .is_some_and(|slice| {
                 slice
                     .iter()
-                    .map(String::as_str)
+                    .copied()
                     .zip(expected.iter().copied())
                     .all(|(actual, expected)| actual == expected)
             })
@@ -478,8 +478,8 @@ impl TokenWordView {
         self.get(0)
     }
 
-    pub(crate) fn word_refs(&self) -> Vec<&str> {
-        self.words.iter().map(String::as_str).collect()
+    pub(crate) fn word_refs(&self) -> Vec<&'a str> {
+        self.words.clone()
     }
 
     pub(crate) fn join(&self, separator: &str) -> String {
@@ -487,10 +487,10 @@ impl TokenWordView {
     }
 
     pub(crate) fn owned_words(&self) -> Vec<String> {
-        self.words.clone()
+        self.words.iter().map(|word| (*word).to_string()).collect()
     }
 
-    pub(crate) fn to_word_refs(&self) -> Vec<&str> {
+    pub(crate) fn to_word_refs(&self) -> Vec<&'a str> {
         self.word_refs()
     }
 

@@ -957,6 +957,25 @@ pub fn player_matches_filter_with_combat(
                 game.player(player_id)
                     .is_some_and(|player| player.is_in_game() && player.life == max_life)
             }),
+        PlayerFilter::MostCardsInHand => game
+            .players
+            .iter()
+            .filter(|player| player.is_in_game())
+            .map(|player| player.hand.len())
+            .max()
+            .and_then(|max_hand| {
+                let leaders = game
+                    .players
+                    .iter()
+                    .filter(|player| player.is_in_game() && player.hand.len() == max_hand)
+                    .map(|player| player.id)
+                    .collect::<Vec<_>>();
+                match leaders.as_slice() {
+                    [leader] => Some(*leader == player_id),
+                    _ => None,
+                }
+            })
+            .unwrap_or(false),
         PlayerFilter::CastCardTypeThisTurn(card_type) => game
             .turn_history
             .spell_cast_snapshot_history()

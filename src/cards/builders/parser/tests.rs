@@ -909,6 +909,23 @@ fn rewrite_structure_if_result_predicate_parser_preserves_contractions() {
 }
 
 #[test]
+fn rewrite_structure_if_result_predicate_parser_keeps_coin_flip_outcomes() {
+    let win_tokens =
+        lex_line("you win the flip", 0).expect("rewrite lexer should classify win-the-flip text");
+    let lose_tokens =
+        lex_line("you lose the flip", 0).expect("rewrite lexer should classify lose-the-flip text");
+
+    assert_eq!(
+        super::grammar::structure::parse_if_result_predicate(&win_tokens),
+        Some(crate::cards::builders::IfResultPredicate::Did)
+    );
+    assert_eq!(
+        super::grammar::structure::parse_if_result_predicate(&lose_tokens),
+        Some(crate::cards::builders::IfResultPredicate::DidNot)
+    );
+}
+
+#[test]
 fn rewrite_structure_leading_result_prefix_parser_splits_when_prefix() {
     let tokens = lex_line("When you do, draw a card.", 0)
         .expect("rewrite lexer should classify leading result prefix sentence");
@@ -8065,5 +8082,104 @@ fn rewrite_preprocess_expands_same_is_true_static_exile_chain() {
             "this creature has vigilance as long as there is a card exiled with it with vigilance"
         ),
         "expected same-is-true exile branches to expand, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_choose_then_do_same_for_filter_splits_one_of_mana_values() {
+    let tokens = lex_line(
+        "choose a creature card with mana value 1 in your graveyard, then do the same for creature cards with mana value 2 and 3.",
+        0,
+    )
+    .expect("choose-then-do-the-same sentence should lex");
+
+    let effects = super::parse_sentence_choose_then_do_same_for_filter(&tokens)
+        .expect("choose-then-do-the-same primitive should not error")
+        .expect("choose-then-do-the-same primitive should match");
+    let debug = format!("{effects:#?}");
+
+    assert_eq!(
+        debug.matches("ChooseObjects").count(),
+        3,
+        "expected three choose-object AST nodes, got {debug}"
+    );
+    assert!(
+        debug.contains("Equal(\n                    1,")
+            && debug.contains("Equal(\n                    2,")
+            && debug.contains("Equal(\n                    3,"),
+        "expected mana values 1, 2, and 3 to be split into ordered choices, got {debug}"
+    );
+}
+
+#[test]
+fn parse_choose_then_do_same_for_filter_building_blocks_match() {
+    let head = lex_line(
+        "choose a creature card with mana value 1 in your graveyard",
+        0,
+    )
+    .expect("head clause should lex");
+    let head_parsed =
+        super::parse_you_choose_objects_clause(&head).expect("head choose helper should not error");
+    assert!(
+        head_parsed.is_some(),
+        "expected head choose helper to match"
+    );
+
+    let tail =
+        lex_line("creature cards with mana value 2 and 3", 0).expect("tail filter should lex");
+    let tail_filter = super::parse_object_filter(&tail, false).expect("tail filter should parse");
+    assert!(
+        tail_filter.zone == Some(crate::zone::Zone::Battlefield)
+            && tail_filter.owner.is_none()
+            && tail_filter.controller.is_none(),
+        "expected followup filter to stay unowned/uncontrolled and keep the default battlefield zone, got {tail_filter:?}"
+    );
+    assert!(
+        matches!(
+            tail_filter.mana_value,
+            Some(crate::filter::Comparison::OneOf(ref values)) if values == &[2, 3]
+        ),
+        "expected followup filter to preserve OneOf(2,3), got {tail_filter:?}"
+    );
+}
+
+#[test]
+fn rewrite_grammar_unique_hand_leader_predicate_parses() {
+    let tokens = lex_line(
+        "a player has more cards in hand than each other player",
+        0,
+    )
+    .expect("rewrite lexer should classify unique hand-leader predicate");
+
+    assert_eq!(
+        super::parse_predicate_lexed(&tokens).expect("predicate should parse"),
+        crate::cards::builders::PredicateAst::PlayerHasMoreCardsInHandThanEachOtherPlayer {
+            player: crate::cards::builders::PlayerAst::Any,
+        }
+    );
+}
+
+#[test]
+fn rewrite_grammar_permanent_you_controlled_left_battlefield_predicate_parses() {
+    let tokens = lex_line(
+        "a permanent you controlled left the battlefield this turn",
+        0,
+    )
+    .expect("rewrite lexer should classify revolt-style permanent-left predicate");
+
+    assert_eq!(
+        super::parse_predicate_lexed(&tokens).expect("predicate should parse"),
+        crate::cards::builders::PredicateAst::PermanentLeftBattlefieldUnderYourControlThisTurn
+    );
+}
+
+#[test]
+fn rewrite_parse_subject_player_with_most_cards_in_hand() {
+    let tokens = lex_line("the player who has the most cards in hand", 0)
+        .expect("rewrite lexer should classify most-cards subject");
+
+    assert_eq!(
+        super::util::parse_subject(&tokens),
+        super::SubjectAst::Player(crate::cards::builders::PlayerAst::MostCardsInHand)
     );
 }

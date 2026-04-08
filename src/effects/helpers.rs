@@ -1041,6 +1041,33 @@ pub fn resolve_player_from_spec(
     }
 }
 
+fn unique_player_with_most_cards_in_hand(game: &GameState) -> Result<PlayerId, ExecutionError> {
+    let max_hand = game
+        .players
+        .iter()
+        .filter(|player| player.is_in_game())
+        .map(|player| player.hand.len())
+        .max()
+        .ok_or_else(|| {
+            ExecutionError::UnresolvableValue("No players are in the game".to_string())
+        })?;
+    let leaders = game
+        .players
+        .iter()
+        .filter(|player| player.is_in_game() && player.hand.len() == max_hand)
+        .map(|player| player.id)
+        .collect::<Vec<_>>();
+    match leaders.as_slice() {
+        [leader] => Ok(*leader),
+        [] => Err(ExecutionError::UnresolvableValue(
+            "MostCardsInHand requires an in-game player".to_string(),
+        )),
+        _ => Err(ExecutionError::UnresolvableValue(
+            "MostCardsInHand requires a unique player".to_string(),
+        )),
+    }
+}
+
 /// Resolve a PlayerFilter to a concrete PlayerId.
 pub fn resolve_player_filter(
     game: &GameState,
@@ -1129,6 +1156,7 @@ pub fn resolve_player_filter(
                 .next()
                 .ok_or_else(|| ExecutionError::UnresolvableValue("No matching players".to_string()))
         }
+        PlayerFilter::MostCardsInHand => unique_player_with_most_cards_in_hand(game),
         PlayerFilter::ChosenPlayer => ctx
             .chosen_player
             .or_else(|| game.chosen_player(ctx.source))
@@ -2152,12 +2180,19 @@ pub(crate) fn resolve_player_filter_to_list(
             .map(|player| player.id)
             .collect()),
         PlayerFilter::Target(_) => {
-            for target in &ctx.targets {
-                if let ResolvedTarget::Player(id) = target {
-                    return Ok(vec![*id]);
-                }
+            let players = ctx
+                .targets
+                .iter()
+                .filter_map(|target| match target {
+                    ResolvedTarget::Player(id) => Some(*id),
+                    ResolvedTarget::Object(_) => None,
+                })
+                .collect::<Vec<_>>();
+            if players.is_empty() {
+                Err(ExecutionError::InvalidTarget)
+            } else {
+                Ok(players)
             }
-            Err(ExecutionError::InvalidTarget)
         }
         PlayerFilter::NotYou => {
             let others: Vec<PlayerId> = game
@@ -2194,6 +2229,10 @@ pub(crate) fn resolve_player_filter_to_list(
                 .filter(|player| player.is_in_game() && player.life == max_life)
                 .map(|player| player.id)
                 .collect())
+        }
+        PlayerFilter::MostCardsInHand => {
+            let leader = unique_player_with_most_cards_in_hand(game)?;
+            Ok(vec![leader])
         }
         PlayerFilter::CastCardTypeThisTurn(card_type) => Ok(game
             .players
@@ -2312,6 +2351,15 @@ mod tests {
             .power_toughness(PowerToughness::fixed(2, 2))
             .build();
         game.create_object_from_card(&card, controller, Zone::Battlefield)
+    }
+
+    fn add_hand_card(game: &mut GameState, id_raw: u32, name: &str, owner: PlayerId) -> ObjectId {
+        let card = CardBuilder::new(crate::ids::CardId::from_raw(id_raw), name)
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        game.create_object_from_card(&card, owner, Zone::Hand)
     }
 
     struct SelectIdsDecisionMaker {
@@ -2597,6 +2645,30 @@ mod tests {
     }
 
     #[test]
+    fn test_resolve_player_filter_to_list_includes_all_targeted_players() {
+        let game = new_test_game();
+        let alice = game.players[0].id;
+        let bob = game.players[1].id;
+        let source_id = ObjectId(999);
+        let filter_ctx = FilterContext::default();
+
+        let ctx = ExecutionContext::new_default(source_id, alice).with_targets(vec![
+            ResolvedTarget::Player(alice),
+            ResolvedTarget::Player(bob),
+        ]);
+
+        let resolved =
+            resolve_player_filter_to_list(&game, &PlayerFilter::target_player(), &filter_ctx, &ctx)
+                .expect("target-player list should resolve");
+
+        assert_eq!(
+            resolved,
+            vec![alice, bob],
+            "target-player lists should include every targeted player, preserving order"
+        );
+    }
+
+    #[test]
     fn test_apply_to_selected_objects_count_policy() {
         let mut game = new_test_game();
         let player_id = game.players[0].id;
@@ -2760,5 +2832,32 @@ mod tests {
         .unwrap();
 
         assert_eq!(outcome.status, crate::effect::OutcomeStatus::TargetInvalid);
+    }
+
+    #[test]
+    fn test_resolve_player_filter_most_cards_in_hand_requires_unique_leader() {
+        let mut game = new_test_game();
+        let alice = game.players[0].id;
+        let bob = game.players[1].id;
+        let source_id = game.new_object_id();
+        let ctx = ExecutionContext::new_default(source_id, alice);
+
+        add_hand_card(&mut game, 300, "Mountain", alice);
+        add_hand_card(&mut game, 301, "Forest", bob);
+        add_hand_card(&mut game, 302, "Island", bob);
+
+        assert_eq!(
+            resolve_player_filter(&game, &PlayerFilter::MostCardsInHand, &ctx)
+                .expect("bob should be the unique hand-size leader"),
+            bob
+        );
+
+        add_hand_card(&mut game, 303, "Plains", alice);
+        let err = resolve_player_filter(&game, &PlayerFilter::MostCardsInHand, &ctx)
+            .expect_err("ties should not resolve MostCardsInHand");
+        assert!(
+            matches!(err, ExecutionError::UnresolvableValue(ref message) if message.contains("unique")),
+            "expected unique-leader resolution error, got {err:?}"
+        );
     }
 }

@@ -311,6 +311,7 @@ fn advance_reference_frame_for_effect(
         | EffectAst::AddManaChosenColor { player, .. }
         | EffectAst::AddManaFromLandCouldProduce { player, .. }
         | EffectAst::AddManaCommanderIdentity { player, .. }
+        | EffectAst::FlipCoin { player }
         | EffectAst::ExtraTurnAfterTurn { player, .. }
         | EffectAst::ReduceNextSpellCostThisTurn { player, .. }
         | EffectAst::GrantNextSpellAbilityThisTurn { player, .. }
@@ -324,6 +325,7 @@ fn advance_reference_frame_for_effect(
         | EffectAst::SkipCombatPhases { player }
         | EffectAst::SkipNextCombatPhaseThisTurn { player }
         | EffectAst::SkipDrawStep { player }
+        | EffectAst::ShuffleHandAndGraveyardIntoLibrary { player }
         | EffectAst::ShuffleGraveyardIntoLibrary { player }
         | EffectAst::ReorderGraveyard { player }
         | EffectAst::ShuffleLibrary { player }
@@ -376,6 +378,10 @@ fn advance_reference_frame_for_effect(
         | EffectAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary {
             player,
             ..
+        }
+        | EffectAst::ChooseFromLookedCardsOntoBattlefieldAndIntoHandRestOnBottomOfLibrary {
+            player,
+            ..
         } => {
             track_effect_player(player.clone(), frame, true, true)?;
             frame.last_object_tag = Some(next_reference_tag(id_gen, "chosen"));
@@ -424,6 +430,13 @@ fn advance_reference_frame_for_effect(
         }
         EffectAst::Tap { target } => {
             maybe_tag_target(&target, frame, id_gen, "tapped")?;
+        }
+        EffectAst::TapOrUntapAll {
+            tap_filter,
+            untap_filter,
+        } => {
+            track_player_from_object_filter(tap_filter, frame);
+            track_player_from_object_filter(untap_filter, frame);
         }
         EffectAst::Untap { target } => {
             maybe_tag_target(&target, frame, id_gen, "untapped")?;
@@ -623,6 +636,9 @@ fn advance_reference_frame_for_effect(
             frame.last_object_tag = Some(tag.as_str().to_string());
         }
         EffectAst::ChooseColor { player } => {
+            track_effect_player(*player, frame, true, true)?;
+        }
+        EffectAst::ChooseCardType { player, .. } => {
             track_effect_player(*player, frame, true, true)?;
         }
         EffectAst::ChooseNamedOption { player, .. } => {
@@ -971,7 +987,15 @@ fn annotate_effect_sequence_with_env_internal(
             id_gen,
             auto_tag_object_targets,
         )?;
-        if let Some(id) = assigned_effect_id {
+        if let Some(id) = assigned_effect_id
+            && !matches!(
+                effect,
+                EffectAst::ResolvedIfResult { .. }
+                    | EffectAst::ResolvedWhenResult { .. }
+                    | EffectAst::IfResult { .. }
+                    | EffectAst::WhenResult { .. }
+            )
+        {
             out_env.last_effect_id = RefState::Known(id);
         }
 
@@ -1129,6 +1153,7 @@ fn resolve_effect_sequence_references_with_state(
     let mut resolved = Vec::with_capacity(effects.len());
 
     for (idx, effect) in effects.iter().enumerate() {
+        let saved_last_effect_id = state.last_effect_id;
         let effect = resolve_effect_references_in_effect(effect.clone(), id_gen, state)?;
         let remaining = if idx + 1 < effects.len() {
             &effects[idx + 1..]
@@ -1138,7 +1163,17 @@ fn resolve_effect_sequence_references_with_state(
         let _ = effects_reference_it_tag(remaining) || effects_reference_its_controller(remaining);
         let assigned_effect_id =
             maybe_assign_effect_result_id(effects, idx, id_gen, state.allow_life_event_value);
-        state.last_effect_id = assigned_effect_id;
+        state.last_effect_id = if matches!(
+            effect,
+            EffectAst::ResolvedIfResult { .. }
+                | EffectAst::ResolvedWhenResult { .. }
+                | EffectAst::IfResult { .. }
+                | EffectAst::WhenResult { .. }
+        ) {
+            saved_last_effect_id
+        } else {
+            assigned_effect_id
+        };
         resolved.push(effect);
     }
 
@@ -1325,7 +1360,8 @@ fn resolve_effect_result_values_in_fields(
         EffectAst::PumpForEach { count, .. } => {
             resolve_effect_result_value(count, state)?;
         }
-        EffectAst::SearchLibrary { count_value, .. } => {
+        EffectAst::ChooseObjects { count_value, .. }
+        | EffectAst::SearchLibrary { count_value, .. } => {
             if let Some(count_value) = count_value.as_mut() {
                 resolve_effect_result_value(count_value, state)?;
             }
@@ -1482,6 +1518,13 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
         }
         EffectAst::DoubleCountersOnEach { filter, .. } => {
             bind_unresolved_it_in_filter(filter, seed_tag)
+        }
+        EffectAst::TapOrUntapAll {
+            tap_filter,
+            untap_filter,
+        } => {
+            bind_unresolved_it_in_filter(tap_filter, seed_tag)
+                + bind_unresolved_it_in_filter(untap_filter, seed_tag)
         }
         EffectAst::Tap { target }
         | EffectAst::Untap { target }
@@ -1702,8 +1745,17 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
         EffectAst::Conditional { predicate, .. } | EffectAst::SelfReplacement { predicate, .. } => {
             bind_unresolved_it_in_predicate(predicate, seed_tag)
         }
-        EffectAst::ChooseObjects { filter, tag, .. } => {
+        EffectAst::ChooseObjects {
+            filter,
+            count_value,
+            tag,
+            ..
+        } => {
             bind_unresolved_it_in_filter(filter, seed_tag)
+                + count_value
+                    .as_mut()
+                    .map(|value| bind_unresolved_it_in_value(value, seed_tag))
+                    .unwrap_or(0)
                 + bind_unresolved_it_in_tag(tag, seed_tag)
         }
         EffectAst::ChooseObjectsAcrossZones { filter, tag, .. } => {
@@ -1721,6 +1773,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
         }
         EffectAst::ChooseCardName { tag, .. } => bind_unresolved_it_in_tag(tag, seed_tag),
         EffectAst::ChooseColor { .. } => 0,
+        EffectAst::ChooseCardType { .. } => 0,
         EffectAst::ChooseNamedOption { .. } => 0,
         EffectAst::ChooseCreatureType { .. } => 0,
         EffectAst::VentureIntoDungeon { .. } => 0,

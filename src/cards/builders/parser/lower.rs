@@ -1746,6 +1746,7 @@ fn lower_rewrite_divvy_statement_to_chunk(
                 EffectAst::ChooseObjects {
                     filter: ObjectFilter::creature().controlled_by(PlayerFilter::target_player()),
                     count: ChoiceCount::any_number(),
+                    count_value: None,
                     player: PlayerAst::Target,
                     tag: TagKey::from("divvy_chosen"),
                 },
@@ -1770,6 +1771,7 @@ fn lower_rewrite_divvy_statement_to_chunk(
                 EffectAst::ChooseObjects {
                     filter: graveyard_creatures,
                     count: ChoiceCount::any_number(),
+                    count_value: None,
                     player: PlayerAst::Opponent,
                     tag: TagKey::from("divvy_chosen"),
                 },
@@ -1796,6 +1798,7 @@ fn lower_rewrite_divvy_statement_to_chunk(
                         filter: ObjectFilter::creature()
                             .controlled_by(PlayerFilter::IteratedPlayer),
                         count: ChoiceCount::any_number(),
+                        count_value: None,
                         player: PlayerAst::You,
                         tag: TagKey::from("divvy_chosen"),
                     },
@@ -1821,6 +1824,7 @@ fn lower_rewrite_divvy_statement_to_chunk(
                 EffectAst::ChooseObjects {
                     filter: ObjectFilter::permanent().controlled_by(PlayerFilter::target_player()),
                     count: ChoiceCount::any_number(),
+                    count_value: None,
                     player: PlayerAst::Target,
                     tag: TagKey::from("divvy_chosen"),
                 },
@@ -1843,6 +1847,7 @@ fn lower_rewrite_divvy_statement_to_chunk(
                         filter: ObjectFilter::creature()
                             .controlled_by(PlayerFilter::IteratedPlayer),
                         count: ChoiceCount::any_number(),
+                        count_value: None,
                         player: PlayerAst::That,
                         tag: TagKey::from("divvy_chosen"),
                     },
@@ -1878,6 +1883,7 @@ fn lower_rewrite_divvy_statement_to_chunk(
                             .nontoken()
                             .controlled_by(PlayerFilter::IteratedPlayer),
                         count: ChoiceCount::any_number(),
+                        count_value: None,
                         player: PlayerAst::Chosen,
                         tag: TagKey::from("divvy_chosen"),
                     },
@@ -2109,6 +2115,7 @@ fn lower_rewrite_empty_laboratory_statement_to_chunk(
             EffectAst::ChooseObjects {
                 filter: zombie_you_control,
                 count: ChoiceCount::dynamic_x(),
+                count_value: None,
                 player: PlayerAst::You,
                 tag: sacrificed_tag.clone(),
             },
@@ -2542,6 +2549,7 @@ fn lower_special_rewrite_triggered_chunk(
             EffectAst::ChooseObjects {
                 filter: ObjectFilter::creature().controlled_by(PlayerFilter::IteratedPlayer),
                 count: ChoiceCount::any_number(),
+                count_value: None,
                 player: PlayerAst::That,
                 tag: TagKey::from("divvy_chosen"),
             },

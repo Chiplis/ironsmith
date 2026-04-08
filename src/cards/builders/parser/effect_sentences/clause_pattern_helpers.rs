@@ -31,7 +31,7 @@ use super::parse_subtype_word;
 use super::sentence_primitives::parse_distribute_counters_sentence;
 use super::verb_dispatch::parse_effect_with_verb;
 
-type ClausePatternCompatWords = TokenWordView;
+type ClausePatternCompatWords<'a> = TokenWordView<'a>;
 
 const ODD_EVEN_RESULT_PREFIXES: &[&[&str]] = &[
     &["for", "each", "odd", "result"],
@@ -377,6 +377,11 @@ pub(crate) fn parse_copy_spell_clause(
             }
             let after_word_view = ClausePatternCompatWords::new(&tail[idx + 1..]);
             let mut after = after_word_view.to_word_refs();
+            if after.first().copied() == Some("you") {
+                after.remove(0);
+            } else if after.len() >= 2 && after[0] == "that" && after[1] == "player" {
+                after.drain(0..2);
+            }
             if after.first().copied() == Some("may") {
                 after.remove(0);
             }
@@ -451,8 +456,19 @@ pub(crate) fn parse_copy_spell_clause(
             let count_filter = parse_object_filter(&count_filter_tokens, false)?;
             count = Value::Count(count_filter);
         }
+        let target_word_view = ClausePatternCompatWords::new(copy_target_tail);
+        let target_words = target_word_view.to_word_refs();
+        let target = match target_words.as_slice() {
+            ["this", "spell"] => TargetAst::Source(None),
+            ["that", "spell"]
+            | ["it"]
+            | ["that"]
+            | ["that", "card"]
+            | ["the", "exiled", "card"] => TargetAst::Tagged(TagKey::from(IT_TAG), None),
+            _ => TargetAst::Source(None),
+        };
         let base = EffectAst::CopySpell {
-            target: TargetAst::Source(None),
+            target,
             count,
             player: PlayerAst::Implicit,
             may_choose_new_targets: copy_clause_split_idx.is_some(),
@@ -516,9 +532,7 @@ pub(crate) fn parse_copy_spell_clause(
 
     let target_word_view = ClausePatternCompatWords::new(&copy_target_tokens);
     let target_words = target_word_view.to_word_refs();
-    let target = if target_words.as_slice() == ["this", "spell"]
-        || target_words.as_slice() == ["that", "spell"]
-    {
+    let target = if target_words.as_slice() == ["this", "spell"] {
         TargetAst::Source(None)
     } else {
         parse_counter_target_phrase(&copy_target_tokens)?
@@ -528,6 +542,14 @@ pub(crate) fn parse_copy_spell_clause(
     if let Some(idx) = split_idx {
         let choose_word_view = ClausePatternCompatWords::new(&tail[idx + 1..]);
         let mut choose_words = choose_word_view.to_word_refs();
+        if choose_words.first().copied() == Some("you") {
+            choose_words.remove(0);
+        } else if choose_words.len() >= 2
+            && choose_words[0] == "that"
+            && choose_words[1] == "player"
+        {
+            choose_words.drain(0..2);
+        }
         if choose_words.first().copied() == Some("may") {
             may_choose_new_targets = true;
             choose_words.remove(0);

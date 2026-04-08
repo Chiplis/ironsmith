@@ -760,6 +760,9 @@ pub enum PlayerFilter {
     /// A player with the most life, or tied for most life.
     MostLifeTied,
 
+    /// The unique player with the most cards in hand.
+    MostCardsInHand,
+
     /// A player who cast one or more spells of the given card type this turn.
     CastCardTypeThisTurn(CardType),
 
@@ -870,6 +873,7 @@ impl PlayerFilter {
             | PlayerFilter::EffectController
             | PlayerFilter::Specific(_)
             | PlayerFilter::MostLifeTied
+            | PlayerFilter::MostCardsInHand
             | PlayerFilter::CastCardTypeThisTurn(_)
             | PlayerFilter::ChosenPlayer
             | PlayerFilter::TaggedPlayer(_)
@@ -910,6 +914,7 @@ impl PlayerFilter {
 
             PlayerFilter::Specific(id) => player == *id,
             PlayerFilter::MostLifeTied => false,
+            PlayerFilter::MostCardsInHand => false,
             PlayerFilter::CastCardTypeThisTurn(_) => false,
             PlayerFilter::ChosenPlayer => ctx.chosen_player.is_some_and(|chosen| chosen == player),
             PlayerFilter::TaggedPlayer(tag) => ctx
@@ -967,6 +972,9 @@ impl PlayerFilter {
             PlayerFilter::Specific(_) => "that player".to_string(),
             PlayerFilter::MostLifeTied => {
                 "a player with the most life or tied for most life".to_string()
+            }
+            PlayerFilter::MostCardsInHand => {
+                "the player who has the most cards in hand".to_string()
             }
             PlayerFilter::CastCardTypeThisTurn(card_type) => format!(
                 "a player who cast one or more {} spells this turn",
@@ -2657,24 +2665,34 @@ impl ObjectFilter {
             return false;
         }
         if self.chosen_creature_type {
-            let Some(chosen_type) = ctx
-                .source
-                .and_then(|source| game.chosen_creature_type(source))
-            else {
+            let Some(source) = ctx.source else {
                 return false;
             };
-            if !object.subtypes.contains(&chosen_type) {
+            if let Some(chosen_type) = game.chosen_creature_type(source) {
+                if !object.subtypes.contains(&chosen_type) {
+                    return false;
+                }
+            } else if let Some(chosen_type) = game.chosen_card_type(source) {
+                if !object.card_types.contains(&chosen_type) {
+                    return false;
+                }
+            } else {
                 return false;
             }
         }
         if self.excluded_chosen_creature_type {
-            let Some(chosen_type) = ctx
-                .source
-                .and_then(|source| game.chosen_creature_type(source))
-            else {
+            let Some(source) = ctx.source else {
                 return false;
             };
-            if object.subtypes.contains(&chosen_type) {
+            if let Some(chosen_type) = game.chosen_creature_type(source) {
+                if object.subtypes.contains(&chosen_type) {
+                    return false;
+                }
+            } else if let Some(chosen_type) = game.chosen_card_type(source) {
+                if object.card_types.contains(&chosen_type) {
+                    return false;
+                }
+            } else {
                 return false;
             }
         }
@@ -3167,24 +3185,34 @@ impl ObjectFilter {
             return false;
         }
         if self.chosen_creature_type {
-            let Some(chosen_type) = ctx
-                .source
-                .and_then(|source| game.chosen_creature_type(source))
-            else {
+            let Some(source) = ctx.source else {
                 return false;
             };
-            if !snapshot.subtypes.contains(&chosen_type) {
+            if let Some(chosen_type) = game.chosen_creature_type(source) {
+                if !snapshot.subtypes.contains(&chosen_type) {
+                    return false;
+                }
+            } else if let Some(chosen_type) = game.chosen_card_type(source) {
+                if !snapshot.card_types.contains(&chosen_type) {
+                    return false;
+                }
+            } else {
                 return false;
             }
         }
         if self.excluded_chosen_creature_type {
-            let Some(chosen_type) = ctx
-                .source
-                .and_then(|source| game.chosen_creature_type(source))
-            else {
+            let Some(source) = ctx.source else {
                 return false;
             };
-            if snapshot.subtypes.contains(&chosen_type) {
+            if let Some(chosen_type) = game.chosen_creature_type(source) {
+                if snapshot.subtypes.contains(&chosen_type) {
+                    return false;
+                }
+            } else if let Some(chosen_type) = game.chosen_card_type(source) {
+                if snapshot.card_types.contains(&chosen_type) {
+                    return false;
+                }
+            } else {
                 return false;
             }
         }
@@ -3534,6 +3562,9 @@ impl ObjectFilter {
                 PlayerFilter::MostLifeTied => {
                     parts.push("the player with the most life's".to_string())
                 }
+                PlayerFilter::MostCardsInHand => {
+                    parts.push("the player with the most cards in hand's".to_string())
+                }
                 PlayerFilter::CastCardTypeThisTurn(card_type) => parts.push(format!(
                     "a player who cast one or more {} spells this turn's",
                     card_type.to_string().to_ascii_lowercase()
@@ -3597,6 +3628,9 @@ impl ObjectFilter {
                 PlayerFilter::Specific(_) => "that player owns".to_string(),
                 PlayerFilter::MostLifeTied => {
                     "the player with the most life or tied for most life owns".to_string()
+                }
+                PlayerFilter::MostCardsInHand => {
+                    "the player who has the most cards in hand owns".to_string()
                 }
                 PlayerFilter::CastCardTypeThisTurn(card_type) => format!(
                     "a player who cast one or more {} spells this turn owns",
@@ -4572,6 +4606,7 @@ fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::EffectController => "the player who cast this spell's".to_string(),
         PlayerFilter::Specific(_) => "that player's".to_string(),
         PlayerFilter::MostLifeTied => "the chosen player's".to_string(),
+        PlayerFilter::MostCardsInHand => "the player with the most cards in hand's".to_string(),
         PlayerFilter::CastCardTypeThisTurn(card_type) => format!(
             "a player who cast one or more {} spells this turn's",
             card_type.to_string().to_ascii_lowercase()
@@ -4616,6 +4651,7 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::EffectController => "the player who cast this spell".to_string(),
         PlayerFilter::Specific(_) => "player".to_string(),
         PlayerFilter::MostLifeTied => "player with the most life or tied for most life".to_string(),
+        PlayerFilter::MostCardsInHand => "the player who has the most cards in hand".to_string(),
         PlayerFilter::CastCardTypeThisTurn(card_type) => format!(
             "player who cast one or more {} spells this turn",
             card_type.to_string().to_ascii_lowercase()

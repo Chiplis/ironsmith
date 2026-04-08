@@ -2072,6 +2072,9 @@ pub enum Condition {
     /// A specific player has more cards in hand than you.
     PlayerHasMoreCardsInHandThanYou { player: PlayerFilter },
 
+    /// A specific player has more cards in hand than each other player.
+    PlayerHasMoreCardsInHandThanEachOtherPlayer { player: PlayerFilter },
+
     /// You have a card in hand matching the filter.
     ///
     /// Used for reveal-optional ETB clauses where revealing from hand avoids
@@ -3565,6 +3568,12 @@ impl Effect {
         Self::new(ShuffleGraveyardIntoLibraryEffect::new(player))
     }
 
+    /// Create a "shuffle hand and graveyard into library" effect for a specific player.
+    pub fn shuffle_hand_and_graveyard_into_library_player(player: PlayerFilter) -> Self {
+        use crate::effects::ShuffleHandAndGraveyardIntoLibraryEffect;
+        Self::new(ShuffleHandAndGraveyardIntoLibraryEffect::new(player))
+    }
+
     /// Create a "reorder graveyard" effect for a specific player.
     pub fn reorder_graveyard_player(player: PlayerFilter) -> Self {
         use crate::effects::ReorderGraveyardEffect;
@@ -3605,6 +3614,12 @@ impl Effect {
     pub fn experience_counters_player(count: impl Into<Value>, player: PlayerFilter) -> Self {
         use crate::effects::ExperienceCountersEffect;
         Self::new(ExperienceCountersEffect::new(count, player))
+    }
+
+    /// Flip a coin for the specified player.
+    pub fn flip_coin(player: PlayerFilter) -> Self {
+        use crate::effects::FlipCoinEffect;
+        Self::new(FlipCoinEffect::new(player))
     }
 
     // === Effect composition builders ===
@@ -3981,6 +3996,12 @@ impl Effect {
     pub fn choose_color(chooser: PlayerFilter) -> Self {
         use crate::effects::ChooseColorEffect;
         Self::new(ChooseColorEffect::new(chooser))
+    }
+
+    /// Choose a card type and store it on the source object for later effects.
+    pub fn choose_card_type(chooser: PlayerFilter, options: Vec<crate::types::CardType>) -> Self {
+        use crate::effects::ChooseCardTypeEffect;
+        Self::new(ChooseCardTypeEffect::new(chooser, options))
     }
 
     /// Choose one named option and store it on the source object for later effects.

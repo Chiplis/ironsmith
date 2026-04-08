@@ -1,4 +1,7 @@
-use super::super::activation_and_restrictions::{contains_word_sequence, find_word_sequence_start};
+use super::super::activation_and_restrictions::{
+    contains_word_sequence, find_word_sequence_start, parse_target_player_choose_objects_clause,
+    parse_you_choose_objects_clause,
+};
 use super::super::grammar::effects::parse_conditional_sentence_with_grammar_entrypoint_lexed;
 use super::super::grammar::primitives::{
     self as grammar, TokenWordView, split_lexed_slices_on_and, split_lexed_slices_on_comma,
@@ -16,6 +19,7 @@ use super::super::util::{
     parse_counter_type_from_tokens, token_index_for_word_index, words,
 };
 use super::super::util::{parse_target_phrase, parse_value, span_from_tokens};
+use super::dispatch_inner::merge_filters;
 use super::sentence_helpers::*;
 use super::verb_handlers::parse_half_rounded_down_draw_count_words;
 use super::zone_counter_helpers::parse_convert;
@@ -104,7 +108,7 @@ use winnow::Parser as _;
 pub(crate) type SentencePrimitiveParser =
     fn(&[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError>;
 
-type SentencePrimitiveNormalizedWords = TokenWordView;
+type SentencePrimitiveNormalizedWords<'a> = TokenWordView<'a>;
 
 pub(crate) struct SentencePrimitive {
     pub(crate) name: &'static str,
@@ -1051,6 +1055,8 @@ pub(crate) fn parse_put_counter_ladder_segments(
 pub(crate) fn parse_sentence_put_counter_sequence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    use super::super::grammar::primitives as grammar;
+
     if !tokens.first().is_some_and(|token| token.is_word("put")) {
         return Ok(None);
     }
@@ -1059,6 +1065,23 @@ pub(crate) fn parse_sentence_put_counter_sequence(
         .any(|token| token.is_word("counter") || token.is_word("counters"))
     {
         return Ok(None);
+    }
+
+    let (head_tokens, tail_tokens) = if let Some((head, tail)) =
+        split_lexed_once_on_comma_then(tokens).or_else(|| {
+            grammar::split_lexed_once_on_separator(tokens, || grammar::kw("then").void())
+        }) {
+        (head.to_vec(), trim_commas(tail))
+    } else {
+        (tokens.to_vec(), Vec::new())
+    };
+    if !tail_tokens.is_empty() {
+        let mut effects = parse_effect_chain(&head_tokens)?;
+        if effects.is_empty() {
+            return Ok(None);
+        }
+        effects.extend(parse_effect_chain(&tail_tokens)?);
+        return Ok(Some(effects));
     }
 
     if let Some(effects) = parse_put_counter_ladder_segments(tokens)? {
@@ -2026,10 +2049,101 @@ pub(crate) fn parse_return_then_do_same_for_subtypes_sentence(
     Ok(Some(effects))
 }
 
+fn split_choose_same_followup_filters(filter: &ObjectFilter) -> Vec<ObjectFilter> {
+    match filter.mana_value.clone() {
+        Some(crate::filter::Comparison::OneOf(values)) if !values.is_empty() => values
+            .into_iter()
+            .map(|value| {
+                let mut cloned = filter.clone();
+                cloned.mana_value = Some(crate::filter::Comparison::Equal(value));
+                cloned
+            })
+            .collect(),
+        _ => vec![filter.clone()],
+    }
+}
+
+pub(crate) fn parse_choose_then_do_same_for_filter_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    use super::super::grammar::primitives as grammar;
+
+    if !tokens.first().is_some_and(|token| token.is_word("choose")) {
+        return Ok(None);
+    }
+    let Some((head_slice, tail_slice)) = split_lexed_once_on_comma_then(tokens)
+        .or_else(|| grammar::split_lexed_once_on_separator(tokens, || grammar::kw("then").void()))
+    else {
+        return Ok(None);
+    };
+
+    let head_tokens = trim_commas(head_slice);
+    let tail_tokens = trim_commas(tail_slice);
+    if head_tokens.is_empty() || tail_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    if grammar::words_match_prefix(&tail_tokens, &["do", "the", "same", "for"]).is_none() {
+        return Ok(None);
+    }
+
+    let followup_filter_tokens = &tail_tokens[4..];
+    if followup_filter_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let Some((player, base_filter, count)) = parse_you_choose_objects_clause(&head_tokens)?
+        .or_else(|| {
+            parse_target_player_choose_objects_clause(&head_tokens)
+                .ok()
+                .flatten()
+        })
+    else {
+        return Ok(None);
+    };
+    let tag = TagKey::from(IT_TAG);
+
+    let followup_filter = parse_object_filter(&followup_filter_tokens, false)?;
+    if followup_filter.controller.is_some() || followup_filter.owner.is_some() {
+        return Ok(None);
+    }
+
+    let merged_filter = merge_filters(&base_filter, &followup_filter);
+    let followup_filters = split_choose_same_followup_filters(&merged_filter);
+    if followup_filters.is_empty() {
+        return Ok(None);
+    }
+
+    let mut effects = vec![EffectAst::ChooseObjects {
+        filter: base_filter.clone(),
+        count: count.clone(),
+        count_value: None,
+        player: player.clone(),
+        tag: tag.clone(),
+    }];
+    for filter in followup_filters {
+        effects.push(EffectAst::ChooseObjects {
+            filter,
+            count: count.clone(),
+            count_value: None,
+            player: player.clone(),
+            tag: tag.clone(),
+        });
+    }
+
+    Ok(Some(effects))
+}
+
 pub(crate) fn parse_sentence_return_then_do_same_for_subtypes(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     parse_return_then_do_same_for_subtypes_sentence(tokens)
+}
+
+pub(crate) fn parse_sentence_choose_then_do_same_for_filter(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    parse_choose_then_do_same_for_filter_sentence(tokens)
 }
 
 pub(crate) fn parse_sacrifice_any_number_sentence(
@@ -2094,6 +2208,7 @@ pub(crate) fn parse_sacrifice_any_number_sentence(
         EffectAst::ChooseObjects {
             filter,
             count: ChoiceCount::any_number(),
+            count_value: None,
             player: PlayerAst::Implicit,
             tag: tag.clone(),
         },
@@ -2164,6 +2279,7 @@ pub(crate) fn parse_sacrifice_one_or_more_sentence(
         EffectAst::ChooseObjects {
             filter,
             count: ChoiceCount::at_least(minimum as usize),
+            count_value: None,
             player: PlayerAst::Implicit,
             tag: tag.clone(),
         },
@@ -3273,6 +3389,7 @@ pub(crate) fn parse_sentence_for_each_of_target_objects(
         EffectAst::ChooseObjects {
             filter,
             count,
+            count_value: None,
             player: PlayerAst::Implicit,
             tag: TagKey::from(IT_TAG),
         },
@@ -3756,12 +3873,14 @@ pub(crate) fn parse_sentence_exile_multi_target(
             EffectAst::ChooseObjects {
                 filter: first_filter,
                 count: first_count,
+                count_value: None,
                 player: PlayerAst::You,
                 tag: tag.clone(),
             },
             EffectAst::ChooseObjects {
                 filter: second_filter,
                 count: second_count,
+                count_value: None,
                 player: PlayerAst::You,
                 tag: tag.clone(),
             },
@@ -4018,6 +4137,7 @@ pub(crate) fn parse_sentence_reveal_selected_cards_in_your_hand(
         EffectAst::ChooseObjects {
             filter,
             count,
+            count_value: None,
             player: PlayerAst::You,
             tag: tag.clone(),
         },
@@ -5551,6 +5671,10 @@ pub(crate) const POST_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
     SentencePrimitive {
         name: "draw-then-connive",
         parser: parse_sentence_draw_then_connive,
+    },
+    SentencePrimitive {
+        name: "choose-then-do-same-for-filter",
+        parser: parse_sentence_choose_then_do_same_for_filter,
     },
     SentencePrimitive {
         name: "return-then-do-same-for-subtypes",

@@ -10,7 +10,7 @@ use crate::game_state::GameState;
 use crate::tag::TagKey;
 
 use super::tagging_runtime::{
-    apply_tagged_runtime_state, capture_tagged_runtime_state, capture_target_object_snapshots,
+    apply_tagged_runtime_state, capture_all_effect_target_snapshots, capture_tagged_runtime_state,
 };
 
 /// Effect that executes an inner effect and tags its target for later reference.
@@ -170,7 +170,7 @@ impl EffectExecutor for TagAllEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let snapshots = capture_target_object_snapshots(game, ctx);
+        let snapshots = capture_all_effect_target_snapshots(game, &self.effect, ctx);
 
         // Tag all the snapshots
         if !snapshots.is_empty() {
@@ -221,6 +221,7 @@ mod tests {
     use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
     use crate::types::CardType;
     use crate::zone::Zone;
+    use std::collections::HashMap;
 
     fn setup_game() -> GameState {
         crate::tests::test_helpers::setup_two_player_game()
@@ -253,6 +254,25 @@ mod tests {
             .build();
         let obj = Object::from_card(id, &card, owner, Zone::Graveyard);
         game.add_object(obj);
+        id
+    }
+
+    fn create_library_creature(game: &mut GameState, name: &str, owner: PlayerId) -> ObjectId {
+        let id = game.new_object_id();
+        let card = CardBuilder::new(CardId::from_raw(id.0 as u32), name)
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(1)],
+                vec![ManaSymbol::Green],
+            ]))
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let obj = Object::from_card(id, &card, owner, Zone::Library);
+        game.add_object(obj);
+        game.player_mut(owner)
+            .expect("player")
+            .library
+            .push(id);
         id
     }
 
@@ -456,5 +476,33 @@ mod tests {
         let effect = TagAllEffect::new("test", Effect::gain_life(1));
         let cloned = effect.clone_box();
         assert!(format!("{:?}", cloned).contains("TagAllEffect"));
+    }
+
+    #[test]
+    fn test_tag_all_effect_uses_effect_target_spec_when_targets_are_implicit() {
+        use super::TagAllEffect;
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let creature_id = create_library_creature(&mut game, "Tagged Library Creature", alice);
+        let chosen_snapshot = game
+            .object(creature_id)
+            .map(|obj| crate::snapshot::ObjectSnapshot::from_object(obj, &game))
+            .expect("library creature snapshot");
+
+        let mut ctx = ExecutionContext::new_default(source, alice).with_tagged_objects(
+            HashMap::from([(TagKey::from("chosen"), vec![chosen_snapshot.clone()])]),
+        );
+
+        let effect = TagAllEffect::new(
+            "kept",
+            Effect::move_to_zone(ChooseSpec::Tagged(TagKey::from("chosen")), Zone::Hand, false),
+        );
+        effect.execute(&mut game, &mut ctx).unwrap();
+
+        let tagged_all = ctx.get_tagged_all("kept").expect("kept tag should exist");
+        assert_eq!(tagged_all.len(), 1);
+        assert_eq!(tagged_all[0].stable_id, chosen_snapshot.stable_id);
     }
 }

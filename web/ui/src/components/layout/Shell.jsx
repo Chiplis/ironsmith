@@ -21,6 +21,7 @@ export default function Shell() {
     wasmPhase,
     wasmRegistryCount,
     refresh,
+    runWasmInteraction,
     setStatus,
     multiplayer,
     semanticThreshold,
@@ -231,119 +232,125 @@ export default function Shell() {
   }, [loadPuzzle, loading, multiplayer.mode, state, wasmError]);
 
   const handleReset = useCallback(async () => {
-    if (!game) return;
-    if (multiplayer.mode !== "idle") {
-      setStatus("Reset is disabled while a lobby is active", true);
-      return;
-    }
-    try {
-      await game.reset(parseNames(playerNames), startingLife);
-      await addStartingBattlefieldPreset(game);
-      setDeckLoadingMode(false);
-      await refresh("Game reset");
-    } catch (err) {
-      setStatus(`Reset failed: ${err}`, true);
-    }
-  }, [game, multiplayer.mode, playerNames, startingLife, refresh, setStatus]);
-
-  const handleLoadCustomDecks = useCallback(async (decks) => {
-    if (!game) return;
-    if (multiplayer.mode !== "idle") {
-      setStatus("Deck loading is disabled while a lobby is active", true);
-      return;
-    }
-    try {
-      const result = await game.loadDecks(decks);
-      setDeckLoadingMode(false);
-      const loaded = result?.loaded ?? 0;
-      const failed = Array.isArray(result?.failed) ? result.failed : [];
-      const failedBelowThreshold = Array.isArray(result?.failedBelowThreshold)
-        ? result.failedBelowThreshold
-        : [];
-      const failedToParse = Array.isArray(result?.failedToParse)
-        ? result.failedToParse
-        : [];
-      pushNotice({
-        tone: "success",
-        title: "Deck load complete",
-        body: `Loaded ${loaded} card${loaded === 1 ? "" : "s"}.`,
-      });
-      if (failed.length > 0) {
-        const copyActions = [
-          {
-            label: `Copy all (${failed.length})`,
-            copyText: failed.join("\n"),
-            copyStatusMessage: `Copied ${failed.length} failed deck card name${failed.length === 1 ? "" : "s"}`,
-          },
-        ];
-        if (failedBelowThreshold.length > 0) {
-          copyActions.push({
-            label: `Copy threshold (${failedBelowThreshold.length})`,
-            copyText: failedBelowThreshold.join("\n"),
-            copyStatusMessage: `Copied ${failedBelowThreshold.length} low-fidelity deck card name${failedBelowThreshold.length === 1 ? "" : "s"}`,
-          });
-        }
-        if (failedToParse.length > 0) {
-          copyActions.push({
-            label: `Copy parse (${failedToParse.length})`,
-            copyText: failedToParse.join("\n"),
-            copyStatusMessage: `Copied ${failedToParse.length} unparsed deck card name${failedToParse.length === 1 ? "" : "s"}`,
-          });
-        }
-        const issueSummary = [
-          failedBelowThreshold.length > 0
-            ? `${failedBelowThreshold.length} below threshold`
-            : null,
-          failedToParse.length > 0 ? `${failedToParse.length} failed to parse` : null,
-        ]
-          .filter(Boolean)
-          .join(". ");
-        pushNotice({
-          tone: "error",
-          title: "Deck load issues",
-          body: `${failed.length} card${failed.length === 1 ? "" : "s"} failed. ${issueSummary ? `${issueSummary}. ` : ""}Use the copy actions below.`,
-          actions: copyActions,
-        });
-      }
-      if (failed.length > 0) {
-        const unique = [...new Set(failed)];
-        const failedStr = unique.length <= 5
-          ? unique.join(", ")
-          : `${unique.slice(0, 5).join(", ")} (+${unique.length - 5} more)`;
-        const issueSummary = [
-          failedBelowThreshold.length > 0
-            ? `${failedBelowThreshold.length} below threshold`
-            : null,
-          failedToParse.length > 0 ? `${failedToParse.length} failed to parse` : null,
-        ]
-          .filter(Boolean)
-          .join(", ");
-        await refresh(
-          `Loaded ${loaded} cards. ${failed.length} failed${issueSummary ? ` (${issueSummary})` : ""}: ${failedStr}`
-        );
-      } else {
-        await refresh(`Loaded ${loaded} cards`);
-      }
-    } catch (err) {
-      setStatus(`Load decks failed: ${err}`, true);
-    }
-  }, [game, multiplayer.mode, pushNotice, refresh, setStatus]);
-
-  const handleChangePerspective = useCallback(
-    async (playerIndex) => {
+    return runWasmInteraction(async () => {
       if (!game) return;
-      if (multiplayer.matchStarted) {
-        setStatus("Perspective is fixed during multiplayer matches", true);
+      if (multiplayer.mode !== "idle") {
+        setStatus("Reset is disabled while a lobby is active", true);
         return;
       }
       try {
-        await game.setPerspective(playerIndex);
-        await refresh(`Viewing as player ${playerIndex}`);
+        await game.reset(parseNames(playerNames), startingLife);
+        await addStartingBattlefieldPreset(game);
+        setDeckLoadingMode(false);
+        await refresh("Game reset");
       } catch (err) {
-        setStatus(`Change player failed: ${err}`, true);
+        setStatus(`Reset failed: ${err}`, true);
       }
+    });
+  }, [game, multiplayer.mode, playerNames, refresh, runWasmInteraction, setStatus, startingLife]);
+
+  const handleLoadCustomDecks = useCallback(async (decks) => {
+    return runWasmInteraction(async () => {
+      if (!game) return;
+      if (multiplayer.mode !== "idle") {
+        setStatus("Deck loading is disabled while a lobby is active", true);
+        return;
+      }
+      try {
+        const result = await game.loadDecks(decks);
+        setDeckLoadingMode(false);
+        const loaded = result?.loaded ?? 0;
+        const failed = Array.isArray(result?.failed) ? result.failed : [];
+        const failedBelowThreshold = Array.isArray(result?.failedBelowThreshold)
+          ? result.failedBelowThreshold
+          : [];
+        const failedToParse = Array.isArray(result?.failedToParse)
+          ? result.failedToParse
+          : [];
+        pushNotice({
+          tone: "success",
+          title: "Deck load complete",
+          body: `Loaded ${loaded} card${loaded === 1 ? "" : "s"}.`,
+        });
+        if (failed.length > 0) {
+          const copyActions = [
+            {
+              label: `Copy all (${failed.length})`,
+              copyText: failed.join("\n"),
+              copyStatusMessage: `Copied ${failed.length} failed deck card name${failed.length === 1 ? "" : "s"}`,
+            },
+          ];
+          if (failedBelowThreshold.length > 0) {
+            copyActions.push({
+              label: `Copy threshold (${failedBelowThreshold.length})`,
+              copyText: failedBelowThreshold.join("\n"),
+              copyStatusMessage: `Copied ${failedBelowThreshold.length} low-fidelity deck card name${failedBelowThreshold.length === 1 ? "" : "s"}`,
+            });
+          }
+          if (failedToParse.length > 0) {
+            copyActions.push({
+              label: `Copy parse (${failedToParse.length})`,
+              copyText: failedToParse.join("\n"),
+              copyStatusMessage: `Copied ${failedToParse.length} unparsed deck card name${failedToParse.length === 1 ? "" : "s"}`,
+            });
+          }
+          const issueSummary = [
+            failedBelowThreshold.length > 0
+              ? `${failedBelowThreshold.length} below threshold`
+              : null,
+            failedToParse.length > 0 ? `${failedToParse.length} failed to parse` : null,
+          ]
+            .filter(Boolean)
+            .join(". ");
+          pushNotice({
+            tone: "error",
+            title: "Deck load issues",
+            body: `${failed.length} card${failed.length === 1 ? "" : "s"} failed. ${issueSummary ? `${issueSummary}. ` : ""}Use the copy actions below.`,
+            actions: copyActions,
+          });
+        }
+        if (failed.length > 0) {
+          const unique = [...new Set(failed)];
+          const failedStr = unique.length <= 5
+            ? unique.join(", ")
+            : `${unique.slice(0, 5).join(", ")} (+${unique.length - 5} more)`;
+          const issueSummary = [
+            failedBelowThreshold.length > 0
+              ? `${failedBelowThreshold.length} below threshold`
+              : null,
+            failedToParse.length > 0 ? `${failedToParse.length} failed to parse` : null,
+          ]
+            .filter(Boolean)
+            .join(", ");
+          await refresh(
+            `Loaded ${loaded} cards. ${failed.length} failed${issueSummary ? ` (${issueSummary})` : ""}: ${failedStr}`
+          );
+        } else {
+          await refresh(`Loaded ${loaded} cards`);
+        }
+      } catch (err) {
+        setStatus(`Load decks failed: ${err}`, true);
+      }
+    });
+  }, [game, multiplayer.mode, pushNotice, refresh, runWasmInteraction, setStatus]);
+
+  const handleChangePerspective = useCallback(
+    async (playerIndex) => {
+      return runWasmInteraction(async () => {
+        if (!game) return;
+        if (multiplayer.matchStarted) {
+          setStatus("Perspective is fixed during multiplayer matches", true);
+          return;
+        }
+        try {
+          await game.setPerspective(playerIndex);
+          await refresh(`Viewing as player ${playerIndex}`);
+        } catch (err) {
+          setStatus(`Change player failed: ${err}`, true);
+        }
+      });
     },
-    [game, multiplayer.matchStarted, refresh, setStatus]
+    [game, multiplayer.matchStarted, refresh, runWasmInteraction, setStatus]
   );
 
   if (loading) {
@@ -421,7 +428,7 @@ export default function Shell() {
         setStartingLife={setStartingLife}
         onReset={handleReset}
         onChangePerspective={handleChangePerspective}
-        onRefresh={() => refresh("Refreshed")}
+        onRefresh={() => void runWasmInteraction(() => refresh("Refreshed"))}
         onToggleLog={() => setLogOpen((o) => !o)}
         onEnterDeckLoading={() => {
           setPuzzleSetupMode(false);
@@ -471,7 +478,9 @@ export default function Shell() {
         puzzleSetupMode={puzzleSetupMode}
         onLoadDecks={handleLoadCustomDecks}
         onCancelDeckLoading={() => setDeckLoadingMode(false)}
-        onLoadPuzzle={loadPuzzle}
+        onLoadPuzzle={(payload, successMessage) => runWasmInteraction(
+          () => loadPuzzle(payload, successMessage)
+        )}
         onCancelPuzzleSetup={() => setPuzzleSetupMode(false)}
         notices={notices}
         onDismissNotice={dismissNotice}

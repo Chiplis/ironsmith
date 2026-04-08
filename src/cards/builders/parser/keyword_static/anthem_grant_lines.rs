@@ -70,7 +70,7 @@ fn anthem_last_index_where(
     None
 }
 
-type AnthemNormalizedWords = crate::cards::builders::parser::grammar::primitives::TokenWordView;
+type AnthemNormalizedWords<'a> = crate::cards::builders::parser::grammar::primitives::TokenWordView<'a>;
 
 pub(crate) fn parse_subject_cant_be_blocked_line(
     tokens: &[OwnedLexToken],
@@ -2253,6 +2253,9 @@ pub(crate) fn parse_anthem_clause(
             })?;
             scale = Some(match x_value {
                 Value::Count(filter) => AnthemCountExpression::MatchingFilter(filter),
+                Value::CountersOnSource(counter_type) => {
+                    AnthemCountExpression::CountersOnSource(counter_type)
+                }
                 Value::BasicLandTypesAmong(filter) => {
                     AnthemCountExpression::BasicLandTypesAmong(filter)
                 }

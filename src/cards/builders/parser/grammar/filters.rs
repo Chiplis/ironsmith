@@ -38,7 +38,7 @@ use crate::target::{ObjectFilter, PlayerFilter, TaggedOpbjectRelation};
 use crate::types::{CardType, Supertype};
 use crate::zone::Zone;
 
-type GrammarFilterNormalizedWords = TokenWordView;
+type GrammarFilterNormalizedWords<'a> = TokenWordView<'a>;
 
 type FilterWordInput<'a> = primitives::WordSliceInput<'a>;
 
@@ -4104,6 +4104,9 @@ pub(super) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             [first, second, ..] if *first == "each" && *second == "opponent" => {
                 Some((PlayerAst::Opponent, 2))
             }
+            [first, second, ..] if (*first == "a" || *first == "any") && *second == "player" => {
+                Some((PlayerAst::Any, 2))
+            }
             [first, second, ..] if *first == "defending" && *second == "player" => {
                 Some((PlayerAst::Defending, 2))
             }
@@ -4117,6 +4120,7 @@ pub(super) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             [first, second, ..] if *first == "player" && *second == "who" => {
                 Some((PlayerAst::That, 1))
             }
+            [first, ..] if *first == "player" => Some((PlayerAst::Any, 1)),
             _ => None,
         }
     };
@@ -4220,6 +4224,39 @@ pub(super) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
 
     if let Some((player, subject_len)) = parse_comparison_player_subject(&filtered)
         && filtered.get(subject_len).copied() == Some("has")
+        && matches!(
+            &filtered[subject_len + 1..],
+            ["more", "card", "in", "hand", "than", "each", "other", "player"]
+                | ["more", "cards", "in", "hand", "than", "each", "other", "player"]
+                | [
+                    "more",
+                    "card",
+                    "in",
+                    "their",
+                    "hand",
+                    "than",
+                    "each",
+                    "other",
+                    "player",
+                ]
+                | [
+                    "more",
+                    "cards",
+                    "in",
+                    "their",
+                    "hand",
+                    "than",
+                    "each",
+                    "other",
+                    "player",
+                ]
+        )
+    {
+        return Ok(PredicateAst::PlayerHasMoreCardsInHandThanEachOtherPlayer { player });
+    }
+
+    if let Some((player, subject_len)) = parse_comparison_player_subject(&filtered)
+        && filtered.get(subject_len).copied() == Some("has")
         && let Some(count_word) = filtered.get(subject_len + 1).copied()
         && let Some(count) = parse_named_number(count_word)
         && filtered.get(subject_len + 2).copied() == Some("or")
@@ -4283,6 +4320,22 @@ pub(super) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             "under",
             "your",
             "control",
+            "this",
+            "turn"
+        ] | [
+            "permanent",
+            "you",
+            "controlled",
+            "left",
+            "battlefield",
+            "this",
+            "turn"
+        ] | [
+            "permanents",
+            "you",
+            "controlled",
+            "left",
+            "battlefield",
             "this",
             "turn"
         ]

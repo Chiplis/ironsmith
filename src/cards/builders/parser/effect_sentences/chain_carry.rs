@@ -232,6 +232,10 @@ fn normalize_or_action_option_lexed(mut option: &[OwnedLexToken]) -> &[OwnedLexT
 pub(crate) fn parse_or_action_clause_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    fn word_is(word: Option<&str>, expected: &str) -> bool {
+        word.is_some_and(|word| word.eq_ignore_ascii_case(expected))
+    }
+
     if !grammar::contains_word(tokens, "or") {
         return Ok(None);
     }
@@ -244,6 +248,20 @@ pub(crate) fn parse_or_action_clause_lexed(
     let first = normalize_or_action_option_lexed(option_tokens.remove(0));
     let second = normalize_or_action_option_lexed(option_tokens.remove(0));
     if first.is_empty() || second.is_empty() {
+        return Ok(None);
+    }
+
+    let first_words = crate::cards::builders::parser::token_word_refs(first);
+    let second_words = crate::cards::builders::parser::token_word_refs(second);
+    if word_is(first_words.first().copied(), "tap")
+        && word_is(second_words.first().copied(), "untap")
+        && first_words
+            .get(1)
+            .is_some_and(|word| word.eq_ignore_ascii_case("all") || word.eq_ignore_ascii_case("each"))
+        && second_words
+            .get(1)
+            .is_some_and(|word| word.eq_ignore_ascii_case("all") || word.eq_ignore_ascii_case("each"))
+    {
         return Ok(None);
     }
 
@@ -561,6 +579,7 @@ pub(crate) fn parse_effect_chain_inner_lexed(
         effects.push(effect);
     }
     collapse_for_each_player_it_tag_followups(&mut effects);
+    collapse_for_each_object_it_tag_followups(&mut effects);
     collapse_token_copy_next_end_step_exile_followup_lexed(&mut effects, tokens);
     collapse_token_copy_next_end_step_sacrifice_followup_lexed(&mut effects, tokens);
     collapse_token_copy_end_of_combat_exile_followup_lexed(&mut effects, tokens);
@@ -657,6 +676,34 @@ pub(crate) fn collapse_for_each_player_it_tag_followups(effects: &mut Vec<Effect
                 },
             ) => {
                 first_effects.append(&mut followup_effects);
+            }
+            _ => {
+                // Defensive: should be unreachable given should_merge checks.
+            }
+        }
+        // Re-check this index in case we have a longer chain of followups.
+    }
+}
+
+pub(crate) fn collapse_for_each_object_it_tag_followups(effects: &mut Vec<EffectAst>) {
+    let mut idx = 0usize;
+    while idx + 1 < effects.len() {
+        let should_merge = match (&effects[idx], &effects[idx + 1]) {
+            (EffectAst::ForEachObject { .. }, followup) => {
+                effects_reference_it_tag(std::slice::from_ref(followup))
+            }
+            _ => false,
+        };
+
+        if !should_merge {
+            idx += 1;
+            continue;
+        }
+
+        let followup = effects.remove(idx + 1);
+        match (&mut effects[idx], followup) {
+            (EffectAst::ForEachObject { effects: inner, .. }, followup) => {
+                inner.push(followup);
             }
             _ => {
                 // Defensive: should be unreachable given should_merge checks.
@@ -1511,6 +1558,9 @@ pub(crate) fn bind_implicit_player_context(effect: &mut EffectAst, player: Playe
         | EffectAst::SearchLibrary {
             player: effect_player,
             ..
+        }
+        | EffectAst::ShuffleHandAndGraveyardIntoLibrary {
+            player: effect_player,
         }
         | EffectAst::ShuffleGraveyardIntoLibrary {
             player: effect_player,

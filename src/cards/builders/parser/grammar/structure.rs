@@ -408,6 +408,13 @@ fn classify_if_result_predicate(words: &[&str]) -> Option<IfResultPredicate> {
     {
         return Some(IfResultPredicate::Did);
     }
+    if words.len() >= 3
+        && words[0] == "you"
+        && (words[1] == "win" || words[1] == "won")
+        && words.contains(&"flip")
+    {
+        return Some(IfResultPredicate::Did);
+    }
     if words.len() == 2 && words[0] == "they" && words[1] == "do" {
         return Some(IfResultPredicate::Did);
     }
@@ -482,6 +489,13 @@ fn classify_if_result_predicate(words: &[&str]) -> Option<IfResultPredicate> {
     }
 
     if is_exact_negated_result("you") || is_negated_this_way_result("you") {
+        return Some(IfResultPredicate::DidNot);
+    }
+    if words.len() >= 3
+        && words[0] == "you"
+        && matches!(words[1], "lose" | "lost")
+        && words.contains(&"flip")
+    {
         return Some(IfResultPredicate::DidNot);
     }
     if is_exact_negated_result("they") || is_negated_this_way_result("they") {

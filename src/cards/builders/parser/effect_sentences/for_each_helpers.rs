@@ -735,7 +735,7 @@ pub(crate) fn parse_for_each_opponent_clause(
         }
         let mut effects = parse_effect_chain_inner(&effect_tokens)?;
         for effect in &mut effects {
-            bind_implicit_player_context(effect, PlayerAst::You);
+            bind_implicit_player_context(effect, PlayerAst::That);
         }
         return Ok(Some(EffectAst::ForEachOpponentDid {
             effects,
@@ -835,7 +835,7 @@ pub(crate) fn parse_for_each_opponent_clause(
         }
         let mut effects = parse_effect_chain_inner(&effect_tokens)?;
         for effect in &mut effects {
-            bind_implicit_player_context(effect, PlayerAst::You);
+            bind_implicit_player_context(effect, PlayerAst::That);
         }
         return Ok(Some(EffectAst::ForEachPlayerDid {
             effects,
@@ -935,7 +935,7 @@ pub(crate) fn parse_for_each_opponent_clause(
         }
         let mut effects = parse_effect_chain_inner(&effect_tokens)?;
         for effect in &mut effects {
-            bind_implicit_player_context(effect, PlayerAst::You);
+            bind_implicit_player_context(effect, PlayerAst::That);
         }
         return Ok(Some(EffectAst::ForEachPlayerDid {
             effects,
@@ -1303,7 +1303,7 @@ pub(crate) fn parse_for_each_player_clause(
         }
         let mut effects = parse_effect_chain_inner(&effect_tokens)?;
         for effect in &mut effects {
-            bind_implicit_player_context(effect, PlayerAst::You);
+            bind_implicit_player_context(effect, PlayerAst::That);
         }
         return Ok(Some(EffectAst::ForEachPlayerDid {
             effects,

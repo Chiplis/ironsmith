@@ -47,6 +47,7 @@ pub(crate) fn resolve_non_target_player_filter(
         PlayerAst::Chosen => Ok(PlayerFilter::ChosenPlayer),
         PlayerAst::Defending => Ok(PlayerFilter::Defending),
         PlayerAst::Attacking => Ok(PlayerFilter::Attacking),
+        PlayerAst::MostCardsInHand => Ok(PlayerFilter::MostCardsInHand),
         PlayerAst::Target | PlayerAst::TargetOpponent => Err(CardTextError::ParseError(
             "target player requires explicit targeting".to_string(),
         )),

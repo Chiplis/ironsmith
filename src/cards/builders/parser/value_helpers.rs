@@ -16,7 +16,7 @@ use super::util::{
     parse_value_expr_words, token_index_for_word_index, trim_commas,
 };
 
-type ValueHelperCompatWords = TokenWordView;
+type ValueHelperCompatWords<'a> = TokenWordView<'a>;
 
 fn word_refs_have(words: &[&str], expected: &str) -> bool {
     let mut idx = 0usize;

@@ -1420,8 +1420,10 @@ fn parse_number_of_counters_on_source_value(filter_words: &[&str]) -> Option<Val
         | Some(["thiss", "permanent"])
         | Some(["thiss", "source"])
         | Some(["thiss", "artifact"])
+        | Some(["this", "equipment"])
         | Some(["thiss", "land"])
-        | Some(["thiss", "enchantment"]) => Some(Value::CountersOnSource(counter_type)),
+        | Some(["thiss", "enchantment"])
+        | Some(["thiss", "equipment"]) => Some(Value::CountersOnSource(counter_type)),
         _ => None,
     }
 }

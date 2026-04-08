@@ -2356,8 +2356,8 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
 
             if let Some(card_type) = parse_card_type(tail[type_idx]) {
                 added_card_types.push(card_type);
-            } else if let Some(subtype) =
-                parse_subtype_word(tail[type_idx]).or_else(|| parse_subtype_flexible(tail[type_idx]))
+            } else if let Some(subtype) = parse_subtype_word(tail[type_idx])
+                .or_else(|| parse_subtype_flexible(tail[type_idx]))
             {
                 added_subtypes.push(subtype);
             } else {

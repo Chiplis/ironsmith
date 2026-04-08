@@ -4,6 +4,7 @@ import { usePeerLobby } from "@/hooks/usePeerLobby";
 import { emitSyncFailureNotice } from "@/lib/ui-notices";
 import { cardsMeetingThresholdFromStats, loadSemanticStats } from "@/lib/semanticCache";
 import { priorityHoldReason } from "@/lib/priority-automation";
+import { createWasmInteractionGate } from "@/lib/wasmInteractionGate";
 import {
   buildTriggerOrderingKey,
   defaultTriggerOrderingOrder,
@@ -473,6 +474,12 @@ export function GameProvider({ children }) {
     inFlight: false,
     expiresAt: -Infinity,
   });
+  const wasmInteractionGateRef = useRef(createWasmInteractionGate());
+
+  const runWasmInteraction = useCallback(
+    (task) => wasmInteractionGateRef.current.run(task),
+    []
+  );
 
   const armTargetSubmitDebounce = useCallback(() => {
     const now = performance.now();
@@ -1216,7 +1223,7 @@ export function GameProvider({ children }) {
     createLobby,
     joinLobby,
     leaveLobby,
-    startHostedMatch,
+    startHostedMatch: rawStartHostedMatch,
     updateLobbyDeck,
     submitMultiplayerCommand,
   } = usePeerLobby({
@@ -1225,6 +1232,11 @@ export function GameProvider({ children }) {
     setStatus,
     applySyncedCommand,
   });
+
+  const startHostedMatch = useCallback(
+    () => runWasmInteraction(() => rawStartHostedMatch()),
+    [rawStartHostedMatch, runWasmInteraction]
+  );
 
   useEffect(() => {
     multiplayerActiveRef.current = multiplayer.matchStarted;
@@ -1296,141 +1308,143 @@ export function GameProvider({ children }) {
   const dispatch = useCallback(
     async (command, successMessage) => {
       if (!game) return;
-      const isTargetSubmit = command?.type === "select_targets";
-      const currentDecision = stateRef.current?.decision || null;
-      const stopAfterTriggerOrderingSubmit = (
-        command?.type === "select_options"
-        && isTriggerOrderingDecision(currentDecision)
-      );
-      if (multiplayer.matchStarted) {
-        const currentState = stateRef.current;
-        if (!currentState?.decision) {
-          setStatus("No pending decision to submit", true);
+      return runWasmInteraction(async () => {
+        const isTargetSubmit = command?.type === "select_targets";
+        const currentDecision = stateRef.current?.decision || null;
+        const stopAfterTriggerOrderingSubmit = (
+          command?.type === "select_options"
+          && isTriggerOrderingDecision(currentDecision)
+        );
+        if (multiplayer.matchStarted) {
+          const currentState = stateRef.current;
+          if (!currentState?.decision) {
+            setStatus("No pending decision to submit", true);
+            return;
+          }
+          if (currentState.decision.player !== currentState.perspective) {
+            setStatus("Waiting for the active player");
+            return;
+          }
+          try {
+            if (isTargetSubmit) armTargetSubmitDebounce();
+            const syncedCommand = serializeMultiplayerCommand(command, currentState);
+            await submitMultiplayerCommand(syncedCommand, successMessage);
+            if (isTargetSubmit) settleTargetSubmitDebounce();
+          } catch (err) {
+            if (isTargetSubmit) clearTargetSubmitDebounce();
+            emitSyncFailureNotice(
+              "Sync failed",
+              err instanceof Error ? err.message : String(err)
+            );
+            setStatus(`Sync failed: ${err}`, true);
+            console.error(err);
+          }
           return;
         }
-        if (currentState.decision.player !== currentState.perspective) {
-          setStatus("Waiting for the active player");
-          return;
-        }
+
+        const decisionBefore = summarizeDecision(stateRef.current?.decision || null);
+        const commandSummary = summarizeCommand(command);
+
         try {
+          console.debug("[ironsmith] dispatch:start", {
+            command: commandSummary,
+            decision: decisionBefore,
+            compatible: isDecisionCommandCompatible(stateRef.current?.decision || null, command),
+          });
+
+          const dispatchStartedAt = performance.now();
           if (isTargetSubmit) armTargetSubmitDebounce();
-          const syncedCommand = serializeMultiplayerCommand(command, currentState);
-          await submitMultiplayerCommand(syncedCommand, successMessage);
+          let st = await game.dispatch(command);
+          const workerRoundTripMs = performance.now() - dispatchStartedAt;
           if (isTargetSubmit) settleTargetSubmitDebounce();
+          const workerPerf = readDispatchPerf(st);
+          const dispatchSuccessPayload = {
+            command: commandSummary,
+            decision_before: decisionBefore,
+            decision_after: summarizeDecision(st?.decision || null),
+            stack_size_after: st?.stack_size ?? null,
+            stack_preview_after: Array.isArray(st?.stack_preview) ? st.stack_preview.slice(0, 4) : null,
+            resolving_after: st?.resolving_stack_object
+              ? {
+                id: st.resolving_stack_object.id,
+                name: st.resolving_stack_object.name,
+              }
+              : null,
+            perf: {
+              worker_round_trip_ms: workerRoundTripMs,
+              worker_to_main_transfer_ms: workerPerf
+                ? Math.max(0, workerRoundTripMs - Number(workerPerf.totalWorkerMs || 0))
+                : null,
+              worker: workerPerf,
+            },
+          };
+          console.info("[ironsmith] dispatch:success", dispatchSuccessPayload);
+          recordPerfEvent("dispatch:success", dispatchSuccessPayload);
+          const finalizeStartedAt = performance.now();
+          await finalizeState(game, st, {
+            message: successMessage,
+            allowOpponentAutomation: !stopAfterTriggerOrderingSubmit,
+            allowTrivialAutomation: !stopAfterTriggerOrderingSubmit,
+            clearViewedCards: true,
+          });
+          const finalizeMs = performance.now() - finalizeStartedAt;
+          const dispatchTimingPayload = {
+            command: commandSummary,
+            worker_round_trip_ms: workerRoundTripMs,
+            finalize_ms: finalizeMs,
+            total_to_finalize_ms: performance.now() - dispatchStartedAt,
+          };
+          console.info("[ironsmith] dispatch:timing", dispatchTimingPayload);
+          recordPerfEvent("dispatch:timing", dispatchTimingPayload);
+          if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+            const paintRequestedAt = performance.now();
+            window.requestAnimationFrame(() => {
+              const dispatchPaintPayload = {
+                command: commandSummary,
+                post_finalize_to_next_paint_ms: performance.now() - paintRequestedAt,
+                total_to_next_paint_ms: performance.now() - dispatchStartedAt,
+              };
+              console.info("[ironsmith] dispatch:paint", dispatchPaintPayload);
+              recordPerfEvent("dispatch:paint", dispatchPaintPayload);
+            });
+          }
         } catch (err) {
+          const errorMessage = err instanceof Error ? err.message : String(err);
+          let decisionAfterError = null;
           if (isTargetSubmit) clearTargetSubmitDebounce();
-          emitSyncFailureNotice(
-            "Sync failed",
-            err instanceof Error ? err.message : String(err)
-          );
-          setStatus(`Sync failed: ${err}`, true);
+          try {
+            const liveState = await game.uiState();
+            decisionAfterError = summarizeDecision(liveState?.decision || null);
+          } catch {
+            // Best effort only; keep the original dispatch failure.
+          }
+          console.error("[ironsmith] dispatch:failed", {
+            error: errorMessage,
+            command: commandSummary,
+            decision_before: decisionBefore,
+            decision_after_error: decisionAfterError,
+            compatible_before: isDecisionCommandCompatible(decisionBefore, commandSummary),
+            compatible_after_error: isDecisionCommandCompatible(
+              decisionAfterError,
+              commandSummary
+            ),
+          });
+
+          try {
+            // Roll back to the replay checkpoint so the game returns to a
+            // consistent state (e.g. before a multi-step decision chain).
+            let st = await game.cancelDecision();
+            await finalizeState(game, st, {
+              allowOpponentAutomation: true,
+              allowTrivialAutomation: true,
+            });
+          } catch {
+            // keep original error
+          }
+          setStatus(`Action failed: ${err}`, true);
           console.error(err);
         }
-        return;
-      }
-
-      const decisionBefore = summarizeDecision(stateRef.current?.decision || null);
-      const commandSummary = summarizeCommand(command);
-
-      try {
-        console.debug("[ironsmith] dispatch:start", {
-          command: commandSummary,
-          decision: decisionBefore,
-          compatible: isDecisionCommandCompatible(stateRef.current?.decision || null, command),
-        });
-
-        const dispatchStartedAt = performance.now();
-        if (isTargetSubmit) armTargetSubmitDebounce();
-        let st = await game.dispatch(command);
-        const workerRoundTripMs = performance.now() - dispatchStartedAt;
-        if (isTargetSubmit) settleTargetSubmitDebounce();
-        const workerPerf = readDispatchPerf(st);
-        const dispatchSuccessPayload = {
-          command: commandSummary,
-          decision_before: decisionBefore,
-          decision_after: summarizeDecision(st?.decision || null),
-          stack_size_after: st?.stack_size ?? null,
-          stack_preview_after: Array.isArray(st?.stack_preview) ? st.stack_preview.slice(0, 4) : null,
-          resolving_after: st?.resolving_stack_object
-            ? {
-              id: st.resolving_stack_object.id,
-              name: st.resolving_stack_object.name,
-            }
-            : null,
-          perf: {
-            worker_round_trip_ms: workerRoundTripMs,
-            worker_to_main_transfer_ms: workerPerf
-              ? Math.max(0, workerRoundTripMs - Number(workerPerf.totalWorkerMs || 0))
-              : null,
-            worker: workerPerf,
-          },
-        };
-        console.info("[ironsmith] dispatch:success", dispatchSuccessPayload);
-        recordPerfEvent("dispatch:success", dispatchSuccessPayload);
-        const finalizeStartedAt = performance.now();
-        await finalizeState(game, st, {
-          message: successMessage,
-          allowOpponentAutomation: !stopAfterTriggerOrderingSubmit,
-          allowTrivialAutomation: !stopAfterTriggerOrderingSubmit,
-          clearViewedCards: true,
-        });
-        const finalizeMs = performance.now() - finalizeStartedAt;
-        const dispatchTimingPayload = {
-          command: commandSummary,
-          worker_round_trip_ms: workerRoundTripMs,
-          finalize_ms: finalizeMs,
-          total_to_finalize_ms: performance.now() - dispatchStartedAt,
-        };
-        console.info("[ironsmith] dispatch:timing", dispatchTimingPayload);
-        recordPerfEvent("dispatch:timing", dispatchTimingPayload);
-        if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
-          const paintRequestedAt = performance.now();
-          window.requestAnimationFrame(() => {
-            const dispatchPaintPayload = {
-              command: commandSummary,
-              post_finalize_to_next_paint_ms: performance.now() - paintRequestedAt,
-              total_to_next_paint_ms: performance.now() - dispatchStartedAt,
-            };
-            console.info("[ironsmith] dispatch:paint", dispatchPaintPayload);
-            recordPerfEvent("dispatch:paint", dispatchPaintPayload);
-          });
-        }
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : String(err);
-        let decisionAfterError = null;
-        if (isTargetSubmit) clearTargetSubmitDebounce();
-        try {
-          const liveState = await game.uiState();
-          decisionAfterError = summarizeDecision(liveState?.decision || null);
-        } catch {
-          // Best effort only; keep the original dispatch failure.
-        }
-        console.error("[ironsmith] dispatch:failed", {
-          error: errorMessage,
-          command: commandSummary,
-          decision_before: decisionBefore,
-          decision_after_error: decisionAfterError,
-          compatible_before: isDecisionCommandCompatible(decisionBefore, commandSummary),
-          compatible_after_error: isDecisionCommandCompatible(
-            decisionAfterError,
-            commandSummary
-          ),
-        });
-
-        try {
-          // Roll back to the replay checkpoint so the game returns to a
-          // consistent state (e.g. before a multi-step decision chain).
-          let st = await game.cancelDecision();
-          await finalizeState(game, st, {
-            allowOpponentAutomation: true,
-            allowTrivialAutomation: true,
-          });
-        } catch {
-          // keep original error
-        }
-        setStatus(`Action failed: ${err}`, true);
-        console.error(err);
-      }
+      });
     },
     [
       armTargetSubmitDebounce,
@@ -1438,6 +1452,7 @@ export function GameProvider({ children }) {
       finalizeState,
       game,
       multiplayer.matchStarted,
+      runWasmInteraction,
       setStatus,
       settleTargetSubmitDebounce,
       submitMultiplayerCommand,
@@ -1447,55 +1462,58 @@ export function GameProvider({ children }) {
   const cancelDecision = useCallback(
     async () => {
       if (!game) return;
-      if (multiplayer.matchStarted) {
-        const currentState = stateRef.current;
-        if (!currentState?.decision) {
-          setStatus("No pending decision to cancel", true);
+      return runWasmInteraction(async () => {
+        if (multiplayer.matchStarted) {
+          const currentState = stateRef.current;
+          if (!currentState?.decision) {
+            setStatus("No pending decision to cancel", true);
+            return;
+          }
+          if (currentState.decision.player !== currentState.perspective) {
+            setStatus("Waiting for the active player");
+            return;
+          }
+          if (multiplayer.submittingAction || shouldSuppressImmediateCancel()) {
+            queuedSyncedCancelRef.current = true;
+            setStatus("Cancel queued while the current action syncs");
+            return;
+          }
+          try {
+            queuedSyncedCancelRef.current = false;
+            await submitMultiplayerCommand({ type: "cancel_decision" }, "Decision cancelled");
+          } catch (err) {
+            emitSyncFailureNotice(
+              "Sync failed",
+              err instanceof Error ? err.message : String(err)
+            );
+            setStatus(`Cancel failed: ${err}`, true);
+            console.error(err);
+          }
           return;
         }
-        if (currentState.decision.player !== currentState.perspective) {
-          setStatus("Waiting for the active player");
-          return;
-        }
-        if (multiplayer.submittingAction || shouldSuppressImmediateCancel()) {
-          queuedSyncedCancelRef.current = true;
-          setStatus("Cancel queued while the current action syncs");
+        if (shouldSuppressImmediateCancel()) {
           return;
         }
         try {
-          queuedSyncedCancelRef.current = false;
-          await submitMultiplayerCommand({ type: "cancel_decision" }, "Decision cancelled");
+          let st = await game.cancelDecision();
+          await finalizeState(game, st, {
+            message: "Decision cancelled",
+            allowOpponentAutomation: true,
+            allowTrivialAutomation: true,
+            clearViewedCards: true,
+          });
         } catch (err) {
-          emitSyncFailureNotice(
-            "Sync failed",
-            err instanceof Error ? err.message : String(err)
-          );
           setStatus(`Cancel failed: ${err}`, true);
           console.error(err);
         }
-        return;
-      }
-      if (shouldSuppressImmediateCancel()) {
-        return;
-      }
-      try {
-        let st = await game.cancelDecision();
-        await finalizeState(game, st, {
-          message: "Decision cancelled",
-          allowOpponentAutomation: true,
-          allowTrivialAutomation: true,
-          clearViewedCards: true,
-        });
-      } catch (err) {
-        setStatus(`Cancel failed: ${err}`, true);
-        console.error(err);
-      }
+      });
     },
     [
       finalizeState,
       game,
       multiplayer.matchStarted,
       multiplayer.submittingAction,
+      runWasmInteraction,
       setStatus,
       shouldSuppressImmediateCancel,
       submitMultiplayerCommand,
@@ -1515,6 +1533,7 @@ export function GameProvider({ children }) {
       wasmRegistryTotal,
       status,
       setStatus,
+      runWasmInteraction,
       dispatch,
       cancelDecision,
       refresh,
@@ -1552,6 +1571,7 @@ export function GameProvider({ children }) {
       wasmRegistryTotal,
       status,
       setStatus,
+      runWasmInteraction,
       dispatch, cancelDecision, refresh, autoPassEnabled, holdRule, confirmEnabled, inspectorDebug,
       activeTriggerOrderingState, moveTriggerOrderingItem,
       semanticThreshold, setSemanticThreshold, cardsMeetingThreshold,

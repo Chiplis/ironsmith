@@ -115,6 +115,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::DrawForEachTaggedMatching { .. } => {}
         EffectAst::Counter { .. } => {}
         EffectAst::CounterUnlessPays { .. } => {}
+        EffectAst::FlipCoin { .. } => {}
         EffectAst::UnlessPays { .. } => {}
         EffectAst::UnlessAction { .. } => {}
         EffectAst::PutCounters { .. } => {}
@@ -126,6 +127,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::Tap { .. } => {}
         EffectAst::TapAll { .. } => {}
         EffectAst::Untap { .. } => {}
+        EffectAst::TapOrUntapAll { .. } => {}
         EffectAst::PhaseOut { .. } => {}
         EffectAst::RemoveFromCombat { .. } => {}
         EffectAst::TapOrUntap { .. } => {}
@@ -215,6 +217,9 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary {
             ..
         } => {}
+        EffectAst::ChooseFromLookedCardsOntoBattlefieldAndIntoHandRestOnBottomOfLibrary {
+            ..
+        } => {}
         EffectAst::PutRestOnBottomOfLibrary => {}
         EffectAst::CopySpell { .. } => {}
         EffectAst::RetargetStackObject { .. } => {}
@@ -244,6 +249,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::ReturnToBattlefield { .. } => {}
         EffectAst::MoveToZone { .. } => {}
         EffectAst::ShuffleObjectsIntoLibrary { .. } => {}
+        EffectAst::ShuffleHandAndGraveyardIntoLibrary { .. } => {}
         EffectAst::MoveToLibraryNthFromTop { .. } => {}
         EffectAst::ReturnAllToHand { .. } => {}
         EffectAst::ReturnAllToHandOfChosenColor { .. } => {}
@@ -269,6 +275,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::EnergyCounters { .. } => {}
         EffectAst::ChooseCardName { .. } => {}
         EffectAst::ChooseColor { .. } => {}
+        EffectAst::ChooseCardType { .. } => {}
         EffectAst::ChooseNamedOption { .. } => {}
         EffectAst::ChooseCreatureType { .. } => {}
         EffectAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn => {}

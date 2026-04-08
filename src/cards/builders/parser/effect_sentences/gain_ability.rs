@@ -36,7 +36,7 @@ use crate::mana::ManaCost;
 use crate::target::PlayerFilter;
 use crate::zone::Zone;
 
-type GainAbilityWordView = TokenWordView;
+type GainAbilityWordView<'a> = TokenWordView<'a>;
 
 const UNTIL_YOUR_NEXT_TURN_PREFIXES: &[&[&str]] = &[
     &["until", "your", "next", "turn"],

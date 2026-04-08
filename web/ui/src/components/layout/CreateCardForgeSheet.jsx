@@ -286,7 +286,7 @@ export default function CreateCardForgeSheet({
   onSkipTriggersChange,
   trigger = null,
 }) {
-  const { game, refresh, setStatus } = useGame();
+  const { game, refresh, runWasmInteraction, setStatus } = useGame();
   const [open, setOpen] = useState(false);
   const [seedLoading, setSeedLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -413,26 +413,28 @@ export default function CreateCardForgeSheet({
   }, [seedDraft]);
 
   const handleCreate = useCallback(async () => {
-    if (!game || typeof game.createCustomCard !== "function") {
-      setStatus("This WASM build does not expose createCustomCard", true);
-      return;
-    }
-    setSubmitting(true);
-    try {
-      await game.createCustomCard({
-        draft: normalizeDraftForApi(draft),
-        playerIndex: selectedPlayer,
-        zoneName: zone,
-        skipTriggers,
-      });
-      setOpen(false);
-      await refresh(`Created ${primaryName}`);
-    } catch (error) {
-      setStatus(`Create card failed: ${String(error?.message || error)}`, true);
-    } finally {
-      setSubmitting(false);
-    }
-  }, [draft, game, primaryName, refresh, selectedPlayer, setStatus, skipTriggers, zone]);
+    return runWasmInteraction(async () => {
+      if (!game || typeof game.createCustomCard !== "function") {
+        setStatus("This WASM build does not expose createCustomCard", true);
+        return;
+      }
+      setSubmitting(true);
+      try {
+        await game.createCustomCard({
+          draft: normalizeDraftForApi(draft),
+          playerIndex: selectedPlayer,
+          zoneName: zone,
+          skipTriggers,
+        });
+        setOpen(false);
+        await refresh(`Created ${primaryName}`);
+      } catch (error) {
+        setStatus(`Create card failed: ${String(error?.message || error)}`, true);
+      } finally {
+        setSubmitting(false);
+      }
+    });
+  }, [draft, game, primaryName, refresh, runWasmInteraction, selectedPlayer, setStatus, skipTriggers, zone]);
 
   const faceTabs = useMemo(() => (
     draft.faces.map((face, index) => ({
@@ -494,7 +496,7 @@ export default function CreateCardForgeSheet({
                 size="sm"
                 className="stone-pill"
                 disabled={seedLoading}
-                onClick={() => void loadSeed({ reroll: true })}
+                onClick={() => void runWasmInteraction(() => loadSeed({ reroll: true }))}
               >
                 <RefreshCw className={cn("size-3.5", seedLoading && "animate-spin")} />
                 New Sample

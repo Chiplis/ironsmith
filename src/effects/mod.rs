@@ -73,7 +73,7 @@ pub use cards::{
     PutTaggedRemainderOnLibraryBottomEffect, RearrangeLookedCardsInLibraryEffect,
     RevealFromHandEffect, RevealTaggedEffect, RevealTopEffect, ScryEffect, SearchLibraryEffect,
     SearchLibrarySlot, SearchLibrarySlotsEffect, ShuffleGraveyardIntoLibraryEffect,
-    ShuffleLibraryEffect, SurveilEffect,
+    ShuffleHandAndGraveyardIntoLibraryEffect, ShuffleLibraryEffect, SurveilEffect,
 };
 pub use combat::{
     EnterAttackingEffect, ExchangeValueKind, ExchangeValueOperand, ExchangeValuesEffect,
@@ -130,13 +130,14 @@ pub use permanents::{
 };
 pub use player::{
     AdditionalLandPlaysEffect, BecomeMonarchEffect, CascadeEffect, CastSourceEffect,
-    CastTaggedEffect, ChooseCardNameEffect, ChooseColorEffect, ChooseCreatureTypeEffect,
-    ChooseNamedOptionEffect, ChoosePlayerEffect, ControlPlayerEffect, CreateEmblemEffect,
-    DiscoverEffect, EnergyCountersEffect, ExileInsteadOfGraveyardEffect, ExileThenGrantPlayEffect,
-    ExileUntilMatchCastEffect, ExileUntilMatchGrantPlayEffect, ExperienceCountersEffect,
-    ExtraTurnAfterNextTurnEffect, ExtraTurnEffect, GrantBySpecEffect, GrantEffect,
-    GrantNextSpellAbilityEffect, GrantNextSpellCostReductionEffect, GrantPlayTaggedDuration,
-    GrantPlayTaggedEffect, GrantTaggedSpellFreeCastUntilEndOfTurnEffect,
+    CastTaggedEffect, ChooseCardNameEffect, ChooseCardTypeEffect, ChooseColorEffect,
+    ChooseCreatureTypeEffect, ChooseNamedOptionEffect, ChoosePlayerEffect, ControlPlayerEffect,
+    CreateEmblemEffect, DiscoverEffect, EnergyCountersEffect, ExileInsteadOfGraveyardEffect,
+    ExileThenGrantPlayEffect, ExileUntilMatchCastEffect, ExileUntilMatchGrantPlayEffect,
+    ExperienceCountersEffect, ExtraTurnAfterNextTurnEffect, ExtraTurnEffect, FlipCoinEffect,
+    GrantBySpecEffect, GrantEffect, GrantNextSpellAbilityEffect,
+    GrantNextSpellCostReductionEffect, GrantPlayTaggedDuration, GrantPlayTaggedEffect,
+    GrantTaggedSpellFreeCastUntilEndOfTurnEffect,
     GrantTaggedSpellLifeCostByManaValueEffect, LoseTheGameEffect, PayEnergyEffect,
     PoisonCountersEffect, RingTemptsYouEffect, SkipCombatPhasesEffect, SkipDrawStepEffect,
     SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect, TakeInitiativeEffect,
