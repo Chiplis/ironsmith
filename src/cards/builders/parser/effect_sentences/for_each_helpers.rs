@@ -720,12 +720,12 @@ pub(crate) fn parse_for_each_opponent_clause(
         return Ok(Some(EffectAst::ForEachOpponentDid { effects, predicate }));
     }
     if grammar::words_match_any_prefix(&inner_tokens, WHO_ACTION_PREFIXES).is_some() {
-        let effect_token_start =
-            if let Some(comma_idx) = find_token_index(&inner_tokens, |token| token.is_comma()) {
-                comma_idx + 1
-            } else {
-                token_index_for_word_index(&inner_tokens, 2).unwrap_or(inner_tokens.len())
-            };
+        let comma_idx = find_token_index(&inner_tokens, |token| token.is_comma());
+        let effect_token_start = if let Some(comma_idx) = comma_idx {
+            comma_idx + 1
+        } else {
+            token_index_for_word_index(&inner_tokens, 2).unwrap_or(inner_tokens.len())
+        };
         let effect_tokens = trim_commas(&inner_tokens[effect_token_start..]);
         if effect_tokens.is_empty() {
             return Err(CardTextError::ParseError(format!(
@@ -734,8 +734,13 @@ pub(crate) fn parse_for_each_opponent_clause(
             )));
         }
         let mut effects = parse_effect_chain_inner(&effect_tokens)?;
+        let implicit_player = if comma_idx.is_some() {
+            PlayerAst::You
+        } else {
+            PlayerAst::That
+        };
         for effect in &mut effects {
-            bind_implicit_player_context(effect, PlayerAst::That);
+            bind_implicit_player_context(effect, implicit_player);
         }
         return Ok(Some(EffectAst::ForEachOpponentDid {
             effects,
@@ -820,12 +825,12 @@ pub(crate) fn parse_for_each_opponent_clause(
         return Ok(Some(EffectAst::ForEachPlayerDid { effects, predicate }));
     }
     if grammar::words_match_any_prefix(&inner_tokens, WHO_ACTION_PREFIXES).is_some() {
-        let effect_token_start =
-            if let Some(comma_idx) = find_token_index(&inner_tokens, |token| token.is_comma()) {
-                comma_idx + 1
-            } else {
-                token_index_for_word_index(&inner_tokens, 2).unwrap_or(inner_tokens.len())
-            };
+        let comma_idx = find_token_index(&inner_tokens, |token| token.is_comma());
+        let effect_token_start = if let Some(comma_idx) = comma_idx {
+            comma_idx + 1
+        } else {
+            token_index_for_word_index(&inner_tokens, 2).unwrap_or(inner_tokens.len())
+        };
         let effect_tokens = trim_commas(&inner_tokens[effect_token_start..]);
         if effect_tokens.is_empty() {
             return Err(CardTextError::ParseError(format!(
@@ -834,8 +839,13 @@ pub(crate) fn parse_for_each_opponent_clause(
             )));
         }
         let mut effects = parse_effect_chain_inner(&effect_tokens)?;
+        let implicit_player = if comma_idx.is_some() {
+            PlayerAst::You
+        } else {
+            PlayerAst::That
+        };
         for effect in &mut effects {
-            bind_implicit_player_context(effect, PlayerAst::That);
+            bind_implicit_player_context(effect, implicit_player);
         }
         return Ok(Some(EffectAst::ForEachPlayerDid {
             effects,
@@ -920,12 +930,12 @@ pub(crate) fn parse_for_each_opponent_clause(
         return Ok(Some(EffectAst::ForEachPlayerDid { effects, predicate }));
     }
     if grammar::words_match_any_prefix(&inner_tokens, WHO_ACTION_PREFIXES).is_some() {
-        let effect_token_start =
-            if let Some(comma_idx) = find_token_index(&inner_tokens, |token| token.is_comma()) {
-                comma_idx + 1
-            } else {
-                token_index_for_word_index(&inner_tokens, 2).unwrap_or(inner_tokens.len())
-            };
+        let comma_idx = find_token_index(&inner_tokens, |token| token.is_comma());
+        let effect_token_start = if let Some(comma_idx) = comma_idx {
+            comma_idx + 1
+        } else {
+            token_index_for_word_index(&inner_tokens, 2).unwrap_or(inner_tokens.len())
+        };
         let effect_tokens = trim_commas(&inner_tokens[effect_token_start..]);
         if effect_tokens.is_empty() {
             return Err(CardTextError::ParseError(format!(
@@ -934,8 +944,13 @@ pub(crate) fn parse_for_each_opponent_clause(
             )));
         }
         let mut effects = parse_effect_chain_inner(&effect_tokens)?;
+        let implicit_player = if comma_idx.is_some() {
+            PlayerAst::You
+        } else {
+            PlayerAst::That
+        };
         for effect in &mut effects {
-            bind_implicit_player_context(effect, PlayerAst::That);
+            bind_implicit_player_context(effect, implicit_player);
         }
         return Ok(Some(EffectAst::ForEachPlayerDid {
             effects,
@@ -1288,12 +1303,12 @@ pub(crate) fn parse_for_each_player_clause(
         return Ok(Some(EffectAst::ForEachPlayerDid { effects, predicate }));
     }
     if grammar::words_match_any_prefix(&inner_tokens, WHO_ACTION_PREFIXES).is_some() {
-        let effect_token_start =
-            if let Some(comma_idx) = find_token_index(&inner_tokens, |token| token.is_comma()) {
-                comma_idx + 1
-            } else {
-                token_index_for_word_index(&inner_tokens, 2).unwrap_or(inner_tokens.len())
-            };
+        let comma_idx = find_token_index(&inner_tokens, |token| token.is_comma());
+        let effect_token_start = if let Some(comma_idx) = comma_idx {
+            comma_idx + 1
+        } else {
+            token_index_for_word_index(&inner_tokens, 2).unwrap_or(inner_tokens.len())
+        };
         let effect_tokens = trim_commas(&inner_tokens[effect_token_start..]);
         if effect_tokens.is_empty() {
             return Err(CardTextError::ParseError(format!(
@@ -1302,8 +1317,13 @@ pub(crate) fn parse_for_each_player_clause(
             )));
         }
         let mut effects = parse_effect_chain_inner(&effect_tokens)?;
+        let implicit_player = if comma_idx.is_some() {
+            PlayerAst::You
+        } else {
+            PlayerAst::That
+        };
         for effect in &mut effects {
-            bind_implicit_player_context(effect, PlayerAst::That);
+            bind_implicit_player_context(effect, implicit_player);
         }
         return Ok(Some(EffectAst::ForEachPlayerDid {
             effects,

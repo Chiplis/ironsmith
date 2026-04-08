@@ -6916,6 +6916,30 @@ fn test_for_each_opponent_who_does_binds_implicit_followup_to_you() {
 }
 
 #[test]
+fn test_for_each_player_who_does_binds_implicit_followup_to_you() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Group Offer Variant")
+        .parse_text(
+            "Each player may create a Treasure token. For each player who does, create a Treasure token.",
+        )
+        .expect("parse each-player-who-does implicit follow-up");
+
+    let spell_effects = def.spell_effect.as_ref().expect("spell effects");
+    let debug = format!("{:?}", spell_effects);
+    assert!(
+        debug.contains("ForPlayersEffect"),
+        "expected per-player wrapper, got {debug}"
+    );
+    assert!(
+        debug.contains("IfEffect"),
+        "expected follow-up to compile as IfEffect, got {debug}"
+    );
+    assert!(
+        debug.contains("controller: You"),
+        "expected implicit follow-up token creation to bind to you, got {debug}"
+    );
+}
+
+#[test]
 fn test_each_player_tagged_followups_collapse_into_single_for_players_effect() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Duskmantle Seer Variant")
         .card_types(vec![CardType::Creature])

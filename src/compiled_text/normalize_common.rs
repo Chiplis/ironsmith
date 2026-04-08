@@ -5326,6 +5326,47 @@ pub(super) fn describe_search_selection_with_cards(selection: &str) -> String {
     format!("{} card", with_indefinite_article(selection))
 }
 
+pub(super) fn describe_revealed_selection_with_cards(selection: &str) -> String {
+    let selection = selection.trim();
+    if selection.is_empty() {
+        return "card".to_string();
+    }
+    if let Some(rest) = selection.strip_prefix("all ") {
+        let rest = rest.trim();
+        if rest == "nonland permanent" || rest == "nonland permanent card" {
+            return "all nonland permanent cards".to_string();
+        }
+        if rest == "permanent" || rest == "permanent card" {
+            return "all permanent cards".to_string();
+        }
+        if let Some(tail) = rest.strip_prefix("nonland permanent ") {
+            return format!("all nonland permanent cards {tail}");
+        }
+        if let Some(tail) = rest.strip_prefix("permanent ") {
+            return format!("all permanent cards {tail}");
+        }
+    }
+    if selection == "nonland permanent" || selection == "nonland permanent card" {
+        return "nonland permanent card".to_string();
+    }
+    if selection == "permanent" || selection == "permanent card" {
+        return "permanent card".to_string();
+    }
+    if let Some(name) = selection.strip_prefix("a permanent named ") {
+        return format!("a permanent card named {name}");
+    }
+    if let Some(name) = selection.strip_prefix("permanent named ") {
+        return format!("a permanent card named {name}");
+    }
+    if let Some(tail) = selection.strip_prefix("nonland permanent ") {
+        return format!("nonland permanent card {tail}");
+    }
+    if let Some(tail) = selection.strip_prefix("permanent ") {
+        return format!("permanent card {tail}");
+    }
+    describe_search_selection_with_cards(selection)
+}
+
 pub(super) fn normalize_search_you_own_clause(text: &str) -> Option<String> {
     let rest = text.strip_prefix("Search your library for ")?;
     let (selection, tail) = rest.split_once(" you own")?;

@@ -4239,7 +4239,7 @@ pub(super) fn describe_look_at_top_then_reveal_put_matching_onto_battlefield_res
         count_text = count_text.replace("that player controls", "they control");
     }
     let matching =
-        pluralize_noun_phrase(&describe_search_selection_with_cards(&filter.description()));
+        pluralize_noun_phrase(&describe_revealed_selection_with_cards(&filter.description()));
 
     Some(format!(
         "Reveal the top {count_text} {noun} of {owner} library. Put all {matching} revealed this way onto the battlefield and the rest into {owner} graveyard"
