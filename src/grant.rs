@@ -49,6 +49,8 @@ pub enum DerivedAlternativeCast {
     FlashbackFromCardManaCost { additional_costs: Vec<Cost> },
     /// Escape using the card's mana cost and exiling N other graveyard cards.
     EscapeFromCardManaCost { exile_count: u32 },
+    /// Cast from hand by paying generic mana equal to the card's mana value.
+    ManaValueAsGenericFromHand,
 }
 
 impl DerivedAlternativeCast {
@@ -56,13 +58,14 @@ impl DerivedAlternativeCast {
         match self {
             Self::FlashbackFromCardManaCost { .. } => "flashback",
             Self::EscapeFromCardManaCost { .. } => "Escape",
+            Self::ManaValueAsGenericFromHand => "Pay mana value",
         }
     }
 
     pub fn materialize_for(&self, card: &Object) -> Option<AlternativeCastingMethod> {
-        let mana_cost = card.mana_cost.clone()?;
         match self {
             Self::FlashbackFromCardManaCost { additional_costs } => {
+                let mana_cost = card.mana_cost.clone()?;
                 if !card.has_card_type(CardType::Instant) && !card.has_card_type(CardType::Sorcery)
                 {
                     return None;
@@ -78,6 +81,7 @@ impl DerivedAlternativeCast {
                 })
             }
             Self::EscapeFromCardManaCost { exile_count } => {
+                let mana_cost = card.mana_cost.clone()?;
                 if card.zone != Zone::Graveyard {
                     return None;
                 }
@@ -85,6 +89,20 @@ impl DerivedAlternativeCast {
                     cost: Some(mana_cost),
                     exile_count: *exile_count,
                 })
+            }
+            Self::ManaValueAsGenericFromHand => {
+                if card.zone != Zone::Hand {
+                    return None;
+                }
+                let mana_value =
+                    u8::try_from(card.mana_cost.as_ref().map_or(0, |c| c.mana_value())).ok()?;
+                Some(AlternativeCastingMethod::alternative_cost(
+                    "Pay mana value",
+                    Some(crate::mana::ManaCost::from_symbols(vec![
+                        crate::mana::ManaSymbol::Generic(mana_value),
+                    ])),
+                    Vec::new(),
+                ))
             }
         }
     }
@@ -119,6 +137,12 @@ impl Grantable {
         Grantable::DerivedAlternativeCast(DerivedAlternativeCast::EscapeFromCardManaCost {
             exile_count,
         })
+    }
+
+    /// Create a grantable for casting from hand by paying generic mana equal
+    /// to the granted card's mana value.
+    pub fn mana_value_as_generic_from_hand() -> Self {
+        Grantable::DerivedAlternativeCast(DerivedAlternativeCast::ManaValueAsGenericFromHand)
     }
 
     /// Create a grantable for a static ability.
@@ -412,6 +436,15 @@ impl GrantSpec {
                 "Each {filter_desc} has escape. The escape cost is equal to the card's mana cost plus exile {count_text} other cards from {graveyard}"
             );
         }
+        if let Grantable::DerivedAlternativeCast(DerivedAlternativeCast::ManaValueAsGenericFromHand) =
+            &self.grantable
+            && self.zone == Zone::Hand
+        {
+            return format!(
+                "{may_prefix} pay {{X}} rather than pay the mana cost for {} you cast, where X is that spell's mana value",
+                castable_filter_description(&self.filter)
+            );
+        }
         if let Grantable::Ability(ability) = &self.grantable
             && ability.has_flash()
             && self.zone == Zone::Hand
@@ -457,6 +490,9 @@ mod tests {
 
         let escape = Grantable::escape(3);
         assert_eq!(escape.display(), "Escape");
+
+        let mana_value = Grantable::mana_value_as_generic_from_hand();
+        assert_eq!(mana_value.display(), "Pay mana value");
     }
 
     #[test]

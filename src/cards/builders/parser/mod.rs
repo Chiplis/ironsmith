@@ -18,8 +18,6 @@ mod leaf;
 mod lexer;
 mod lower;
 mod lowering_support;
-#[cfg(test)]
-mod migration_audit;
 mod modal_helpers;
 mod modal_support;
 mod object_filters;

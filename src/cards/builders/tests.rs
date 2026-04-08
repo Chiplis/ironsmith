@@ -3758,6 +3758,36 @@ fn test_parse_offspring_keyword_line_compiles_to_optional_cost_and_etb_copy_trig
 }
 
 #[test]
+fn test_parse_conspire_keyword_line_compiles_to_optional_cost() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Conspire Test")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Conspire\nDraw a card.")
+        .expect("conspire keyword line should parse");
+
+    assert_eq!(def.optional_costs.len(), 1, "expected one conspire cost");
+    let conspire = &def.optional_costs[0];
+    assert_eq!(conspire.label, "Conspire");
+    assert!(!conspire.repeatable, "conspire should not be repeatable");
+
+    let rendered = compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    assert!(
+        rendered.contains(
+            "Conspire (As you cast this spell, you may tap two untapped creatures you control that share a color with it."
+        ),
+        "expected conspire reminder text in compiled output, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains("draw a card"),
+        "expected spell body to remain intact, got {rendered}"
+    );
+    assert!(
+        rendered_lower.find("draw a card") < rendered_lower.find("conspire"),
+        "expected spell text to render before conspire reminder, got {rendered}"
+    );
+}
+
+#[test]
 fn test_offspring_trigger_creates_one_one_copy_when_paid() {
     use crate::ability::AbilityKind;
     use crate::cost::OptionalCostsPaid;
@@ -3907,6 +3937,34 @@ fn test_scavenge_uses_source_snapshot_power_after_source_is_exiled() {
             .get(&crate::object::CounterType::PlusOnePlusOne),
         Some(&4),
         "scavenge should use the exiled source card's power via source snapshot"
+    );
+}
+
+#[test]
+fn oracle_like_lines_render_bannerhide_krushok_keywords_and_clear_similarity_floor() {
+    let def = parse_oracle_card_definition("Bannerhide Krushok");
+    let lines = oracle_like_lines(&def);
+    let joined = lines.join("\n");
+
+    assert!(
+        joined.contains("Reinforce 2—{1}{G}"),
+        "expected reinforce keyword label in canonical compiled text, got {joined}"
+    );
+    assert!(
+        joined.contains("Scavenge {5}{G}{G}"),
+        "expected scavenge keyword label in canonical compiled text, got {joined}"
+    );
+
+    let (_oracle_cov, _compiled_cov, similarity, _delta, _mismatch) =
+        crate::semantic_compare::compare_card_semantics_scored(
+            "Bannerhide Krushok",
+            &def.card.oracle_text,
+            &lines,
+            crate::semantic_compare::report_embedding_config(),
+        );
+    assert!(
+        similarity >= 0.95,
+        "expected Bannerhide Krushok to clear the 0.95 similarity floor after keyword rendering, got {similarity}"
     );
 }
 
@@ -10398,6 +10456,56 @@ fn parse_omniscience_static_free_cast_permission() {
 }
 
 #[test]
+fn parse_kentaro_static_mana_value_permission() {
+    let tokens = tokenize_line(
+        "You may pay {X} rather than pay the mana cost for Samurai spells you cast, where X is that spell's mana value.",
+        0,
+    );
+    let parsed = crate::cards::builders::parser::parse_static_ability_ast_line_lexed(&tokens)
+        .expect("Kentaro static line should not error");
+    assert!(
+        parsed.is_some(),
+        "Kentaro static line should parse as a static ability"
+    );
+
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Kentaro Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "You may pay {X} rather than pay the mana cost for Samurai spells you cast, where X is that spell's mana value.",
+        )
+        .expect("Kentaro static permission should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains(
+            "you may pay {x} rather than pay the mana cost for samurai spells you cast, where x is that spell's mana value"
+        ),
+        "expected Kentaro wording in compiled output, got {rendered}"
+    );
+
+    let has_mana_value_grant = def.abilities.iter().any(|ability| {
+        let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+            return false;
+        };
+        let Some(spec) = static_ability.grant_spec() else {
+            return false;
+        };
+        matches!(
+            spec.grantable,
+            crate::grant::Grantable::DerivedAlternativeCast(
+                crate::grant::DerivedAlternativeCast::ManaValueAsGenericFromHand
+            )
+        ) && spec.zone == Zone::Hand
+            && spec.filter.subtypes.contains(&Subtype::Samurai)
+    });
+
+    assert!(
+        has_mana_value_grant,
+        "expected a Samurai hand grant that uses mana value as an alternative cost"
+    );
+}
+
+#[test]
 fn parse_put_land_card_from_hand_onto_battlefield_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Scout Variant")
         .card_types(vec![CardType::Creature])
@@ -11936,8 +12044,7 @@ fn render_create_map_token_uses_compact_wording() {
     let lines = crate::compiled_text::compiled_lines(&def);
     let joined = lines.join("\n");
     assert!(
-        joined.contains("create a Map artifact token")
-            || joined.contains("Create a Map artifact token"),
+        joined.contains("create a Map token") || joined.contains("Create a Map token"),
         "expected compact map token wording, got {joined}"
     );
     assert!(
@@ -11956,8 +12063,7 @@ fn render_create_lander_token_uses_compact_wording() {
     let lines = crate::compiled_text::compiled_lines(&def);
     let joined = lines.join("\n");
     assert!(
-        joined.contains("create a Lander artifact token")
-            || joined.contains("Create a Lander artifact token"),
+        joined.contains("create a Lander token") || joined.contains("Create a Lander token"),
         "expected compact lander token wording, got {joined}"
     );
     assert!(
@@ -11976,8 +12082,7 @@ fn render_create_junk_token_uses_expected_wording() {
     let lines = crate::compiled_text::compiled_lines(&def);
     let joined = lines.join("\n");
     assert!(
-        joined.contains("create a Junk artifact token")
-            || joined.contains("Create a Junk artifact token"),
+        joined.contains("create a Junk token") || joined.contains("Create a Junk token"),
         "expected junk token rendering, got {joined}"
     );
     assert!(
@@ -13708,6 +13813,97 @@ fn parse_construct_token_with_single_quoted_rules_text_keeps_cda() {
     assert!(
         debug.contains("CharacteristicDefiningPT"),
         "expected Construct token to keep dynamic +1/+1 scaling text, got {debug}"
+    );
+}
+
+#[test]
+fn parse_ritual_of_the_returned_keeps_token_power_toughness_followup_on_spell_effect() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Ritual of the Returned Variant")
+        .parse_text(
+            "Exile target creature card from your graveyard. Create a black Zombie creature token. Its power is equal to that card's power and its toughness is equal to that card's toughness.",
+        )
+        .expect("Ritual of the Returned text should parse");
+
+    let spell_debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        spell_debug.contains("CreateTokenEffect"),
+        "expected Ritual to remain a spell that creates a token, got {spell_debug}"
+    );
+    assert!(
+        spell_debug.contains("SetBasePowerToughnessEffect"),
+        "expected Ritual token to get a resolved base power/toughness setter, got {spell_debug}"
+    );
+    assert!(
+        spell_debug.contains("PowerOf")
+            && spell_debug.contains("ToughnessOf")
+            && spell_debug.contains("Tagged"),
+        "expected Ritual token P/T to come from the tagged exiled card, got {spell_debug}"
+    );
+    assert!(
+        def.abilities.is_empty(),
+        "Ritual should not compile as a battlefield static ability, got {:#?}",
+        def.abilities
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains(
+            "create a black zombie creature token. its power is equal to that card's power and its toughness is equal to that card's toughness"
+        ),
+        "expected oracle-style Ritual token wording, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("0/0"),
+        "expected dynamic token P/T normalization to hide the temporary 0/0 shell, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_broken_visage_keeps_destroy_no_regen_and_token_followups_on_spell_effect() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Broken Visage Variant")
+        .parse_text(
+            "Destroy target nonartifact attacking creature. It can't be regenerated. Create a black Spirit creature token. Its power is equal to that creature's power and its toughness is equal to that creature's toughness. Sacrifice the token at the beginning of the next end step.",
+        )
+        .expect("Broken Visage text should parse");
+
+    let spell_debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        spell_debug.contains("DestroyNoRegenerationEffect"),
+        "expected Broken Visage to keep no-regeneration destroy semantics, got {spell_debug}"
+    );
+    assert!(
+        spell_debug.contains("CreateTokenEffect"),
+        "expected Broken Visage to remain a spell that creates a token, got {spell_debug}"
+    );
+    assert!(
+        spell_debug.contains("SetBasePowerToughnessEffect"),
+        "expected Broken Visage token to get a resolved base power/toughness setter, got {spell_debug}"
+    );
+    assert!(
+        spell_debug.contains("sacrifice_at_next_end_step: true"),
+        "expected Broken Visage token to be sacrificed at the next end step, got {spell_debug}"
+    );
+    assert!(
+        def.abilities.is_empty(),
+        "Broken Visage should not compile as a static ability, got {:#?}",
+        def.abilities
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("destroy target nonartifact attacking creature. it can't be regenerated"),
+        "expected no-regeneration destroy wording in compiled output, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "create a black spirit creature token. its power is equal to that creature's power and its toughness is equal to that creature's toughness"
+        ),
+        "expected dynamic Spirit token wording in compiled output, got {rendered}"
+    );
+    assert!(
+        rendered.contains("sacrifice")
+            && rendered.contains("beginning of the next end step"),
+        "expected delayed sacrifice wording in compiled output, got {rendered}"
     );
 }
 
@@ -17291,6 +17487,88 @@ fn parse_slivercycling_grant_clause_as_static_grant_not_keyword_line() {
     assert!(
         !rendered.starts_with("keyword ability 1: slivercycling {3}."),
         "expected no standalone keyword-only parse for grant clause, got {rendered}"
+    );
+}
+
+#[test]
+fn goddric_cloaked_reveler_keeps_conditional_dragon_animation() {
+    let def = parse_oracle_card_definition("Goddric, Cloaked Reveler");
+    let abilities_debug = format!("{:#?}", def.abilities);
+    let oracle_like = oracle_like_lines(&def);
+
+    assert!(
+        !abilities_debug.contains("KeywordFallbackText")
+            && !abilities_debug.contains("RuleFallbackText")
+            && !abilities_debug.contains("UnsupportedParserLine"),
+        "expected no fallback static abilities, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("CountComparison"),
+        "expected celebration count comparison condition, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("SetCreatureSubtypes"),
+        "expected creature-type replacement effect, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("SetBasePowerToughnessForFilter"),
+        "expected base power/toughness setter, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("GrantObjectAbilityForFilter"),
+        "expected granted activated ability effect, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.to_ascii_lowercase().contains("flying"),
+        "expected flying grant in lowered abilities, got {abilities_debug}"
+    );
+
+    let rendered = oracle_like.join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("as long as two or more nonland permanents entered the battlefield under your control this turn"),
+        "expected celebration condition in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("dragon")
+            && rendered.contains("base power and toughness 4/4")
+            && rendered.contains("flying"),
+        "expected dragon animation payload in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("dragons you control get +1/+0 until end of turn"),
+        "expected granted activated ability payload in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("loses all other creature types"),
+        "expected subtype-replacement reminder text, got {rendered}"
+    );
+    let celebration_lines = oracle_like
+        .iter()
+        .filter(|line| {
+            let lower = line.to_ascii_lowercase();
+            lower.contains("two or more nonland permanents entered the battlefield under your control this turn")
+                && lower.contains("dragons you control get +1/+0 until end of turn")
+        })
+        .count();
+    assert_eq!(
+        celebration_lines, 1,
+        "expected Goddric celebration text to render once, got {oracle_like:#?}"
+    );
+
+    let (_oracle_cov, _compiled_cov, similarity, _delta, _mismatch) =
+        crate::semantic_compare::compare_card_semantics_scored(
+            "Goddric, Cloaked Reveler",
+            &def.card.oracle_text,
+            &oracle_like,
+            crate::semantic_compare::report_embedding_config(),
+        );
+    assert!(
+        similarity >= 0.95,
+        "expected Goddric to reach oracle-like similarity, got {similarity}"
+    );
+    assert!(
+        !crate::cards::generated_definition_has_unimplemented_content(&def),
+        "expected Goddric to compile without unimplemented fallback content: {abilities_debug}"
     );
 }
 

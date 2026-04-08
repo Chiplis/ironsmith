@@ -32,6 +32,62 @@ fn normalize_metalcraft_label_surface(oracle_lower: &str, text: &str) -> String 
     text.to_string()
 }
 
+fn normalize_dynamic_token_card_pt_surface(oracle_lower: &str, text: &str) -> String {
+    let reference_kind = if oracle_lower.contains("its power is equal to that card's power")
+        && oracle_lower.contains("its toughness is equal to that card's toughness")
+    {
+        "card"
+    } else if oracle_lower.contains("its power is equal to that creature's power")
+        && oracle_lower.contains("its toughness is equal to that creature's toughness")
+    {
+        "creature"
+    } else {
+        return text.to_string();
+    };
+
+    let create_prefix = "Create a 0/0 ";
+    let lower = text.to_ascii_lowercase();
+    let create_prefix_lower = create_prefix.to_ascii_lowercase();
+    let Some(create_idx) = lower.find(&create_prefix_lower) else {
+        return text.to_string();
+    };
+    let desc_start = create_idx + create_prefix.len();
+    let token_marker = " creature token.";
+    let Some(token_desc_rel_end) = lower[desc_start..].find(token_marker) else {
+        return text.to_string();
+    };
+    let desc_end = desc_start + token_desc_rel_end;
+    let token_desc = &text[desc_start..desc_end];
+    let tail_start = desc_end + token_marker.len();
+    let normalized_tail = lower[tail_start..].trim().trim_end_matches('.');
+
+    let has_delayed_sacrifice =
+        normalized_tail.starts_with("sacrifice it at the beginning of the next end step. ");
+    let pt_tail = if has_delayed_sacrifice {
+        normalized_tail
+            .strip_prefix("sacrifice it at the beginning of the next end step. ")
+            .unwrap_or(normalized_tail)
+    } else {
+        normalized_tail
+    };
+    if pt_tail != "it has base power and toughness its power/its toughness forever" {
+        return text.to_string();
+    }
+
+    let mut rewritten = format!(
+        "{}Create a {} creature token. Its power is equal to that {}'s power and its toughness is equal to that {}'s toughness",
+        &text[..create_idx],
+        token_desc,
+        reference_kind,
+        reference_kind
+    );
+    if has_delayed_sacrifice {
+        rewritten.push_str(". Sacrifice the token at the beginning of the next end step");
+    }
+    rewritten.push('.');
+    rewritten
+}
+
 pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str) -> String {
     let oracle_lower = def.card.oracle_text.to_ascii_lowercase();
     let oracle_has_fall_greatest_power =
@@ -47,6 +103,7 @@ pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str
             normalize_sentence_surface_style(&normalize_common_semantic_phrasing(rest.trim()))
                 .replace("non-Auran enchantments", "non-Aura enchantments")
                 .replace("non-Auran enchantment", "non-Aura enchantment");
+        normalized_body = normalize_dynamic_token_card_pt_surface(&oracle_lower, &normalized_body);
         if let Some(rewritten) = normalize_choose_background_scaffolding_clause(&normalized_body) {
             normalized_body = rewritten;
         }
@@ -318,6 +375,7 @@ pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str
         normalize_sentence_surface_style(&normalize_common_semantic_phrasing(line.trim()))
             .replace("non-Auran enchantments", "non-Aura enchantments")
             .replace("non-Auran enchantment", "non-Aura enchantment");
+    normalized = normalize_dynamic_token_card_pt_surface(&oracle_lower, &normalized);
     if let Some(rewritten) = normalize_choose_background_scaffolding_clause(&normalized) {
         normalized = rewritten;
     }

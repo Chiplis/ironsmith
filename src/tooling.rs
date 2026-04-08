@@ -17,7 +17,7 @@ use crate::cards::{
 };
 use crate::compiled_text::canonical_compiled_lines;
 use crate::ids::CardId;
-use crate::semantic_compare::{compare_semantics_scored, report_embedding_config};
+use crate::semantic_compare::{compare_card_semantics_scored, report_embedding_config};
 
 pub const DEFAULT_DB_PATH: &str = "reports/engine-status.sqlite3";
 pub const SCRYFALL_TAGGER_TAGS_URL: &str = "https://scryfall.com/docs/tagger-tags";
@@ -285,7 +285,12 @@ impl CompilationSnapshot {
                 similarity_score,
                 line_delta,
                 semantic_mismatch,
-            ) = compare_semantics_scored(oracle_text, &compiled, report_embedding_config());
+            ) = compare_card_semantics_scored(
+                card_name,
+                oracle_text,
+                &compiled,
+                report_embedding_config(),
+            );
             (
                 Some(compiled_text),
                 Some(stable_compiled_definition_snapshot(definition)),
@@ -1642,9 +1647,14 @@ mod tests {
             Some(&definition),
         );
         let (_oracle_cov, _compiled_cov, lexical_similarity, _delta, _mismatch) =
-            compare_semantics_scored(oracle, &compiled, None);
+            compare_card_semantics_scored("House Cartographer", oracle, &compiled, None);
         let (_oracle_cov, _compiled_cov, embedded_similarity, _delta, _mismatch) =
-            compare_semantics_scored(oracle, &compiled, report_embedding_config());
+            compare_card_semantics_scored(
+                "House Cartographer",
+                oracle,
+                &compiled,
+                report_embedding_config(),
+            );
 
         assert_eq!(snapshot.similarity_score, embedded_similarity);
         assert!(

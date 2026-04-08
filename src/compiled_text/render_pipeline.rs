@@ -104,26 +104,38 @@ fn should_suppress_rendered_ability_line(def: &CardDefinition, line: &str) -> bo
         .optional_costs
         .iter()
         .any(|cost| cost.label.trim().to_ascii_lowercase().starts_with("gift "));
+    let lower = line.trim().to_ascii_lowercase();
+    let has_visible_conspire_line = def
+        .optional_costs
+        .iter()
+        .any(|cost| cost.label == "Conspire" || cost.label.starts_with("Conspire "));
     if !has_visible_gift_line {
-        return false;
+        return has_visible_conspire_line
+            && lower.starts_with("triggered ability ")
+            && lower.contains("conspire cost was paid");
     }
 
-    let lower = line.trim().to_ascii_lowercase();
     (lower.starts_with("triggered ability ")
         && lower.contains("when you cast this spell, if the gift was promised"))
         || lower == "choose an opponent."
         || lower == "choose a player."
         || (lower.contains("gift was promised") && is_standard_gift_render_payload(&lower))
+        || (has_visible_conspire_line
+            && lower.starts_with("triggered ability ")
+            && lower.contains("conspire cost was paid"))
 }
 
 pub(super) fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
     let mut out = Vec::new();
+    let mut deferred_spell_optional_lines = Vec::new();
     let subject = subject_for_card(&def.card);
     let rewrite_it_deals = def.card.card_types.contains(&CardType::Creature)
         || def.card.card_types.contains(&CardType::Artifact)
         || def.card.card_types.contains(&CardType::Land)
         || def.card.card_types.contains(&CardType::Planeswalker)
         || def.card.card_types.contains(&CardType::Battle);
+    let spell_like_card = def.card.card_types.contains(&CardType::Instant)
+        || def.card.card_types.contains(&CardType::Sorcery);
     let has_attach_only_spell_effect = def.spell_effect.as_ref().is_some_and(|effects| {
         effects.len() == 1
             && effects[0]
@@ -270,7 +282,12 @@ pub(super) fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
         }
     }
     for cost in &def.optional_costs {
-        out.push(describe_optional_cost_line(cost));
+        let line = describe_optional_cost_line(cost);
+        if spell_like_card && cost.label == "Conspire" {
+            deferred_spell_optional_lines.push(line);
+        } else {
+            out.push(line);
+        }
     }
     if let Some(filter) = &def.aura_attach_filter {
         out.push(format!("Enchant {}", describe_enchant_filter(filter)));
@@ -376,8 +393,6 @@ pub(super) fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
         }
     };
 
-    let spell_like_card = def.card.card_types.contains(&CardType::Instant)
-        || def.card.card_types.contains(&CardType::Sorcery);
     let additional_costs = def.additional_non_mana_costs();
     if !additional_costs.is_empty() {
         out.push(format!(
@@ -397,6 +412,7 @@ pub(super) fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
             describe_resolution_program_for_card(def, spell_effects)
         ));
     }
+    out.extend(deferred_spell_optional_lines);
     if spell_like_card {
         push_abilities(&mut out);
     }

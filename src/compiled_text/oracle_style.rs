@@ -1422,7 +1422,16 @@ pub(super) fn normalize_embedded_create_with_token_reminder(text: &str) -> Optio
         return None;
     }
 
-    let (ability_text, after_control) = tail.split_once(" under your control")?;
+    let (ability_text, controller_clause, after_control) =
+        if let Some((ability_text, after_control)) = tail.split_once(" under your control") {
+            (ability_text, "under your control", after_control)
+        } else if let Some((ability_text, after_control)) =
+            tail.split_once(" under that player's control")
+        {
+            (ability_text, "under that player's control", after_control)
+        } else {
+            return None;
+        };
     if ability_text.contains(". ")
         || after_control.contains(". Create ")
         || after_control.contains(". create ")
@@ -1453,19 +1462,41 @@ pub(super) fn normalize_embedded_create_with_token_reminder(text: &str) -> Optio
     let pronoun = if is_single { "It has" } else { "They have" };
 
     let create_keyword = if lowercase_create { "create" } else { "Create" };
-    let mut first = format!(
-        "{create_head}{create_keyword} {normalized_desc} {token_word} under your control{after_control}"
-    );
+    let for_each_prefix = if lowercase_create {
+        "for each player, "
+    } else {
+        "For each player, "
+    };
+    let mut first = if let Some(prefix) = strip_suffix_ascii_ci(create_head, for_each_prefix) {
+        format!(
+            "{prefix}each player {} {} {}{after_control}",
+            if is_single { "creates" } else { "create" },
+            normalized_desc,
+            token_word,
+        )
+    } else {
+        format!(
+            "{create_head}{create_keyword} {normalized_desc} {token_word} {controller_clause}{after_control}"
+        )
+    };
     let mut ability = ability_core.to_string();
     if let Some(rest) = ability
         .strip_prefix("flying and ")
         .or_else(|| ability.strip_prefix("Flying and "))
     {
-        first = first.replacen(
-            " token under your control",
-            " token with flying under your control",
-            1,
-        );
+        if first.contains(&format!(" {token_word} {controller_clause}")) {
+            first = first.replacen(
+                &format!(" {token_word} {controller_clause}"),
+                &format!(" {token_word} with flying {controller_clause}"),
+                1,
+            );
+        } else {
+            first = first.replacen(
+                &format!(" {token_word}"),
+                &format!(" {token_word} with flying"),
+                1,
+            );
+        }
         ability = rest.to_string();
     }
 
@@ -1702,10 +1733,12 @@ pub fn canonical_compiled_lines(def: &CardDefinition) -> Vec<String> {
     let without_redundant_cost_lines = drop_redundant_spell_cost_lines(merged_animation);
     let merged_blockability = merge_blockability_lines(without_redundant_cost_lines);
     let merged_transform = merge_lose_all_transform_lines(merged_blockability);
-    merged_transform
+    let mut canonical = merged_transform
         .into_iter()
         .map(|line| normalize_sentence_surface_style(&line))
-        .collect()
+        .collect::<Vec<_>>();
+    canonical.dedup();
+    canonical
 }
 
 /// Backward-compatible alias for the canonical normalized compiled-text surface.
@@ -5296,6 +5329,19 @@ mod tests {
         assert!(
             !rendered.contains("is colorless"),
             "expected colorless marker not to render as an extra rules-text clause, got {rendered}"
+        );
+    }
+
+    #[test]
+    fn normalize_embedded_create_with_token_reminder_handles_iterated_player_control() {
+        let normalized = super::normalize_embedded_create_with_token_reminder(
+            "When this creature dies, for each player, Create a Lander artifact token with \"{2}, {T}, Sacrifice this token: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle\" under that player's control.",
+        )
+        .expect("expected iterated-player token reminder rewrite");
+
+        assert_eq!(
+            normalized,
+            "When this creature dies, each player creates a Lander artifact token. It has \"{2}, {T}, Sacrifice this token: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle.\""
         );
     }
 }

@@ -1151,6 +1151,30 @@ pub(crate) struct ParsedAnthemClause {
     pub(crate) condition: Option<crate::ConditionExpr>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AnimationSubtypeMode {
+    Add,
+    ReplaceCreatureTypes,
+}
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct ParsedGrantedTailAst {
+    pub(crate) granted_static: Vec<StaticAbilityAst>,
+    pub(crate) granted_keyword_actions: Vec<KeywordAction>,
+    pub(crate) granted_object_abilities: Vec<(ParsedAbility, String)>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct StaticAnimationBundleAst {
+    pub(crate) subject: AnthemSubjectAst,
+    pub(crate) condition: Option<crate::ConditionExpr>,
+    pub(crate) ensure_creature_type: bool,
+    pub(crate) subtypes: Vec<Subtype>,
+    pub(crate) subtype_mode: AnimationSubtypeMode,
+    pub(crate) base_power_toughness: Option<(i32, i32)>,
+    pub(crate) granted_tail: ParsedGrantedTailAst,
+}
+
 pub(crate) fn words_start_with(tokens: &[OwnedLexToken], expected: &[&str]) -> bool {
     anthem_word_slice_starts_with(
         &crate::cards::builders::parser::token_word_refs(tokens),
@@ -3133,12 +3157,34 @@ fn split_anthem_trailing_segments_preserving_granted_abilities(
     let mut segments = Vec::new();
     let mut current = Vec::new();
     let mut preserve_commas = false;
+    let mut inside_quotes = false;
+    let mut idx = 0usize;
 
-    for token in tokens {
+    while idx < tokens.len() {
+        let token = &tokens[idx];
+        if token.is_quote() {
+            inside_quotes = !inside_quotes;
+        }
+
+        if !inside_quotes
+            && token.is_word("and")
+            && !current.is_empty()
+            && tokens[idx + 1..]
+                .iter()
+                .find(|next| !next.is_comma())
+                .is_some_and(|next| next.is_quote())
+        {
+            segments.push(std::mem::take(&mut current));
+            preserve_commas = false;
+            idx += 1;
+            continue;
+        }
+
         if token.is_comma() && !preserve_commas {
             if !current.is_empty() {
                 segments.push(std::mem::take(&mut current));
             }
+            idx += 1;
             continue;
         }
 
@@ -3148,7 +3194,8 @@ fn split_anthem_trailing_segments_preserving_granted_abilities(
             .into_iter()
             .map(str::to_ascii_lowercase)
             .collect::<Vec<_>>();
-        preserve_commas = trimmed.iter().any(|token| token.is_colon())
+        preserve_commas = inside_quotes
+            || trimmed.iter().any(|token| token.is_colon())
             || segment_words.first().is_some_and(|word| {
                 matches!(word.as_str(), "when" | "whenever")
                     || (word == "at" && segment_words.get(1).is_some_and(|w| w == "the"))
@@ -3158,6 +3205,7 @@ fn split_anthem_trailing_segments_preserving_granted_abilities(
                     matches!(word.as_str(), "when" | "whenever")
                         || (word == "at" && segment_words.get(2).is_some_and(|w| w == "the"))
                 }));
+        idx += 1;
     }
 
     if !current.is_empty() {
@@ -3177,6 +3225,284 @@ fn parsed_triggered_ability_is_empty(ability: &ParsedAbility) -> bool {
                     .as_ref()
                     .is_none_or(|effects| effects.is_empty())
     )
+}
+
+fn parse_granted_keyword_fragment(segment: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
+    parse_ability_line(segment).or_else(|| {
+        let words = crate::cards::builders::parser::token_word_refs(segment);
+        (matches!(
+            words.as_slice(),
+            ["can't", "be", "blocked"]
+                | ["cant", "be", "blocked"]
+                | ["cannot", "be", "blocked"]
+        ))
+        .then(|| vec![KeywordAction::Unblockable])
+    })
+}
+
+fn parse_granted_object_ability_segment(
+    raw_segment: &[OwnedLexToken],
+    clause_words: &[&str],
+    attached_subject: bool,
+) -> Result<Option<(ParsedAbility, String)>, CardTextError> {
+    let sanitized_tokens = raw_segment
+        .iter()
+        .filter(|token| token.kind != TokenKind::Quote)
+        .cloned()
+        .collect::<Vec<_>>();
+    let ability_tokens = trim_edge_punctuation(&sanitized_tokens);
+    if ability_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    if attached_subject && ability_tokens.iter().any(|token| token.is_colon()) {
+        let Some(parsed) = parse_attached_granted_activated_line(raw_segment)? else {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported granted activated/triggered ability clause (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        };
+        return Ok(Some((
+            parsed,
+            display_text_for_tokens(&ability_tokens, false),
+        )));
+    }
+
+    if let Some(GrantedAbilityAst::ParsedObjectAbility { ability, display }) =
+        parse_granted_activated_or_triggered_ability_for_gain(&ability_tokens, clause_words)?
+    {
+        return Ok(Some((ability, display)));
+    }
+
+    if let Some(parsed) = parse_cycling_line(&ability_tokens)? {
+        return Ok(Some((
+            parsed,
+            display_text_for_tokens(&ability_tokens, false),
+        )));
+    }
+
+    if ability_tokens.iter().any(|token| token.is_colon()) {
+        let Some(parsed) = parse_activated_line(&ability_tokens)? else {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported granted activated/triggered ability clause (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        };
+        return Ok(Some((
+            parsed,
+            display_text_for_tokens(&ability_tokens, false),
+        )));
+    }
+
+    Ok(None)
+}
+
+pub(crate) fn parse_heterogeneous_granted_tail(
+    tail_tokens: &[OwnedLexToken],
+    clause_words: &[&str],
+    attached_subject: bool,
+) -> Result<Option<ParsedGrantedTailAst>, CardTextError> {
+    let mut parsed = ParsedGrantedTailAst::default();
+
+    for raw_segment in split_anthem_trailing_segments_preserving_granted_abilities(tail_tokens) {
+        let trimmed = trim_commas(&raw_segment);
+        let mut segment = trim_edge_punctuation(&trimmed);
+        while segment.first().is_some_and(|token| token.is_word("and")) {
+            let trimmed = trim_commas(&segment[1..]);
+            segment = trim_edge_punctuation(&trimmed);
+        }
+        if segment.is_empty() {
+            continue;
+        }
+
+        if let Some((ability, display)) =
+            parse_granted_object_ability_segment(&segment, clause_words, attached_subject)?
+        {
+            parsed.granted_object_abilities.push((ability, display));
+            continue;
+        }
+
+        if let Some(actions) = parse_granted_keyword_fragment(&segment) {
+            reject_unimplemented_keyword_actions(&actions, &clause_words.join(" "))?;
+            if let [
+                KeywordAction::CumulativeUpkeep {
+                    mana_symbols_per_counter,
+                    life_per_counter,
+                    text,
+                },
+            ] = actions.as_slice()
+            {
+                parsed.granted_object_abilities.push((
+                    ParsedAbility {
+                        ability: cumulative_upkeep_granted_ability(
+                            mana_symbols_per_counter.clone(),
+                            *life_per_counter,
+                            text.clone(),
+                        ),
+                        effects_ast: None,
+                        reference_imports: ReferenceImports::default(),
+                        trigger_spec: None,
+                    },
+                    display_text_for_tokens(&segment, false),
+                ));
+                continue;
+            }
+
+            let lowered = actions
+                .into_iter()
+                .filter(|action| action.lowers_to_static_ability())
+                .collect::<Vec<_>>();
+            if lowered.is_empty() {
+                return Ok(None);
+            }
+            parsed.granted_keyword_actions.extend(lowered);
+            continue;
+        }
+
+        let split_actions = split_lexed_slices_on_and(&segment)
+            .into_iter()
+            .map(trim_edge_punctuation)
+            .filter(|part| !part.is_empty())
+            .map(|part| parse_granted_keyword_fragment(&part))
+            .collect::<Vec<_>>();
+        if split_actions.len() > 1
+            && split_actions.iter().all(|actions| {
+                actions.as_ref().is_some_and(|actions| {
+                    actions.iter().all(KeywordAction::lowers_to_static_ability)
+                })
+            })
+        {
+            for actions in split_actions.into_iter().flatten() {
+                reject_unimplemented_keyword_actions(&actions, &clause_words.join(" "))?;
+                parsed.granted_keyword_actions.extend(actions);
+            }
+            continue;
+        }
+
+        if let Some(marker) = parse_static_text_marker_line(&segment) {
+            parsed.granted_static.push(marker.into());
+            continue;
+        }
+
+        let mut segment_with_period = segment.to_vec();
+        segment_with_period.push(OwnedLexToken::period(
+            crate::cards::builders::TextSpan::synthetic(),
+        ));
+        if let Some(marker) = parse_static_text_marker_line(&segment_with_period) {
+            parsed.granted_static.push(marker.into());
+            continue;
+        }
+
+        if let Some(abilities) = super::parse_static_ability_ast_line_lexed(&segment)? {
+            parsed.granted_static.extend(abilities);
+            continue;
+        }
+
+        return Ok(None);
+    }
+
+    if parsed.granted_static.is_empty()
+        && parsed.granted_keyword_actions.is_empty()
+        && parsed.granted_object_abilities.is_empty()
+    {
+        return Ok(None);
+    }
+
+    Ok(Some(parsed))
+}
+
+pub(crate) fn lower_granted_tail_for_anthem_subject(
+    subject: &AnthemSubjectAst,
+    condition: &Option<crate::ConditionExpr>,
+    granted_tail: ParsedGrantedTailAst,
+) -> Vec<StaticAbilityAst> {
+    let wrapper_clause = ParsedAnthemClause {
+        subject: subject.clone(),
+        power: AnthemValue::Fixed(0),
+        toughness: AnthemValue::Fixed(0),
+        condition: condition.clone(),
+    };
+    let mut granted = Vec::new();
+    if !granted_tail.granted_static.is_empty() {
+        granted.extend(grant_static_anthem_abilities_for_subject(
+            &wrapper_clause,
+            granted_tail.granted_static,
+        ));
+    }
+    for action in granted_tail.granted_keyword_actions {
+        granted.push(grant_keyword_action_for_anthem_subject(
+            &wrapper_clause,
+            action,
+        ));
+    }
+    for (ability, display) in granted_tail.granted_object_abilities {
+        granted.push(grant_object_ability_for_anthem_subject(
+            &wrapper_clause,
+            ability,
+            display,
+        ));
+    }
+    granted
+}
+
+fn wrap_conditioned_animation_static_ability(
+    ability: StaticAbility,
+    condition: &Option<crate::ConditionExpr>,
+) -> StaticAbilityAst {
+    if let Some(condition) = condition
+        && let Some(conditioned) = ability.with_condition(condition.clone())
+    {
+        return conditioned.into();
+    }
+
+    if let Some(condition) = condition {
+        StaticAbilityAst::ConditionalStaticAbility {
+            ability: Box::new(StaticAbilityAst::Static(ability)),
+            condition: condition.clone(),
+        }
+    } else {
+        ability.into()
+    }
+}
+
+pub(crate) fn lower_static_animation_bundle(
+    bundle: StaticAnimationBundleAst,
+) -> Vec<StaticAbilityAst> {
+    let filter = anthem_subject_filter(&bundle.subject);
+    let mut lowered = Vec::new();
+
+    if bundle.ensure_creature_type {
+        lowered.push(wrap_conditioned_animation_static_ability(
+            StaticAbility::add_card_types(filter.clone(), vec![CardType::Creature]),
+            &bundle.condition,
+        ));
+    }
+    if let Some((power, toughness)) = bundle.base_power_toughness {
+        lowered.push(wrap_conditioned_animation_static_ability(
+            StaticAbility::set_base_power_toughness(filter.clone(), power, toughness),
+            &bundle.condition,
+        ));
+    }
+    if !bundle.subtypes.is_empty() {
+        let ability = match bundle.subtype_mode {
+            AnimationSubtypeMode::Add => StaticAbility::add_subtypes(filter, bundle.subtypes),
+            AnimationSubtypeMode::ReplaceCreatureTypes => {
+                StaticAbility::set_creature_subtypes(filter, bundle.subtypes)
+            }
+        };
+        lowered.push(wrap_conditioned_animation_static_ability(
+            ability,
+            &bundle.condition,
+        ));
+    }
+
+    lowered.extend(lower_granted_tail_for_anthem_subject(
+        &bundle.subject,
+        &bundle.condition,
+        bundle.granted_tail,
+    ));
+
+    lowered
 }
 
 fn grant_static_anthem_abilities_for_subject(
@@ -4405,7 +4731,7 @@ pub(crate) fn parse_filter_has_granted_ability_line(
         return Ok(None);
     }
     let ability_tokens_raw = &tokens[has_idx + 1..];
-    let mut ability_tokens = trim_edge_punctuation(ability_tokens_raw);
+    let mut ability_tokens = trim_commas(ability_tokens_raw);
     let ability_words = crate::cards::builders::parser::token_word_refs(&ability_tokens);
     if let Some(as_long_as_idx) =
         anthem_find_word_sequence_index(&ability_words, &["as", "long", "as"])
@@ -4421,200 +4747,22 @@ pub(crate) fn parse_filter_has_granted_ability_line(
                 }
                 None => parsed_condition,
             });
-            ability_tokens = trim_edge_punctuation(&ability_tokens[..condition_start]);
+            ability_tokens = trim_commas(&ability_tokens[..condition_start]);
         }
     }
-    let has_colon = ability_tokens.iter().any(|token| token.is_colon());
-    let looks_like_trigger = ability_tokens.first().is_some_and(|token| {
-        token.is_word("when")
-            || token.is_word("whenever")
-            || (token.is_word("at")
-                && ability_tokens
-                    .get(1)
-                    .is_some_and(|next| next.is_word("the")))
-    });
     let attached_subject = subject_words
         .first()
         .is_some_and(|word| *word == "enchanted" || *word == "equipped");
-    let mut granted_static: Vec<StaticAbilityAst> = Vec::new();
-    let mut granted_keyword_actions: Vec<KeywordAction> = Vec::new();
-    let mut granted_object_abilities: Vec<(ParsedAbility, String)> = Vec::new();
-    if has_colon {
-        let parsed = if attached_subject {
-            parse_attached_granted_activated_line(ability_tokens_raw)?
-        } else {
-            parse_activated_line(&ability_tokens)?
-        };
-        let Some(parsed) = parsed else {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported granted activated/triggered ability clause (clause: '{}')",
-                clause_words.join(" ")
-            )));
-        };
-        granted_object_abilities.push((parsed, display_text_for_tokens(&ability_tokens, false)));
-    } else if let Some(parsed) = parse_cycling_line(&ability_tokens)? {
-        granted_object_abilities.push((parsed, display_text_for_tokens(&ability_tokens, false)));
-    } else if looks_like_trigger {
-        match crate::cards::builders::parser::clause_support::parse_triggered_line_lexed(
-            &ability_tokens,
-        )? {
-            LineAst::Triggered {
-                trigger,
-                effects,
-                max_triggers_per_turn,
-            } => {
-                let parsed = parsed_triggered_ability(
-                    trigger,
-                    effects,
-                    vec![Zone::Battlefield],
-                    None,
-                    max_triggers_per_turn.map(crate::ConditionExpr::MaxTimesEachTurn),
-                    ReferenceImports::default(),
-                );
-                if parsed_triggered_ability_is_empty(&parsed) {
-                    return Err(CardTextError::ParseError(format!(
-                        "unsupported empty granted triggered ability clause (clause: '{}')",
-                        clause_words.join(" ")
-                    )));
-                }
-                granted_object_abilities
-                    .push((parsed, display_text_for_tokens(&ability_tokens, false)));
-            }
-            _ => {
-                return Err(CardTextError::ParseError(format!(
-                    "unsupported granted activated/triggered ability clause (clause: '{}')",
-                    clause_words.join(" ")
-                )));
-            }
-        }
-    } else if let Some(actions) = parse_ability_line(&ability_tokens) {
-        reject_unimplemented_keyword_actions(&actions, &clause_words.join(" "))?;
-        if let [
-            KeywordAction::CumulativeUpkeep {
-                mana_symbols_per_counter,
-                life_per_counter,
-                text,
-            },
-        ] = actions.as_slice()
-        {
-            granted_object_abilities.push((
-                ParsedAbility {
-                    ability: cumulative_upkeep_granted_ability(
-                        mana_symbols_per_counter.clone(),
-                        *life_per_counter,
-                        text.clone(),
-                    ),
-                    effects_ast: None,
-                    reference_imports: ReferenceImports::default(),
-                    trigger_spec: None,
-                },
-                display_text_for_tokens(&ability_tokens, false),
-            ));
-        } else {
-            granted_keyword_actions = actions
-                .into_iter()
-                .filter(|action| action.lowers_to_static_ability())
-                .collect();
-            if granted_keyword_actions.is_empty() {
-                return Ok(None);
-            }
-        }
-    } else {
-        let parse_granted_keyword_fragment = |segment: &[OwnedLexToken]| {
-            parse_ability_line(segment).or_else(|| {
-                let words = crate::cards::builders::parser::token_word_refs(segment);
-                (matches!(
-                    words.as_slice(),
-                    ["can't", "be", "blocked"]
-                        | ["cant", "be", "blocked"]
-                        | ["cannot", "be", "blocked"]
-                ))
-                .then(|| vec![KeywordAction::Unblockable])
-            })
-        };
-        let split_actions = split_lexed_slices_on_and(&ability_tokens)
-            .into_iter()
-            .map(trim_edge_punctuation)
-            .filter(|segment| !segment.is_empty())
-            .map(|segment| parse_granted_keyword_fragment(&segment))
-            .collect::<Vec<_>>();
-        if split_actions.len() > 1
-            && split_actions.iter().all(|parsed| {
-                parsed.as_ref().is_some_and(|actions| {
-                    actions.iter().all(KeywordAction::lowers_to_static_ability)
-                })
-            })
-        {
-            for actions in split_actions.into_iter().flatten() {
-                granted_keyword_actions.extend(actions.into_iter());
-            }
-        } else if let Some(abilities) = super::parse_static_ability_ast_line_lexed(&ability_tokens)?
-        {
-            granted_static = abilities;
-        } else {
-            return Ok(None);
-        }
-    }
+    let Some(granted_tail) =
+        parse_heterogeneous_granted_tail(&ability_tokens, &clause_words, attached_subject)?
+    else {
+        return Ok(None);
+    };
     let subject = match parse_anthem_subject(&subject_tokens) {
         Ok(subject) => subject,
         Err(_) => return Ok(None),
     };
-    let mut granted: Vec<StaticAbilityAst> = Vec::new();
-    if !granted_static.is_empty() {
-        for ability in granted_static {
-            granted.push(match &subject {
-                AnthemSubjectAst::Source => match &condition {
-                    Some(condition) => StaticAbilityAst::ConditionalStaticAbility {
-                        ability: Box::new(ability),
-                        condition: condition.clone(),
-                    },
-                    None => ability,
-                },
-                AnthemSubjectAst::Filter(filter) => StaticAbilityAst::GrantStaticAbility {
-                    filter: filter.clone(),
-                    ability: Box::new(ability),
-                    condition: condition.clone(),
-                },
-            });
-        }
-    }
-    for action in granted_keyword_actions {
-        granted.push(match &subject {
-            AnthemSubjectAst::Source => match &condition {
-                Some(condition) => StaticAbilityAst::ConditionalKeywordAction {
-                    action,
-                    condition: condition.clone(),
-                },
-                None => StaticAbilityAst::KeywordAction(action),
-            },
-            AnthemSubjectAst::Filter(filter) => StaticAbilityAst::GrantKeywordAction {
-                filter: filter.clone(),
-                action,
-                condition: condition.clone(),
-            },
-        });
-    }
-
-    let filter = match &subject {
-        AnthemSubjectAst::Filter(filter) => filter.clone(),
-        AnthemSubjectAst::Source => ObjectFilter::source(),
-    };
-    for (ability, display) in granted_object_abilities {
-        if attached_subject {
-            granted.push(StaticAbilityAst::AttachedObjectAbilityGrant {
-                ability,
-                display: format!("{} has {}", subject_words.join(" "), display),
-                condition: condition.clone(),
-            });
-            continue;
-        }
-        granted.push(StaticAbilityAst::GrantObjectAbility {
-            filter: filter.clone(),
-            ability,
-            display,
-            condition: condition.clone(),
-        });
-    }
+    let granted = lower_granted_tail_for_anthem_subject(&subject, &condition, granted_tail);
     if granted.is_empty() {
         return Ok(None);
     }

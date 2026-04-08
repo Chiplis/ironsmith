@@ -4085,33 +4085,43 @@ impl CardDefinitionBuilder {
 
     /// Add conspire.
     ///
-    /// Conspire means "As you cast this spell, you may tap two untapped creatures you control
-    /// that share a color with it. When you do, copy it and you may choose new targets for
-    /// the copy."
-    pub fn conspire(self) -> Self {
+    /// Conspire means "As an additional cost to cast this spell, you may tap two untapped
+    /// creatures you control that each share a color with it" and "When you cast this spell,
+    /// if its conspire cost was paid, copy it. If the spell has any targets, you may choose
+    /// new targets for the copy."
+    ///
+    /// Multiple granted or printed instances use distinct internal labels so each paid
+    /// instance can trigger independently per CR 702.78b.
+    pub fn conspire(mut self) -> Self {
         use crate::effect::EffectId;
-        // Conspire requires tapping two creatures sharing a color with the spell.
-        // We approximate this as tapping two creatures you control (color sharing
-        // requires runtime spell-color awareness which the static filter system
-        // cannot express yet).
-        let mut creature_filter = ObjectFilter::creature().you_control();
-        creature_filter.untapped = true;
 
+        let existing_instances = self
+            .optional_costs
+            .iter()
+            .filter(|cost| cost.label == "Conspire" || cost.label.starts_with("Conspire "))
+            .count();
+        let label = if existing_instances == 0 {
+            "Conspire".to_string()
+        } else {
+            format!("Conspire {}", existing_instances + 1)
+        };
+        let cost = TotalCost::from_cost(crate::costs::Cost::effect(
+            crate::effects::ConspireCostEffect::new(),
+        ));
+        self.optional_costs
+            .push(OptionalCost::custom(label.clone(), cost));
         self.with_ability(Ability {
             kind: AbilityKind::Triggered(TriggeredAbility {
                 trigger: Trigger::you_cast_this_spell(),
-                effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::may(
-                    vec![
-                        Effect::tap(ChooseSpec::All(creature_filter)),
-                        Effect::with_id(0, Effect::copy_spell(ChooseSpec::Source)),
-                        Effect::may_choose_new_targets(EffectId(0)),
-                    ],
-                )]),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                    Effect::with_id(0, Effect::copy_spell(ChooseSpec::Source)),
+                    Effect::may_choose_new_targets(EffectId(0)),
+                ]),
                 choices: vec![],
-                intervening_if: None,
+                intervening_if: Some(Condition::ThisSpellPaidLabel(label)),
             }),
             functional_zones: vec![Zone::Stack],
-            text: Some("Conspire".to_string()),
+            text: None,
         })
     }
 

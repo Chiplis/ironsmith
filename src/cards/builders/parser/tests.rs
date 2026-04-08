@@ -778,6 +778,80 @@ fn rewrite_structure_sentence_splitter_keeps_unterminated_tail_segment() {
 }
 
 #[test]
+fn rewrite_structure_sentence_splitter_separates_broken_visage_followups() {
+    let tokens = lex_line(
+        "Destroy target nonartifact attacking creature. It can't be regenerated. Create a black Spirit creature token. Its power is equal to that creature's power and its toughness is equal to that creature's toughness. Sacrifice the token at the beginning of the next end step.",
+        0,
+    )
+    .expect("rewrite lexer should classify Broken Visage text");
+    let rendered = split_lexed_sentences(&tokens)
+        .into_iter()
+        .map(|sentence| {
+            sentence
+                .iter()
+                .map(|token| token.slice.as_str())
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        rendered,
+        vec![
+            "Destroy target nonartifact attacking creature",
+            "It can't be regenerated",
+            "Create a black Spirit creature token",
+            "Its power is equal to that creature's power and its toughness is equal to that creature's toughness",
+            "Sacrifice the token at the beginning of the next end step",
+        ]
+    );
+}
+
+#[test]
+fn rewrite_effect_sentence_parser_handles_broken_visage_sequence() {
+    let tokens = lex_line(
+        "Destroy target nonartifact attacking creature. It can't be regenerated. Create a black Spirit creature token. Its power is equal to that creature's power and its toughness is equal to that creature's toughness. Sacrifice the token at the beginning of the next end step.",
+        0,
+    )
+    .expect("rewrite lexer should classify Broken Visage text");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&tokens);
+    assert!(
+        parsed.is_ok(),
+        "Broken Visage effect sentences should parse directly, got {parsed:?}"
+    );
+}
+
+#[test]
+fn rewrite_cant_be_regenerated_followup_detector_matches_plain_it_clause() {
+    let tokens = lex_line("It can't be regenerated.", 0)
+        .expect("rewrite lexer should classify can't-be-regenerated followup");
+    assert!(
+        super::effect_sentences::is_cant_be_regenerated_followup_sentence(&tokens),
+        "expected plain can't-be-regenerated sentence to be recognized as followup"
+    );
+}
+
+#[test]
+fn rewrite_semantic_parse_handles_broken_visage_statement() -> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Broken Visage Variant")
+        .card_types(vec![CardType::Instant]);
+    let (doc, _) = parse_text_to_semantic_document(
+        builder,
+        "Destroy target nonartifact attacking creature. It can't be regenerated. Create a black Spirit creature token. Its power is equal to that creature's power and its toughness is equal to that creature's toughness. Sacrifice the token at the beginning of the next end step.".to_string(),
+        false,
+    )?;
+
+    assert!(
+        matches!(doc.items.as_slice(), [RewriteSemanticItem::Statement(_)]),
+        "expected Broken Visage to remain a statement line, got {:#?}",
+        doc.items
+    );
+
+    Ok(())
+}
+
+#[test]
 fn rewrite_structure_modal_header_flag_scan_tracks_commander_and_repeat_modes() {
     let tokens = lex_line(
         "Choose one. If you control a commander as you cast this spell, you may choose both instead. You may choose the same mode more than once",

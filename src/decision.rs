@@ -11041,6 +11041,91 @@ mod tests {
     }
 
     #[test]
+    fn test_compute_legal_actions_includes_kentaro_mana_value_cast_for_samurai() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = None;
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+
+        let kentaro = CardDefinitionBuilder::new(CardId::from_raw(1400), "Kentaro Variant")
+            .card_types(vec![CardType::Creature])
+            .parse_text(
+                "Bushido 1\nYou may pay {X} rather than pay the mana cost for Samurai spells you cast, where X is that spell's mana value.",
+            )
+            .expect("Kentaro text should parse");
+        let _kentaro_id = game.create_object_from_definition(&kentaro, alice, Zone::Battlefield);
+
+        let samurai = CardBuilder::new(CardId::from_raw(1401), "Samurai Probe")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Samurai])
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(4)],
+                vec![ManaSymbol::White],
+            ]))
+            .power_toughness(PowerToughness::fixed(3, 3))
+            .build();
+        let samurai_id = game.create_object_from_card(&samurai, alice, Zone::Hand);
+
+        game.player_mut(alice)
+            .expect("alice should exist")
+            .mana_pool
+            .add(ManaSymbol::Colorless, 5);
+
+        let granted = game.grant_registry.granted_alternative_casts_for_card(
+            &game,
+            samurai_id,
+            Zone::Hand,
+            alice,
+        );
+        assert_eq!(
+            granted.len(),
+            1,
+            "Kentaro should grant one hand alternative cost"
+        );
+        assert_eq!(granted[0].method.name(), "Pay mana value");
+        assert_eq!(
+            granted[0]
+                .method
+                .mana_cost()
+                .expect("Kentaro grant should have a mana cost")
+                .generic_mana_total(),
+            5,
+            "Kentaro should turn the spell's mana value into a generic hand-cast cost"
+        );
+
+        let actions = compute_legal_actions(&game, alice);
+        assert!(
+            !actions.iter().any(|action| matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id,
+                    from_zone: Zone::Hand,
+                    casting_method: CastingMethod::Normal,
+                } if *spell_id == samurai_id
+            )),
+            "without white mana, the Samurai should not be normally castable"
+        );
+        assert!(
+            actions.iter().any(|action| matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id,
+                    from_zone: Zone::Hand,
+                    casting_method: CastingMethod::PlayFrom {
+                        zone: Zone::Hand,
+                        use_alternative: Some(_),
+                        ..
+                    },
+                } if *spell_id == samurai_id
+            )),
+            "Kentaro should surface a hand cast action that uses the mana-value alternative cost"
+        );
+    }
+
+    #[test]
     fn test_can_cast_spell_with_non_targeted_prevent_all_damage_without_creatures() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);

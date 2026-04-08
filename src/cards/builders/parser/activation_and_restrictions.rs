@@ -9319,6 +9319,12 @@ pub(crate) fn is_generic_token_reminder_sentence(tokens: &[OwnedLexToken]) -> bo
     {
         return true;
     }
+    if slice_starts_with(&words, &["its", "power"])
+        || slice_starts_with(&words, &["its", "power", "and", "toughness"])
+        || slice_starts_with(&words, &["its", "toughness"])
+    {
+        return true;
+    }
     let delayed_lifecycle_reference = matches!(words.first().copied(), Some("exile" | "sacrifice"))
         && (is_beginning_of_end_step_words(&words) || is_end_of_combat_words(&words))
         && (slice_contains(&words, &"token")
@@ -9399,7 +9405,12 @@ pub(crate) fn append_token_reminder_to_last_create_effect(
     } else {
         reminder_words.join(" ")
     };
-    append_token_reminder_to_effect(effects.last_mut(), &reminder, &reminder_words)
+    for effect in effects.iter_mut().rev() {
+        if append_token_reminder_to_effect(Some(effect), &reminder, &reminder_words) {
+            return true;
+        }
+    }
+    false
 }
 
 pub(crate) fn append_token_reminder_to_effect(
@@ -9407,6 +9418,47 @@ pub(crate) fn append_token_reminder_to_effect(
     reminder: &str,
     reminder_words: &[&str],
 ) -> bool {
+    fn parse_dynamic_token_pt_reminder(reminder_words: &[&str]) -> Option<(Value, Value)> {
+        use super::util::parse_value;
+
+        let parse_rhs = |words: &[&str]| {
+            let tokens = words
+                .iter()
+                .map(|word| OwnedLexToken::synthetic_word((*word).to_string()))
+                .collect::<Vec<_>>();
+            let (value, used) = parse_value(&tokens)?;
+            (used == words.len()).then_some(value)
+        };
+
+        if let Some(rhs_words) = slice_strip_prefix(
+            reminder_words,
+            &["its", "power", "and", "toughness", "are", "each", "equal", "to"],
+        ) {
+            let value = parse_rhs(rhs_words)?;
+            return Some((value.clone(), value));
+        }
+        let mut and_idx = None;
+        let mut idx = 0usize;
+        while idx < reminder_words.len() {
+            if reminder_words[idx] == "and" {
+                and_idx = Some(idx);
+                break;
+            }
+            idx += 1;
+        }
+        if let Some(and_idx) = and_idx {
+            let left = &reminder_words[..and_idx];
+            let right = &reminder_words[and_idx + 1..];
+            let power_words =
+                slice_strip_prefix(left, &["its", "power", "is", "equal", "to"])?;
+            let toughness_words =
+                slice_strip_prefix(right, &["its", "toughness", "is", "equal", "to"])?;
+            return Some((parse_rhs(power_words)?, parse_rhs(toughness_words)?));
+        }
+
+        None
+    }
+
     let Some(effect) = effect else {
         return false;
     };
@@ -9456,12 +9508,17 @@ pub(crate) fn append_token_reminder_to_effect(
         }
         EffectAst::CreateTokenWithMods {
             name,
+            dynamic_power_toughness,
             exile_at_end_of_combat,
             sacrifice_at_end_of_combat,
             sacrifice_at_next_end_step,
             exile_at_next_end_step,
             ..
         } => {
+            if let Some((power, toughness)) = parse_dynamic_token_pt_reminder(reminder_words) {
+                *dynamic_power_toughness = Some((power, toughness));
+                return true;
+            }
             if !name.chars().last().is_some_and(|ch| ch == ' ') {
                 name.push(' ');
             }

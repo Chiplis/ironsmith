@@ -27,7 +27,7 @@ use super::super::effect_sentences::{
 use super::super::grammar::structure::{IfClausePredicateSpec, split_if_clause_lexed};
 use super::super::lexer::{
     LexStream, OwnedLexToken, TokenKind, parser_token_word_positions, parser_token_word_refs,
-    token_word_refs,
+    split_lexed_sentences, token_word_refs,
 };
 use super::super::token_primitives::{
     contains_window as word_slice_contains_sequence, find_any_str_index as word_slice_find_any,
@@ -1224,7 +1224,11 @@ pub(crate) fn search_library_starts_with_search_verb_lexed(
 pub(crate) fn cant_sentence_clause_tokens_for_restriction_scan_lexed(
     clause_tokens: &[OwnedLexToken],
 ) -> Vec<OwnedLexToken> {
-    clause_tokens.to_vec()
+    split_lexed_sentences(clause_tokens)
+        .into_iter()
+        .next()
+        .unwrap_or(clause_tokens)
+        .to_vec()
 }
 
 pub(crate) fn cant_sentence_has_supported_negation_gate_lexed(

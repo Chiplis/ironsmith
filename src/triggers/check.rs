@@ -1634,6 +1634,51 @@ mod tests {
     }
 
     #[test]
+    fn conspire_paid_spell_cast_creates_one_trigger_per_paid_instance() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+
+        let def = CardDefinitionBuilder::new(CardId::from_raw(9002), "Conspire Test Spell")
+            .card_types(vec![CardType::Sorcery])
+            .conspire()
+            .conspire()
+            .with_spell_effect(vec![crate::effect::Effect::draw(1)])
+            .build();
+        let spell_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+        let mut entry = crate::game_state::StackEntry::new(spell_id, alice);
+        entry.optional_costs_paid = crate::cost::OptionalCostsPaid::from_costs(&def.optional_costs);
+        entry.optional_costs_paid.pay(0);
+        entry.optional_costs_paid.pay(1);
+        game.push_to_stack(entry);
+        game.object_mut(spell_id)
+            .expect("spell object should exist")
+            .optional_costs_paid = crate::cost::OptionalCostsPaid {
+            costs: vec![("Conspire".to_string(), 1), ("Conspire 2".to_string(), 1)],
+        };
+
+        let triggered = check_triggers(
+            &game,
+            &TriggerEvent::new_with_provenance(
+                SpellCastEvent::new(spell_id, alice, Zone::Hand),
+                crate::provenance::ProvNodeId::default(),
+            ),
+        );
+
+        assert_eq!(
+            triggered.len(),
+            2,
+            "expected two separate conspire triggers"
+        );
+        for trigger in &triggered {
+            let debug = format!("{:?}", trigger.ability.effects);
+            assert!(
+                debug.contains("CopySpellEffect"),
+                "expected each conspire trigger to copy the spell, got {debug}"
+            );
+        }
+    }
+
+    #[test]
     fn ring_designation_attack_trigger_draws_then_discards() {
         let mut game = crate::tests::test_helpers::setup_two_player_game();
         let alice = PlayerId::from_index(0);

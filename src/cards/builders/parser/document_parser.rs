@@ -1142,6 +1142,25 @@ fn parse_statement_line_cst(
     line: &PreprocessedLine,
 ) -> Result<Option<StatementLineCst>, CardTextError> {
     let normalized = line.info.normalized.normalized.as_str();
+    let force_statement = looks_like_divvy_statement_line_tokens(&line.tokens)
+        || grammar::contains_phrase(
+            &line.tokens,
+            &[
+                "ask", "a", "person", "outside", "the", "game", "to", "rate", "its", "new",
+                "art", "on", "a", "scale", "from", "1", "to", "5",
+            ],
+        )
+        || looks_like_pact_next_upkeep_line_tokens(&line.tokens)
+        || is_exile_then_owner_may_play_costs_more_statement_line(&line.tokens)
+        || looks_like_statement_line_lexed(line);
+    if !force_statement
+        && parse_static_ability_ast_line_lexed(&line.tokens)
+            .ok()
+            .flatten()
+            .is_some()
+    {
+        return Ok(None);
+    }
     if looks_like_divvy_statement_line_tokens(&line.tokens) {
         return Ok(Some(StatementLineCst {
             info: line.info.clone(),
@@ -1260,9 +1279,24 @@ fn looks_like_statement_line_tokens(tokens: &[OwnedLexToken]) -> bool {
     if looks_like_untap_all_during_each_other_players_untap_step_tokens(tokens) {
         return false;
     }
+    if looks_like_granted_quoted_static_line_tokens(tokens) {
+        return false;
+    }
     looks_like_next_turn_cant_cast_line_tokens(tokens)
         || looks_like_vote_statement_line_tokens(tokens)
         || looks_like_generic_statement_line_tokens(tokens)
+}
+
+fn looks_like_granted_quoted_static_line_tokens(tokens: &[OwnedLexToken]) -> bool {
+    let Some(quote_idx) = grammar::find_token_index(tokens, |token| token.is_quote()) else {
+        return false;
+    };
+    let head = trim_lexed_commas(&tokens[..quote_idx]);
+    if head.is_empty() || !token_words_have_any_prefix(head, &[&["this"], &["it"], &["all"], &["each"]]) {
+        return false;
+    }
+    let words = TokenWordView::new(head);
+    words.find_word("has").is_some() || words.find_word("have").is_some()
 }
 
 fn looks_like_statement_line_lexed(line: &PreprocessedLine) -> bool {
@@ -2091,6 +2125,37 @@ mod tests {
                     .to_string()
             ]
         );
+    }
+
+    #[test]
+    fn statement_parse_groups_lexed_keep_broken_visage_followups_in_one_effect_group() {
+        let line = single_preprocessed_line(
+            "Destroy target nonartifact attacking creature. It can't be regenerated. Create a black Spirit creature token. Its power is equal to that creature's power and its toughness is equal to that creature's toughness. Sacrifice the token at the beginning of the next end step.",
+        );
+
+        let groups = statement_parse_groups_lexed(&line.tokens)
+            .into_iter()
+            .map(|group| render_token_slice(&group))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            groups,
+            vec![
+                "destroy target nonartifact attacking creature. it can't be regenerated. create a black spirit creature token. its power is equal to that creature's power and its toughness is equal to that creature's toughness. sacrifice the token at the beginning of the next end step.".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_statement_line_cst_does_not_abort_on_broken_visage_static_probe_error(
+    ) -> Result<(), CardTextError> {
+        let line = single_preprocessed_line(
+            "Destroy target nonartifact attacking creature. It can't be regenerated. Create a black Spirit creature token. Its power is equal to that creature's power and its toughness is equal to that creature's toughness. Sacrifice the token at the beginning of the next end step.",
+        );
+
+        assert!(parse_statement_line_cst(&line)?.is_some());
+
+        Ok(())
     }
 
     #[test]
@@ -3409,6 +3474,25 @@ pub(crate) fn parse_document_cst(
                         labeled_choice_block_has_peer(&preprocessed.items, idx);
                     if !preserve_keyword_prefix_for_parse(label.as_str()) {
                         let body_line = rewrite_line_tokens(line, body_tokens);
+                        let labeled_activation = if (!str_starts_with_char(
+                            line.info.raw_line.trim_start(),
+                            '(',
+                        ) || is_fully_parenthetical_line(line.info.raw_line.as_str()))
+                            && let Some((cost_tokens, effect_parse_tokens)) =
+                                split_activation_text_tokens_lexed(&body_line.tokens)
+                        {
+                            let cost_text = render_token_slice(&cost_tokens);
+                            let effect_text =
+                                render_token_slice(&effect_parse_tokens).trim().to_string();
+                            Some((cost_tokens, effect_parse_tokens, cost_text, effect_text))
+                        } else {
+                            None
+                        };
+                        let prefer_activation = labeled_activation
+                            .as_ref()
+                            .is_some_and(|(_, _, cost_text, _)| {
+                                looks_like_activation_cost_prefix(cost_text.as_str())
+                            });
                         if line_starts_with_trigger_intro_tokens(&body_line.tokens) {
                             if let Ok(mut triggered) = parse_triggered_line_cst(&body_line) {
                                 if preserve_as_choice_label {
@@ -3454,22 +3538,10 @@ pub(crate) fn parse_document_cst(
                             }
                         }
 
-                        if is_named_label
-                            && let Some(keyword_line) = parse_keyword_line_cst(&body_line)?
+                        if prefer_activation
+                            && let Some((cost_tokens, effect_parse_tokens, cost_text, effect_text)) =
+                                labeled_activation.clone()
                         {
-                            lines.push(RewriteLineCst::Keyword(keyword_line));
-                            idx += 1;
-                            continue;
-                        }
-
-                        if (!str_starts_with_char(line.info.raw_line.trim_start(), '(')
-                            || is_fully_parenthetical_line(line.info.raw_line.as_str()))
-                            && let Some((cost_tokens, effect_parse_tokens)) =
-                                split_activation_text_tokens_lexed(&body_line.tokens)
-                        {
-                            let cost_text = render_token_slice(&cost_tokens);
-                            let effect_text =
-                                render_token_slice(&effect_parse_tokens).trim().to_string();
                             match parse_activation_cost_tokens_rewrite(&cost_tokens) {
                                 Ok(cost) => {
                                     lines.push(RewriteLineCst::Activated(ActivatedLineCst {
@@ -3493,6 +3565,14 @@ pub(crate) fn parse_document_cst(
                             }
                         }
 
+                        if is_named_label
+                            && let Some(keyword_line) = parse_keyword_line_cst(&body_line)?
+                        {
+                            lines.push(RewriteLineCst::Keyword(keyword_line));
+                            idx += 1;
+                            continue;
+                        }
+
                         if let Some(mut static_line) = parse_static_line_cst(&body_line)? {
                             if preserve_as_choice_label {
                                 static_line.chosen_option_label = Some(label.to_ascii_lowercase());
@@ -3500,6 +3580,51 @@ pub(crate) fn parse_document_cst(
                             lines.push(RewriteLineCst::Static(static_line));
                             idx += 1;
                             continue;
+                        }
+
+                        if let Some(rewritten_body) = rewrite_named_source_sentence_for_builder(
+                            &preprocessed.builder,
+                            body_line.info.normalized.normalized.as_str(),
+                        ) {
+                            let rewritten_body_line =
+                                rewrite_line_normalized(line, rewritten_body.as_str())?;
+                            if let Some(mut static_line) =
+                                parse_static_line_cst(&rewritten_body_line)?
+                            {
+                                if preserve_as_choice_label {
+                                    static_line.chosen_option_label =
+                                        Some(label.to_ascii_lowercase());
+                                }
+                                lines.push(RewriteLineCst::Static(static_line));
+                                idx += 1;
+                                continue;
+                            }
+                        }
+
+                        if let Some((cost_tokens, effect_parse_tokens, cost_text, effect_text)) =
+                            labeled_activation
+                        {
+                            match parse_activation_cost_tokens_rewrite(&cost_tokens) {
+                                Ok(cost) => {
+                                    lines.push(RewriteLineCst::Activated(ActivatedLineCst {
+                                        info: line.info.clone(),
+                                        cost,
+                                        cost_parse_tokens: cost_tokens,
+                                        effect_text,
+                                        effect_parse_tokens,
+                                        chosen_option_label: preserve_as_choice_label
+                                            .then(|| label.to_ascii_lowercase()),
+                                    }));
+                                    idx += 1;
+                                    continue;
+                                }
+                                Err(err)
+                                    if looks_like_activation_cost_prefix(cost_text.as_str()) =>
+                                {
+                                    return Err(err);
+                                }
+                                Err(_) => {}
+                            }
                         }
 
                         if let Some(statement_line) = parse_statement_line_cst(&body_line)? {

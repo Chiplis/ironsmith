@@ -374,6 +374,14 @@ pub(super) fn describe_token_blueprint(token: &CardDefinition) -> String {
     let mut parts = Vec::new();
     let mut creature_name_prefix: Option<String> = None;
     let mut explicit_named_clause: Option<String> = None;
+    let is_named_noncreature_subtype_token = !card.is_creature()
+        && !card.name.trim().is_empty()
+        && card.name.to_ascii_lowercase() != "token"
+        && !card.subtypes.is_empty()
+        && card
+            .subtypes
+            .iter()
+            .any(|subtype| subtype.to_string().eq_ignore_ascii_case(&card.name));
 
     if !card.supertypes.is_empty() {
         let supertypes = card
@@ -427,6 +435,9 @@ pub(super) fn describe_token_blueprint(token: &CardDefinition) -> String {
     }
 
     if !card.subtypes.is_empty() {
+        if is_named_noncreature_subtype_token {
+            parts.push(card.name.clone());
+        } else {
         let name_lower = card.name.to_ascii_lowercase();
         let subtype_words_lower = card
             .subtypes
@@ -462,9 +473,10 @@ pub(super) fn describe_token_blueprint(token: &CardDefinition) -> String {
         } else {
             parts.push(subtype_text);
         }
+        }
     }
 
-    if !card.card_types.is_empty() {
+    if !card.card_types.is_empty() && !is_named_noncreature_subtype_token {
         parts.push(
             card.card_types
                 .iter()

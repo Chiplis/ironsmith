@@ -7529,6 +7529,11 @@ fn try_compile_token_generation_effect(
             exile_at_next_end_step,
         } => {
             let token = token_definition_for(name.as_str())
+                .or_else(|| {
+                    dynamic_power_toughness
+                        .as_ref()
+                        .and_then(|_| token_definition_for(format!("0/0 {name}").as_str()))
+                })
                 .ok_or_else(|| CardTextError::ParseError(format!("unsupported token '{name}'")))?;
             let count = resolve_value_it_tag(count, &current_reference_env(ctx))?;
             let (player_filter, mut choices) =

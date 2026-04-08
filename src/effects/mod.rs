@@ -122,8 +122,8 @@ pub use mana::{
 };
 pub use permanents::{
     AttachObjectsEffect, AttachToEffect, BecomeBasicLandTypeChoiceEffect, BecomeColorChoiceEffect,
-    BecomeCreatureTypeChoiceEffect, BecomeSaddledUntilEotEffect, ConvertEffect, CrewCostEffect,
-    DetainEffect, EarthbendEffect, EvolveEffect, ExertCostEffect, FlipEffect,
+    BecomeCreatureTypeChoiceEffect, BecomeSaddledUntilEotEffect, ConspireCostEffect, ConvertEffect,
+    CrewCostEffect, DetainEffect, EarthbendEffect, EvolveEffect, ExertCostEffect, FlipEffect,
     GrantObjectAbilityEffect, MeldEffect, MonstrosityEffect, NinjutsuCostEffect, NinjutsuEffect,
     PhaseOutEffect, PutStickerEffect, RegenerateEffect, RenownEffect, SaddleCostEffect,
     SoulbondPairEffect, TapEffect, TransformEffect, UmbraArmorEffect, UnearthEffect, UntapEffect,

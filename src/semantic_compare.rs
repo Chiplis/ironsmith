@@ -2448,13 +2448,13 @@ fn split_common_clause_conjunctions(text: &str) -> String {
         normalized.clear();
     } else if normalized_lower
         .starts_with("at the beginning of your upkeep, remove an echo counter from this ")
-        && normalized_lower.contains(" unless you pay ")
+        && normalized_lower.contains(" unless you ")
     {
-        if let Some(idx) = normalized_lower.find(" unless you pay ") {
-            let cost = normalized_trimmed[idx + " unless you pay ".len()..]
+        if let Some(idx) = normalized_lower.find(" unless you ") {
+            let cost = normalized_trimmed[idx + " unless you ".len()..]
                 .trim()
                 .trim_end_matches('.');
-            normalized = format!("Echo {cost}");
+            normalized = format!("Echo—{cost}");
         }
     }
 
@@ -2984,6 +2984,100 @@ pub fn semantic_clauses_for_compare(text: &str) -> Vec<String> {
     semantic_clauses(text)
 }
 
+fn replace_case_insensitive(text: &str, needle: &str, replacement: &str) -> String {
+    let replacement_text = text.to_string();
+    let haystack = replacement_text.to_ascii_lowercase();
+    let needle = needle.to_ascii_lowercase();
+    if needle.is_empty() {
+        return replacement_text;
+    }
+    if !haystack.contains(&needle) {
+        return replacement_text;
+    }
+
+    let mut result = String::with_capacity(replacement_text.len());
+    let mut src_idx = 0usize;
+    let mut search_idx = 0usize;
+
+    while let Some(found) = haystack[search_idx..].find(&needle) {
+        let abs_idx = search_idx + found;
+        result.push_str(&replacement_text[src_idx..abs_idx]);
+        result.push_str(replacement);
+        src_idx = abs_idx + needle.len();
+        search_idx = src_idx;
+    }
+
+    result.push_str(&replacement_text[src_idx..]);
+    result
+}
+
+pub fn normalize_card_self_references_for_compare(text: &str, card_name: &str) -> String {
+    let full_name = card_name.trim();
+    if full_name.is_empty() {
+        return text.to_string();
+    }
+
+    let left_half = full_name
+        .split("//")
+        .next()
+        .map(str::trim)
+        .unwrap_or(full_name);
+    let short_name = left_half
+        .split(',')
+        .next()
+        .map(str::trim)
+        .unwrap_or(left_half);
+
+    let mut names = vec![full_name, left_half, short_name];
+    if let Some(stripped) = full_name
+        .strip_prefix("A-")
+        .or_else(|| full_name.strip_prefix("a-"))
+    {
+        names.push(stripped);
+    }
+    if let Some(stripped) = left_half
+        .strip_prefix("A-")
+        .or_else(|| left_half.strip_prefix("a-"))
+    {
+        names.push(stripped);
+    }
+    if let Some(stripped) = short_name
+        .strip_prefix("A-")
+        .or_else(|| short_name.strip_prefix("a-"))
+    {
+        names.push(stripped);
+    }
+    names.sort_by_key(|name| std::cmp::Reverse(name.len()));
+    names.dedup();
+
+    let mut normalized = text.to_string();
+    for name in names {
+        if name.len() < 3 {
+            continue;
+        }
+        let possessive = format!("{name}'s");
+        normalized = replace_case_insensitive(&normalized, &possessive, "this");
+        normalized = replace_case_insensitive(&normalized, &possessive.replace('\'', "’"), "this");
+        normalized = replace_case_insensitive(&normalized, name, "this");
+    }
+    if let Some(lead) = short_name.split_whitespace().next() {
+        let lead = lead.trim();
+        if lead.len() >= 3 {
+            let lead_or = format!("{lead} or Whenever");
+            normalized = replace_case_insensitive(&normalized, &lead_or, "this or Whenever");
+            normalized = replace_case_insensitive(
+                &normalized,
+                &lead_or.to_ascii_lowercase(),
+                "this or whenever",
+            );
+        }
+    }
+    normalized = normalized
+        .replace("That object's controller", "its controller")
+        .replace("that object's controller", "its controller");
+    normalized
+}
+
 fn reminder_clauses(text: &str) -> Vec<String> {
     let mut clauses = Vec::new();
     for segment in parenthetical_segments(text) {
@@ -3358,12 +3452,51 @@ fn is_bare_keyword_clause(tokens: &[String]) -> bool {
         && keyword.chars().all(|ch| ch.is_ascii_lowercase())
         && !matches!(
             keyword.as_str(),
-            "draw" | "discard" | "tap" | "untap" | "sacrifice" | "destroy" | "exile" | "attack"
-                | "block" | "cast" | "counter" | "pay" | "search" | "shuffle" | "reveal"
-                | "scry" | "create" | "gain" | "lose" | "deal" | "prevent" | "return"
-                | "put" | "add" | "remove" | "choose" | "target" | "copy" | "fight"
-                | "when" | "whenever" | "at" | "if" | "each" | "all" | "has" | "gets"
-                | "is" | "are" | "can" | "may" | "must" | "enters" | "leaves" | "dies"
+            "draw"
+                | "discard"
+                | "tap"
+                | "untap"
+                | "sacrifice"
+                | "destroy"
+                | "exile"
+                | "attack"
+                | "block"
+                | "cast"
+                | "counter"
+                | "pay"
+                | "search"
+                | "shuffle"
+                | "reveal"
+                | "scry"
+                | "create"
+                | "gain"
+                | "lose"
+                | "deal"
+                | "prevent"
+                | "return"
+                | "put"
+                | "add"
+                | "remove"
+                | "choose"
+                | "target"
+                | "copy"
+                | "fight"
+                | "when"
+                | "whenever"
+                | "at"
+                | "if"
+                | "each"
+                | "all"
+                | "has"
+                | "gets"
+                | "is"
+                | "are"
+                | "can"
+                | "may"
+                | "must"
+                | "enters"
+                | "leaves"
+                | "dies"
         );
     if !is_keyword {
         return false;
@@ -3371,7 +3504,9 @@ fn is_bare_keyword_clause(tokens: &[String]) -> bool {
     // Bare keyword alone, or keyword + numeric/mana parameter(s)
     tokens.len() == 1
         || tokens[1..].iter().all(|t| {
-            t == "<num>" || t == "<mana>" || t == "<pt>"
+            t == "<num>"
+                || t == "<mana>"
+                || t == "<pt>"
                 || t.chars().all(|ch| {
                     ch.is_ascii_digit() || ch == 'x' || ch == '{' || ch == '}' || ch == '/'
                 })
@@ -4530,6 +4665,16 @@ pub fn compare_semantics_scored(
         .map(|clause| comparison_tokens(clause))
         .filter(|tokens| !tokens.is_empty())
         .collect();
+    let has_reminder = !reminder_tokens.is_empty();
+    let bare_keyword_oracle_tokens = if has_reminder {
+        oracle_tokens
+            .iter()
+            .filter(|tokens| is_bare_keyword_clause(tokens))
+            .cloned()
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
 
     let mut compiled_pairs = raw_compiled_clauses
         .iter()
@@ -4564,6 +4709,13 @@ pub fn compare_semantics_scored(
             });
         !(matches_reminder && !matches_oracle)
     });
+    compiled_pairs.retain(|(_, tokens)| {
+        !(has_reminder
+            && is_bare_keyword_clause(tokens)
+            && bare_keyword_oracle_tokens
+                .iter()
+                .any(|oracle| oracle == tokens))
+    });
 
     let compiled_clauses = compiled_pairs
         .iter()
@@ -4585,7 +4737,6 @@ pub fn compare_semantics_scored(
     // compiled clauses that matched the reminder were already filtered out
     // above.  Exclude these bare-keyword oracle clauses from the coverage
     // calculation since their semantics are fully captured by the expansion.
-    let has_reminder = !reminder_tokens.is_empty();
     let oracle_tokens: Vec<Vec<String>> = if has_reminder {
         oracle_tokens
             .into_iter()
@@ -4728,12 +4879,37 @@ pub fn compare_semantics(
     (oracle_coverage, compiled_coverage, line_delta, mismatch)
 }
 
+pub fn compare_card_semantics_scored(
+    card_name: &str,
+    oracle_text: &str,
+    compiled_lines: &[String],
+    embedding: Option<EmbeddingConfig>,
+) -> (f32, f32, f32, isize, bool) {
+    let normalized_oracle = normalize_card_self_references_for_compare(oracle_text, card_name);
+    let normalized_compiled = compiled_lines
+        .iter()
+        .map(|line| normalize_card_self_references_for_compare(line, card_name))
+        .collect::<Vec<_>>();
+    compare_semantics_scored(&normalized_oracle, &normalized_compiled, embedding)
+}
+
+pub fn compare_card_semantics(
+    card_name: &str,
+    oracle_text: &str,
+    compiled_lines: &[String],
+    embedding: Option<EmbeddingConfig>,
+) -> (f32, f32, isize, bool) {
+    let (oracle_coverage, compiled_coverage, _similarity_score, line_delta, mismatch) =
+        compare_card_semantics_scored(card_name, oracle_text, compiled_lines, embedding);
+    (oracle_coverage, compiled_coverage, line_delta, mismatch)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        EmbeddingConfig, compare_semantics_scored, compiled_comparison_tokens,
-        normalize_trigger_subject_for_compare, reminder_clauses, semantic_clauses,
-        strip_reminder_text_for_comparison,
+        EmbeddingConfig, compare_card_semantics_scored, compare_semantics_scored,
+        compiled_comparison_tokens, normalize_trigger_subject_for_compare, reminder_clauses,
+        semantic_clauses, strip_reminder_text_for_comparison,
     };
 
     fn strict_embedding() -> Option<EmbeddingConfig> {
@@ -5967,6 +6143,29 @@ When this creature enters, return target creature card from your graveyard to th
     }
 
     #[test]
+    fn compare_semantics_normalizes_nonmana_echo_counter_scaffolding() {
+        let oracle = "Haste
+Echo—Discard a card. (At the beginning of your upkeep, if this came under your control since the beginning of your last upkeep, sacrifice it unless you pay its echo cost.)";
+        let compiled = vec![
+            String::from("Static ability 1: Haste."),
+            String::from("Static ability 2: This creature enters with an echo counter on it."),
+            String::from(
+                "Triggered ability 3: At the beginning of your upkeep, remove an echo counter from this creature. If you do, Sacrifice this creature unless you discard a card.",
+            ),
+        ];
+        let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+            compare_semantics_scored(oracle, &compiled, strict_embedding());
+        assert!(
+            similarity >= 0.99,
+            "expected non-mana echo scaffolding normalization to stay above strict threshold, got {similarity}"
+        );
+        assert!(
+            !mismatch,
+            "expected no mismatch for non-mana echo counter scaffolding"
+        );
+    }
+
+    #[test]
     fn compare_semantics_flags_missing_esper_sentinel_where_x_power_clause() {
         let oracle = "Whenever an opponent casts their first noncreature spell each turn, draw a card unless that player pays {X}, where X is this creature's power.";
         let compiled = vec![String::from(
@@ -6219,6 +6418,33 @@ At the beginning of your next upkeep, pay {3}{U}{U}. If you don't, you lose the 
             "expected temporary-copy normalization to stay above strict threshold, got {similarity}"
         );
         assert!(!mismatch, "expected no mismatch for temporary-copy wording");
+    }
+
+    #[test]
+    fn compare_semantics_keeps_visible_conspire_keyword_from_dragging_compiled_coverage_down() {
+        let oracle = "Burn Trail deals 3 damage to any target.\nConspire (As you cast this spell, you may tap two untapped creatures you control that share a color with it. When you do, copy it and you may choose a new target for the copy.)";
+        let compiled = vec![
+            String::from("Spell effects: Deal 3 damage to any target."),
+            String::from(
+                "Conspire (As you cast this spell, you may tap two untapped creatures you control that share a color with it. When you do, copy it and you may choose a new target for the copy.)",
+            ),
+        ];
+        let (oracle_coverage, compiled_coverage, _similarity, _delta, _mismatch) =
+            compare_semantics_scored(oracle, &compiled, strict_embedding());
+        let (_oracle_coverage, _compiled_coverage, similarity, _delta, _mismatch) =
+            compare_card_semantics_scored("Burn Trail", oracle, &compiled, strict_embedding());
+        assert!(
+            oracle_coverage >= 0.70,
+            "expected damage clause to stay aligned even with the named self-reference, got {oracle_coverage}"
+        );
+        assert!(
+            compiled_coverage >= 0.70,
+            "expected visible Conspire keyword line to avoid counting as an unmatched extra clause, got {compiled_coverage}"
+        );
+        assert!(
+            similarity >= 0.95,
+            "expected Burn Trail reminder-text normalization to clear the 0.95 floor, got {similarity}"
+        );
     }
 
     #[test]

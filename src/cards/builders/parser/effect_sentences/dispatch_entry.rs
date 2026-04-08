@@ -1459,8 +1459,11 @@ fn prepend_prefix_sentence_to_consult_pair(
     followup: &[OwnedLexToken],
     pair_rule: PairSentenceRule,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let prefix_effects =
-        parse_effect_sentence_lexed(prefix).or_else(|_| parse_effect_chain(prefix))?;
+    let Ok(prefix_effects) =
+        parse_effect_sentence_lexed(prefix).or_else(|_| parse_effect_chain(prefix))
+    else {
+        return Ok(None);
+    };
     if prefix_effects.is_empty() {
         return Ok(None);
     }
@@ -3024,7 +3027,9 @@ fn parse_search_face_down_exile_conditional_cast_else_hand(
     second: &[OwnedLexToken],
     third: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let first_effects = parse_effect_chain(first)?;
+    let Ok(first_effects) = parse_effect_chain(first) else {
+        return Ok(None);
+    };
     let searched_tag: TagKey = "searched_face_down".into();
     let has_face_down_search = first_effects.iter().any(|effect| {
         matches!(
@@ -3095,7 +3100,9 @@ fn parse_search_then_delayed_next_upkeep_unless_pays_lose_game(
     second: &[OwnedLexToken],
     third: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let first_effects = parse_effect_chain(first)?;
+    let Ok(first_effects) = parse_effect_chain(first) else {
+        return Ok(None);
+    };
     if first_effects.is_empty()
         || grammar::words_match_prefix(first, &["search", "your", "library"]).is_none()
     {

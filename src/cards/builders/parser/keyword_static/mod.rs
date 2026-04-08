@@ -49,6 +49,7 @@ use super::grammar::abilities::{
 };
 use super::grammar::filters::{
     parse_object_filter_with_grammar_entrypoint, parse_spell_filter_with_grammar_entrypoint,
+    parse_spell_filter_with_grammar_entrypoint_lexed,
 };
 use super::grammar::primitives::{
     split_lexed_slices_on_and, split_lexed_slices_on_comma,
@@ -66,12 +67,14 @@ use super::object_filters::{
 };
 use super::token_primitives::{
     find_index, find_window_by, lexed_head_words, rfind_index, slice_contains, slice_ends_with,
-    slice_starts_with, slice_strip_prefix, slice_strip_suffix, str_strip_prefix, str_strip_suffix,
+    slice_starts_with, slice_strip_prefix, slice_strip_suffix, split_em_dash_label_prefix,
+    str_strip_prefix, str_strip_suffix,
 };
 use super::util::{
     is_source_reference_words, mana_pips_from_token, parse_card_type, parse_color,
     parse_counter_type_from_tokens, parse_counter_type_word, parse_flashback_keyword_line,
-    parse_subtype_flexible, parse_value, parse_zone_word, trim_commas, words,
+    parse_subtype_flexible, parse_value, parse_zone_word, preserve_keyword_prefix_for_parse,
+    trim_commas, words,
 };
 #[allow(unused_imports)]
 use crate::ability::{Ability, AbilityKind, TriggeredAbility};
@@ -464,6 +467,12 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         multi_static_ability_ast_passthrough_rule!(
             parse_has_base_power_toughness_and_granted_keywords_static_line
         ),
+        multi_static_ability_ast_passthrough_rule!(
+            parse_subject_is_subtype_with_base_pt_and_granted_abilities_line
+        ),
+        multi_static_ability_ast_passthrough_rule!(
+            parse_filter_is_pt_creature_in_addition_and_has_line
+        ),
         StaticAbilityLineRuleDef {
             id: stringify!(parse_filter_has_granted_ability_line),
             rule: StaticAbilityLineRuleAst::Multi(parse_filter_has_granted_ability_line),
@@ -504,9 +513,6 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_protection_from_colored_spells_line),
         single_static_ability_ast_rule!(parse_blood_moon_line),
         single_static_ability_ast_rule!(parse_land_type_addition_line),
-        multi_static_ability_ast_passthrough_rule!(
-            parse_filter_is_pt_creature_in_addition_and_has_line
-        ),
         multi_static_ability_ast_rule!(parse_lands_are_pt_creatures_still_lands_line),
         single_static_ability_ast_rule!(parse_remove_snow_line),
         multi_static_ability_ast_rule!(parse_attached_is_legendary_gets_and_has_keywords_line),
@@ -597,6 +603,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_flying_restriction_line),
         single_static_ability_ast_rule!(parse_can_block_only_flying_line),
         single_static_ability_ast_rule!(parse_assign_damage_as_unblocked_line),
+        single_static_ability_ast_rule!(parse_mana_value_instead_of_mana_cost_grant_line),
         single_static_ability_ast_rule!(parse_you_may_static_grant_line),
         single_static_ability_ast_rule!(parse_grant_flash_to_noncreature_spells_line),
         single_static_ability_ast_rule!(parse_cast_this_spell_as_though_it_had_flash_line),
@@ -2479,6 +2486,10 @@ pub(crate) fn parse_no_more_than_creatures_can_attack_or_block_each_combat_line(
 pub(crate) fn parse_characteristic_defining_pt_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
+    if split_lexed_sentences(tokens).len() > 1 {
+        return Ok(None);
+    }
+
     let line_words = crate::cards::builders::parser::token_word_refs(tokens);
     let has_pt_axes = contains_keyword_static_phrase(&line_words, &["power", "and", "toughness"]);
     if has_pt_axes
@@ -4702,10 +4713,6 @@ pub(crate) fn parse_filter_is_pt_creature_in_addition_and_has_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
-    if contains_until_end_of_turn(&clause_words) {
-        return Ok(None);
-    }
-
     let Some(be_idx) = find_index(tokens, |token| token.is_word("is") || token.is_word("are"))
     else {
         return Ok(None);
@@ -4728,6 +4735,9 @@ pub(crate) fn parse_filter_is_pt_creature_in_addition_and_has_line(
         Ok(subject) => subject,
         Err(_) => return Ok(None),
     };
+    let attached_subject = crate::cards::builders::parser::token_word_refs(&subject_tokens)
+        .first()
+        .is_some_and(|word| matches!(*word, "enchanted" | "equipped"));
 
     let before_has = trim_commas(&tokens[be_idx + 1..has_idx]);
     if before_has.is_empty() {
@@ -4782,99 +4792,163 @@ pub(crate) fn parse_filter_is_pt_creature_in_addition_and_has_line(
         return Ok(None);
     }
 
-    let filter = match &subject {
-        AnthemSubjectAst::Source => ObjectFilter::source(),
-        AnthemSubjectAst::Filter(filter) => filter.clone(),
+    let Some(granted_tail) =
+        parse_heterogeneous_granted_tail(&tokens[has_idx + 1..], &clause_words, attached_subject)?
+    else {
+        return Ok(None);
     };
-    let wrap_static = |ability: StaticAbility, condition: &Option<crate::ConditionExpr>| {
-        let ast = StaticAbilityAst::Static(ability);
-        if let Some(condition) = condition {
-            StaticAbilityAst::ConditionalStaticAbility {
-                ability: Box::new(ast),
-                condition: condition.clone(),
-            }
+
+    Ok(Some(lower_static_animation_bundle(StaticAnimationBundleAst {
+        subject,
+        condition,
+        ensure_creature_type: true,
+        subtypes,
+        subtype_mode: AnimationSubtypeMode::Add,
+        base_power_toughness: Some((power, toughness)),
+        granted_tail,
+    })))
+}
+
+pub(crate) fn parse_subject_is_subtype_with_base_pt_and_granted_abilities_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let tokens = if let Some((label, body_tokens)) = split_em_dash_label_prefix(tokens) {
+        if preserve_keyword_prefix_for_parse(label.as_str()) {
+            tokens
         } else {
-            ast
+            body_tokens
         }
+    } else {
+        tokens
+    };
+    let Some(be_idx) = find_index(tokens, |token| token.is_word("is") || token.is_word("are"))
+    else {
+        return Ok(None);
+    };
+    let Some(with_idx) =
+        tokens.iter().enumerate().find_map(|(idx, token)| (idx > be_idx && token.is_word("with")).then_some(idx))
+    else {
+        return Ok(None);
     };
 
-    let mut abilities = vec![
-        wrap_static(
-            StaticAbility::add_card_types(filter.clone(), vec![CardType::Creature]),
-            &condition,
-        ),
-        wrap_static(
-            StaticAbility::set_base_power_toughness(filter.clone(), power, toughness),
-            &condition,
-        ),
-    ];
-    if !subtypes.is_empty() {
-        abilities.push(wrap_static(
-            StaticAbility::add_subtypes(filter.clone(), subtypes),
-            &condition,
-        ));
+    let (_condition, subject_start) = match parse_anthem_prefix_condition(tokens, be_idx) {
+        Ok(parsed) => parsed,
+        Err(_) => return Ok(None),
+    };
+    let subject_tokens = trim_commas(&tokens[subject_start..be_idx]);
+    if subject_tokens.is_empty() {
+        return Ok(None);
     }
+    let subject = match parse_anthem_subject(&subject_tokens) {
+        Ok(subject) => subject,
+        Err(_) => return Ok(None),
+    };
+    let attached_subject = crate::cards::builders::parser::token_word_refs(&subject_tokens)
+        .first()
+        .is_some_and(|word| matches!(*word, "enchanted" | "equipped"));
 
-    let mut granted_any = false;
-    let ability_tokens = trim_edge_punctuation(&tokens[has_idx + 1..]);
-    for raw_segment in split_anthem_trailing_segments_preserving_granted_abilities(&ability_tokens)
-    {
-        let mut segment = trim_commas(&raw_segment).to_vec();
-        while segment.first().is_some_and(|token| token.is_word("and")) {
-            segment = trim_commas(&segment[1..]).to_vec();
-        }
-        if segment.is_empty() {
-            continue;
-        }
-
-        if let Some(triggered) = parse_triggered_granted_ability(&segment)? {
-            abilities.push(StaticAbilityAst::GrantObjectAbility {
-                filter: filter.clone(),
-                ability: triggered,
-                display: crate::cards::builders::parser::token_word_refs(&segment).join(" "),
-                condition: condition.clone(),
-            });
-            granted_any = true;
-            continue;
-        }
-
-        let Some(actions) = parse_ability_line(&segment) else {
+    let type_tokens = trim_commas(&tokens[be_idx + 1..with_idx]);
+    if type_tokens.is_empty() {
+        return Ok(None);
+    }
+    let mut type_words = crate::cards::builders::parser::token_word_refs(&type_tokens);
+    if type_words.first().is_some_and(|word| is_article(word)) {
+        type_words.remove(0);
+    }
+    if type_words.is_empty() {
+        return Ok(None);
+    }
+    let mut subtypes = Vec::new();
+    for word in type_words {
+        let Some(subtype) = parse_subtype_word(word) else {
             return Ok(None);
         };
-        reject_unimplemented_keyword_actions(&actions, &clause_words.join(" "))?;
-        let mut granted = false;
-        for action in actions
-            .into_iter()
-            .filter(|action| action.lowers_to_static_ability())
-        {
-            let ast = match &subject {
-                AnthemSubjectAst::Source => match &condition {
-                    Some(condition) => StaticAbilityAst::ConditionalKeywordAction {
-                        action,
-                        condition: condition.clone(),
-                    },
-                    None => StaticAbilityAst::KeywordAction(action),
-                },
-                AnthemSubjectAst::Filter(filter) => StaticAbilityAst::GrantKeywordAction {
-                    filter: filter.clone(),
-                    action,
-                    condition: condition.clone(),
-                },
-            };
-            abilities.push(ast);
-            granted = true;
-            granted_any = true;
-        }
-        if !granted {
-            return Ok(None);
-        }
+        subtypes.push(subtype);
     }
 
-    if !granted_any {
+    let mut after_with = trim_commas(&tokens[with_idx + 1..]).to_vec();
+    if after_with.is_empty() {
         return Ok(None);
     }
 
-    Ok(Some(abilities))
+    let _loses_other_creature_types = {
+        let words = crate::cards::builders::parser::token_word_refs(&after_with)
+            .into_iter()
+            .map(str::to_ascii_lowercase)
+            .collect::<Vec<_>>();
+        let mut note_start = None;
+        let mut idx = 0usize;
+        while idx + 6 <= words.len() {
+            let window = &words[idx..idx + 6];
+            if matches!(
+                window,
+                [it_or_this, loses, all, other, creature, types]
+                    if matches!(it_or_this.as_str(), "it" | "this")
+                        && loses == "loses"
+                        && all == "all"
+                        && other == "other"
+                        && creature == "creature"
+                        && types == "types"
+            ) {
+                note_start = Some(idx);
+                break;
+            }
+            idx += 1;
+        }
+        if let Some(note_start) = note_start {
+            let Some(token_idx) = token_index_for_word_index(&after_with, note_start) else {
+                return Ok(None);
+            };
+            after_with.truncate(token_idx);
+            true
+        } else {
+            false
+        }
+    };
+
+    let after_with = trim_edge_punctuation(&after_with);
+    let after_with_words = crate::cards::builders::parser::token_word_refs(&after_with);
+    if after_with_words.len() < 5
+        || !anthem_word_slice_starts_with(
+            &after_with_words,
+            &["base", "power", "and", "toughness"],
+        )
+    {
+        return Ok(None);
+    }
+    let (power, toughness) = match parse_pt_modifier(after_with_words[4]) {
+        Ok(parsed) => parsed,
+        Err(_) => return Ok(None),
+    };
+
+    let ability_start_word_idx = if after_with_words.get(5).copied() == Some(",") {
+        6
+    } else {
+        5
+    };
+    if ability_start_word_idx >= after_with_words.len() {
+        return Ok(None);
+    }
+    let Some(ability_start_idx) = token_index_for_word_index(&after_with, ability_start_word_idx)
+    else {
+        return Ok(None);
+    };
+    let ability_tokens = trim_commas(&after_with[ability_start_idx..]);
+    let Some(granted_tail) =
+        parse_heterogeneous_granted_tail(&ability_tokens, &after_with_words, attached_subject)?
+    else {
+        return Ok(None);
+    };
+
+    Ok(Some(lower_static_animation_bundle(StaticAnimationBundleAst {
+        subject,
+        condition: _condition,
+        ensure_creature_type: true,
+        subtypes,
+        subtype_mode: AnimationSubtypeMode::ReplaceCreatureTypes,
+        base_power_toughness: Some((power, toughness)),
+        granted_tail,
+    })))
 }
 
 pub(crate) fn parse_creatures_cant_block_line(
@@ -5076,6 +5150,56 @@ pub(crate) fn parse_assign_damage_as_unblocked_line(
     }
 
     Ok(None)
+}
+
+pub(crate) fn parse_mana_value_instead_of_mana_cost_grant_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let tokens = if tokens
+        .last()
+        .is_some_and(|token| token.kind == TokenKind::Period)
+    {
+        &tokens[..tokens.len() - 1]
+    } else {
+        tokens
+    };
+    let Some((_, head_tokens)) = super::grammar::primitives::strip_lexed_suffix_phrases(
+        tokens,
+        &[
+            &["where", "x", "is", "that", "spell's", "mana", "value"],
+            &["where", "x", "is", "that", "spells", "mana", "value"],
+        ],
+    ) else {
+        return Ok(None);
+    };
+    let head_tokens = trim_lexed_commas(head_tokens);
+    let words = super::lexer::parser_token_word_refs(head_tokens);
+    if !slice_starts_with(
+        words.as_slice(),
+        &[
+            "you", "may", "pay", "x", "rather", "than", "pay", "the", "mana", "cost", "for",
+        ],
+    ) {
+        return Ok(None);
+    }
+
+    let Some(for_idx) = find_index(head_tokens, |token| token.is_word("for")) else {
+        return Ok(None);
+    };
+    let subject_tokens = trim_lexed_commas(head_tokens.get(for_idx + 1..).unwrap_or_default());
+    let subject_words = crate::cards::builders::parser::token_word_refs(subject_tokens);
+    if subject_tokens.is_empty()
+        || !slice_contains(&subject_words, &"spell") && !slice_contains(&subject_words, &"spells")
+    {
+        return Ok(None);
+    }
+
+    let filter = parse_spell_filter_with_grammar_entrypoint_lexed(subject_tokens);
+    Ok(Some(StaticAbility::grants(crate::grant::GrantSpec::new(
+        crate::grant::Grantable::mana_value_as_generic_from_hand(),
+        filter,
+        Zone::Hand,
+    ))))
 }
 
 pub(crate) fn parse_grant_flash_to_noncreature_spells_line(

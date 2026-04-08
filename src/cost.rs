@@ -216,6 +216,8 @@ impl OptionalCostsPaid {
         stored == query
             || (query.eq_ignore_ascii_case("Gift")
                 && stored.to_ascii_lowercase().starts_with("gift "))
+            || (query.eq_ignore_ascii_case("Conspire")
+                && stored.to_ascii_lowercase().starts_with("conspire"))
             || (query.eq_ignore_ascii_case("Behold")
                 && stored
                     .to_ascii_lowercase()

@@ -3238,6 +3238,56 @@ fn create_creature(
     game.create_object_from_card(&card, owner, Zone::Battlefield)
 }
 
+fn record_battlefield_entry_this_turn(game: &mut GameState, object_id: ObjectId) {
+    use crate::events::cause::EventCause;
+    use crate::events::zones::ZoneChangeEvent;
+    use crate::provenance::ProvNodeId;
+    use crate::snapshot::ObjectSnapshot;
+    use crate::triggers::TriggerEvent;
+
+    let snapshot = ObjectSnapshot::from_object(
+        game.object(object_id)
+            .expect("battlefield entry event object should exist"),
+        game,
+    );
+    let event = TriggerEvent::new_with_provenance(
+        ZoneChangeEvent::with_cause(
+            object_id,
+            Zone::Hand,
+            Zone::Battlefield,
+            EventCause::effect(),
+            Some(snapshot),
+        ),
+        ProvNodeId::default(),
+    );
+    game.record_turn_history_event(&event);
+}
+
+fn setup_goddric_fixture() -> (GameState, PlayerId, PlayerId, ObjectId) {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let goddric = CardDefinitionBuilder::new(CardId::new(), "Goddric, Cloaked Reveler")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![
+            crate::types::Subtype::Human,
+            crate::types::Subtype::Noble,
+        ])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .parse_text(
+            "Haste\nCelebration — As long as two or more nonland permanents entered the battlefield under your control this turn, this creature is a Dragon with base power and toughness 4/4, flying, and \"{R}: Dragons you control get +1/+0 until end of turn.\" (It loses all other creature types.)",
+        )
+        .expect("Goddric, Cloaked Reveler should compile");
+    let goddric_id = game.create_object_from_definition(&goddric, alice, Zone::Battlefield);
+
+    (game, alice, bob, goddric_id)
+}
+
 fn create_delayed_reanimator(game: &mut GameState, owner: PlayerId, name: &str) -> ObjectId {
     let card = CardBuilder::new(CardId::from_raw(9010), name)
         .card_types(vec![CardType::Creature])
@@ -3296,6 +3346,190 @@ fn undying_effects() -> Vec<Effect> {
         move_to_battlefield,
         counters,
     ]
+}
+
+#[test]
+fn test_goddric_celebration_inactive_without_two_nonland_entries() {
+    let (mut game, alice, _bob, goddric_id) = setup_goddric_fixture();
+
+    game.refresh_continuous_state();
+
+    assert_eq!(
+        game.calculated_power(goddric_id),
+        Some(3),
+        "Goddric should keep printed power before celebration is active"
+    );
+    assert_eq!(
+        game.calculated_toughness(goddric_id),
+        Some(3),
+        "Goddric should keep printed toughness before celebration is active"
+    );
+    assert!(
+        game.current_has_subtype(goddric_id, crate::types::Subtype::Human),
+        "Goddric should still be Human before celebration is active"
+    );
+    assert!(
+        game.current_has_subtype(goddric_id, crate::types::Subtype::Noble),
+        "Goddric should still be Noble before celebration is active"
+    );
+    assert!(
+        !game.current_has_subtype(goddric_id, crate::types::Subtype::Dragon),
+        "Goddric should not be Dragon before celebration is active"
+    );
+    assert!(
+        !game.object_has_static_ability_id(goddric_id, crate::static_abilities::StaticAbilityId::Flying),
+        "Goddric should not have flying before celebration is active"
+    );
+    assert!(
+        !crate::decision::compute_legal_actions(&game, alice)
+            .iter()
+            .any(|action| matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, .. } if *source == goddric_id
+            )),
+        "Goddric should not expose the granted red activation before celebration is active"
+    );
+}
+
+#[test]
+fn test_goddric_celebration_grants_dragon_stats_flying_and_activation() {
+    let (mut game, alice, _bob, goddric_id) = setup_goddric_fixture();
+
+    let celebrant_one = CardBuilder::new(CardId::new(), "Celebration Relic")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let celebrant_two = CardBuilder::new(CardId::new(), "Celebration Familiar")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .subtypes(vec![crate::types::Subtype::Construct])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let celebrant_one_id = game.create_object_from_card(&celebrant_one, alice, Zone::Battlefield);
+    let celebrant_two_id = game.create_object_from_card(&celebrant_two, alice, Zone::Battlefield);
+    record_battlefield_entry_this_turn(&mut game, celebrant_one_id);
+    record_battlefield_entry_this_turn(&mut game, celebrant_two_id);
+    game.refresh_continuous_state();
+
+    let subtypes = game.calculated_subtypes(goddric_id);
+    assert_eq!(
+        game.calculated_power(goddric_id),
+        Some(4),
+        "Goddric should become a 4-power Dragon once celebration is active"
+    );
+    assert_eq!(
+        game.calculated_toughness(goddric_id),
+        Some(4),
+        "Goddric should become a 4-toughness Dragon once celebration is active"
+    );
+    assert!(
+        subtypes.contains(&crate::types::Subtype::Dragon),
+        "Goddric should gain Dragon subtype once celebration is active: {subtypes:?}"
+    );
+    assert!(
+        !subtypes.contains(&crate::types::Subtype::Human)
+            && !subtypes.contains(&crate::types::Subtype::Noble),
+        "Goddric should lose its other creature types once celebration is active: {subtypes:?}"
+    );
+    assert!(
+        game.object_has_static_ability_id(goddric_id, crate::static_abilities::StaticAbilityId::Flying),
+        "Goddric should have flying once celebration is active"
+    );
+    assert!(
+        crate::decision::compute_legal_actions(&game, alice)
+            .iter()
+            .any(|action| matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, .. } if *source == goddric_id
+            )),
+        "Goddric should expose the granted red activation once celebration is active"
+    );
+}
+
+#[test]
+fn test_goddric_celebration_granted_ability_buffs_only_dragons() {
+    use crate::decision::LegalAction;
+
+    let (mut game, alice, _bob, goddric_id) = setup_goddric_fixture();
+
+    let dragon_ally = CardBuilder::new(CardId::new(), "Dragon Ally")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![crate::types::Subtype::Dragon])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let human_ally = CardBuilder::new(CardId::new(), "Human Ally")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![crate::types::Subtype::Human])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let celebration_artifact = CardBuilder::new(CardId::new(), "Celebration Bauble")
+        .card_types(vec![CardType::Artifact])
+        .build();
+
+    let dragon_ally_id = game.create_object_from_card(&dragon_ally, alice, Zone::Battlefield);
+    let human_ally_id = game.create_object_from_card(&human_ally, alice, Zone::Battlefield);
+    let artifact_id =
+        game.create_object_from_card(&celebration_artifact, alice, Zone::Battlefield);
+    record_battlefield_entry_this_turn(&mut game, dragon_ally_id);
+    record_battlefield_entry_this_turn(&mut game, artifact_id);
+    game.refresh_continuous_state();
+
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(crate::mana::ManaSymbol::Red, 1);
+
+    let activate_action = crate::decision::compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| matches!(
+            action,
+            LegalAction::ActivateAbility { source, .. } if *source == goddric_id
+        ))
+        .expect("celebrating Goddric should expose its granted red activation");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = AutoPassDecisionMaker;
+    let progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("Goddric's granted ability should activate");
+
+    match progress {
+        crate::decision::GameProgress::Continue
+        | crate::decision::GameProgress::StackResolved
+        | crate::decision::GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::Priority(_),
+        ) => {}
+        other => panic!("unexpected progress while activating Goddric: {other:?}"),
+    }
+
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "Goddric's granted ability should be placed on the stack"
+    );
+
+    resolve_stack_entry(&mut game).expect("Goddric's granted ability should resolve");
+    game.refresh_continuous_state();
+
+    assert_eq!(
+        game.calculated_power(goddric_id),
+        Some(5),
+        "Goddric should pump itself once it is a Dragon"
+    );
+    assert_eq!(
+        game.calculated_power(dragon_ally_id),
+        Some(3),
+        "other Dragons you control should get +1/+0"
+    );
+    assert_eq!(
+        game.calculated_power(human_ally_id),
+        Some(2),
+        "non-Dragons you control should not get pumped"
+    );
 }
 
 fn persist_effects() -> Vec<Effect> {

@@ -9080,6 +9080,13 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(create_emblem) = effect.downcast_ref::<crate::effects::CreateEmblemEffect>() {
         return format!("Create an emblem named {}", create_emblem.emblem.name);
     }
+    if effect
+        .downcast_ref::<crate::effects::ConspireCostEffect>()
+        .is_some()
+    {
+        return "Tap two untapped creatures you control that each share a color with this spell"
+            .to_string();
+    }
     if let Some(crew) = effect.downcast_ref::<crate::effects::CrewCostEffect>() {
         return format!(
             "Tap any number of untapped creatures you control with total power {} or more",
@@ -10126,8 +10133,21 @@ pub(super) fn describe_ability(
                 let Some(rest) = lower.strip_prefix(keyword) else {
                     return false;
                 };
-                let rest = rest.trim_start();
-                rest.is_empty() || rest.starts_with('—') || rest.starts_with('-')
+                rest.is_empty()
+                    || rest
+                        .chars()
+                        .next()
+                        .is_some_and(|ch| ch.is_ascii_whitespace() || ch == '—' || ch == '-')
+            }
+            fn format_reinforce_label(text: &str) -> String {
+                let trimmed = text.trim();
+                let Some(rest) = trimmed.strip_prefix("Reinforce ") else {
+                    return trimmed.to_string();
+                };
+                let Some((amount, cost)) = rest.trim().split_once(' ') else {
+                    return trimmed.to_string();
+                };
+                format!("Reinforce {amount}—{}", cost.trim())
             }
 
             let mut line = format!("Activated ability {index}");
@@ -10139,10 +10159,31 @@ pub(super) fn describe_ability(
                 ability_label.is_some_and(|text| has_keyword_label_prefix(text, "renew"));
             let has_channel_label =
                 ability_label.is_some_and(|text| has_keyword_label_prefix(text, "channel"));
+            let reinforce_label =
+                ability_label.filter(|text| has_keyword_label_prefix(text, "reinforce"));
+            let scavenge_label =
+                ability_label.filter(|text| has_keyword_label_prefix(text, "scavenge"));
             let transmute_label = ability_label.filter(|text| {
                 text.get(..10)
                     .is_some_and(|prefix| prefix.eq_ignore_ascii_case("transmute "))
             });
+            if let Some(label) = reinforce_label {
+                let costs = describe_cost_list(activated.mana_cost.costs());
+                let effects = super::render_pipeline::describe_resolution_program(&activated.effects);
+                return vec![format!(
+                    "Activated ability {index}: {} ({}: {}.)",
+                    format_reinforce_label(label),
+                    costs,
+                    rewrite_damage_phrases_for_permanent_abilities(
+                        &effects,
+                        subject,
+                        rewrite_it_deals,
+                    )
+                )];
+            }
+            if let Some(label) = scavenge_label {
+                return vec![format!("Activated ability {index}: {label}")];
+            }
             if has_boast_label {
                 let mut label = "Boast".to_string();
                 if !activated.mana_cost.costs().is_empty() {
@@ -10678,29 +10719,41 @@ pub(super) fn describe_optional_cost_line(cost: &crate::cost::OptionalCost) -> S
     if label.to_ascii_lowercase().starts_with("gift ") {
         return label.trim().to_string();
     }
-    match label {
-        "Replicate" => format!("Replicate—{}.", cost_text.trim_end_matches('.')),
-        // Most optional-cost keywords render with a space-separated payload.
-        "Bargain" => label.to_string(),
-        "Kicker" | "Multikicker" | "Buyback" | "Entwine" | "Squad" => {
-            if cost_text.trim().is_empty() {
-                label.to_string()
-            } else {
-                format!("{label} {cost_text}")
+    if label == "Conspire" || label.starts_with("Conspire ") {
+        let reminder_cost = cost_text
+            .trim()
+            .trim_end_matches('.')
+            .replacen("Tap ", "tap ", 1)
+            .replace(" that each share", " that share")
+            .replace("this spell", "it");
+        format!(
+            "Conspire (As you cast this spell, you may {reminder_cost}. When you do, copy it and you may choose a new target for the copy.)"
+        )
+    } else {
+        match label {
+            "Replicate" => format!("Replicate—{}.", cost_text.trim_end_matches('.')),
+            // Most optional-cost keywords render with a space-separated payload.
+            "Bargain" => label.to_string(),
+            "Kicker" | "Multikicker" | "Buyback" | "Entwine" | "Squad" => {
+                if cost_text.trim().is_empty() {
+                    label.to_string()
+                } else {
+                    format!("{label} {cost_text}")
+                }
             }
-        }
-        other if cost.repeatable => {
-            if cost_text.trim().is_empty() {
-                other.to_string()
-            } else {
-                format!("{other}—{}.", cost_text.trim_end_matches('.'))
+            other if cost.repeatable => {
+                if cost_text.trim().is_empty() {
+                    other.to_string()
+                } else {
+                    format!("{other}—{}.", cost_text.trim_end_matches('.'))
+                }
             }
-        }
-        other => {
-            if cost_text.trim().is_empty() {
-                other.to_string()
-            } else {
-                format!("{other} {cost_text}")
+            other => {
+                if cost_text.trim().is_empty() {
+                    other.to_string()
+                } else {
+                    format!("{other} {cost_text}")
+                }
             }
         }
     }

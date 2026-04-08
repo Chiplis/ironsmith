@@ -2240,17 +2240,29 @@ impl StaticAbilityKind for AddAllSubtypesOfFamilyForFilter {
 pub struct SetCreatureSubtypesForFilter {
     pub filter: ObjectFilter,
     pub subtypes: Vec<Subtype>,
+    pub condition: Option<crate::ConditionExpr>,
 }
 
 impl SetCreatureSubtypesForFilter {
     pub fn new(filter: ObjectFilter, subtypes: Vec<Subtype>) -> Self {
-        Self { filter, subtypes }
+        Self {
+            filter,
+            subtypes,
+            condition: None,
+        }
+    }
+
+    pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
+        self.condition = Some(condition);
+        self
     }
 }
 
 impl PartialEq for SetCreatureSubtypesForFilter {
     fn eq(&self, other: &Self) -> bool {
-        self.filter == other.filter && self.subtypes == other.subtypes
+        self.filter == other.filter
+            && self.subtypes == other.subtypes
+            && self.condition == other.condition
     }
 }
 
@@ -2267,7 +2279,16 @@ impl StaticAbilityKind for SetCreatureSubtypesForFilter {
             .iter()
             .map(|subtype| subtype.to_string().to_ascii_lowercase())
             .collect::<Vec<_>>();
-        format!("{subject} {verb} {}", join_with_and(&subtypes))
+        let mut text = format!("{subject} {verb} {}", join_with_and(&subtypes));
+        if let Some(condition) = &self.condition {
+            text.push(' ');
+            text.push_str(&describe_static_condition(condition));
+        }
+        text
+    }
+
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        Some(StaticAbility::new(self.clone().with_condition(condition)))
     }
 
     fn generate_effects(
@@ -2277,20 +2298,26 @@ impl StaticAbilityKind for SetCreatureSubtypesForFilter {
         _game: &GameState,
     ) -> Vec<ContinuousEffect> {
         vec![
-            ContinuousEffect::new(
-                source,
-                controller,
-                effect_target_for_filter(source, &self.filter),
-                Modification::RemoveAllSubtypesOfFamily(SubtypeFamily::Creature),
-            )
-            .with_source_type(EffectSourceType::StaticAbility),
-            ContinuousEffect::new(
-                source,
-                controller,
-                effect_target_for_filter(source, &self.filter),
-                Modification::AddSubtypes(self.subtypes.clone()),
-            )
-            .with_source_type(EffectSourceType::StaticAbility),
+            effect_with_optional_static_condition(
+                ContinuousEffect::new(
+                    source,
+                    controller,
+                    effect_target_for_filter(source, &self.filter),
+                    Modification::RemoveAllSubtypesOfFamily(SubtypeFamily::Creature),
+                )
+                .with_source_type(EffectSourceType::StaticAbility),
+                &self.condition,
+            ),
+            effect_with_optional_static_condition(
+                ContinuousEffect::new(
+                    source,
+                    controller,
+                    effect_target_for_filter(source, &self.filter),
+                    Modification::AddSubtypes(self.subtypes.clone()),
+                )
+                .with_source_type(EffectSourceType::StaticAbility),
+                &self.condition,
+            ),
         ]
     }
 }

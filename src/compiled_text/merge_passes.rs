@@ -146,6 +146,59 @@ pub(super) fn split_subject_predicate_clause(line: &str) -> Option<(&str, &str, 
     None
 }
 
+#[derive(Debug, Clone)]
+struct ConditionalSubjectPredicate {
+    condition: String,
+    subject: String,
+    verb: String,
+    predicate: String,
+}
+
+fn parse_conditional_subject_predicate(line: &str) -> Option<ConditionalSubjectPredicate> {
+    let trimmed = line.trim().trim_end_matches('.');
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    if let Some((condition, body)) = trimmed.split_once(", ")
+        && condition.to_ascii_lowercase().starts_with("as long as ")
+    {
+        let (subject, verb, predicate) = split_subject_predicate_clause(body)?;
+        return Some(ConditionalSubjectPredicate {
+            condition: condition.trim().to_string(),
+            subject: subject.trim().to_string(),
+            verb: verb.trim().to_string(),
+            predicate: predicate.trim().to_string(),
+        });
+    }
+
+    let (subject, verb, predicate_with_condition) = split_subject_predicate_clause(trimmed)?;
+    let (predicate, condition) = predicate_with_condition.rsplit_once(" as long as ")?;
+    Some(ConditionalSubjectPredicate {
+        condition: format!("As long as {}", condition.trim()),
+        subject: subject.trim().to_string(),
+        verb: verb.trim().to_string(),
+        predicate: predicate.trim().to_string(),
+    })
+}
+
+fn is_creature_addition_predicate(predicate: &str) -> bool {
+    let lower = predicate.trim().to_ascii_lowercase();
+    lower == "a creature in addition to its other types"
+        || lower == "creature in addition to its other types"
+        || lower == "creatures in addition to their other types"
+}
+
+fn can_merge_conditional_state_bundle(
+    left: &ConditionalSubjectPredicate,
+    right: &ConditionalSubjectPredicate,
+) -> bool {
+    matches!(left.verb.as_str(), "is" | "are")
+        && matches!(right.verb.as_str(), "is" | "are")
+        && left.subject.eq_ignore_ascii_case(&right.subject)
+        && left.condition.eq_ignore_ascii_case(&right.condition)
+}
+
 pub(super) fn can_merge_subject_predicates(left_verb: &str, right_verb: &str) -> bool {
     let is_get = |verb: &str| matches!(verb, "gets" | "get");
     let is_trait = |verb: &str| matches!(verb, "has" | "have" | "gains" | "gain");
@@ -342,6 +395,16 @@ pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<
             && left_subject.eq_ignore_ascii_case(right_subject)
             && can_merge_subject_predicates(left_verb, right_verb)
         {
+            if let (Some(left_conditional), Some(right_conditional)) = (
+                parse_conditional_subject_predicate(&lines[idx]),
+                parse_conditional_subject_predicate(&lines[idx + 1]),
+            )
+                && can_merge_conditional_state_bundle(&left_conditional, &right_conditional)
+            {
+                merged.push(lines[idx].clone());
+                idx += 1;
+                continue;
+            }
             let left_raw = left_rest.trim_end_matches('.').trim();
             let right_raw = right_rest.trim_end_matches('.').trim();
             let is_trait = |verb: &str| matches!(verb, "has" | "have" | "gains" | "gain");
@@ -792,6 +855,90 @@ pub(super) fn merge_subject_animation_lines(lines: Vec<String>) -> Vec<String> {
     let mut idx = 0usize;
 
     while idx < lines.len() {
+        if let Some(start) = parse_conditional_subject_predicate(&lines[idx])
+            && matches!(start.verb.as_str(), "is" | "are")
+            && is_creature_addition_predicate(&start.predicate)
+        {
+            let mut consumed = 1usize;
+            let mut replacement_subtypes: Option<String> = None;
+            let mut base_pt: Option<String> = None;
+            let mut granted_predicates: Vec<String> = Vec::new();
+
+            while idx + consumed < lines.len() {
+                let Some(next) = parse_conditional_subject_predicate(&lines[idx + consumed]) else {
+                    break;
+                };
+                if !start.subject.eq_ignore_ascii_case(&next.subject)
+                    || !start.condition.eq_ignore_ascii_case(&next.condition)
+                {
+                    break;
+                }
+
+                match next.verb.as_str() {
+                    "is" | "are" => {
+                        if is_creature_addition_predicate(&next.predicate) {
+                            consumed += 1;
+                            continue;
+                        }
+                        if next
+                            .predicate
+                            .to_ascii_lowercase()
+                            .contains("in addition to")
+                        {
+                            break;
+                        }
+                        if replacement_subtypes.is_none() {
+                            replacement_subtypes = Some(next.predicate.clone());
+                            consumed += 1;
+                            continue;
+                        }
+                        break;
+                    }
+                    "has" | "have" | "gains" | "gain" => {
+                        if let Some(pt) =
+                            next.predicate.strip_prefix("base power and toughness ")
+                        {
+                            base_pt = Some(pt.trim().to_string());
+                            consumed += 1;
+                            continue;
+                        }
+                        granted_predicates
+                            .push(normalize_keyword_predicate_case(&next.predicate));
+                        consumed += 1;
+                        continue;
+                    }
+                    _ => break,
+                }
+            }
+
+            if let Some(replacement_subtypes) = replacement_subtypes
+                && (base_pt.is_some() || !granted_predicates.is_empty())
+            {
+                let mut payloads = Vec::new();
+                if let Some(pt) = base_pt {
+                    payloads.push(format!("base power and toughness {pt}"));
+                }
+                payloads.extend(granted_predicates);
+
+                let mut combined = format!(
+                    "{}, {} is {}",
+                    start.condition,
+                    start.subject,
+                    with_indefinite_article(&replacement_subtypes)
+                );
+                if !payloads.is_empty() {
+                    combined.push_str(" with ");
+                    combined.push_str(&join_with_and(&payloads));
+                }
+                if start.subject.trim().eq_ignore_ascii_case("This creature") {
+                    combined.push_str(". (It loses all other creature types.)");
+                }
+                merged.push(combined);
+                idx += consumed;
+                continue;
+            }
+        }
+
         if idx + 1 < lines.len()
             && let Some((left_subject, left_verb, left_rest)) =
                 split_subject_predicate_clause(lines[idx].trim().trim_end_matches('.'))

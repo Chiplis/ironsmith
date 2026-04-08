@@ -1114,6 +1114,8 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
     if let Some(used) = matching_prefix_len(&[
         &["that", "creature", "power"],
         &["that", "creatures", "power"],
+        &["that", "card", "power"],
+        &["that", "cards", "power"],
         &["that", "object", "power"],
         &["that", "objects", "power"],
         &["the", "sacrificed", "creature", "power"],
@@ -1136,6 +1138,8 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
     if let Some(used) = matching_prefix_len(&[
         &["that", "creature", "toughness"],
         &["that", "creatures", "toughness"],
+        &["that", "card", "toughness"],
+        &["that", "cards", "toughness"],
         &["that", "object", "toughness"],
         &["that", "objects", "toughness"],
         &["the", "sacrificed", "creature", "toughness"],
