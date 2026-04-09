@@ -4762,6 +4762,7 @@ fn test_corpse_cobble_sums_the_power_of_sacrificed_creatures() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
     let mut trigger_queue = TriggerQueue::new();
+    let corpse_cobble_text = "As an additional cost to cast this spell, sacrifice any number of creatures.\nCreate an X/X blue and black Zombie creature token with menace, where X is the total power of the sacrificed creatures.\nFlashback {3}{U}{B} (You may cast this card from your graveyard for its flashback cost and any additional costs. Then exile it.)";
 
     game.turn.active_player = alice;
     game.turn.phase = Phase::FirstMain;
@@ -4774,7 +4775,7 @@ fn test_corpse_cobble_sums_the_power_of_sacrificed_creatures() {
             vec![ManaSymbol::Black],
         ]))
         .card_types(vec![CardType::Instant])
-        .parse_text("As an additional cost to cast this spell, sacrifice any number of creatures.\nCreate an X/X blue and black Zombie creature token with menace, where X is the total power of the sacrificed creatures.\nFlashback {3}{U}{B} (You may cast this card from your graveyard for its flashback cost and any additional costs. Then exile it.)")
+        .parse_text(corpse_cobble_text)
         .expect("Corpse Cobble text should parse");
 
     game.create_object_from_definition(&corpse_cobble, alice, Zone::Hand);

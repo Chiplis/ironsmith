@@ -18531,6 +18531,42 @@ fn render_make_an_example_preserves_two_pile_divvy_surface() {
 }
 
 #[test]
+fn render_make_an_example_preserves_two_pile_divvy_surface() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Make an Example")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Each opponent separates the creatures they control into two piles. For each opponent, you choose one of their piles. Each opponent sacrifices the creatures in their chosen pile. (Piles can be empty.)",
+        )
+        .expect("Make an Example should parse");
+
+    let rendered = compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Each opponent separates the creatures they control into two piles."),
+        "expected the divvy surface to survive compilation, got {rendered}"
+    );
+    assert!(
+        rendered.contains("For each opponent, you choose one of their piles."),
+        "expected chooser selection to survive compilation, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Each opponent sacrifices the creatures in their chosen pile."),
+        "expected chosen-pile sacrifice wording to survive compilation, got {rendered}"
+    );
+    assert!(
+        rendered.contains("(Piles can be empty.)"),
+        "expected empty-pile reminder to survive compilation, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("choose any number of creatures that player controls"),
+        "expected compiled text to normalize away the generic choose-any-number surface, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_exile_top_card_of_target_library_preserves_top_card_selection() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Top Card Exile Variant")
         .card_types(vec![CardType::Creature])
