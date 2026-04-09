@@ -31,6 +31,7 @@ use super::clause_support::{
 };
 use super::compile_support::{
     collect_tag_spans_from_effects_with_context, materialize_prepared_effects_with_trigger_context,
+    compile_condition_from_predicate_ast_with_env,
     trigger_binds_player_reference_context as rewrite_trigger_binds_player_reference_context,
 };
 use super::effect_pipeline::{
@@ -58,6 +59,7 @@ use super::modal_support::{parse_modal_header, replace_modal_header_x_in_effects
 use super::parser_support::split_text_for_parse;
 use super::reference_model::LoweredEffects;
 use super::reference_model::ReferenceExports;
+use super::reference_model::ReferenceEnv;
 use super::restriction_support::{
     apply_pending_mana_restriction, apply_pending_restrictions_to_ability, is_restrictable_ability,
 };
@@ -4358,15 +4360,15 @@ mod tests {
             })
             .expect("expected Portcullis-style line to normalize into a triggered ability");
 
-        let NormalizedPreparedAbility::Triggered { prepared, .. } = parsed
-            .prepared
-            .expect("expected Portcullis-style line to produce a prepared triggered ability")
-        else {
-            panic!("expected Portcullis-style line to normalize into a prepared triggered ability");
+        let AbilityKind::Triggered(triggered) = parsed.parsed.ability.kind else {
+            panic!(
+                "expected Portcullis-style line to normalize into a triggered ability, got {:?}",
+                parsed.parsed.ability.kind
+            );
         };
-        let debug = format!("{:?}", prepared.intervening_if);
+        let debug = format!("{:?}", triggered.intervening_if);
         assert!(
-            prepared.intervening_if.is_some(),
+            triggered.intervening_if.is_some(),
             "expected trigger predicate to survive normalization, got {debug}"
         );
         assert!(
@@ -5084,19 +5086,35 @@ fn apply_explicit_intervening_if_to_triggered_chunk(
             }
         }
         LineAst::Ability(mut parsed) => {
-            if let Some(effects_ast) = parsed.effects_ast.take() {
-                if matches!(
-                    effects_ast.as_slice(),
-                    [EffectAst::Conditional { if_false, .. }] if if_false.is_empty()
-                ) {
-                    parsed.effects_ast = Some(effects_ast);
-                } else {
-                    parsed.effects_ast = Some(vec![EffectAst::Conditional {
-                        predicate,
-                        if_true: effects_ast,
-                        if_false: Vec::new(),
-                    }]);
+            let compiled_condition = compile_condition_from_predicate_ast_with_env(
+                &predicate,
+                &ReferenceEnv::from_imports(&parsed.reference_imports, false, false, false, None),
+                None,
+            );
+            if let Ok(condition) = compiled_condition {
+                if let AbilityKind::Triggered(triggered) = &mut parsed.ability.kind {
+                    triggered.intervening_if = Some(match triggered.intervening_if.take() {
+                        Some(existing) => {
+                            crate::ConditionExpr::And(Box::new(existing), Box::new(condition))
+                        }
+                        None => condition,
+                    });
                 }
+                if let Some(effects_ast) = parsed.effects_ast.take() {
+                    if let [EffectAst::Conditional {
+                        if_true,
+                        if_false,
+                        ..
+                    }] = effects_ast.as_slice()
+                        && if_false.is_empty()
+                    {
+                        parsed.effects_ast = Some(if_true.clone());
+                    } else {
+                        parsed.effects_ast = Some(effects_ast);
+                    }
+                }
+            } else if let Some(effects_ast) = parsed.effects_ast.take() {
+                parsed.effects_ast = Some(effects_ast);
             }
             Ok(LineAst::Ability(parsed))
         }
