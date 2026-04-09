@@ -2514,6 +2514,72 @@ pub(crate) fn parse_sentence_exile_then_may_put_from_exile(
     Ok(Some(head_effects))
 }
 
+pub(crate) fn parse_exile_then_shuffle_graveyard_into_library_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    use super::super::grammar::primitives as grammar;
+
+    let split = split_lexed_once_on_comma_then(tokens)
+        .or_else(|| grammar::split_lexed_once_on_separator(tokens, || grammar::kw("then").void()));
+    let Some((head_slice, tail_slice)) = split else {
+        return Ok(None);
+    };
+
+    let head_tokens = trim_commas(head_slice);
+    let tail_tokens = trim_commas(tail_slice);
+    if head_tokens.is_empty() || tail_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let head_words = crate::cards::builders::parser::token_word_refs(&head_tokens);
+    if !head_words.first().is_some_and(|word| *word == "exile")
+        && !(head_words.first().is_some_and(|word| *word == "you")
+            && head_words.get(1).is_some_and(|word| *word == "exile"))
+    {
+        return Ok(None);
+    }
+
+    let tail_words = crate::cards::builders::parser::token_word_refs(&tail_tokens);
+    if !tail_words
+        .first()
+        .is_some_and(|word| *word == "shuffle" || *word == "shuffles")
+    {
+        return Ok(None);
+    }
+    if !tail_words
+        .iter()
+        .any(|word| *word == "graveyard" || *word == "graveyards")
+        || !tail_words
+            .iter()
+            .any(|word| *word == "library" || *word == "libraries")
+    {
+        return Ok(None);
+    }
+
+    let mut head_effects = parse_effect_chain(&head_tokens)?;
+    if !head_effects.iter().any(|effect| {
+        matches!(
+            effect,
+            EffectAst::Exile { .. }
+                | EffectAst::ExileAll { .. }
+                | EffectAst::ExileUntilSourceLeaves { .. }
+        )
+    }) {
+        return Ok(None);
+    }
+
+    let mut tail_effects = parse_effect_chain(&tail_tokens)?;
+    if !tail_effects
+        .iter()
+        .any(|effect| matches!(effect, EffectAst::ShuffleGraveyardIntoLibrary { .. }))
+    {
+        return Ok(None);
+    }
+
+    head_effects.append(&mut tail_effects);
+    Ok(Some(head_effects))
+}
+
 pub(crate) fn parse_exile_source_with_counters_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -5771,6 +5837,10 @@ pub(crate) const POST_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
     SentencePrimitive {
         name: "exile-then-may-put-from-exile",
         parser: parse_sentence_exile_then_may_put_from_exile,
+    },
+    SentencePrimitive {
+        name: "exile-then-shuffle-graveyard-into-library",
+        parser: parse_exile_then_shuffle_graveyard_into_library_sentence,
     },
     SentencePrimitive {
         name: "exile-source-with-counters",

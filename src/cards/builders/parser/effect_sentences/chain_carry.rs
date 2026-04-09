@@ -291,11 +291,13 @@ pub(crate) fn parse_or_action_clause_lexed(
 
 #[cfg(test)]
 mod tests {
-    use crate::cards::builders::{CardDefinitionBuilder, PlayerAst};
+    use crate::cards::builders::{CardDefinitionBuilder, EffectAst, PlayerAst};
     use crate::ids::CardId;
 
     use super::super::super::lexer::lex_line;
-    use super::{parse_leading_player_may_lexed, starts_like_create_fragment_lexed};
+    use super::{
+        parse_effect_chain_lexed, parse_leading_player_may_lexed, starts_like_create_fragment_lexed,
+    };
 
     #[test]
     fn leading_may_land_play_permission_does_not_lower_to_may_effect() {
@@ -366,6 +368,37 @@ mod tests {
         assert_eq!(
             parse_leading_player_may_lexed(&tokens),
             Some(PlayerAst::ThatPlayerOrTargetController)
+        );
+    }
+
+    #[test]
+    fn exile_then_shuffle_graveyard_chain_keeps_both_effects() {
+        let tokens = lex_line(
+            "Exile all cards from your library face down, then shuffle all cards from your graveyard into your library.",
+            0,
+        )
+        .expect("rewrite lexer should classify exile-then-shuffle text");
+        let effects = parse_effect_chain_lexed(&tokens).expect("chain should parse");
+        let debug = format!("{effects:?}");
+
+        assert!(
+            debug.contains("ExileAll")
+                && debug.contains("face_down: true")
+                && debug.contains("ShuffleGraveyardIntoLibrary"),
+            "expected exile-all face-down and graveyard shuffle effects, got {debug}"
+        );
+        assert!(
+            effects
+                .iter()
+                .any(|effect| matches!(effect, EffectAst::ExileAll { face_down: true, .. })),
+            "expected a face-down exile-all effect in the parsed chain: {debug}"
+        );
+        assert!(
+            effects.iter().any(|effect| matches!(
+                effect,
+                EffectAst::ShuffleGraveyardIntoLibrary { .. }
+            )),
+            "expected a graveyard shuffle effect in the parsed chain: {debug}"
         );
     }
 }
