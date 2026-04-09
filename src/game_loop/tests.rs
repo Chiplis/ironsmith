@@ -1520,6 +1520,64 @@ fn test_optional_trigger_target_can_be_skipped_even_with_legal_targets() {
     );
 }
 
+#[test]
+fn test_toggo_landfall_creates_a_rock_token_with_an_activated_ability() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let toggo = CardDefinitionBuilder::new(CardId::new(), "Toggo, Goblin Weaponsmith")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![crate::types::Subtype::Goblin, crate::types::Subtype::Artificer])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text(
+            "Landfall — Whenever a land you control enters, create a colorless Equipment artifact token named Rock with \"Equipped creature has '{1}, {T}, Sacrifice Rock: This creature deals 2 damage to any target'\" and equip {1}.\nPartner (You can have two commanders if both have partner.)",
+        )
+        .expect("Toggo should parse");
+    let toggo_id = game.create_object_from_definition(&toggo, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(toggo_id);
+
+    let land = CardBuilder::new(CardId::from_raw(91_102), "Toggo Landfall Land")
+        .card_types(vec![CardType::Land])
+        .build();
+    let land_id = game.create_object_from_card(&land, alice, Zone::Hand);
+    assert!(
+        game.move_object_by_effect(land_id, Zone::Battlefield)
+            .is_some(),
+        "the land should enter the battlefield"
+    );
+
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Toggo's landfall trigger should go on the stack");
+    resolve_stack_entry(&mut game).expect("Toggo's landfall trigger should resolve");
+
+    let rock_id = game
+        .battlefield
+        .iter()
+        .copied()
+        .find(|&id| {
+            game.object(id)
+                .is_some_and(|obj| obj.name == "Rock" && obj.controller == alice)
+        })
+        .expect("Toggo should create a Rock token");
+    let rock = game.object(rock_id).expect("Rock token should exist");
+    assert_eq!(rock.name, "Rock");
+    assert!(
+        rock.abilities
+            .iter()
+            .any(|ability| matches!(ability.kind, AbilityKind::Activated(_))),
+        "Rock should keep its activated ability"
+    );
+}
+
 fn bridge_from_below_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(472), "Bridge from Below")
         .card_types(vec![CardType::Enchantment])

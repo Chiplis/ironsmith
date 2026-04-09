@@ -17719,6 +17719,19 @@ fn parse_mabel_token_preserves_colorless_and_equipment_payload() {
 }
 
 #[test]
+fn parse_toggo_token_preserves_named_rock_and_activated_payload() {
+    let def = parse_oracle_card_definition("Toggo, Goblin Weaponsmith");
+    let rendered = format!("{def:?}").to_ascii_lowercase();
+    assert!(
+        rendered.contains("name: \"rock\"")
+            && rendered.contains("equipped creature has")
+            && rendered.contains("sacrifice rock: this creature deals 2 damage to any target")
+            && rendered.contains("equip {1}"),
+        "expected Toggo's Rock token payload to preserve its named activated ability, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_that_creature_gets_and_gains_uses_single_tagged_target() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Ogre Battledriver Variant")
         .card_types(vec![CardType::Creature])

@@ -9891,7 +9891,7 @@ pub(crate) fn join_simple_and_list(parts: &[&str]) -> String {
     }
 }
 
-pub(crate) fn parse_equipment_rules_text(words: &[&str]) -> Option<String> {
+pub(crate) fn parse_equipment_rules_text(words: &[&str], source_text: &str) -> Option<String> {
     let has_equipped_subject = words
         .iter()
         .enumerate()
@@ -9901,38 +9901,53 @@ pub(crate) fn parse_equipment_rules_text(words: &[&str]) -> Option<String> {
     }
 
     let mut lines = Vec::new();
-    let has_plus_one = find_window_by(words, 2, |window| window == ["gets", "+1/+1"]).is_some();
-    let mut granted_keywords: Vec<&str> = Vec::new();
-    for keyword in [
-        "vigilance",
-        "trample",
-        "haste",
-        "flying",
-        "lifelink",
-        "deathtouch",
-        "menace",
-        "reach",
-        "hexproof",
-        "indestructible",
-    ] {
-        if words.iter().any(|word| *word == keyword) {
-            granted_keywords.push(keyword);
+    if let Some(has_idx) = source_text.find("equipped creature has ") {
+        let ability_start = has_idx + "equipped creature has ".len();
+        let ability_tail = &source_text[ability_start..];
+        let ability_end = ability_tail
+            .find(" and equip ")
+            .or_else(|| ability_tail.rfind(" equip "))
+            .unwrap_or(ability_tail.len());
+        let ability_clause = ability_tail[..ability_end].trim();
+        if ability_clause.contains(':') {
+            lines.push(format!("Equipped creature has {}.", ability_clause));
         }
     }
-    if has_plus_one {
-        if granted_keywords.is_empty() {
-            lines.push("Equipped creature gets +1/+1.".to_string());
-        } else {
+
+    if lines.is_empty() {
+        let has_plus_one = find_window_by(words, 2, |window| window == ["gets", "+1/+1"]).is_some();
+        let mut granted_keywords: Vec<&str> = Vec::new();
+        for keyword in [
+            "vigilance",
+            "trample",
+            "haste",
+            "flying",
+            "lifelink",
+            "deathtouch",
+            "menace",
+            "reach",
+            "hexproof",
+            "indestructible",
+        ] {
+            if words.iter().any(|word| *word == keyword) {
+                granted_keywords.push(keyword);
+            }
+        }
+        if has_plus_one {
+            if granted_keywords.is_empty() {
+                lines.push("Equipped creature gets +1/+1.".to_string());
+            } else {
+                lines.push(format!(
+                    "Equipped creature gets +1/+1 and has {}.",
+                    join_simple_and_list(&granted_keywords)
+                ));
+            }
+        } else if !granted_keywords.is_empty() {
             lines.push(format!(
-                "Equipped creature gets +1/+1 and has {}.",
+                "Equipped creature has {}.",
                 join_simple_and_list(&granted_keywords)
             ));
         }
-    } else if !granted_keywords.is_empty() {
-        lines.push(format!(
-            "Equipped creature has {}.",
-            join_simple_and_list(&granted_keywords)
-        ));
     }
 
     if let Some(equip_amount) = parse_equip_amount(words) {
@@ -10846,33 +10861,36 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
                 subtypes.push(subtype);
             }
         }
-        let token_name = find_index(words.as_slice(), |word| {
-            !matches!(
-                *word,
-                "artifact"
-                    | "token"
-                    | "tokens"
-                    | "named"
-                    | "colorless"
-                    | "white"
-                    | "blue"
-                    | "black"
-                    | "red"
-                    | "green"
-            )
-        })
-        .map(|idx| {
-            let mut chars = words[idx].chars();
-            match chars.next() {
-                Some(first) => {
-                    let mut name = first.to_uppercase().to_string();
-                    name.push_str(chars.as_str());
-                    name
-                }
-                None => "Artifact".to_string(),
-            }
-        })
-        .unwrap_or_else(|| "Artifact".to_string());
+        let token_name = extract_named_card_name(&words, lower.as_str())
+            .or_else(|| {
+                find_index(words.as_slice(), |word| {
+                    !matches!(
+                        *word,
+                        "artifact"
+                            | "token"
+                            | "tokens"
+                            | "named"
+                            | "colorless"
+                            | "white"
+                            | "blue"
+                            | "black"
+                            | "red"
+                            | "green"
+                    )
+                })
+                .map(|idx| {
+                    let mut chars = words[idx].chars();
+                    match chars.next() {
+                        Some(first) => {
+                            let mut name = first.to_uppercase().to_string();
+                            name.push_str(chars.as_str());
+                            name
+                        }
+                        None => "Artifact".to_string(),
+                    }
+                })
+            })
+            .unwrap_or_else(|| "Artifact".to_string());
         let mut builder = CardDefinitionBuilder::new(CardId::new(), token_name)
             .token()
             .card_types(vec![CardType::Artifact]);
@@ -10887,7 +10905,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
                 ObjectFilter::source(),
             )));
         }
-        if let Some(rules_text) = parse_equipment_rules_text(&words)
+        if let Some(rules_text) = parse_equipment_rules_text(&words, lower.as_str())
             && let Ok(def) = builder.clone().parse_text(&rules_text)
         {
             return Some(def);
