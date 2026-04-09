@@ -13049,6 +13049,31 @@ fn render_bonehoard_static_bonus_mentions_all_graveyards() {
 }
 
 #[test]
+fn render_kembas_banner_equipped_bonus_uses_for_each_wording() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Kemba's Banner Variant")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .parse_text(
+            "For Mirrodin! (When this Equipment enters, create a 2/2 red Rebel creature token, then attach this to it.)\n\
+             Equipped creature gets +1/+1 for each creature you control.\n\
+             Equip {2}{W}",
+        )
+        .expect("Kemba's Banner text should parse");
+
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("for mirrodin!")
+            && joined.contains("equipped creature gets +1/+1 for each creature you control")
+            && joined.contains("equip {2}{w}"),
+        "expected Kemba's Banner to preserve the oracle-style for-each wording, got {joined}"
+    );
+}
+
+#[test]
 fn render_allies_you_control_pluralizes() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Allied Teamwork Variant")
         .parse_text("Allies you control get +1/+1.")
@@ -22284,6 +22309,32 @@ fn parse_oracle_turnabout_card_type_mass_tap_choice_regression() {
 }
 
 #[test]
+fn parse_oracle_creeping_renaissance_permanent_type_choice_regression() {
+    let def = parse_oracle_card_definition("Creeping Renaissance");
+    let rendered = compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        rendered_lower.contains("choose a permanent type"),
+        "expected permanent-type choice wording, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains("return all cards of the chosen type from your graveyard to your hand"),
+        "expected chosen-type graveyard return wording, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.spell_effect).to_ascii_lowercase();
+    assert!(
+        debug.contains("choosecardtypeeffect"),
+        "expected choose-card-type lowering, got {debug}"
+    );
+    assert!(
+        debug.contains("chosen_creature_type: true"),
+        "expected chosen-type graveyard filter, got {debug}"
+    );
+}
+
+#[test]
 fn parse_oracle_opaline_bracers_charge_counter_scaling_regression() {
     let def = parse_oracle_card_definition("Opaline Bracers");
     let rendered = compiled_lines(&def).join(" ");
@@ -22448,6 +22499,22 @@ fn parse_search_library_face_down_exile_then_shuffle_clause() {
             && debug.contains("face_down: true")
             && debug.contains("ShuffleLibraryEffect"),
         "expected choose-plus-face-down-exile search sequence, got {debug}"
+    );
+}
+
+#[test]
+fn parse_inverter_of_truth_etb_clause_keeps_face_down_library_exile() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Inverter of Truth Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("When this creature enters, exile all cards from your library face down, then shuffle all cards from your graveyard into your library.")
+        .expect("Inverter of Truth-style ETB clause should parse");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("ExileEffect")
+            && debug.contains("face_down: true")
+            && debug.contains("ShuffleGraveyardIntoLibraryEffect"),
+        "expected face-down library exile plus graveyard shuffle, got {debug}"
     );
 }
 

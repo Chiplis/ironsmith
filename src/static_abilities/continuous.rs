@@ -577,6 +577,15 @@ fn describe_anthem_count_expression(expr: &AnthemCountExpression) -> String {
     }
 }
 
+fn describe_anthem_for_each_count_expression(expr: &AnthemCountExpression) -> Option<String> {
+    match expr {
+        AnthemCountExpression::MatchingFilter(filter) if filter.zone == Some(Zone::Battlefield) => {
+            Some(strip_article(filter.description()))
+        }
+        _ => None,
+    }
+}
+
 fn comparison_display(cmp: &Comparison) -> String {
     match cmp {
         Comparison::GreaterThan(n) => format!("more than {n}"),
@@ -1030,6 +1039,10 @@ impl StaticAbilityKind for Anthem {
                     count: toughness_count,
                 },
             ) if power_count == toughness_count && *power == 1 && *toughness == 1 => {
+                if let Some(count_subject) = describe_anthem_for_each_count_expression(power_count)
+                {
+                    return format!("{subject} {verb} +1/+1 for each {count_subject}");
+                }
                 format!(
                     "{subject} {verb} +X/+X, where X is the number of {}",
                     describe_anthem_count_expression(power_count),
@@ -3280,6 +3293,71 @@ mod tests {
             game.calculated_toughness(creature_id),
             Some(3),
             "Bonehoard should count creature cards in both graveyards"
+        );
+    }
+
+    #[test]
+    fn test_kembas_banner_counts_creatures_you_control_for_each() {
+        use crate::cards::builders::CardDefinitionBuilder;
+        use crate::ids::CardId;
+        use crate::mana::{ManaCost, ManaSymbol};
+        use crate::object::AttachmentTarget;
+
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let kembas_banner = CardDefinitionBuilder::new(CardId::new(), "Kemba's Banner Variant")
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(3)],
+                vec![ManaSymbol::White],
+            ]))
+            .card_types(vec![CardType::Artifact])
+            .subtypes(vec![Subtype::Equipment])
+            .parse_text(
+                "For Mirrodin! (When this Equipment enters, create a 2/2 red Rebel creature token, then attach this to it.)\n\
+                 Equipped creature gets +1/+1 for each creature you control.\n\
+                 Equip {2}{W}",
+            )
+            .expect("Kemba's Banner text should parse");
+
+        let compiled = crate::compiled_text::compiled_lines(&kembas_banner)
+            .join(" ")
+            .to_ascii_lowercase();
+        assert!(
+            compiled.contains("equipped creature gets +1/+1 for each creature you control"),
+            "expected Kemba's Banner to render the for-each anthem wording, got {compiled}"
+        );
+
+        let equipment_id = game.create_object_from_definition(&kembas_banner, alice, Zone::Battlefield);
+
+        let bearer = CardBuilder::new(CardId::new(), "Bearer")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        let bearer_id = game.create_object_from_card(&bearer, alice, Zone::Battlefield);
+
+        let ally = CardBuilder::new(CardId::new(), "Ally")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        game.create_object_from_card(&ally, alice, Zone::Battlefield);
+
+        game.object_mut(equipment_id).unwrap().attached_to =
+            Some(AttachmentTarget::Object(bearer_id));
+        game.object_mut(bearer_id)
+            .unwrap()
+            .attachments
+            .push(equipment_id);
+
+        assert_eq!(
+            game.calculated_power(bearer_id),
+            Some(3),
+            "Kemba's Banner should count both creatures you control while attached"
+        );
+        assert_eq!(
+            game.calculated_toughness(bearer_id),
+            Some(3),
+            "Kemba's Banner should apply the same bonus to toughness"
         );
     }
 
