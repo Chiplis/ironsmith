@@ -123,6 +123,7 @@ pub enum StaticAbilityId {
     // === Cost modifiers ===
     CostReduction,
     ActivatedAbilityCostReduction,
+    ActivatedAbilityCostIncrease,
     ThisSpellCostReduction,
     ThisSpellCostReductionManaCost,
     CostIncrease,
@@ -361,6 +362,7 @@ impl StaticAbilityId {
             | RemoveSupertypes
             | CostReduction
             | ActivatedAbilityCostReduction
+            | ActivatedAbilityCostIncrease
             | ThisSpellCostReduction
             | ThisSpellCostReductionManaCost
             | CostIncrease

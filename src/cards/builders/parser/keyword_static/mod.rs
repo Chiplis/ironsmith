@@ -435,6 +435,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_pregame_begin_on_battlefield_line),
         multi_static_ability_ast_rule!(parse_combined_pregame_choose_color_line),
         single_static_ability_ast_rule!(parse_pregame_choose_color_line),
+        single_static_ability_ast_rule!(parse_activated_abilities_cost_increase_line),
         single_static_ability_ast_rule!(parse_choose_basic_land_type_as_enters_line),
         single_static_ability_ast_rule!(parse_choose_creature_type_as_enters_line),
         single_static_ability_ast_rule!(parse_choose_named_options_as_enters_line),
@@ -884,6 +885,80 @@ pub(crate) fn parse_activated_abilities_cant_be_activated_line(
     };
 
     Ok(Some(StaticAbility::restriction(restriction, display)))
+}
+
+pub(crate) fn parse_activated_abilities_cost_increase_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
+    if clause_words.len() < 8 || !slice_starts_with(&clause_words, &["activated", "abilities", "of"])
+    {
+        return Ok(None);
+    }
+
+    let Some(cost_idx) = find_index(&clause_words, |word| *word == "cost" || *word == "costs")
+    else {
+        return Ok(None);
+    };
+    if cost_idx <= 3 {
+        return Ok(None);
+    }
+
+    let subject_tokens = trim_commas(&tokens[3..cost_idx]);
+    if subject_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let mut filter = parse_object_filter(&subject_tokens, false).map_err(|_| {
+        CardTextError::ParseError(format!(
+            "unsupported activated-ability cost increase subject (clause: '{}')",
+            clause_words.join(" ")
+        ))
+    })?;
+    if filter.zone.is_none() {
+        filter.zone = Some(Zone::Battlefield);
+    }
+
+    let amount_tokens = trim_commas(&tokens[cost_idx + 1..]);
+    let amount_words = crate::cards::builders::parser::token_word_refs(&amount_tokens);
+    if !slice_starts_with(&amount_words, &["an", "additional"])
+        && !slice_starts_with(&amount_words, &["a", "additional"])
+    {
+        return Ok(None);
+    }
+
+    let cost_tokens = trim_commas(&amount_tokens[2..]);
+    let Some(to_idx) =
+        find_index(&crate::cards::builders::parser::token_word_refs(&cost_tokens), |word| {
+            *word == "to"
+        })
+    else {
+        return Ok(None);
+    };
+    let additional_cost_tokens = trim_commas(&cost_tokens[..to_idx]);
+    if additional_cost_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing activated-ability additional cost (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+    let total_cost = parse_activation_cost(&additional_cost_tokens)?;
+    if total_cost.is_free() {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported activated-ability additional cost (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+
+    let tail_words = crate::cards::builders::parser::token_word_refs(&cost_tokens[to_idx..]);
+    if !slice_starts_with(&tail_words, &["to", "activate"]) {
+        return Ok(None);
+    }
+
+    Ok(Some(StaticAbility::increase_activated_ability_costs(
+        filter,
+        total_cost,
+    )))
 }
 
 pub(crate) fn parse_activated_abilities_cant_be_activated_line_lexed(

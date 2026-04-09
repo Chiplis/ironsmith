@@ -597,6 +597,20 @@ impl ActivatedAbilityCostReduction {
     }
 }
 
+/// Activated-ability cost increase:
+/// "Activated abilities of <objects> cost an additional <cost> to activate."
+#[derive(Debug, Clone, PartialEq)]
+pub struct ActivatedAbilityCostIncrease {
+    pub filter: ObjectFilter,
+    pub increase: crate::cost::TotalCost,
+}
+
+impl ActivatedAbilityCostIncrease {
+    pub fn new(filter: ObjectFilter, increase: crate::cost::TotalCost) -> Self {
+        Self { filter, increase }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ActivatedAbilityCostCondition {
     TargetsExactly { count: usize, filter: ObjectFilter },
@@ -717,6 +731,35 @@ impl StaticAbilityKind for ActivatedAbilityCostReduction {
     }
 
     fn activated_ability_cost_reduction(&self) -> Option<&ActivatedAbilityCostReduction> {
+        Some(self)
+    }
+}
+
+impl StaticAbilityKind for ActivatedAbilityCostIncrease {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::ActivatedAbilityCostIncrease
+    }
+
+    fn display(&self) -> String {
+        if self.filter == ObjectFilter::source() {
+            format!(
+                "This ability costs an additional {} to activate",
+                self.increase.display()
+            )
+        } else {
+            format!(
+                "Activated abilities of {} cost an additional {} to activate",
+                self.filter.description(),
+                self.increase.display()
+            )
+        }
+    }
+
+    fn modifies_costs(&self) -> bool {
+        true
+    }
+
+    fn activated_ability_cost_increase(&self) -> Option<&ActivatedAbilityCostIncrease> {
         Some(self)
     }
 }

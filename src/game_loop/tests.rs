@@ -6930,6 +6930,149 @@ fn test_bosh_iron_golem_uses_sacrificed_artifact_mana_value_for_damage() {
 }
 
 #[test]
+fn test_brutal_suppression_adds_a_land_sacrifice_activation_cost() {
+    use crate::cost::TotalCost;
+    use crate::decision::LegalAction;
+    use crate::PriorityResponse;
+    use crate::types::Subtype;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let brutal_suppression = CardDefinitionBuilder::new(CardId::new(), "Brutal Suppression")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Activated abilities of nontoken Rebels cost an additional \"Sacrifice a land\" to activate.",
+        )
+        .expect("Brutal Suppression should parse");
+    game.create_object_from_definition(&brutal_suppression, alice, Zone::Battlefield);
+
+    let rebel = CardBuilder::new(CardId::new(), "Rebel Initiate")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Rebel])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let rebel_id = game.create_object_from_card(&rebel, alice, Zone::Battlefield);
+
+    game.object_mut(rebel_id)
+        .expect("rebel exists")
+        .abilities
+        .push(Ability::activated(
+            TotalCost::free(),
+            crate::resolution::ResolutionProgram::from_effects(vec![Effect::draw(1)]),
+        ));
+
+    let actions_without_land = crate::decision::compute_legal_actions(&game, alice);
+    assert!(
+        !actions_without_land.iter().any(|action| matches!(
+            action,
+            LegalAction::ActivateAbility { source, .. } if *source == rebel_id
+        )),
+        "rebel ability should not be activatable without a land to sacrifice"
+    );
+
+    let land = CardBuilder::new(CardId::new(), "Test Land")
+        .card_types(vec![CardType::Land])
+        .build();
+    let land_id = game.create_object_from_card(&land, alice, Zone::Battlefield);
+
+    let actions_with_land = crate::decision::compute_legal_actions(&game, alice);
+    assert!(
+        actions_with_land.iter().any(|action| matches!(
+            action,
+            LegalAction::ActivateAbility { source, .. } if *source == rebel_id
+        )),
+        "rebel ability should become activatable once a land is available"
+    );
+
+    let ability_index = game
+        .object(rebel_id)
+        .expect("rebel should exist")
+        .abilities
+        .iter()
+        .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .expect("rebel should have an activated ability");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = AutoPassDecisionMaker;
+
+    let activate = PriorityResponse::PriorityAction(LegalAction::ActivateAbility {
+        source: rebel_id,
+        ability_index,
+    });
+    let progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &activate,
+        &mut dm,
+    )
+    .expect("activation should start");
+
+    let cost_ctx = match progress {
+        crate::decision::GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::SelectOptions(ctx),
+        ) => ctx,
+        other => panic!(
+            "expected next-cost chooser for Brutal Suppression activation, got {:?}",
+            other
+        ),
+    };
+
+    let sacrifice_cost_index = cost_ctx
+        .options
+        .iter()
+        .find(|option| option.description.to_ascii_lowercase().contains("sacrifice"))
+        .map(|option| option.index)
+        .expect("expected a sacrifice cost option");
+
+    let progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::NextCostChoice(sacrifice_cost_index),
+        &mut dm,
+    )
+    .expect("should choose the sacrifice cost");
+
+    match progress {
+        crate::decision::GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::SelectObjects(_),
+        ) => {}
+        other => panic!(
+            "expected sacrifice target chooser for Brutal Suppression, got {:?}",
+            other
+        ),
+    }
+
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::SacrificeTarget(land_id),
+        &mut dm,
+    )
+    .expect("should sacrifice the land as the activation cost");
+
+    assert_eq!(
+        game.object(land_id).expect("land still exists").zone,
+        Zone::Graveyard,
+        "Brutal Suppression should sacrifice the chosen land as part of activation"
+    );
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "the Rebel ability should reach the stack after paying the extra activation cost"
+    );
+}
+
+#[test]
 fn test_yawgmoth_sacrifice_activation_targets_before_paying_costs() {
     use crate::decision::{DecisionMaker, LegalAction};
 

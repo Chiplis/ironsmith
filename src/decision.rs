@@ -2089,6 +2089,17 @@ pub(crate) fn calculate_effective_activation_total_cost_with_view(
     chosen_targets: &[Target],
     view: &DerivedGameView<'_>,
 ) -> crate::cost::TotalCost {
+    use crate::ability::AbilityKind;
+    use crate::filter::FilterContext;
+
+    fn opponents_of(game: &GameState, player: PlayerId) -> Vec<PlayerId> {
+        game.turn_order
+            .iter()
+            .copied()
+            .filter(|p| *p != player)
+            .collect()
+    }
+
     let mut costs = Vec::with_capacity(cost.costs().len());
     for component in cost.costs() {
         if let Some(mana_cost) = component.mana_cost_ref() {
@@ -2105,7 +2116,72 @@ pub(crate) fn calculate_effective_activation_total_cost_with_view(
             costs.push(component.clone());
         }
     }
-    crate::cost::TotalCost::from_costs(costs)
+
+    let mut adjusted = crate::cost::TotalCost::from_costs(costs);
+    let Some(ability_source_object) = game.object(ability_source) else {
+        return adjusted;
+    };
+
+    let mut cost_modifier_sources = view.activated_ability_cost_modifier_sources();
+    if ability_source_object.zone != Zone::Battlefield {
+        cost_modifier_sources.push(ability_source);
+    }
+
+    for source_id in cost_modifier_sources {
+        let Some(perm) = game.object(source_id) else {
+            continue;
+        };
+        let controller = perm.controller;
+        let filter_ctx = FilterContext::new(controller)
+            .with_source(source_id)
+            .with_active_player(game.turn.active_player)
+            .with_opponents(opponents_of(game, controller));
+
+        let static_abilities = if perm.zone == Zone::Battlefield {
+            view.static_abilities_rc(source_id).unwrap_or_else(|| {
+                Rc::new(
+                    perm.abilities
+                        .iter()
+                        .filter_map(|a| match &a.kind {
+                            AbilityKind::Static(sa) => Some(sa.clone()),
+                            _ => None,
+                        })
+                        .collect(),
+                )
+            })
+        } else {
+            Rc::new(
+                perm.abilities
+                    .iter()
+                    .filter_map(|a| match &a.kind {
+                        AbilityKind::Static(sa) if a.functions_in(&perm.zone) => Some(sa.clone()),
+                        _ => None,
+                    })
+                    .collect(),
+            )
+        };
+
+        for static_ability in static_abilities.iter() {
+            if !static_ability.is_active(game, source_id) {
+                continue;
+            }
+
+            if let Some(increase) = static_ability.activated_ability_cost_increase() {
+                if !increase
+                    .filter
+                    .matches(ability_source_object, &filter_ctx, game)
+                {
+                    continue;
+                }
+
+                let mut costs = adjusted.costs().to_vec();
+                costs.extend(increase.increase.costs().iter().cloned());
+                adjusted = crate::cost::TotalCost::from_costs(costs);
+            }
+        }
+    }
+
+    adjusted
 }
 
 /// Calculate the effective mana portion of an activated ability's cost.
@@ -2190,50 +2266,51 @@ fn calculate_effective_activation_mana_cost_with_view(
         };
 
         for static_ability in static_abilities.iter() {
-            let Some(reduction) = static_ability.activated_ability_cost_reduction() else {
-                continue;
-            };
             if !static_ability.is_active(game, source_id) {
                 continue;
             }
-            if !reduction
-                .filter
-                .matches(ability_source_object, &filter_ctx, game)
-            {
-                continue;
-            }
-            if let Some(condition) = &reduction.condition
-                && !crate::static_abilities::activated_ability_cost_condition_is_active_for_activation(
-                    game,
-                    ability_source,
-                    condition,
-                    chosen_targets,
-                )
-            {
-                continue;
+
+            if let Some(reduction) = static_ability.activated_ability_cost_reduction() {
+                if !reduction
+                    .filter
+                    .matches(ability_source_object, &filter_ctx, game)
+                {
+                    continue;
+                }
+                if let Some(condition) = &reduction.condition
+                    && !crate::static_abilities::activated_ability_cost_condition_is_active_for_activation(
+                        game,
+                        ability_source,
+                        condition,
+                        chosen_targets,
+                    )
+                {
+                    continue;
+                }
+
+                let multiplier = if let Some(per_filter) = &reduction.per_matching_objects {
+                    game.objects_in_deterministic_order()
+                        .into_iter()
+                        .filter(|obj| per_filter.matches(obj, &filter_ctx, game))
+                        .count() as u32
+                } else {
+                    1
+                };
+                if multiplier == 0 {
+                    continue;
+                }
+
+                let before = adjusted.clone();
+                adjusted = adjusted.reduce_generic(reduction.reduction.saturating_mul(multiplier));
+                if let Some(minimum_total_mana) = reduction.minimum_total_mana
+                    && before.mana_value() > 0
+                    && adjusted.mana_value() < minimum_total_mana
+                {
+                    let missing = minimum_total_mana - adjusted.mana_value();
+                    adjusted = add_generic_mana_cost(&adjusted, missing);
+                }
             }
 
-            let multiplier = if let Some(per_filter) = &reduction.per_matching_objects {
-                game.objects_in_deterministic_order()
-                    .into_iter()
-                    .filter(|obj| per_filter.matches(obj, &filter_ctx, game))
-                    .count() as u32
-            } else {
-                1
-            };
-            if multiplier == 0 {
-                continue;
-            }
-
-            let before = adjusted.clone();
-            adjusted = adjusted.reduce_generic(reduction.reduction.saturating_mul(multiplier));
-            if let Some(minimum_total_mana) = reduction.minimum_total_mana
-                && before.mana_value() > 0
-                && adjusted.mana_value() < minimum_total_mana
-            {
-                let missing = minimum_total_mana - adjusted.mana_value();
-                adjusted = add_generic_mana_cost(&adjusted, missing);
-            }
         }
     }
 

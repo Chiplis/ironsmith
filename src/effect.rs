@@ -762,7 +762,7 @@ impl EffectPredicate {
 }
 
 /// Comparison operations for numeric values.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Comparison {
     GreaterThan(i32),
     GreaterThanOrEqual(i32),
@@ -770,6 +770,7 @@ pub enum Comparison {
     LessThan(i32),
     LessThanOrEqual(i32),
     NotEqual(i32),
+    BetweenInclusive(i32, i32),
 }
 
 impl Comparison {
@@ -782,6 +783,7 @@ impl Comparison {
             Self::LessThan(n) => value < *n,
             Self::LessThanOrEqual(n) => value <= *n,
             Self::NotEqual(n) => value != *n,
+            Self::BetweenInclusive(min, max) => value >= *min && value <= *max,
         }
     }
 }
@@ -3620,6 +3622,12 @@ impl Effect {
     pub fn flip_coin(player: PlayerFilter) -> Self {
         use crate::effects::FlipCoinEffect;
         Self::new(FlipCoinEffect::new(player))
+    }
+
+    /// Roll a die with the given number of sides for the specified player.
+    pub fn roll_die(sides: u32, player: PlayerFilter) -> Self {
+        use crate::effects::RollDieEffect;
+        Self::new(RollDieEffect::new(player, sides))
     }
 
     // === Effect composition builders ===

@@ -917,7 +917,10 @@ impl<'a> DerivedGameView<'a> {
         self.static_abilities_rc(permanent_id)
             .unwrap_or_default()
             .iter()
-            .any(|static_ability| static_ability.activated_ability_cost_reduction().is_some())
+            .any(|static_ability| {
+                static_ability.activated_ability_cost_reduction().is_some()
+                    || static_ability.activated_ability_cost_increase().is_some()
+            })
     }
 
     fn narrow_battlefield_candidates(

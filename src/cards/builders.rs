@@ -2255,6 +2255,10 @@ pub(crate) enum EffectAst {
         predicate: IfResultPredicate,
         effects: Vec<EffectAst>,
     },
+    RollDie {
+        player: PlayerAst,
+        sides: u32,
+    },
     IfResult {
         predicate: IfResultPredicate,
         effects: Vec<EffectAst>,
@@ -2670,6 +2674,7 @@ pub(crate) enum IfResultPredicate {
     DidNot,
     DiesThisWay,
     WasDeclined,
+    Value(crate::effect::Comparison),
 }
 
 const IT_TAG: &str = "__it__";
