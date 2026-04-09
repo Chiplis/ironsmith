@@ -5356,6 +5356,142 @@ fn test_etb_trigger_fires() {
 }
 
 #[test]
+fn terastodon_etb_destroys_up_to_three_permanents_and_makes_elephants() {
+    use crate::cards::builders::CardDefinitionBuilder;
+    use crate::decision::DecisionMaker;
+    use crate::events::zones::EnterBattlefieldEvent;
+    use crate::executor::{ExecutionContext, execute_effect};
+    use crate::ids::CardId;
+    use crate::provenance::ProvNodeId;
+    use crate::triggers::TriggerEvent;
+    use crate::zone::Zone;
+
+    struct ChooseAllLegalTargetsDecisionMaker;
+
+    impl DecisionMaker for ChooseAllLegalTargetsDecisionMaker {
+        fn decide_boolean(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            true
+        }
+
+        fn decide_targets(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::TargetsContext,
+        ) -> Vec<crate::game_state::Target> {
+            let mut chosen = Vec::new();
+            for requirement in &ctx.requirements {
+                let max = requirement.max_targets.unwrap_or(requirement.legal_targets.len());
+                let mut picked = 0usize;
+                for target in &requirement.legal_targets {
+                    if picked >= max {
+                        break;
+                    }
+                    if !chosen.contains(target) {
+                        chosen.push(*target);
+                        picked += 1;
+                    }
+                }
+            }
+            chosen
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let terastodon = CardDefinitionBuilder::new(CardId::new(), "Terastodon Variant")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(6)],
+            vec![ManaSymbol::Green],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![crate::types::Subtype::Elephant])
+        .power_toughness(PowerToughness::fixed(9, 9))
+        .parse_text(
+            "When this creature enters, you may destroy up to three target noncreature permanents. For each permanent put into a graveyard this way, its controller creates a 3/3 green Elephant creature token.",
+        )
+        .expect("Terastodon should parse for the runtime regression test");
+    let terastodon_id = game.create_object_from_definition(&terastodon, alice, Zone::Battlefield);
+
+    let alice_enchantment = CardBuilder::new(CardId::from_raw(92_001), "Alice Sigil")
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let bob_artifact = CardBuilder::new(CardId::from_raw(92_002), "Bob Relic")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let bob_land = CardBuilder::new(CardId::from_raw(92_003), "Bob Shrine")
+        .card_types(vec![CardType::Land])
+        .build();
+
+    let alice_enchantment_id =
+        game.create_object_from_card(&alice_enchantment, alice, Zone::Battlefield);
+    let bob_artifact_id = game.create_object_from_card(&bob_artifact, bob, Zone::Battlefield);
+    let bob_land_id = game.create_object_from_card(&bob_land, bob, Zone::Battlefield);
+
+    let etb_trigger = terastodon
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered.clone()),
+            _ => None,
+        })
+        .expect("Terastodon should have a triggered ETB ability");
+
+    let event = TriggerEvent::new_with_provenance(
+        EnterBattlefieldEvent::new(terastodon_id, Zone::Stack),
+        ProvNodeId::default(),
+    );
+    let mut dm = ChooseAllLegalTargetsDecisionMaker;
+    let mut ctx = ExecutionContext::new(terastodon_id, alice, &mut dm).with_triggering_event(event);
+
+    for effect in &etb_trigger.effects {
+        execute_effect(&mut game, effect, &mut ctx).expect("Terastodon ETB effect should resolve");
+    }
+
+    assert!(
+        game.object(alice_enchantment_id)
+            .is_some_and(|obj| obj.zone == Zone::Graveyard),
+        "Alice's noncreature permanent should be destroyed"
+    );
+    assert!(
+        game.object(bob_artifact_id)
+            .is_some_and(|obj| obj.zone == Zone::Graveyard),
+        "Bob's artifact should be destroyed"
+    );
+    assert!(
+        game.object(bob_land_id)
+            .is_some_and(|obj| obj.zone == Zone::Graveyard),
+        "Bob's land should be destroyed"
+    );
+
+    let alice_elephants = game
+        .battlefield
+        .iter()
+        .filter(|&&id| {
+            game.object(id)
+                .is_some_and(|obj| obj.name == "Elephant" && obj.controller == alice)
+        })
+        .count();
+    let bob_elephants = game
+        .battlefield
+        .iter()
+        .filter(|&&id| {
+            game.object(id)
+                .is_some_and(|obj| obj.name == "Elephant" && obj.controller == bob)
+        })
+        .count();
+
+    assert_eq!(alice_elephants, 1, "Alice should get one Elephant token");
+    assert_eq!(bob_elephants, 2, "Bob should get two Elephant tokens");
+}
+
+#[test]
 fn test_dies_trigger_from_sba() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
