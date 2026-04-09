@@ -180,6 +180,18 @@ fn trim_outer_quotes(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     &tokens[start..end]
 }
 
+fn looks_like_trigger_intro_tokens(tokens: &[OwnedLexToken]) -> bool {
+    matches!(
+        tokens.first().map(|token| token.parser_text()),
+        Some("when" | "whenever" | "at")
+    )
+}
+
+fn looks_like_trigger_intro_after_label(tokens: &[OwnedLexToken]) -> bool {
+    split_em_dash_label_prefix(tokens)
+        .is_some_and(|(_, body_tokens)| looks_like_trigger_intro_tokens(body_tokens))
+}
+
 #[derive(Clone, Copy)]
 enum StaticAbilityLineRuleAst {
     Single(fn(&[OwnedLexToken]) -> Result<Option<StaticAbilityAst>, CardTextError>),
@@ -818,6 +830,10 @@ pub(crate) fn parse_static_ability_ast_line_lexed(
 fn parse_static_ability_ast_line_lexed_single(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    if looks_like_trigger_intro_tokens(tokens) || looks_like_trigger_intro_after_label(tokens) {
+        return Ok(None);
+    }
+
     if let Some(abilities) = parse_static_ability_ast_line_early_lexed(tokens)? {
         return Ok(Some(abilities));
     }

@@ -1989,7 +1989,7 @@ mod tests {
         assert_eq!(max_triggers_per_turn, Some(1));
         assert_eq!(
             render_token_slice(stripped),
-            "Whenever one or more lands enter under an opponent's control without being played, you may search your library for a Plains card, put it onto the battlefield tapped, then shuffle."
+            "Whenever one or more lands enter under an opponent's control without being played, you may search your library for a Plains card, put it onto the battlefield tapped, then shuffle"
         );
     }
 
