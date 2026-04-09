@@ -336,6 +336,15 @@ fn span_from_lexed_tokens(tokens: &[OwnedLexToken]) -> Option<TextSpan> {
     }
 }
 
+fn source_target_from_subject_tokens(tokens: &[OwnedLexToken]) -> Option<TargetAst> {
+    let subject_words = GainAbilityWordView::new(tokens).to_word_refs();
+    if is_source_reference_words(&subject_words) {
+        Some(TargetAst::Source(span_from_lexed_tokens(tokens)))
+    } else {
+        None
+    }
+}
+
 fn parse_simple_ability_modifier_clause_lexed(
     tokens: &[OwnedLexToken],
     losing: bool,
@@ -436,6 +445,21 @@ fn parse_simple_ability_modifier_clause_lexed(
     if is_pronoun_subject {
         let target =
             TargetAst::Tagged(TagKey::from(IT_TAG), span_from_lexed_tokens(subject_tokens));
+        if losing {
+            return Ok(Some(EffectAst::RemoveAbilitiesFromTarget {
+                target,
+                abilities,
+                duration,
+            }));
+        }
+        return Ok(Some(EffectAst::GrantAbilitiesToTarget {
+            target,
+            abilities,
+            duration,
+        }));
+    }
+
+    if let Some(target) = source_target_from_subject_tokens(subject_tokens) {
         if losing {
             return Ok(Some(EffectAst::RemoveAbilitiesFromTarget {
                 target,
@@ -601,6 +625,21 @@ pub(crate) fn parse_simple_ability_modifier_clause(
         implied_it_subject || matches!(subject_word_refs.as_slice(), ["it"] | ["they"] | ["them"]);
     if is_pronoun_subject {
         let target = TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&subject_tokens));
+        if losing {
+            return Ok(Some(EffectAst::RemoveAbilitiesFromTarget {
+                target,
+                abilities,
+                duration,
+            }));
+        }
+        return Ok(Some(EffectAst::GrantAbilitiesToTarget {
+            target,
+            abilities,
+            duration,
+        }));
+    }
+
+    if let Some(target) = source_target_from_subject_tokens(subject_tokens) {
         if losing {
             return Ok(Some(EffectAst::RemoveAbilitiesFromTarget {
                 target,
@@ -855,6 +894,42 @@ pub(crate) fn parse_gain_ability_sentence(
     if is_pronoun_subject {
         let span = span_from_tokens(&real_subject_tokens);
         let target = TargetAst::Tagged(TagKey::from(IT_TAG), span);
+        if let Some(become_effect) = &leading_become_effect {
+            effects.push(become_effect.clone());
+        }
+        if let Some((power, toughness, _)) = pump_effect {
+            effects.push(EffectAst::Pump {
+                power,
+                toughness,
+                target: target.clone(),
+                duration: duration.clone(),
+                condition: None,
+            });
+        }
+        if losing {
+            effects.push(EffectAst::RemoveAbilitiesFromTarget {
+                target,
+                abilities,
+                duration,
+            });
+        } else if grant_is_choice {
+            effects.push(EffectAst::GrantAbilitiesChoiceToTarget {
+                target,
+                abilities,
+                duration,
+            });
+        } else {
+            effects.push(EffectAst::GrantAbilitiesToTarget {
+                target,
+                abilities,
+                duration,
+            });
+        }
+        effects = append_gain_ability_trailing_effects(effects, &trailing_tail_tokens)?;
+        return Ok(Some(effects));
+    }
+
+    if let Some(target) = source_target_from_subject_tokens(&real_subject_tokens) {
         if let Some(become_effect) = &leading_become_effect {
             effects.push(become_effect.clone());
         }
@@ -1377,6 +1452,37 @@ mod tests {
             string_contains(&debug, "Landwalk(Subtype { subtype: Forest, snow: false })")
                 && string_contains(&debug, "YourNextTurn"),
             "expected forestwalk grant to keep next-upkeep duration, got {debug}"
+        );
+    }
+
+    #[test]
+    fn source_reference_gain_and_lose_ability_clause_targets_the_source_until_end_of_turn() {
+        let tokens = tokenize_line(
+            "Until end of turn, this creature loses defender and gains flying.",
+            0,
+        );
+        let effects = parse_gain_ability_sentence(&tokens)
+            .expect("source-referenced gain/lose clause should parse")
+            .expect("source-referenced gain/lose clause should produce effects");
+
+        let debug = format!("{effects:?}");
+        assert!(
+            string_contains(&debug, "RemoveAbilitiesFromTarget")
+                && string_contains(&debug, "GrantAbilitiesToTarget"),
+            "expected source-targeted remove and grant effects, got {debug}"
+        );
+        assert!(
+            string_contains(&debug, "Source("),
+            "expected the source object to stay targeted, got {debug}"
+        );
+        assert!(
+            string_contains(&debug, "EndOfTurn"),
+            "expected the clause to expire at end of turn, got {debug}"
+        );
+        assert!(
+            !string_contains(&debug, "GrantAbilitiesAll")
+                && !string_contains(&debug, "RemoveAbilitiesAll"),
+            "expected no broad battlefield-wide ability changes, got {debug}"
         );
     }
 
