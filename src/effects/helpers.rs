@@ -30,16 +30,13 @@ use crate::zone::Zone;
 // Tagged Object Resolution
 // ============================================================================
 
-/// Resolve the current `ObjectId` for a tagged snapshot, following through a
-/// single zone change via `stable_id` when the snapshot's `object_id` is stale.
+/// Resolve the current `ObjectId` for a tagged snapshot, following through
+/// zone changes via `stable_id` when the snapshot's `object_id` is stale.
 ///
 /// Zone changes create a new `ObjectId` (Magic rule 400.7). Tag snapshots
 /// captured before the move still carry the old id. This helper tries the
 /// snapshot's `object_id` first; when that object no longer exists it falls
-/// back to `stable_id` — but only if the object has moved to a *different*
-/// zone than the snapshot recorded. If the object is back in the same zone
-/// (e.g. graveyard → exile → graveyard) it has changed zones multiple times
-/// and the original reference is lost per rule 400.7.
+/// back to `stable_id`.
 ///
 /// Use this only for effects that need to **physically locate** an object in
 /// order to move it (e.g. `MoveToZoneEffect`). Effects that read
@@ -52,13 +49,7 @@ pub(crate) fn resolve_tagged_object_id(
     if game.object(snapshot.object_id).is_some() {
         return Some(snapshot.object_id);
     }
-    let current_id = game.find_object_by_stable_id(snapshot.stable_id)?;
-    let current_obj = game.object(current_id)?;
-    if current_obj.zone != snapshot.zone {
-        Some(current_id)
-    } else {
-        None
-    }
+    game.find_object_by_stable_id(snapshot.stable_id)
 }
 
 // ============================================================================
@@ -1936,7 +1927,10 @@ pub fn resolve_objects_from_spec(
                     let tagged = ctx
                         .get_tagged_all(tag)
                         .ok_or_else(|| ExecutionError::TagNotFound(tag.to_string()))?;
-                    let objects: Vec<ObjectId> = tagged.iter().map(|s| s.object_id).collect();
+                    let objects: Vec<ObjectId> = tagged
+                        .iter()
+                        .filter_map(|snapshot| resolve_tagged_object_id(game, snapshot))
+                        .collect();
                     if objects.is_empty() {
                         return Err(ExecutionError::InvalidTarget);
                     }
@@ -2165,7 +2159,10 @@ pub fn resolve_objects_from_spec(
             let Some(tagged) = ctx.get_tagged_all(tag) else {
                 return Ok(Vec::new());
             };
-            Ok(tagged.iter().map(|s| s.object_id).collect())
+            Ok(tagged
+                .iter()
+                .filter_map(|snapshot| resolve_tagged_object_id(game, snapshot))
+                .collect())
         }
 
         // Iterated object (ForEach loops)
@@ -2751,6 +2748,44 @@ mod tests {
 
         let resolved = resolve_single_object_from_spec(&game, &ChooseSpec::Source, &ctx).unwrap();
         assert_eq!(resolved, source_id);
+    }
+
+    #[test]
+    fn test_resolve_tagged_object_follows_zone_changes_to_the_current_object() {
+        let mut game = new_test_game();
+        let alice = game.players[0].id;
+        let source_id = game.new_object_id();
+        let tag = crate::tag::TagKey::from("returned");
+
+        let creature = CardBuilder::new(crate::ids::CardId::from_raw(5005), "Test Galleon")
+            .card_types(vec![CardType::Artifact])
+            .subtypes(vec![crate::types::Subtype::Vehicle])
+            .power_toughness(PowerToughness::fixed(2, 10))
+            .build();
+        let battlefield_id = game.create_object_from_card(&creature, alice, Zone::Battlefield);
+        let snapshot = ObjectSnapshot::from_object(
+            game.object(battlefield_id).expect("battlefield object should exist"),
+            &game,
+        );
+
+        let mut ctx = ExecutionContext::new_default(source_id, alice);
+        ctx.set_tagged_objects(tag.clone(), vec![snapshot]);
+
+        let exile_id = game
+            .move_object_by_effect(battlefield_id, Zone::Exile)
+            .expect("object should move to exile");
+        let returned_id = game
+            .move_object_by_effect(exile_id, Zone::Battlefield)
+            .expect("object should return to the battlefield");
+
+        let resolved = resolve_objects_from_spec(&game, &ChooseSpec::Tagged(tag), &ctx)
+            .expect("tagged object should resolve");
+
+        assert_eq!(
+            resolved,
+            vec![returned_id],
+            "tagged object references should follow the current object after a round trip"
+        );
     }
 
     #[test]
