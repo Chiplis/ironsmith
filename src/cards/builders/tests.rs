@@ -23864,3 +23864,26 @@ fn render_cranial_ram_keeps_only_x_dynamic() {
         "expected Cranial Ram to preserve the mixed X/+1 wording, got {joined}"
     );
 }
+
+#[test]
+fn render_stunted_growth_keeps_random_hand_reveal_and_top_of_library_link() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Stunted Growth")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Green],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Target player chooses three cards from their hand and puts them on top of their library in any order.",
+        )
+        .expect("Stunted Growth text should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("target player chooses three cards from their hand")
+            && rendered.contains("puts them on top of their library in any order")
+            && !rendered.contains("that object on top of its owner's library"),
+        "expected the Stunted Growth compile surface to stay oracle-like, got {rendered}"
+    );
+}
