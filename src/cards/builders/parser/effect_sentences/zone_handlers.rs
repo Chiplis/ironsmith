@@ -296,6 +296,7 @@ fn parse_tap_or_untap_all(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>,
 pub(crate) fn parse_sacrifice(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
+    target: Option<TargetAst>,
 ) -> Result<EffectAst, CardTextError> {
     let mut tokens = tokens;
     let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
@@ -428,6 +429,7 @@ pub(crate) fn parse_sacrifice(
         filter,
         player,
         count,
+        target,
     };
 
     // Wrap in ForEachObject when the clause has a "for each <filter>" suffix,

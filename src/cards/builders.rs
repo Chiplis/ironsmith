@@ -2039,6 +2039,7 @@ pub(crate) enum EffectAst {
         filter: ObjectFilter,
         player: PlayerAst,
         count: u32,
+        target: Option<TargetAst>,
     },
     SacrificeAll {
         filter: ObjectFilter,

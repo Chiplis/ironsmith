@@ -11974,6 +11974,145 @@ fn parse_chaotic_transformation_reuses_single_exiled_helper_tag() {
 }
 
 #[test]
+fn parse_shape_anew_targets_controller_and_consults_until_artifact() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Shape Anew")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "The controller of target artifact sacrifices it, then reveals cards from the top of their library until they reveal an artifact card. That player puts that card onto the battlefield, then shuffles all other cards revealed this way into their library.",
+        )
+        .expect("Shape Anew should parse");
+
+    let spell_debug = format!("{:#?}", def.spell_effect);
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        spell_debug.contains("SacrificeTargetEffect"),
+        "expected targeted sacrifice lowering, got {spell_debug}"
+    );
+    assert!(
+        spell_debug.contains("ConsultTopOfLibraryEffect"),
+        "expected reveal-until consult lowering, got {spell_debug}"
+    );
+    assert!(
+        !spell_debug.contains("SearchLibraryEffect"),
+        "expected consult lowering instead of generic search, got {spell_debug}"
+    );
+    assert!(
+        spell_debug.contains("ControllerOf"),
+        "expected the follow-up to keep controller-of-target binding, got {spell_debug}"
+    );
+    assert!(
+        rendered.contains("target artifact")
+            && rendered.contains("until they reveal an artifact card"),
+        "expected Shape Anew rendering to preserve target and controller binding, got {rendered}"
+    );
+}
+
+#[test]
+fn shape_anew_sacrifices_target_and_uses_that_controller_library() {
+    use crate::executor::{ExecutionContext, ResolvedTarget, execute_effect};
+
+    fn artifact(name: &str) -> crate::cards::CardDefinition {
+        CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Artifact])
+            .build()
+    }
+
+    fn filler(name: &str) -> crate::cards::CardDefinition {
+        CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Sorcery])
+            .build()
+    }
+
+    let shape_anew = CardDefinitionBuilder::new(CardId::new(), "Shape Anew")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "The controller of target artifact sacrifices it, then reveals cards from the top of their library until they reveal an artifact card. That player puts that card onto the battlefield, then shuffles all other cards revealed this way into their library.",
+        )
+        .expect("Shape Anew should parse");
+
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let target_artifact = game.create_object_from_definition(
+        &artifact("Bob Target Artifact"),
+        bob,
+        crate::zone::Zone::Battlefield,
+    );
+    let bob_library_artifact = game.create_object_from_definition(
+        &artifact("Bob Library Artifact"),
+        bob,
+        crate::zone::Zone::Library,
+    );
+    game.create_object_from_definition(
+        &filler("Bob Library Filler"),
+        bob,
+        crate::zone::Zone::Library,
+    );
+
+    let alice_library_artifact = game.create_object_from_definition(
+        &artifact("Alice Library Artifact"),
+        alice,
+        crate::zone::Zone::Library,
+    );
+    game.create_object_from_definition(
+        &filler("Alice Library Filler"),
+        alice,
+        crate::zone::Zone::Library,
+    );
+
+    let source = game.new_object_id();
+    let mut ctx = ExecutionContext::new_default(source, alice)
+        .with_targets(vec![ResolvedTarget::Object(target_artifact)]);
+    ctx.snapshot_targets(&game);
+
+    for effect in shape_anew.spell_effect.as_ref().expect("spell effects") {
+        execute_effect(&mut game, effect, &mut ctx)
+            .expect("shape anew effect should resolve cleanly");
+    }
+
+    assert!(
+        game.graveyard.iter().any(|&id| {
+            game.object(id)
+                .is_some_and(|obj| obj.name == "Bob Target Artifact")
+        }),
+        "target artifact should have been sacrificed"
+    );
+    assert!(
+        game.battlefield.iter().any(|&id| {
+            game.object(id)
+                .is_some_and(|obj| obj.name == "Bob Library Artifact" && obj.controller == bob)
+        }),
+        "Bob's library artifact should enter the battlefield under Bob's control"
+    );
+    assert!(
+        !game.battlefield.iter().any(|&id| {
+            game.object(id)
+                .is_some_and(|obj| obj.name == "Alice Library Artifact")
+        }),
+        "Alice's library should not be consulted for Bob's target artifact"
+    );
+    assert!(
+        game.object(bob_library_artifact).is_none(),
+        "Bob's artifact should have left the library"
+    );
+    assert!(
+        game.object(alice_library_artifact).is_some(),
+        "Alice's library artifact should remain untouched"
+    );
+}
+
+#[test]
 fn parse_target_opponent_exiles_card_from_their_hand_uses_hand_choice() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Skullcap Snail Variant")
         .parse_text("Target opponent exiles a card from their hand.")

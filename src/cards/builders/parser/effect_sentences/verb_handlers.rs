@@ -129,7 +129,7 @@ pub(crate) fn parse_effect_with_verb(
                 parse_put_into_hand(tokens, subject)
             }
         }
-        Verb::Sacrifice => parse_sacrifice(tokens, subject),
+        Verb::Sacrifice => parse_sacrifice(tokens, subject, None),
         Verb::Create => parse_create(tokens, subject),
         Verb::Investigate => parse_investigate(tokens),
         Verb::Proliferate => parse_proliferate(tokens),

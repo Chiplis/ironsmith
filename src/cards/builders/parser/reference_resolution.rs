@@ -662,7 +662,11 @@ fn advance_reference_frame_for_effect(
                 frame.last_object_tag = Some(next_reference_tag(id_gen, "searched"));
             }
         }
-        EffectAst::Sacrifice { player, .. } => {
+        EffectAst::Sacrifice {
+            player,
+            target: _,
+            ..
+        } => {
             track_effect_player(player.clone(), frame, true, true)?;
             frame.last_object_tag = Some(next_reference_tag(id_gen, "sacrificed"));
         }
@@ -1779,8 +1783,14 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
         EffectAst::ChooseCreatureType { .. } => 0,
         EffectAst::VentureIntoDungeon { .. } => 0,
         EffectAst::TakeInitiative { .. } => 0,
-        EffectAst::Sacrifice { filter, .. }
-        | EffectAst::SacrificeAll { filter, .. }
+        EffectAst::Sacrifice { filter, target, .. } => {
+            bind_unresolved_it_in_filter(filter, seed_tag)
+                + target
+                    .as_mut()
+                    .map(|target| bind_unresolved_it_in_target(target, seed_tag))
+                    .unwrap_or(0)
+        }
+        EffectAst::SacrificeAll { filter, .. }
         | EffectAst::ExchangeControl { filter, .. }
         | EffectAst::DestroyAllAttachedTo { filter, .. }
         | EffectAst::SearchLibrary { filter, .. } => bind_unresolved_it_in_filter(filter, seed_tag),

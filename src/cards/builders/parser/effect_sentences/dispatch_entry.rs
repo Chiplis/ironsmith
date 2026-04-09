@@ -5429,6 +5429,7 @@ fn apply_unapplied_token_copy_followup(
                 filter: ObjectFilter::tagged(TagKey::from(IT_TAG)),
                 player: PlayerAst::Implicit,
                 count: 1,
+                target: None,
             }],
         }],
         TokenCopyFollowup::ExileAtNextEndStep => vec![EffectAst::DelayedUntilNextEndStep {
@@ -5449,6 +5450,7 @@ fn apply_unapplied_token_copy_followup(
                 filter: ObjectFilter::tagged(TagKey::from(IT_TAG)),
                 player: PlayerAst::Implicit,
                 count: 1,
+                target: None,
             }],
         }],
     };

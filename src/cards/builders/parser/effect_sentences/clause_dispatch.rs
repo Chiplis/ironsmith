@@ -43,7 +43,9 @@ use super::{
     parse_simple_gain_ability_clause, parse_simple_lose_ability_clause, parse_subtype_word,
 };
 use crate::TagKey;
-use crate::cards::builders::{CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, TargetAst};
+use crate::cards::builders::{
+    CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, SubjectAst, TargetAst,
+};
 use crate::effect::{Until, Value};
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype};
@@ -83,6 +85,28 @@ fn push_unique_subtype(subtypes: &mut Vec<Subtype>, subtype: Subtype) {
     if !contains_subtype(subtypes, subtype) {
         subtypes.push(subtype);
     }
+}
+
+fn parse_controller_or_owner_of_target_subject(
+    subject_tokens: &[OwnedLexToken],
+) -> Option<(SubjectAst, TargetAst)> {
+    let subject_view = ClauseDispatchCompatWords::new(subject_tokens);
+    let subject_words = subject_view.to_word_refs();
+    let (player, target_start) = match subject_words.as_slice() {
+        ["the", "controller", "of", ..] => (PlayerAst::ItsController, 3usize),
+        ["controller", "of", ..] => (PlayerAst::ItsController, 2usize),
+        ["the", "owner", "of", ..] => (PlayerAst::ItsOwner, 3usize),
+        ["owner", "of", ..] => (PlayerAst::ItsOwner, 2usize),
+        _ => return None,
+    };
+
+    let target_tokens = trim_commas(&subject_tokens[target_start..]);
+    if target_tokens.is_empty() {
+        return None;
+    }
+
+    let target = parse_target_phrase(target_tokens).ok()?;
+    Some((SubjectAst::Player(player), target))
 }
 
 fn trim_plural_s(word: &str) -> Option<&str> {
@@ -647,6 +671,12 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
     }
 
     let subject_tokens = &tokens[..verb_idx];
+    if matches!(verb, Verb::Sacrifice)
+        && let Some((subject, target)) = parse_controller_or_owner_of_target_subject(subject_tokens)
+    {
+        let rest = &tokens[verb_idx + 1..];
+        return parse_sacrifice(rest, Some(subject), Some(target));
+    }
     let subject_word_view = ClauseDispatchCompatWords::new(subject_tokens);
     let subject_words = subject_word_view.to_word_refs();
     if is_target_player_dealt_damage_by_this_turn_subject(&subject_words) {

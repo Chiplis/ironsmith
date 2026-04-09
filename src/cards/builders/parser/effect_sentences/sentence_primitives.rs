@@ -939,6 +939,7 @@ pub(crate) fn parse_sentence_sacrifice_it_next_end_step(
             filter,
             player: PlayerAst::Implicit,
             count: 1,
+            target: None,
         }],
     }]))
 }
@@ -1017,6 +1018,7 @@ pub(crate) fn parse_sentence_sacrifice_at_end_of_combat(
             filter,
             player: PlayerAst::Implicit,
             count: 1,
+            target: None,
         }],
     }]))
 }
