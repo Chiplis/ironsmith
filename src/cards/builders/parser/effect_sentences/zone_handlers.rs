@@ -3630,6 +3630,12 @@ pub(crate) fn parse_exile(
             EffectAst::ExileAll { filter, face_down }
         });
     }
+    if !face_down
+        && !until_source_leaves
+        && let Some(effect) = parse_exile_top_library_clause(tokens, subject)
+    {
+        return Ok(effect);
+    }
 
     if grammar::contains_word(tokens, "dealt")
         && grammar::contains_word(tokens, "damage")
@@ -3921,6 +3927,109 @@ pub(crate) fn parse_graveyard_owner_prefix(words: &[&str]) -> Option<(PlayerAst,
         return Some((PlayerAst::That, 4));
     }
     None
+}
+
+fn parse_library_owner_prefix(
+    words: &[&str],
+    default_player: PlayerAst,
+) -> Option<(PlayerAst, usize)> {
+    if slice_starts_with(&words, &["library"]) {
+        return Some((default_player, 1));
+    }
+    if slice_starts_with(&words, &["your", "library"]) {
+        return Some((PlayerAst::You, 2));
+    }
+    if slice_starts_with(&words, &["their", "library"]) {
+        return Some((
+            if matches!(default_player, PlayerAst::Implicit) {
+                PlayerAst::ItsController
+            } else {
+                default_player
+            },
+            2,
+        ));
+    }
+    if slice_starts_with(&words, &["that", "player", "library"])
+        || slice_starts_with(&words, &["that", "players", "library"])
+    {
+        return Some((PlayerAst::That, 3));
+    }
+    if slice_starts_with(&words, &["target", "player", "library"])
+        || slice_starts_with(&words, &["target", "players", "library"])
+    {
+        return Some((PlayerAst::Target, 3));
+    }
+    if slice_starts_with(&words, &["target", "opponent", "library"])
+        || slice_starts_with(&words, &["target", "opponents", "library"])
+    {
+        return Some((PlayerAst::TargetOpponent, 3));
+    }
+    if slice_starts_with(&words, &["its", "controller", "library"])
+        || slice_starts_with(&words, &["its", "controllers", "library"])
+    {
+        return Some((PlayerAst::ItsController, 3));
+    }
+    if slice_starts_with(&words, &["its", "owner", "library"])
+        || slice_starts_with(&words, &["its", "owners", "library"])
+    {
+        return Some((PlayerAst::ItsOwner, 3));
+    }
+    if slice_starts_with(&words, &["his", "or", "her", "library"]) {
+        return Some((
+            if matches!(default_player, PlayerAst::Implicit) {
+                PlayerAst::ItsController
+            } else {
+                default_player
+            },
+            4,
+        ));
+    }
+    None
+}
+
+fn parse_exile_top_library_clause(
+    tokens: &[OwnedLexToken],
+    subject: Option<SubjectAst>,
+) -> Option<EffectAst> {
+    let tokens = trim_commas(tokens);
+    let words = crate::cards::builders::parser::token_word_refs(&tokens);
+    let mut start = 0usize;
+    if words.first().copied() == Some("the") {
+        start = 1;
+    }
+    if words.get(start).copied() != Some("top") {
+        return None;
+    }
+
+    let count_start = token_index_for_word_index(&tokens, start + 1)?;
+    let (count, used_after_top) = parse_value(&tokens[count_start..])?;
+    let after_count = trim_commas(&tokens[count_start + used_after_top..]);
+    let after_count_words = crate::cards::builders::parser::token_word_refs(&after_count);
+    if !matches!(after_count_words.first().copied(), Some("card" | "cards")) {
+        return None;
+    }
+
+    let after_cards_start = token_index_for_word_index(&after_count, 1)?;
+    let after_cards = trim_commas(&after_count[after_cards_start..]);
+    let after_cards_words = crate::cards::builders::parser::token_word_refs(&after_cards);
+    if after_cards_words.first().copied() != Some("of") {
+        return None;
+    }
+
+    let owner_tokens = trim_commas(&after_cards[1..]);
+    let owner_words = crate::cards::builders::parser::token_word_refs(&owner_tokens);
+    let default_player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
+    let (player, used_words) = parse_library_owner_prefix(&owner_words, default_player)?;
+    if used_words < owner_words.len() {
+        return None;
+    }
+
+    Some(EffectAst::ExileTopOfLibrary {
+        count,
+        player,
+        tags: vec![TagKey::from(IT_TAG)],
+        accumulated_tags: Vec::new(),
+    })
 }
 
 pub(crate) fn parse_target_player_graveyard_filter(

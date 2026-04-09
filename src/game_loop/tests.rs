@@ -633,8 +633,7 @@ fn test_make_an_example_leaves_unselected_creatures_on_the_battlefield() {
     let mut ctx = ExecutionContext::new_default(source_id, alice).with_decision_maker(&mut dm);
 
     for effect in spell_effects {
-        execute_effect(&mut game, effect, &mut ctx)
-            .expect("Make an Example effect should resolve");
+        execute_effect(&mut game, effect, &mut ctx).expect("Make an Example effect should resolve");
     }
 
     assert!(
@@ -5197,6 +5196,126 @@ fn test_ragavan_trigger_exiles_top_card_of_damaged_players_library() {
     );
 }
 
+#[test]
+fn test_fallen_shinobi_trigger_exiles_top_two_cards_and_grants_play_permission() {
+    use crate::decision::compute_legal_actions;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::CombatDamage);
+
+    let shinobi_def = CardDefinitionBuilder::new(CardId::new(), "Fallen Shinobi Runtime Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Ninjutsu {2}{U}{B} ({2}{U}{B}, Return an unblocked attacker you control to hand: Put this card onto the battlefield tapped and attacking.)\nWhenever this creature deals combat damage to a player, that player exiles the top two cards of their library. Until end of turn, you may play those cards without paying their mana costs.",
+        )
+        .expect("fallen shinobi runtime probe should parse");
+    let shinobi_id = game.create_object_from_definition(&shinobi_def, alice, Zone::Battlefield);
+
+    let top_land = CardBuilder::new(CardId::new(), "Shinobi Land")
+        .card_types(vec![CardType::Land])
+        .build();
+    let top_spell = CardBuilder::new(CardId::new(), "Shinobi Bolt")
+        .card_types(vec![CardType::Sorcery])
+        .mana_cost(crate::mana::ManaCost::from_symbols(vec![
+            crate::mana::ManaSymbol::Red,
+        ]))
+        .build();
+    let top_land_id = game.create_object_from_card(&top_land, bob, Zone::Library);
+    let top_spell_id = game.create_object_from_card(&top_spell, bob, Zone::Library);
+
+    let triggered = shinobi_def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("fallen shinobi probe should have a triggered ability");
+
+    let damage_event = TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            shinobi_id,
+            crate::game_event::DamageTarget::Player(bob),
+            5,
+            true,
+            crate::events::cause::EventCause::combat_damage(shinobi_id),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    let library_before = game.player(bob).expect("bob exists").library.len();
+    let exile_before = game.exile.len();
+
+    let mut dm = AutoPassDecisionMaker;
+    let mut ctx = ExecutionContext::new_default(shinobi_id, alice)
+        .with_decision_maker(&mut dm)
+        .with_triggering_event(damage_event);
+    for effect in &triggered.effects {
+        execute_effect(&mut game, effect, &mut ctx).expect("fallen shinobi trigger should resolve");
+    }
+
+    let exiled_ids: Vec<_> = game.exile.clone();
+    let exiled_names: Vec<_> = exiled_ids
+        .iter()
+        .filter_map(|&id| game.object(id).map(|obj| (id, obj.name.clone())))
+        .collect();
+
+    assert_eq!(
+        game.player(bob).expect("bob exists").library.len(),
+        library_before - 2,
+        "fallen shinobi should exile the top two cards from the damaged player's library"
+    );
+    assert_eq!(
+        game.exile.len(),
+        exile_before + 2,
+        "fallen shinobi should add two cards to exile"
+    );
+    assert!(
+        exiled_names.iter().any(|(_, name)| name == "Shinobi Land"),
+        "fallen shinobi should exile the top land card"
+    );
+    assert!(
+        exiled_names.iter().any(|(_, name)| name == "Shinobi Bolt"),
+        "fallen shinobi should exile the top spell card"
+    );
+    assert!(
+        game.grant_registry
+            .card_can_play_from_zone(&game, top_land_id, Zone::Exile, alice),
+        "fallen shinobi should let its controller play the exiled land"
+    );
+    assert!(
+        game.grant_registry
+            .card_can_play_from_zone(&game, top_spell_id, Zone::Exile, alice),
+        "fallen shinobi should let its controller play the exiled spell"
+    );
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let actions = compute_legal_actions(&game, alice);
+    assert!(
+        actions.iter().any(|action| matches!(
+            action,
+            crate::decision::LegalAction::PlayLand { land_id } if *land_id == top_land_id
+        )),
+        "fallen shinobi should expose a land play action from exile"
+    );
+    assert!(
+        actions.iter().any(|action| matches!(
+            action,
+            crate::decision::LegalAction::CastSpell { spell_id, from_zone: Zone::Exile, .. }
+                if *spell_id == top_spell_id
+        )),
+        "fallen shinobi should expose a free cast action for the exiled spell"
+    );
+}
+
 // === Full Game Flow Integration Test ===
 
 #[test]
@@ -8415,8 +8534,7 @@ fn test_creeping_renaissance_returns_chosen_permanent_type_from_graveyard() {
             ctx: &crate::decisions::context::SelectOptionsContext,
         ) -> Vec<usize> {
             assert_eq!(
-                ctx.description,
-                "Choose a permanent type",
+                ctx.description, "Choose a permanent type",
                 "Creeping Renaissance should prompt for a permanent type at runtime"
             );
             ctx.options
@@ -8450,7 +8568,8 @@ fn test_creeping_renaissance_returns_chosen_permanent_type_from_graveyard() {
     let mut ctx = ExecutionContext::new_default(source_id, alice).with_decision_maker(&mut dm);
 
     for effect in def.spell_effect.as_ref().expect("spell effects") {
-        execute_effect(&mut game, effect, &mut ctx).expect("Creeping Renaissance effect should resolve");
+        execute_effect(&mut game, effect, &mut ctx)
+            .expect("Creeping Renaissance effect should resolve");
     }
 
     assert_eq!(
@@ -8469,12 +8588,16 @@ fn test_creeping_renaissance_returns_chosen_permanent_type_from_graveyard() {
         "both Forests should return to hand when land is chosen"
     );
     assert!(
-        game.player(alice).expect("alice exists").graveyard.iter().any(|&id| {
-            id == bears_id
-                && game
-                    .object(id)
-                    .is_some_and(|obj| obj.name == "Grizzly Bears")
-        }),
+        game.player(alice)
+            .expect("alice exists")
+            .graveyard
+            .iter()
+            .any(|&id| {
+                id == bears_id
+                    && game
+                        .object(id)
+                        .is_some_and(|obj| obj.name == "Grizzly Bears")
+            }),
         "non-land cards should stay in the graveyard"
     );
 }
@@ -8530,8 +8653,7 @@ fn test_make_an_example_sacrifices_the_chosen_pile() {
     let mut ctx = ExecutionContext::new_default(source_id, alice).with_decision_maker(&mut dm);
 
     for effect in spell_effects {
-        execute_effect(&mut game, effect, &mut ctx)
-            .expect("Make an Example effect should resolve");
+        execute_effect(&mut game, effect, &mut ctx).expect("Make an Example effect should resolve");
     }
 
     assert!(
@@ -8539,10 +8661,7 @@ fn test_make_an_example_sacrifices_the_chosen_pile() {
             .expect("bob exists")
             .graveyard
             .iter()
-            .any(|&id| {
-                game.object(id)
-                    .is_some_and(|obj| obj.name == "Pile Bear")
-            }),
+            .any(|&id| { game.object(id).is_some_and(|obj| obj.name == "Pile Bear") }),
         "the chosen pile should be sacrificed"
     );
     assert!(
