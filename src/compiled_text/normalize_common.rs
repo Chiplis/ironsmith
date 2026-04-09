@@ -7670,10 +7670,14 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         Condition::TargetIsAttacking => "the target is attacking".to_string(),
         Condition::ManaSpentToCastThisSpellAtLeast { amount, symbol } => {
             if let Some(symbol) = symbol {
-                format!(
-                    "at least {amount} {} mana was spent to cast this spell",
-                    describe_mana_symbol(*symbol)
-                )
+                if *amount == 1 {
+                    format!("{} was spent to cast this spell", describe_mana_symbol(*symbol))
+                } else {
+                    format!(
+                        "at least {amount} {} mana was spent to cast this spell",
+                        describe_mana_symbol(*symbol)
+                    )
+                }
             } else {
                 format!("at least {amount} mana was spent to cast this spell")
             }

@@ -3791,6 +3791,18 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
             "that permanent doesn't untap during its controller's next untap step",
         )
         .replace(
+            "permanent can't untap during its controller's next untap step",
+            "that permanent doesn't untap during its controller's next untap step",
+        )
+        .replace(
+            "creature can't untap during its controller's next untap step",
+            "that creature doesn't untap during its controller's next untap step",
+        )
+        .replace(
+            "land can't untap during its controller's next untap step",
+            "that land doesn't untap during its controller's next untap step",
+        )
+        .replace(
             "land can't untap until your next turn",
             "that land doesn't untap during its controller's next untap step",
         )

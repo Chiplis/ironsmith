@@ -4576,7 +4576,7 @@ pub(super) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(PredicateAst::YouControlMoreCreaturesThanTargetSpellController);
     }
     if filtered.len() == 7
-        && matches!(filtered[0], "w" | "u" | "b" | "r" | "g" | "c")
+        && matches!(filtered[0], "w" | "u" | "b" | "r" | "g" | "c" | "s")
         && filtered[1] == "was"
         && filtered[2] == "spent"
         && filtered[3] == "to"
