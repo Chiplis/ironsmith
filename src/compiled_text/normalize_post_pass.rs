@@ -154,6 +154,10 @@ pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str
         {
             normalized_body = rewritten;
         }
+        if let Some(rewritten) = normalize_sentence_helper_random_hand_reveal_clause(&normalized_body)
+        {
+            normalized_body = rewritten;
+        }
         if oracle_lower.contains(
             "choose a creature card with mana value 1 in your graveyard, then do the same for creature cards with mana value 2 and 3",
         ) && let Some(rewritten) =
@@ -2284,6 +2288,9 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
     normalized = normalize_conditional_target_player_pronouns(&normalized);
     if let Some(rewritten) = normalize_sentence_helper_random_hand_reveal_damage_clause(&normalized)
     {
+        normalized = rewritten;
+    }
+    if let Some(rewritten) = normalize_sentence_helper_random_hand_reveal_clause(&normalized) {
         normalized = rewritten;
     }
     loop {
@@ -5799,6 +5806,45 @@ pub(super) fn normalize_sentence_helper_random_hand_reveal_damage_clause(
         let Some(after) = strip_prefix_ascii_ci(rest, tail_marker) else {
             continue;
         };
+        return Some(apply_replacement_with_case(before, replacement, after));
+    }
+    None
+}
+
+pub(super) fn normalize_sentence_helper_random_hand_reveal_clause(text: &str) -> Option<String> {
+    let patterns = [
+        (
+            "target player chooses exactly 1 at random card from their hand and tags it as '",
+            "target player reveals a card at random from their hand",
+        ),
+        (
+            "target opponent chooses exactly 1 at random card from their hand and tags it as '",
+            "target opponent reveals a card at random from their hand",
+        ),
+        (
+            "you choose exactly 1 at random card from your hand and tags it as '",
+            "you reveal a card at random from your hand",
+        ),
+        (
+            "that player chooses exactly 1 at random card from their hand and tags it as '",
+            "that player reveals a card at random from their hand",
+        ),
+        (
+            "the damaged player chooses exactly 1 at random card in the damaged player's hand and tags it as '",
+            "that player reveals a card at random from their hand",
+        ),
+    ];
+    for (marker, replacement) in patterns {
+        let Some((before, rest)) = split_once_ascii_ci(text, marker) else {
+            continue;
+        };
+        let Some((_tag, rest)) = rest.split_once("'. ") else {
+            continue;
+        };
+        let Some(after) = strip_prefix_ascii_ci(rest, "Reveal it.") else {
+            continue;
+        };
+        let after = if after.is_empty() { "." } else { after };
         return Some(apply_replacement_with_case(before, replacement, after));
     }
     None
