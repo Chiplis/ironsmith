@@ -16655,6 +16655,36 @@ fn cultist_of_the_absolute_stays_static_and_grants_commander_abilities() {
 }
 
 #[test]
+fn guild_artisan_stays_static_and_grants_the_treasure_trigger_to_commanders() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Guild Artisan")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Background])
+        .parse_text(
+            "Commander creatures you own have \"Whenever this creature attacks a player, if no opponent has more life than that player, you create two Treasure tokens.\"",
+        )
+        .expect("Guild Artisan should parse as a static grant line");
+
+    assert!(
+        def.spell_effect.is_none(),
+        "Guild Artisan should not compile as a spell effect: {:?}",
+        def.spell_effect
+    );
+
+    let abilities_debug = format!("{:#?}", def.abilities);
+    assert!(
+        abilities_debug.contains("GrantObjectAbilityForFilter")
+            && abilities_debug.contains("PlayerHasNoOpponentWithMoreLifeThan")
+            && abilities_debug.contains("ThisAttacksTrigger")
+            && abilities_debug.contains("CreateTokenEffect"),
+        "expected Guild Artisan to grant an attack trigger to commander creatures, got {abilities_debug}"
+    );
+}
+
+#[test]
 fn parse_ward_discard_multiple_card_types_as_static_ability() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Ward Typed Discard Variant")
         .parse_text("Ward—Discard an enchantment, instant, or sorcery card.")

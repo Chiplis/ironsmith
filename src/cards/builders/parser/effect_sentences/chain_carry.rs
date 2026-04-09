@@ -913,6 +913,7 @@ fn trailing_if_predicate_supported(predicate: &PredicateAst) -> bool {
             | PredicateAst::PlayerLifeAtMostHalfStartingLifeTotal { .. }
             | PredicateAst::PlayerLifeLessThanHalfStartingLifeTotal { .. }
             | PredicateAst::PlayerHasMoreLifeThanYou { .. }
+            | PredicateAst::PlayerHasNoOpponentWithMoreLifeThan { .. }
             | PredicateAst::PlayerHasMoreLifeThanEachOtherPlayer { .. }
             | PredicateAst::PlayerHasMoreCardsInHandThanYou { .. }
     ) || matches!(predicate, PredicateAst::TaggedMatches(tag, _) if tag.as_str() == "enchanted")

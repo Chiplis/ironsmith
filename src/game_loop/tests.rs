@@ -250,6 +250,129 @@ fn exert_attack_choice_draws_card_and_skips_only_next_untap() {
 }
 
 #[test]
+fn guild_artisan_grants_treasure_trigger_when_commander_attacks_tied_life_leader() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let guild_artisan = CardDefinitionBuilder::new(CardId::new(), "Guild Artisan")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![crate::types::Subtype::Background])
+        .parse_text(
+            "Commander creatures you own have \"Whenever this creature attacks a player, if no opponent has more life than that player, you create two Treasure tokens.\"",
+        )
+        .expect("Guild Artisan should parse");
+
+    let commander = CardBuilder::new(CardId::from_raw(71_020), "Guild Artisan Commander")
+        .card_types(vec![CardType::Creature])
+        .supertypes(vec![crate::types::Supertype::Legendary])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+
+    let commander_id = game.create_object_from_card(&commander, alice, Zone::Battlefield);
+    game.set_as_commander(commander_id, alice);
+    game.remove_summoning_sickness(commander_id);
+    game.create_object_from_definition(&guild_artisan, alice, Zone::Battlefield);
+    game.refresh_continuous_state();
+
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+
+    let mut combat = CombatState::default();
+    let mut trigger_queue = TriggerQueue::new();
+    let declarations = vec![AttackerDeclaration {
+        creature: commander_id,
+        target: AttackTarget::Player(bob),
+    }];
+
+    apply_attacker_declarations(&mut game, &mut combat, &mut trigger_queue, &declarations)
+        .expect("commander attack should be legal");
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Guild Artisan trigger should go on the stack");
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "Guild Artisan should create exactly one attack trigger"
+    );
+
+    resolve_stack_entry(&mut game).expect("Guild Artisan trigger should resolve");
+
+    let treasure_count = game
+        .battlefield
+        .iter()
+        .filter(|&&id| game.object(id).is_some_and(|obj| obj.name == "Treasure"))
+        .count();
+    assert_eq!(treasure_count, 2, "expected two Treasure tokens after resolution");
+}
+
+#[test]
+fn guild_artisan_does_not_trigger_when_attacked_player_is_not_the_life_leader() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let guild_artisan = CardDefinitionBuilder::new(CardId::new(), "Guild Artisan")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![crate::types::Subtype::Background])
+        .parse_text(
+            "Commander creatures you own have \"Whenever this creature attacks a player, if no opponent has more life than that player, you create two Treasure tokens.\"",
+        )
+        .expect("Guild Artisan should parse");
+
+    let commander = CardBuilder::new(CardId::from_raw(71_021), "Guild Artisan Commander")
+        .card_types(vec![CardType::Creature])
+        .supertypes(vec![crate::types::Supertype::Legendary])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+
+    let commander_id = game.create_object_from_card(&commander, alice, Zone::Battlefield);
+    game.set_as_commander(commander_id, alice);
+    game.remove_summoning_sickness(commander_id);
+    game.create_object_from_definition(&guild_artisan, alice, Zone::Battlefield);
+    game.refresh_continuous_state();
+
+    game.player_mut(bob).expect("bob exists").life = 21;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+
+    let mut combat = CombatState::default();
+    let mut trigger_queue = TriggerQueue::new();
+    let declarations = vec![AttackerDeclaration {
+        creature: commander_id,
+        target: AttackTarget::Player(bob),
+    }];
+
+    apply_attacker_declarations(&mut game, &mut combat, &mut trigger_queue, &declarations)
+        .expect("commander attack should still be legal");
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("stack processing should succeed even without a trigger");
+    assert_eq!(
+        game.stack.len(),
+        0,
+        "Guild Artisan should not create a trigger when the attacked player is behind in life"
+    );
+
+    let treasure_count = game
+        .battlefield
+        .iter()
+        .filter(|&&id| game.object(id).is_some_and(|obj| obj.name == "Treasure"))
+        .count();
+    assert_eq!(treasure_count, 0, "no Treasure tokens should be created");
+}
+
+#[test]
 fn ignite_memories_reveals_a_random_card_from_target_players_hand_and_damages_them() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);

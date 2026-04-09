@@ -1841,6 +1841,13 @@ fn parse_draw_for_each_player_condition(
                     player: PlayerAst::Implicit,
                 }
             }
+            PredicateAst::PlayerHasNoOpponentWithMoreLifeThan { player }
+                if player == PlayerAst::That =>
+            {
+                PredicateAst::PlayerHasNoOpponentWithMoreLifeThan {
+                    player: PlayerAst::Implicit,
+                }
+            }
             PredicateAst::PlayerHasMoreLifeThanEachOtherPlayer { player }
                 if player == PlayerAst::That =>
             {

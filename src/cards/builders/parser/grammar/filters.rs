@@ -4205,6 +4205,19 @@ pub(super) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(PredicateAst::PlayerHasMoreLifeThanYou { player });
     }
 
+    if filtered.len() >= 8
+        && filtered[0] == "no"
+        && matches!(filtered[1], "opponent" | "opponents")
+        && filtered[2] == "has"
+        && filtered[3] == "more"
+        && filtered[4] == "life"
+        && filtered[5] == "than"
+        && let Some((player, subject_len)) = parse_comparison_player_subject(&filtered[6..])
+        && subject_len + 6 == filtered.len()
+    {
+        return Ok(PredicateAst::PlayerHasNoOpponentWithMoreLifeThan { player });
+    }
+
     if let Some((player, subject_len)) = parse_comparison_player_subject(&filtered)
         && filtered.get(subject_len).copied() == Some("has")
         && matches!(

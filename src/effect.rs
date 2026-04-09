@@ -2041,6 +2041,9 @@ pub enum Condition {
     /// A specific player has more life than you.
     PlayerHasMoreLifeThanYou { player: PlayerFilter },
 
+    /// No opponent of a specific player has more life than that player.
+    PlayerHasNoOpponentWithMoreLifeThan { player: PlayerFilter },
+
     /// A specific player has more life than each other player.
     PlayerHasMoreLifeThanEachOtherPlayer { player: PlayerFilter },
 

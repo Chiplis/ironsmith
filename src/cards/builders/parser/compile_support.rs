@@ -1248,6 +1248,10 @@ pub(crate) fn compile_condition_from_predicate_ast(
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerHasMoreLifeThanYou { player }
         }
+        PredicateAst::PlayerHasNoOpponentWithMoreLifeThan { player } => {
+            let player = resolve_non_target_player_filter(*player, &refs)?;
+            Condition::PlayerHasNoOpponentWithMoreLifeThan { player }
+        }
         PredicateAst::PlayerHasMoreLifeThanEachOtherPlayer { player } => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerHasMoreLifeThanEachOtherPlayer { player }

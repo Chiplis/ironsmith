@@ -8373,6 +8373,19 @@ fn rewrite_grammar_unique_life_leader_predicate_parses() {
 }
 
 #[test]
+fn rewrite_grammar_no_opponent_has_more_life_than_that_player_predicate_parses() {
+    let tokens = lex_line("no opponent has more life than that player", 0)
+        .expect("rewrite lexer should classify no-opponent life predicate");
+
+    assert_eq!(
+        super::parse_predicate_lexed(&tokens).expect("predicate should parse"),
+        crate::cards::builders::PredicateAst::PlayerHasNoOpponentWithMoreLifeThan {
+            player: crate::cards::builders::PlayerAst::That,
+        }
+    );
+}
+
+#[test]
 fn rewrite_grammar_permanent_you_controlled_left_battlefield_predicate_parses() {
     let tokens = lex_line(
         "a permanent you controlled left the battlefield this turn",
@@ -8424,4 +8437,21 @@ fn rewrite_lexed_triggered_line_keeps_unique_life_leader_intervening_if() {
         "{debug}"
     );
     assert!(debug.contains("MostLifeTied"), "{debug}");
+}
+
+#[test]
+fn rewrite_lexed_triggered_line_keeps_guild_artisan_life_gate() {
+    let text = "Whenever this creature attacks a player, if no opponent has more life than that player, you create two Treasure tokens.";
+    let tokens = lex_line(text, 0).expect("rewrite lexer should classify Guild Artisan trigger");
+
+    let parsed = super::clause_support::parse_triggered_line_lexed(&tokens)
+        .expect("Guild Artisan triggered line should parse");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("ThisAttacks"), "{debug}");
+    assert!(
+        debug.contains("PlayerHasNoOpponentWithMoreLifeThan"),
+        "{debug}"
+    );
+    assert!(debug.contains("CreateToken"), "{debug}");
 }

@@ -125,6 +125,30 @@ mod tests {
             "expected tie for most life to fail the condition"
         );
     }
+
+    #[test]
+    fn evaluate_player_has_no_opponent_with_more_life_than_allows_ties() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = game.players[0].id;
+        let source = game.new_object_id();
+        let condition = Condition::PlayerHasNoOpponentWithMoreLifeThan {
+            player: PlayerFilter::Any,
+        };
+
+        let ctx = ExecutionContext::new_default(source, alice);
+        assert!(
+            evaluate_condition(&game, &condition, &ctx)
+                .expect("tied life totals should evaluate"),
+            "expected tied life totals to satisfy the no-opponent-has-more-life condition"
+        );
+
+        game.players[1].life = 21;
+        assert!(
+            !evaluate_condition(&game, &condition, &ctx)
+                .expect("higher life total should evaluate cleanly"),
+            "expected an opposing higher life total to fail the condition"
+        );
+    }
 }
 
 fn player_has_card_in_hand_matching(
@@ -227,6 +251,16 @@ fn player_has_more_life_than_each_other_player(game: &GameState, player_id: Play
         .iter()
         .filter(|candidate| candidate.is_in_game())
         .all(|candidate| candidate.id == player_id || life > candidate.life)
+}
+
+fn player_has_no_opponent_with_more_life_than(game: &GameState, player_id: PlayerId) -> bool {
+    let Some(life) = game.player(player_id).map(|p| p.life) else {
+        return false;
+    };
+    game.players
+        .iter()
+        .filter(|candidate| candidate.is_in_game())
+        .all(|candidate| candidate.id == player_id || life >= candidate.life)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -489,6 +523,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::PlayerHasCardTypesInGraveyardOrMore { .. } => {}
         Condition::PlayerHasLessLifeThanYou { .. } => {}
         Condition::PlayerHasMoreLifeThanYou { .. } => {}
+        Condition::PlayerHasNoOpponentWithMoreLifeThan { .. } => {}
         Condition::PlayerHasMoreLifeThanEachOtherPlayer { .. } => {}
         Condition::PlayerHasMoreCardsInHandThanYou { .. } => {}
         Condition::PlayerHasMoreCardsInHandThanEachOtherPlayer { .. } => {}
@@ -698,6 +733,11 @@ pub fn evaluate_condition_external(
             matching_condition_players_external(game, ctx, player)
                 .into_iter()
                 .any(|player_id| game.player(player_id).map(|p| p.life).unwrap_or(0) > you_life)
+        }
+        Condition::PlayerHasNoOpponentWithMoreLifeThan { player } => {
+            matching_condition_players_external(game, ctx, player)
+                .into_iter()
+                .any(|player_id| player_has_no_opponent_with_more_life_than(game, player_id))
         }
         Condition::PlayerHasMoreLifeThanEachOtherPlayer { player } => {
             matching_condition_players_external(game, ctx, player)
@@ -1713,6 +1753,11 @@ fn evaluate_condition_simple(
                 .filter_map(|player_id| game.player(player_id).map(|p| p.life))
                 .any(|other_life| other_life < you_life)
         }
+        Condition::PlayerHasNoOpponentWithMoreLifeThan { player } => {
+            matching_condition_players_simple(game, controller, player)
+                .into_iter()
+                .any(|player_id| player_has_no_opponent_with_more_life_than(game, player_id))
+        }
         Condition::PlayerHasMoreLifeThanYou { player } => {
             let Some(you_life) = game.player(controller).map(|p| p.life) else {
                 return false;
@@ -2315,6 +2360,11 @@ fn evaluate_condition(
             Ok(matching_condition_players_exec(game, ctx, player)?
                 .into_iter()
                 .any(|player_id| game.player(player_id).map(|p| p.life).unwrap_or(0) > you_life))
+        }
+        Condition::PlayerHasNoOpponentWithMoreLifeThan { player } => {
+            Ok(matching_condition_players_exec(game, ctx, player)?
+                .into_iter()
+                .any(|player_id| player_has_no_opponent_with_more_life_than(game, player_id)))
         }
         Condition::PlayerHasMoreLifeThanEachOtherPlayer { player } => {
             Ok(matching_condition_players_exec(game, ctx, player)?

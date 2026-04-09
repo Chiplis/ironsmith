@@ -1351,6 +1351,9 @@ pub(crate) enum PredicateAst {
     PlayerHasMoreLifeThanYou {
         player: PlayerAst,
     },
+    PlayerHasNoOpponentWithMoreLifeThan {
+        player: PlayerAst,
+    },
     PlayerHasMoreLifeThanEachOtherPlayer {
         player: PlayerAst,
     },

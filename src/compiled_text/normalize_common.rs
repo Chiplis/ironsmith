@@ -7612,6 +7612,12 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         Condition::PlayerHasMoreLifeThanYou { player } => {
             format!("{} has more life than you", describe_player_filter(player))
         }
+        Condition::PlayerHasNoOpponentWithMoreLifeThan { player } => {
+            format!(
+                "no opponent has more life than {}",
+                describe_player_filter(player)
+            )
+        }
         Condition::PlayerHasMoreLifeThanEachOtherPlayer { player } => {
             format!(
                 "{} has more life than each other player",
