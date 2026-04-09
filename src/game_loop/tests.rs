@@ -341,7 +341,7 @@ fn guild_artisan_does_not_trigger_when_attacked_player_is_not_the_life_leader() 
     game.create_object_from_definition(&guild_artisan, alice, Zone::Battlefield);
     game.refresh_continuous_state();
 
-    game.player_mut(bob).expect("bob exists").life = 21;
+    game.player_mut(bob).expect("bob exists").life = 19;
     game.turn.active_player = alice;
     game.turn.priority_player = Some(alice);
     game.turn.phase = Phase::Combat;

@@ -7766,6 +7766,26 @@ pub(crate) fn parse_trigger_clause_lexed(
         }
     }
 
+    let words = if let Some(attacks_word_idx) =
+        find_index(&words, |word| matches!(*word, "attack" | "attacks"))
+    {
+        let tail = &words[attacks_word_idx + 1..];
+        if matches!(
+            tail,
+            ["a", "player"]
+                | ["a", "planeswalker"]
+                | ["a", "battle"]
+                | ["the", "defending", "player"]
+                | ["defending", "player"]
+        ) {
+            &words[..=attacks_word_idx]
+        } else {
+            &words
+        }
+    } else {
+        &words
+    };
+
     let last = words
         .last()
         .copied()

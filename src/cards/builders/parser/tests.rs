@@ -8472,6 +8472,20 @@ fn rewrite_grammar_no_opponent_has_more_life_than_that_player_predicate_parses()
 }
 
 #[test]
+fn rewrite_grammar_battlefield_count_predicate_parses_other_creatures() {
+    let tokens = lex_line("there are two or more other creatures on the battlefield", 0)
+        .expect("rewrite lexer should classify battlefield-count predicate");
+
+    let debug = format!(
+        "{:?}",
+        super::parse_predicate_lexed(&tokens).expect("predicate should parse")
+    );
+    assert!(debug.contains("ValueComparison"), "{debug}");
+    assert!(debug.contains("other: true"), "{debug}");
+    assert!(debug.contains("Creature"), "{debug}");
+}
+
+#[test]
 fn rewrite_grammar_permanent_you_controlled_left_battlefield_predicate_parses() {
     let tokens = lex_line(
         "a permanent you controlled left the battlefield this turn",
@@ -8540,6 +8554,17 @@ fn rewrite_lexed_triggered_line_keeps_guild_artisan_life_gate() {
         "{debug}"
     );
     assert!(debug.contains("CreateToken"), "{debug}");
+}
+
+#[test]
+fn rewrite_lexed_trigger_clause_accepts_attack_target_tail() {
+    let tokens = lex_line("this creature attacks a player", 0)
+        .expect("rewrite lexer should classify attack trigger clause");
+
+    let parsed = super::parse_trigger_clause_lexed(&tokens)
+        .expect("attack trigger clause with player tail should parse");
+
+    assert!(matches!(parsed, crate::cards::builders::TriggerSpec::ThisAttacks));
 }
 
 #[test]

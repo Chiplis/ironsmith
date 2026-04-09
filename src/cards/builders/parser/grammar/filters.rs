@@ -4044,16 +4044,28 @@ pub(super) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             idx += 2;
         }
 
-        if slice_ends_with(&filtered[idx..], &["on", "the", "battlefield"]) {
-            let filter_words = &filtered[idx..filtered.len() - 3];
+        let battlefield_suffix_len = if slice_ends_with(&filtered[idx..], &["on", "the", "battlefield"]) {
+            Some(3usize)
+        } else if slice_ends_with(&filtered[idx..], &["on", "battlefield"]) {
+            Some(2usize)
+        } else {
+            None
+        };
+        if let Some(battlefield_suffix_len) = battlefield_suffix_len {
+            let raw_filter_words = &filtered[idx..filtered.len() - battlefield_suffix_len];
+            let other = raw_filter_words
+                .first()
+                .is_some_and(|word| matches!(*word, "other" | "another"));
+            let filter_words = if other {
+                &raw_filter_words[1..]
+            } else {
+                raw_filter_words
+            };
             if !filter_words.is_empty() {
                 let filter_tokens = filter_words
                     .iter()
                     .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
                     .collect::<Vec<_>>();
-                let other = filter_words
-                    .first()
-                    .is_some_and(|word| matches!(*word, "other" | "another"));
                 if let Ok(mut filter) = parse_object_filter(&filter_tokens, other) {
                     filter.zone = Some(Zone::Battlefield);
 

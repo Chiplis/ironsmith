@@ -1570,10 +1570,38 @@ pub fn verify_intervening_if(
     source_object_id: ObjectId,
     trigger_identity: Option<TriggerIdentity>,
 ) -> bool {
+    let defending_player = if event.kind() == crate::events::traits::EventKind::CreatureAttacked {
+        event.downcast::<crate::events::combat::CreatureAttackedEvent>()
+            .and_then(|attacked| match attacked.target {
+                crate::triggers::AttackEventTarget::Player(player_id) => Some(player_id),
+                crate::triggers::AttackEventTarget::Planeswalker(planeswalker_id) => {
+                    game.object(planeswalker_id).map(|planeswalker| planeswalker.controller)
+                }
+            })
+    } else if event.kind() == crate::events::traits::EventKind::CreatureAttackedAndUnblocked {
+        event.downcast::<crate::events::combat::CreatureAttackedAndUnblockedEvent>()
+            .and_then(|attacked| match attacked.target {
+                crate::triggers::AttackEventTarget::Player(player_id) => Some(player_id),
+                crate::triggers::AttackEventTarget::Planeswalker(planeswalker_id) => {
+                    game.object(planeswalker_id).map(|planeswalker| planeswalker.controller)
+                }
+            })
+    } else if event.kind() == crate::events::traits::EventKind::CreatureBecameBlocked {
+        event.downcast::<crate::events::combat::CreatureBecameBlockedEvent>()
+            .and_then(|blocked| blocked.attack_target)
+            .and_then(|target| match target {
+                crate::triggers::AttackEventTarget::Player(player_id) => Some(player_id),
+                crate::triggers::AttackEventTarget::Planeswalker(planeswalker_id) => {
+                    game.object(planeswalker_id).map(|planeswalker| planeswalker.controller)
+                }
+            })
+    } else {
+        None
+    };
     let eval_ctx = crate::condition_eval::ExternalEvaluationContext {
         controller,
         source: source_object_id,
-        defending_player: None,
+        defending_player,
         attacking_player: None,
         // Legacy intervening-if checks intentionally did not provide a filter-context source.
         filter_source: None,
