@@ -21019,6 +21019,39 @@ fn parse_oracle_biophagus_conditional_mana_bonus_regression() {
 }
 
 #[test]
+fn parse_oracle_berg_strider_etb_snow_rider_regression() {
+    let def = parse_oracle_card_definition("Berg Strider");
+
+    let raw = format!("{def:#?}");
+    assert!(
+        raw.contains("ZoneChangeTrigger") && raw.contains("this_object: true"),
+        "expected Berg Strider to keep an ETB trigger, got {raw}"
+    );
+    assert!(
+        !raw.contains("SpellCastTrigger"),
+        "expected Berg Strider to avoid a spell-cast trigger fallback, got {raw}"
+    );
+    assert!(
+        raw.contains("ManaSpentToCastThisSpellAtLeast"),
+        "expected Berg Strider to keep its snow-mana condition, got {raw}"
+    );
+    assert!(
+        raw.contains("TapEffect") && raw.contains("Untap("),
+        "expected Berg Strider to keep both its tap effect and untap restriction, got {raw}"
+    );
+
+    let rendered = oracle_like_lines(&def).join(" ");
+    assert!(
+        rendered.contains("When this creature enters, tap target artifact or creature an opponent controls."),
+        "expected Berg Strider ETB tap clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("If {S} was spent to cast this spell, that permanent doesn't untap during its controller's next untap step."),
+        "expected Berg Strider snow-mana untap rider, got {rendered}"
+    );
+}
+
+#[test]
 fn oracle_render_regression_named_cards_compile_cleanly() {
     let cultivator =
         oracle_like_lines(&parse_oracle_card_definition("Cultivator Colossus")).join("\n");

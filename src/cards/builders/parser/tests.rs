@@ -6942,6 +6942,26 @@ fn rewrite_lowered_supports_adamant_spent_to_cast_statement_line() -> Result<(),
 }
 
 #[test]
+fn rewrite_lexed_effect_sentence_supports_spent_to_cast_followup_on_that_permanent() {
+    let text = "Tap target artifact or creature an opponent controls. If {S} was spent to cast this spell, that permanent doesn't untap during its controller's next untap step.";
+    let lexed = lex_line(text, 0)
+        .expect("rewrite lexer should classify Berg Strider-style effect sequence");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed)
+        .expect("Berg Strider-style effect sequence should parse");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("Tap"), "{debug}");
+    assert!(debug.contains("Conditional"), "{debug}");
+    assert!(debug.contains("ManaSpentToCastThisSpellAtLeast"), "{debug}");
+    assert!(debug.contains("Untap"), "{debug}");
+    assert!(
+        debug.contains("Artifact") && debug.contains("Creature"),
+        "{debug}"
+    );
+}
+
+#[test]
 fn rewrite_lexed_effect_sentence_supports_radiance_shared_color_fanout() {
     let text = "Radiance — Target creature and each other creature that shares a color with it gain haste until end of turn.";
     let lexed =
