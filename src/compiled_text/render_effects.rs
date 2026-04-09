@@ -1950,6 +1950,28 @@ mod tests {
             "Sacrifice any number of creatures"
         );
     }
+
+    #[test]
+    fn describe_choose_then_move_to_library_accepts_iterated_move_targets() {
+        let mut filter = ObjectFilter::default().in_zone(Zone::Hand);
+        filter.owner = Some(PlayerFilter::IteratedPlayer);
+
+        let choose = crate::effects::ChooseObjectsEffect::new(
+            filter,
+            ChoiceCount::exactly(3),
+            PlayerFilter::target_player(),
+            TagKey::from("__it__"),
+        );
+        let move_to_zone =
+            crate::effects::MoveToZoneEffect::new(ChooseSpec::Iterated, Zone::Library, true);
+
+        let compact = describe_choose_then_move_to_library(&choose, &move_to_zone)
+            .expect("iterated move-to-library should compact");
+        assert_eq!(
+            compact,
+            "Target player chooses three cards from their hand, then puts them on top of their library"
+        );
+    }
 }
 
 pub(super) fn describe_cost_component(cost: &crate::costs::Cost) -> String {
@@ -3480,7 +3502,13 @@ pub(super) fn move_to_library_uses_chosen_tag(
     tag: &str,
 ) -> bool {
     move_to_zone.zone == Zone::Library
-        && matches!(move_to_zone.target.base(), ChooseSpec::Tagged(t) if t.as_str() == tag)
+        // Some parser lowerings route the chosen cards through a tagged
+        // for-each wrapper and leave the move target as `Iterated`.
+        && match move_to_zone.target.base() {
+            ChooseSpec::Iterated => true,
+            ChooseSpec::Tagged(t) => t.as_str() == tag,
+            _ => false,
+        }
 }
 
 pub(super) fn move_to_battlefield_uses_chosen_tag(
