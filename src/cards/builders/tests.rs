@@ -22516,6 +22516,13 @@ fn parse_inverter_of_truth_etb_clause_keeps_face_down_library_exile() {
             && debug.contains("ShuffleGraveyardIntoLibraryEffect"),
         "expected face-down library exile plus graveyard shuffle, got {debug}"
     );
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("exile all cards from your library face down")
+            && rendered.contains("shuffle all cards from your graveyard into your library"),
+        "expected inverter-style oracle text to stay intact, got {rendered}"
+    );
 }
 
 #[test]

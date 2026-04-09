@@ -3835,8 +3835,14 @@ pub(crate) fn split_exile_face_down_suffix(tokens: &[OwnedLexToken]) -> (&[Owned
     }
 
     let mut end = tokens.len();
+    while end > 0 && tokens[end - 1].is_comma() {
+        end -= 1;
+    }
     if end > 0 && tokens[end - 1].is_word("instead") {
         end -= 1;
+        while end > 0 && tokens[end - 1].is_comma() {
+            end -= 1;
+        }
     }
 
     if end > 0 && (tokens[end - 1].is_word("face-down") || tokens[end - 1].is_word("facedown")) {
@@ -4019,6 +4025,18 @@ mod tests {
                 crate::color::Color::Blue,
                 crate::color::Color::Red,
             ])
+        );
+    }
+
+    #[test]
+    fn split_exile_face_down_suffix_keeps_face_down_before_then_clauses() {
+        let tokens = tokenize_line("all cards from your library face down,", 0);
+        let (prefix, face_down) = split_exile_face_down_suffix(&tokens);
+
+        assert!(face_down);
+        assert_eq!(
+            crate::cards::builders::parser::token_word_refs(prefix),
+            vec!["all", "cards", "from", "your", "library"]
         );
     }
 }

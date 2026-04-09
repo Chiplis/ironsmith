@@ -438,6 +438,7 @@ mod tests {
     use crate::effect::ChoiceCount;
     use crate::effects::ChooseObjectsEffect;
     use crate::effects::LookAtTopCardsEffect;
+    use crate::effects::ShuffleGraveyardIntoLibraryEffect;
     use crate::executor::{ExecutionContext, ResolvedTarget};
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
@@ -631,6 +632,72 @@ mod tests {
             game.can_player_look_at_face_down_exiled_card(exiled_id, alice),
             "player who looked at the card should keep access after it is exiled face down"
         );
+    }
+
+    #[test]
+    fn exile_all_library_face_down_then_shuffle_graveyard_matches_inverter_behavior() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+
+        let library_one = add_card_to_zone(
+            &mut game,
+            alice,
+            Zone::Library,
+            "Library One",
+            vec![ManaSymbol::Blue],
+            CardType::Instant,
+        );
+        let library_two = add_card_to_zone(
+            &mut game,
+            alice,
+            Zone::Library,
+            "Library Two",
+            vec![ManaSymbol::Black],
+            CardType::Sorcery,
+        );
+        let graveyard_one = add_card_to_zone(
+            &mut game,
+            alice,
+            Zone::Graveyard,
+            "Graveyard One",
+            vec![ManaSymbol::Green],
+            CardType::Creature,
+        );
+        let graveyard_two = add_card_to_zone(
+            &mut game,
+            alice,
+            Zone::Graveyard,
+            "Graveyard Two",
+            vec![ManaSymbol::Red],
+            CardType::Artifact,
+        );
+
+        let exile = ExileEffect::all(
+            ObjectFilter::default()
+                .in_zone(Zone::Library)
+                .owned_by(PlayerFilter::You),
+        )
+        .with_face_down(true);
+        let shuffle = ShuffleGraveyardIntoLibraryEffect::new(PlayerFilter::You);
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        exile.execute(&mut game, &mut ctx).expect("exile should resolve");
+        assert_eq!(game.exile.len(), 2);
+        assert!(game.object(library_one).is_none());
+        assert!(game.object(library_two).is_none());
+        assert!(game
+            .exile
+            .iter()
+            .all(|card_id| game.is_face_down(*card_id)));
+
+        shuffle
+            .execute(&mut game, &mut ctx)
+            .expect("graveyard shuffle should resolve");
+        assert_eq!(game.player(alice).unwrap().graveyard.len(), 0);
+        assert_eq!(game.player(alice).unwrap().library.len(), 2);
+        assert!(game.object(graveyard_one).is_none());
+        assert!(game.object(graveyard_two).is_none());
     }
 
     #[test]
