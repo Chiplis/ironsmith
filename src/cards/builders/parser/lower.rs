@@ -31,6 +31,7 @@ use super::clause_support::{
 };
 use super::compile_support::{
     collect_tag_spans_from_effects_with_context, materialize_prepared_effects_with_trigger_context,
+    compile_condition_from_predicate_ast_with_env,
     trigger_binds_player_reference_context as rewrite_trigger_binds_player_reference_context,
 };
 use super::effect_pipeline::{
@@ -57,6 +58,7 @@ use super::lowering_support::{
 use super::modal_support::{parse_modal_header, replace_modal_header_x_in_effects_ast};
 use super::parser_support::split_text_for_parse;
 use super::reference_model::{LoweredEffects, ReferenceExports};
+use super::reference_model::ReferenceEnv;
 use super::restriction_support::{
     apply_pending_mana_restriction, apply_pending_restrictions_to_ability, is_restrictable_ability,
 };
@@ -2372,7 +2374,10 @@ fn lower_rewrite_triggered_to_chunk_impl(
         lower_special_rewrite_triggered_chunk(line, trigger_parse_tokens, effect_parse_tokens)?
     {
         return apply_chosen_option_to_triggered_chunk(
-            apply_explicit_intervening_if_to_triggered_chunk(chunk, line.intervening_if.clone()),
+            apply_explicit_intervening_if_to_triggered_chunk(
+                chunk,
+                line.intervening_if.clone(),
+            )?,
             &line.full_text,
             inferred_max_triggers_per_turn,
             chosen_option_label,
@@ -2404,7 +2409,7 @@ fn lower_rewrite_triggered_to_chunk_impl(
                         max_triggers_per_turn: inferred_max_triggers_per_turn,
                     },
                     line.intervening_if.clone(),
-                ),
+                )?,
                 line.info.raw_line.as_str(),
                 inferred_max_triggers_per_turn,
                 chosen_option_label,
@@ -2415,7 +2420,7 @@ fn lower_rewrite_triggered_to_chunk_impl(
     let parsed = apply_explicit_intervening_if_to_triggered_chunk(
         parse_triggered_line_lexed(full_parse_tokens)?,
         line.intervening_if.clone(),
-    );
+    )?;
     apply_chosen_option_to_triggered_chunk(
         parsed,
         line.info.raw_line.as_str(),
@@ -4339,31 +4344,35 @@ mod tests {
         )?;
 
         let normalized = rewrite_document_to_normalized_card_ast(doc)?;
-        let prepared = normalized
+        let parsed = normalized
             .items
             .into_iter()
             .find_map(|item| match item {
-                NormalizedCardItem::Line(line) => {
-                    line.chunks.into_iter().find_map(|chunk| match chunk {
-                        NormalizedLineChunk::Triggered { prepared, .. } => Some(prepared),
-                        _ => None,
-                    })
-                }
+                NormalizedCardItem::Line(line) => line.chunks.into_iter().find_map(|chunk| {
+                    if let NormalizedLineChunk::Ability(parsed) = chunk {
+                        Some(parsed)
+                    } else {
+                        None
+                    }
+                }),
                 _ => None,
             })
-            .expect("expected Portcullis-style line to normalize into a triggered chunk");
+            .expect("expected Portcullis-style line to normalize into a triggered ability");
 
-        let predicate_debug = format!(
-            "{:?}",
-            prepared
-                .intervening_if
-                .as_ref()
-                .expect("expected trigger predicate to survive normalization")
-                .predicate
+        let AbilityKind::Triggered(triggered) = parsed.ability.kind else {
+            panic!(
+                "expected Portcullis-style line to normalize into a triggered ability, got {:?}",
+                parsed.ability.kind
+            );
+        };
+        let debug = format!("{:?}", triggered.intervening_if);
+        assert!(
+            triggered.intervening_if.is_some(),
+            "expected trigger predicate to survive normalization, got {debug}"
         );
         assert!(
-            predicate_debug.contains("ValueComparison"),
-            "expected battlefield-count predicate to survive normalization, got {predicate_debug}"
+            debug.contains("ValueComparison"),
+            "expected battlefield-count predicate to survive normalization, got {debug}"
         );
 
         Ok(())
@@ -5043,9 +5052,9 @@ fn apply_chosen_option_to_triggered_chunk(
 fn apply_explicit_intervening_if_to_triggered_chunk(
     chunk: LineAst,
     explicit_intervening_if: Option<PredicateAst>,
-) -> LineAst {
+) -> Result<LineAst, CardTextError> {
     let Some(predicate) = explicit_intervening_if else {
-        return chunk;
+        return Ok(chunk);
     };
 
     match chunk {
@@ -5058,13 +5067,13 @@ fn apply_explicit_intervening_if_to_triggered_chunk(
                 effects.as_slice(),
                 [EffectAst::Conditional { if_false, .. }] if if_false.is_empty()
             ) {
-                LineAst::Triggered {
+                Ok(LineAst::Triggered {
                     trigger,
                     effects,
                     max_triggers_per_turn,
-                }
+                })
             } else {
-                LineAst::Triggered {
+                Ok(LineAst::Triggered {
                     trigger,
                     effects: vec![EffectAst::Conditional {
                         predicate,
@@ -5072,29 +5081,37 @@ fn apply_explicit_intervening_if_to_triggered_chunk(
                         if_false: Vec::new(),
                     }],
                     max_triggers_per_turn,
-                }
+                })
             }
         }
         LineAst::Ability(mut parsed) => {
-            if matches!(parsed.ability.kind, AbilityKind::Triggered(_))
-                && let Some(effects_ast) = parsed.effects_ast.take()
-            {
-                if matches!(
-                    effects_ast.as_slice(),
-                    [EffectAst::Conditional { if_false, .. }] if if_false.is_empty()
-                ) {
-                    parsed.effects_ast = Some(effects_ast);
+            let condition = compile_condition_from_predicate_ast_with_env(
+                &predicate,
+                &ReferenceEnv::from_imports(&parsed.reference_imports, false, false, false, None),
+                None,
+            )?;
+            if let AbilityKind::Triggered(triggered) = &mut parsed.ability.kind {
+                triggered.intervening_if = Some(match triggered.intervening_if.take() {
+                    Some(existing) => crate::ConditionExpr::And(Box::new(existing), Box::new(condition)),
+                    None => condition,
+                });
+            }
+            if let Some(effects_ast) = parsed.effects_ast.take() {
+                if let [EffectAst::Conditional {
+                    if_true,
+                    if_false,
+                    ..
+                }] = effects_ast.as_slice()
+                    && if_false.is_empty()
+                {
+                    parsed.effects_ast = Some(if_true.clone());
                 } else {
-                    parsed.effects_ast = Some(vec![EffectAst::Conditional {
-                        predicate,
-                        if_true: effects_ast,
-                        if_false: Vec::new(),
-                    }]);
+                    parsed.effects_ast = Some(effects_ast);
                 }
             }
-            LineAst::Ability(parsed)
+            Ok(LineAst::Ability(parsed))
         }
-        other => other,
+        other => Ok(other),
     }
 }
 
@@ -5131,7 +5148,7 @@ fn rewrite_item_to_normalized_item(
             let parsed = apply_explicit_intervening_if_to_triggered_chunk(
                 line.parsed,
                 line.intervening_if,
-            );
+            )?;
             Ok(Some(NormalizedCardItem::Line(normalize_rewrite_line_ast(
                 line.info.clone(),
                 vec![parsed],
