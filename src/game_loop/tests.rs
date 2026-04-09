@@ -527,6 +527,81 @@ fn oath_of_druids_upkeep_trigger_puts_revealed_creature_onto_battlefield() {
 }
 
 #[test]
+fn test_make_an_example_leaves_unselected_creatures_on_the_battlefield() {
+    use crate::executor::ExecutionContext;
+
+    struct ChooseFirstObjectDecisionMaker;
+
+    impl DecisionMaker for ChooseFirstObjectDecisionMaker {
+        fn decide_objects(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            ctx.candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .map(|candidate| candidate.id)
+                .take(1)
+                .collect()
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let make_an_example = CardDefinitionBuilder::new(CardId::new(), "Make an Example")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Each opponent separates the creatures they control into two piles. For each opponent, you choose one of their piles. Each opponent sacrifices the creatures in their chosen pile. (Piles can be empty.)",
+        )
+        .expect("Make an Example should parse");
+
+    let source_id = game.create_object_from_definition(&make_an_example, alice, Zone::Hand);
+    let chosen_pile_creature = CardBuilder::new(CardId::new(), "Chosen Pile Bear")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let untouched_pile_creature = CardBuilder::new(CardId::new(), "Untouched Pile Bear")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+    let chosen_pile_creature_id =
+        game.create_object_from_card(&chosen_pile_creature, bob, Zone::Battlefield);
+    let untouched_pile_creature_id =
+        game.create_object_from_card(&untouched_pile_creature, bob, Zone::Battlefield);
+
+    let spell_effects = make_an_example
+        .spell_effect
+        .as_ref()
+        .expect("Make an Example should have spell effects");
+    let mut dm = ChooseFirstObjectDecisionMaker;
+    let mut ctx = ExecutionContext::new_default(source_id, alice).with_decision_maker(&mut dm);
+
+    for effect in spell_effects {
+        execute_effect(&mut game, effect, &mut ctx)
+            .expect("Make an Example effect should resolve");
+    }
+
+    assert!(
+        game.player(bob)
+            .expect("bob exists")
+            .graveyard
+            .contains(&chosen_pile_creature_id),
+        "the chosen pile should be sacrificed"
+    );
+    assert!(
+        game.battlefield.contains(&untouched_pile_creature_id),
+        "the unchosen pile should remain on the battlefield"
+    );
+}
+
+#[test]
 fn test_queue_triggers_tracks_noncombat_damage_to_players_this_turn() {
     let mut game = setup_game();
     let mut trigger_queue = TriggerQueue::new();

@@ -100,6 +100,31 @@ mod tests {
             "expected tie for most cards in hand to fail the condition"
         );
     }
+
+    #[test]
+    fn evaluate_player_has_more_life_than_each_other_player_requires_unique_leader() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = game.players[0].id;
+        let source = game.new_object_id();
+        let condition = Condition::PlayerHasMoreLifeThanEachOtherPlayer {
+            player: PlayerFilter::Any,
+        };
+
+        game.players[1].life = 21;
+        let ctx = ExecutionContext::new_default(source, alice);
+        assert!(
+            evaluate_condition(&game, &condition, &ctx)
+                .expect("unique life leader should evaluate"),
+            "expected Bob to satisfy the unique-leader life condition"
+        );
+
+        game.players[0].life = 21;
+        assert!(
+            !evaluate_condition(&game, &condition, &ctx)
+                .expect("tied life totals should evaluate cleanly"),
+            "expected tie for most life to fail the condition"
+        );
+    }
 }
 
 fn player_has_card_in_hand_matching(
@@ -464,6 +489,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::PlayerHasCardTypesInGraveyardOrMore { .. } => {}
         Condition::PlayerHasLessLifeThanYou { .. } => {}
         Condition::PlayerHasMoreLifeThanYou { .. } => {}
+        Condition::PlayerHasMoreLifeThanEachOtherPlayer { .. } => {}
         Condition::PlayerHasMoreCardsInHandThanYou { .. } => {}
         Condition::PlayerHasMoreCardsInHandThanEachOtherPlayer { .. } => {}
         Condition::PlayerIsMonarch { .. } => {}
