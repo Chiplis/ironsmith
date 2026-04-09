@@ -878,6 +878,39 @@ fn crystalline_resonance_copies_target_permanent_when_you_cycle() {
         .mana_pool
         .add(ManaSymbol::Colorless, 4);
 
+    fn finish_cycling_activation(
+        game: &mut GameState,
+        trigger_queue: &mut TriggerQueue,
+        state: &mut PriorityLoopState,
+        dm: &mut SelectFirstDecisionMaker,
+        mut progress: crate::decision::GameProgress,
+        label: &str,
+    ) {
+        for _ in 0..8 {
+            if game.stack.len() == 1 {
+                return;
+            }
+            progress = match progress {
+                crate::decision::GameProgress::NeedsDecisionCtx(ctx) => {
+                    apply_decision_context_with_dm(
+                        game,
+                        trigger_queue,
+                        state,
+                        &ctx,
+                        dm,
+                    )
+                    .unwrap_or_else(|err| {
+                        panic!("{label} decision should resolve: {err}");
+                    })
+                }
+                crate::decision::GameProgress::Continue
+                | crate::decision::GameProgress::StackResolved
+                | crate::decision::GameProgress::GameOver(_) => return,
+            };
+        }
+        panic!("{label} did not produce a stack entry");
+    }
+
     let activate_action = compute_legal_actions(&game, alice)
         .into_iter()
         .find(|action| {
@@ -897,21 +930,14 @@ fn crystalline_resonance_copies_target_permanent_when_you_cycle() {
     )
     .expect("cycling activation should succeed");
 
-    match progress {
-        crate::decision::GameProgress::NeedsDecisionCtx(
-            crate::decisions::context::DecisionContext::SelectOptions(ctx),
-        ) => {
-            apply_decision_context_with_dm(
-                &mut game,
-                &mut trigger_queue,
-                &mut state,
-                &crate::decisions::context::DecisionContext::SelectOptions(ctx),
-                &mut dm,
-            )
-            .expect("cycling mana payment should resolve");
-        }
-        other => panic!("expected mana payment decision after cycling activation, got {other:?}"),
-    }
+    finish_cycling_activation(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &mut dm,
+        progress,
+        "cycling activation",
+    );
 
     assert_eq!(
         game.stack.len(),
@@ -990,23 +1016,14 @@ fn crystalline_resonance_copies_target_permanent_when_you_cycle() {
     )
     .expect("second cycling activation should succeed");
 
-    match progress {
-        crate::decision::GameProgress::NeedsDecisionCtx(
-            crate::decisions::context::DecisionContext::SelectOptions(ctx),
-        ) => {
-            apply_decision_context_with_dm(
-                &mut game,
-                &mut trigger_queue,
-                &mut state,
-                &crate::decisions::context::DecisionContext::SelectOptions(ctx),
-                &mut dm,
-            )
-            .expect("second cycling mana payment should resolve");
-        }
-        other => panic!(
-            "expected mana payment decision after second cycling activation, got {other:?}"
-        ),
-    }
+    finish_cycling_activation(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &mut dm,
+        progress,
+        "second cycling activation",
+    );
 
     assert_eq!(
         game.stack.len(),
