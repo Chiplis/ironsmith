@@ -2372,7 +2372,7 @@ fn lower_rewrite_triggered_to_chunk_impl(
         lower_special_rewrite_triggered_chunk(line, trigger_parse_tokens, effect_parse_tokens)?
     {
         return apply_chosen_option_to_triggered_chunk(
-            chunk,
+            apply_explicit_intervening_if_to_triggered_chunk(chunk, line.intervening_if.clone()),
             &line.full_text,
             inferred_max_triggers_per_turn,
             chosen_option_label,
@@ -2381,45 +2381,6 @@ fn lower_rewrite_triggered_to_chunk_impl(
 
     let normalized_full_text = line.full_text.to_ascii_lowercase();
     let normalized_effect_text = line.effect_text.trim().to_ascii_lowercase();
-    let explicit_intervening_if = line.intervening_if.clone();
-    let wrap_explicit_intervening_if = |chunk: LineAst| {
-        if let Some(predicate) = explicit_intervening_if.clone() {
-            match chunk {
-                LineAst::Triggered {
-                    trigger,
-                    effects,
-                    max_triggers_per_turn,
-                } => {
-                    if matches!(
-                        effects.as_slice(),
-                        [EffectAst::Conditional {
-                            if_false,
-                            ..
-                        }] if if_false.is_empty()
-                    ) {
-                        LineAst::Triggered {
-                            trigger,
-                            effects,
-                            max_triggers_per_turn,
-                        }
-                    } else {
-                        LineAst::Triggered {
-                            trigger,
-                            effects: vec![EffectAst::Conditional {
-                                predicate,
-                                if_true: effects,
-                                if_false: Vec::new(),
-                            }],
-                            max_triggers_per_turn,
-                        }
-                    }
-                }
-                other => other,
-            }
-        } else {
-            chunk
-        }
-    };
     if !line.effect_text.trim().is_empty()
         && !full_text_has_triggered_intervening_if_clause(
             line.full_text.as_str(),
@@ -2436,11 +2397,14 @@ fn lower_rewrite_triggered_to_chunk_impl(
             && !effects.is_empty()
         {
             return apply_chosen_option_to_triggered_chunk(
-                wrap_explicit_intervening_if(LineAst::Triggered {
-                    trigger,
-                    effects,
-                    max_triggers_per_turn: inferred_max_triggers_per_turn,
-                }),
+                apply_explicit_intervening_if_to_triggered_chunk(
+                    LineAst::Triggered {
+                        trigger,
+                        effects,
+                        max_triggers_per_turn: inferred_max_triggers_per_turn,
+                    },
+                    line.intervening_if.clone(),
+                ),
                 line.info.raw_line.as_str(),
                 inferred_max_triggers_per_turn,
                 chosen_option_label,
@@ -2448,7 +2412,10 @@ fn lower_rewrite_triggered_to_chunk_impl(
         }
     }
 
-    let parsed = wrap_explicit_intervening_if(parse_triggered_line_lexed(full_parse_tokens)?);
+    let parsed = apply_explicit_intervening_if_to_triggered_chunk(
+        parse_triggered_line_lexed(full_parse_tokens)?,
+        line.intervening_if.clone(),
+    );
     apply_chosen_option_to_triggered_chunk(
         parsed,
         line.info.raw_line.as_str(),
@@ -4200,8 +4167,11 @@ fn split_rewrite_activated_effect_text_fallback(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cards::builders::parser::document_parser::parse_text_to_semantic_document;
     use crate::cards::builders::parser::RewriteKeywordLineKind;
-    use crate::cards::builders::{LineAst, NormalizedLine};
+    use crate::cards::builders::{
+        CardDefinitionBuilder, CardId, CardType, LineAst, NormalizedLine,
+    };
 
     #[test]
     fn rewrite_activated_sentence_alignment_merges_inner_quoted_periods() {
@@ -4353,6 +4323,48 @@ mod tests {
             parse_single_effect_lexed(trimmed)?,
             EffectAst::Exile { .. }
         ));
+
+        Ok(())
+    }
+
+    #[test]
+    fn rewrite_triggered_normalization_keeps_explicit_intervening_if_predicate()
+    -> Result<(), CardTextError> {
+        let builder = CardDefinitionBuilder::new(CardId::new(), "Portcullis Variant")
+            .card_types(vec![CardType::Artifact]);
+        let (doc, _) = parse_text_to_semantic_document(
+            builder,
+            "Whenever a creature enters, if there are two or more other creatures on the battlefield, exile that creature. Return that card to the battlefield under its owner's control when this artifact leaves the battlefield.".to_string(),
+            false,
+        )?;
+
+        let normalized = rewrite_document_to_normalized_card_ast(doc)?;
+        let prepared = normalized
+            .items
+            .into_iter()
+            .find_map(|item| match item {
+                NormalizedCardItem::Line(line) => {
+                    line.chunks.into_iter().find_map(|chunk| match chunk {
+                        NormalizedLineChunk::Triggered { prepared, .. } => Some(prepared),
+                        _ => None,
+                    })
+                }
+                _ => None,
+            })
+            .expect("expected Portcullis-style line to normalize into a triggered chunk");
+
+        let predicate_debug = format!(
+            "{:?}",
+            prepared
+                .intervening_if
+                .as_ref()
+                .expect("expected trigger predicate to survive normalization")
+                .predicate
+        );
+        assert!(
+            predicate_debug.contains("ValueComparison"),
+            "expected battlefield-count predicate to survive normalization, got {predicate_debug}"
+        );
 
         Ok(())
     }
@@ -5028,6 +5040,64 @@ fn apply_chosen_option_to_triggered_chunk(
     }
 }
 
+fn apply_explicit_intervening_if_to_triggered_chunk(
+    chunk: LineAst,
+    explicit_intervening_if: Option<PredicateAst>,
+) -> LineAst {
+    let Some(predicate) = explicit_intervening_if else {
+        return chunk;
+    };
+
+    match chunk {
+        LineAst::Triggered {
+            trigger,
+            effects,
+            max_triggers_per_turn,
+        } => {
+            if matches!(
+                effects.as_slice(),
+                [EffectAst::Conditional { if_false, .. }] if if_false.is_empty()
+            ) {
+                LineAst::Triggered {
+                    trigger,
+                    effects,
+                    max_triggers_per_turn,
+                }
+            } else {
+                LineAst::Triggered {
+                    trigger,
+                    effects: vec![EffectAst::Conditional {
+                        predicate,
+                        if_true: effects,
+                        if_false: Vec::new(),
+                    }],
+                    max_triggers_per_turn,
+                }
+            }
+        }
+        LineAst::Ability(mut parsed) => {
+            if matches!(parsed.ability.kind, AbilityKind::Triggered(_))
+                && let Some(effects_ast) = parsed.effects_ast.take()
+            {
+                if matches!(
+                    effects_ast.as_slice(),
+                    [EffectAst::Conditional { if_false, .. }] if if_false.is_empty()
+                ) {
+                    parsed.effects_ast = Some(effects_ast);
+                } else {
+                    parsed.effects_ast = Some(vec![EffectAst::Conditional {
+                        predicate,
+                        if_true: effects_ast,
+                        if_false: Vec::new(),
+                    }]);
+                }
+            }
+            LineAst::Ability(parsed)
+        }
+        other => other,
+    }
+}
+
 fn optional_cost_tail_effect_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     let comma_idx = find_index(tokens, |token| token.kind == TokenKind::Comma)?;
     let effect_tokens = trim_lexed_commas(tokens.get(comma_idx + 1..).unwrap_or_default());
@@ -5058,9 +5128,13 @@ fn rewrite_item_to_normalized_item(
             )?)))
         }
         RewriteSemanticItem::Triggered(line) => {
+            let parsed = apply_explicit_intervening_if_to_triggered_chunk(
+                line.parsed,
+                line.intervening_if,
+            );
             Ok(Some(NormalizedCardItem::Line(normalize_rewrite_line_ast(
                 line.info.clone(),
-                vec![line.parsed],
+                vec![parsed],
                 ParsedRestrictions::default(),
                 state,
             )?)))
