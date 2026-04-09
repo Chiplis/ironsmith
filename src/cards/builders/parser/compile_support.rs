@@ -299,7 +299,6 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             filter,
             cause_filter,
         } => Trigger::enters_battlefield_untapped(filter, cause_filter),
-        }
         TriggerSpec::BeginningOfUpkeep(player) => Trigger::beginning_of_upkeep(player),
         TriggerSpec::BeginningOfDrawStep(player) => Trigger::beginning_of_draw_step(player),
         TriggerSpec::BeginningOfCombat(player) => Trigger::beginning_of_combat(player),
@@ -11524,7 +11523,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
         if is_land_you_control_enters_pump_token {
             let ability = Ability {
                 kind: AbilityKind::Triggered(crate::ability::TriggeredAbility {
-                    trigger: Trigger::enters_battlefield(ObjectFilter::land().you_control()),
+                    trigger: Trigger::enters_battlefield(ObjectFilter::land().you_control(), None),
                     effects: crate::resolution::ResolutionProgram::from_effects(vec![
                         Effect::pump(1, 0, ChooseSpec::Source, Until::EndOfTurn),
                     ]),

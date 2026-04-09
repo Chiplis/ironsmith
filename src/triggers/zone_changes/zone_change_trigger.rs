@@ -174,6 +174,12 @@ impl ZoneChangeTrigger {
         self
     }
 
+    /// Set or clear the cause filter.
+    pub fn cause_filter(mut self, cause_filter: Option<CauseFilter>) -> Self {
+        self.cause_filter = cause_filter;
+        self
+    }
+
     /// Set the count mode.
     pub fn count(mut self, mode: CountMode) -> Self {
         self.count_mode = mode;

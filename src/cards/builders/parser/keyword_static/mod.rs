@@ -2107,13 +2107,13 @@ fn parse_trigger_duplication_event_matcher(
             &["entering", "or", "leaving", "the", "battlefield"],
             |filter| {
                 Trigger::either(
-                    Trigger::enters_battlefield(filter.clone()),
+                    Trigger::enters_battlefield(filter.clone(), None),
                     Trigger::leaves_battlefield(filter),
                 )
             },
         ),
         (&["entering", "the", "battlefield"], |filter| {
-            Trigger::enters_battlefield(filter)
+            Trigger::enters_battlefield(filter, None)
         }),
         (&["leaving", "the", "battlefield"], |filter| {
             Trigger::leaves_battlefield(filter)
@@ -2123,7 +2123,7 @@ fn parse_trigger_duplication_event_matcher(
         }),
         (&["attacking"], |filter| Trigger::attacks(filter)),
         (&["dying"], |filter| Trigger::dies(filter)),
-        (&["entering"], |filter| Trigger::enters_battlefield(filter)),
+        (&["entering"], |filter| Trigger::enters_battlefield(filter, None)),
     ];
 
     for (suffix, build) in suffixes {

@@ -4032,11 +4032,11 @@ pub(super) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         }
     }
 
-    if filtered.len() >= 7 && filtered[0] == "there" && filtered[1] == "are" {
-        let Some(count) = parse_named_number(filtered[2]) else {
-            return Ok(None);
-        };
-
+    if filtered.len() >= 7
+        && filtered[0] == "there"
+        && filtered[1] == "are"
+        && let Some(count) = parse_named_number(filtered[2])
+    {
         let mut idx = 3usize;
         if filtered.get(idx).copied() == Some("or")
             && filtered.get(idx + 1).copied() == Some("more")
@@ -4044,32 +4044,27 @@ pub(super) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             idx += 2;
         }
 
-        if !slice_ends_with(&filtered[idx..], &["on", "the", "battlefield"]) {
-            return Ok(None);
+        if slice_ends_with(&filtered[idx..], &["on", "the", "battlefield"]) {
+            let filter_words = &filtered[idx..filtered.len() - 3];
+            if !filter_words.is_empty() {
+                let filter_tokens = filter_words
+                    .iter()
+                    .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+                    .collect::<Vec<_>>();
+                let other = filter_words
+                    .first()
+                    .is_some_and(|word| matches!(*word, "other" | "another"));
+                if let Ok(mut filter) = parse_object_filter(&filter_tokens, other) {
+                    filter.zone = Some(Zone::Battlefield);
+
+                    return Ok(PredicateAst::ValueComparison {
+                        left: Value::Count(filter),
+                        operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                        right: Value::Fixed(count as i32),
+                    });
+                }
+            }
         }
-
-        let filter_words = &filtered[idx..filtered.len() - 3];
-        if filter_words.is_empty() {
-            return Ok(None);
-        }
-
-        let filter_tokens = filter_words
-            .iter()
-            .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
-            .collect::<Vec<_>>();
-        let other = filter_words
-            .first()
-            .is_some_and(|word| matches!(*word, "other" | "another"));
-        let Ok(mut filter) = parse_object_filter(&filter_tokens, other) else {
-            return Ok(None);
-        };
-        filter.zone = Some(Zone::Battlefield);
-
-        return Ok(PredicateAst::ValueComparison {
-            left: Value::Count(filter),
-            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
-            right: Value::Fixed(count as i32),
-        });
     }
 
     let parse_graveyard_card_types_subject = |words: &[&str]| -> Option<PlayerAst> {

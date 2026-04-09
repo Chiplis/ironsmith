@@ -3722,7 +3722,7 @@ impl CardDefinitionBuilder {
     pub fn evolve(self) -> Self {
         self.with_ability(
             Ability::triggered(
-                Trigger::enters_battlefield(ObjectFilter::creature().you_control()),
+                Trigger::enters_battlefield(ObjectFilter::creature().you_control(), None),
                 vec![Effect::evolve_source()],
             )
             .with_text("Evolve"),
@@ -3791,7 +3791,7 @@ impl CardDefinitionBuilder {
     pub fn soulbond(self) -> Self {
         self.with_ability(
             Ability::triggered(
-                Trigger::enters_battlefield(ObjectFilter::creature().you_control()),
+                Trigger::enters_battlefield(ObjectFilter::creature().you_control(), None),
                 vec![Effect::new(crate::effects::SoulbondPairEffect::new())],
             )
             .with_text("Soulbond"),
@@ -4256,7 +4256,7 @@ impl CardDefinitionBuilder {
 
         self.with_ability(Ability {
             kind: AbilityKind::Triggered(TriggeredAbility {
-                trigger: Trigger::enters_battlefield(ObjectFilter::permanent().you_control()),
+                trigger: Trigger::enters_battlefield(ObjectFilter::permanent().you_control(), None),
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![get_blessing]),
                 choices: vec![],
                 intervening_if: Some(bless_condition),
@@ -4738,7 +4738,7 @@ impl CardDefinitionBuilder {
         )
         .with_ability(Ability {
             kind: AbilityKind::Triggered(TriggeredAbility {
-                trigger: Trigger::enters_battlefield(ObjectFilter::creature().other()),
+                trigger: Trigger::enters_battlefield(ObjectFilter::creature().other(), None),
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![
                     Effect::tag_triggering_object(entered_tag),
                     Effect::may_single(Effect::move_counters(

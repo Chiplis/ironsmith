@@ -2115,6 +2115,7 @@ impl StaticAbilityKind for CreaturesEnteringDontCauseAbilitiesToTrigger {
             source_filter: None,
             event_matcher: Some(crate::triggers::Trigger::enters_battlefield(
                 ObjectFilter::creature(),
+                None,
             )),
         })
     }
