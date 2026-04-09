@@ -4028,7 +4028,7 @@ fn parse_exile_top_library_clause(
     Some(EffectAst::ExileTopOfLibrary {
         count,
         player,
-        tags: vec![helper_tag_for_tokens(tokens, "exiled")],
+        tags: vec![helper_tag_for_tokens(&tokens, "exiled")],
         accumulated_tags: Vec::new(),
     })
 }

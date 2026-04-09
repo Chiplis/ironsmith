@@ -9085,8 +9085,9 @@ fn test_dash_grants_haste_and_returns_to_hand_at_next_end_step() {
 #[test]
 fn test_gargoyle_sentinel_gains_flying_only_for_itself_until_end_of_turn() {
     use crate::cards::CardDefinitionBuilder;
-    use crate::decision::{compute_legal_actions, LegalAction, PriorityResponse};
+    use crate::decision::{compute_legal_actions, LegalAction};
     use crate::game_loop::{apply_priority_response_with_dm, resolve_stack_entry, PriorityLoopState};
+    use crate::PriorityResponse;
 
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);

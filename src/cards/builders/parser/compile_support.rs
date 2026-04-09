@@ -11720,7 +11720,7 @@ mod parse_compile_tests {
         let target = TargetAst::Object(ObjectFilter::source(), None, None);
         let (spec, choices) = resolve_target_spec_with_choices(
             &target,
-            &crate::cards::builders::reference_model::ReferenceEnv::default(),
+            &ReferenceEnv::default(),
         )
         .expect("source object target should resolve cleanly");
 
