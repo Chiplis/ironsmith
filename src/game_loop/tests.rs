@@ -5506,25 +5506,46 @@ fn terastodon_etb_destroys_up_to_three_permanents_and_makes_elephants() {
         ProvNodeId::default(),
     );
     let mut dm = ChooseAllLegalTargetsDecisionMaker;
-    let mut ctx = ExecutionContext::new(terastodon_id, alice, &mut dm).with_triggering_event(event);
+    let target_spec = etb_trigger
+        .choices
+        .first()
+        .cloned()
+        .expect("Terastodon should require a target choice");
+    let mut ctx = ExecutionContext::new(terastodon_id, alice, &mut dm)
+        .with_triggering_event(event)
+        .with_targets(vec![
+            crate::executor::ResolvedTarget::Object(alice_enchantment_id),
+            crate::executor::ResolvedTarget::Object(bob_artifact_id),
+            crate::executor::ResolvedTarget::Object(bob_land_id),
+        ])
+        .with_target_assignments(vec![crate::game_state::TargetAssignment {
+            spec: target_spec,
+            range: 0..3,
+        }]);
 
     for effect in &etb_trigger.effects {
         execute_effect(&mut game, effect, &mut ctx).expect("Terastodon ETB effect should resolve");
     }
 
     assert!(
-        game.object(alice_enchantment_id)
-            .is_some_and(|obj| obj.zone == Zone::Graveyard),
+        game.player(alice).is_some_and(|player| player.graveyard.iter().any(|&id| {
+            game.object(id)
+                .is_some_and(|obj| obj.name == "Alice Sigil")
+        })),
         "Alice's noncreature permanent should be destroyed"
     );
     assert!(
-        game.object(bob_artifact_id)
-            .is_some_and(|obj| obj.zone == Zone::Graveyard),
+        game.player(bob).is_some_and(|player| player.graveyard.iter().any(|&id| {
+            game.object(id)
+                .is_some_and(|obj| obj.name == "Bob Relic")
+        })),
         "Bob's artifact should be destroyed"
     );
     assert!(
-        game.object(bob_land_id)
-            .is_some_and(|obj| obj.zone == Zone::Graveyard),
+        game.player(bob).is_some_and(|player| player.graveyard.iter().any(|&id| {
+            game.object(id)
+                .is_some_and(|obj| obj.name == "Bob Shrine")
+        })),
         "Bob's land should be destroyed"
     );
 
@@ -5545,8 +5566,14 @@ fn terastodon_etb_destroys_up_to_three_permanents_and_makes_elephants() {
         })
         .count();
 
-    assert_eq!(alice_elephants, 1, "Alice should get one Elephant token");
-    assert_eq!(bob_elephants, 2, "Bob should get two Elephant tokens");
+    assert_eq!(
+        alice_elephants, 1,
+        "Alice should get one Elephant token (alice={alice_elephants}, bob={bob_elephants})"
+    );
+    assert_eq!(
+        bob_elephants, 2,
+        "Bob should get two Elephant tokens (alice={alice_elephants}, bob={bob_elephants})"
+    );
 }
 
 #[test]

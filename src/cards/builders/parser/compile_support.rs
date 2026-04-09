@@ -2317,7 +2317,8 @@ pub(crate) fn compile_effects(
             bind_unbound_x_to_last_effect: ctx.bind_unbound_x_to_last_effect,
             initial_last_effect_id: ctx.last_effect_id,
             initial_iterated_player: ctx.iterated_player,
-            force_auto_tag_object_targets: ctx.force_auto_tag_object_targets,
+            force_auto_tag_object_targets: ctx.force_auto_tag_object_targets
+                || ctx.auto_tag_object_targets,
         },
         ctx.id_gen_context(),
     )?;
@@ -2331,12 +2332,14 @@ pub(crate) fn compile_annotated_effects_with_context(
     let mut compiled = Vec::new();
     let mut choices = Vec::new();
     let mut idx = 0;
+    let effective_force_auto_tag_object_targets =
+        ctx.force_auto_tag_object_targets || ctx.auto_tag_object_targets;
 
     while idx < annotated.effects.len() {
         let current = &annotated.effects[idx];
         apply_local_reference_env(ctx, &current.in_env);
         ctx.auto_tag_object_targets =
-            ctx.force_auto_tag_object_targets || current.auto_tag_object_targets;
+            effective_force_auto_tag_object_targets || current.auto_tag_object_targets;
 
         if let Some((effect_sequence, effect_choices, consumed)) =
             compile_vote_sequence(&annotated.effects[idx..], ctx)?
@@ -11930,6 +11933,61 @@ mod parse_compile_tests {
             .iter()
             .find_map(|effect| effect.downcast_ref::<GrantPlayTaggedEffect>())
             .expect("grant-play-tagged effect");
+        assert_eq!(grant.tag.as_str(), "destroyed_0");
+        assert_eq!(frame_out.last_object_tag.as_deref(), Some("destroyed_0"));
+    }
+
+    #[test]
+    fn compile_may_branch_preserves_auto_tagged_destroy_followup() {
+        let effects = vec![
+            EffectAst::May {
+                effects: vec![EffectAst::Destroy {
+                    target: TargetAst::WithCount(
+                        Box::new(TargetAst::Object(
+                            ObjectFilter::creature(),
+                            Some(TextSpan::synthetic()),
+                            None,
+                        )),
+                        ChoiceCount::up_to(3),
+                    ),
+                }],
+            },
+            EffectAst::GrantPlayTaggedUntilEndOfTurn {
+                tag: TagKey::from(IT_TAG),
+                player: PlayerAst::You,
+                allow_land: false,
+                without_paying_mana_cost: false,
+                allow_any_color_for_cast: false,
+            },
+        ];
+
+        let (compiled, _, frame_out) = compile_effects_with_explicit_frame(
+            &effects,
+            &mut IdGenContext::default(),
+            LoweringFrame::default(),
+        )
+        .expect("compile may branch with tagged follow-up");
+
+        let may = compiled[0]
+            .downcast_ref::<crate::effects::MayEffect>()
+            .expect("expected may effect");
+        let tagged = may.effects[0]
+            .downcast_ref::<TaggedEffect>()
+            .expect("destroy inside may should stay tagged for follow-up linkage");
+        let destroy = tagged
+            .effect
+            .downcast_ref::<crate::effects::DestroyEffect>()
+            .expect("expected tagged destroy effect");
+        assert_eq!(tagged.tag.as_str(), "destroyed_0");
+        assert_eq!(
+            destroy.spec,
+            ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature()))
+                .with_count(ChoiceCount::up_to(3))
+        );
+
+        let grant = compiled[1]
+            .downcast_ref::<GrantPlayTaggedEffect>()
+            .expect("grant-play-tagged follow-up");
         assert_eq!(grant.tag.as_str(), "destroyed_0");
         assert_eq!(frame_out.last_object_tag.as_deref(), Some("destroyed_0"));
     }

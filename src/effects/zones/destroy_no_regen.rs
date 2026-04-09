@@ -4,7 +4,7 @@
 //! - "Destroy target creature. It can't be regenerated."
 //! - "Destroy all creatures. They can't be regenerated."
 
-use crate::effect::{ChoiceCount, EffectOutcome, OutcomeStatus};
+use crate::effect::{ChoiceCount, EffectOutcome, ExecutionFact, OutcomeStatus};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{
     ObjectApplyResultPolicy, apply_single_target_object_from_spec, apply_to_selected_objects,
@@ -91,6 +91,7 @@ impl EffectExecutor for DestroyNoRegenerationEffect {
             );
         }
 
+        let mut destroyed_objects = Vec::new();
         let apply_result = match apply_to_selected_objects(
             game,
             ctx,
@@ -102,14 +103,23 @@ impl EffectExecutor for DestroyNoRegenerationEffect {
                 game.clear_regeneration_shields(object_id);
                 let result =
                     process_destroy(game, object_id, Some(ctx.source), &mut *ctx.decision_maker);
-                Ok(matches!(result, EventOutcome::Proceed(_)))
+                if matches!(result, EventOutcome::Proceed(crate::zone::Zone::Graveyard)) {
+                    destroyed_objects.extend(game.take_zone_change_results(object_id));
+                    return Ok(true);
+                }
+                Ok(false)
             },
         ) {
             Ok(result) => result,
             Err(_) => return Ok(EffectOutcome::target_invalid()),
         };
 
-        Ok(EffectOutcome::count(apply_result.applied_count as i32))
+        let mut outcome = EffectOutcome::count(apply_result.applied_count as i32);
+        if !destroyed_objects.is_empty() {
+            outcome = outcome.with_execution_fact(ExecutionFact::AffectedObjects(destroyed_objects));
+        }
+
+        Ok(outcome)
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
@@ -132,8 +142,7 @@ mod tests {
     use crate::effects::RegenerateEffect;
     use crate::executor::{ExecutionContext, ResolvedTarget};
     use crate::game_state::GameState;
-    use crate::ids::CardId;
-    use crate::ids::ObjectId;
+    use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::types::CardType;
     use crate::zone::Zone;
@@ -184,6 +193,50 @@ mod tests {
             game.replacement_effects
                 .count_one_shot_effects_from_source(creature_id),
             0
+        );
+    }
+
+    #[test]
+    fn destroy_no_regeneration_multi_target_records_graveyard_results() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let first = CardBuilder::new(CardId::from_raw(2), "First Shieldless Bear")
+            .card_types(vec![CardType::Creature])
+            .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(2)]))
+            .build();
+        let second = CardBuilder::new(CardId::from_raw(3), "Second Shieldless Bear")
+            .card_types(vec![CardType::Creature])
+            .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(2)]))
+            .build();
+        let first_id = game.create_object_from_card(&first, bob, Zone::Battlefield);
+        let second_id = game.create_object_from_card(&second, bob, Zone::Battlefield);
+
+        let spec =
+            ChooseSpec::target(ChooseSpec::creature()).with_count(ChoiceCount::exactly(2));
+        let effect = DestroyNoRegenerationEffect::with_spec(spec.clone());
+        let mut ctx = ExecutionContext::new_default(game.new_object_id(), alice)
+            .with_targets(vec![
+                ResolvedTarget::Object(first_id),
+                ResolvedTarget::Object(second_id),
+            ])
+            .with_target_assignments(vec![crate::game_state::TargetAssignment {
+                spec,
+                range: 0..2,
+            }]);
+
+        let outcome = effect.execute(&mut game, &mut ctx).expect("execute");
+
+        assert_eq!(outcome.as_count(), Some(2));
+        assert_eq!(outcome.output_objects().len(), 2);
+        assert!(
+            outcome.output_objects().iter().all(|id| {
+                game.object(*id)
+                    .is_some_and(|obj| obj.zone == Zone::Graveyard && obj.controller == bob)
+            }),
+            "destroy-no-regeneration effect should surface graveyard objects, got {:?}",
+            outcome.output_objects()
         );
     }
 }

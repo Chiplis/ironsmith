@@ -16952,13 +16952,25 @@ fn parse_terastodon_keeps_destroy_and_graveyard_loop() {
         .expect("Terastodon should parse");
 
     let ability_debug = format!("{:#?}", def.abilities);
+    let ability_debug_compact = ability_debug
+        .chars()
+        .filter(|ch| !ch.is_whitespace())
+        .collect::<String>();
     assert!(
         ability_debug.contains("Destroy"),
         "expected Terastodon to keep the destroy effect, got {ability_debug}"
     );
     assert!(
+        ability_debug.contains("TaggedEffect"),
+        "expected Terastodon destroy clause to keep tagged follow-up linkage, got {ability_debug}"
+    );
+    assert!(
         ability_debug.contains("ForEachTaggedEffect"),
         "expected Terastodon to lower the graveyard follow-up to a tagged loop, got {ability_debug}"
+    );
+    assert!(
+        !ability_debug_compact.contains("ForEachTaggedEffect{tag:TagKey(\"__it__\")"),
+        "expected Terastodon follow-up loop to bind to the destroy tag instead of raw __it__, got {ability_debug}"
     );
     assert!(
         ability_debug.contains("CreateTokenEffect"),
@@ -16971,7 +16983,7 @@ fn parse_terastodon_keeps_destroy_and_graveyard_loop() {
         "expected Terastodon destroy clause to render, got {rendered}"
     );
     assert!(
-        rendered.contains("for each permanent put into a graveyard this way"),
+        rendered.contains("for each object destroyed this way"),
         "expected Terastodon graveyard follow-up to render, got {rendered}"
     );
 }
