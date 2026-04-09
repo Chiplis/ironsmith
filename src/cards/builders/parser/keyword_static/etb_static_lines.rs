@@ -60,11 +60,24 @@ fn etb_has_word_sequence(words: &[&str], sequence: &[&str]) -> bool {
     etb_find_word_sequence_index(words, sequence).is_some()
 }
 
+fn etb_starts_with_trigger_intro_after_label(tokens: &[OwnedLexToken]) -> bool {
+    let Some((_, body_tokens)) = split_em_dash_label_prefix(tokens) else {
+        return false;
+    };
+    matches!(
+        etb_token_words(body_tokens).first().copied(),
+        Some("if" | "when" | "whenever" | "as" | "at")
+    )
+}
+
 pub(crate) fn parse_enters_tapped_with_counters_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     let clause_words = etb_token_words(tokens);
     if clause_words.is_empty() {
+        return Ok(None);
+    }
+    if etb_starts_with_trigger_intro_after_label(tokens) {
         return Ok(None);
     }
 
@@ -106,6 +119,9 @@ pub(crate) fn parse_enters_with_counters_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let full_words = etb_token_words(tokens);
+    if etb_starts_with_trigger_intro_after_label(tokens) {
+        return Ok(None);
+    }
     let mut condition: Option<(crate::ConditionExpr, String)> = None;
     let mut clause_tokens: Vec<OwnedLexToken> = tokens.to_vec();
 
@@ -1597,6 +1613,9 @@ pub(crate) fn parse_enters_tapped_for_filter_line(
     ) {
         return Ok(None);
     }
+    if etb_starts_with_trigger_intro_after_label(tokens) {
+        return Ok(None);
+    }
     if is_negated_untap_clause(&clause_words) {
         let has_enters_tapped = etb_word_slice_contains_any(&clause_words, &["enter", "enters"]);
         let has_tapped = etb_word_slice_contains(&clause_words, "tapped");
@@ -1679,6 +1698,9 @@ pub(crate) fn parse_enters_untapped_for_filter_line(
         clause_words.first().copied(),
         Some("if" | "when" | "whenever" | "as")
     ) {
+        return Ok(None);
+    }
+    if etb_starts_with_trigger_intro_after_label(tokens) {
         return Ok(None);
     }
     if etb_word_slice_contains(&clause_words, "unless")
