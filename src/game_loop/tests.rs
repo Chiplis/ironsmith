@@ -4968,6 +4968,86 @@ fn test_corpse_cobble_sums_the_power_of_sacrificed_creatures() {
     );
 }
 
+#[test]
+fn test_corpse_cobble_flashback_from_graveyard_still_uses_sacrificed_power() {
+    use crate::cards::definitions::{grizzly_bears, llanowar_elves};
+    use crate::game_state::Phase;
+    use crate::mana::ManaSymbol;
+    use crate::zone::Zone;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let mut trigger_queue = TriggerQueue::new();
+    let corpse_cobble_text = "As an additional cost to cast this spell, sacrifice any number of creatures.\nCreate an X/X blue and black Zombie creature token with menace, where X is the total power of the sacrificed creatures.\nFlashback {3}{U}{B} (You may cast this card from your graveyard for its flashback cost and any additional costs. Then exile it.)";
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let corpse_cobble = CardDefinitionBuilder::new(CardId::from_raw(10002), "Corpse Cobble")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(corpse_cobble_text)
+        .expect("Corpse Cobble text should parse");
+
+    game.create_object_from_definition(&corpse_cobble, alice, Zone::Graveyard);
+    game.create_object_from_definition(&grizzly_bears(), alice, Zone::Battlefield);
+    game.create_object_from_definition(&llanowar_elves(), alice, Zone::Battlefield);
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Blue, 3);
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Black, 2);
+
+    let mut dm = CorpseCobbleDecisionMaker;
+    let result = run_priority_loop_with(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Corpse Cobble flashback should resolve cleanly");
+    assert!(
+        matches!(result, GameProgress::Continue),
+        "priority loop should finish after Corpse Cobble flashback resolves, got {result:?}"
+    );
+
+    let zombie = game
+        .battlefield
+        .iter()
+        .filter_map(|id| game.object(*id))
+        .find(|obj| obj.name == "Zombie")
+        .expect("Corpse Cobble flashback should create a Zombie token");
+    assert_eq!(
+        zombie.base_power,
+        Some(crate::card::PtValue::Fixed(3)),
+        "flashback should still use the total power of the sacrificed creatures"
+    );
+    assert_eq!(
+        zombie.base_toughness,
+        Some(crate::card::PtValue::Fixed(3)),
+        "flashback should still use the total power of the sacrificed creatures"
+    );
+
+    let player = game.player(alice).expect("alice exists");
+    assert!(
+        !player.graveyard.iter().any(|&id| {
+            game.object(id)
+                .is_some_and(|obj| obj.name == "Corpse Cobble")
+        }),
+        "Corpse Cobble should leave the graveyard after flashback"
+    );
+    assert!(
+        game.exile.iter().any(|&id| {
+            game.object(id)
+                .is_some_and(|obj| obj.name == "Corpse Cobble")
+        }),
+        "Corpse Cobble should be exiled after flashback"
+    );
+}
+
 // === Triggered Ability Tests ===
 
 #[test]

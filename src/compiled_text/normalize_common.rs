@@ -1277,6 +1277,41 @@ pub(super) fn normalize_same_name_search_bundle_clause(line: &str) -> Option<Str
     Some(rewritten)
 }
 
+fn normalize_zero_zero_token_with_base_pt(line: &str) -> Option<String> {
+    let (before_create, create_tail) = split_once_ascii_ci(line, "Create a 0/0 ")
+        .or_else(|| split_once_ascii_ci(line, "Create an 0/0 "))?;
+    let (token_desc, base_pt_tail) =
+        split_once_ascii_ci(create_tail, ". it has base power and toughness ")?;
+    let (power_text, toughness_text) = base_pt_tail.split_once('/')?;
+
+    let power_text = power_text.trim().trim_end_matches('.');
+    let toughness_text = toughness_text.trim().trim_end_matches('.');
+    let (toughness_text, remainder) = toughness_text
+        .split_once(". ")
+        .map_or((toughness_text, None), |(value, rest)| (value, Some(rest)));
+    let toughness_text = strip_suffix_ascii_ci(toughness_text, " forever")
+        .unwrap_or(toughness_text)
+        .trim();
+    if power_text.is_empty() || !power_text.eq_ignore_ascii_case(toughness_text) {
+        return None;
+    }
+
+    let mut rewritten = String::new();
+    if !before_create.is_empty() {
+        rewritten.push_str(before_create);
+    }
+    rewritten.push_str(&format!(
+        "Create an X/X {token_desc}, where X is {power_text}"
+    ));
+    if let Some(remainder) = remainder
+        && !remainder.is_empty()
+    {
+        rewritten.push_str(". ");
+        rewritten.push_str(remainder);
+    }
+    Some(rewritten)
+}
+
 pub(super) fn normalize_repeated_dynamic_buff(line: &str) -> Option<String> {
     let (before_until, after_until) = split_once_ascii_ci(line, " until end of turn")?;
     let (subject, buff) = split_once_ascii_ci(before_until, " gets ")?;
@@ -1393,6 +1428,9 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     normalized = normalize_create_named_token_article(&normalized);
     normalized = normalize_exile_named_token_until_source_leaves(&normalized);
     normalized = normalize_granted_named_token_leaves_sacrifice_source(&normalized);
+    if let Some(rewritten) = normalize_zero_zero_token_with_base_pt(&normalized) {
+        normalized = rewritten;
+    }
     if let Some(rewritten) = normalize_search_you_own_clause(&normalized) {
         normalized = rewritten;
     }
@@ -2431,8 +2469,11 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             capitalize_first(tail)
         );
     }
-    if let Some(rest) = normalized.strip_prefix("You choose any number ")
-        && let Some((chosen, tail)) = rest.split_once(". you sacrifice all permanents you control")
+    if let Some(rest) = strip_prefix_ascii_ci(&normalized, "You choose any number ")
+        .or_else(|| strip_prefix_ascii_ci(&normalized, "Choose any number "))
+        .or_else(|| strip_prefix_ascii_ci(&normalized, "you choose any number "))
+        && let Some((chosen, tail)) =
+            split_once_ascii_ci(rest, ". you sacrifice all permanents you control")
     {
         let chosen_plural = normalize_choose_sacrifice_subject(chosen);
         let tail = tail
@@ -2442,13 +2483,15 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         if tail.is_empty() {
             return format!("Sacrifice any number of {chosen_plural}");
         }
-        return format!(
+        let rewritten = format!(
             "Sacrifice any number of {chosen_plural}. {}.",
             capitalize_first(tail)
         );
+        return normalize_zero_zero_token_with_base_pt(&rewritten).unwrap_or(rewritten);
     }
     if let Some(rest) = normalized.strip_prefix("you choose any number ")
-        && let Some((chosen, tail)) = rest.split_once(". you sacrifice all permanents you control")
+        && let Some((chosen, tail)) =
+            split_once_ascii_ci(rest, ". you sacrifice all permanents you control")
     {
         let chosen_plural = normalize_choose_sacrifice_subject(chosen);
         let tail = tail
