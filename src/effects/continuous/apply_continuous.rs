@@ -21,7 +21,10 @@ pub enum RuntimeModification {
     /// Change controller to a resolved player filter.
     ChangeControllerToPlayer(crate::target::PlayerFilter),
     /// Resolve a copy source at execution, then apply a layer-1 copy effect.
-    CopyOf(ChooseSpec),
+    CopyOf {
+        source: ChooseSpec,
+        preserve_source_abilities: bool,
+    },
     /// Resolve power/toughness deltas at execution, then apply layer 7c modification.
     ModifyPowerToughness { power: Value, toughness: Value },
     /// Resolve power delta at execution, then apply layer 7c modification.
@@ -273,12 +276,18 @@ impl ApplyContinuousEffect {
             RuntimeModification::ChangeControllerToPlayer(player) => Ok(
                 Modification::ChangeController(resolve_player_filter(game, player, ctx)?),
             ),
-            RuntimeModification::CopyOf(spec) => {
-                let source = resolve_objects_for_effect(game, ctx, spec)?
+            RuntimeModification::CopyOf {
+                source,
+                preserve_source_abilities,
+            } => {
+                let source = resolve_objects_for_effect(game, ctx, source)?
                     .into_iter()
                     .next()
                     .ok_or(ExecutionError::InvalidTarget)?;
-                Ok(Modification::CopyOf(source))
+                Ok(Modification::CopyOf {
+                    target_id: source,
+                    preserve_source_abilities: *preserve_source_abilities,
+                })
             }
             RuntimeModification::ModifyPowerToughness { power, toughness } => {
                 Ok(Modification::ModifyPowerToughness {

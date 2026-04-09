@@ -5523,6 +5523,7 @@ fn try_compile_player_resource_and_choice_effect(
             target,
             source,
             duration,
+            preserve_source_abilities,
         } => {
             let refs = current_reference_env(ctx);
             let (target_spec, mut choices) = resolve_target_spec_with_choices(target, &refs)?;
@@ -5533,7 +5534,10 @@ fn try_compile_player_resource_and_choice_effect(
 
             let effect = Effect::new(crate::effects::ApplyContinuousEffect::with_spec_runtime(
                 target_spec.clone(),
-                crate::effects::continuous::RuntimeModification::CopyOf(source_spec),
+                crate::effects::continuous::RuntimeModification::CopyOf {
+                    source: source_spec,
+                    preserve_source_abilities: *preserve_source_abilities,
+                },
                 duration.clone(),
             ));
             let effect = tag_object_target_effect(effect, &target_spec, ctx, "copied");

@@ -6531,8 +6531,11 @@ pub(super) fn describe_apply_continuous_clauses(
     }
     for runtime in &effect.runtime_modifications {
         match runtime {
-            crate::effects::continuous::RuntimeModification::CopyOf(spec) => {
-                clauses.push(format!("becomes a copy of {}", describe_choose_spec(spec)));
+            crate::effects::continuous::RuntimeModification::CopyOf {
+                source,
+                preserve_source_abilities: _,
+            } => {
+                clauses.push(format!("becomes a copy of {}", describe_choose_spec(source)));
             }
             crate::effects::continuous::RuntimeModification::ModifyPowerToughness {
                 power,
@@ -6568,18 +6571,46 @@ pub(super) fn describe_apply_continuous_clauses(
 pub(super) fn describe_apply_continuous_tail(
     effect: &crate::effects::ApplyContinuousEffect,
 ) -> Option<String> {
+    let mut tail_parts = Vec::new();
     if let Some(condition) = &effect.condition
         && matches!(effect.until, Until::ThisLeavesTheBattlefield)
     {
-        return Some(format!(
+        tail_parts.push(format!(
             "while {}",
             lowercase_first(&describe_condition(condition))
         ));
     }
     if !matches!(effect.until, Until::Forever) {
-        return Some(describe_until(&effect.until));
+        tail_parts.push(describe_until(&effect.until));
     }
-    None
+    if effect.runtime_modifications.iter().any(|runtime| {
+        matches!(
+            runtime,
+            crate::effects::continuous::RuntimeModification::CopyOf {
+                preserve_source_abilities: true,
+                ..
+            }
+        )
+    }) {
+        tail_parts.push("except it has this ability".to_string());
+    }
+    if tail_parts.is_empty() {
+        None
+    } else {
+        Some(tail_parts.join(", "))
+    }
+}
+
+fn apply_continuous_preserves_source_abilities(effect: &crate::effects::ApplyContinuousEffect) -> bool {
+    effect.runtime_modifications.iter().any(|runtime| {
+        matches!(
+            runtime,
+            crate::effects::continuous::RuntimeModification::CopyOf {
+                preserve_source_abilities: true,
+                ..
+            }
+        )
+    })
 }
 
 pub(super) fn describe_doesnt_untap_apply_continuous_effect(
@@ -6795,6 +6826,8 @@ pub(super) fn describe_compact_apply_continuous_pair(
         || first.target_spec != second.target_spec
         || first.until != second.until
         || first.condition != second.condition
+        || apply_continuous_preserves_source_abilities(first)
+            != apply_continuous_preserves_source_abilities(second)
     {
         return None;
     }

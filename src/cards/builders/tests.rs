@@ -7734,14 +7734,18 @@ fn parse_crystalline_resonance_becomes_copy_until_your_next_turn() {
     let rendered = oracle_like_lines(&def).join(" ");
     assert!(
         rendered.contains("become a copy of another target permanent")
-            && rendered.contains("until your next turn"),
-        "expected the copy duration to survive rendering, got {rendered}"
+            && rendered.contains("until your next turn")
+            && rendered.contains("except it has this ability"),
+        "expected the copy duration and preserved ability to survive rendering, got {rendered}"
     );
 
     let debug = format!("{def:#?}");
     assert!(
-        debug.contains("BecomeCopy") && !debug.contains("CopySpellEffect"),
-        "expected a copy-permanent lowering, got {debug}"
+        debug.contains("ApplyContinuousEffect")
+            && debug.contains("YourNextTurn")
+            && debug.contains("preserve_source_abilities: true")
+            && !debug.contains("CopySpellEffect"),
+        "expected a copy-permanent lowering with a preserved source ability and next-turn duration, got {debug}"
     );
 }
 

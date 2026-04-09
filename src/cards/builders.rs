@@ -1831,6 +1831,7 @@ pub(crate) enum EffectAst {
         target: TargetAst,
         source: TargetAst,
         duration: Until,
+        preserve_source_abilities: bool,
     },
     Surveil {
         count: Value,

@@ -861,17 +861,46 @@ pub(crate) fn parse_become_clause(
     subject_tokens: &[OwnedLexToken],
     rest_tokens: &[OwnedLexToken],
 ) -> Result<EffectAst, CardTextError> {
+    fn split_trailing_except_tokens(
+        tokens: &[OwnedLexToken],
+    ) -> (&[OwnedLexToken], Option<&[OwnedLexToken]>) {
+        let token_word_view = ClauseDispatchCompatWords::new(tokens);
+        let token_words = token_word_view.to_word_refs();
+        let Some(except_word_idx) = token_words.iter().rposition(|word| *word == "except") else {
+            return (tokens, None);
+        };
+        let Some(except_token_idx) = token_index_for_word_index(tokens, except_word_idx) else {
+            return (tokens, None);
+        };
+        let exception = trim_commas(&tokens[except_token_idx + 1..]);
+        (
+            trim_commas(&tokens[..except_token_idx]),
+            (!exception.is_empty()).then_some(exception),
+        )
+    }
+
+    fn parse_copy_exception_preserves_source_abilities(tokens: &[OwnedLexToken]) -> bool {
+        let token_words = ClauseDispatchCompatWords::new(tokens).to_word_refs();
+        token_words == ["it", "has", "this", "ability"]
+    }
+
+    let subject_tokens = trim_commas(subject_tokens).to_vec();
+    let rest_tokens = trim_commas(rest_tokens).to_vec();
+    let (rest_core_tokens, copy_exception_tokens) = split_trailing_except_tokens(&rest_tokens);
+    let preserve_source_abilities = copy_exception_tokens
+        .is_some_and(parse_copy_exception_preserves_source_abilities);
+    let become_clause_tokens = if preserve_source_abilities {
+        rest_core_tokens
+    } else {
+        &rest_tokens
+    };
     let (duration, subject_tokens_vec, become_tokens) =
-        if let Some((duration, remainder)) = parse_restriction_duration(subject_tokens)? {
-            (duration, remainder, trim_commas(rest_tokens).to_vec())
-        } else if let Some((duration, remainder)) = parse_restriction_duration(rest_tokens)? {
-            (duration, trim_commas(subject_tokens).to_vec(), remainder)
+        if let Some((duration, remainder)) = parse_restriction_duration(&subject_tokens)? {
+            (duration, remainder, become_clause_tokens.to_vec())
+        } else if let Some((duration, remainder)) = parse_restriction_duration(become_clause_tokens)? {
+            (duration, subject_tokens.clone(), remainder)
         } else {
-            (
-                Until::Forever,
-                trim_commas(subject_tokens).to_vec(),
-                trim_commas(rest_tokens).to_vec(),
-            )
+            (Until::Forever, subject_tokens.clone(), become_clause_tokens.to_vec())
         };
     let subject_tokens = subject_tokens_vec.as_slice();
     let subject_word_view = ClauseDispatchCompatWords::new(subject_tokens);
@@ -987,6 +1016,7 @@ pub(crate) fn parse_become_clause(
             target,
             source,
             duration,
+            preserve_source_abilities,
         });
     }
 

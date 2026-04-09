@@ -224,7 +224,10 @@ pub enum EffectTarget {
 pub enum Modification {
     // === Layer 1: Copy ===
     /// Become a copy of another object
-    CopyOf(ObjectId),
+    CopyOf {
+        target_id: ObjectId,
+        preserve_source_abilities: bool,
+    },
 
     // === Layer 2: Control ===
     /// Change controller to a specific player
@@ -367,7 +370,7 @@ impl Modification {
     /// Returns which layer this modification applies in.
     pub fn layer(&self) -> Layer {
         match self {
-            Modification::CopyOf(_) => Layer::Copy,
+            Modification::CopyOf { .. } => Layer::Copy,
 
             Modification::ChangeController(_) => Layer::Control,
 
@@ -1214,19 +1217,41 @@ fn apply_text_box_modification_to_chars(
     chars: &mut CalculatedCharacteristics,
     objects: &HashMap<ObjectId, Object>,
 ) {
+    fn copy_characteristics_from_target(
+        target: &Object,
+        chars: &mut CalculatedCharacteristics,
+        preserve_source_abilities: bool,
+    ) {
+        let preserved_abilities = preserve_source_abilities.then(|| chars.abilities.clone());
+
+        chars.name = target.name.clone();
+        chars.oracle_text = target.oracle_text.clone();
+        chars.power = target.base_power.as_ref().map(|p| p.base_value());
+        chars.toughness = target.base_toughness.as_ref().map(|t| t.base_value());
+        chars.card_types = target.card_types.clone();
+        chars.subtypes = target.subtypes.clone();
+        chars.supertypes = target.supertypes.clone();
+        chars.colors = target.colors();
+        chars.abilities = target.abilities.clone();
+
+        if let Some(preserved_abilities) = preserved_abilities {
+            for ability in preserved_abilities {
+                if !chars.abilities.contains(&ability) {
+                    chars.abilities.push(ability);
+                }
+            }
+        }
+
+        chars.static_abilities = extract_static_abilities(&chars.abilities);
+    }
+
     match modification {
-        Modification::CopyOf(target_id) => {
+        Modification::CopyOf {
+            target_id,
+            preserve_source_abilities,
+        } => {
             if let Some(target) = objects.get(target_id) {
-                chars.name = target.name.clone();
-                chars.oracle_text = target.oracle_text.clone();
-                chars.power = target.base_power.as_ref().map(|p| p.base_value());
-                chars.toughness = target.base_toughness.as_ref().map(|t| t.base_value());
-                chars.card_types = target.card_types.clone();
-                chars.subtypes = target.subtypes.clone();
-                chars.supertypes = target.supertypes.clone();
-                chars.colors = target.colors();
-                chars.abilities = target.abilities.clone();
-                chars.static_abilities = extract_static_abilities(&target.abilities);
+                copy_characteristics_from_target(target, chars, *preserve_source_abilities);
             }
         }
         Modification::ChangeController(new_controller) => {
@@ -1932,20 +1957,42 @@ fn apply_modification_to_chars(
     battlefield: &[ObjectId],
     game: &crate::game_state::GameState,
 ) {
+    fn copy_characteristics_from_target(
+        target: &Object,
+        chars: &mut CalculatedCharacteristics,
+        preserve_source_abilities: bool,
+    ) {
+        let preserved_abilities = preserve_source_abilities.then(|| chars.abilities.clone());
+
+        chars.name = target.name.clone();
+        chars.oracle_text = target.oracle_text.clone();
+        chars.power = target.base_power.as_ref().map(|p| p.base_value());
+        chars.toughness = target.base_toughness.as_ref().map(|t| t.base_value());
+        chars.card_types = target.card_types.clone();
+        chars.subtypes = target.subtypes.clone();
+        chars.supertypes = target.supertypes.clone();
+        chars.colors = target.colors();
+        chars.abilities = target.abilities.clone();
+
+        if let Some(preserved_abilities) = preserved_abilities {
+            for ability in preserved_abilities {
+                if !chars.abilities.contains(&ability) {
+                    chars.abilities.push(ability);
+                }
+            }
+        }
+
+        chars.static_abilities = extract_static_abilities(&chars.abilities);
+    }
+
     match modification {
         // Layer 1: Copy
-        Modification::CopyOf(target_id) => {
+        Modification::CopyOf {
+            target_id,
+            preserve_source_abilities,
+        } => {
             if let Some(target) = objects.get(target_id) {
-                chars.name = target.name.clone();
-                chars.oracle_text = target.oracle_text.clone();
-                chars.power = target.base_power.as_ref().map(|p| p.base_value());
-                chars.toughness = target.base_toughness.as_ref().map(|t| t.base_value());
-                chars.card_types = target.card_types.clone();
-                chars.subtypes = target.subtypes.clone();
-                chars.supertypes = target.supertypes.clone();
-                chars.colors = target.colors();
-                chars.abilities = target.abilities.clone();
-                chars.static_abilities = extract_static_abilities(&target.abilities);
+                copy_characteristics_from_target(target, chars, *preserve_source_abilities);
                 add_abilities_from_counters(object, chars);
             }
         }
@@ -2443,12 +2490,17 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
             // Apply the modification
             match &effect.modification {
                 // Layer 1: Copy
-                Modification::CopyOf(target_id) => {
+                Modification::CopyOf {
+                    target_id,
+                    preserve_source_abilities,
+                } => {
                     // Per MTG rule 707.2, copying copies the copiable values:
                     // name, mana cost, color indicator, card type, subtype, supertype,
                     // rules text, power, toughness, and loyalty.
                     // It does NOT copy counters, damage, or other non-copiable state.
                     if let Some(target) = ctx.objects.get(target_id) {
+                        let preserved_abilities =
+                            preserve_source_abilities.then(|| chars.abilities.clone());
                         chars.name = target.name.clone();
                         chars.oracle_text = target.oracle_text.clone();
                         // Copy base characteristics from the target
@@ -2459,7 +2511,14 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
                         chars.supertypes = target.supertypes.clone();
                         chars.colors = target.colors();
                         chars.abilities = target.abilities.clone();
-                        chars.static_abilities = extract_static_abilities(&target.abilities);
+                        if let Some(preserved_abilities) = preserved_abilities {
+                            for ability in preserved_abilities {
+                                if !chars.abilities.contains(&ability) {
+                                    chars.abilities.push(ability);
+                                }
+                            }
+                        }
+                        chars.static_abilities = extract_static_abilities(&chars.abilities);
                         add_abilities_from_counters(object, &mut chars);
                         // Note: controller is NOT copied - that's determined by who cast the Clone
                     }
@@ -2894,7 +2953,7 @@ fn apply_layer_7_effects(
             Modification::SwitchPowerToughness => {
                 std::mem::swap(&mut power, &mut toughness);
             }
-            Modification::CopyOf(_)
+            Modification::CopyOf { .. }
             | Modification::ChangeController(_)
             | Modification::ChangeText { .. }
             | Modification::SetTextBox(_)
@@ -3760,7 +3819,11 @@ mod tests {
     #[test]
     fn test_modification_layer() {
         assert_eq!(
-            Modification::CopyOf(ObjectId::from_raw(1)).layer(),
+            Modification::CopyOf {
+                target_id: ObjectId::from_raw(1),
+                preserve_source_abilities: false,
+            }
+            .layer(),
             Layer::Copy
         );
         assert_eq!(
