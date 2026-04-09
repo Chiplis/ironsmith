@@ -5585,6 +5585,60 @@ pub(super) fn describe_compact_protection_choice(effect: &Effect) -> Option<Stri
     })
 }
 
+pub(super) fn describe_compact_destroy_color_choice(effect: &Effect) -> Option<String> {
+    let choose_mode = effect.downcast_ref::<crate::effects::ChooseModeEffect>()?;
+    if choose_mode.min_choose_count.is_some()
+        || !matches!(choose_mode.choose_count, Value::Fixed(1))
+        || choose_mode.modes.len() != 5
+    {
+        return None;
+    }
+
+    let mut base_filter: Option<crate::target::ObjectFilter> = None;
+    let mut seen_colors = Vec::new();
+
+    for mode in &choose_mode.modes {
+        if mode.effects.len() != 1 {
+            return None;
+        }
+        let destroy = mode.effects[0].downcast_ref::<crate::effects::DestroyEffect>()?;
+        let ChooseSpec::All(filter) = &destroy.spec else {
+            return None;
+        };
+
+        let colors = filter.colors?;
+        if colors.count() != 1 {
+            return None;
+        }
+
+        let color = crate::color::Color::ALL
+            .iter()
+            .copied()
+            .find(|candidate| colors.contains(*candidate))?;
+        if seen_colors.contains(&color) {
+            return None;
+        }
+        seen_colors.push(color);
+
+        let mut normalized_filter = filter.clone();
+        normalized_filter.colors = None;
+        if let Some(existing) = &base_filter {
+            if existing != &normalized_filter {
+                return None;
+            }
+        } else {
+            base_filter = Some(normalized_filter);
+        }
+    }
+
+    if seen_colors.len() != 5 {
+        return None;
+    }
+
+    let base_desc = describe_choose_spec(&ChooseSpec::All(base_filter?));
+    Some(format!("Destroy {} of the color of your choice.", base_desc))
+}
+
 pub(super) fn describe_compact_keyword_choice(effect: &Effect) -> Option<String> {
     let choose_mode = effect.downcast_ref::<crate::effects::ChooseModeEffect>()?;
     if choose_mode.min_choose_count.is_some()

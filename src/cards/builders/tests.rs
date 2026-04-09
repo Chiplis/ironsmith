@@ -12328,6 +12328,34 @@ fn render_giver_of_runes_compacts_colorless_or_color_choice_text() {
 }
 
 #[test]
+fn render_root_greevil_compacts_destroy_color_choice_text() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Root Greevil Variant")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![crate::types::Subtype::Beast])
+        .power_toughness(PowerToughness::fixed(2, 3))
+        .parse_text(
+            "{2}{G}, {T}, Sacrifice this creature: Destroy all enchantments of the color of your choice.",
+        )
+        .expect("root greevil text should parse");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("ChooseModeEffect") && debug.matches("DestroyEffect").count() == 5,
+        "expected five-color modal lowering, got {debug}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Destroy all enchantments of the color of your choice"),
+        "expected compact color-choice rendering, got {rendered}"
+    );
+}
+
+#[test]
 fn render_draw_for_each_creature_uses_oracle_like_wording() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Collective Unconscious Variant")
         .parse_text("Draw a card for each creature you control.")
