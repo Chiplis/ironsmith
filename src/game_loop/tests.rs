@@ -815,6 +815,7 @@ fn wild_dogs_upkeep_trigger_hands_control_to_the_life_leader() {
 fn crystalline_resonance_copies_target_permanent_when_you_cycle() {
     use crate::PriorityResponse;
     use crate::decision::{LegalAction, compute_legal_actions};
+    use crate::game_loop::apply_decision_context_with_dm;
     use crate::game_loop::{
         PriorityLoopState, apply_priority_response_with_dm,
         resolve_stack_entry_with_dm_and_triggers,
@@ -887,7 +888,7 @@ fn crystalline_resonance_copies_target_permanent_when_you_cycle() {
         })
         .expect("cycling should be available from hand");
 
-    apply_priority_response_with_dm(
+    let progress = apply_priority_response_with_dm(
         &mut game,
         &mut trigger_queue,
         &mut state,
@@ -896,6 +897,27 @@ fn crystalline_resonance_copies_target_permanent_when_you_cycle() {
     )
     .expect("cycling activation should succeed");
 
+    match progress {
+        crate::decision::GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::SelectOptions(ctx),
+        ) => {
+            apply_decision_context_with_dm(
+                &mut game,
+                &mut trigger_queue,
+                &mut state,
+                &crate::decisions::context::DecisionContext::SelectOptions(ctx),
+                &mut dm,
+            )
+            .expect("cycling mana payment should resolve");
+        }
+        other => panic!("expected mana payment decision after cycling activation, got {other:?}"),
+    }
+
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "cycling ability should be on the stack after its mana cost is paid"
+    );
     resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
         .expect("cycling ability should resolve");
     assert_eq!(
@@ -959,7 +981,7 @@ fn crystalline_resonance_copies_target_permanent_when_you_cycle() {
         })
         .expect("the second cycling card should still be available");
 
-    apply_priority_response_with_dm(
+    let progress = apply_priority_response_with_dm(
         &mut game,
         &mut trigger_queue,
         &mut state,
@@ -968,6 +990,29 @@ fn crystalline_resonance_copies_target_permanent_when_you_cycle() {
     )
     .expect("second cycling activation should succeed");
 
+    match progress {
+        crate::decision::GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::SelectOptions(ctx),
+        ) => {
+            apply_decision_context_with_dm(
+                &mut game,
+                &mut trigger_queue,
+                &mut state,
+                &crate::decisions::context::DecisionContext::SelectOptions(ctx),
+                &mut dm,
+            )
+            .expect("second cycling mana payment should resolve");
+        }
+        other => panic!(
+            "expected mana payment decision after second cycling activation, got {other:?}"
+        ),
+    }
+
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "second cycling ability should also be on the stack after its mana cost is paid"
+    );
     resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
         .expect("second cycling ability should resolve");
     assert_eq!(

@@ -7752,7 +7752,7 @@ fn parse_crystalline_resonance_becomes_copy_until_your_next_turn() {
 
     let rendered = oracle_like_lines(&def).join(" ");
     assert!(
-        rendered.contains("become a copy of another target permanent")
+        rendered.contains("becomes a copy of another target permanent")
             && rendered.contains("until your next turn")
             && rendered.contains("except it has this ability"),
         "expected the copy duration and preserved ability to survive rendering, got {rendered}"
