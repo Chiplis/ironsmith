@@ -1,12 +1,12 @@
 #![allow(dead_code)]
 
 use super::activation_helpers::{
-    contains_discard_source_phrase, contains_source_from_your_graveyard_phrase,
-    contains_source_from_your_hand_phrase, find_activation_cost_start, is_article,
-    is_basic_color_word, is_comparison_or_delimiter, is_source_from_your_graveyard_words,
-    join_sentences_with_period, parse_add_mana, parse_filter_comparison_tokens,
-    parse_next_end_step_token_delay_flags, parse_subtype_flexible, split_cost_segments,
-    value_contains_unbound_x,
+    contains_discard_source_phrase, contains_from_command_zone_phrase,
+    contains_source_from_your_graveyard_phrase, contains_source_from_your_hand_phrase,
+    find_activation_cost_start, is_article, is_basic_color_word, is_comparison_or_delimiter,
+    is_source_from_your_graveyard_words, join_sentences_with_period, parse_add_mana,
+    parse_filter_comparison_tokens, parse_next_end_step_token_delay_flags, parse_subtype_flexible,
+    split_cost_segments, value_contains_unbound_x,
 };
 use super::effect_ast_traversal::{for_each_nested_effects, for_each_nested_effects_mut};
 use super::effect_sentences::find_verb;
@@ -636,6 +636,10 @@ pub(crate) fn infer_activated_functional_zones(
         || effect_words_match(contains_source_from_your_graveyard_phrase)
     {
         vec![Zone::Graveyard]
+    } else if contains_from_command_zone_phrase(&cost_words)
+        || effect_words_match(contains_from_command_zone_phrase)
+    {
+        vec![Zone::Command]
     } else if contains_source_from_your_hand_phrase(&cost_words)
         || contains_discard_source_phrase(&cost_words)
         || effect_words_match(contains_source_from_your_hand_phrase)
@@ -671,6 +675,10 @@ pub(crate) fn infer_activated_functional_zones_lexed(
         || effect_words_match(contains_source_from_your_graveyard_phrase)
     {
         vec![Zone::Graveyard]
+    } else if contains_from_command_zone_phrase(&cost_words)
+        || effect_words_match(contains_from_command_zone_phrase)
+    {
+        vec![Zone::Command]
     } else if contains_source_from_your_hand_phrase(&cost_words)
         || contains_discard_source_phrase(&cost_words)
         || effect_words_match(contains_source_from_your_hand_phrase)
@@ -4629,6 +4637,9 @@ where
     if words.first().copied() != Some(keyword) {
         return None;
     }
+    if matches!(words.get(1).copied(), Some("cost" | "costs")) {
+        return None;
+    }
     if let Some((cost_text, _consumed)) = leading_mana_symbols_to_oracle(&words[1..])
         && let Ok(cost) = parse_scryfall_mana_cost(&cost_text)
     {
@@ -6462,7 +6473,7 @@ pub(crate) fn parse_trigger_clause_lexed(
                     find_index(&tokens[damage_idx + 1..], |token| token.is_word("to"))
                 {
                     let to_idx = damage_idx + 1 + to_idx_rel;
-                    let target_tokens = trim_commas(&tokens[to_idx + 1..]);
+                    let target_tokens = split_target_clause_before_comma(&tokens[to_idx + 1..]);
                     if target_tokens.is_empty() {
                         return Err(CardTextError::ParseError(format!(
                             "missing combat damage recipient filter in trigger clause (clause: '{}')",
@@ -7097,6 +7108,13 @@ pub(crate) fn parse_trigger_clause_lexed(
                     source_filter: None,
                 });
             }
+            if tail_words == ["another", "card"] {
+                return Ok(TriggerSpec::KeywordAction {
+                    action: crate::events::KeywordActionKind::Cycle,
+                    player,
+                    source_filter: Some(ObjectFilter::default().other()),
+                });
+            }
         }
     }
 
@@ -7316,7 +7334,7 @@ pub(crate) fn parse_trigger_clause_lexed(
                 if let Some((amount, _)) =
                     parse_filter_comparison_tokens("damage amount", &amount_words, &words)?
                 {
-                    let target_tokens = trim_commas(&tokens[to_idx + 1..]);
+                    let target_tokens = split_target_clause_before_comma(&tokens[to_idx + 1..]);
                     let target_view = ActivationRestrictionCompatWords::new(&target_tokens);
                     let target_words = target_view.to_word_refs();
                     if let Some(player) = parse_trigger_subject_player_filter(&target_words) {
@@ -7335,7 +7353,7 @@ pub(crate) fn parse_trigger_clause_lexed(
         || slice_starts_with(&words, &["this", "deals", "damage", "to"]))
         && let Some(to_idx) = find_index(tokens, |token| token.is_word("to"))
     {
-        let target_tokens = trim_commas(&tokens[to_idx + 1..]);
+        let target_tokens = split_target_clause_before_comma(&tokens[to_idx + 1..]);
         if target_tokens.is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "missing damage recipient filter in trigger clause (clause: '{}')",
@@ -8205,6 +8223,15 @@ pub(crate) fn parse_trigger_subject_player_filter(subject: &[&str]) -> Option<Pl
         return Some(PlayerFilter::You);
     }
     None
+}
+
+fn split_target_clause_before_comma(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+    let tokens = trim_commas(tokens);
+    if let Some(comma_idx) = find_index(&tokens, |token| token.is_comma()) {
+        trim_commas(&tokens[..comma_idx])
+    } else {
+        tokens
+    }
 }
 
 fn parse_shuffle_trigger_subject(subject: &[&str]) -> Option<(PlayerFilter, bool, bool)> {

@@ -43,6 +43,32 @@ impl DecisionMaker for DeclineOptionalTriggerTargetsDecisionMaker {
     }
 }
 
+#[derive(Default)]
+struct CaptureRevealDecisionMaker {
+    view_calls: Vec<(PlayerId, PlayerId, Zone, bool, Vec<ObjectId>)>,
+}
+
+impl DecisionMaker for CaptureRevealDecisionMaker {
+    fn decide_objects(
+        &mut self,
+        _game: &GameState,
+        _ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        panic!("Ignite Memories should not prompt for object selection when revealing at random");
+    }
+
+    fn view_cards(
+        &mut self,
+        _game: &GameState,
+        viewer: PlayerId,
+        cards: &[ObjectId],
+        ctx: &crate::decisions::context::ViewCardsContext,
+    ) {
+        self.view_calls
+            .push((viewer, ctx.subject, ctx.zone, ctx.public, cards.to_vec()));
+    }
+}
+
 #[test]
 fn test_generate_damage_triggers_emits_life_loss_for_player_damage() {
     let mut game = setup_game();
@@ -202,7 +228,6 @@ fn exert_attack_choice_draws_card_and_skips_only_next_untap() {
         hand_before + 1,
         "accepting the exert prompt should resolve the linked draw trigger"
     );
-
     game.next_turn();
     crate::turn::execute_untap_step_with(&mut game, &mut dm);
 
@@ -221,6 +246,94 @@ fn exert_attack_choice_draws_card_and_skips_only_next_untap() {
     assert!(
         !game.is_tapped(source_id),
         "the exert restriction should wear off after that untap step"
+    );
+}
+
+#[test]
+fn ignite_memories_reveals_a_random_card_from_target_players_hand_and_damages_them() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let ignite_memories = CardDefinitionBuilder::new(CardId::from_raw(70_001), "Ignite Memories")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Target player reveals a card at random from their hand. Ignite Memories deals damage to that player equal to that card's mana value.\nStorm (When you cast this spell, copy it for each spell cast before it this turn. You may choose new targets for the copies.)",
+        )
+        .expect("Ignite Memories should parse");
+
+    let low_card = CardBuilder::new(CardId::from_raw(70_002), "Low Probe")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let high_card = CardBuilder::new(CardId::from_raw(70_003), "High Probe")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(5)]]))
+        .card_types(vec![CardType::Artifact])
+        .build();
+
+    let low_id = game.create_object_from_card(&low_card, bob, Zone::Hand);
+    let high_id = game.create_object_from_card(&high_card, bob, Zone::Hand);
+    let spell_id = game.create_object_from_definition(&ignite_memories, alice, Zone::Stack);
+    game.stack.push(
+        crate::game_state::StackEntry::new(spell_id, alice)
+            .with_targets(vec![crate::game_state::Target::Player(bob)])
+            .with_target_assignments(vec![crate::game_state::TargetAssignment {
+                spec: crate::target::ChooseSpec::target_player(),
+                range: 0..1,
+            }]),
+    );
+
+    let bob_life_before = game.player(bob).expect("bob exists").life;
+    let mut dm = CaptureRevealDecisionMaker::default();
+
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Ignite Memories should resolve");
+
+    assert!(
+        dm.view_calls.len() >= 2,
+        "the random reveal should be shown to all players"
+    );
+    let mut unique_reveals = dm
+        .view_calls
+        .iter()
+        .map(|(_, subject, zone, public, cards)| {
+            assert_eq!(
+                *subject, bob,
+                "the revealed card should come from Bob's hand"
+            );
+            assert_eq!(*zone, Zone::Hand, "the reveal should come from hand");
+            assert!(*public, "the reveal should be public");
+            assert_eq!(cards.len(), 1, "only one card should be revealed");
+            cards[0]
+        })
+        .collect::<Vec<_>>();
+    unique_reveals.sort();
+    unique_reveals.dedup();
+    assert_eq!(
+        unique_reveals.len(),
+        1,
+        "the same random card should be shown to each viewer"
+    );
+
+    let revealed_id = unique_reveals[0];
+    assert!(
+        revealed_id == low_id || revealed_id == high_id,
+        "the revealed card should come from Bob's hand"
+    );
+
+    let revealed_card = game.object(revealed_id).expect("revealed card exists");
+    let expected_damage = revealed_card
+        .mana_cost
+        .as_ref()
+        .expect("revealed card should have a mana cost")
+        .mana_value() as i32;
+    assert_eq!(
+        game.player(bob).expect("bob exists").life,
+        bob_life_before - expected_damage,
+        "Ignite Memories should deal damage equal to the revealed card's mana value"
     );
 }
 
@@ -633,8 +746,7 @@ fn test_make_an_example_leaves_unselected_creatures_on_the_battlefield() {
     let mut ctx = ExecutionContext::new_default(source_id, alice).with_decision_maker(&mut dm);
 
     for effect in spell_effects {
-        execute_effect(&mut game, effect, &mut ctx)
-            .expect("Make an Example effect should resolve");
+        execute_effect(&mut game, effect, &mut ctx).expect("Make an Example effect should resolve");
     }
 
     assert!(
@@ -1405,6 +1517,107 @@ fn test_optional_trigger_target_can_be_skipped_even_with_legal_targets() {
             .targets
             .is_empty(),
         "declining an optional trigger target should leave the trigger untargeted"
+    );
+}
+
+#[test]
+fn test_toggo_landfall_creates_a_rock_token_with_an_activated_ability() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let toggo = CardDefinitionBuilder::new(CardId::new(), "Toggo, Goblin Weaponsmith")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![crate::types::Subtype::Goblin, crate::types::Subtype::Artificer])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text(
+            "Landfall — Whenever a land you control enters, create a colorless Equipment artifact token named Rock with \"Equipped creature has '{1}, {T}, Sacrifice Rock: This creature deals 2 damage to any target'\" and equip {1}.\nPartner (You can have two commanders if both have partner.)",
+        )
+        .expect("Toggo should parse");
+    let toggo_id = game.create_object_from_definition(&toggo, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(toggo_id);
+
+    let land = CardBuilder::new(CardId::from_raw(91_102), "Toggo Landfall Land")
+        .card_types(vec![CardType::Land])
+        .build();
+    let land_id = game.create_object_from_card(&land, alice, Zone::Hand);
+    assert!(
+        game.move_object_by_effect(land_id, Zone::Battlefield)
+            .is_some(),
+        "the land should enter the battlefield"
+    );
+
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Toggo's landfall trigger should go on the stack");
+    resolve_stack_entry(&mut game).expect("Toggo's landfall trigger should resolve");
+
+    let rock_id = game
+        .battlefield
+        .iter()
+        .copied()
+        .find(|&id| {
+            game.object(id)
+                .is_some_and(|obj| obj.name == "Rock" && obj.controller == alice)
+        })
+        .expect("Toggo should create a Rock token");
+    let rock = game.object(rock_id).expect("Rock token should exist");
+    assert_eq!(rock.name, "Rock");
+    let activated_texts = rock
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Activated(_) => ability.text.as_deref(),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        activated_texts.iter().any(|text| *text == "Equip {1}"),
+        "Rock should keep its equip ability, got {activated_texts:?}"
+    );
+    assert!(
+        rock.abilities.iter().any(|ability| {
+            matches!(
+                &ability.kind,
+                AbilityKind::Static(static_ability)
+                    if static_ability.id()
+                        == crate::static_abilities::StaticAbilityId::AttachedAbilityGrant
+            )
+        }),
+        "Rock should keep the static grant for the quoted damage ability, got {:?}",
+        rock.abilities
+    );
+
+    if let Some(rock) = game.object_mut(rock_id) {
+        rock.attached_to = Some(crate::object::AttachmentTarget::Object(toggo_id));
+    }
+    if let Some(toggo) = game.object_mut(toggo_id) {
+        toggo.attachments.push(rock_id);
+    }
+    let toggo_chars = game
+        .calculated_characteristics(toggo_id)
+        .expect("equipped Toggo should have calculated characteristics");
+    let granted_activated_texts = toggo_chars
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Activated(_) => ability.text.as_deref(),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        granted_activated_texts.iter().any(|text| {
+            text.contains("Sacrifice")
+                && text.contains("This creature deals 2 damage to any target")
+        }),
+        "Equipped creature should gain the quoted Rock damage ability, got {granted_activated_texts:?}"
     );
 }
 
@@ -3667,6 +3880,163 @@ fn test_goddric_celebration_granted_ability_buffs_only_dragons() {
     );
 }
 
+#[test]
+fn test_root_greevil_activation_reaches_stack_and_resolves_with_color_choice() {
+    use crate::decision::{LegalAction, compute_legal_actions};
+
+    #[derive(Default)]
+    struct ChooseBlueModeDecisionMaker;
+
+    impl DecisionMaker for ChooseBlueModeDecisionMaker {
+        fn decide_options(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            let legal_options: Vec<_> = ctx.options.iter().filter(|option| option.legal).collect();
+            ctx.options
+                .iter()
+                .find(|option| {
+                    option.legal && option.description.to_ascii_lowercase().contains("blue")
+                })
+                .or_else(|| legal_options.get(1).copied())
+                .or_else(|| legal_options.first().copied())
+                .map(|option| vec![option.index])
+                .unwrap_or_else(|| {
+                    legal_options
+                        .into_iter()
+                        .map(|option| option.index)
+                        .take(ctx.min)
+                        .collect()
+                })
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    if let Some(player) = game.player_mut(alice) {
+        player.mana_pool.add(ManaSymbol::Colorless, 2);
+        player.mana_pool.add(ManaSymbol::Green, 1);
+    }
+
+    let root_def = CardDefinitionBuilder::new(CardId::new(), "Root Greevil Variant")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![crate::types::Subtype::Beast])
+        .power_toughness(PowerToughness::fixed(2, 3))
+        .parse_text(
+            "{2}{G}, {T}, Sacrifice this creature: Destroy all enchantments of the color of your choice.",
+        )
+        .expect("Root Greevil should parse");
+    let root_id = game.create_object_from_definition(&root_def, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(root_id);
+
+    let blue_one = CardBuilder::new(CardId::new(), "Azure Sigil")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let blue_two = CardBuilder::new(CardId::new(), "Tidal Sigil")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let green_enchantment = CardBuilder::new(CardId::new(), "Verdant Sigil")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Green]]))
+        .card_types(vec![CardType::Enchantment])
+        .build();
+
+    game.create_object_from_card(&blue_one, alice, Zone::Battlefield);
+    game.create_object_from_card(&blue_two, bob, Zone::Battlefield);
+    game.create_object_from_card(&green_enchantment, bob, Zone::Battlefield);
+
+    let ability_index = game
+        .object(root_id)
+        .expect("Root Greevil should exist")
+        .abilities
+        .iter()
+        .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .expect("Root Greevil should have an activated ability");
+
+    let activate_action = compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(
+            |action| matches!(action, LegalAction::ActivateAbility { source, ability_index: idx } if *source == root_id && *idx == ability_index),
+        )
+        .expect("Root Greevil's ability should be activatable");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = AutoPassDecisionMaker;
+
+    let mut progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("Root Greevil activation should succeed");
+    while let crate::decision::GameProgress::NeedsDecisionCtx(decision) = progress {
+        progress = match decision {
+            crate::decisions::context::DecisionContext::SelectOptions(ctx) => {
+                let choice = ctx
+                    .options
+                    .iter()
+                    .find(|option| {
+                        option.legal
+                            && option
+                                .description
+                                .to_ascii_lowercase()
+                                .contains("sacrifice")
+                    })
+                    .or_else(|| ctx.options.iter().find(|option| option.legal))
+                    .map(|option| option.index)
+                    .expect("Root Greevil should offer a legal activation-cost choice");
+                apply_priority_response_with_dm(
+                    &mut game,
+                    &mut trigger_queue,
+                    &mut state,
+                    &PriorityResponse::NextCostChoice(choice),
+                    &mut dm,
+                )
+                .expect("Root Greevil cost choice should continue activation")
+            }
+            crate::decisions::context::DecisionContext::Priority(_) => break,
+            other => panic!(
+                "unexpected decision while activating Root Greevil: {:?}",
+                other
+            ),
+        };
+    }
+
+    assert!(
+        game.object(root_id)
+            .map(|object| object.zone != Zone::Battlefield)
+            .unwrap_or(true),
+        "sacrificing Root Greevil should remove it from the battlefield as part of the activation cost"
+    );
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "the activated ability should be waiting on the stack"
+    );
+
+    let mut dm = ChooseBlueModeDecisionMaker::default();
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Root Greevil ability should resolve");
+    assert!(
+        game.stack.is_empty(),
+        "Root Greevil should finish resolving cleanly"
+    );
+}
+
 fn persist_effects() -> Vec<Effect> {
     let trigger_tag = "persist_trigger";
     let return_tag = "persist_return";
@@ -4968,6 +5338,86 @@ fn test_corpse_cobble_sums_the_power_of_sacrificed_creatures() {
     );
 }
 
+#[test]
+fn test_corpse_cobble_flashback_from_graveyard_still_uses_sacrificed_power() {
+    use crate::cards::definitions::{grizzly_bears, llanowar_elves};
+    use crate::game_state::Phase;
+    use crate::mana::ManaSymbol;
+    use crate::zone::Zone;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let mut trigger_queue = TriggerQueue::new();
+    let corpse_cobble_text = "As an additional cost to cast this spell, sacrifice any number of creatures.\nCreate an X/X blue and black Zombie creature token with menace, where X is the total power of the sacrificed creatures.\nFlashback {3}{U}{B} (You may cast this card from your graveyard for its flashback cost and any additional costs. Then exile it.)";
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let corpse_cobble = CardDefinitionBuilder::new(CardId::from_raw(10002), "Corpse Cobble")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(corpse_cobble_text)
+        .expect("Corpse Cobble text should parse");
+
+    game.create_object_from_definition(&corpse_cobble, alice, Zone::Graveyard);
+    game.create_object_from_definition(&grizzly_bears(), alice, Zone::Battlefield);
+    game.create_object_from_definition(&llanowar_elves(), alice, Zone::Battlefield);
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Blue, 3);
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Black, 2);
+
+    let mut dm = CorpseCobbleDecisionMaker;
+    let result = run_priority_loop_with(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Corpse Cobble flashback should resolve cleanly");
+    assert!(
+        matches!(result, GameProgress::Continue),
+        "priority loop should finish after Corpse Cobble flashback resolves, got {result:?}"
+    );
+
+    let zombie = game
+        .battlefield
+        .iter()
+        .filter_map(|id| game.object(*id))
+        .find(|obj| obj.name == "Zombie")
+        .expect("Corpse Cobble flashback should create a Zombie token");
+    assert_eq!(
+        zombie.base_power,
+        Some(crate::card::PtValue::Fixed(3)),
+        "flashback should still use the total power of the sacrificed creatures"
+    );
+    assert_eq!(
+        zombie.base_toughness,
+        Some(crate::card::PtValue::Fixed(3)),
+        "flashback should still use the total power of the sacrificed creatures"
+    );
+
+    let player = game.player(alice).expect("alice exists");
+    assert!(
+        !player.graveyard.iter().any(|&id| {
+            game.object(id)
+                .is_some_and(|obj| obj.name == "Corpse Cobble")
+        }),
+        "Corpse Cobble should leave the graveyard after flashback"
+    );
+    assert!(
+        game.exile.iter().any(|&id| {
+            game.object(id)
+                .is_some_and(|obj| obj.name == "Corpse Cobble")
+        }),
+        "Corpse Cobble should be exiled after flashback"
+    );
+}
+
 // === Triggered Ability Tests ===
 
 #[test]
@@ -5004,6 +5454,171 @@ fn test_etb_trigger_fires() {
 
     assert!(!trigger_queue.is_empty());
     assert_eq!(trigger_queue.entries.len(), 1);
+}
+
+#[test]
+fn terastodon_etb_destroys_up_to_three_permanents_and_makes_elephants() {
+    use crate::cards::builders::CardDefinitionBuilder;
+    use crate::decision::DecisionMaker;
+    use crate::events::zones::EnterBattlefieldEvent;
+    use crate::executor::{ExecutionContext, execute_effect};
+    use crate::ids::CardId;
+    use crate::provenance::ProvNodeId;
+    use crate::triggers::TriggerEvent;
+    use crate::zone::Zone;
+
+    struct ChooseAllLegalTargetsDecisionMaker;
+
+    impl DecisionMaker for ChooseAllLegalTargetsDecisionMaker {
+        fn decide_boolean(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            true
+        }
+
+        fn decide_targets(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::TargetsContext,
+        ) -> Vec<crate::game_state::Target> {
+            let mut chosen = Vec::new();
+            for requirement in &ctx.requirements {
+                let max = requirement
+                    .max_targets
+                    .unwrap_or(requirement.legal_targets.len());
+                let mut picked = 0usize;
+                for target in &requirement.legal_targets {
+                    if picked >= max {
+                        break;
+                    }
+                    if !chosen.contains(target) {
+                        chosen.push(*target);
+                        picked += 1;
+                    }
+                }
+            }
+            chosen
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let terastodon = CardDefinitionBuilder::new(CardId::new(), "Terastodon Variant")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(6)],
+            vec![ManaSymbol::Green],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![crate::types::Subtype::Elephant])
+        .power_toughness(PowerToughness::fixed(9, 9))
+        .parse_text(
+            "When this creature enters, you may destroy up to three target noncreature permanents. For each permanent put into a graveyard this way, its controller creates a 3/3 green Elephant creature token.",
+        )
+        .expect("Terastodon should parse for the runtime regression test");
+    let terastodon_id = game.create_object_from_definition(&terastodon, alice, Zone::Battlefield);
+
+    let alice_enchantment = CardBuilder::new(CardId::from_raw(92_001), "Alice Sigil")
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let bob_artifact = CardBuilder::new(CardId::from_raw(92_002), "Bob Relic")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let bob_land = CardBuilder::new(CardId::from_raw(92_003), "Bob Shrine")
+        .card_types(vec![CardType::Land])
+        .build();
+
+    let alice_enchantment_id =
+        game.create_object_from_card(&alice_enchantment, alice, Zone::Battlefield);
+    let bob_artifact_id = game.create_object_from_card(&bob_artifact, bob, Zone::Battlefield);
+    let bob_land_id = game.create_object_from_card(&bob_land, bob, Zone::Battlefield);
+
+    let etb_trigger = terastodon
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered.clone()),
+            _ => None,
+        })
+        .expect("Terastodon should have a triggered ETB ability");
+
+    let event = TriggerEvent::new_with_provenance(
+        EnterBattlefieldEvent::new(terastodon_id, Zone::Stack),
+        ProvNodeId::default(),
+    );
+    let mut dm = ChooseAllLegalTargetsDecisionMaker;
+    let target_spec = etb_trigger
+        .choices
+        .first()
+        .cloned()
+        .expect("Terastodon should require a target choice");
+    let mut ctx = ExecutionContext::new(terastodon_id, alice, &mut dm)
+        .with_triggering_event(event)
+        .with_targets(vec![
+            crate::executor::ResolvedTarget::Object(alice_enchantment_id),
+            crate::executor::ResolvedTarget::Object(bob_artifact_id),
+            crate::executor::ResolvedTarget::Object(bob_land_id),
+        ])
+        .with_target_assignments(vec![crate::game_state::TargetAssignment {
+            spec: target_spec,
+            range: 0..3,
+        }]);
+
+    for effect in &etb_trigger.effects {
+        execute_effect(&mut game, effect, &mut ctx).expect("Terastodon ETB effect should resolve");
+    }
+
+    assert!(
+        game.player(alice).is_some_and(|player| player
+            .graveyard
+            .iter()
+            .any(|&id| { game.object(id).is_some_and(|obj| obj.name == "Alice Sigil") })),
+        "Alice's noncreature permanent should be destroyed"
+    );
+    assert!(
+        game.player(bob).is_some_and(|player| player
+            .graveyard
+            .iter()
+            .any(|&id| { game.object(id).is_some_and(|obj| obj.name == "Bob Relic") })),
+        "Bob's artifact should be destroyed"
+    );
+    assert!(
+        game.player(bob).is_some_and(|player| player
+            .graveyard
+            .iter()
+            .any(|&id| { game.object(id).is_some_and(|obj| obj.name == "Bob Shrine") })),
+        "Bob's land should be destroyed"
+    );
+
+    let alice_elephants = game
+        .battlefield
+        .iter()
+        .filter(|&&id| {
+            game.object(id)
+                .is_some_and(|obj| obj.name == "Elephant" && obj.controller == alice)
+        })
+        .count();
+    let bob_elephants = game
+        .battlefield
+        .iter()
+        .filter(|&&id| {
+            game.object(id)
+                .is_some_and(|obj| obj.name == "Elephant" && obj.controller == bob)
+        })
+        .count();
+
+    assert_eq!(
+        alice_elephants, 1,
+        "Alice should get one Elephant token (alice={alice_elephants}, bob={bob_elephants})"
+    );
+    assert_eq!(
+        bob_elephants, 2,
+        "Bob should get two Elephant tokens (alice={alice_elephants}, bob={bob_elephants})"
+    );
 }
 
 #[test]
@@ -5195,6 +5810,144 @@ fn test_ragavan_trigger_exiles_top_card_of_damaged_players_library() {
         )),
         "Ragavan's exiled card should become castable in the postcombat main phase once timing allows it"
     );
+}
+
+#[test]
+fn test_fallen_shinobi_trigger_exiles_top_two_cards_and_grants_play_permission() {
+    use crate::decision::compute_legal_actions;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::CombatDamage);
+
+    let shinobi_def = CardDefinitionBuilder::new(CardId::new(), "Fallen Shinobi Runtime Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Ninjutsu {2}{U}{B} ({2}{U}{B}, Return an unblocked attacker you control to hand: Put this card onto the battlefield tapped and attacking.)\nWhenever this creature deals combat damage to a player, that player exiles the top two cards of their library. Until end of turn, you may play those cards without paying their mana costs.",
+        )
+        .expect("fallen shinobi runtime probe should parse");
+    let shinobi_id = game.create_object_from_definition(&shinobi_def, alice, Zone::Battlefield);
+
+    let top_land = CardBuilder::new(CardId::new(), "Shinobi Land")
+        .card_types(vec![CardType::Land])
+        .build();
+    let top_spell = CardBuilder::new(CardId::new(), "Shinobi Bolt")
+        .card_types(vec![CardType::Sorcery])
+        .mana_cost(crate::mana::ManaCost::from_symbols(vec![
+            crate::mana::ManaSymbol::Red,
+        ]))
+        .build();
+    let _top_land_id = game.create_object_from_card(&top_land, bob, Zone::Library);
+    let _top_spell_id = game.create_object_from_card(&top_spell, bob, Zone::Library);
+
+    let triggered = shinobi_def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("fallen shinobi probe should have a triggered ability");
+
+    let damage_event = TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            shinobi_id,
+            crate::game_event::DamageTarget::Player(bob),
+            5,
+            true,
+            crate::events::cause::EventCause::combat_damage(shinobi_id),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    let library_before = game.player(bob).expect("bob exists").library.len();
+    let exile_before = game.exile.len();
+
+    let mut dm = AutoPassDecisionMaker;
+    let mut ctx = ExecutionContext::new_default(shinobi_id, alice)
+        .with_decision_maker(&mut dm)
+        .with_triggering_event(damage_event);
+    for effect in &triggered.effects {
+        execute_effect(&mut game, effect, &mut ctx).expect("fallen shinobi trigger should resolve");
+    }
+
+    let exiled_ids: Vec<_> = game.exile.clone();
+    let exiled_names: Vec<_> = exiled_ids
+        .iter()
+        .filter_map(|&id| game.object(id).map(|obj| (id, obj.name.clone())))
+        .collect();
+    let exiled_land_id = exiled_names
+        .iter()
+        .find_map(|(id, name)| (*name == "Shinobi Land").then_some(*id))
+        .expect("fallen shinobi should exile the top land card");
+    let exiled_spell_id = exiled_names
+        .iter()
+        .find_map(|(id, name)| (*name == "Shinobi Bolt").then_some(*id))
+        .expect("fallen shinobi should exile the top spell card");
+
+    assert_eq!(
+        game.player(bob).expect("bob exists").library.len(),
+        library_before - 2,
+        "fallen shinobi should exile the top two cards from the damaged player's library"
+    );
+    assert_eq!(
+        game.exile.len(),
+        exile_before + 2,
+        "fallen shinobi should add two cards to exile"
+    );
+    assert!(
+        exiled_names.iter().any(|(_, name)| name == "Shinobi Land"),
+        "fallen shinobi should exile the top land card"
+    );
+    assert!(
+        exiled_names.iter().any(|(_, name)| name == "Shinobi Bolt"),
+        "fallen shinobi should exile the top spell card"
+    );
+    assert!(
+        game.grant_registry
+            .card_can_play_from_zone(&game, exiled_land_id, Zone::Exile, alice),
+        "fallen shinobi should let its controller play the exiled land"
+    );
+    assert!(
+        game.grant_registry
+            .card_can_play_from_zone(&game, exiled_spell_id, Zone::Exile, alice),
+        "fallen shinobi should let its controller play the exiled spell"
+    );
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let actions = compute_legal_actions(&game, alice);
+    assert!(
+        actions.iter().any(|action| matches!(
+            action,
+            crate::decision::LegalAction::PlayLand { land_id } if *land_id == exiled_land_id
+        )),
+        "fallen shinobi should expose a land play action from exile"
+    );
+    assert!(
+        actions.iter().any(|action| matches!(
+            action,
+            crate::decision::LegalAction::CastSpell { spell_id, from_zone: Zone::Exile, .. }
+                if *spell_id == exiled_spell_id
+        )),
+        "fallen shinobi should expose a free cast action for the exiled spell"
+    );
+
+    game.turn.turn_number += 1;
+    for card_id in [exiled_land_id, exiled_spell_id] {
+        assert!(
+            !game
+                .grant_registry
+                .card_can_play_from_zone(&game, card_id, Zone::Exile, alice),
+            "fallen shinobi should only grant play permission until end of turn"
+        );
+    }
 }
 
 // === Full Game Flow Integration Test ===
@@ -8415,8 +9168,7 @@ fn test_creeping_renaissance_returns_chosen_permanent_type_from_graveyard() {
             ctx: &crate::decisions::context::SelectOptionsContext,
         ) -> Vec<usize> {
             assert_eq!(
-                ctx.description,
-                "Choose a permanent type",
+                ctx.description, "Choose a permanent type",
                 "Creeping Renaissance should prompt for a permanent type at runtime"
             );
             ctx.options
@@ -8450,7 +9202,8 @@ fn test_creeping_renaissance_returns_chosen_permanent_type_from_graveyard() {
     let mut ctx = ExecutionContext::new_default(source_id, alice).with_decision_maker(&mut dm);
 
     for effect in def.spell_effect.as_ref().expect("spell effects") {
-        execute_effect(&mut game, effect, &mut ctx).expect("Creeping Renaissance effect should resolve");
+        execute_effect(&mut game, effect, &mut ctx)
+            .expect("Creeping Renaissance effect should resolve");
     }
 
     assert_eq!(
@@ -8469,12 +9222,16 @@ fn test_creeping_renaissance_returns_chosen_permanent_type_from_graveyard() {
         "both Forests should return to hand when land is chosen"
     );
     assert!(
-        game.player(alice).expect("alice exists").graveyard.iter().any(|&id| {
-            id == bears_id
-                && game
-                    .object(id)
-                    .is_some_and(|obj| obj.name == "Grizzly Bears")
-        }),
+        game.player(alice)
+            .expect("alice exists")
+            .graveyard
+            .iter()
+            .any(|&id| {
+                id == bears_id
+                    && game
+                        .object(id)
+                        .is_some_and(|obj| obj.name == "Grizzly Bears")
+            }),
         "non-land cards should stay in the graveyard"
     );
 }
@@ -8530,8 +9287,7 @@ fn test_make_an_example_sacrifices_the_chosen_pile() {
     let mut ctx = ExecutionContext::new_default(source_id, alice).with_decision_maker(&mut dm);
 
     for effect in spell_effects {
-        execute_effect(&mut game, effect, &mut ctx)
-            .expect("Make an Example effect should resolve");
+        execute_effect(&mut game, effect, &mut ctx).expect("Make an Example effect should resolve");
     }
 
     assert!(
@@ -8539,10 +9295,7 @@ fn test_make_an_example_sacrifices_the_chosen_pile() {
             .expect("bob exists")
             .graveyard
             .iter()
-            .any(|&id| {
-                game.object(id)
-                    .is_some_and(|obj| obj.name == "Pile Bear")
-            }),
+            .any(|&id| { game.object(id).is_some_and(|obj| obj.name == "Pile Bear") }),
         "the chosen pile should be sacrificed"
     );
     assert!(
@@ -8637,6 +9390,213 @@ fn test_dash_grants_haste_and_returns_to_hand_at_next_end_step() {
                 .object(id)
                 .is_some_and(|obj| obj.name == "Dash Runtime Probe")),
         "dashed creature should return to hand at the next end step"
+    );
+}
+
+#[test]
+fn test_dash_cost_reduction_applies_only_to_dash_casts() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Red, 1);
+
+    let warbringer_def = CardDefinitionBuilder::new(CardId::new(), "Warbringer Variant")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .parse_text(
+            "Dash costs you pay cost {2} less (as long as this creature is on the battlefield).\nDash {2}{R}",
+        )
+        .expect("Warbringer-style text should parse");
+    game.create_object_from_definition(&warbringer_def, alice, Zone::Battlefield);
+
+    let dash_probe = CardDefinitionBuilder::new(CardId::new(), "Dash Discount Probe")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .dash(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Red],
+        ]))
+        .build();
+    let dash_probe_id = game.create_object_from_definition(&dash_probe, alice, Zone::Hand);
+
+    let actions = compute_legal_actions(&game, alice);
+    assert!(
+        actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id,
+                from_zone: Zone::Hand,
+                casting_method: CastingMethod::Alternative(0),
+            } if *spell_id == dash_probe_id
+        )),
+        "expected dash cast to be legal with only the reduced mana available"
+    );
+    assert!(
+        !actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id,
+                from_zone: Zone::Hand,
+                casting_method: CastingMethod::Normal,
+            } if *spell_id == dash_probe_id
+        )),
+        "normal cast should still be unaffordable"
+    );
+
+    let mut state = PriorityLoopState::new(2);
+    let mut trigger_queue = TriggerQueue::new();
+    let cast_response = PriorityResponse::PriorityAction(LegalAction::CastSpell {
+        spell_id: dash_probe_id,
+        from_zone: Zone::Hand,
+        casting_method: CastingMethod::Alternative(0),
+    });
+    apply_priority_response(&mut game, &mut trigger_queue, &mut state, &cast_response)
+        .expect("reduced dash cast should succeed");
+    resolve_stack_entry(&mut game).expect("reduced dash spell should resolve");
+
+    assert!(
+        game.battlefield.iter().any(|&id| {
+            game.object(id)
+                .is_some_and(|obj| obj.name == "Dash Discount Probe")
+        }),
+        "expected dashed creature to resolve onto the battlefield"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").mana_pool.total(),
+        0,
+        "the reduced dash cast should spend only the single red mana"
+    );
+}
+
+#[test]
+fn test_gargoyle_sentinel_gains_flying_only_for_itself_until_end_of_turn() {
+    use crate::PriorityResponse;
+    use crate::cards::CardDefinitionBuilder;
+    use crate::decision::{LegalAction, compute_legal_actions};
+    use crate::game_loop::{
+        PriorityLoopState, apply_priority_response_with_dm, resolve_stack_entry,
+    };
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 3);
+
+    let gargoyle_def = CardDefinitionBuilder::new(CardId::new(), "Gargoyle Sentinel")
+        .parse_text(
+            "Mana cost: {3}\n\
+             Type: Artifact Creature — Gargoyle\n\
+             Power/Toughness: 3/3\n\
+             Defender (This creature can't attack.)\n\
+             {3}: Until end of turn, this creature loses defender and gains flying.",
+        )
+        .expect("Gargoyle Sentinel should parse");
+    let gargoyle_id = game.create_object_from_definition(&gargoyle_def, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(gargoyle_id);
+
+    let other_creature_id = create_creature(&mut game, "Training Bear", alice, 2, 2);
+    game.remove_summoning_sickness(other_creature_id);
+
+    assert!(
+        !crate::rules::combat::can_attack(
+            game.object(gargoyle_id).expect("gargoyle exists"),
+            &game
+        ),
+        "defender should stop Gargoyle Sentinel from attacking before its ability resolves"
+    );
+    assert!(
+        !game.object_has_ability(gargoyle_id, &StaticAbility::flying()),
+        "Gargoyle Sentinel should not start with flying"
+    );
+    assert!(
+        !game.object_has_ability(other_creature_id, &StaticAbility::flying()),
+        "the nearby creature should not start with flying"
+    );
+
+    let ability_index = game
+        .object(gargoyle_id)
+        .expect("gargoyle sentinel exists")
+        .abilities
+        .iter()
+        .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .expect("Gargoyle Sentinel should have an activated ability");
+    let activate_action = compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::ActivateAbility { source, ability_index: idx }
+                    if *source == gargoyle_id && *idx == ability_index
+            )
+        })
+        .expect("Gargoyle Sentinel's activated ability should be legal");
+
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("Gargoyle Sentinel activation should succeed");
+    resolve_stack_entry(&mut game).expect("Gargoyle Sentinel ability should resolve");
+
+    assert!(
+        !game.object_has_ability(gargoyle_id, &StaticAbility::defender()),
+        "defender should be removed until end of turn"
+    );
+    assert!(
+        crate::rules::combat::can_attack(game.object(gargoyle_id).expect("gargoyle exists"), &game),
+        "the sentinel should be able to attack after losing defender"
+    );
+    assert!(
+        game.object_has_ability(gargoyle_id, &StaticAbility::flying()),
+        "the sentinel should gain flying"
+    );
+    assert!(
+        !game.object_has_ability(other_creature_id, &StaticAbility::flying()),
+        "the activated ability should not grant flying to other creatures"
+    );
+
+    crate::turn::execute_cleanup_step(&mut game);
+    game.refresh_continuous_state();
+    game.next_turn();
+
+    assert!(
+        !game.object_has_ability(gargoyle_id, &StaticAbility::flying()),
+        "flying should expire at end of turn"
+    );
+    assert!(
+        !crate::rules::combat::can_attack(
+            game.object(gargoyle_id).expect("gargoyle exists"),
+            &game
+        ),
+        "defender should come back after end of turn"
     );
 }
 

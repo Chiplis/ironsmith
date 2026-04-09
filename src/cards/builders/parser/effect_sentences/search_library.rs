@@ -1004,6 +1004,59 @@ pub(crate) fn parse_for_each_destroyed_this_way_sentence(
     }]))
 }
 
+pub(crate) fn parse_for_each_put_into_graveyard_this_way_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if grammar::words_match_prefix(tokens, &["for", "each"]).is_none() {
+        return Ok(None);
+    }
+    let refers_to_graveyard =
+        grammar::words_find_phrase(tokens, &["put", "into", "a", "graveyard", "this", "way"])
+            .is_some()
+            || grammar::words_find_phrase(tokens, &["put", "into", "graveyard", "this", "way"])
+                .is_some()
+            || grammar::words_find_phrase(
+                tokens,
+                &["put", "into", "their", "graveyard", "this", "way"],
+            )
+            .is_some()
+            || grammar::words_find_phrase(
+                tokens,
+                &["put", "into", "its", "graveyard", "this", "way"],
+            )
+            .is_some();
+    if !refers_to_graveyard {
+        return Ok(None);
+    }
+
+    let (_before, after_comma) = grammar::split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
+        .ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "missing comma after 'for each ... this way' clause (clause: '{}')",
+            token_words(tokens).join(" ")
+        ))
+    })?;
+    let effect_tokens = trim_commas(after_comma);
+    if effect_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing effect after 'for each ... this way' clause (clause: '{}')",
+            token_words(tokens).join(" ")
+        )));
+    }
+    let effects = parse_effect_chain(&effect_tokens)?;
+    if effects.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "empty effect after 'for each ... this way' clause (clause: '{}')",
+            token_words(tokens).join(" ")
+        )));
+    }
+
+    Ok(Some(vec![EffectAst::ForEachTagged {
+        tag: IT_TAG.into(),
+        effects,
+    }]))
+}
+
 pub(crate) fn parse_earthbend_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {

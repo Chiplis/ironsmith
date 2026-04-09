@@ -585,7 +585,8 @@ fn describe_anthem_count_expression(expr: &AnthemCountExpression) -> String {
                     .to_string()
             }
             crate::target::PlayerFilter::Any => {
-                "times a player has cast their commander from the command zone this game".to_string()
+                "times a player has cast their commander from the command zone this game"
+                    .to_string()
             }
             other => format!(
                 "times {} has cast their commander from the command zone this game",
@@ -1103,9 +1104,7 @@ impl StaticAbilityKind for Anthem {
                         && self.filter.controller == Some(crate::target::PlayerFilter::You)
                         && self.filter.card_types == vec![CardType::Creature]
                     {
-                        return format!(
-                            "Creatures you control get +1/+1 for each {count_subject}"
-                        );
+                        return format!("Creatures you control get +1/+1 for each {count_subject}");
                     }
                     return format!("{subject} {verb} +1/+1 for each {count_subject}");
                 }
@@ -3228,8 +3227,8 @@ impl StaticAbilityKind for TophFirstMetalbender {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cards::builders::CardDefinitionBuilder;
     use crate::card::{CardBuilder, PowerToughness};
+    use crate::cards::builders::CardDefinitionBuilder;
     use crate::filter::StackObjectKind;
     use crate::ids::CardId;
     use crate::mana::{ManaCost, ManaSymbol};
@@ -3518,7 +3517,8 @@ mod tests {
             "expected Kemba's Banner to render the for-each anthem wording, got {compiled}"
         );
 
-        let equipment_id = game.create_object_from_definition(&kembas_banner, alice, Zone::Battlefield);
+        let equipment_id =
+            game.create_object_from_definition(&kembas_banner, alice, Zone::Battlefield);
 
         let bearer = CardBuilder::new(CardId::new(), "Bearer")
             .card_types(vec![CardType::Creature])
@@ -3570,7 +3570,8 @@ mod tests {
             )
             .expect("Cranial Ram text should parse");
 
-        let equipment_id = game.create_object_from_definition(&cranial_ram, alice, Zone::Battlefield);
+        let equipment_id =
+            game.create_object_from_definition(&cranial_ram, alice, Zone::Battlefield);
 
         let bearer = CardBuilder::new(CardId::new(), "Bearer")
             .card_types(vec![CardType::Creature])

@@ -17,6 +17,10 @@ use super::super::lexer::{LexStream, OwnedLexToken, TokenKind, split_lexed_sente
 use super::super::object_filters::{
     is_comparison_or_delimiter, parse_object_filter, parse_object_filter_lexed,
 };
+use super::super::permission_helpers::{
+    parse_until_end_of_turn_may_play_tagged_clause,
+    parse_until_your_next_turn_may_play_tagged_clause,
+};
 use super::super::token_primitives::{
     LeadingMayActor, TurnDurationPhrase, find_index, find_window_by, lexed_head_words,
     parse_leading_may_action_lexed, parse_turn_duration_prefix, parse_value_comparison_tokens,
@@ -30,6 +34,7 @@ use super::super::util::{
 use super::super::value_helpers::parse_value_from_lexed;
 use super::divvy::try_parse_divvy_sentence_sequence;
 use super::sentence_helpers::*;
+use super::zone_handlers::parse_exile_top_library_clause;
 use super::{
     find_verb, parse_effect_sentence_lexed, parse_search_library_disjunction_filter,
     parse_token_copy_modifier_sentence, trim_edge_punctuation,
@@ -39,7 +44,7 @@ use crate::cards::builders::{
     CardTextError, CarryContext, EffectAst, GrantedAbilityAst, IT_TAG, IfResultPredicate,
     InsteadSemantics, KeywordAction, LibraryBottomOrderAst, LibraryConsultModeAst,
     LibraryConsultStopRuleAst, PlayerAst, PredicateAst, ReturnControllerAst, SubjectAst, TagKey,
-    TargetAst, TextSpan, TokenCopyFollowup, ZoneReplacementDurationAst,
+    TargetAst, TextSpan, TokenCopyFollowup, Verb, ZoneReplacementDurationAst,
 };
 use crate::effect::{ChoiceCount, Until, Value};
 use crate::filter::Comparison;
@@ -150,6 +155,72 @@ fn parse_same_sentence_copy_and_may_cast_copy(
     Ok(Some((copy_effects, spec)))
 }
 
+fn parse_exile_top_library_then_play_bundle(
+    first_sentence: &[OwnedLexToken],
+    second_sentence: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    // Keep the exile tag and the play permission tied to the same exiled cards.
+    let Some((verb, verb_idx)) = find_verb(first_sentence) else {
+        return Ok(None);
+    };
+    if verb != Verb::Exile {
+        return Ok(None);
+    }
+
+    let exile_subject = if verb_idx == 0 {
+        None
+    } else {
+        Some(parse_subject(&trim_commas(&first_sentence[..verb_idx])))
+    };
+    let exile_tokens = trim_commas(&first_sentence[verb_idx + 1..]);
+    let Some(exile_effect) = parse_exile_top_library_clause(&exile_tokens, exile_subject) else {
+        return Ok(None);
+    };
+    let permission_effect = if let Some(effect) =
+        parse_until_end_of_turn_may_play_tagged_clause(second_sentence)?
+    {
+        effect
+    } else if let Some(effect) = parse_until_your_next_turn_may_play_tagged_clause(second_sentence)?
+    {
+        effect
+    } else {
+        return Ok(None);
+    };
+
+    let Some(tag) = (match &exile_effect {
+        EffectAst::ExileTopOfLibrary { tags, .. } => tags.first().cloned(),
+        _ => None,
+    }) else {
+        return Ok(None);
+    };
+
+    let permission_effect = match permission_effect {
+        EffectAst::GrantPlayTaggedUntilEndOfTurn {
+            player,
+            allow_land,
+            without_paying_mana_cost,
+            allow_any_color_for_cast,
+            ..
+        } => EffectAst::GrantPlayTaggedUntilEndOfTurn {
+            tag,
+            player,
+            allow_land,
+            without_paying_mana_cost,
+            allow_any_color_for_cast,
+        },
+        EffectAst::GrantPlayTaggedUntilYourNextTurn {
+            player, allow_land, ..
+        } => EffectAst::GrantPlayTaggedUntilYourNextTurn {
+            tag,
+            player,
+            allow_land,
+        },
+        _ => return Ok(None),
+    };
+
+    Ok(Some(vec![exile_effect, permission_effect]))
+}
+
 const CHOSEN_NAME_TAG: &str = "__chosen_name__";
 const THEY_DONT_UNTAP_DURING_PREFIXES: &[&[&str]] = &[
     &["they", "dont", "untap", "during"],
@@ -164,6 +235,12 @@ const PRONOUN_TRIGGER_PREFIXES: &[&[&str]] = &[
 
 fn parse_exact_card_effect_bundle_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
     let sentences = split_lexed_sentences(tokens);
+    if sentences.len() == 2
+        && let Ok(Some(effects)) =
+            parse_exile_top_library_then_play_bundle(sentences[0], sentences[1])
+    {
+        return Some(effects);
+    }
     if sentences.len() == 2
         && let Ok(Some(effects)) = parse_reveal_from_outside_game_or_choose_face_up_exile_to_hand(
             sentences[0],
@@ -4350,14 +4427,19 @@ fn apply_cant_be_regenerated_to_effect(effect: &mut EffectAst) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use crate::cards::builders::find_verb;
     use crate::effect::{Value, ValueComparisonOperator};
     use crate::filter::TaggedOpbjectRelation;
     use crate::target::PlayerFilter;
 
+    use super::super::super::grammar::structure::split_lexed_sentences;
     use super::super::super::lexer::lex_line;
+    use super::super::super::permission_helpers::parse_until_end_of_turn_may_play_tagged_clause;
+    use super::super::super::util::{parse_subject, trim_commas};
     use super::super::parse_effect_sentence_lexed;
+    use super::super::zone_handlers::parse_exile_top_library_clause;
     use super::{
-        ConsultCastCost, ConsultCastTiming, parse_bargained_face_down_cast_mana_value_gate,
+        ConsultCastCost, ConsultCastTiming, Verb, parse_bargained_face_down_cast_mana_value_gate,
         parse_consult_cast_clause, parse_consult_condition_value,
         parse_consult_mana_value_condition_tokens,
         parse_counted_looked_cards_into_your_hand_tokens, parse_exact_card_effect_bundle_lexed,
@@ -4521,6 +4603,47 @@ mod tests {
                 ..,
             ]
         ));
+    }
+
+    #[test]
+    fn subject_first_exile_top_library_then_play_bundle_parses_directly() {
+        let tokens = lex_line(
+            "That player exiles the top two cards of their library. Until end of turn, you may play those cards without paying their mana costs.",
+            0,
+        )
+        .expect("rewrite lexer should classify Fallen Shinobi style bundle");
+
+        let sentences = split_lexed_sentences(&tokens);
+        assert_eq!(sentences.len(), 2, "{sentences:#?}");
+        let first = sentences[0];
+        let second = sentences[1];
+
+        let (verb, verb_idx) = find_verb(first).expect("first sentence should have a verb");
+        assert_eq!(verb, Verb::Exile);
+        let subject = parse_subject(&trim_commas(&first[..verb_idx]));
+        let exile_tokens = trim_commas(&first[verb_idx + 1..]);
+        let exile_effect = parse_exile_top_library_clause(&exile_tokens, Some(subject));
+        assert!(exile_effect.is_some(), "expected exile clause to parse");
+
+        let permission_effect = parse_until_end_of_turn_may_play_tagged_clause(second)
+            .expect("permission clause should not error");
+        assert!(
+            permission_effect.is_some(),
+            "expected permission clause to parse"
+        );
+
+        let parsed = parse_exact_card_effect_bundle_lexed(&tokens)
+            .expect("subject-first exile/play bundle should parse directly");
+
+        let debug = format!("{parsed:#?}").to_ascii_lowercase();
+        assert!(
+            debug.contains("exiletopoflibrary"),
+            "expected exile-top-library effect, got {debug}"
+        );
+        assert!(
+            debug.contains("grantplaytaggeduntilendofturn"),
+            "expected play permission effect, got {debug}"
+        );
     }
 
     #[test]

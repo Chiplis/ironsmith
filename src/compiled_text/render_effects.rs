@@ -147,6 +147,57 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         ))
     }
 
+    fn describe_target_only_then_create_token_count(
+        target_only: &crate::effects::TargetOnlyEffect,
+        create_token: &crate::effects::CreateTokenEffect,
+    ) -> Option<String> {
+        if create_token.exile_at_end_of_combat
+            || create_token.sacrifice_at_end_of_combat
+            || create_token.sacrifice_at_next_end_step
+            || create_token.exile_at_next_end_step
+        {
+            return None;
+        }
+        let Value::Count(filter) = &create_token.count else {
+            return None;
+        };
+        if !matches!(create_token.controller, PlayerFilter::You) {
+            return None;
+        }
+
+        let choose_text = format!("Choose {}", describe_choose_spec(&target_only.target));
+        let token_blueprint = describe_token_blueprint(&create_token.token);
+        let token_phrase = pluralize_token_phrase(&token_blueprint);
+        let mut count_desc = pluralize_noun_phrase(strip_indefinite_article(
+            &describe_for_each_count_filter(filter),
+        ));
+        count_desc = count_desc
+            .replace("target opponent controls", "that player controls")
+            .replace("target player controls", "that player controls")
+            .replace("they control", "that player controls")
+            .replace("target opponent owns", "that player owns")
+            .replace("target player owns", "that player owns")
+            .replace("they own", "that player owns");
+        let count_desc = count_desc.trim();
+        if count_desc.is_empty() {
+            return None;
+        }
+
+        Some(format!(
+            "{choose_text}. Create X {token_phrase}, where X is the number of {count_desc}"
+        ))
+    }
+
+    if effects.len() == 2
+        && let Some(target_only) = effects[0].downcast_ref::<crate::effects::TargetOnlyEffect>()
+        && let Some(create_token) =
+            unwrap_tag_wrappers(&effects[1]).downcast_ref::<crate::effects::CreateTokenEffect>()
+        && let Some(rendered) =
+            describe_target_only_then_create_token_count(target_only, create_token)
+    {
+        return rendered;
+    }
+
     let mut parts = Vec::new();
     let mut idx = 0usize;
     while idx < filtered.len() {
@@ -1914,6 +1965,66 @@ pub(super) fn normalize_cost_phrase(text: &str) -> String {
     normalize_duplicate_sacrifice_article(text)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tag::TagKey;
+    use crate::target::{TaggedObjectConstraint, TaggedOpbjectRelation};
+
+    #[test]
+    fn describe_choose_then_sacrifice_compacts_any_number_costs() {
+        let choose = crate::effects::ChooseObjectsEffect::new(
+            ObjectFilter::creature(),
+            ChoiceCount::any_number(),
+            PlayerFilter::You,
+            TagKey::from("sacrificed_0"),
+        )
+        .in_zone(Zone::Battlefield);
+
+        let mut sacrifice_filter = ObjectFilter::creature();
+        sacrifice_filter
+            .tagged_constraints
+            .push(TaggedObjectConstraint {
+                tag: TagKey::from("sacrificed_0"),
+                relation: TaggedOpbjectRelation::IsTaggedObject,
+            });
+        let sacrifice = crate::effects::SacrificeEffect::player(
+            sacrifice_filter.clone(),
+            Value::Count(sacrifice_filter),
+            PlayerFilter::You,
+        );
+
+        let compact = describe_choose_then_sacrifice(&choose, &sacrifice)
+            .expect("any-number sacrifice should compact");
+        assert_eq!(
+            normalize_cost_phrase(&compact),
+            "Sacrifice any number of creatures"
+        );
+    }
+
+    #[test]
+    fn describe_choose_then_move_to_library_accepts_iterated_move_targets() {
+        let mut filter = ObjectFilter::default().in_zone(Zone::Hand);
+        filter.owner = Some(PlayerFilter::IteratedPlayer);
+
+        let choose = crate::effects::ChooseObjectsEffect::new(
+            filter,
+            ChoiceCount::exactly(3),
+            PlayerFilter::target_player(),
+            TagKey::from("__it__"),
+        );
+        let move_to_zone =
+            crate::effects::MoveToZoneEffect::new(ChooseSpec::Iterated, Zone::Library, true);
+
+        let compact = describe_choose_then_move_to_library(&choose, &move_to_zone)
+            .expect("iterated move-to-library should compact");
+        assert_eq!(
+            compact,
+            "target player chooses three cards from their hand, then puts them on top of their library"
+        );
+    }
+}
+
 pub(super) fn describe_cost_component(cost: &crate::costs::Cost) -> String {
     if let Some(mana_cost) = cost.mana_cost_ref() {
         return mana_cost.to_oracle();
@@ -2371,6 +2482,8 @@ pub(super) fn pluralize_noun_phrase(phrase: &str) -> String {
     for suffix in [
         " you control",
         " you own",
+        " they control",
+        " they own",
         " an opponent controls",
         " an opponent owns",
         " target opponent controls",
@@ -2535,14 +2648,22 @@ pub(super) fn describe_choose_then_sacrifice(
     choose: &crate::effects::ChooseObjectsEffect,
     sacrifice: &crate::effects::SacrificeEffect,
 ) -> Option<String> {
-    let choose_exact = choose.count.max.filter(|max| *max == choose.count.min)?;
-    let sacrifice_count = match sacrifice.count {
-        Value::Fixed(value) if value > 0 => value as usize,
-        _ => return None,
+    let choose_is_any_number = choose.count.is_any_number();
+    let choose_exact = if choose_is_any_number {
+        None
+    } else {
+        choose.count.max.filter(|max| *max == choose.count.min)
     };
+    let sacrifice_count = match sacrifice.count {
+        Value::Fixed(value) if value > 0 => Some(value as usize),
+        _ => None,
+    };
+    let sacrifice_any_number = matches!(
+        &sacrifice.count,
+        Value::Count(count_filter) if count_filter == &sacrifice.filter
+    );
     if choose_primary_zone(choose) != Some(Zone::Battlefield)
         || choose.is_search
-        || choose_exact != sacrifice_count
         || sacrifice.player != choose.chooser
         || !sacrifice_uses_chosen_tag(&sacrifice.filter, choose.tag.as_str())
     {
@@ -2556,6 +2677,20 @@ pub(super) fn describe_choose_then_sacrifice(
             && matches!(constraint.tag.as_str(), "triggering" | "damaged")
     });
     let chosen = choose.filter.description();
+    if choose_is_any_number && sacrifice_any_number {
+        let chosen = pluralize_noun_phrase(strip_leading_article(&chosen));
+        return Some(format!("{player} {verb} any number of {chosen}"));
+    }
+
+    if choose_is_any_number {
+        return None;
+    }
+
+    let sacrifice_count = sacrifice_count?;
+    if choose_exact != Some(sacrifice_count) {
+        return None;
+    }
+
     if sacrifice_count == 1 {
         if refers_to_triggering_object {
             return Some(format!("{player} {verb} it"));
@@ -3420,7 +3555,13 @@ pub(super) fn move_to_library_uses_chosen_tag(
     tag: &str,
 ) -> bool {
     move_to_zone.zone == Zone::Library
-        && matches!(move_to_zone.target.base(), ChooseSpec::Tagged(t) if t.as_str() == tag)
+        // Some parser lowerings route the chosen cards through a tagged
+        // for-each wrapper and leave the move target as `Iterated`.
+        && match move_to_zone.target.base() {
+            ChooseSpec::Iterated => true,
+            ChooseSpec::Tagged(t) => t.as_str() == tag,
+            _ => false,
+        }
 }
 
 pub(super) fn move_to_battlefield_uses_chosen_tag(
@@ -6391,10 +6532,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         if let Some(rest) = target.strip_prefix("all cards in ") {
             return format!("Exile all cards from {rest}{face_down_suffix}");
         }
-        return format!(
-            "Exile {}{face_down_suffix}",
-            target
-        );
+        return format!("Exile {}{face_down_suffix}", target);
     }
     if let Some(exile_until) = effect.downcast_ref::<crate::effects::ExileUntilEffect>() {
         let duration = match exile_until.duration {
@@ -7547,9 +7685,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         effect.downcast_ref::<crate::effects::ShuffleGraveyardIntoLibraryEffect>()
     {
         let possessive = describe_possessive_player_filter(&shuffle_gy.player);
-        return format!(
-            "Shuffle all cards from {possessive} graveyard into {possessive} library"
-        );
+        return format!("Shuffle all cards from {possessive} graveyard into {possessive} library");
     }
     if let Some(shuffle_objects) =
         effect.downcast_ref::<crate::effects::ShuffleObjectsIntoLibraryEffect>()
@@ -8178,6 +8314,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         return format!("Choose {}", describe_choose_spec(&target_only.target));
     }
     if let Some(compact) = describe_compact_protection_choice(effect) {
+        return compact;
+    }
+    if let Some(compact) = describe_compact_destroy_color_choice(effect) {
         return compact;
     }
     if let Some(compact) = describe_compact_keyword_choice(effect) {

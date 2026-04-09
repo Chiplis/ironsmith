@@ -1038,6 +1038,7 @@ pub enum TaggedOpbjectRelation {
 /// Alternative casting capability qualifier for card filters.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AlternativeCastKind {
+    Dash,
     Flashback,
     JumpStart,
     Escape,
@@ -4689,6 +4690,7 @@ fn alternative_cast_matches_kind(
 ) -> bool {
     use crate::alternative_cast::AlternativeCastingMethod;
     match (kind, method) {
+        (AlternativeCastKind::Dash, AlternativeCastingMethod::Dash { .. }) => true,
         (AlternativeCastKind::Flashback, AlternativeCastingMethod::Flashback { .. }) => true,
         (AlternativeCastKind::JumpStart, AlternativeCastingMethod::JumpStart) => true,
         (AlternativeCastKind::Escape, AlternativeCastingMethod::Escape { .. }) => true,
@@ -4914,6 +4916,7 @@ fn describe_counter_constraint(constraint: CounterConstraint) -> String {
 
 fn describe_alternative_cast_kind(kind: AlternativeCastKind) -> &'static str {
     match kind {
+        AlternativeCastKind::Dash => "dash",
         AlternativeCastKind::Flashback => "flashback",
         AlternativeCastKind::JumpStart => "jump-start",
         AlternativeCastKind::Escape => "escape",

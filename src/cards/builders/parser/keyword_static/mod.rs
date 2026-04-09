@@ -72,13 +72,13 @@ use super::token_primitives::{
     slice_starts_with, slice_strip_prefix, slice_strip_suffix, split_em_dash_label_prefix,
     str_strip_prefix, str_strip_suffix,
 };
-use super::value_helpers::parse_commander_cast_count_player;
 use super::util::{
-    is_source_reference_words, mana_pips_from_token, parse_card_type, parse_color,
-    parse_counter_type_from_tokens, parse_counter_type_word, parse_flashback_keyword_line,
-    parse_subtype_flexible, parse_value, parse_zone_word, preserve_keyword_prefix_for_parse,
-    trim_commas, words,
+    is_source_reference_words, mana_pips_from_token, parse_alternative_cast_words, parse_card_type,
+    parse_color, parse_counter_type_from_tokens, parse_counter_type_word,
+    parse_flashback_keyword_line, parse_subtype_flexible, parse_value, parse_zone_word,
+    preserve_keyword_prefix_for_parse, trim_commas, words,
 };
+use super::value_helpers::parse_commander_cast_count_player;
 #[allow(unused_imports)]
 use crate::ability::{Ability, AbilityKind, TriggeredAbility};
 #[allow(unused_imports)]
@@ -4122,7 +4122,13 @@ pub(crate) fn parse_flashback_cost_modifier_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
-    if clause_words.len() < 6 || clause_words.first().copied() != Some("flashback") {
+    let Some((kind, consumed)) = parse_alternative_cast_words(&clause_words) else {
+        return Ok(None);
+    };
+    if clause_words.len() < consumed + 5 {
+        return Ok(None);
+    }
+    if clause_words.get(consumed).copied() != Some("costs") {
         return Ok(None);
     }
     let cost_idx = rfind_index(tokens, |token| {
@@ -4149,7 +4155,7 @@ pub(crate) fn parse_flashback_cost_modifier_line(
     }
 
     let mut filter = ObjectFilter::default();
-    filter.alternative_cast = Some(crate::filter::AlternativeCastKind::Flashback);
+    filter.alternative_cast = Some(kind);
     if contains_keyword_static_phrase(&clause_words, &["you", "pay"]) {
         filter.cast_by = Some(PlayerFilter::You);
     } else if contains_any_keyword_static_phrase(

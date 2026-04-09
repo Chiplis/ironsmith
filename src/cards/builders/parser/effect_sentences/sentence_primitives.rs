@@ -16,7 +16,7 @@ use super::super::token_primitives::{
 };
 use super::super::util::{
     is_article, is_source_reference_words, mana_pips_from_token, parse_card_type, parse_color,
-    parse_counter_type_from_tokens, token_index_for_word_index, words,
+    parse_counter_type_from_tokens, parse_subject, token_index_for_word_index, words,
 };
 use super::super::util::{parse_target_phrase, parse_value, span_from_tokens};
 use super::dispatch_inner::merge_filters;
@@ -36,11 +36,12 @@ use super::{
     parse_exile_then_return_same_object_sentence, parse_exile_up_to_one_each_target_type_sentence,
     parse_for_each_counter_removed_sentence, parse_for_each_destroyed_this_way_sentence,
     parse_for_each_exiled_this_way_sentence, parse_for_each_opponent_doesnt,
-    parse_for_each_player_doesnt, parse_for_each_vote_clause, parse_gain_ability_sentence,
-    parse_gain_ability_to_source_sentence, parse_gain_life_equal_to_age_sentence,
-    parse_gain_life_equal_to_power_sentence, parse_gain_x_plus_life_sentence,
-    parse_look_at_hand_sentence, parse_look_at_top_then_exile_one_sentence, parse_mana_symbol,
-    parse_monstrosity_sentence, parse_play_from_graveyard_sentence, parse_prevent_damage_sentence,
+    parse_for_each_player_doesnt, parse_for_each_put_into_graveyard_this_way_sentence,
+    parse_for_each_vote_clause, parse_gain_ability_sentence, parse_gain_ability_to_source_sentence,
+    parse_gain_life_equal_to_age_sentence, parse_gain_life_equal_to_power_sentence,
+    parse_gain_x_plus_life_sentence, parse_look_at_hand_sentence,
+    parse_look_at_top_then_exile_one_sentence, parse_mana_symbol, parse_monstrosity_sentence,
+    parse_play_from_graveyard_sentence, parse_prevent_damage_sentence,
     parse_same_name_gets_fanout_sentence, parse_same_name_target_fanout_sentence,
     parse_search_library_sentence, parse_sentence_counter_target_spell_if_it_was_kicked,
     parse_sentence_counter_target_spell_thats_second_cast_this_turn,
@@ -3835,6 +3836,12 @@ pub(crate) fn parse_sentence_for_each_exiled_this_way(
     parse_for_each_exiled_this_way_sentence(tokens)
 }
 
+pub(crate) fn parse_sentence_for_each_put_into_graveyard_this_way(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    parse_for_each_put_into_graveyard_this_way_sentence(tokens)
+}
+
 pub(crate) fn parse_sentence_each_player_put_permanent_cards_exiled_with_source(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -4367,6 +4374,98 @@ pub(crate) fn parse_sentence_reveal_selected_cards_in_your_hand(
             count,
             count_value: None,
             player: PlayerAst::You,
+            tag: tag.clone(),
+        },
+        EffectAst::RevealTagged { tag },
+    ]))
+}
+
+pub(crate) fn parse_sentence_target_player_reveals_random_card_from_hand(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(reveal_idx) = find_index(tokens, |token| {
+        token.is_word("reveal") || token.is_word("reveals")
+    }) else {
+        return Ok(None);
+    };
+    if reveal_idx == 0 {
+        return Ok(None);
+    }
+
+    let subject_tokens = trim_commas(&tokens[..reveal_idx]);
+    let SubjectAst::Player(player) = parse_subject(&subject_tokens) else {
+        return Ok(None);
+    };
+    if !matches!(
+        player,
+        PlayerAst::You
+            | PlayerAst::Target
+            | PlayerAst::TargetOpponent
+            | PlayerAst::Opponent
+            | PlayerAst::That
+    ) {
+        return Ok(None);
+    }
+
+    let reveal_tokens = trim_commas(&tokens[reveal_idx + 1..]);
+    let reveal_words = crate::cards::builders::parser::token_word_refs(&reveal_tokens);
+    if reveal_words.is_empty()
+        || !reveal_words
+            .first()
+            .is_some_and(|word| matches!(*word, "a" | "an" | "one"))
+    {
+        return Ok(None);
+    }
+
+    let descriptor_words = &reveal_words[1..];
+    if descriptor_words.is_empty() || !descriptor_words.contains(&"card") {
+        return Ok(None);
+    }
+
+    let Some(from_idx) = find_word_sequence_start(descriptor_words, &["from"]) else {
+        return Ok(None);
+    };
+    if !find_word_sequence_start(descriptor_words, &["at", "random"])
+        .is_some_and(|idx| idx < from_idx)
+    {
+        return Ok(None);
+    }
+
+    let hand_words = &descriptor_words[from_idx + 1..];
+    if !matches!(
+        hand_words,
+        ["their", "hand"]
+            | ["their", "hands"]
+            | ["your", "hand"]
+            | ["your", "hands"]
+            | ["that", "player", "hand"]
+            | ["that", "player", "hands"]
+            | ["target", "player", "hand"]
+            | ["target", "player", "hands"]
+    ) {
+        return Ok(None);
+    }
+
+    let filter = ObjectFilter {
+        zone: Some(Zone::Hand),
+        owner: Some(match player {
+            PlayerAst::You => PlayerFilter::You,
+            PlayerAst::Target => PlayerFilter::target_player(),
+            PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
+            PlayerAst::Opponent => PlayerFilter::Opponent,
+            PlayerAst::That => PlayerFilter::IteratedPlayer,
+            _ => return Ok(None),
+        }),
+        ..ObjectFilter::default()
+    };
+    let tag = helper_tag_for_tokens(tokens, "revealed");
+
+    Ok(Some(vec![
+        EffectAst::ChooseObjects {
+            filter,
+            count: ChoiceCount::exactly(1).at_random(),
+            count_value: None,
+            player,
             tag: tag.clone(),
         },
         EffectAst::RevealTagged { tag },
@@ -5819,6 +5918,10 @@ pub(crate) const PRE_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
         parser: parse_sentence_target_player_chooses_then_you_put_it_onto_battlefield,
     },
     SentencePrimitive {
+        name: "target-player-reveals-random-card-from-hand",
+        parser: parse_sentence_target_player_reveals_random_card_from_hand,
+    },
+    SentencePrimitive {
         name: "exile-instead-of-graveyard",
         parser: parse_sentence_exile_instead_of_graveyard,
     },
@@ -6007,6 +6110,10 @@ pub(crate) const POST_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
     SentencePrimitive {
         name: "for-each-exiled-this-way",
         parser: parse_sentence_for_each_exiled_this_way,
+    },
+    SentencePrimitive {
+        name: "for-each-put-into-graveyard-this-way",
+        parser: parse_sentence_for_each_put_into_graveyard_this_way,
     },
     SentencePrimitive {
         name: "draw-for-each-card-exiled-from-hand-this-way",

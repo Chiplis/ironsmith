@@ -694,12 +694,16 @@ pub(super) fn normalize_sentence_surface_style(line: &str) -> String {
             strip_suffix_ascii_ci(library_owner.trim(), " library face down")
     {
         let shuffle_tail = shuffle_tail.trim();
-        let no_period = shuffle_tail.strip_suffix('.').unwrap_or(shuffle_tail).trim();
+        let no_period = shuffle_tail
+            .strip_suffix('.')
+            .unwrap_or(shuffle_tail)
+            .trim();
         if let Some((graveyard_owner, library_tail)) =
             split_once_ascii_ci(no_period, " graveyard into ")
-            && let Some(destination_owner) =
-                strip_suffix_ascii_ci(library_tail.trim(), " library")
-            && graveyard_owner.trim().eq_ignore_ascii_case(library_owner.trim())
+            && let Some(destination_owner) = strip_suffix_ascii_ci(library_tail.trim(), " library")
+            && graveyard_owner
+                .trim()
+                .eq_ignore_ascii_case(library_owner.trim())
             && destination_owner
                 .trim()
                 .eq_ignore_ascii_case(library_owner.trim())
@@ -2280,6 +2284,21 @@ mod tests {
     }
 
     #[test]
+    fn normalizes_corpse_cobble_surface_text_into_x_token_and_sacrifice_cost() {
+        let normalized = normalize_common_semantic_phrasing(
+            "Choose any number a creature you control in the battlefield and tags it as 'sacrificed_0', Sacrifice all permanents you control. Create a 0/0 blue and black Zombie creature token with menace. it has base power and toughness the total power of the sacrificed creatures/the total power of the sacrificed creatures forever. Flashback {3}{U}{B} (You may cast this card from your graveyard for its flashback cost and any additional costs. Then exile it.)",
+        );
+
+        assert!(
+            normalized.starts_with(
+                "Sacrifice any number of creatures. Create an X/X blue and black Zombie creature token with menace, where X is the total power of the sacrificed creatures."
+            ),
+            "{normalized}"
+        );
+        assert!(normalized.contains("Flashback {3}{U}{B}"), "{normalized}");
+    }
+
+    #[test]
     fn normalizes_destroy_target_blocking_creature_clause_without_rewriting_subject() {
         let normalized = normalize_common_semantic_phrasing("Destroy target blocking creature.");
         assert_eq!(normalized, "Destroy target blocking creature.");
@@ -2632,6 +2651,14 @@ mod tests {
         assert_eq!(
             pluralize_noun_phrase("target permanent you own"),
             "target permanents you own"
+        );
+    }
+
+    #[test]
+    fn pluralize_noun_phrase_handles_they_control_suffix() {
+        assert_eq!(
+            pluralize_noun_phrase("artifact they control"),
+            "artifacts they control"
         );
     }
 
@@ -4839,6 +4866,28 @@ mod tests {
     }
 
     #[test]
+    fn post_pass_normalizes_random_hand_reveal_damage_clause() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "Spell effects: Target player chooses exactly 1 at random card from their hand and tags it as '__sentence_helper_revealed_l16_s0_e54'. Reveal it. Deal damage equal to its mana value to target player.",
+        );
+        assert_eq!(
+            normalized,
+            "Spell effects: Target player reveals a card at random from their hand. Deal damage to that player equal to that card's mana value."
+        );
+    }
+
+    #[test]
+    fn post_pass_normalizes_random_hand_reveal_clause() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "Whenever this creature deals combat damage to a player: the damaged player chooses exactly 1 at random card in the damaged player's hand and tags it as '__sentence_helper_revealed_l32_s56_e108'. Reveal it.",
+        );
+        assert_eq!(
+            normalized,
+            "Whenever this creature deals combat damage to a player: That player reveals a card at random from their hand."
+        );
+    }
+
+    #[test]
     fn post_pass_normalizes_typed_graveyard_return_choice_clause() {
         let normalized = normalize_compiled_post_pass_effect(
             "You choose exactly 1 creature card in your graveyard and tags it as 'chosen_return_0'. Return it from graveyard to the battlefield. Return another creature card from your graveyard to your hand.",
@@ -5007,6 +5056,17 @@ mod tests {
         assert_eq!(
             normalized,
             "Separate all creature cards in your graveyard into two piles. Exile the pile of an opponent's choice and return the other to the battlefield."
+        );
+    }
+
+    #[test]
+    fn post_pass_normalizes_make_an_example_divvy_clause() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "For each opponent, you choose any number a creature that player controls in the battlefield and tags it as 'divvy_chosen'. that player sacrifices all creatures that player controls.",
+        );
+        assert_eq!(
+            normalized,
+            "Each opponent separates the creatures they control into two piles. For each opponent, you choose one of their piles. Each opponent sacrifices the creatures in their chosen pile. (Piles can be empty.)"
         );
     }
 

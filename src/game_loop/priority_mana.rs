@@ -3205,7 +3205,7 @@ pub(super) fn finalize_spell_cast(
     provenance: ProvNodeId,
     _decision_maker: &mut impl DecisionMaker,
 ) -> Result<SpellCastResult, GameLoopError> {
-    use crate::decision::calculate_effective_mana_cost_with_chosen_targets;
+    use crate::decision::calculate_effective_mana_cost_with_chosen_targets_for_casting_method;
     let _ = payment_trace;
 
     // Get the mana cost, alternative additional cost, and exile count based on casting method.
@@ -3271,8 +3271,13 @@ pub(super) fn finalize_spell_cast(
     // Calculate effective cost and Delve exile count
     let (effective_cost, delve_exile_count) = if let Some(ref base_cost) = base_mana_cost {
         if let Some(obj) = game.object(spell_id) {
-            let eff_cost = calculate_effective_mana_cost_with_chosen_targets(
-                game, caster, obj, base_cost, &targets,
+            let eff_cost = calculate_effective_mana_cost_with_chosen_targets_for_casting_method(
+                game,
+                caster,
+                obj,
+                base_cost,
+                &targets,
+                &casting_method,
             );
             let delve_count = crate::decision::calculate_delve_exile_count_with_targets(
                 game,

@@ -1,6 +1,6 @@
 //! Destroy effect implementation.
 
-use crate::effect::{ChoiceCount, EffectOutcome, OutcomeStatus};
+use crate::effect::{ChoiceCount, EffectOutcome, ExecutionFact, OutcomeStatus};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{
     ObjectApplyResultPolicy, apply_single_target_object_from_spec, apply_to_selected_objects,
@@ -106,6 +106,7 @@ impl EffectExecutor for DestroyEffect {
         }
 
         // For all/multi-target effects, count only successful destructions.
+        let mut destroyed_objects = Vec::new();
         let apply_result = match apply_to_selected_objects(
             game,
             ctx,
@@ -114,14 +115,24 @@ impl EffectExecutor for DestroyEffect {
             |game, ctx, object_id| {
                 let result =
                     process_destroy(game, object_id, Some(ctx.source), &mut *ctx.decision_maker);
-                Ok(matches!(result, EventOutcome::Proceed(_)))
+                if matches!(result, EventOutcome::Proceed(crate::zone::Zone::Graveyard)) {
+                    destroyed_objects.extend(game.take_zone_change_results(object_id));
+                    return Ok(true);
+                }
+                Ok(false)
             },
         ) {
             Ok(result) => result,
             Err(_) => return Ok(EffectOutcome::target_invalid()),
         };
 
-        Ok(apply_result.outcome)
+        let mut outcome = apply_result.outcome;
+        if !destroyed_objects.is_empty() {
+            outcome =
+                outcome.with_execution_fact(ExecutionFact::AffectedObjects(destroyed_objects));
+        }
+
+        Ok(outcome)
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
@@ -142,5 +153,138 @@ impl EffectExecutor for DestroyEffect {
 
     fn target_description(&self) -> &'static str {
         "permanent to destroy"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::card::{CardBuilder, PowerToughness};
+    use crate::color::ColorSet;
+    use crate::effect::Effect;
+    use crate::executor::{ExecutionContext, ResolvedTarget};
+    use crate::filter::ObjectRef;
+    use crate::game_state::GameState;
+    use crate::ids::{CardId, ObjectId, PlayerId};
+    use crate::mana::{ManaCost, ManaSymbol};
+    use crate::target::PlayerFilter;
+    use crate::types::CardType;
+    use crate::types::Subtype;
+    use crate::zone::Zone;
+
+    fn setup_game() -> GameState {
+        crate::tests::test_helpers::setup_two_player_game()
+    }
+
+    fn create_creature(game: &mut GameState, owner: PlayerId, name: &str, id_raw: u32) -> ObjectId {
+        let card = CardBuilder::new(CardId::from_raw(id_raw), name)
+            .card_types(vec![CardType::Creature])
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(1)],
+                vec![ManaSymbol::Green],
+            ]))
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        game.create_object_from_card(&card, owner, Zone::Battlefield)
+    }
+
+    fn create_elephant_token() -> crate::cards::CardDefinition {
+        crate::cards::CardDefinition::new(
+            CardBuilder::new(CardId::new(), "Elephant")
+                .card_types(vec![CardType::Creature])
+                .subtypes(vec![Subtype::Elephant])
+                .color_indicator(ColorSet::GREEN)
+                .power_toughness(PowerToughness::fixed(3, 3))
+                .token()
+                .build(),
+        )
+    }
+
+    #[test]
+    fn destroy_multi_target_records_graveyard_results_for_tagged_followups() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let first = create_creature(&mut game, bob, "First Target", 50_001);
+        let second = create_creature(&mut game, bob, "Second Target", 50_002);
+
+        let spec = ChooseSpec::target(ChooseSpec::creature()).with_count(ChoiceCount::exactly(2));
+        let effect = DestroyEffect::with_spec(spec.clone());
+        let mut ctx = ExecutionContext::new_default(game.new_object_id(), alice)
+            .with_targets(vec![
+                ResolvedTarget::Object(first),
+                ResolvedTarget::Object(second),
+            ])
+            .with_target_assignments(vec![crate::game_state::TargetAssignment {
+                spec,
+                range: 0..2,
+            }]);
+
+        let outcome = effect.execute(&mut game, &mut ctx).expect("execute");
+
+        assert_eq!(outcome.as_count(), Some(2));
+        assert_eq!(outcome.output_objects().len(), 2);
+        assert!(
+            outcome.output_objects().iter().all(|id| {
+                game.object(*id)
+                    .is_some_and(|obj| obj.zone == Zone::Graveyard && obj.controller == bob)
+            }),
+            "destroy effect should surface the graveyard objects for tagged follow-ups, got {:?}",
+            outcome.output_objects()
+        );
+    }
+
+    #[test]
+    fn destroy_multi_target_tagged_followup_uses_each_destroyed_objects_controller() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let alice_target = create_creature(&mut game, alice, "Alice Target", 50_101);
+        let bob_target = create_creature(&mut game, bob, "Bob Target", 50_102);
+        let spec = ChooseSpec::target(ChooseSpec::creature()).with_count(ChoiceCount::exactly(2));
+        let destroy = Effect::new(DestroyEffect::with_spec(spec.clone())).tag("destroyed");
+        let create_elephants = Effect::for_each_tagged(
+            "destroyed",
+            vec![Effect::create_tokens_player(
+                create_elephant_token(),
+                1,
+                PlayerFilter::ControllerOf(ObjectRef::tagged("__it__")),
+            )],
+        );
+        let mut ctx = ExecutionContext::new_default(game.new_object_id(), alice)
+            .with_targets(vec![
+                ResolvedTarget::Object(alice_target),
+                ResolvedTarget::Object(bob_target),
+            ])
+            .with_target_assignments(vec![crate::game_state::TargetAssignment {
+                spec,
+                range: 0..2,
+            }]);
+
+        crate::executor::execute_effect(&mut game, &destroy, &mut ctx).expect("destroy resolves");
+        crate::executor::execute_effect(&mut game, &create_elephants, &mut ctx)
+            .expect("follow-up resolves");
+
+        let alice_elephants = game
+            .battlefield
+            .iter()
+            .filter(|&&id| {
+                game.object(id)
+                    .is_some_and(|obj| obj.name == "Elephant" && obj.controller == alice)
+            })
+            .count();
+        let bob_elephants = game
+            .battlefield
+            .iter()
+            .filter(|&&id| {
+                game.object(id)
+                    .is_some_and(|obj| obj.name == "Elephant" && obj.controller == bob)
+            })
+            .count();
+
+        assert_eq!(alice_elephants, 1);
+        assert_eq!(bob_elephants, 1);
     }
 }

@@ -682,14 +682,13 @@ mod tests {
         let shuffle = ShuffleGraveyardIntoLibraryEffect::new(PlayerFilter::You);
         let mut ctx = ExecutionContext::new_default(source, alice);
 
-        exile.execute(&mut game, &mut ctx).expect("exile should resolve");
+        exile
+            .execute(&mut game, &mut ctx)
+            .expect("exile should resolve");
         assert_eq!(game.exile.len(), 2);
         assert!(game.object(library_one).is_none());
         assert!(game.object(library_two).is_none());
-        assert!(game
-            .exile
-            .iter()
-            .all(|card_id| game.is_face_down(*card_id)));
+        assert!(game.exile.iter().all(|card_id| game.is_face_down(*card_id)));
 
         shuffle
             .execute(&mut game, &mut ctx)

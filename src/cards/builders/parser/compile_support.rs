@@ -1656,7 +1656,10 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
         direct_target_effect_variants!(target) => {
             visit(target);
         }
-        EffectAst::Sacrifice { target: Some(target), .. } => {
+        EffectAst::Sacrifice {
+            target: Some(target),
+            ..
+        } => {
             visit(target);
         }
         EffectAst::MoveToZone {
@@ -2314,7 +2317,8 @@ pub(crate) fn compile_effects(
             bind_unbound_x_to_last_effect: ctx.bind_unbound_x_to_last_effect,
             initial_last_effect_id: ctx.last_effect_id,
             initial_iterated_player: ctx.iterated_player,
-            force_auto_tag_object_targets: ctx.force_auto_tag_object_targets,
+            force_auto_tag_object_targets: ctx.force_auto_tag_object_targets
+                || ctx.auto_tag_object_targets,
         },
         ctx.id_gen_context(),
     )?;
@@ -2328,12 +2332,14 @@ pub(crate) fn compile_annotated_effects_with_context(
     let mut compiled = Vec::new();
     let mut choices = Vec::new();
     let mut idx = 0;
+    let effective_force_auto_tag_object_targets =
+        ctx.force_auto_tag_object_targets || ctx.auto_tag_object_targets;
 
     while idx < annotated.effects.len() {
         let current = &annotated.effects[idx];
         apply_local_reference_env(ctx, &current.in_env);
         ctx.auto_tag_object_targets =
-            ctx.force_auto_tag_object_targets || current.auto_tag_object_targets;
+            effective_force_auto_tag_object_targets || current.auto_tag_object_targets;
 
         if let Some((effect_sequence, effect_choices, consumed)) =
             compile_vote_sequence(&annotated.effects[idx..], ctx)?
@@ -9888,7 +9894,7 @@ pub(crate) fn join_simple_and_list(parts: &[&str]) -> String {
     }
 }
 
-pub(crate) fn parse_equipment_rules_text(words: &[&str]) -> Option<String> {
+pub(crate) fn parse_equipment_rules_text(words: &[&str], source_text: &str) -> Option<String> {
     let has_equipped_subject = words
         .iter()
         .enumerate()
@@ -9898,38 +9904,68 @@ pub(crate) fn parse_equipment_rules_text(words: &[&str]) -> Option<String> {
     }
 
     let mut lines = Vec::new();
-    let has_plus_one = find_window_by(words, 2, |window| window == ["gets", "+1/+1"]).is_some();
-    let mut granted_keywords: Vec<&str> = Vec::new();
-    for keyword in [
-        "vigilance",
-        "trample",
-        "haste",
-        "flying",
-        "lifelink",
-        "deathtouch",
-        "menace",
-        "reach",
-        "hexproof",
-        "indestructible",
-    ] {
-        if words.iter().any(|word| *word == keyword) {
-            granted_keywords.push(keyword);
+    let lower_source = source_text.to_ascii_lowercase();
+    if let Some(has_idx) = lower_source.find("equipped creature has ") {
+        let ability_start = has_idx + "equipped creature has ".len();
+        let ability_tail = &source_text[ability_start..];
+        let lower_ability_tail = &lower_source[ability_start..];
+        let ability_end = [
+            " and equip ",
+            "\" and equip ",
+            "\"and equip ",
+            "' and equip ",
+            "'and equip ",
+        ]
+        .iter()
+        .filter_map(|pattern| lower_ability_tail.find(pattern))
+        .min()
+        .or_else(|| lower_ability_tail.rfind(" equip "))
+        .unwrap_or(ability_tail.len());
+        let ability_clause = ability_tail[..ability_end].trim();
+        if ability_clause.contains(':') {
+            let normalized_clause = ability_clause.trim_matches(|ch| ch == '\'' || ch == '"');
+            let mut granted_text = normalized_clause.trim_end_matches('.').to_string();
+            if !granted_text.ends_with(['.', '!', '?']) {
+                granted_text.push('.');
+            }
+            lines.push(format!("Equipped creature has \"{granted_text}\""));
         }
     }
-    if has_plus_one {
-        if granted_keywords.is_empty() {
-            lines.push("Equipped creature gets +1/+1.".to_string());
-        } else {
+
+    if lines.is_empty() {
+        let has_plus_one = find_window_by(words, 2, |window| window == ["gets", "+1/+1"]).is_some();
+        let mut granted_keywords: Vec<&str> = Vec::new();
+        for keyword in [
+            "vigilance",
+            "trample",
+            "haste",
+            "flying",
+            "lifelink",
+            "deathtouch",
+            "menace",
+            "reach",
+            "hexproof",
+            "indestructible",
+        ] {
+            if words.iter().any(|word| *word == keyword) {
+                granted_keywords.push(keyword);
+            }
+        }
+        if has_plus_one {
+            if granted_keywords.is_empty() {
+                lines.push("Equipped creature gets +1/+1.".to_string());
+            } else {
+                lines.push(format!(
+                    "Equipped creature gets +1/+1 and has {}.",
+                    join_simple_and_list(&granted_keywords)
+                ));
+            }
+        } else if !granted_keywords.is_empty() {
             lines.push(format!(
-                "Equipped creature gets +1/+1 and has {}.",
+                "Equipped creature has {}.",
                 join_simple_and_list(&granted_keywords)
             ));
         }
-    } else if !granted_keywords.is_empty() {
-        lines.push(format!(
-            "Equipped creature has {}.",
-            join_simple_and_list(&granted_keywords)
-        ));
     }
 
     if let Some(equip_amount) = parse_equip_amount(words) {
@@ -10843,33 +10879,36 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
                 subtypes.push(subtype);
             }
         }
-        let token_name = find_index(words.as_slice(), |word| {
-            !matches!(
-                *word,
-                "artifact"
-                    | "token"
-                    | "tokens"
-                    | "named"
-                    | "colorless"
-                    | "white"
-                    | "blue"
-                    | "black"
-                    | "red"
-                    | "green"
-            )
-        })
-        .map(|idx| {
-            let mut chars = words[idx].chars();
-            match chars.next() {
-                Some(first) => {
-                    let mut name = first.to_uppercase().to_string();
-                    name.push_str(chars.as_str());
-                    name
-                }
-                None => "Artifact".to_string(),
-            }
-        })
-        .unwrap_or_else(|| "Artifact".to_string());
+        let token_name = extract_named_card_name(&words, lower.as_str())
+            .or_else(|| {
+                find_index(words.as_slice(), |word| {
+                    !matches!(
+                        *word,
+                        "artifact"
+                            | "token"
+                            | "tokens"
+                            | "named"
+                            | "colorless"
+                            | "white"
+                            | "blue"
+                            | "black"
+                            | "red"
+                            | "green"
+                    )
+                })
+                .map(|idx| {
+                    let mut chars = words[idx].chars();
+                    match chars.next() {
+                        Some(first) => {
+                            let mut name = first.to_uppercase().to_string();
+                            name.push_str(chars.as_str());
+                            name
+                        }
+                        None => "Artifact".to_string(),
+                    }
+                })
+            })
+            .unwrap_or_else(|| "Artifact".to_string());
         let mut builder = CardDefinitionBuilder::new(CardId::new(), token_name)
             .token()
             .card_types(vec![CardType::Artifact]);
@@ -10884,7 +10923,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
                 ObjectFilter::source(),
             )));
         }
-        if let Some(rules_text) = parse_equipment_rules_text(&words)
+        if let Some(rules_text) = parse_equipment_rules_text(&words, name)
             && let Ok(def) = builder.clone().parse_text(&rules_text)
         {
             return Some(def);
@@ -11680,6 +11719,180 @@ mod parse_compile_tests {
         assert_eq!(deal_damage.target, ChooseSpec::Iterated);
     }
 
+    #[test]
+    fn parse_text_gargoyle_sentinel_keeps_the_activation_on_self() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Gargoyle Sentinel")
+            .parse_text(
+                "Mana cost: {3}\n\
+                 Type: Artifact Creature — Gargoyle\n\
+                 Power/Toughness: 3/3\n\
+                 Defender (This creature can't attack.)\n\
+                 {3}: Until end of turn, this creature loses defender and gains flying.",
+            )
+            .expect("Gargoyle Sentinel text should parse");
+
+        let rendered = crate::compiled_text::compiled_lines(&def)
+            .join(" ")
+            .to_ascii_lowercase();
+        assert!(
+            rendered.contains("this creature loses defender and gains flying"),
+            "expected a self-targeted temporary activation, got {rendered}"
+        );
+        assert!(
+            !rendered.contains("creatures lose defender"),
+            "expected the activation to stay on the sentinel itself, got {rendered}"
+        );
+
+        let activated = def
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Activated(activated) => Some(activated),
+                _ => None,
+            })
+            .expect("expected Gargoyle Sentinel to have an activated ability");
+        let apply_effects = activated
+            .effects
+            .segments
+            .iter()
+            .flat_map(|segment| segment.default_effects.iter())
+            .filter_map(|effect| effect.downcast_ref::<crate::effects::ApplyContinuousEffect>())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            apply_effects.len(),
+            2,
+            "expected the lowered activation to produce exactly two source-scoped continuous effects"
+        );
+        assert!(
+            apply_effects.iter().all(|apply| {
+                matches!(apply.target_spec, Some(crate::target::ChooseSpec::Source))
+                    && matches!(apply.until, crate::effect::Until::EndOfTurn)
+            }),
+            "expected the lowered activated ability to stay source-targeted until end of turn, got {apply_effects:#?}"
+        );
+
+        let debug = format!("{def:?}");
+        assert!(
+            !debug.contains("GrantAbilitiesAll") && !debug.contains("RemoveAbilitiesAll"),
+            "expected no broad battlefield-wide ability changes in the lowered definition, got {debug}"
+        );
+    }
+
+    #[test]
+    fn parse_equipment_rules_text_keeps_single_quoted_activated_grant() {
+        let words = [
+            "colorless",
+            "equipment",
+            "artifact",
+            "token",
+            "named",
+            "rock",
+            "with",
+            "equipped",
+            "creature",
+            "has",
+            "sacrifice",
+            "rock",
+            "this",
+            "creature",
+            "deals",
+            "2",
+            "damage",
+            "to",
+            "any",
+            "target",
+            "and",
+            "equip",
+            "1",
+        ];
+        let source_text = "Colorless Equipment artifact token named Rock with \"Equipped creature has '{1}, {T}, Sacrifice Rock: This creature deals 2 damage to any target'\" and equip {1}.";
+
+        let rules_text =
+            parse_equipment_rules_text(&words, source_text).expect("equipment rules text");
+
+        assert!(
+            rules_text.contains("Equipped creature has \"{1}, {T}, Sacrifice Rock: This creature deals 2 damage to any target.\"")
+                && rules_text.contains("Equip {1}"),
+            "expected quoted activated ability plus equip line, got {rules_text}"
+        );
+    }
+
+    #[test]
+    fn equipment_token_rules_text_reparses_into_grant_and_equip() {
+        let words = [
+            "colorless",
+            "equipment",
+            "artifact",
+            "token",
+            "named",
+            "rock",
+            "with",
+            "equipped",
+            "creature",
+            "has",
+            "sacrifice",
+            "rock",
+            "this",
+            "creature",
+            "deals",
+            "2",
+            "damage",
+            "to",
+            "any",
+            "target",
+            "and",
+            "equip",
+            "1",
+        ];
+        let source_text = "colorless Equipment artifact token named Rock with \"Equipped creature has '{1}, {T}, Sacrifice Rock: This creature deals 2 damage to any target'\" and equip {1}.";
+        let rules_text =
+            parse_equipment_rules_text(&words, source_text).expect("equipment rules text");
+
+        let def = CardDefinitionBuilder::new(CardId::new(), "Rock")
+            .token()
+            .card_types(vec![CardType::Artifact])
+            .subtypes(vec![Subtype::Equipment])
+            .with_ability(Ability::static_ability(StaticAbility::make_colorless(
+                ObjectFilter::source(),
+            )))
+            .parse_text(&rules_text)
+            .expect("equipment token rules text should parse");
+
+        let activated_texts = def
+            .abilities
+            .iter()
+            .filter_map(|ability| match &ability.kind {
+                AbilityKind::Activated(_) => ability.text.as_deref(),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert!(
+            activated_texts.iter().any(|text| *text == "Equip {1}"),
+            "expected reparsed equipment token to keep equip, got {activated_texts:?}"
+        );
+        assert!(
+            format!("{def:?}").contains("Equipped creature has"),
+            "expected reparsed equipment token to keep the granted ability, got {def:#?}"
+        );
+    }
+
+    #[test]
+    fn resolve_target_spec_treats_source_object_filters_as_source() {
+        let target = TargetAst::Object(ObjectFilter::source(), None, None);
+        let (spec, choices) = resolve_target_spec_with_choices(&target, &ReferenceEnv::default())
+            .expect("source object target should resolve cleanly");
+
+        assert_eq!(
+            spec,
+            ChooseSpec::Source,
+            "source object filters should resolve to the source choose spec"
+        );
+        assert!(
+            choices.is_empty(),
+            "self-targeted object filters should not create extra target choices"
+        );
+    }
+
     fn test_ctx(line: &str) -> NormalizedLine {
         NormalizedLine {
             original: line.to_string(),
@@ -11833,6 +12046,61 @@ mod parse_compile_tests {
             .iter()
             .find_map(|effect| effect.downcast_ref::<GrantPlayTaggedEffect>())
             .expect("grant-play-tagged effect");
+        assert_eq!(grant.tag.as_str(), "destroyed_0");
+        assert_eq!(frame_out.last_object_tag.as_deref(), Some("destroyed_0"));
+    }
+
+    #[test]
+    fn compile_may_branch_preserves_auto_tagged_destroy_followup() {
+        let effects = vec![
+            EffectAst::May {
+                effects: vec![EffectAst::Destroy {
+                    target: TargetAst::WithCount(
+                        Box::new(TargetAst::Object(
+                            ObjectFilter::creature(),
+                            Some(TextSpan::synthetic()),
+                            None,
+                        )),
+                        ChoiceCount::up_to(3),
+                    ),
+                }],
+            },
+            EffectAst::GrantPlayTaggedUntilEndOfTurn {
+                tag: TagKey::from(IT_TAG),
+                player: PlayerAst::You,
+                allow_land: false,
+                without_paying_mana_cost: false,
+                allow_any_color_for_cast: false,
+            },
+        ];
+
+        let (compiled, _, frame_out) = compile_effects_with_explicit_frame(
+            &effects,
+            &mut IdGenContext::default(),
+            LoweringFrame::default(),
+        )
+        .expect("compile may branch with tagged follow-up");
+
+        let may = compiled[0]
+            .downcast_ref::<crate::effects::MayEffect>()
+            .expect("expected may effect");
+        let tagged = may.effects[0]
+            .downcast_ref::<TaggedEffect>()
+            .expect("destroy inside may should stay tagged for follow-up linkage");
+        let destroy = tagged
+            .effect
+            .downcast_ref::<crate::effects::DestroyEffect>()
+            .expect("expected tagged destroy effect");
+        assert_eq!(tagged.tag.as_str(), "destroyed_0");
+        assert_eq!(
+            destroy.spec,
+            ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature()))
+                .with_count(ChoiceCount::up_to(3))
+        );
+
+        let grant = compiled[1]
+            .downcast_ref::<GrantPlayTaggedEffect>()
+            .expect("grant-play-tagged follow-up");
         assert_eq!(grant.tag.as_str(), "destroyed_0");
         assert_eq!(frame_out.last_object_tag.as_deref(), Some("destroyed_0"));
     }

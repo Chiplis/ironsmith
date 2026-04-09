@@ -7,6 +7,21 @@ use crate::target::PlayerFilter;
 use crate::triggers::TriggerEvent;
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
 
+fn is_plain_other_card_filter(filter: &ObjectFilter) -> bool {
+    filter.other
+        && !filter.source
+        && filter.zone.is_none()
+        && filter.card_types.is_empty()
+        && filter.all_card_types.is_empty()
+        && filter.subtypes.is_empty()
+        && filter.supertypes.is_empty()
+        && filter.excluded_card_types.is_empty()
+        && filter.excluded_subtypes.is_empty()
+        && filter.excluded_supertypes.is_empty()
+        && filter.name.is_none()
+        && filter.excluded_name.is_none()
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct KeywordActionTrigger {
     pub action: KeywordActionKind,
@@ -102,6 +117,17 @@ impl TriggerMatcher for KeywordActionTrigger {
                 PlayerFilter::Opponent => "Whenever an opponent cycles this card".to_string(),
                 PlayerFilter::Any => "Whenever a player cycles this card".to_string(),
                 _ => "Whenever a player cycles this card".to_string(),
+            };
+        }
+        if self.action == KeywordActionKind::Cycle
+            && let Some(source_filter) = &self.source_filter
+            && is_plain_other_card_filter(source_filter)
+        {
+            return match &self.player {
+                PlayerFilter::You => "Whenever you cycle another card".to_string(),
+                PlayerFilter::Opponent => "Whenever an opponent cycles another card".to_string(),
+                PlayerFilter::Any => "Whenever a player cycles another card".to_string(),
+                _ => "Whenever a player cycles another card".to_string(),
             };
         }
         if self.action == KeywordActionKind::Vote && self.player == PlayerFilter::Any {
@@ -225,6 +251,53 @@ mod tests {
             KeywordActionTrigger::from_source(KeywordActionKind::Cycle, PlayerFilter::You);
         let ctx = TriggerContext::for_source(source_id, alice, &game);
         assert!(trigger.matches(&event, &ctx));
+    }
+
+    #[test]
+    fn keyword_action_trigger_matches_another_cycled_card_and_excludes_source() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let source_card = crate::card::CardBuilder::new(crate::ids::CardId::from_raw(1), "Source")
+            .card_types(vec![crate::types::CardType::Creature])
+            .build();
+        let source_id =
+            game.create_object_from_card(&source_card, alice, crate::zone::Zone::Battlefield);
+
+        let other_card = crate::card::CardBuilder::new(crate::ids::CardId::from_raw(2), "Cycler")
+            .card_types(vec![crate::types::CardType::Creature])
+            .build();
+        let other_id =
+            game.create_object_from_card(&other_card, alice, crate::zone::Zone::Graveyard);
+
+        let trigger = KeywordActionTrigger::matching_object(
+            KeywordActionKind::Cycle,
+            PlayerFilter::You,
+            ObjectFilter::default().other(),
+        );
+        let ctx = TriggerContext::for_source(source_id, alice, &game);
+
+        let other_event = TriggerEvent::new_with_provenance(
+            KeywordActionEvent::new(KeywordActionKind::Cycle, alice, other_id, 1),
+            crate::provenance::ProvNodeId::default(),
+        );
+        assert!(trigger.matches(&other_event, &ctx));
+
+        let source_event = TriggerEvent::new_with_provenance(
+            KeywordActionEvent::new(KeywordActionKind::Cycle, alice, source_id, 1),
+            crate::provenance::ProvNodeId::default(),
+        );
+        assert!(!trigger.matches(&source_event, &ctx));
+    }
+
+    #[test]
+    fn keyword_action_cycle_another_card_display_phrase() {
+        let trigger = KeywordActionTrigger::matching_object(
+            KeywordActionKind::Cycle,
+            PlayerFilter::You,
+            ObjectFilter::default().other(),
+        );
+        assert_eq!(trigger.display(), "Whenever you cycle another card");
     }
 
     #[test]

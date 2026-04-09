@@ -2314,11 +2314,8 @@ fn rewrite_etb_where_x_aggregate_filter_routes_and_split_through_grammar_separat
 
 #[test]
 fn rewrite_etb_where_x_total_power_of_sacrificed_creatures_uses_the_sacrifice_reference() {
-    let tokens = lex_line(
-        "where x is the total power of the sacrificed creatures",
-        0,
-    )
-    .expect("rewrite lexer should classify sacrificed aggregate clause");
+    let tokens = lex_line("where x is the total power of the sacrificed creatures", 0)
+        .expect("rewrite lexer should classify sacrificed aggregate clause");
 
     let parsed = super::keyword_static::parse_where_x_is_aggregate_filter_value(&tokens)
         .expect("sacrificed aggregate clause should parse");
@@ -2326,8 +2323,7 @@ fn rewrite_etb_where_x_total_power_of_sacrificed_creatures_uses_the_sacrifice_re
 
     assert!(debug.contains("TotalPower"), "{debug}");
     assert!(
-        debug.contains("tag: TagKey(\"__it__\")")
-            || debug.contains("tag: TagKey(\"sacrificed"),
+        debug.contains("tag: TagKey(\"__it__\")") || debug.contains("tag: TagKey(\"sacrificed"),
         "expected sacrificed creatures to stay tied to a tag, got {debug}"
     );
     assert!(
@@ -6942,6 +6938,26 @@ fn rewrite_lowered_supports_adamant_spent_to_cast_statement_line() -> Result<(),
 }
 
 #[test]
+fn rewrite_lexed_effect_sentence_supports_spent_to_cast_followup_on_that_permanent() {
+    let text = "Tap target artifact or creature an opponent controls. If {S} was spent to cast this spell, that permanent doesn't untap during its controller's next untap step.";
+    let lexed = lex_line(text, 0)
+        .expect("rewrite lexer should classify Berg Strider-style effect sequence");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed)
+        .expect("Berg Strider-style effect sequence should parse");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("Tap"), "{debug}");
+    assert!(debug.contains("Conditional"), "{debug}");
+    assert!(debug.contains("ManaSpentToCastThisSpellAtLeast"), "{debug}");
+    assert!(debug.contains("Untap"), "{debug}");
+    assert!(
+        debug.contains("Artifact") && debug.contains("Creature"),
+        "{debug}"
+    );
+}
+
+#[test]
 fn rewrite_lexed_effect_sentence_supports_radiance_shared_color_fanout() {
     let text = "Radiance — Target creature and each other creature that shares a color with it gain haste until end of turn.";
     let lexed =
@@ -7881,6 +7897,119 @@ fn rewrite_semantic_parse_keeps_nested_combat_whenever_trigger() -> Result<(), C
 }
 
 #[test]
+fn rewrite_semantic_parse_keeps_toggo_rock_token_rules_tail() -> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Toggo, Goblin Weaponsmith")
+        .card_types(vec![CardType::Creature]);
+    let (doc, _) = parse_text_to_semantic_document(
+        builder,
+        "Landfall — Whenever a land you control enters, create a colorless Equipment artifact token named Rock with \"Equipped creature has '{1}, {T}, Sacrifice Rock: This creature deals 2 damage to any target'\" and equip {1}.".to_string(),
+        false,
+    )?;
+
+    let expect_toggo_token_name = |effects: &[crate::cards::builders::EffectAst]| match effects {
+        [crate::cards::builders::EffectAst::CreateTokenWithMods { name, .. }] => {
+            let lower_name = name.to_ascii_lowercase();
+            assert!(
+                lower_name.contains("named rock"),
+                "expected named rock token payload, got {name}"
+            );
+            assert!(
+                lower_name.contains("equipped creature has"),
+                "expected equipment grant rules tail, got {name}"
+            );
+            assert!(
+                lower_name.contains("equip {1}"),
+                "expected equip text in token payload, got {name}"
+            );
+
+            let words: Vec<&str> = lower_name
+                .split_whitespace()
+                .map(|word| {
+                    word.trim_matches(|ch: char| {
+                        !ch.is_ascii_alphanumeric() && ch != '/' && ch != '+' && ch != '-'
+                    })
+                })
+                .map(|word| match word {
+                    "can't" | "cannot" => "cant",
+                    "aren't" => "arent",
+                    "isn't" => "isnt",
+                    "they're" => "theyre",
+                    "it's" => "its",
+                    "you're" => "youre",
+                    _ => word,
+                })
+                .filter(|word| !word.is_empty())
+                .collect();
+            let rules_text = super::compile_support::parse_equipment_rules_text(&words, name)
+                .expect("toggo token payload should yield equipment rules text");
+            let manual_def = CardDefinitionBuilder::new(CardId::new(), "Rock")
+                    .token()
+                    .card_types(vec![CardType::Artifact])
+                    .subtypes(vec![Subtype::Equipment])
+                    .with_ability(crate::ability::Ability::static_ability(
+                        crate::static_abilities::StaticAbility::make_colorless(
+                            crate::target::ObjectFilter::source(),
+                        ),
+                    ))
+                    .parse_text(&rules_text)
+                    .unwrap_or_else(|err| {
+                        panic!(
+                            "toggo equipment rules text should parse: {err:?}\nname={name}\nrules_text={rules_text}"
+                        )
+                    });
+            let manual_activated_texts = manual_def
+                .abilities
+                .iter()
+                .filter_map(|ability| match &ability.kind {
+                    crate::ability::AbilityKind::Activated(_) => ability.text.as_deref(),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            assert!(
+                manual_activated_texts
+                    .iter()
+                    .any(|text| *text == "Equip {1}"),
+                "expected manual token reparse to keep equip, got {manual_activated_texts:?}"
+            );
+
+            let def = super::compile_support::token_definition_for(name)
+                .expect("toggo token payload should round-trip into a token definition");
+            let activated_texts = def
+                .abilities
+                .iter()
+                .filter_map(|ability| match &ability.kind {
+                    crate::ability::AbilityKind::Activated(_) => ability.text.as_deref(),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            assert!(
+                activated_texts.iter().any(|text| *text == "Equip {1}"),
+                "expected round-tripped token to keep equip, got {activated_texts:?}"
+            );
+        }
+        other => panic!("expected a single token creation effect, got {other:?}"),
+    };
+
+    match doc.items.as_slice() {
+        [RewriteSemanticItem::Triggered(triggered)] => match &triggered.parsed {
+            crate::cards::builders::LineAst::Triggered { effects, .. } => {
+                expect_toggo_token_name(effects);
+            }
+            crate::cards::builders::LineAst::Ability(parsed) => {
+                let Some(effects) = parsed.effects_ast.as_ref() else {
+                    panic!("expected landfall ability to keep parsed effects ast");
+                };
+                expect_toggo_token_name(effects);
+            }
+            other => panic!("expected triggered line ast, got {other:?}"),
+        },
+        other => panic!("expected one triggered semantic item, got {other:?}"),
+    }
+
+    Ok(())
+}
+
+#[test]
 fn rewrite_semantic_parse_keeps_trigger_trigger_caps_and_first_time_suffixes()
 -> Result<(), CardTextError> {
     let (capped_doc, _) = parse_text_to_semantic_document(
@@ -8052,6 +8181,33 @@ fn rewrite_lowered_former_section9_cases_parse_without_fallback_text() -> Result
     assert!(failures.is_empty(), "{}", failures.join("\n\n"));
 
     Ok(())
+}
+
+#[test]
+fn parse_subject_first_exile_top_library_then_play_permission_bundle() {
+    let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Bundle Probe")
+        .card_types(vec![CardType::Sorcery]);
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "Target player exiles the top two cards of their library. Until end of turn, you may play those cards without paying their mana costs."
+            .to_string(),
+        false,
+    )
+    .expect("the Fallen Shinobi style bundle should lower cleanly");
+    let debug = format!("{:#?}", definition.spell_effect).to_ascii_lowercase();
+
+    assert!(
+        debug.contains("exiletopoflibraryeffect"),
+        "expected top-library exile in the bundle, got {debug}"
+    );
+    assert!(
+        debug.contains("grantplaytaggedeffect"),
+        "expected play-from-exile permission in the bundle, got {debug}"
+    );
+    assert!(
+        debug.contains("granttaggedspellfreecastuntilendofturneffect"),
+        "expected free-cast permission in the bundle, got {debug}"
+    );
 }
 
 #[test]
@@ -8263,6 +8419,9 @@ fn rewrite_lexed_triggered_line_keeps_unique_life_leader_intervening_if() {
 
     assert!(debug.contains("BeginningOfUpkeep"), "{debug}");
     assert!(debug.contains("Conditional"), "{debug}");
-    assert!(debug.contains("PlayerHasMoreLifeThanEachOtherPlayer"), "{debug}");
+    assert!(
+        debug.contains("PlayerHasMoreLifeThanEachOtherPlayer"),
+        "{debug}"
+    );
     assert!(debug.contains("MostLifeTied"), "{debug}");
 }

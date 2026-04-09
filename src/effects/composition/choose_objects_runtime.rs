@@ -705,18 +705,22 @@ pub(crate) fn run_choose_objects(
     } else {
         effect.description.to_string()
     };
-    let chosen: Vec<ObjectId> =
-        if !effect.is_search && should_auto_choose_single_candidate(&candidates, min, max) {
-            candidates.clone()
-        } else {
-            let mut spec =
-                ChooseObjectsSpec::new(ctx.source, description, candidates.clone(), min, Some(max));
-            if allow_hidden_partial {
-                spec = spec.allow_partial_completion();
-            }
-            make_decision(game, ctx.decision_maker, chooser_id, Some(ctx.source), spec)
-        };
-    if ctx.decision_maker.awaiting_choice() {
+    let chosen: Vec<ObjectId> = if effect.count.is_random() {
+        let mut randomized = candidates.clone();
+        game.shuffle_slice(&mut randomized);
+        randomized.truncate(max);
+        randomized
+    } else if !effect.is_search && should_auto_choose_single_candidate(&candidates, min, max) {
+        candidates.clone()
+    } else {
+        let mut spec =
+            ChooseObjectsSpec::new(ctx.source, description, candidates.clone(), min, Some(max));
+        if allow_hidden_partial {
+            spec = spec.allow_partial_completion();
+        }
+        make_decision(game, ctx.decision_maker, chooser_id, Some(ctx.source), spec)
+    };
+    if !effect.count.is_random() && ctx.decision_maker.awaiting_choice() {
         ctx.clear_object_tag(effect.tag.as_str());
         let outcome = EffectOutcome::count(0);
         return Ok(if let Some(search_event) = search_event {

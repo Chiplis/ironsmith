@@ -1656,6 +1656,9 @@ pub struct GameState {
     /// Whether the cached static-ability continuous effects snapshot may be stale.
     continuous_state_dirty: Cell<bool>,
 
+    /// Continuous-effect revision captured when the derived continuous state was last refreshed.
+    continuous_state_revision: Cell<u64>,
+
     /// Final calculated characteristics for the current clean continuous-effects state.
     calculated_characteristics_cache: RefCell<HashMap<ObjectId, Option<CalculatedCharacteristics>>>,
 
@@ -1764,6 +1767,7 @@ impl GameState {
             random_state: Cell::new(Self::normalize_random_seed(0)),
             irreversible_random_count: Cell::new(0),
             continuous_state_dirty: Cell::new(true),
+            continuous_state_revision: Cell::new(0),
             calculated_characteristics_cache: RefCell::new(HashMap::new()),
             calculated_characteristics_cache_revision: Cell::new(0),
         }
@@ -1795,10 +1799,13 @@ impl GameState {
 
     fn mark_continuous_state_clean(&self) {
         self.continuous_state_dirty.set(false);
+        self.continuous_state_revision
+            .set(self.continuous_effects.revision());
     }
 
     pub(crate) fn continuous_state_is_clean(&self) -> bool {
         !self.continuous_state_dirty.get()
+            && self.continuous_state_revision.get() == self.continuous_effects.revision()
     }
 
     /// Set the deterministic RNG seed for this match.
@@ -4105,36 +4112,54 @@ impl GameState {
             player.land_plays_per_turn = 1;
         }
 
-        // First, collect static abilities from objects in zones where they function
-        // (currently battlefield and stack).
+        // First, collect static abilities from objects in zones where they function.
+        // Battlefield abilities must come from calculated characteristics so
+        // temporary grants/removals like "loses defender until end of turn" are
+        // reflected in restriction tracking.
         // We collect first to avoid borrow conflicts while applying restrictions.
+        let all_effects = self.all_continuous_effects();
         let abilities_to_apply: Vec<(StaticAbility, ObjectId, PlayerId)> = self
             .objects
             .iter()
             .filter_map(|(&object_id, object)| {
                 let zone = object.zone;
-                if zone != Zone::Battlefield && zone != Zone::Stack {
-                    return None;
-                }
-
                 let controller = object.controller;
-                Some(
-                    object
-                        .abilities
-                        .iter()
-                        .filter_map(|ability| {
-                            if let AbilityKind::Static(static_ability) = &ability.kind {
-                                if ability.functions_in(&zone) {
-                                    Some((static_ability.clone(), object_id, controller))
+                match zone {
+                    Zone::Battlefield => Some(
+                        self.calculated_characteristics_with_effects(object_id, &all_effects)
+                            .map(|chars| {
+                                chars
+                                    .static_abilities
+                                    .into_iter()
+                                    .filter(|static_ability| {
+                                        static_ability.is_active(self, object_id)
+                                    })
+                                    .map(|static_ability| (static_ability, object_id, controller))
+                                    .collect::<Vec<_>>()
+                            })
+                            .unwrap_or_default(),
+                    ),
+                    Zone::Stack => Some(
+                        object
+                            .abilities
+                            .iter()
+                            .filter_map(|ability| {
+                                if let AbilityKind::Static(static_ability) = &ability.kind {
+                                    if ability.functions_in(&zone)
+                                        && static_ability.is_active(self, object_id)
+                                    {
+                                        Some((static_ability.clone(), object_id, controller))
+                                    } else {
+                                        None
+                                    }
                                 } else {
                                     None
                                 }
-                            } else {
-                                None
-                            }
-                        })
-                        .collect::<Vec<_>>(),
-                )
+                            })
+                            .collect::<Vec<_>>(),
+                    ),
+                    _ => None,
+                }
             })
             .flatten()
             .collect();

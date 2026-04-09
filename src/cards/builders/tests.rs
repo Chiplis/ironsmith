@@ -5229,6 +5229,63 @@ fn test_parse_return_cards_at_random_from_graveyard_to_hand() {
 }
 
 #[test]
+fn test_parse_ignite_memories_keeps_random_hand_reveal_and_damage_link() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Ignite Memories")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Target player reveals a card at random from their hand. Ignite Memories deals damage to that player equal to that card's mana value.",
+        )
+        .expect("Ignite Memories should parse");
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("ChooseObjectsEffect")
+            && debug.contains("random: true")
+            && debug.contains("zone: Some(Hand)")
+            && debug.contains("RevealTaggedEffect")
+            && debug.contains("DealDamageEffect")
+            && debug.contains("ManaValueOf"),
+        "expected random hand selection, reveal, and mana-value damage linkage, got {debug}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("target player reveals a card at random from their hand")
+            && rendered.contains("deal damage to that player equal to that card's mana value")
+            && !rendered.contains("choose exactly 1 at random")
+            && !rendered.contains("tags it as"),
+        "expected Ignite Memories compiled text to use the cleaner random hand reveal wording, got {rendered}"
+    );
+}
+
+#[test]
+fn test_parse_merfolk_spy_keeps_random_hand_reveal_surface() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Merfolk Spy")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Merfolk, Subtype::Rogue])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .parse_text(
+            "Islandwalk (This creature can't be blocked as long as defending player controls an Island.)\nWhenever this creature deals combat damage to a player, that player reveals a card at random from their hand.",
+        )
+        .expect("Merfolk Spy should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("that player reveals a card at random from their hand"),
+        "expected Merfolk Spy to render the random hand reveal surface cleanly, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("choose exactly 1 at random"),
+        "expected Merfolk Spy to avoid the raw choose-and-tag surface, got {rendered}"
+    );
+}
+
+#[test]
 fn test_parse_one_word_verb_card_name_does_not_break_clause_parsing() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Regenerate")
         .card_types(vec![CardType::Instant])
@@ -7558,6 +7615,43 @@ fn test_parse_cycle_this_card_trigger_compiles() {
 }
 
 #[test]
+fn parse_valiant_rescuer_keeps_another_card_cycle_trigger() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Valiant Rescuer")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Soldier])
+        .power_toughness(PowerToughness::fixed(3, 1))
+        .parse_text(
+            "Whenever you cycle another card for the first time each turn, create a 1/1 white Human Soldier creature token.\nCycling {2} ({2}, Discard this card: Draw a card.)",
+        )
+        .expect("Valiant Rescuer should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Whenever you cycle another card") && rendered.contains("Cycling {2}"),
+        "expected another-card cycling trigger to survive rendering, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def.abilities);
+    let has_once_each_turn_cap = def.abilities.iter().any(|ability| {
+        matches!(
+            &ability.kind,
+            AbilityKind::Triggered(triggered)
+                if triggered.intervening_if == Some(crate::ConditionExpr::MaxTimesEachTurn(1))
+        )
+    });
+    assert!(
+        debug.contains("source_filter: Some")
+            && debug.contains("other: true")
+            && has_once_each_turn_cap,
+        "expected reusable another-card cycle trigger lowering, got {debug}"
+    );
+}
+
+#[test]
 fn test_commander_recursion_trigger_uses_graveyard_zone_and_commander_filter() {
     use crate::zone::Zone;
 
@@ -7913,6 +8007,37 @@ fn parse_flashback_cost_modifiers_render_with_controller_scope() {
         rendered.contains("unsupported activation cost segment"),
         "expected explicit unsupported flashback cost-modifier error, got {rendered}"
     );
+}
+
+#[test]
+fn parse_dash_cost_modifier_line_renders_with_controller_scope() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Warbringer Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Dash costs you pay cost {2} less (as long as this creature is on the battlefield).\nDash {2}{R}",
+        )
+        .expect("dash cost-modifier line should parse");
+
+    let rendered = compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Dash costs you pay cost {2} less"),
+        "expected dash cost-modifier wording in render output, got {rendered}"
+    );
+
+    let reduction = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => static_ability.cost_reduction(),
+            _ => None,
+        })
+        .expect("expected dash cost reduction static ability");
+
+    assert_eq!(
+        reduction.filter.alternative_cast,
+        Some(crate::filter::AlternativeCastKind::Dash)
+    );
+    assert_eq!(reduction.filter.cast_by, Some(PlayerFilter::You));
 }
 
 #[test]
@@ -12324,6 +12449,34 @@ fn render_giver_of_runes_compacts_colorless_or_color_choice_text() {
             "gains protection from colorless or from the color of your choice until end of turn"
         ),
         "expected compact colorless-or-color protection rendering, got {joined}"
+    );
+}
+
+#[test]
+fn render_root_greevil_compacts_destroy_color_choice_text() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Root Greevil Variant")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![crate::types::Subtype::Beast])
+        .power_toughness(PowerToughness::fixed(2, 3))
+        .parse_text(
+            "{2}{G}, {T}, Sacrifice this creature: Destroy all enchantments of the color of your choice.",
+        )
+        .expect("root greevil text should parse");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("ChooseModeEffect") && debug.matches("DestroyEffect").count() == 5,
+        "expected five-color modal lowering, got {debug}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Destroy all enchantments of the color of your choice"),
+        "expected compact color-choice rendering, got {rendered}"
     );
 }
 
@@ -16790,6 +16943,59 @@ fn render_rain_of_daggers_uses_destroyed_this_way_life_loss_clause() {
 }
 
 #[test]
+fn parse_terastodon_keeps_destroy_and_graveyard_loop() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Terastodon Variant")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(6)],
+            vec![ManaSymbol::Green],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elephant])
+        .power_toughness(PowerToughness::fixed(9, 9))
+        .parse_text(
+            "When this creature enters, you may destroy up to three target noncreature permanents. For each permanent put into a graveyard this way, its controller creates a 3/3 green Elephant creature token.",
+        )
+        .expect("Terastodon should parse");
+
+    let ability_debug = format!("{:#?}", def.abilities);
+    let ability_debug_compact = ability_debug
+        .chars()
+        .filter(|ch| !ch.is_whitespace())
+        .collect::<String>();
+    assert!(
+        ability_debug.contains("Destroy"),
+        "expected Terastodon to keep the destroy effect, got {ability_debug}"
+    );
+    assert!(
+        ability_debug.contains("TaggedEffect"),
+        "expected Terastodon destroy clause to keep tagged follow-up linkage, got {ability_debug}"
+    );
+    assert!(
+        ability_debug.contains("ForEachTaggedEffect"),
+        "expected Terastodon to lower the graveyard follow-up to a tagged loop, got {ability_debug}"
+    );
+    assert!(
+        !ability_debug_compact.contains("ForEachTaggedEffect{tag:TagKey(\"__it__\")"),
+        "expected Terastodon follow-up loop to bind to the destroy tag instead of raw __it__, got {ability_debug}"
+    );
+    assert!(
+        ability_debug.contains("CreateTokenEffect"),
+        "expected Terastodon to create Elephant tokens in the loop, got {ability_debug}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("destroy up to three target noncreature permanents"),
+        "expected Terastodon destroy clause to render, got {rendered}"
+    );
+    assert!(
+        rendered.contains("for each object destroyed this way"),
+        "expected Terastodon graveyard follow-up to render, got {rendered}"
+    );
+}
+
+#[test]
 fn render_artifact_or_tapped_creature_does_not_require_tapped_artifacts() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Radiant Strike Variant")
         .parse_text("Destroy target artifact or tapped creature. You gain 3 life.")
@@ -17657,6 +17863,19 @@ fn parse_mabel_token_preserves_colorless_and_equipment_payload() {
 }
 
 #[test]
+fn parse_toggo_token_preserves_named_rock_and_activated_payload() {
+    let def = parse_oracle_card_definition("Toggo, Goblin Weaponsmith");
+    let rendered = format!("{def:?}").to_ascii_lowercase();
+    assert!(
+        rendered.contains("name: \"rock\"")
+            && rendered.contains("equipped creature has")
+            && rendered.contains("sacrifice rock: this creature deals 2 damage to any target")
+            && rendered.contains("equip {1}"),
+        "expected Toggo's Rock token payload to preserve its named activated ability, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_that_creature_gets_and_gains_uses_single_tagged_target() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Ogre Battledriver Variant")
         .card_types(vec![CardType::Creature])
@@ -17725,9 +17944,17 @@ fn parse_sacrifice_any_number_sentence_keeps_open_count() {
         .expect("sacrifice-any-number clause should parse");
 
     let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let debug = format!("{:?}", def.spell_effect).to_ascii_lowercase();
     assert!(
         rendered.contains("any number"),
         "expected sacrifice count to remain open-ended, got {rendered}"
+    );
+    assert!(
+        debug.contains("choicecount { min: 0, max: none")
+            && debug.contains("sacrificeeffect")
+            && debug.contains("count(objectfilter")
+            && (debug.contains("tagkey(\"sacrificed_") || debug.contains("tagkey(\"__it__\")")),
+        "expected the any-number sacrifice to keep a tagged choose-and-sacrifice chain, got {debug}"
     );
 }
 
@@ -18669,6 +18896,12 @@ fn render_make_an_example_preserves_choose_then_sacrifice_surface() {
         spell_debug.contains("chooseobjectseffect") && spell_debug.contains("sacrificeeffect"),
         "expected Make an Example to lower through the normal choose/sacrifice machinery, got {spell_debug}"
     );
+
+    let canonical = oracle_like_lines(&def).join(" ");
+    assert_eq!(
+        canonical,
+        "Each opponent separates the creatures they control into two piles. For each opponent, you choose one of their piles. Each opponent sacrifices the creatures in their chosen pile. (Piles can be empty.)"
+    );
 }
 
 #[test]
@@ -19156,6 +19389,50 @@ fn parse_exile_top_card_you_may_play_that_card_this_turn() {
 }
 
 #[test]
+fn parse_fallen_shinobi_uses_top_library_exile_and_plural_play_permission() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Fallen Shinobi")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Ninjutsu {2}{U}{B} ({2}{U}{B}, Return an unblocked attacker you control to hand: Put this card onto the battlefield tapped and attacking.)\nWhenever this creature deals combat damage to a player, that player exiles the top two cards of their library. Until end of turn, you may play those cards without paying their mana costs.",
+        )
+        .expect("fallen shinobi should parse");
+
+    let abilities_debug = format!("{:#?}", def.abilities).to_ascii_lowercase();
+    assert!(
+        abilities_debug.contains("exiletopoflibraryeffect"),
+        "expected top-library exile effect in triggered ability, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("grantplaytaggedeffect"),
+        "expected tagged play grant for exiled cards, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("granttaggedspellfreecastuntilendofturneffect"),
+        "expected free-cast grant for the exiled spells, got {abilities_debug}"
+    );
+    assert!(
+        !abilities_debug.contains("casttaggedeffect"),
+        "expected play permission rather than immediate cast, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("thisdealscombatdamagetoplayer")
+            || abilities_debug.contains("thisdealscombatdamagetoplayertrigger"),
+        "expected the trigger to stay player-targeted, got {abilities_debug}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        !rendered.contains("card in that player's library"),
+        "expected the trigger to stay targeted at a player, got {rendered}"
+    );
+    assert!(
+        rendered.contains("play those cards")
+            && rendered.contains("without paying their mana costs"),
+        "expected plural play-from-exile wording in compiled output, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_necropotence_style_face_down_exile_with_delayed_return() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Necropotence Variant")
         .card_types(vec![CardType::Enchantment])
@@ -19354,6 +19631,11 @@ fn parse_allows_that_player_when_trigger_binds_player_context() {
     assert!(
         debug.contains("DiscardEffect"),
         "expected discard effect in triggered ability, got {debug}"
+    );
+    assert!(
+        debug.contains("ThisDealsCombatDamageToPlayer")
+            || debug.contains("ThisDealsCombatDamageToPlayerTrigger"),
+        "expected the trigger to stay player-targeted, got {debug}"
     );
 }
 
@@ -20455,14 +20737,19 @@ fn parse_oracle_curious_herd_targeted_artifact_count_regression() {
 
     let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        rendered.contains(
-            "create a 3/3 green beast creature token for each artifact target opponent controls"
-        ),
+        rendered.contains("choose target opponent")
+            && rendered.contains("create x 3/3 green beast creature tokens")
+            && rendered.contains("number of artifacts that player controls"),
         "expected Curious Herd to preserve the targeted artifact-count token creation, got {rendered}"
     );
     assert!(
-        !rendered.contains("number of tokens you control")
-            && !rendered.contains("create x 3/3 green beast creature tokens"),
+        !rendered.contains(
+            "create a 3/3 green beast creature token for each artifact target opponent controls"
+        ),
+        "expected Curious Herd to avoid the collapsed for-each token wording, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("number of tokens you control"),
         "expected Curious Herd to avoid stale x-token fallback wording, got {rendered}"
     );
 }
@@ -20920,6 +21207,41 @@ fn parse_oracle_biophagus_conditional_mana_bonus_regression() {
 }
 
 #[test]
+fn parse_oracle_berg_strider_etb_snow_rider_regression() {
+    let def = parse_oracle_card_definition("Berg Strider");
+
+    let raw = format!("{def:#?}");
+    assert!(
+        raw.contains("ZoneChangeTrigger") && raw.contains("this_object: true"),
+        "expected Berg Strider to keep an ETB trigger, got {raw}"
+    );
+    assert!(
+        !raw.contains("SpellCastTrigger"),
+        "expected Berg Strider to avoid a spell-cast trigger fallback, got {raw}"
+    );
+    assert!(
+        raw.contains("ManaSpentToCastThisSpellAtLeast"),
+        "expected Berg Strider to keep its snow-mana condition, got {raw}"
+    );
+    assert!(
+        raw.contains("TapEffect") && raw.contains("Untap("),
+        "expected Berg Strider to keep both its tap effect and untap restriction, got {raw}"
+    );
+
+    let rendered = oracle_like_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "When this creature enters, tap target artifact or creature an opponent controls."
+        ),
+        "expected Berg Strider ETB tap clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("If {S} was spent to cast this spell, that permanent doesn't untap during its controller's next untap step."),
+        "expected Berg Strider snow-mana untap rider, got {rendered}"
+    );
+}
+
+#[test]
 fn oracle_render_regression_named_cards_compile_cleanly() {
     let cultivator =
         oracle_like_lines(&parse_oracle_card_definition("Cultivator Colossus")).join("\n");
@@ -21102,9 +21424,9 @@ fn parse_oracle_derevi_command_zone_put_regression() {
     let debug = format!("{:?}", def.abilities).to_ascii_lowercase();
     assert!(
         debug.contains("movetozoneeffect")
-            && debug.contains("zone: some(command)")
+            && debug.contains("functional_zones: [command]")
             && debug.contains("zone: battlefield"),
-        "expected Derevi to keep command-zone source and battlefield destination, got {debug}"
+        "expected Derevi to stay command-zone activatable and move onto the battlefield, got {debug}"
     );
 }
 
@@ -22496,7 +22818,8 @@ fn parse_oracle_creeping_renaissance_permanent_type_choice_regression() {
         "expected permanent-type choice wording, got {rendered}"
     );
     assert!(
-        rendered_lower.contains("return all cards of the chosen type from your graveyard to your hand"),
+        rendered_lower
+            .contains("return all cards of the chosen type from your graveyard to your hand"),
         "expected chosen-type graveyard return wording, got {rendered}"
     );
 
@@ -23633,14 +23956,39 @@ fn render_cranial_ram_keeps_only_x_dynamic() {
 
     let abilities_debug = format!("{:?}", def.abilities);
     assert!(
-        abilities_debug.contains("power: PerCount") && abilities_debug.contains("toughness: Fixed(1)"),
+        abilities_debug.contains("power: PerCount")
+            && abilities_debug.contains("toughness: Fixed(1)"),
         "expected Cranial Ram to keep only power dynamic, got {abilities_debug}"
     );
 
     let joined = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        joined.contains("equipped creature gets +x/+1, where x is the number of artifacts you control")
-            && joined.contains("equip {2}"),
+        joined.contains(
+            "equipped creature gets +x/+1, where x is the number of artifacts you control"
+        ) && joined.contains("equip {2}"),
         "expected Cranial Ram to preserve the mixed X/+1 wording, got {joined}"
+    );
+}
+
+#[test]
+fn render_stunted_growth_keeps_random_hand_reveal_and_top_of_library_link() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Stunted Growth")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Green],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Target player chooses three cards from their hand and puts them on top of their library in any order.",
+        )
+        .expect("Stunted Growth text should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("target player chooses three cards from their hand")
+            && rendered.contains("puts them on top of their library in any order")
+            && !rendered.contains("that object on top of its owner's library"),
+        "expected the Stunted Growth compile surface to stay oracle-like, got {rendered}"
     );
 }

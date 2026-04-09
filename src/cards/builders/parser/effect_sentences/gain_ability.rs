@@ -309,6 +309,25 @@ pub(crate) fn parse_simple_ability_duration(
     None
 }
 
+fn parse_leading_simple_ability_duration(tokens: &[OwnedLexToken]) -> Option<(usize, Until)> {
+    let clause_word_view = GainAbilityWordView::new(tokens);
+    let clause_words = clause_word_view.to_word_refs();
+    if starts_with_until_end_of_turn(&clause_words) {
+        return Some((4, Until::EndOfTurn));
+    }
+    if let Some((prefix, _)) =
+        grammar::words_match_any_prefix(tokens, UNTIL_YOUR_NEXT_TURN_PREFIXES)
+    {
+        return Some((prefix.len(), Until::YourNextTurn));
+    }
+    if let Some((prefix, _)) =
+        grammar::words_match_any_prefix(tokens, UNTIL_YOUR_NEXT_UNTAP_PREFIXES)
+    {
+        return Some((prefix.len(), Until::YourNextTurn));
+    }
+    None
+}
+
 pub(crate) fn parse_simple_gain_ability_clause_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
@@ -334,6 +353,25 @@ fn span_from_lexed_tokens(tokens: &[OwnedLexToken]) -> Option<TextSpan> {
         }),
         _ => None,
     }
+}
+
+fn source_target_from_subject_tokens(tokens: &[OwnedLexToken]) -> Option<TargetAst> {
+    let subject_words = GainAbilityWordView::new(tokens).to_word_refs();
+    for prefix_len in (1..=subject_words.len()).rev() {
+        if !is_source_reference_words(&subject_words[..prefix_len]) {
+            continue;
+        }
+
+        if prefix_len == subject_words.len()
+            || find_verb_lexed(&tokens[prefix_len..]).is_some_and(|(_, verb_idx)| verb_idx == 0)
+        {
+            return Some(TargetAst::Source(span_from_lexed_tokens(
+                &tokens[..prefix_len],
+            )));
+        }
+    }
+
+    None
 }
 
 fn parse_simple_ability_modifier_clause_lexed(
@@ -369,7 +407,18 @@ fn parse_simple_ability_modifier_clause_lexed(
         }
     }
 
-    let subject_tokens = trim_lexed_commas(&tokens[..verb_token_idx]);
+    let leading_duration_phrase = parse_leading_simple_ability_duration(tokens);
+    let subject_start_token_idx = leading_duration_phrase
+        .as_ref()
+        .map(|(start_word_idx, _)| {
+            lexed_token_index_for_word_index(tokens, *start_word_idx).unwrap_or(tokens.len())
+        })
+        .unwrap_or(0);
+    if subject_start_token_idx > verb_token_idx {
+        return Ok(None);
+    }
+
+    let subject_tokens = trim_lexed_commas(&tokens[subject_start_token_idx..verb_token_idx]);
     if subject_tokens.is_empty() && !implied_it_subject {
         return Ok(None);
     }
@@ -399,6 +448,11 @@ fn parse_simple_ability_modifier_clause_lexed(
     let duration = duration_phrase
         .as_ref()
         .map(|(_, _, duration)| duration.clone())
+        .or_else(|| {
+            leading_duration_phrase
+                .as_ref()
+                .map(|(_, duration)| duration.clone())
+        })
         .unwrap_or(Until::Forever);
 
     let ability_end_word_idx = duration_phrase
@@ -436,6 +490,21 @@ fn parse_simple_ability_modifier_clause_lexed(
     if is_pronoun_subject {
         let target =
             TargetAst::Tagged(TagKey::from(IT_TAG), span_from_lexed_tokens(subject_tokens));
+        if losing {
+            return Ok(Some(EffectAst::RemoveAbilitiesFromTarget {
+                target,
+                abilities,
+                duration,
+            }));
+        }
+        return Ok(Some(EffectAst::GrantAbilitiesToTarget {
+            target,
+            abilities,
+            duration,
+        }));
+    }
+
+    if let Some(target) = source_target_from_subject_tokens(&subject_tokens) {
         if losing {
             return Ok(Some(EffectAst::RemoveAbilitiesFromTarget {
                 target,
@@ -535,7 +604,18 @@ pub(crate) fn parse_simple_ability_modifier_clause(
         }
     }
 
-    let subject_tokens = trim_commas(&tokens[..verb_token_idx]);
+    let leading_duration_phrase = parse_leading_simple_ability_duration(tokens);
+    let subject_start_token_idx = leading_duration_phrase
+        .as_ref()
+        .map(|(start_word_idx, _)| {
+            token_index_for_word_index(tokens, *start_word_idx).unwrap_or(tokens.len())
+        })
+        .unwrap_or(0);
+    if subject_start_token_idx > verb_token_idx {
+        return Ok(None);
+    }
+
+    let subject_tokens = trim_commas(&tokens[subject_start_token_idx..verb_token_idx]);
     if subject_tokens.is_empty() && !implied_it_subject {
         return Ok(None);
     }
@@ -565,6 +645,11 @@ pub(crate) fn parse_simple_ability_modifier_clause(
     let duration = duration_phrase
         .as_ref()
         .map(|(_, _, duration)| duration.clone())
+        .or_else(|| {
+            leading_duration_phrase
+                .as_ref()
+                .map(|(_, duration)| duration.clone())
+        })
         .unwrap_or(Until::Forever);
 
     let ability_end_word_idx = duration_phrase
@@ -601,6 +686,21 @@ pub(crate) fn parse_simple_ability_modifier_clause(
         implied_it_subject || matches!(subject_word_refs.as_slice(), ["it"] | ["they"] | ["them"]);
     if is_pronoun_subject {
         let target = TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&subject_tokens));
+        if losing {
+            return Ok(Some(EffectAst::RemoveAbilitiesFromTarget {
+                target,
+                abilities,
+                duration,
+            }));
+        }
+        return Ok(Some(EffectAst::GrantAbilitiesToTarget {
+            target,
+            abilities,
+            duration,
+        }));
+    }
+
+    if let Some(target) = source_target_from_subject_tokens(&subject_tokens) {
         if losing {
             return Ok(Some(EffectAst::RemoveAbilitiesFromTarget {
                 target,
@@ -855,6 +955,42 @@ pub(crate) fn parse_gain_ability_sentence(
     if is_pronoun_subject {
         let span = span_from_tokens(&real_subject_tokens);
         let target = TargetAst::Tagged(TagKey::from(IT_TAG), span);
+        if let Some(become_effect) = &leading_become_effect {
+            effects.push(become_effect.clone());
+        }
+        if let Some((power, toughness, _)) = pump_effect {
+            effects.push(EffectAst::Pump {
+                power,
+                toughness,
+                target: target.clone(),
+                duration: duration.clone(),
+                condition: None,
+            });
+        }
+        if losing {
+            effects.push(EffectAst::RemoveAbilitiesFromTarget {
+                target,
+                abilities,
+                duration,
+            });
+        } else if grant_is_choice {
+            effects.push(EffectAst::GrantAbilitiesChoiceToTarget {
+                target,
+                abilities,
+                duration,
+            });
+        } else {
+            effects.push(EffectAst::GrantAbilitiesToTarget {
+                target,
+                abilities,
+                duration,
+            });
+        }
+        effects = append_gain_ability_trailing_effects(effects, &trailing_tail_tokens)?;
+        return Ok(Some(effects));
+    }
+
+    if let Some(target) = source_target_from_subject_tokens(&real_subject_tokens) {
         if let Some(become_effect) = &leading_become_effect {
             effects.push(become_effect.clone());
         }
@@ -1377,6 +1513,58 @@ mod tests {
             string_contains(&debug, "Landwalk(Subtype { subtype: Forest, snow: false })")
                 && string_contains(&debug, "YourNextTurn"),
             "expected forestwalk grant to keep next-upkeep duration, got {debug}"
+        );
+    }
+
+    #[test]
+    fn source_reference_simple_gain_clause_keeps_leading_duration_and_source_target() {
+        let tokens = tokenize_line("Until end of turn, this creature gains flying.", 0);
+        let effect = parse_simple_gain_ability_clause(&tokens)
+            .expect("source-referenced simple gain clause should parse")
+            .expect("source-referenced simple gain clause should produce an effect");
+
+        let debug = format!("{effect:?}");
+        assert!(
+            string_contains(&debug, "GrantAbilitiesToTarget"),
+            "expected a self-targeted temporary grant effect, got {debug}"
+        );
+        assert!(
+            string_contains(&debug, "Source("),
+            "expected the simple gain clause to stay targeted on the source, got {debug}"
+        );
+        assert!(
+            string_contains(&debug, "EndOfTurn"),
+            "expected the leading duration to survive lowering, got {debug}"
+        );
+        assert!(
+            !string_contains(&debug, "GrantAbilitiesAll"),
+            "expected no broad battlefield-wide grant effect, got {debug}"
+        );
+    }
+
+    #[test]
+    fn source_reference_simple_lose_clause_keeps_leading_duration_and_source_target() {
+        let tokens = tokenize_line("Until end of turn, this creature loses defender.", 0);
+        let effect = parse_simple_lose_ability_clause(&tokens)
+            .expect("source-referenced simple lose clause should parse")
+            .expect("source-referenced simple lose clause should produce an effect");
+
+        let debug = format!("{effect:?}");
+        assert!(
+            string_contains(&debug, "RemoveAbilitiesFromTarget"),
+            "expected a self-targeted temporary removal effect, got {debug}"
+        );
+        assert!(
+            string_contains(&debug, "Source("),
+            "expected the simple lose clause to stay targeted on the source, got {debug}"
+        );
+        assert!(
+            string_contains(&debug, "EndOfTurn"),
+            "expected the leading duration to survive lowering, got {debug}"
+        );
+        assert!(
+            !string_contains(&debug, "RemoveAbilitiesAll"),
+            "expected no broad battlefield-wide removal effect, got {debug}"
         );
     }
 

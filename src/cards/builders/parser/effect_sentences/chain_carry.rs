@@ -24,6 +24,7 @@ use super::super::token_primitives::{
     slice_contains_str as word_slice_contains, slice_starts_with as word_slice_starts_with,
     str_contains as string_contains,
 };
+use super::super::util::is_source_reference_words;
 use super::super::value_helpers::{parse_number_from_lexed, parse_value_from_lexed};
 use super::lex_chain_helpers::{
     find_verb_lexed, has_effect_head_without_verb_lexed, segment_has_effect_head_lexed,
@@ -49,6 +50,14 @@ use crate::zone::Zone;
 
 const EACH_OPPONENT_PREFIXES: &[&[&str]] = &[&["each", "opponent"], &["each", "opponents"]];
 const EACH_PLAYER_PREFIXES: &[&[&str]] = &[&["each", "player"], &["each", "players"]];
+const UNTIL_YOUR_NEXT_TURN_PREFIXES: &[&[&str]] = &[
+    &["until", "your", "next", "turn"],
+    &["until", "your", "next", "upkeep"],
+];
+const UNTIL_YOUR_NEXT_UNTAP_PREFIXES: &[&[&str]] = &[
+    &["until", "your", "next", "untap", "step"],
+    &["during", "your", "next", "untap", "step"],
+];
 
 fn synthetic_lexed_word(word: &str) -> OwnedLexToken {
     OwnedLexToken::word(word, TextSpan::synthetic())
@@ -141,10 +150,9 @@ fn parse_exile_library_then_shuffle_graveyard_chain_lexed(
     }
 
     let graveyard_tail = &clause_words[library_idx + 8..];
-    let Some(graveyard_idx) =
-        graveyard_tail
-            .iter()
-            .position(|word| matches!(*word, "graveyard" | "graveyards"))
+    let Some(graveyard_idx) = graveyard_tail
+        .iter()
+        .position(|word| matches!(*word, "graveyard" | "graveyards"))
     else {
         return Ok(None);
     };
@@ -494,16 +502,19 @@ mod tests {
             "expected exile-all face-down and graveyard shuffle effects, got {debug}"
         );
         assert!(
-            effects
-                .iter()
-                .any(|effect| matches!(effect, EffectAst::ExileAll { face_down: true, .. })),
+            effects.iter().any(|effect| matches!(
+                effect,
+                EffectAst::ExileAll {
+                    face_down: true,
+                    ..
+                }
+            )),
             "expected a face-down exile-all effect in the parsed chain: {debug}"
         );
         assert!(
-            effects.iter().any(|effect| matches!(
-                effect,
-                EffectAst::ShuffleGraveyardIntoLibrary { .. }
-            )),
+            effects
+                .iter()
+                .any(|effect| matches!(effect, EffectAst::ShuffleGraveyardIntoLibrary { .. })),
             "expected a graveyard shuffle effect in the parsed chain: {debug}"
         );
     }
@@ -614,7 +625,15 @@ pub(crate) fn parse_effect_chain_inner_lexed(
     segments = expand_segments_with_multi_create_clauses_lexed(segments);
     let mut carried_context: Option<CarryContext> = None;
     let mut carried_duration: Option<Until> = None;
+    let mut previous_segment: Option<Vec<OwnedLexToken>> = None;
     for segment in segments {
+        let mut segment = segment;
+        if let Some(previous) = &previous_segment
+            && let Some(expanded) = expand_gain_lose_followup_segment_lexed(previous, &segment)
+        {
+            segment = expanded;
+        }
+
         let carry_gain_duration = find_verb_lexed(&segment).is_some_and(|(verb, verb_idx)| {
             verb_idx == 0 && matches!(verb, Verb::Gain | Verb::Lose)
         });
@@ -716,6 +735,7 @@ pub(crate) fn parse_effect_chain_inner_lexed(
             carried_duration = Some(duration);
         }
         effects.push(effect);
+        previous_segment = Some(segment);
     }
     collapse_for_each_player_it_tag_followups(&mut effects);
     collapse_for_each_object_it_tag_followups(&mut effects);
@@ -1284,6 +1304,61 @@ pub(crate) fn expand_missing_verb_segment_lexed(
         }
         _ => None,
     }
+}
+
+fn strip_leading_gain_duration_prefix(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+    let words = token_word_refs(tokens);
+    if crate::cards::builders::parser::util::starts_with_until_end_of_turn(&words) {
+        return trim_lexed_commas(&tokens[4..]);
+    }
+    if let Some((prefix, _)) =
+        grammar::words_match_any_prefix(tokens, UNTIL_YOUR_NEXT_TURN_PREFIXES)
+    {
+        return trim_lexed_commas(&tokens[prefix.len()..]);
+    }
+    if let Some((prefix, _)) =
+        grammar::words_match_any_prefix(tokens, UNTIL_YOUR_NEXT_UNTAP_PREFIXES)
+    {
+        return trim_lexed_commas(&tokens[prefix.len()..]);
+    }
+    trim_lexed_commas(tokens)
+}
+
+fn previous_segment_has_carryable_subject(previous: &[OwnedLexToken]) -> bool {
+    let Some((_, verb_idx)) = find_verb_lexed(previous) else {
+        return false;
+    };
+    if verb_idx == 0 {
+        return false;
+    }
+
+    let prefix = trim_lexed_commas(&previous[..verb_idx]);
+    let subject_tokens = strip_leading_gain_duration_prefix(prefix);
+    if subject_tokens.is_empty() {
+        return false;
+    }
+
+    let subject_words = token_word_refs(subject_tokens);
+    is_source_reference_words(&subject_words) || starts_with_target_indicator(&subject_tokens)
+}
+
+fn expand_gain_lose_followup_segment_lexed(
+    previous: &[OwnedLexToken],
+    segment: &[OwnedLexToken],
+) -> Option<Vec<OwnedLexToken>> {
+    let (verb, verb_idx) = find_verb_lexed(segment)?;
+    if verb_idx != 0 || !matches!(verb, Verb::Gain | Verb::Lose) {
+        return None;
+    }
+    if !previous_segment_has_carryable_subject(previous) {
+        return None;
+    }
+
+    let previous_verb_idx = find_verb_lexed(previous)?.1;
+    let mut expanded = Vec::new();
+    expanded.extend(previous.iter().take(previous_verb_idx).cloned());
+    expanded.extend(segment.iter().cloned());
+    Some(expanded)
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CarryContext {

@@ -1014,20 +1014,6 @@ fn append_graveyard_granted_alternative_cast_actions_for_card(
         let method = &grant.method;
         let requirements = build_requirements_for_method(method);
         let mana_cost = get_mana_cost_for_method(method, card);
-
-        if !can_cast_with_cost_with_view(
-            game,
-            player,
-            card,
-            card_id,
-            mana_cost,
-            None,
-            &requirements,
-            view,
-        ) {
-            continue;
-        }
-
         let casting_method = match method {
             crate::alternative_cast::AlternativeCastingMethod::Escape { exile_count, .. } => {
                 CastingMethod::GrantedEscape {
@@ -1040,6 +1026,20 @@ fn append_graveyard_granted_alternative_cast_actions_for_card(
             }
             _ => continue,
         };
+
+        if !can_cast_with_cost_with_view_for_casting_method(
+            game,
+            player,
+            card,
+            card_id,
+            mana_cost,
+            None,
+            &requirements,
+            &casting_method,
+            view,
+        ) {
+            continue;
+        }
 
         actions.push(LegalAction::CastSpell {
             spell_id: card_id,
@@ -1350,6 +1350,15 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
             Zone::Exile,
             &view,
             exile_has_active_grants,
+        );
+    }
+    if exile_has_active_grants {
+        append_granted_land_play_actions_from_public_zone(
+            game,
+            &mut actions,
+            player,
+            Zone::Exile,
+            &view,
         );
     }
     perf.exile_casts_ms = exile_casts_started_at.elapsed_ms();
@@ -2402,6 +2411,56 @@ pub(crate) fn resolve_play_from_alternative_method(
     granted.get(granted_idx).map(|entry| entry.method.clone())
 }
 
+fn alternative_cast_method_matches_kind(
+    method: &crate::alternative_cast::AlternativeCastingMethod,
+    kind: crate::filter::AlternativeCastKind,
+) -> bool {
+    use crate::alternative_cast::AlternativeCastingMethod;
+    use crate::filter::AlternativeCastKind;
+
+    match (kind, method) {
+        (AlternativeCastKind::Dash, AlternativeCastingMethod::Dash { .. }) => true,
+        (AlternativeCastKind::Flashback, AlternativeCastingMethod::Flashback { .. }) => true,
+        (AlternativeCastKind::JumpStart, AlternativeCastingMethod::JumpStart) => true,
+        (AlternativeCastKind::Escape, AlternativeCastingMethod::Escape { .. }) => true,
+        (AlternativeCastKind::Madness, AlternativeCastingMethod::Madness { .. }) => true,
+        (AlternativeCastKind::Miracle, AlternativeCastingMethod::Miracle { .. }) => true,
+        _ => false,
+    }
+}
+
+fn casting_method_matches_alternative_kind(
+    game: &GameState,
+    caster: PlayerId,
+    spell: &crate::object::Object,
+    casting_method: &CastingMethod,
+    kind: crate::filter::AlternativeCastKind,
+) -> bool {
+    match casting_method {
+        CastingMethod::Alternative(idx) => spell
+            .alternative_casts
+            .get(*idx)
+            .is_some_and(|method| alternative_cast_method_matches_kind(method, kind)),
+        CastingMethod::GrantedEscape { .. } => kind == crate::filter::AlternativeCastKind::Escape,
+        CastingMethod::GrantedFlashback => kind == crate::filter::AlternativeCastKind::Flashback,
+        CastingMethod::PlayFrom {
+            use_alternative: Some(idx),
+            zone,
+            ..
+        } => resolve_play_from_alternative_method(game, caster, spell, *zone, *idx)
+            .as_ref()
+            .is_some_and(|method| alternative_cast_method_matches_kind(method, kind)),
+        CastingMethod::Normal
+        | CastingMethod::FaceDown
+        | CastingMethod::SplitOtherHalf
+        | CastingMethod::Fuse
+        | CastingMethod::PlayFrom {
+            use_alternative: None,
+            ..
+        } => false,
+    }
+}
+
 fn spell_matches_cast_filter(
     game: &GameState,
     spell: &crate::object::Object,
@@ -3065,7 +3124,14 @@ fn can_cast_spell_with_context(
         } else if ctx
             .spell_cost_needs_adjustment(spell_has_intrinsic_cost_adjustments(spell_for_checks))
         {
-            calculate_effective_mana_cost_with_view(game, player, spell_for_checks, base_cost, view)
+            calculate_effective_mana_cost_with_view_for_casting_method(
+                game,
+                player,
+                spell_for_checks,
+                base_cost,
+                casting_method,
+                view,
+            )
         } else {
             apply_minimum_spell_total_mana(
                 game,
@@ -3155,6 +3221,30 @@ fn can_cast_with_cost_with_view(
     requirements: &AdditionalCastRequirements,
     view: &DerivedGameView<'_>,
 ) -> bool {
+    can_cast_with_cost_with_view_for_casting_method(
+        game,
+        player,
+        spell,
+        spell_id,
+        mana_cost,
+        effects_override,
+        requirements,
+        &CastingMethod::Normal,
+        view,
+    )
+}
+
+fn can_cast_with_cost_with_view_for_casting_method(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    spell_id: crate::ids::ObjectId,
+    mana_cost: Option<&crate::mana::ManaCost>,
+    effects_override: Option<&[crate::effect::Effect]>,
+    requirements: &AdditionalCastRequirements,
+    casting_method: &CastingMethod,
+    view: &DerivedGameView<'_>,
+) -> bool {
     let ctx = CastLegalityContext::new(game, player, view);
     can_cast_with_cost_with_context(
         spell,
@@ -3162,6 +3252,7 @@ fn can_cast_with_cost_with_view(
         mana_cost,
         effects_override,
         requirements,
+        casting_method,
         &ctx,
     )
 }
@@ -3172,6 +3263,7 @@ fn can_cast_with_cost_with_context(
     mana_cost: Option<&crate::mana::ManaCost>,
     effects_override: Option<&[crate::effect::Effect]>,
     requirements: &AdditionalCastRequirements,
+    casting_method: &CastingMethod,
     ctx: &CastLegalityContext<'_>,
 ) -> bool {
     use crate::types::CardType;
@@ -3259,7 +3351,14 @@ fn can_cast_with_cost_with_context(
             if ctx.can_use_printed_cost_directly(spell_has_intrinsic_cost_adjustments(spell)) {
                 cost.clone()
             } else if ctx.spell_cost_needs_adjustment(spell_has_intrinsic_cost_adjustments(spell)) {
-                calculate_effective_mana_cost_with_view(game, player, spell, cost, view)
+                calculate_effective_mana_cost_with_view_for_casting_method(
+                    game,
+                    player,
+                    spell,
+                    cost,
+                    casting_method,
+                    view,
+                )
             } else {
                 apply_minimum_spell_total_mana(
                     game,
@@ -3305,6 +3404,32 @@ fn can_cast_with_cost_with_context(
     }
 
     true
+}
+
+fn provisional_casting_method_for_alternative(
+    spell: &crate::object::Object,
+    method: &crate::alternative_cast::AlternativeCastingMethod,
+) -> CastingMethod {
+    if let Some(index) = spell
+        .alternative_casts
+        .iter()
+        .position(|candidate| candidate == method)
+    {
+        return CastingMethod::Alternative(index);
+    }
+
+    match method {
+        crate::alternative_cast::AlternativeCastingMethod::Escape { exile_count, .. } => {
+            CastingMethod::GrantedEscape {
+                source: spell.id,
+                exile_count: *exile_count,
+            }
+        }
+        crate::alternative_cast::AlternativeCastingMethod::Flashback { .. } => {
+            CastingMethod::GrantedFlashback
+        }
+        _ => CastingMethod::Normal,
+    }
 }
 
 /// Build additional cast requirements from an alternative casting method.
@@ -3453,12 +3578,14 @@ fn can_cast_with_alternative_with_context(
     }
 
     let requirements = build_requirements_for_method(method);
+    let casting_method = provisional_casting_method_for_alternative(spell, method);
     if !can_cast_with_cost_with_context(
         spell_for_checks,
         spell.id,
         mana_cost,
         effects_override,
         &requirements,
+        &casting_method,
         ctx,
     ) {
         return false;
@@ -3518,6 +3645,7 @@ fn can_cast_with_alternative_from_hand_with_context(
     match method {
         method if method.is_composed_cost() => {
             let zero_cost = crate::mana::ManaCost::new();
+            let casting_method = provisional_casting_method_for_alternative(spell, method);
             if let Some(condition) = method.cast_condition()
                 && !crate::static_abilities::this_spell_cost_condition_is_active_for_cast(
                     game,
@@ -3535,6 +3663,7 @@ fn can_cast_with_alternative_from_hand_with_context(
                 method.mana_cost().or(Some(&zero_cost)),
                 None,
                 &AdditionalCastRequirements::default(),
+                &casting_method,
                 ctx,
             ) {
                 return false;
@@ -3559,6 +3688,7 @@ fn can_cast_with_alternative_from_hand_with_context(
             let Some(cost) = total_cost.mana_cost() else {
                 return false;
             };
+            let casting_method = provisional_casting_method_for_alternative(spell, method);
 
             if !can_cast_with_cost_with_context(
                 spell,
@@ -3566,6 +3696,7 @@ fn can_cast_with_alternative_from_hand_with_context(
                 Some(cost),
                 None,
                 &AdditionalCastRequirements::default(),
+                &casting_method,
                 ctx,
             ) {
                 return false;
@@ -3605,12 +3736,14 @@ fn can_cast_with_alternative_from_hand_with_context(
                 return false;
             }
             // Check if player can pay the trap cost (usually {0})
+            let casting_method = provisional_casting_method_for_alternative(spell, method);
             can_cast_with_cost_with_context(
                 spell,
                 spell_id,
                 Some(cost),
                 None,
                 &AdditionalCastRequirements::default(),
+                &casting_method,
                 ctx,
             )
         }
@@ -3747,6 +3880,22 @@ pub fn calculate_effective_mana_cost(
     spell: &crate::object::Object,
     base_cost: &crate::mana::ManaCost,
 ) -> crate::mana::ManaCost {
+    calculate_effective_mana_cost_for_casting_method(
+        game,
+        player,
+        spell,
+        base_cost,
+        &CastingMethod::Normal,
+    )
+}
+
+pub fn calculate_effective_mana_cost_for_casting_method(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    base_cost: &crate::mana::ManaCost,
+    casting_method: &CastingMethod,
+) -> crate::mana::ManaCost {
     let view = DerivedGameView::new(game);
     calculate_effective_mana_cost_with_targets_internal(
         game,
@@ -3756,15 +3905,17 @@ pub fn calculate_effective_mana_cost(
         1,
         &[],
         true,
+        casting_method,
         &view,
     )
 }
 
-fn calculate_effective_mana_cost_with_view(
+fn calculate_effective_mana_cost_with_view_for_casting_method(
     game: &GameState,
     player: PlayerId,
     spell: &crate::object::Object,
     base_cost: &crate::mana::ManaCost,
+    casting_method: &CastingMethod,
     view: &DerivedGameView<'_>,
 ) -> crate::mana::ManaCost {
     calculate_effective_mana_cost_with_targets_internal(
@@ -3775,6 +3926,7 @@ fn calculate_effective_mana_cost_with_view(
         1,
         &[],
         true,
+        casting_method,
         view,
     )
 }
@@ -3796,6 +3948,7 @@ pub fn calculate_effective_mana_cost_with_targets(
         chosen_target_count,
         &[],
         true,
+        &CastingMethod::Normal,
         &view,
     )
 }
@@ -3808,6 +3961,24 @@ pub fn calculate_effective_mana_cost_with_chosen_targets(
     base_cost: &crate::mana::ManaCost,
     chosen_targets: &[Target],
 ) -> crate::mana::ManaCost {
+    calculate_effective_mana_cost_with_chosen_targets_for_casting_method(
+        game,
+        player,
+        spell,
+        base_cost,
+        chosen_targets,
+        &CastingMethod::Normal,
+    )
+}
+
+pub fn calculate_effective_mana_cost_with_chosen_targets_for_casting_method(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    base_cost: &crate::mana::ManaCost,
+    chosen_targets: &[Target],
+    casting_method: &CastingMethod,
+) -> crate::mana::ManaCost {
     let view = DerivedGameView::new(game);
     calculate_effective_mana_cost_with_targets_internal(
         game,
@@ -3817,6 +3988,7 @@ pub fn calculate_effective_mana_cost_with_chosen_targets(
         chosen_targets.len(),
         chosen_targets,
         true,
+        casting_method,
         &view,
     )
 }
@@ -3830,6 +4002,24 @@ pub fn calculate_effective_mana_cost_for_payment_with_targets(
     base_cost: &crate::mana::ManaCost,
     chosen_target_count: usize,
 ) -> crate::mana::ManaCost {
+    calculate_effective_mana_cost_for_payment_with_targets_for_casting_method(
+        game,
+        player,
+        spell,
+        base_cost,
+        chosen_target_count,
+        &CastingMethod::Normal,
+    )
+}
+
+pub fn calculate_effective_mana_cost_for_payment_with_targets_for_casting_method(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    base_cost: &crate::mana::ManaCost,
+    chosen_target_count: usize,
+    casting_method: &CastingMethod,
+) -> crate::mana::ManaCost {
     let view = DerivedGameView::new(game);
     calculate_effective_mana_cost_with_targets_internal(
         game,
@@ -3839,6 +4029,7 @@ pub fn calculate_effective_mana_cost_for_payment_with_targets(
         chosen_target_count,
         &[],
         false,
+        casting_method,
         &view,
     )
 }
@@ -3851,6 +4042,24 @@ pub fn calculate_effective_mana_cost_for_payment_with_chosen_targets(
     base_cost: &crate::mana::ManaCost,
     chosen_targets: &[Target],
 ) -> crate::mana::ManaCost {
+    calculate_effective_mana_cost_for_payment_with_chosen_targets_for_casting_method(
+        game,
+        player,
+        spell,
+        base_cost,
+        chosen_targets,
+        &CastingMethod::Normal,
+    )
+}
+
+pub fn calculate_effective_mana_cost_for_payment_with_chosen_targets_for_casting_method(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    base_cost: &crate::mana::ManaCost,
+    chosen_targets: &[Target],
+    casting_method: &CastingMethod,
+) -> crate::mana::ManaCost {
     let view = DerivedGameView::new(game);
     calculate_effective_mana_cost_with_targets_internal(
         game,
@@ -3860,6 +4069,7 @@ pub fn calculate_effective_mana_cost_for_payment_with_chosen_targets(
         chosen_targets.len(),
         chosen_targets,
         false,
+        casting_method,
         &view,
     )
 }
@@ -3872,6 +4082,7 @@ fn calculate_effective_mana_cost_with_targets_internal(
     chosen_target_count: usize,
     chosen_targets: &[Target],
     include_convoke_improvise_reductions: bool,
+    casting_method: &CastingMethod,
     view: &DerivedGameView<'_>,
 ) -> crate::mana::ManaCost {
     use crate::ability::AbilityKind;
@@ -3901,6 +4112,7 @@ fn calculate_effective_mana_cost_with_targets_internal(
         &current_cost,
         chosen_target_count,
         chosen_targets,
+        casting_method,
     );
 
     // Apply global cost modifiers from battlefield permanents (Sphere of Resistance, leeches, etc.).
@@ -3910,6 +4122,7 @@ fn calculate_effective_mana_cost_with_targets_internal(
         spell,
         &current_cost,
         chosen_target_count,
+        casting_method,
         view,
     );
 
@@ -3958,6 +4171,7 @@ fn apply_spell_cost_modifiers(
     cost: &crate::mana::ManaCost,
     chosen_target_count: usize,
     chosen_targets: &[Target],
+    casting_method: &CastingMethod,
 ) -> crate::mana::ManaCost {
     use crate::ability::AbilityKind;
     use crate::filter::FilterContext;
@@ -3978,20 +4192,21 @@ fn apply_spell_cost_modifiers(
         caster: PlayerId,
         filter: &ObjectFilter,
         ctx: &FilterContext,
+        casting_method: &CastingMethod,
     ) -> bool {
         if filter.targets_object.is_some() || filter.targets_player.is_some() {
             // Target-dependent cost modifiers require target selection context.
             return false;
         }
-        if filter.alternative_cast.is_some() {
-            // Alternative casting method isn't tracked for cost computation yet.
-            return false;
-        }
         let mut cast_filter = filter.clone();
+        let alternative_cast = cast_filter.alternative_cast;
         cast_filter.targets_player = None;
         cast_filter.targets_object = None;
         cast_filter.alternative_cast = None;
         cast_filter.matches(spell, &ctx.clone().with_caster(Some(caster)), game)
+            && alternative_cast.is_none_or(|kind| {
+                casting_method_matches_alternative_kind(game, caster, spell, casting_method, kind)
+            })
     }
 
     let mut total_increase: i32 = 0;
@@ -4039,7 +4254,7 @@ fn apply_spell_cost_modifiers(
             continue;
         }
         if let Some(reduction) = static_ability.cost_reduction()
-            && spell_matches_filter(game, spell, player, &reduction.filter, &ctx)
+            && spell_matches_filter(game, spell, player, &reduction.filter, &ctx, casting_method)
         {
             let amount = resolve_cost_modifier_value(game, player, spell, &reduction.reduction);
             if amount > 0 {
@@ -4047,7 +4262,7 @@ fn apply_spell_cost_modifiers(
             }
         }
         if let Some(increase) = static_ability.cost_increase()
-            && spell_matches_filter(game, spell, player, &increase.filter, &ctx)
+            && spell_matches_filter(game, spell, player, &increase.filter, &ctx, casting_method)
         {
             let amount = resolve_cost_modifier_value(game, player, spell, &increase.increase);
             if amount > 0 {
@@ -4055,12 +4270,12 @@ fn apply_spell_cost_modifiers(
             }
         }
         if let Some(increase) = static_ability.cost_increase_mana_cost()
-            && spell_matches_filter(game, spell, player, &increase.filter, &ctx)
+            && spell_matches_filter(game, spell, player, &increase.filter, &ctx, casting_method)
         {
             increase_pips.extend(increase.increase.pips().iter().cloned());
         }
         if let Some(reduction) = static_ability.cost_reduction_mana_cost()
-            && spell_matches_filter(game, spell, player, &reduction.filter, &ctx)
+            && spell_matches_filter(game, spell, player, &reduction.filter, &ctx, casting_method)
         {
             reduction_pips.extend(reduction.reduction.pips().iter().cloned());
         }
@@ -4078,7 +4293,7 @@ fn apply_spell_cost_modifiers(
         if effect.player != player || effect.is_expired(current_turn) {
             continue;
         }
-        if spell_matches_filter(game, spell, player, &effect.filter, &ctx) {
+        if spell_matches_filter(game, spell, player, &effect.filter, &ctx, casting_method) {
             reduction_pips.extend(effect.reduction.pips().iter().cloned());
         }
     }
@@ -4105,6 +4320,7 @@ fn apply_battlefield_spell_cost_modifiers(
     spell: &crate::object::Object,
     cost: &crate::mana::ManaCost,
     chosen_target_count: usize,
+    casting_method: &CastingMethod,
     view: &DerivedGameView<'_>,
 ) -> crate::mana::ManaCost {
     use crate::ability::AbilityKind;
@@ -4126,21 +4342,22 @@ fn apply_battlefield_spell_cost_modifiers(
         caster: PlayerId,
         filter: &ObjectFilter,
         ctx: &FilterContext,
+        casting_method: &CastingMethod,
         _chosen_target_count: usize,
     ) -> bool {
         if filter.targets_object.is_some() || filter.targets_player.is_some() {
             // Target-dependent cost modifiers require target selection context.
             return false;
         }
-        if filter.alternative_cast.is_some() {
-            // Alternative casting method isn't tracked for cost computation yet.
-            return false;
-        }
         let mut cast_filter = filter.clone();
+        let alternative_cast = cast_filter.alternative_cast;
         cast_filter.targets_player = None;
         cast_filter.targets_object = None;
         cast_filter.alternative_cast = None;
         cast_filter.matches(spell, &ctx.clone().with_caster(Some(caster)), game)
+            && alternative_cast.is_none_or(|kind| {
+                casting_method_matches_alternative_kind(game, caster, spell, casting_method, kind)
+            })
     }
 
     let mut total_increase: i32 = 0;
@@ -4167,6 +4384,7 @@ fn apply_battlefield_spell_cost_modifiers(
                         caster,
                         &reduction.filter,
                         &ctx,
+                        casting_method,
                         chosen_target_count,
                     )
                 {
@@ -4187,6 +4405,7 @@ fn apply_battlefield_spell_cost_modifiers(
                         caster,
                         &increase.filter,
                         &ctx,
+                        casting_method,
                         chosen_target_count,
                     )
                 {
@@ -4207,6 +4426,7 @@ fn apply_battlefield_spell_cost_modifiers(
                         caster,
                         &increase.filter,
                         &ctx,
+                        casting_method,
                         chosen_target_count,
                     )
                 {
@@ -4219,6 +4439,7 @@ fn apply_battlefield_spell_cost_modifiers(
                         caster,
                         &reduction.filter,
                         &ctx,
+                        casting_method,
                         chosen_target_count,
                     )
                 {
@@ -4241,6 +4462,7 @@ fn apply_battlefield_spell_cost_modifiers(
                         caster,
                         &reduction.filter,
                         &ctx,
+                        casting_method,
                         chosen_target_count,
                     )
                 {
@@ -4261,6 +4483,7 @@ fn apply_battlefield_spell_cost_modifiers(
                         caster,
                         &increase.filter,
                         &ctx,
+                        casting_method,
                         chosen_target_count,
                     )
                 {
@@ -4281,6 +4504,7 @@ fn apply_battlefield_spell_cost_modifiers(
                         caster,
                         &increase.filter,
                         &ctx,
+                        casting_method,
                         chosen_target_count,
                     )
                 {
@@ -4293,6 +4517,7 @@ fn apply_battlefield_spell_cost_modifiers(
                         caster,
                         &reduction.filter,
                         &ctx,
+                        casting_method,
                         chosen_target_count,
                     )
                 {
@@ -4483,6 +4708,7 @@ pub fn calculate_delve_exile_count_with_targets(
         &cost_after_reductions,
         chosen_target_count,
         &[],
+        &CastingMethod::Normal,
     );
 
     // Now calculate how much generic mana remains
@@ -4968,8 +5194,15 @@ pub fn calculate_convoke_creatures_to_tap(
         cost_after_reductions = cost_after_reductions.reduce_generic(artifact_count);
     }
 
-    cost_after_reductions =
-        apply_spell_cost_modifiers(game, player, spell, &cost_after_reductions, 1, &[]);
+    cost_after_reductions = apply_spell_cost_modifiers(
+        game,
+        player,
+        spell,
+        &cost_after_reductions,
+        1,
+        &[],
+        &CastingMethod::Normal,
+    );
 
     let has_delve_ability = has_delve(spell);
 
@@ -5100,8 +5333,15 @@ pub fn calculate_improvise_artifacts_to_tap(
         cost_after_reductions = cost_after_reductions.reduce_generic(artifact_count);
     }
 
-    cost_after_reductions =
-        apply_spell_cost_modifiers(game, player, spell, &cost_after_reductions, 1, &[]);
+    cost_after_reductions = apply_spell_cost_modifiers(
+        game,
+        player,
+        spell,
+        &cost_after_reductions,
+        1,
+        &[],
+        &CastingMethod::Normal,
+    );
 
     let has_delve_ability = has_delve(spell);
 
