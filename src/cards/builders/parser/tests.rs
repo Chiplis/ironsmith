@@ -2295,6 +2295,22 @@ fn rewrite_etb_enters_tapped_filter_preserves_played_by_opponents_suffix() {
 }
 
 #[test]
+fn rewrite_etb_static_parser_does_not_swallow_triggered_mold_earth_text() {
+    let tokens = lex_line(
+        "Mold Earth — Whenever one or more lands enter under an opponent's control without being played, you may search your library for a Plains card, put it onto the battlefield tapped, then shuffle.",
+        0,
+    )
+    .expect("rewrite lexer should classify mold earth text");
+
+    let parsed = super::keyword_static::parse_static_ability_ast_line_lexed(&tokens)
+        .expect("static parser should accept the line shape");
+    assert!(
+        parsed.is_none(),
+        "expected triggered Mold Earth text to bypass static ETB parsing, got {parsed:?}"
+    );
+}
+
+#[test]
 fn rewrite_etb_where_x_aggregate_filter_routes_and_split_through_grammar_separator_helper() {
     let tokens = lex_line(
         "where x is the total power of creatures you control and creature cards in your graveyard",
