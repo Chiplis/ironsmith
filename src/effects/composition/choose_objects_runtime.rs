@@ -105,6 +105,7 @@ fn value_mentions_iterated_player(value: &crate::effect::Value) -> bool {
         crate::effect::Value::SpellsCastThisTurnMatching { player, filter, .. } => {
             player.mentions_iterated_player() || object_filter_mentions_iterated_player(filter)
         }
+        crate::effect::Value::CommanderCastCount(player) => player.mentions_iterated_player(),
         _ => false,
     }
 }

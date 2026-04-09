@@ -72,6 +72,7 @@ use super::token_primitives::{
     slice_starts_with, slice_strip_prefix, slice_strip_suffix, split_em_dash_label_prefix,
     str_strip_prefix, str_strip_suffix,
 };
+use super::value_helpers::parse_commander_cast_count_player;
 use super::util::{
     is_source_reference_words, mana_pips_from_token, parse_card_type, parse_color,
     parse_counter_type_from_tokens, parse_counter_type_word, parse_flashback_keyword_line,
@@ -4493,6 +4494,10 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
                 None => Value::CountersOn(Box::new(ChooseSpec::Source), None),
             }));
         }
+    }
+
+    if let Some(player) = parse_commander_cast_count_player(filter_tokens) {
+        return Ok(Some(Value::CommanderCastCount(player)));
     }
 
     if let Ok(filter) = parse_object_filter(filter_tokens, false) {

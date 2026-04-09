@@ -5897,6 +5897,24 @@ pub(crate) fn describe_value(value: &Value) -> String {
             "the number of spells cast before this spell this turn by {}",
             describe_player_filter(filter)
         ),
+        Value::CommanderCastCount(filter) => match filter {
+            PlayerFilter::You => {
+                "the number of times you've cast your commander from the command zone this game"
+                    .to_string()
+            }
+            PlayerFilter::Opponent => {
+                "the number of times an opponent has cast their commander from the command zone this game"
+                    .to_string()
+            }
+            PlayerFilter::Any => {
+                "the number of times a player has cast their commander from the command zone this game"
+                    .to_string()
+            }
+            _ => format!(
+                "the number of times {} has cast their commander from the command zone this game",
+                describe_player_filter(filter)
+            ),
+        },
         Value::SpellsCastThisTurnMatching {
             player,
             filter,

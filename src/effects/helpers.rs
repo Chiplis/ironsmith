@@ -677,6 +677,15 @@ pub fn resolve_value(
             Ok(count)
         }
 
+        Value::CommanderCastCount(player_spec) => {
+            let player_ids =
+                resolve_player_filter_to_list(game, player_spec, &ctx.filter_context(game), ctx)?;
+            Ok(player_ids
+                .into_iter()
+                .map(|player_id| game.commander_cast_count_for_player(player_id) as i32)
+                .sum())
+        }
+
         Value::DamageDealtThisTurnByTaggedSpellCast(tag) => {
             let snapshot = ctx.get_tagged(tag.as_str()).ok_or_else(|| {
                 ExecutionError::UnresolvableValue(format!(

@@ -964,6 +964,9 @@ pub enum Value {
         exclude_source: bool,
     },
 
+    /// Number of times a player has cast their commander from the command zone this game.
+    CommanderCastCount(PlayerFilter),
+
     /// Damage dealt this turn by the spell-cast snapshot currently stored under `tag`.
     DamageDealtThisTurnByTaggedSpellCast(TagKey),
 

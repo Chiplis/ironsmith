@@ -167,6 +167,41 @@ fn parse_spells_cast_this_turn_matching_count_value(tokens: &[OwnedLexToken]) ->
     None
 }
 
+pub(crate) fn parse_commander_cast_count_player(tokens: &[OwnedLexToken]) -> Option<PlayerFilter> {
+    let word_view = ValueHelperCompatWords::new(tokens);
+    let words = word_view.to_word_refs();
+    if !lower_words_have(&word_view, "cast")
+        || !lower_words_have_any(&word_view, &["commander", "commanders"])
+        || word_refs_find_sequence(&words, &["from", "the", "command", "zone"]).is_none()
+        || !lower_words_have(&word_view, "game")
+    {
+        return None;
+    }
+
+    if words
+        .iter()
+        .any(|word| matches!(*word, "you" | "your" | "youve"))
+    {
+        return Some(PlayerFilter::You);
+    }
+    if words
+        .iter()
+        .any(|word| matches!(*word, "opponent" | "opponents"))
+    {
+        return Some(PlayerFilter::Opponent);
+    }
+    if words
+        .iter()
+        .any(|word| matches!(*word, "they" | "theyve" | "their"))
+        || word_refs_find_sequence(&words, &["that", "player"]).is_some()
+        || word_refs_find_sequence(&words, &["that", "players"]).is_some()
+    {
+        return Some(PlayerFilter::IteratedPlayer);
+    }
+
+    Some(PlayerFilter::Any)
+}
+
 fn trim_lexed_edge_punctuation(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     let mut start = 0usize;
     let mut end = tokens.len();

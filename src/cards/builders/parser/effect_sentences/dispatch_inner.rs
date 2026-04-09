@@ -423,10 +423,6 @@ sentence_unsupported_adapters_lexed!(
         sentence_has_if_you_sacrifice_an_island_this_way_clause
     ),
     (
-        sentence_has_commander_cast_count_clause_rule_lexed,
-        sentence_has_commander_cast_count_clause
-    ),
-    (
         sentence_has_spent_to_cast_clause_rule_lexed,
         sentence_has_spent_to_cast_clause
     ),
@@ -448,7 +444,7 @@ sentence_unsupported_adapters_lexed!(
     ),
 );
 
-const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 31] = [
+const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 30] = [
     LexUnsupportedRuleDef {
         id: "enters-as-copy",
         priority: 20,
@@ -650,16 +646,8 @@ const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 31] = [
         predicate: sentence_has_if_you_sacrifice_an_island_this_way_clause_rule_lexed,
     },
     LexUnsupportedRuleDef {
-        id: "commander-cast-count",
-        priority: 350,
-        heads: &["for"],
-        shape_mask: 0,
-        message: "unsupported commander-cast-count clause",
-        predicate: sentence_has_commander_cast_count_clause_rule_lexed,
-    },
-    LexUnsupportedRuleDef {
         id: "spent-to-cast-condition",
-        priority: 360,
+        priority: 350,
         heads: &["if", "unless", "when", "as"],
         shape_mask: 0,
         message: "unsupported spent-to-cast condition clause",
@@ -667,7 +655,7 @@ const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 31] = [
     },
     LexUnsupportedRuleDef {
         id: "face-down",
-        priority: 370,
+        priority: 360,
         heads: &["face", "turn", "cast", "exile", "manifest"],
         shape_mask: 0,
         message: "unsupported face-down clause",
@@ -675,7 +663,7 @@ const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 31] = [
     },
     LexUnsupportedRuleDef {
         id: "copy-spell-legendary-exception",
-        priority: 380,
+        priority: 370,
         heads: &["copy"],
         shape_mask: 0,
         message: "unsupported copy-spell legendary-exception clause",
@@ -683,7 +671,7 @@ const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 31] = [
     },
     LexUnsupportedRuleDef {
         id: "return-each-creature-that-isnt-list",
-        priority: 390,
+        priority: 380,
         heads: &["return"],
         shape_mask: 0,
         message: "unsupported return-each-creature-that-isnt-list clause",
@@ -691,7 +679,7 @@ const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 31] = [
     },
     LexUnsupportedRuleDef {
         id: "negated-untap",
-        priority: 400,
+        priority: 390,
         heads: &["this", "that", "target", "it", "creatures", "players"],
         shape_mask: 0,
         message: "unsupported negated untap clause",
@@ -1070,13 +1058,6 @@ fn sentence_has_if_you_sacrifice_an_island_this_way_clause(
 ) -> bool {
     contains_word_window(words, &["if", "you", "sacrifice", "an", "island"])
         && contains_word_window(words, &["this", "way"])
-}
-
-fn sentence_has_commander_cast_count_clause(words: &[&str], _: &[OwnedLexToken]) -> bool {
-    contains_word_window(words, &["for", "each", "time"])
-        && words.iter().any(|word| *word == "cast")
-        && words.iter().any(|word| *word == "commander")
-        && contains_word_window(words, &["from", "the", "command", "zone"])
 }
 
 fn sentence_has_spent_to_cast_clause(words: &[&str], _: &[OwnedLexToken]) -> bool {

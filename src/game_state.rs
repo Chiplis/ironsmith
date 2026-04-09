@@ -4679,6 +4679,20 @@ impl GameState {
             .unwrap_or(0)
     }
 
+    /// Returns how many times all of a player's commanders have been cast from the command zone.
+    pub fn commander_cast_count_for_player(&self, player_id: PlayerId) -> u32 {
+        let Some(player) = self.player(player_id) else {
+            return 0;
+        };
+
+        player
+            .get_commanders()
+            .iter()
+            .copied()
+            .map(|commander_id| self.commander_cast_count(commander_id))
+            .sum()
+    }
+
     /// Records that a commander was cast from the command zone.
     pub fn record_commander_cast_from_command_zone(&mut self, commander_id: ObjectId) {
         if let Some(identity) = self.commander_identity(commander_id) {

@@ -2087,6 +2087,10 @@ pub(crate) fn parse_anthem_for_each_expression(
         }
     }
 
+    if let Some(player) = parse_commander_cast_count_player(rest) {
+        return Ok(AnthemCountExpression::CommanderCastCount(player));
+    }
+
     let filter = parse_object_filter(rest, false).map_err(|_| {
         CardTextError::ParseError(format!(
             "unsupported 'for each' filter in anthem clause (clause: '{}')",

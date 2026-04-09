@@ -22355,6 +22355,24 @@ fn parse_oracle_opaline_bracers_charge_counter_scaling_regression() {
 }
 
 #[test]
+fn parse_oracle_commanders_insignia_commander_cast_count_regression() {
+    let def = parse_oracle_card_definition("Commander's Insignia");
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains(
+            "creatures you control get +1/+1 for each time you've cast your commander from the command zone this game"
+        ),
+        "expected commander-cast-count anthem wording, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("CommanderCastCount(You)"),
+        "expected commander-cast-count lowering in parsed ability, got {debug}"
+    );
+}
+
+#[test]
 fn parse_oracle_clarion_ultimatum_for_each_chosen_permanent_regression() {
     let def = parse_oracle_card_definition("Clarion Ultimatum");
     let rendered = compiled_lines(&def).join(" ");

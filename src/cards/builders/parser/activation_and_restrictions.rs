@@ -1503,17 +1503,6 @@ pub(crate) fn parse_cost_reduction_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let line_words = crate::cards::builders::parser::token_word_refs(tokens);
-    let has_commander_cast_count_clause =
-        contains_word_sequence(&line_words, &["for", "each", "time"])
-            && slice_contains(&line_words, &"cast")
-            && slice_contains(&line_words, &"commander")
-            && contains_word_sequence(&line_words, &["from", "the", "command", "zone"]);
-    if has_commander_cast_count_clause {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported commander-cast-count static clause (clause: '{}')",
-            line_words.join(" ")
-        )));
-    }
     if slice_starts_with(&line_words, &["this", "cost", "is", "reduced", "by"])
         && line_words.len() > 6
     {

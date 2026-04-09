@@ -507,6 +507,8 @@ pub enum AnthemCountExpression {
     CountersOnSource(CounterType),
     /// Count distinct basic land types among matching lands.
     BasicLandTypesAmong(ObjectFilter),
+    /// Count how many times a player has cast their commander from the command zone.
+    CommanderCastCount(crate::target::PlayerFilter),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -574,6 +576,22 @@ fn describe_anthem_count_expression(expr: &AnthemCountExpression) -> String {
         AnthemCountExpression::BasicLandTypesAmong(_) => {
             "basic land type among lands you control".to_string()
         }
+        AnthemCountExpression::CommanderCastCount(player) => match player {
+            crate::target::PlayerFilter::You => {
+                "times you've cast your commander from the command zone this game".to_string()
+            }
+            crate::target::PlayerFilter::Opponent => {
+                "times an opponent has cast their commander from the command zone this game"
+                    .to_string()
+            }
+            crate::target::PlayerFilter::Any => {
+                "times a player has cast their commander from the command zone this game".to_string()
+            }
+            other => format!(
+                "times {} has cast their commander from the command zone this game",
+                other.description()
+            ),
+        },
     }
 }
 
@@ -582,6 +600,22 @@ fn describe_anthem_for_each_count_expression(expr: &AnthemCountExpression) -> Op
         AnthemCountExpression::MatchingFilter(filter) if filter.zone == Some(Zone::Battlefield) => {
             Some(strip_article(filter.description()))
         }
+        AnthemCountExpression::CommanderCastCount(player) => Some(match player {
+            crate::target::PlayerFilter::You => {
+                "time you've cast your commander from the command zone this game".to_string()
+            }
+            crate::target::PlayerFilter::Opponent => {
+                "time an opponent has cast their commander from the command zone this game"
+                    .to_string()
+            }
+            crate::target::PlayerFilter::Any => {
+                "time a player has cast their commander from the command zone this game".to_string()
+            }
+            other => format!(
+                "time {} has cast their commander from the command zone this game",
+                other.description()
+            ),
+        }),
         _ => None,
     }
 }
@@ -875,6 +909,14 @@ pub(crate) fn resolve_anthem_count_expression(
             }
             seen.len() as i32
         }
+        AnthemCountExpression::CommanderCastCount(player_filter) => game
+            .players
+            .iter()
+            .filter(|player| {
+                player.is_in_game() && player_filter.matches_player(player.id, &filter_ctx)
+            })
+            .map(|player| game.commander_cast_count_for_player(player.id) as i32)
+            .sum(),
     }
 }
 
@@ -3234,6 +3276,61 @@ mod tests {
             }
         ));
         assert!(matches!(effects[0].applies_to, EffectTarget::Source));
+    }
+
+    #[test]
+    fn test_commander_cast_count_anthem_scales_from_player_commander_casts() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let insignia = crate::cards::builders::CardDefinitionBuilder::new(
+            CardId::new(),
+            "Commander's Insignia Variant",
+        )
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Creatures you control get +1/+1 for each time you've cast your commander from the command zone this game.",
+        )
+        .expect("Commander's Insignia text should parse");
+        game.create_object_from_definition(&insignia, alice, Zone::Battlefield);
+
+        let commander_card = CardBuilder::new(CardId::new(), "Commander")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let commander_id = game.create_object_from_card(&commander_card, alice, Zone::Command);
+        game.set_as_commander(commander_id, alice);
+
+        let creature_card = CardBuilder::new(CardId::new(), "Insignia Bearer")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        let creature_id = game.create_object_from_card(&creature_card, alice, Zone::Battlefield);
+
+        assert_eq!(
+            game.calculated_power(creature_id),
+            Some(1),
+            "the anthem should start at +0/+0 before commander casts"
+        );
+        assert_eq!(
+            game.commander_cast_count_for_player(alice),
+            0,
+            "fresh commanders should start with zero command-zone casts"
+        );
+
+        game.record_commander_cast_from_command_zone(commander_id);
+        game.record_commander_cast_from_command_zone(commander_id);
+
+        assert_eq!(
+            game.commander_cast_count_for_player(alice),
+            2,
+            "the player's commander cast count should include repeated command-zone casts"
+        );
+        assert_eq!(
+            game.calculated_power(creature_id),
+            Some(3),
+            "Commander's Insignia should grant +1/+1 per commander cast from the command zone"
+        );
     }
 
     #[test]
