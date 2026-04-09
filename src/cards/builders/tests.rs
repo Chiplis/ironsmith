@@ -5263,6 +5263,29 @@ fn test_parse_ignite_memories_keeps_random_hand_reveal_and_damage_link() {
 }
 
 #[test]
+fn test_parse_merfolk_spy_keeps_random_hand_reveal_surface() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Merfolk Spy")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Merfolk, Subtype::Rogue])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .parse_text(
+            "Islandwalk (This creature can't be blocked as long as defending player controls an Island.)\nWhenever this creature deals combat damage to a player, that player reveals a card at random from their hand.",
+        )
+        .expect("Merfolk Spy should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("that player reveals a card at random from their hand"),
+        "expected Merfolk Spy to render the random hand reveal surface cleanly, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("choose exactly 1 at random"),
+        "expected Merfolk Spy to avoid the raw choose-and-tag surface, got {rendered}"
+    );
+}
+
+#[test]
 fn test_parse_one_word_verb_card_name_does_not_break_clause_parsing() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Regenerate")
         .card_types(vec![CardType::Instant])

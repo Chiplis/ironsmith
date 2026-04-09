@@ -4869,6 +4869,17 @@ mod tests {
     }
 
     #[test]
+    fn post_pass_normalizes_random_hand_reveal_clause() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "Whenever this creature deals combat damage to a player: the damaged player chooses exactly 1 at random card in the damaged player's hand and tags it as '__sentence_helper_revealed_l32_s56_e108'. Reveal it.",
+        );
+        assert_eq!(
+            normalized,
+            "Whenever this creature deals combat damage to a player: That player reveals a card at random from their hand."
+        );
+    }
+
+    #[test]
     fn post_pass_normalizes_typed_graveyard_return_choice_clause() {
         let normalized = normalize_compiled_post_pass_effect(
             "You choose exactly 1 creature card in your graveyard and tags it as 'chosen_return_0'. Return it from graveyard to the battlefield. Return another creature card from your graveyard to your hand.",
