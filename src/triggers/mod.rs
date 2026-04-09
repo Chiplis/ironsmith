@@ -79,6 +79,7 @@ pub use spell_ability::*;
 pub use zone_changes::*;
 
 use crate::events::EventKind;
+use crate::events::cause::CauseFilter;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::zone::Zone;
 use std::sync::Arc;
@@ -214,22 +215,38 @@ impl Trigger {
     }
 
     /// Create a "when [filter] enters the battlefield" trigger.
-    pub fn enters_battlefield(filter: ObjectFilter) -> Self {
-        Self::new(ZoneChangeTrigger::enters_battlefield(filter))
+    pub fn enters_battlefield(filter: ObjectFilter, cause_filter: Option<CauseFilter>) -> Self {
+        Self::new(
+            ZoneChangeTrigger::enters_battlefield(filter)
+                .cause_filter(cause_filter),
+        )
     }
 
     /// Create a "when one or more [filter] enter the battlefield" trigger.
-    pub fn enters_battlefield_one_or_more(filter: ObjectFilter) -> Self {
-        Self::new(ZoneChangeTrigger::enters_battlefield(filter).count(CountMode::OneOrMore))
+    pub fn enters_battlefield_one_or_more(
+        filter: ObjectFilter,
+        cause_filter: Option<CauseFilter>,
+    ) -> Self {
+        Self::new(
+            ZoneChangeTrigger::enters_battlefield(filter)
+                .cause_filter(cause_filter)
+                .count(CountMode::OneOrMore),
+        )
     }
 
     /// Create a "when [filter] enters the battlefield tapped" trigger.
-    pub fn enters_battlefield_tapped(filter: ObjectFilter) -> Self {
+    pub fn enters_battlefield_tapped(
+        filter: ObjectFilter,
+        _cause_filter: Option<CauseFilter>,
+    ) -> Self {
         Self::new(EntersBattlefieldTappedTrigger::new(filter))
     }
 
     /// Create a "when [filter] enters the battlefield untapped" trigger.
-    pub fn enters_battlefield_untapped(filter: ObjectFilter) -> Self {
+    pub fn enters_battlefield_untapped(
+        filter: ObjectFilter,
+        _cause_filter: Option<CauseFilter>,
+    ) -> Self {
         Self::new(EntersBattlefieldUntappedTrigger::new(filter))
     }
 

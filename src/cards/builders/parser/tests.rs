@@ -5999,8 +5999,8 @@ fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
     assert!(matches!(
         super::activation_and_restrictions::parse_trigger_clause_lexed(&etb_tokens),
         Ok(
-            crate::cards::builders::TriggerSpec::EntersBattlefieldOneOrMore(_)
-                | crate::cards::builders::TriggerSpec::EntersBattlefield(_)
+            crate::cards::builders::TriggerSpec::EntersBattlefieldOneOrMore { .. }
+                | crate::cards::builders::TriggerSpec::EntersBattlefield { .. }
         )
     ));
     assert!(matches!(

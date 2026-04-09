@@ -83,6 +83,85 @@ fn test_creature_with_etb() {
 }
 
 #[test]
+fn test_deep_gnome_terramancer_ignores_played_lands() {
+    let deep_gnome = CardDefinitionBuilder::new(CardId::from_raw(1), "Deep Gnome Terramancer")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Gnome, Subtype::Wizard])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text(
+            "Flash\nMold Earth — Whenever one or more lands enter under an opponent's control without being played, you may search your library for a Plains card, put it onto the battlefield tapped, then shuffle. Do this only once each turn.",
+        )
+        .expect("deep gnome terramancer text should parse");
+
+    let abilities_debug = format!("{:?}", deep_gnome.abilities);
+    assert!(
+        abilities_debug.contains("Flash"),
+        "expected flash to remain present, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("without being played"),
+        "expected cause restriction in compiled trigger text, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("one or more"),
+        "expected one-or-more trigger text, got {abilities_debug}"
+    );
+
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let gnome_id =
+        game.create_object_from_definition(&deep_gnome, alice, crate::zone::Zone::Battlefield);
+
+    let land_def = CardDefinitionBuilder::new(CardId::from_raw(2), "Test Land")
+        .card_types(vec![CardType::Land])
+        .build();
+    let land_id = game.create_object_from_definition(&land_def, bob, crate::zone::Zone::Battlefield);
+
+    let effect_event = crate::events::RawEvent::new(
+        crate::events::ZoneChangeEvent::with_cause(
+            land_id,
+            crate::zone::Zone::Hand,
+            crate::zone::Zone::Battlefield,
+            crate::events::cause::EventCause::effect(),
+            None,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let effect_triggered = crate::triggers::check_triggers(&game, &effect_event);
+    assert_eq!(
+        effect_triggered
+            .iter()
+            .filter(|entry| entry.source == gnome_id)
+            .count(),
+        1,
+        "expected Deep Gnome Terramancer to trigger for a land entering without being played"
+    );
+
+    let played_event = crate::events::RawEvent::new(
+        crate::events::ZoneChangeEvent::with_cause(
+            land_id,
+            crate::zone::Zone::Hand,
+            crate::zone::Zone::Battlefield,
+            crate::events::cause::EventCause::from_special_action(Some(land_id), bob),
+            None,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let played_triggered = crate::triggers::check_triggers(&game, &played_event);
+    assert!(
+        played_triggered.iter().all(|entry| entry.source != gnome_id),
+        "expected Deep Gnome Terramancer not to trigger for a played land, got {played_triggered:#?}"
+    );
+}
+
+#[test]
 fn test_protection_from_color() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Protected")
         .mana_cost(ManaCost::from_pips(vec![

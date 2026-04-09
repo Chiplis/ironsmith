@@ -30,6 +30,8 @@ use crate::effect::{
 #[allow(unused_imports)]
 use crate::effects::composition::VoteOption;
 #[allow(unused_imports)]
+use crate::events::cause::CauseFilter;
+#[allow(unused_imports)]
 use crate::filter::{
     ObjectFilter, ObjectRef, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation,
 };
@@ -260,15 +262,20 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             from_not_hand,
         ),
         TriggerSpec::SpellCopied { filter, copier } => Trigger::spell_copied(filter, copier),
-        TriggerSpec::EntersBattlefield(filter) => Trigger::enters_battlefield(filter),
-        TriggerSpec::EntersBattlefieldOneOrMore(filter) => {
-            Trigger::enters_battlefield_one_or_more(filter)
-        }
+        TriggerSpec::EntersBattlefield {
+            filter,
+            cause_filter,
+        } => Trigger::enters_battlefield(filter, cause_filter),
+        TriggerSpec::EntersBattlefieldOneOrMore {
+            filter,
+            cause_filter,
+        } => Trigger::enters_battlefield_one_or_more(filter, cause_filter),
         TriggerSpec::EntersBattlefieldFromZone {
             mut filter,
             from,
             owner,
             one_or_more,
+            cause_filter,
         } => {
             if let Some(owner) = owner {
                 filter.owner = Some(owner);
@@ -276,16 +283,22 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             let trigger = crate::triggers::ZoneChangeTrigger::new()
                 .from(from)
                 .to(crate::zone::Zone::Battlefield)
-                .filter(filter);
+                .filter(filter)
+                .cause_filter(cause_filter);
             if one_or_more {
                 Trigger::new(trigger.count(crate::triggers::CountMode::OneOrMore))
             } else {
                 Trigger::new(trigger)
             }
         }
-        TriggerSpec::EntersBattlefieldTapped(filter) => Trigger::enters_battlefield_tapped(filter),
-        TriggerSpec::EntersBattlefieldUntapped(filter) => {
-            Trigger::enters_battlefield_untapped(filter)
+        TriggerSpec::EntersBattlefieldTapped {
+            filter,
+            cause_filter,
+        } => Trigger::enters_battlefield_tapped(filter, cause_filter),
+        TriggerSpec::EntersBattlefieldUntapped {
+            filter,
+            cause_filter,
+        } => Trigger::enters_battlefield_untapped(filter, cause_filter),
         }
         TriggerSpec::BeginningOfUpkeep(player) => Trigger::beginning_of_upkeep(player),
         TriggerSpec::BeginningOfDrawStep(player) => Trigger::beginning_of_draw_step(player),
@@ -913,11 +926,11 @@ fn prepend_effect_prelude(mut compiled: Vec<Effect>, mut prelude: Vec<Effect>) -
 pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFilter> {
     match trigger {
         TriggerSpec::StateBased { .. } => None,
-        TriggerSpec::EntersBattlefield(_)
-        | TriggerSpec::EntersBattlefieldOneOrMore(_)
+        TriggerSpec::EntersBattlefield { .. }
+        | TriggerSpec::EntersBattlefieldOneOrMore { .. }
         | TriggerSpec::EntersBattlefieldFromZone { .. }
-        | TriggerSpec::EntersBattlefieldTapped(_)
-        | TriggerSpec::EntersBattlefieldUntapped(_) => Some(PlayerFilter::ControllerOf(
+        | TriggerSpec::EntersBattlefieldTapped { .. }
+        | TriggerSpec::EntersBattlefieldUntapped { .. } => Some(PlayerFilter::ControllerOf(
             ObjectRef::tagged(TagKey::from("triggering")),
         )),
         TriggerSpec::SpellCast { .. } => Some(PlayerFilter::IteratedPlayer),

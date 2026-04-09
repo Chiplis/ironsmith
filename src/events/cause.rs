@@ -222,6 +222,9 @@ pub enum CauseTypeFilter {
     /// Match a specific cause type.
     Exact(CauseType),
 
+    /// Match any cause type except the given one.
+    Not(CauseType),
+
     /// Match any cause considered "effect-like" by [`CauseType::is_effect_like`].
     EffectLike,
 
@@ -237,6 +240,7 @@ impl CauseTypeFilter {
     pub fn matches(&self, cause_type: CauseType) -> bool {
         match self {
             CauseTypeFilter::Exact(ct) => cause_type == *ct,
+            CauseTypeFilter::Not(ct) => cause_type != *ct,
             CauseTypeFilter::EffectLike => cause_type.is_effect_like(),
             CauseTypeFilter::NotCost => cause_type != CauseType::Cost,
             CauseTypeFilter::OneOf(types) => types.contains(&cause_type),
@@ -283,6 +287,15 @@ impl CauseFilter {
     pub fn exact(cause_type: CauseType) -> Self {
         Self {
             cause_type: Some(CauseTypeFilter::Exact(cause_type)),
+            source_filter: None,
+            controller_filter: None,
+        }
+    }
+
+    /// Create a filter that matches any cause type except the given one.
+    pub fn not_type(cause_type: CauseType) -> Self {
+        Self {
+            cause_type: Some(CauseTypeFilter::Not(cause_type)),
             source_filter: None,
             controller_filter: None,
         }
@@ -445,6 +458,20 @@ mod tests {
         assert!(filter.matches(CauseType::Effect));
         assert!(filter.matches(CauseType::GameRule));
         assert!(!filter.matches(CauseType::Cost));
+    }
+
+    #[test]
+    fn test_cause_filter_not_type() {
+        let game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let filter = CauseFilter::not_type(CauseType::SpecialAction);
+
+        let cause_effect = EventCause::from_effect(ObjectId::from_raw(1), alice);
+        assert!(filter.matches(&cause_effect, &game, alice));
+
+        let cause_special = EventCause::from_special_action(Some(ObjectId::from_raw(1)), alice);
+        assert!(!filter.matches(&cause_special, &game, alice));
     }
 
     #[test]

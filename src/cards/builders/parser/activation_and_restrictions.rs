@@ -6632,12 +6632,28 @@ pub(crate) fn parse_trigger_clause_lexed(
                     {
                         filter.controller = Some(PlayerFilter::Opponent);
                     }
-                    let right_trigger = if slice_contains(&words, &"untapped") {
-                        TriggerSpec::EntersBattlefieldUntapped(filter)
-                    } else if slice_contains(&words, &"tapped") {
-                        TriggerSpec::EntersBattlefieldTapped(filter)
+                    let cause_filter = if contains_window(&words, &["without", "being", "played"]) {
+                        Some(crate::events::cause::CauseFilter::not_type(
+                            crate::events::cause::CauseType::SpecialAction,
+                        ))
                     } else {
-                        TriggerSpec::EntersBattlefield(filter)
+                        None
+                    };
+                    let right_trigger = if slice_contains(&words, &"untapped") {
+                        TriggerSpec::EntersBattlefieldUntapped {
+                            filter,
+                            cause_filter,
+                        }
+                    } else if slice_contains(&words, &"tapped") {
+                        TriggerSpec::EntersBattlefieldTapped {
+                            filter,
+                            cause_filter,
+                        }
+                    } else {
+                        TriggerSpec::EntersBattlefield {
+                            filter,
+                            cause_filter,
+                        }
                     };
                     return Ok(TriggerSpec::Either(
                         Box::new(TriggerSpec::ThisEntersBattlefield),
@@ -6688,6 +6704,13 @@ pub(crate) fn parse_trigger_clause_lexed(
                 parse_subtype_list_enters_trigger_filter_lexed(filtered_subject_tokens, other)
             });
         if let Some(mut filter) = parsed_filter {
+            let cause_filter = if contains_window(&words, &["without", "being", "played"]) {
+                Some(crate::events::cause::CauseFilter::not_type(
+                    crate::events::cause::CauseType::SpecialAction,
+                ))
+            } else {
+                None
+            };
             if slice_contains(&words, &"under")
                 && slice_contains(&words, &"your")
                 && slice_contains(&words, &"control")
@@ -6700,10 +6723,16 @@ pub(crate) fn parse_trigger_clause_lexed(
                 filter.controller = Some(PlayerFilter::Opponent);
             }
             if slice_contains(&words, &"untapped") {
-                return Ok(TriggerSpec::EntersBattlefieldUntapped(filter));
+                return Ok(TriggerSpec::EntersBattlefieldUntapped {
+                    filter,
+                    cause_filter,
+                });
             }
             if slice_contains(&words, &"tapped") {
-                return Ok(TriggerSpec::EntersBattlefieldTapped(filter));
+                return Ok(TriggerSpec::EntersBattlefieldTapped {
+                    filter,
+                    cause_filter,
+                });
             }
             return Ok(if let Some((from, owner)) = enters_origin {
                 TriggerSpec::EntersBattlefieldFromZone {
@@ -6711,11 +6740,18 @@ pub(crate) fn parse_trigger_clause_lexed(
                     from,
                     owner,
                     one_or_more,
+                    cause_filter,
                 }
             } else if one_or_more {
-                TriggerSpec::EntersBattlefieldOneOrMore(filter)
+                TriggerSpec::EntersBattlefieldOneOrMore {
+                    filter,
+                    cause_filter,
+                }
             } else {
-                TriggerSpec::EntersBattlefield(filter)
+                TriggerSpec::EntersBattlefield {
+                    filter,
+                    cause_filter,
+                }
             });
         }
     }
