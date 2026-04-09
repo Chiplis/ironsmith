@@ -689,6 +689,126 @@ fn wild_dogs_upkeep_trigger_hands_control_to_the_life_leader() {
 }
 
 #[test]
+fn crystalline_resonance_copies_target_permanent_when_you_cycle() {
+    use crate::PriorityResponse;
+    use crate::decision::{LegalAction, compute_legal_actions};
+    use crate::game_loop::{
+        PriorityLoopState, apply_priority_response_with_dm,
+        resolve_stack_entry_with_dm_and_triggers,
+    };
+    use crate::zone::Zone;
+
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let mut dm = SelectFirstDecisionMaker;
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let resonance_def = CardDefinitionBuilder::new(CardId::new(), "Crystalline Resonance")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Whenever you cycle a card, you may have this enchantment become a copy of another target permanent until your next turn, except it has this ability.",
+        )
+        .expect("Crystalline Resonance should parse");
+    let resonance_id = game.create_object_from_definition(&resonance_def, alice, Zone::Battlefield);
+
+    let target_def = CardDefinitionBuilder::new(CardId::new(), "Target Bear")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+    let target_id = game.create_object_from_definition(&target_def, bob, Zone::Battlefield);
+
+    let cycling_def = CardDefinitionBuilder::new(CardId::new(), "Cycle Probe")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text("Cycling {2} ({2}, Discard this card: Draw a card.)")
+        .expect("cycling probe should parse");
+    let cycling_id = game.create_object_from_definition(&cycling_def, alice, Zone::Hand);
+
+    let library_card = CardBuilder::new(CardId::new(), "Draw Target")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    game.create_object_from_card(&library_card, alice, Zone::Library);
+
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 2);
+
+    let activate_action = compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::ActivateAbility { source, .. } if *source == cycling_id
+            )
+        })
+        .expect("cycling should be available from hand");
+
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("cycling activation should succeed");
+
+    resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+        .expect("cycling ability should resolve");
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "cycling should queue Crystalline Resonance's trigger"
+    );
+
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Crystalline Resonance trigger should go on the stack");
+    resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+        .expect("Crystalline Resonance trigger should resolve");
+
+    game.refresh_continuous_state();
+    let resonance_chars = game
+        .calculated_characteristics(resonance_id)
+        .expect("Crystalline Resonance should still have characteristics");
+
+    assert_eq!(
+        resonance_chars.name,
+        game.object(target_id)
+            .expect("target bear should still exist")
+            .name
+            .clone(),
+        "the enchantment should copy the target permanent's name"
+    );
+    assert!(
+        resonance_chars.card_types.contains(&CardType::Creature)
+            && !resonance_chars.card_types.contains(&CardType::Enchantment),
+        "the enchantment should become the copied permanent type"
+    );
+    assert_eq!(
+        resonance_chars.power,
+        Some(3),
+        "the copied permanent should contribute the target's power"
+    );
+    assert_eq!(
+        resonance_chars.toughness,
+        Some(3),
+        "the copied permanent should contribute the target's toughness"
+    );
+}
+
+#[test]
 fn test_make_an_example_leaves_unselected_creatures_on_the_battlefield() {
     use crate::executor::ExecutionContext;
 

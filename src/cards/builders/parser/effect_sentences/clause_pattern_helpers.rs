@@ -406,6 +406,10 @@ pub(crate) fn parse_copy_spell_clause(
     };
     let tail = &tokens[copy_idx + 1..];
     let split_idx = find_choose_new_targets_split_idx(tail);
+    let exception_idx = clause_words.iter().position(|word| *word == "except");
+    let clause_words_before_exception = exception_idx
+        .map(|idx| &clause_words[..idx])
+        .unwrap_or(&clause_words);
     let simple_copy_reference = copy_idx == 0
         && (matches!(
             clause_words.get(1).copied(),
@@ -482,10 +486,10 @@ pub(crate) fn parse_copy_spell_clause(
         }
         return Ok(Some(base));
     }
-    if !word_slice_contains(&clause_words, "spell")
-        && !word_slice_contains(&clause_words, "spells")
-        && !word_slice_contains(&clause_words, "ability")
-        && !word_slice_contains(&clause_words, "abilities")
+    if !word_slice_contains(clause_words_before_exception, "spell")
+        && !word_slice_contains(clause_words_before_exception, "spells")
+        && !word_slice_contains(clause_words_before_exception, "ability")
+        && !word_slice_contains(clause_words_before_exception, "abilities")
     {
         return Ok(None);
     }

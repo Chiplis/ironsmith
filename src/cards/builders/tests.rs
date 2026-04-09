@@ -7615,6 +7615,33 @@ fn test_parse_cycle_this_card_trigger_compiles() {
 }
 
 #[test]
+fn parse_crystalline_resonance_becomes_copy_until_your_next_turn() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Crystalline Resonance")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Whenever you cycle a card, you may have this enchantment become a copy of another target permanent until your next turn, except it has this ability.",
+        )
+        .expect("Crystalline Resonance should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ");
+    assert!(
+        rendered.contains("become a copy of another target permanent")
+            && rendered.contains("until your next turn"),
+        "expected the copy duration to survive rendering, got {rendered}"
+    );
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("BecomeCopy") && !debug.contains("CopySpellEffect"),
+        "expected a copy-permanent lowering, got {debug}"
+    );
+}
+
+#[test]
 fn parse_valiant_rescuer_keeps_another_card_cycle_trigger() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Valiant Rescuer")
         .mana_cost(ManaCost::from_pips(vec![
