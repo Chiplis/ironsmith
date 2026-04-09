@@ -527,6 +527,57 @@ fn oath_of_druids_upkeep_trigger_puts_revealed_creature_onto_battlefield() {
 }
 
 #[test]
+fn wild_dogs_upkeep_trigger_hands_control_to_the_life_leader() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let wild_dogs = CardDefinitionBuilder::new(CardId::from_raw(99_104), "Wild Dogs")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Green]]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![crate::types::Subtype::Dog])
+        .power_toughness(PowerToughness::fixed(2, 1))
+        .parse_text(
+            "At the beginning of your upkeep, if a player has more life than each other player, the player with the most life gains control of this creature.\nCycling {2} ({2}, Discard this card: Draw a card.)",
+        )
+        .expect("Wild Dogs should parse for the runtime regression test");
+    let wild_dogs_id = game.create_object_from_definition(&wild_dogs, alice, Zone::Battlefield);
+
+    game.turn.phase = Phase::Beginning;
+    game.turn.step = Some(crate::game_state::Step::Upkeep);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+    assert!(
+        trigger_queue.entries.is_empty(),
+        "tied life totals should not trigger Wild Dogs"
+    );
+
+    game.player_mut(bob).expect("bob exists").life = 21;
+
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Wild Dogs should trigger once a player has the most life"
+    );
+
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Wild Dogs upkeep trigger should go on the stack");
+    resolve_stack_entry(&mut game).expect("Wild Dogs upkeep trigger should resolve");
+
+    assert_eq!(
+        game.object(wild_dogs_id)
+            .expect("Wild Dogs should still exist")
+            .controller,
+        bob,
+        "the player with the most life should gain control of Wild Dogs"
+    );
+}
+
+#[test]
 fn test_make_an_example_leaves_unselected_creatures_on_the_battlefield() {
     use crate::executor::ExecutionContext;
 
