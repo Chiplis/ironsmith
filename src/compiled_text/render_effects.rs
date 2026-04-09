@@ -1914,6 +1914,42 @@ pub(super) fn normalize_cost_phrase(text: &str) -> String {
     normalize_duplicate_sacrifice_article(text)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tag::TagKey;
+    use crate::target::{TaggedObjectConstraint, TaggedOpbjectRelation};
+
+    #[test]
+    fn describe_choose_then_sacrifice_compacts_any_number_costs() {
+        let choose = crate::effects::ChooseObjectsEffect::new(
+            ObjectFilter::creature(),
+            ChoiceCount::any_number(),
+            PlayerFilter::You,
+            TagKey::from("sacrificed_0"),
+        )
+        .in_zone(Zone::Battlefield);
+
+        let mut sacrifice_filter = ObjectFilter::creature();
+        sacrifice_filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: TagKey::from("sacrificed_0"),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+        let sacrifice = crate::effects::SacrificeEffect::player(
+            sacrifice_filter.clone(),
+            Value::Count(sacrifice_filter),
+            PlayerFilter::You,
+        );
+
+        let compact = describe_choose_then_sacrifice(&choose, &sacrifice)
+            .expect("any-number sacrifice should compact");
+        assert_eq!(
+            normalize_cost_phrase(&compact),
+            "Sacrifice any number of creatures"
+        );
+    }
+}
+
 pub(super) fn describe_cost_component(cost: &crate::costs::Cost) -> String {
     if let Some(mana_cost) = cost.mana_cost_ref() {
         return mana_cost.to_oracle();
@@ -2535,7 +2571,12 @@ pub(super) fn describe_choose_then_sacrifice(
     choose: &crate::effects::ChooseObjectsEffect,
     sacrifice: &crate::effects::SacrificeEffect,
 ) -> Option<String> {
-    let choose_exact = choose.count.max.filter(|max| *max == choose.count.min)?;
+    let choose_is_any_number = choose.count.is_any_number();
+    let choose_exact = if choose_is_any_number {
+        None
+    } else {
+        choose.count.max.filter(|max| *max == choose.count.min)?
+    };
     let sacrifice_count = match sacrifice.count {
         Value::Fixed(value) if value > 0 => Some(value as usize),
         _ => None,
@@ -2559,9 +2600,13 @@ pub(super) fn describe_choose_then_sacrifice(
             && matches!(constraint.tag.as_str(), "triggering" | "damaged")
     });
     let chosen = choose.filter.description();
-    if choose.count.is_any_number() && sacrifice_any_number {
+    if choose_is_any_number && sacrifice_any_number {
         let chosen = pluralize_noun_phrase(strip_leading_article(&chosen));
         return Some(format!("{player} {verb} any number of {chosen}"));
+    }
+
+    if choose_is_any_number {
+        return None;
     }
 
     let sacrifice_count = sacrifice_count?;
