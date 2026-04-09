@@ -863,14 +863,14 @@ pub(crate) fn parse_become_clause(
 ) -> Result<EffectAst, CardTextError> {
     fn split_trailing_except_tokens(
         tokens: &[OwnedLexToken],
-    ) -> (&[OwnedLexToken], Option<&[OwnedLexToken]>) {
+    ) -> (Vec<OwnedLexToken>, Option<Vec<OwnedLexToken>>) {
         let token_word_view = ClauseDispatchCompatWords::new(tokens);
         let token_words = token_word_view.to_word_refs();
         let Some(except_word_idx) = token_words.iter().rposition(|word| *word == "except") else {
-            return (tokens, None);
+            return (tokens.to_vec(), None);
         };
         let Some(except_token_idx) = token_index_for_word_index(tokens, except_word_idx) else {
-            return (tokens, None);
+            return (tokens.to_vec(), None);
         };
         let exception = trim_commas(&tokens[except_token_idx + 1..]);
         (
@@ -888,11 +888,12 @@ pub(crate) fn parse_become_clause(
     let rest_tokens = trim_commas(rest_tokens).to_vec();
     let (rest_core_tokens, copy_exception_tokens) = split_trailing_except_tokens(&rest_tokens);
     let preserve_source_abilities = copy_exception_tokens
+        .as_deref()
         .is_some_and(parse_copy_exception_preserves_source_abilities);
     let become_clause_tokens = if preserve_source_abilities {
-        rest_core_tokens
+        rest_core_tokens.as_slice()
     } else {
-        &rest_tokens
+        rest_tokens.as_slice()
     };
     let (duration, subject_tokens_vec, become_tokens) =
         if let Some((duration, remainder)) = parse_restriction_duration(&subject_tokens)? {
@@ -937,7 +938,7 @@ pub(crate) fn parse_become_clause(
                 .ok_or_else(|| {
                     CardTextError::ParseError(format!(
                         "missing life total amount (clause: '{}')",
-                        render_lower_words(rest_tokens)
+                        render_lower_words(&rest_tokens)
                     ))
                 })?;
             return Ok(EffectAst::SetLifeTotal { amount, player });
@@ -1001,14 +1002,14 @@ pub(crate) fn parse_become_clause(
         let Some(source_start) = token_index_for_word_index(become_body_tokens, 2) else {
             return Err(CardTextError::ParseError(format!(
                 "missing copy source in become clause (clause: '{}')",
-                render_lower_words(rest_tokens)
+                render_lower_words(&rest_tokens)
             )));
         };
         let source_tokens = trim_commas(&become_body_tokens[source_start..]);
         if source_tokens.is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "missing copy source in become clause (clause: '{}')",
-                render_lower_words(rest_tokens)
+                render_lower_words(&rest_tokens)
             )));
         }
         let source = parse_target_phrase(&source_tokens)?;
@@ -1244,6 +1245,6 @@ pub(crate) fn parse_become_clause(
 
     Err(CardTextError::ParseError(format!(
         "unsupported become clause (clause: '{}')",
-        render_lower_words(rest_tokens)
+        render_lower_words(&rest_tokens)
     )))
 }
