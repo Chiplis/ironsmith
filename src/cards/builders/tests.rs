@@ -15799,6 +15799,44 @@ fn parse_delayed_return_at_end_of_combat_parses() {
 }
 
 #[test]
+fn parse_conquerors_galleon_attack_trigger_delays_return_and_transform_at_end_of_combat() {
+    let def = CardDefinitionBuilder::new(
+        CardId::from_raw(1),
+        "Conqueror's Galleon // Conqueror's Foothold",
+    )
+    .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+    .card_types(vec![CardType::Artifact])
+    .subtypes(vec![Subtype::Vehicle])
+    .power_toughness(PowerToughness::fixed(2, 10))
+    .parse_text(
+        "When this Vehicle attacks, exile it at end of combat, then return it to the battlefield transformed under your control.\nCrew 4 (Tap any number of creatures you control with total power 4 or more: This Vehicle becomes an artifact creature until end of turn.)",
+    )
+    .expect("Conqueror's Galleon should parse");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("CrewCostEffect"),
+        "expected crew ability to survive parsing, got {debug}"
+    );
+    assert!(
+        debug.contains("ScheduleDelayedTriggerEffect"),
+        "expected delayed trigger scheduling, got {debug}"
+    );
+    assert!(
+        debug.contains("EndOfCombatTrigger"),
+        "expected end-of-combat delayed trigger, got {debug}"
+    );
+    assert!(
+        debug.contains("MoveToZoneEffect"),
+        "expected delayed exile/return zone movement, got {debug}"
+    );
+    assert!(
+        debug.contains("TransformEffect"),
+        "expected transformed return payload, got {debug}"
+    );
+}
+
+#[test]
 fn parse_delayed_return_at_next_end_step_parses() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Flicker Variant")
         .parse_text(
