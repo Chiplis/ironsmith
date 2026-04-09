@@ -459,7 +459,7 @@ fn parse_simple_ability_modifier_clause_lexed(
         }));
     }
 
-    if let Some(target) = source_target_from_subject_tokens(subject_tokens) {
+    if let Some(target) = source_target_from_subject_tokens(&subject_tokens) {
         if losing {
             return Ok(Some(EffectAst::RemoveAbilitiesFromTarget {
                 target,
@@ -639,7 +639,7 @@ pub(crate) fn parse_simple_ability_modifier_clause(
         }));
     }
 
-    if let Some(target) = source_target_from_subject_tokens(subject_tokens) {
+    if let Some(target) = source_target_from_subject_tokens(&subject_tokens) {
         if losing {
             return Ok(Some(EffectAst::RemoveAbilitiesFromTarget {
                 target,

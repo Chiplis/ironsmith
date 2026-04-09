@@ -90,6 +90,7 @@ fn normalize_dynamic_token_card_pt_surface(oracle_lower: &str, text: &str) -> St
 
 pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str) -> String {
     let oracle_lower = def.card.oracle_text.to_ascii_lowercase();
+    let normalized = line.trim().to_string();
     let oracle_has_fall_greatest_power =
         oracle_lower.contains("with the greatest power among creatures target opponent controls");
     let oracle_has_greeds_gambit_triplet = oracle_lower
