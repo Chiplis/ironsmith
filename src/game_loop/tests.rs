@@ -1583,10 +1583,41 @@ fn test_toggo_landfall_creates_a_rock_token_with_an_activated_ability() {
         "Rock should keep its equip ability, got {activated_texts:?}"
     );
     assert!(
-        activated_texts
-            .iter()
-            .any(|text| text.contains("Sacrifice Rock: This creature deals 2 damage to any target")),
-        "Rock should keep the quoted activated damage ability, got {activated_texts:?}"
+        rock.abilities.iter().any(|ability| {
+            matches!(
+                &ability.kind,
+                AbilityKind::Static(static_ability)
+                    if static_ability.id()
+                        == crate::static_abilities::StaticAbilityId::AttachedAbilityGrant
+            )
+        }),
+        "Rock should keep the static grant for the quoted damage ability, got {:?}",
+        rock.abilities
+    );
+
+    if let Some(rock) = game.object_mut(rock_id) {
+        rock.attached_to = Some(crate::object::AttachmentTarget::Object(toggo_id));
+    }
+    if let Some(toggo) = game.object_mut(toggo_id) {
+        toggo.attachments.push(rock_id);
+    }
+    let toggo_chars = game
+        .calculated_characteristics(toggo_id)
+        .expect("equipped Toggo should have calculated characteristics");
+    let granted_activated_texts = toggo_chars
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Activated(_) => ability.text.as_deref(),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        granted_activated_texts.iter().any(|text| {
+            text.contains("Sacrifice")
+                && text.contains("This creature deals 2 damage to any target")
+        }),
+        "Equipped creature should gain the quoted Rock damage ability, got {granted_activated_texts:?}"
     );
 }
 
@@ -5454,7 +5485,9 @@ fn terastodon_etb_destroys_up_to_three_permanents_and_makes_elephants() {
         ) -> Vec<crate::game_state::Target> {
             let mut chosen = Vec::new();
             for requirement in &ctx.requirements {
-                let max = requirement.max_targets.unwrap_or(requirement.legal_targets.len());
+                let max = requirement
+                    .max_targets
+                    .unwrap_or(requirement.legal_targets.len());
                 let mut picked = 0usize;
                 for target in &requirement.legal_targets {
                     if picked >= max {
@@ -5540,24 +5573,24 @@ fn terastodon_etb_destroys_up_to_three_permanents_and_makes_elephants() {
     }
 
     assert!(
-        game.player(alice).is_some_and(|player| player.graveyard.iter().any(|&id| {
-            game.object(id)
-                .is_some_and(|obj| obj.name == "Alice Sigil")
-        })),
+        game.player(alice).is_some_and(|player| player
+            .graveyard
+            .iter()
+            .any(|&id| { game.object(id).is_some_and(|obj| obj.name == "Alice Sigil") })),
         "Alice's noncreature permanent should be destroyed"
     );
     assert!(
-        game.player(bob).is_some_and(|player| player.graveyard.iter().any(|&id| {
-            game.object(id)
-                .is_some_and(|obj| obj.name == "Bob Relic")
-        })),
+        game.player(bob).is_some_and(|player| player
+            .graveyard
+            .iter()
+            .any(|&id| { game.object(id).is_some_and(|obj| obj.name == "Bob Relic") })),
         "Bob's artifact should be destroyed"
     );
     assert!(
-        game.player(bob).is_some_and(|player| player.graveyard.iter().any(|&id| {
-            game.object(id)
-                .is_some_and(|obj| obj.name == "Bob Shrine")
-        })),
+        game.player(bob).is_some_and(|player| player
+            .graveyard
+            .iter()
+            .any(|&id| { game.object(id).is_some_and(|obj| obj.name == "Bob Shrine") })),
         "Bob's land should be destroyed"
     );
 

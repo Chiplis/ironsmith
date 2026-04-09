@@ -9904,25 +9904,31 @@ pub(crate) fn parse_equipment_rules_text(words: &[&str], source_text: &str) -> O
     }
 
     let mut lines = Vec::new();
-    if let Some(has_idx) = source_text.find("equipped creature has ") {
+    let lower_source = source_text.to_ascii_lowercase();
+    if let Some(has_idx) = lower_source.find("equipped creature has ") {
         let ability_start = has_idx + "equipped creature has ".len();
         let ability_tail = &source_text[ability_start..];
-        let ability_end = ability_tail
-            .find(" and equip ")
-            .or_else(|| ability_tail.rfind(" equip "))
-            .unwrap_or(ability_tail.len());
+        let lower_ability_tail = &lower_source[ability_start..];
+        let ability_end = [
+            " and equip ",
+            "\" and equip ",
+            "\"and equip ",
+            "' and equip ",
+            "'and equip ",
+        ]
+        .iter()
+        .filter_map(|pattern| lower_ability_tail.find(pattern))
+        .min()
+        .or_else(|| lower_ability_tail.rfind(" equip "))
+        .unwrap_or(ability_tail.len());
         let ability_clause = ability_tail[..ability_end].trim();
         if ability_clause.contains(':') {
-            let normalized_clause = ability_clause
-                .strip_prefix('\'')
-                .and_then(|text| text.strip_suffix('\''))
-                .or_else(|| {
-                    ability_clause
-                        .strip_prefix('"')
-                        .and_then(|text| text.strip_suffix('"'))
-                })
-                .unwrap_or(ability_clause);
-            lines.push(format!("Equipped creature has \"{normalized_clause}\"."));
+            let normalized_clause = ability_clause.trim_matches(|ch| ch == '\'' || ch == '"');
+            let mut granted_text = normalized_clause.trim_end_matches('.').to_string();
+            if !granted_text.ends_with(['.', '!', '?']) {
+                granted_text.push('.');
+            }
+            lines.push(format!("Equipped creature has \"{granted_text}\""));
         }
     }
 
@@ -10917,7 +10923,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
                 ObjectFilter::source(),
             )));
         }
-        if let Some(rules_text) = parse_equipment_rules_text(&words, lower.as_str())
+        if let Some(rules_text) = parse_equipment_rules_text(&words, name)
             && let Ok(def) = builder.clone().parse_text(&rules_text)
         {
             return Some(def);
@@ -11799,16 +11805,74 @@ mod parse_compile_tests {
             "equip",
             "1",
         ];
-        let source_text =
-            "colorless equipment artifact token named rock with \"equipped creature has '{1}, {t}, sacrifice rock: this creature deals 2 damage to any target'\" and equip {1}.";
+        let source_text = "Colorless Equipment artifact token named Rock with \"Equipped creature has '{1}, {T}, Sacrifice Rock: This creature deals 2 damage to any target'\" and equip {1}.";
 
         let rules_text =
             parse_equipment_rules_text(&words, source_text).expect("equipment rules text");
 
         assert!(
-            rules_text.contains("Equipped creature has \"{1}, {t}, sacrifice rock: this creature deals 2 damage to any target\".")
+            rules_text.contains("Equipped creature has \"{1}, {T}, Sacrifice Rock: This creature deals 2 damage to any target.\"")
                 && rules_text.contains("Equip {1}"),
             "expected quoted activated ability plus equip line, got {rules_text}"
+        );
+    }
+
+    #[test]
+    fn equipment_token_rules_text_reparses_into_grant_and_equip() {
+        let words = [
+            "colorless",
+            "equipment",
+            "artifact",
+            "token",
+            "named",
+            "rock",
+            "with",
+            "equipped",
+            "creature",
+            "has",
+            "sacrifice",
+            "rock",
+            "this",
+            "creature",
+            "deals",
+            "2",
+            "damage",
+            "to",
+            "any",
+            "target",
+            "and",
+            "equip",
+            "1",
+        ];
+        let source_text = "colorless Equipment artifact token named Rock with \"Equipped creature has '{1}, {T}, Sacrifice Rock: This creature deals 2 damage to any target'\" and equip {1}.";
+        let rules_text =
+            parse_equipment_rules_text(&words, source_text).expect("equipment rules text");
+
+        let def = CardDefinitionBuilder::new(CardId::new(), "Rock")
+            .token()
+            .card_types(vec![CardType::Artifact])
+            .subtypes(vec![Subtype::Equipment])
+            .with_ability(Ability::static_ability(StaticAbility::make_colorless(
+                ObjectFilter::source(),
+            )))
+            .parse_text(&rules_text)
+            .expect("equipment token rules text should parse");
+
+        let activated_texts = def
+            .abilities
+            .iter()
+            .filter_map(|ability| match &ability.kind {
+                AbilityKind::Activated(_) => ability.text.as_deref(),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert!(
+            activated_texts.iter().any(|text| *text == "Equip {1}"),
+            "expected reparsed equipment token to keep equip, got {activated_texts:?}"
+        );
+        assert!(
+            format!("{def:?}").contains("Equipped creature has"),
+            "expected reparsed equipment token to keep the granted ability, got {def:#?}"
         );
     }
 

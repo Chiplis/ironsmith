@@ -2655,6 +2655,14 @@ mod tests {
     }
 
     #[test]
+    fn pluralize_noun_phrase_handles_they_control_suffix() {
+        assert_eq!(
+            pluralize_noun_phrase("artifact they control"),
+            "artifacts they control"
+        );
+    }
+
+    #[test]
     fn pluralize_noun_phrase_keeps_without_qualifier_singular() {
         assert_eq!(
             pluralize_noun_phrase("target creature without flying"),

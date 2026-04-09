@@ -7636,10 +7636,17 @@ fn parse_valiant_rescuer_keeps_another_card_cycle_trigger() {
     );
 
     let debug = format!("{:#?}", def.abilities);
+    let has_once_each_turn_cap = def.abilities.iter().any(|ability| {
+        matches!(
+            &ability.kind,
+            AbilityKind::Triggered(triggered)
+                if triggered.intervening_if == Some(crate::ConditionExpr::MaxTimesEachTurn(1))
+        )
+    });
     assert!(
         debug.contains("source_filter: Some")
             && debug.contains("other: true")
-            && debug.contains("MaxTimesEachTurn(1)"),
+            && has_once_each_turn_cap,
         "expected reusable another-card cycle trigger lowering, got {debug}"
     );
 }
@@ -20736,7 +20743,9 @@ fn parse_oracle_curious_herd_targeted_artifact_count_regression() {
         "expected Curious Herd to preserve the targeted artifact-count token creation, got {rendered}"
     );
     assert!(
-        !rendered.contains("create a 3/3 green beast creature token for each artifact target opponent controls"),
+        !rendered.contains(
+            "create a 3/3 green beast creature token for each artifact target opponent controls"
+        ),
         "expected Curious Herd to avoid the collapsed for-each token wording, got {rendered}"
     );
     assert!(

@@ -116,7 +116,8 @@ impl EffectExecutor for DestroyNoRegenerationEffect {
 
         let mut outcome = EffectOutcome::count(apply_result.applied_count as i32);
         if !destroyed_objects.is_empty() {
-            outcome = outcome.with_execution_fact(ExecutionFact::AffectedObjects(destroyed_objects));
+            outcome =
+                outcome.with_execution_fact(ExecutionFact::AffectedObjects(destroyed_objects));
         }
 
         Ok(outcome)
@@ -213,8 +214,7 @@ mod tests {
         let first_id = game.create_object_from_card(&first, bob, Zone::Battlefield);
         let second_id = game.create_object_from_card(&second, bob, Zone::Battlefield);
 
-        let spec =
-            ChooseSpec::target(ChooseSpec::creature()).with_count(ChoiceCount::exactly(2));
+        let spec = ChooseSpec::target(ChooseSpec::creature()).with_count(ChoiceCount::exactly(2));
         let effect = DestroyNoRegenerationEffect::with_spec(spec.clone());
         let mut ctx = ExecutionContext::new_default(game.new_object_id(), alice)
             .with_targets(vec![

@@ -168,9 +168,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         let choose_text = format!("Choose {}", describe_choose_spec(&target_only.target));
         let token_blueprint = describe_token_blueprint(&create_token.token);
         let token_phrase = pluralize_token_phrase(&token_blueprint);
-        let mut count_desc = pluralize_noun_phrase(
-            strip_indefinite_article(&describe_for_each_count_filter(filter)),
-        );
+        let mut count_desc = pluralize_noun_phrase(strip_indefinite_article(
+            &describe_for_each_count_filter(filter),
+        ));
         count_desc = count_desc
             .replace("target opponent controls", "that player controls")
             .replace("target player controls", "that player controls")
@@ -190,8 +190,8 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
 
     if effects.len() == 2
         && let Some(target_only) = effects[0].downcast_ref::<crate::effects::TargetOnlyEffect>()
-        && let Some(create_token) = unwrap_tag_wrappers(&effects[1])
-            .downcast_ref::<crate::effects::CreateTokenEffect>()
+        && let Some(create_token) =
+            unwrap_tag_wrappers(&effects[1]).downcast_ref::<crate::effects::CreateTokenEffect>()
         && let Some(rendered) =
             describe_target_only_then_create_token_count(target_only, create_token)
     {
@@ -2020,7 +2020,7 @@ mod tests {
             .expect("iterated move-to-library should compact");
         assert_eq!(
             compact,
-            "Target player chooses three cards from their hand, then puts them on top of their library"
+            "target player chooses three cards from their hand, then puts them on top of their library"
         );
     }
 }
@@ -2482,6 +2482,8 @@ pub(super) fn pluralize_noun_phrase(phrase: &str) -> String {
     for suffix in [
         " you control",
         " you own",
+        " they control",
+        " they own",
         " an opponent controls",
         " an opponent owns",
         " target opponent controls",

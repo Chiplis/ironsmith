@@ -10,7 +10,7 @@ use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 
 use super::super::grammar::primitives as grammar;
-use super::super::lexer::token_word_refs;
+use super::super::lexer::{render_token_slice, token_word_refs};
 use super::super::object_filters::parse_object_filter;
 use super::super::token_primitives::{
     contains_window as word_slice_contains_sequence, find_index as find_token_index,
@@ -708,6 +708,7 @@ pub(crate) fn parse_create(
     let mut tapped = false;
     let mut attacking = false;
     let mut modifier_tail_words = tail_words.clone();
+    let mut raw_name_override: Option<String> = None;
     let mut rules_text_range: Option<(usize, usize)> = None;
     if let Some(named_idx) = find_word_index(&tail_words, |word| word == "named") {
         let range_end = for_each_idx.unwrap_or(tail_words.len());
@@ -853,6 +854,8 @@ pub(crate) fn parse_create(
         let with_tail_end = for_each_idx.unwrap_or(tail_words.len());
         if with_idx + 1 < with_tail_end {
             let with_words = &tail_words[with_idx + 1..with_tail_end];
+            let has_equipment_rules_subject =
+                word_slice_contains_sequence(with_words, &["equipped", "creature", "has"]);
             let rules_text_start = find_word_index(with_words, |word| {
                 matches!(
                     word,
@@ -901,11 +904,29 @@ pub(crate) fn parse_create(
                             | "block"
                     )
                 });
+            let preserve_rules_tail = preserve_rules_tail || has_equipment_rules_subject;
             if preserve_rules_tail {
                 let start = with_idx + 1 + include_end;
                 if start < with_tail_end {
                     rules_text_range = Some((start, with_tail_end));
                 }
+                let raw_tail_start = find_token_index(&tail_tokens, |token| token.is_word("with"))
+                    .unwrap_or(with_idx.min(tail_tokens.len()));
+                let raw_tail_end = if let Some(for_each_idx) = for_each_idx {
+                    token_index_for_word_index(&tail_tokens, for_each_idx)
+                        .unwrap_or(tail_tokens.len())
+                } else {
+                    tail_tokens.len()
+                };
+                let raw_tail = render_token_slice(&tail_tokens[raw_tail_start..raw_tail_end])
+                    .trim()
+                    .to_string();
+                let prefix = normalize_token_name(&name_words);
+                raw_name_override = Some(if prefix.is_empty() {
+                    raw_tail
+                } else {
+                    format!("{prefix} {raw_tail}")
+                });
             }
             if include_end > 0 {
                 name_words.extend(with_words[..include_end].iter().copied());
@@ -938,7 +959,7 @@ pub(crate) fn parse_create(
             name_words = name_words[pt_idx..].to_vec();
         }
     }
-    let name = normalize_token_name(&name_words);
+    let name = raw_name_override.unwrap_or_else(|| normalize_token_name(&name_words));
 
     if let Some((start, end)) = rules_text_range {
         if start < end && end <= modifier_tail_words.len() {

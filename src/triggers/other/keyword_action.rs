@@ -125,9 +125,7 @@ impl TriggerMatcher for KeywordActionTrigger {
         {
             return match &self.player {
                 PlayerFilter::You => "Whenever you cycle another card".to_string(),
-                PlayerFilter::Opponent => {
-                    "Whenever an opponent cycles another card".to_string()
-                }
+                PlayerFilter::Opponent => "Whenever an opponent cycles another card".to_string(),
                 PlayerFilter::Any => "Whenever a player cycles another card".to_string(),
                 _ => "Whenever a player cycles another card".to_string(),
             };

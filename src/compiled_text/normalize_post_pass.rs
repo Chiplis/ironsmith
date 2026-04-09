@@ -154,7 +154,8 @@ pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str
         {
             normalized_body = rewritten;
         }
-        if let Some(rewritten) = normalize_sentence_helper_random_hand_reveal_clause(&normalized_body)
+        if let Some(rewritten) =
+            normalize_sentence_helper_random_hand_reveal_clause(&normalized_body)
         {
             normalized_body = rewritten;
         }

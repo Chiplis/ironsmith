@@ -128,7 +128,8 @@ impl EffectExecutor for DestroyEffect {
 
         let mut outcome = apply_result.outcome;
         if !destroyed_objects.is_empty() {
-            outcome = outcome.with_execution_fact(ExecutionFact::AffectedObjects(destroyed_objects));
+            outcome =
+                outcome.with_execution_fact(ExecutionFact::AffectedObjects(destroyed_objects));
         }
 
         Ok(outcome)
@@ -161,8 +162,8 @@ mod tests {
     use crate::card::{CardBuilder, PowerToughness};
     use crate::color::ColorSet;
     use crate::effect::Effect;
-    use crate::filter::ObjectRef;
     use crate::executor::{ExecutionContext, ResolvedTarget};
+    use crate::filter::ObjectRef;
     use crate::game_state::GameState;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
@@ -175,12 +176,7 @@ mod tests {
         crate::tests::test_helpers::setup_two_player_game()
     }
 
-    fn create_creature(
-        game: &mut GameState,
-        owner: PlayerId,
-        name: &str,
-        id_raw: u32,
-    ) -> ObjectId {
+    fn create_creature(game: &mut GameState, owner: PlayerId, name: &str, id_raw: u32) -> ObjectId {
         let card = CardBuilder::new(CardId::from_raw(id_raw), name)
             .card_types(vec![CardType::Creature])
             .mana_cost(ManaCost::from_pips(vec![

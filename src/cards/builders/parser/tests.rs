@@ -7897,6 +7897,119 @@ fn rewrite_semantic_parse_keeps_nested_combat_whenever_trigger() -> Result<(), C
 }
 
 #[test]
+fn rewrite_semantic_parse_keeps_toggo_rock_token_rules_tail() -> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Toggo, Goblin Weaponsmith")
+        .card_types(vec![CardType::Creature]);
+    let (doc, _) = parse_text_to_semantic_document(
+        builder,
+        "Landfall — Whenever a land you control enters, create a colorless Equipment artifact token named Rock with \"Equipped creature has '{1}, {T}, Sacrifice Rock: This creature deals 2 damage to any target'\" and equip {1}.".to_string(),
+        false,
+    )?;
+
+    let expect_toggo_token_name = |effects: &[crate::cards::builders::EffectAst]| match effects {
+        [crate::cards::builders::EffectAst::CreateTokenWithMods { name, .. }] => {
+            let lower_name = name.to_ascii_lowercase();
+            assert!(
+                lower_name.contains("named rock"),
+                "expected named rock token payload, got {name}"
+            );
+            assert!(
+                lower_name.contains("equipped creature has"),
+                "expected equipment grant rules tail, got {name}"
+            );
+            assert!(
+                lower_name.contains("equip {1}"),
+                "expected equip text in token payload, got {name}"
+            );
+
+            let words: Vec<&str> = lower_name
+                .split_whitespace()
+                .map(|word| {
+                    word.trim_matches(|ch: char| {
+                        !ch.is_ascii_alphanumeric() && ch != '/' && ch != '+' && ch != '-'
+                    })
+                })
+                .map(|word| match word {
+                    "can't" | "cannot" => "cant",
+                    "aren't" => "arent",
+                    "isn't" => "isnt",
+                    "they're" => "theyre",
+                    "it's" => "its",
+                    "you're" => "youre",
+                    _ => word,
+                })
+                .filter(|word| !word.is_empty())
+                .collect();
+            let rules_text = super::compile_support::parse_equipment_rules_text(&words, name)
+                .expect("toggo token payload should yield equipment rules text");
+            let manual_def = CardDefinitionBuilder::new(CardId::new(), "Rock")
+                    .token()
+                    .card_types(vec![CardType::Artifact])
+                    .subtypes(vec![Subtype::Equipment])
+                    .with_ability(crate::ability::Ability::static_ability(
+                        crate::static_abilities::StaticAbility::make_colorless(
+                            crate::target::ObjectFilter::source(),
+                        ),
+                    ))
+                    .parse_text(&rules_text)
+                    .unwrap_or_else(|err| {
+                        panic!(
+                            "toggo equipment rules text should parse: {err:?}\nname={name}\nrules_text={rules_text}"
+                        )
+                    });
+            let manual_activated_texts = manual_def
+                .abilities
+                .iter()
+                .filter_map(|ability| match &ability.kind {
+                    crate::ability::AbilityKind::Activated(_) => ability.text.as_deref(),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            assert!(
+                manual_activated_texts
+                    .iter()
+                    .any(|text| *text == "Equip {1}"),
+                "expected manual token reparse to keep equip, got {manual_activated_texts:?}"
+            );
+
+            let def = super::compile_support::token_definition_for(name)
+                .expect("toggo token payload should round-trip into a token definition");
+            let activated_texts = def
+                .abilities
+                .iter()
+                .filter_map(|ability| match &ability.kind {
+                    crate::ability::AbilityKind::Activated(_) => ability.text.as_deref(),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            assert!(
+                activated_texts.iter().any(|text| *text == "Equip {1}"),
+                "expected round-tripped token to keep equip, got {activated_texts:?}"
+            );
+        }
+        other => panic!("expected a single token creation effect, got {other:?}"),
+    };
+
+    match doc.items.as_slice() {
+        [RewriteSemanticItem::Triggered(triggered)] => match &triggered.parsed {
+            crate::cards::builders::LineAst::Triggered { effects, .. } => {
+                expect_toggo_token_name(effects);
+            }
+            crate::cards::builders::LineAst::Ability(parsed) => {
+                let Some(effects) = parsed.effects_ast.as_ref() else {
+                    panic!("expected landfall ability to keep parsed effects ast");
+                };
+                expect_toggo_token_name(effects);
+            }
+            other => panic!("expected triggered line ast, got {other:?}"),
+        },
+        other => panic!("expected one triggered semantic item, got {other:?}"),
+    }
+
+    Ok(())
+}
+
+#[test]
 fn rewrite_semantic_parse_keeps_trigger_trigger_caps_and_first_time_suffixes()
 -> Result<(), CardTextError> {
     let (capped_doc, _) = parse_text_to_semantic_document(
