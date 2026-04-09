@@ -132,7 +132,7 @@ mod tests {
         let alice = game.players[0].id;
         let source = game.new_object_id();
         let condition = Condition::PlayerHasNoOpponentWithMoreLifeThan {
-            player: PlayerFilter::Any,
+            player: PlayerFilter::Specific(alice),
         };
 
         let ctx = ExecutionContext::new_default(source, alice);

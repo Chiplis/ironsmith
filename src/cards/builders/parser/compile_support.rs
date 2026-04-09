@@ -951,6 +951,7 @@ pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<Pl
         TriggerSpec::ThisDealsDamageToPlayer { .. }
         | TriggerSpec::ThisDealsCombatDamageToPlayer
         | TriggerSpec::DealsCombatDamageToPlayer { .. } => Some(PlayerFilter::DamagedPlayer),
+        TriggerSpec::ThisAttacks => Some(PlayerFilter::Defending),
         TriggerSpec::AttacksYouOrPlaneswalkerYouControl(_)
         | TriggerSpec::AttacksYouOrPlaneswalkerYouControlOneOrMore(_) => {
             Some(PlayerFilter::IteratedPlayer)
@@ -12003,6 +12004,14 @@ mod parse_compile_tests {
         assert!(
             effect_references_tag(&effect, "gamma"),
             "counter-unless-pays tagged target should be detected by tag reference checks"
+        );
+    }
+
+    #[test]
+    fn this_attacks_triggers_bind_the_defending_player() {
+        assert_eq!(
+            inferred_trigger_player_filter(&TriggerSpec::ThisAttacks),
+            Some(PlayerFilter::Defending)
         );
     }
 
