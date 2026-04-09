@@ -221,6 +221,75 @@ fn parse_exile_top_library_then_play_bundle(
     Ok(Some(vec![exile_effect, permission_effect]))
 }
 
+fn looks_like_source_leaves_return_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::cards::builders::parser::token_word_refs(tokens);
+    if words.first().copied() != Some("return") {
+        return false;
+    }
+    if !words.iter().any(|word| *word == "when")
+        || !words.iter().any(|word| *word == "leaves")
+        || !words.iter().any(|word| *word == "battlefield")
+        || !words
+            .windows(3)
+            .any(|window| window == ["to", "the", "battlefield"])
+        || !words
+            .iter()
+            .any(|word| matches!(*word, "owner" | "owners" | "owner's" | "owners'"))
+        || !words.iter().any(|word| *word == "control")
+    {
+        return false;
+    }
+
+    true
+}
+
+fn promote_exile_effect_to_source_leaves(effect: EffectAst) -> Option<EffectAst> {
+    match effect {
+        EffectAst::Exile { target, face_down } => Some(EffectAst::ExileUntilSourceLeaves {
+            target,
+            face_down,
+        }),
+        EffectAst::ExileAll { filter, face_down } => Some(EffectAst::ExileUntilSourceLeaves {
+            target: TargetAst::Object(filter, None, None),
+            face_down,
+        }),
+        EffectAst::Conditional {
+            predicate,
+            if_true,
+            if_false,
+        } if if_false.is_empty() && if_true.len() == 1 => {
+            let inner = promote_exile_effect_to_source_leaves(if_true.into_iter().next().unwrap())?;
+            Some(EffectAst::Conditional {
+                predicate,
+                if_true: vec![inner],
+                if_false,
+            })
+        }
+        _ => None,
+    }
+}
+
+fn parse_exile_then_source_leaves_return_bundle(
+    first_sentence: &[OwnedLexToken],
+    second_sentence: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if !looks_like_source_leaves_return_followup_sentence(second_sentence) {
+        return Ok(None);
+    }
+
+    let first_effects = parse_effect_sentence_lexed(first_sentence)?;
+    let [first_effect] = first_effects.as_slice() else {
+        return Ok(None);
+    };
+    let Some(rewritten_first_effect) =
+        promote_exile_effect_to_source_leaves(first_effect.clone())
+    else {
+        return Ok(None);
+    };
+
+    Ok(Some(vec![rewritten_first_effect]))
+}
+
 const CHOSEN_NAME_TAG: &str = "__chosen_name__";
 const THEY_DONT_UNTAP_DURING_PREFIXES: &[&[&str]] = &[
     &["they", "dont", "untap", "during"],
@@ -235,6 +304,14 @@ const PRONOUN_TRIGGER_PREFIXES: &[&[&str]] = &[
 
 fn parse_exact_card_effect_bundle_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
     let sentences = split_lexed_sentences(tokens);
+    if sentences.len() == 2
+        && let Ok(Some(effects)) = parse_exile_then_source_leaves_return_bundle(
+            sentences[0],
+            sentences[1],
+        )
+    {
+        return Some(effects);
+    }
     if sentences.len() == 2
         && let Ok(Some(effects)) =
             parse_exile_top_library_then_play_bundle(sentences[0], sentences[1])
@@ -4643,6 +4720,28 @@ mod tests {
         assert!(
             debug.contains("grantplaytaggeduntilendofturn"),
             "expected play permission effect, got {debug}"
+        );
+    }
+
+    #[test]
+    fn exile_then_source_leaves_return_bundle_collapses_to_until_source_leaves() {
+        let tokens = lex_line(
+            "If there are two or more other creatures on the battlefield, exile that creature. Return that card to the battlefield under its owner's control when this artifact leaves the battlefield.",
+            0,
+        )
+        .expect("rewrite lexer should classify source-leaves exile bundle");
+
+        let parsed = parse_exact_card_effect_bundle_lexed(&tokens)
+            .expect("source-leaves exile bundle should parse");
+
+        let debug = format!("{parsed:#?}").to_ascii_lowercase();
+        assert!(
+            debug.contains("exileuntilsourceleaves"),
+            "expected source-leaves exile bundle, got {debug}"
+        );
+        assert!(
+            !debug.contains("returnfromgraveyardtobattlefield"),
+            "expected source-leaves bundle not to lower into graveyard-return, got {debug}"
         );
     }
 

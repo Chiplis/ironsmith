@@ -1665,7 +1665,8 @@ fn test_parse_portcullis_exile_until_leaves_battlefield() {
         "expected Portcullis condition to survive rendering, got {rendered}"
     );
     assert!(
-        rendered.contains("exile that creature until this artifact leaves the battlefield"),
+        rendered.contains("exile that creature until this permanent leaves the battlefield")
+            || rendered.contains("exile that creature until this artifact leaves the battlefield"),
         "expected Portcullis to compile into exile-until-source-leaves, got {rendered}"
     );
     assert!(
