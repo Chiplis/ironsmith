@@ -2537,12 +2537,15 @@ pub(super) fn describe_choose_then_sacrifice(
 ) -> Option<String> {
     let choose_exact = choose.count.max.filter(|max| *max == choose.count.min)?;
     let sacrifice_count = match sacrifice.count {
-        Value::Fixed(value) if value > 0 => value as usize,
-        _ => return None,
+        Value::Fixed(value) if value > 0 => Some(value as usize),
+        _ => None,
     };
+    let sacrifice_any_number = matches!(
+        &sacrifice.count,
+        Value::Count(count_filter) if count_filter == &sacrifice.filter
+    );
     if choose_primary_zone(choose) != Some(Zone::Battlefield)
         || choose.is_search
-        || choose_exact != sacrifice_count
         || sacrifice.player != choose.chooser
         || !sacrifice_uses_chosen_tag(&sacrifice.filter, choose.tag.as_str())
     {
@@ -2556,6 +2559,16 @@ pub(super) fn describe_choose_then_sacrifice(
             && matches!(constraint.tag.as_str(), "triggering" | "damaged")
     });
     let chosen = choose.filter.description();
+    if choose.count.is_any_number() && sacrifice_any_number {
+        let chosen = pluralize_noun_phrase(strip_leading_article(&chosen));
+        return Some(format!("{player} {verb} any number of {chosen}"));
+    }
+
+    let sacrifice_count = sacrifice_count?;
+    if choose_exact != sacrifice_count {
+        return None;
+    }
+
     if sacrifice_count == 1 {
         if refers_to_triggering_object {
             return Some(format!("{player} {verb} it"));

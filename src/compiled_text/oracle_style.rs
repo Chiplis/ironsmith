@@ -2282,7 +2282,7 @@ mod tests {
     #[test]
     fn normalizes_corpse_cobble_surface_text_into_x_token_and_sacrifice_cost() {
         let normalized = normalize_common_semantic_phrasing(
-            "Choose any number a creature you control in the battlefield and tags it as 'sacrificed_0'. you sacrifice all permanents you control. Create a 0/0 blue and black Zombie creature token with menace. it has base power and toughness the total power of the sacrificed creatures/the total power of the sacrificed creatures forever. Flashback {3}{U}{B} (You may cast this card from your graveyard for its flashback cost and any additional costs. Then exile it.)",
+            "Choose any number a creature you control in the battlefield and tags it as 'sacrificed_0', Sacrifice all permanents you control. Create a 0/0 blue and black Zombie creature token with menace. it has base power and toughness the total power of the sacrificed creatures/the total power of the sacrificed creatures forever. Flashback {3}{U}{B} (You may cast this card from your graveyard for its flashback cost and any additional costs. Then exile it.)",
         );
 
         assert!(
