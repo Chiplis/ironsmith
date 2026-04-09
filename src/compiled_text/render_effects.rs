@@ -8716,12 +8716,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(consult) = effect.downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>() {
         let player = describe_player_filter(&consult.player);
         let library_owner = describe_possessive_player_filter(&consult.player);
-        let verb = match consult.mode {
+        let (subject_verb, followup_verb) = match consult.mode {
             crate::effects::consult_helpers::LibraryConsultMode::Reveal => {
-                player_verb(&player, "reveal", "reveals")
+                (player_verb(&player, "reveal", "reveals"), "reveal")
             }
             crate::effects::consult_helpers::LibraryConsultMode::Exile => {
-                player_verb(&player, "exile", "exiles")
+                (player_verb(&player, "exile", "exiles"), "exile")
             }
         };
         let pronoun = if player == "you" { "you" } else { "they" };
@@ -8736,7 +8736,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             ),
         };
         return format!(
-            "{player} {verb} cards from the top of {library_owner} library until {pronoun} {verb} {stop_text}"
+            "{player} {subject_verb} cards from the top of {library_owner} library until {pronoun} {followup_verb} {stop_text}"
         );
     }
     if let Some(remainder) =

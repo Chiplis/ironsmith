@@ -1314,12 +1314,11 @@ export default function Workspace({
           >
             <div
               ref={handRevealShellRef}
-              className="hand-reveal-shell absolute left-0 bottom-0"
+              className="hand-reveal-shell absolute left-1/2 bottom-0"
               data-open={handLaneOpen ? "true" : "false"}
               aria-expanded={handLaneOpen}
               style={{
                 height: `${handLaneOpen ? HAND_REVEAL_HEIGHT : HAND_COLLAPSED_SHELL_HEIGHT}px`,
-                "--hand-shell-offset-x": "3vw",
               }}
               onMouseEnter={handleHandLaneEnter}
               onMouseLeave={handleHandLaneLeave}
@@ -1338,6 +1337,7 @@ export default function Workspace({
                   selectedObjectId={selectedObjectId}
                   onInspect={handleInspectObject}
                   isExpanded={handLaneOpen}
+                  layout="mobile-fan"
                 />
               </div>
             </div>

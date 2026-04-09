@@ -1198,7 +1198,7 @@ pub(crate) fn parse_where_x_is_aggregate_filter_value(tokens: &[OwnedLexToken]) 
         && filter_words
             .iter()
             .any(|word| matches!(*word, "control" | "controls" | "own" | "owns"));
-    let filter = (if should_try_split {
+    let mut filter = (if should_try_split {
         let segments =
             crate::cards::builders::parser::grammar::primitives::split_lexed_slices_on_and(
                 filter_tokens,

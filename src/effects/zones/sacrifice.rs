@@ -83,6 +83,25 @@ fn choose_objects_to_sacrifice(
     Ok(normalize_object_selection(chosen, &matching, required))
 }
 
+fn tagged_selection_tag(filter: &ObjectFilter) -> Option<&crate::tag::TagKey> {
+    filter
+        .tagged_constraints
+        .iter()
+        .find(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        })
+        .map(|constraint| &constraint.tag)
+}
+
+fn dynamic_count_tracks_tagged_selection(
+    count_filter: &ObjectFilter,
+    sacrifice_filter: &ObjectFilter,
+) -> bool {
+    tagged_selection_tag(count_filter)
+        .zip(tagged_selection_tag(sacrifice_filter))
+        .is_some_and(|(count_tag, sacrifice_tag)| count_tag == sacrifice_tag)
+}
+
 /// Effect that makes a player sacrifice permanents.
 ///
 /// Sacrifice moves permanents from the battlefield to the graveyard.
@@ -323,6 +342,11 @@ impl CostExecutableEffect for SacrificeEffect {
         }
         let count = match self.count {
             crate::effect::Value::Fixed(count) => count.max(0) as usize,
+            crate::effect::Value::Count(ref count_filter)
+                if dynamic_count_tracks_tagged_selection(count_filter, &self.filter) =>
+            {
+                return Ok(());
+            }
             _ => {
                 return Err(crate::effects::CostValidationError::Other(
                     "dynamic sacrifice cost amount is unsupported".to_string(),

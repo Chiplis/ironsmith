@@ -3295,8 +3295,8 @@
   border-radius: 0;
   background: transparent;
   box-shadow: none;
-  transform: translate3d(var(--hand-shell-offset-x, 0px), 0, 0);
-  transform-origin: bottom left;
+  transform: translate3d(-50%, 0, 0);
+  transform-origin: bottom center;
   will-change: height;
   transition: transform 360ms cubic-bezier(0.22, 1, 0.36, 1);
   pointer-events: auto;
@@ -3304,7 +3304,7 @@
 
 .hand-reveal-shell[data-open="true"] {
   background: transparent;
-  transform: translate3d(var(--hand-shell-offset-x, 0px), -12px, 0);
+  transform: translate3d(-50%, -12px, 0);
 }
 
 .hand-reveal-shell .hand-reveal-body,
@@ -3467,6 +3467,51 @@
 
 .hand-reveal-shell .hand-zone-row-roulette {
   min-width: max-content;
+}
+
+/* Desktop mobile-fan hand layout */
+.hand-reveal-shell .hand-zone-viewport-mobile-fan {
+  overflow: visible;
+}
+
+.hand-reveal-shell .hand-zone-scroll-mobile-fan {
+  overflow-x: visible;
+  overflow-y: visible;
+}
+
+.hand-reveal-shell .hand-zone-row-mobile-fan {
+  align-items: flex-end;
+  justify-content: center;
+  overflow: visible;
+}
+
+.hand-reveal-shell .hand-zone-surface-mobile-fan .game-card.hand-card {
+  transform-origin: 50% 100%;
+  border-radius: 10px;
+}
+
+.hand-reveal-shell .hand-zone-surface-mobile-fan .game-card.hand-card .card-frame {
+  border-radius: 10px;
+}
+
+/* Suppress CSS :hover scale/position changes for fan cards to prevent flicker.
+   The instant :hover can oscillate when overlapping card edges shift under the
+   cursor. The JS-managed .hovered class (110ms debounced leave) is flicker-free. */
+.hand-reveal-shell .hand-zone-surface-mobile-fan .game-card.hand-card:hover:not(.hovered) {
+  --card-scale: 1;
+}
+
+.hand-reveal-shell[data-open="true"] .hand-zone-surface-mobile-fan .game-card.hand-card.hovered {
+  transform:
+    translate3d(
+      calc(var(--card-translate-x) + var(--card-jolt-x)),
+      calc(var(--card-translate-y) - 16px + var(--card-jolt-y)),
+      0
+    )
+    rotate(calc(var(--card-rotate) + var(--card-jolt-rotate)))
+    scale(1.15)
+    scale(var(--card-jolt-scale));
+  z-index: 50 !important;
 }
 
 .inspector-oracle-line {

@@ -9080,15 +9080,17 @@ fn try_compile_object_zone_and_exchange_effect(
             target,
         } => {
             if let Some(target) = target {
-                let (effects, mut choices) = compile_effect_for_target(target, ctx, |spec| {
-                    Effect::new(crate::effects::SacrificeTargetEffect::new(spec))
-                })?;
-                let (_chooser, player_choices) =
+                let (effects, mut choices) =
+                    compile_tagged_effect_for_target(target, ctx, "sacrificed", |spec| {
+                        Effect::new(crate::effects::SacrificeTargetEffect::new(spec))
+                    })?;
+                let (chooser, player_choices) =
                     resolve_effect_player_filter(*player, ctx, true, true, true)?;
+                ctx.last_player_filter = Some(chooser);
                 for choice in player_choices {
                     push_choice(&mut choices, choice);
                 }
-                return Ok((effects, choices));
+                return Ok(Some((effects, choices)));
             }
             let (chooser, choices) = resolve_effect_player_filter(*player, ctx, true, true, true)?;
             let target_prelude: Vec<Effect> = choices
@@ -9108,6 +9110,7 @@ fn try_compile_object_zone_and_exchange_effect(
                 }
                 Err(err) => return Err(err),
             };
+            preserve_chooser_relative_player_filters(filter, &mut resolved_filter, &chooser);
             if resolved_filter.controller.is_none() && resolved_filter.tagged_constraints.is_empty()
             {
                 resolved_filter.controller = Some(chooser.clone());
@@ -9156,6 +9159,7 @@ fn try_compile_object_zone_and_exchange_effect(
         EffectAst::SacrificeAll { filter, player } => {
             let (chooser, choices) = resolve_effect_player_filter(*player, ctx, true, true, true)?;
             let mut resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+            preserve_chooser_relative_player_filters(filter, &mut resolved_filter, &chooser);
             if resolved_filter.controller.is_none() {
                 resolved_filter.controller = Some(chooser.clone());
             }
