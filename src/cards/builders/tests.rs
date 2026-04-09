@@ -19224,6 +19224,37 @@ fn parse_exile_top_card_you_may_play_that_card_this_turn() {
 }
 
 #[test]
+fn parse_fallen_shinobi_uses_top_library_exile_and_plural_play_permission() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Fallen Shinobi")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Ninjutsu {2}{U}{B} ({2}{U}{B}, Return an unblocked attacker you control to hand: Put this card onto the battlefield tapped and attacking.)\nWhenever this creature deals combat damage to a player, that player exiles the top two cards of their library. Until end of turn, you may play those cards without paying their mana costs.",
+        )
+        .expect("fallen shinobi should parse");
+
+    let abilities_debug = format!("{:#?}", def.abilities).to_ascii_lowercase();
+    assert!(
+        abilities_debug.contains("exiletopoflibraryeffect"),
+        "expected top-library exile effect in triggered ability, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("grantplaytaggedeffect"),
+        "expected tagged play grant for exiled cards, got {abilities_debug}"
+    );
+    assert!(
+        !abilities_debug.contains("casttaggedeffect"),
+        "expected play permission rather than immediate cast, got {abilities_debug}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("play those cards")
+            && rendered.contains("without paying their mana costs"),
+        "expected plural play-from-exile wording in compiled output, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_necropotence_style_face_down_exile_with_delayed_return() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Necropotence Variant")
         .card_types(vec![CardType::Enchantment])
@@ -22564,7 +22595,8 @@ fn parse_oracle_creeping_renaissance_permanent_type_choice_regression() {
         "expected permanent-type choice wording, got {rendered}"
     );
     assert!(
-        rendered_lower.contains("return all cards of the chosen type from your graveyard to your hand"),
+        rendered_lower
+            .contains("return all cards of the chosen type from your graveyard to your hand"),
         "expected chosen-type graveyard return wording, got {rendered}"
     );
 
@@ -23701,14 +23733,16 @@ fn render_cranial_ram_keeps_only_x_dynamic() {
 
     let abilities_debug = format!("{:?}", def.abilities);
     assert!(
-        abilities_debug.contains("power: PerCount") && abilities_debug.contains("toughness: Fixed(1)"),
+        abilities_debug.contains("power: PerCount")
+            && abilities_debug.contains("toughness: Fixed(1)"),
         "expected Cranial Ram to keep only power dynamic, got {abilities_debug}"
     );
 
     let joined = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        joined.contains("equipped creature gets +x/+1, where x is the number of artifacts you control")
-            && joined.contains("equip {2}"),
+        joined.contains(
+            "equipped creature gets +x/+1, where x is the number of artifacts you control"
+        ) && joined.contains("equip {2}"),
         "expected Cranial Ram to preserve the mixed X/+1 wording, got {joined}"
     );
 }
