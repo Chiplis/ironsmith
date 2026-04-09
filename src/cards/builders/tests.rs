@@ -20580,14 +20580,17 @@ fn parse_oracle_curious_herd_targeted_artifact_count_regression() {
 
     let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        rendered.contains(
-            "create a 3/3 green beast creature token for each artifact target opponent controls"
-        ),
+        rendered.contains("choose target opponent")
+            && rendered.contains("create x 3/3 green beast creature tokens")
+            && rendered.contains("number of artifacts that player controls"),
         "expected Curious Herd to preserve the targeted artifact-count token creation, got {rendered}"
     );
     assert!(
-        !rendered.contains("number of tokens you control")
-            && !rendered.contains("create x 3/3 green beast creature tokens"),
+        !rendered.contains("create a 3/3 green beast creature token for each artifact target opponent controls"),
+        "expected Curious Herd to avoid the collapsed for-each token wording, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("number of tokens you control"),
         "expected Curious Herd to avoid stale x-token fallback wording, got {rendered}"
     );
 }
