@@ -8455,3 +8455,18 @@ fn rewrite_lexed_triggered_line_keeps_guild_artisan_life_gate() {
     );
     assert!(debug.contains("CreateToken"), "{debug}");
 }
+
+#[test]
+fn rewrite_lexed_static_grant_line_ignores_inner_has_in_quoted_trigger() {
+    let text = "Commander creatures you own have \"Whenever this creature attacks a player, if no opponent has more life than that player, you create two Treasure tokens.\"";
+    let tokens =
+        lex_line(text, 0).expect("rewrite lexer should classify Guild Artisan grant line");
+
+    let parsed = super::clause_support::parse_static_ability_ast_line_lexed(&tokens)
+        .expect("Guild Artisan static grant should parse");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("GrantObjectAbilityForFilter"), "{debug}");
+    assert!(debug.contains("PlayerHasNoOpponentWithMoreLifeThan"), "{debug}");
+    assert!(debug.contains("ThisAttacksTrigger"), "{debug}");
+}

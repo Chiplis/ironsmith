@@ -4683,103 +4683,130 @@ pub(crate) fn parse_filter_has_granted_ability_line(
         return Ok(None);
     }
 
-    let Some(has_idx) = anthem_last_token_offset(tokens, |token| {
-        token.is_word("has") || token.is_word("have")
-    }) else {
-        return Ok(None);
-    };
-    if has_idx == 0 || has_idx + 1 >= tokens.len() {
-        return Ok(None);
-    }
-    if tokens[..has_idx]
-        .iter()
-        .any(|token| token.is_word("get") || token.is_word("gets"))
-    {
-        return Ok(None);
+    let mut deferred_error: Option<CardTextError> = None;
+    for (has_idx, token) in tokens.iter().enumerate() {
+        if !token.is_word("has") && !token.is_word("have") {
+            continue;
+        }
+        if has_idx == 0 || has_idx + 1 >= tokens.len() {
+            continue;
+        }
+        if tokens[..has_idx]
+            .iter()
+            .any(|token| token.is_word("get") || token.is_word("gets"))
+        {
+            continue;
+        }
+
+        let (mut condition, subject_start) = match parse_anthem_prefix_condition(tokens, has_idx) {
+            Ok(parsed) => parsed,
+            Err(err) => {
+                deferred_error.get_or_insert(err);
+                continue;
+            }
+        };
+        let subject_tokens = trim_commas(&tokens[subject_start..has_idx]);
+        if subject_tokens.is_empty() {
+            continue;
+        }
+        let subject_words = crate::cards::builders::parser::token_word_refs(&subject_tokens);
+        if subject_words.iter().any(|word| {
+            matches!(
+                *word,
+                "deal"
+                    | "deals"
+                    | "create"
+                    | "creates"
+                    | "draw"
+                    | "draws"
+                    | "destroy"
+                    | "destroys"
+                    | "exile"
+                    | "exiles"
+                    | "return"
+                    | "returns"
+                    | "sacrifice"
+                    | "sacrifices"
+                    | "put"
+                    | "puts"
+                    | "gain"
+                    | "gains"
+                    | "lose"
+                    | "loses"
+                    | "discard"
+                    | "discards"
+                    | "counter"
+                    | "counters"
+                    | "search"
+                    | "reveals"
+                    | "investigate"
+                    | "investigates"
+            )
+        }) {
+            continue;
+        }
+        if anthem_contains_word(&subject_words, "may") {
+            continue;
+        }
+
+        let ability_tokens_raw = &tokens[has_idx + 1..];
+        let mut ability_tokens = trim_commas(ability_tokens_raw);
+        let ability_words = crate::cards::builders::parser::token_word_refs(&ability_tokens);
+        if let Some(as_long_as_idx) =
+            anthem_find_word_sequence_index(&ability_words, &["as", "long", "as"])
+            && as_long_as_idx > 0
+            && let Some(condition_start) =
+                token_index_for_word_index(&ability_tokens, as_long_as_idx)
+        {
+            let condition_tokens = trim_commas(&ability_tokens[condition_start + 3..]);
+            if !condition_tokens.is_empty() {
+                let parsed_condition = match parse_static_condition_clause(&condition_tokens) {
+                    Ok(condition) => condition,
+                    Err(err) => {
+                        deferred_error.get_or_insert(err);
+                        continue;
+                    }
+                };
+                condition = Some(match condition {
+                    Some(existing) => {
+                        crate::ConditionExpr::And(Box::new(existing), Box::new(parsed_condition))
+                    }
+                    None => parsed_condition,
+                });
+                ability_tokens = trim_commas(&ability_tokens[..condition_start]);
+            }
+        }
+        let attached_subject = subject_words
+            .first()
+            .is_some_and(|word| *word == "enchanted" || *word == "equipped");
+        let granted_tail = match parse_heterogeneous_granted_tail(
+            &ability_tokens,
+            &clause_words,
+            attached_subject,
+        ) {
+            Ok(Some(tail)) => tail,
+            Ok(None) => continue,
+            Err(err) => {
+                deferred_error.get_or_insert(err);
+                continue;
+            }
+        };
+        let subject = match parse_anthem_subject(&subject_tokens) {
+            Ok(subject) => subject,
+            Err(err) => {
+                deferred_error.get_or_insert(err);
+                continue;
+            }
+        };
+        let granted = lower_granted_tail_for_anthem_subject(&subject, &condition, granted_tail);
+        if granted.is_empty() {
+            continue;
+        }
+        return Ok(Some(granted));
     }
 
-    let (mut condition, subject_start) = match parse_anthem_prefix_condition(tokens, has_idx) {
-        Ok(parsed) => parsed,
-        Err(_) => return Ok(None),
-    };
-    let subject_tokens = trim_commas(&tokens[subject_start..has_idx]);
-    if subject_tokens.is_empty() {
-        return Ok(None);
+    if let Some(err) = deferred_error {
+        return Err(err);
     }
-    let subject_words = crate::cards::builders::parser::token_word_refs(&subject_tokens);
-    if subject_words.iter().any(|word| {
-        matches!(
-            *word,
-            "deal"
-                | "deals"
-                | "create"
-                | "creates"
-                | "draw"
-                | "draws"
-                | "destroy"
-                | "destroys"
-                | "exile"
-                | "exiles"
-                | "return"
-                | "returns"
-                | "sacrifice"
-                | "sacrifices"
-                | "put"
-                | "puts"
-                | "gain"
-                | "gains"
-                | "lose"
-                | "loses"
-                | "discard"
-                | "discards"
-                | "counter"
-                | "counters"
-                | "search"
-                | "reveals"
-                | "investigate"
-                | "investigates"
-        )
-    }) {
-        return Ok(None);
-    }
-    if anthem_contains_word(&subject_words, "may") {
-        return Ok(None);
-    }
-    let ability_tokens_raw = &tokens[has_idx + 1..];
-    let mut ability_tokens = trim_commas(ability_tokens_raw);
-    let ability_words = crate::cards::builders::parser::token_word_refs(&ability_tokens);
-    if let Some(as_long_as_idx) =
-        anthem_find_word_sequence_index(&ability_words, &["as", "long", "as"])
-        && as_long_as_idx > 0
-        && let Some(condition_start) = token_index_for_word_index(&ability_tokens, as_long_as_idx)
-    {
-        let condition_tokens = trim_commas(&ability_tokens[condition_start + 3..]);
-        if !condition_tokens.is_empty() {
-            let parsed_condition = parse_static_condition_clause(&condition_tokens)?;
-            condition = Some(match condition {
-                Some(existing) => {
-                    crate::ConditionExpr::And(Box::new(existing), Box::new(parsed_condition))
-                }
-                None => parsed_condition,
-            });
-            ability_tokens = trim_commas(&ability_tokens[..condition_start]);
-        }
-    }
-    let attached_subject = subject_words
-        .first()
-        .is_some_and(|word| *word == "enchanted" || *word == "equipped");
-    let Some(granted_tail) =
-        parse_heterogeneous_granted_tail(&ability_tokens, &clause_words, attached_subject)?
-    else {
-        return Ok(None);
-    };
-    let subject = match parse_anthem_subject(&subject_tokens) {
-        Ok(subject) => subject,
-        Err(_) => return Ok(None),
-    };
-    let granted = lower_granted_tail_for_anthem_subject(&subject, &condition, granted_tail);
-    if granted.is_empty() {
-        return Ok(None);
-    }
-    Ok(Some(granted))
+    Ok(None)
 }
