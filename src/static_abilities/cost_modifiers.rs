@@ -81,6 +81,7 @@ fn describe_player_filter_for_spell_target(filter: &PlayerFilter) -> String {
 
 fn describe_alternative_cast_kind(kind: AlternativeCastKind) -> &'static str {
     match kind {
+        AlternativeCastKind::Dash => "dash",
         AlternativeCastKind::Flashback => "flashback",
         AlternativeCastKind::JumpStart => "jump-start",
         AlternativeCastKind::Escape => "escape",
@@ -382,9 +383,17 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
     description
 }
 
-fn describe_flashback_cost_subject(filter: &ObjectFilter) -> Option<&'static str> {
-    if filter.alternative_cast != Some(AlternativeCastKind::Flashback)
-        || !filter.card_types.is_empty()
+fn describe_alternative_cost_subject(filter: &ObjectFilter) -> Option<String> {
+    let kind = filter.alternative_cast?;
+    if !matches!(
+        kind,
+        AlternativeCastKind::Dash
+            | AlternativeCastKind::Flashback
+            | AlternativeCastKind::JumpStart
+            | AlternativeCastKind::Escape
+            | AlternativeCastKind::Madness
+            | AlternativeCastKind::Miracle
+    ) || !filter.card_types.is_empty()
         || !filter.excluded_card_types.is_empty()
         || !filter.subtypes.is_empty()
         || filter.colors.is_some()
@@ -396,10 +405,20 @@ fn describe_flashback_cost_subject(filter: &ObjectFilter) -> Option<&'static str
     {
         return None;
     }
+
+    let subject = match kind {
+        AlternativeCastKind::Dash => "Dash",
+        AlternativeCastKind::Flashback => "Flashback",
+        AlternativeCastKind::JumpStart => "Jump-start",
+        AlternativeCastKind::Escape => "Escape",
+        AlternativeCastKind::Madness => "Madness",
+        AlternativeCastKind::Miracle => "Miracle",
+    };
+
     match filter.cast_by.as_ref() {
-        Some(PlayerFilter::You) => Some("Flashback costs you pay"),
-        Some(PlayerFilter::Opponent) => Some("Flashback costs your opponents pay"),
-        None | Some(PlayerFilter::Any) => Some("Flashback costs"),
+        Some(PlayerFilter::You) => Some(format!("{subject} costs you pay")),
+        Some(PlayerFilter::Opponent) => Some(format!("{subject} costs your opponents pay")),
+        None | Some(PlayerFilter::Any) => Some(format!("{subject} costs")),
         _ => None,
     }
 }
@@ -522,7 +541,7 @@ impl StaticAbilityKind for CostReduction {
 
     fn display(&self) -> String {
         let (amount_text, tail) = describe_cost_modifier_amount(&self.reduction);
-        if let Some(subject) = describe_flashback_cost_subject(&self.filter) {
+        if let Some(subject) = describe_alternative_cost_subject(&self.filter) {
             let mut line = format!("{subject} cost {amount_text} less");
             if let Some(tail) = tail {
                 line.push(' ');
@@ -1385,7 +1404,7 @@ impl StaticAbilityKind for CostIncrease {
 
     fn display(&self) -> String {
         let (amount_text, tail) = describe_cost_modifier_amount(&self.increase);
-        if let Some(subject) = describe_flashback_cost_subject(&self.filter) {
+        if let Some(subject) = describe_alternative_cost_subject(&self.filter) {
             let mut line = format!("{subject} cost {amount_text} more");
             if let Some(tail) = tail {
                 line.push(' ');

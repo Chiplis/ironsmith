@@ -1364,7 +1364,7 @@ pub(super) fn continue_to_mana_payment(
     targets: Vec<Target>,
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
-    use crate::decision::calculate_effective_mana_cost_for_payment_with_chosen_targets;
+    use crate::decision::calculate_effective_mana_cost_for_payment_with_chosen_targets_for_casting_method;
 
     let mut pending = pending;
     pending.chosen_targets = targets;
@@ -1381,12 +1381,13 @@ pub(super) fn continue_to_mana_payment(
 
         // Apply cost reductions (affinity, delve, convoke, improvise)
         base_cost.map(|bc| {
-            calculate_effective_mana_cost_for_payment_with_chosen_targets(
+            calculate_effective_mana_cost_for_payment_with_chosen_targets_for_casting_method(
                 game,
                 pending.caster,
                 obj,
                 &bc,
                 &pending.chosen_targets,
+                &pending.casting_method,
             )
         })
     } else {

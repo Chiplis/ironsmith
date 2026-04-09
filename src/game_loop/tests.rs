@@ -9128,6 +9128,96 @@ fn test_dash_grants_haste_and_returns_to_hand_at_next_end_step() {
 }
 
 #[test]
+fn test_dash_cost_reduction_applies_only_to_dash_casts() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Red, 1);
+
+    let warbringer_def = CardDefinitionBuilder::new(CardId::new(), "Warbringer Variant")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .parse_text(
+            "Dash costs you pay cost {2} less (as long as this creature is on the battlefield).\nDash {2}{R}",
+        )
+        .expect("Warbringer-style text should parse");
+    game.create_object_from_definition(&warbringer_def, alice, Zone::Battlefield);
+
+    let dash_probe = CardDefinitionBuilder::new(CardId::new(), "Dash Discount Probe")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .dash(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Red],
+        ]))
+        .build();
+    let dash_probe_id = game.create_object_from_definition(&dash_probe, alice, Zone::Hand);
+
+    let actions = compute_legal_actions(&game, alice);
+    assert!(
+        actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id,
+                from_zone: Zone::Hand,
+                casting_method: CastingMethod::Alternative(0),
+            } if *spell_id == dash_probe_id
+        )),
+        "expected dash cast to be legal with only the reduced mana available"
+    );
+    assert!(
+        !actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id,
+                from_zone: Zone::Hand,
+                casting_method: CastingMethod::Normal,
+            } if *spell_id == dash_probe_id
+        )),
+        "normal cast should still be unaffordable"
+    );
+
+    let mut state = PriorityLoopState::new(2);
+    let mut trigger_queue = TriggerQueue::new();
+    let cast_response = PriorityResponse::PriorityAction(LegalAction::CastSpell {
+        spell_id: dash_probe_id,
+        from_zone: Zone::Hand,
+        casting_method: CastingMethod::Alternative(0),
+    });
+    apply_priority_response(&mut game, &mut trigger_queue, &mut state, &cast_response)
+        .expect("reduced dash cast should succeed");
+    resolve_stack_entry(&mut game).expect("reduced dash spell should resolve");
+
+    assert!(
+        game.battlefield.iter().any(|&id| {
+            game.object(id)
+                .is_some_and(|obj| obj.name == "Dash Discount Probe")
+        }),
+        "expected dashed creature to resolve onto the battlefield"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").mana_pool.total(),
+        0,
+        "the reduced dash cast should spend only the single red mana"
+    );
+}
+
+#[test]
 fn test_gargoyle_sentinel_gains_flying_only_for_itself_until_end_of_turn() {
     use crate::PriorityResponse;
     use crate::cards::CardDefinitionBuilder;

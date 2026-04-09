@@ -7950,6 +7950,37 @@ fn parse_flashback_cost_modifiers_render_with_controller_scope() {
 }
 
 #[test]
+fn parse_dash_cost_modifier_line_renders_with_controller_scope() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Warbringer Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Dash costs you pay cost {2} less (as long as this creature is on the battlefield).\nDash {2}{R}",
+        )
+        .expect("dash cost-modifier line should parse");
+
+    let rendered = compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Dash costs you pay cost {2} less"),
+        "expected dash cost-modifier wording in render output, got {rendered}"
+    );
+
+    let reduction = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => static_ability.cost_reduction(),
+            _ => None,
+        })
+        .expect("expected dash cost reduction static ability");
+
+    assert_eq!(
+        reduction.filter.alternative_cast,
+        Some(crate::filter::AlternativeCastKind::Dash)
+    );
+    assert_eq!(reduction.filter.cast_by, Some(PlayerFilter::You));
+}
+
+#[test]
 fn render_during_turn_flashback_grant_keeps_mana_cost_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Return the Past Variant")
         .parse_text(

@@ -4637,6 +4637,9 @@ where
     if words.first().copied() != Some(keyword) {
         return None;
     }
+    if matches!(words.get(1).copied(), Some("cost" | "costs")) {
+        return None;
+    }
     if let Some((cost_text, _consumed)) = leading_mana_symbols_to_oracle(&words[1..])
         && let Ok(cost) = parse_scryfall_mana_cost(&cost_text)
     {

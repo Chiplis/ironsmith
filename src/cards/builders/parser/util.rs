@@ -633,6 +633,7 @@ pub(crate) fn parse_zone_word(word: &str) -> Option<Zone> {
 
 pub(crate) fn parse_alternative_cast_words(words: &[&str]) -> Option<(AlternativeCastKind, usize)> {
     match words {
+        ["dash", ..] => Some((AlternativeCastKind::Dash, 1)),
         ["flashback", ..] => Some((AlternativeCastKind::Flashback, 1)),
         ["jump", "start", ..] => Some((AlternativeCastKind::JumpStart, 2)),
         ["jumpstart", ..] => Some((AlternativeCastKind::JumpStart, 1)),
