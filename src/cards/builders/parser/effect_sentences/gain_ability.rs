@@ -338,11 +338,19 @@ fn span_from_lexed_tokens(tokens: &[OwnedLexToken]) -> Option<TextSpan> {
 
 fn source_target_from_subject_tokens(tokens: &[OwnedLexToken]) -> Option<TargetAst> {
     let subject_words = GainAbilityWordView::new(tokens).to_word_refs();
-    if is_source_reference_words(&subject_words) {
-        Some(TargetAst::Source(span_from_lexed_tokens(tokens)))
-    } else {
-        None
+    for prefix_len in (1..=subject_words.len()).rev() {
+        if !is_source_reference_words(&subject_words[..prefix_len]) {
+            continue;
+        }
+
+        if prefix_len == subject_words.len()
+            || find_verb_lexed(&tokens[prefix_len..]).is_some_and(|(_, verb_idx)| verb_idx == 0)
+        {
+            return Some(TargetAst::Source(span_from_lexed_tokens(&tokens[..prefix_len])));
+        }
     }
+
+    None
 }
 
 fn parse_simple_ability_modifier_clause_lexed(
