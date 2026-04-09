@@ -569,10 +569,8 @@ fn wild_dogs_upkeep_trigger_hands_control_to_the_life_leader() {
     resolve_stack_entry(&mut game).expect("Wild Dogs upkeep trigger should resolve");
 
     assert_eq!(
-        game.object(wild_dogs_id)
-            .expect("Wild Dogs should still exist")
-            .controller,
-        bob,
+        game.current_controller(wild_dogs_id),
+        Some(bob),
         "the player with the most life should gain control of Wild Dogs"
     );
 }
@@ -622,7 +620,7 @@ fn test_make_an_example_leaves_unselected_creatures_on_the_battlefield() {
         .card_types(vec![CardType::Creature])
         .power_toughness(PowerToughness::fixed(3, 3))
         .build();
-    let chosen_pile_creature_id =
+    let _chosen_pile_creature_id =
         game.create_object_from_card(&chosen_pile_creature, bob, Zone::Battlefield);
     let untouched_pile_creature_id =
         game.create_object_from_card(&untouched_pile_creature, bob, Zone::Battlefield);
@@ -643,7 +641,11 @@ fn test_make_an_example_leaves_unselected_creatures_on_the_battlefield() {
         game.player(bob)
             .expect("bob exists")
             .graveyard
-            .contains(&chosen_pile_creature_id),
+            .iter()
+            .any(|&id| {
+                game.object(id)
+                    .is_some_and(|obj| obj.name == "Chosen Pile Bear")
+            }),
         "the chosen pile should be sacrificed"
     );
     assert!(
@@ -8536,7 +8538,11 @@ fn test_make_an_example_sacrifices_the_chosen_pile() {
         game.player(bob)
             .expect("bob exists")
             .graveyard
-            .contains(&pile_bear_id),
+            .iter()
+            .any(|&id| {
+                game.object(id)
+                    .is_some_and(|obj| obj.name == "Pile Bear")
+            }),
         "the chosen pile should be sacrificed"
     );
     assert!(

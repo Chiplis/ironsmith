@@ -5,7 +5,7 @@ use crate::cards::builders::{
     IT_TAG, InsteadSemantics, LineAst, LineInfo, OptionalCost, ParseAnnotations, ParsedAbility,
     ParsedCardItem, ParsedLevelAbilityAst, ParsedLevelAbilityItemAst, ParsedLineAst,
     ParsedModalAst, ParsedModalModeAst, ParsedRestrictions, PlayerAst, PredicateAst,
-    ReferenceImports, ReturnControllerAst, TagKey, TargetAst, TriggerSpec,
+    ReferenceImports, ReturnControllerAst, TagKey, TargetAst, TextSpan, TriggerSpec,
 };
 use crate::color::ColorSet;
 use crate::cost::TotalCost;
@@ -595,6 +595,75 @@ fn runtime_effects_to_costs(
             crate::costs::Cost::try_from_runtime_effect(effect).map_err(CardTextError::ParseError)
         })
         .collect()
+}
+
+fn filter_references_tag(filter: &ObjectFilter, tag: &str) -> bool {
+    filter
+        .tagged_constraints
+        .iter()
+        .any(|constraint| constraint.tag.as_str() == tag)
+        || filter
+            .targets_object
+            .as_deref()
+            .is_some_and(|targets| filter_references_tag(targets, tag))
+        || filter
+            .targets_only_object
+            .as_deref()
+            .is_some_and(|targets| filter_references_tag(targets, tag))
+        || filter.any_of.iter().any(|branch| filter_references_tag(branch, tag))
+}
+
+fn replace_filter_tag(filter: &mut ObjectFilter, old_tag: &str, new_tag: &TagKey) -> bool {
+    let mut replaced = false;
+    for constraint in &mut filter.tagged_constraints {
+        if constraint.tag.as_str() == old_tag {
+            constraint.tag = new_tag.clone();
+            replaced = true;
+        }
+    }
+    if let Some(targets) = filter.targets_object.as_deref_mut() {
+        replaced |= replace_filter_tag(targets, old_tag, new_tag);
+    }
+    if let Some(targets) = filter.targets_only_object.as_deref_mut() {
+        replaced |= replace_filter_tag(targets, old_tag, new_tag);
+    }
+    for branch in &mut filter.any_of {
+        replaced |= replace_filter_tag(branch, old_tag, new_tag);
+    }
+    replaced
+}
+
+fn rewrite_normalize_additional_cost_sacrifice_tags(mut effects: Vec<EffectAst>) -> Vec<EffectAst> {
+    let Some((first, rest)) = effects.split_first_mut() else {
+        return effects;
+    };
+
+    let choose_tag = match first {
+        EffectAst::ChooseObjects { tag, .. } | EffectAst::ChooseObjectsAcrossZones { tag, .. }
+            if tag.as_str() == IT_TAG =>
+        {
+            tag
+        }
+        _ => return effects,
+    };
+
+    let sacrificed_tag = TagKey::from("sacrificed_0");
+    let mut replaced = false;
+    for effect in rest {
+        match effect {
+            EffectAst::Sacrifice { filter, .. } | EffectAst::SacrificeAll { filter, .. }
+                if filter_references_tag(filter, IT_TAG) =>
+            {
+                replaced |= replace_filter_tag(filter, IT_TAG, &sacrificed_tag);
+            }
+            _ => {}
+        }
+    }
+
+    if replaced {
+        *choose_tag = sacrificed_tag;
+    }
+    effects
 }
 
 fn rewrite_apply_pending_mechanic_linkages(
@@ -1454,6 +1523,7 @@ fn normalize_rewrite_line_ast(
                 }
             }
             LineAst::AdditionalCost { effects } => {
+                let effects = rewrite_normalize_additional_cost_sacrifice_tags(effects);
                 let prepared =
                     rewrite_prepare_effects_for_lowering(&effects, ReferenceImports::default())?;
                 state.latest_additional_cost_exports = prepared.exports.clone();
@@ -1606,6 +1676,11 @@ fn lower_rewrite_statement_to_chunks_impl(
         lower_rewrite_empty_laboratory_statement_to_chunk(line, parse_tokens)?
     {
         return Ok(vec![empty_lab_chunk]);
+    }
+    if let Some(shape_anew_chunk) =
+        lower_rewrite_shape_anew_statement_to_chunk(line, parse_tokens)?
+    {
+        return Ok(vec![shape_anew_chunk]);
     }
     if let Some(nissa_chunk) =
         lower_rewrite_nissas_encouragement_statement_to_chunk(line, parse_tokens)?
@@ -2146,6 +2221,58 @@ fn lower_rewrite_empty_laboratory_statement_to_chunk(
                 keep_tagged: Some(matched_tag),
                 order: crate::cards::builders::LibraryBottomOrderAst::Random,
                 player: PlayerAst::You,
+            },
+        ],
+    }))
+}
+
+fn lower_rewrite_shape_anew_statement_to_chunk(
+    line: &super::RewriteStatementLine,
+    _parse_tokens: &[OwnedLexToken],
+) -> Result<Option<LineAst>, CardTextError> {
+    let normalized = line.text.trim().to_ascii_lowercase();
+    if normalized
+        != "the controller of target artifact sacrifices it, then reveals cards from the top of their library until they reveal an artifact card. that player puts that card onto the battlefield, then shuffles all other cards revealed this way into their library."
+    {
+        return Ok(None);
+    }
+
+    let revealed_tag = TagKey::from("shape_anew_revealed");
+    let matched_tag = TagKey::from("shape_anew_matched");
+    let mut artifact_card = ObjectFilter::artifact();
+    artifact_card.zone = None;
+    let target = TargetAst::Object(
+        ObjectFilter::artifact().in_zone(Zone::Battlefield),
+        Some(TextSpan::synthetic()),
+        None,
+    );
+
+    Ok(Some(LineAst::Statement {
+        effects: vec![
+            EffectAst::Sacrifice {
+                filter: ObjectFilter::default(),
+                player: PlayerAst::ItsController,
+                count: 1,
+                target: Some(target),
+            },
+            EffectAst::ConsultTopOfLibrary {
+                player: PlayerAst::That,
+                mode: crate::cards::builders::LibraryConsultModeAst::Reveal,
+                filter: artifact_card,
+                stop_rule: crate::cards::builders::LibraryConsultStopRuleAst::FirstMatch,
+                all_tag: revealed_tag,
+                match_tag: matched_tag.clone(),
+            },
+            EffectAst::MoveToZone {
+                target: TargetAst::Tagged(matched_tag, None),
+                zone: Zone::Battlefield,
+                to_top: false,
+                battlefield_controller: ReturnControllerAst::Preserve,
+                battlefield_tapped: false,
+                attached_to: None,
+            },
+            EffectAst::ShuffleLibrary {
+                player: PlayerAst::That,
             },
         ],
     }))

@@ -600,6 +600,9 @@ fn describe_anthem_for_each_count_expression(expr: &AnthemCountExpression) -> Op
         AnthemCountExpression::MatchingFilter(filter) if filter.zone == Some(Zone::Battlefield) => {
             Some(strip_article(filter.description()))
         }
+        AnthemCountExpression::BasicLandTypesAmong(_) => {
+            Some("basic land type among lands you control".to_string())
+        }
         AnthemCountExpression::CommanderCastCount(player) => Some(match player {
             crate::target::PlayerFilter::You => {
                 "time you've cast your commander from the command zone this game".to_string()
@@ -1134,12 +1137,54 @@ impl StaticAbilityKind for Anthem {
                     count,
                 },
                 AnthemValue::Fixed(toughness),
+            ) if *toughness == 0 => {
+                if let Some(count_subject) = describe_anthem_for_each_count_expression(count) {
+                    format!(
+                        "{subject} {verb} {}/+0 for each {count_subject}",
+                        signed(*power),
+                    )
+                } else {
+                    format!(
+                        "{subject} {verb} {}/{}, where X is the number of {}",
+                        x_component(*power),
+                        signed(*toughness),
+                        describe_anthem_count_expression(count),
+                    )
+                }
+            }
+            (
+                AnthemValue::PerCount {
+                    multiplier: power,
+                    count,
+                },
+                AnthemValue::Fixed(toughness),
             ) => format!(
                 "{subject} {verb} {}/{}, where X is the number of {}",
                 x_component(*power),
                 signed(*toughness),
                 describe_anthem_count_expression(count),
             ),
+            (
+                AnthemValue::Fixed(power),
+                AnthemValue::PerCount {
+                    multiplier: toughness,
+                    count,
+                },
+            ) if *power == 0 => {
+                if let Some(count_subject) = describe_anthem_for_each_count_expression(count) {
+                    format!(
+                        "{subject} {verb} +0/{} for each {count_subject}",
+                        signed(*toughness),
+                    )
+                } else {
+                    format!(
+                        "{subject} {verb} {}/{}, where X is the number of {}",
+                        signed(*power),
+                        x_component(*toughness),
+                        describe_anthem_count_expression(count),
+                    )
+                }
+            }
             (
                 AnthemValue::Fixed(power),
                 AnthemValue::PerCount {
@@ -3188,6 +3233,7 @@ mod tests {
     use crate::filter::StackObjectKind;
     use crate::ids::CardId;
     use crate::mana::{ManaCost, ManaSymbol};
+    use crate::object::AttachmentTarget;
     use crate::target::PlayerFilter;
     use crate::types::{Subtype, Supertype};
     use crate::zone::Zone;

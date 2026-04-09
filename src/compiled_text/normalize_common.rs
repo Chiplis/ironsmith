@@ -6611,10 +6611,11 @@ pub(super) fn describe_apply_continuous_effect(
         && let [crate::effects::continuous::RuntimeModification::ChangeControllerToPlayer(player)] =
             effect.runtime_modifications.as_slice()
     {
-        let mut text = format!(
-            "{} gains control of {target}",
-            describe_player_filter(player)
-        );
+        let controller_text = match player {
+            PlayerFilter::MostLifeTied => "the player with the most life".to_string(),
+            _ => describe_player_filter(player),
+        };
+        let mut text = format!("{controller_text} gains control of {target}");
         if !matches!(effect.until, Until::Forever) {
             text.push(' ');
             text.push_str(&describe_until(&effect.until));

@@ -37,14 +37,14 @@ use super::search_library::parse_restriction_duration;
 use super::sentence_primitives::try_build_unless;
 use super::verb_dispatch::parse_effect_with_verb;
 use super::zone_counter_helpers::{parse_half_starting_life_total_value, parse_put_counters};
-use super::zone_handlers::collapse_leading_signed_pt_modifier_tokens;
+use super::zone_handlers::{collapse_leading_signed_pt_modifier_tokens, parse_sacrifice};
 use super::{
     Verb, bind_implicit_player_context, find_verb, parse_effect_chain_with_sentence_primitives,
     parse_simple_gain_ability_clause, parse_simple_lose_ability_clause, parse_subtype_word,
 };
 use crate::TagKey;
 use crate::cards::builders::{
-    CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, SubjectAst, TargetAst,
+    CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, PlayerAst, SubjectAst, TargetAst,
 };
 use crate::effect::{Until, Value};
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
@@ -105,7 +105,7 @@ fn parse_controller_or_owner_of_target_subject(
         return None;
     }
 
-    let target = parse_target_phrase(target_tokens).ok()?;
+    let target = parse_target_phrase(&target_tokens).ok()?;
     Some((SubjectAst::Player(player), target))
 }
 

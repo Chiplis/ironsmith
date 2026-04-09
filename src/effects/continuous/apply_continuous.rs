@@ -386,6 +386,8 @@ impl EffectExecutor for ApplyContinuousEffect {
             game.continuous_effects.add_effect(effect);
         }
 
+        game.refresh_continuous_state();
+
         Ok(EffectOutcome::resolved())
     }
 

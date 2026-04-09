@@ -5,6 +5,8 @@
 //! - Player filter resolution
 //! - Target finding and validation
 
+use std::collections::HashSet;
+
 use crate::cost::OptionalCostsPaid;
 use crate::decisions::{make_decision, specs::ChooseObjectsSpec};
 use crate::effect::{EffectOutcome, EventValueSpec, OutcomeStatus, Value};
@@ -107,7 +109,14 @@ pub fn resolve_value(
 
         Value::Count(filter) => {
             let filter_ctx = ctx.filter_context(game);
-            let candidate_ids = candidate_ids_for_filter(game, filter);
+            if let Some(snapshots) = value_tagged_snapshots_for_filter(filter, ctx) {
+                let count = snapshots
+                    .iter()
+                    .filter(|snapshot| filter.matches_snapshot(snapshot, &filter_ctx, game))
+                    .count();
+                return Ok(count as i32);
+            }
+            let candidate_ids = value_candidate_ids_for_filter(game, filter, ctx);
 
             let count = candidate_ids
                 .iter()
@@ -118,7 +127,14 @@ pub fn resolve_value(
         }
         Value::CountScaled(filter, multiplier) => {
             let filter_ctx = ctx.filter_context(game);
-            let candidate_ids = candidate_ids_for_filter(game, filter);
+            if let Some(snapshots) = value_tagged_snapshots_for_filter(filter, ctx) {
+                let count = snapshots
+                    .iter()
+                    .filter(|snapshot| filter.matches_snapshot(snapshot, &filter_ctx, game))
+                    .count() as i32;
+                return Ok(count * *multiplier);
+            }
+            let candidate_ids = value_candidate_ids_for_filter(game, filter, ctx);
 
             let count = candidate_ids
                 .iter()
@@ -129,7 +145,15 @@ pub fn resolve_value(
         }
         Value::TotalPower(filter) => {
             let filter_ctx = ctx.filter_context(game);
-            let candidate_ids = candidate_ids_for_filter(game, filter);
+            if let Some(snapshots) = value_tagged_snapshots_for_filter(filter, ctx) {
+                let total = snapshots
+                    .iter()
+                    .filter(|snapshot| filter.matches_snapshot(snapshot, &filter_ctx, game))
+                    .map(|snapshot| snapshot.power.unwrap_or(0))
+                    .sum();
+                return Ok(total);
+            }
+            let candidate_ids = value_candidate_ids_for_filter(game, filter, ctx);
             let total = candidate_ids
                 .iter()
                 .copied()
@@ -145,7 +169,15 @@ pub fn resolve_value(
         }
         Value::TotalToughness(filter) => {
             let filter_ctx = ctx.filter_context(game);
-            let candidate_ids = candidate_ids_for_filter(game, filter);
+            if let Some(snapshots) = value_tagged_snapshots_for_filter(filter, ctx) {
+                let total = snapshots
+                    .iter()
+                    .filter(|snapshot| filter.matches_snapshot(snapshot, &filter_ctx, game))
+                    .map(|snapshot| snapshot.toughness.unwrap_or(0))
+                    .sum();
+                return Ok(total);
+            }
+            let candidate_ids = value_candidate_ids_for_filter(game, filter, ctx);
             let total = candidate_ids
                 .iter()
                 .copied()
@@ -161,7 +193,21 @@ pub fn resolve_value(
         }
         Value::TotalManaValue(filter) => {
             let filter_ctx = ctx.filter_context(game);
-            let candidate_ids = candidate_ids_for_filter(game, filter);
+            if let Some(snapshots) = value_tagged_snapshots_for_filter(filter, ctx) {
+                let total = snapshots
+                    .iter()
+                    .filter(|snapshot| filter.matches_snapshot(snapshot, &filter_ctx, game))
+                    .map(|snapshot| {
+                        snapshot
+                            .mana_cost
+                            .as_ref()
+                            .map(|cost| cost.mana_value() as i32)
+                            .unwrap_or(0)
+                    })
+                    .sum();
+                return Ok(total);
+            }
+            let candidate_ids = value_candidate_ids_for_filter(game, filter, ctx);
             let total = candidate_ids
                 .iter()
                 .filter_map(|&id| game.object(id))
@@ -177,7 +223,16 @@ pub fn resolve_value(
         }
         Value::GreatestPower(filter) => {
             let filter_ctx = ctx.filter_context(game);
-            let candidate_ids = candidate_ids_for_filter(game, filter);
+            if let Some(snapshots) = value_tagged_snapshots_for_filter(filter, ctx) {
+                let max = snapshots
+                    .iter()
+                    .filter(|snapshot| filter.matches_snapshot(snapshot, &filter_ctx, game))
+                    .filter_map(|snapshot| snapshot.power)
+                    .max()
+                    .unwrap_or(0);
+                return Ok(max);
+            }
+            let candidate_ids = value_candidate_ids_for_filter(game, filter, ctx);
             let max = candidate_ids
                 .iter()
                 .copied()
@@ -190,7 +245,16 @@ pub fn resolve_value(
         }
         Value::GreatestToughness(filter) => {
             let filter_ctx = ctx.filter_context(game);
-            let candidate_ids = candidate_ids_for_filter(game, filter);
+            if let Some(snapshots) = value_tagged_snapshots_for_filter(filter, ctx) {
+                let max = snapshots
+                    .iter()
+                    .filter(|snapshot| filter.matches_snapshot(snapshot, &filter_ctx, game))
+                    .filter_map(|snapshot| snapshot.toughness)
+                    .max()
+                    .unwrap_or(0);
+                return Ok(max);
+            }
+            let candidate_ids = value_candidate_ids_for_filter(game, filter, ctx);
             let max = candidate_ids
                 .iter()
                 .copied()
@@ -203,7 +267,21 @@ pub fn resolve_value(
         }
         Value::GreatestManaValue(filter) => {
             let filter_ctx = ctx.filter_context(game);
-            let candidate_ids = candidate_ids_for_filter(game, filter);
+            if let Some(snapshots) = value_tagged_snapshots_for_filter(filter, ctx) {
+                let max = snapshots
+                    .iter()
+                    .filter(|snapshot| filter.matches_snapshot(snapshot, &filter_ctx, game))
+                    .filter_map(|snapshot| {
+                        snapshot
+                            .mana_cost
+                            .as_ref()
+                            .map(|cost| cost.mana_value() as i32)
+                    })
+                    .max()
+                    .unwrap_or(0);
+                return Ok(max);
+            }
+            let candidate_ids = value_candidate_ids_for_filter(game, filter, ctx);
             let max = candidate_ids
                 .iter()
                 .filter_map(|&id| game.object(id))
@@ -214,31 +292,29 @@ pub fn resolve_value(
             Ok(max)
         }
         Value::BasicLandTypesAmong(filter) => {
-            use std::collections::HashSet;
-
             let filter_ctx = ctx.filter_context(game);
-            let candidate_ids: Vec<ObjectId> = match filter.zone {
-                Some(Zone::Battlefield) => game.battlefield.clone(),
-                Some(Zone::Graveyard) => game
-                    .players
+            if let Some(snapshots) = value_tagged_snapshots_for_filter(filter, ctx) {
+                let mut seen = HashSet::new();
+                for snapshot in snapshots
                     .iter()
-                    .flat_map(|player| player.graveyard.iter().copied())
-                    .collect(),
-                Some(Zone::Hand) => game
-                    .players
-                    .iter()
-                    .flat_map(|player| player.hand.iter().copied())
-                    .collect(),
-                Some(Zone::Library) => game
-                    .players
-                    .iter()
-                    .flat_map(|player| player.library.iter().copied())
-                    .collect(),
-                Some(Zone::Stack) => game.stack.iter().map(|entry| entry.object_id).collect(),
-                Some(Zone::Exile) => game.exile.clone(),
-                Some(Zone::Command) => game.command_zone.clone(),
-                None => game.battlefield.clone(),
-            };
+                    .filter(|snapshot| filter.matches_snapshot(snapshot, &filter_ctx, game))
+                {
+                    for subtype in &snapshot.subtypes {
+                        if matches!(
+                            subtype,
+                            Subtype::Plains
+                                | Subtype::Island
+                                | Subtype::Swamp
+                                | Subtype::Mountain
+                                | Subtype::Forest
+                        ) {
+                            seen.insert(*subtype);
+                        }
+                    }
+                }
+                return Ok(seen.len() as i32);
+            }
+            let candidate_ids = value_candidate_ids_for_filter(game, filter, ctx);
 
             let mut seen = HashSet::new();
             for obj in candidate_ids
@@ -263,28 +339,32 @@ pub fn resolve_value(
         }
         Value::ColorsAmong(filter) => {
             let filter_ctx = ctx.filter_context(game);
-            let candidate_ids: Vec<ObjectId> = match filter.zone {
-                Some(Zone::Battlefield) => game.battlefield.clone(),
-                Some(Zone::Graveyard) => game
-                    .players
+            if let Some(snapshots) = value_tagged_snapshots_for_filter(filter, ctx) {
+                let mut has_white = false;
+                let mut has_blue = false;
+                let mut has_black = false;
+                let mut has_red = false;
+                let mut has_green = false;
+
+                for snapshot in snapshots
                     .iter()
-                    .flat_map(|player| player.graveyard.iter().copied())
-                    .collect(),
-                Some(Zone::Hand) => game
-                    .players
-                    .iter()
-                    .flat_map(|player| player.hand.iter().copied())
-                    .collect(),
-                Some(Zone::Library) => game
-                    .players
-                    .iter()
-                    .flat_map(|player| player.library.iter().copied())
-                    .collect(),
-                Some(Zone::Stack) => game.stack.iter().map(|entry| entry.object_id).collect(),
-                Some(Zone::Exile) => game.exile.clone(),
-                Some(Zone::Command) => game.command_zone.clone(),
-                None => game.battlefield.clone(),
-            };
+                    .filter(|snapshot| filter.matches_snapshot(snapshot, &filter_ctx, game))
+                {
+                    let colors = snapshot.colors;
+                    has_white |= colors.contains(crate::color::Color::White);
+                    has_blue |= colors.contains(crate::color::Color::Blue);
+                    has_black |= colors.contains(crate::color::Color::Black);
+                    has_red |= colors.contains(crate::color::Color::Red);
+                    has_green |= colors.contains(crate::color::Color::Green);
+                }
+
+                return Ok((has_white as i32)
+                    + (has_blue as i32)
+                    + (has_black as i32)
+                    + (has_red as i32)
+                    + (has_green as i32));
+            }
+            let candidate_ids = value_candidate_ids_for_filter(game, filter, ctx);
 
             let mut has_white = false;
             let mut has_blue = false;
@@ -312,31 +392,18 @@ pub fn resolve_value(
                 + (has_green as i32))
         }
         Value::DistinctNames(filter) => {
-            use std::collections::HashSet;
-
             let filter_ctx = ctx.filter_context(game);
-            let candidate_ids: Vec<ObjectId> = match filter.zone {
-                Some(Zone::Battlefield) => game.battlefield.clone(),
-                Some(Zone::Graveyard) => game
-                    .players
+            if let Some(snapshots) = value_tagged_snapshots_for_filter(filter, ctx) {
+                let mut seen: HashSet<&str> = HashSet::new();
+                for snapshot in snapshots
                     .iter()
-                    .flat_map(|player| player.graveyard.iter().copied())
-                    .collect(),
-                Some(Zone::Hand) => game
-                    .players
-                    .iter()
-                    .flat_map(|player| player.hand.iter().copied())
-                    .collect(),
-                Some(Zone::Library) => game
-                    .players
-                    .iter()
-                    .flat_map(|player| player.library.iter().copied())
-                    .collect(),
-                Some(Zone::Stack) => game.stack.iter().map(|entry| entry.object_id).collect(),
-                Some(Zone::Exile) => game.exile.clone(),
-                Some(Zone::Command) => game.command_zone.clone(),
-                None => game.battlefield.clone(),
-            };
+                    .filter(|snapshot| filter.matches_snapshot(snapshot, &filter_ctx, game))
+                {
+                    seen.insert(snapshot.name.as_str());
+                }
+                return Ok(seen.len() as i32);
+            }
+            let candidate_ids = value_candidate_ids_for_filter(game, filter, ctx);
 
             let mut seen: HashSet<&str> = HashSet::new();
             for obj in candidate_ids
@@ -947,6 +1014,60 @@ pub fn resolve_value(
             .map(|result| result.count_for_option(option) as i32)
             .unwrap_or(0)),
     }
+}
+
+fn value_candidate_ids_for_filter(
+    game: &GameState,
+    filter: &crate::filter::ObjectFilter,
+    ctx: &ExecutionContext,
+) -> Vec<ObjectId> {
+    if value_tagged_snapshots_for_filter(filter, ctx).is_none() {
+        return candidate_ids_for_filter(game, filter);
+    }
+
+    let mut seen = HashSet::new();
+    let mut ids = Vec::new();
+    for constraint in &filter.tagged_constraints {
+        let Some(snapshots) = ctx.get_tagged_all(&constraint.tag) else {
+            continue;
+        };
+        for snapshot in snapshots {
+            if seen.insert(snapshot.object_id) {
+                ids.push(snapshot.object_id);
+            }
+        }
+    }
+    ids
+}
+
+fn value_tagged_snapshots_for_filter<'a>(
+    filter: &crate::filter::ObjectFilter,
+    ctx: &'a ExecutionContext,
+) -> Option<Vec<&'a ObjectSnapshot>> {
+    let only_is_tagged_constraints = !filter.tagged_constraints.is_empty()
+        && filter
+            .tagged_constraints
+            .iter()
+            .all(|constraint| {
+                constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            });
+    if !only_is_tagged_constraints {
+        return None;
+    }
+
+    let mut seen = HashSet::new();
+    let mut snapshots = Vec::new();
+    for constraint in &filter.tagged_constraints {
+        let Some(tagged) = ctx.get_tagged_all(&constraint.tag) else {
+            continue;
+        };
+        for snapshot in tagged {
+            if seen.insert(snapshot.object_id) {
+                snapshots.push(snapshot);
+            }
+        }
+    }
+    Some(snapshots)
 }
 
 // ============================================================================
@@ -2424,6 +2545,96 @@ mod tests {
 
         let value = Value::XTimes(2);
         assert_eq!(resolve_value(&game, &value, &ctx).unwrap(), 6);
+    }
+
+    #[test]
+    fn test_resolve_total_power_for_pure_tagged_filter_outside_battlefield() {
+        use crate::filter::{ObjectFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
+        use crate::snapshot::ObjectSnapshot;
+        use crate::tag::TagKey;
+
+        let mut game = new_test_game();
+        let alice = game.players[0].id;
+        let source_id = game.new_object_id();
+
+        let bear = CardBuilder::new(crate::ids::CardId::from_raw(5001), "Bear")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let elf = CardBuilder::new(crate::ids::CardId::from_raw(5002), "Elf")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+
+        let bear_id = game.create_object_from_card(&bear, alice, Zone::Graveyard);
+        let elf_id = game.create_object_from_card(&elf, alice, Zone::Graveyard);
+
+        let mut ctx = ExecutionContext::new_default(source_id, alice);
+        ctx.set_tagged_objects(
+            "sacrificed_0",
+            vec![
+                ObjectSnapshot::from_object(game.object(bear_id).unwrap(), &game),
+                ObjectSnapshot::from_object(game.object(elf_id).unwrap(), &game),
+            ],
+        );
+
+        let mut filter = ObjectFilter::default();
+        filter.card_types.push(CardType::Creature);
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: TagKey::from("sacrificed_0"),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+
+        assert_eq!(
+            resolve_value(&game, &Value::TotalPower(filter), &ctx).unwrap(),
+            3,
+            "pure tagged filters should evaluate against their tagged objects, even off the battlefield"
+        );
+    }
+
+    #[test]
+    fn test_resolve_count_for_pure_tagged_filter_outside_battlefield() {
+        use crate::filter::{ObjectFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
+        use crate::snapshot::ObjectSnapshot;
+        use crate::tag::TagKey;
+
+        let mut game = new_test_game();
+        let alice = game.players[0].id;
+        let source_id = game.new_object_id();
+
+        let bear = CardBuilder::new(crate::ids::CardId::from_raw(5003), "Bear")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let elf = CardBuilder::new(crate::ids::CardId::from_raw(5004), "Elf")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+
+        let bear_id = game.create_object_from_card(&bear, alice, Zone::Graveyard);
+        let elf_id = game.create_object_from_card(&elf, alice, Zone::Graveyard);
+
+        let mut ctx = ExecutionContext::new_default(source_id, alice);
+        ctx.set_tagged_objects(
+            "sacrificed_0",
+            vec![
+                ObjectSnapshot::from_object(game.object(bear_id).unwrap(), &game),
+                ObjectSnapshot::from_object(game.object(elf_id).unwrap(), &game),
+            ],
+        );
+
+        let mut filter = ObjectFilter::default();
+        filter.card_types.push(CardType::Creature);
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: TagKey::from("sacrificed_0"),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+
+        assert_eq!(
+            resolve_value(&game, &Value::Count(filter), &ctx).unwrap(),
+            2,
+            "pure tagged filters should count their tagged objects, even off the battlefield"
+        );
     }
 
     #[test]
