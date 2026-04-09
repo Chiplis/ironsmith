@@ -51,12 +51,12 @@ pub fn conquerors_foothold() -> CardDefinition {
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
+    use crate::events::combat::CreatureAttackedEvent;
     use crate::events::phase::EndOfCombatEvent;
-    use crate::executor::ExecutionContext;
     use crate::ids::CardId;
     use crate::game_loop::{put_triggers_on_stack, resolve_stack_entry};
     use crate::ids::PlayerId;
-    use crate::triggers::{TriggerEvent, TriggerQueue};
+    use crate::triggers::{AttackEventTarget, TriggerEvent, TriggerQueue, check_triggers};
     use crate::zone::Zone;
 
     fn setup_game() -> crate::game_state::GameState {
@@ -102,25 +102,28 @@ mod tests {
         let galleon = conquerors_galleon();
         let galleon_id = game.create_object_from_definition(&galleon, alice, Zone::Battlefield);
 
-        let attack_trigger = game
-            .object(galleon_id)
-            .unwrap()
-            .abilities
-            .iter()
-            .find_map(|ability| {
-                if let AbilityKind::Triggered(triggered) = &ability.kind {
-                    triggered.trigger.display().contains("attacks").then_some(triggered.clone())
-                } else {
-                    None
-                }
-            })
-            .expect("galleon should have an attack trigger");
+        assert!(
+            game.object(galleon_id)
+                .unwrap()
+                .abilities
+                .iter()
+                .any(|ability| matches!(&ability.kind, AbilityKind::Triggered(triggered) if triggered.trigger.display().contains("attacks"))),
+            "galleon should have an attack trigger"
+        );
 
-        let mut ctx = ExecutionContext::new_default(galleon_id, alice);
-        attack_trigger.effects[0]
-            .0
-            .execute(&mut game, &mut ctx)
-            .expect("attack trigger should schedule delayed return");
+        let attack_event = TriggerEvent::new_with_provenance(
+            CreatureAttackedEvent::new(galleon_id, AttackEventTarget::Player(PlayerId::from_index(1))),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let mut trigger_queue = TriggerQueue::new();
+        for trigger in check_triggers(&game, &attack_event) {
+            trigger_queue.add(trigger);
+        }
+        put_triggers_on_stack(&mut game, &mut trigger_queue)
+            .expect("should queue attack trigger");
+        while !game.stack_is_empty() {
+            resolve_stack_entry(&mut game).expect("resolve attack trigger");
+        }
 
         assert!(
             game.battlefield.iter().any(|&id| {
