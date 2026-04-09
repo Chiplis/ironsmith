@@ -1570,11 +1570,23 @@ fn test_toggo_landfall_creates_a_rock_token_with_an_activated_ability() {
         .expect("Toggo should create a Rock token");
     let rock = game.object(rock_id).expect("Rock token should exist");
     assert_eq!(rock.name, "Rock");
+    let activated_texts = rock
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Activated(_) => ability.text.as_deref(),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
     assert!(
-        rock.abilities
+        activated_texts.iter().any(|text| *text == "Equip {1}"),
+        "Rock should keep its equip ability, got {activated_texts:?}"
+    );
+    assert!(
+        activated_texts
             .iter()
-            .any(|ability| matches!(ability.kind, AbilityKind::Activated(_))),
-        "Rock should keep its activated ability"
+            .any(|text| text.contains("Sacrifice Rock: This creature deals 2 damage to any target")),
+        "Rock should keep the quoted activated damage ability, got {activated_texts:?}"
     );
 }
 

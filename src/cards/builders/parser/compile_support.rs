@@ -9913,7 +9913,16 @@ pub(crate) fn parse_equipment_rules_text(words: &[&str], source_text: &str) -> O
             .unwrap_or(ability_tail.len());
         let ability_clause = ability_tail[..ability_end].trim();
         if ability_clause.contains(':') {
-            lines.push(format!("Equipped creature has {}.", ability_clause));
+            let normalized_clause = ability_clause
+                .strip_prefix('\'')
+                .and_then(|text| text.strip_suffix('\''))
+                .or_else(|| {
+                    ability_clause
+                        .strip_prefix('"')
+                        .and_then(|text| text.strip_suffix('"'))
+                })
+                .unwrap_or(ability_clause);
+            lines.push(format!("Equipped creature has \"{normalized_clause}\"."));
         }
     }
 
@@ -11760,6 +11769,46 @@ mod parse_compile_tests {
         assert!(
             !debug.contains("GrantAbilitiesAll") && !debug.contains("RemoveAbilitiesAll"),
             "expected no broad battlefield-wide ability changes in the lowered definition, got {debug}"
+        );
+    }
+
+    #[test]
+    fn parse_equipment_rules_text_keeps_single_quoted_activated_grant() {
+        let words = [
+            "colorless",
+            "equipment",
+            "artifact",
+            "token",
+            "named",
+            "rock",
+            "with",
+            "equipped",
+            "creature",
+            "has",
+            "sacrifice",
+            "rock",
+            "this",
+            "creature",
+            "deals",
+            "2",
+            "damage",
+            "to",
+            "any",
+            "target",
+            "and",
+            "equip",
+            "1",
+        ];
+        let source_text =
+            "colorless equipment artifact token named rock with \"equipped creature has '{1}, {t}, sacrifice rock: this creature deals 2 damage to any target'\" and equip {1}.";
+
+        let rules_text =
+            parse_equipment_rules_text(&words, source_text).expect("equipment rules text");
+
+        assert!(
+            rules_text.contains("Equipped creature has \"{1}, {t}, sacrifice rock: this creature deals 2 damage to any target\".")
+                && rules_text.contains("Equip {1}"),
+            "expected quoted activated ability plus equip line, got {rules_text}"
         );
     }
 
