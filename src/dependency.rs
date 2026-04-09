@@ -929,7 +929,7 @@ pub(crate) fn apply_modification_to_chars_for_dependency(
     _object: &crate::object::Object,
 ) {
     match modification {
-        Modification::CopyOf(_) => {}
+        Modification::CopyOf { .. } => {}
         Modification::ChangeController(new_controller) => {
             chars.controller = *new_controller;
         }

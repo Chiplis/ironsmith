@@ -851,23 +851,31 @@ fn crystalline_resonance_copies_target_permanent_when_you_cycle() {
         .build();
     let target_id = game.create_object_from_definition(&target_def, bob, Zone::Battlefield);
 
-    let cycling_def = CardDefinitionBuilder::new(CardId::new(), "Cycle Probe")
+    let cycling_def = CardDefinitionBuilder::new(CardId::new(), "Cycle Probe One")
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
         .card_types(vec![CardType::Creature])
         .power_toughness(PowerToughness::fixed(2, 2))
         .parse_text("Cycling {2} ({2}, Discard this card: Draw a card.)")
         .expect("cycling probe should parse");
     let cycling_id = game.create_object_from_definition(&cycling_def, alice, Zone::Hand);
+    let cycling_id_two = game.create_object_from_definition(&cycling_def, alice, Zone::Hand);
 
-    let library_card = CardBuilder::new(CardId::new(), "Draw Target")
+    let library_card = CardBuilder::new(CardId::new(), "Draw Target One")
         .card_types(vec![CardType::Artifact])
         .build();
     game.create_object_from_card(&library_card, alice, Zone::Library);
+    game.create_object_from_card(
+        &CardBuilder::new(CardId::new(), "Draw Target Two")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        alice,
+        Zone::Library,
+    );
 
     game.player_mut(alice)
         .expect("alice exists")
         .mana_pool
-        .add(ManaSymbol::Colorless, 2);
+        .add(ManaSymbol::Colorless, 4);
 
     let activate_action = compute_legal_actions(&game, alice)
         .into_iter()
@@ -919,6 +927,17 @@ fn crystalline_resonance_copies_target_permanent_when_you_cycle() {
             && !resonance_chars.card_types.contains(&CardType::Enchantment),
         "the enchantment should become the copied permanent type"
     );
+    assert!(
+        resonance_chars
+            .abilities
+            .iter()
+            .any(|ability| matches!(
+                &ability.kind,
+                AbilityKind::Triggered(triggered)
+                    if triggered.trigger.display().contains("Whenever you cycle a card")
+            )),
+        "the enchantment should keep its cycling trigger while copied"
+    );
     assert_eq!(
         resonance_chars.power,
         Some(3),
@@ -928,6 +947,50 @@ fn crystalline_resonance_copies_target_permanent_when_you_cycle() {
         resonance_chars.toughness,
         Some(3),
         "the copied permanent should contribute the target's toughness"
+    );
+
+    let second_activate_action = compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::ActivateAbility { source, .. } if *source == cycling_id_two
+            )
+        })
+        .expect("the second cycling card should still be available");
+
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(second_activate_action),
+        &mut dm,
+    )
+    .expect("second cycling activation should succeed");
+
+    resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+        .expect("second cycling ability should resolve");
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Crystalline Resonance should still trigger after it has copied another permanent"
+    );
+
+    game.turn.turn_number += 1;
+    game.refresh_continuous_state();
+    let post_turn_chars = game
+        .calculated_characteristics(resonance_id)
+        .expect("Crystalline Resonance should still have characteristics after the turn advances");
+
+    assert!(
+        post_turn_chars.card_types.contains(&CardType::Enchantment)
+            && !post_turn_chars.card_types.contains(&CardType::Creature),
+        "the copy should expire on the controller's next turn"
+    );
+    assert_eq!(
+        post_turn_chars.name,
+        "Crystalline Resonance",
+        "the enchantment should return to its original name once the copy expires"
     );
 }
 

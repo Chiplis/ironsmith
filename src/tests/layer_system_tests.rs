@@ -1013,7 +1013,10 @@ fn test_clone_copies_base_not_modifications() {
         clone_id,
         alice,
         EffectTarget::Source,
-        Modification::CopyOf(bear_id),
+        Modification::CopyOf {
+            target_id: bear_id,
+            preserve_source_abilities: false,
+        },
     );
     game.continuous_effects.add_effect(copy_effect);
 
