@@ -8180,6 +8180,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(compact) = describe_compact_protection_choice(effect) {
         return compact;
     }
+    if let Some(compact) = describe_compact_destroy_color_choice(effect) {
+        return compact;
+    }
     if let Some(compact) = describe_compact_keyword_choice(effect) {
         return compact;
     }

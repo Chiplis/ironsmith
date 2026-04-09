@@ -3667,6 +3667,128 @@ fn test_goddric_celebration_granted_ability_buffs_only_dragons() {
     );
 }
 
+#[test]
+fn test_root_greevil_destroys_all_enchantments_of_the_chosen_color() {
+    use crate::decision::{compute_legal_actions, LegalAction};
+
+    #[derive(Default)]
+    struct ChooseBlueModeDecisionMaker;
+
+    impl DecisionMaker for ChooseBlueModeDecisionMaker {
+        fn decide_options(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            ctx.options
+                .iter()
+                .find(|option| {
+                    option.legal && option.description.to_ascii_lowercase().contains("blue")
+                })
+                .map(|option| vec![option.index])
+                .unwrap_or_else(|| {
+                    ctx.options
+                        .iter()
+                        .filter(|option| option.legal)
+                        .map(|option| option.index)
+                        .take(ctx.min)
+                        .collect()
+                })
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let registry = crate::cards::CardRegistry::with_builtin_cards_for_names(["Root Greevil"]);
+    let root_def = registry
+        .get("Root Greevil")
+        .expect("Root Greevil should be present in the registry");
+    let root_id = game.create_object_from_definition(root_def, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(root_id);
+
+    let blue_one = CardBuilder::new(CardId::new(), "Azure Sigil")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let blue_two = CardBuilder::new(CardId::new(), "Tidal Sigil")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let green_enchantment = CardBuilder::new(CardId::new(), "Verdant Sigil")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Green]]))
+        .card_types(vec![CardType::Enchantment])
+        .build();
+
+    let blue_one_id = game.create_object_from_card(&blue_one, alice, Zone::Battlefield);
+    let blue_two_id = game.create_object_from_card(&blue_two, bob, Zone::Battlefield);
+    let green_id = game.create_object_from_card(&green_enchantment, bob, Zone::Battlefield);
+
+    let ability_index = game
+        .object(root_id)
+        .expect("Root Greevil should exist")
+        .abilities
+        .iter()
+        .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .expect("Root Greevil should have an activated ability");
+
+    let activate_action = compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(
+            |action| matches!(action, LegalAction::ActivateAbility { source, ability_index: idx } if *source == root_id && *idx == ability_index),
+        )
+        .expect("Root Greevil's ability should be activatable");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = AutoPassDecisionMaker;
+
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("Root Greevil activation should succeed");
+
+    assert!(
+        game.object(root_id)
+            .is_some_and(|object| object.zone == Zone::Graveyard),
+        "sacrificing Root Greevil should move it to the graveyard as part of the activation cost"
+    );
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "the activated ability should be waiting on the stack"
+    );
+
+    let mut dm = ChooseBlueModeDecisionMaker::default();
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Root Greevil ability should resolve");
+
+    assert!(
+        game.object(blue_one_id)
+            .is_some_and(|object| object.zone == Zone::Graveyard),
+        "choosing blue should destroy the first blue enchantment"
+    );
+    assert!(
+        game.object(blue_two_id)
+            .is_some_and(|object| object.zone == Zone::Graveyard),
+        "choosing blue should destroy every blue enchantment"
+    );
+    assert!(
+        game.object(green_id)
+            .is_some_and(|object| object.zone == Zone::Battlefield),
+        "non-blue enchantments should survive the chosen-color sweep"
+    );
+}
+
 fn persist_effects() -> Vec<Effect> {
     let trigger_tag = "persist_trigger";
     let return_tag = "persist_return";
