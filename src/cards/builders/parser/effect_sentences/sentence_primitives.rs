@@ -4386,7 +4386,7 @@ pub(crate) fn parse_sentence_target_player_reveals_random_card_from_hand(
     }
 
     let subject_tokens = trim_commas(&tokens[..reveal_idx]);
-    let SubjectAst::Player(player) = parse_subject(subject_tokens) else {
+    let SubjectAst::Player(player) = parse_subject(&subject_tokens) else {
         return Ok(None);
     };
     if !matches!(
@@ -4401,7 +4401,7 @@ pub(crate) fn parse_sentence_target_player_reveals_random_card_from_hand(
     }
 
     let reveal_tokens = trim_commas(&tokens[reveal_idx + 1..]);
-    let reveal_words = crate::cards::builders::parser::token_word_refs(reveal_tokens);
+    let reveal_words = crate::cards::builders::parser::token_word_refs(&reveal_tokens);
     if reveal_words.is_empty()
         || !reveal_words
             .first()
