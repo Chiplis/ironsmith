@@ -7615,6 +7615,36 @@ fn test_parse_cycle_this_card_trigger_compiles() {
 }
 
 #[test]
+fn parse_valiant_rescuer_keeps_another_card_cycle_trigger() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Valiant Rescuer")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Soldier])
+        .power_toughness(PowerToughness::fixed(3, 1))
+        .parse_text(
+            "Whenever you cycle another card for the first time each turn, create a 1/1 white Human Soldier creature token.\nCycling {2} ({2}, Discard this card: Draw a card.)",
+        )
+        .expect("Valiant Rescuer should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Whenever you cycle another card") && rendered.contains("Cycling {2}"),
+        "expected another-card cycling trigger to survive rendering, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("source_filter: Some")
+            && debug.contains("other: true")
+            && debug.contains("MaxTimesEachTurn(1)"),
+        "expected reusable another-card cycle trigger lowering, got {debug}"
+    );
+}
+
+#[test]
 fn test_commander_recursion_trigger_uses_graveyard_zone_and_commander_filter() {
     use crate::zone::Zone;
 
