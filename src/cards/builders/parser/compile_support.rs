@@ -11703,6 +11703,16 @@ mod parse_compile_tests {
             !rendered.contains("creatures lose defender"),
             "expected the activation to stay on the sentinel itself, got {rendered}"
         );
+
+        let debug = format!("{def:?}");
+        assert!(
+            debug.contains("Source(") && debug.contains("EndOfTurn"),
+            "expected the lowered activated ability to stay source-targeted until end of turn, got {debug}"
+        );
+        assert!(
+            !debug.contains("GrantAbilitiesAll") && !debug.contains("RemoveAbilitiesAll"),
+            "expected no broad battlefield-wide ability changes in the lowered definition, got {debug}"
+        );
     }
 
     #[test]
