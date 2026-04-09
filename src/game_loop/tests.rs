@@ -1676,6 +1676,126 @@ fn test_pending_zone_change_still_drives_non_delayed_triggered_abilities() {
 }
 
 #[test]
+fn test_portcullis_exiles_entrying_creature_and_returns_it_when_it_leaves() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let portcullis = CardDefinitionBuilder::new(CardId::from_raw(91_200), "Portcullis")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "Whenever a creature enters, if there are two or more other creatures on the battlefield, exile that creature. Return that card to the battlefield under its owner's control when this artifact leaves the battlefield.",
+        )
+        .expect("Portcullis should parse");
+    let portcullis_id = game.create_object_from_definition(&portcullis, alice, Zone::Battlefield);
+
+    create_creature(&mut game, "Existing Creature One", alice, 2, 2);
+    create_creature(&mut game, "Existing Creature Two", bob, 2, 2);
+
+    let entering = CardBuilder::new(CardId::from_raw(91_201), "Portcullis Test Entrant")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let entering_id = game.create_object_from_card(&entering, bob, Zone::Hand);
+
+    assert!(
+        game.move_object_by_effect(entering_id, Zone::Battlefield)
+            .is_some(),
+        "the creature should enter the battlefield"
+    );
+
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Portcullis should trigger on the third creature entering"
+    );
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Portcullis trigger should go on the stack");
+    resolve_stack_entry(&mut game).expect("Portcullis trigger should resolve");
+
+    let exiled = game.get_exiled_with_source_links(portcullis_id).to_vec();
+    assert_eq!(exiled.len(), 1, "Portcullis should track exactly one exiled creature");
+    assert!(
+        game.object(exiled[0]).is_some_and(|obj| obj.zone == Zone::Exile),
+        "the entering creature should be exiled while Portcullis is on the battlefield"
+    );
+
+    assert!(
+        game.move_object_by_effect(portcullis_id, Zone::Graveyard)
+            .is_some(),
+        "Portcullis should leave the battlefield"
+    );
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Portcullis return trigger should go on the stack");
+    while !game.stack_is_empty() {
+        resolve_stack_entry(&mut game).expect("Portcullis return trigger should resolve");
+    }
+
+    assert!(
+        game.battlefield.iter().any(|&id| {
+            game.object(id).is_some_and(|obj| {
+                obj.name == "Portcullis Test Entrant" && obj.controller == bob
+            })
+        }),
+        "the exiled creature should return to the battlefield under its owner's control"
+    );
+    assert!(
+        game.get_exiled_with_source_links(portcullis_id).is_empty(),
+        "Portcullis should no longer track exiled cards after it leaves"
+    );
+}
+
+#[test]
+fn test_portcullis_does_not_trigger_without_two_other_creatures() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+
+    let portcullis = CardDefinitionBuilder::new(CardId::from_raw(91_202), "Portcullis")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "Whenever a creature enters, if there are two or more other creatures on the battlefield, exile that creature. Return that card to the battlefield under its owner's control when this artifact leaves the battlefield.",
+        )
+        .expect("Portcullis should parse");
+    let portcullis_id = game.create_object_from_definition(&portcullis, alice, Zone::Battlefield);
+
+    create_creature(&mut game, "Lonely Creature", alice, 2, 2);
+
+    let entering = CardBuilder::new(CardId::from_raw(91_203), "Portcullis Non-Trigger Entrant")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let entering_id = game.create_object_from_card(&entering, alice, Zone::Hand);
+
+    assert!(
+        game.move_object_by_effect(entering_id, Zone::Battlefield)
+            .is_some(),
+        "the creature should enter the battlefield"
+    );
+
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Portcullis trigger queue should resolve cleanly");
+
+    assert!(
+        game.get_exiled_with_source_links(portcullis_id).is_empty(),
+        "Portcullis should not exile a creature when fewer than two other creatures are present"
+    );
+    assert!(
+        game.battlefield.iter().any(|&id| {
+            game.object(id)
+                .is_some_and(|obj| obj.name == "Portcullis Non-Trigger Entrant")
+        }),
+        "the entering creature should remain on the battlefield"
+    );
+}
+
+#[test]
 fn test_optional_trigger_target_stacks_without_legal_targets() {
     let mut game = setup_game();
     let mut trigger_queue = TriggerQueue::new();

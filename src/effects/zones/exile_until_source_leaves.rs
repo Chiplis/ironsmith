@@ -1,14 +1,21 @@
 //! Exile-until effect implementation.
 
+use crate::effect::Effect;
 use crate::effect::EffectOutcome;
+use crate::effects::delayed::trigger_queue::{
+    DelayedTriggerTemplate, DelayedWatcherIdentity, queue_delayed_from_template,
+};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_objects_for_effect;
 use crate::event_processor::EventOutcome;
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
+use crate::tag::{SOURCE_EXILED_TAG, TagKey};
 use crate::target::ChooseSpec;
+use crate::triggers::Trigger;
 use crate::zone::Zone;
 
+use super::MoveToZoneEffect;
 use super::apply_zone_change_with_additional_effects;
 
 /// Duration for "exile ... until ..." effects.
@@ -94,6 +101,29 @@ impl EffectExecutor for ExileUntilEffect {
                     exiled_count += 1;
                 }
             }
+        }
+
+        if exiled_count > 0 && self.duration == ExileUntilDuration::SourceLeavesBattlefield {
+            let return_effect = Effect::new(
+                MoveToZoneEffect::new(
+                    ChooseSpec::Tagged(TagKey::from(SOURCE_EXILED_TAG)),
+                    Zone::Battlefield,
+                    false,
+                )
+                .under_owner_control(),
+            );
+            let delayed = DelayedTriggerTemplate::new(
+                Trigger::this_leaves_battlefield(),
+                vec![return_effect],
+                true,
+                ctx.controller,
+            )
+            .with_ability_source(Some(ctx.source));
+            queue_delayed_from_template(
+                game,
+                DelayedWatcherIdentity::combined(vec![ctx.source]),
+                delayed,
+            );
         }
         Ok(EffectOutcome::count(exiled_count))
     }

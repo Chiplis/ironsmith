@@ -1016,6 +1016,55 @@ fn rewrite_vote_count_followups_line(text: &str) -> String {
     }
 }
 
+fn rewrite_exile_return_when_source_leaves_line(text: &str) -> String {
+    fn source_leaves_subject(sentence: &str) -> Option<&str> {
+        let sentence = sentence.trim();
+        let sentence = str_strip_prefix(
+            sentence,
+            "Return that card to the battlefield under its owner's control when this ",
+        )?;
+        str_strip_suffix(sentence, " leaves the battlefield")
+            .map(str::trim)
+            .filter(|subject| !subject.is_empty())
+    }
+
+    let sentences = split_period_sentences(text);
+    if sentences.len() < 2 {
+        return text.to_string();
+    }
+
+    let mut rewritten: Vec<String> = Vec::with_capacity(sentences.len());
+    let mut changed = false;
+    for sentence in sentences {
+        if let Some(subject) = source_leaves_subject(sentence.as_str())
+            && let Some(previous) = rewritten.last_mut()
+        {
+            let previous_lower = previous.to_ascii_lowercase();
+            if previous_lower.contains("exile") && !previous_lower.contains("until this ") {
+                *previous = format!(
+                    "{} until this {} leaves the battlefield",
+                    previous.trim_end(),
+                    subject
+                );
+                changed = true;
+                continue;
+            }
+        }
+
+        rewritten.push(sentence);
+    }
+
+    if !changed {
+        return text.to_string();
+    }
+
+    let mut joined = rewritten.join(". ");
+    if str_ends_with(text.trim_end(), ".") {
+        joined.push('.');
+    }
+    joined
+}
+
 fn resized_char_map_for_rewrite(original_map: &[usize], normalized: &str) -> Vec<usize> {
     let target_len = normalized.chars().count();
     if target_len == original_map.len() {
@@ -1188,6 +1237,8 @@ pub(crate) fn preprocess_document(
 
         let expanded_normalized = expand_borrow_ability_line(normalized.normalized.as_str());
         let rewritten_normalized = rewrite_vote_count_followups_line(expanded_normalized.as_str());
+        let rewritten_normalized =
+            rewrite_exile_return_when_source_leaves_line(rewritten_normalized.as_str());
         let normalized = if rewritten_normalized != normalized.normalized {
             let char_map =
                 resized_char_map_for_rewrite(&normalized.char_map, &rewritten_normalized);
