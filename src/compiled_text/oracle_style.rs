@@ -5011,6 +5011,17 @@ mod tests {
     }
 
     #[test]
+    fn post_pass_normalizes_make_an_example_divvy_clause() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "For each opponent, you choose any number a creature that player controls in the battlefield and tags it as 'divvy_chosen'. that player sacrifices all creatures that player controls.",
+        );
+        assert_eq!(
+            normalized,
+            "Each opponent separates the creatures they control into two piles. For each opponent, you choose one of their piles. Each opponent sacrifices the creatures in their chosen pile. (Piles can be empty.)"
+        );
+    }
+
+    #[test]
     fn post_pass_normalizes_divvy_attack_restriction_clause() {
         let normalized = normalize_compiled_post_pass_effect(
             "At the beginning of combat on each opponent's turn, that player chooses any number a creature that player controls in the battlefield and tags it as 'divvy_chosen'. a other creature that player controls can't attack this turn.",

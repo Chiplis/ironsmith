@@ -18669,6 +18669,12 @@ fn render_make_an_example_preserves_choose_then_sacrifice_surface() {
         spell_debug.contains("chooseobjectseffect") && spell_debug.contains("sacrificeeffect"),
         "expected Make an Example to lower through the normal choose/sacrifice machinery, got {spell_debug}"
     );
+
+    let canonical = oracle_like_lines(&def).join(" ");
+    assert_eq!(
+        canonical,
+        "Each opponent separates the creatures they control into two piles. For each opponent, you choose one of their piles. Each opponent sacrifices the creatures in their chosen pile. (Piles can be empty.)"
+    );
 }
 
 #[test]

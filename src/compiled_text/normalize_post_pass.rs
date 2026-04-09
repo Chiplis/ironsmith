@@ -5838,6 +5838,15 @@ pub(super) fn normalize_divvy_chosen_sequence(text: &str) -> Option<String> {
             "{before} chooses any number of creatures that player controls. Other creatures that player controls can't block this turn."
         ));
     }
+    if let Some((_before, _rest)) = split_once_ascii_ci(
+        text,
+        "for each opponent, you choose any number a creature that player controls in the battlefield and tags it as 'divvy_chosen'. that player sacrifices all creatures that player controls.",
+    ) {
+        return Some(
+            "Each opponent separates the creatures they control into two piles. For each opponent, you choose one of their piles. Each opponent sacrifices the creatures in their chosen pile. (Piles can be empty.)"
+                .to_string(),
+        );
+    }
     if let Some((before, rest)) = split_once_ascii_ci(
         text,
         " chooses any number creature card in your graveyard and tags it as 'divvy_chosen'. Exile the tagged object 'divvy_chosen'. Return all other creature card in your graveyard to the battlefield.",
