@@ -3,7 +3,7 @@
 use crate::ability::ActivationTiming;
 use crate::cards::builders::{
     CardDefinitionBuilder, EffectAst, LineAst, ParseAnnotations, ParsedLevelAbilityItemAst,
-    ParsedRestrictions,
+    ParsedRestrictions, PredicateAst,
 };
 use crate::cost::TotalCost;
 
@@ -85,6 +85,7 @@ pub(crate) struct RewriteTriggeredLine {
     pub(crate) full_text: String,
     pub(crate) trigger_text: String,
     pub(crate) effect_text: String,
+    pub(crate) intervening_if: Option<PredicateAst>,
     pub(crate) max_triggers_per_turn: Option<u32>,
     pub(crate) chosen_option_label: Option<String>,
     pub(crate) parsed: LineAst,

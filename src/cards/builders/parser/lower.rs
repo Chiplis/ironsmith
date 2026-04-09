@@ -2332,6 +2332,7 @@ pub(crate) fn lower_rewrite_triggered_to_chunk(
     trigger_parse_tokens: &[OwnedLexToken],
     effect_text: &str,
     effect_parse_tokens: &[OwnedLexToken],
+    intervening_if: Option<PredicateAst>,
     max_triggers_per_turn: Option<u32>,
     chosen_option_label: Option<&str>,
 ) -> Result<LineAst, CardTextError> {
@@ -2341,6 +2342,7 @@ pub(crate) fn lower_rewrite_triggered_to_chunk(
             full_text: full_text.to_string(),
             trigger_text: trigger_text.to_string(),
             effect_text: effect_text.to_string(),
+            intervening_if,
             max_triggers_per_turn,
             chosen_option_label: chosen_option_label.map(str::to_string),
             parsed: LineAst::Statement {
@@ -2379,6 +2381,45 @@ fn lower_rewrite_triggered_to_chunk_impl(
 
     let normalized_full_text = line.full_text.to_ascii_lowercase();
     let normalized_effect_text = line.effect_text.trim().to_ascii_lowercase();
+    let explicit_intervening_if = line.intervening_if.clone();
+    let wrap_explicit_intervening_if = |chunk: LineAst| {
+        if let Some(predicate) = explicit_intervening_if.clone() {
+            match chunk {
+                LineAst::Triggered {
+                    trigger,
+                    effects,
+                    max_triggers_per_turn,
+                } => {
+                    if matches!(
+                        effects.as_slice(),
+                        [EffectAst::Conditional {
+                            if_false,
+                            ..
+                        }] if if_false.is_empty()
+                    ) {
+                        LineAst::Triggered {
+                            trigger,
+                            effects,
+                            max_triggers_per_turn,
+                        }
+                    } else {
+                        LineAst::Triggered {
+                            trigger,
+                            effects: vec![EffectAst::Conditional {
+                                predicate,
+                                if_true: effects,
+                                if_false: Vec::new(),
+                            }],
+                            max_triggers_per_turn,
+                        }
+                    }
+                }
+                other => other,
+            }
+        } else {
+            chunk
+        }
+    };
     if !line.effect_text.trim().is_empty()
         && !full_text_has_triggered_intervening_if_clause(
             line.full_text.as_str(),
@@ -2395,11 +2436,11 @@ fn lower_rewrite_triggered_to_chunk_impl(
             && !effects.is_empty()
         {
             return apply_chosen_option_to_triggered_chunk(
-                LineAst::Triggered {
+                wrap_explicit_intervening_if(LineAst::Triggered {
                     trigger,
                     effects,
                     max_triggers_per_turn: inferred_max_triggers_per_turn,
-                },
+                }),
                 line.info.raw_line.as_str(),
                 inferred_max_triggers_per_turn,
                 chosen_option_label,
@@ -2407,7 +2448,7 @@ fn lower_rewrite_triggered_to_chunk_impl(
         }
     }
 
-    let parsed = parse_triggered_line_lexed(full_parse_tokens)?;
+    let parsed = wrap_explicit_intervening_if(parse_triggered_line_lexed(full_parse_tokens)?);
     apply_chosen_option_to_triggered_chunk(
         parsed,
         line.info.raw_line.as_str(),
@@ -4269,6 +4310,7 @@ mod tests {
             &trigger_tokens,
             effect_text,
             &effect_tokens,
+            None,
             None,
             None,
         )?;

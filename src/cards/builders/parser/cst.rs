@@ -1,6 +1,7 @@
 use super::leaf::ActivationCostCst;
 use super::lexer::OwnedLexToken;
 use super::shared_types::{LineInfo, MetadataLine};
+use crate::cards::builders::PredicateAst;
 
 #[derive(Debug, Clone)]
 pub(crate) struct RewriteDocumentCst {
@@ -89,6 +90,7 @@ pub(crate) struct TriggeredLineCst {
     pub(crate) trigger_parse_tokens: Vec<OwnedLexToken>,
     pub(crate) effect_text: String,
     pub(crate) effect_parse_tokens: Vec<OwnedLexToken>,
+    pub(crate) intervening_if: Option<PredicateAst>,
     pub(crate) max_triggers_per_turn: Option<u32>,
     pub(crate) chosen_option_label: Option<String>,
 }

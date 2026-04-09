@@ -1166,6 +1166,34 @@ fn rewrite_structure_triggered_conditional_clause_parser_splits_intervening_if()
 }
 
 #[test]
+fn rewrite_structure_triggered_conditional_clause_parser_keeps_count_based_battlefield_gate() {
+    let tokens = lex_line(
+        "Whenever a creature enters, if there are two or more other creatures on the battlefield, exile that creature.",
+        0,
+    )
+    .expect("rewrite lexer should classify Portcullis conditional trigger");
+    let spec = super::grammar::structure::split_triggered_conditional_clause_lexed(&tokens, 1)
+        .expect("structure helper should detect Portcullis conditional trigger");
+
+    assert_eq!(
+        spec.trigger_tokens
+            .iter()
+            .map(|token| token.slice.as_str())
+            .collect::<Vec<_>>(),
+        vec!["a", "creature", "enters"]
+    );
+    let predicate_debug = format!("{:?}", spec.predicate);
+    assert!(
+        predicate_debug.contains("ValueComparison"),
+        "expected count-based battlefield gate to lower as a value comparison, got {predicate_debug}"
+    );
+    assert!(
+        predicate_debug.contains("Count(") || predicate_debug.contains("CountScaled("),
+        "expected battlefield-count gate to reference a count value, got {predicate_debug}"
+    );
+}
+
+#[test]
 fn rewrite_structure_state_triggered_clause_parser_splits_when_condition() {
     let tokens = lex_line("When you control no Swamps, sacrifice this creature.", 0)
         .expect("rewrite lexer should classify state-trigger line");
@@ -1594,6 +1622,7 @@ fn rewrite_triggered_lowering_uses_parse_tokens_when_text_fields_are_stale()
         &trigger_tokens,
         "placeholder effect text",
         &effect_tokens,
+        None,
         None,
         None,
     )?;

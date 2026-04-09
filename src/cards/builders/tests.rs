@@ -1673,6 +1673,24 @@ fn test_parse_portcullis_exile_until_leaves_battlefield() {
         !rendered.contains("graveyard"),
         "Portcullis should no longer compile into a graveyard-return pattern, got {rendered}"
     );
+
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Portcullis should have a triggered ability");
+    let debug = format!("{:?}", triggered.intervening_if);
+    assert!(
+        triggered.intervening_if.is_some(),
+        "expected Portcullis trigger to keep its battlefield-count condition, got {debug}"
+    );
+    assert!(
+        debug.contains("ValueComparison") || debug.contains("CountComparison"),
+        "expected Portcullis trigger condition to be count-based, got {debug}"
+    );
 }
 
 #[test]

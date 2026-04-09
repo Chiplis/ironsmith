@@ -2,7 +2,7 @@ use crate::PtValue;
 use crate::ability::ActivationTiming;
 use crate::cards::builders::{
     CardDefinitionBuilder, CardTextError, LineAst, ParseAnnotations, ParsedLevelAbilityItemAst,
-    TextSpan,
+    PredicateAst, TextSpan,
 };
 use winnow::Parser;
 use winnow::error::ModalResult as WResult;
@@ -326,6 +326,7 @@ struct TriggeredSplitCandidate {
     trigger_parse_tokens: Vec<OwnedLexToken>,
     effect_text: String,
     effect_parse_tokens: Vec<OwnedLexToken>,
+    intervening_if: Option<PredicateAst>,
     max_triggers_per_turn: Option<u32>,
 }
 
@@ -343,6 +344,7 @@ impl TriggeredSplitCandidate {
             trigger_parse_tokens: self.trigger_parse_tokens,
             effect_text: self.effect_text,
             effect_parse_tokens: self.effect_parse_tokens,
+            intervening_if: self.intervening_if,
             max_triggers_per_turn: self.max_triggers_per_turn,
             chosen_option_label: None,
         }
@@ -401,6 +403,7 @@ impl TriggeredSplitProbe {
 fn render_triggered_split_candidate(
     trigger_tokens: &[OwnedLexToken],
     effect_tokens: &[OwnedLexToken],
+    intervening_if: Option<PredicateAst>,
     trailing_cap: Option<u32>,
 ) -> Option<TriggeredSplitCandidate> {
     let trigger_candidate_tokens = trim_lexed_commas(trigger_tokens);
@@ -424,6 +427,7 @@ fn render_triggered_split_candidate(
         trigger_parse_tokens: trigger_tokens.to_vec(),
         effect_text,
         effect_parse_tokens: effect_candidate_tokens.to_vec(),
+        intervening_if,
         max_triggers_per_turn: max_triggers_per_turn.or(trailing_cap),
     })
 }
@@ -431,12 +435,18 @@ fn render_triggered_split_candidate(
 fn probe_triggered_split(
     trigger_tokens: &[OwnedLexToken],
     effect_tokens: &[OwnedLexToken],
+    intervening_if: Option<PredicateAst>,
     trailing_cap: Option<u32>,
 ) -> TriggeredSplitProbe {
     let trigger_candidate_tokens = trim_lexed_commas(trigger_tokens);
     let effect_candidate_tokens = trim_lexed_commas(effect_tokens);
     let Some(candidate) =
-        render_triggered_split_candidate(trigger_tokens, effect_tokens, trailing_cap)
+        render_triggered_split_candidate(
+            trigger_tokens,
+            effect_tokens,
+            intervening_if,
+            trailing_cap,
+        )
     else {
         return TriggeredSplitProbe::Empty;
     };
@@ -498,7 +508,12 @@ fn parse_triggered_line_cst(line: &PreprocessedLine) -> Result<TriggeredLineCst,
     if let Some(spec) =
         super::grammar::structure::split_triggered_conditional_clause_lexed(tokens_without_cap, 1)
     {
-        let probe = probe_triggered_split(spec.trigger_tokens, spec.effects_tokens, trailing_cap);
+        let probe = probe_triggered_split(
+            spec.trigger_tokens,
+            spec.effects_tokens,
+            Some(spec.predicate.clone()),
+            trailing_cap,
+        );
         if let Some(mut parsed) = probe.supported_cst(line, tokens_without_cap) {
             parsed.full_text = normalized.clone();
             return Ok(parsed);
@@ -512,7 +527,8 @@ fn parse_triggered_line_cst(line: &PreprocessedLine) -> Result<TriggeredLineCst,
         grammar::split_lexed_once_on_comma(tokens_without_cap)
     {
         if leading_tokens.len() > 1 {
-            let probe = probe_triggered_split(&leading_tokens[1..], effect_tokens, trailing_cap);
+            let probe =
+                probe_triggered_split(&leading_tokens[1..], effect_tokens, None, trailing_cap);
             if let Some(parsed) = probe.supported_cst(line, tokens_without_cap) {
                 return Ok(parsed);
             }
@@ -534,6 +550,7 @@ fn parse_triggered_line_cst(line: &PreprocessedLine) -> Result<TriggeredLineCst,
         let probe = probe_triggered_split(
             &tokens_without_cap[1..separator_idx],
             &tokens_without_cap[separator_idx + 1..],
+            None,
             trailing_cap,
         );
 
@@ -622,6 +639,7 @@ fn parse_triggered_line_cst(line: &PreprocessedLine) -> Result<TriggeredLineCst,
                 effect_text: String::new(),
                 effect_parse_tokens: Vec::new(),
                 max_triggers_per_turn: trailing_cap,
+                intervening_if: None,
                 chosen_option_label: None,
             })
         }
@@ -2364,6 +2382,7 @@ mod tests {
             &line.tokens[1..comma_idx],
             &line.tokens[comma_idx + 1..],
             None,
+            None,
         );
         let fallback = probe.fallback_cst(&line, &line.tokens);
 
@@ -4066,6 +4085,7 @@ fn lower_document_cst(
                     &triggered.trigger_parse_tokens,
                     &triggered.effect_text,
                     &triggered.effect_parse_tokens,
+                    triggered.intervening_if.clone(),
                     triggered.max_triggers_per_turn,
                     triggered.chosen_option_label.as_deref(),
                 )?;
@@ -4074,6 +4094,7 @@ fn lower_document_cst(
                     full_text: triggered.full_text,
                     trigger_text: triggered.trigger_text,
                     effect_text: triggered.effect_text,
+                    intervening_if: triggered.intervening_if,
                     max_triggers_per_turn: triggered.max_triggers_per_turn,
                     chosen_option_label: triggered.chosen_option_label,
                     parsed,
