@@ -8122,10 +8122,20 @@ fn rewrite_semantic_parse_accepts_do_this_only_once_each_turn_trigger_cap()
         triggered.trigger_text
     );
     assert!(
+        triggered.effect_text.contains("search your library for a Plains card"),
+        "unexpected effect text: {}",
+        triggered.effect_text
+    );
+    assert!(
         triggered
             .effect_text
-            .contains("you may search your library for a Plains card, put it onto the battlefield tapped, then shuffle"),
+            .contains("put it onto the battlefield tapped, then shuffle"),
         "unexpected effect text: {}",
+        triggered.effect_text
+    );
+    assert!(
+        !triggered.effect_text.contains("Do this only once each turn"),
+        "cap sentence should stay out of the effect text: {}",
         triggered.effect_text
     );
 
