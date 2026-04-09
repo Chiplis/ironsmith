@@ -212,12 +212,13 @@ mod tests {
     use super::*;
     use crate::card::{LinkedFaceLayout, PowerToughness};
     use crate::cards::{CardDefinition, CardDefinitionBuilder};
+    use crate::events::phase::EndOfCombatEvent;
     use crate::events::EventKind;
     use crate::executor::ExecutionContext;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::snapshot::ObjectSnapshot;
-    use crate::triggers::{TransformsTrigger, TriggerContext, TriggerMatcher};
+    use crate::triggers::{TransformsTrigger, TriggerContext, TriggerMatcher, TriggerQueue};
     use crate::types::{CardType, Subtype};
     use std::sync::{Mutex, MutexGuard, OnceLock};
 
@@ -264,6 +265,32 @@ mod tests {
             .expect("back face should parse");
         back.card.other_face = Some(front_id);
         back.card.other_face_name = Some(front_name.to_string());
+        back.card.linked_face_layout = LinkedFaceLayout::TransformLike;
+
+        crate::cards::register_runtime_custom_card(front.clone());
+        crate::cards::register_runtime_custom_card(back);
+        front
+    }
+
+    fn register_conquerors_galleon_pair(front_id: CardId, back_id: CardId) -> CardDefinition {
+        let mut front = CardDefinitionBuilder::new(front_id, "Conqueror's Galleon")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+            .card_types(vec![CardType::Artifact])
+            .subtypes(vec![Subtype::Vehicle])
+            .power_toughness(PowerToughness::fixed(2, 10))
+            .parse_text(
+                "When this Vehicle attacks, exile it at end of combat, then return it to the battlefield transformed under your control.\nCrew 4 (Tap any number of creatures you control with total power 4 or more: This Vehicle becomes an artifact creature until end of turn.)",
+            )
+            .expect("front face should parse");
+        front.card.other_face = Some(back_id);
+        front.card.other_face_name = Some("Conqueror's Foothold".to_string());
+        front.card.linked_face_layout = LinkedFaceLayout::TransformLike;
+
+        let mut back = CardDefinitionBuilder::new(back_id, "Conqueror's Foothold")
+            .card_types(vec![CardType::Land])
+            .build();
+        back.card.other_face = Some(front_id);
+        back.card.other_face_name = Some("Conqueror's Galleon".to_string());
         back.card.linked_face_layout = LinkedFaceLayout::TransformLike;
 
         crate::cards::register_runtime_custom_card(front.clone());
@@ -334,6 +361,93 @@ mod tests {
         assert_eq!(object.name, "Trail Scout");
         assert_eq!(object.subtypes, vec![Subtype::Human, Subtype::Scout]);
         assert_eq!(object.oracle_text, "Vigilance");
+    }
+
+    #[test]
+    fn conquerors_galleon_returns_transformed_at_end_of_combat() {
+        let _guard = runtime_custom_registry_test_guard();
+        crate::cards::clear_runtime_custom_cards();
+
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let front = register_conquerors_galleon_pair(
+            CardId::from_raw(79_200),
+            CardId::from_raw(79_201),
+        );
+        let source = game.create_object_from_definition(&front, alice, Zone::Battlefield);
+
+        let trigger = game
+            .object(source)
+            .unwrap()
+            .abilities
+            .iter()
+            .find_map(|ability| {
+                if let crate::ability::AbilityKind::Triggered(triggered) = &ability.kind {
+                    if triggered.trigger.display().contains("attacks") {
+                        Some(triggered.clone())
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+            .expect("Conqueror's Galleon should have an attack trigger");
+
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        trigger.effects[0]
+            .0
+            .execute(&mut game, &mut ctx)
+            .expect("attack trigger should schedule delayed return");
+
+        assert!(
+            game.battlefield.iter().any(|&id| {
+                game.object(id)
+                    .is_some_and(|obj| obj.name == "Conqueror's Galleon")
+            }),
+            "Galleon should remain on the battlefield until end of combat"
+        );
+        assert_eq!(
+            game.delayed_triggers.len(),
+            1,
+            "attack trigger should schedule one delayed end-of-combat trigger"
+        );
+        assert!(game.exile.is_empty(), "Galleon should not exile immediately");
+
+        let end_of_combat_event = TriggerEvent::new_with_provenance(
+            EndOfCombatEvent::new(),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let mut trigger_queue = TriggerQueue::new();
+        for trigger in crate::triggers::check_delayed_triggers(&mut game, &end_of_combat_event) {
+            trigger_queue.add(trigger);
+        }
+        crate::put_triggers_on_stack(&mut game, &mut trigger_queue)
+            .expect("should queue delayed end-of-combat trigger");
+        while !game.stack_is_empty() {
+            crate::resolve_stack_entry(&mut game).expect("resolve delayed end-of-combat trigger");
+        }
+
+        let foothold_id = game
+            .battlefield
+            .iter()
+            .copied()
+            .find(|&id| {
+                game.object(id)
+                    .is_some_and(|obj| obj.name == "Conqueror's Foothold")
+            })
+            .expect("Conqueror's Foothold should return to the battlefield");
+        assert!(
+            !game.battlefield.iter().any(|&id| {
+                game.object(id)
+                    .is_some_and(|obj| obj.name == "Conqueror's Galleon")
+            }),
+            "front face should leave the battlefield once the delayed trigger resolves"
+        );
+        assert!(
+            game.is_face_down(foothold_id),
+            "returned permanent should transform into the Foothold face"
+        );
     }
 
     #[test]

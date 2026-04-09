@@ -4101,6 +4101,19 @@ pub(crate) fn parse_exile_then_return_same_object_sentence(
         return Ok(None);
     }
 
+    let (first_clause, delayed_until_end_of_combat) =
+        if let Some(before) =
+            grammar::strip_lexed_suffix_phrase(first_clause, &["at", "the", "end", "of", "combat"])
+        {
+            (before, true)
+        } else if let Some(before) =
+            grammar::strip_lexed_suffix_phrase(first_clause, &["at", "end", "of", "combat"])
+        {
+            (before, true)
+        } else {
+            (first_clause, false)
+        };
+
     let mut first_effects = parse_effect_chain_inner(first_clause)?;
     if !first_effects
         .iter()
@@ -4139,6 +4152,14 @@ pub(crate) fn parse_exile_then_return_same_object_sentence(
     }
     if !rewrote_return {
         return Ok(None);
+    }
+
+    if delayed_until_end_of_combat {
+        let mut delayed_effects = first_effects;
+        delayed_effects.extend(second_effects);
+        return Ok(Some(vec![EffectAst::DelayedUntilEndOfCombat {
+            effects: delayed_effects,
+        }]));
     }
 
     first_effects.extend(second_effects);
