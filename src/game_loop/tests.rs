@@ -9117,7 +9117,7 @@ fn test_gargoyle_sentinel_gains_flying_only_for_itself_until_end_of_turn() {
     game.remove_summoning_sickness(other_creature_id);
 
     assert!(
-        !game.can_attack(gargoyle_id),
+        !crate::rules::combat::can_attack(game.object(gargoyle_id).expect("gargoyle exists"), &game),
         "defender should stop Gargoyle Sentinel from attacking before its ability resolves"
     );
     assert!(
@@ -9161,7 +9161,7 @@ fn test_gargoyle_sentinel_gains_flying_only_for_itself_until_end_of_turn() {
     resolve_stack_entry(&mut game).expect("Gargoyle Sentinel ability should resolve");
 
     assert!(
-        game.can_attack(gargoyle_id),
+        crate::rules::combat::can_attack(game.object(gargoyle_id).expect("gargoyle exists"), &game),
         "the sentinel should be able to attack after losing defender"
     );
     assert!(
@@ -9180,7 +9180,7 @@ fn test_gargoyle_sentinel_gains_flying_only_for_itself_until_end_of_turn() {
         "flying should expire at end of turn"
     );
     assert!(
-        !game.can_attack(gargoyle_id),
+        !crate::rules::combat::can_attack(game.object(gargoyle_id).expect("gargoyle exists"), &game),
         "defender should come back after end of turn"
     );
 }

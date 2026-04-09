@@ -309,6 +309,25 @@ pub(crate) fn parse_simple_ability_duration(
     None
 }
 
+fn parse_leading_simple_ability_duration(tokens: &[OwnedLexToken]) -> Option<(usize, Until)> {
+    let clause_word_view = GainAbilityWordView::new(tokens);
+    let clause_words = clause_word_view.to_word_refs();
+    if starts_with_until_end_of_turn(&clause_words) {
+        return Some((4, Until::EndOfTurn));
+    }
+    if let Some((prefix, _)) =
+        grammar::words_match_any_prefix(tokens, UNTIL_YOUR_NEXT_TURN_PREFIXES)
+    {
+        return Some((prefix.len(), Until::YourNextTurn));
+    }
+    if let Some((prefix, _)) =
+        grammar::words_match_any_prefix(tokens, UNTIL_YOUR_NEXT_UNTAP_PREFIXES)
+    {
+        return Some((prefix.len(), Until::YourNextTurn));
+    }
+    None
+}
+
 pub(crate) fn parse_simple_gain_ability_clause_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
@@ -386,7 +405,18 @@ fn parse_simple_ability_modifier_clause_lexed(
         }
     }
 
-    let subject_tokens = trim_lexed_commas(&tokens[..verb_token_idx]);
+    let leading_duration_phrase = parse_leading_simple_ability_duration(tokens);
+    let subject_start_token_idx = leading_duration_phrase
+        .as_ref()
+        .map(|(start_word_idx, _)| {
+            lexed_token_index_for_word_index(tokens, *start_word_idx).unwrap_or(tokens.len())
+        })
+        .unwrap_or(0);
+    if subject_start_token_idx > verb_token_idx {
+        return Ok(None);
+    }
+
+    let subject_tokens = trim_lexed_commas(&tokens[subject_start_token_idx..verb_token_idx]);
     if subject_tokens.is_empty() && !implied_it_subject {
         return Ok(None);
     }
@@ -416,6 +446,7 @@ fn parse_simple_ability_modifier_clause_lexed(
     let duration = duration_phrase
         .as_ref()
         .map(|(_, _, duration)| duration.clone())
+        .or_else(|| leading_duration_phrase.as_ref().map(|(_, duration)| duration.clone()))
         .unwrap_or(Until::Forever);
 
     let ability_end_word_idx = duration_phrase
@@ -567,7 +598,18 @@ pub(crate) fn parse_simple_ability_modifier_clause(
         }
     }
 
-    let subject_tokens = trim_commas(&tokens[..verb_token_idx]);
+    let leading_duration_phrase = parse_leading_simple_ability_duration(tokens);
+    let subject_start_token_idx = leading_duration_phrase
+        .as_ref()
+        .map(|(start_word_idx, _)| {
+            token_index_for_word_index(tokens, *start_word_idx).unwrap_or(tokens.len())
+        })
+        .unwrap_or(0);
+    if subject_start_token_idx > verb_token_idx {
+        return Ok(None);
+    }
+
+    let subject_tokens = trim_commas(&tokens[subject_start_token_idx..verb_token_idx]);
     if subject_tokens.is_empty() && !implied_it_subject {
         return Ok(None);
     }
@@ -597,6 +639,7 @@ pub(crate) fn parse_simple_ability_modifier_clause(
     let duration = duration_phrase
         .as_ref()
         .map(|(_, _, duration)| duration.clone())
+        .or_else(|| leading_duration_phrase.as_ref().map(|(_, duration)| duration.clone()))
         .unwrap_or(Until::Forever);
 
     let ability_end_word_idx = duration_phrase
@@ -1464,33 +1507,54 @@ mod tests {
     }
 
     #[test]
-    fn source_reference_gain_and_lose_ability_clause_targets_the_source_until_end_of_turn() {
-        let tokens = tokenize_line(
-            "Until end of turn, this creature loses defender and gains flying.",
-            0,
-        );
-        let effects = parse_gain_ability_sentence(&tokens)
-            .expect("source-referenced gain/lose clause should parse")
-            .expect("source-referenced gain/lose clause should produce effects");
+    fn source_reference_simple_gain_clause_keeps_leading_duration_and_source_target() {
+        let tokens = tokenize_line("Until end of turn, this creature gains flying.", 0);
+        let effect = parse_simple_gain_ability_clause(&tokens)
+            .expect("source-referenced simple gain clause should parse")
+            .expect("source-referenced simple gain clause should produce an effect");
 
-        let debug = format!("{effects:?}");
+        let debug = format!("{effect:?}");
         assert!(
-            string_contains(&debug, "RemoveAbilitiesFromTarget")
-                && string_contains(&debug, "GrantAbilitiesToTarget"),
-            "expected source-targeted remove and grant effects, got {debug}"
+            string_contains(&debug, "GrantAbilitiesToTarget"),
+            "expected a self-targeted temporary grant effect, got {debug}"
         );
         assert!(
             string_contains(&debug, "Source("),
-            "expected the source object to stay targeted, got {debug}"
+            "expected the simple gain clause to stay targeted on the source, got {debug}"
         );
         assert!(
             string_contains(&debug, "EndOfTurn"),
-            "expected the clause to expire at end of turn, got {debug}"
+            "expected the leading duration to survive lowering, got {debug}"
         );
         assert!(
-            !string_contains(&debug, "GrantAbilitiesAll")
-                && !string_contains(&debug, "RemoveAbilitiesAll"),
-            "expected no broad battlefield-wide ability changes, got {debug}"
+            !string_contains(&debug, "GrantAbilitiesAll"),
+            "expected no broad battlefield-wide grant effect, got {debug}"
+        );
+    }
+
+    #[test]
+    fn source_reference_simple_lose_clause_keeps_leading_duration_and_source_target() {
+        let tokens = tokenize_line("Until end of turn, this creature loses defender.", 0);
+        let effect = parse_simple_lose_ability_clause(&tokens)
+            .expect("source-referenced simple lose clause should parse")
+            .expect("source-referenced simple lose clause should produce an effect");
+
+        let debug = format!("{effect:?}");
+        assert!(
+            string_contains(&debug, "RemoveAbilitiesFromTarget"),
+            "expected a self-targeted temporary removal effect, got {debug}"
+        );
+        assert!(
+            string_contains(&debug, "Source("),
+            "expected the simple lose clause to stay targeted on the source, got {debug}"
+        );
+        assert!(
+            string_contains(&debug, "EndOfTurn"),
+            "expected the leading duration to survive lowering, got {debug}"
+        );
+        assert!(
+            !string_contains(&debug, "RemoveAbilitiesAll"),
+            "expected no broad battlefield-wide removal effect, got {debug}"
         );
     }
 
