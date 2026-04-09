@@ -1083,6 +1083,16 @@ impl StaticAbilityKind for Anthem {
             ) if power_count == toughness_count && *power == 1 && *toughness == 1 => {
                 if let Some(count_subject) = describe_anthem_for_each_count_expression(power_count)
                 {
+                    if matches!(power_count, AnthemCountExpression::CommanderCastCount(_))
+                        && !self.source_only
+                        && self.filter.zone == Some(Zone::Battlefield)
+                        && self.filter.controller == Some(crate::target::PlayerFilter::You)
+                        && self.filter.card_types == vec![CardType::Creature]
+                    {
+                        return format!(
+                            "Creatures you control get +1/+1 for each {count_subject}"
+                        );
+                    }
                     return format!("{subject} {verb} +1/+1 for each {count_subject}");
                 }
                 format!(
@@ -2702,6 +2712,30 @@ impl StaticAbilityKind for AttachedAbilityGrant {
 
     fn granted_inline_ability(&self) -> Option<&crate::ability::Ability> {
         Some(&self.ability)
+    }
+
+    fn apply_restrictions(&self, game: &mut GameState, source: ObjectId, controller: PlayerId) {
+        if let Some(condition) = &self.condition
+            && !static_condition_is_active(condition, game, source, controller)
+        {
+            return;
+        }
+
+        let Some(attached_to) = game
+            .object(source)
+            .and_then(|object| object.attached_to)
+            .and_then(|target| target.object_id())
+        else {
+            return;
+        };
+        let attached_controller = game
+            .object(attached_to)
+            .map(|object| object.controller)
+            .unwrap_or(controller);
+
+        if let crate::ability::AbilityKind::Static(static_ability) = &self.ability.kind {
+            static_ability.apply_restrictions(game, attached_to, attached_controller);
+        }
     }
 
     fn generate_effects(

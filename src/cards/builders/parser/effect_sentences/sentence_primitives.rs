@@ -2852,17 +2852,6 @@ pub(crate) fn parse_sentence_destroy_then_land_controller_graveyard_count_damage
     parse_destroy_then_land_controller_graveyard_count_damage_sentence(tokens)
 }
 
-pub(crate) fn add_chosen_creature_type_constraint_to_target(target: &mut TargetAst) -> bool {
-    match target {
-        TargetAst::Object(filter, _, _) => {
-            filter.chosen_creature_type = true;
-            true
-        }
-        TargetAst::WithCount(inner, _) => add_chosen_creature_type_constraint_to_target(inner),
-        _ => false,
-    }
-}
-
 pub(crate) fn find_creature_type_choice_phrase(tokens: &[OwnedLexToken]) -> Option<(usize, usize)> {
     for idx in 0..tokens.len() {
         if tokens[idx].is_word("of")
@@ -3216,34 +3205,89 @@ pub(crate) fn parse_sentence_return_targets_of_creature_type_of_choice(
     }
 
     let target_tokens = trim_commas(&tokens[1..to_idx]);
-    if find_type_choice_phrase(&target_tokens).is_none() {
+    let inline_creature_choice = find_creature_type_choice_phrase(&target_tokens);
+    let referenced_type_choice = if inline_creature_choice.is_none() {
+        find_type_choice_phrase(&target_tokens)
+    } else {
+        None
+    };
+    if inline_creature_choice.is_none() && referenced_type_choice.is_none() {
         return Ok(None);
     }
 
-    let mut filter = parse_object_filter(&target_tokens, false)?;
-    if !filter.chosen_creature_type {
-        return Err(CardTextError::ParseError(format!(
-            "type-choice return target must mention the chosen type (clause: '{}')",
-            crate::cards::builders::parser::token_word_refs(tokens).join(" ")
-        )));
-    }
+    let (filter, needs_inline_choice_effect) =
+        if let Some((choice_idx, consumed)) = inline_creature_choice {
+            let mut base_filter_tokens = target_tokens[..choice_idx].to_vec();
+            base_filter_tokens.extend_from_slice(&target_tokens[choice_idx + consumed..]);
+            let base_filter_tokens = trim_commas(&base_filter_tokens).to_vec();
+            if base_filter_tokens.is_empty() {
+                return Err(CardTextError::ParseError(format!(
+                    "missing return target before chosen-type qualifier (clause: '{}')",
+                    crate::cards::builders::parser::token_word_refs(tokens).join(" ")
+                )));
+            }
+            let mut filter = parse_object_filter(&base_filter_tokens, false)?;
+            filter.chosen_creature_type = true;
+            (filter, true)
+        } else {
+            let (choice_idx, consumed) = referenced_type_choice.ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "type-choice return target must mention the chosen type (clause: '{}')",
+                    crate::cards::builders::parser::token_word_refs(tokens).join(" ")
+                ))
+            })?;
+            let mut start_idx = choice_idx;
+            let mut excluded = false;
+            if choice_idx >= 2
+                && target_tokens[choice_idx - 2].is_word("that")
+                && (target_tokens[choice_idx - 1].is_word("arent")
+                    || target_tokens[choice_idx - 1].is_word("aren't"))
+            {
+                start_idx = choice_idx - 2;
+                excluded = true;
+            } else if choice_idx >= 3
+                && target_tokens[choice_idx - 3].is_word("that")
+                && target_tokens[choice_idx - 2].is_word("are")
+                && target_tokens[choice_idx - 1].is_word("not")
+            {
+                start_idx = choice_idx - 3;
+                excluded = true;
+            } else if choice_idx >= 2
+                && target_tokens[choice_idx - 2].is_word("that")
+                && target_tokens[choice_idx - 1].is_word("are")
+            {
+                start_idx = choice_idx - 2;
+            }
 
-    Ok(Some(vec![
-        EffectAst::ChooseCardType {
+            let mut base_filter_tokens = target_tokens[..start_idx].to_vec();
+            base_filter_tokens.extend_from_slice(&target_tokens[choice_idx + consumed..]);
+            let base_filter_tokens = trim_commas(&base_filter_tokens).to_vec();
+            if base_filter_tokens.is_empty() {
+                return Err(CardTextError::ParseError(format!(
+                    "missing return target before chosen-type qualifier (clause: '{}')",
+                    crate::cards::builders::parser::token_word_refs(tokens).join(" ")
+                )));
+            }
+
+            let mut filter = parse_object_filter(&base_filter_tokens, false)?;
+            if excluded {
+                filter.excluded_chosen_creature_type = true;
+            } else {
+                filter.chosen_creature_type = true;
+            }
+            (filter, false)
+        };
+
+    let mut effects = Vec::new();
+    if needs_inline_choice_effect {
+        effects.push(EffectAst::ChooseCreatureType {
             player: PlayerAst::You,
-            options: vec![
-                CardType::Artifact,
-                CardType::Creature,
-                CardType::Enchantment,
-                CardType::Land,
-                CardType::Planeswalker,
-                CardType::Battle,
-            ],
-        },
-        EffectAst::ReturnAllToHand {
-            filter,
-        },
-    ]))
+            excluded_subtypes: vec![],
+        });
+    }
+    effects.push(EffectAst::ReturnAllToHand { filter });
+
+    Ok(Some(effects))
 }
 
 pub(crate) fn parse_sentence_choose_all_from_battlefield_and_graveyard_to_hand(

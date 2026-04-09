@@ -80,6 +80,108 @@ fn starts_like_create_fragment_lexed(tokens: &[OwnedLexToken]) -> bool {
     starts_like_count && words.iter().any(|word| matches!(*word, "token" | "tokens"))
 }
 
+fn parse_exile_library_then_shuffle_graveyard_chain_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    fn normalize_possessive_words<'a>(words: &'a [&'a str]) -> Vec<&'a str> {
+        words
+            .iter()
+            .filter_map(|word| match *word {
+                "s" | "'" | "’" => None,
+                _ => Some(
+                    word.trim_end_matches("'s")
+                        .trim_end_matches("’s")
+                        .trim_end_matches("s'")
+                        .trim_end_matches("s’"),
+                ),
+            })
+            .filter(|word| !word.is_empty())
+            .collect()
+    }
+
+    fn parse_owner(words: &[&str]) -> Option<(PlayerFilter, PlayerAst)> {
+        match normalize_possessive_words(words).as_slice() {
+            ["your"] => Some((PlayerFilter::You, PlayerAst::You)),
+            ["target", "player"] | ["target", "players"] => {
+                Some((PlayerFilter::target_player(), PlayerAst::Target))
+            }
+            ["target", "opponent"] | ["target", "opponents"] => {
+                Some((PlayerFilter::target_opponent(), PlayerAst::TargetOpponent))
+            }
+            _ => None,
+        }
+    }
+
+    let clause_tokens = trim_lexed_commas(tokens);
+    if grammar::words_match_prefix(clause_tokens, &["exile", "all", "cards", "from"]).is_none() {
+        return Ok(None);
+    }
+
+    let clause_words = token_word_refs(clause_tokens);
+    let Some(library_idx) = find_word_sequence_index(&clause_words, &["library"]) else {
+        return Ok(None);
+    };
+    if library_idx <= 4 {
+        return Ok(None);
+    }
+
+    let (owner_filter, owner_player) = match parse_owner(&clause_words[4..library_idx]) {
+        Some(owner) => owner,
+        None => return Ok(None),
+    };
+    if clause_words.get(library_idx + 1) != Some(&"face")
+        || clause_words.get(library_idx + 2) != Some(&"down")
+        || clause_words.get(library_idx + 3) != Some(&"then")
+        || clause_words.get(library_idx + 4) != Some(&"shuffle")
+        || clause_words.get(library_idx + 5) != Some(&"all")
+        || clause_words.get(library_idx + 6) != Some(&"cards")
+        || clause_words.get(library_idx + 7) != Some(&"from")
+    {
+        return Ok(None);
+    }
+
+    let graveyard_tail = &clause_words[library_idx + 8..];
+    let Some(graveyard_idx) =
+        graveyard_tail
+            .iter()
+            .position(|word| matches!(*word, "graveyard" | "graveyards"))
+    else {
+        return Ok(None);
+    };
+    let Some((graveyard_owner_filter, _graveyard_owner_player)) =
+        parse_owner(&graveyard_tail[..graveyard_idx])
+    else {
+        return Ok(None);
+    };
+    if graveyard_owner_filter != owner_filter {
+        return Ok(None);
+    }
+    let library_tail = &graveyard_tail[graveyard_idx + 1..];
+    if library_tail.first() != Some(&"into") || library_tail.last() != Some(&"library") {
+        return Ok(None);
+    }
+    let Some((destination_owner_filter, _destination_owner_player)) =
+        parse_owner(&library_tail[1..library_tail.len() - 1])
+    else {
+        return Ok(None);
+    };
+    if destination_owner_filter != owner_filter {
+        return Ok(None);
+    }
+
+    let mut filter = crate::target::ObjectFilter::default().in_zone(Zone::Library);
+    filter.owner = Some(owner_filter.clone());
+    Ok(Some(vec![
+        EffectAst::ExileAll {
+            filter,
+            face_down: true,
+        },
+        EffectAst::ShuffleGraveyardIntoLibrary {
+            player: owner_player,
+        },
+    ]))
+}
+
 pub(crate) fn looks_like_multi_create_chain_lexed(tokens: &[OwnedLexToken]) -> bool {
     matches!(find_verb_lexed(tokens), Some((Verb::Create, _)))
         && token_word_refs(tokens)
@@ -92,6 +194,10 @@ pub(crate) fn looks_like_multi_create_chain_lexed(tokens: &[OwnedLexToken]) -> b
 pub(crate) fn parse_effect_chain_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(effects) = parse_exile_library_then_shuffle_graveyard_chain_lexed(tokens)? {
+        return Ok(effects);
+    }
+
     let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
     if word_slice_starts_with(&clause_words, &["exile", "them"])
         && let Some(meld_idx) =

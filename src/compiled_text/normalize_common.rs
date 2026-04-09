@@ -1564,45 +1564,49 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             ". Then that player shuffles.",
         );
     }
-    if normalized.starts_with("creatures you control get ") {
-        normalized = normalized.replacen(
-            "creatures you control get ",
-            "Each creature you control gets ",
-            1,
-        );
+    let preserve_plural_creatures_you_control =
+        normalized.contains("from the command zone this game");
+    if !preserve_plural_creatures_you_control {
+        if normalized.starts_with("creatures you control get ") {
+            normalized = normalized.replacen(
+                "creatures you control get ",
+                "Each creature you control gets ",
+                1,
+            );
+        }
+        if normalized.starts_with("Creatures you control get ") {
+            normalized = normalized.replacen(
+                "Creatures you control get ",
+                "Each creature you control gets ",
+                1,
+            );
+        }
+        normalized = normalized
+            .replace(
+                ": creatures you control get ",
+                ": Each creature you control gets ",
+            )
+            .replace(
+                ": Creatures you control get ",
+                ": Each creature you control gets ",
+            )
+            .replace(
+                ". creatures you control get ",
+                ". Each creature you control gets ",
+            )
+            .replace(
+                ". Creatures you control get ",
+                ". Each creature you control gets ",
+            )
+            .replace(
+                "• creatures you control get ",
+                "• Each creature you control gets ",
+            )
+            .replace(
+                "• Creatures you control get ",
+                "• Each creature you control gets ",
+            );
     }
-    if normalized.starts_with("Creatures you control get ") {
-        normalized = normalized.replacen(
-            "Creatures you control get ",
-            "Each creature you control gets ",
-            1,
-        );
-    }
-    normalized = normalized
-        .replace(
-            ": creatures you control get ",
-            ": Each creature you control gets ",
-        )
-        .replace(
-            ": Creatures you control get ",
-            ": Each creature you control gets ",
-        )
-        .replace(
-            ". creatures you control get ",
-            ". Each creature you control gets ",
-        )
-        .replace(
-            ". Creatures you control get ",
-            ". Each creature you control gets ",
-        )
-        .replace(
-            "• creatures you control get ",
-            "• Each creature you control gets ",
-        )
-        .replace(
-            "• Creatures you control get ",
-            "• Each creature you control gets ",
-        );
     if let Some(rest) = normalized.strip_prefix("Target player discards ")
         && let Some((discard_count, loss_tail)) = rest.split_once(" cards. target player loses ")
         && let Some(loss_amount) = loss_tail.strip_suffix(" life.")

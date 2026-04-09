@@ -1199,6 +1199,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::CardsInGraveyard(_)
         | Value::SpellsCastThisTurn(_)
         | Value::SpellsCastBeforeThisTurn(_)
+        | Value::CommanderCastCount(_)
         | Value::SpellsCastThisTurnMatching { .. }
         | Value::DamageDealtThisTurnByTaggedSpellCast(_)
         | Value::CardTypesInGraveyard(_)

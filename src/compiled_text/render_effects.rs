@@ -6387,9 +6387,13 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     }
     if let Some(exile) = effect.downcast_ref::<crate::effects::ExileEffect>() {
         let face_down_suffix = if exile.face_down { " face down" } else { "" };
+        let target = describe_choose_spec(&exile.spec);
+        if let Some(rest) = target.strip_prefix("all cards in ") {
+            return format!("Exile all cards from {rest}{face_down_suffix}");
+        }
         return format!(
             "Exile {}{face_down_suffix}",
-            describe_choose_spec(&exile.spec)
+            target
         );
     }
     if let Some(exile_until) = effect.downcast_ref::<crate::effects::ExileUntilEffect>() {
@@ -7542,13 +7546,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(shuffle_gy) =
         effect.downcast_ref::<crate::effects::ShuffleGraveyardIntoLibraryEffect>()
     {
-        let subject = describe_player_filter(&shuffle_gy.player);
-        let verb = player_verb(&subject, "shuffle", "shuffles");
-        // Use possessive pronoun ("your"/"their") instead of repeating the subject
-        let possessive = if subject == "you" { "your" } else { "their" };
+        let possessive = describe_possessive_player_filter(&shuffle_gy.player);
         return format!(
-            "{} {} {} graveyard into {} library",
-            subject, verb, possessive, possessive
+            "Shuffle all cards from {possessive} graveyard into {possessive} library"
         );
     }
     if let Some(shuffle_objects) =
@@ -10464,6 +10464,9 @@ pub(super) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
     if text == "storm" {
         return Some("Storm".to_string());
     }
+    if text == "for mirrodin!" {
+        return Some("For Mirrodin!".to_string());
+    }
     if text == "toxic" || text.starts_with("toxic ") {
         return Some(raw_text.to_string());
     }
@@ -10745,7 +10748,16 @@ pub(super) fn describe_ability(
                 return lines;
             }
             if let Some(text) = ability.text.as_deref() {
-                let normalized = normalize_sentence_surface_style(text.trim());
+                let raw_trimmed = text.trim();
+                let raw_lower = raw_trimmed.to_ascii_lowercase();
+                if raw_lower.contains("commander")
+                    && raw_lower.contains("cast")
+                    && raw_lower.contains("from the command zone this game")
+                {
+                    return vec![format!("Static ability {index}: {raw_trimmed}")];
+                }
+
+                let normalized = normalize_sentence_surface_style(raw_trimmed);
                 let lower = normalized.to_ascii_lowercase();
                 let prefer_source_surface = matches!(
                     static_ability.id(),

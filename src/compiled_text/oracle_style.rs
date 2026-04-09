@@ -686,6 +686,30 @@ pub(super) fn normalize_sentence_surface_style(line: &str) -> String {
             );
         }
     }
+    if let Some((exile_clause, shuffle_tail)) =
+        split_once_ascii_ci(&normalized, ". Shuffle all cards from ")
+        && let Some(library_owner) =
+            strip_prefix_ascii_ci(exile_clause.trim(), "Exile all cards in ")
+        && let Some(library_owner) =
+            strip_suffix_ascii_ci(library_owner.trim(), " library face down")
+    {
+        let shuffle_tail = shuffle_tail.trim();
+        let no_period = shuffle_tail.strip_suffix('.').unwrap_or(shuffle_tail).trim();
+        if let Some((graveyard_owner, library_tail)) =
+            split_once_ascii_ci(no_period, " graveyard into ")
+            && let Some(destination_owner) =
+                strip_suffix_ascii_ci(library_tail.trim(), " library")
+            && graveyard_owner.trim().eq_ignore_ascii_case(library_owner.trim())
+            && destination_owner
+                .trim()
+                .eq_ignore_ascii_case(library_owner.trim())
+        {
+            let owner = library_owner.trim();
+            return format!(
+                "Exile all cards from {owner} library face down, then shuffle all cards from {owner} graveyard into {owner} library."
+            );
+        }
+    }
     if let Some(rest) = normalized
         .strip_prefix("For each player, if that player controls ")
         .or_else(|| normalized.strip_prefix("for each player, if that player controls "))

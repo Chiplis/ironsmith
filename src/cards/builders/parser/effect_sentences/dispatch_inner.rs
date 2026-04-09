@@ -1516,6 +1516,17 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
     if let Some(effects) = parse_next_spell_grant_sentence_lexed(tokens)? {
         return Ok(effects);
     }
+    if tokens.first().is_some_and(|token| token.is_word("exile"))
+        && grammar::contains_word(tokens, "then")
+        && let Some(mut effects) = run_sentence_primitives_lexed(
+            tokens,
+            POST_CONDITIONAL_SENTENCE_PRIMITIVES,
+            &POST_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX,
+        )?
+    {
+        apply_where_x_to_damage_amounts(tokens, &mut effects)?;
+        return Ok(effects);
+    }
     if tokens.first().is_some_and(|token| token.is_word("then")) && tokens.len() > 1 {
         return parse_effect_sentence_lexed(&tokens[1..]);
     }

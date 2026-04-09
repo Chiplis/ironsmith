@@ -3344,6 +3344,38 @@ fn resolve_value_with_context(
                 .sum(),
             _ => 0,
         },
+        Value::CommanderCastCount(player_filter) => match player_filter {
+            crate::target::PlayerFilter::You => ctx
+                .game
+                .player(controller)
+                .map(|p| ctx.game.commander_cast_count_for_player(p.id) as i32)
+                .unwrap_or(0),
+            crate::target::PlayerFilter::Specific(id) => ctx
+                .game
+                .player(*id)
+                .map(|p| ctx.game.commander_cast_count_for_player(p.id) as i32)
+                .unwrap_or(0),
+            crate::target::PlayerFilter::Active => ctx
+                .game
+                .player(ctx.game.turn.active_player)
+                .map(|p| ctx.game.commander_cast_count_for_player(p.id) as i32)
+                .unwrap_or(0),
+            crate::target::PlayerFilter::Any => ctx
+                .game
+                .players
+                .iter()
+                .filter(|p| p.is_in_game())
+                .map(|p| ctx.game.commander_cast_count_for_player(p.id) as i32)
+                .sum(),
+            crate::target::PlayerFilter::NotYou | crate::target::PlayerFilter::Opponent => ctx
+                .game
+                .players
+                .iter()
+                .filter(|p| p.id != controller && p.is_in_game())
+                .map(|p| ctx.game.commander_cast_count_for_player(p.id) as i32)
+                .sum(),
+            _ => 0,
+        },
         Value::DevotionToChosenColor(player_filter) => {
             let Some(chosen) = ctx.game.chosen_color(source) else {
                 return 0;
