@@ -207,14 +207,14 @@ impl CardRegistry {
 
     /// Create a card registry.
     ///
-    /// In test builds this includes hand-written definitions plus generated parser cards.
-    /// In non-test builds this is populated from generated parser cards only.
+    /// This loads generated parser cards first and then overlays handwritten definitions.
+    /// The handwritten registry is used as an override layer for cards that need custom
+    /// metadata or bespoke parsing behavior.
     pub fn with_builtin_cards() -> Self {
         let mut registry = Self::new();
-        registry.register_builtin_handwritten_cards_if(|_| true);
-
         // Non-test builds are populated from the registry DB via generated parser output.
         generated_registry::register_generated_parser_cards(&mut registry);
+        registry.register_builtin_handwritten_cards_if(|_| true);
 
         registry
     }
@@ -318,7 +318,9 @@ impl CardRegistry {
     pub fn ensure_all_generated_cards_loaded(&mut self) {
         #[cfg(test)]
         {
+            generated_registry::register_generated_parser_cards(self);
             self.register_builtin_handwritten_cards_if(|_| true);
+            return;
         }
         generated_registry::register_generated_parser_cards(self);
     }
@@ -377,6 +379,10 @@ impl CardRegistry {
     ///
     /// Used to distinguish "card not in database" from "card exists but failed to compile".
     pub fn try_compile_card(name: &str) -> Result<CardDefinition, String> {
+        if let Some(definition) = builtin_registry().get(name).cloned() {
+            return Ok(definition);
+        }
+
         let definition = generated_registry::try_compile_card_by_name(name)?;
         reject_unsupported_generated_definition(definition)
     }
@@ -487,6 +493,8 @@ impl CardRegistry {
         maybe_register!(cataclysm);
         maybe_register!(cataclysmic_gearhulk);
         maybe_register!(charismatic_conqueror);
+        maybe_register!(conquerors_galleon);
+        maybe_register!(conquerors_foothold);
         maybe_register!(command_tower);
         maybe_register!(sol_ring);
         maybe_register!(scrubland);
@@ -1083,6 +1091,39 @@ mod tests {
         assert!(CardRegistry::generated_parser_card_parse_source("Brazen Borrower").is_some());
         assert!(
             CardRegistry::generated_parser_card_parse_source("Embereth Shieldbreaker").is_some()
+        );
+    }
+
+    #[test]
+    fn try_compile_card_prefers_builtin_transform_pair_metadata() {
+        let galleon = CardRegistry::try_compile_card("Conqueror's Galleon // Conqueror's Foothold")
+            .expect("builtin transform pair should compile");
+        let foothold = CardRegistry::try_compile_card("Conqueror's Foothold")
+            .expect("builtin back face should compile");
+
+        assert_eq!(
+            galleon.card.other_face_name.as_deref(),
+            Some("Conqueror's Foothold")
+        );
+        assert_eq!(
+            foothold.card.other_face_name.as_deref(),
+            Some("Conqueror's Galleon")
+        );
+        assert_eq!(
+            galleon.card.other_face,
+            Some(crate::ids::CardId::from_raw(234_002))
+        );
+        assert_eq!(
+            foothold.card.other_face,
+            Some(crate::ids::CardId::from_raw(234_001))
+        );
+        assert_eq!(
+            galleon.card.linked_face_layout,
+            crate::card::LinkedFaceLayout::TransformLike
+        );
+        assert_eq!(
+            foothold.card.linked_face_layout,
+            crate::card::LinkedFaceLayout::TransformLike
         );
     }
 
