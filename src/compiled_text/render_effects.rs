@@ -2575,7 +2575,7 @@ pub(super) fn describe_choose_then_sacrifice(
     let choose_exact = if choose_is_any_number {
         None
     } else {
-        choose.count.max.filter(|max| *max == choose.count.min)?
+        choose.count.max.filter(|max| *max == choose.count.min)
     };
     let sacrifice_count = match sacrifice.count {
         Value::Fixed(value) if value > 0 => Some(value as usize),
@@ -2610,7 +2610,7 @@ pub(super) fn describe_choose_then_sacrifice(
     }
 
     let sacrifice_count = sacrifice_count?;
-    if choose_exact != sacrifice_count {
+    if choose_exact != Some(sacrifice_count) {
         return None;
     }
 
