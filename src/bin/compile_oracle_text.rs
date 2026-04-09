@@ -1,7 +1,7 @@
 use std::env;
 use std::io::{self, IsTerminal, Read};
 
-use ironsmith::cards::CardDefinitionBuilder;
+use ironsmith::cards::{CardDefinition, CardDefinitionBuilder, CardRegistry};
 use ironsmith::compiled_text::{canonical_compiled_lines, raw_compiled_lines};
 use ironsmith::ids::CardId;
 use ironsmith_tools::{
@@ -89,11 +89,86 @@ fn snapshot_payload_for_db(
     })
 }
 
+fn metadata_lines_from_definition(definition: &CardDefinition) -> Vec<String> {
+    let mut metadata_lines = Vec::new();
+
+    if let Some(mana_cost) = definition
+        .card
+        .mana_cost
+        .as_ref()
+        .map(|cost| cost.to_oracle())
+        .filter(|value| !value.trim().is_empty())
+    {
+        metadata_lines.push(format!("Mana cost: {}", mana_cost.trim()));
+    }
+
+    let mut type_line = definition
+        .card
+        .supertypes
+        .iter()
+        .map(|value| format!("{value:?}"))
+        .chain(
+            definition
+                .card
+                .card_types
+                .iter()
+                .map(|value| format!("{value:?}")),
+        )
+        .collect::<Vec<_>>()
+        .join(" ");
+    let subtypes = definition
+        .card
+        .subtypes
+        .iter()
+        .map(|value| format!("{value:?}"))
+        .collect::<Vec<_>>();
+    if !subtypes.is_empty() {
+        if !type_line.is_empty() {
+            type_line.push_str(" — ");
+        }
+        type_line.push_str(&subtypes.join(" "));
+    }
+    if !type_line.trim().is_empty() {
+        metadata_lines.push(format!("Type: {}", type_line.trim()));
+    }
+
+    if let Some(power_toughness) = definition.card.power_toughness {
+        metadata_lines.push(format!(
+            "Power/Toughness: {}/{}",
+            power_toughness.power, power_toughness.toughness
+        ));
+    }
+
+    if let Some(loyalty) = definition.card.loyalty {
+        metadata_lines.push(format!("Loyalty: {loyalty}"));
+    }
+
+    if let Some(defense) = definition.card.defense {
+        metadata_lines.push(format!("Defense: {defense}"));
+    }
+
+    metadata_lines
+}
+
+fn payload_from_definition(definition: &CardDefinition) -> ironsmith_tools::CardPayload {
+    let oracle_text = definition.card.oracle_text.clone();
+    let metadata_lines = metadata_lines_from_definition(definition);
+    let parse_input = build_parse_input(&metadata_lines, &oracle_text);
+
+    ironsmith_tools::CardPayload {
+        name: definition.name().to_string(),
+        oracle_text,
+        metadata_lines,
+        parse_input,
+    }
+}
+
 struct CompileJob {
     name: String,
     oracle_text: String,
     parse_input: String,
     db_payload: Option<ironsmith_tools::CardPayload>,
+    compiled_definition: Option<CardDefinition>,
 }
 
 fn compile_job_for_name(
@@ -101,6 +176,21 @@ fn compile_job_for_name(
     name: &str,
     input_text: Option<&str>,
 ) -> Result<CompileJob, String> {
+    // When the caller is asking for a named card without ad hoc text, prefer the
+    // source-backed built-in definition so handwritten metadata wins over the registry file.
+    if input_text.is_none()
+        && let Ok(definition) = CardRegistry::try_compile_card(name)
+    {
+        let payload = payload_from_definition(&definition);
+        return Ok(CompileJob {
+            name: definition.name().to_string(),
+            oracle_text: payload.oracle_text.clone(),
+            parse_input: payload.parse_input.clone(),
+            db_payload: Some(payload),
+            compiled_definition: Some(definition),
+        });
+    }
+
     let card_input = load_card_by_name(cards_path, name).map_err(|err| err.to_string())?;
     match (input_text, card_input) {
         (Some(text), Some(card)) if !text_includes_metadata(text) => {
@@ -112,6 +202,7 @@ fn compile_job_for_name(
                 oracle_text,
                 parse_input,
                 db_payload,
+                compiled_definition: None,
             })
         }
         (Some(text), Some(card)) => {
@@ -121,6 +212,7 @@ fn compile_job_for_name(
                 oracle_text: card.oracle_text,
                 parse_input: text.to_string(),
                 db_payload,
+                compiled_definition: None,
             })
         }
         (Some(text), None) => Ok(CompileJob {
@@ -128,6 +220,7 @@ fn compile_job_for_name(
             oracle_text: text.to_string(),
             parse_input: text.to_string(),
             db_payload: None,
+            compiled_definition: None,
         }),
         (None, Some(card)) => {
             let name = card.name.clone();
@@ -139,6 +232,7 @@ fn compile_job_for_name(
                 oracle_text,
                 parse_input,
                 db_payload,
+                compiled_definition: None,
             })
         }
         (None, None) => Err(format!("unknown card name: {name}")),
@@ -153,11 +247,17 @@ fn print_compiled_job(
     should_write_db: bool,
     db_path: &str,
 ) -> Result<(), String> {
-    let builder = CardDefinitionBuilder::new(CardId::new(), &job.name);
-    let def = builder.parse_text(job.parse_input.clone()).map_err(|err| {
-        let _ = store_snapshot_if_requested(should_write_db, job.db_payload.as_ref(), db_path);
-        format!("parse failed for {}: {err:?}", job.name)
-    })?;
+    let parsed_definition;
+    let def = if let Some(definition) = job.compiled_definition.as_ref() {
+        definition
+    } else {
+        let builder = CardDefinitionBuilder::new(CardId::new(), &job.name);
+        parsed_definition = builder.parse_text(job.parse_input.clone()).map_err(|err| {
+            let _ = store_snapshot_if_requested(should_write_db, job.db_payload.as_ref(), db_path);
+            format!("parse failed for {}: {err:?}", job.name)
+        })?;
+        &parsed_definition
+    };
 
     println!("Name: {}", def.card.name);
     if detailed {
@@ -448,5 +548,31 @@ mod tests {
         assert_eq!(job.name, "House Cartographer");
         assert!(job.parse_input.contains("Type: Creature"));
         assert!(job.db_payload.is_some());
+    }
+
+    #[test]
+    fn compile_job_for_name_prefers_builtin_definition_for_transform_pairs() {
+        let cards_path = format!("{}/../../cards.json", env!("CARGO_MANIFEST_DIR"));
+        let job = compile_job_for_name(
+            &cards_path,
+            "Conqueror's Galleon // Conqueror's Foothold",
+            None,
+        )
+        .expect("Conqueror's Galleon should exist");
+
+        let definition = job
+            .compiled_definition
+            .as_ref()
+            .expect("builtin transform pair should use source definition");
+        assert_eq!(
+            definition.card.other_face_name.as_deref(),
+            Some("Conqueror's Foothold")
+        );
+        assert_eq!(
+            definition.card.linked_face_layout,
+            ironsmith::card::LinkedFaceLayout::TransformLike
+        );
+        assert_eq!(definition.card.other_face, Some(CardId::from_raw(234_002)));
+        assert!(job.parse_input.contains("Mana cost: {4}"));
     }
 }
