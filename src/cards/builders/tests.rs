@@ -22329,6 +22329,14 @@ fn parse_oracle_creeping_renaissance_permanent_type_choice_regression() {
         "expected choose-card-type lowering, got {debug}"
     );
     assert!(
+        !debug.contains("choosecreaturetypeeffect"),
+        "creeping renaissance should not lower a creature-type choice, got {debug}"
+    );
+    assert!(
+        debug.contains("returnalltohand"),
+        "expected all-cards return to hand lowering, got {debug}"
+    );
+    assert!(
         debug.contains("chosen_creature_type: true"),
         "expected chosen-type graveyard filter, got {debug}"
     );

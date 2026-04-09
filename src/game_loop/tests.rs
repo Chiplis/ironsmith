@@ -8163,6 +8163,7 @@ fn test_creeping_renaissance_returns_chosen_permanent_type_from_graveyard() {
         .expect("Creeping Renaissance should parse");
     let source_id = game.create_object_from_definition(&def, alice, Zone::Hand);
     game.create_object_from_definition(&basic_forest(), alice, Zone::Graveyard);
+    game.create_object_from_definition(&basic_forest(), alice, Zone::Graveyard);
     let bears_id = game.create_object_from_definition(&grizzly_bears(), alice, Zone::Graveyard);
 
     let mut dm = ChooseLandDecisionMaker;
@@ -8178,11 +8179,14 @@ fn test_creeping_renaissance_returns_chosen_permanent_type_from_graveyard() {
         "the spell should store the chosen permanent type on the source"
     );
     assert!(
-        game.player(alice).expect("alice exists").hand.iter().any(|&id| {
-            game.object(id)
-                .is_some_and(|obj| obj.name == "Forest" && id != source_id)
-        }),
-        "Forest should return to hand when land is chosen"
+        game.player(alice)
+            .expect("alice exists")
+            .hand
+            .iter()
+            .filter(|&&id| game.object(id).is_some_and(|obj| obj.name == "Forest"))
+            .count()
+            == 2,
+        "both Forests should return to hand when land is chosen"
     );
     assert!(
         game.player(alice).expect("alice exists").graveyard.iter().any(|&id| {
