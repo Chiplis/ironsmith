@@ -1571,6 +1571,31 @@ fn test_parse_basic_land_type_count_conditionals_for_you_control_tail() {
 }
 
 #[test]
+fn test_parse_portcullis_exile_until_leaves_battlefield() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Portcullis")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "Whenever a creature enters, if there are two or more other creatures on the battlefield, exile that creature. Return that card to the battlefield under its owner's control when this artifact leaves the battlefield.",
+        )
+        .expect("Portcullis should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("if there are two or more other creatures on the battlefield"),
+        "expected Portcullis condition to survive rendering, got {rendered}"
+    );
+    assert!(
+        rendered.contains("exile that creature until this artifact leaves the battlefield"),
+        "expected Portcullis to compile into exile-until-source-leaves, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("graveyard"),
+        "Portcullis should no longer compile into a graveyard-return pattern, got {rendered}"
+    );
+}
+
+#[test]
 fn test_parse_damage_equal_to_thiss_power() {
     CardDefinitionBuilder::new(CardId::from_raw(1), "Power Reference")
         .parse_text("This deals damage equal to this's power to any target.")

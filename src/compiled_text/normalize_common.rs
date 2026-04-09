@@ -8106,6 +8106,20 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             right,
         } => {
             if let (
+                Value::Count(filter),
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                Value::Fixed(count),
+            ) = (left, operator, right)
+                && filter.zone == Some(Zone::Battlefield)
+            {
+                let count_text = small_number_word(*count as u32)
+                    .map(str::to_string)
+                    .unwrap_or_else(|| count.to_string());
+                let subject = strip_indefinite_article(&filter.description()).to_string();
+                let noun = pluralize_noun_phrase(&subject);
+                return format!("there are {} or more {}", count_text, noun);
+            }
+            if let (
                 Value::SpellsCastThisTurnMatching {
                     player,
                     filter,
