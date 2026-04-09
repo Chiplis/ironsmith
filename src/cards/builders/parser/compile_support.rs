@@ -11680,6 +11680,51 @@ mod parse_compile_tests {
         assert_eq!(deal_damage.target, ChooseSpec::Iterated);
     }
 
+    #[test]
+    fn parse_text_gargoyle_sentinel_keeps_the_activation_on_self() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Gargoyle Sentinel")
+            .parse_text(
+                "Mana cost: {3}\n\
+                 Type: Artifact Creature — Gargoyle\n\
+                 Power/Toughness: 3/3\n\
+                 Defender (This creature can't attack.)\n\
+                 {3}: Until end of turn, this creature loses defender and gains flying.",
+            )
+            .expect("Gargoyle Sentinel text should parse");
+
+        let rendered = crate::compiled_text::compiled_lines(&def)
+            .join(" ")
+            .to_ascii_lowercase();
+        assert!(
+            rendered.contains("this creature loses defender and gains flying"),
+            "expected a self-targeted temporary activation, got {rendered}"
+        );
+        assert!(
+            !rendered.contains("creatures lose defender"),
+            "expected the activation to stay on the sentinel itself, got {rendered}"
+        );
+    }
+
+    #[test]
+    fn resolve_target_spec_treats_source_object_filters_as_source() {
+        let target = TargetAst::Object(ObjectFilter::source(), None, None);
+        let (spec, choices) = resolve_target_spec_with_choices(
+            &target,
+            &crate::cards::builders::reference_model::ReferenceEnv::default(),
+        )
+        .expect("source object target should resolve cleanly");
+
+        assert_eq!(
+            spec,
+            ChooseSpec::Source,
+            "source object filters should resolve to the source choose spec"
+        );
+        assert!(
+            choices.is_empty(),
+            "self-targeted object filters should not create extra target choices"
+        );
+    }
+
     fn test_ctx(line: &str) -> NormalizedLine {
         NormalizedLine {
             original: line.to_string(),
