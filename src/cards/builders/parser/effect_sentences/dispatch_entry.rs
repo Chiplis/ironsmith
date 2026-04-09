@@ -14,7 +14,9 @@ use super::super::effect_ast_traversal::{
 use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::keyword_static::parse_where_x_value_clause;
 use super::super::lexer::{LexStream, OwnedLexToken, TokenKind, split_lexed_sentences};
-use super::super::object_filters::{is_comparison_or_delimiter, parse_object_filter};
+use super::super::object_filters::{
+    is_comparison_or_delimiter, parse_object_filter, parse_object_filter_lexed,
+};
 use super::super::token_primitives::{
     LeadingMayActor, TurnDurationPhrase, find_index, find_window_by, lexed_head_words,
     parse_leading_may_action_lexed, parse_turn_duration_prefix, parse_value_comparison_tokens,
@@ -162,6 +164,14 @@ const PRONOUN_TRIGGER_PREFIXES: &[&[&str]] = &[
 
 fn parse_exact_card_effect_bundle_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
     let sentences = split_lexed_sentences(tokens);
+    if sentences.len() == 2
+        && let Ok(Some(effects)) = parse_reveal_from_outside_game_or_choose_face_up_exile_to_hand(
+            sentences[0],
+            sentences[1],
+        )
+    {
+        return Some(effects);
+    }
     if sentences.len() == 3
         && let Ok(Some(effects)) =
             parse_choose_objects_then_for_each_of_those_bundle(sentences[0], sentences[1], sentences[2])
@@ -334,6 +344,102 @@ fn parse_exact_card_effect_bundle_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<
     }
 
     None
+}
+
+fn parse_reveal_from_outside_game_or_choose_face_up_exile_to_hand(
+    first: &[OwnedLexToken],
+    second: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first_tokens = trim_commas(first);
+    let second_tokens = trim_commas(second);
+    let first_words = words(&first_tokens);
+    let second_words = words(&second_tokens);
+
+    if second_words.as_slice() != ["put", "that", "card", "into", "your", "hand"] {
+        return Ok(None);
+    }
+
+    let Some(or_idx) = find_index(&first_tokens, |token| token.is_word("or")) else {
+        return Ok(None);
+    };
+    if or_idx == 0 || or_idx + 1 >= first_tokens.len() {
+        return Ok(None);
+    }
+
+    let reveal_tokens = trim_commas(&first_tokens[..or_idx]);
+    let choose_tokens = trim_commas(&first_tokens[or_idx + 1..]);
+    let reveal_words = words(&reveal_tokens);
+    let choose_words = words(&choose_tokens);
+
+    if !reveal_words.iter().any(|word| *word == "outside")
+        || !reveal_words.iter().any(|word| *word == "game")
+    {
+        return Ok(None);
+    }
+    if !choose_words.iter().any(|word| *word == "face-up")
+        && !choose_words.iter().any(|word| *word == "faceup")
+    {
+        return Ok(None);
+    }
+    if !choose_words.iter().any(|word| *word == "exile") {
+        return Ok(None);
+    }
+
+    let reveal_from_idx = find_index(&reveal_tokens, |token| token.is_word("from"))
+        .ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "missing outside-game clause in reveal-or-choose bundle (clause: '{}')",
+                first_words.join(" ")
+            ))
+        })?;
+    if reveal_from_idx < 3 {
+        return Ok(None);
+    }
+    let reveal_filter_tokens = trim_commas(&reveal_tokens[3..reveal_from_idx]);
+    let reveal_filter = parse_object_filter_lexed(&reveal_filter_tokens, false).map_err(|_| {
+        CardTextError::ParseError(format!(
+            "unsupported outside-game reveal filter in reveal-or-choose bundle (clause: '{}')",
+            first_words.join(" ")
+        ))
+    })?;
+    let choose_filter = parse_object_filter_lexed(&choose_tokens[1..], false).map_err(|_| {
+        CardTextError::ParseError(format!(
+            "unsupported exile choice filter in reveal-or-choose bundle (clause: '{}')",
+            first_words.join(" ")
+        ))
+    })?;
+
+    if reveal_filter.card_types != choose_filter.card_types
+        || reveal_filter.subtypes != choose_filter.subtypes
+        || reveal_filter.owner != choose_filter.owner
+    {
+        return Ok(None);
+    }
+
+    let chosen_tag = TagKey::from("__coax_or_karn_selected__");
+    let effects = vec![
+        EffectAst::ChooseObjectsAcrossZones {
+            filter: choose_filter,
+            count: ChoiceCount::exactly(1),
+            player: PlayerAst::You,
+            tag: chosen_tag.clone(),
+            zones: vec![Zone::Exile],
+            search_mode: None,
+        },
+        EffectAst::RevealTagged {
+            tag: chosen_tag.clone(),
+        },
+        EffectAst::MoveToZone {
+            target: TargetAst::Tagged(chosen_tag, span_from_tokens(second)),
+            zone: Zone::Hand,
+            to_top: false,
+            battlefield_controller: ReturnControllerAst::Preserve,
+            battlefield_tapped: false,
+            attached_to: None,
+        },
+    ];
+
+    Ok(Some(vec![EffectAst::May { effects }]))
 }
 
 fn parse_choose_objects_then_for_each_of_those_bundle(
