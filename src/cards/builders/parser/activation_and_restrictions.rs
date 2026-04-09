@@ -7105,6 +7105,13 @@ pub(crate) fn parse_trigger_clause_lexed(
                     source_filter: None,
                 });
             }
+            if tail_words == ["another", "card"] {
+                return Ok(TriggerSpec::KeywordAction {
+                    action: crate::events::KeywordActionKind::Cycle,
+                    player,
+                    source_filter: Some(ObjectFilter::default().other()),
+                });
+            }
         }
     }
 
