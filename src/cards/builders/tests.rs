@@ -5229,6 +5229,40 @@ fn test_parse_return_cards_at_random_from_graveyard_to_hand() {
 }
 
 #[test]
+fn test_parse_ignite_memories_keeps_random_hand_reveal_and_damage_link() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Ignite Memories")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Target player reveals a card at random from their hand. Ignite Memories deals damage to that player equal to that card's mana value.",
+        )
+        .expect("Ignite Memories should parse");
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("ChooseObjectsEffect")
+            && debug.contains("random: true")
+            && debug.contains("zone: Some(Hand)")
+            && debug.contains("RevealTaggedEffect")
+            && debug.contains("DealDamageEffect")
+            && debug.contains("ManaValueOf"),
+        "expected random hand selection, reveal, and mana-value damage linkage, got {debug}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("target player")
+            && rendered.contains("at random")
+            && rendered.contains("hand")
+            && rendered.contains("ignite memories deals damage"),
+        "expected Ignite Memories compiled text to keep the random hand reveal chain, got {rendered}"
+    );
+}
+
+#[test]
 fn test_parse_one_word_verb_card_name_does_not_break_clause_parsing() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Regenerate")
         .card_types(vec![CardType::Instant])

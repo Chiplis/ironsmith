@@ -43,6 +43,32 @@ impl DecisionMaker for DeclineOptionalTriggerTargetsDecisionMaker {
     }
 }
 
+#[derive(Default)]
+struct CaptureRevealDecisionMaker {
+    view_calls: Vec<(PlayerId, PlayerId, Zone, bool, Vec<ObjectId>)>,
+}
+
+impl DecisionMaker for CaptureRevealDecisionMaker {
+    fn decide_objects(
+        &mut self,
+        _game: &GameState,
+        _ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        panic!("Ignite Memories should not prompt for object selection when revealing at random");
+    }
+
+    fn view_cards(
+        &mut self,
+        _game: &GameState,
+        viewer: PlayerId,
+        cards: &[ObjectId],
+        ctx: &crate::decisions::context::ViewCardsContext,
+    ) {
+        self.view_calls
+            .push((viewer, ctx.subject, ctx.zone, ctx.public, cards.to_vec()));
+    }
+}
+
 #[test]
 fn test_generate_damage_triggers_emits_life_loss_for_player_damage() {
     let mut game = setup_game();
@@ -221,6 +247,91 @@ fn exert_attack_choice_draws_card_and_skips_only_next_untap() {
     assert!(
         !game.is_tapped(source_id),
         "the exert restriction should wear off after that untap step"
+    );
+}
+
+#[test]
+fn ignite_memories_reveals_a_random_card_from_target_players_hand_and_damages_them() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let ignite_memories = CardDefinitionBuilder::new(CardId::from_raw(70_001), "Ignite Memories")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Target player reveals a card at random from their hand. Ignite Memories deals damage to that player equal to that card's mana value.\nStorm (When you cast this spell, copy it for each spell cast before it this turn. You may choose new targets for the copies.)",
+        )
+        .expect("Ignite Memories should parse");
+
+    let low_card = CardBuilder::new(CardId::from_raw(70_002), "Low Probe")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let high_card = CardBuilder::new(CardId::from_raw(70_003), "High Probe")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(5)]]))
+        .card_types(vec![CardType::Artifact])
+        .build();
+
+    let low_id = game.create_object_from_card(&low_card, bob, Zone::Hand);
+    let high_id = game.create_object_from_card(&high_card, bob, Zone::Hand);
+    let spell_id = game.create_object_from_definition(&ignite_memories, alice, Zone::Stack);
+    game.stack.push(
+        crate::game_state::StackEntry::new(spell_id, alice)
+            .with_targets(vec![crate::game_state::Target::Player(bob)])
+            .with_target_assignments(vec![crate::game_state::TargetAssignment {
+                spec: crate::target::ChooseSpec::target_player(),
+                range: 0..1,
+            }]),
+    );
+
+    let bob_life_before = game.player(bob).expect("bob exists").life;
+    let mut dm = CaptureRevealDecisionMaker::default();
+
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Ignite Memories should resolve");
+
+    assert!(
+        dm.view_calls.len() >= 2,
+        "the random reveal should be shown to all players"
+    );
+    let mut unique_reveals = dm
+        .view_calls
+        .iter()
+        .map(|(_, subject, zone, public, cards)| {
+            assert_eq!(*subject, bob, "the revealed card should come from Bob's hand");
+            assert_eq!(*zone, Zone::Hand, "the reveal should come from hand");
+            assert!(*public, "the reveal should be public");
+            assert_eq!(cards.len(), 1, "only one card should be revealed");
+            cards[0]
+        })
+        .collect::<Vec<_>>();
+    unique_reveals.sort();
+    unique_reveals.dedup();
+    assert_eq!(
+        unique_reveals.len(),
+        1,
+        "the same random card should be shown to each viewer"
+    );
+
+    let revealed_id = unique_reveals[0];
+    assert!(
+        revealed_id == low_id || revealed_id == high_id,
+        "the revealed card should come from Bob's hand"
+    );
+
+    let revealed_card = game.object(revealed_id).expect("revealed card exists");
+    let expected_damage = revealed_card
+        .mana_cost
+        .as_ref()
+        .expect("revealed card should have a mana cost")
+        .mana_value() as i32;
+    assert_eq!(
+        game.player(bob).expect("bob exists").life,
+        bob_life_before - expected_damage,
+        "Ignite Memories should deal damage equal to the revealed card's mana value"
     );
 }
 

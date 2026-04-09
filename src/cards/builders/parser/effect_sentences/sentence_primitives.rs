@@ -16,7 +16,7 @@ use super::super::token_primitives::{
 };
 use super::super::util::{
     is_article, is_source_reference_words, mana_pips_from_token, parse_card_type, parse_color,
-    parse_counter_type_from_tokens, token_index_for_word_index, words,
+    parse_counter_type_from_tokens, parse_subject, token_index_for_word_index, words,
 };
 use super::super::util::{parse_target_phrase, parse_value, span_from_tokens};
 use super::dispatch_inner::merge_filters;
@@ -4373,6 +4373,97 @@ pub(crate) fn parse_sentence_reveal_selected_cards_in_your_hand(
     ]))
 }
 
+pub(crate) fn parse_sentence_target_player_reveals_random_card_from_hand(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(reveal_idx) = find_index(tokens, |token| {
+        token.is_word("reveal") || token.is_word("reveals")
+    }) else {
+        return Ok(None);
+    };
+    if reveal_idx == 0 {
+        return Ok(None);
+    }
+
+    let subject_tokens = trim_commas(&tokens[..reveal_idx]);
+    let SubjectAst::Player(player) = parse_subject(subject_tokens) else {
+        return Ok(None);
+    };
+    if !matches!(
+        player,
+        PlayerAst::You
+            | PlayerAst::Target
+            | PlayerAst::TargetOpponent
+            | PlayerAst::Opponent
+            | PlayerAst::That
+    ) {
+        return Ok(None);
+    }
+
+    let reveal_tokens = trim_commas(&tokens[reveal_idx + 1..]);
+    let reveal_words = crate::cards::builders::parser::token_word_refs(reveal_tokens);
+    if reveal_words.is_empty()
+        || !reveal_words
+            .first()
+            .is_some_and(|word| matches!(*word, "a" | "an" | "one"))
+    {
+        return Ok(None);
+    }
+
+    let descriptor_words = &reveal_words[1..];
+    if descriptor_words.is_empty() || !descriptor_words.contains(&"card") {
+        return Ok(None);
+    }
+
+    let Some(from_idx) = find_word_sequence_start(descriptor_words, &["from"]) else {
+        return Ok(None);
+    };
+    if !find_word_sequence_start(descriptor_words, &["at", "random"]).is_some_and(|idx| idx < from_idx)
+    {
+        return Ok(None);
+    }
+
+    let hand_words = &descriptor_words[from_idx + 1..];
+    if !matches!(
+        hand_words,
+        ["their", "hand"]
+            | ["their", "hands"]
+            | ["your", "hand"]
+            | ["your", "hands"]
+            | ["that", "player", "hand"]
+            | ["that", "player", "hands"]
+            | ["target", "player", "hand"]
+            | ["target", "player", "hands"]
+    ) {
+        return Ok(None);
+    }
+
+    let filter = ObjectFilter {
+        zone: Some(Zone::Hand),
+        owner: Some(match player {
+            PlayerAst::You => PlayerFilter::You,
+            PlayerAst::Target => PlayerFilter::target_player(),
+            PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
+            PlayerAst::Opponent => PlayerFilter::Opponent,
+            PlayerAst::That => PlayerFilter::IteratedPlayer,
+            _ => return Ok(None),
+        }),
+        ..ObjectFilter::default()
+    };
+    let tag = helper_tag_for_tokens(tokens, "revealed");
+
+    Ok(Some(vec![
+        EffectAst::ChooseObjects {
+            filter,
+            count: ChoiceCount::exactly(1).at_random(),
+            count_value: None,
+            player,
+            tag: tag.clone(),
+        },
+        EffectAst::RevealTagged { tag },
+    ]))
+}
+
 pub(crate) fn object_target_with_count(target: &TargetAst) -> Option<(ObjectFilter, ChoiceCount)> {
     match target {
         TargetAst::Object(filter, _, _) => Some((filter.clone(), ChoiceCount::exactly(1))),
@@ -5817,6 +5908,10 @@ pub(crate) const PRE_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
     SentencePrimitive {
         name: "target-player-choose-then-you-put-it-onto-battlefield",
         parser: parse_sentence_target_player_chooses_then_you_put_it_onto_battlefield,
+    },
+    SentencePrimitive {
+        name: "target-player-reveals-random-card-from-hand",
+        parser: parse_sentence_target_player_reveals_random_card_from_hand,
     },
     SentencePrimitive {
         name: "exile-instead-of-graveyard",
