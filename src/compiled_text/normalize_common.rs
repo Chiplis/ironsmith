@@ -1312,6 +1312,20 @@ fn normalize_zero_zero_token_with_base_pt(line: &str) -> Option<String> {
     Some(rewritten)
 }
 
+fn split_choose_sacrifice_tail<'a>(rest: &'a str) -> Option<(&'a str, &'a str)> {
+    for needle in [
+        ". you sacrifice all permanents you control",
+        ". sacrifice all permanents you control",
+        ", you sacrifice all permanents you control",
+        ", sacrifice all permanents you control",
+    ] {
+        if let Some((chosen, tail)) = split_once_ascii_ci(rest, needle) {
+            return Some((chosen, tail));
+        }
+    }
+    None
+}
+
 pub(super) fn normalize_repeated_dynamic_buff(line: &str) -> Option<String> {
     let (before_until, after_until) = split_once_ascii_ci(line, " until end of turn")?;
     let (subject, buff) = split_once_ascii_ci(before_until, " gets ")?;
@@ -2472,8 +2486,7 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     if let Some(rest) = strip_prefix_ascii_ci(&normalized, "You choose any number ")
         .or_else(|| strip_prefix_ascii_ci(&normalized, "Choose any number "))
         .or_else(|| strip_prefix_ascii_ci(&normalized, "you choose any number "))
-        && let Some((chosen, tail)) =
-            split_once_ascii_ci(rest, ". you sacrifice all permanents you control")
+        && let Some((chosen, tail)) = split_choose_sacrifice_tail(rest)
     {
         let chosen_plural = normalize_choose_sacrifice_subject(chosen);
         let tail = tail
@@ -2490,8 +2503,7 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         return normalize_zero_zero_token_with_base_pt(&rewritten).unwrap_or(rewritten);
     }
     if let Some(rest) = normalized.strip_prefix("you choose any number ")
-        && let Some((chosen, tail)) =
-            split_once_ascii_ci(rest, ". you sacrifice all permanents you control")
+        && let Some((chosen, tail)) = split_choose_sacrifice_tail(rest)
     {
         let chosen_plural = normalize_choose_sacrifice_subject(chosen);
         let tail = tail
@@ -2501,10 +2513,11 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         if tail.is_empty() {
             return format!("Sacrifice any number of {chosen_plural}");
         }
-        return format!(
+        let rewritten = format!(
             "Sacrifice any number of {chosen_plural}. {}.",
             capitalize_first(tail)
         );
+        return normalize_zero_zero_token_with_base_pt(&rewritten).unwrap_or(rewritten);
     }
     if let Some(rest) = normalized.strip_prefix("For each opponent, Deal ")
         && let Some(amount) = rest
@@ -4545,6 +4558,13 @@ pub(super) fn describe_object_count(value: &Value) -> String {
 }
 
 pub(super) fn describe_count_filter_value_subject(filter: &ObjectFilter) -> String {
+    let has_sacrificed_tag = filter.tagged_constraints.iter().any(|constraint| {
+        constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+            && matches!(
+                tag_action_from_name(constraint.tag.as_str()),
+                Some("sacrificed")
+            )
+    });
     let mut subject = strip_indefinite_article(&filter.description())
         .trim()
         .to_string();
@@ -4577,8 +4597,12 @@ pub(super) fn describe_count_filter_value_subject(filter: &ObjectFilter) -> Stri
         && !mentions_location
         && !mentions_controller_or_owner
         && !is_combat_restricted
+        && !has_sacrificed_tag
     {
         subject.push_str(" on the battlefield");
+    }
+    if has_sacrificed_tag && !subject.to_ascii_lowercase().starts_with("the sacrificed ") {
+        subject = format!("the sacrificed {}", subject.trim_start_matches("the ").trim());
     }
 
     subject
@@ -8193,5 +8217,26 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         Condition::Or(left, right) => {
             format!("{} or {}", describe_condition(left), describe_condition(right))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::target::{TaggedObjectConstraint, TaggedOpbjectRelation};
+
+    #[test]
+    fn describe_total_power_of_sacrificed_objects_keeps_the_sacrifice_link() {
+        let mut filter = ObjectFilter::creature();
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: TagKey::from("sacrificed_0"),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+
+        assert_eq!(describe_count_filter_value_subject(&filter), "the sacrificed creatures");
+        assert_eq!(
+            describe_value(&Value::TotalPower(filter)),
+            "the total power of the sacrificed creatures"
+        );
     }
 }

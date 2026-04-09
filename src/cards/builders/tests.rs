@@ -17787,9 +17787,16 @@ fn parse_sacrifice_any_number_sentence_keeps_open_count() {
         .expect("sacrifice-any-number clause should parse");
 
     let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let debug = format!("{:?}", def.spell_effect).to_ascii_lowercase();
     assert!(
         rendered.contains("any number"),
         "expected sacrifice count to remain open-ended, got {rendered}"
+    );
+    assert!(
+        debug.contains("choicecount { min: 0, max: none")
+            && debug.contains("sacrificeeffect")
+            && debug.contains("tagkey(\"sacrificed_"),
+        "expected the any-number sacrifice to keep a tagged choose-and-sacrifice chain, got {debug}"
     );
 }
 
