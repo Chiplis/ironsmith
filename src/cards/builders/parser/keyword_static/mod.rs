@@ -649,6 +649,9 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_cost_reduction_line),
         single_static_ability_ast_rule!(parse_can_block_additional_creature_each_combat_line),
         single_static_ability_ast_passthrough_rule!(parse_all_creatures_able_to_block_source_line),
+        single_static_ability_ast_passthrough_rule!(
+            parse_attached_all_creatures_able_to_block_line
+        ),
         single_static_ability_ast_rule!(parse_activated_abilities_cant_be_activated_line),
         multi_static_ability_ast_rule!(parse_cant_clauses),
     ]

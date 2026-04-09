@@ -612,6 +612,47 @@ pub(crate) fn parse_attached_cant_attack_or_block_line(
     }))
 }
 
+pub(crate) fn parse_attached_all_creatures_able_to_block_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbilityAst>, CardTextError> {
+    let normalized_storage = normalize_cant_words(tokens);
+    let normalized = normalized_storage
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    if normalized.len() < 9 {
+        return Ok(None);
+    }
+
+    if !word_slice_starts_with(&normalized, &["all", "creatures", "able", "to", "block"]) {
+        return Ok(None);
+    }
+    if !word_slice_ends_with(&normalized, &["do", "so"]) {
+        return Ok(None);
+    }
+
+    let subject = match &normalized[5..normalized.len() - 2] {
+        ["enchanted", "creature"] => "enchanted creature",
+        ["enchanted", "permanent"] => "enchanted permanent",
+        ["equipped", "creature"] => "equipped creature",
+        ["equipped", "permanent"] => "equipped permanent",
+        _ => return Ok(None),
+    };
+
+    let display = format!("All creatures able to block {subject} do so");
+    Ok(Some(StaticAbilityAst::AttachedStaticAbilityGrant {
+        ability: Box::new(StaticAbilityAst::Static(StaticAbility::restriction(
+            crate::effect::Restriction::must_block_specific_attacker(
+                ObjectFilter::creature(),
+                ObjectFilter::source(),
+            ),
+            display.clone(),
+        ))),
+        display,
+        condition: None,
+    }))
+}
+
 pub(crate) fn parse_attached_tap_abilities_cant_be_activated_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
