@@ -1931,10 +1931,12 @@ mod tests {
         .in_zone(Zone::Battlefield);
 
         let mut sacrifice_filter = ObjectFilter::creature();
-        sacrifice_filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: TagKey::from("sacrificed_0"),
-            relation: TaggedOpbjectRelation::IsTaggedObject,
-        });
+        sacrifice_filter
+            .tagged_constraints
+            .push(TaggedObjectConstraint {
+                tag: TagKey::from("sacrificed_0"),
+                relation: TaggedOpbjectRelation::IsTaggedObject,
+            });
         let sacrifice = crate::effects::SacrificeEffect::player(
             sacrifice_filter.clone(),
             Value::Count(sacrifice_filter),
@@ -6449,10 +6451,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         if let Some(rest) = target.strip_prefix("all cards in ") {
             return format!("Exile all cards from {rest}{face_down_suffix}");
         }
-        return format!(
-            "Exile {}{face_down_suffix}",
-            target
-        );
+        return format!("Exile {}{face_down_suffix}", target);
     }
     if let Some(exile_until) = effect.downcast_ref::<crate::effects::ExileUntilEffect>() {
         let duration = match exile_until.duration {
@@ -7605,9 +7604,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         effect.downcast_ref::<crate::effects::ShuffleGraveyardIntoLibraryEffect>()
     {
         let possessive = describe_possessive_player_filter(&shuffle_gy.player);
-        return format!(
-            "Shuffle all cards from {possessive} graveyard into {possessive} library"
-        );
+        return format!("Shuffle all cards from {possessive} graveyard into {possessive} library");
     }
     if let Some(shuffle_objects) =
         effect.downcast_ref::<crate::effects::ShuffleObjectsIntoLibraryEffect>()

@@ -17795,7 +17795,8 @@ fn parse_sacrifice_any_number_sentence_keeps_open_count() {
     assert!(
         debug.contains("choicecount { min: 0, max: none")
             && debug.contains("sacrificeeffect")
-            && debug.contains("tagkey(\"sacrificed_"),
+            && debug.contains("count(objectfilter")
+            && (debug.contains("tagkey(\"sacrificed_") || debug.contains("tagkey(\"__it__\")")),
         "expected the any-number sacrifice to keep a tagged choose-and-sacrifice chain, got {debug}"
     );
 }
@@ -21067,7 +21068,9 @@ fn parse_oracle_berg_strider_etb_snow_rider_regression() {
 
     let rendered = oracle_like_lines(&def).join(" ");
     assert!(
-        rendered.contains("When this creature enters, tap target artifact or creature an opponent controls."),
+        rendered.contains(
+            "When this creature enters, tap target artifact or creature an opponent controls."
+        ),
         "expected Berg Strider ETB tap clause, got {rendered}"
     );
     assert!(
@@ -21259,9 +21262,9 @@ fn parse_oracle_derevi_command_zone_put_regression() {
     let debug = format!("{:?}", def.abilities).to_ascii_lowercase();
     assert!(
         debug.contains("movetozoneeffect")
-            && debug.contains("zone: some(command)")
+            && debug.contains("functional_zones: [command]")
             && debug.contains("zone: battlefield"),
-        "expected Derevi to keep command-zone source and battlefield destination, got {debug}"
+        "expected Derevi to stay command-zone activatable and move onto the battlefield, got {debug}"
     );
 }
 

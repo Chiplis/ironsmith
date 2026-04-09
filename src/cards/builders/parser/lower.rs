@@ -610,7 +610,10 @@ fn filter_references_tag(filter: &ObjectFilter, tag: &str) -> bool {
             .targets_only_object
             .as_deref()
             .is_some_and(|targets| filter_references_tag(targets, tag))
-        || filter.any_of.iter().any(|branch| filter_references_tag(branch, tag))
+        || filter
+            .any_of
+            .iter()
+            .any(|branch| filter_references_tag(branch, tag))
 }
 
 fn replace_filter_tag(filter: &mut ObjectFilter, old_tag: &str, new_tag: &TagKey) -> bool {
@@ -1677,8 +1680,7 @@ fn lower_rewrite_statement_to_chunks_impl(
     {
         return Ok(vec![empty_lab_chunk]);
     }
-    if let Some(shape_anew_chunk) =
-        lower_rewrite_shape_anew_statement_to_chunk(line, parse_tokens)?
+    if let Some(shape_anew_chunk) = lower_rewrite_shape_anew_statement_to_chunk(line, parse_tokens)?
     {
         return Ok(vec![shape_anew_chunk]);
     }

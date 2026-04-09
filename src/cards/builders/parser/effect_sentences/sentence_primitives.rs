@@ -4418,7 +4418,8 @@ pub(crate) fn parse_sentence_target_player_reveals_random_card_from_hand(
     let Some(from_idx) = find_word_sequence_start(descriptor_words, &["from"]) else {
         return Ok(None);
     };
-    if !find_word_sequence_start(descriptor_words, &["at", "random"]).is_some_and(|idx| idx < from_idx)
+    if !find_word_sequence_start(descriptor_words, &["at", "random"])
+        .is_some_and(|idx| idx < from_idx)
     {
         return Ok(None);
     }

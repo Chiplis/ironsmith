@@ -4603,7 +4603,10 @@ pub(super) fn describe_count_filter_value_subject(filter: &ObjectFilter) -> Stri
         subject.push_str(" on the battlefield");
     }
     if has_sacrificed_tag && !subject.to_ascii_lowercase().starts_with("the sacrificed ") {
-        subject = format!("the sacrificed {}", subject.trim_start_matches("the ").trim());
+        subject = format!(
+            "the sacrificed {}",
+            subject.trim_start_matches("the ").trim()
+        );
     }
 
     subject
@@ -5661,7 +5664,10 @@ pub(super) fn describe_compact_destroy_color_choice(effect: &Effect) -> Option<S
     }
 
     let base_desc = describe_choose_spec(&ChooseSpec::All(base_filter?));
-    Some(format!("Destroy {} of the color of your choice.", base_desc))
+    Some(format!(
+        "Destroy {} of the color of your choice.",
+        base_desc
+    ))
 }
 
 pub(super) fn describe_compact_keyword_choice(effect: &Effect) -> Option<String> {
@@ -8234,7 +8240,10 @@ mod tests {
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
 
-        assert_eq!(describe_count_filter_value_subject(&filter), "the sacrificed creatures");
+        assert_eq!(
+            describe_count_filter_value_subject(&filter),
+            "the sacrificed creatures"
+        );
         assert_eq!(
             describe_value(&Value::TotalPower(filter)),
             "the total power of the sacrificed creatures"

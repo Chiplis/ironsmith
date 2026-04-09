@@ -663,9 +663,7 @@ fn advance_reference_frame_for_effect(
             }
         }
         EffectAst::Sacrifice {
-            player,
-            target: _,
-            ..
+            player, target: _, ..
         } => {
             track_effect_player(player.clone(), frame, true, true)?;
             frame.last_object_tag = Some(next_reference_tag(id_gen, "sacrificed"));

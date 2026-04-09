@@ -2314,11 +2314,8 @@ fn rewrite_etb_where_x_aggregate_filter_routes_and_split_through_grammar_separat
 
 #[test]
 fn rewrite_etb_where_x_total_power_of_sacrificed_creatures_uses_the_sacrifice_reference() {
-    let tokens = lex_line(
-        "where x is the total power of the sacrificed creatures",
-        0,
-    )
-    .expect("rewrite lexer should classify sacrificed aggregate clause");
+    let tokens = lex_line("where x is the total power of the sacrificed creatures", 0)
+        .expect("rewrite lexer should classify sacrificed aggregate clause");
 
     let parsed = super::keyword_static::parse_where_x_is_aggregate_filter_value(&tokens)
         .expect("sacrificed aggregate clause should parse");
@@ -2326,8 +2323,7 @@ fn rewrite_etb_where_x_total_power_of_sacrificed_creatures_uses_the_sacrifice_re
 
     assert!(debug.contains("TotalPower"), "{debug}");
     assert!(
-        debug.contains("tag: TagKey(\"__it__\")")
-            || debug.contains("tag: TagKey(\"sacrificed"),
+        debug.contains("tag: TagKey(\"__it__\")") || debug.contains("tag: TagKey(\"sacrificed"),
         "expected sacrificed creatures to stay tied to a tag, got {debug}"
     );
     assert!(
@@ -8077,14 +8073,15 @@ fn rewrite_lowered_former_section9_cases_parse_without_fallback_text() -> Result
 #[test]
 fn parse_subject_first_exile_top_library_then_play_permission_bundle() {
     let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Bundle Probe")
-        .card_types(vec![CardType::Creature]);
+        .card_types(vec![CardType::Sorcery]);
     let (definition, _) = parse_text_with_annotations_lowered(
         builder,
-        "That player exiles the top two cards of their library. Until end of turn, you may play those cards without paying their mana costs.",
+        "Target player exiles the top two cards of their library. Until end of turn, you may play those cards without paying their mana costs."
+            .to_string(),
         false,
     )
     .expect("the Fallen Shinobi style bundle should lower cleanly");
-    let debug = format!("{:#?}", definition.abilities).to_ascii_lowercase();
+    let debug = format!("{:#?}", definition.spell_effect).to_ascii_lowercase();
 
     assert!(
         debug.contains("exiletopoflibraryeffect"),
@@ -8309,6 +8306,9 @@ fn rewrite_lexed_triggered_line_keeps_unique_life_leader_intervening_if() {
 
     assert!(debug.contains("BeginningOfUpkeep"), "{debug}");
     assert!(debug.contains("Conditional"), "{debug}");
-    assert!(debug.contains("PlayerHasMoreLifeThanEachOtherPlayer"), "{debug}");
+    assert!(
+        debug.contains("PlayerHasMoreLifeThanEachOtherPlayer"),
+        "{debug}"
+    );
     assert!(debug.contains("MostLifeTied"), "{debug}");
 }

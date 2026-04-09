@@ -477,6 +477,10 @@ pub(crate) fn parse_permission_clause_spec_lexed(
             token_word_refs(target_tokens).as_slice(),
             ["it"] | ["that", "card"] | ["that", "spell"]
         );
+        let plural_tagged_cards_target = matches!(
+            token_word_refs(target_tokens).as_slice(),
+            ["those", "cards"]
+        );
         if matches!(
             lifetime,
             PermissionLifetime::ThisTurn
@@ -499,6 +503,7 @@ pub(crate) fn parse_permission_clause_spec_lexed(
                 PermissionLifetime::ThisTurn | PermissionLifetime::UntilEndOfTurn
             )
             && !single_tagged_target
+            && !plural_tagged_cards_target
         {
             return Err(CardTextError::ParseError(format!(
                 "unsupported temporary play/cast permission clause with alternative cost (clause: '{}')",

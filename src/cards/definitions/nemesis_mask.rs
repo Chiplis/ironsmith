@@ -26,8 +26,8 @@ mod tests {
     use crate::card::{CardBuilder, PowerToughness};
     use crate::game_state::GameState;
     use crate::ids::{CardId, ObjectId, PlayerId};
-    use crate::object::{AttachmentTarget, Object};
     use crate::mana::{ManaCost, ManaSymbol};
+    use crate::object::{AttachmentTarget, Object};
     use crate::static_abilities::StaticAbilityId;
     use crate::target::ChooseSpec;
     use crate::types::{CardType, Subtype};
@@ -68,7 +68,9 @@ mod tests {
             equipment.attached_to = None;
         }
         if let Some(creature) = game.object_mut(creature_id) {
-            creature.attachments.retain(|attached| *attached != equipment_id);
+            creature
+                .attachments
+                .retain(|attached| *attached != equipment_id);
         }
     }
 
@@ -80,8 +82,15 @@ mod tests {
         assert!(!def.card.is_creature());
         assert!(def.card.subtypes.contains(&Subtype::Equipment));
         assert_eq!(def.card.mana_value(), 3);
-        assert!(def.spell_effect.is_none(), "Nemesis Mask should be a static equipment");
-        assert_eq!(def.abilities.len(), 2, "Nemesis Mask should have equip plus one static line");
+        assert!(
+            def.spell_effect.is_none(),
+            "Nemesis Mask should be a static equipment"
+        );
+        assert_eq!(
+            def.abilities.len(),
+            2,
+            "Nemesis Mask should have equip plus one static line"
+        );
     }
 
     #[test]

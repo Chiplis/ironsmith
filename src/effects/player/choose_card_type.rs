@@ -73,14 +73,8 @@ impl EffectExecutor for ChooseCardTypeEffect {
         } else {
             "Choose a card type"
         };
-        let choice_ctx = SelectOptionsContext::new(
-            chooser,
-            Some(ctx.source),
-            prompt,
-            display_options,
-            1,
-            1,
-        );
+        let choice_ctx =
+            SelectOptionsContext::new(chooser, Some(ctx.source), prompt, display_options, 1, 1);
         let selected = ctx.decision_maker.decide_options(game, &choice_ctx);
         if ctx.decision_maker.awaiting_choice() {
             return Ok(EffectOutcome::count(0));

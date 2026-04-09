@@ -365,7 +365,9 @@ fn source_target_from_subject_tokens(tokens: &[OwnedLexToken]) -> Option<TargetA
         if prefix_len == subject_words.len()
             || find_verb_lexed(&tokens[prefix_len..]).is_some_and(|(_, verb_idx)| verb_idx == 0)
         {
-            return Some(TargetAst::Source(span_from_lexed_tokens(&tokens[..prefix_len])));
+            return Some(TargetAst::Source(span_from_lexed_tokens(
+                &tokens[..prefix_len],
+            )));
         }
     }
 
@@ -446,7 +448,11 @@ fn parse_simple_ability_modifier_clause_lexed(
     let duration = duration_phrase
         .as_ref()
         .map(|(_, _, duration)| duration.clone())
-        .or_else(|| leading_duration_phrase.as_ref().map(|(_, duration)| duration.clone()))
+        .or_else(|| {
+            leading_duration_phrase
+                .as_ref()
+                .map(|(_, duration)| duration.clone())
+        })
         .unwrap_or(Until::Forever);
 
     let ability_end_word_idx = duration_phrase
@@ -639,7 +645,11 @@ pub(crate) fn parse_simple_ability_modifier_clause(
     let duration = duration_phrase
         .as_ref()
         .map(|(_, _, duration)| duration.clone())
-        .or_else(|| leading_duration_phrase.as_ref().map(|(_, duration)| duration.clone()))
+        .or_else(|| {
+            leading_duration_phrase
+                .as_ref()
+                .map(|(_, duration)| duration.clone())
+        })
         .unwrap_or(Until::Forever);
 
     let ability_end_word_idx = duration_phrase

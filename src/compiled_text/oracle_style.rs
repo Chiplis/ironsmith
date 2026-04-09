@@ -694,12 +694,16 @@ pub(super) fn normalize_sentence_surface_style(line: &str) -> String {
             strip_suffix_ascii_ci(library_owner.trim(), " library face down")
     {
         let shuffle_tail = shuffle_tail.trim();
-        let no_period = shuffle_tail.strip_suffix('.').unwrap_or(shuffle_tail).trim();
+        let no_period = shuffle_tail
+            .strip_suffix('.')
+            .unwrap_or(shuffle_tail)
+            .trim();
         if let Some((graveyard_owner, library_tail)) =
             split_once_ascii_ci(no_period, " graveyard into ")
-            && let Some(destination_owner) =
-                strip_suffix_ascii_ci(library_tail.trim(), " library")
-            && graveyard_owner.trim().eq_ignore_ascii_case(library_owner.trim())
+            && let Some(destination_owner) = strip_suffix_ascii_ci(library_tail.trim(), " library")
+            && graveyard_owner
+                .trim()
+                .eq_ignore_ascii_case(library_owner.trim())
             && destination_owner
                 .trim()
                 .eq_ignore_ascii_case(library_owner.trim())

@@ -1656,7 +1656,10 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
         direct_target_effect_variants!(target) => {
             visit(target);
         }
-        EffectAst::Sacrifice { target: Some(target), .. } => {
+        EffectAst::Sacrifice {
+            target: Some(target),
+            ..
+        } => {
             visit(target);
         }
         EffectAst::MoveToZone {
@@ -11704,11 +11707,35 @@ mod parse_compile_tests {
             "expected the activation to stay on the sentinel itself, got {rendered}"
         );
 
-        let debug = format!("{def:?}");
-        assert!(
-            debug.contains("Source(") && debug.contains("EndOfTurn"),
-            "expected the lowered activated ability to stay source-targeted until end of turn, got {debug}"
+        let activated = def
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Activated(activated) => Some(activated),
+                _ => None,
+            })
+            .expect("expected Gargoyle Sentinel to have an activated ability");
+        let apply_effects = activated
+            .effects
+            .segments
+            .iter()
+            .flat_map(|segment| segment.default_effects.iter())
+            .filter_map(|effect| effect.downcast_ref::<crate::effects::ApplyContinuousEffect>())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            apply_effects.len(),
+            2,
+            "expected the lowered activation to produce exactly two source-scoped continuous effects"
         );
+        assert!(
+            apply_effects.iter().all(|apply| {
+                matches!(apply.target_spec, Some(crate::target::ChooseSpec::Source))
+                    && matches!(apply.until, crate::effect::Until::EndOfTurn)
+            }),
+            "expected the lowered activated ability to stay source-targeted until end of turn, got {apply_effects:#?}"
+        );
+
+        let debug = format!("{def:?}");
         assert!(
             !debug.contains("GrantAbilitiesAll") && !debug.contains("RemoveAbilitiesAll"),
             "expected no broad battlefield-wide ability changes in the lowered definition, got {debug}"
@@ -11718,11 +11745,8 @@ mod parse_compile_tests {
     #[test]
     fn resolve_target_spec_treats_source_object_filters_as_source() {
         let target = TargetAst::Object(ObjectFilter::source(), None, None);
-        let (spec, choices) = resolve_target_spec_with_choices(
-            &target,
-            &ReferenceEnv::default(),
-        )
-        .expect("source object target should resolve cleanly");
+        let (spec, choices) = resolve_target_spec_with_choices(&target, &ReferenceEnv::default())
+            .expect("source object target should resolve cleanly");
 
         assert_eq!(
             spec,

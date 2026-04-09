@@ -1352,6 +1352,15 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
             exile_has_active_grants,
         );
     }
+    if exile_has_active_grants {
+        append_granted_land_play_actions_from_public_zone(
+            game,
+            &mut actions,
+            player,
+            Zone::Exile,
+            &view,
+        );
+    }
     perf.exile_casts_ms = exile_casts_started_at.elapsed_ms();
 
     // Check for alternative casting methods from hand (e.g., Force of Will's alternative cost)

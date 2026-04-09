@@ -88,6 +88,43 @@ fn normalize_dynamic_token_card_pt_surface(oracle_lower: &str, text: &str) -> St
     rewritten
 }
 
+fn normalize_plural_exiled_play_free_cast_surface(text: &str) -> Option<String> {
+    let lower = text.to_ascii_lowercase();
+    let play_clause = "you may play that card until end of turn.";
+    let Some(play_idx) = lower.find(play_clause) else {
+        return None;
+    };
+    let prefix = text[..play_idx].trim_end();
+    let prefix_lower = prefix.to_ascii_lowercase();
+    if !prefix_lower.contains("exile the top") || !prefix_lower.contains(" cards") {
+        return None;
+    }
+
+    let suffix = text[play_idx + play_clause.len()..].trim_start();
+    let helper_prefixes = [
+        "you may cast tagged '__sentence_helper_exiled_",
+        "you may cast tagged 'exiled_",
+    ];
+    let matches_free_cast_suffix = helper_prefixes.iter().any(|needle| {
+        let Some(rest) = strip_prefix_ascii_ci(suffix, needle) else {
+            return false;
+        };
+        let Some((_, tail)) = rest.split_once('\'') else {
+            return false;
+        };
+        let tail_lower = tail.to_ascii_lowercase();
+        tail_lower.starts_with(" spells from exile this turn without paying their mana costs")
+    });
+    if !matches_free_cast_suffix {
+        return None;
+    }
+
+    Some(format!(
+        "{}. Until end of turn, you may play those cards without paying their mana costs.",
+        prefix.trim_end_matches('.')
+    ))
+}
+
 pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str) -> String {
     let oracle_lower = def.card.oracle_text.to_ascii_lowercase();
     let normalized = line.trim().to_string();
@@ -105,10 +142,18 @@ pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str
                 .replace("non-Auran enchantments", "non-Aura enchantments")
                 .replace("non-Auran enchantment", "non-Aura enchantment");
         normalized_body = normalize_dynamic_token_card_pt_surface(&oracle_lower, &normalized_body);
+        if let Some(rewritten) = normalize_plural_exiled_play_free_cast_surface(&normalized_body) {
+            normalized_body = rewritten;
+        }
         if let Some(rewritten) = normalize_choose_background_scaffolding_clause(&normalized_body) {
             normalized_body = rewritten;
         }
         normalized_body = normalize_compiled_post_pass_phrase(&normalized_body);
+        if let Some(rewritten) =
+            normalize_sentence_helper_random_hand_reveal_damage_clause(&normalized_body)
+        {
+            normalized_body = rewritten;
+        }
         if oracle_lower.contains(
             "choose a creature card with mana value 1 in your graveyard, then do the same for creature cards with mana value 2 and 3",
         ) && let Some(rewritten) =
@@ -147,6 +192,16 @@ pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str
         normalized_body = normalize_dual_target_gift_fight_surface(&normalized_body);
         if let Some(rewritten) =
             normalize_creature_becomes_base_pt_surface(&normalized_body, &oracle_lower)
+        {
+            normalized_body = rewritten;
+        }
+        if let Some(rewritten) =
+            normalize_oracle_self_graveyard_return_surface(&oracle_lower, &normalized_body)
+        {
+            normalized_body = rewritten;
+        }
+        if let Some(rewritten) =
+            normalize_becomes_then_gains_shared_duration_clause(&normalized_body)
         {
             normalized_body = rewritten;
         }
@@ -2227,8 +2282,7 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
         normalized = rewritten;
     }
     normalized = normalize_conditional_target_player_pronouns(&normalized);
-    if let Some(rewritten) =
-        normalize_sentence_helper_random_hand_reveal_damage_clause(&normalized)
+    if let Some(rewritten) = normalize_sentence_helper_random_hand_reveal_damage_clause(&normalized)
     {
         normalized = rewritten;
     }
@@ -4795,6 +4849,49 @@ pub(super) fn normalize_self_return_from_graveyard_clause(text: &str) -> Option<
     Some(format!("{head}{replacement}{tail}"))
 }
 
+fn normalize_oracle_self_graveyard_return_surface(
+    oracle_lower: &str,
+    text: &str,
+) -> Option<String> {
+    if oracle_lower.contains("return this card from your graveyard to your hand") {
+        for pattern in [
+            "return this permanent from a graveyard to its owner's hand",
+            "return this permanent from graveyard to its owner's hand",
+            "return this creature from a graveyard to its owner's hand",
+            "return this creature from graveyard to its owner's hand",
+            "return this source from a graveyard to its owner's hand",
+            "return this source from graveyard to its owner's hand",
+        ] {
+            if let Some((before, after)) = split_once_ascii_ci(text, pattern) {
+                return Some(apply_replacement_with_case(
+                    before,
+                    "return this card from your graveyard to your hand",
+                    after,
+                ));
+            }
+        }
+    }
+    if oracle_lower.contains("return this card from your graveyard to the battlefield") {
+        for pattern in [
+            "return this permanent from a graveyard to the battlefield",
+            "return this permanent from graveyard to the battlefield",
+            "return this creature from a graveyard to the battlefield",
+            "return this creature from graveyard to the battlefield",
+            "return this source from a graveyard to the battlefield",
+            "return this source from graveyard to the battlefield",
+        ] {
+            if let Some((before, after)) = split_once_ascii_ci(text, pattern) {
+                return Some(apply_replacement_with_case(
+                    before,
+                    "return this card from your graveyard to the battlefield",
+                    after,
+                ));
+            }
+        }
+    }
+    None
+}
+
 fn choice_descriptor_for_zone(raw: &str, zone_suffix: &str) -> Option<String> {
     let trimmed = raw
         .trim()
@@ -5705,6 +5802,47 @@ pub(super) fn normalize_sentence_helper_random_hand_reveal_damage_clause(
         return Some(apply_replacement_with_case(before, replacement, after));
     }
     None
+}
+
+fn normalize_becomes_then_gains_shared_duration_clause(text: &str) -> Option<String> {
+    let stripped = text.trim().trim_end_matches('.');
+    let lower = stripped.to_ascii_lowercase();
+    if !lower.contains(" target creature ")
+        && !lower.starts_with("target creature ")
+        && !lower.starts_with("another target creature ")
+    {
+        return None;
+    }
+    if !lower.contains(" becomes ") || !lower.ends_with(" until end of turn") {
+        return None;
+    }
+
+    let (head, gains) = split_once_ascii_ci(stripped, ", gains ")?;
+    if head.to_ascii_lowercase().contains(" until end of turn") {
+        return None;
+    }
+    let normalized_gains = gains
+        .trim_end_matches(" until end of turn")
+        .replace(", gains ", ", ")
+        .replace(" and gains ", " and ");
+    let subject = head.trim();
+    if normalized_gains == gains {
+        return None;
+    }
+
+    let pronoun = if subject
+        .chars()
+        .next()
+        .map(|ch| ch.is_ascii_uppercase())
+        .unwrap_or(false)
+    {
+        "It"
+    } else {
+        "it"
+    };
+    Some(format!(
+        "{subject} until end of turn. {pronoun} gains {normalized_gains} until end of turn."
+    ))
 }
 
 pub(super) fn normalize_sentence_helper_simple_exile_clause(text: &str) -> Option<String> {

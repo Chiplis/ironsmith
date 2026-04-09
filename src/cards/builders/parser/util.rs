@@ -282,6 +282,13 @@ pub(crate) fn contains_source_from_your_hand_phrase(words: &[&str]) -> bool {
         .is_some()
 }
 
+pub(crate) fn contains_from_command_zone_phrase(words: &[&str]) -> bool {
+    find_window_by(words, 3, |window| {
+        window[0] == "from" && window[1] == "command" && window[2] == "zone"
+    })
+    .is_some()
+}
+
 pub(crate) fn contains_discard_source_phrase(words: &[&str]) -> bool {
     contains_words_sequence(words, &["discard", "this", "card"])
 }

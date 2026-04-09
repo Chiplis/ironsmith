@@ -1045,12 +1045,9 @@ fn value_tagged_snapshots_for_filter<'a>(
     ctx: &'a ExecutionContext,
 ) -> Option<Vec<&'a ObjectSnapshot>> {
     let only_is_tagged_constraints = !filter.tagged_constraints.is_empty()
-        && filter
-            .tagged_constraints
-            .iter()
-            .all(|constraint| {
-                constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
-            });
+        && filter.tagged_constraints.iter().all(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        });
     if !only_is_tagged_constraints {
         return None;
     }

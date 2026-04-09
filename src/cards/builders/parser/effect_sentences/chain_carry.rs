@@ -150,10 +150,9 @@ fn parse_exile_library_then_shuffle_graveyard_chain_lexed(
     }
 
     let graveyard_tail = &clause_words[library_idx + 8..];
-    let Some(graveyard_idx) =
-        graveyard_tail
-            .iter()
-            .position(|word| matches!(*word, "graveyard" | "graveyards"))
+    let Some(graveyard_idx) = graveyard_tail
+        .iter()
+        .position(|word| matches!(*word, "graveyard" | "graveyards"))
     else {
         return Ok(None);
     };
@@ -503,16 +502,19 @@ mod tests {
             "expected exile-all face-down and graveyard shuffle effects, got {debug}"
         );
         assert!(
-            effects
-                .iter()
-                .any(|effect| matches!(effect, EffectAst::ExileAll { face_down: true, .. })),
+            effects.iter().any(|effect| matches!(
+                effect,
+                EffectAst::ExileAll {
+                    face_down: true,
+                    ..
+                }
+            )),
             "expected a face-down exile-all effect in the parsed chain: {debug}"
         );
         assert!(
-            effects.iter().any(|effect| matches!(
-                effect,
-                EffectAst::ShuffleGraveyardIntoLibrary { .. }
-            )),
+            effects
+                .iter()
+                .any(|effect| matches!(effect, EffectAst::ShuffleGraveyardIntoLibrary { .. })),
             "expected a graveyard shuffle effect in the parsed chain: {debug}"
         );
     }

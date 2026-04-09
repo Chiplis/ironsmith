@@ -1,12 +1,12 @@
 #![allow(dead_code)]
 
 use super::activation_helpers::{
-    contains_discard_source_phrase, contains_source_from_your_graveyard_phrase,
-    contains_source_from_your_hand_phrase, find_activation_cost_start, is_article,
-    is_basic_color_word, is_comparison_or_delimiter, is_source_from_your_graveyard_words,
-    join_sentences_with_period, parse_add_mana, parse_filter_comparison_tokens,
-    parse_next_end_step_token_delay_flags, parse_subtype_flexible, split_cost_segments,
-    value_contains_unbound_x,
+    contains_discard_source_phrase, contains_from_command_zone_phrase,
+    contains_source_from_your_graveyard_phrase, contains_source_from_your_hand_phrase,
+    find_activation_cost_start, is_article, is_basic_color_word, is_comparison_or_delimiter,
+    is_source_from_your_graveyard_words, join_sentences_with_period, parse_add_mana,
+    parse_filter_comparison_tokens, parse_next_end_step_token_delay_flags, parse_subtype_flexible,
+    split_cost_segments, value_contains_unbound_x,
 };
 use super::effect_ast_traversal::{for_each_nested_effects, for_each_nested_effects_mut};
 use super::effect_sentences::find_verb;
@@ -636,6 +636,10 @@ pub(crate) fn infer_activated_functional_zones(
         || effect_words_match(contains_source_from_your_graveyard_phrase)
     {
         vec![Zone::Graveyard]
+    } else if contains_from_command_zone_phrase(&cost_words)
+        || effect_words_match(contains_from_command_zone_phrase)
+    {
+        vec![Zone::Command]
     } else if contains_source_from_your_hand_phrase(&cost_words)
         || contains_discard_source_phrase(&cost_words)
         || effect_words_match(contains_source_from_your_hand_phrase)
@@ -671,6 +675,10 @@ pub(crate) fn infer_activated_functional_zones_lexed(
         || effect_words_match(contains_source_from_your_graveyard_phrase)
     {
         vec![Zone::Graveyard]
+    } else if contains_from_command_zone_phrase(&cost_words)
+        || effect_words_match(contains_from_command_zone_phrase)
+    {
+        vec![Zone::Command]
     } else if contains_source_from_your_hand_phrase(&cost_words)
         || contains_discard_source_phrase(&cost_words)
         || effect_words_match(contains_source_from_your_hand_phrase)
