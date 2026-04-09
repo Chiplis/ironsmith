@@ -551,7 +551,17 @@ fn strip_article(text: String) -> String {
 
 fn describe_anthem_count_expression(expr: &AnthemCountExpression) -> String {
     match expr {
-        AnthemCountExpression::MatchingFilter(filter) => strip_article(filter.description()),
+        AnthemCountExpression::MatchingFilter(filter) => {
+            let mut subject = pluralized_subject_text(filter);
+            if filter.owner.is_none()
+                && !filter.single_graveyard
+                && filter.zone == Some(Zone::Graveyard)
+            {
+                subject = subject.replace(" in a graveyard", " in all graveyards");
+                subject = subject.replace(" in graveyard", " in all graveyards");
+            }
+            subject
+        }
         AnthemCountExpression::AttachedToSource(filter) => {
             format!(
                 "{} attached to this creature",
@@ -1007,6 +1017,21 @@ impl StaticAbilityKind for Anthem {
                 format!(
                     "{subject} {verb} +X/+X, where X is the number of {} counters on this permanent",
                     power_counter.description(),
+                )
+            }
+            (
+                AnthemValue::PerCount {
+                    multiplier: power,
+                    count: power_count,
+                },
+                AnthemValue::PerCount {
+                    multiplier: toughness,
+                    count: toughness_count,
+                },
+            ) if power_count == toughness_count && *power == 1 && *toughness == 1 => {
+                format!(
+                    "{subject} {verb} +X/+X, where X is the number of {}",
+                    describe_anthem_count_expression(power_count),
                 )
             }
             (
@@ -3195,6 +3220,62 @@ mod tests {
             }
         ));
         assert!(matches!(effects[0].applies_to, EffectTarget::Source));
+    }
+
+    #[test]
+    fn test_bonehoard_counts_creature_cards_in_all_graveyards() {
+        use crate::cards::builders::CardDefinitionBuilder;
+        use crate::ids::CardId;
+        use crate::mana::{ManaCost, ManaSymbol};
+        use crate::object::AttachmentTarget;
+
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let bonehoard = CardDefinitionBuilder::new(CardId::new(), "Bonehoard Variant")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+            .card_types(vec![CardType::Artifact])
+            .subtypes(vec![Subtype::Equipment])
+            .parse_text(
+                "Living weapon (When this Equipment enters, create a 0/0 black Phyrexian Germ creature token, then attach this to it.)\n\
+                 Equipped creature gets +X/+X, where X is the number of creature cards in all graveyards.\n\
+                 Equip {2}",
+            )
+            .expect("Bonehoard text should parse");
+
+        let equipment_id = game.create_object_from_definition(&bonehoard, alice, Zone::Battlefield);
+
+        let creature_card = CardBuilder::new(CardId::new(), "Carried Creature")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        let creature_id = game.create_object_from_card(&creature_card, alice, Zone::Battlefield);
+        game.object_mut(equipment_id).unwrap().attached_to = Some(AttachmentTarget::Object(creature_id));
+        game.object_mut(creature_id).unwrap().attachments.push(equipment_id);
+
+        let graveyard_card_a = CardBuilder::new(CardId::new(), "Graveyard Creature A")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        game.create_object_from_card(&graveyard_card_a, alice, Zone::Graveyard);
+
+        let graveyard_card_b = CardBuilder::new(CardId::new(), "Graveyard Creature B")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        game.create_object_from_card(&graveyard_card_b, bob, Zone::Graveyard);
+
+        assert_eq!(
+            game.calculated_power(creature_id),
+            Some(3),
+            "Bonehoard should count creature cards in both graveyards"
+        );
+        assert_eq!(
+            game.calculated_toughness(creature_id),
+            Some(3),
+            "Bonehoard should count creature cards in both graveyards"
+        );
     }
 
     #[test]

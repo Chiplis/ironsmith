@@ -12956,6 +12956,30 @@ fn render_enchanted_creatures_you_control_pluralizes() {
 }
 
 #[test]
+fn render_bonehoard_static_bonus_mentions_all_graveyards() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Bonehoard Variant")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .parse_text(
+            "Living weapon (When this Equipment enters, create a 0/0 black Phyrexian Germ creature token, then attach this to it.)\n\
+             Equipped creature gets +X/+X, where X is the number of creature cards in all graveyards.\n\
+             Equip {2}",
+        )
+        .expect("Bonehoard text should parse");
+
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("triggered ability 1")
+            && joined.contains("create a 0/0 black phyrexian germ creature token")
+            && joined.contains(
+                "equipped creature gets +x/+x, where x is the number of creature cards in all graveyards"
+            ),
+        "expected Bonehoard to render the all-graveyards bonus correctly, got {joined}"
+    );
+}
+
+#[test]
 fn render_allies_you_control_pluralizes() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Allied Teamwork Variant")
         .parse_text("Allies you control get +1/+1.")
@@ -23084,5 +23108,129 @@ fn render_vanguard_seraph_preserves_first_time_trigger_surface() {
         rendered.contains("Whenever you gain life for the first time each turn, surveil 1.")
             && !rendered.contains("This ability triggers only once each turn"),
         "expected render to preserve first-time trigger surface, got {rendered}"
+    );
+}
+
+#[test]
+fn coax_from_the_blind_eternities_lowers_to_face_up_exile_choice_bundle() {
+    let def = CardDefinitionBuilder::new(
+        CardId::from_raw(1),
+        "Coax from the Blind Eternities",
+    )
+    .mana_cost(ManaCost::from_pips(vec![
+        vec![ManaSymbol::Generic(2)],
+        vec![ManaSymbol::Blue],
+    ]))
+    .card_types(vec![CardType::Sorcery])
+    .parse_text(
+        "You may reveal an Eldrazi card you own from outside the game or choose a face-up Eldrazi card you own in exile. Put that card into your hand.",
+    )
+    .expect("Coax from the Blind Eternities should parse");
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("MayEffect")
+            && debug.contains("ChooseObjectsAcrossZones")
+            && debug.contains("Zone::Exile")
+            && debug.contains("face_down: Some(false)")
+            && debug.contains("MoveToZoneEffect"),
+        "expected Coax to lower into a may/choose/reveal/move bundle, got {debug}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("choose a face-up eldrazi card you own in exile")
+            && rendered.contains("put that card into your hand"),
+        "expected Coax to render the exile choice surface, got {rendered}"
+    );
+}
+
+struct ChooseFaceUpEldraziDecisionMaker {
+    expected: ObjectId,
+}
+
+impl crate::decision::DecisionMaker for ChooseFaceUpEldraziDecisionMaker {
+    fn decide_boolean(
+        &mut self,
+        _game: &crate::game_state::GameState,
+        _ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        true
+    }
+
+    fn decide_objects(
+        &mut self,
+        _game: &crate::game_state::GameState,
+        ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        assert_eq!(
+            ctx.candidates.len(),
+            1,
+            "expected only the face-up Eldrazi exile candidate, got {:?}",
+            ctx.candidates
+        );
+        assert_eq!(ctx.candidates[0].id, self.expected);
+        assert!(ctx.candidates[0].legal, "expected the candidate to be legal");
+        vec![self.expected]
+    }
+}
+
+#[test]
+fn coax_from_the_blind_eternities_puts_the_face_up_exiled_eldrazi_into_hand() {
+    let coax_def = CardDefinitionBuilder::new(
+        CardId::from_raw(1),
+        "Coax from the Blind Eternities",
+    )
+    .mana_cost(ManaCost::from_pips(vec![
+        vec![ManaSymbol::Generic(2)],
+        vec![ManaSymbol::Blue],
+    ]))
+    .card_types(vec![CardType::Sorcery])
+    .parse_text(
+        "You may reveal an Eldrazi card you own from outside the game or choose a face-up Eldrazi card you own in exile. Put that card into your hand.",
+    )
+    .expect("Coax from the Blind Eternities should parse");
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+
+    let hidden_titan_def = CardDefinitionBuilder::new(CardId::from_raw(2), "Hidden Titan")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Eldrazi])
+        .build();
+    let emrakul_id = game.create_object_from_definition(
+        &crate::cards::definitions::emrakul_the_promised_end(),
+        alice,
+        crate::zone::Zone::Exile,
+    );
+    let hidden_titan_id =
+        game.create_object_from_definition(&hidden_titan_def, alice, crate::zone::Zone::Exile);
+    game.set_face_down(hidden_titan_id);
+    let source = game.create_object_from_definition(&coax_def, alice, crate::zone::Zone::Stack);
+
+    let mut dm = ChooseFaceUpEldraziDecisionMaker {
+        expected: emrakul_id,
+    };
+    let mut ctx = crate::executor::ExecutionContext::new(source, alice, &mut dm);
+
+    let program = coax_def.spell_effect.as_ref().expect("spell effect");
+    for effect in &program.segments[0].default_effects {
+        crate::executor::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Coax from the Blind Eternities effect should resolve");
+    }
+
+    assert_eq!(
+        game.object(emrakul_id).map(|object| object.zone),
+        Some(crate::zone::Zone::Hand),
+        "expected the face-up Eldrazi card to move to hand"
+    );
+    assert_eq!(
+        game.object(hidden_titan_id).map(|object| object.zone),
+        Some(crate::zone::Zone::Exile),
+        "expected the face-down Eldrazi card to stay in exile"
+    );
+    assert!(
+        game.is_face_down(hidden_titan_id),
+        "expected the hidden Titan to remain face down"
     );
 }

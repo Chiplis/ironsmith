@@ -5555,7 +5555,7 @@ impl CardDefinitionBuilder {
     }
 
     fn living_weapon_germ_token() -> CardDefinition {
-        CardDefinitionBuilder::new(CardId::new(), "Phyrexian")
+        CardDefinitionBuilder::new(CardId::new(), "Phyrexian Germ")
             .token()
             .card_types(vec![CardType::Creature])
             .subtypes(vec![Subtype::Phyrexian, Subtype::Germ])
@@ -5751,6 +5751,7 @@ mod keyword_behavior_tests {
             debug.contains("createtokeneffect")
                 && debug.contains("phyrexian")
                 && debug.contains("germ")
+                && debug.contains("phyrexian germ")
                 && debug.contains("attachtoeffect"),
             "expected Living weapon trigger to create Germ token and attach equipment, got {debug}"
         );
@@ -13335,6 +13336,34 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         assert!(
             static_ids.contains(&StaticAbilityId::ActivatedAbilityCostReduction),
             "expected activated-ability cost reduction static ability, got {static_ids:?}"
+        );
+    }
+
+    #[test]
+    fn parse_activated_ability_cost_increase_static_line() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Brutal Suppression Variant")
+            .card_types(vec![CardType::Enchantment])
+            .parse_text(
+                "Activated abilities of nontoken Rebels cost an additional \"Sacrifice a land\" to activate.",
+            )
+            .expect("activated-ability cost increase static line should parse");
+
+        assert!(
+            def.spell_effect.is_none(),
+            "expected static activated-ability tax to stay out of spell effects"
+        );
+
+        let static_ids: Vec<_> = def
+            .abilities
+            .iter()
+            .filter_map(|ability| match &ability.kind {
+                AbilityKind::Static(static_ability) => Some(static_ability.id()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            static_ids.contains(&StaticAbilityId::ActivatedAbilityCostIncrease),
+            "expected activated-ability cost increase static ability, got {static_ids:?}"
         );
     }
 
