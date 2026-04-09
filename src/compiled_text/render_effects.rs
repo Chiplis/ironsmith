@@ -783,12 +783,37 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         }
         if idx + 1 < filtered.len()
             && let Some(with_id) = filtered[idx].downcast_ref::<crate::effects::WithIdEffect>()
-            && let Some(if_effect) = filtered[idx + 1].downcast_ref::<crate::effects::IfEffect>()
-            && let Some(compact) = describe_with_id_then_if(with_id, if_effect)
         {
-            parts.push(compact);
-            idx += 2;
-            continue;
+            let mut branch_parts = Vec::new();
+            let mut lookahead = idx + 1;
+            while lookahead < filtered.len() {
+                let if_effect = filtered[lookahead]
+                    .downcast_ref::<crate::effects::IfEffect>()
+                    .or_else(|| {
+                        filtered[lookahead]
+                            .downcast_ref::<crate::effects::WithIdEffect>()
+                            .and_then(|nested| {
+                                nested.effect.downcast_ref::<crate::effects::IfEffect>()
+                            })
+                    });
+                let Some(if_effect) = if_effect else {
+                    break;
+                };
+                if if_effect.condition != with_id.id {
+                    break;
+                }
+                let Some(branch_text) = describe_with_id_if_clause(with_id, if_effect) else {
+                    break;
+                };
+                branch_parts.push(branch_text);
+                lookahead += 1;
+            }
+            if !branch_parts.is_empty() {
+                let setup = describe_effect(&with_id.effect);
+                parts.push(format!("{setup}. {}", branch_parts.join(". ")));
+                idx = lookahead;
+                continue;
+            }
         }
         if idx + 1 < filtered.len()
             && let Some(tagged) = filtered[idx].downcast_ref::<crate::effects::TaggedEffect>()
@@ -913,6 +938,18 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             continue;
         }
         if idx + 1 < filtered.len()
+            && let Some(choose) =
+                filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(return_to_hand) =
+                filtered[idx + 1].downcast_ref::<crate::effects::ReturnToHandEffect>()
+            && let Some(compact) =
+                describe_target_player_choose_half_then_return_to_hand(choose, return_to_hand)
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
             && let Some(look_at_top) =
                 filtered[idx].downcast_ref::<crate::effects::LookAtTopCardsEffect>()
             && let Some(move_to_zone) =
@@ -1016,7 +1053,8 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             && let Some(hand_choose) =
                 filtered[idx + 4].downcast_ref::<crate::effects::ChooseObjectsEffect>()
             && let Some(remainder) = filtered[idx + 6]
-                .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()
+                .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>(
+            )
             && let Some(compact) =
                 describe_look_at_top_then_put_onto_battlefield_and_into_hand_rest_bottom(
                     look_at_top,
@@ -1040,7 +1078,8 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             && let Some(hand_choose) =
                 filtered[idx + 3].downcast_ref::<crate::effects::ChooseObjectsEffect>()
             && let Some(remainder) = filtered[idx + 5]
-                .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()
+                .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>(
+            )
             && let Some(compact) =
                 describe_look_at_top_then_put_onto_battlefield_and_into_hand_rest_bottom(
                     look_at_top,
@@ -3400,6 +3439,38 @@ pub(super) fn move_to_hand_uses_chosen_tag(
         && matches!(move_to_zone.target.base(), ChooseSpec::Tagged(t) if t.as_str() == tag)
 }
 
+pub(super) fn return_to_hand_uses_chosen_tag(
+    return_to_hand: &crate::effects::ReturnToHandEffect,
+    tag: &str,
+) -> bool {
+    match return_to_hand.spec.base() {
+        ChooseSpec::Tagged(found) => found.as_str() == tag,
+        ChooseSpec::All(filter) | ChooseSpec::Object(filter) => {
+            filter.tagged_constraints.iter().any(|constraint| {
+                constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                    && constraint.tag.as_str() == tag
+            })
+        }
+        _ => false,
+    }
+}
+
+fn half_rounded_up_subject(value: &Value) -> Option<String> {
+    let Value::HalfRoundedDown(inner) = value else {
+        return None;
+    };
+    let Value::Add(left, right) = inner.as_ref() else {
+        return None;
+    };
+    let count_filter = match (left.as_ref(), right.as_ref()) {
+        (Value::Count(filter), Value::Fixed(1)) | (Value::Fixed(1), Value::Count(filter)) => {
+            Some(filter)
+        }
+        _ => None,
+    }?;
+    Some(describe_count_filter_value_subject(count_filter))
+}
+
 pub(super) fn describe_choose_zone_origin(
     choose: &crate::effects::ChooseObjectsEffect,
     zone_text: &str,
@@ -3522,6 +3593,30 @@ pub(super) fn describe_choose_then_move_to_library(
 
     Some(format!(
         "{chooser} {choose_verb} {chosen} {origin}, then {put_verb} {moved_ref} {placement} {destination}"
+    ))
+}
+
+pub(super) fn describe_target_player_choose_half_then_return_to_hand(
+    choose: &crate::effects::ChooseObjectsEffect,
+    return_to_hand: &crate::effects::ReturnToHandEffect,
+) -> Option<String> {
+    if choose_primary_zone(choose) != Some(Zone::Battlefield)
+        || choose.is_search
+        || !choose.count.dynamic_x
+        || !matches!(choose.chooser, PlayerFilter::Target(_))
+        || !return_to_hand_uses_chosen_tag(return_to_hand, choose.tag.as_str())
+    {
+        return None;
+    }
+
+    let chooser = describe_player_filter(&choose.chooser);
+    if !chooser.starts_with("target ") {
+        return None;
+    }
+
+    let subject = half_rounded_up_subject(choose.count_value.as_ref()?)?;
+    Some(format!(
+        "Choose {chooser}. Return half the {subject} to their owner's hand, rounded up"
     ))
 }
 
@@ -3814,17 +3909,14 @@ fn describe_choose_filter_from_looked_cards_with_ignored_tags(
     let mut base_filter = choose.filter.clone();
     base_filter.zone = None;
     base_filter.tagged_constraints.retain(|constraint| {
-        !(
-            matches!(
-                constraint.relation,
-                crate::filter::TaggedOpbjectRelation::IsTaggedObject
-            ) && constraint.tag.as_str() == look_at_top.tag.as_str()
-        ) && !(
-            matches!(
+        !(matches!(
+            constraint.relation,
+            crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        ) && constraint.tag.as_str() == look_at_top.tag.as_str())
+            && !(matches!(
                 constraint.relation,
                 crate::filter::TaggedOpbjectRelation::IsNotTaggedObject
-            ) && ignored_tags.contains(&constraint.tag.as_str())
-        )
+            ) && ignored_tags.contains(&constraint.tag.as_str()))
     });
 
     let filter_text = base_filter.description();
@@ -3921,19 +4013,27 @@ pub(super) fn describe_look_at_top_then_put_onto_battlefield_and_into_hand_rest_
     {
         return None;
     }
-    let excludes_battlefield_choice = hand_choose.filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag.as_str() == land_choose.tag.as_str()
-            && matches!(
-                constraint.relation,
-                crate::filter::TaggedOpbjectRelation::IsNotTaggedObject
-            )
-    });
+    let excludes_battlefield_choice =
+        hand_choose
+            .filter
+            .tagged_constraints
+            .iter()
+            .any(|constraint| {
+                constraint.tag.as_str() == land_choose.tag.as_str()
+                    && matches!(
+                        constraint.relation,
+                        crate::filter::TaggedOpbjectRelation::IsNotTaggedObject
+                    )
+            });
     if !excludes_battlefield_choice {
         return None;
     }
 
-    let land = strip_leading_article(&describe_choose_filter_from_looked_cards(look_at_top, land_choose)?)
-        .to_string();
+    let land = strip_leading_article(&describe_choose_filter_from_looked_cards(
+        look_at_top,
+        land_choose,
+    )?)
+    .to_string();
     let hand = strip_leading_article(&describe_choose_filter_from_looked_cards_with_ignored_tags(
         look_at_top,
         hand_choose,
@@ -4238,8 +4338,9 @@ pub(super) fn describe_look_at_top_then_reveal_put_matching_onto_battlefield_res
     if look_at_top.player == PlayerFilter::IteratedPlayer {
         count_text = count_text.replace("that player controls", "they control");
     }
-    let matching =
-        pluralize_noun_phrase(&describe_revealed_selection_with_cards(&filter.description()));
+    let matching = pluralize_noun_phrase(&describe_revealed_selection_with_cards(
+        &filter.description(),
+    ));
 
     Some(format!(
         "Reveal the top {count_text} {noun} of {owner} library. Put all {matching} revealed this way onto the battlefield and the rest into {owner} graveyard"
@@ -4455,6 +4556,67 @@ pub(super) fn describe_may_search_library_and_or_nonlibrary(
     text.push_str(&format!("{possessive} library this way, shuffle"));
 
     Some(text)
+}
+
+pub(super) fn describe_may_choose_reveal_and_move_to_hand(
+    may: &crate::effects::MayEffect,
+) -> Option<String> {
+    fn downcast_move_to_zone<'a>(
+        effect: &'a Effect,
+    ) -> Option<&'a crate::effects::MoveToZoneEffect> {
+        if let Some(move_to_zone) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>() {
+            return Some(move_to_zone);
+        }
+        effect
+            .downcast_ref::<crate::effects::TaggedEffect>()?
+            .effect
+            .downcast_ref::<crate::effects::MoveToZoneEffect>()
+    }
+
+    let [choose_effect, reveal_effect, move_effect] = may.effects.as_slice() else {
+        return None;
+    };
+
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let reveal = reveal_effect.downcast_ref::<crate::effects::RevealTaggedEffect>()?;
+    let move_to_zone = downcast_move_to_zone(move_effect)?;
+
+    if choose_primary_zone(choose) != Some(Zone::Exile)
+        || choose.is_search
+        || !choose.count.is_single()
+        || reveal.tag != choose.tag
+        || !move_to_hand_uses_chosen_tag(move_to_zone, choose.tag.as_str())
+    {
+        return None;
+    }
+
+    let actor = may.decider.as_ref().unwrap_or(&choose.chooser);
+    if actor != &choose.chooser {
+        return None;
+    }
+
+    let actor_text = describe_player_filter(actor);
+    let chosen = describe_choose_selection(choose);
+    let location = match choose.filter.owner.as_ref() {
+        Some(owner) if owner == actor => {
+            if actor_text == "you" {
+                "you own in exile".to_string()
+            } else {
+                format!("{} owns in exile", describe_player_filter(owner))
+            }
+        }
+        _ => "in exile".to_string(),
+    };
+    let hand = if choose.filter.owner.as_ref() == Some(actor) {
+        format!("{} hand", describe_possessive_player_filter(actor))
+    } else {
+        "its owner's hand".to_string()
+    };
+
+    Some(format!(
+        "{} may choose {chosen} {location} and put that card into {hand}",
+        capitalize_first(&actor_text)
+    ))
 }
 
 pub(super) fn describe_may_enlist(may: &crate::effects::MayEffect) -> Option<String> {
@@ -4720,15 +4882,10 @@ pub(super) fn describe_lose_life_then_gain_life(
     ))
 }
 
-pub(super) fn describe_with_id_then_if(
+fn describe_with_id_if_clause(
     with_id: &crate::effects::WithIdEffect,
     if_effect: &crate::effects::IfEffect,
 ) -> Option<String> {
-    if if_effect.condition != with_id.id {
-        return None;
-    }
-
-    let setup = describe_effect(&with_id.effect);
     let then_text = describe_effect_list(&if_effect.then);
     let else_text = describe_effect_list(&if_effect.else_);
 
@@ -4753,6 +4910,22 @@ pub(super) fn describe_with_id_then_if(
                     format!("If {who} does")
                 }
             }
+        }
+    } else if let Some(roll_die) = with_id
+        .effect
+        .downcast_ref::<crate::effects::RollDieEffect>()
+    {
+        if let EffectPredicate::Value(cmp) = &if_effect.predicate {
+            let player = describe_player_filter(&roll_die.player);
+            let result_text = describe_roll_result_comparison(cmp)?;
+            let verb = player_verb(&player, "roll", "rolls");
+            if player == "you" {
+                format!("If you roll {result_text}")
+            } else {
+                format!("If {player} {verb} {result_text}")
+            }
+        } else {
+            format!("If {}", describe_effect_predicate(&if_effect.predicate))
         }
     } else if with_id
         .effect
@@ -4792,11 +4965,17 @@ pub(super) fn describe_with_id_then_if(
     };
 
     if else_text.is_empty() {
-        Some(format!("{setup}. {condition}, {then_text}"))
+        Some(format!("{condition}, {then_text}"))
     } else {
-        Some(format!(
-            "{setup}. {condition}, {then_text}. Otherwise, {else_text}"
-        ))
+        Some(format!("{condition}, {then_text}. Otherwise, {else_text}"))
+    }
+}
+
+fn describe_roll_result_comparison(cmp: &Comparison) -> Option<String> {
+    match cmp {
+        Comparison::Equal(n) => Some(n.to_string()),
+        Comparison::BetweenInclusive(min, max) => Some(format!("{min}-{max}")),
+        _ => None,
     }
 }
 
@@ -5392,7 +5571,8 @@ pub(super) fn describe_choose_then_for_each_same_name_search_to_battlefield(
         return None;
     }
 
-    let move_to_zone = unwrap_effect(move_effect).downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let move_to_zone =
+        unwrap_effect(move_effect).downcast_ref::<crate::effects::MoveToZoneEffect>()?;
     if !matches!(&move_to_zone.target, ChooseSpec::Tagged(tag) if tag == &search_choose.tag)
         || move_to_zone.zone != Zone::Battlefield
         || !move_to_zone.enters_tapped
@@ -7773,6 +7953,17 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             tag_attached.tag.as_str()
         );
     }
+    if let Some(roll_die) = effect.downcast_ref::<crate::effects::RollDieEffect>() {
+        let player = describe_player_filter(&roll_die.player);
+        if player == "you" {
+            return format!("Roll a d{}", roll_die.sides);
+        }
+        return format!(
+            "{player} {} a d{}",
+            player_verb(&player, "roll", "rolls"),
+            roll_die.sides
+        );
+    }
     if let Some(flip_coin) = effect.downcast_ref::<crate::effects::FlipCoinEffect>() {
         let player = describe_player_filter(&flip_coin.player);
         if player == "you" {
@@ -7912,6 +8103,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     }
     if let Some(may) = effect.downcast_ref::<crate::effects::MayEffect>() {
         if let Some(compact) = describe_may_enlist(may) {
+            return compact;
+        }
+        if let Some(compact) = describe_may_choose_reveal_and_move_to_hand(may) {
             return compact;
         }
         if let Some(compact) = describe_may_search_library_and_or_nonlibrary(may) {
@@ -10594,11 +10788,12 @@ pub(super) fn describe_ability(
                 .map(split_trigger_intervening_if)
                 .unwrap_or((None, None));
             let rendered_trigger = triggered.trigger.display();
-            let (trigger_surface, used_first_time_surface) = trigger_surface_with_first_time_each_turn(
-                &rendered_trigger,
-                ability.text.as_deref(),
-                max_times_each_turn,
-            );
+            let (trigger_surface, used_first_time_surface) =
+                trigger_surface_with_first_time_each_turn(
+                    &rendered_trigger,
+                    ability.text.as_deref(),
+                    max_times_each_turn,
+                );
             let mut line = format!("Triggered ability {index}: {trigger_surface}");
             if let Some(condition) = intervening_condition {
                 line.push_str(", if ");

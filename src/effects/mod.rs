@@ -135,12 +135,11 @@ pub use player::{
     CreateEmblemEffect, DiscoverEffect, EnergyCountersEffect, ExileInsteadOfGraveyardEffect,
     ExileThenGrantPlayEffect, ExileUntilMatchCastEffect, ExileUntilMatchGrantPlayEffect,
     ExperienceCountersEffect, ExtraTurnAfterNextTurnEffect, ExtraTurnEffect, FlipCoinEffect,
-    GrantBySpecEffect, GrantEffect, GrantNextSpellAbilityEffect,
-    GrantNextSpellCostReductionEffect, GrantPlayTaggedDuration, GrantPlayTaggedEffect,
-    GrantTaggedSpellFreeCastUntilEndOfTurnEffect,
+    GrantBySpecEffect, GrantEffect, GrantNextSpellAbilityEffect, GrantNextSpellCostReductionEffect,
+    GrantPlayTaggedDuration, GrantPlayTaggedEffect, GrantTaggedSpellFreeCastUntilEndOfTurnEffect,
     GrantTaggedSpellLifeCostByManaValueEffect, LoseTheGameEffect, PayEnergyEffect,
-    PoisonCountersEffect, RingTemptsYouEffect, SkipCombatPhasesEffect, SkipDrawStepEffect,
-    SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect, TakeInitiativeEffect,
+    PoisonCountersEffect, RingTemptsYouEffect, RollDieEffect, SkipCombatPhasesEffect,
+    SkipDrawStepEffect, SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect, TakeInitiativeEffect,
     VentureIntoDungeonEffect, WinTheGameEffect,
 };
 pub use replacement::{

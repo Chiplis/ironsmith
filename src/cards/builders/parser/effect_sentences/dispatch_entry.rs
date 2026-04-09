@@ -173,8 +173,11 @@ fn parse_exact_card_effect_bundle_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<
         return Some(effects);
     }
     if sentences.len() == 3
-        && let Ok(Some(effects)) =
-            parse_choose_objects_then_for_each_of_those_bundle(sentences[0], sentences[1], sentences[2])
+        && let Ok(Some(effects)) = parse_choose_objects_then_for_each_of_those_bundle(
+            sentences[0],
+            sentences[1],
+            sentences[2],
+        )
     {
         return Some(effects);
     }
@@ -376,17 +379,21 @@ fn parse_reveal_from_outside_game_or_choose_face_up_exile_to_hand(
     {
         return Ok(None);
     }
-    if !choose_words.iter().any(|word| *word == "face-up")
-        && !choose_words.iter().any(|word| *word == "faceup")
-    {
+    let has_face_up = choose_words
+        .iter()
+        .any(|word| *word == "face-up" || *word == "faceup")
+        || choose_words
+            .windows(2)
+            .any(|window| window == ["face", "up"]);
+    if !has_face_up {
         return Ok(None);
     }
     if !choose_words.iter().any(|word| *word == "exile") {
         return Ok(None);
     }
 
-    let reveal_from_idx = find_index(&reveal_tokens, |token| token.is_word("from"))
-        .ok_or_else(|| {
+    let reveal_from_idx =
+        find_index(&reveal_tokens, |token| token.is_word("from")).ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "missing outside-game clause in reveal-or-choose bundle (clause: '{}')",
                 first_words.join(" ")
@@ -2578,7 +2585,8 @@ fn parse_may_put_filtered_looked_card_onto_battlefield(
     let filter_end = action_words
         .token_index_for_word_index(from_among_word_idx)
         .unwrap_or(action_tokens.len());
-    let filter = if let Some(filter) = parse_looked_card_choice_filter(&action_tokens[..filter_end]) {
+    let filter = if let Some(filter) = parse_looked_card_choice_filter(&action_tokens[..filter_end])
+    {
         filter
     } else {
         return Ok(None);
@@ -2649,9 +2657,7 @@ fn parse_may_put_filtered_looked_card_onto_battlefield_and_filtered_into_hand(
         .unwrap_or(action_tokens.len());
     let battlefield_filter = parse_looked_card_choice_filter(&action_tokens[..first_filter_end])
         .ok_or_else(|| {
-            CardTextError::ParseError(
-                "unable to parse first looked-card choice filter".to_string(),
-            )
+            CardTextError::ParseError("unable to parse first looked-card choice filter".to_string())
         })?;
 
     let after_first_from = action_words
@@ -2661,29 +2667,31 @@ fn parse_may_put_filtered_looked_card_onto_battlefield_and_filtered_into_hand(
     let after_words = TokenWordView::new(&after_first_clause);
     let after_refs = after_words.word_refs();
 
-    let (tapped, second_start_words) = if slice_starts_with(
-        &after_refs,
-        &["onto", "the", "battlefield", "tapped", "and"],
-    ) || slice_starts_with(&after_refs, &["onto", "battlefield", "tapped", "and"])
-    {
-        (true, 5usize)
-    } else if slice_starts_with(&after_refs, &["onto", "the", "battlefield", "and"])
-        || slice_starts_with(&after_refs, &["onto", "battlefield", "and"])
-    {
-        (false, 4usize)
-    } else {
-        return Ok(None);
-    };
+    let (tapped, second_start_words) =
+        if slice_starts_with(
+            &after_refs,
+            &["onto", "the", "battlefield", "tapped", "and"],
+        ) || slice_starts_with(&after_refs, &["onto", "battlefield", "tapped", "and"])
+        {
+            (true, 5usize)
+        } else if slice_starts_with(&after_refs, &["onto", "the", "battlefield", "and"])
+            || slice_starts_with(&after_refs, &["onto", "battlefield", "and"])
+        {
+            (false, 4usize)
+        } else {
+            return Ok(None);
+        };
 
     let second_start = after_words
         .token_index_after_words(second_start_words)
         .unwrap_or(after_first_clause.len());
-    let hand_filter = parse_filtered_looked_card_into_hand_clause(&after_first_clause[second_start..])
-        .ok_or_else(|| {
-            CardTextError::ParseError(
-                "unable to parse second looked-card hand filter".to_string(),
-            )
-        })?;
+    let hand_filter =
+        parse_filtered_looked_card_into_hand_clause(&after_first_clause[second_start..])
+            .ok_or_else(|| {
+                CardTextError::ParseError(
+                    "unable to parse second looked-card hand filter".to_string(),
+                )
+            })?;
 
     Ok(Some((chooser, battlefield_filter, tapped, hand_filter)))
 }
@@ -2844,7 +2852,8 @@ fn parse_top_cards_put_match_into_hand_rest_graveyard(
     let filter_end = action_words
         .token_index_for_word_index(from_among_word_idx)
         .unwrap_or(action_tokens.len());
-    let filter = if let Some(filter) = parse_looked_card_choice_filter(&action_tokens[..filter_end]) {
+    let filter = if let Some(filter) = parse_looked_card_choice_filter(&action_tokens[..filter_end])
+    {
         filter
     } else {
         return Ok(None);
@@ -3272,11 +3281,12 @@ fn parse_may_put_filtered_card_from_among_into_hand(
     let filter_end = action_words
         .token_index_for_word_index(from_among_word_idx)
         .unwrap_or(action_tokens.len());
-    let mut filter = if let Some(filter) = parse_looked_card_choice_filter(&action_tokens[..filter_end]) {
-        filter
-    } else {
-        return Ok(None);
-    };
+    let mut filter =
+        if let Some(filter) = parse_looked_card_choice_filter(&action_tokens[..filter_end]) {
+            filter
+        } else {
+            return Ok(None);
+        };
     filter.zone = Some(zone);
 
     let after_from_words = &action_word_refs[from_among_word_idx + from_among_len..];
@@ -4348,10 +4358,9 @@ mod tests {
     use super::super::parse_effect_sentence_lexed;
     use super::{
         ConsultCastCost, ConsultCastTiming, parse_bargained_face_down_cast_mana_value_gate,
-        parse_exact_card_effect_bundle_lexed,
         parse_consult_cast_clause, parse_consult_condition_value,
         parse_consult_mana_value_condition_tokens,
-        parse_counted_looked_cards_into_your_hand_tokens,
+        parse_counted_looked_cards_into_your_hand_tokens, parse_exact_card_effect_bundle_lexed,
         parse_if_no_card_into_hand_this_way_sentence, parse_if_you_dont_sentence,
         parse_looked_card_reveal_filter,
         parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard,
@@ -4474,13 +4483,15 @@ mod tests {
         )
         .expect("rewrite lexer should classify turnabout mass-tap clause");
 
-        let parsed = parse_effect_sentence_lexed(&tokens)
-            .expect("turnabout mass-tap clause should parse");
+        let parsed =
+            parse_effect_sentence_lexed(&tokens).expect("turnabout mass-tap clause should parse");
 
-        let [crate::cards::builders::EffectAst::TapOrUntapAll {
-            tap_filter,
-            untap_filter,
-        }] = parsed.as_slice()
+        let [
+            crate::cards::builders::EffectAst::TapOrUntapAll {
+                tap_filter,
+                untap_filter,
+            },
+        ] = parsed.as_slice()
         else {
             panic!("expected shared tap-or-untap-all ast, got {parsed:?}");
         };

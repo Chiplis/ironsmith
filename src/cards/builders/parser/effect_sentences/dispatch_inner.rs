@@ -1623,6 +1623,18 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
     }
+    if sentence_words.first() == Some(&"return")
+        && slice_contains(sentence_words.as_slice(), &"rounded")
+        && slice_contains(sentence_words.as_slice(), &"up")
+        && let Some(mut effects) = run_sentence_primitives_lexed(
+            tokens,
+            POST_CONDITIONAL_SENTENCE_PRIMITIVES,
+            &POST_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX,
+        )?
+    {
+        apply_where_x_to_damage_amounts(tokens, &mut effects)?;
+        return Ok(effects);
+    }
     if sentence_words.first() == Some(&"choose")
         && contains_word_window(sentence_words.as_slice(), &["do", "the", "same", "for"])
         && let Some(mut effects) = run_sentence_primitives_lexed(

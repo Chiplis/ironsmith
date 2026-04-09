@@ -269,10 +269,7 @@ mod tests {
             .build();
         let obj = Object::from_card(id, &card, owner, Zone::Library);
         game.add_object(obj);
-        game.player_mut(owner)
-            .expect("player")
-            .library
-            .push(id);
+        game.player_mut(owner).expect("player").library.push(id);
         id
     }
 
@@ -497,7 +494,11 @@ mod tests {
 
         let effect = TagAllEffect::new(
             "kept",
-            Effect::move_to_zone(ChooseSpec::Tagged(TagKey::from("chosen")), Zone::Hand, false),
+            Effect::move_to_zone(
+                ChooseSpec::Tagged(TagKey::from("chosen")),
+                Zone::Hand,
+                false,
+            ),
         );
         effect.execute(&mut game, &mut ctx).unwrap();
 

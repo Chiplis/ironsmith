@@ -2,9 +2,8 @@ use super::super::activation_and_restrictions::{
     find_negation_span, parse_cant_restriction_clause, parse_cant_restrictions,
     parse_choose_card_type_phrase_words, parse_choose_color_phrase_words,
     parse_choose_creature_type_phrase_words, parse_choose_player_phrase_words,
-    parse_single_word_keyword_action,
-    parse_target_player_choose_objects_clause, parse_you_choose_objects_clause,
-    parse_you_choose_player_clause,
+    parse_single_word_keyword_action, parse_target_player_choose_objects_clause,
+    parse_you_choose_objects_clause, parse_you_choose_player_clause,
 };
 use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::keyword_static::{

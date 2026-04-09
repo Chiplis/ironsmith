@@ -1909,6 +1909,45 @@ fn activation_precheck_with_view(
     Some(eval_ctx.controller)
 }
 
+fn activation_card_cost_choice_cost(
+    choice: &crate::game_loop::ActivationCardCostChoice,
+) -> &crate::costs::Cost {
+    match choice {
+        crate::game_loop::ActivationCardCostChoice::Discard { cost, .. }
+        | crate::game_loop::ActivationCardCostChoice::ExileFromHand { cost, .. }
+        | crate::game_loop::ActivationCardCostChoice::ExileFromGraveyard { cost, .. }
+        | crate::game_loop::ActivationCardCostChoice::ExileChosenObject { cost, .. }
+        | crate::game_loop::ActivationCardCostChoice::RevealFromHand { cost, .. }
+        | crate::game_loop::ActivationCardCostChoice::ReturnToHand { cost, .. } => cost,
+    }
+}
+
+fn activation_cost_is_payable_with_view(
+    game: &GameState,
+    controller: PlayerId,
+    source: ObjectId,
+    cost: &crate::costs::Cost,
+    _view: &DerivedGameView<'_>,
+) -> bool {
+    let reason = crate::costs::PaymentReason::ActivateAbility;
+    if game
+        .validate_cost_for_payment_reason(controller, source, cost, reason)
+        .is_err()
+    {
+        return false;
+    }
+
+    if cost.mana_cost_ref().is_some() {
+        // Ability actions should remain visible before mana is floated, even when
+        // cost modifiers reprice the mana portion. The payment flow will enforce
+        // the actual mana payment later.
+        return true;
+    }
+
+    let check_ctx = crate::costs::CostCheckContext::new(source, controller).with_reason(reason);
+    crate::costs::can_pay_with_check_context(&*cost.0, game, &check_ctx).is_ok()
+}
+
 pub(crate) fn can_activate_ability_with_restrictions_with_view(
     game: &GameState,
     source: ObjectId,
@@ -1973,21 +2012,39 @@ pub(crate) fn can_activate_ability_with_restrictions_with_view(
     if let Some(perf_ctx) = perf_ctx {
         perf_ctx.add_cost_build_ms(cost_started_at.elapsed_ms());
     }
-    for cost in total_cost.costs() {
-        if game
-            .validate_cost_for_payment_reason(
-                controller,
-                source,
-                cost,
-                crate::costs::PaymentReason::ActivateAbility,
-            )
-            .is_err()
+    let components = total_cost.costs();
+    let mut idx = 0usize;
+    while idx < components.len() {
+        if let Some(choose) = components[idx]
+            .effect_ref()
+            .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
+            && let Some(next) = components.get(idx + 1)
+            && let Some(step) = crate::game_loop::choose_tagged_cost_step(choose, next)
         {
+            let paired_cost = match &step {
+                crate::game_loop::ActivationCostStep::Cost(cost) => cost,
+                crate::game_loop::ActivationCostStep::Sacrifice { cost, .. } => cost,
+                crate::game_loop::ActivationCostStep::CardChoice(choice) => {
+                    activation_card_cost_choice_cost(choice)
+                }
+            };
+            if !activation_cost_is_payable_with_view(game, controller, source, paired_cost, view) {
+                if let Some(perf_ctx) = perf_ctx {
+                    perf_ctx.add_total_ms(total_started_at.elapsed_ms());
+                }
+                return false;
+            }
+            idx += 2;
+            continue;
+        }
+
+        if !activation_cost_is_payable_with_view(game, controller, source, &components[idx], view) {
             if let Some(perf_ctx) = perf_ctx {
                 perf_ctx.add_total_ms(total_started_at.elapsed_ms());
             }
             return false;
         }
+        idx += 1;
     }
 
     if let Some(perf_ctx) = perf_ctx {
@@ -2310,7 +2367,6 @@ fn calculate_effective_activation_mana_cost_with_view(
                     adjusted = add_generic_mana_cost(&adjusted, missing);
                 }
             }
-
         }
     }
 

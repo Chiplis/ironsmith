@@ -547,11 +547,7 @@ impl CardStatusDb {
         Ok(previous_latest_id != Some(compilation_id))
     }
 
-    pub fn set_agent_running(
-        &self,
-        card_name: &str,
-        running: bool,
-    ) -> Result<(), Box<dyn Error>> {
+    pub fn set_agent_running(&self, card_name: &str, running: bool) -> Result<(), Box<dyn Error>> {
         self.conn.execute(
             "UPDATE latest_card_observation SET agent_running = ?1 WHERE card_name = ?2",
             params![running as i32, card_name],

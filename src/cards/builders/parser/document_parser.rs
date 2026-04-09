@@ -1260,6 +1260,9 @@ fn parse_former_section9_unsupported_line_cst(
 }
 
 fn strip_non_keyword_label_prefix_lexed(mut tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+    if looks_like_numeric_result_prefix_lexed(tokens) {
+        return tokens;
+    }
     while let Some((label, body_tokens)) = split_label_prefix_lexed(tokens) {
         if preserve_keyword_prefix_for_parse(label.as_str()) {
             break;
@@ -1273,6 +1276,69 @@ fn strip_non_keyword_label_prefix_lexed(mut tokens: &[OwnedLexToken]) -> &[Owned
 fn tokens_after_non_keyword_label_prefix(line: &PreprocessedLine) -> Option<&[OwnedLexToken]> {
     let stripped = strip_non_keyword_label_prefix_lexed(&line.tokens);
     (stripped.len() != line.tokens.len()).then_some(stripped)
+}
+
+fn looks_like_numeric_result_prefix_lexed(tokens: &[OwnedLexToken]) -> bool {
+    matches!(
+        tokens.first().map(|token| token.kind),
+        Some(TokenKind::Number)
+    ) && matches!(
+        tokens.get(1).map(|token| token.kind),
+        Some(TokenKind::Dash | TokenKind::EmDash)
+    ) && matches!(
+        tokens.get(2).map(|token| token.kind),
+        Some(TokenKind::Number)
+    ) && tokens
+        .iter()
+        .skip(3)
+        .any(|token| token.kind == TokenKind::Pipe)
+}
+
+fn is_trigger_result_followup_line(line: &PreprocessedLine) -> bool {
+    super::grammar::structure::split_leading_result_prefix_lexed(&line.tokens).is_some()
+}
+
+fn append_joined_line_tokens(target: &mut Vec<OwnedLexToken>, extra: &[OwnedLexToken]) {
+    if extra.is_empty() {
+        return;
+    }
+    if target
+        .last()
+        .is_some_and(|token| token.kind != TokenKind::Period)
+    {
+        target.push(OwnedLexToken::period(TextSpan::synthetic()));
+    }
+    target.extend(extra.iter().cloned());
+}
+
+fn extend_triggered_line_with_result_followups(
+    items: &[PreprocessedItem],
+    idx: usize,
+    mut triggered: TriggeredLineCst,
+) -> (TriggeredLineCst, usize) {
+    let mut next_idx = idx + 1;
+
+    while let Some(PreprocessedItem::Line(line)) = items.get(next_idx) {
+        if !is_trigger_result_followup_line(line) {
+            break;
+        }
+
+        let followup_text = render_token_slice(&line.tokens).trim().to_string();
+        if !triggered.effect_text.is_empty() {
+            triggered.effect_text.push('\n');
+        }
+        triggered.effect_text.push_str(followup_text.as_str());
+        if !triggered.full_text.is_empty() {
+            triggered.full_text.push('\n');
+        }
+        triggered.full_text.push_str(followup_text.as_str());
+        append_joined_line_tokens(&mut triggered.effect_parse_tokens, &line.tokens);
+        append_joined_line_tokens(&mut triggered.full_parse_tokens, &line.tokens);
+
+        next_idx += 1;
+    }
+
+    (triggered, next_idx)
 }
 
 fn looks_like_statement_line_tokens(tokens: &[OwnedLexToken]) -> bool {
@@ -1497,6 +1563,9 @@ fn split_label_prefix_token_slices(
 }
 
 fn split_label_prefix_lexed(tokens: &[OwnedLexToken]) -> Option<(String, &[OwnedLexToken])> {
+    if looks_like_numeric_result_prefix_lexed(tokens) {
+        return None;
+    }
     split_em_dash_label_prefix(tokens)
 }
 
@@ -1733,6 +1802,9 @@ fn rewrite_named_source_trigger_for_builder(
 
 fn strip_non_keyword_label_prefix(text: &str) -> &str {
     let mut current = text.trim();
+    if looks_like_numeric_result_prefix_text(current) {
+        return current;
+    }
     while let Some((label, body)) = split_label_prefix(current) {
         if preserve_keyword_prefix_for_parse(label) {
             break;
@@ -1740,6 +1812,20 @@ fn strip_non_keyword_label_prefix(text: &str) -> &str {
         current = body.trim();
     }
     current
+}
+
+fn looks_like_numeric_result_prefix_text(text: &str) -> bool {
+    let trimmed = text.trim_start();
+    let Some((head, rest)) = trimmed.split_once('—').or_else(|| trimmed.split_once('-')) else {
+        return false;
+    };
+    if !head.chars().all(|ch| ch.is_ascii_digit()) {
+        return false;
+    }
+    let Some((range_end, _)) = rest.split_once('|') else {
+        return false;
+    };
+    range_end.trim().chars().all(|ch| ch.is_ascii_digit())
 }
 
 #[cfg(test)]
@@ -1918,6 +2004,36 @@ mod tests {
 
         assert!(is_opening_hand_begin_game_static_tokens(&first));
         assert!(is_if_you_do_exile_followup_tokens(&second));
+    }
+
+    #[test]
+    fn parse_document_cst_merges_numeric_result_followups_into_triggered_line()
+    -> Result<(), CardTextError> {
+        let preprocessed = preprocess_document(
+            CardDefinitionBuilder::new(CardId::new(), "Aberrant Mind Sorcerer")
+                .card_types(vec![CardType::Creature]),
+            "Psionic Spells — When this creature enters, choose target instant or sorcery card in your graveyard, then roll a d20.\n1—9 | You may put that card on top of your library.\n10—20 | Return that card to your hand.",
+        )?;
+        let cst = super::parse_document_cst(&preprocessed, false)?;
+
+        match cst.lines.as_slice() {
+            [super::RewriteLineCst::Triggered(triggered)] => {
+                assert!(
+                    triggered.effect_text.contains("roll a d20"),
+                    "expected initial roll clause in triggered effect text, got {:?}",
+                    triggered.effect_text
+                );
+                assert!(
+                    triggered.effect_text.contains("1—9")
+                        && triggered.effect_text.contains("10—20"),
+                    "expected numeric result followups to merge into triggered line, got {:?}",
+                    triggered.effect_text
+                );
+            }
+            other => panic!("expected one merged triggered line, got {other:?}"),
+        }
+
+        Ok(())
     }
 
     #[test]
@@ -3501,8 +3617,14 @@ pub(crate) fn parse_document_cst(
                                     triggered.chosen_option_label =
                                         Some(label.to_ascii_lowercase());
                                 }
+                                let (triggered, next_idx) =
+                                    extend_triggered_line_with_result_followups(
+                                        &preprocessed.items,
+                                        idx,
+                                        triggered,
+                                    );
                                 lines.push(RewriteLineCst::Triggered(triggered));
-                                idx += 1;
+                                idx = next_idx;
                                 continue;
                             }
                             if let Some(mut triggered) =
@@ -3516,8 +3638,14 @@ pub(crate) fn parse_document_cst(
                                     triggered.chosen_option_label =
                                         Some(label.to_ascii_lowercase());
                                 }
+                                let (triggered, next_idx) =
+                                    extend_triggered_line_with_result_followups(
+                                        &preprocessed.items,
+                                        idx,
+                                        triggered,
+                                    );
                                 lines.push(RewriteLineCst::Triggered(triggered));
-                                idx += 1;
+                                idx = next_idx;
                                 continue;
                             }
                             if allow_unsupported && is_named_label {
@@ -3677,8 +3805,13 @@ pub(crate) fn parse_document_cst(
 
                     match parse_triggered_line_cst(line) {
                         Ok(triggered) => {
+                            let (triggered, next_idx) = extend_triggered_line_with_result_followups(
+                                &preprocessed.items,
+                                idx,
+                                triggered,
+                            );
                             lines.push(RewriteLineCst::Triggered(triggered));
-                            idx += 1;
+                            idx = next_idx;
                             continue;
                         }
                         Err(_) => {
@@ -3689,8 +3822,14 @@ pub(crate) fn parse_document_cst(
                                     &line.info.normalized.normalized,
                                 )?
                             {
+                                let (triggered, next_idx) =
+                                    extend_triggered_line_with_result_followups(
+                                        &preprocessed.items,
+                                        idx,
+                                        triggered,
+                                    );
                                 lines.push(RewriteLineCst::Triggered(triggered));
-                                idx += 1;
+                                idx = next_idx;
                                 continue;
                             }
                             if allow_unsupported {

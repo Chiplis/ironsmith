@@ -4226,30 +4226,15 @@ pub(super) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         && filtered.get(subject_len).copied() == Some("has")
         && matches!(
             &filtered[subject_len + 1..],
-            ["more", "card", "in", "hand", "than", "each", "other", "player"]
-                | ["more", "cards", "in", "hand", "than", "each", "other", "player"]
-                | [
-                    "more",
-                    "card",
-                    "in",
-                    "their",
-                    "hand",
-                    "than",
-                    "each",
-                    "other",
-                    "player",
-                ]
-                | [
-                    "more",
-                    "cards",
-                    "in",
-                    "their",
-                    "hand",
-                    "than",
-                    "each",
-                    "other",
-                    "player",
-                ]
+            [
+                "more", "card", "in", "hand", "than", "each", "other", "player"
+            ] | [
+                "more", "cards", "in", "hand", "than", "each", "other", "player"
+            ] | [
+                "more", "card", "in", "their", "hand", "than", "each", "other", "player",
+            ] | [
+                "more", "cards", "in", "their", "hand", "than", "each", "other", "player",
+            ]
         )
     {
         return Ok(PredicateAst::PlayerHasMoreCardsInHandThanEachOtherPlayer { player });

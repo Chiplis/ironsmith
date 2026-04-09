@@ -4376,11 +4376,12 @@ impl GameState {
             .unwrap_or(1)
     }
 
-    fn legal_land_sacrifice_targets_for_cost(
+    fn legal_sacrifice_targets_for_cost(
         &self,
         payer: PlayerId,
         source: ObjectId,
         filter: &crate::filter::ObjectFilter,
+        lands_only: bool,
     ) -> usize {
         let filter_ctx = crate::filter::FilterContext::new(payer).with_source(source);
         self.battlefield
@@ -4388,7 +4389,7 @@ impl GameState {
             .filter_map(|&id| self.object(id).map(|obj| (id, obj)))
             .filter(|(id, obj)| {
                 obj.controller == payer
-                    && self.object_is_land_for_cost_restrictions(*id)
+                    && (!lands_only || self.object_is_land_for_cost_restrictions(*id))
                     && filter.matches(obj, &filter_ctx, self)
                     && self.can_be_sacrificed(*id)
             })
@@ -4410,17 +4411,27 @@ impl GameState {
             return Err(crate::cost::CostPaymentError::InsufficientLife);
         }
 
-        if !self.player_cant_sacrifice_nonland_to_cast_or_activate(payer) {
-            return Ok(());
-        }
+        let lands_only = self.player_cant_sacrifice_nonland_to_cast_or_activate(payer);
 
-        if cost.is_sacrifice_self() && !self.object_is_land_for_cost_restrictions(source) {
-            return Err(crate::cost::CostPaymentError::NoValidSacrificeTarget);
+        if cost.is_sacrifice_self() {
+            if lands_only && !self.object_is_land_for_cost_restrictions(source) {
+                return Err(crate::cost::CostPaymentError::NoValidSacrificeTarget);
+            }
+            if !self.can_be_sacrificed(source) {
+                return Err(crate::cost::CostPaymentError::NoValidSacrificeTarget);
+            }
         }
 
         if let Some(filter) = cost.sacrifice_filter() {
+            // Choose-then-sacrifice activation costs often use a tagged filter for the
+            // follow-up sacrifice step. That tag is unresolved during precheck, so only
+            // validate concrete sacrifice filters here and let the staged cost flow
+            // validate the tagged selection after the player chooses an object.
+            if !filter.tagged_constraints.is_empty() {
+                return Ok(());
+            }
             let required = self.required_sacrifice_count_for_cost(cost);
-            if self.legal_land_sacrifice_targets_for_cost(payer, source, filter) < required {
+            if self.legal_sacrifice_targets_for_cost(payer, source, filter, lands_only) < required {
                 return Err(crate::cost::CostPaymentError::NoValidSacrificeTarget);
             }
         }
@@ -6161,11 +6172,7 @@ impl GameState {
     // === Chosen card type helpers ===
 
     /// Record a chosen card type for a source object.
-    pub fn set_chosen_card_type(
-        &mut self,
-        source_id: ObjectId,
-        card_type: crate::types::CardType,
-    ) {
+    pub fn set_chosen_card_type(&mut self, source_id: ObjectId, card_type: crate::types::CardType) {
         self.mark_continuous_state_dirty();
         self.chosen_card_types.insert(source_id, card_type);
     }

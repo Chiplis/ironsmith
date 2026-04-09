@@ -312,6 +312,7 @@ fn advance_reference_frame_for_effect(
         | EffectAst::AddManaFromLandCouldProduce { player, .. }
         | EffectAst::AddManaCommanderIdentity { player, .. }
         | EffectAst::FlipCoin { player }
+        | EffectAst::RollDie { player, .. }
         | EffectAst::ExtraTurnAfterTurn { player, .. }
         | EffectAst::ReduceNextSpellCostThisTurn { player, .. }
         | EffectAst::GrantNextSpellAbilityThisTurn { player, .. }

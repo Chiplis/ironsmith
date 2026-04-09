@@ -6,7 +6,7 @@ use winnow::token::any;
 
 use crate::cards::TextSpan;
 use crate::cards::builders::{CardTextError, EffectAst, IfResultPredicate, PredicateAst};
-use crate::effect::Value;
+use crate::effect::{Comparison, Value};
 
 use super::super::lexer::{LexStream, LexToken, OwnedLexToken, TokenKind, trim_lexed_commas};
 use super::{primitives, values};
@@ -664,6 +664,13 @@ pub(crate) fn split_leading_result_prefix_lexed<'a>(
     tokens: &'a [OwnedLexToken],
 ) -> Option<LeadingResultPrefixSpec<'a>> {
     let trimmed = trim_lexed_commas(tokens);
+    if let Some((predicate, trailing_tokens)) = split_leading_numeric_result_prefix_lexed(trimmed) {
+        return Some(LeadingResultPrefixSpec {
+            kind: LeadingResultPrefixKind::If,
+            predicate,
+            trailing_tokens,
+        });
+    }
     let kind = if trimmed.first().is_some_and(|token| token.is_word("if")) {
         LeadingResultPrefixKind::If
     } else if trimmed.first().is_some_and(|token| token.is_word("when")) {
@@ -693,6 +700,45 @@ pub(crate) fn split_leading_result_prefix_lexed<'a>(
         predicate,
         trailing_tokens,
     })
+}
+
+fn split_leading_numeric_result_prefix_lexed<'a>(
+    tokens: &'a [OwnedLexToken],
+) -> Option<(IfResultPredicate, &'a [OwnedLexToken])> {
+    let first = tokens.first()?;
+    let second = tokens.get(1)?;
+    let third = tokens.get(2)?;
+    let pipe_idx = tokens
+        .iter()
+        .position(|token| token.kind == TokenKind::Pipe)?;
+    if pipe_idx < 3 {
+        return None;
+    }
+
+    let min = match first.kind {
+        TokenKind::Number => first.parser_text().parse::<i32>().ok()?,
+        _ => return None,
+    };
+    if !matches!(second.kind, TokenKind::Dash | TokenKind::EmDash) {
+        return None;
+    }
+    let max = match third.kind {
+        TokenKind::Number => third.parser_text().parse::<i32>().ok()?,
+        _ => return None,
+    };
+    if min > max {
+        return None;
+    }
+
+    let trailing_tokens = trim_lexed_commas(&tokens[pipe_idx + 1..]);
+    if trailing_tokens.is_empty() {
+        return None;
+    }
+
+    Some((
+        IfResultPredicate::Value(Comparison::BetweenInclusive(min, max)),
+        trailing_tokens,
+    ))
 }
 
 pub(crate) fn split_trailing_if_clause_lexed<'a>(

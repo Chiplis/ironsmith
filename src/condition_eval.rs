@@ -96,8 +96,7 @@ mod tests {
 
         add_hand_card(&mut game, 4, "Plains", 0);
         assert!(
-            !evaluate_condition(&game, &condition, &ctx)
-                .expect("ties should evaluate cleanly"),
+            !evaluate_condition(&game, &condition, &ctx).expect("ties should evaluate cleanly"),
             "expected tie for most cards in hand to fail the condition"
         );
     }
@@ -680,9 +679,10 @@ pub fn evaluate_condition_external(
                 .into_iter()
                 .any(|player_id| {
                     let hand = game.player(player_id).map(|p| p.hand.len()).unwrap_or(0);
-                    game.players.iter().filter(|candidate| candidate.is_in_game()).all(
-                        |candidate| candidate.id == player_id || hand > candidate.hand.len(),
-                    )
+                    game.players
+                        .iter()
+                        .filter(|candidate| candidate.is_in_game())
+                        .all(|candidate| candidate.id == player_id || hand > candidate.hand.len())
                 })
         }
         Condition::PlayerIsMonarch { player } => {
@@ -1745,9 +1745,10 @@ fn evaluate_condition_simple(
                 .into_iter()
                 .any(|player_id| {
                     let hand = game.player(player_id).map(|p| p.hand.len()).unwrap_or(0);
-                    game.players.iter().filter(|candidate| candidate.is_in_game()).all(
-                        |candidate| candidate.id == player_id || hand > candidate.hand.len(),
-                    )
+                    game.players
+                        .iter()
+                        .filter(|candidate| candidate.is_in_game())
+                        .all(|candidate| candidate.id == player_id || hand > candidate.hand.len())
                 })
         }
         Condition::PlayerCastSpellsThisTurnOrMore { player, count } => {
@@ -2323,9 +2324,10 @@ fn evaluate_condition(
                 .into_iter()
                 .any(|player_id| {
                     let hand = game.player(player_id).map(|p| p.hand.len()).unwrap_or(0);
-                    game.players.iter().filter(|candidate| candidate.is_in_game()).all(
-                        |candidate| candidate.id == player_id || hand > candidate.hand.len(),
-                    )
+                    game.players
+                        .iter()
+                        .filter(|candidate| candidate.is_in_game())
+                        .all(|candidate| candidate.id == player_id || hand > candidate.hand.len())
                 }))
         }
         Condition::PlayerCastSpellsThisTurnOrMore { player, count } => {

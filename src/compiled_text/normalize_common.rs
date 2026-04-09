@@ -7006,6 +7006,9 @@ pub(super) fn describe_comparison(cmp: &Comparison) -> String {
         Comparison::LessThan(n) => format!("is less than {n}"),
         Comparison::LessThanOrEqual(n) => format!("is at most {n}"),
         Comparison::NotEqual(n) => format!("is not equal to {n}"),
+        Comparison::BetweenInclusive(min, max) => {
+            format!("is between {min} and {max} inclusive")
+        }
     }
 }
 

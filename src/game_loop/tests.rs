@@ -6931,9 +6931,9 @@ fn test_bosh_iron_golem_uses_sacrificed_artifact_mana_value_for_damage() {
 
 #[test]
 fn test_brutal_suppression_adds_a_land_sacrifice_activation_cost() {
+    use crate::PriorityResponse;
     use crate::cost::TotalCost;
     use crate::decision::LegalAction;
-    use crate::PriorityResponse;
     use crate::types::Subtype;
 
     let mut game = setup_game();
@@ -6980,6 +6980,7 @@ fn test_brutal_suppression_adds_a_land_sacrifice_activation_cost() {
         .card_types(vec![CardType::Land])
         .build();
     let land_id = game.create_object_from_card(&land, alice, Zone::Battlefield);
+    let land_stable_id = game.object(land_id).expect("land exists").stable_id;
 
     let actions_with_land = crate::decision::compute_legal_actions(&game, alice);
     assert!(
@@ -7015,31 +7016,33 @@ fn test_brutal_suppression_adds_a_land_sacrifice_activation_cost() {
     )
     .expect("activation should start");
 
-    let cost_ctx = match progress {
+    let progress = match progress {
         crate::decision::GameProgress::NeedsDecisionCtx(
-            crate::decisions::context::DecisionContext::SelectOptions(ctx),
-        ) => ctx,
-        other => panic!(
-            "expected next-cost chooser for Brutal Suppression activation, got {:?}",
-            other
-        ),
+            crate::decisions::context::DecisionContext::SelectOptions(cost_ctx),
+        ) => {
+            let sacrifice_cost_index = cost_ctx
+                .options
+                .iter()
+                .find(|option| {
+                    option
+                        .description
+                        .to_ascii_lowercase()
+                        .contains("sacrifice")
+                })
+                .map(|option| option.index)
+                .expect("expected a sacrifice cost option");
+
+            apply_priority_response_with_dm(
+                &mut game,
+                &mut trigger_queue,
+                &mut state,
+                &PriorityResponse::NextCostChoice(sacrifice_cost_index),
+                &mut dm,
+            )
+            .expect("should choose the sacrifice cost")
+        }
+        direct => direct,
     };
-
-    let sacrifice_cost_index = cost_ctx
-        .options
-        .iter()
-        .find(|option| option.description.to_ascii_lowercase().contains("sacrifice"))
-        .map(|option| option.index)
-        .expect("expected a sacrifice cost option");
-
-    let progress = apply_priority_response_with_dm(
-        &mut game,
-        &mut trigger_queue,
-        &mut state,
-        &PriorityResponse::NextCostChoice(sacrifice_cost_index),
-        &mut dm,
-    )
-    .expect("should choose the sacrifice cost");
 
     match progress {
         crate::decision::GameProgress::NeedsDecisionCtx(
@@ -7060,8 +7063,13 @@ fn test_brutal_suppression_adds_a_land_sacrifice_activation_cost() {
     )
     .expect("should sacrifice the land as the activation cost");
 
+    let current_land_id = game
+        .find_object_by_stable_id(land_stable_id)
+        .expect("sacrificed land should still be tracked by stable id");
     assert_eq!(
-        game.object(land_id).expect("land still exists").zone,
+        game.object(current_land_id)
+            .expect("sacrificed land should still exist")
+            .zone,
         Zone::Graveyard,
         "Brutal Suppression should sacrifice the chosen land as part of activation"
     );

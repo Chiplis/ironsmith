@@ -312,14 +312,14 @@ pub enum ActivationCostStep {
     CardChoice(ActivationCardCostChoice),
 }
 
-pub(super) fn tagged_filter_matches(filter: &ObjectFilter, tag: &crate::tag::TagKey) -> bool {
+pub(crate) fn tagged_filter_matches(filter: &ObjectFilter, tag: &crate::tag::TagKey) -> bool {
     filter.tagged_constraints.len() == 1
         && filter.tagged_constraints[0].tag == *tag
         && filter.tagged_constraints[0].relation
             == crate::filter::TaggedOpbjectRelation::IsTaggedObject
 }
 
-pub(super) fn choose_tagged_cost_step(
+pub(crate) fn choose_tagged_cost_step(
     choose: &crate::effects::ChooseObjectsEffect,
     next: &crate::costs::Cost,
 ) -> Option<ActivationCostStep> {

@@ -10151,7 +10151,10 @@ mod tests {
 
         assert_eq!(
             parsed,
-            (5, vec![CardType::Artifact, CardType::Creature, CardType::Land])
+            (
+                5,
+                vec![CardType::Artifact, CardType::Creature, CardType::Land]
+            )
         );
     }
 

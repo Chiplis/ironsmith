@@ -1161,19 +1161,23 @@ fn test_parse_split_the_party_chooses_target_player_and_half_their_creatures() {
 
     let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        (rendered.contains("choose a player") || rendered.contains("choose target player"))
-            && rendered.contains("where x is half the number of creatures they control, rounded up")
+        rendered.contains("choose target player")
+            && (rendered.contains(
+                "return half the creatures they control to their owner's hand, rounded up"
+            ) || rendered.contains(
+                "return half the creatures that player controls to their owner's hand, rounded up"
+            ))
             && rendered.contains("hand"),
         "expected choose-player plus half-creature return text, got {rendered}"
     );
 
     let debug = format!("{:?}", def.spell_effect.as_ref().expect("spell effects"));
     assert!(
-        debug.contains("ChoosePlayerEffect")
+        debug.contains("TargetOnlyEffect")
             && debug.contains("ChooseObjectsEffect")
-            && debug.contains("ReturnAllToHand")
+            && debug.contains("ReturnToHandEffect")
             && debug.contains("HalfRoundedDown"),
-        "expected Split the Party to lower to choose-player, choose-objects, and return-to-hand effects, got {debug}"
+        "expected Split the Party to lower to target-player, choose-objects, and return-to-hand effects, got {debug}"
     );
 }
 
@@ -2021,6 +2025,41 @@ fn test_parse_krark_coin_flip_trigger_keeps_both_flip_branches() {
     assert!(debug.contains("ReturnToHandEffect"), "{debug}");
     assert!(debug.contains("CopySpellEffect"), "{debug}");
     assert!(debug.contains("ChooseNewTargetsEffect"), "{debug}");
+}
+
+#[test]
+fn test_parse_aberrant_mind_sorcerer_rolls_and_branch_ranges() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Aberrant Mind Sorcerer")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Psionic Spells — When this creature enters, choose target instant or sorcery card in your graveyard, then roll a d20.\n1—9 | You may put that card on top of your library.\n10—20 | Return that card to your hand.",
+        )
+        .expect("Aberrant Mind Sorcerer should parse");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("RollDieEffect"),
+        "expected die-roll effect in parsed ability, got {debug}"
+    );
+    assert!(
+        debug.contains("BetweenInclusive(1, 9)") && debug.contains("BetweenInclusive(10, 20)"),
+        "expected numeric result branches in parsed ability, got {debug}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("roll a d20"),
+        "expected d20 roll in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("if you roll 1-9") && rendered.contains("if you roll 10-20"),
+        "expected numeric roll branches in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("you may put that card on top of")
+            && rendered.contains("return that card to"),
+        "expected both psionic spells outcomes in compiled text, got {rendered}"
+    );
 }
 
 #[test]
@@ -23160,16 +23199,17 @@ fn coax_from_the_blind_eternities_lowers_to_face_up_exile_choice_bundle() {
     let debug = format!("{:?}", def.spell_effect);
     assert!(
         debug.contains("MayEffect")
-            && debug.contains("ChooseObjectsAcrossZones")
-            && debug.contains("Zone::Exile")
+            && debug.contains("ChooseObjectsEffect")
+            && debug.contains("zone: Some(Exile)")
             && debug.contains("face_down: Some(false)")
+            && debug.contains("RevealTaggedEffect")
             && debug.contains("MoveToZoneEffect"),
         "expected Coax to lower into a may/choose/reveal/move bundle, got {debug}"
     );
 
     let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        rendered.contains("choose a face-up eldrazi card you own in exile")
+        rendered.contains("you may choose a face-up eldrazi card you own in exile")
             && rendered.contains("put that card into your hand"),
         "expected Coax to render the exile choice surface, got {rendered}"
     );
@@ -23200,7 +23240,10 @@ impl crate::decision::DecisionMaker for ChooseFaceUpEldraziDecisionMaker {
             ctx.candidates
         );
         assert_eq!(ctx.candidates[0].id, self.expected);
-        assert!(ctx.candidates[0].legal, "expected the candidate to be legal");
+        assert!(
+            ctx.candidates[0].legal,
+            "expected the candidate to be legal"
+        );
         vec![self.expected]
     }
 }
@@ -23233,6 +23276,7 @@ fn coax_from_the_blind_eternities_puts_the_face_up_exiled_eldrazi_into_hand() {
         alice,
         crate::zone::Zone::Exile,
     );
+    let emrakul_stable_id = game.object(emrakul_id).expect("Emrakul exists").stable_id;
     let hidden_titan_id =
         game.create_object_from_definition(&hidden_titan_def, alice, crate::zone::Zone::Exile);
     game.set_face_down(hidden_titan_id);
@@ -23249,8 +23293,11 @@ fn coax_from_the_blind_eternities_puts_the_face_up_exiled_eldrazi_into_hand() {
             .expect("Coax from the Blind Eternities effect should resolve");
     }
 
+    let current_emrakul_id = game
+        .find_object_by_stable_id(emrakul_stable_id)
+        .expect("the chosen Eldrazi should still be tracked by stable id");
     assert_eq!(
-        game.object(emrakul_id).map(|object| object.zone),
+        game.object(current_emrakul_id).map(|object| object.zone),
         Some(crate::zone::Zone::Hand),
         "expected the face-up Eldrazi card to move to hand"
     );

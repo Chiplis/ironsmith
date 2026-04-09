@@ -1427,13 +1427,17 @@ pub(crate) fn parse_subject(tokens: &[OwnedLexToken]) -> SubjectAst {
 
     if words_have_prefix(
         slice,
-        &["the", "player", "who", "has", "the", "most", "cards", "in", "hand"],
+        &[
+            "the", "player", "who", "has", "the", "most", "cards", "in", "hand",
+        ],
     ) || words_have_prefix(
         slice,
         &["player", "who", "has", "the", "most", "cards", "in", "hand"],
     ) || words_have_prefix(
         slice,
-        &["the", "player", "with", "the", "most", "cards", "in", "hand"],
+        &[
+            "the", "player", "with", "the", "most", "cards", "in", "hand",
+        ],
     ) || words_have_prefix(
         slice,
         &["player", "with", "the", "most", "cards", "in", "hand"],

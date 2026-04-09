@@ -440,7 +440,25 @@ fn choose_player_split_the_party_returns_half_the_chosen_players_creatures_round
         + count_battlefield_name(&game, bob, "Bob Creature C");
 
     let mut dm = ScriptedDecisionMaker::new(&["Bob"], &[]);
-    resolve_spell_definition_with_dm(&mut game, &split_the_party, alice, &mut dm);
+    let spell_id = game.create_object_from_definition(&split_the_party, alice, Zone::Stack);
+    register_spell_cast_this_turn_for_test(&mut game, spell_id, alice);
+
+    let effects = split_the_party
+        .spell_effect
+        .as_ref()
+        .expect("spell effects");
+    let mut ctx = ExecutionContext::new_default(spell_id, alice)
+        .with_decision_maker(&mut dm)
+        .with_targets(vec![crate::executor::ResolvedTarget::Player(bob)]);
+    let mut trigger_queue = TriggerQueue::new();
+
+    for effect in effects {
+        let outcome = execute_effect(&mut game, effect, &mut ctx)
+            .expect("spell effect should resolve cleanly");
+        for event in outcome.events {
+            queue_triggers_from_event(&mut game, &mut trigger_queue, event, false);
+        }
+    }
 
     assert_eq!(
         game.player(bob).expect("bob exists").hand.len(),

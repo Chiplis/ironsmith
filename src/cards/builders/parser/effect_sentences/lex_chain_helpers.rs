@@ -332,6 +332,7 @@ pub(crate) fn find_verb_lexed(tokens: &[OwnedLexToken]) -> Option<(Verb, usize)>
             "transforms" | "transform" => Verb::Transform,
             "converts" | "convert" => Verb::Convert,
             "flips" | "flip" => Verb::Flip,
+            "rolls" | "roll" => Verb::Roll,
             "regenerates" | "regenerate" => Verb::Regenerate,
             "mills" | "mill" => Verb::Mill,
             "gets" | "get" => Verb::Get,

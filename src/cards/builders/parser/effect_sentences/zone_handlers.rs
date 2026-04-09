@@ -213,13 +213,14 @@ fn strip_type_choice_qualifier(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     let qualifier = find_word_sequence_start(&words, &["of", "the", "chosen", "type"])
         .map(|start| (start, 4usize))
         .or_else(|| {
-            find_word_sequence_start(&words, &["of", "chosen", "type"])
-                .map(|start| (start, 3usize))
+            find_word_sequence_start(&words, &["of", "chosen", "type"]).map(|start| (start, 3usize))
         })
         .or_else(|| {
             find_word_sequence_start(&words, &["of", "that", "type"]).map(|start| (start, 3usize))
         })
-        .or_else(|| find_word_sequence_start(&words, &["that", "type"]).map(|start| (start, 2usize)));
+        .or_else(|| {
+            find_word_sequence_start(&words, &["that", "type"]).map(|start| (start, 2usize))
+        });
     let Some((start, len)) = qualifier else {
         return trim_commas(tokens).to_vec();
     };
@@ -1840,6 +1841,39 @@ pub(crate) fn parse_flip(
 
     let target = parse_target_phrase(tokens)?;
     Ok(EffectAst::Flip { target })
+}
+
+pub(crate) fn parse_roll(
+    tokens: &[OwnedLexToken],
+    subject: Option<SubjectAst>,
+) -> Result<EffectAst, CardTextError> {
+    let player = match subject.unwrap_or(SubjectAst::This) {
+        SubjectAst::Player(player) => player,
+        SubjectAst::This => PlayerAst::Implicit,
+    };
+    let mut die_tokens = tokens;
+    if die_tokens
+        .first()
+        .is_some_and(|token| token.is_word("a") || token.is_word("an"))
+    {
+        die_tokens = &die_tokens[1..];
+    }
+    let Some(die_word) = die_tokens.first().and_then(OwnedLexToken::as_word) else {
+        return Err(CardTextError::ParseError(
+            "roll clause missing die size".to_string(),
+        ));
+    };
+    let die_word = die_word.to_ascii_lowercase();
+    let Some(sides) = die_word
+        .strip_prefix('d')
+        .and_then(|sides| sides.parse::<u32>().ok())
+    else {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported roll clause (clause: '{}')",
+            crate::cards::builders::parser::token_word_refs(tokens).join(" ")
+        )));
+    };
+    Ok(EffectAst::RollDie { player, sides })
 }
 
 pub(crate) fn parse_regenerate(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {

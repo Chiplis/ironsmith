@@ -523,7 +523,11 @@ pub(crate) fn parse_sentence_return_half_the_creatures_they_control_to_their_own
     {
         stripped.remove(0);
     }
-    if stripped.len() < 10 || !stripped.first().is_some_and(|token| token.is_word("return")) {
+    if stripped.len() < 10
+        || !stripped
+            .first()
+            .is_some_and(|token| token.is_word("return"))
+    {
         return Ok(None);
     }
 

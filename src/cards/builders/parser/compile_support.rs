@@ -3240,6 +3240,7 @@ fn effect_predicate_from_if_result(predicate: IfResultPredicate) -> EffectPredic
         IfResultPredicate::DidNot => EffectPredicate::DidNotHappen,
         IfResultPredicate::DiesThisWay => EffectPredicate::HappenedNotReplaced,
         IfResultPredicate::WasDeclined => EffectPredicate::WasDeclined,
+        IfResultPredicate::Value(cmp) => EffectPredicate::Value(cmp),
     }
 }
 
@@ -6111,6 +6112,12 @@ fn try_compile_flow_and_iteration_effect(
             choices.append(&mut player_choices);
             (vec![effect], choices)
         }
+        EffectAst::RollDie { player, sides } => {
+            let player_filter =
+                resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
+            ctx.last_player_filter = Some(player_filter.clone());
+            (vec![Effect::roll_die(*sides, player_filter)], Vec::new())
+        }
         EffectAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn => (
             vec![Effect::new(
                 crate::effects::RetainManaUntilEndOfTurnEffect::you(),
@@ -7324,12 +7331,9 @@ fn try_compile_visibility_and_card_selection_effect(
                 )
                 .in_zone(Zone::Library),
             );
-            let move_secondary = Effect::move_to_zone(
-                ChooseSpec::Tagged(hand_tag_key.clone()),
-                Zone::Hand,
-                false,
-            )
-            .tag_all(kept_tag_key.clone());
+            let move_secondary =
+                Effect::move_to_zone(ChooseSpec::Tagged(hand_tag_key.clone()), Zone::Hand, false)
+                    .tag_all(kept_tag_key.clone());
 
             let resolved_order = match order {
                 crate::cards::builders::LibraryBottomOrderAst::Random => {

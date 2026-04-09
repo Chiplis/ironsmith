@@ -255,12 +255,12 @@ pub(crate) fn parse_or_action_clause_lexed(
     let second_words = crate::cards::builders::parser::token_word_refs(second);
     if word_is(first_words.first().copied(), "tap")
         && word_is(second_words.first().copied(), "untap")
-        && first_words
-            .get(1)
-            .is_some_and(|word| word.eq_ignore_ascii_case("all") || word.eq_ignore_ascii_case("each"))
-        && second_words
-            .get(1)
-            .is_some_and(|word| word.eq_ignore_ascii_case("all") || word.eq_ignore_ascii_case("each"))
+        && first_words.get(1).is_some_and(|word| {
+            word.eq_ignore_ascii_case("all") || word.eq_ignore_ascii_case("each")
+        })
+        && second_words.get(1).is_some_and(|word| {
+            word.eq_ignore_ascii_case("all") || word.eq_ignore_ascii_case("each")
+        })
     {
         return Ok(None);
     }
@@ -1886,6 +1886,7 @@ pub(crate) enum Verb {
     Transform,
     Convert,
     Flip,
+    Roll,
     Regenerate,
     Mill,
     Get,

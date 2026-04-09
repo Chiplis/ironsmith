@@ -586,6 +586,7 @@ fn comparison_display(cmp: &Comparison) -> String {
         Comparison::LessThanOrEqual(0) => "no".to_string(),
         Comparison::LessThanOrEqual(n) => format!("{n} or less"),
         Comparison::NotEqual(n) => format!("not {n}"),
+        Comparison::BetweenInclusive(min, max) => format!("{min} to {max}"),
     }
 }
 
@@ -3251,8 +3252,12 @@ mod tests {
             .power_toughness(PowerToughness::fixed(1, 1))
             .build();
         let creature_id = game.create_object_from_card(&creature_card, alice, Zone::Battlefield);
-        game.object_mut(equipment_id).unwrap().attached_to = Some(AttachmentTarget::Object(creature_id));
-        game.object_mut(creature_id).unwrap().attachments.push(equipment_id);
+        game.object_mut(equipment_id).unwrap().attached_to =
+            Some(AttachmentTarget::Object(creature_id));
+        game.object_mut(creature_id)
+            .unwrap()
+            .attachments
+            .push(equipment_id);
 
         let graveyard_card_a = CardBuilder::new(CardId::new(), "Graveyard Creature A")
             .card_types(vec![CardType::Creature])

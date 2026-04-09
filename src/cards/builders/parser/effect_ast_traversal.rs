@@ -170,6 +170,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::AddManaCommanderIdentity { .. } => {}
         EffectAst::AddManaImprintedColors => {}
         EffectAst::Scry { .. } => {}
+        EffectAst::RollDie { .. } => {}
         EffectAst::Fateseal { .. } => {}
         EffectAst::Discover { .. } => {}
         EffectAst::ConsultTopOfLibrary { .. } => {}

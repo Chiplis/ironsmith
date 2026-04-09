@@ -60,6 +60,55 @@ fn object_filter_mentions_iterated_player(filter: &ObjectFilter) -> bool {
             .any(object_filter_mentions_iterated_player)
 }
 
+fn value_mentions_iterated_player(value: &crate::effect::Value) -> bool {
+    match value {
+        crate::effect::Value::Add(left, right) => {
+            value_mentions_iterated_player(left) || value_mentions_iterated_player(right)
+        }
+        crate::effect::Value::Scaled(inner, _) | crate::effect::Value::HalfRoundedDown(inner) => {
+            value_mentions_iterated_player(inner)
+        }
+        crate::effect::Value::Count(filter)
+        | crate::effect::Value::CountScaled(filter, _)
+        | crate::effect::Value::TotalPower(filter)
+        | crate::effect::Value::TotalToughness(filter)
+        | crate::effect::Value::TotalManaValue(filter)
+        | crate::effect::Value::GreatestPower(filter)
+        | crate::effect::Value::GreatestToughness(filter)
+        | crate::effect::Value::GreatestManaValue(filter)
+        | crate::effect::Value::BasicLandTypesAmong(filter)
+        | crate::effect::Value::ColorsAmong(filter)
+        | crate::effect::Value::DistinctNames(filter) => {
+            object_filter_mentions_iterated_player(filter)
+        }
+        crate::effect::Value::CreaturesDiedThisTurnControlledBy(player)
+        | crate::effect::Value::CountPlayers(player)
+        | crate::effect::Value::PartySize(player)
+        | crate::effect::Value::LifeTotal(player)
+        | crate::effect::Value::HalfLifeTotalRoundedUp(player)
+        | crate::effect::Value::HalfLifeTotalRoundedDown(player)
+        | crate::effect::Value::HalfStartingLifeTotalRoundedUp(player)
+        | crate::effect::Value::HalfStartingLifeTotalRoundedDown(player)
+        | crate::effect::Value::CardsInHand(player)
+        | crate::effect::Value::CardsInLibrary(player)
+        | crate::effect::Value::DevotionToChosenColor(player)
+        | crate::effect::Value::LifeGainedThisTurn(player)
+        | crate::effect::Value::LifeLostThisTurn(player)
+        | crate::effect::Value::NoncombatDamageDealtToPlayersThisTurn(player)
+        | crate::effect::Value::MaxCardsDrawnThisTurn(player)
+        | crate::effect::Value::MaxCardsInHand(player)
+        | crate::effect::Value::CardsInGraveyard(player)
+        | crate::effect::Value::SpellsCastThisTurn(player)
+        | crate::effect::Value::SpellsCastBeforeThisTurn(player)
+        | crate::effect::Value::CardTypesInGraveyard(player) => player.mentions_iterated_player(),
+        crate::effect::Value::Devotion { player, .. } => player.mentions_iterated_player(),
+        crate::effect::Value::SpellsCastThisTurnMatching { player, filter, .. } => {
+            player.mentions_iterated_player() || object_filter_mentions_iterated_player(filter)
+        }
+        _ => false,
+    }
+}
+
 /// Build a human-readable prompt from an ObjectFilter when the
 /// effect carries only the bare default description.
 ///
@@ -572,7 +621,16 @@ pub(crate) fn run_choose_objects(
 
     let (base_min, max) = if effect.count.dynamic_x || effect.count_value.is_some() {
         let x = if let Some(count_value) = effect.count_value.as_ref() {
-            resolve_value(game, count_value, ctx)?.max(0) as usize
+            let previous_iterated_player = ctx.iterated_player;
+            if previous_iterated_player.is_none()
+                && matches!(effect.chooser, PlayerFilter::Target(_))
+                && value_mentions_iterated_player(count_value)
+            {
+                ctx.iterated_player = Some(chooser_id);
+            }
+            let resolved = resolve_value(game, count_value, ctx);
+            ctx.iterated_player = previous_iterated_player;
+            resolved?.max(0) as usize
         } else {
             ctx.x_value
                 .ok_or_else(|| ExecutionError::UnresolvableValue("X value not set".to_string()))?

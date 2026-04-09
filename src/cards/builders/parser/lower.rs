@@ -2802,6 +2802,9 @@ fn split_statement_label_prefix_for_lowering_lexed(
 fn strip_non_keyword_label_prefix_for_lowering_lexed(
     mut tokens: &[OwnedLexToken],
 ) -> &[OwnedLexToken] {
+    if looks_like_numeric_result_prefix_lexed(tokens) {
+        return tokens;
+    }
     while let Some((label, body_tokens)) = split_statement_label_prefix_for_lowering_lexed(tokens) {
         if preserve_keyword_prefix_for_parse(label.as_str()) {
             break;
@@ -2821,6 +2824,22 @@ fn rewrite_copy_exception_type_removal_for_lowering_lexed(
     tokens: &[OwnedLexToken],
 ) -> Vec<OwnedLexToken> {
     remove_copy_exception_type_removal_lexed(tokens)
+}
+
+fn looks_like_numeric_result_prefix_lexed(tokens: &[OwnedLexToken]) -> bool {
+    matches!(
+        tokens.first().map(|token| token.kind),
+        Some(TokenKind::Number)
+    ) && matches!(
+        tokens.get(1).map(|token| token.kind),
+        Some(TokenKind::Dash | TokenKind::EmDash)
+    ) && matches!(
+        tokens.get(2).map(|token| token.kind),
+        Some(TokenKind::Number)
+    ) && tokens
+        .iter()
+        .skip(3)
+        .any(|token| token.kind == TokenKind::Pipe)
 }
 
 fn rewrite_statement_parse_sentences_for_lowering_lexed(

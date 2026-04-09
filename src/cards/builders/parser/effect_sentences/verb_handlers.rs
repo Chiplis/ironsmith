@@ -49,8 +49,8 @@ use super::zone_handlers::{
     parse_equal_to_number_of_filter_plus_or_minus_fixed_value,
     parse_equal_to_number_of_filter_value, parse_equal_to_number_of_opponents_you_have_value,
     parse_exchange, parse_exile, parse_flip, parse_get, parse_graveyard_owner_prefix, parse_mill,
-    parse_pay, parse_regenerate, parse_remove, parse_return, parse_sacrifice, parse_scry,
-    parse_skip, parse_surveil, parse_switch, parse_tap, parse_untap,
+    parse_pay, parse_regenerate, parse_remove, parse_return, parse_roll, parse_sacrifice,
+    parse_scry, parse_skip, parse_surveil, parse_switch, parse_tap, parse_untap,
     wrap_return_with_delayed_timing,
 };
 
@@ -141,6 +141,7 @@ pub(crate) fn parse_effect_with_verb(
         Verb::Transform => parse_transform(tokens),
         Verb::Convert => parse_convert(tokens),
         Verb::Flip => parse_flip(tokens, subject),
+        Verb::Roll => parse_roll(tokens, subject),
         Verb::Regenerate => parse_regenerate(tokens),
         Verb::Mill => parse_mill(tokens, subject),
         Verb::Get => parse_get(tokens, subject),

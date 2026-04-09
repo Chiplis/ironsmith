@@ -304,6 +304,7 @@ fn parse_modal_header_prefix_effects(
                 IfResultPredicate::DidNot => EffectPredicate::DidNotHappen,
                 IfResultPredicate::DiesThisWay => EffectPredicate::HappenedNotReplaced,
                 IfResultPredicate::WasDeclined => EffectPredicate::WasDeclined,
+                IfResultPredicate::Value(cmp) => EffectPredicate::Value(cmp),
             };
             (
                 gate_spec.prefix_tokens,

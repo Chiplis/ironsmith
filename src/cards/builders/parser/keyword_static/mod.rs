@@ -167,6 +167,18 @@ fn keyword_static_marker(tokens: &[OwnedLexToken]) -> StaticAbility {
     StaticAbility::keyword_marker(keyword_static_clause_text(tokens))
 }
 
+fn trim_outer_quotes(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+    let mut start = 0usize;
+    let mut end = tokens.len();
+    while start < end && tokens[start].is_quote() {
+        start += 1;
+    }
+    while end > start && tokens[end - 1].is_quote() {
+        end -= 1;
+    }
+    &tokens[start..end]
+}
+
 #[derive(Clone, Copy)]
 enum StaticAbilityLineRuleAst {
     Single(fn(&[OwnedLexToken]) -> Result<Option<StaticAbilityAst>, CardTextError>),
@@ -891,7 +903,8 @@ pub(crate) fn parse_activated_abilities_cost_increase_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let clause_words = crate::cards::builders::parser::token_word_refs(tokens);
-    if clause_words.len() < 8 || !slice_starts_with(&clause_words, &["activated", "abilities", "of"])
+    if clause_words.len() < 8
+        || !slice_starts_with(&clause_words, &["activated", "abilities", "of"])
     {
         return Ok(None);
     }
@@ -928,14 +941,22 @@ pub(crate) fn parse_activated_abilities_cost_increase_line(
     }
 
     let cost_tokens = trim_commas(&amount_tokens[2..]);
-    let Some(to_idx) =
-        find_index(&crate::cards::builders::parser::token_word_refs(&cost_tokens), |word| {
-            *word == "to"
-        })
-    else {
+    let Some(to_idx) = find_index(
+        &crate::cards::builders::parser::token_word_refs(&cost_tokens),
+        |word| *word == "to",
+    ) else {
         return Ok(None);
     };
-    let additional_cost_tokens = trim_commas(&cost_tokens[..to_idx]);
+    let to_token_idx =
+        crate::cards::builders::parser::token_index_for_word_index(&cost_tokens, to_idx)
+            .ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "missing activated-ability additional cost terminator (clause: '{}')",
+                    clause_words.join(" ")
+                ))
+            })?;
+    let additional_cost_tokens = trim_commas(&cost_tokens[..to_token_idx]);
+    let additional_cost_tokens = trim_outer_quotes(&additional_cost_tokens);
     if additional_cost_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing activated-ability additional cost (clause: '{}')",
@@ -950,14 +971,13 @@ pub(crate) fn parse_activated_abilities_cost_increase_line(
         )));
     }
 
-    let tail_words = crate::cards::builders::parser::token_word_refs(&cost_tokens[to_idx..]);
+    let tail_words = crate::cards::builders::parser::token_word_refs(&cost_tokens[to_token_idx..]);
     if !slice_starts_with(&tail_words, &["to", "activate"]) {
         return Ok(None);
     }
 
     Ok(Some(StaticAbility::increase_activated_ability_costs(
-        filter,
-        total_cost,
+        filter, total_cost,
     )))
 }
 

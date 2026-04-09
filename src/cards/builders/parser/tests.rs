@@ -951,6 +951,29 @@ fn rewrite_structure_leading_result_prefix_parser_splits_when_prefix() {
 }
 
 #[test]
+fn rewrite_structure_leading_result_prefix_parser_splits_numeric_ranges() {
+    let tokens = lex_line("1—9 | You may put that card on top of your library.", 0)
+        .expect("rewrite lexer should classify numeric result prefix sentence");
+    let prefix = super::grammar::structure::split_leading_result_prefix_lexed(&tokens)
+        .expect("structure helper should detect numeric result prefix");
+
+    assert_eq!(
+        prefix.kind,
+        super::grammar::structure::LeadingResultPrefixKind::If
+    );
+    assert_eq!(
+        prefix.predicate,
+        crate::cards::builders::IfResultPredicate::Value(
+            crate::effect::Comparison::BetweenInclusive(1, 9)
+        )
+    );
+    assert_eq!(
+        render_token_slice(prefix.trailing_tokens),
+        "You may put that card on top of your library."
+    );
+}
+
+#[test]
 fn rewrite_structure_trailing_if_clause_parser_splits_destroy_clause() {
     let tokens = lex_line("Destroy target creature if it's white", 0)
         .expect("rewrite lexer should classify trailing-if clause");
@@ -8145,11 +8168,8 @@ fn parse_choose_then_do_same_for_filter_building_blocks_match() {
 
 #[test]
 fn rewrite_grammar_unique_hand_leader_predicate_parses() {
-    let tokens = lex_line(
-        "a player has more cards in hand than each other player",
-        0,
-    )
-    .expect("rewrite lexer should classify unique hand-leader predicate");
+    let tokens = lex_line("a player has more cards in hand than each other player", 0)
+        .expect("rewrite lexer should classify unique hand-leader predicate");
 
     assert_eq!(
         super::parse_predicate_lexed(&tokens).expect("predicate should parse"),
