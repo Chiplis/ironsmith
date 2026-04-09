@@ -9073,6 +9073,108 @@ fn test_dash_grants_haste_and_returns_to_hand_at_next_end_step() {
 }
 
 #[test]
+fn test_gargoyle_sentinel_gains_flying_only_for_itself_until_end_of_turn() {
+    use crate::cards::CardDefinitionBuilder;
+    use crate::decision::{compute_legal_actions, LegalAction, PriorityResponse};
+    use crate::game_loop::{apply_priority_response_with_dm, resolve_stack_entry, PriorityLoopState};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 3);
+
+    let gargoyle_def = CardDefinitionBuilder::new(CardId::new(), "Gargoyle Sentinel")
+        .parse_text(
+            "Mana cost: {3}\n\
+             Type: Artifact Creature — Gargoyle\n\
+             Power/Toughness: 3/3\n\
+             Defender (This creature can't attack.)\n\
+             {3}: Until end of turn, this creature loses defender and gains flying.",
+        )
+        .expect("Gargoyle Sentinel should parse");
+    let gargoyle_id = game.create_object_from_definition(&gargoyle_def, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(gargoyle_id);
+
+    let other_creature_id = create_creature(&mut game, "Training Bear", alice, 2, 2);
+    game.remove_summoning_sickness(other_creature_id);
+
+    assert!(
+        !game.can_attack(gargoyle_id),
+        "defender should stop Gargoyle Sentinel from attacking before its ability resolves"
+    );
+    assert!(
+        !game.object_has_ability(gargoyle_id, &StaticAbility::flying()),
+        "Gargoyle Sentinel should not start with flying"
+    );
+    assert!(
+        !game.object_has_ability(other_creature_id, &StaticAbility::flying()),
+        "the nearby creature should not start with flying"
+    );
+
+    let ability_index = game
+        .object(gargoyle_id)
+        .expect("gargoyle sentinel exists")
+        .abilities
+        .iter()
+        .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .expect("Gargoyle Sentinel should have an activated ability");
+    let activate_action = compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::ActivateAbility { source, ability_index: idx }
+                    if *source == gargoyle_id && *idx == ability_index
+            )
+        })
+        .expect("Gargoyle Sentinel's activated ability should be legal");
+
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("Gargoyle Sentinel activation should succeed");
+    resolve_stack_entry(&mut game).expect("Gargoyle Sentinel ability should resolve");
+
+    assert!(
+        game.can_attack(gargoyle_id),
+        "the sentinel should be able to attack after losing defender"
+    );
+    assert!(
+        game.object_has_ability(gargoyle_id, &StaticAbility::flying()),
+        "the sentinel should gain flying"
+    );
+    assert!(
+        !game.object_has_ability(other_creature_id, &StaticAbility::flying()),
+        "the activated ability should not grant flying to other creatures"
+    );
+
+    game.next_turn();
+
+    assert!(
+        !game.object_has_ability(gargoyle_id, &StaticAbility::flying()),
+        "flying should expire at end of turn"
+    );
+    assert!(
+        !game.can_attack(gargoyle_id),
+        "defender should come back after end of turn"
+    );
+}
+
+#[test]
 fn test_suspend_creature_gains_haste_until_control_changes() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
