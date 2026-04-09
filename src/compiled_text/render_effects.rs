@@ -147,6 +147,57 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         ))
     }
 
+    fn describe_target_only_then_create_token_count(
+        target_only: &crate::effects::TargetOnlyEffect,
+        create_token: &crate::effects::CreateTokenEffect,
+    ) -> Option<String> {
+        if create_token.exile_at_end_of_combat
+            || create_token.sacrifice_at_end_of_combat
+            || create_token.sacrifice_at_next_end_step
+            || create_token.exile_at_next_end_step
+        {
+            return None;
+        }
+        let Value::Count(filter) = &create_token.count else {
+            return None;
+        };
+        if !matches!(create_token.controller, PlayerFilter::You) {
+            return None;
+        }
+
+        let choose_text = format!("Choose {}", describe_choose_spec(&target_only.target));
+        let token_blueprint = describe_token_blueprint(&create_token.token);
+        let token_phrase = pluralize_token_phrase(&token_blueprint);
+        let mut count_desc = pluralize_noun_phrase(
+            strip_indefinite_article(&describe_for_each_count_filter(filter)),
+        );
+        count_desc = count_desc
+            .replace("target opponent controls", "that player controls")
+            .replace("target player controls", "that player controls")
+            .replace("they control", "that player controls")
+            .replace("target opponent owns", "that player owns")
+            .replace("target player owns", "that player owns")
+            .replace("they own", "that player owns");
+        let count_desc = count_desc.trim();
+        if count_desc.is_empty() {
+            return None;
+        }
+
+        Some(format!(
+            "{choose_text}. Create X {token_phrase}, where X is the number of {count_desc}"
+        ))
+    }
+
+    if effects.len() == 2
+        && let Some(target_only) = effects[0].downcast_ref::<crate::effects::TargetOnlyEffect>()
+        && let Some(create_token) = unwrap_tag_wrappers(&effects[1])
+            .downcast_ref::<crate::effects::CreateTokenEffect>()
+        && let Some(rendered) =
+            describe_target_only_then_create_token_count(target_only, create_token)
+    {
+        return rendered;
+    }
+
     let mut parts = Vec::new();
     let mut idx = 0usize;
     while idx < filtered.len() {
