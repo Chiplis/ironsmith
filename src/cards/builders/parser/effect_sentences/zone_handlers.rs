@@ -3988,7 +3988,7 @@ fn parse_library_owner_prefix(
     None
 }
 
-fn parse_exile_top_library_clause(
+pub(crate) fn parse_exile_top_library_clause(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Option<EffectAst> {

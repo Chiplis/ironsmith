@@ -30,6 +30,7 @@ use super::super::util::{
 use super::super::value_helpers::parse_value_from_lexed;
 use super::divvy::try_parse_divvy_sentence_sequence;
 use super::sentence_helpers::*;
+use super::zone_handlers::parse_exile_top_library_clause;
 use super::{
     find_verb, parse_effect_sentence_lexed, parse_search_library_disjunction_filter,
     parse_token_copy_modifier_sentence, trim_edge_punctuation,
@@ -39,7 +40,7 @@ use crate::cards::builders::{
     CardTextError, CarryContext, EffectAst, GrantedAbilityAst, IT_TAG, IfResultPredicate,
     InsteadSemantics, KeywordAction, LibraryBottomOrderAst, LibraryConsultModeAst,
     LibraryConsultStopRuleAst, PlayerAst, PredicateAst, ReturnControllerAst, SubjectAst, TagKey,
-    TargetAst, TextSpan, TokenCopyFollowup, ZoneReplacementDurationAst,
+    TargetAst, TextSpan, TokenCopyFollowup, Verb, ZoneReplacementDurationAst,
 };
 use crate::effect::{ChoiceCount, Until, Value};
 use crate::filter::Comparison;
@@ -150,6 +151,56 @@ fn parse_same_sentence_copy_and_may_cast_copy(
     Ok(Some((copy_effects, spec)))
 }
 
+fn parse_subject_first_exile_top_library_then_play_bundle(
+    first_sentence: &[OwnedLexToken],
+    second_sentence: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    // Keep the exile tag and the play permission tied to the same exiled cards.
+    let Some((verb, verb_idx)) = find_verb(first_sentence) else {
+        return Ok(None);
+    };
+    if verb != Verb::Exile || verb_idx == 0 {
+        return Ok(None);
+    }
+
+    let subject_tokens = trim_commas(&first_sentence[..verb_idx]);
+    let subject = parse_subject(&subject_tokens);
+    let exile_tokens = trim_commas(&first_sentence[verb_idx + 1..]);
+    let Some(exile_effect) = parse_exile_top_library_clause(&exile_tokens, Some(subject)) else {
+        return Ok(None);
+    };
+    let Some(permission_effect) = parse_until_end_of_turn_may_play_tagged_clause(second_sentence)?
+    else {
+        return Ok(None);
+    };
+
+    let Some(tag) = match &exile_effect {
+        EffectAst::ExileTopOfLibrary { tags, .. } => tags.first().cloned(),
+        _ => None,
+    } else {
+        return Ok(None);
+    };
+
+    let permission_effect = match permission_effect {
+        EffectAst::GrantPlayTaggedUntilEndOfTurn {
+            player,
+            allow_land,
+            without_paying_mana_cost,
+            allow_any_color_for_cast,
+            ..
+        } => EffectAst::GrantPlayTaggedUntilEndOfTurn {
+            tag,
+            player,
+            allow_land,
+            without_paying_mana_cost,
+            allow_any_color_for_cast,
+        },
+        _ => return Ok(None),
+    };
+
+    Ok(Some(vec![exile_effect, permission_effect]))
+}
+
 const CHOSEN_NAME_TAG: &str = "__chosen_name__";
 const THEY_DONT_UNTAP_DURING_PREFIXES: &[&[&str]] = &[
     &["they", "dont", "untap", "during"],
@@ -164,6 +215,14 @@ const PRONOUN_TRIGGER_PREFIXES: &[&[&str]] = &[
 
 fn parse_exact_card_effect_bundle_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
     let sentences = split_lexed_sentences(tokens);
+    if sentences.len() == 2
+        && let Ok(Some(effects)) = parse_subject_first_exile_top_library_then_play_bundle(
+            sentences[0],
+            sentences[1],
+        )
+    {
+        return Some(effects);
+    }
     if sentences.len() == 2
         && let Ok(Some(effects)) = parse_reveal_from_outside_game_or_choose_face_up_exile_to_hand(
             sentences[0],

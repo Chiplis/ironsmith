@@ -8075,6 +8075,32 @@ fn rewrite_lowered_former_section9_cases_parse_without_fallback_text() -> Result
 }
 
 #[test]
+fn parse_subject_first_exile_top_library_then_play_permission_bundle() {
+    let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Bundle Probe")
+        .card_types(vec![CardType::Creature]);
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "That player exiles the top two cards of their library. Until end of turn, you may play those cards without paying their mana costs.",
+        false,
+    )
+    .expect("the Fallen Shinobi style bundle should lower cleanly");
+    let debug = format!("{:#?}", definition.abilities).to_ascii_lowercase();
+
+    assert!(
+        debug.contains("exiletopoflibraryeffect"),
+        "expected top-library exile in the bundle, got {debug}"
+    );
+    assert!(
+        debug.contains("grantplaytaggedeffect"),
+        "expected play-from-exile permission in the bundle, got {debug}"
+    );
+    assert!(
+        debug.contains("granttaggedspellfreecastuntilendofturneffect"),
+        "expected free-cast permission in the bundle, got {debug}"
+    );
+}
+
+#[test]
 fn rewrite_preprocess_expands_same_is_true_trigger_chain() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Thunderous Orator Variant")
         .card_types(vec![CardType::Creature])
