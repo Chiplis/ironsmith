@@ -8121,6 +8121,81 @@ fn test_flashback_exiles_after_resolution() {
 }
 
 #[test]
+fn test_creeping_renaissance_returns_chosen_permanent_type_from_graveyard() {
+    use crate::cards::builders::CardDefinitionBuilder;
+    use crate::cards::definitions::{basic_forest, grizzly_bears};
+    use crate::executor::{ExecutionContext, execute_effect};
+    use crate::mana::{ManaCost, ManaSymbol};
+
+    struct ChooseLandDecisionMaker;
+    impl DecisionMaker for ChooseLandDecisionMaker {
+        fn decide_options(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            assert_eq!(
+                ctx.description,
+                "Choose a permanent type",
+                "Creeping Renaissance should prompt for a permanent type at runtime"
+            );
+            ctx.options
+                .iter()
+                .find(|option| option.description.eq_ignore_ascii_case("land"))
+                .map(|option| vec![option.index])
+                .unwrap_or_else(|| vec![0])
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let def = CardDefinitionBuilder::new(CardId::new(), "Creeping Renaissance")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Green],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Choose a permanent type. Return all cards of the chosen type from your graveyard to your hand.\nFlashback {5}{G}{G} (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
+        )
+        .expect("Creeping Renaissance should parse");
+    let source_id = game.create_object_from_definition(&def, alice, Zone::Hand);
+    game.create_object_from_definition(&basic_forest(), alice, Zone::Graveyard);
+    let bears_id = game.create_object_from_definition(&grizzly_bears(), alice, Zone::Graveyard);
+
+    let mut dm = ChooseLandDecisionMaker;
+    let mut ctx = ExecutionContext::new_default(source_id, alice).with_decision_maker(&mut dm);
+
+    for effect in def.spell_effect.as_ref().expect("spell effects") {
+        execute_effect(&mut game, effect, &mut ctx).expect("Creeping Renaissance effect should resolve");
+    }
+
+    assert_eq!(
+        game.chosen_card_type(source_id),
+        Some(CardType::Land),
+        "the spell should store the chosen permanent type on the source"
+    );
+    assert!(
+        game.player(alice).expect("alice exists").hand.iter().any(|&id| {
+            game.object(id)
+                .is_some_and(|obj| obj.name == "Forest" && id != source_id)
+        }),
+        "Forest should return to hand when land is chosen"
+    );
+    assert!(
+        game.player(alice).expect("alice exists").graveyard.iter().any(|&id| {
+            id == bears_id
+                && game
+                    .object(id)
+                    .is_some_and(|obj| obj.name == "Grizzly Bears")
+        }),
+        "non-land cards should stay in the graveyard"
+    );
+}
+
+#[test]
 fn test_dash_grants_haste_and_returns_to_hand_at_next_end_step() {
     use crate::cards::CardDefinitionBuilder;
     use crate::mana::{ManaCost, ManaSymbol};

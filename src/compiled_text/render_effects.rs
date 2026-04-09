@@ -6192,6 +6192,17 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(choose_card_type) = effect.downcast_ref::<crate::effects::ChooseCardTypeEffect>() {
         let chooser = describe_player_filter(&choose_card_type.chooser);
         let choose_verb = player_verb(&chooser, "choose", "chooses");
+        let permanent_type_options = [
+            crate::types::CardType::Artifact,
+            crate::types::CardType::Creature,
+            crate::types::CardType::Enchantment,
+            crate::types::CardType::Land,
+            crate::types::CardType::Planeswalker,
+            crate::types::CardType::Battle,
+        ];
+        if choose_card_type.options == permanent_type_options {
+            return format!("{chooser} {choose_verb} a permanent type");
+        }
         if choose_card_type.options.is_empty() {
             return format!("{chooser} {choose_verb} a card type");
         }

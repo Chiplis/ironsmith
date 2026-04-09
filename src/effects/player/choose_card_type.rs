@@ -60,10 +60,23 @@ impl EffectExecutor for ChooseCardTypeEffect {
             .enumerate()
             .map(|(idx, card_type)| SelectableOption::new(idx, card_type.to_string()))
             .collect::<Vec<_>>();
+        let permanent_type_options = [
+            CardType::Artifact,
+            CardType::Creature,
+            CardType::Enchantment,
+            CardType::Land,
+            CardType::Planeswalker,
+            CardType::Battle,
+        ];
+        let prompt = if options == permanent_type_options {
+            "Choose a permanent type"
+        } else {
+            "Choose a card type"
+        };
         let choice_ctx = SelectOptionsContext::new(
             chooser,
             Some(ctx.source),
-            "Choose a card type",
+            prompt,
             display_options,
             1,
             1,

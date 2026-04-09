@@ -2840,6 +2840,65 @@ pub(crate) fn find_creature_type_choice_phrase(tokens: &[OwnedLexToken]) -> Opti
     None
 }
 
+fn find_type_choice_phrase(tokens: &[OwnedLexToken]) -> Option<(usize, usize)> {
+    find_creature_type_choice_phrase(tokens).or_else(|| {
+        for idx in 0..tokens.len() {
+            if tokens[idx].is_word("of")
+                && tokens
+                    .get(idx + 1)
+                    .is_some_and(|token| token.is_word("the"))
+                && tokens
+                    .get(idx + 2)
+                    .is_some_and(|token| token.is_word("chosen"))
+                && tokens
+                    .get(idx + 3)
+                    .is_some_and(|token| token.is_word("type"))
+            {
+                return Some((idx, 4));
+            }
+            if tokens[idx].is_word("of")
+                && tokens
+                    .get(idx + 1)
+                    .is_some_and(|token| token.is_word("chosen"))
+                && tokens
+                    .get(idx + 2)
+                    .is_some_and(|token| token.is_word("type"))
+            {
+                return Some((idx, 3));
+            }
+            if tokens[idx].is_word("of")
+                && tokens
+                    .get(idx + 1)
+                    .is_some_and(|token| token.is_word("that"))
+                && tokens
+                    .get(idx + 2)
+                    .is_some_and(|token| token.is_word("type"))
+            {
+                return Some((idx, 3));
+            }
+            if tokens[idx].is_word("that")
+                && tokens
+                    .get(idx + 1)
+                    .is_some_and(|token| token.is_word("type"))
+            {
+                return Some((idx, 2));
+            }
+        }
+        None
+    })
+}
+
+fn strip_type_choice_qualifier(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+    let Some((choice_idx, consumed)) = find_type_choice_phrase(tokens) else {
+        return trim_commas(tokens).to_vec();
+    };
+    let trimmed = trim_commas(&tokens[..choice_idx]);
+    let trailing = trim_commas(&tokens[choice_idx + consumed..]);
+    let mut stripped = trimmed;
+    stripped.extend(trailing);
+    trim_commas(&stripped).to_vec()
+}
+
 pub(crate) fn find_color_choice_phrase(tokens: &[OwnedLexToken]) -> Option<(usize, usize)> {
     for idx in 0..tokens.len() {
         if tokens[idx].is_word("of")
@@ -3101,30 +3160,22 @@ pub(crate) fn parse_sentence_return_targets_of_creature_type_of_choice(
         return Ok(None);
     }
 
-    let target_tokens = &tokens[1..to_idx];
-    let Some((choice_idx, consumed)) = find_creature_type_choice_phrase(target_tokens) else {
+    let target_tokens = trim_commas(&tokens[1..to_idx]);
+    let stripped_target_tokens = strip_type_choice_qualifier(&target_tokens);
+    if stripped_target_tokens == target_tokens {
         return Ok(None);
-    };
-
-    let trimmed_target = trim_commas(&target_tokens[..choice_idx]);
-    if trimmed_target.is_empty() {
-        return Err(CardTextError::ParseError(format!(
-            "missing return target before creature-type choice phrase (clause: '{}')",
-            crate::cards::builders::parser::token_word_refs(tokens).join(" ")
-        )));
     }
-    let trailing = trim_commas(&target_tokens[choice_idx + consumed..]);
-    if !trailing.is_empty() {
+    if stripped_target_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
-            "unsupported trailing return target clause after creature-type choice phrase (clause: '{}')",
+            "missing return target before type-choice phrase (clause: '{}')",
             crate::cards::builders::parser::token_word_refs(tokens).join(" ")
         )));
     }
 
-    let mut target = parse_target_phrase(&trimmed_target)?;
+    let mut target = parse_target_phrase(&stripped_target_tokens)?;
     if !add_chosen_creature_type_constraint_to_target(&mut target) {
         return Err(CardTextError::ParseError(format!(
-            "creature-type choice return target must be object-based (clause: '{}')",
+            "type-choice return target must be object-based (clause: '{}')",
             crate::cards::builders::parser::token_word_refs(tokens).join(" ")
         )));
     }

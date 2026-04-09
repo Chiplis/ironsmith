@@ -10159,6 +10159,28 @@ mod tests {
     }
 
     #[test]
+    fn parse_choose_card_type_phrase_words_supports_permanent_types() {
+        let parsed = parse_choose_card_type_phrase_words(&["choose", "a", "permanent", "type"])
+            .expect("permanent-type choice phrase should parse")
+            .expect("expected choose-card-type phrase");
+
+        assert_eq!(
+            parsed,
+            (
+                4,
+                vec![
+                    CardType::Artifact,
+                    CardType::Creature,
+                    CardType::Enchantment,
+                    CardType::Land,
+                    CardType::Planeswalker,
+                    CardType::Battle,
+                ]
+            )
+        );
+    }
+
+    #[test]
     fn parse_cant_restriction_clause_supports_that_player_cant_cast_spells() {
         let tokens = tokenize_line("That player can't cast spells.", 0);
 
@@ -10326,6 +10348,21 @@ pub(crate) fn parse_choose_card_type_phrase_words(
     };
     if words.get(idx) == Some(&"card") && words.get(idx + 1) == Some(&"type") {
         return Ok(Some((idx + 2, Vec::new())));
+    }
+    if words.get(idx) == Some(&"permanent")
+        && matches!(words.get(idx + 1).copied(), Some("type" | "types"))
+    {
+        return Ok(Some((
+            idx + 2,
+            vec![
+                CardType::Artifact,
+                CardType::Creature,
+                CardType::Enchantment,
+                CardType::Land,
+                CardType::Planeswalker,
+                CardType::Battle,
+            ],
+        )));
     }
 
     let mut options = Vec::new();
