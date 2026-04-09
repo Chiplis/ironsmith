@@ -19245,8 +19245,17 @@ fn parse_fallen_shinobi_uses_top_library_exile_and_plural_play_permission() {
         !abilities_debug.contains("casttaggedeffect"),
         "expected play permission rather than immediate cast, got {abilities_debug}"
     );
+    assert!(
+        abilities_debug.contains("thisdealscombatdamagetoplayer")
+            || abilities_debug.contains("thisdealscombatdamagetoplayertrigger"),
+        "expected the trigger to stay player-targeted, got {abilities_debug}"
+    );
 
     let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        !rendered.contains("card in that player's library"),
+        "expected the trigger to stay targeted at a player, got {rendered}"
+    );
     assert!(
         rendered.contains("play those cards")
             && rendered.contains("without paying their mana costs"),
@@ -19453,6 +19462,11 @@ fn parse_allows_that_player_when_trigger_binds_player_context() {
     assert!(
         debug.contains("DiscardEffect"),
         "expected discard effect in triggered ability, got {debug}"
+    );
+    assert!(
+        debug.contains("ThisDealsCombatDamageToPlayer")
+            || debug.contains("ThisDealsCombatDamageToPlayerTrigger"),
+        "expected the trigger to stay player-targeted, got {debug}"
     );
 }
 

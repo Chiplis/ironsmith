@@ -5627,6 +5627,16 @@ fn test_fallen_shinobi_trigger_exiles_top_two_cards_and_grants_play_permission()
         )),
         "fallen shinobi should expose a free cast action for the exiled spell"
     );
+
+    game.turn.turn_number += 1;
+    for card_id in [top_land_id, top_spell_id] {
+        assert!(
+            !game
+                .grant_registry
+                .card_can_play_from_zone(&game, card_id, Zone::Exile, alice),
+            "fallen shinobi should only grant play permission until end of turn"
+        );
+    }
 }
 
 // === Full Game Flow Integration Test ===
