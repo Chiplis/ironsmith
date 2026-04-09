@@ -8578,6 +8578,7 @@ fn rewrite_lexed_static_grant_line_ignores_inner_has_in_quoted_trigger() {
     let debug = format!("{parsed:?}");
 
     assert!(debug.contains("GrantObjectAbilityForFilter"), "{debug}");
+    assert!(debug.contains("intervening_if: Some"), "{debug}");
     assert!(debug.contains("PlayerHasNoOpponentWithMoreLifeThan"), "{debug}");
     assert!(debug.contains("ThisAttacksTrigger"), "{debug}");
 }

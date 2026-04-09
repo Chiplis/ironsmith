@@ -72,6 +72,43 @@ fn anthem_last_index_where(
 
 type AnthemNormalizedWords<'a> = crate::cards::builders::parser::grammar::primitives::TokenWordView<'a>;
 
+fn triggered_grant_effects_and_condition(
+    trigger: &TriggerSpec,
+    effects: &[EffectAst],
+) -> Result<(Vec<EffectAst>, Option<crate::ConditionExpr>), CardTextError> {
+    if let [
+        EffectAst::Conditional {
+            predicate,
+            if_true,
+            if_false,
+        },
+    ] = effects
+        && if_false.is_empty()
+    {
+        let mut imports = ReferenceImports::default();
+        imports.last_player_filter =
+            crate::cards::builders::parser::compile_support::inferred_trigger_player_filter(
+                trigger,
+            );
+        let reference_env =
+            crate::cards::builders::parser::reference_model::ReferenceEnv::from_imports(
+                &imports,
+                false,
+                false,
+                false,
+                None,
+            );
+        let condition = crate::cards::builders::parser::compile_support::compile_condition_from_predicate_ast_with_env(
+            predicate,
+            &reference_env,
+            None,
+        )?;
+        return Ok((if_true.clone(), Some(condition)));
+    }
+
+    Ok((effects.to_vec(), None))
+}
+
 pub(crate) fn parse_subject_cant_be_blocked_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
@@ -3147,14 +3184,27 @@ fn parse_triggered_granted_ability(
             trigger,
             effects,
             max_triggers_per_turn,
-        } => parsed_triggered_ability(
-            trigger,
-            effects,
-            vec![Zone::Battlefield],
-            Some(crate::cards::builders::parser::token_word_refs(&trigger_tokens).join(" ")),
-            max_triggers_per_turn.map(crate::ConditionExpr::MaxTimesEachTurn),
-            ReferenceImports::default(),
-        ),
+        } => {
+            let (effects, trigger_condition) =
+                triggered_grant_effects_and_condition(&trigger, &effects)?;
+            let max_condition = max_triggers_per_turn.map(crate::ConditionExpr::MaxTimesEachTurn);
+            let intervening_if = match (trigger_condition, max_condition) {
+                (Some(left), Some(right)) => Some(crate::ConditionExpr::And(
+                    Box::new(left),
+                    Box::new(right),
+                )),
+                (Some(condition), None) | (None, Some(condition)) => Some(condition),
+                (None, None) => None,
+            };
+            parsed_triggered_ability(
+                trigger,
+                effects,
+                vec![Zone::Battlefield],
+                Some(crate::cards::builders::parser::token_word_refs(&trigger_tokens).join(" ")),
+                intervening_if,
+                ReferenceImports::default(),
+            )
+        }
         _ => return Ok(None),
     };
     if parsed_triggered_ability_is_empty(&ability) {

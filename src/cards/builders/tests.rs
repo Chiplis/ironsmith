@@ -16874,6 +16874,25 @@ fn guild_artisan_stays_static_and_grants_the_treasure_trigger_to_commanders() {
             && abilities_debug.contains("CreateTokenEffect"),
         "expected Guild Artisan to grant an attack trigger to commander creatures, got {abilities_debug}"
     );
+
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Guild Artisan should grant a triggered ability to commanders");
+    assert!(
+        triggered.intervening_if.is_some(),
+        "expected Guild Artisan's granted trigger to keep its intervening-if gate"
+    );
+    assert!(
+        format!("{:?}", triggered.intervening_if)
+            .contains("PlayerHasNoOpponentWithMoreLifeThan"),
+        "expected Guild Artisan's granted trigger gate to mention the life comparison, got {:?}",
+        triggered.intervening_if
+    );
 }
 
 #[test]
