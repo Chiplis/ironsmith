@@ -1873,6 +1873,7 @@ mod tests {
         probe_triggered_split, render_token_slice, rewrite_keyword_dash_parse_tokens,
         split_activation_text_parts_lexed, split_label_prefix, split_label_prefix_lexed,
         split_reveal_first_draw_line_rewrite_lexed,
+        strip_trailing_trigger_cap_suffix_tokens,
         split_trailing_keyword_activation_sentence_lexed,
         split_trigger_sentence_chunks_rewrite_lexed, statement_parse_groups_lexed,
         strip_non_keyword_label_prefix, tokens_after_non_keyword_label_prefix,

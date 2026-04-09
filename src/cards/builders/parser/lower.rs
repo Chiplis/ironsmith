@@ -4359,10 +4359,10 @@ mod tests {
             })
             .expect("expected Portcullis-style line to normalize into a triggered ability");
 
-        let AbilityKind::Triggered(triggered) = parsed.ability.kind else {
+        let AbilityKind::Triggered(triggered) = parsed.parsed.ability.kind else {
             panic!(
                 "expected Portcullis-style line to normalize into a triggered ability, got {:?}",
-                parsed.ability.kind
+                parsed.parsed.ability.kind
             );
         };
         let debug = format!("{:?}", triggered.intervening_if);
