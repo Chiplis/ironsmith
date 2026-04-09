@@ -18,9 +18,8 @@ import {
   normalizeZoneViews,
 } from "@/lib/stack-targets";
 
-const HAND_PEEK_HEIGHT = 46;
-const HAND_REVEAL_HEIGHT = 164;
-const HAND_COLLAPSED_SHELL_HEIGHT = HAND_PEEK_HEIGHT;
+const HAND_PEEK_HEIGHT_DEFAULT = 46;
+const HAND_REVEAL_HEIGHT_DEFAULT = 164;
 const HAND_LANE_HOVER_FUZZ = 6;
 const TRANSITION_TRACKED_ZONE_IDS = ["battlefield", "hand", "graveyard", "exile", "command"];
 const SINGLE_ACTION_AUTO_DROP_MIN_DISTANCE_SQ = 18 * 18;
@@ -451,7 +450,12 @@ export default function Workspace({
   const { updateStackArrows, clearStackArrows } = useCombatArrows();
   const { endDrag } = useDragActions();
   const { clearHover, hoverCard } = useHoverActions();
-  const { nonDesktopViewport } = useViewportLayout();
+  const { nonDesktopViewport, tabletCompactViewport, smallDesktopViewport, largeDesktopViewport } = useViewportLayout();
+  const HAND_PEEK_HEIGHT = tabletCompactViewport ? 40 : (smallDesktopViewport ? 44 : (largeDesktopViewport ? 52 : HAND_PEEK_HEIGHT_DEFAULT));
+  const HAND_REVEAL_HEIGHT = tabletCompactViewport ? 140 : (smallDesktopViewport ? 152 : (largeDesktopViewport ? 180 : HAND_REVEAL_HEIGHT_DEFAULT));
+  const HAND_COLLAPSED_SHELL_HEIGHT = HAND_PEEK_HEIGHT;
+  const showSideDocks = !nonDesktopViewport && !tabletCompactViewport && !smallDesktopViewport;
+  const showTopDock = !nonDesktopViewport && !tabletCompactViewport;
 
   const players = useMemo(() => state?.players || [], [state?.players]);
   const perspective = state?.perspective;
@@ -1111,7 +1115,7 @@ export default function Workspace({
       <CastParticles />
       <ArrowOverlay />
       {notices.length > 0 && (
-        <div className="absolute top-2 right-2 z-[120] flex max-w-[min(460px,52vw)] flex-col gap-2">
+        <div className="absolute top-2 right-2 z-[120] flex max-w-[min(460px,clamp(52vw,58vw,65vw))] flex-col gap-2">
           {notices.map((notice) => {
             const toneClasses = notice.tone === "success"
               ? "workspace-notice workspace-notice--success"
@@ -1206,7 +1210,7 @@ export default function Workspace({
           setMobileOpponentIndex={setMobileOpponentIndex}
         />
       </div>
-      {!nonDesktopViewport && !deckLoadingMode && opponentsInspectorDockTop != null && (
+      {showTopDock && !deckLoadingMode && opponentsInspectorDockTop != null && (
         <div
           className="pointer-events-none fixed inset-x-0 z-30 flex items-end justify-end overflow-visible px-2"
           style={{ top: `${opponentsInspectorDockTop}px`, height: `${HAND_PEEK_HEIGHT}px` }}
@@ -1249,7 +1253,7 @@ export default function Workspace({
           </div>
         </div>
       )}
-      {!nonDesktopViewport && !deckLoadingMode && opponentsZoneHostRect != null && (
+      {showSideDocks && !deckLoadingMode && opponentsZoneHostRect != null && (
         <div
           className="pointer-events-none fixed inset-x-0 z-30 flex items-start justify-start overflow-visible px-2"
           style={{
@@ -1372,7 +1376,7 @@ export default function Workspace({
           </div>
         </div>
       )}
-      {!nonDesktopViewport && !deckLoadingMode && myZoneHostRect != null && (
+      {showSideDocks && !deckLoadingMode && myZoneHostRect != null && (
         <div
           className="pointer-events-none fixed inset-x-0 z-30 flex items-start justify-start overflow-visible px-2"
           style={{

@@ -2041,6 +2041,9 @@ pub enum Condition {
     /// A specific player has more life than you.
     PlayerHasMoreLifeThanYou { player: PlayerFilter },
 
+    /// A specific player has more life than each other player.
+    PlayerHasMoreLifeThanEachOtherPlayer { player: PlayerFilter },
+
     /// A specific player is currently the monarch.
     PlayerIsMonarch { player: PlayerFilter },
 

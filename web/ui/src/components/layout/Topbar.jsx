@@ -49,7 +49,7 @@ export default function Topbar({
     state,
   } = useGame();
   const { combatMode, combatModeRef } = useCombatArrows();
-  const { nonDesktopViewport } = useViewportLayout();
+  const { nonDesktopViewport, tabletCompactViewport, smallDesktopViewport, largeDesktopViewport } = useViewportLayout();
 
   const players = state?.players || [];
   const activePlayer = players.find((player) => player.id === state?.active_player) || null;
@@ -226,19 +226,24 @@ export default function Topbar({
     );
   }
 
+  const showCompactPhase = nonDesktopViewport || tabletCompactViewport;
+  const showCenterLane = !nonDesktopViewport && !tabletCompactViewport;
+  const showInlineControls = !nonDesktopViewport && !tabletCompactViewport;
+  const viewportTier = largeDesktopViewport ? "large" : smallDesktopViewport ? "small" : tabletCompactViewport ? "tablet" : nonDesktopViewport ? "phone" : "desktop";
+
   return (
-    <header className="table-toolbar table-toolbar--primary topbar-shell rounded-none px-3 py-2">
+    <header className="table-toolbar table-toolbar--primary topbar-shell rounded-none px-3 py-2" data-viewport-tier={viewportTier}>
       <div className="topbar-side-cluster topbar-side-cluster--left min-w-0">
         <h1 className="toolbar-brand topbar-brand m-0 whitespace-nowrap font-bold">
           Ironsmith
         </h1>
-        {nonDesktopViewport ? (
+        {showCompactPhase ? (
           <div className="topbar-mobile-status">
             <div className="topbar-phase-chip" aria-label={phaseSummary}>
               <span className="topbar-phase-chip-label">{compactPhaseLabel}</span>
               <span className="topbar-phase-chip-turn">T{state?.turn_number ?? "-"}</span>
             </div>
-            {activeMobileOpponent ? (
+            {nonDesktopViewport && activeMobileOpponent ? (
               <div
                 className={`topbar-opponent-chip${activeMobileOpponentButtonEnabled ? " is-targetable" : ""}`}
                 aria-label={`Viewing opponent ${activeMobileOpponent.name}`}
@@ -310,15 +315,17 @@ export default function Topbar({
         </div>
       </div>
 
-      <div className="topbar-center-lane min-w-0">
-        <div className="topbar-phase-shell">
-          <PhaseTrack />
+      {showCenterLane ? (
+        <div className="topbar-center-lane min-w-0">
+          <div className="topbar-phase-shell">
+            <PhaseTrack />
+          </div>
         </div>
-      </div>
+      ) : null}
 
       <div className="topbar-side-cluster topbar-side-cluster--right">
         <div className="topbar-minor-controls topbar-minor-controls--utility">
-          {!nonDesktopViewport ? (
+          {showInlineControls ? (
             <>
               <label className="toolbar-checkbox toolbar-debug-toggle topbar-toggle flex items-center gap-1.5 whitespace-nowrap cursor-pointer uppercase">
                 <Checkbox
@@ -361,8 +368,8 @@ export default function Topbar({
             deckLoadingMode={deckLoadingMode}
             puzzleSetupMode={puzzleSetupMode}
             onAddCardNotice={onAddCardNotice}
-            triggerIcon={nonDesktopViewport ? "menu" : "settings"}
-            showQuickActions={nonDesktopViewport}
+            triggerIcon={showInlineControls ? "settings" : "menu"}
+            showQuickActions={!showInlineControls}
           />
         </div>
       </div>

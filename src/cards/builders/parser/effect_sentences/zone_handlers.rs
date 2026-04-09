@@ -1478,6 +1478,7 @@ fn player_filter_for_set_life_total_reference(player: PlayerAst) -> Option<Playe
         PlayerAst::Defending => Some(PlayerFilter::Defending),
         PlayerAst::Attacking => Some(PlayerFilter::Attacking),
         PlayerAst::MostCardsInHand => Some(PlayerFilter::MostCardsInHand),
+        PlayerAst::MostLifeTied => Some(PlayerFilter::MostLifeTied),
         PlayerAst::ThatPlayerOrTargetController
         | PlayerAst::ItsController
         | PlayerAst::ItsOwner => None,

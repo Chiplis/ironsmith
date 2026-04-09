@@ -22,6 +22,25 @@ const INLINE_EXPANDED_MIN_HEIGHT = 152;
 const INLINE_EXPANDED_SAFE_GAP = 12;
 const INLINE_EXPANDED_BOTTOM_GAP = 4;
 const INLINE_EXPANDED_RIGHT_BLEED = 8;
+
+/* Viewport-tier overrides for inspector sizing */
+const TABLET_COMPACT_QUERY = "(min-width: 721px) and (max-width: 1023px)";
+const SMALL_DESKTOP_QUERY = "(min-width: 1024px) and (max-width: 1439px)";
+const LARGE_DESKTOP_QUERY = "(min-width: 1800px)";
+
+function getViewportTierInspectorOverrides() {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return {};
+  if (window.matchMedia(TABLET_COMPACT_QUERY).matches) {
+    return { minWidth: 180, widthFraction: 0.22, expandedMaxWidth: 600, minHandWidth: 120 };
+  }
+  if (window.matchMedia(SMALL_DESKTOP_QUERY).matches) {
+    return { minWidth: 200, widthFraction: 0.22, expandedMaxWidth: 800, minHandWidth: 140 };
+  }
+  if (window.matchMedia(LARGE_DESKTOP_QUERY).matches) {
+    return { minWidth: 260, widthFraction: 0.20, expandedMaxWidth: 1400, minHandWidth: 180 };
+  }
+  return {};
+}
 function inspectorBorderStyle(accent) {
   if (!accent) return undefined;
   return {
@@ -39,7 +58,10 @@ function viewportInspectorTargetWidthPx() {
   if (typeof window === "undefined" || !Number.isFinite(window.innerWidth)) {
     return 300;
   }
-  return Math.max(220, Math.floor(window.innerWidth * 0.25));
+  const overrides = getViewportTierInspectorOverrides();
+  const minW = overrides.minWidth ?? 220;
+  const fraction = overrides.widthFraction ?? 0.25;
+  return Math.max(minW, Math.floor(window.innerWidth * fraction));
 }
 
 function viewedCardIds(state) {
@@ -396,9 +418,10 @@ export default function RightRail({
     return Math.min(INSPECTOR_INLINE_MAX_WIDTH_PX, viewportInspectorTargetWidthPx());
   }, []);
   const expandedInlineWidth = useMemo(() => {
+    const effectiveMaxWidth = getViewportTierInspectorOverrides().expandedMaxWidth ?? INLINE_EXPANDED_MAX_WIDTH_PX;
     const targetWidth = Math.min(
       Math.max(compactInlineWidthPx, INLINE_EXPANDED_MIN_WIDTH),
-      Math.round(maxExpandedInlineWidth || INLINE_EXPANDED_MAX_WIDTH_PX),
+      Math.round(maxExpandedInlineWidth || effectiveMaxWidth),
       viewportInspectorTargetWidthPx()
     );
     return targetWidth;
@@ -501,6 +524,9 @@ export default function RightRail({
         Math.abs(currentHeight - nextHeight) >= 1 ? nextHeight : currentHeight
       ));
 
+      const tierOverrides = getViewportTierInspectorOverrides();
+      const effectiveExpandedMaxWidth = tierOverrides.expandedMaxWidth ?? INLINE_EXPANDED_MAX_WIDTH_PX;
+      const effectiveMinHandWidth = tierOverrides.minHandWidth ?? INLINE_EXPANDED_MIN_HAND_WIDTH;
       const dockGap = dockEl
         ? parseFloat(getComputedStyle(dockEl).columnGap || getComputedStyle(dockEl).gap || "0")
         : 0;
@@ -508,12 +534,12 @@ export default function RightRail({
         ? (
           inlineDockPlacement === "top"
             ? dockRect.width
-            : dockRect.width - INLINE_EXPANDED_MIN_HAND_WIDTH - dockGap
+            : dockRect.width - effectiveMinHandWidth - dockGap
         )
-        : INLINE_EXPANDED_MAX_WIDTH_PX;
+        : effectiveExpandedMaxWidth;
       const nextMaxWidth = Math.max(
         Math.max(compactInlineWidthPx, INLINE_EXPANDED_MIN_WIDTH),
-        Math.min(Math.floor(availableWidth), INLINE_EXPANDED_MAX_WIDTH_PX)
+        Math.min(Math.floor(availableWidth), effectiveExpandedMaxWidth)
       );
       setMaxExpandedInlineWidth((currentWidth) => (
         Math.abs(currentWidth - nextMaxWidth) >= 1 ? nextMaxWidth : currentWidth

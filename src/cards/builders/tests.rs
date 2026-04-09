@@ -18495,6 +18495,42 @@ fn parse_oracle_death_or_glory_divvy_surface_regression() {
 }
 
 #[test]
+fn render_make_an_example_preserves_two_pile_divvy_surface() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Make an Example")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Each opponent separates the creatures they control into two piles. For each opponent, you choose one of their piles. Each opponent sacrifices the creatures in their chosen pile. (Piles can be empty.)",
+        )
+        .expect("Make an Example should parse");
+
+    let rendered = compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Each opponent separates the creatures they control into two piles."),
+        "expected the divvy surface to survive compilation, got {rendered}"
+    );
+    assert!(
+        rendered.contains("For each opponent, you choose one of their piles."),
+        "expected chooser selection to survive compilation, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Each opponent sacrifices the creatures in their chosen pile."),
+        "expected chosen-pile sacrifice wording to survive compilation, got {rendered}"
+    );
+    assert!(
+        rendered.contains("(Piles can be empty.)"),
+        "expected empty-pile reminder to survive compilation, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("choose any number of creatures that player controls"),
+        "expected compiled text to normalize away the generic choose-any-number surface, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_exile_top_card_of_target_library_preserves_top_card_selection() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Top Card Exile Variant")
         .card_types(vec![CardType::Creature])
@@ -23236,6 +23272,32 @@ fn parse_sokenzan_renegade_keeps_unique_hand_leader_upkeep_trigger() {
 }
 
 #[test]
+fn parse_wild_dogs_keeps_unique_life_leader_upkeep_trigger() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Wild Dogs")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 1))
+        .parse_text(
+            "At the beginning of your upkeep, if a player has more life than each other player, the player with the most life gains control of this creature.\nCycling {2} ({2}, Discard this card: Draw a card.)",
+        )
+        .expect("Wild Dogs should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "At the beginning of your upkeep, if a player has more life than each other player, the player with the most life gains control of this creature."
+        ) && rendered.contains("Cycling {2}"),
+        "expected oracle-like upkeep trigger rendering, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("PlayerHasMoreLifeThanEachOtherPlayer { player: Any }")
+            && debug.contains("ChangeControllerToPlayer(MostLifeTied)"),
+        "expected unique life-leader trigger lowering, got {debug}"
+    );
+}
+
+#[test]
 fn parse_lulu_loyal_hollyphant_keeps_revolt_gate_and_untap_followup() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Lulu, Loyal Hollyphant")
         .card_types(vec![CardType::Creature])
@@ -23409,5 +23471,36 @@ fn coax_from_the_blind_eternities_puts_the_face_up_exiled_eldrazi_into_hand() {
     assert!(
         game.is_face_down(hidden_titan_id),
         "expected the hidden Titan to remain face down"
+    );
+}
+
+#[test]
+fn render_cranial_ram_keeps_only_x_dynamic() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Cranial Ram Variant")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Black],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .parse_text(
+            "Living weapon (When this Equipment enters, create a 0/0 black Phyrexian Germ creature token, then attach this to it.)\n\
+             Equipped creature gets +X/+1, where X is the number of artifacts you control.\n\
+             Equip {2}",
+        )
+        .expect("Cranial Ram text should parse");
+
+    let abilities_debug = format!("{:#?}", def.abilities);
+    assert!(
+        abilities_debug.contains("power: PerCount") && abilities_debug.contains("toughness: Fixed(1)"),
+        "expected Cranial Ram to keep only power dynamic, got {abilities_debug}"
+    );
+
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("living weapon")
+            && joined.contains("equipped creature gets +x/+1, where x is the number of artifacts you control")
+            && joined.contains("equip {2}"),
+        "expected Cranial Ram to preserve the mixed X/+1 wording, got {joined}"
     );
 }

@@ -3862,6 +3862,9 @@ fn parse_player_restriction_subject(
         }
         crate::cards::builders::SubjectAst::Player(PlayerAst::Chosen) => PlayerFilter::ChosenPlayer,
         crate::cards::builders::SubjectAst::Player(PlayerAst::Attacking) => PlayerFilter::Attacking,
+        crate::cards::builders::SubjectAst::Player(PlayerAst::MostLifeTied) => {
+            PlayerFilter::MostLifeTied
+        }
         _ => return Ok(None),
     };
     Ok(Some((player, None)))

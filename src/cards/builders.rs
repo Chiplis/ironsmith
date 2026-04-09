@@ -1223,6 +1223,7 @@ pub(crate) enum PlayerAst {
     Defending,
     Attacking,
     MostCardsInHand,
+    MostLifeTied,
     Target,
     TargetOpponent,
     Opponent,
@@ -1348,6 +1349,9 @@ pub(crate) enum PredicateAst {
         player: PlayerAst,
     },
     PlayerHasMoreLifeThanYou {
+        player: PlayerAst,
+    },
+    PlayerHasMoreLifeThanEachOtherPlayer {
         player: PlayerAst,
     },
     PlayerIsMonarch {

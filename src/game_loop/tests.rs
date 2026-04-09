@@ -4688,6 +4688,157 @@ fn test_priority_loop_empty_stack() {
     assert!(matches!(result, GameProgress::Continue));
 }
 
+struct CorpseCobbleDecisionMaker;
+
+impl DecisionMaker for CorpseCobbleDecisionMaker {
+    fn decide_priority(
+        &mut self,
+        game: &GameState,
+        ctx: &crate::decisions::context::PriorityContext,
+    ) -> crate::decision::LegalAction {
+        if let Some(action) = ctx.actions.iter().find(|action| {
+            matches!(
+                action,
+                crate::decision::LegalAction::CastSpell { spell_id, .. }
+                    if game
+                        .object(*spell_id)
+                        .is_some_and(|obj| obj.name == "Corpse Cobble")
+            )
+        }) {
+            return action.clone();
+        }
+
+        if let Some(action) = ctx.actions.iter().find(|action| {
+            matches!(
+                action,
+                crate::decision::LegalAction::ActivateManaAbility { source, .. }
+                    if game.object(*source).is_some_and(|obj| {
+                        matches!(obj.name.as_str(), "Island" | "Swamp")
+                    })
+            )
+        }) {
+            return action.clone();
+        }
+
+        crate::decision::LegalAction::PassPriority
+    }
+
+    fn decide_objects(
+        &mut self,
+        game: &GameState,
+        ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        let mut selected = Vec::new();
+        for name in ["Grizzly Bears", "Llanowar Elves"] {
+            if let Some(candidate) = ctx.candidates.iter().find(|candidate| {
+                candidate.legal
+                    && game
+                        .object(candidate.id)
+                        .is_some_and(|obj| obj.name == name)
+            }) {
+                selected.push(candidate.id);
+            }
+        }
+
+        if selected.is_empty() {
+            ctx.candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .map(|candidate| candidate.id)
+                .take(ctx.min)
+                .collect()
+        } else {
+            selected
+        }
+    }
+}
+
+#[test]
+fn test_corpse_cobble_sums_the_power_of_sacrificed_creatures() {
+    use crate::cards::definitions::{basic_island, basic_swamp, grizzly_bears, llanowar_elves};
+    use crate::game_state::Phase;
+    use crate::zone::Zone;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let mut trigger_queue = TriggerQueue::new();
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let corpse_cobble = CardDefinitionBuilder::new(CardId::from_raw(10001), "Corpse Cobble")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text("As an additional cost to cast this spell, sacrifice any number of creatures.\nCreate an X/X blue and black Zombie creature token with menace, where X is the total power of the sacrificed creatures.\nFlashback {3}{U}{B} (You may cast this card from your graveyard for its flashback cost and any additional costs. Then exile it.)")
+        .expect("Corpse Cobble text should parse");
+
+    game.create_object_from_definition(&corpse_cobble, alice, Zone::Hand);
+    game.create_object_from_definition(&basic_island(), alice, Zone::Battlefield);
+    game.create_object_from_definition(&basic_swamp(), alice, Zone::Battlefield);
+    game.create_object_from_definition(&grizzly_bears(), alice, Zone::Battlefield);
+    game.create_object_from_definition(&llanowar_elves(), alice, Zone::Battlefield);
+
+    let mut dm = CorpseCobbleDecisionMaker;
+    let result = run_priority_loop_with(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Corpse Cobble cast should resolve cleanly");
+    assert!(
+        matches!(result, GameProgress::Continue),
+        "priority loop should finish after Corpse Cobble resolves, got {result:?}"
+    );
+
+    assert!(
+        !game.battlefield_has("Grizzly Bears"),
+        "Grizzly Bears should have been sacrificed"
+    );
+    assert!(
+        !game.battlefield_has("Llanowar Elves"),
+        "Llanowar Elves should have been sacrificed"
+    );
+
+    let alice_graveyard = game.player(alice).expect("alice exists").graveyard.clone();
+    assert!(
+        alice_graveyard.iter().any(|id| {
+            game.object(*id)
+                .is_some_and(|obj| obj.name == "Grizzly Bears")
+        }),
+        "Grizzly Bears should end up in the graveyard"
+    );
+    assert!(
+        alice_graveyard.iter().any(|id| {
+            game.object(*id)
+                .is_some_and(|obj| obj.name == "Llanowar Elves")
+        }),
+        "Llanowar Elves should end up in the graveyard"
+    );
+
+    let zombie = game
+        .battlefield
+        .iter()
+        .filter_map(|id| game.object(*id))
+        .find(|obj| obj.name == "Zombie")
+        .expect("Corpse Cobble should create a Zombie token");
+    assert_eq!(
+        zombie.kind,
+        ObjectKind::Token,
+        "Corpse Cobble should create a token"
+    );
+    assert_eq!(
+        zombie.base_power,
+        Some(crate::card::PtValue::Fixed(3)),
+        "Zombie token should use the total power of the sacrificed creatures"
+    );
+    assert_eq!(
+        zombie.base_toughness,
+        Some(crate::card::PtValue::Fixed(3)),
+        "Zombie token should use the total power of the sacrificed creatures"
+    );
+}
+
 // === Triggered Ability Tests ===
 
 #[test]
@@ -8196,6 +8347,74 @@ fn test_creeping_renaissance_returns_chosen_permanent_type_from_graveyard() {
                     .is_some_and(|obj| obj.name == "Grizzly Bears")
         }),
         "non-land cards should stay in the graveyard"
+    );
+}
+
+#[test]
+fn test_make_an_example_sacrifices_the_chosen_pile() {
+    use crate::executor::ExecutionContext;
+
+    struct ChooseFirstObjectDecisionMaker;
+
+    impl DecisionMaker for ChooseFirstObjectDecisionMaker {
+        fn decide_objects(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            ctx.candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .map(|candidate| candidate.id)
+                .take(1)
+                .collect()
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let make_an_example = CardDefinitionBuilder::new(CardId::new(), "Make an Example")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Each opponent separates the creatures they control into two piles. For each opponent, you choose one of their piles. Each opponent sacrifices the creatures in their chosen pile. (Piles can be empty.)",
+        )
+        .expect("Make an Example should parse");
+
+    let source_id = game.create_object_from_definition(&make_an_example, alice, Zone::Hand);
+    let pile_bear = CardBuilder::new(CardId::new(), "Pile Bear")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let pile_bear_id = game.create_object_from_card(&pile_bear, bob, Zone::Battlefield);
+
+    let spell_effects = make_an_example
+        .spell_effect
+        .as_ref()
+        .expect("Make an Example should have spell effects");
+    let mut dm = ChooseFirstObjectDecisionMaker;
+    let mut ctx = ExecutionContext::new_default(source_id, alice).with_decision_maker(&mut dm);
+
+    for effect in spell_effects {
+        execute_effect(&mut game, effect, &mut ctx)
+            .expect("Make an Example effect should resolve");
+    }
+
+    assert!(
+        game.player(bob)
+            .expect("bob exists")
+            .graveyard
+            .contains(&pile_bear_id),
+        "the chosen pile should be sacrificed"
+    );
+    assert!(
+        !game.battlefield.contains(&pile_bear_id),
+        "the chosen creature should leave the battlefield"
     );
 }
 

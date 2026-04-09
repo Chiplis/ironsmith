@@ -4487,8 +4487,8 @@ body {
 }
 
 .battlefield-row-empty {
-  --bf-card-width: 114px;
-  --bf-card-height: 86px;
+  --bf-card-width: clamp(80px, 8.5vw, 134px);
+  --bf-card-height: clamp(60px, 6.4vw, 101px);
 }
 
 .battlefield-panel--opponents .battlefield-row {
@@ -5149,6 +5149,21 @@ textarea,
 
 .add-card-toolbar .status-pill[data-slot="badge"][data-variant="secondary"]:hover {
   filter: none !important;
+}
+
+.add-card-toolbar--compact {
+  overflow-x: auto;
+  overflow-y: visible;
+  -webkit-overflow-scrolling: touch;
+}
+
+.add-card-toolbar--compact .add-card-toolbar-left {
+  flex-wrap: nowrap;
+  gap: 6px;
+}
+
+.add-card-toolbar--compact .add-card-toolbar-right {
+  flex-shrink: 0;
 }
 
 .zone-viewer--embedded {
@@ -7123,24 +7138,147 @@ textarea,
   background: rgba(35, 30, 26, 0.92) !important;
 }
 
-@media (max-width: 1280px) {
-  .topbar-shell,
+/* --- Tablet compact: 721px–1023px --- */
+@media (min-width: 721px) and (max-width: 1023px) {
+  .topbar-shell {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+  }
+
+  .topbar-side-cluster--left {
+    justify-self: start;
+  }
+
+  .topbar-side-cluster--right {
+    justify-self: end;
+  }
+
+  .topbar-phase-chip {
+    display: inline-flex;
+  }
+
+  .topbar-phase-caption--inline {
+    display: none;
+  }
+
+  .topbar-minor-controls,
+  .topbar-minor-controls--utility {
+    justify-content: flex-end;
+  }
+
   .add-card-toolbar {
     display: grid;
     grid-template-columns: 1fr;
   }
 
-  .topbar-side-cluster,
-  .topbar-side-cluster--right,
   .add-card-toolbar-left,
   .add-card-toolbar-right {
     justify-self: stretch;
     justify-content: center;
   }
 
+  .table-action-bar {
+    min-height: 180px;
+  }
+
+  .table-action-bar[data-expanded="true"] {
+    min-height: 220px;
+  }
+
+  .action-strip-layout {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .action-strip-pill {
+    max-width: min(72vw, 320px) !important;
+  }
+
+  .action-strip-advance-button {
+    width: 100%;
+    flex: 1 1 100%;
+  }
+}
+
+/* --- Small desktop: 1024px–1439px --- */
+@media (min-width: 1024px) and (max-width: 1439px) {
+  .topbar-shell {
+    gap: 10px;
+    grid-template-columns: auto minmax(200px, 1fr) auto;
+  }
+
+  .topbar-side-cluster {
+    gap: 8px;
+  }
+
+  .add-card-toolbar {
+    gap: 8px;
+  }
+
   .topbar-minor-controls,
   .topbar-minor-controls--utility {
-    justify-content: center;
+    gap: 6px;
+  }
+}
+
+/* --- Large desktop: 1800px+ --- */
+@media (min-width: 1800px) {
+  .topbar-shell {
+    gap: 24px;
+    grid-template-columns: auto minmax(400px, 1fr) auto;
+  }
+
+  .topbar-brand {
+    font-size: 30px;
+  }
+
+  .topbar-side-cluster {
+    gap: 16px;
+  }
+
+  .topbar-minor-controls,
+  .topbar-minor-controls--utility {
+    gap: 12px;
+  }
+
+  .add-card-toolbar {
+    gap: 14px;
+    padding-inline: 16px !important;
+  }
+
+  .add-card-toolbar-left {
+    gap: 10px;
+  }
+
+  .app-shell {
+    padding: 12px;
+  }
+
+  .action-strip-pill {
+    max-width: 420px !important;
+  }
+
+  .battlefield-row-empty {
+    --bf-card-width: clamp(100px, 7.5vw, 150px);
+    --bf-card-height: clamp(75px, 5.6vw, 113px);
+  }
+
+  .table-shell {
+    border-radius: 34px;
+    box-shadow:
+      inset 0 1px 0 rgba(245, 217, 156, 0.14),
+      inset 0 -1px 0 rgba(10, 10, 10, 0.86),
+      0 24px 48px rgba(0, 0, 0, 0.38);
+  }
+
+  .table-shell::before {
+    border-radius: 28px;
+  }
+
+  .app-shell {
+    border-radius: 32px;
+    gap: 10px;
   }
 }
 
@@ -7190,7 +7328,7 @@ textarea,
   }
 
   .topbar-phase-shell .phase-track {
-    min-width: 520px;
+    min-width: 0;
   }
 
   .action-strip-layout {

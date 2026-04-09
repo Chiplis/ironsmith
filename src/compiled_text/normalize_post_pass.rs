@@ -5803,6 +5803,15 @@ pub(super) fn normalize_enlist_tag_sequence(text: &str) -> Option<String> {
 }
 
 pub(super) fn normalize_divvy_chosen_sequence(text: &str) -> Option<String> {
+    if let Some((before, rest)) = split_once_ascii_ci(
+        text,
+        "for each opponent, choose any number of creatures that player controls. that player sacrifices those creatures.",
+    ) {
+        let _ = rest;
+        return Some(format!(
+            "{before}Each opponent separates the creatures they control into two piles. For each opponent, you choose one of their piles. Each opponent sacrifices the creatures in their chosen pile. (Piles can be empty.)"
+        ));
+    }
     if let Some((before, _rest)) = split_once_ascii_ci(
         text,
         " chooses any number that player's nontoken land in the battlefield and tags it as 'divvy_chosen'. Destroy the tagged object 'divvy_chosen'. Tap all that player's nontoken other lands.",

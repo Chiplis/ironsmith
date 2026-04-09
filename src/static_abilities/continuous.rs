@@ -1040,6 +1040,17 @@ impl StaticAbilityKind for Anthem {
                 value.to_string()
             }
         };
+        let x_component = |value: i32| {
+            if value == 1 {
+                "+X".to_string()
+            } else if value == -1 {
+                "-X".to_string()
+            } else if value > 0 {
+                format!("+{value}X")
+            } else {
+                format!("{value}X")
+            }
+        };
         let signed_toughness = |power: i32, toughness: i32| {
             if power < 0 && toughness == 0 {
                 "-0".to_string()
@@ -1124,9 +1135,9 @@ impl StaticAbilityKind for Anthem {
                 },
                 AnthemValue::Fixed(toughness),
             ) => format!(
-                "{subject} {verb} {}/{} for each {}",
-                signed(*power),
-                signed_toughness(*power, *toughness),
+                "{subject} {verb} {}/{}, where X is the number of {}",
+                x_component(*power),
+                signed(*toughness),
                 describe_anthem_count_expression(count),
             ),
             (
@@ -1136,9 +1147,9 @@ impl StaticAbilityKind for Anthem {
                     count,
                 },
             ) => format!(
-                "{subject} {verb} {}/{} for each {}",
+                "{subject} {verb} {}/{}, where X is the number of {}",
                 signed(*power),
-                signed_toughness(*power, *toughness),
+                x_component(*toughness),
                 describe_anthem_count_expression(count),
             ),
             _ => format!("{subject} {verb} dynamic power/toughness"),
@@ -3172,9 +3183,11 @@ impl StaticAbilityKind for TophFirstMetalbender {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cards::builders::CardDefinitionBuilder;
     use crate::card::{CardBuilder, PowerToughness};
     use crate::filter::StackObjectKind;
     use crate::ids::CardId;
+    use crate::mana::{ManaCost, ManaSymbol};
     use crate::target::PlayerFilter;
     use crate::types::{Subtype, Supertype};
     use crate::zone::Zone;
@@ -3489,6 +3502,57 @@ mod tests {
             game.calculated_toughness(bearer_id),
             Some(3),
             "Kemba's Banner should apply the same bonus to toughness"
+        );
+    }
+
+    #[test]
+    fn test_cranial_ram_counts_artifacts_for_x_only_bonus() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let cranial_ram = CardDefinitionBuilder::new(CardId::new(), "Cranial Ram Variant")
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Black],
+                vec![ManaSymbol::Red],
+            ]))
+            .card_types(vec![CardType::Artifact])
+            .subtypes(vec![Subtype::Equipment])
+            .parse_text(
+                "Living weapon (When this Equipment enters, create a 0/0 black Phyrexian Germ creature token, then attach this to it.)\n\
+                 Equipped creature gets +X/+1, where X is the number of artifacts you control.\n\
+                 Equip {2}",
+            )
+            .expect("Cranial Ram text should parse");
+
+        let equipment_id = game.create_object_from_definition(&cranial_ram, alice, Zone::Battlefield);
+
+        let bearer = CardBuilder::new(CardId::new(), "Bearer")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        let bearer_id = game.create_object_from_card(&bearer, alice, Zone::Battlefield);
+
+        let extra_artifact = CardBuilder::new(CardId::new(), "Artifact")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        game.create_object_from_card(&extra_artifact, alice, Zone::Battlefield);
+
+        game.object_mut(equipment_id).unwrap().attached_to =
+            Some(AttachmentTarget::Object(bearer_id));
+        game.object_mut(bearer_id)
+            .unwrap()
+            .attachments
+            .push(equipment_id);
+
+        assert_eq!(
+            game.calculated_power(bearer_id),
+            Some(3),
+            "Cranial Ram should count artifacts you control for power"
+        );
+        assert_eq!(
+            game.calculated_toughness(bearer_id),
+            Some(2),
+            "Cranial Ram should keep toughness at +1"
         );
     }
 

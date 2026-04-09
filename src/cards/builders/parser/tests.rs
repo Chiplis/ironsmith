@@ -2313,6 +2313,30 @@ fn rewrite_etb_where_x_aggregate_filter_routes_and_split_through_grammar_separat
 }
 
 #[test]
+fn rewrite_etb_where_x_total_power_of_sacrificed_creatures_uses_the_sacrifice_reference() {
+    let tokens = lex_line(
+        "where x is the total power of the sacrificed creatures",
+        0,
+    )
+    .expect("rewrite lexer should classify sacrificed aggregate clause");
+
+    let parsed = super::keyword_static::parse_where_x_is_aggregate_filter_value(&tokens)
+        .expect("sacrificed aggregate clause should parse");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("TotalPower"), "{debug}");
+    assert!(
+        debug.contains("tag: TagKey(\"__it__\")")
+            || debug.contains("tag: TagKey(\"sacrificed"),
+        "expected sacrificed creatures to stay tied to a tag, got {debug}"
+    );
+    assert!(
+        !debug.contains("zone: Some(Battlefield)"),
+        "sacrificed creatures should not be collapsed to a battlefield-only filter, got {debug}"
+    );
+}
+
+#[test]
 fn rewrite_zone_handlers_keep_conditional_destroy_clause_after_structure_cutover() {
     let tokens = lex_line("Destroy target creature if it's white.", 0)
         .expect("rewrite lexer should classify conditional destroy clause");
@@ -8180,6 +8204,19 @@ fn rewrite_grammar_unique_hand_leader_predicate_parses() {
 }
 
 #[test]
+fn rewrite_grammar_unique_life_leader_predicate_parses() {
+    let tokens = lex_line("a player has more life than each other player", 0)
+        .expect("rewrite lexer should classify unique life-leader predicate");
+
+    assert_eq!(
+        super::parse_predicate_lexed(&tokens).expect("predicate should parse"),
+        crate::cards::builders::PredicateAst::PlayerHasMoreLifeThanEachOtherPlayer {
+            player: crate::cards::builders::PlayerAst::Any,
+        }
+    );
+}
+
+#[test]
 fn rewrite_grammar_permanent_you_controlled_left_battlefield_predicate_parses() {
     let tokens = lex_line(
         "a permanent you controlled left the battlefield this turn",
@@ -8202,4 +8239,30 @@ fn rewrite_parse_subject_player_with_most_cards_in_hand() {
         super::util::parse_subject(&tokens),
         super::SubjectAst::Player(crate::cards::builders::PlayerAst::MostCardsInHand)
     );
+}
+
+#[test]
+fn rewrite_parse_subject_with_most_life() {
+    let tokens = lex_line("the player with the most life", 0)
+        .expect("rewrite lexer should classify most-life subject");
+
+    assert_eq!(
+        super::util::parse_subject(&tokens),
+        super::SubjectAst::Player(crate::cards::builders::PlayerAst::MostLifeTied)
+    );
+}
+
+#[test]
+fn rewrite_lexed_triggered_line_keeps_unique_life_leader_intervening_if() {
+    let text = "At the beginning of your upkeep, if a player has more life than each other player, the player with the most life gains control of this creature.";
+    let tokens = lex_line(text, 0).expect("rewrite lexer should classify upkeep intervening-if");
+
+    let parsed = super::clause_support::parse_triggered_line_lexed(&tokens)
+        .expect("triggered intervening-if line should parse");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("BeginningOfUpkeep"), "{debug}");
+    assert!(debug.contains("Conditional"), "{debug}");
+    assert!(debug.contains("PlayerHasMoreLifeThanEachOtherPlayer"), "{debug}");
+    assert!(debug.contains("MostLifeTied"), "{debug}");
 }

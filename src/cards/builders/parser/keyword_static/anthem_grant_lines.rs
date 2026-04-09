@@ -2299,13 +2299,21 @@ pub(crate) fn parse_anthem_clause(
         (None, None) => None,
     };
 
+    let has_dynamic_component =
+        matches!(raw_power, Value::X | Value::XTimes(_))
+            || matches!(raw_toughness, Value::X | Value::XTimes(_));
+    let scale_fixed_components = scale.is_some() && !has_dynamic_component;
     let resolve_anthem_value = |component: Value,
-                                scale_expr: Option<&AnthemCountExpression>|
+                                scale_expr: Option<&AnthemCountExpression>,
+                                scale_fixed_components: bool|
      -> Result<AnthemValue, CardTextError> {
         match component {
             Value::Fixed(value) => Ok(match scale_expr {
-                Some(scale_expr) => AnthemValue::scaled(value, scale_expr.clone()),
+                Some(scale_expr) if scale_fixed_components => {
+                    AnthemValue::scaled(value, scale_expr.clone())
+                }
                 None => AnthemValue::Fixed(value),
+                Some(_) => AnthemValue::Fixed(value),
             }),
             Value::X => {
                 if let Some(scale_expr) = scale_expr {
@@ -2334,8 +2342,8 @@ pub(crate) fn parse_anthem_clause(
         }
     };
 
-    let power = resolve_anthem_value(raw_power, scale.as_ref())?;
-    let toughness = resolve_anthem_value(raw_toughness, scale.as_ref())?;
+    let power = resolve_anthem_value(raw_power, scale.as_ref(), scale_fixed_components)?;
+    let toughness = resolve_anthem_value(raw_toughness, scale.as_ref(), scale_fixed_components)?;
 
     parser_trace_stack("parse_static:anthem-clause:matched", tokens);
     Ok(ParsedAnthemClause {

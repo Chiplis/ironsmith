@@ -1444,6 +1444,15 @@ pub(crate) fn parse_subject(tokens: &[OwnedLexToken]) -> SubjectAst {
     ) {
         return SubjectAst::Player(PlayerAst::MostCardsInHand);
     }
+    if words_have_prefix(
+        slice,
+        &["the", "player", "who", "has", "the", "most", "life"],
+    ) || words_have_prefix(slice, &["player", "who", "has", "the", "most", "life"])
+        || words_have_prefix(slice, &["the", "player", "with", "the", "most", "life"])
+        || words_have_prefix(slice, &["player", "with", "the", "most", "life"])
+    {
+        return SubjectAst::Player(PlayerAst::MostLifeTied);
+    }
 
     if let Some(have_idx) = find_index(slice, |word| *word == "have" || *word == "has") {
         if have_idx + 1 < slice.len() {

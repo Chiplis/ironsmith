@@ -4209,6 +4209,17 @@ pub(super) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         && filtered.get(subject_len).copied() == Some("has")
         && matches!(
             &filtered[subject_len + 1..],
+            ["more", "life", "than", "each", "other", "player"]
+                | ["more", "life", "than", "each", "other", "players"]
+        )
+    {
+        return Ok(PredicateAst::PlayerHasMoreLifeThanEachOtherPlayer { player });
+    }
+
+    if let Some((player, subject_len)) = parse_comparison_player_subject(&filtered)
+        && filtered.get(subject_len).copied() == Some("has")
+        && matches!(
+            &filtered[subject_len + 1..],
             ["more", "card", "in", "hand", "than", "you"]
                 | ["more", "cards", "in", "hand", "than", "you"]
                 | ["more", "card", "in", "their", "hand", "than", "you"]

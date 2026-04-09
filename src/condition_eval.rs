@@ -194,6 +194,16 @@ fn any_opponent_controls_more_than_player(
         })
 }
 
+fn player_has_more_life_than_each_other_player(game: &GameState, player_id: PlayerId) -> bool {
+    let Some(life) = game.player(player_id).map(|p| p.life) else {
+        return false;
+    };
+    game.players
+        .iter()
+        .filter(|candidate| candidate.is_in_game())
+        .all(|candidate| candidate.id == player_id || life > candidate.life)
+}
+
 #[derive(Debug, Clone, Copy)]
 struct SharedConditionContext<'a> {
     controller: PlayerId,
@@ -662,6 +672,11 @@ pub fn evaluate_condition_external(
             matching_condition_players_external(game, ctx, player)
                 .into_iter()
                 .any(|player_id| game.player(player_id).map(|p| p.life).unwrap_or(0) > you_life)
+        }
+        Condition::PlayerHasMoreLifeThanEachOtherPlayer { player } => {
+            matching_condition_players_external(game, ctx, player)
+                .into_iter()
+                .any(|player_id| player_has_more_life_than_each_other_player(game, player_id))
         }
         Condition::PlayerHasMoreCardsInHandThanYou { player } => {
             let your_hand = game
@@ -1681,6 +1696,11 @@ fn evaluate_condition_simple(
                 .filter_map(|player_id| game.player(player_id).map(|p| p.life))
                 .any(|other_life| other_life > you_life)
         }
+        Condition::PlayerHasMoreLifeThanEachOtherPlayer { player } => {
+            matching_condition_players_simple(game, controller, player)
+                .into_iter()
+                .any(|player_id| player_has_more_life_than_each_other_player(game, player_id))
+        }
         Condition::PlayerIsMonarch { player } => {
             let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
                 return false;
@@ -2269,6 +2289,11 @@ fn evaluate_condition(
             Ok(matching_condition_players_exec(game, ctx, player)?
                 .into_iter()
                 .any(|player_id| game.player(player_id).map(|p| p.life).unwrap_or(0) > you_life))
+        }
+        Condition::PlayerHasMoreLifeThanEachOtherPlayer { player } => {
+            Ok(matching_condition_players_exec(game, ctx, player)?
+                .into_iter()
+                .any(|player_id| player_has_more_life_than_each_other_player(game, player_id)))
         }
         Condition::PlayerIsMonarch { player } => {
             let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;

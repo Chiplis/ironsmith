@@ -1841,6 +1841,13 @@ fn parse_draw_for_each_player_condition(
                     player: PlayerAst::Implicit,
                 }
             }
+            PredicateAst::PlayerHasMoreLifeThanEachOtherPlayer { player }
+                if player == PlayerAst::That =>
+            {
+                PredicateAst::PlayerHasMoreLifeThanEachOtherPlayer {
+                    player: PlayerAst::Implicit,
+                }
+            }
             PredicateAst::PlayerHasMoreCardsInHandThanYou { player }
                 if player == PlayerAst::That =>
             {
@@ -2972,6 +2979,7 @@ fn player_filter_for_life_reference(player: PlayerAst) -> Option<PlayerFilter> {
         PlayerAst::Defending => Some(PlayerFilter::Defending),
         PlayerAst::Attacking => Some(PlayerFilter::Attacking),
         PlayerAst::MostCardsInHand => Some(PlayerFilter::MostCardsInHand),
+        PlayerAst::MostLifeTied => Some(PlayerFilter::MostLifeTied),
         PlayerAst::ThatPlayerOrTargetController => None,
         PlayerAst::ItsController | PlayerAst::ItsOwner => None,
     }

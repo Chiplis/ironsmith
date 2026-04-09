@@ -12,6 +12,7 @@ const triggerPill = "stone-pill inline-flex items-center rounded-none px-2.5 py-
 const selectPill = "stone-select rounded-none px-2.5 py-0.5 text-[13px] font-medium border-0 outline-none cursor-pointer uppercase tracking-wide";
 
 export default function AddCardBar({
+  compact = false,
   zoneViews = ["battlefield"],
   setZoneViews,
   onAddCardNotice,
@@ -56,7 +57,7 @@ export default function AddCardBar({
   };
 
   return (
-    <div className="add-card-toolbar table-toolbar table-toolbar--secondary rounded-none px-3 py-2">
+    <div className={`add-card-toolbar table-toolbar table-toolbar--secondary rounded-none px-3 py-2${compact ? " add-card-toolbar--compact" : ""}`}>
       <div className="add-card-toolbar-left">
         <AddCardSheet
           onAddCardNotice={onAddCardNotice}
@@ -88,21 +89,25 @@ export default function AddCardBar({
         >
           {deckLoadingMode ? "Cancel Deck Load" : "Load Decks"}
         </button>
-        <button
-          type="button"
-          className={triggerPill}
-          disabled={lobbyBusy}
-          onClick={onOpenPuzzleSetup}
-        >
-          {puzzleSetupMode ? "Close Puzzle" : "Puzzle Setup"}
-        </button>
-        <button
-          type="button"
-          className={triggerPill}
-          onClick={handleShareCurrentTable}
-        >
-          Share Table
-        </button>
+        {!compact ? (
+          <button
+            type="button"
+            className={triggerPill}
+            disabled={lobbyBusy}
+            onClick={onOpenPuzzleSetup}
+          >
+            {puzzleSetupMode ? "Close Puzzle" : "Puzzle Setup"}
+          </button>
+        ) : null}
+        {!compact ? (
+          <button
+            type="button"
+            className={triggerPill}
+            onClick={handleShareCurrentTable}
+          >
+            Share Table
+          </button>
+        ) : null}
         <button
           type="button"
           className={triggerPill}
@@ -110,26 +115,29 @@ export default function AddCardBar({
         >
           {lobbyBusy ? "Open Lobby" : "Create Lobby"}
         </button>
-        <span className="add-card-toolbar-separator" aria-hidden="true" />
-
-        <span
-          className="add-card-toolbar-meta text-[13px] uppercase whitespace-nowrap cursor-help"
-          title="Controls the threshold for semantic similarity when parsing custom cards. Higher means stricter text matching."
-        >
-          Fidelity
-        </span>
-        <Slider
-          className="w-20"
-          min={0}
-          max={100}
-          step={1}
-          value={[Math.round(semanticThreshold)]}
-          onValueChange={([value]) => setSemanticThreshold(value)}
-        />
-        <span className="add-card-toolbar-meta-value text-[13px] tabular-nums whitespace-nowrap">
-          {semanticThreshold > 0 ? `${Math.round(semanticThreshold)}%` : "Off"}
-          {" "}({cardsMeetingThreshold})
-        </span>
+        {!compact ? (
+          <>
+            <span className="add-card-toolbar-separator" aria-hidden="true" />
+            <span
+              className="add-card-toolbar-meta text-[13px] uppercase whitespace-nowrap cursor-help"
+              title="Controls the threshold for semantic similarity when parsing custom cards. Higher means stricter text matching."
+            >
+              Fidelity
+            </span>
+            <Slider
+              className="w-20"
+              min={0}
+              max={100}
+              step={1}
+              value={[Math.round(semanticThreshold)]}
+              onValueChange={([value]) => setSemanticThreshold(value)}
+            />
+            <span className="add-card-toolbar-meta-value text-[13px] tabular-nums whitespace-nowrap">
+              {semanticThreshold > 0 ? `${Math.round(semanticThreshold)}%` : "Off"}
+              {" "}({cardsMeetingThreshold})
+            </span>
+          </>
+        ) : null}
         <span className="add-card-toolbar-separator" aria-hidden="true" />
         <select
           className={selectPill}

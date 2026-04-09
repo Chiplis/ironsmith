@@ -36,7 +36,7 @@ export default function Shell() {
   const [puzzleSetupMode, setPuzzleSetupMode] = useState(false);
   const [mobileOpponentIndex, setMobileOpponentIndex] = useState(0);
   const [notices, setNotices] = useState([]);
-  const { landscapeMobileViewport } = useViewportLayout();
+  const { landscapeMobileViewport, tabletCompactViewport, smallDesktopViewport } = useViewportLayout();
   const nextNoticeIdRef = useRef(1);
   const autoJoinAttemptedLobbyRef = useRef("");
   const autoLoadAttemptedPuzzleRef = useRef(false);
@@ -450,8 +450,9 @@ export default function Shell() {
         setMobileOpponentIndex={setMobileOpponentIndex}
         mobileOverlay={landscapeMobileViewport}
       />
-      {!landscapeMobileViewport ? (
+      {!landscapeMobileViewport && !tabletCompactViewport ? (
         <AddCardBar
+          compact={smallDesktopViewport}
           zoneViews={zoneViews}
           setZoneViews={setZoneViews}
           onAddCardNotice={pushNotice}

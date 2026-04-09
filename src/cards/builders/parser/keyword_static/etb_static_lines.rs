@@ -1222,6 +1222,24 @@ pub(crate) fn parse_where_x_is_aggregate_filter_value(tokens: &[OwnedLexToken]) 
     })
     .or_else(|| parse_object_filter(filter_tokens, false).ok())?;
 
+    if filter_words.iter().any(|word| *word == "sacrificed") {
+        if matches!(filter.zone, Some(Zone::Battlefield)) {
+            filter.zone = None;
+        }
+        if !filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == IT_TAG
+                && matches!(
+                    constraint.relation,
+                    crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                )
+        }) {
+            filter.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
+                tag: TagKey::from(IT_TAG),
+                relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+            });
+        }
+    }
+
     match (aggregate, value_kind) {
         ("total", "power") => Some(Value::TotalPower(filter)),
         ("total", "toughness") => Some(Value::TotalToughness(filter)),

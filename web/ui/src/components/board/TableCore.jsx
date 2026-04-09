@@ -32,6 +32,9 @@ export default function TableCore({
     portraitCompactViewport,
     landscapeMobileViewport,
     nonDesktopViewport,
+    tabletCompactViewport,
+    smallDesktopViewport,
+    largeDesktopViewport,
   } = useViewportLayout();
   const players = state?.players || [];
   const perspective = state?.perspective;
@@ -65,10 +68,12 @@ export default function TableCore({
   const compactDecisionBarHeight = portraitCompactViewport
     ? 236
     : (landscapeMobileViewport ? 92 : 112);
+  const desktopPriorityBarHeight = largeDesktopViewport ? 68 : (smallDesktopViewport ? 52 : 62);
+  const desktopDecisionBarHeight = largeDesktopViewport ? 132 : (smallDesktopViewport ? 100 : 124);
   const actionBarHeight = expandedActionBar
-    ? (portraitCompactViewport || landscapeMobileViewport ? compactDecisionBarHeight : 124)
-    : (portraitCompactViewport || landscapeMobileViewport ? compactPriorityBarHeight : 62);
-  const mergeActionBarIntoMyZone = nonDesktopViewport;
+    ? (portraitCompactViewport || landscapeMobileViewport || tabletCompactViewport ? compactDecisionBarHeight : desktopDecisionBarHeight)
+    : (portraitCompactViewport || landscapeMobileViewport || tabletCompactViewport ? compactPriorityBarHeight : desktopPriorityBarHeight);
+  const mergeActionBarIntoMyZone = nonDesktopViewport || tabletCompactViewport;
   const actionBarElement = (
     <div
       className="table-action-bar relative h-full w-full rounded-none border border-[#2b3f57]/65 bg-[linear-gradient(90deg,rgba(7,15,23,0.92),rgba(14,28,44,0.86),rgba(7,15,23,0.92))] shadow-[inset_0_1px_0_rgba(170,208,245,0.12),0_8px_18px_rgba(0,0,0,0.32)]"
