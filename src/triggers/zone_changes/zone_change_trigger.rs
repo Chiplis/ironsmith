@@ -267,6 +267,20 @@ impl ZoneChangeTrigger {
             Some(text.to_string())
         }
 
+        fn cause_phrase(trigger: &ZoneChangeTrigger) -> Option<&'static str> {
+            let cause_filter = trigger.cause_filter.as_ref()?;
+            match &cause_filter.cause_type {
+                Some(crate::events::cause::CauseTypeFilter::Not(
+                    crate::events::cause::CauseType::SpecialAction,
+                )) if cause_filter.source_filter.is_none()
+                    && cause_filter.controller_filter.is_none() =>
+                {
+                    Some("without being played")
+                }
+                _ => None,
+            }
+        }
+
         if self.this_object {
             let battlefield_subject = self.this_subject("permanent");
             let card_subject = self.this_subject("card");
@@ -365,6 +379,10 @@ impl ZoneChangeTrigger {
             _ => {
                 parts.push("changes zones".to_string());
             }
+        }
+
+        if let Some(cause_phrase) = cause_phrase(self) {
+            parts.push(cause_phrase.to_string());
         }
 
         parts.join(" ")

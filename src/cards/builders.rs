@@ -1156,16 +1156,29 @@ pub(crate) enum TriggerSpec {
         filter: Option<ObjectFilter>,
         copier: PlayerFilter,
     },
-    EntersBattlefield(ObjectFilter),
-    EntersBattlefieldOneOrMore(ObjectFilter),
+    EntersBattlefield {
+        filter: ObjectFilter,
+        cause_filter: Option<crate::events::cause::CauseFilter>,
+    },
+    EntersBattlefieldOneOrMore {
+        filter: ObjectFilter,
+        cause_filter: Option<crate::events::cause::CauseFilter>,
+    },
     EntersBattlefieldFromZone {
         filter: ObjectFilter,
         from: Zone,
         owner: Option<PlayerFilter>,
         one_or_more: bool,
+        cause_filter: Option<crate::events::cause::CauseFilter>,
     },
-    EntersBattlefieldTapped(ObjectFilter),
-    EntersBattlefieldUntapped(ObjectFilter),
+    EntersBattlefieldTapped {
+        filter: ObjectFilter,
+        cause_filter: Option<crate::events::cause::CauseFilter>,
+    },
+    EntersBattlefieldUntapped {
+        filter: ObjectFilter,
+        cause_filter: Option<crate::events::cause::CauseFilter>,
+    },
     BeginningOfUpkeep(PlayerFilter),
     BeginningOfDrawStep(PlayerFilter),
     BeginningOfCombat(PlayerFilter),
