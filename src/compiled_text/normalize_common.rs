@@ -5680,6 +5680,20 @@ pub(crate) fn describe_value(value: &Value) -> String {
             }
         }
         Value::HalfRoundedDown(value) => {
+            if let Value::Add(left, right) = value.as_ref() {
+                let count_filter = match (left.as_ref(), right.as_ref()) {
+                    (Value::Count(filter), Value::Fixed(1)) | (Value::Fixed(1), Value::Count(filter)) => {
+                        Some(filter)
+                    }
+                    _ => None,
+                };
+                if let Some(filter) = count_filter {
+                    return format!(
+                        "half the number of {}, rounded up",
+                        describe_count_filter_value_subject(filter)
+                    );
+                }
+            }
             format!("half {}, rounded down", describe_value(value))
         }
         Value::X => "X".to_string(),

@@ -1148,6 +1148,36 @@ fn test_parse_destination_first_return_all_to_hand_clause() {
 }
 
 #[test]
+fn test_parse_split_the_party_chooses_target_player_and_half_their_creatures() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Split the Party")
+        .card_types(vec![CardType::Sorcery])
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]))
+        .parse_text("Choose target player. Return half the creatures they control to their owner's hand, rounded up.")
+        .expect("Split the Party should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        (rendered.contains("choose a player") || rendered.contains("choose target player"))
+            && rendered.contains("where x is half the number of creatures they control, rounded up")
+            && rendered.contains("hand"),
+        "expected choose-player plus half-creature return text, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.spell_effect.as_ref().expect("spell effects"));
+    assert!(
+        debug.contains("ChoosePlayerEffect")
+            && debug.contains("ChooseObjectsEffect")
+            && debug.contains("ReturnAllToHand")
+            && debug.contains("HalfRoundedDown"),
+        "expected Split the Party to lower to choose-player, choose-objects, and return-to-hand effects, got {debug}"
+    );
+}
+
+#[test]
 fn test_parse_destination_first_return_all_to_battlefield_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Return To Battlefield Test")
         .card_types(vec![CardType::Instant])

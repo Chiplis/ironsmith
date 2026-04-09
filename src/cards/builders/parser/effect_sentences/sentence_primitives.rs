@@ -513,6 +513,79 @@ pub(crate) fn parse_sentence_choose_player_to_effect(
     Ok(Some(effects))
 }
 
+pub(crate) fn parse_sentence_return_half_the_creatures_they_control_to_their_owners_hand(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let mut stripped = trim_commas(tokens);
+    while stripped
+        .first()
+        .is_some_and(|token| token.is_word("then") || token.is_word("and"))
+    {
+        stripped.remove(0);
+    }
+    if stripped.len() < 10 || !stripped.first().is_some_and(|token| token.is_word("return")) {
+        return Ok(None);
+    }
+
+    let words = crate::cards::builders::parser::token_word_refs(&stripped);
+    let Some(the_idx) = words.iter().position(|word| *word == "the") else {
+        return Ok(None);
+    };
+    let Some(they_idx) = words.iter().position(|word| *word == "they") else {
+        return Ok(None);
+    };
+    let Some(control_idx) = words.iter().position(|word| *word == "control") else {
+        return Ok(None);
+    };
+    let Some(to_idx) = words.iter().position(|word| *word == "to") else {
+        return Ok(None);
+    };
+    let Some(owner_idx) = words
+        .iter()
+        .position(|word| matches!(*word, "owner's" | "owners'" | "owners" | "owner"))
+    else {
+        return Ok(None);
+    };
+    if the_idx + 1 >= they_idx
+        || they_idx + 1 != control_idx
+        || control_idx >= to_idx
+        || to_idx >= owner_idx
+        || !words
+            .get(owner_idx + 1)
+            .is_some_and(|word| matches!(*word, "hand" | "hands"))
+        || !words.ends_with(&["rounded", "up"])
+    {
+        return Ok(None);
+    }
+
+    let filter_tokens = trim_commas(&stripped[the_idx + 1..they_idx]);
+    if filter_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let mut filter = parse_object_filter(&filter_tokens, false)?;
+    if filter.controller.is_none() {
+        filter.controller = Some(PlayerFilter::IteratedPlayer);
+    }
+    let count_value = Value::HalfRoundedDown(Box::new(Value::Add(
+        Box::new(Value::Count(filter.clone())),
+        Box::new(Value::Fixed(1)),
+    )));
+    let chosen_tag = TagKey::from("chosen");
+    Ok(Some(vec![
+        EffectAst::ChooseObjects {
+            filter,
+            count: ChoiceCount::dynamic_x(),
+            count_value: Some(count_value),
+            player: PlayerAst::That,
+            tag: chosen_tag.clone(),
+        },
+        EffectAst::ReturnAllToHand {
+            filter: ObjectFilter::tagged(chosen_tag),
+        },
+    ]))
+}
+
 pub(crate) fn parse_sentence_damage_to_that_player_half_damage_of_those_spells(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -5611,6 +5684,10 @@ pub(crate) const POST_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
     SentencePrimitive {
         name: "counter-target-spell-if-it-was-kicked",
         parser: parse_sentence_counter_target_spell_if_it_was_kicked,
+    },
+    SentencePrimitive {
+        name: "return-half-the-creatures-they-control-to-their-owners-hand",
+        parser: parse_sentence_return_half_the_creatures_they_control_to_their_owners_hand,
     },
     SentencePrimitive {
         name: "destroy-creature-type-of-choice",

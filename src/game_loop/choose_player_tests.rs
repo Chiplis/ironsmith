@@ -421,6 +421,43 @@ fn choose_player_gluntch_keeps_first_second_and_third_players_distinct() {
 }
 
 #[test]
+fn choose_player_split_the_party_returns_half_the_chosen_players_creatures_rounded_up() {
+    let mut game = setup_three_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let split_the_party = parse_sorcery_definition(
+        "Split the Party",
+        "Choose target player. Return half the creatures they control to their owner's hand, rounded up.",
+    );
+    create_creature(&mut game, "Bob Creature A", bob, 2, 2);
+    create_creature(&mut game, "Bob Creature B", bob, 2, 2);
+    create_creature(&mut game, "Bob Creature C", bob, 2, 2);
+
+    let bob_hand_before = game.player(bob).expect("bob exists").hand.len();
+    let bob_battlefield_before = count_battlefield_name(&game, bob, "Bob Creature A")
+        + count_battlefield_name(&game, bob, "Bob Creature B")
+        + count_battlefield_name(&game, bob, "Bob Creature C");
+
+    let mut dm = ScriptedDecisionMaker::new(&["Bob"], &[]);
+    resolve_spell_definition_with_dm(&mut game, &split_the_party, alice, &mut dm);
+
+    assert_eq!(
+        game.player(bob).expect("bob exists").hand.len(),
+        bob_hand_before + 2,
+        "Split the Party should return half of Bob's three creatures, rounded up"
+    );
+    let bob_battlefield_after = count_battlefield_name(&game, bob, "Bob Creature A")
+        + count_battlefield_name(&game, bob, "Bob Creature B")
+        + count_battlefield_name(&game, bob, "Bob Creature C");
+    assert_eq!(
+        bob_battlefield_after,
+        bob_battlefield_before - 2,
+        "Split the Party should leave exactly one of Bob's three creatures on the battlefield"
+    );
+}
+
+#[test]
 fn choose_player_saskia_redirects_combat_damage_to_the_chosen_player() {
     let mut game = setup_three_player_game();
     let alice = PlayerId::from_index(0);
