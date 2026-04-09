@@ -19249,6 +19249,10 @@ fn parse_fallen_shinobi_uses_top_library_exile_and_plural_play_permission() {
         "expected tagged play grant for exiled cards, got {abilities_debug}"
     );
     assert!(
+        abilities_debug.contains("granttaggedspellfreecastuntilendofturneffect"),
+        "expected free-cast grant for the exiled spells, got {abilities_debug}"
+    );
+    assert!(
         !abilities_debug.contains("casttaggedeffect"),
         "expected play permission rather than immediate cast, got {abilities_debug}"
     );
