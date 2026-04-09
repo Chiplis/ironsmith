@@ -1872,6 +1872,8 @@ fn rewrite_lexed_restriction_parsers_match_activation_trigger_and_mana_shapes() 
         .expect("rewrite lexer should classify activation restriction");
     let trigger_only = lex_line("This ability triggers only once each turn.", 0)
         .expect("rewrite lexer should classify trigger restriction");
+    let do_this_only = lex_line("Do this only once each turn.", 0)
+        .expect("rewrite lexer should classify do-this-only trigger cap");
     let mana_only = lex_line(
         "Spend this mana only to cast artifact spells of the chosen type and that spell can't be countered.",
         0,
@@ -1886,6 +1888,7 @@ fn rewrite_lexed_restriction_parsers_match_activation_trigger_and_mana_shapes() 
         parse_triggered_times_each_turn_lexed(&trigger_only),
         Some(1)
     );
+    assert_eq!(parse_triggered_times_each_turn_lexed(&do_this_only), Some(1));
     assert!(matches!(
         parse_mana_usage_restriction_sentence_lexed(&mana_only),
         Some(crate::ability::ManaUsageRestriction::CastSpell {
@@ -8058,6 +8061,44 @@ fn rewrite_semantic_parse_keeps_trigger_trigger_caps_and_first_time_suffixes()
         }
         other => panic!("expected one triggered semantic item, got {other:?}"),
     }
+
+    Ok(())
+}
+
+#[test]
+fn rewrite_semantic_parse_accepts_do_this_only_once_each_turn_trigger_cap()
+-> Result<(), CardTextError> {
+    let (doc, _) = parse_text_to_semantic_document(
+        CardDefinitionBuilder::new(CardId::new(), "Deep Gnome Terramancer")
+            .card_types(vec![CardType::Creature]),
+        "Flash\nMold Earth — Whenever one or more lands enter under an opponent's control without being played, you may search your library for a Plains card, put it onto the battlefield tapped, then shuffle. Do this only once each turn.".to_string(),
+        false,
+    )?;
+
+    let triggered = doc
+        .items
+        .iter()
+        .find_map(|item| match item {
+            RewriteSemanticItem::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("expected Deep Gnome Terramancer to parse as a triggered line");
+
+    assert_eq!(triggered.max_triggers_per_turn, Some(1));
+    assert!(
+        triggered
+            .trigger_text
+            .contains("one or more lands enter under an opponent's control without being played"),
+        "unexpected trigger text: {}",
+        triggered.trigger_text
+    );
+    assert!(
+        triggered
+            .effect_text
+            .contains("you may search your library for a Plains card, put it onto the battlefield tapped, then shuffle"),
+        "unexpected effect text: {}",
+        triggered.effect_text
+    );
 
     Ok(())
 }

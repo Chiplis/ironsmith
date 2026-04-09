@@ -2428,6 +2428,10 @@ fn infer_trigger_cap_from_text(text: &str) -> Option<u32> {
         "this ability triggers only twice each turn",
     ) {
         Some(2)
+    } else if str_contains(normalized.as_str(), "do this only once each turn") {
+        Some(1)
+    } else if str_contains(normalized.as_str(), "do this only twice each turn") {
+        Some(2)
     } else {
         None
     }

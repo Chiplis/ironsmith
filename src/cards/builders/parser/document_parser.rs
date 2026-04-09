@@ -124,6 +124,8 @@ fn strip_trailing_trigger_cap_suffix_tokens(
         &[
             "this", "ability", "triggers", "only", "twice", "each", "turn",
         ][..],
+        &["do", "this", "only", "once", "each", "turn"][..],
+        &["do", "this", "only", "twice", "each", "turn"][..],
     ];
     let Some((phrase, head)) = grammar::strip_lexed_suffix_phrases(tokens, &cap_suffixes) else {
         return (tokens, None);
@@ -132,6 +134,8 @@ fn strip_trailing_trigger_cap_suffix_tokens(
         == [
             "this", "ability", "triggers", "only", "once", "each", "turn",
         ] {
+        1
+    } else if phrase == ["do", "this", "only", "once", "each", "turn"] {
         1
     } else {
         2
@@ -1949,6 +1953,24 @@ mod tests {
         assert_eq!(
             render_token_slice(&rewritten),
             "cycling {2}, discard this card: draw a card."
+        );
+    }
+
+    #[test]
+    fn strip_trailing_trigger_cap_suffix_tokens_supports_do_this_only_once_each_turn() {
+        let tokens = lex_line(
+            "Whenever one or more lands enter under an opponent's control without being played, you may search your library for a Plains card, put it onto the battlefield tapped, then shuffle. Do this only once each turn.",
+            0,
+        )
+        .expect("rewrite lexer should classify capped trigger line");
+
+        let (stripped, max_triggers_per_turn) =
+            strip_trailing_trigger_cap_suffix_tokens(&tokens);
+
+        assert_eq!(max_triggers_per_turn, Some(1));
+        assert_eq!(
+            render_token_slice(stripped),
+            "Whenever one or more lands enter under an opponent's control without being played, you may search your library for a Plains card, put it onto the battlefield tapped, then shuffle."
         );
     }
 

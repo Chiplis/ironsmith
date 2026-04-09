@@ -67,7 +67,10 @@ const ACTIVATE_ONLY_DURING_COMBAT_PREFIXES: &[&[&str]] =
     &[&["activate", "only", "during", "combat"]];
 const ACTIVATE_ONLY_DURING_YOUR_TURN_PREFIXES: &[&[&str]] =
     &[&["activate", "only", "during", "your", "turn"]];
-const THIS_ABILITY_TRIGGERS_ONLY_PREFIXES: &[&[&str]] = &[&["this", "ability", "triggers", "only"]];
+const THIS_ABILITY_TRIGGERS_ONLY_PREFIXES: &[&[&str]] = &[
+    &["this", "ability", "triggers", "only"],
+    &["do", "this", "only"],
+];
 
 pub(super) struct ActivatedSentenceScan<'a> {
     pub(super) kept_sentences: Vec<&'a [OwnedLexToken]>,
@@ -553,11 +556,20 @@ pub(crate) fn parse_triggered_times_each_turn_sentence(
 }
 
 pub(crate) fn parse_triggered_times_each_turn_from_words(words: &[&str]) -> Option<u32> {
-    if words.len() < 7 || !slice_starts_with(words, &["this", "ability", "triggers", "only"]) {
+    let (count_idx, prefix_len) = if slice_starts_with(words, &["this", "ability", "triggers", "only"])
+    {
+        (4usize, 4usize)
+    } else if slice_starts_with(words, &["do", "this", "only"]) {
+        (3usize, 3usize)
+    } else {
+        return None;
+    };
+
+    if words.len() < prefix_len + 3 {
         return None;
     }
 
-    let mut index = 4usize;
+    let mut index = count_idx;
     let count = match words.get(index) {
         Some(word) if *word == "once" => Some(1),
         Some(word) if *word == "twice" => Some(2),
