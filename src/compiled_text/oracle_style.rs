@@ -4854,6 +4854,17 @@ mod tests {
     }
 
     #[test]
+    fn post_pass_normalizes_random_hand_reveal_damage_clause() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "Spell effects: Target player chooses exactly 1 at random card from their hand and tags it as '__sentence_helper_revealed_l16_s0_e54'. Reveal it. Deal damage equal to its mana value to target player.",
+        );
+        assert_eq!(
+            normalized,
+            "Spell effects: Target player reveals a card at random from their hand. Deal damage to that player equal to that card's mana value."
+        );
+    }
+
+    #[test]
     fn post_pass_normalizes_typed_graveyard_return_choice_clause() {
         let normalized = normalize_compiled_post_pass_effect(
             "You choose exactly 1 creature card in your graveyard and tags it as 'chosen_return_0'. Return it from graveyard to the battlefield. Return another creature card from your graveyard to your hand.",

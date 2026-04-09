@@ -96,7 +96,7 @@ pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str
         .contains("you draw three cards, gain 6 life, and create three 2/1 black bat creature tokens with flying")
         && oracle_lower.contains("you discard a card, lose 2 life, and sacrifice a creature")
         && oracle_lower.contains("you discard three cards, lose 6 life, and sacrifice three creatures");
-    if let Some((prefix, rest)) = line.split_once(':')
+    if let Some((prefix, rest)) = normalized.split_once(':')
         && is_render_heading_prefix(prefix)
     {
         let mut normalized_body =
@@ -2226,6 +2226,11 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
         normalized = rewritten;
     }
     normalized = normalize_conditional_target_player_pronouns(&normalized);
+    if let Some(rewritten) =
+        normalize_sentence_helper_random_hand_reveal_damage_clause(&normalized)
+    {
+        normalized = rewritten;
+    }
     loop {
         let mut changed = false;
         if let Some(rewritten) =
@@ -5654,6 +5659,49 @@ pub(super) fn normalize_sentence_helper_reveal_from_hand_clause(text: &str) -> O
             &reveal_clause,
             &rewritten_after,
         ));
+    }
+    None
+}
+
+pub(super) fn normalize_sentence_helper_random_hand_reveal_damage_clause(
+    text: &str,
+) -> Option<String> {
+    let patterns = [
+        (
+            "target player chooses exactly 1 at random card from their hand and tags it as '",
+            "Target player reveals a card at random from their hand. Deal damage to that player equal to that card's mana value",
+            "Reveal it. Deal damage equal to its mana value to target player",
+        ),
+        (
+            "target opponent chooses exactly 1 at random card from their hand and tags it as '",
+            "Target opponent reveals a card at random from their hand. Deal damage to that player equal to that card's mana value",
+            "Reveal it. Deal damage equal to its mana value to target opponent",
+        ),
+        (
+            "you choose exactly 1 at random card from your hand and tags it as '",
+            "You reveal a card at random from your hand. Deal damage to you equal to that card's mana value",
+            "Reveal it. Deal damage equal to its mana value to you",
+        ),
+        (
+            "that player chooses exactly 1 at random card from their hand and tags it as '",
+            "That player reveals a card at random from their hand. Deal damage to that player equal to that card's mana value",
+            "Reveal it. Deal damage equal to its mana value to that player",
+        ),
+    ];
+    for (marker, replacement, tail_marker) in patterns {
+        let Some((before, rest)) = split_once_ascii_ci(text, marker) else {
+            continue;
+        };
+        let Some((tag, rest)) = rest.split_once("'. ") else {
+            continue;
+        };
+        if !tag.starts_with("__sentence_helper_revealed_") {
+            continue;
+        }
+        let Some(after) = strip_prefix_ascii_ci(rest, tail_marker) else {
+            continue;
+        };
+        return Some(apply_replacement_with_case(before, replacement, after));
     }
     None
 }

@@ -5254,11 +5254,11 @@ fn test_parse_ignite_memories_keeps_random_hand_reveal_and_damage_link() {
 
     let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        rendered.contains("target player")
-            && rendered.contains("at random")
-            && rendered.contains("hand")
-            && rendered.contains("ignite memories deals damage"),
-        "expected Ignite Memories compiled text to keep the random hand reveal chain, got {rendered}"
+        rendered.contains("target player reveals a card at random from their hand")
+            && rendered.contains("deal damage to that player equal to that card's mana value")
+            && !rendered.contains("choose exactly 1 at random")
+            && !rendered.contains("tags it as"),
+        "expected Ignite Memories compiled text to use the cleaner random hand reveal wording, got {rendered}"
     );
 }
 
