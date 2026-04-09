@@ -16852,6 +16852,47 @@ fn render_rain_of_daggers_uses_destroyed_this_way_life_loss_clause() {
 }
 
 #[test]
+fn parse_terastodon_keeps_destroy_and_graveyard_loop() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Terastodon Variant")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(6)],
+            vec![ManaSymbol::Green],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elephant])
+        .power_toughness(PowerToughness::fixed(9, 9))
+        .parse_text(
+            "When this creature enters, you may destroy up to three target noncreature permanents. For each permanent put into a graveyard this way, its controller creates a 3/3 green Elephant creature token.",
+        )
+        .expect("Terastodon should parse");
+
+    let ability_debug = format!("{:#?}", def.abilities);
+    assert!(
+        ability_debug.contains("Destroy"),
+        "expected Terastodon to keep the destroy effect, got {ability_debug}"
+    );
+    assert!(
+        ability_debug.contains("ForEachTaggedEffect"),
+        "expected Terastodon to lower the graveyard follow-up to a tagged loop, got {ability_debug}"
+    );
+    assert!(
+        ability_debug.contains("CreateTokenEffect"),
+        "expected Terastodon to create Elephant tokens in the loop, got {ability_debug}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("destroy up to three target noncreature permanents"),
+        "expected Terastodon destroy clause to render, got {rendered}"
+    );
+    assert!(
+        rendered.contains("for each permanent put into a graveyard this way"),
+        "expected Terastodon graveyard follow-up to render, got {rendered}"
+    );
+}
+
+#[test]
 fn render_artifact_or_tapped_creature_does_not_require_tapped_artifacts() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Radiant Strike Variant")
         .parse_text("Destroy target artifact or tapped creature. You gain 3 life.")

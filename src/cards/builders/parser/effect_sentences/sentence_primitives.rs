@@ -36,6 +36,7 @@ use super::{
     parse_exile_then_return_same_object_sentence, parse_exile_up_to_one_each_target_type_sentence,
     parse_for_each_counter_removed_sentence, parse_for_each_destroyed_this_way_sentence,
     parse_for_each_exiled_this_way_sentence, parse_for_each_opponent_doesnt,
+    parse_for_each_put_into_graveyard_this_way_sentence,
     parse_for_each_player_doesnt, parse_for_each_vote_clause, parse_gain_ability_sentence,
     parse_gain_ability_to_source_sentence, parse_gain_life_equal_to_age_sentence,
     parse_gain_life_equal_to_power_sentence, parse_gain_x_plus_life_sentence,
@@ -3835,6 +3836,12 @@ pub(crate) fn parse_sentence_for_each_exiled_this_way(
     parse_for_each_exiled_this_way_sentence(tokens)
 }
 
+pub(crate) fn parse_sentence_for_each_put_into_graveyard_this_way(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    parse_for_each_put_into_graveyard_this_way_sentence(tokens)
+}
+
 pub(crate) fn parse_sentence_each_player_put_permanent_cards_exiled_with_source(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -6103,6 +6110,10 @@ pub(crate) const POST_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
     SentencePrimitive {
         name: "for-each-exiled-this-way",
         parser: parse_sentence_for_each_exiled_this_way,
+    },
+    SentencePrimitive {
+        name: "for-each-put-into-graveyard-this-way",
+        parser: parse_sentence_for_each_put_into_graveyard_this_way,
     },
     SentencePrimitive {
         name: "draw-for-each-card-exiled-from-hand-this-way",
