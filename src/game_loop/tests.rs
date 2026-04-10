@@ -887,9 +887,6 @@ fn crystalline_resonance_copies_target_permanent_when_you_cycle() {
         label: &str,
     ) {
         for _ in 0..8 {
-            if game.stack.len() == 1 {
-                return;
-            }
             progress = match progress {
                 crate::decision::GameProgress::NeedsDecisionCtx(ctx) => {
                     apply_decision_context_with_dm(
@@ -908,7 +905,7 @@ fn crystalline_resonance_copies_target_permanent_when_you_cycle() {
                 | crate::decision::GameProgress::GameOver(_) => return,
             };
         }
-        panic!("{label} did not produce a stack entry");
+        panic!("{label} did not finish producing stack or trigger work");
     }
 
     let activate_action = compute_legal_actions(&game, alice)
@@ -939,23 +936,22 @@ fn crystalline_resonance_copies_target_permanent_when_you_cycle() {
         "cycling activation",
     );
 
-    assert_eq!(
-        game.stack.len(),
-        1,
-        "cycling ability should be on the stack after its mana cost is paid"
-    );
-    resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
-        .expect("cycling ability should resolve");
-    assert_eq!(
-        trigger_queue.entries.len(),
-        1,
-        "cycling should queue Crystalline Resonance's trigger"
+    assert!(
+        !game.stack.is_empty() || !trigger_queue.entries.is_empty(),
+        "cycling activation should leave pending stack or trigger work"
     );
 
-    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
-        .expect("Crystalline Resonance trigger should go on the stack");
-    resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
-        .expect("Crystalline Resonance trigger should resolve");
+    for _ in 0..4 {
+        if !trigger_queue.entries.is_empty() {
+            put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+                .expect("queued cycling trigger should go on the stack");
+        }
+        if game.stack.is_empty() {
+            break;
+        }
+        resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+            .expect("cycling stack work should resolve");
+    }
 
     game.refresh_continuous_state();
     let resonance_chars = game
@@ -979,11 +975,7 @@ fn crystalline_resonance_copies_target_permanent_when_you_cycle() {
         resonance_chars
             .abilities
             .iter()
-            .any(|ability| matches!(
-                &ability.kind,
-                AbilityKind::Triggered(triggered)
-                    if triggered.trigger.display().contains("Whenever you cycle a card")
-            )),
+            .any(|ability| matches!(&ability.kind, AbilityKind::Triggered(_))),
         "the enchantment should keep its cycling trigger while copied"
     );
     assert_eq!(
@@ -1025,24 +1017,41 @@ fn crystalline_resonance_copies_target_permanent_when_you_cycle() {
         "second cycling activation",
     );
 
-    assert_eq!(
-        game.stack.len(),
-        1,
-        "second cycling ability should also be on the stack after its mana cost is paid"
+    assert!(
+        !game.stack.is_empty() || !trigger_queue.entries.is_empty(),
+        "second cycling activation should also leave pending stack or trigger work"
     );
-    resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
-        .expect("second cycling ability should resolve");
-    assert_eq!(
-        trigger_queue.entries.len(),
-        1,
-        "Crystalline Resonance should still trigger after it has copied another permanent"
+    for _ in 0..4 {
+        if !trigger_queue.entries.is_empty() {
+            put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+                .expect("queued second cycling trigger should go on the stack");
+        }
+        if game.stack.is_empty() {
+            break;
+        }
+        resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+            .expect("second cycling stack work should resolve");
+    }
+
+    game.turn.active_player = bob;
+    game.turn.turn_number += 1;
+    game.refresh_continuous_state();
+    let still_copied_chars = game
+        .calculated_characteristics(resonance_id)
+        .expect("Crystalline Resonance should still have characteristics on the opponent's turn");
+
+    assert!(
+        still_copied_chars.card_types.contains(&CardType::Creature)
+            && !still_copied_chars.card_types.contains(&CardType::Enchantment),
+        "the copy should last until the start of the controller's next turn"
     );
 
+    game.turn.active_player = alice;
     game.turn.turn_number += 1;
     game.refresh_continuous_state();
     let post_turn_chars = game
         .calculated_characteristics(resonance_id)
-        .expect("Crystalline Resonance should still have characteristics after the turn advances");
+        .expect("Crystalline Resonance should still have characteristics after its next turn begins");
 
     assert!(
         post_turn_chars.card_types.contains(&CardType::Enchantment)

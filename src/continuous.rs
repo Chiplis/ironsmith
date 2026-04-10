@@ -172,6 +172,9 @@ pub struct ContinuousEffect {
     /// How long this effect lasts
     pub duration: Until,
 
+    /// Turn anchor for turn-based durations such as `Until::YourNextTurn`.
+    pub expires_end_of_turn: u32,
+
     /// Optional condition that must be true for this effect to apply
     pub condition: Option<crate::ConditionExpr>,
 
@@ -724,6 +727,7 @@ impl ContinuousEffect {
             modification,
             timestamp: 0, // Will be set when added to manager
             duration: Until::Forever,
+            expires_end_of_turn: u32::MAX,
             condition: None,
             source_type: EffectSourceType::default(),
             originating_static_ability: None,
@@ -733,6 +737,12 @@ impl ContinuousEffect {
     /// Set the duration.
     pub fn until(mut self, duration: Until) -> Self {
         self.duration = duration;
+        self
+    }
+
+    /// Set the turn anchor used by turn-based durations.
+    pub fn with_expires_end_of_turn(mut self, expires_end_of_turn: u32) -> Self {
+        self.expires_end_of_turn = expires_end_of_turn;
         self
     }
 
@@ -1802,6 +1812,10 @@ fn continuous_effect_duration_is_active(
     game: &crate::game_state::GameState,
 ) -> bool {
     match effect.duration {
+        Until::YourNextTurn => {
+            !(game.turn.turn_number > effect.expires_end_of_turn
+                && game.turn.active_player == effect.controller)
+        }
         Until::ThisLeavesTheBattlefield => game
             .object(effect.source)
             .is_some_and(|obj| obj.zone == Zone::Battlefield),

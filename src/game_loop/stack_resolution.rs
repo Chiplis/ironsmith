@@ -274,7 +274,15 @@ pub(super) fn resolve_stack_entry_full(
 
     // Create execution context
     // Resolution effects use EventCause::from_effect to distinguish from cost effects
-    let mut ctx = ExecutionContext::new(entry.object_id, entry.controller, decision_maker)
+    let execution_source = if entry.is_ability {
+        entry.source_snapshot
+            .as_ref()
+            .map(|snapshot| snapshot.object_id)
+            .unwrap_or(entry.object_id)
+    } else {
+        entry.object_id
+    };
+    let mut ctx = ExecutionContext::new(execution_source, entry.controller, decision_maker)
         .with_optional_costs_paid(entry.optional_costs_paid.clone())
         .with_casting_method(entry.casting_method.clone())
         .with_cause(EventCause::from_effect(entry.object_id, entry.controller))
@@ -294,8 +302,26 @@ pub(super) fn resolve_stack_entry_full(
     if let Some(source_snapshot) = entry.source_snapshot.clone() {
         ctx = ctx.with_source_snapshot(source_snapshot);
     }
-    if !entry.tagged_objects.is_empty() {
-        ctx = ctx.with_tagged_objects(entry.tagged_objects.clone());
+    let mut tagged_objects = entry.tagged_objects.clone();
+    let source_exiled = game
+        .get_exiled_with_source_links(execution_source)
+        .iter()
+        .filter_map(|id| {
+            game.object(*id).map(|obj| {
+                crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                    obj, game,
+                )
+            })
+        })
+        .collect::<Vec<_>>();
+    if !source_exiled.is_empty() {
+        tagged_objects.insert(
+            crate::tag::TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+            source_exiled,
+        );
+    }
+    if !tagged_objects.is_empty() {
+        ctx = ctx.with_tagged_objects(tagged_objects);
     }
     // Pass pre-chosen modes from casting (per MTG rule 601.2b)
     if let Some(ref modes) = entry.chosen_modes {
@@ -338,7 +364,7 @@ pub(super) fn resolve_stack_entry_full(
             condition,
             entry.controller,
             triggering_event,
-            entry.object_id,
+            execution_source,
             None,
         )
     {

@@ -1659,6 +1659,12 @@ pub struct GameState {
     /// Continuous-effect revision captured when the derived continuous state was last refreshed.
     continuous_state_revision: Cell<u64>,
 
+    /// Turn marker captured when the derived continuous state was last refreshed.
+    continuous_state_turn_number: Cell<u32>,
+    continuous_state_active_player: Cell<PlayerId>,
+    continuous_state_phase: Cell<Phase>,
+    continuous_state_step: Cell<Option<Step>>,
+
     /// Final calculated characteristics for the current clean continuous-effects state.
     calculated_characteristics_cache: RefCell<HashMap<ObjectId, Option<CalculatedCharacteristics>>>,
 
@@ -1768,6 +1774,10 @@ impl GameState {
             irreversible_random_count: Cell::new(0),
             continuous_state_dirty: Cell::new(true),
             continuous_state_revision: Cell::new(0),
+            continuous_state_turn_number: Cell::new(1),
+            continuous_state_active_player: Cell::new(active_player),
+            continuous_state_phase: Cell::new(Phase::Beginning),
+            continuous_state_step: Cell::new(Some(Step::Untap)),
             calculated_characteristics_cache: RefCell::new(HashMap::new()),
             calculated_characteristics_cache_revision: Cell::new(0),
         }
@@ -1798,14 +1808,31 @@ impl GameState {
     }
 
     fn mark_continuous_state_clean(&self) {
+        if !self.cached_continuous_turn_state_matches_current() {
+            self.calculated_characteristics_cache.borrow_mut().clear();
+        }
         self.continuous_state_dirty.set(false);
         self.continuous_state_revision
             .set(self.continuous_effects.revision());
+        self.continuous_state_turn_number
+            .set(self.turn.turn_number);
+        self.continuous_state_active_player
+            .set(self.turn.active_player);
+        self.continuous_state_phase.set(self.turn.phase);
+        self.continuous_state_step.set(self.turn.step);
+    }
+
+    fn cached_continuous_turn_state_matches_current(&self) -> bool {
+        self.continuous_state_turn_number.get() == self.turn.turn_number
+            && self.continuous_state_active_player.get() == self.turn.active_player
+            && self.continuous_state_phase.get() == self.turn.phase
+            && self.continuous_state_step.get() == self.turn.step
     }
 
     pub(crate) fn continuous_state_is_clean(&self) -> bool {
         !self.continuous_state_dirty.get()
             && self.continuous_state_revision.get() == self.continuous_effects.revision()
+            && self.cached_continuous_turn_state_matches_current()
     }
 
     /// Set the deterministic RNG seed for this match.

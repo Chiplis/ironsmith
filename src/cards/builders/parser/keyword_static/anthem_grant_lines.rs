@@ -1,3 +1,5 @@
+use crate::cards::builders::{EffectAst, TriggerSpec};
+
 fn anthem_word_slice_starts_with(words: &[&str], prefix: &[&str]) -> bool {
     crate::cards::builders::parser::token_primitives::slice_starts_with(words, prefix)
 }

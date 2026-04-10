@@ -377,13 +377,20 @@ impl EffectExecutor for ApplyContinuousEffect {
         for modification in mods {
             let resolved_modification =
                 self.resolve_set_pt_modification(game, ctx, &modification)?;
+            let expires_end_of_turn = match self.until {
+                Until::EndOfTurn | Until::YourNextTurn | Until::ControllersNextUntapStep => {
+                    game.turn.turn_number
+                }
+                _ => u32::MAX,
+            };
             let mut effect = ContinuousEffect::new(
                 ctx.source,
                 ctx.controller,
                 target.clone(),
                 resolved_modification,
             )
-            .until(self.until.clone());
+            .until(self.until.clone())
+            .with_expires_end_of_turn(expires_end_of_turn);
 
             if let Some(source_type) = &source_type {
                 effect = effect.with_source_type(source_type.clone());

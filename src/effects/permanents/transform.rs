@@ -3,7 +3,7 @@
 use crate::card::LinkedFaceLayout;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::resolve_single_object_for_effect;
+use crate::effects::helpers::{resolve_single_object_for_effect, resolve_tagged_object_id};
 use crate::events::other::{ConvertedEvent, TransformedEvent};
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
@@ -125,7 +125,17 @@ fn execute_transform_like_action(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
 ) -> Result<EffectOutcome, ExecutionError> {
-    let target_id = resolve_single_object_for_effect(game, ctx, target)?;
+    let target_id = if let ChooseSpec::Tagged(tag) = target {
+        ctx.get_tagged_all(tag)
+            .and_then(|snapshots| {
+                snapshots
+                    .iter()
+                    .find_map(|snapshot| resolve_tagged_object_id(game, snapshot))
+            })
+            .ok_or(ExecutionError::InvalidTarget)?
+    } else {
+        resolve_single_object_for_effect(game, ctx, target)?
+    };
 
     if !game.can_transform(target_id) {
         return Ok(EffectOutcome::resolved());

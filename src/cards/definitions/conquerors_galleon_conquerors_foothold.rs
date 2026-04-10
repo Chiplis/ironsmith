@@ -65,6 +65,7 @@ mod tests {
 
     #[test]
     fn conquerors_galleon_and_foothold_are_linked_transform_faces() {
+        crate::cards::clear_runtime_custom_cards();
         let registry = crate::cards::CardRegistry::with_builtin_cards();
         let galleon = registry
             .get("Conqueror's Galleon // Conqueror's Foothold")
@@ -97,6 +98,7 @@ mod tests {
 
     #[test]
     fn conquerors_galleon_transforms_into_foothold_after_combat() {
+        crate::cards::clear_runtime_custom_cards();
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
         let galleon = conquerors_galleon();

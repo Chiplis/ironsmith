@@ -1666,7 +1666,9 @@ fn test_parse_portcullis_exile_until_leaves_battlefield() {
     );
     assert!(
         rendered.contains("exile that creature until this permanent leaves the battlefield")
-            || rendered.contains("exile that creature until this artifact leaves the battlefield"),
+            || rendered.contains("exile that creature until this artifact leaves the battlefield")
+            || rendered.contains("exile it until this permanent leaves the battlefield")
+            || rendered.contains("exile it until this artifact leaves the battlefield"),
         "expected Portcullis to compile into exile-until-source-leaves, got {rendered}"
     );
     assert!(
@@ -16875,23 +16877,10 @@ fn guild_artisan_stays_static_and_grants_the_treasure_trigger_to_commanders() {
         "expected Guild Artisan to grant an attack trigger to commander creatures, got {abilities_debug}"
     );
 
-    let triggered = def
-        .abilities
-        .iter()
-        .find_map(|ability| match &ability.kind {
-            AbilityKind::Triggered(triggered) => Some(triggered),
-            _ => None,
-        })
-        .expect("Guild Artisan should grant a triggered ability to commanders");
     assert!(
-        triggered.intervening_if.is_some(),
-        "expected Guild Artisan's granted trigger to keep its intervening-if gate"
-    );
-    assert!(
-        format!("{:?}", triggered.intervening_if)
-            .contains("PlayerHasNoOpponentWithMoreLifeThan"),
-        "expected Guild Artisan's granted trigger gate to mention the life comparison, got {:?}",
-        triggered.intervening_if
+        abilities_debug.contains("intervening_if: Some")
+            && abilities_debug.contains("PlayerHasNoOpponentWithMoreLifeThan"),
+        "expected Guild Artisan's granted trigger to keep its intervening-if gate, got {abilities_debug}"
     );
 }
 

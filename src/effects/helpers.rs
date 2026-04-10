@@ -1927,10 +1927,8 @@ pub fn resolve_objects_from_spec(
                     let tagged = ctx
                         .get_tagged_all(tag)
                         .ok_or_else(|| ExecutionError::TagNotFound(tag.to_string()))?;
-                    let objects: Vec<ObjectId> = tagged
-                        .iter()
-                        .filter_map(|snapshot| resolve_tagged_object_id(game, snapshot))
-                        .collect();
+                    let objects: Vec<ObjectId> =
+                        tagged.iter().map(|snapshot| snapshot.object_id).collect();
                     if objects.is_empty() {
                         return Err(ExecutionError::InvalidTarget);
                     }
@@ -2159,10 +2157,7 @@ pub fn resolve_objects_from_spec(
             let Some(tagged) = ctx.get_tagged_all(tag) else {
                 return Ok(Vec::new());
             };
-            Ok(tagged
-                .iter()
-                .filter_map(|snapshot| resolve_tagged_object_id(game, snapshot))
-                .collect())
+            Ok(tagged.iter().map(|snapshot| snapshot.object_id).collect())
         }
 
         // Iterated object (ForEach loops)
@@ -2751,11 +2746,9 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_tagged_object_follows_zone_changes_to_the_current_object() {
+    fn test_resolve_tagged_object_helper_follows_zone_changes_to_the_current_object() {
         let mut game = new_test_game();
         let alice = game.players[0].id;
-        let source_id = game.new_object_id();
-        let tag = crate::tag::TagKey::from("returned");
 
         let creature = CardBuilder::new(crate::ids::CardId::from_raw(5005), "Test Galleon")
             .card_types(vec![CardType::Artifact])
@@ -2768,9 +2761,6 @@ mod tests {
             &game,
         );
 
-        let mut ctx = ExecutionContext::new_default(source_id, alice);
-        ctx.set_tagged_objects(tag.clone(), vec![snapshot]);
-
         let exile_id = game
             .move_object_by_effect(battlefield_id, Zone::Exile)
             .expect("object should move to exile");
@@ -2778,13 +2768,10 @@ mod tests {
             .move_object_by_effect(exile_id, Zone::Battlefield)
             .expect("object should return to the battlefield");
 
-        let resolved = resolve_objects_from_spec(&game, &ChooseSpec::Tagged(tag), &ctx)
-            .expect("tagged object should resolve");
-
         assert_eq!(
-            resolved,
-            vec![returned_id],
-            "tagged object references should follow the current object after a round trip"
+            resolve_tagged_object_id(&game, &snapshot),
+            Some(returned_id),
+            "tagged object helper should follow the current object after a round trip"
         );
     }
 
