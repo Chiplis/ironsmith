@@ -5211,7 +5211,7 @@ fn test_parse_prevent_all_damage_duration_before_target_order_clause() {
         .parse_text("Prevent all damage that would be dealt this turn to creatures you control.")
         .expect("prevent-all damage clause with duration-before-target order should parse");
 
-    let spell_debug = format!("{:#?}", def.spell_effect);
+    let spell_debug = format!("{:?}", def.spell_effect);
     assert!(
         spell_debug.contains("PreventAllDamageEffect")
             && spell_debug.contains("PermanentsMatching"),
@@ -23686,6 +23686,37 @@ fn parse_oath_of_druids_maps_to_upkeep_consult_effects() {
             && rendered.contains("that card onto the battlefield")
             && rendered.contains("all other cards revealed this way into their graveyard"),
         "expected Oath of Druids oracle-like text to stay close to the oracle, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_mind_funeral_tracks_passive_consult_count_and_graveyard_followup() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Mind Funeral")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Target opponent reveals cards from the top of their library until four land cards are revealed. That player puts all cards revealed this way into their graveyard.",
+        )
+        .expect("Mind Funeral should parse");
+
+    let spell_debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        spell_debug.contains("ConsultTopOfLibraryEffect")
+            && spell_debug.contains("MatchCount")
+            && spell_debug.contains("Fixed(4)")
+            && spell_debug.contains("MoveToZoneEffect")
+            && spell_debug.contains("zone: Graveyard"),
+        "expected Mind Funeral to lower to a counted consult plus graveyard move, got {spell_debug}"
+    );
+    assert!(
+        !spell_debug.contains("RevealTopEffect"),
+        "expected Mind Funeral to avoid single-card reveal lowering, got {spell_debug}"
+    );
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("until four land cards are revealed")
+            && rendered.contains("all cards revealed this way into their graveyard"),
+        "expected Mind Funeral oracle-like text to stay close to the oracle, got {rendered}"
     );
 }
 

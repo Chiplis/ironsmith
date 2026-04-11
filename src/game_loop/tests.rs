@@ -766,6 +766,123 @@ fn oath_of_druids_upkeep_trigger_puts_revealed_creature_onto_battlefield() {
 }
 
 #[test]
+fn mind_funeral_mills_until_four_lands_and_moves_every_revealed_card_to_graveyard() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let mind_funeral = CardDefinitionBuilder::new(CardId::from_raw(99_200), "Mind Funeral")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Target opponent reveals cards from the top of their library until four land cards are revealed. That player puts all cards revealed this way into their graveyard.",
+        )
+        .expect("Mind Funeral should parse for runtime test");
+
+    let spell_id = game.create_object_from_definition(&mind_funeral, alice, Zone::Stack);
+    game.push_to_stack(
+        StackEntry::new(spell_id, alice)
+            .with_targets(vec![Target::Player(bob)])
+            .with_target_assignments(vec![crate::game_state::TargetAssignment {
+                spec: ChooseSpec::target_opponent(),
+                range: 0..1,
+            }]),
+    );
+
+    let make_library_card = |id: u32, name: &str, card_types: Vec<CardType>| {
+        CardBuilder::new(CardId::from_raw(id), name)
+            .card_types(card_types)
+            .build()
+    };
+
+    game.create_object_from_card(
+        &make_library_card(99_201, "Bottom Archive", vec![CardType::Artifact]),
+        bob,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &make_library_card(99_202, "Eighth Land", vec![CardType::Land]),
+        bob,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &make_library_card(99_203, "Seventh Land", vec![CardType::Land]),
+        bob,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &make_library_card(99_204, "Sixth Charm", vec![CardType::Sorcery]),
+        bob,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &make_library_card(99_205, "Fifth Land", vec![CardType::Land]),
+        bob,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &make_library_card(99_206, "Fourth Pulse", vec![CardType::Instant]),
+        bob,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &make_library_card(99_207, "Third Land", vec![CardType::Land]),
+        bob,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &make_library_card(99_208, "Second Shade", vec![CardType::Creature]),
+        bob,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &make_library_card(99_209, "Top Relic", vec![CardType::Artifact]),
+        bob,
+        Zone::Library,
+    );
+
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+
+    let mut dm = AutoPassDecisionMaker;
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Mind Funeral should resolve");
+
+    let mut graveyard_names = game
+        .player(bob)
+        .expect("bob exists")
+        .graveyard
+        .iter()
+        .map(|id| game.object(*id).expect("graveyard object exists").name.clone())
+        .collect::<Vec<_>>();
+    graveyard_names.sort();
+    assert_eq!(
+        graveyard_names,
+        vec![
+            "Eighth Land".to_string(),
+            "Fifth Land".to_string(),
+            "Fourth Pulse".to_string(),
+            "Second Shade".to_string(),
+            "Seventh Land".to_string(),
+            "Sixth Charm".to_string(),
+            "Third Land".to_string(),
+            "Top Relic".to_string(),
+        ],
+        "Mind Funeral should move every revealed card into the graveyard"
+    );
+    assert_eq!(
+        game.player(bob)
+            .expect("bob exists")
+            .library
+            .iter()
+            .map(|id| game.object(*id).expect("library object exists").name.clone())
+            .collect::<Vec<_>>(),
+        vec!["Bottom Archive".to_string()],
+        "Mind Funeral should stop after the fourth land card is revealed"
+    );
+}
+
+#[test]
 fn wild_dogs_upkeep_trigger_hands_control_to_the_life_leader() {
     let mut game = setup_game();
     let mut trigger_queue = TriggerQueue::new();

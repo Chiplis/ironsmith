@@ -426,6 +426,15 @@ pub(super) fn parse_consult_match_move_and_bottom_remainder(
     let Some(parts) = parse_consult_traversal_sentence(first)? else {
         return Ok(None);
     };
+    if !matches!(
+        parts.effects.last(),
+        Some(EffectAst::ConsultTopOfLibrary {
+            mode: crate::cards::builders::LibraryConsultModeAst::Reveal,
+            ..
+        })
+    ) {
+        return Ok(None);
+    }
 
     let second_tokens = trim_commas(second);
     let second_words = crate::cards::builders::compiler::token_word_refs(&second_tokens);
@@ -524,6 +533,42 @@ pub(super) fn parse_consult_match_move_and_bottom_remainder(
         keep_tagged: Some(parts.match_tag),
         order,
         player: parts.player,
+    });
+    Ok(Some(effects))
+}
+
+pub(super) fn parse_consult_match_move_all_to_graveyard(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first = sentences[sentence_idx].lowered();
+    let second = sentences[sentence_idx + 1].lowered();
+    let Some(parts) = parse_consult_traversal_sentence(first)? else {
+        return Ok(None);
+    };
+
+    let second_tokens = trim_commas(second);
+    let second_words = crate::cards::builders::compiler::token_word_refs(&second_tokens);
+    let puts_all = slice_starts_with(&second_words, &["put", "all"])
+        || slice_starts_with(&second_words, &["puts", "all"])
+        || slice_starts_with(&second_words, &["that", "player", "puts", "all"]);
+    if !puts_all {
+        return Ok(None);
+    }
+    if !contains_word_sequence(&second_words, &["revealed", "this", "way"])
+        || !slice_contains(&second_words, &"graveyard")
+    {
+        return Ok(None);
+    }
+
+    let mut effects = parts.effects;
+    effects.push(EffectAst::MoveToZone {
+        target: TargetAst::Tagged(parts.all_tag, None),
+        zone: Zone::Graveyard,
+        to_top: false,
+        battlefield_controller: crate::cards::builders::ReturnControllerAst::Preserve,
+        battlefield_tapped: false,
+        attached_to: None,
     });
     Ok(Some(effects))
 }

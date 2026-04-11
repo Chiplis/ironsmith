@@ -25,7 +25,8 @@ use super::search_library::normalize_search_library_filter;
 use super::{find_verb, parse_effect_chain, parse_effect_sentence_lexed};
 use crate::cards::builders::{
     CardTextError, EffectAst, IfResultPredicate, LibraryBottomOrderAst, LibraryConsultModeAst,
-    LibraryConsultStopRuleAst, PlayerAst, PredicateAst, SubjectAst, TagKey, TargetAst,
+    LibraryConsultStopRuleAst, ObjectFilter, PlayerAst, PredicateAst, SubjectAst, TagKey,
+    TargetAst,
 };
 use crate::effect::Value;
 use crate::zone::Zone;
@@ -127,44 +128,52 @@ pub(crate) fn parse_consult_traversal_sentence(
     }
 
     let until_tokens = trim_commas(&consult_tokens[until_idx + 1..]);
-    let Some(match_verb_idx) = find_index(&until_tokens, |token: &OwnedLexToken| {
-        token.is_word("reveal")
-            || token.is_word("reveals")
-            || token.is_word("exile")
-            || token.is_word("exiles")
-    }) else {
-        return Ok(None);
-    };
-    if match_verb_idx == 0 || match_verb_idx + 1 >= until_tokens.len() {
-        return Ok(None);
-    }
+    let (stop_rule, filter) =
+        if let Some((stop_rule, filter)) =
+            parse_passive_consult_stop_rule_and_filter(&until_tokens, mode)?
+        {
+            (stop_rule, filter)
+        } else {
+            let Some(match_verb_idx) = find_index(&until_tokens, |token: &OwnedLexToken| {
+                token.is_word("reveal")
+                    || token.is_word("reveals")
+                    || token.is_word("exile")
+                    || token.is_word("exiles")
+            }) else {
+                return Ok(None);
+            };
+            if match_verb_idx == 0 || match_verb_idx + 1 >= until_tokens.len() {
+                return Ok(None);
+            }
 
-    let mut filter_tokens = trim_commas(&until_tokens[match_verb_idx + 1..]).to_vec();
-    if filter_tokens.is_empty() {
-        return Ok(None);
-    }
+            let mut filter_tokens = trim_commas(&until_tokens[match_verb_idx + 1..]).to_vec();
+            if filter_tokens.is_empty() {
+                return Ok(None);
+            }
 
-    let stop_rule = if let Some((count, used)) = parse_number(&filter_tokens) {
-        let remaining = trim_commas(&filter_tokens[used..]).to_vec();
-        if remaining.is_empty() {
-            return Ok(None);
-        }
-        filter_tokens = remaining;
-        LibraryConsultStopRuleAst::MatchCount(Value::Fixed(count as i32))
-    } else {
-        LibraryConsultStopRuleAst::FirstMatch
-    };
+            let stop_rule = if let Some((count, used)) = parse_number(&filter_tokens) {
+                let remaining = trim_commas(&filter_tokens[used..]).to_vec();
+                if remaining.is_empty() {
+                    return Ok(None);
+                }
+                filter_tokens = remaining;
+                LibraryConsultStopRuleAst::MatchCount(Value::Fixed(count as i32))
+            } else {
+                LibraryConsultStopRuleAst::FirstMatch
+            };
 
-    let mut filter = if let Some(filter) = parse_looked_card_reveal_filter(&filter_tokens) {
-        filter
-    } else {
-        match super::super::object_filters::parse_object_filter(&filter_tokens, false) {
-            Ok(filter) => filter,
-            Err(_) => return Ok(None),
-        }
-    };
-    normalize_search_library_filter(&mut filter);
-    filter.zone = None;
+            let mut filter = if let Some(filter) = parse_looked_card_reveal_filter(&filter_tokens) {
+                filter
+            } else {
+                match super::super::object_filters::parse_object_filter(&filter_tokens, false) {
+                    Ok(filter) => filter,
+                    Err(_) => return Ok(None),
+                }
+            };
+            normalize_search_library_filter(&mut filter);
+            filter.zone = None;
+            (stop_rule, filter)
+        };
 
     let all_tag = helper_tag_for_tokens(
         tokens,
@@ -190,6 +199,58 @@ pub(crate) fn parse_consult_traversal_sentence(
         all_tag,
         match_tag,
     }))
+}
+
+fn parse_passive_consult_stop_rule_and_filter(
+    tokens: &[OwnedLexToken],
+    mode: LibraryConsultModeAst,
+) -> Result<Option<(LibraryConsultStopRuleAst, ObjectFilter)>, CardTextError> {
+    let tokens = trim_commas(tokens);
+    let Some((count, used)) = parse_number(&tokens) else {
+        return Ok(None);
+    };
+
+    let tail_tokens = trim_commas(&tokens[used..]);
+    let tail_words = TokenWordView::new(&tail_tokens);
+    let tail_word_refs = tail_words.word_refs();
+    let passive_suffix = match mode {
+        LibraryConsultModeAst::Reveal => ["cards", "are", "revealed"],
+        LibraryConsultModeAst::Exile => ["cards", "are", "exiled"],
+    };
+    let singular_suffix = match mode {
+        LibraryConsultModeAst::Reveal => ["card", "is", "revealed"],
+        LibraryConsultModeAst::Exile => ["card", "is", "exiled"],
+    };
+    let suffix_len = if tail_word_refs.as_slice().ends_with(&passive_suffix) {
+        passive_suffix.len()
+    } else if tail_word_refs.as_slice().ends_with(&singular_suffix) {
+        singular_suffix.len()
+    } else {
+        return Ok(None);
+    };
+
+    let filter_word_count = tail_words.len().saturating_sub(suffix_len);
+    let filter_end = tail_words
+        .token_index_after_words(filter_word_count)
+        .unwrap_or(tail_tokens.len());
+    let filter_tokens = trim_commas(&tail_tokens[..filter_end]).to_vec();
+    let mut filter = if let Some(filter) = parse_looked_card_reveal_filter(&filter_tokens) {
+        filter
+    } else if filter_tokens.is_empty() {
+        ObjectFilter::default()
+    } else {
+        match super::super::object_filters::parse_object_filter(&filter_tokens, false) {
+            Ok(filter) => filter,
+            Err(_) => return Ok(None),
+        }
+    };
+    normalize_search_library_filter(&mut filter);
+    filter.zone = None;
+
+    Ok(Some((
+        LibraryConsultStopRuleAst::MatchCount(Value::Fixed(count as i32)),
+        filter,
+    )))
 }
 
 fn infer_consult_player_from_prefix(tokens: &[OwnedLexToken]) -> Option<PlayerAst> {
