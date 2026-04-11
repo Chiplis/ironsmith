@@ -186,7 +186,10 @@ fn main() {
         let source = fs::read_to_string(&path)
             .unwrap_or_else(|err| panic!("failed reading {}: {err}", path.display()));
         let line_count = source.lines().count();
-        println!("{}: {} lines (budget {})", budget.path, line_count, budget.max_lines);
+        println!(
+            "{}: {} lines (budget {})",
+            budget.path, line_count, budget.max_lines
+        );
         if line_count > budget.max_lines {
             failures.push((budget.path, line_count, budget.max_lines));
         }

@@ -23,7 +23,7 @@ fn normalize_rewrite_parsed_ability(
         None => None,
         Some(_)
             if matches!(
-                &parsed.ability.kind,
+                parsed.kind(),
                 AbilityKind::Activated(activated)
                     if !activated.effects.is_empty() || !activated.choices.is_empty()
             ) =>
@@ -32,14 +32,14 @@ fn normalize_rewrite_parsed_ability(
         }
         Some(_)
             if matches!(
-                &parsed.ability.kind,
+                parsed.kind(),
                 AbilityKind::Triggered(triggered)
                     if !triggered.effects.is_empty() || !triggered.choices.is_empty()
             ) =>
         {
             None
         }
-        Some(effects_ast) => match (&parsed.ability.kind, parsed.trigger_spec.as_ref()) {
+        Some(effects_ast) => match (parsed.kind(), parsed.trigger_spec.as_ref()) {
             (AbilityKind::Triggered(_), Some(trigger)) => {
                 let (trigger, prepared) = rewrite_prepare_triggered_effects_for_lowering(
                     trigger.clone(),
@@ -114,7 +114,7 @@ fn normalize_rewrite_line_ast(
                     prepared,
                 }
             }
-            LineAst::OptionalCost(cost) => NormalizedLineChunk::OptionalCost(cost),
+            LineAst::OptionalCost(cost) => NormalizedLineChunk::OptionalCost(cost.into_runtime()),
             LineAst::GiftKeyword {
                 cost,
                 effects,
@@ -124,7 +124,7 @@ fn normalize_rewrite_line_ast(
                 let prepared =
                     rewrite_prepare_effects_for_lowering(&effects, ReferenceImports::default())?;
                 NormalizedLineChunk::GiftKeyword {
-                    cost,
+                    cost: cost.into_runtime(),
                     prepared,
                     followup_text,
                     timing,
@@ -140,7 +140,7 @@ fn normalize_rewrite_line_ast(
                     state.latest_additional_cost_exports.to_imports(),
                 )?;
                 NormalizedLineChunk::OptionalCostWithCastTrigger {
-                    cost,
+                    cost: cost.into_runtime(),
                     prepared,
                     followup_text,
                 }
@@ -172,7 +172,7 @@ fn normalize_rewrite_line_ast(
                 }
             }
             LineAst::AlternativeCastingMethod(method) => {
-                NormalizedLineChunk::AlternativeCastingMethod(method)
+                NormalizedLineChunk::AlternativeCastingMethod(method.into_runtime())
             }
         });
     }
@@ -265,7 +265,7 @@ pub(super) fn apply_chosen_option_to_triggered_chunk(
             )))
         }
         LineAst::Ability(mut parsed) => {
-            if let AbilityKind::Triggered(triggered) = &mut parsed.ability.kind
+            if let AbilityKind::Triggered(triggered) = parsed.kind_mut()
                 && let Some(condition) = combined_condition
             {
                 triggered.intervening_if = Some(match triggered.intervening_if.take() {
@@ -275,8 +275,8 @@ pub(super) fn apply_chosen_option_to_triggered_chunk(
                     None => condition,
                 });
             }
-            if parsed.ability.text.is_none() {
-                parsed.ability.text = Some(full_text.to_string());
+            if parsed.text().is_none() {
+                *parsed.text_mut() = Some(full_text.to_string());
             }
             Ok(LineAst::Ability(parsed))
         }
@@ -326,7 +326,7 @@ pub(super) fn apply_explicit_intervening_if_to_triggered_chunk(
                 None,
             );
             if let Ok(condition) = compiled_condition {
-                if let AbilityKind::Triggered(triggered) = &mut parsed.ability.kind {
+                if let AbilityKind::Triggered(triggered) = parsed.kind_mut() {
                     triggered.intervening_if = Some(match triggered.intervening_if.take() {
                         Some(existing) => {
                             crate::ConditionExpr::And(Box::new(existing), Box::new(condition))

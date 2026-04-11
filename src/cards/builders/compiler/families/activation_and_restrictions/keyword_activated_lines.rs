@@ -100,7 +100,8 @@ pub(crate) fn parse_cycling_line_lexed(
             }),
             functional_zones: vec![Zone::Hand],
             text: Some(render_text),
-        },
+        }
+        .into(),
         effects_ast: None,
         reference_imports: ReferenceImports::default(),
         trigger_spec: None,
@@ -436,7 +437,8 @@ pub(crate) fn parse_equip_line(
                 }),
                 functional_zones: vec![Zone::Battlefield],
                 text: Some(equip_text),
-            },
+            }
+            .into(),
             effects_ast: None,
             reference_imports: ReferenceImports::default(),
             trigger_spec: None,
@@ -485,7 +487,8 @@ pub(crate) fn parse_equip_line(
             }),
             functional_zones: vec![Zone::Battlefield],
             text: Some(equip_text),
-        },
+        }
+        .into(),
         effects_ast: None,
         reference_imports: ReferenceImports::default(),
         trigger_spec: None,

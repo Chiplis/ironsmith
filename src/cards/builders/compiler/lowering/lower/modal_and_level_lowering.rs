@@ -1,4 +1,6 @@
-fn try_merge_modal_into_remove_mode(
+use super::*;
+
+pub(crate) fn try_merge_modal_into_remove_mode(
     effects: &mut crate::resolution::ResolutionProgram,
     modal_effect: crate::effect::Effect,
     predicate: crate::effect::EffectPredicate,
@@ -82,7 +84,7 @@ pub(crate) fn rewrite_lower_parsed_modal(
     let (prefix_effects, prefix_choices) = if prepared_prefix.is_none() {
         (crate::resolution::ResolutionProgram::default(), Vec::new())
     } else if trigger.is_some() || activated.is_some() {
-        match super::compile_support::materialize_prepared_effects_with_trigger_context(
+        match materialize_prepared_effects_with_trigger_context(
             prepared_prefix
                 .as_ref()
                 .expect("prepared prefix exists when checked above"),
@@ -245,7 +247,7 @@ pub(crate) fn rewrite_lower_parsed_modal(
             None,
             ReferenceImports::default(),
         )
-        .ability;
+        .into_runtime();
         if let AbilityKind::Triggered(triggered) = &mut ability.kind {
             triggered.effects = combined_effects.clone();
             triggered.choices = prefix_choices;

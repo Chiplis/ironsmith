@@ -117,7 +117,9 @@ fn parsed_static_granted_abilities(
             let static_ability = rewrite_lower_static_ability_ast(ability)?;
             Ok(GrantedAbilityAst::ParsedObjectAbility {
                 ability: ParsedAbility {
-                    ability: Ability::static_ability(static_ability).with_text(&display),
+                    ability: Ability::static_ability(static_ability)
+                        .with_text(&display)
+                        .into(),
                     effects_ast: None,
                     reference_imports: ReferenceImports::default(),
                     trigger_spec: None,

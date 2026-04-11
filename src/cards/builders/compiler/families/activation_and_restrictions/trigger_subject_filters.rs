@@ -1,3 +1,5 @@
+use super::*;
+
 pub(crate) fn parse_discard_trigger_card_filter(
     after_discard_tokens: &[OwnedLexToken],
     clause_words: &[&str],
@@ -288,7 +290,7 @@ pub(crate) fn parse_trigger_subject_player_filter(subject: &[&str]) -> Option<Pl
     None
 }
 
-fn split_target_clause_before_comma(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+pub(crate) fn split_target_clause_before_comma(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     let tokens = trim_commas(tokens);
     if let Some(comma_idx) = find_index(&tokens, |token| token.is_comma()) {
         trim_commas(&tokens[..comma_idx])
@@ -297,7 +299,9 @@ fn split_target_clause_before_comma(tokens: &[OwnedLexToken]) -> Vec<OwnedLexTok
     }
 }
 
-fn parse_shuffle_trigger_subject(subject: &[&str]) -> Option<(PlayerFilter, bool, bool)> {
+pub(crate) fn parse_shuffle_trigger_subject(
+    subject: &[&str],
+) -> Option<(PlayerFilter, bool, bool)> {
     if let Some(player) = parse_trigger_subject_player_filter(subject) {
         return Some((player, false, false));
     }
@@ -414,7 +418,7 @@ pub(crate) fn parse_attack_trigger_subject_filter(
     Ok(Some(filter))
 }
 
-fn strip_leading_one_or_more_lexed(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+pub(crate) fn strip_leading_one_or_more_lexed(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     let words = ActivationRestrictionCompatWords::new(tokens);
     if words.slice_eq(0, &["one", "or", "more"]) {
         let start = words.token_index_for_word_index(3).unwrap_or(tokens.len());
@@ -424,7 +428,7 @@ fn strip_leading_one_or_more_lexed(tokens: &[OwnedLexToken]) -> &[OwnedLexToken]
     }
 }
 
-fn parse_subtype_list_enters_trigger_filter_lexed(
+pub(crate) fn parse_subtype_list_enters_trigger_filter_lexed(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Option<ObjectFilter> {
@@ -476,7 +480,7 @@ fn parse_subtype_list_enters_trigger_filter_lexed(
     Some(filter)
 }
 
-fn parse_trigger_subject_filter_lexed(
+pub(crate) fn parse_trigger_subject_filter_lexed(
     subject_tokens: &[OwnedLexToken],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
     if subject_tokens.is_empty() {
@@ -610,14 +614,16 @@ fn parse_trigger_subject_filter_lexed(
         })
 }
 
-fn trigger_subject_player_selector_lexed(subject_tokens: &[OwnedLexToken]) -> Option<PlayerFilter> {
+pub(crate) fn trigger_subject_player_selector_lexed(
+    subject_tokens: &[OwnedLexToken],
+) -> Option<PlayerFilter> {
     let subject_tokens = strip_leading_one_or_more_lexed(subject_tokens);
     let subject_words = ActivationRestrictionCompatWords::new(subject_tokens);
     let subject_words = subject_words.to_word_refs();
     parse_trigger_subject_player_filter(&subject_words)
 }
 
-fn parse_attack_trigger_subject_filter_lexed(
+pub(crate) fn parse_attack_trigger_subject_filter_lexed(
     subject_tokens: &[OwnedLexToken],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
     if let Some(player) = trigger_subject_player_selector_lexed(subject_tokens) {
@@ -1515,7 +1521,7 @@ pub(crate) fn append_token_reminder_to_effect(
     reminder_words: &[&str],
 ) -> bool {
     fn parse_dynamic_token_pt_reminder(reminder_words: &[&str]) -> Option<(Value, Value)> {
-        use super::util::parse_value;
+        use super::super::util::parse_value;
 
         let parse_rhs = |words: &[&str]| {
             let tokens = words
@@ -1662,4 +1668,3 @@ pub(crate) fn append_token_reminder_to_effect(
         }
     }
 }
-

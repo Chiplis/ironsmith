@@ -330,7 +330,7 @@ fn lower_parsed_ability_chunk(
             &info.normalized,
         );
     }
-    let mut ability = parsed_ability.ability;
+    let mut ability = parsed_ability.into_runtime();
     if ability.text.is_none() {
         ability = ability.with_text(info.raw_line.as_str());
     }
@@ -610,12 +610,12 @@ fn lower_gift_keyword_chunk(
                 Err(err) => return Err(err),
             };
             let mut parsed = parsed;
-            if let AbilityKind::Triggered(ref mut triggered) = parsed.ability.kind {
+            if let AbilityKind::Triggered(triggered) = parsed.kind_mut() {
                 triggered
                     .effects
                     .push(crate::Effect::emit_gift_given(PlayerFilter::ChosenPlayer));
             }
-            builder = builder.with_ability(parsed.ability);
+            builder = builder.with_ability(parsed.into_runtime());
         }
     }
     Ok(builder)
@@ -670,7 +670,7 @@ fn lower_optional_cost_with_cast_trigger_chunk(
         }
         Err(err) => return Err(err),
     };
-    Ok(builder.with_ability(parsed.ability))
+    Ok(builder.with_ability(parsed.into_runtime()))
 }
 
 fn lower_additional_cost_choice_chunk(
@@ -803,10 +803,8 @@ fn lower_triggered_chunk(
         }
         Err(err) => return Err(err),
     };
-    if contains_haunted_creature_dies
-        && let AbilityKind::Triggered(triggered) = &parsed.ability.kind
-    {
+    if contains_haunted_creature_dies && let AbilityKind::Triggered(triggered) = parsed.kind() {
         state.haunt_linkage = Some((triggered.effects.to_vec(), triggered.choices.clone()));
     }
-    Ok(builder.with_ability(parsed.ability))
+    Ok(builder.with_ability(parsed.into_runtime()))
 }

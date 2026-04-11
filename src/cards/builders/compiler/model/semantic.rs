@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use crate::ConditionExpr;
-use crate::ability::{Ability, ActivationTiming};
+use crate::ability::{Ability, AbilityKind, ActivationTiming};
 use crate::alternative_cast::AlternativeCastingMethod;
 use crate::cost::OptionalCost;
 use crate::effect::{EffectPredicate, Value};
@@ -35,22 +35,22 @@ pub(crate) enum LineAst {
     AdditionalCost {
         effects: Vec<EffectAst>,
     },
-    OptionalCost(OptionalCost),
+    OptionalCost(ParsedOptionalCostAst),
     GiftKeyword {
-        cost: OptionalCost,
+        cost: ParsedOptionalCostAst,
         effects: Vec<EffectAst>,
         followup_text: String,
         timing: GiftTimingAst,
     },
     OptionalCostWithCastTrigger {
-        cost: OptionalCost,
+        cost: ParsedOptionalCostAst,
         effects: Vec<EffectAst>,
         followup_text: String,
     },
     AdditionalCostChoice {
         options: Vec<AdditionalCostChoiceOptionAst>,
     },
-    AlternativeCastingMethod(AlternativeCastingMethod),
+    AlternativeCastingMethod(ParsedAlternativeCastingMethodAst),
 }
 
 #[derive(Debug, Clone)]
@@ -60,11 +60,138 @@ pub(crate) struct AdditionalCostChoiceOptionAst {
 }
 
 #[derive(Debug, Clone)]
+pub(crate) struct ParsedAbilityRuntime {
+    runtime: Ability,
+}
+
+impl ParsedAbilityRuntime {
+    pub(crate) fn new(runtime: Ability) -> Self {
+        Self { runtime }
+    }
+
+    pub(crate) fn as_runtime(&self) -> &Ability {
+        &self.runtime
+    }
+
+    pub(crate) fn as_runtime_mut(&mut self) -> &mut Ability {
+        &mut self.runtime
+    }
+
+    pub(crate) fn into_runtime(self) -> Ability {
+        self.runtime
+    }
+}
+
+impl From<Ability> for ParsedAbilityRuntime {
+    fn from(value: Ability) -> Self {
+        Self::new(value)
+    }
+}
+
+#[derive(Debug, Clone)]
 pub(crate) struct ParsedAbility {
-    pub(crate) ability: Ability,
+    pub(crate) ability: ParsedAbilityRuntime,
     pub(crate) effects_ast: Option<Vec<EffectAst>>,
     pub(crate) reference_imports: ReferenceImports,
     pub(crate) trigger_spec: Option<TriggerSpec>,
+}
+
+impl ParsedAbility {
+    pub(crate) fn new(
+        ability: Ability,
+        effects_ast: Option<Vec<EffectAst>>,
+        reference_imports: ReferenceImports,
+        trigger_spec: Option<TriggerSpec>,
+    ) -> Self {
+        Self {
+            ability: ability.into(),
+            effects_ast,
+            reference_imports,
+            trigger_spec,
+        }
+    }
+
+    pub(crate) fn runtime(&self) -> &Ability {
+        self.ability.as_runtime()
+    }
+
+    pub(crate) fn runtime_mut(&mut self) -> &mut Ability {
+        self.ability.as_runtime_mut()
+    }
+
+    pub(crate) fn into_runtime(self) -> Ability {
+        self.ability.into_runtime()
+    }
+
+    pub(crate) fn kind(&self) -> &AbilityKind {
+        &self.runtime().kind
+    }
+
+    pub(crate) fn kind_mut(&mut self) -> &mut AbilityKind {
+        &mut self.runtime_mut().kind
+    }
+
+    pub(crate) fn text(&self) -> &Option<String> {
+        &self.runtime().text
+    }
+
+    pub(crate) fn text_mut(&mut self) -> &mut Option<String> {
+        &mut self.runtime_mut().text
+    }
+
+    pub(crate) fn functional_zones_mut(&mut self) -> &mut Vec<Zone> {
+        &mut self.runtime_mut().functional_zones
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ParsedOptionalCostAst {
+    runtime: OptionalCost,
+}
+
+impl ParsedOptionalCostAst {
+    pub(crate) fn new(runtime: OptionalCost) -> Self {
+        Self { runtime }
+    }
+
+    pub(crate) fn as_runtime(&self) -> &OptionalCost {
+        &self.runtime
+    }
+
+    pub(crate) fn into_runtime(self) -> OptionalCost {
+        self.runtime
+    }
+}
+
+impl From<OptionalCost> for ParsedOptionalCostAst {
+    fn from(value: OptionalCost) -> Self {
+        Self::new(value)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ParsedAlternativeCastingMethodAst {
+    runtime: AlternativeCastingMethod,
+}
+
+impl ParsedAlternativeCastingMethodAst {
+    pub(crate) fn new(runtime: AlternativeCastingMethod) -> Self {
+        Self { runtime }
+    }
+
+    pub(crate) fn as_runtime(&self) -> &AlternativeCastingMethod {
+        &self.runtime
+    }
+
+    pub(crate) fn into_runtime(self) -> AlternativeCastingMethod {
+        self.runtime
+    }
+}
+
+impl From<AlternativeCastingMethod> for ParsedAlternativeCastingMethodAst {
+    fn from(value: AlternativeCastingMethod) -> Self {
+        Self::new(value)
+    }
 }
 
 #[derive(Debug, Clone)]

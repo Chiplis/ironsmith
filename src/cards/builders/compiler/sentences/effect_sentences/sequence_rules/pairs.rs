@@ -4,7 +4,7 @@ use super::super::dispatch_entry::{
     parse_consult_traversal_sentence, parse_looked_card_choice_filter,
     parse_looked_card_reveal_filter, parse_prefixed_top_of_your_library_count,
 };
-use crate::cards::builders::compiler::activation_and_restrictions::contains_word_sequence;
+use crate::cards::builders::compiler::activation_and_restrictions::activated_line_core::contains_word_sequence;
 use crate::cards::builders::compiler::effect_sentences;
 use crate::cards::builders::compiler::effect_sentences::SentenceInput;
 use crate::cards::builders::compiler::lexer::TokenWordView;
@@ -558,16 +558,16 @@ pub(super) fn parse_consult_match_into_hand_exile_others(
             &["put", "it", "into", "your", "hand"],
         )
         .is_some();
-    let exiles_rest =
-        crate::cards::builders::compiler::grammar::primitives::contains_word(&second_tokens, "exile")
-            && crate::cards::builders::compiler::grammar::primitives::contains_word(
-                &second_tokens,
-                "other",
-            )
-            && crate::cards::builders::compiler::grammar::primitives::contains_word(
-                &second_tokens,
-                "cards",
-            );
+    let exiles_rest = crate::cards::builders::compiler::grammar::primitives::contains_word(
+        &second_tokens,
+        "exile",
+    ) && crate::cards::builders::compiler::grammar::primitives::contains_word(
+        &second_tokens,
+        "other",
+    ) && crate::cards::builders::compiler::grammar::primitives::contains_word(
+        &second_tokens,
+        "cards",
+    );
     if !moves_to_hand || !exiles_rest {
         return Ok(None);
     }

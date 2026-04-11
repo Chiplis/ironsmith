@@ -1,4 +1,4 @@
-use super::super::activation_and_restrictions::{
+use super::super::activation_and_restrictions::activated_line_core::{
     is_activate_only_restriction_sentence_lexed, is_trigger_only_restriction_sentence_lexed,
 };
 use super::super::clause_support::parse_trigger_clause_lexed;

@@ -1,4 +1,4 @@
-use super::activation_and_restrictions::parse_single_word_keyword_action;
+use super::activation_and_restrictions::keyword_action_costs::parse_single_word_keyword_action;
 use super::grammar::structure::{MetadataLineKind, split_metadata_line_lexed};
 use super::lexer::lex_line;
 use super::parser_support::{

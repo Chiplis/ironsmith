@@ -47,19 +47,23 @@ fn parser_mod_non_test_reexports_stay_minimal() {
     let mod_rs = fs::read_to_string(Path::new(file!()).with_file_name("mod.rs"))
         .expect("parser mod.rs should be readable");
     let allowed = [
+        "pub(crate) use super::*;",
         "pub(crate) use activation_and_restrictions::{ is_activate_only_restriction_sentence_lexed, is_trigger_only_restriction_sentence_lexed, };",
         "pub(crate) use effect_sentences::{CarryContext, TokenCopyFollowup, Verb, parse_type_line};",
         "pub(crate) use grammar::filters::parse_object_filter_with_grammar_entrypoint as parse_object_filter;",
         "pub(crate) use grammar::filters::parse_spell_filter_with_grammar_entrypoint as parse_spell_filter;",
         "pub(crate) use grammar::filters::parse_spell_filter_with_grammar_entrypoint_lexed as parse_spell_filter_lexed;",
         "pub(crate) use grammar::structure::parse_predicate_with_grammar_entrypoint_lexed as parse_predicate_lexed;",
+        "pub(crate) use ir::RewriteSemanticDocument as LegacySemanticDocument;",
         "pub(crate) use lexer::{OwnedLexToken, token_word_refs};",
         "pub(crate) use object_filters::{ is_comparison_or_delimiter, merge_spell_filters, parse_object_filter_lexed, spell_filter_has_identity, };",
         "pub(crate) use permission_helpers::{PermissionClauseSpec, PermissionLifetime};",
+        "pub(crate) use pipeline::parse_text_to_semantic_document;",
         "pub(crate) use pipeline::parse_text_with_annotations;",
         "pub(crate) use reference_model::{ReferenceEnv, ReferenceExports, ReferenceImports};",
         "pub(crate) use shared_types::{ CompileContext, EffectLoweringContext, IdGenContext, LineInfo, LoweringFrame, MetadataLine, NormalizedLine, };",
         "pub(crate) use util::{ SubjectAst, contains_until_end_of_turn, find_activation_cost_start, is_basic_color_word, is_sentence_helper_tag, parse_counter_type_from_tokens, parse_counter_type_word, parse_number, parse_number_or_x_value, parse_power_toughness, parse_scryfall_mana_cost, parse_target_phrase, replace_unbound_x_with_value, span_from_tokens, starts_with_activation_cost, token_index_for_word_index, value_contains_unbound_x, words, };",
+        "pub(crate) use facade::{CardTextCompiler, CompilePolicy, CompiledCardText};",
     ];
 
     let mut non_test_reexports = Vec::new();
@@ -3020,7 +3024,7 @@ fn rewrite_grammar_object_filter_entrypoint_matches_parser_root_lexed_output() {
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify comparison filter");
 
     let grammar =
-        super::grammar::filters::parse_object_filter_with_grammar_entrypoint_lexed(&lexed, false)
+        super::grammar::filters::reference_tag_stage::parse_object_filter_with_grammar_entrypoint_lexed(&lexed, false)
             .expect("grammar-owned object filter entrypoint should parse");
     let parser_root = super::parse_object_filter_lexed(&lexed, false)
         .expect("parser-root object filter entrypoint should parse");
@@ -3036,7 +3040,7 @@ fn rewrite_parser_root_nonlexed_object_filter_entrypoint_matches_grammar_lexed_o
     let parser_root = super::parse_object_filter(&tokens, false)
         .expect("parser-root non-lexed object filter entrypoint should parse");
     let grammar_lexed =
-        super::grammar::filters::parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false)
+        super::grammar::filters::reference_tag_stage::parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false)
             .expect("grammar-owned lexed object filter entrypoint should parse");
 
     assert_eq!(format!("{parser_root:?}"), format!("{grammar_lexed:?}"));
@@ -3047,7 +3051,10 @@ fn rewrite_grammar_spell_filter_entrypoint_matches_parser_root_output() {
     let text = "creature spells with power or toughness 2 or less";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify comparison spell filter");
 
-    let grammar = super::grammar::filters::parse_spell_filter_with_grammar_entrypoint_lexed(&lexed);
+    let grammar =
+        super::grammar::filters::spell_filters::parse_spell_filter_with_grammar_entrypoint_lexed(
+            &lexed,
+        );
     let parser_root = super::parse_spell_filter_lexed(&lexed);
 
     assert_eq!(format!("{grammar:?}"), format!("{parser_root:?}"));
@@ -3213,7 +3220,7 @@ fn collect_rust_files(dir: &Path, files: &mut Vec<PathBuf>) {
 
 #[test]
 fn rewrite_runtime_sources_do_not_reintroduce_token_bridge_helpers() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/cards/builders/parser");
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/cards/builders/compiler");
     let removed_helper_names = [
         format!("{}_{}", "compat_tokens_from", "lexed"),
         format!("{}_{}", "lexed_tokens_from", "compat"),
@@ -4924,7 +4931,7 @@ fn rewrite_activation_line_collects_any_player_restriction_from_token_view() {
         .expect("activated line should parse")
         .expect("activated line should produce an ability");
 
-    match &parsed.ability.kind {
+    match parsed.kind() {
         crate::ability::AbilityKind::Activated(activated) => {
             let restrictions = activated
                 .additional_restrictions
@@ -4955,7 +4962,7 @@ fn rewrite_activation_line_collects_sentence_modifiers_via_activated_sentence_mo
         .expect("activated line should produce an ability");
     let debug = format!("{parsed:#?}");
 
-    match &parsed.ability.kind {
+    match parsed.kind() {
         crate::ability::AbilityKind::Activated(activated) => {
             assert_eq!(
                 activated.timing,
@@ -5002,7 +5009,7 @@ fn rewrite_activation_line_parses_biophagus_style_conditional_mana_bonus() {
         .expect("Biophagus-style line should parse")
         .expect("Biophagus-style line should produce an ability");
 
-    match &parsed.ability.kind {
+    match parsed.kind() {
         crate::ability::AbilityKind::Activated(activated) => {
             assert!(matches!(
                 activated.mana_usage_restrictions.as_slice(),
@@ -6282,33 +6289,46 @@ fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
         .expect("rewrite lexer should classify enchanted player's upkeep trigger probe");
 
     assert!(matches!(
-        super::activation_and_restrictions::parse_trigger_clause_lexed(&dies_tokens),
+        super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
+            &dies_tokens,
+        ),
         Ok(crate::cards::builders::TriggerSpec::Dies(_))
     ));
     assert!(matches!(
-        super::activation_and_restrictions::parse_trigger_clause_lexed(&upkeep_tokens),
+        super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
+            &upkeep_tokens,
+        ),
         Ok(crate::cards::builders::TriggerSpec::BeginningOfUpkeep(
             crate::target::PlayerFilter::You
         ))
     ));
     assert!(matches!(
-        super::activation_and_restrictions::parse_trigger_clause_lexed(&enchanted_upkeep_tokens),
+        super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
+            &enchanted_upkeep_tokens,
+        ),
         Ok(crate::cards::builders::TriggerSpec::BeginningOfUpkeep(
             crate::target::PlayerFilter::TaggedPlayer(tag)
         )) if tag.as_str() == "enchanted"
     ));
     assert!(matches!(
-        super::activation_and_restrictions::parse_trigger_clause_lexed(&etb_tokens),
+        super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
+            &etb_tokens,
+        ),
         Ok(
             crate::cards::builders::TriggerSpec::EntersBattlefieldOneOrMore { .. }
                 | crate::cards::builders::TriggerSpec::EntersBattlefield { .. }
         )
     ));
     assert!(matches!(
-        super::activation_and_restrictions::parse_trigger_clause_lexed(&spell_tokens),
+        super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
+            &spell_tokens,
+        ),
         Ok(crate::cards::builders::TriggerSpec::SpellCast { .. })
     ));
-    let counter = super::activation_and_restrictions::parse_trigger_clause_lexed(&counter_tokens);
+    let counter =
+        super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
+            &counter_tokens,
+        );
     assert!(
         matches!(
             counter,
@@ -6320,7 +6340,9 @@ fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
         "{counter:?}"
     );
     let graveyard =
-        super::activation_and_restrictions::parse_trigger_clause_lexed(&graveyard_tokens);
+        super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
+            &graveyard_tokens,
+        );
     assert!(
         matches!(
             graveyard,
@@ -6329,13 +6351,17 @@ fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
         "{graveyard:?}"
     );
     assert!(matches!(
-        super::activation_and_restrictions::parse_trigger_clause_lexed(&combat_tokens),
+        super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
+            &combat_tokens,
+        ),
         Ok(crate::cards::builders::TriggerSpec::BeginningOfCombat(
             crate::target::PlayerFilter::Any
         ))
     ));
     assert!(matches!(
-        super::activation_and_restrictions::parse_trigger_clause_lexed(&second_main_tokens),
+        super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
+            &second_main_tokens,
+        ),
         Ok(
             crate::cards::builders::TriggerSpec::BeginningOfPostcombatMain(
                 crate::target::PlayerFilter::You
@@ -6343,7 +6369,9 @@ fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
         )
     ));
     assert!(matches!(
-        super::activation_and_restrictions::parse_trigger_clause_lexed(&gift_tokens),
+        super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
+            &gift_tokens,
+        ),
         Ok(crate::cards::builders::TriggerSpec::PlayerGivesGift(
             crate::target::PlayerFilter::Opponent
         ))
@@ -6636,7 +6664,10 @@ fn rewrite_lexed_trigger_clause_supports_this_creature_leaves_battlefield() {
     let tokens = lex_line("this creature leaves the battlefield", 0)
         .expect("rewrite lexer should classify leaves-the-battlefield trigger");
 
-    let parsed = super::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
+    let parsed =
+        super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
+            &tokens,
+        )
         .expect("lexed leaves-the-battlefield trigger should parse");
 
     assert_eq!(

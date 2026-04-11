@@ -242,6 +242,12 @@ pub(crate) fn classify_statement_line_family_lexed(
         return Some(StatementLineFamily::ArtRating);
     }
 
+    if primitives::contains_any_phrase(tokens, &[&["become"], &["becomes"]])
+        && primitives::contains_phrase(tokens, &["until", "end", "of", "turn"])
+    {
+        return Some(StatementLineFamily::Generic);
+    }
+
     let sentence_words_match = |sentence_tokens: &[OwnedLexToken], expected: &[&str]| {
         let words = TokenWordView::new(sentence_tokens);
         words.len() == expected.len() && words.slice_eq(0, expected)
@@ -301,6 +307,10 @@ pub(crate) fn classify_statement_line_family_lexed(
         word_refs.as_slice(),
         ["each", "player", third, ..] if is_statement_verb_word(third)
     );
+    let starts_with_all_quantified_statement = matches!(
+        word_refs.as_slice(),
+        ["all", ..] if word_refs.iter().skip(1).any(|word| is_statement_verb_word(word))
+    );
     let starts_with_quantified_target_player_statement = matches!(
         word_refs.as_slice(),
         [_, "target", "player", fourth, ..] | [_, "target", "players", fourth, ..]
@@ -308,6 +318,7 @@ pub(crate) fn classify_statement_line_family_lexed(
     );
 
     (starts_with_each_player_statement
+        || starts_with_all_quantified_statement
         || starts_with_quantified_target_player_statement
         || is_statement_verb_word(word_refs[0])
         || matches!(word_refs.as_slice(), ["this", "spell", third, ..] if is_statement_verb_word(third))
@@ -336,6 +347,8 @@ fn is_statement_verb_word(word: &str) -> bool {
             | "discards"
             | "draw"
             | "draws"
+            | "become"
+            | "becomes"
             | "enchant"
             | "enchants"
             | "exchange"

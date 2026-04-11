@@ -1,5 +1,6 @@
 #![allow(dead_code, unused_imports)]
 
+pub(crate) use super::LegacySemanticDocument as SemanticDocument;
 pub(crate) use super::ast;
 pub(crate) use super::effect_ast_normalization;
 pub(crate) use super::effect_ast_traversal;
@@ -11,4 +12,3 @@ pub(crate) use super::{
     CompileContext, EffectLoweringContext, IdGenContext, LineInfo, LoweringFrame, MetadataLine,
     NormalizedLine,
 };
-pub(crate) use super::LegacySemanticDocument as SemanticDocument;

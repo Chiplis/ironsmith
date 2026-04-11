@@ -14,7 +14,7 @@ use crate::mana::{ManaCost, ManaSymbol};
 use crate::target::{ChooseSpec, PlayerFilter};
 use crate::types::{CardType, Subtype, Supertype};
 
-use super::super::activation_and_restrictions::find_word_sequence_start;
+use super::super::activation_and_restrictions::activated_line_core::find_word_sequence_start;
 use super::super::lexer::{LexStream, OwnedLexToken, TokenKind, lex_line, parser_token_word_refs};
 use super::super::token_primitives::{find_index, slice_contains, slice_starts_with};
 #[cfg(test)]

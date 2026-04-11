@@ -6,6 +6,7 @@ use crate::cards::builders::{
 use crate::effect::Value;
 use crate::target::PlayerFilter;
 
+use super::activation_and_restrictions::keyword_action_costs::maybe_strip_leading_damage_subject_tokens;
 use super::activation_and_restrictions::{
     parse_ability_phrase, parse_single_word_keyword_action, parse_triggered_times_each_turn_lexed,
 };
@@ -1152,15 +1153,14 @@ pub(crate) fn parse_triggered_line_lexed(
                 trigger_tokens,
                 &effects_tokens,
             );
-            let effects =
-                parse_effect_sentences_lexed(&rewritten_effects_tokens).or_else(|_| {
-                    let Some(stripped) = super::activation_and_restrictions::
-                        maybe_strip_leading_damage_subject_tokens(&rewritten_effects_tokens)
-                    else {
-                        return Err(CardTextError::ParseError(String::new()));
-                    };
-                    parse_effect_sentences_lexed(stripped)
-                });
+            let effects = parse_effect_sentences_lexed(&rewritten_effects_tokens).or_else(|_| {
+                let Some(stripped) =
+                    maybe_strip_leading_damage_subject_tokens(&rewritten_effects_tokens)
+                else {
+                    return Err(CardTextError::ParseError(String::new()));
+                };
+                parse_effect_sentences_lexed(stripped)
+            });
             if let Ok(effects) = effects {
                 let mut max_triggers_per_turn =
                     parse_triggered_times_each_turn_lexed_from_sentences(&rewritten_effects_tokens);

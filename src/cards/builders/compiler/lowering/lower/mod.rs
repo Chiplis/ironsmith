@@ -18,10 +18,14 @@ use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 
 mod activated_lowering;
+mod damage_and_cost_rewrites;
 mod line_lowering;
+mod modal_and_level_lowering;
 mod normalization_support;
 mod parser_semantic_lowering;
+mod rewrite_sentence_grouping;
 mod rewrite_support;
+mod rewrite_text_helpers;
 
 pub(crate) use activated_lowering::lower_rewrite_activated_to_chunk;
 use activated_lowering::{LoweredRewriteActivatedLine, align_rewrite_activated_parse_sentences};
@@ -52,11 +56,15 @@ use parser_semantic_lowering::{
     strip_lexed_suffix_phrase,
 };
 
+pub(crate) use damage_and_cost_rewrites::*;
+pub(crate) use modal_and_level_lowering::*;
+pub(crate) use rewrite_sentence_grouping::*;
 use rewrite_support::{
     infer_static_ability_functional_zones, infer_triggered_ability_functional_zones,
     rewrite_finalize_lowered_card, rewrite_normalize_additional_cost_sacrifice_tags,
     runtime_effects_to_costs,
 };
+pub(crate) use rewrite_text_helpers::*;
 
 use super::activation_and_restrictions::{
     find_word_sequence_start, infer_activated_functional_zones_lexed,
@@ -131,7 +139,3 @@ use super::util::{
     parse_you_may_rather_than_spell_cost_line_lexed, preserve_keyword_prefix_for_parse,
     token_index_for_word_index, trim_commas, words,
 };
-include!("rewrite_text_helpers.rs");
-include!("rewrite_sentence_grouping.rs");
-include!("damage_and_cost_rewrites.rs");
-include!("modal_and_level_lowering.rs");

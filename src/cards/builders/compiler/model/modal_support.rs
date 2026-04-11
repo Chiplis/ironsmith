@@ -5,7 +5,7 @@ use crate::cards::builders::{
 use crate::effect::Value;
 use crate::target::PlayerFilter;
 
-use super::activation_and_restrictions::infer_activated_functional_zones_lexed;
+use super::activation_and_restrictions::activated_line_core::infer_activated_functional_zones_lexed;
 use super::clause_support::{parse_effect_sentences_lexed, parse_trigger_clause_lexed};
 use super::effect_ast_traversal::try_for_each_nested_effects_mut;
 use super::grammar::primitives as grammar;

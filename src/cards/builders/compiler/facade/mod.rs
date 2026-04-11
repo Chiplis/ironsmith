@@ -2,9 +2,7 @@ use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
 use crate::cards::CardDefinition;
-use crate::cards::builders::{
-    CardDefinitionBuilder, CardTextError, ParseAnnotations,
-};
+use crate::cards::builders::{CardDefinitionBuilder, CardTextError, ParseAnnotations};
 
 use super::model::SemanticDocument;
 use super::postpasses;
@@ -79,15 +77,16 @@ impl CardTextCompiler {
         }
 
         let original_builder = builder.clone();
-        let result = super::parse_text_with_annotations(builder, text.clone(), policy.allow_unsupported)
-            .and_then(|(definition, annotations)| {
-                postpasses::apply(definition, &original_builder, &text).map(|definition| {
-                    CompiledCardText {
-                        definition,
-                        annotations,
-                    }
-                })
-            });
+        let result =
+            super::parse_text_with_annotations(builder, text.clone(), policy.allow_unsupported)
+                .and_then(|(definition, annotations)| {
+                    postpasses::apply(definition, &original_builder, &text).map(|definition| {
+                        CompiledCardText {
+                            definition,
+                            annotations,
+                        }
+                    })
+                });
 
         store_cached_parse(cache_key, result)
     }

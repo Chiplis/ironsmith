@@ -1,3 +1,5 @@
+use super::*;
+
 pub(crate) fn parse_target_player_choose_objects_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(PlayerAst, ObjectFilter, ChoiceCount)>, CardTextError> {
@@ -497,7 +499,7 @@ pub(crate) fn parse_target_player_chooses_then_other_cant_block(
 
 #[cfg(test)]
 mod tests {
-    use super::super::util::tokenize_line;
+    use super::super::super::util::tokenize_line;
     use super::*;
     use crate::effect::Restriction;
     use crate::zone::Zone;
@@ -714,7 +716,7 @@ pub(crate) fn parse_choose_creature_type_phrase_words(
     Ok(Some((idx, excluded_subtypes)))
 }
 
-fn parse_choose_phrase_prefix_words(words: &[&str]) -> Option<usize> {
+pub(crate) fn parse_choose_phrase_prefix_words(words: &[&str]) -> Option<usize> {
     if words.is_empty() || !matches!(words[0], "choose" | "chooses") {
         return None;
     }
@@ -1030,7 +1032,8 @@ pub(crate) fn parse_sentence_target_player_chooses_then_you_put_it_onto_battlefi
         return Ok(None);
     }
 
-    let moved_words = crate::cards::builders::compiler::token_word_refs(&second_clause[2..onto_idx]);
+    let moved_words =
+        crate::cards::builders::compiler::token_word_refs(&second_clause[2..onto_idx]);
     let moved_is_tagged_choice = moved_words == ["it"]
         || moved_words == ["that", "card"]
         || moved_words == ["that", "permanent"];

@@ -1,4 +1,6 @@
-fn parse_graveyard_threshold_predicate(
+use super::*;
+
+pub(super) fn parse_graveyard_threshold_predicate(
     filtered: &[&str],
 ) -> Result<Option<PredicateAst>, CardTextError> {
     let (count, tail_start, constrained_player) = if filtered.len() >= 5
@@ -92,7 +94,9 @@ fn parse_graveyard_threshold_predicate(
     }))
 }
 
-fn parse_mana_spent_to_cast_predicate(words: &[&str]) -> Option<(u32, Option<ManaSymbol>)> {
+pub(super) fn parse_mana_spent_to_cast_predicate(
+    words: &[&str],
+) -> Option<(u32, Option<ManaSymbol>)> {
     if words.len() < 10 || words[0] != "at" || words[1] != "least" {
         return None;
     }
@@ -129,7 +133,7 @@ fn parse_mana_spent_to_cast_predicate(words: &[&str]) -> Option<(u32, Option<Man
     None
 }
 
-fn parse_mana_symbol_word(word: &str) -> Option<ManaSymbol> {
+pub(super) fn parse_mana_symbol_word(word: &str) -> Option<ManaSymbol> {
     parse_mana_symbol_word_flexible(word)
 }
 

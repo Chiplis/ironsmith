@@ -3164,7 +3164,7 @@ fn grant_object_ability_for_anthem_subject(
 
 fn parsed_ability_from_ability(ability: Ability) -> ParsedAbility {
     ParsedAbility {
-        ability,
+        ability: ability.into(),
         effects_ast: None,
         reference_imports: ReferenceImports::default(),
         trigger_spec: None,
@@ -3291,7 +3291,7 @@ fn split_anthem_trailing_segments_preserving_granted_abilities(
 
 fn parsed_triggered_ability_is_empty(ability: &ParsedAbility) -> bool {
     matches!(
-        &ability.ability.kind,
+        ability.kind(),
         AbilityKind::Triggered(triggered)
             if triggered.effects.is_empty()
                 && ability
@@ -3412,7 +3412,8 @@ pub(crate) fn parse_heterogeneous_granted_tail(
                             mana_symbols_per_counter.clone(),
                             *life_per_counter,
                             text.clone(),
-                        ),
+                        )
+                        .into(),
                         effects_ast: None,
                         reference_imports: ReferenceImports::default(),
                         trigger_spec: None,

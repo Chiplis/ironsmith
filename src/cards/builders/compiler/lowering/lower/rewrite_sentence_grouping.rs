@@ -1,4 +1,6 @@
-fn strip_non_keyword_label_prefix_for_lowering_lexed(
+use super::*;
+
+pub(crate) fn strip_non_keyword_label_prefix_for_lowering_lexed(
     mut tokens: &[OwnedLexToken],
 ) -> &[OwnedLexToken] {
     if looks_like_numeric_result_prefix_lexed(tokens) {
@@ -13,19 +15,19 @@ fn strip_non_keyword_label_prefix_for_lowering_lexed(
     tokens
 }
 
-fn rewrite_statement_followup_intro_for_lowering_lexed(
+pub(crate) fn rewrite_statement_followup_intro_for_lowering_lexed(
     tokens: &[OwnedLexToken],
 ) -> Vec<OwnedLexToken> {
     rewrite_followup_intro_to_if_lexed(tokens)
 }
 
-fn rewrite_copy_exception_type_removal_for_lowering_lexed(
+pub(crate) fn rewrite_copy_exception_type_removal_for_lowering_lexed(
     tokens: &[OwnedLexToken],
 ) -> Vec<OwnedLexToken> {
     remove_copy_exception_type_removal_lexed(tokens)
 }
 
-fn looks_like_numeric_result_prefix_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub(crate) fn looks_like_numeric_result_prefix_lexed(tokens: &[OwnedLexToken]) -> bool {
     matches!(
         tokens.first().map(|token| token.kind),
         Some(TokenKind::Number)
@@ -41,7 +43,7 @@ fn looks_like_numeric_result_prefix_lexed(tokens: &[OwnedLexToken]) -> bool {
         .any(|token| token.kind == TokenKind::Pipe)
 }
 
-fn rewrite_statement_parse_sentences_for_lowering_lexed(
+pub(crate) fn rewrite_statement_parse_sentences_for_lowering_lexed(
     tokens: &[OwnedLexToken],
 ) -> Vec<Vec<OwnedLexToken>> {
     split_lexed_sentences(tokens)
@@ -54,11 +56,13 @@ fn rewrite_statement_parse_sentences_for_lowering_lexed(
         .collect()
 }
 
-fn statement_sentence_contains_instead_split_for_lowering(tokens: &[OwnedLexToken]) -> bool {
+pub(crate) fn statement_sentence_contains_instead_split_for_lowering(
+    tokens: &[OwnedLexToken],
+) -> bool {
     lexed_tokens_contain_non_prefix_instead(tokens)
 }
 
-fn group_statement_sentences_for_lowering_lexed(
+pub(crate) fn group_statement_sentences_for_lowering_lexed(
     sentence_tokens: Vec<Vec<OwnedLexToken>>,
     fallback_tokens: &[OwnedLexToken],
 ) -> Vec<Vec<OwnedLexToken>> {
@@ -103,7 +107,7 @@ fn group_statement_sentences_for_lowering_lexed(
     groups
 }
 
-fn wrap_chosen_option_static_chunk(
+pub(crate) fn wrap_chosen_option_static_chunk(
     chunk: LineAst,
     chosen_option_label: Option<&str>,
 ) -> Result<LineAst, CardTextError> {
@@ -133,7 +137,7 @@ fn wrap_chosen_option_static_chunk(
     })
 }
 
-fn effective_chosen_option_label<'a>(
+pub(crate) fn effective_chosen_option_label<'a>(
     raw_line: &str,
     chosen_option_label: Option<&'a str>,
 ) -> Option<&'a str> {
@@ -331,10 +335,10 @@ mod tests {
             })
             .expect("expected Portcullis-style line to normalize into a triggered ability");
 
-        let AbilityKind::Triggered(triggered) = parsed.parsed.ability.kind else {
+        let AbilityKind::Triggered(triggered) = parsed.parsed.kind() else {
             panic!(
                 "expected Portcullis-style line to normalize into a triggered ability, got {:?}",
-                parsed.parsed.ability.kind
+                parsed.parsed.kind()
             );
         };
         let debug = format!("{:?}", triggered.intervening_if);
@@ -350,4 +354,3 @@ mod tests {
         Ok(())
     }
 }
-

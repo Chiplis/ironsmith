@@ -1,3 +1,5 @@
+use super::*;
+
 pub(crate) fn parse_object_filter_with_grammar_entrypoint_lexed(
     tokens: &[OwnedLexToken],
     other: bool,
@@ -5,21 +7,21 @@ pub(crate) fn parse_object_filter_with_grammar_entrypoint_lexed(
     parse_object_filter_lexed(tokens, other)
 }
 
-fn parse_object_filter(
+pub(super) fn parse_object_filter(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
     parse_object_filter_inner(tokens, other, true)
 }
 
-fn parse_object_filter_permissive(
+pub(super) fn parse_object_filter_permissive(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
     parse_object_filter_inner(tokens, other, false)
 }
 
-fn parse_object_filter_inner(
+pub(super) fn parse_object_filter_inner(
     tokens: &[OwnedLexToken],
     other: bool,
     strict: bool,
@@ -461,7 +463,7 @@ fn parse_object_filter_inner(
                 "in",
                 "its",
                 "cost",
-            ],
+            ][..],
             &[
                 "has",
                 "activated",
@@ -471,7 +473,7 @@ fn parse_object_filter_inner(
                 "in",
                 "its",
                 "cost",
-            ],
+            ][..],
             &[
                 "activated",
                 "abilities",
@@ -758,6 +760,7 @@ fn parse_object_filter_inner(
     }
 
     for (idx, word) in all_words.iter().enumerate() {
+        let idx: usize = idx;
         let is_negated_word = set_has(&negated_word_indices, &idx);
         match *word {
             "permanent" | "permanents" => saw_permanent = true,
@@ -1450,4 +1453,3 @@ fn parse_object_filter_inner(
 
     Ok(filter)
 }
-

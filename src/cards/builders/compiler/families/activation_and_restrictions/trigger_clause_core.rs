@@ -1,3 +1,5 @@
+use super::*;
+
 pub(crate) fn strip_leading_trigger_intro(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     if tokens.first().is_some_and(|token| {
         token.is_word("when") || token.is_word("whenever") || token.is_word("at")
@@ -2290,4 +2292,3 @@ pub(crate) fn parse_trigger_clause_lexed(
         ))),
     }
 }
-

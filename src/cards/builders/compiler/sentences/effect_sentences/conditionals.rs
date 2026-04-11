@@ -1,4 +1,4 @@
-use super::super::activation_and_restrictions::{
+use super::super::activation_and_restrictions::activated_line_core::{
     contains_word_sequence, find_word_sequence_start, parse_named_number,
 };
 use super::super::grammar::primitives as grammar;

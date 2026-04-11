@@ -207,7 +207,8 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         destination_tokens_full
     };
 
-    let mut destination_words = crate::cards::builders::compiler::token_word_refs(destination_tokens);
+    let mut destination_words =
+        crate::cards::builders::compiler::token_word_refs(destination_tokens);
     let mut destination_excluded_subtypes: Vec<Subtype> = Vec::new();
     if let Some(except_idx) = find_word_sequence_start(&destination_words, &["except", "for"]) {
         let exception_words = &destination_words[except_idx + 2..];

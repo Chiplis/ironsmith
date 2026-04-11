@@ -1,5 +1,6 @@
 use super::super::lexer::OwnedLexToken;
 use super::super::rule_engine::LexClauseView;
+use super::sentence_unsupported::diagnose_sentence_unsupported_lexed;
 use super::{
     chain_carry::FALLBACK_POST_DIAGNOSTIC_INDEX_LEXED,
     sentence_primitives::{
@@ -7,7 +8,6 @@ use super::{
     },
     special_sentence_family::SPECIAL_PRE_DIAGNOSTIC_INDEX_LEXED,
 };
-use super::sentence_unsupported::diagnose_sentence_unsupported_lexed;
 use crate::cards::builders::{CardTextError, EffectAst};
 
 fn run_sentence_rule_family(

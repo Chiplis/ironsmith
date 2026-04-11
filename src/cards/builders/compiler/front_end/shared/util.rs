@@ -18,9 +18,10 @@ use crate::types::{CardType, Subtype, SubtypeFamily, Supertype};
 use crate::zone::Zone;
 use crate::{ChoiceCount, PowerToughness, PtValue, TagKey};
 
-use super::activation_and_restrictions::{
-    contains_word_sequence, parse_ability_phrase, parse_activation_cost,
+use super::activation_and_restrictions::activated_line_core::{
+    contains_word_sequence, parse_activation_cost,
 };
+use super::activation_and_restrictions::keyword_action_costs::parse_ability_phrase;
 use super::clause_support::parse_effect_sentences_lexed;
 use super::effect_sentences::find_verb;
 use super::grammar::primitives::{split_lexed_slices_on_or, token_slice_span};
@@ -2878,7 +2879,8 @@ pub(crate) fn parse_level_up_line(
             }),
             functional_zones: vec![Zone::Battlefield],
             text: Some(level_up_text),
-        },
+        }
+        .into(),
         effects_ast: None,
         reference_imports: ReferenceImports::default(),
         trigger_spec: None,
@@ -3265,7 +3267,9 @@ pub(crate) fn parse_morph_keyword_line(
     };
 
     Ok(Some(ParsedAbility {
-        ability: Ability::static_ability(static_ability).with_text(&text),
+        ability: Ability::static_ability(static_ability)
+            .with_text(&text)
+            .into(),
         effects_ast: None,
         reference_imports: ReferenceImports::default(),
         trigger_spec: None,
@@ -3577,7 +3581,8 @@ pub(crate) fn parse_transmute_line(
             }),
             functional_zones: vec![Zone::Hand],
             text: Some(text),
-        },
+        }
+        .into(),
         effects_ast: None,
         reference_imports: ReferenceImports::default(),
         trigger_spec: None,
@@ -3666,7 +3671,8 @@ pub(crate) fn parse_reinforce_line(
             }),
             functional_zones: vec![Zone::Hand],
             text: Some(render_text),
-        },
+        }
+        .into(),
         effects_ast: None,
         reference_imports: ReferenceImports::default(),
         trigger_spec: None,

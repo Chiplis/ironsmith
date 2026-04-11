@@ -215,7 +215,8 @@ fn parse_nonstatic_keyword_action_as_object_ability(
                     }),
                     functional_zones: vec![Zone::Battlefield],
                     text: Some(format!("Crew {amount}")),
-                },
+                }
+                .into(),
                 effects_ast: None,
                 reference_imports: ReferenceImports::default(),
                 trigger_spec: None,

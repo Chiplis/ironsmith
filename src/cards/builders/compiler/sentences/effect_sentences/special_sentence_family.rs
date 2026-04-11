@@ -4,13 +4,13 @@ use super::super::rule_engine::{LexClauseView, LexRuleDef, LexRuleIndex, RULE_SH
 use super::super::util::trim_commas;
 use super::sentence_helpers::target_ast_to_object_filter;
 use super::{parse_object_filter, parse_target_phrase as parse_target_phrase_lexed};
+use crate::cards::builders::compiler::contains_until_end_of_turn;
 use crate::cards::builders::{CardTextError, EffectAst};
 use crate::cards::builders::{IT_TAG, PlayerAst, TagKey, TargetAst, Value};
 use crate::effect::Until;
 use crate::object::CounterType;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::types::CardType;
-use crate::cards::builders::compiler::contains_until_end_of_turn;
 
 pub(crate) fn parse_exile_then_meld_sentence(
     tokens: &[OwnedLexToken],
@@ -199,13 +199,12 @@ pub(crate) fn parse_scaled_target_power_sentence(
         return Ok(Some(vec![EffectAst::DoubleManaPool { player }]));
     }
 
-    let duration_start = if words.len() >= 4
-        && contains_until_end_of_turn(&words[words.len() - 4..])
-    {
-        words.len() - 4
-    } else {
-        words.len()
-    };
+    let duration_start =
+        if words.len() >= 4 && contains_until_end_of_turn(&words[words.len() - 4..]) {
+            words.len() - 4
+        } else {
+            words.len()
+        };
     let subject_end = duration_start;
 
     if words.first().copied() == Some(verb) && words.get(1).copied() == Some("the") {

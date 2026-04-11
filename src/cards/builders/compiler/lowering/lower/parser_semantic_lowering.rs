@@ -899,7 +899,7 @@ pub(crate) fn lower_gift_keyword_line(line: &RewriteKeywordLine) -> Result<LineA
     );
 
     Ok(LineAst::GiftKeyword {
-        cost,
+        cost: cost.into(),
         effects,
         followup_text,
         timing,
@@ -1120,7 +1120,7 @@ pub(crate) fn try_lower_optional_cost_with_cast_trigger(
     let followup_words = token_word_refs(followup_effect_tokens);
 
     Ok(Some(LineAst::OptionalCostWithCastTrigger {
-        cost,
+        cost: cost.into(),
         effects,
         followup_text: format!("When you do, {}", followup_words.join(" ")),
     }))
@@ -1150,10 +1150,9 @@ pub(crate) fn try_lower_optional_behold_additional_cost(
         return Ok(None);
     }
 
-    Ok(Some(LineAst::OptionalCost(OptionalCost::custom(
-        line.info.raw_line.trim(),
-        total_cost,
-    ))))
+    Ok(Some(LineAst::OptionalCost(
+        OptionalCost::custom(line.info.raw_line.trim(), total_cost).into(),
+    )))
 }
 
 fn additional_cost_tail_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {

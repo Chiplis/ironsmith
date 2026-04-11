@@ -205,13 +205,16 @@ pub(crate) fn parse_consult_remainder_order(words: &[&str]) -> Option<LibraryBot
     if !slice_contains(words, &"bottom") || !slice_contains(words, &"library") {
         return None;
     }
-    if super::super::activation_and_restrictions::contains_word_sequence(
+    if super::super::activation_and_restrictions::activated_line_core::contains_word_sequence(
         words,
         &["random", "order"],
     ) {
         return Some(LibraryBottomOrderAst::Random);
     }
-    if super::super::activation_and_restrictions::contains_word_sequence(words, &["any", "order"]) {
+    if super::super::activation_and_restrictions::activated_line_core::contains_word_sequence(
+        words,
+        &["any", "order"],
+    ) {
         return Some(LibraryBottomOrderAst::ChooserChooses);
     }
     None

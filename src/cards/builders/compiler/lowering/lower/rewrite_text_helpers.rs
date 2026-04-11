@@ -1,34 +1,39 @@
-fn rewrite_unsupported_line_ast(
+use super::*;
+
+pub(crate) fn rewrite_unsupported_line_ast(
     raw_line: &str,
     reason: impl Into<String>,
 ) -> crate::cards::builders::LineAst {
     LineAst::StaticAbility(StaticAbility::unsupported_parser_line(raw_line, reason).into())
 }
 
-fn lexed_tokens(text: &str, line_index: usize) -> Result<Vec<OwnedLexToken>, CardTextError> {
+pub(crate) fn lexed_tokens(
+    text: &str,
+    line_index: usize,
+) -> Result<Vec<OwnedLexToken>, CardTextError> {
     lex_line(text, line_index)
 }
 
-fn word_refs_have_prefix(words: &[&str], prefix: &[&str]) -> bool {
+pub(crate) fn word_refs_have_prefix(words: &[&str], prefix: &[&str]) -> bool {
     slice_starts_with(words, prefix)
 }
 
-fn word_refs_have_suffix(words: &[&str], suffix: &[&str]) -> bool {
+pub(crate) fn word_refs_have_suffix(words: &[&str], suffix: &[&str]) -> bool {
     slice_ends_with(words, suffix)
 }
 
-fn word_refs_find(words: &[&str], expected: &str) -> Option<usize> {
+pub(crate) fn word_refs_find(words: &[&str], expected: &str) -> Option<usize> {
     find_index(words, |word| *word == expected)
 }
 
 #[derive(Debug, Clone, Default)]
-struct RewriteLoweredCardState {
-    haunt_linkage: Option<(Vec<crate::effect::Effect>, Vec<ChooseSpec>)>,
-    latest_spell_exports: ReferenceExports,
-    latest_additional_cost_exports: ReferenceExports,
+pub(crate) struct RewriteLoweredCardState {
+    pub(crate) haunt_linkage: Option<(Vec<crate::effect::Effect>, Vec<ChooseSpec>)>,
+    pub(crate) latest_spell_exports: ReferenceExports,
+    pub(crate) latest_additional_cost_exports: ReferenceExports,
 }
 
-fn rewrite_update_last_restrictable_ability(
+pub(crate) fn rewrite_update_last_restrictable_ability(
     builder: &CardDefinitionBuilder,
     abilities_before: usize,
     last_restrictable_ability: &mut Option<usize>,
@@ -46,7 +51,7 @@ fn rewrite_update_last_restrictable_ability(
     }
 }
 
-fn rewrite_lower_level_ability_ast(
+pub(crate) fn rewrite_lower_level_ability_ast(
     level: ParsedLevelAbilityAst,
 ) -> Result<crate::ability::LevelAbility, CardTextError> {
     let mut lowered = crate::ability::LevelAbility::new(level.min_level, level.max_level);
@@ -74,7 +79,7 @@ fn rewrite_lower_level_ability_ast(
     Ok(lowered)
 }
 
-fn title_case_words(text: &str) -> String {
+pub(crate) fn title_case_words(text: &str) -> String {
     text.split_whitespace()
         .map(|word| {
             let mut chars = word.chars();
@@ -87,7 +92,7 @@ fn title_case_words(text: &str) -> String {
         .join(" ")
 }
 
-fn color_set_name(colors: ColorSet) -> Option<&'static str> {
+pub(crate) fn color_set_name(colors: ColorSet) -> Option<&'static str> {
     if colors == ColorSet::WHITE {
         return Some("white");
     }
@@ -106,7 +111,7 @@ fn color_set_name(colors: ColorSet) -> Option<&'static str> {
     None
 }
 
-fn describe_hexproof_from_filter(filter: &crate::target::ObjectFilter) -> String {
+pub(crate) fn describe_hexproof_from_filter(filter: &crate::target::ObjectFilter) -> String {
     if !filter.any_of.is_empty() {
         return filter
             .any_of
@@ -124,7 +129,7 @@ fn describe_hexproof_from_filter(filter: &crate::target::ObjectFilter) -> String
         .to_string()
 }
 
-fn keyword_action_line_text(action: &crate::cards::builders::KeywordAction) -> String {
+pub(crate) fn keyword_action_line_text(action: &crate::cards::builders::KeywordAction) -> String {
     use crate::cards::builders::KeywordAction;
 
     match action {
@@ -260,7 +265,7 @@ fn keyword_action_line_text(action: &crate::cards::builders::KeywordAction) -> S
     }
 }
 
-fn keyword_actions_line_text(
+pub(crate) fn keyword_actions_line_text(
     actions: &[crate::cards::builders::KeywordAction],
     separator: &str,
 ) -> Option<String> {
@@ -276,7 +281,7 @@ fn keyword_actions_line_text(
     )
 }
 
-fn uses_spell_only_functional_zones(static_ability: &StaticAbility) -> bool {
+pub(crate) fn uses_spell_only_functional_zones(static_ability: &StaticAbility) -> bool {
     matches!(
         static_ability.id(),
         crate::static_abilities::StaticAbilityId::ConditionalSpellKeyword
@@ -286,7 +291,7 @@ fn uses_spell_only_functional_zones(static_ability: &StaticAbility) -> bool {
     )
 }
 
-fn uses_referenced_ability_functional_zones(
+pub(crate) fn uses_referenced_ability_functional_zones(
     static_ability: &StaticAbility,
     normalized_line: &str,
 ) -> bool {
@@ -294,11 +299,11 @@ fn uses_referenced_ability_functional_zones(
         && str_starts_with(normalized_line, "this ability costs")
 }
 
-fn uses_all_zone_functional_zones(static_ability: &StaticAbility) -> bool {
+pub(crate) fn uses_all_zone_functional_zones(static_ability: &StaticAbility) -> bool {
     static_ability.id() == crate::static_abilities::StaticAbilityId::ShuffleIntoLibraryFromGraveyard
 }
 
-fn effect_target_uses_it_reference(spec: &ChooseSpec) -> bool {
+pub(crate) fn effect_target_uses_it_reference(spec: &ChooseSpec) -> bool {
     match spec {
         ChooseSpec::Tagged(_) => true,
         ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _) => {
@@ -308,7 +313,9 @@ fn effect_target_uses_it_reference(spec: &ChooseSpec) -> bool {
     }
 }
 
-fn extract_previous_replacement_target(effect: &crate::effect::Effect) -> Option<ChooseSpec> {
+pub(crate) fn extract_previous_replacement_target(
+    effect: &crate::effect::Effect,
+) -> Option<ChooseSpec> {
     if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
         return extract_previous_replacement_target(&tagged.effect);
     }
@@ -332,7 +339,7 @@ fn extract_previous_replacement_target(effect: &crate::effect::Effect) -> Option
     None
 }
 
-fn rewrite_replacement_effect_target(
+pub(crate) fn rewrite_replacement_effect_target(
     effect: &crate::effect::Effect,
     previous_target: &ChooseSpec,
 ) -> Option<crate::effect::Effect> {
@@ -369,7 +376,7 @@ fn rewrite_replacement_effect_target(
     None
 }
 
-fn push_unsupported_marker(
+pub(crate) fn push_unsupported_marker(
     builder: CardDefinitionBuilder,
     raw_line: &str,
     reason: String,
@@ -383,7 +390,7 @@ fn push_unsupported_marker(
     )
 }
 
-fn rewrite_apply_line_ast(
+pub(crate) fn rewrite_apply_line_ast(
     builder: CardDefinitionBuilder,
     state: &mut RewriteLoweredCardState,
     parsed: NormalizedLineChunk,
@@ -401,7 +408,7 @@ fn rewrite_apply_line_ast(
     )
 }
 
-fn rewrite_lower_line_ast(
+pub(crate) fn rewrite_lower_line_ast(
     builder: &mut CardDefinitionBuilder,
     state: &mut RewriteLoweredCardState,
     annotations: &mut ParseAnnotations,
@@ -466,7 +473,7 @@ fn rewrite_lower_line_ast(
     Ok(())
 }
 
-fn lower_compound_buff_and_unblockable_static_chunk(
+pub(crate) fn lower_compound_buff_and_unblockable_static_chunk(
     _line: &RewriteStaticLine,
     parse_tokens: &[OwnedLexToken],
 ) -> Result<Option<LineAst>, CardTextError> {
@@ -491,7 +498,7 @@ fn lower_compound_buff_and_unblockable_static_chunk(
     Ok(Some(LineAst::StaticAbilities(abilities)))
 }
 
-fn split_compound_buff_and_unblockable_tokens(
+pub(crate) fn split_compound_buff_and_unblockable_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<(Vec<OwnedLexToken>, Vec<OwnedLexToken>)> {
     let words = TokenWordView::new(tokens);
@@ -519,7 +526,7 @@ fn split_compound_buff_and_unblockable_tokens(
     Some((left_tokens, right_tokens))
 }
 
-fn lower_split_rewrite_static_chunk(
+pub(crate) fn lower_split_rewrite_static_chunk(
     line: &RewriteStaticLine,
     parse_tokens: &[OwnedLexToken],
 ) -> Result<Option<LineAst>, CardTextError> {
@@ -548,7 +555,7 @@ fn lower_split_rewrite_static_chunk(
     .map(Some)
 }
 
-fn should_skip_keyword_action_static_probe(normalized: &str) -> bool {
+pub(crate) fn should_skip_keyword_action_static_probe(normalized: &str) -> bool {
     let normalized = normalized.trim();
     (str_ends_with(normalized, "can't be blocked.")
         || str_ends_with(normalized, "can't be blocked"))
@@ -556,9 +563,8 @@ fn should_skip_keyword_action_static_probe(normalized: &str) -> bool {
         && !str_starts_with(normalized, "it ")
 }
 
-fn split_statement_label_prefix_for_lowering_lexed(
+pub(crate) fn split_statement_label_prefix_for_lowering_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<(String, &[OwnedLexToken])> {
     split_em_dash_label_prefix(tokens)
 }
-

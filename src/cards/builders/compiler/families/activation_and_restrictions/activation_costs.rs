@@ -1,3 +1,5 @@
+use super::*;
+
 pub(crate) fn parse_cant_clauses(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
@@ -110,7 +112,7 @@ pub(crate) fn parse_cant_clauses(
     parse_cant_clause(tokens).map(|ability| ability.map(|ability| vec![ability]))
 }
 
-fn split_cant_clause_on_or(tokens: &[OwnedLexToken]) -> Option<Vec<Vec<OwnedLexToken>>> {
+pub(crate) fn split_cant_clause_on_or(tokens: &[OwnedLexToken]) -> Option<Vec<Vec<OwnedLexToken>>> {
     let (neg_start, neg_end) = find_negation_span(tokens)?;
     let subject_tokens = trim_commas(&tokens[..neg_start]);
     let remainder_tokens = trim_commas(&tokens[neg_end..]);
@@ -1382,4 +1384,3 @@ pub(crate) fn parse_cant_clause(
 
     Ok(Some(ability))
 }
-

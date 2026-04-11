@@ -359,18 +359,18 @@ fn rewrite_prepare_parsed_ability_payload(
         return Ok(None);
     };
 
-    if let AbilityKind::Activated(activated) = &parsed.ability.kind
+    if let AbilityKind::Activated(activated) = parsed.kind()
         && (!activated.effects.is_empty() || !activated.choices.is_empty())
     {
         return Ok(None);
     }
-    if let AbilityKind::Triggered(triggered) = &parsed.ability.kind
+    if let AbilityKind::Triggered(triggered) = parsed.kind()
         && (!triggered.effects.is_empty() || !triggered.choices.is_empty())
     {
         return Ok(None);
     }
 
-    Ok(match (&parsed.ability.kind, parsed.trigger_spec.as_ref()) {
+    Ok(match (parsed.kind(), parsed.trigger_spec.as_ref()) {
         (AbilityKind::Triggered(_), Some(trigger)) => {
             let (trigger, prepared) = rewrite_prepare_triggered_effects_for_lowering(
                 trigger.clone(),
@@ -417,8 +417,8 @@ fn rewrite_lower_parsed_ability_internal(
         None => rewrite_prepare_parsed_ability_payload(&parsed)?,
     };
 
-    let AbilityKind::Activated(activated) = &mut parsed.ability.kind else {
-        if let AbilityKind::Triggered(triggered) = &mut parsed.ability.kind {
+    let AbilityKind::Activated(activated) = parsed.kind_mut() else {
+        if let AbilityKind::Triggered(triggered) = parsed.kind_mut() {
             if !triggered.effects.is_empty() || !triggered.choices.is_empty() {
                 return Ok(parsed);
             }
@@ -574,7 +574,8 @@ pub(crate) fn rewrite_parsed_triggered_ability(
             }),
             functional_zones,
             text,
-        },
+        }
+        .into(),
         effects_ast: Some(effects_ast),
         trigger_spec: Some(trigger),
         reference_imports: reference_imports.into(),
@@ -887,7 +888,7 @@ pub(crate) fn rewrite_lower_static_ability_ast(
             display,
             condition,
         } => {
-            let mut lowered = rewrite_lower_parsed_ability(ability)?.ability;
+            let mut lowered = rewrite_lower_parsed_ability(ability)?.into_runtime();
             lowered.text = Some(display.clone());
             let mut grant =
                 crate::static_abilities::GrantObjectAbilityForFilter::new(filter, lowered, display);
@@ -901,7 +902,7 @@ pub(crate) fn rewrite_lower_static_ability_ast(
             display,
             condition,
         } => {
-            let mut lowered = rewrite_lower_parsed_ability(ability)?.ability;
+            let mut lowered = rewrite_lower_parsed_ability(ability)?.into_runtime();
             lowered.text = Some(display.clone());
             let mut grant = crate::static_abilities::AttachedAbilityGrant::new(lowered, display);
             if let Some(condition) = condition {
@@ -910,7 +911,7 @@ pub(crate) fn rewrite_lower_static_ability_ast(
             Ok(StaticAbility::new(grant))
         }
         StaticAbilityAst::SoulbondSharedObjectAbility { ability, display } => {
-            let mut lowered = rewrite_lower_parsed_ability(ability)?.ability;
+            let mut lowered = rewrite_lower_parsed_ability(ability)?.into_runtime();
             if lowered.text.is_none() {
                 lowered.text = Some(display);
             }

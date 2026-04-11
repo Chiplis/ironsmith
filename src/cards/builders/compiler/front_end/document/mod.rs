@@ -9,7 +9,7 @@ use winnow::error::ModalResult as WResult;
 use winnow::stream::Stream;
 use winnow::token::any;
 
-use super::activation_and_restrictions::{
+use super::activation_and_restrictions::keyword_activated_lines::{
     parse_channel_line_lexed, parse_cycling_line_lexed, parse_equip_line_lexed,
 };
 use super::clause_support::{
@@ -52,14 +52,19 @@ use super::util::{
 };
 use std::sync::LazyLock;
 
+mod block_parsing;
 mod line_cst_parsing;
+mod line_dispatch;
+mod line_family_handlers;
 mod statement_cst_support;
 mod unsupported;
 
+use block_parsing::{try_parse_level_header_block, try_parse_modal_bullet_block};
 use line_cst_parsing::{
     parse_level_item_cst, parse_modal_mode_cst, parse_saga_chapter_line_cst, parse_static_line_cst,
     parse_triggered_line_cst, strict_unsupported_triggered_line_error,
 };
+use line_dispatch::{LineDispatchResult, dispatch_standard_line_cst};
 #[cfg(test)]
 use statement_cst_support::looks_like_statement_line;
 use statement_cst_support::{
@@ -1963,412 +1968,6 @@ fn classify_unsupported_line_reason(line: &PreprocessedLine) -> &'static str {
     "unclassified-line-family"
 }
 
-struct LineDispatchResult {
-    lines: Vec<RewriteLineCst>,
-    next_idx: usize,
-}
-
-impl LineDispatchResult {
-    fn single(line: RewriteLineCst, next_idx: usize) -> Self {
-        Self {
-            lines: vec![line],
-            next_idx,
-        }
-    }
-}
-
-struct LineDispatchContext<'a> {
-    preprocessed: &'a PreprocessedDocument,
-    idx: usize,
-    line: &'a PreprocessedLine,
-    allow_unsupported: bool,
-}
-
-type LineFamilyRuleFn =
-    for<'a> fn(&LineDispatchContext<'a>) -> Result<Option<LineDispatchResult>, CardTextError>;
-
-#[derive(Clone, Copy)]
-struct LineFamilyRuleDef {
-    id: &'static str,
-    priority: u16,
-    heads: &'static [&'static str],
-    run: LineFamilyRuleFn,
-}
-
-fn run_trailing_keyword_activation_line_family(
-    ctx: &LineDispatchContext<'_>,
-) -> Result<Option<LineDispatchResult>, CardTextError> {
-    try_parse_trailing_keyword_activation_dispatch(&ctx.preprocessed.builder, ctx.idx, ctx.line)
-}
-
-fn run_labeled_line_family(
-    ctx: &LineDispatchContext<'_>,
-) -> Result<Option<LineDispatchResult>, CardTextError> {
-    try_parse_labeled_line_dispatch(ctx.preprocessed, ctx.idx, ctx.line, ctx.allow_unsupported)
-}
-
-fn run_triggered_line_family(
-    ctx: &LineDispatchContext<'_>,
-) -> Result<Option<LineDispatchResult>, CardTextError> {
-    try_parse_triggered_line_dispatch(ctx.preprocessed, ctx.idx, ctx.line, ctx.allow_unsupported)
-}
-
-fn run_keyword_line_family(
-    ctx: &LineDispatchContext<'_>,
-) -> Result<Option<LineDispatchResult>, CardTextError> {
-    Ok(parse_keyword_line_cst(ctx.line)?.map(|keyword_line| {
-        LineDispatchResult::single(RewriteLineCst::Keyword(keyword_line), ctx.idx + 1)
-    }))
-}
-
-fn run_ward_or_echo_static_prefix_line_family(
-    ctx: &LineDispatchContext<'_>,
-) -> Result<Option<LineDispatchResult>, CardTextError> {
-    let normalized = ctx.line.info.normalized.normalized.as_str();
-    Ok(
-        is_ward_or_echo_static_prefix_tokens(&ctx.line.tokens).then(|| {
-            LineDispatchResult::single(
-                RewriteLineCst::Static(StaticLineCst {
-                    info: ctx.line.info.clone(),
-                    text: normalized.to_string(),
-                    parse_tokens: rewrite_keyword_dash_parse_tokens(&ctx.line.tokens),
-                    chosen_option_label: None,
-                }),
-                ctx.idx + 1,
-            )
-        }),
-    )
-}
-
-fn run_activation_line_family(
-    ctx: &LineDispatchContext<'_>,
-) -> Result<Option<LineDispatchResult>, CardTextError> {
-    if (!str_starts_with_char(ctx.line.info.raw_line.trim_start(), '(')
-        || is_fully_parenthetical_line(ctx.line.info.raw_line.as_str()))
-        && let Some((cost_tokens, effect_parse_tokens)) = split_label_prefix_lexed(&ctx.line.tokens)
-            .filter(|(label, _)| is_named_ability_label(label.as_str()))
-            .and_then(|(_, body_tokens)| split_activation_text_tokens_lexed(body_tokens))
-            .or_else(|| split_activation_text_tokens_lexed(&ctx.line.tokens))
-    {
-        let cost_text = render_token_slice(&cost_tokens);
-        let effect_text = render_token_slice(&effect_parse_tokens).trim().to_string();
-        match parse_activation_cost_tokens_rewrite(&cost_tokens) {
-            Ok(cost) => {
-                return Ok(Some(LineDispatchResult::single(
-                    RewriteLineCst::Activated(ActivatedLineCst {
-                        info: ctx.line.info.clone(),
-                        cost,
-                        cost_parse_tokens: cost_tokens,
-                        effect_text,
-                        effect_parse_tokens,
-                        chosen_option_label: None,
-                    }),
-                    ctx.idx + 1,
-                )));
-            }
-            Err(err) if looks_like_activation_cost_prefix(cost_text.as_str()) => {
-                return Err(err);
-            }
-            Err(_) => {}
-        }
-    }
-
-    Ok(None)
-}
-
-fn run_combined_static_line_family(
-    ctx: &LineDispatchContext<'_>,
-) -> Result<Option<LineDispatchResult>, CardTextError> {
-    let normalized = ctx.line.info.normalized.normalized.as_str();
-    let Some(PreprocessedItem::Line(next_line)) = ctx.preprocessed.items.get(ctx.idx + 1) else {
-        return Ok(None);
-    };
-    if !should_try_combined_static_tokens(&ctx.line.tokens, &next_line.tokens) {
-        return Ok(None);
-    }
-
-    let combined_text = format!(
-        "{}. {}",
-        normalized.trim_end_matches('.'),
-        next_line.info.normalized.normalized.trim_end_matches('.')
-    );
-    let combined_line = rewrite_line_normalized(ctx.line, combined_text.as_str())?;
-    Ok(parse_static_line_cst(&combined_line)?.map(|static_line| {
-        LineDispatchResult::single(RewriteLineCst::Static(static_line), ctx.idx + 2)
-    }))
-}
-
-fn run_statement_probe_line_family(
-    ctx: &LineDispatchContext<'_>,
-) -> Result<Option<LineDispatchResult>, CardTextError> {
-    if (matches!(
-        super::grammar::structure::classify_statement_line_family_lexed(&ctx.line.tokens),
-        Some(super::grammar::structure::StatementLineFamily::PactNextUpkeep)
-    ) || looks_like_statement_line_lexed(ctx.line))
-        && let Some(statement_line) = parse_statement_line_cst(ctx.line)?
-    {
-        return Ok(Some(LineDispatchResult::single(
-            RewriteLineCst::Statement(statement_line),
-            ctx.idx + 1,
-        )));
-    }
-    Ok(None)
-}
-
-fn run_static_line_family(
-    ctx: &LineDispatchContext<'_>,
-) -> Result<Option<LineDispatchResult>, CardTextError> {
-    Ok(parse_static_line_cst(ctx.line)?.map(|static_line| {
-        LineDispatchResult::single(RewriteLineCst::Static(static_line), ctx.idx + 1)
-    }))
-}
-
-fn run_statement_line_family(
-    ctx: &LineDispatchContext<'_>,
-) -> Result<Option<LineDispatchResult>, CardTextError> {
-    Ok(parse_statement_line_cst(ctx.line)?.map(|statement_line| {
-        LineDispatchResult::single(RewriteLineCst::Statement(statement_line), ctx.idx + 1)
-    }))
-}
-
-fn run_colon_nonactivation_statement_line_family(
-    ctx: &LineDispatchContext<'_>,
-) -> Result<Option<LineDispatchResult>, CardTextError> {
-    Ok(
-        parse_colon_nonactivation_statement_fallback(ctx.line)?.map(|statement_line| {
-            LineDispatchResult::single(RewriteLineCst::Statement(statement_line), ctx.idx + 1)
-        }),
-    )
-}
-
-fn run_unsupported_line_family(
-    ctx: &LineDispatchContext<'_>,
-) -> Result<Option<LineDispatchResult>, CardTextError> {
-    if ctx.allow_unsupported {
-        return Ok(Some(LineDispatchResult::single(
-            RewriteLineCst::Unsupported(UnsupportedLineCst {
-                info: ctx.line.info.clone(),
-                reason_code: if matches!(
-                    super::grammar::structure::classify_statement_line_family_lexed(
-                        &ctx.line.tokens
-                    ),
-                    Some(super::grammar::structure::StatementLineFamily::PactNextUpkeep)
-                ) {
-                    "statement-line-not-yet-supported"
-                } else {
-                    classify_unsupported_line_reason(ctx.line)
-                },
-            }),
-            ctx.idx + 1,
-        )));
-    }
-
-    Err(CardTextError::ParseError(format!(
-        "parser does not yet support line family: '{}'",
-        ctx.line.info.raw_line
-    )))
-}
-
-const LINE_FAMILY_RULES: [LineFamilyRuleDef; 11] = [
-    LineFamilyRuleDef {
-        id: "trailing-keyword-activation",
-        priority: 10,
-        heads: &[],
-        run: run_trailing_keyword_activation_line_family,
-    },
-    LineFamilyRuleDef {
-        id: "labeled-line",
-        priority: 20,
-        heads: &[],
-        run: run_labeled_line_family,
-    },
-    LineFamilyRuleDef {
-        id: "triggered-line",
-        priority: 30,
-        heads: &["when", "whenever", "at"],
-        run: run_triggered_line_family,
-    },
-    LineFamilyRuleDef {
-        id: "keyword-line",
-        priority: 40,
-        heads: &[],
-        run: run_keyword_line_family,
-    },
-    LineFamilyRuleDef {
-        id: "ward-or-echo-static-prefix",
-        priority: 50,
-        heads: &["ward", "echo"],
-        run: run_ward_or_echo_static_prefix_line_family,
-    },
-    LineFamilyRuleDef {
-        id: "activated-line",
-        priority: 60,
-        heads: &[],
-        run: run_activation_line_family,
-    },
-    LineFamilyRuleDef {
-        id: "combined-static-pair",
-        priority: 70,
-        heads: &["as", "if"],
-        run: run_combined_static_line_family,
-    },
-    LineFamilyRuleDef {
-        id: "statement-probe",
-        priority: 80,
-        heads: &[],
-        run: run_statement_probe_line_family,
-    },
-    LineFamilyRuleDef {
-        id: "static-line",
-        priority: 90,
-        heads: &[],
-        run: run_static_line_family,
-    },
-    LineFamilyRuleDef {
-        id: "statement-line",
-        priority: 100,
-        heads: &[],
-        run: run_statement_line_family,
-    },
-    LineFamilyRuleDef {
-        id: "colon-nonactivation-statement",
-        priority: 110,
-        heads: &[],
-        run: run_colon_nonactivation_statement_line_family,
-    },
-];
-
-static LINE_FAMILY_RULE_INDEX: LazyLock<LexRuleHintIndex> = LazyLock::new(|| {
-    build_lex_rule_hint_index(LINE_FAMILY_RULES.len(), |idx| {
-        LINE_FAMILY_RULES[idx]
-            .heads
-            .iter()
-            .copied()
-            .map(LexRuleHeadHint::Single)
-            .collect()
-    })
-});
-
-fn dispatch_line_family_registry(
-    ctx: &LineDispatchContext<'_>,
-) -> Result<LineDispatchResult, CardTextError> {
-    let (head, second) = lexed_head_words(&ctx.line.tokens).unwrap_or(("", None));
-    let mut candidate_indices = LINE_FAMILY_RULE_INDEX.candidate_indices(head, second);
-    let mut hinted = vec![false; LINE_FAMILY_RULES.len()];
-    for idx in &candidate_indices {
-        hinted[*idx] = true;
-    }
-    candidate_indices.extend(
-        LINE_FAMILY_RULES
-            .iter()
-            .enumerate()
-            .filter(|(idx, _)| !hinted[*idx])
-            .map(|(idx, _)| idx),
-    );
-    candidate_indices.sort_by_key(|idx| LINE_FAMILY_RULES[*idx].priority);
-
-    for idx in candidate_indices {
-        if let Some(dispatch) = (LINE_FAMILY_RULES[idx].run)(ctx)? {
-            return Ok(dispatch);
-        }
-    }
-
-    run_unsupported_line_family(ctx)?.ok_or_else(|| {
-        CardTextError::InvariantViolation(format!(
-            "line-family registry exhausted without handling line: '{}' [last_rule={}]",
-            ctx.line.info.raw_line,
-            LINE_FAMILY_RULES
-                .last()
-                .map(|rule| rule.id)
-                .unwrap_or("none")
-        ))
-    })
-}
-
-fn dispatch_standard_line_cst(
-    preprocessed: &PreprocessedDocument,
-    idx: usize,
-    line: &PreprocessedLine,
-    allow_unsupported: bool,
-) -> Result<LineDispatchResult, CardTextError> {
-    let ctx = LineDispatchContext {
-        preprocessed,
-        idx,
-        line,
-        allow_unsupported,
-    };
-    dispatch_line_family_registry(&ctx)
-}
-
-fn try_parse_trailing_keyword_activation_dispatch(
-    builder: &CardDefinitionBuilder,
-    idx: usize,
-    line: &PreprocessedLine,
-) -> Result<Option<LineDispatchResult>, CardTextError> {
-    let Some((prefix_tokens, suffix_tokens)) =
-        normalize_trailing_keyword_activation_sentence_lexed(&line.tokens)
-    else {
-        return Ok(None);
-    };
-
-    let prefix_line = rewrite_line_tokens(line, &prefix_tokens);
-    let prefix_cst = if let Some(statement_line) = parse_statement_line_cst(&prefix_line)? {
-        RewriteLineCst::Statement(statement_line)
-    } else if let Some(rewritten_prefix) = normalize_named_source_sentence_for_builder(
-        builder,
-        prefix_line.info.normalized.normalized.as_str(),
-    ) {
-        let rewritten_prefix_line = rewrite_line_normalized(line, rewritten_prefix.as_str())?;
-        if let Some(statement_line) = parse_statement_line_cst(&rewritten_prefix_line)? {
-            RewriteLineCst::Statement(statement_line)
-        } else if let Some(static_line) = parse_static_line_cst(&rewritten_prefix_line)? {
-            RewriteLineCst::Static(static_line)
-        } else {
-            return Err(CardTextError::ParseError(format!(
-                "parser could not split leading sentence before keyword ability: '{}'",
-                line.info.raw_line
-            )));
-        }
-    } else if let Some(static_line) = parse_static_line_cst(&prefix_line)? {
-        RewriteLineCst::Static(static_line)
-    } else {
-        return Err(CardTextError::ParseError(format!(
-            "parser could not split leading sentence before keyword ability: '{}'",
-            line.info.raw_line
-        )));
-    };
-
-    let suffix_line = rewrite_line_tokens(line, &suffix_tokens);
-    let Some((_label, body_tokens)) = split_label_prefix_lexed(&suffix_line.tokens) else {
-        return Err(CardTextError::ParseError(format!(
-            "parser could not recover keyword activation suffix: '{}'",
-            line.info.raw_line
-        )));
-    };
-    let Some((cost_tokens, effect_parse_tokens)) = split_activation_text_tokens_lexed(body_tokens)
-    else {
-        return Err(CardTextError::ParseError(format!(
-            "parser could not recover activation suffix: '{}'",
-            line.info.raw_line
-        )));
-    };
-    let effect_text = render_token_slice(&effect_parse_tokens).trim().to_string();
-    let cost = parse_activation_cost_tokens_rewrite(&cost_tokens)?;
-    let activated = RewriteLineCst::Activated(ActivatedLineCst {
-        info: suffix_line.info.clone(),
-        cost,
-        cost_parse_tokens: cost_tokens,
-        effect_text,
-        effect_parse_tokens,
-        chosen_option_label: None,
-    });
-
-    Ok(Some(LineDispatchResult {
-        lines: vec![prefix_cst, activated],
-        next_idx: idx + 1,
-    }))
-}
-
 fn try_parse_labeled_line_dispatch(
     preprocessed: &PreprocessedDocument,
     idx: usize,
@@ -2716,72 +2315,11 @@ pub(crate) fn parse_document_cst(
             }
             PreprocessedItem::Line(line) => {
                 parser_trace("parse_document_cst:line", &line.tokens);
-                if let Some((min_level, max_level)) =
-                    parse_level_header(&line.info.normalized.normalized)
+                if let Some((level_block, next_idx)) =
+                    try_parse_level_header_block(preprocessed, idx, line, allow_unsupported)?
                 {
-                    let mut pt = None;
-                    let mut items = Vec::new();
-                    let mut probe_idx = idx + 1;
-                    while let Some(PreprocessedItem::Line(next_line)) =
-                        preprocessed.items.get(probe_idx)
-                    {
-                        if parse_level_header(&next_line.info.normalized.normalized).is_some() {
-                            break;
-                        }
-                        if parse_saga_chapter_prefix(&next_line.info.normalized.normalized)
-                            .is_some()
-                        {
-                            break;
-                        }
-                        if let Some(parsed_pt) =
-                            parse_power_toughness(&next_line.info.normalized.normalized)
-                            && let (PtValue::Fixed(power), PtValue::Fixed(toughness)) =
-                                (parsed_pt.power, parsed_pt.toughness)
-                        {
-                            pt = Some((power, toughness));
-                            probe_idx += 1;
-                            continue;
-                        }
-                        match parse_level_item_cst(next_line) {
-                            Ok(Some(item)) => {
-                                items.push(item);
-                                probe_idx += 1;
-                            }
-                            Ok(None) => {
-                                if allow_unsupported {
-                                    break;
-                                }
-                                return Err(CardTextError::ParseError(format!(
-                                    "unsupported level ability line: '{}'",
-                                    next_line.info.raw_line
-                                )));
-                            }
-                            Err(_) if allow_unsupported => break,
-                            Err(err) => return Err(err),
-                        }
-                    }
-                    if pt.is_none() && items.is_empty() && preprocessed.items.get(idx + 1).is_some()
-                    {
-                        if allow_unsupported {
-                            lines.push(RewriteLineCst::Unsupported(UnsupportedLineCst {
-                                info: line.info.clone(),
-                                reason_code: "level-header-not-yet-supported",
-                            }));
-                            idx += 1;
-                            continue;
-                        }
-                        return Err(CardTextError::ParseError(format!(
-                            "parser does not yet support level header: '{}'",
-                            line.info.raw_line
-                        )));
-                    }
-                    lines.push(RewriteLineCst::LevelHeader(LevelHeaderCst {
-                        min_level,
-                        max_level,
-                        pt,
-                        items,
-                    }));
-                    idx = probe_idx;
+                    lines.push(level_block);
+                    idx = next_idx;
                     continue;
                 }
 
@@ -2795,23 +2333,11 @@ pub(crate) fn parse_document_cst(
                     continue;
                 }
 
-                let mut bullet_modes = Vec::new();
-                let mut probe_idx = idx + 1;
-                while let Some(PreprocessedItem::Line(next_line)) =
-                    preprocessed.items.get(probe_idx)
+                if let Some((modal_block, next_idx)) =
+                    try_parse_modal_bullet_block(preprocessed, idx, line)?
                 {
-                    if !is_bullet_line(next_line.info.raw_line.as_str()) {
-                        break;
-                    }
-                    bullet_modes.push(parse_modal_mode_cst(next_line)?);
-                    probe_idx += 1;
-                }
-                if !bullet_modes.is_empty() {
-                    lines.push(RewriteLineCst::Modal(ModalBlockCst {
-                        header: line.info.clone(),
-                        modes: bullet_modes,
-                    }));
-                    idx = probe_idx;
+                    lines.push(modal_block);
+                    idx = next_idx;
                     continue;
                 }
 

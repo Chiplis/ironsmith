@@ -1460,9 +1460,9 @@ fn lower_granted_ability_grant_modifications(
         match ability {
             GrantedAbilityAst::ParsedObjectAbility { ability, display } => {
                 let mut lowered = lower_parsed_ability(ability.clone())?;
-                lowered.ability.text = Some(display.clone());
+                lowered.runtime_mut().text = Some(display.clone());
                 modifications.push(crate::continuous::Modification::AddAbilityGeneric(
-                    lowered.ability,
+                    lowered.into_runtime(),
                 ));
             }
             _ => {

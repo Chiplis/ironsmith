@@ -6012,7 +6012,18 @@ mod tests {
         );
         assert_eq!(
             normalized,
-            "Whenever one or more Scout or Pirate or Rogue you control deal combat damage to a player, exile the top card of that player's library. If you don't, create a Treasure token."
+            "Whenever one or more Scout or Pirate or Rogue you control deal combat damage to a player, exile the top card of that player's library. You may cast it. If you don't, create a Treasure token."
+        );
+    }
+
+    #[test]
+    fn post_pass_normalizes_vaan_combat_damage_cast_then_treasure_line() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "Whenever one or more Scout or Pirate or Rogue creature you control deal combat damage to a player: that player exiles the top card of that player's library. cast it. if that doesn't happen, create a treasure token.",
+        );
+        assert_eq!(
+            normalized,
+            "Whenever one or more Scout or Pirate or Rogue creature you control deal combat damage to a player, that player exiles the top card of that player's library. You may cast it. If you don't, create a Treasure token."
         );
     }
 

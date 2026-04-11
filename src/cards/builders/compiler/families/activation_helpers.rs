@@ -3,7 +3,7 @@ use crate::effect::Value;
 use crate::mana::ManaSymbol;
 use crate::target::ObjectFilter;
 
-use super::activation_and_restrictions::parse_devotion_value_from_add_clause;
+use super::activation_and_restrictions::activated_line_core::parse_devotion_value_from_add_clause;
 use super::effect_sentences::clause_pattern_helpers::extract_subject_player;
 use super::grammar::structure::parse_trailing_instead_if_predicate_lexed;
 use super::keyword_static::{

@@ -1,11 +1,13 @@
-fn remove_word_range(words: &mut Vec<&str>, start: usize, end: usize) {
+use super::*;
+
+pub(super) fn remove_word_range(words: &mut Vec<&str>, start: usize, end: usize) {
     let mut remaining = Vec::with_capacity(words.len());
     remaining.extend_from_slice(&words[..start]);
     remaining.extend_from_slice(&words[end..]);
     *words = remaining;
 }
 
-fn try_apply_not_named_clause<'a, F, G>(
+pub(super) fn try_apply_not_named_clause<'a, F, G>(
     filter: &mut ObjectFilter,
     all_words: &mut Vec<&'a str>,
     all_words_with_articles: &[&'a str],
@@ -34,7 +36,7 @@ where
     Ok(true)
 }
 
-fn try_apply_named_clause<'a, F, G>(
+pub(super) fn try_apply_named_clause<'a, F, G>(
     filter: &mut ObjectFilter,
     all_words: &mut Vec<&'a str>,
     all_words_with_articles: &[&'a str],
@@ -63,7 +65,7 @@ where
     Ok(true)
 }
 
-fn parse_entered_since_your_last_turn_ended_words(words: &[&str]) -> Option<usize> {
+pub(super) fn parse_entered_since_your_last_turn_ended_words(words: &[&str]) -> Option<usize> {
     if let Some((_, consumed)) = parse_filter_prefix_words(
         words,
         (
@@ -94,7 +96,7 @@ fn parse_entered_since_your_last_turn_ended_words(words: &[&str]) -> Option<usiz
     .map(|(_, consumed)| consumed)
 }
 
-fn try_apply_entered_since_your_last_turn_ended_clause(
+pub(super) fn try_apply_entered_since_your_last_turn_ended_clause(
     filter: &mut ObjectFilter,
     all_words: &mut Vec<&str>,
 ) -> bool {
@@ -109,7 +111,10 @@ fn try_apply_entered_since_your_last_turn_ended_clause(
     true
 }
 
-fn strip_object_filter_face_state_words(filter: &mut ObjectFilter, all_words: &mut Vec<&str>) {
+pub(super) fn strip_object_filter_face_state_words(
+    filter: &mut ObjectFilter,
+    all_words: &mut Vec<&str>,
+) {
     let mut idx = 0usize;
     while idx < all_words.len() {
         let Some((face_down, consumed)) = parse_filter_face_state_words(&all_words[idx..]) else {
@@ -121,7 +126,7 @@ fn strip_object_filter_face_state_words(filter: &mut ObjectFilter, all_words: &m
     }
 }
 
-fn strip_single_graveyard_phrase(filter: &mut ObjectFilter, all_words: &mut Vec<&str>) {
+pub(super) fn strip_single_graveyard_phrase(filter: &mut ObjectFilter, all_words: &mut Vec<&str>) {
     while let Some(idx) =
         find_word_slice_phrase_start(all_words.as_slice(), &["single", "graveyard"])
     {
@@ -130,7 +135,7 @@ fn strip_single_graveyard_phrase(filter: &mut ObjectFilter, all_words: &mut Vec<
     }
 }
 
-fn parse_color_count_phrase_words(words: &[&str]) -> Option<(&'static str, usize)> {
+pub(super) fn parse_color_count_phrase_words(words: &[&str]) -> Option<(&'static str, usize)> {
     parse_filter_prefix_words(
         words,
         (
@@ -152,7 +157,7 @@ fn parse_color_count_phrase_words(words: &[&str]) -> Option<(&'static str, usize
     )
 }
 
-fn try_apply_color_count_phrase(
+pub(super) fn try_apply_color_count_phrase(
     filter: &mut ObjectFilter,
     all_words: &mut Vec<&str>,
 ) -> Result<bool, CardTextError> {
@@ -177,7 +182,10 @@ fn try_apply_color_count_phrase(
     )))
 }
 
-fn try_apply_pt_literal_prefix(filter: &mut ObjectFilter, all_words: &mut Vec<&str>) -> bool {
+pub(super) fn try_apply_pt_literal_prefix(
+    filter: &mut ObjectFilter,
+    all_words: &mut Vec<&str>,
+) -> bool {
     let Some((power, toughness)) = all_words
         .first()
         .and_then(|word| parse_unsigned_pt_word(word))
@@ -190,7 +198,7 @@ fn try_apply_pt_literal_prefix(filter: &mut ObjectFilter, all_words: &mut Vec<&s
     true
 }
 
-fn parse_not_all_colors_words(words: &[&str]) -> Option<usize> {
+pub(super) fn parse_not_all_colors_words(words: &[&str]) -> Option<usize> {
     if let Some((_, consumed)) = parse_filter_prefix_words(
         words,
         (
@@ -215,7 +223,10 @@ fn parse_not_all_colors_words(words: &[&str]) -> Option<usize> {
     .map(|(_, consumed)| consumed)
 }
 
-fn try_apply_not_all_colors_clause(filter: &mut ObjectFilter, all_words: &mut Vec<&str>) -> bool {
+pub(super) fn try_apply_not_all_colors_clause(
+    filter: &mut ObjectFilter,
+    all_words: &mut Vec<&str>,
+) -> bool {
     let Some((idx, consumed)) =
         find_filter_prefix_consumed(all_words.as_slice(), parse_not_all_colors_words)
     else {
@@ -226,7 +237,7 @@ fn try_apply_not_all_colors_clause(filter: &mut ObjectFilter, all_words: &mut Ve
     true
 }
 
-fn parse_not_exactly_two_colors_words(words: &[&str]) -> Option<usize> {
+pub(super) fn parse_not_exactly_two_colors_words(words: &[&str]) -> Option<usize> {
     if let Some((_, consumed)) = parse_filter_prefix_words(
         words,
         (
@@ -253,7 +264,7 @@ fn parse_not_exactly_two_colors_words(words: &[&str]) -> Option<usize> {
     .map(|(_, consumed)| consumed)
 }
 
-fn try_apply_not_exactly_two_colors_clause(
+pub(super) fn try_apply_not_exactly_two_colors_clause(
     filter: &mut ObjectFilter,
     all_words: &mut Vec<&str>,
 ) -> bool {
@@ -267,7 +278,7 @@ fn try_apply_not_exactly_two_colors_clause(
     true
 }
 
-fn parse_mana_value_eq_counters_on_source_words(
+pub(super) fn parse_mana_value_eq_counters_on_source_words(
     words: &[&str],
 ) -> Option<(crate::object::CounterType, usize)> {
     let window = words.get(..12)?;
@@ -289,7 +300,7 @@ fn parse_mana_value_eq_counters_on_source_words(
     Some((counter_type, 12))
 }
 
-fn try_apply_mana_value_eq_counters_on_source_clause(
+pub(super) fn try_apply_mana_value_eq_counters_on_source_clause(
     filter: &mut ObjectFilter,
     all_words: &mut Vec<&str>,
     segment_tokens: &mut Vec<OwnedLexToken>,
@@ -323,7 +334,10 @@ fn try_apply_mana_value_eq_counters_on_source_clause(
     true
 }
 
-fn try_apply_attached_exclusion_phrases(filter: &mut ObjectFilter, all_words: &mut Vec<&str>) {
+pub(super) fn try_apply_attached_exclusion_phrases(
+    filter: &mut ObjectFilter,
+    all_words: &mut Vec<&str>,
+) {
     let mut idx = 0usize;
     while idx + 2 < all_words.len() {
         if all_words[idx] != "other" || all_words[idx + 1] != "than" {
@@ -355,7 +369,7 @@ fn try_apply_attached_exclusion_phrases(filter: &mut ObjectFilter, all_words: &m
     }
 }
 
-fn strip_object_filter_leading_prefixes(all_words: &mut Vec<&str>) {
+pub(super) fn strip_object_filter_leading_prefixes(all_words: &mut Vec<&str>) {
     while all_words.len() >= 2 && all_words[0] == "one" && all_words[1] == "of" {
         all_words.drain(0..2);
     }
@@ -374,7 +388,7 @@ fn strip_object_filter_leading_prefixes(all_words: &mut Vec<&str>) {
     }
 }
 
-fn parse_spell_filter_power_or_toughness_words(words: &[&str]) -> Option<usize> {
+pub(super) fn parse_spell_filter_power_or_toughness_words(words: &[&str]) -> Option<usize> {
     parse_filter_prefix_words(
         words,
         (
@@ -386,7 +400,7 @@ fn parse_spell_filter_power_or_toughness_words(words: &[&str]) -> Option<usize> 
     .map(|(_, consumed)| consumed)
 }
 
-fn apply_spell_filter_word_atoms(filter: &mut ObjectFilter, words: &[&str]) {
+pub(super) fn apply_spell_filter_word_atoms(filter: &mut ObjectFilter, words: &[&str]) {
     let mut idx = 0usize;
     while idx < words.len() {
         if let Some((kind, consumed)) = parse_alternative_cast_words(&words[idx..]) {
@@ -418,7 +432,7 @@ fn apply_spell_filter_word_atoms(filter: &mut ObjectFilter, words: &[&str]) {
     }
 }
 
-fn apply_spell_filter_comparisons(
+pub(super) fn apply_spell_filter_comparisons(
     filter: &mut ObjectFilter,
     words: &[&str],
     clause_words: &[&str],
@@ -450,7 +464,7 @@ fn apply_spell_filter_comparisons(
     }
 }
 
-fn build_spell_filter_power_or_toughness_disjunction(
+pub(super) fn build_spell_filter_power_or_toughness_disjunction(
     filter: &ObjectFilter,
     words: &[&str],
     clause_words: &[&str],
@@ -490,7 +504,7 @@ fn build_spell_filter_power_or_toughness_disjunction(
     None
 }
 
-fn parse_spell_filter_from_words(words: &[&str]) -> ObjectFilter {
+pub(super) fn parse_spell_filter_from_words(words: &[&str]) -> ObjectFilter {
     let mut filter = ObjectFilter::default();
 
     apply_spell_filter_word_atoms(&mut filter, words);
@@ -500,7 +514,7 @@ fn parse_spell_filter_from_words(words: &[&str]) -> ObjectFilter {
     build_spell_filter_power_or_toughness_disjunction(&filter, words, words).unwrap_or(filter)
 }
 
-fn parse_with_no_abilities_words(words: &[&str]) -> Option<usize> {
+pub(super) fn parse_with_no_abilities_words(words: &[&str]) -> Option<usize> {
     parse_filter_prefix_words(
         words,
         (
@@ -514,7 +528,10 @@ fn parse_with_no_abilities_words(words: &[&str]) -> Option<usize> {
     .map(|(_, consumed)| consumed)
 }
 
-fn try_apply_with_clause_tail(filter: &mut ObjectFilter, words: &[&str]) -> Option<usize> {
+pub(super) fn try_apply_with_clause_tail(
+    filter: &mut ObjectFilter,
+    words: &[&str],
+) -> Option<usize> {
     if let Some(consumed) = parse_with_no_abilities_words(words) {
         filter.no_abilities = true;
         return Some(consumed);
@@ -559,7 +576,10 @@ fn try_apply_with_clause_tail(filter: &mut ObjectFilter, words: &[&str]) -> Opti
     None
 }
 
-fn try_apply_without_clause_tail(filter: &mut ObjectFilter, words: &[&str]) -> Option<usize> {
+pub(super) fn try_apply_without_clause_tail(
+    filter: &mut ObjectFilter,
+    words: &[&str],
+) -> Option<usize> {
     if let Some((constraint, consumed)) = parse_filter_keyword_constraint_words(words) {
         apply_filter_keyword_constraint(filter, constraint, true);
         return Some(consumed);
@@ -572,7 +592,7 @@ fn try_apply_without_clause_tail(filter: &mut ObjectFilter, words: &[&str]) -> O
     None
 }
 
-fn apply_spell_filter_parity_phrases(words: &[&str], filter: &mut ObjectFilter) {
+pub(super) fn apply_spell_filter_parity_phrases(words: &[&str], filter: &mut ObjectFilter) {
     for (parity, phrases) in [
         (
             crate::filter::ParityRequirement::Odd,
@@ -616,19 +636,21 @@ fn apply_spell_filter_parity_phrases(words: &[&str], filter: &mut ObjectFilter) 
     }
 }
 
-fn contains_any_filter_phrase(words: &[&str], phrases: &[&[&str]]) -> bool {
+pub(super) fn contains_any_filter_phrase(words: &[&str], phrases: &[&[&str]]) -> bool {
     phrases
         .iter()
         .any(|phrase| find_word_slice_phrase_start(words, phrase).is_some())
 }
 
-fn find_any_filter_phrase_start(words: &[&str], phrases: &[&[&str]]) -> Option<usize> {
+pub(super) fn find_any_filter_phrase_start(words: &[&str], phrases: &[&[&str]]) -> Option<usize> {
     phrases
         .iter()
         .find_map(|phrase| find_word_slice_phrase_start(words, phrase))
 }
 
-fn find_mana_value_equal_counter_phrase_bounds(words: &[&str]) -> Option<(usize, usize)> {
+pub(super) fn find_mana_value_equal_counter_phrase_bounds(
+    words: &[&str],
+) -> Option<(usize, usize)> {
     (0..words.len()).find_map(|idx| {
         let tail = &words[idx..];
         if tail.len() >= 13
@@ -663,17 +685,17 @@ fn find_mana_value_equal_counter_phrase_bounds(words: &[&str]) -> Option<(usize,
     })
 }
 
-fn contains_filter_word(words: &[&str], word: &str) -> bool {
+pub(super) fn contains_filter_word(words: &[&str], word: &str) -> bool {
     find_word_slice_phrase_start(words, &[word]).is_some()
 }
 
-fn starts_with_any_filter_phrase(words: &[&str], phrases: &[&[&str]]) -> bool {
+pub(super) fn starts_with_any_filter_phrase(words: &[&str], phrases: &[&[&str]]) -> bool {
     phrases
         .iter()
         .any(|phrase| find_word_slice_phrase_start(words, phrase) == Some(0))
 }
 
-fn attacking_player_filter_from_words(
+pub(super) fn attacking_player_filter_from_words(
     words: &[&str],
     pronoun_player_filter: &PlayerFilter,
 ) -> Option<PlayerFilter> {
@@ -729,12 +751,12 @@ fn attacking_player_filter_from_words(
     None
 }
 
-struct ReferenceTagStageResult {
-    source_linked_exile_reference: bool,
-    early_return: bool,
+pub(super) struct ReferenceTagStageResult {
+    pub(super) source_linked_exile_reference: bool,
+    pub(super) early_return: bool,
 }
 
-fn apply_reference_and_tag_stage(
+pub(super) fn apply_reference_and_tag_stage(
     filter: &mut ObjectFilter,
     all_words: &mut Vec<&str>,
     segment_tokens: &mut Vec<OwnedLexToken>,
@@ -1084,4 +1106,3 @@ fn apply_reference_and_tag_stage(
         early_return: false,
     }
 }
-

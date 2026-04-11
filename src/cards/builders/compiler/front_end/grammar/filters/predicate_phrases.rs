@@ -1,4 +1,6 @@
-pub(super) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTextError> {
+use super::*;
+
+pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTextError> {
     let raw_words_view = GrammarFilterNormalizedWords::new(tokens);
     let raw_words = raw_words_view.to_word_refs();
     let mut filtered: Vec<&str> = raw_words

@@ -1,3 +1,5 @@
+use super::*;
+
 pub(crate) fn format_negated_restriction_display(tokens: &[OwnedLexToken]) -> String {
     let words = crate::cards::builders::compiler::token_word_refs(tokens);
     let mut out = Vec::with_capacity(words.len());
@@ -214,7 +216,9 @@ pub(crate) fn parse_cant_restriction_clause(
     }))
 }
 
-fn parse_cant_cast_restriction_words(words: &[&str]) -> Option<crate::effect::Restriction> {
+pub(crate) fn parse_cant_cast_restriction_words(
+    words: &[&str],
+) -> Option<crate::effect::Restriction> {
     use crate::effect::Restriction;
 
     if let Some((player, used)) = parse_cant_cast_subject(words) {
@@ -288,7 +292,7 @@ fn parse_cant_cast_restriction_words(words: &[&str]) -> Option<crate::effect::Re
     None
 }
 
-fn parse_cant_cast_subject(words: &[&str]) -> Option<(PlayerFilter, usize)> {
+pub(crate) fn parse_cant_cast_subject(words: &[&str]) -> Option<(PlayerFilter, usize)> {
     if slice_starts_with(&words, &["that", "player"]) {
         return Some((PlayerFilter::IteratedPlayer, 2));
     }
@@ -319,7 +323,7 @@ fn parse_cant_cast_subject(words: &[&str]) -> Option<(PlayerFilter, usize)> {
     }
 }
 
-fn parse_cast_more_than_one_limit_filter(words: &[&str]) -> Option<ObjectFilter> {
+pub(crate) fn parse_cast_more_than_one_limit_filter(words: &[&str]) -> Option<ObjectFilter> {
     if !matches!(words, ["cast", "more", "than", "one", ..]) {
         return None;
     }
@@ -342,7 +346,7 @@ fn parse_cast_more_than_one_limit_filter(words: &[&str]) -> Option<ObjectFilter>
     Some(spell_filter)
 }
 
-fn parse_cast_additional_limit_filter(words: &[&str]) -> Option<ObjectFilter> {
+pub(crate) fn parse_cast_additional_limit_filter(words: &[&str]) -> Option<ObjectFilter> {
     let mut idx = 0usize;
     if matches!(words, ["who", "has", ..]) {
         idx += 2;
@@ -392,7 +396,7 @@ fn parse_cast_additional_limit_filter(words: &[&str]) -> Option<ObjectFilter> {
     Some(first_filter)
 }
 
-fn parse_cast_limit_qualifier(words: &[&str]) -> Option<(ObjectFilter, usize)> {
+pub(crate) fn parse_cast_limit_qualifier(words: &[&str]) -> Option<(ObjectFilter, usize)> {
     let parse_non_term = |term: &str| -> Option<ObjectFilter> {
         let normalized = term.trim_end_matches('s');
         if let Some(card_type) = parse_card_type(normalized) {
@@ -460,7 +464,7 @@ fn parse_cast_limit_qualifier(words: &[&str]) -> Option<(ObjectFilter, usize)> {
     None
 }
 
-fn strip_static_restriction_condition(
+pub(crate) fn strip_static_restriction_condition(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(crate::ConditionExpr, Vec<OwnedLexToken>)>, CardTextError> {
     let normalized_storage = normalize_cant_words(tokens);
@@ -538,7 +542,7 @@ fn strip_static_restriction_condition(
     Ok(None)
 }
 
-fn parse_player_negated_restriction_clause(
+pub(crate) fn parse_player_negated_restriction_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedCantRestriction>, CardTextError> {
     use crate::effect::Restriction;
@@ -609,7 +613,7 @@ fn parse_player_negated_restriction_clause(
     Ok(None)
 }
 
-fn parse_player_restriction_subject(
+pub(crate) fn parse_player_restriction_subject(
     subject_tokens: &[OwnedLexToken],
 ) -> Result<Option<(PlayerFilter, Option<TargetAst>)>, CardTextError> {
     if subject_tokens.is_empty() {
@@ -681,7 +685,10 @@ fn parse_player_restriction_subject(
     Ok(Some((player, None)))
 }
 
-fn target_ast_player_filter(player: PlayerFilter, span: Option<TextSpan>) -> PlayerFilter {
+pub(crate) fn target_ast_player_filter(
+    player: PlayerFilter,
+    span: Option<TextSpan>,
+) -> PlayerFilter {
     if span.is_some() {
         match player {
             PlayerFilter::Any => PlayerFilter::target_player(),
@@ -693,7 +700,7 @@ fn target_ast_player_filter(player: PlayerFilter, span: Option<TextSpan>) -> Pla
     }
 }
 
-fn parse_cast_restriction_tail_filter(words: &[&str]) -> Option<ObjectFilter> {
+pub(crate) fn parse_cast_restriction_tail_filter(words: &[&str]) -> Option<ObjectFilter> {
     if words == ["cast", "spells"] {
         return Some(ObjectFilter::default());
     }
@@ -705,7 +712,10 @@ fn parse_cast_restriction_tail_filter(words: &[&str]) -> Option<ObjectFilter> {
     (used == tail.len()).then_some(filter)
 }
 
-fn parse_card_type_list_filter(words: &[&str], zone: Option<Zone>) -> Option<ObjectFilter> {
+pub(crate) fn parse_card_type_list_filter(
+    words: &[&str],
+    zone: Option<Zone>,
+) -> Option<ObjectFilter> {
     let cleaned = words
         .iter()
         .copied()
@@ -733,7 +743,7 @@ fn parse_card_type_list_filter(words: &[&str], zone: Option<Zone>) -> Option<Obj
     Some(disjunction)
 }
 
-fn restriction_from_cast_limit_filter(
+pub(crate) fn restriction_from_cast_limit_filter(
     player: PlayerFilter,
     spell_filter: ObjectFilter,
 ) -> crate::effect::Restriction {
@@ -916,19 +926,19 @@ pub(crate) fn parse_negated_object_restriction_clause(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ActivatedAbilityScope {
+pub(crate) enum ActivatedAbilityScope {
     All,
     TapCostOnly,
 }
 
 #[derive(Debug, Clone)]
-struct ParsedActivatedAbilitySubject {
+pub(crate) struct ParsedActivatedAbilitySubject {
     filter: ObjectFilter,
     target: Option<TargetAst>,
     scope: ActivatedAbilityScope,
 }
 
-fn strip_trailing_possessive_token(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+pub(crate) fn strip_trailing_possessive_token(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     let mut normalized = tokens.to_vec();
     if let Some(last) = normalized.last_mut()
         && let Some(word) = last.as_word().map(str::to_string)
@@ -944,7 +954,7 @@ fn strip_trailing_possessive_token(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToke
     normalized
 }
 
-fn parse_activated_ability_subject(
+pub(crate) fn parse_activated_ability_subject(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedActivatedAbilitySubject>, CardTextError> {
     if tokens.is_empty() {
@@ -1038,7 +1048,7 @@ fn parse_activated_ability_subject(
     }))
 }
 
-fn ensure_it_tagged_constraint(filter: &mut ObjectFilter) {
+pub(crate) fn ensure_it_tagged_constraint(filter: &mut ObjectFilter) {
     if !filter
         .tagged_constraints
         .iter()
@@ -1051,7 +1061,7 @@ fn ensure_it_tagged_constraint(filter: &mut ObjectFilter) {
     }
 }
 
-fn starts_with_possessive_activated_ability_subject(tokens: &[OwnedLexToken]) -> bool {
+pub(crate) fn starts_with_possessive_activated_ability_subject(tokens: &[OwnedLexToken]) -> bool {
     let words_storage = normalize_cant_words(tokens);
     let words = words_storage.iter().map(String::as_str).collect::<Vec<_>>();
     matches!(
@@ -1203,4 +1213,3 @@ pub(crate) fn parse_subject_object_filter(
 
     Ok(target_ast_to_object_filter(target))
 }
-

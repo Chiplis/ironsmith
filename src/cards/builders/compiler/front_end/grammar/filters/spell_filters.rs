@@ -1,3 +1,5 @@
+use super::*;
+
 pub(crate) fn parse_object_filter_with_grammar_entrypoint(
     tokens: &[OwnedLexToken],
     other: bool,
@@ -27,7 +29,7 @@ pub(crate) fn parse_spell_filter_with_grammar_entrypoint(tokens: &[OwnedLexToken
     parse_spell_filter_from_words(&words)
 }
 
-fn parse_meld_subject_filter(words: &[&str]) -> Result<ObjectFilter, CardTextError> {
+pub(super) fn parse_meld_subject_filter(words: &[&str]) -> Result<ObjectFilter, CardTextError> {
     if words.is_empty() {
         return Err(CardTextError::ParseError(
             "missing meld predicate subject".to_string(),
@@ -42,7 +44,7 @@ fn parse_meld_subject_filter(words: &[&str]) -> Result<ObjectFilter, CardTextErr
         .or_else(|_| Ok(ObjectFilter::default().named(words.join(" "))))
 }
 
-fn is_plausible_meld_subject_start(word: &str) -> bool {
+pub(super) fn is_plausible_meld_subject_start(word: &str) -> bool {
     matches!(
         word,
         "a" | "an"
@@ -62,7 +64,7 @@ fn is_plausible_meld_subject_start(word: &str) -> bool {
     )
 }
 
-fn find_meld_subject_split(words: &[&str]) -> Option<usize> {
+pub(super) fn find_meld_subject_split(words: &[&str]) -> Option<usize> {
     words
         .iter()
         .enumerate()
@@ -75,4 +77,3 @@ fn find_meld_subject_split(words: &[&str]) -> Option<usize> {
         })
         .or_else(|| find_index(words, |word| *word == "and"))
 }
-

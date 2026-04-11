@@ -1,13 +1,15 @@
-type ActivationRestrictionCompatWords<'a> = grammar::TokenWordView<'a>;
+use super::*;
 
-fn strip_prefix_phrase<'a>(
+pub(crate) type ActivationRestrictionCompatWords<'a> = grammar::TokenWordView<'a>;
+
+pub(crate) fn strip_prefix_phrase<'a>(
     tokens: &'a [OwnedLexToken],
     phrase: &'static [&'static str],
 ) -> Option<&'a [OwnedLexToken]> {
     grammar::parse_prefix(tokens, grammar::phrase(phrase)).map(|(_, rest)| rest)
 }
 
-fn strip_prefix_phrases<'a>(
+pub(crate) fn strip_prefix_phrases<'a>(
     tokens: &'a [OwnedLexToken],
     phrases: &[&'static [&'static str]],
 ) -> Option<(&'static [&'static str], &'a [OwnedLexToken])> {
@@ -16,11 +18,11 @@ fn strip_prefix_phrases<'a>(
         .find_map(|phrase| strip_prefix_phrase(tokens, phrase).map(|rest| (*phrase, rest)))
 }
 
-fn joined_activation_clause_text(tokens: &[OwnedLexToken]) -> String {
+pub(crate) fn joined_activation_clause_text(tokens: &[OwnedLexToken]) -> String {
     crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
 }
 
-fn parse_prefixed_activated_ability_label(
+pub(crate) fn parse_prefixed_activated_ability_label(
     tokens: &[OwnedLexToken],
     cost_start: usize,
 ) -> Option<String> {
@@ -36,7 +38,7 @@ fn parse_prefixed_activated_ability_label(
     }
 }
 
-fn contains_granted_keyword_before_word(
+pub(crate) fn contains_granted_keyword_before_word(
     words: &ActivationRestrictionCompatWords,
     keyword_idx: usize,
 ) -> bool {
@@ -45,7 +47,9 @@ fn contains_granted_keyword_before_word(
         .any(|word| matches!(word, "has" | "have"))
 }
 
-fn find_cycling_keyword_word_index(words: &ActivationRestrictionCompatWords) -> Option<usize> {
+pub(crate) fn find_cycling_keyword_word_index(
+    words: &ActivationRestrictionCompatWords,
+) -> Option<usize> {
     let mut idx = 0usize;
     while idx < words.len() {
         if words
@@ -59,7 +63,7 @@ fn find_cycling_keyword_word_index(words: &ActivationRestrictionCompatWords) -> 
     None
 }
 
-fn parse_hand_keyword_activated_body_lexed(
+pub(crate) fn parse_hand_keyword_activated_body_lexed(
     body_tokens: &[OwnedLexToken],
     keyword: &str,
     display_label: &str,
@@ -75,8 +79,8 @@ fn parse_hand_keyword_activated_body_lexed(
     let Some(mut parsed) = parse_activated_line_with_raw(&ability_tokens, None)? else {
         return Ok(None);
     };
-    parsed.ability.text = Some(display_label.to_string());
-    parsed.ability.functional_zones = vec![Zone::Hand];
+    parsed.runtime_mut().text = Some(display_label.to_string());
+    *parsed.functional_zones_mut() = vec![Zone::Hand];
     Ok(Some(parsed))
 }
 
@@ -245,7 +249,7 @@ pub(crate) fn parse_activated_line_with_raw(
                 let mut effects_ast = vec![mana_ast];
                 effects_ast.extend(extra_effects_ast);
                 return Ok(Some(ParsedAbility {
-                    ability,
+                    ability: ability.into(),
                     effects_ast: Some(effects_ast),
                     reference_imports: reference_imports.clone(),
                     trigger_spec: None,
@@ -278,7 +282,7 @@ pub(crate) fn parse_activated_line_with_raw(
                     };
                     apply_ability_label(&mut ability);
                     return Ok(Some(ParsedAbility {
-                        ability,
+                        ability: ability.into(),
                         effects_ast: None,
                         reference_imports: ReferenceImports::default(),
                         trigger_spec: None,
@@ -309,7 +313,7 @@ pub(crate) fn parse_activated_line_with_raw(
                 let mut effects_ast = vec![mana_ast];
                 effects_ast.extend(extra_effects_ast);
                 return Ok(Some(ParsedAbility {
-                    ability,
+                    ability: ability.into(),
                     effects_ast: Some(effects_ast),
                     reference_imports: reference_imports,
                     trigger_spec: None,
@@ -353,7 +357,8 @@ pub(crate) fn parse_activated_line_with_raw(
                 };
                 apply_ability_label(&mut ability);
                 ability
-            },
+            }
+            .into(),
             effects_ast: None,
             reference_imports: ReferenceImports::default(),
             trigger_spec: None,
@@ -403,14 +408,15 @@ pub(crate) fn parse_activated_line_with_raw(
             };
             apply_ability_label(&mut ability);
             ability
-        },
+        }
+        .into(),
         effects_ast: Some(effects_ast),
         reference_imports,
         trigger_spec: None,
     }))
 }
 
-fn activation_cost_mentions_x(tokens: &[OwnedLexToken]) -> bool {
+pub(crate) fn activation_cost_mentions_x(tokens: &[OwnedLexToken]) -> bool {
     tokens
         .iter()
         .filter_map(OwnedLexToken::as_word)
@@ -422,7 +428,7 @@ fn activation_cost_mentions_x(tokens: &[OwnedLexToken]) -> bool {
         })
 }
 
-fn resolve_activated_mana_x_requirements(
+pub(crate) fn resolve_activated_mana_x_requirements(
     effect: &mut EffectAst,
     sentence_tokens: &[OwnedLexToken],
     x_defined_by_cost: bool,
@@ -465,7 +471,7 @@ fn resolve_activated_mana_x_requirements(
     Ok(())
 }
 
-fn mana_effect_contains_unbound_x(effect: &EffectAst) -> bool {
+pub(crate) fn mana_effect_contains_unbound_x(effect: &EffectAst) -> bool {
     match effect {
         EffectAst::AddManaScaled { amount, .. }
         | EffectAst::AddManaAnyColor { amount, .. }
@@ -545,11 +551,11 @@ pub(crate) fn loyalty_additional_restrictions(is_loyalty_shorthand: bool) -> Vec
 pub(crate) fn first_sacrifice_cost_choice_tag(
     mana_cost: &crate::cost::TotalCost,
 ) -> Option<TagKey> {
-    super::util::find_first_sacrifice_cost_choice_tag(mana_cost)
+    super::super::util::find_first_sacrifice_cost_choice_tag(mana_cost)
 }
 
 pub(crate) fn last_exile_cost_choice_tag(mana_cost: &crate::cost::TotalCost) -> Option<TagKey> {
-    super::util::find_last_exile_cost_choice_tag(mana_cost)
+    super::super::util::find_last_exile_cost_choice_tag(mana_cost)
 }
 
 pub(crate) fn infer_activated_functional_zones(
@@ -562,10 +568,11 @@ pub(crate) fn infer_activated_functional_zones(
         .collect();
     let effect_words_match = |f: fn(&[&str]) -> bool| {
         effect_sentences.iter().any(|sentence| {
-            let clause_words: Vec<&str> = crate::cards::builders::compiler::token_word_refs(sentence)
-                .into_iter()
-                .filter(|word| !is_article(word))
-                .collect();
+            let clause_words: Vec<&str> =
+                crate::cards::builders::compiler::token_word_refs(sentence)
+                    .into_iter()
+                    .filter(|word| !is_article(word))
+                    .collect();
             f(&clause_words)
         })
     };
@@ -655,7 +662,7 @@ pub(crate) fn find_word_sequence_start(words: &[&str], sequence: &[&str]) -> Opt
     }
 }
 
-fn contains_any_word_sequence(words: &[&str], sequences: &[&[&str]]) -> bool {
+pub(crate) fn contains_any_word_sequence(words: &[&str], sequences: &[&[&str]]) -> bool {
     sequences
         .iter()
         .any(|sequence| contains_word_sequence(words, sequence))
@@ -1242,4 +1249,3 @@ pub(crate) fn parse_source_must_be_blocked_if_able_line(
     }
     Ok(None)
 }
-

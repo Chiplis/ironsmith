@@ -1914,22 +1914,60 @@ pub(super) fn normalize_you_cast_spell_you_dont_own_counter_line(text: &str) -> 
 
 pub(super) fn normalize_one_or_more_combat_damage_treasure_line(text: &str) -> Option<String> {
     let (head, rest) = split_once_ascii_ci(text, "Whenever one or more ")?;
-    let marker = " deal combat damage to a player: Exile card in that player's library. If that doesn't happen, create a Treasure token";
-    let (subject, tail) = split_once_ascii_ci(rest, marker)?;
-    let mut rewritten = format!(
-        "{head}Whenever one or more {} deal combat damage to a player, exile the top card of that player's library. If you don't, create a Treasure token",
-        subject.trim()
-    );
-    let tail = tail.trim();
-    if tail.is_empty() {
-        rewritten.push('.');
-    } else if tail.starts_with('.') {
-        rewritten.push_str(tail);
-    } else {
-        rewritten.push_str(". ");
-        rewritten.push_str(tail);
+    let rewrite_with = |subject: &str, tail: &str, exile_clause: &str, cast_clause: &str| {
+        let mut rewritten = format!(
+            "{head}Whenever one or more {} deal combat damage to a player, {exile_clause}. {cast_clause}. If you don't, create a Treasure token",
+            subject.trim()
+        );
+        let tail = tail.trim();
+        if tail.is_empty() {
+            rewritten.push('.');
+        } else if tail.starts_with('.') {
+            rewritten.push_str(tail);
+        } else {
+            rewritten.push_str(". ");
+            rewritten.push_str(tail);
+        }
+        Some(rewritten)
+    };
+
+    if let Some((subject, tail)) = split_once_ascii_ci(
+        rest,
+        " deal combat damage to a player: Exile card in that player's library. If that doesn't happen, create a Treasure token",
+    ) {
+        return rewrite_with(
+            subject,
+            tail,
+            "exile the top card of that player's library",
+            "You may cast it",
+        );
     }
-    Some(rewritten)
+
+    if let Some((subject, tail)) = split_once_ascii_ci(
+        rest,
+        " deal combat damage to a player: that player exiles the top card of that player's library. cast it. if that doesn't happen, create a treasure token",
+    ) {
+        return rewrite_with(
+            subject,
+            tail,
+            "that player exiles the top card of that player's library",
+            "You may cast it",
+        );
+    }
+
+    if let Some((subject, tail)) = split_once_ascii_ci(
+        rest,
+        " deal combat damage to a player: that player exiles the top card of that player's library. you may cast it. if that doesn't happen, create a treasure token",
+    ) {
+        return rewrite_with(
+            subject,
+            tail,
+            "that player exiles the top card of that player's library",
+            "You may cast it",
+        );
+    }
+
+    None
 }
 
 pub(super) fn normalize_create_one_under_control_list(clauses: &[&str]) -> Option<String> {

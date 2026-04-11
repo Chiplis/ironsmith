@@ -1,21 +1,23 @@
-type GrammarFilterNormalizedWords<'a> = TokenWordView<'a>;
+use super::*;
 
-type FilterWordInput<'a> = primitives::WordSliceInput<'a>;
+pub(super) type GrammarFilterNormalizedWords<'a> = TokenWordView<'a>;
 
-fn synth_words_as_tokens(words: &[&str]) -> Vec<OwnedLexToken> {
+pub(super) type FilterWordInput<'a> = primitives::WordSliceInput<'a>;
+
+pub(super) fn synth_words_as_tokens(words: &[&str]) -> Vec<OwnedLexToken> {
     words
         .iter()
         .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
         .collect()
 }
 
-fn push_unique_filter_value<T: Copy + PartialEq>(items: &mut Vec<T>, value: T) {
+pub(super) fn push_unique_filter_value<T: Copy + PartialEq>(items: &mut Vec<T>, value: T) {
     if !items.iter().any(|item| *item == value) {
         items.push(value);
     }
 }
 
-fn parse_filter_prefix_words<'a, O>(
+pub(super) fn parse_filter_prefix_words<'a, O>(
     words: &'a [&'a str],
     mut parser: impl Parser<FilterWordInput<'a>, O, ErrMode<ContextError>>,
 ) -> Option<(O, usize)> {
@@ -25,27 +27,27 @@ fn parse_filter_prefix_words<'a, O>(
 }
 
 #[derive(Clone, Copy)]
-enum SpellFilterComparisonAxis {
+pub(super) enum SpellFilterComparisonAxis {
     Power,
     Toughness,
     ManaValue,
 }
 
 #[derive(Clone, Copy)]
-enum PlayerRelationVerb {
+pub(super) enum PlayerRelationVerb {
     Cast,
     Control,
     Own,
 }
 
 #[derive(Clone, Copy)]
-struct SegmentPhraseVariant {
+pub(super) struct SegmentPhraseVariant {
     words: &'static [&'static str],
     drain_start_offset: usize,
 }
 
 impl SpellFilterComparisonAxis {
-    fn as_str(self) -> &'static str {
+    pub(super) fn as_str(self) -> &'static str {
         match self {
             Self::Power => "power",
             Self::Toughness => "toughness",
@@ -53,7 +55,7 @@ impl SpellFilterComparisonAxis {
         }
     }
 
-    fn assign(self, filter: &mut ObjectFilter, comparison: crate::target::Comparison) {
+    pub(super) fn assign(self, filter: &mut ObjectFilter, comparison: crate::target::Comparison) {
         match self {
             Self::Power => filter.power = Some(comparison),
             Self::Toughness => filter.toughness = Some(comparison),
@@ -62,7 +64,7 @@ impl SpellFilterComparisonAxis {
     }
 }
 
-fn parse_spell_filter_comparison_axis_words(
+pub(super) fn parse_spell_filter_comparison_axis_words(
     words: &[&str],
 ) -> Option<(SpellFilterComparisonAxis, usize)> {
     parse_filter_prefix_words(
@@ -79,7 +81,7 @@ fn parse_spell_filter_comparison_axis_words(
     )
 }
 
-fn parse_player_relation_verb(words: &[&str]) -> Option<(PlayerRelationVerb, usize)> {
+pub(super) fn parse_player_relation_verb(words: &[&str]) -> Option<(PlayerRelationVerb, usize)> {
     parse_filter_prefix_words(
         words,
         alt((
@@ -102,7 +104,7 @@ fn parse_player_relation_verb(words: &[&str]) -> Option<(PlayerRelationVerb, usi
     )
 }
 
-fn parse_player_relation_subject(
+pub(super) fn parse_player_relation_subject(
     words: &[&str],
     pronoun_player_filter: &PlayerFilter,
 ) -> Option<(PlayerFilter, usize)> {
@@ -208,7 +210,7 @@ fn parse_player_relation_subject(
     None
 }
 
-fn apply_player_relation(
+pub(super) fn apply_player_relation(
     filter: &mut ObjectFilter,
     player: PlayerFilter,
     verb: PlayerRelationVerb,
@@ -220,7 +222,7 @@ fn apply_player_relation(
     }
 }
 
-fn try_apply_player_relation_clause(
+pub(super) fn try_apply_player_relation_clause(
     filter: &mut ObjectFilter,
     words: &[&str],
     pronoun_player_filter: &PlayerFilter,
@@ -243,7 +245,7 @@ fn try_apply_player_relation_clause(
     Some(subject_consumed + verb_consumed)
 }
 
-fn try_apply_negated_you_relation_clause(
+pub(super) fn try_apply_negated_you_relation_clause(
     filter: &mut ObjectFilter,
     words: &[&str],
 ) -> Option<usize> {
@@ -315,7 +317,7 @@ fn try_apply_negated_you_relation_clause(
     None
 }
 
-fn try_apply_chosen_player_graveyard_clause(
+pub(super) fn try_apply_chosen_player_graveyard_clause(
     filter: &mut ObjectFilter,
     words: &[&str],
 ) -> Option<usize> {
@@ -351,7 +353,7 @@ fn try_apply_chosen_player_graveyard_clause(
     None
 }
 
-fn try_apply_joint_owner_controller_clause(
+pub(super) fn try_apply_joint_owner_controller_clause(
     filter: &mut ObjectFilter,
     words: &[&str],
     pronoun_player_filter: &PlayerFilter,
@@ -391,7 +393,7 @@ fn try_apply_joint_owner_controller_clause(
     Some(subject_consumed + consumed)
 }
 
-fn parse_owner_or_controller_disjunction_player(
+pub(super) fn parse_owner_or_controller_disjunction_player(
     words: &[&str],
     pronoun_player_filter: &PlayerFilter,
 ) -> Option<(PlayerFilter, usize)> {
@@ -432,7 +434,7 @@ fn parse_owner_or_controller_disjunction_player(
     Some((player, subject_consumed + consumed))
 }
 
-fn find_filter_prefix_consumed<F>(words: &[&str], parser: F) -> Option<(usize, usize)>
+pub(super) fn find_filter_prefix_consumed<F>(words: &[&str], parser: F) -> Option<(usize, usize)>
 where
     F: Fn(&[&str]) -> Option<usize>,
 {
@@ -442,7 +444,7 @@ where
         .find_map(|(idx, _)| parser(&words[idx..]).map(|consumed| (idx, consumed)))
 }
 
-fn drain_segment_phrase_variants(
+pub(super) fn drain_segment_phrase_variants(
     segment_tokens: &mut Vec<OwnedLexToken>,
     variants: &[SegmentPhraseVariant],
 ) {
@@ -467,7 +469,7 @@ fn drain_segment_phrase_variants(
     }
 }
 
-fn parse_put_there_from_battlefield_this_turn_words(words: &[&str]) -> Option<usize> {
+pub(super) fn parse_put_there_from_battlefield_this_turn_words(words: &[&str]) -> Option<usize> {
     parse_filter_prefix_words(
         words,
         (
@@ -488,7 +490,7 @@ fn parse_put_there_from_battlefield_this_turn_words(words: &[&str]) -> Option<us
     .map(|(_, consumed)| consumed)
 }
 
-fn parse_put_there_from_anywhere_this_turn_words(words: &[&str]) -> Option<usize> {
+pub(super) fn parse_put_there_from_anywhere_this_turn_words(words: &[&str]) -> Option<usize> {
     parse_filter_prefix_words(
         words,
         (
@@ -509,7 +511,7 @@ fn parse_put_there_from_anywhere_this_turn_words(words: &[&str]) -> Option<usize
     .map(|(_, consumed)| consumed)
 }
 
-fn parse_graveyard_from_battlefield_this_turn_words(words: &[&str]) -> Option<usize> {
+pub(super) fn parse_graveyard_from_battlefield_this_turn_words(words: &[&str]) -> Option<usize> {
     parse_filter_prefix_words(
         words,
         (
@@ -527,7 +529,7 @@ fn parse_graveyard_from_battlefield_this_turn_words(words: &[&str]) -> Option<us
     .map(|(_, consumed)| consumed)
 }
 
-fn parse_entered_battlefield_this_turn_words(
+pub(super) fn parse_entered_battlefield_this_turn_words(
     words: &[&str],
 ) -> Option<(Option<PlayerFilter>, usize)> {
     if let Some((_, consumed)) = parse_filter_prefix_words(
@@ -618,7 +620,7 @@ fn parse_entered_battlefield_this_turn_words(
     None
 }
 
-fn try_apply_put_there_from_battlefield_this_turn_clause(
+pub(super) fn try_apply_put_there_from_battlefield_this_turn_clause(
     filter: &mut ObjectFilter,
     all_words: &mut Vec<&str>,
     segment_tokens: &mut Vec<OwnedLexToken>,
@@ -694,7 +696,7 @@ fn try_apply_put_there_from_battlefield_this_turn_clause(
     true
 }
 
-fn try_apply_put_there_from_anywhere_this_turn_clause(
+pub(super) fn try_apply_put_there_from_anywhere_this_turn_clause(
     filter: &mut ObjectFilter,
     all_words: &mut Vec<&str>,
     segment_tokens: &mut Vec<OwnedLexToken>,
@@ -727,7 +729,7 @@ fn try_apply_put_there_from_anywhere_this_turn_clause(
     true
 }
 
-fn try_apply_graveyard_from_battlefield_this_turn_clause(
+pub(super) fn try_apply_graveyard_from_battlefield_this_turn_clause(
     filter: &mut ObjectFilter,
     all_words: &mut Vec<&str>,
     segment_tokens: &mut Vec<OwnedLexToken>,
@@ -764,7 +766,7 @@ fn try_apply_graveyard_from_battlefield_this_turn_clause(
     true
 }
 
-fn try_apply_entered_battlefield_this_turn_clause(
+pub(super) fn try_apply_entered_battlefield_this_turn_clause(
     filter: &mut ObjectFilter,
     all_words: &mut Vec<&str>,
     segment_tokens: &mut Vec<OwnedLexToken>,
@@ -872,14 +874,14 @@ fn try_apply_entered_battlefield_this_turn_clause(
     true
 }
 
-fn push_it_tagged_object_constraint(filter: &mut ObjectFilter) {
+pub(super) fn push_it_tagged_object_constraint(filter: &mut ObjectFilter) {
     filter.tagged_constraints.push(TaggedObjectConstraint {
         tag: TagKey::from(IT_TAG),
         relation: TaggedOpbjectRelation::IsTaggedObject,
     });
 }
 
-fn try_apply_leading_tagged_reference_prefix(
+pub(super) fn try_apply_leading_tagged_reference_prefix(
     filter: &mut ObjectFilter,
     all_words: &mut Vec<&str>,
 ) -> bool {
@@ -911,7 +913,7 @@ fn try_apply_leading_tagged_reference_prefix(
     false
 }
 
-fn is_name_clause_boundary(word: &str) -> bool {
+pub(super) fn is_name_clause_boundary(word: &str) -> bool {
     matches!(
         word,
         "in" | "from"
@@ -937,7 +939,7 @@ fn is_name_clause_boundary(word: &str) -> bool {
     )
 }
 
-fn find_name_clause_end(all_words: &[&str], name_start: usize) -> usize {
+pub(super) fn find_name_clause_end(all_words: &[&str], name_start: usize) -> usize {
     let mut name_end = all_words.len();
     for idx in (name_start + 1)..all_words.len() {
         if is_name_clause_boundary(all_words[idx]) {
@@ -948,7 +950,7 @@ fn find_name_clause_end(all_words: &[&str], name_start: usize) -> usize {
     name_end
 }
 
-fn extract_name_clause_text<'a, F, G>(
+pub(super) fn extract_name_clause_text<'a, F, G>(
     all_words: &[&'a str],
     all_words_with_articles: &[&'a str],
     marker_idx: usize,
@@ -981,4 +983,3 @@ where
 
     Ok((name_words.join(" "), name_end))
 }
-

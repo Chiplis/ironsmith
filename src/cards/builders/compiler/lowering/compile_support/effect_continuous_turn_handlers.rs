@@ -549,7 +549,9 @@ pub(super) fn try_compile_continuous_and_modifier_effect(
         EffectAst::GrantAbilityToSource { ability } => {
             let lowered = lower_parsed_ability(ability.clone())?;
             (
-                vec![Effect::grant_object_ability_to_source(lowered.ability)],
+                vec![Effect::grant_object_ability_to_source(
+                    lowered.into_runtime(),
+                )],
                 Vec::new(),
             )
         }

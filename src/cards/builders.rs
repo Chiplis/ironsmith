@@ -12088,7 +12088,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             include_str!(
                 "builders/compiler/sentences/effect_sentences/dispatch_inner/sentence_shape_predicates.rs"
             ),
-            include_str!("builders/compiler/sentences/effect_sentences/dispatch_inner/labeled_prefixes.rs"),
+            include_str!(
+                "builders/compiler/sentences/effect_sentences/dispatch_inner/labeled_prefixes.rs"
+            ),
             include_str!(
                 "builders/compiler/sentences/effect_sentences/dispatch_inner/copy_and_next_spell_shapes.rs"
             ),
@@ -12103,7 +12105,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             include_str!(
                 "builders/compiler/sentences/effect_sentences/sentence_primitives/choice_damage_family.rs"
             ),
-            include_str!("builders/compiler/sentences/effect_sentences/sentence_primitives/registry.rs"),
+            include_str!(
+                "builders/compiler/sentences/effect_sentences/sentence_primitives/registry.rs"
+            ),
             include_str!(
                 "builders/compiler/sentences/effect_sentences/sentence_primitives/counter_marker_family.rs"
             ),

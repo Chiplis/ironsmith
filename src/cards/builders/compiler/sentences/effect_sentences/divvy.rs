@@ -24,8 +24,17 @@ fn parse_single_effect_sentence(tokens: &[OwnedLexToken]) -> Result<EffectAst, C
         .ok_or_else(|| CardTextError::ParseError("missing effect sentence".to_string()))
 }
 
+fn normalized_divvy_match_word(word: &str) -> String {
+    word.chars().filter(|ch| *ch != '\'').collect()
+}
+
 fn matches_sentence(words: &TokenWordView<'_>, expected: &[&str]) -> bool {
-    words.len() == expected.len() && words.starts_with(expected)
+    words.len() == expected.len()
+        && expected.iter().enumerate().all(|(idx, expected)| {
+            words.get(idx).is_some_and(|actual| {
+                normalized_divvy_match_word(actual) == normalized_divvy_match_word(expected)
+            })
+        })
 }
 
 fn matches_sentence_sequence(sentence_words: &[TokenWordView<'_>], expected: &[&[&str]]) -> bool {

@@ -9,9 +9,8 @@ use crate::target::ObjectFilter;
 use crate::zone::Zone;
 use crate::{ChoiceCount, Supertype};
 
-use super::super::activation_and_restrictions::{
-    starts_with_target_indicator, title_case_token_word,
-};
+use super::super::activation_and_restrictions::activation_restriction_clauses::starts_with_target_indicator;
+use super::super::activation_and_restrictions::trigger_subject_filters::title_case_token_word;
 use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::grammar::structure::split_trailing_if_clause_lexed;
 use super::super::object_filters::parse_object_filter;

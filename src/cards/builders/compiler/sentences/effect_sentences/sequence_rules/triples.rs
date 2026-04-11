@@ -5,7 +5,7 @@ use super::super::dispatch_entry::{
     parse_if_declined_put_match_into_hand, parse_if_no_card_into_hand_this_way_sentence,
     parse_if_you_dont_sentence, parse_top_cards_view_sentence,
 };
-use crate::cards::builders::compiler::activation_and_restrictions::find_word_sequence_start;
+use crate::cards::builders::compiler::activation_and_restrictions::activated_line_core::find_word_sequence_start;
 use crate::cards::builders::compiler::effect_sentences;
 use crate::cards::builders::compiler::effect_sentences::SentenceInput;
 use crate::cards::builders::compiler::lexer::TokenWordView;
@@ -369,9 +369,11 @@ pub(crate) fn parse_top_cards_for_each_card_type_among_spells_put_matching_into_
         return Ok(None);
     };
     let filter_word_len = filter_words.len().saturating_sub(suffix.len());
-    let filter_token_end =
-        crate::cards::builders::compiler::token_index_for_word_index(&filter_tokens, filter_word_len)
-            .unwrap_or(filter_tokens.len());
+    let filter_token_end = crate::cards::builders::compiler::token_index_for_word_index(
+        &filter_tokens,
+        filter_word_len,
+    )
+    .unwrap_or(filter_tokens.len());
     let filter_prefix_tokens = trim_commas(&filter_tokens[..filter_token_end]);
     let mut spell_filter =
         crate::cards::builders::compiler::parse_spell_filter_lexed(&filter_prefix_tokens);

@@ -113,7 +113,6 @@ use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 use std::sync::LazyLock;
 
-
 const AS_ENTERS_AURA_SUBJECTS: &[(&str, &str)] = &[("aura", "this Aura")];
 
 fn contains_keyword_static_phrase(words: &[&str], phrase: &[&str]) -> bool {
@@ -824,10 +823,11 @@ pub(crate) fn parse_activated_abilities_cant_be_activated_line(
     // "Activated abilities of artifacts and creatures ..." should be a union of types.
     // Our general object filter parser treats type lists joined by "and" as intersection,
     // which is correct for many adjective chains, but incorrect for this rules pattern.
-    let subject_words: Vec<&str> = crate::cards::builders::compiler::token_word_refs(&subject_tokens)
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect();
+    let subject_words: Vec<&str> =
+        crate::cards::builders::compiler::token_word_refs(&subject_tokens)
+            .into_iter()
+            .filter(|word| !is_article(word))
+            .collect();
 
     let filter = if subject_words.len() == 3 && subject_words[1] == "and" {
         let t1 = str_strip_suffix(subject_words[0], "s").unwrap_or(subject_words[0]);
@@ -944,7 +944,8 @@ pub(crate) fn parse_activated_abilities_cost_increase_line(
         )));
     }
 
-    let tail_words = crate::cards::builders::compiler::token_word_refs(&cost_tokens[to_token_idx..]);
+    let tail_words =
+        crate::cards::builders::compiler::token_word_refs(&cost_tokens[to_token_idx..]);
     if !slice_starts_with(&tail_words, &["to", "activate"]) {
         return Ok(None);
     }
@@ -967,10 +968,11 @@ pub(crate) fn parse_activated_abilities_cant_be_activated_line_lexed(
         return Ok(None);
     }
 
-    let subject_words: Vec<&str> = crate::cards::builders::compiler::token_word_refs(subject_tokens)
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect();
+    let subject_words: Vec<&str> =
+        crate::cards::builders::compiler::token_word_refs(subject_tokens)
+            .into_iter()
+            .filter(|word| !is_article(word))
+            .collect();
 
     let filter = if subject_words.len() == 3 && subject_words[1] == "and" {
         let t1 = str_strip_suffix(subject_words[0], "s").unwrap_or(subject_words[0]);
@@ -2631,7 +2633,8 @@ pub(crate) fn parse_characteristic_defining_pt_line(
                     parse_characteristic_defining_stat_value(tail_tokens).ok_or_else(|| {
                         CardTextError::ParseError(format!(
                             "unsupported characteristic defining P/T value (value: '{}')",
-                            crate::cards::builders::compiler::token_word_refs(tail_tokens).join(" ")
+                            crate::cards::builders::compiler::token_word_refs(tail_tokens)
+                                .join(" ")
                         ))
                     })?;
                 return Ok(Some(StaticAbility::characteristic_defining_pt(
@@ -5239,7 +5242,8 @@ pub(crate) fn parse_doesnt_untap_during_untap_step_line(
             )))
         }
         Some(DoesntUntapDuringUntapStepSpec::Attached { subject_tokens }) => {
-            let subject = crate::cards::builders::compiler::token_word_refs(subject_tokens).join(" ");
+            let subject =
+                crate::cards::builders::compiler::token_word_refs(subject_tokens).join(" ");
             let text = format!("{subject} doesnt untap during its controllers untap step");
             Ok(Some(StaticAbilityAst::AttachedStaticAbilityGrant {
                 ability: Box::new(StaticAbilityAst::Static(StaticAbility::doesnt_untap())),
@@ -6120,7 +6124,8 @@ pub(crate) fn parse_spend_mana_as_any_color_line(
             &tail_words,
             &["to", "pay", "the", "activation", "costs", "of"],
         ) {
-            let ability_words = crate::cards::builders::compiler::token_word_refs(&tail_tokens[6..]);
+            let ability_words =
+                crate::cards::builders::compiler::token_word_refs(&tail_tokens[6..]);
             if !ability_words
                 .iter()
                 .any(|word| *word == "abilities" || *word == "ability")

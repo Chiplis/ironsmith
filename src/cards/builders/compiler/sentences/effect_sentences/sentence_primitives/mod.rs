@@ -1,6 +1,8 @@
-use super::super::activation_and_restrictions::{
-    contains_word_sequence, find_word_sequence_start, parse_target_player_choose_objects_clause,
-    parse_you_choose_objects_clause,
+use super::super::activation_and_restrictions::activated_line_core::{
+    contains_word_sequence, find_word_sequence_start,
+};
+use super::super::activation_and_restrictions::choice_object_clauses::{
+    parse_target_player_choose_objects_clause, parse_you_choose_objects_clause,
 };
 use super::super::grammar::effects::parse_conditional_sentence_with_grammar_entrypoint_lexed;
 use super::super::grammar::primitives::{

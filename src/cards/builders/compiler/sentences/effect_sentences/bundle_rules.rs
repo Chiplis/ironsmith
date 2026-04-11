@@ -1,6 +1,6 @@
 use winnow::Parser as _;
 
-use super::super::activation_and_restrictions::{
+use super::super::activation_and_restrictions::choice_object_clauses::{
     parse_choose_card_type_phrase_words, parse_target_player_choose_objects_clause,
     parse_you_choose_objects_clause,
 };
@@ -29,10 +29,10 @@ pub(crate) fn parse_same_sentence_copy_and_may_cast_copy(
 ) -> Result<
     Option<(
         Vec<EffectAst>,
-        crate::cards::builders::compiler::activation_and_restrictions::MayCastTaggedSpec,
+        crate::cards::builders::compiler::activation_and_restrictions::trigger_subject_filters::MayCastTaggedSpec,
     )>,
     CardTextError,
-> {
+>{
     use super::super::grammar::primitives as grammar;
 
     let split = grammar::split_lexed_once_on_separator(tokens, || grammar::kw("and").void())

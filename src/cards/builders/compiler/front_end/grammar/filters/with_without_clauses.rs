@@ -1,4 +1,6 @@
-fn is_unmodeled_predicate_words(filtered: &[&str]) -> bool {
+use super::*;
+
+pub(super) fn is_unmodeled_predicate_words(filtered: &[&str]) -> bool {
     filtered == ["you", "gained", "life", "this", "turn"]
         || filtered == ["you", "dont", "cast", "it"]
         || filtered == ["it", "has", "odd", "number", "of", "counters", "on", "it"]

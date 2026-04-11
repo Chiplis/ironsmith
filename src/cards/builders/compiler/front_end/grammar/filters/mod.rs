@@ -2,7 +2,7 @@ use winnow::Parser;
 use winnow::combinator::alt;
 use winnow::error::{ContextError, ErrMode};
 
-use super::super::activation_and_restrictions::parse_named_number;
+use super::super::activation_and_restrictions::activated_line_core::parse_named_number;
 use super::super::keyword_static::parse_pt_modifier;
 use super::super::lexer::OwnedLexToken;
 use super::super::object_filters::{
@@ -37,10 +37,25 @@ use crate::mana::ManaSymbol;
 use crate::target::{ObjectFilter, PlayerFilter, TaggedOpbjectRelation};
 use crate::types::{CardType, Supertype};
 use crate::zone::Zone;
-include!("player_relations.rs");
-include!("naming_and_reference.rs");
-include!("reference_tag_stage.rs");
-include!("spell_filters.rs");
-include!("with_without_clauses.rs");
-include!("predicate_phrases.rs");
-include!("meld_and_special_subjects.rs");
+
+mod meld_and_special_subjects;
+mod naming_and_reference;
+mod player_relations;
+mod predicate_phrases;
+pub(crate) mod reference_tag_stage;
+pub(crate) mod spell_filters;
+mod with_without_clauses;
+
+pub(super) use meld_and_special_subjects::*;
+pub(super) use naming_and_reference::*;
+pub(super) use player_relations::*;
+pub(super) use predicate_phrases::*;
+pub(super) use reference_tag_stage::*;
+pub(super) use spell_filters::*;
+pub(super) use with_without_clauses::*;
+
+pub(crate) use reference_tag_stage::parse_object_filter_with_grammar_entrypoint_lexed;
+pub(crate) use spell_filters::{
+    parse_object_filter_with_grammar_entrypoint, parse_spell_filter_with_grammar_entrypoint,
+    parse_spell_filter_with_grammar_entrypoint_lexed,
+};

@@ -171,17 +171,17 @@ pub(super) fn lower_alternative_cast(
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
     if let Some(method) = parse_self_free_cast_alternative_cost_line_lexed(tokens) {
-        return Ok(LineAst::AlternativeCastingMethod(method));
+        return Ok(LineAst::AlternativeCastingMethod(method.into()));
     }
     if let Some(method) =
         parse_you_may_rather_than_spell_cost_line_lexed(tokens, line.text.as_str())?
     {
-        return Ok(LineAst::AlternativeCastingMethod(method));
+        return Ok(LineAst::AlternativeCastingMethod(method.into()));
     }
     if let Some(method) =
         parse_if_conditional_alternative_cost_line_lexed(tokens, line.text.as_str())?
     {
-        return Ok(LineAst::AlternativeCastingMethod(method));
+        return Ok(LineAst::AlternativeCastingMethod(method.into()));
     }
     Err(CardTextError::ParseError(format!(
         "rewrite keyword lowering could not parse alternative cost line '{}'",
@@ -193,33 +193,27 @@ pub(super) fn lower_bestow(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
-    Ok(LineAst::AlternativeCastingMethod(require_keyword_parse(
-        line,
-        "bestow",
-        parse_bestow_line_lexed(tokens)?,
-    )?))
+    Ok(LineAst::AlternativeCastingMethod(
+        require_keyword_parse(line, "bestow", parse_bestow_line_lexed(tokens)?)?.into(),
+    ))
 }
 
 pub(super) fn lower_bargain(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
-    Ok(LineAst::OptionalCost(require_keyword_parse(
-        line,
-        "bargain",
-        parse_bargain_line_lexed(tokens)?,
-    )?))
+    Ok(LineAst::OptionalCost(
+        require_keyword_parse(line, "bargain", parse_bargain_line_lexed(tokens)?)?.into(),
+    ))
 }
 
 pub(super) fn lower_buyback(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
-    Ok(LineAst::OptionalCost(require_keyword_parse(
-        line,
-        "buyback",
-        parse_buyback_line_lexed(tokens)?,
-    )?))
+    Ok(LineAst::OptionalCost(
+        require_keyword_parse(line, "buyback", parse_buyback_line_lexed(tokens)?)?.into(),
+    ))
 }
 
 pub(super) fn lower_channel(
@@ -259,55 +253,45 @@ pub(super) fn lower_escape(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
-    Ok(LineAst::AlternativeCastingMethod(require_keyword_parse(
-        line,
-        "escape",
-        parse_escape_line_lexed(tokens)?,
-    )?))
+    Ok(LineAst::AlternativeCastingMethod(
+        require_keyword_parse(line, "escape", parse_escape_line_lexed(tokens)?)?.into(),
+    ))
 }
 
 pub(super) fn lower_flashback(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
-    Ok(LineAst::AlternativeCastingMethod(require_keyword_parse(
-        line,
-        "flashback",
-        parse_flashback_line_lexed(tokens)?,
-    )?))
+    Ok(LineAst::AlternativeCastingMethod(
+        require_keyword_parse(line, "flashback", parse_flashback_line_lexed(tokens)?)?.into(),
+    ))
 }
 
 pub(super) fn lower_harmonize(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
-    Ok(LineAst::AlternativeCastingMethod(require_keyword_parse(
-        line,
-        "harmonize",
-        parse_harmonize_line_lexed(tokens)?,
-    )?))
+    Ok(LineAst::AlternativeCastingMethod(
+        require_keyword_parse(line, "harmonize", parse_harmonize_line_lexed(tokens)?)?.into(),
+    ))
 }
 
 pub(super) fn lower_kicker(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
-    Ok(LineAst::OptionalCost(require_keyword_parse(
-        line,
-        "kicker",
-        parse_kicker_line_lexed(tokens)?,
-    )?))
+    Ok(LineAst::OptionalCost(
+        require_keyword_parse(line, "kicker", parse_kicker_line_lexed(tokens)?)?.into(),
+    ))
 }
 
 pub(super) fn lower_madness(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
-    Ok(LineAst::AlternativeCastingMethod(require_keyword_parse(
-        line,
-        "madness",
-        parse_madness_line_lexed(tokens)?,
-    )?))
+    Ok(LineAst::AlternativeCastingMethod(
+        require_keyword_parse(line, "madness", parse_madness_line_lexed(tokens)?)?.into(),
+    ))
 }
 
 pub(super) fn lower_morph(
@@ -325,22 +309,18 @@ pub(super) fn lower_multikicker(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
-    Ok(LineAst::OptionalCost(require_keyword_parse(
-        line,
-        "multikicker",
-        parse_multikicker_line_lexed(tokens)?,
-    )?))
+    Ok(LineAst::OptionalCost(
+        require_keyword_parse(line, "multikicker", parse_multikicker_line_lexed(tokens)?)?.into(),
+    ))
 }
 
 pub(super) fn lower_offspring(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
-    Ok(LineAst::OptionalCost(require_keyword_parse(
-        line,
-        "offspring",
-        parse_offspring_line_lexed(tokens)?,
-    )?))
+    Ok(LineAst::OptionalCost(
+        require_keyword_parse(line, "offspring", parse_offspring_line_lexed(tokens)?)?.into(),
+    ))
 }
 
 pub(super) fn lower_reinforce(
@@ -365,11 +345,9 @@ pub(super) fn lower_squad(
         return Ok(LineAst::Statement { effects });
     }
 
-    Ok(LineAst::OptionalCost(require_keyword_parse(
-        line,
-        "squad",
-        parse_squad_line_lexed(tokens)?,
-    )?))
+    Ok(LineAst::OptionalCost(
+        require_keyword_parse(line, "squad", parse_squad_line_lexed(tokens)?)?.into(),
+    ))
 }
 
 pub(super) fn lower_transmute(
@@ -387,11 +365,9 @@ pub(super) fn lower_entwine(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
-    Ok(LineAst::OptionalCost(require_keyword_parse(
-        line,
-        "entwine",
-        parse_entwine_line_lexed(tokens)?,
-    )?))
+    Ok(LineAst::OptionalCost(
+        require_keyword_parse(line, "entwine", parse_entwine_line_lexed(tokens)?)?.into(),
+    ))
 }
 
 pub(super) fn lower_cast_this_spell_only(
@@ -419,11 +395,9 @@ pub(super) fn lower_warp(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
-    Ok(LineAst::AlternativeCastingMethod(require_keyword_parse(
-        line,
-        "warp",
-        parse_warp_line_lexed(tokens)?,
-    )?))
+    Ok(LineAst::AlternativeCastingMethod(
+        require_keyword_parse(line, "warp", parse_warp_line_lexed(tokens)?)?.into(),
+    ))
 }
 
 pub(super) fn lower_exert_attack(

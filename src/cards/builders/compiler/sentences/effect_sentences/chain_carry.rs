@@ -7,7 +7,6 @@ use winnow::error::{ContextError, ErrMode};
 use super::super::compile_support::effects_reference_it_tag;
 use super::super::effect_ast_traversal::for_each_nested_effects_mut;
 use super::super::grammar::primitives::{self as grammar, TokenWordView};
-use super::super::rule_engine::{LexClauseView, LexRuleDef, LexRuleIndex};
 use super::super::grammar::structure::{
     LeadingResultPrefixKind, split_leading_result_prefix_lexed, split_trailing_if_clause_lexed,
 };
@@ -16,6 +15,7 @@ use super::super::permission_helpers::{
     parse_additional_land_plays_clause_lexed, parse_permission_clause_spec_lexed,
     parse_unsupported_play_cast_permission_clause_lexed,
 };
+use super::super::rule_engine::{LexClauseView, LexRuleDef, LexRuleIndex};
 use super::super::token_primitives::{
     find_window_index as find_word_sequence_index, rfind_index as find_last_token_index,
     slice_contains_str as word_slice_contains, slice_starts_with as word_slice_starts_with,

@@ -1,8 +1,10 @@
-fn apply_pending_mana_restrictions(
+use super::*;
+
+pub(crate) fn apply_pending_mana_restrictions(
     parsed: &mut ParsedAbility,
     restrictions: &[String],
 ) -> Result<(), CardTextError> {
-    let AbilityKind::Activated(ability) = &mut parsed.ability.kind else {
+    let AbilityKind::Activated(ability) = parsed.kind_mut() else {
         return Err(CardTextError::InvariantViolation(
             "rewrite activated lowering expected activated ability kind".to_string(),
         ));
@@ -13,7 +15,9 @@ fn apply_pending_mana_restrictions(
     Ok(())
 }
 
-fn parse_next_spell_cost_reduction_sentence_rewrite(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
+pub(crate) fn parse_next_spell_cost_reduction_sentence_rewrite(
+    tokens: &[OwnedLexToken],
+) -> Option<EffectAst> {
     let clause_words = token_word_refs(tokens);
     if !word_refs_have_prefix(clause_words.as_slice(), &["the", "next"]) {
         return None;
@@ -65,7 +69,7 @@ fn parse_next_spell_cost_reduction_sentence_rewrite(tokens: &[OwnedLexToken]) ->
     })
 }
 
-fn parse_each_player_and_their_creatures_damage_sentence_rewrite(
+pub(crate) fn parse_each_player_and_their_creatures_damage_sentence_rewrite(
     effect_text: &str,
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {

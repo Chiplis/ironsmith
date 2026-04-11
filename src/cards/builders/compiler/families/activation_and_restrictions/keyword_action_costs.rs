@@ -1,3 +1,5 @@
+use super::*;
+
 pub(crate) fn target_ast_to_object_filter(target: TargetAst) -> Option<ObjectFilter> {
     match target {
         TargetAst::Source(_) => Some(ObjectFilter::source()),
@@ -190,7 +192,7 @@ pub(crate) fn marker_keyword_display(words: &[&str]) -> Option<String> {
     }
 }
 
-fn marker_text_from_words(words: &[&str]) -> Option<String> {
+pub(crate) fn marker_text_from_words(words: &[&str]) -> Option<String> {
     let first = words.first().copied()?;
     let mut text = keyword_title(first);
     if words.len() > 1 {
@@ -200,7 +202,7 @@ fn marker_text_from_words(words: &[&str]) -> Option<String> {
     Some(text)
 }
 
-fn parse_numeric_keyword_action<F>(
+pub(crate) fn parse_numeric_keyword_action<F>(
     words: &[&str],
     keyword: &'static str,
     build: F,
@@ -217,12 +219,12 @@ where
     Some(KeywordAction::Marker(keyword))
 }
 
-enum KeywordCostFallback {
+pub(crate) enum KeywordCostFallback {
     MarkerOnly,
     MarkerOrText,
 }
 
-fn parse_cost_keyword_action<F>(
+pub(crate) fn parse_cost_keyword_action<F>(
     words: &[&str],
     keyword: &'static str,
     fallback: KeywordCostFallback,
@@ -1294,4 +1296,3 @@ pub(crate) fn is_trigger_objectish_word(word: &str) -> bool {
             parse_card_type(stem).is_some() || parse_subtype_word(stem).is_some()
         })
 }
-

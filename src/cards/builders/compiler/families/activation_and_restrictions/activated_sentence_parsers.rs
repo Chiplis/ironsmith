@@ -1,6 +1,6 @@
 use super::super::activation_helpers::parse_subtype_flexible;
 use super::super::effect_sentences::parse_subtype_word;
-use super::super::grammar::filters::parse_spell_filter_with_grammar_entrypoint;
+use super::super::grammar::filters::spell_filters::parse_spell_filter_with_grammar_entrypoint;
 use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::keyword_static::parse_cost_modifier_mana_cost;
 use super::super::lexer::OwnedLexToken;
