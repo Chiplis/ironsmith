@@ -3553,13 +3553,16 @@ mod tests {
 
     #[test]
     fn post_pass_normalizes_color_count_search_exile_cast_clause() {
-        let normalized = normalize_compiled_post_pass_effect(
+        for raw in [
             "You searches for up to one creature with color count equal to the number of colors among the sacrificed creature plus 1 in a library and tags it as 'searched'. Exile the tagged object 'searched'. Shuffle your library. cast the tagged object 'searched'.",
-        );
-        assert_eq!(
-            normalized,
-            "Search your library for a creature card that's exactly that many colors plus one. Exile that card, then shuffle. You may cast the exiled card."
-        );
+            "You searches for up to one creature with color count equal to the number of color among permanent plus 1 in a library and tags it as 'searched'. Exile the tagged object 'searched'. Shuffle your library. cast the tagged object 'searched'.",
+        ] {
+            let normalized = normalize_compiled_post_pass_effect(raw);
+            assert_eq!(
+                normalized,
+                "Search your library for a creature card that's exactly that many colors plus one. Exile that card, then shuffle. You may cast the exiled card."
+            );
+        }
     }
 
     #[test]

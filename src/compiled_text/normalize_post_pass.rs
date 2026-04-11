@@ -6803,10 +6803,9 @@ pub(super) fn normalize_search_color_count_exile_cast_clause(text: &str) -> Opti
         ) else {
             continue;
         };
-        let Some((subject_raw, color_count_raw)) = split_once_ascii_ci(
-            descriptor_raw,
-            " with color count equal to the number of colors among ",
-        ) else {
+        let Some((subject_raw, color_count_raw)) =
+            split_search_color_count_subject(descriptor_raw)
+        else {
             continue;
         };
         if !color_count_raw.trim_end().ends_with(" plus 1") {
@@ -6823,6 +6822,18 @@ pub(super) fn normalize_search_color_count_exile_cast_clause(text: &str) -> Opti
             "search your library for {subject} that's exactly that many colors plus one. Exile that card, then shuffle. You may cast the exiled card."
         );
         return Some(apply_replacement_with_case(before, &rewritten, after));
+    }
+    None
+}
+
+fn split_search_color_count_subject(descriptor_raw: &str) -> Option<(&str, &str)> {
+    for needle in [
+        " with color count equal to the number of colors among ",
+        " with color count equal to the number of color among ",
+    ] {
+        if let Some((subject_raw, color_count_raw)) = split_once_ascii_ci(descriptor_raw, needle) {
+            return Some((subject_raw, color_count_raw));
+        }
     }
     None
 }
