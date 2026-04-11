@@ -10929,7 +10929,9 @@ fn parse_kentaro_static_mana_value_permission() {
         "You may pay {X} rather than pay the mana cost for Samurai spells you cast, where X is that spell's mana value.",
         0,
     );
-    let parsed = crate::cards::builders::parser::parse_static_ability_ast_line_lexed(&tokens)
+    let parsed = crate::cards::builders::compiler::parse_static_ability_ast_line_lexed(
+        &tokens,
+    )
         .expect("Kentaro static line should not error");
     assert!(
         parsed.is_some(),

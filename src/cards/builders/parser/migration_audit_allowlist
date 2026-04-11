@@ -1,6 +1,0 @@
-# Format: kind|path|max_hits|remove_when
-# Keep this file even when empty so new parser debt has an obvious place to be
-# documented, reviewed, and removed intentionally.
-raw_string_after_lex|src/cards/builders/parser/effect_sentences/dispatch_entry.rs|1|.contains() on error string for control flow, replace with structured error matching
-raw_string_after_lex|src/cards/builders/parser/compile_support.rs|1|search followup shuffle rewrite still keys off generated searched_* tags, replace with structured search-effect provenance
-raw_string_after_lex|src/cards/builders/parser/grammar/effects.rs|1|named-card-list search splitter is still hand-rolled token scanning; replace with a grammar-owned repeated named-item parser
