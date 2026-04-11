@@ -15887,6 +15887,117 @@ fn test_the_one_ring_prevents_combat_damage_until_your_next_turn() {
 }
 
 #[test]
+fn test_the_stasis_coffin_activation_grants_protection_and_exiles_itself() {
+    use crate::cards::builders::CardDefinitionBuilder;
+    use crate::decision::compute_legal_actions;
+    use crate::ids::CardId;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let coffin = CardDefinitionBuilder::new(CardId::new(), "The Stasis Coffin")
+        .supertypes(vec![crate::types::Supertype::Legendary])
+        .card_types(vec![CardType::Artifact])
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+        .parse_text(
+            "{2}, {T}, Exile The Stasis Coffin: You gain protection from everything until your next turn.",
+        )
+        .expect("The Stasis Coffin text should parse");
+    let coffin_id = game.create_object_from_definition(&coffin, alice, Zone::Battlefield);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 2);
+
+    let ability_index = game
+        .object(coffin_id)
+        .expect("The Stasis Coffin should exist")
+        .abilities
+        .iter()
+        .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .expect("The Stasis Coffin should have an activated ability");
+
+    let activate_action = compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::ActivateAbility { source, ability_index: idx }
+                    if *source == coffin_id && *idx == ability_index
+            )
+        })
+        .expect("The Stasis Coffin activation should be legal with mana available");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = AutoPassDecisionMaker;
+
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("activating The Stasis Coffin should succeed");
+
+    assert_eq!(
+        game.object(coffin_id).expect("coffin exists").zone,
+        Zone::Exile,
+        "The Stasis Coffin should exile itself as part of the activation cost"
+    );
+
+    resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+        .expect("The Stasis Coffin ability should resolve");
+
+    assert!(
+        !game.can_target_player(alice),
+        "The Stasis Coffin should make its controller untargetable until their next turn"
+    );
+    assert!(
+        game.prevention_effects.shields().iter().any(|shield| {
+            matches!(shield.protected, crate::prevention::PreventionTarget::Player(player) if player == alice)
+        }),
+        "The Stasis Coffin should create a prevention shield for its controller"
+    );
+
+    game.turn.active_player = bob;
+    game.turn.priority_player = Some(bob);
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::CombatDamage);
+
+    let attacker_id = create_creature(&mut game, "Stasis Breaker", bob, 4, 4);
+    let mut combat = CombatState::default();
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: attacker_id,
+        target: AttackTarget::Player(alice),
+    });
+    combat.blockers.insert(attacker_id, Vec::new());
+
+    let events = execute_combat_damage_step(&mut game, &combat, false);
+    assert_eq!(events.len(), 1, "combat damage should still be assigned");
+    assert_eq!(
+        game.player(alice).expect("alice exists").life,
+        20,
+        "The Stasis Coffin should prevent combat damage before Alice's next turn"
+    );
+
+    game.next_turn();
+    game.refresh_continuous_state();
+
+    assert!(
+        game.can_target_player(alice),
+        "The Stasis Coffin protection should expire on Alice's next turn"
+    );
+}
+
+#[test]
 fn cultivator_colossus_etb_only_asks_may_once_per_land_put() {
     use crate::cards::definitions::{basic_forest, grizzly_bears};
     use crate::executor::{ExecutionContext, execute_effect};

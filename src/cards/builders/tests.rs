@@ -20400,6 +20400,41 @@ fn parse_you_gain_protection_from_everything_until_your_next_turn() {
 }
 
 #[test]
+fn parse_the_stasis_coffin_gain_protection_from_everything_regression() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "The Stasis Coffin")
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Artifact])
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+        .parse_text("{2}, {T}, Exile The Stasis Coffin: You gain protection from everything until your next turn.")
+        .expect("The Stasis Coffin text should parse");
+
+    let abilities_debug = format!("{:#?}", def.abilities).to_ascii_lowercase();
+    assert!(
+        abilities_debug.contains("exileeffect"),
+        "expected self-exile activation cost, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("betargetedplayer"),
+        "expected temporary cant-target-player restriction, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("preventalldamagetotargeteffect"),
+        "expected temporary prevent-all-damage-to-player effect, got {abilities_debug}"
+    );
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("you gain protection from everything until your next turn"),
+        "expected Stasis Coffin protection wording, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("you can't be targeted until your next turn")
+            && !rendered.contains("prevent all damage that would be dealt to you until your next turn"),
+        "expected the expanded protection wording to normalize away, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_lose_half_your_life_rounded_up_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Cruel Bargain")
         .card_types(vec![CardType::Sorcery])

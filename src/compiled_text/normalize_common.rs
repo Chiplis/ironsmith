@@ -3582,6 +3582,15 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             "{prefix}, if you cast it, you gain protection from everything until your next turn"
         );
     }
+    if let Some((prefix, rest)) = normalized.split_once(": ") {
+        let rest_lower = rest.to_ascii_lowercase();
+        if rest_lower == "you can't be targeted until your next turn. prevent all damage that would be dealt to you until your next turn"
+            || rest_lower
+                == "you can't be targeted until your next turn. prevent all damage that would be dealt to you until your next turn."
+        {
+            return format!("{prefix}: You gain protection from everything until your next turn.");
+        }
+    }
     if let Some(rest) = normalized.strip_prefix("this creature gets ")
         && let Some((pt, tail)) = rest.split_once(" for each Equipment attached to this creature")
     {
