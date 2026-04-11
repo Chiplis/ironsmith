@@ -23778,11 +23778,18 @@ fn parse_mind_funeral_tracks_passive_consult_count_and_graveyard_followup() {
         "expected Mind Funeral to avoid single-card reveal lowering, got {spell_debug}"
     );
 
-    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        rendered.contains("until four land cards are revealed")
-            && rendered.contains("all cards revealed this way into their graveyard"),
-        "expected Mind Funeral oracle-like text to stay close to the oracle, got {rendered}"
+        rendered.contains("all cards revealed this way into their graveyard")
+            && !rendered.contains("put it into its owner's graveyard"),
+        "expected Mind Funeral compiled text to use the plural revealed-set wording, got {rendered}"
+    );
+
+    let oracle_rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        oracle_rendered.contains("until four land cards are revealed")
+            && oracle_rendered.contains("all cards revealed this way into their graveyard"),
+        "expected Mind Funeral oracle-like text to stay close to the oracle, got {oracle_rendered}"
     );
 }
 
