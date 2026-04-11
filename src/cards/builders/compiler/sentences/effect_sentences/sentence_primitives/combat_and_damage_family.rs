@@ -1,7 +1,9 @@
+use super::*;
+
 pub(crate) fn parse_sentence_destroy_creature_type_of_choice(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    use super::super::grammar::primitives as grammar;
+    use super::super::super::grammar::primitives as grammar;
 
     if grammar::strip_lexed_prefix_phrase(tokens, &["destroy", "all", "creatures"]).is_none() {
         return Ok(None);
@@ -577,7 +579,7 @@ pub(crate) fn parse_sentence_return_multiple_targets(
 pub(crate) fn parse_sentence_for_each_of_target_objects(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    use super::super::grammar::primitives as grammar;
+    use super::super::super::grammar::primitives as grammar;
 
     if grammar::strip_lexed_prefix_phrase(tokens, &["for", "each"]).is_none()
         && !tokens.first().is_some_and(|t| t.is_word("each"))
@@ -585,9 +587,10 @@ pub(crate) fn parse_sentence_for_each_of_target_objects(
         return Ok(None);
     }
 
-    let Some((subject_slice, effect_slice)) =
-        grammar::split_lexed_once_on_delimiter(tokens, super::super::lexer::TokenKind::Comma)
-    else {
+    let Some((subject_slice, effect_slice)) = grammar::split_lexed_once_on_delimiter(
+        tokens,
+        super::super::super::lexer::TokenKind::Comma,
+    ) else {
         return Ok(None);
     };
 
@@ -700,7 +703,7 @@ pub(crate) fn parse_distribute_counters_sentence(
 pub(crate) fn parse_sentence_distribute_counters(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    use super::super::grammar::primitives as grammar;
+    use super::super::super::grammar::primitives as grammar;
 
     let (head_tokens, tail_tokens) = if let Some((head, tail)) =
         split_lexed_once_on_comma_then(tokens).or_else(|| {
@@ -767,8 +770,8 @@ pub(crate) fn parse_sentence_transform_with_followup(
 
     let (head_tokens, tail_tokens) = if let Some((head, tail)) =
         split_lexed_once_on_comma_then(tokens).or_else(|| {
-            super::super::grammar::primitives::split_lexed_once_on_separator(tokens, || {
-                super::super::grammar::primitives::kw("then").void()
+            super::super::super::grammar::primitives::split_lexed_once_on_separator(tokens, || {
+                super::super::super::grammar::primitives::kw("then").void()
             })
         }) {
         (head.to_vec(), trim_commas(tail))
@@ -936,12 +939,12 @@ pub(crate) fn parse_sentence_for_each_player_doesnt(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum DelayedNextStepKind {
+pub(super) enum DelayedNextStepKind {
     Upkeep,
     DrawStep,
 }
 
-fn delayed_next_step_marker(
+pub(super) fn delayed_next_step_marker(
     tokens: &[OwnedLexToken],
 ) -> Option<(usize, usize, DelayedNextStepKind, PlayerAst)> {
     let word_storage = SentencePrimitiveNormalizedWords::new(tokens);
@@ -1067,4 +1070,3 @@ fn delayed_next_step_marker(
 
     None
 }
-

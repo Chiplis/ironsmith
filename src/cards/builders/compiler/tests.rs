@@ -1726,6 +1726,125 @@ fn rewrite_statement_lowering_uses_parse_tokens_when_groups_are_missing()
 }
 
 #[test]
+fn rewrite_statement_lowering_parses_soul_partition_via_parser_path() -> Result<(), CardTextError> {
+    let text = "Exile target nonland permanent. For as long as that card remains exiled, its owner may play it. A spell cast by an opponent this way costs {2} more to cast.";
+    let tokens = lex_line(text, 0).expect("rewrite lexer should classify Soul Partition text");
+
+    let parsed_chunks = super::lower_rewrite_statement_token_groups_to_chunks(
+        rewrite_line_info(text),
+        text,
+        &tokens,
+        &[],
+    )?;
+
+    match parsed_chunks.as_slice() {
+        [crate::cards::builders::LineAst::Statement { effects }] => {
+            let debug = format!("{effects:#?}");
+            assert!(debug.contains("GrantBySpec"), "{debug}");
+            assert!(debug.contains("GrantToTarget"), "{debug}");
+            assert!(debug.contains("CostIncreaseManaCost"), "{debug}");
+        }
+        other => panic!("expected single Soul Partition statement chunk, got {other:?}"),
+    }
+
+    Ok(())
+}
+
+#[test]
+fn rewrite_statement_lowering_parses_empty_laboratory_via_parser_path() -> Result<(), CardTextError>
+{
+    let text = "Sacrifice X Zombies, then reveal cards from the top of your library until you reveal a number of Zombie creature cards equal to the number of Zombies sacrificed this way. Put those cards onto the battlefield and the rest on the bottom of your library in a random order.";
+    let tokens = lex_line(text, 0).expect("rewrite lexer should classify Empty Laboratory text");
+
+    let parsed_chunks = super::lower_rewrite_statement_token_groups_to_chunks(
+        rewrite_line_info(text),
+        text,
+        &tokens,
+        &[],
+    )?;
+
+    match parsed_chunks.as_slice() {
+        [crate::cards::builders::LineAst::Statement { effects }] => {
+            let debug = format!("{effects:#?}");
+            assert!(debug.contains("ChooseObjects"), "{debug}");
+            assert!(debug.contains("ConsultTopOfLibrary"), "{debug}");
+            assert!(
+                debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+                "{debug}"
+            );
+        }
+        other => panic!("expected single Empty Laboratory statement chunk, got {other:?}"),
+    }
+
+    Ok(())
+}
+
+#[test]
+fn rewrite_statement_lowering_parses_shape_anew_via_parser_path() -> Result<(), CardTextError> {
+    let text = "The controller of target artifact sacrifices it, then reveals cards from the top of their library until they reveal an artifact card. That player puts that card onto the battlefield, then shuffles all other cards revealed this way into their library.";
+    let tokens = lex_line(text, 0).expect("rewrite lexer should classify Shape Anew text");
+
+    let parsed_chunks = super::lower_rewrite_statement_token_groups_to_chunks(
+        rewrite_line_info(text),
+        text,
+        &tokens,
+        &[],
+    )?;
+
+    match parsed_chunks.as_slice() {
+        [crate::cards::builders::LineAst::Statement { effects }] => {
+            let debug = format!("{effects:#?}");
+            assert!(debug.contains("Sacrifice"), "{debug}");
+            assert!(debug.contains("ConsultTopOfLibrary"), "{debug}");
+            assert!(debug.contains("ShuffleLibrary"), "{debug}");
+        }
+        other => panic!("expected single Shape Anew statement chunk, got {other:?}"),
+    }
+
+    Ok(())
+}
+
+#[test]
+fn rewrite_statement_lowering_parses_nissas_encouragement_via_parser_path()
+-> Result<(), CardTextError> {
+    let text = "Search your library and graveyard for a card named Forest, a card named Brambleweft Behemoth, and a card named Nissa, Genesis Mage. Reveal those cards, put them into your hand, then shuffle.";
+    let tokens =
+        lex_line(text, 0).expect("rewrite lexer should classify Nissa's Encouragement text");
+
+    let parsed_chunks = super::lower_rewrite_statement_token_groups_to_chunks(
+        rewrite_line_info(text),
+        text,
+        &tokens,
+        &[],
+    )?;
+
+    match parsed_chunks.as_slice() {
+        [crate::cards::builders::LineAst::Statement { effects }] => {
+            let debug = format!("{effects:#?}");
+            assert!(debug.contains("ChooseObjectsAcrossZones"), "{debug}");
+            assert!(debug.contains("RevealTagged"), "{debug}");
+            assert!(debug.contains("zone: Hand"), "{debug}");
+            assert!(debug.contains("ShuffleLibrary"), "{debug}");
+        }
+        other => panic!("expected single Nissa's Encouragement statement chunk, got {other:?}"),
+    }
+
+    Ok(())
+}
+
+#[test]
+fn rewrite_exception_module_is_removed_from_lowering_tree() {
+    let rewrite_exceptions = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("src/cards/builders/compiler/lowering/rewrite_exceptions.rs");
+
+    assert!(
+        !rewrite_exceptions.exists(),
+        "expected rewrite exception module to be removed, found {}",
+        rewrite_exceptions.display()
+    );
+}
+
+#[test]
 fn rewrite_triggered_lowering_uses_parse_tokens_when_text_fields_are_stale()
 -> Result<(), CardTextError> {
     let full_text = "when this creature attacks, draw a card.";
@@ -6886,6 +7005,17 @@ fn rewrite_lexed_effect_sequence_builds_self_replacement_for_full_party_followup
     let debug = format!("{parsed:?}");
 
     assert!(debug.contains("SelfReplacement"), "{debug}");
+}
+
+#[test]
+fn rewrite_lexed_effect_sequence_wraps_extra_turn_end_step_followup() {
+    let text = "Take an extra turn after this one. At the beginning of that turn's end step, you lose the game.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify extra-turn followup");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed).expect("sequence");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("DelayedUntilEndStepOfExtraTurn"), "{debug}");
 }
 
 fn registry_sentence_inputs(text: &str) -> Vec<super::effect_sentences::SentenceInput> {

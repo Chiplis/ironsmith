@@ -1,4 +1,6 @@
-fn wrap_delayed_next_step_unless_pays(
+use super::*;
+
+pub(super) fn wrap_delayed_next_step_unless_pays(
     step: DelayedNextStepKind,
     player: PlayerAst,
     effects: Vec<EffectAst>,
@@ -137,8 +139,8 @@ pub(crate) fn parse_sentence_delayed_next_upkeep_unless_pays_lose_game(
     }
 
     let mana = {
-        use super::super::grammar::primitives as grammar;
-        use super::super::lexer::LexStream;
+        use super::super::super::grammar::primitives as grammar;
+        use super::super::super::lexer::LexStream;
         use winnow::prelude::*;
 
         let mut stream = LexStream::new(mana_tokens);
@@ -375,7 +377,7 @@ pub(crate) fn try_build_unless(
         }
 
         // Skip any non-word tokens between "pay" and mana
-        let mana_start = find_index(&action_tokens[1..], |token| {
+        let mana_start = find_index(&action_tokens[1..], |token: &OwnedLexToken| {
             token.as_word().is_some() || mana_pips_from_token(token).is_some()
         })
         .map(|idx| idx + 1)
@@ -504,8 +506,8 @@ pub(crate) fn try_build_unless(
     }
 
     if matches!(action_words.first().copied(), Some("discard" | "discards"))
-        && let Ok(mut alternative) =
-            super::zone_handlers::parse_discard(action_tokens, None).map(|effect| vec![effect])
+        && let Ok(mut alternative) = super::super::zone_handlers::parse_discard(action_tokens, None)
+            .map(|effect| vec![effect])
     {
         for effect in &mut alternative {
             bind_implicit_player_context(effect, player);
@@ -903,4 +905,3 @@ pub(crate) fn parse_sentence_implicit_become_clause(
         duration,
     }]))
 }
-

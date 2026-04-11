@@ -1,17 +1,21 @@
-const FOR_EACH_PLAYER_PREFIXES: &[&[&str]] = &[
+use super::*;
+
+pub(super) const FOR_EACH_PLAYER_PREFIXES: &[&[&str]] = &[
     &["for", "each", "player"],
     &["for", "each", "players"],
     &["each", "player"],
     &["each", "players"],
 ];
-const EACH_OPPONENT_PREFIXES: &[&[&str]] = &[&["each", "opponent"], &["each", "opponents"]];
-const EACH_PLAYER_PREFIXES: &[&[&str]] = &[&["each", "player"]];
-const CHOOSE_ALL_OR_PUT_ALL_PREFIXES: &[&[&str]] = &[&["choose", "all"], &["put", "all"]];
-const UP_TO_PREFIXES: &[&[&str]] = &[&["up", "to"]];
-const ANY_NUMBER_OF_PREFIXES: &[&[&str]] = &[&["any", "number", "of"]];
-const CHOOSE_ALL_PREFIXES: &[&[&str]] = &[&["choose", "all"]];
-const THAT_PREFIXES: &[&[&str]] = &[&["that"]];
-const MECHANIC_MARKER_PREFIXES: &[&[&str]] = &[
+pub(super) const EACH_OPPONENT_PREFIXES: &[&[&str]] =
+    &[&["each", "opponent"], &["each", "opponents"]];
+pub(super) const EACH_PLAYER_PREFIXES: &[&[&str]] = &[&["each", "player"]];
+pub(super) const CHOOSE_ALL_OR_PUT_ALL_PREFIXES: &[&[&str]] =
+    &[&["choose", "all"], &["put", "all"]];
+pub(super) const UP_TO_PREFIXES: &[&[&str]] = &[&["up", "to"]];
+pub(super) const ANY_NUMBER_OF_PREFIXES: &[&[&str]] = &[&["any", "number", "of"]];
+pub(super) const CHOOSE_ALL_PREFIXES: &[&[&str]] = &[&["choose", "all"]];
+pub(super) const THAT_PREFIXES: &[&[&str]] = &[&["that"]];
+pub(super) const MECHANIC_MARKER_PREFIXES: &[&[&str]] = &[
     &["you", "choose", "one", "of", "them"],
     &[
         "you", "may", "put", "a", "land", "card", "from", "among", "them", "into", "your", "hand",
@@ -22,30 +26,40 @@ const MECHANIC_MARKER_PREFIXES: &[&[&str]] = &[
 pub(crate) type SentencePrimitiveParser =
     fn(&[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError>;
 
-type SentencePrimitiveNormalizedWords<'a> = TokenWordView<'a>;
+pub(super) type SentencePrimitiveNormalizedWords<'a> = TokenWordView<'a>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SentencePrimitiveStage {
+    PreDiagnostic,
+    PostDiagnostic,
+}
 
 pub(crate) struct SentencePrimitive {
-    pub(crate) name: &'static str,
+    pub(crate) id: &'static str,
+    pub(crate) priority: u16,
+    pub(crate) stage: SentencePrimitiveStage,
+    pub(crate) head_hints: &'static [LexRuleHeadHint],
+    pub(crate) shape_mask: u32,
     pub(crate) parser: SentencePrimitiveParser,
 }
 
-fn find_token_word(tokens: &[OwnedLexToken], word: &str) -> Option<usize> {
+pub(super) fn find_token_word(tokens: &[OwnedLexToken], word: &str) -> Option<usize> {
     find_index(tokens, |token| token.is_word(word))
 }
 
-fn rfind_token_word(tokens: &[OwnedLexToken], word: &str) -> Option<usize> {
+pub(super) fn rfind_token_word(tokens: &[OwnedLexToken], word: &str) -> Option<usize> {
     rfind_index(tokens, |token| token.is_word(word))
 }
 
-fn find_comma_then_idx(tokens: &[OwnedLexToken]) -> Option<usize> {
+pub(super) fn find_comma_then_idx(tokens: &[OwnedLexToken]) -> Option<usize> {
     split_lexed_once_on_comma_then(tokens).map(|(head, _)| head.len())
 }
 
-fn contains_word_window(words: &[&str], pattern: &[&str]) -> bool {
+pub(super) fn contains_word_window(words: &[&str], pattern: &[&str]) -> bool {
     contains_word_sequence(words, pattern)
 }
 
-fn strip_quoted_possessive_suffix(word: &str) -> &str {
+pub(super) fn strip_quoted_possessive_suffix(word: &str) -> &str {
     str_strip_suffix(word, "'s")
         .or_else(|| str_strip_suffix(word, "’s"))
         .or_else(|| str_strip_suffix(word, "s'"))
@@ -53,96 +67,8 @@ fn strip_quoted_possessive_suffix(word: &str) -> &str {
         .unwrap_or(word)
 }
 
-fn parse_pluralized_subtype_word(word: &str) -> Option<Subtype> {
+pub(super) fn parse_pluralized_subtype_word(word: &str) -> Option<Subtype> {
     parse_subtype_word(word).or_else(|| str_strip_suffix(word, "s").and_then(parse_subtype_word))
-}
-
-fn sentence_primitive_head_hints(name: &'static str) -> Vec<LexRuleHeadHint> {
-    if name == "transform-with-followup" {
-        return vec![
-            LexRuleHeadHint::Single("transform"),
-            LexRuleHeadHint::Single("convert"),
-        ];
-    }
-    if name == "shared-color-target-fanout" {
-        return vec![
-            LexRuleHeadHint::Single("target"),
-            LexRuleHeadHint::Pair("target", "radiance"),
-        ];
-    }
-    if matches!(name, "for-each-player-doesnt" | "for-each-opponent-doesnt") {
-        return vec![
-            LexRuleHeadHint::Single("for"),
-            LexRuleHeadHint::Single("then"),
-            LexRuleHeadHint::Single("each"),
-            LexRuleHeadHint::Pair("for", "each"),
-            LexRuleHeadHint::Pair("then", "each"),
-        ];
-    }
-    if name == "implicit-become-clause" {
-        return vec![
-            LexRuleHeadHint::Single("it"),
-            LexRuleHeadHint::Single("its"),
-            LexRuleHeadHint::Single("it's"),
-            LexRuleHeadHint::Single("it’s"),
-            LexRuleHeadHint::Single("they"),
-            LexRuleHeadHint::Single("they're"),
-            LexRuleHeadHint::Single("they’re"),
-            LexRuleHeadHint::Single("this"),
-            LexRuleHeadHint::Single("each"),
-            LexRuleHeadHint::Pair("it", "is"),
-            LexRuleHeadHint::Pair("they", "are"),
-            LexRuleHeadHint::Pair("this", "creature"),
-            LexRuleHeadHint::Pair("this", "permanent"),
-            LexRuleHeadHint::Pair("this", "land"),
-            LexRuleHeadHint::Pair("each", "of"),
-        ];
-    }
-
-    let parts = name.split('-').collect::<Vec<_>>();
-    let Some(first) = parts.first().copied() else {
-        return Vec::new();
-    };
-    let supports_single = matches!(
-        first,
-        "if" | "you"
-            | "target"
-            | "each"
-            | "for"
-            | "return"
-            | "destroy"
-            | "exile"
-            | "counter"
-            | "draw"
-            | "put"
-            | "gets"
-            | "sacrifice"
-            | "take"
-            | "earthbend"
-            | "enchant"
-            | "cant"
-            | "prevent"
-            | "gain"
-            | "search"
-            | "shuffle"
-            | "look"
-            | "play"
-            | "vote"
-            | "after"
-            | "reveal"
-            | "damage"
-            | "unless"
-            | "monstrosity"
-            | "choose"
-    );
-    let mut hints = Vec::new();
-    if supports_single {
-        hints.push(LexRuleHeadHint::Single(first));
-    }
-    if parts.len() >= 2 && supports_single {
-        hints.push(LexRuleHeadHint::Pair(first, parts[1]));
-    }
-    hints
 }
 
 fn run_sentence_primitive(
@@ -151,12 +77,12 @@ fn run_sentence_primitive(
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     match (primitive.parser)(tokens) {
         Ok(Some(effects)) => {
-            let stage = format!("parse_effect_sentence:primitive-hit:{}", primitive.name);
+            let stage = format!("parse_effect_sentence:primitive-hit:{}", primitive.id);
             parser_trace(&stage, tokens);
             if effects.is_empty() {
                 return Err(CardTextError::ParseError(format!(
                     "primitive '{}' produced empty effects (clause: '{}')",
-                    primitive.name,
+                    primitive.id,
                     crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
                 )));
             }
@@ -167,7 +93,7 @@ fn run_sentence_primitive(
             if parser_trace_enabled() {
                 eprintln!(
                     "[parser-flow] stage=parse_effect_sentence:primitive-error primitive={} clause='{}' error={err:?}",
-                    primitive.name,
+                    primitive.id,
                     crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
                 );
             }
@@ -209,17 +135,24 @@ pub(crate) fn run_sentence_primitives_lexed(
     let (head, second) = lexed_head_words(tokens).unwrap_or(("", None));
     let mut tried = vec![false; primitives.len()];
     let lowered = OnceCell::new();
-    for idx in index.candidate_indices(head, second) {
+    let mut candidate_indices = index.candidate_indices(head, second);
+    candidate_indices.sort_by_key(|idx| (primitives[*idx].priority, primitives[*idx].shape_mask));
+    for idx in candidate_indices {
         tried[idx] = true;
         if let Some(effects) = run_sentence_primitive_lexed(&primitives[idx], tokens, &lowered)? {
             return Ok(Some(effects));
         }
     }
 
-    for (idx, primitive) in primitives.iter().enumerate() {
-        if tried[idx] {
-            continue;
-        }
+    let mut fallback_indices = primitives
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, _)| (!tried[idx]).then_some(idx))
+        .collect::<Vec<_>>();
+    fallback_indices.sort_by_key(|idx| (primitives[*idx].priority, primitives[*idx].shape_mask));
+
+    for idx in fallback_indices {
+        let primitive = &primitives[idx];
         if let Some(effects) = run_sentence_primitive_lexed(primitive, tokens, &lowered)? {
             return Ok(Some(effects));
         }
@@ -228,41 +161,14 @@ pub(crate) fn run_sentence_primitives_lexed(
     Ok(None)
 }
 
-pub(super) const SENTENCE_PRIMITIVE_RULE_HEADS: &[&str] = &[
-    "if",
-    "you",
-    "target",
-    "each",
-    "for",
-    "return",
-    "destroy",
-    "exile",
-    "counter",
-    "draw",
-    "put",
-    "gets",
-    "sacrifice",
-    "take",
-    "earthbend",
-    "enchant",
-    "cant",
-    "prevent",
-    "gain",
-    "search",
-    "shuffle",
-    "look",
-    "play",
-    "vote",
-    "after",
-    "reveal",
-    "damage",
-    "unless",
-    "monstrosity",
-];
-
 pub(super) fn parse_preconditional_sentence_primitives_rule_lexed(
     view: &LexClauseView<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    debug_assert!(
+        PRE_CONDITIONAL_SENTENCE_PRIMITIVES
+            .iter()
+            .all(|primitive| primitive.stage == SentencePrimitiveStage::PreDiagnostic)
+    );
     run_sentence_primitives_lexed(
         view.tokens,
         PRE_CONDITIONAL_SENTENCE_PRIMITIVES,
@@ -273,6 +179,11 @@ pub(super) fn parse_preconditional_sentence_primitives_rule_lexed(
 pub(super) fn parse_postconditional_sentence_primitives_rule_lexed(
     view: &LexClauseView<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    debug_assert!(
+        POST_CONDITIONAL_SENTENCE_PRIMITIVES
+            .iter()
+            .all(|primitive| primitive.stage == SentencePrimitiveStage::PostDiagnostic)
+    );
     run_sentence_primitives_lexed(
         view.tokens,
         POST_CONDITIONAL_SENTENCE_PRIMITIVES,
@@ -280,28 +191,28 @@ pub(super) fn parse_postconditional_sentence_primitives_rule_lexed(
     )
 }
 
-pub(super) const PRIMITIVE_PRE_DIAGNOSTIC_RULES_LEXED: [LexRuleDef<Vec<EffectAst>>; 1] =
+pub(crate) const PRIMITIVE_PRE_DIAGNOSTIC_RULES_LEXED: [LexRuleDef<Vec<EffectAst>>; 1] =
     [LexRuleDef {
         id: "preconditional-primitives",
         priority: 135,
-        heads: SENTENCE_PRIMITIVE_RULE_HEADS,
+        heads: &[],
         shape_mask: 0,
         run: parse_preconditional_sentence_primitives_rule_lexed,
     }];
 
-pub(super) const PRIMITIVE_POST_DIAGNOSTIC_RULES_LEXED: [LexRuleDef<Vec<EffectAst>>; 1] =
+pub(crate) const PRIMITIVE_POST_DIAGNOSTIC_RULES_LEXED: [LexRuleDef<Vec<EffectAst>>; 1] =
     [LexRuleDef {
         id: "postconditional-primitives",
         priority: 160,
-        heads: SENTENCE_PRIMITIVE_RULE_HEADS,
+        heads: &[],
         shape_mask: 0,
         run: parse_postconditional_sentence_primitives_rule_lexed,
     }];
 
-pub(super) const PRIMITIVE_PRE_DIAGNOSTIC_INDEX_LEXED: LexRuleIndex<Vec<EffectAst>> =
+pub(crate) const PRIMITIVE_PRE_DIAGNOSTIC_INDEX_LEXED: LexRuleIndex<Vec<EffectAst>> =
     LexRuleIndex::new(&PRIMITIVE_PRE_DIAGNOSTIC_RULES_LEXED);
 
-pub(super) const PRIMITIVE_POST_DIAGNOSTIC_INDEX_LEXED: LexRuleIndex<Vec<EffectAst>> =
+pub(crate) const PRIMITIVE_POST_DIAGNOSTIC_INDEX_LEXED: LexRuleIndex<Vec<EffectAst>> =
     LexRuleIndex::new(&PRIMITIVE_POST_DIAGNOSTIC_RULES_LEXED);
 
 pub(crate) fn parse_sentence_return_with_counters_on_it_lexed(
@@ -426,7 +337,7 @@ pub(crate) fn parse_sentence_you_and_target_player_each_draw(
 pub(crate) fn parse_sentence_choose_player_to_effect(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    use super::super::grammar::primitives as grammar;
+    use super::super::super::grammar::primitives as grammar;
 
     let mut stripped = trim_commas(tokens);
     while stripped
@@ -563,7 +474,7 @@ pub(crate) fn parse_sentence_damage_to_that_player_half_damage_of_those_spells(
         return Ok(None);
     }
 
-    use super::super::grammar::primitives as grammar;
+    use super::super::super::grammar::primitives as grammar;
 
     let deal_split =
         grammar::split_lexed_once_on_separator(&stripped, || grammar::kw("deal").void()).or_else(
@@ -850,7 +761,7 @@ pub(crate) fn parse_sentence_you_and_attacking_player_each_draw_and_lose(
 pub(crate) fn parse_sentence_sacrifice_it_next_end_step(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    use super::super::grammar::primitives as grammar;
+    use super::super::super::grammar::primitives as grammar;
 
     // "sacrifice <object> at the beginning of [the] next end step"
     let Some(object_tokens) = grammar::strip_lexed_prefix_phrase(tokens, &["sacrifice"]) else {
@@ -906,7 +817,7 @@ pub(crate) fn parse_sentence_sacrifice_it_next_end_step(
 pub(crate) fn parse_sentence_if_tagged_cards_remain_exiled(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    use super::super::grammar::primitives as grammar;
+    use super::super::super::grammar::primitives as grammar;
 
     let has_prefix = grammar::strip_lexed_prefix_phrase(
         tokens,

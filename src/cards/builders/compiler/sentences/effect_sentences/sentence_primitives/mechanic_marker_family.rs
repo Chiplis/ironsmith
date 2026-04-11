@@ -1,417 +1,764 @@
+use super::*;
+
+macro_rules! primitive {
+    ($id:literal, $priority:expr, $stage:ident, $hints:expr, $parser:expr) => {
+        SentencePrimitive {
+            id: $id,
+            priority: $priority,
+            stage: SentencePrimitiveStage::$stage,
+            head_hints: $hints,
+            shape_mask: 0,
+            parser: $parser,
+        }
+    };
+}
+
 pub(crate) const PRE_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
-    SentencePrimitive {
-        name: "implicit-become-clause",
-        parser: parse_sentence_implicit_become_clause,
-    },
-    SentencePrimitive {
-        name: "fallback-mechanic-marker",
-        parser: parse_sentence_fallback_mechanic_marker,
-    },
-    SentencePrimitive {
-        name: "if-tagged-cards-remain-exiled",
-        parser: parse_sentence_if_tagged_cards_remain_exiled,
-    },
-    SentencePrimitive {
-        name: "if-enters-with-additional-counter",
-        parser: parse_if_enters_with_additional_counter_sentence,
-    },
-    SentencePrimitive {
-        name: "put-multiple-counters-on-target",
-        parser: parse_sentence_put_multiple_counters_on_target,
-    },
-    SentencePrimitive {
-        name: "put-sticker-on",
-        parser: parse_sentence_put_sticker_on,
-    },
-    SentencePrimitive {
-        name: "you-and-target-player-each-draw",
-        parser: parse_sentence_you_and_target_player_each_draw,
-    },
-    SentencePrimitive {
-        name: "choose-player-to-effect",
-        parser: parse_sentence_choose_player_to_effect,
-    },
-    SentencePrimitive {
-        name: "you-and-attacking-player-each-draw-and-lose",
-        parser: parse_sentence_you_and_attacking_player_each_draw_and_lose,
-    },
-    SentencePrimitive {
-        name: "sacrifice-it-next-end-step",
-        parser: parse_sentence_sacrifice_it_next_end_step,
-    },
-    SentencePrimitive {
-        name: "sacrifice-at-end-of-combat",
-        parser: parse_sentence_sacrifice_at_end_of_combat,
-    },
-    SentencePrimitive {
-        name: "each-player-choose-keep-rest-sacrifice",
-        parser: parse_sentence_each_player_choose_and_sacrifice_rest,
-    },
-    SentencePrimitive {
-        name: "target-player-choose-then-put-on-top-library",
-        parser: parse_sentence_target_player_chooses_then_puts_on_top_of_library,
-    },
-    SentencePrimitive {
-        name: "target-player-choose-then-you-put-it-onto-battlefield",
-        parser: parse_sentence_target_player_chooses_then_you_put_it_onto_battlefield,
-    },
-    SentencePrimitive {
-        name: "target-player-reveals-random-card-from-hand",
-        parser: parse_sentence_target_player_reveals_random_card_from_hand,
-    },
-    SentencePrimitive {
-        name: "exile-instead-of-graveyard",
-        parser: parse_sentence_exile_instead_of_graveyard,
-    },
+    primitive!(
+        "implicit-become-clause",
+        10,
+        PreDiagnostic,
+        &[
+            LexRuleHeadHint::Single("it"),
+            LexRuleHeadHint::Single("its"),
+            LexRuleHeadHint::Single("it's"),
+            LexRuleHeadHint::Single("it’s"),
+            LexRuleHeadHint::Single("they"),
+            LexRuleHeadHint::Single("they're"),
+            LexRuleHeadHint::Single("they’re"),
+            LexRuleHeadHint::Single("this"),
+            LexRuleHeadHint::Single("each"),
+            LexRuleHeadHint::Pair("it", "is"),
+            LexRuleHeadHint::Pair("they", "are"),
+            LexRuleHeadHint::Pair("this", "creature"),
+            LexRuleHeadHint::Pair("this", "permanent"),
+            LexRuleHeadHint::Pair("this", "land"),
+            LexRuleHeadHint::Pair("each", "of"),
+        ],
+        parse_sentence_implicit_become_clause
+    ),
+    primitive!(
+        "fallback-mechanic-marker",
+        20,
+        PreDiagnostic,
+        &[
+            LexRuleHeadHint::Single("you"),
+            LexRuleHeadHint::Single("stand"),
+            LexRuleHeadHint::Single("it"),
+        ],
+        parse_sentence_fallback_mechanic_marker
+    ),
+    primitive!(
+        "if-tagged-cards-remain-exiled",
+        30,
+        PreDiagnostic,
+        &[LexRuleHeadHint::Single("if")],
+        parse_sentence_if_tagged_cards_remain_exiled
+    ),
+    primitive!(
+        "if-enters-with-additional-counter",
+        40,
+        PreDiagnostic,
+        &[LexRuleHeadHint::Single("if")],
+        parse_if_enters_with_additional_counter_sentence
+    ),
+    primitive!(
+        "put-multiple-counters-on-target",
+        50,
+        PreDiagnostic,
+        &[LexRuleHeadHint::Single("put")],
+        parse_sentence_put_multiple_counters_on_target
+    ),
+    primitive!(
+        "put-sticker-on",
+        60,
+        PreDiagnostic,
+        &[LexRuleHeadHint::Single("put")],
+        parse_sentence_put_sticker_on
+    ),
+    primitive!(
+        "you-and-target-player-each-draw",
+        70,
+        PreDiagnostic,
+        &[LexRuleHeadHint::Single("you")],
+        parse_sentence_you_and_target_player_each_draw
+    ),
+    primitive!(
+        "choose-player-to-effect",
+        80,
+        PreDiagnostic,
+        &[LexRuleHeadHint::Single("choose")],
+        parse_sentence_choose_player_to_effect
+    ),
+    primitive!(
+        "you-and-attacking-player-each-draw-and-lose",
+        90,
+        PreDiagnostic,
+        &[LexRuleHeadHint::Single("you")],
+        parse_sentence_you_and_attacking_player_each_draw_and_lose
+    ),
+    primitive!(
+        "sacrifice-it-next-end-step",
+        100,
+        PreDiagnostic,
+        &[LexRuleHeadHint::Single("sacrifice")],
+        parse_sentence_sacrifice_it_next_end_step
+    ),
+    primitive!(
+        "sacrifice-at-end-of-combat",
+        110,
+        PreDiagnostic,
+        &[LexRuleHeadHint::Single("sacrifice")],
+        parse_sentence_sacrifice_at_end_of_combat
+    ),
+    primitive!(
+        "each-player-choose-keep-rest-sacrifice",
+        120,
+        PreDiagnostic,
+        &[LexRuleHeadHint::Single("each")],
+        parse_sentence_each_player_choose_and_sacrifice_rest
+    ),
+    primitive!(
+        "target-player-choose-then-put-on-top-library",
+        130,
+        PreDiagnostic,
+        &[LexRuleHeadHint::Single("target")],
+        parse_sentence_target_player_chooses_then_puts_on_top_of_library
+    ),
+    primitive!(
+        "target-player-choose-then-you-put-it-onto-battlefield",
+        140,
+        PreDiagnostic,
+        &[LexRuleHeadHint::Single("target")],
+        parse_sentence_target_player_chooses_then_you_put_it_onto_battlefield
+    ),
+    primitive!(
+        "target-player-reveals-random-card-from-hand",
+        150,
+        PreDiagnostic,
+        &[LexRuleHeadHint::Single("target")],
+        parse_sentence_target_player_reveals_random_card_from_hand
+    ),
+    primitive!(
+        "exile-instead-of-graveyard",
+        160,
+        PreDiagnostic,
+        &[LexRuleHeadHint::Single("exile")],
+        parse_sentence_exile_instead_of_graveyard
+    ),
 ];
 
 pub(crate) static PRE_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX: LazyLock<LexRuleHintIndex> =
     LazyLock::new(|| {
         build_lex_rule_hint_index(PRE_CONDITIONAL_SENTENCE_PRIMITIVES.len(), |idx| {
-            sentence_primitive_head_hints(PRE_CONDITIONAL_SENTENCE_PRIMITIVES[idx].name)
+            PRE_CONDITIONAL_SENTENCE_PRIMITIVES[idx].head_hints.to_vec()
         })
     });
 
 pub(crate) const POST_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
-    SentencePrimitive {
-        name: "exile-target-creature-with-greatest-power",
-        parser: parse_sentence_exile_target_creature_with_greatest_power,
-    },
-    SentencePrimitive {
-        name: "counter-target-spell-thats-second-cast-this-turn",
-        parser: parse_sentence_counter_target_spell_thats_second_cast_this_turn,
-    },
-    SentencePrimitive {
-        name: "counter-target-spell-if-it-was-kicked",
-        parser: parse_sentence_counter_target_spell_if_it_was_kicked,
-    },
-    SentencePrimitive {
-        name: "return-half-the-creatures-they-control-to-their-owners-hand",
-        parser: parse_sentence_return_half_the_creatures_they_control_to_their_owners_hand,
-    },
-    SentencePrimitive {
-        name: "destroy-creature-type-of-choice",
-        parser: parse_sentence_destroy_creature_type_of_choice,
-    },
-    SentencePrimitive {
-        name: "pump-creature-type-of-choice",
-        parser: parse_sentence_pump_creature_type_of_choice,
-    },
-    SentencePrimitive {
-        name: "return-multiple-targets",
-        parser: parse_sentence_return_multiple_targets,
-    },
-    SentencePrimitive {
-        name: "choose-all-battlefield-graveyard-to-hand",
-        parser: parse_sentence_choose_all_from_battlefield_and_graveyard_to_hand,
-    },
-    SentencePrimitive {
-        name: "for-each-of-target-objects",
-        parser: parse_sentence_for_each_of_target_objects,
-    },
-    SentencePrimitive {
-        name: "return-creature-type-of-choice",
-        parser: parse_sentence_return_targets_of_creature_type_of_choice,
-    },
-    SentencePrimitive {
-        name: "distribute-counters",
-        parser: parse_sentence_distribute_counters,
-    },
-    SentencePrimitive {
-        name: "keyword-then-chain",
-        parser: parse_sentence_keyword_then_chain,
-    },
-    SentencePrimitive {
-        name: "chain-then-keyword",
-        parser: parse_sentence_chain_then_keyword,
-    },
-    SentencePrimitive {
-        name: "exile-then-may-put-from-exile",
-        parser: parse_sentence_exile_then_may_put_from_exile,
-    },
-    SentencePrimitive {
-        name: "exile-then-shuffle-graveyard-into-library",
-        parser: parse_exile_then_shuffle_graveyard_into_library_sentence,
-    },
-    SentencePrimitive {
-        name: "exile-source-with-counters",
-        parser: parse_sentence_exile_source_with_counters,
-    },
-    SentencePrimitive {
-        name: "destroy-all-attached-to-target",
-        parser: parse_sentence_destroy_all_attached_to_target,
-    },
-    SentencePrimitive {
-        name: "comma-then-chain-special",
-        parser: parse_sentence_comma_then_chain_special,
-    },
-    SentencePrimitive {
-        name: "destroy-then-land-controller-graveyard-count-damage",
-        parser: parse_sentence_destroy_then_land_controller_graveyard_count_damage,
-    },
-    SentencePrimitive {
-        name: "draw-then-connive",
-        parser: parse_sentence_draw_then_connive,
-    },
-    SentencePrimitive {
-        name: "choose-then-do-same-for-filter",
-        parser: parse_sentence_choose_then_do_same_for_filter,
-    },
-    SentencePrimitive {
-        name: "return-then-do-same-for-subtypes",
-        parser: parse_sentence_return_then_do_same_for_subtypes,
-    },
-    SentencePrimitive {
-        name: "return-then-create",
-        parser: parse_sentence_return_then_create,
-    },
-    SentencePrimitive {
-        name: "put-counter-sequence",
-        parser: parse_sentence_put_counter_sequence,
-    },
-    SentencePrimitive {
-        name: "gets-then-fights",
-        parser: parse_sentence_gets_then_fights,
-    },
-    SentencePrimitive {
-        name: "return-with-counters-on-it",
-        parser: parse_sentence_return_with_counters_on_it,
-    },
-    SentencePrimitive {
-        name: "each-player-return-with-additional-counter",
-        parser: parse_sentence_each_player_return_with_additional_counter,
-    },
-    SentencePrimitive {
-        name: "sacrifice-any-number",
-        parser: parse_sentence_sacrifice_any_number,
-    },
-    SentencePrimitive {
-        name: "sacrifice-one-or-more",
-        parser: parse_sentence_sacrifice_one_or_more,
-    },
-    SentencePrimitive {
-        name: "monstrosity",
-        parser: parse_sentence_monstrosity,
-    },
-    SentencePrimitive {
-        name: "for-each-counter-removed",
-        parser: parse_sentence_for_each_counter_removed,
-    },
-    SentencePrimitive {
-        name: "for-each-counter-kind-put-or-remove",
-        parser: parse_sentence_for_each_counter_kind_put_or_remove,
-    },
-    SentencePrimitive {
-        name: "take-extra-turn",
-        parser: parse_sentence_take_extra_turn,
-    },
-    SentencePrimitive {
-        name: "earthbend",
-        parser: parse_sentence_earthbend,
-    },
-    SentencePrimitive {
-        name: "transform-with-followup",
-        parser: parse_sentence_transform_with_followup,
-    },
-    SentencePrimitive {
-        name: "enchant",
-        parser: parse_sentence_enchant,
-    },
-    SentencePrimitive {
-        name: "cant-effect",
-        parser: parse_sentence_cant_effect,
-    },
-    SentencePrimitive {
-        name: "prevent-damage",
-        parser: parse_sentence_prevent_damage,
-    },
-    SentencePrimitive {
-        name: "shared-color-target-fanout",
-        parser: parse_sentence_shared_color_target_fanout,
-    },
-    SentencePrimitive {
-        name: "gain-ability-to-source",
-        parser: parse_sentence_gain_ability_to_source,
-    },
-    SentencePrimitive {
-        name: "gain-ability",
-        parser: parse_sentence_gain_ability,
-    },
-    SentencePrimitive {
-        name: "vote-with-you",
-        parser: parse_sentence_you_and_each_opponent_voted_with_you,
-    },
-    SentencePrimitive {
-        name: "gain-life-equal-to-power",
-        parser: parse_sentence_gain_life_equal_to_power,
-    },
-    SentencePrimitive {
-        name: "gain-x-plus-life",
-        parser: parse_sentence_gain_x_plus_life,
-    },
-    SentencePrimitive {
-        name: "for-each-exiled-this-way",
-        parser: parse_sentence_for_each_exiled_this_way,
-    },
-    SentencePrimitive {
-        name: "for-each-put-into-graveyard-this-way",
-        parser: parse_sentence_for_each_put_into_graveyard_this_way,
-    },
-    SentencePrimitive {
-        name: "draw-for-each-card-exiled-from-hand-this-way",
-        parser: parse_sentence_draw_for_each_card_exiled_from_hand_this_way,
-    },
-    SentencePrimitive {
-        name: "each-player-reveals-top-count-put-permanents-rest-graveyard",
-        parser:
-            parse_sentence_each_player_reveals_top_count_put_permanents_onto_battlefield_rest_graveyard,
-    },
-    SentencePrimitive {
-        name: "each-player-put-permanent-cards-exiled-with-source",
-        parser: parse_sentence_each_player_put_permanent_cards_exiled_with_source,
-    },
-    SentencePrimitive {
-        name: "for-each-destroyed-this-way",
-        parser: parse_sentence_for_each_destroyed_this_way,
-    },
-    SentencePrimitive {
-        name: "delayed-next-step-unless-pays",
-        parser: parse_sentence_delayed_next_step_unless_pays,
-    },
-    SentencePrimitive {
-        name: "search-delayed-next-upkeep-unless-pays-lose-game",
-        parser: parse_sentence_delayed_next_upkeep_unless_pays_lose_game,
-    },
-    SentencePrimitive {
-        name: "exile-then-return-same-object",
-        parser: parse_sentence_exile_then_return_same_object,
-    },
-    SentencePrimitive {
-        name: "search-library",
-        parser: parse_sentence_search_library,
-    },
-    SentencePrimitive {
-        name: "shuffle-graveyard-into-library",
-        parser: parse_sentence_shuffle_graveyard_into_library,
-    },
-    SentencePrimitive {
-        name: "shuffle-object-into-library",
-        parser: parse_sentence_shuffle_object_into_library,
-    },
-    SentencePrimitive {
-        name: "exile-hand-and-graveyard-bundle",
-        parser: parse_sentence_exile_hand_and_graveyard_bundle,
-    },
-    SentencePrimitive {
-        name: "target-player-exiles-creature-and-graveyard",
-        parser: parse_sentence_target_player_exiles_creature_and_graveyard,
-    },
-    SentencePrimitive {
-        name: "play-from-graveyard",
-        parser: parse_sentence_play_from_graveyard,
-    },
-    SentencePrimitive {
-        name: "look-at-top-then-exile-one",
-        parser: parse_sentence_look_at_top_then_exile_one,
-    },
-    SentencePrimitive {
-        name: "look-at-hand",
-        parser: parse_sentence_look_at_hand,
-    },
-    SentencePrimitive {
-        name: "gain-life-equal-to-age",
-        parser: parse_sentence_gain_life_equal_to_age,
-    },
-    SentencePrimitive {
-        name: "for-each-player-doesnt",
-        parser: parse_sentence_for_each_player_doesnt,
-    },
-    SentencePrimitive {
-        name: "for-each-opponent-doesnt",
-        parser: parse_sentence_for_each_opponent_doesnt,
-    },
-    SentencePrimitive {
-        name: "each-opponent-loses-x-and-you-gain-x",
-        parser: parse_sentence_each_opponent_loses_x_and_you_gain_x,
-    },
-    SentencePrimitive {
-        name: "vote-start",
-        parser: parse_sentence_vote_start,
-    },
-    SentencePrimitive {
-        name: "for-each-vote-clause",
-        parser: parse_sentence_for_each_vote_clause,
-    },
-    SentencePrimitive {
-        name: "vote-extra",
-        parser: parse_sentence_vote_extra,
-    },
-    SentencePrimitive {
-        name: "after-turn",
-        parser: parse_sentence_after_turn,
-    },
-    SentencePrimitive {
-        name: "same-name-target-fanout",
-        parser: parse_sentence_same_name_target_fanout,
-    },
-    SentencePrimitive {
-        name: "same-name-gets-fanout",
-        parser: parse_sentence_same_name_gets_fanout,
-    },
-    SentencePrimitive {
-        name: "delayed-next-end-step",
-        parser: parse_sentence_delayed_until_next_end_step,
-    },
-    SentencePrimitive {
-        name: "delayed-when-that-dies-this-turn",
-        parser: parse_delayed_when_that_dies_this_turn_sentence,
-    },
-    SentencePrimitive {
-        name: "delayed-trigger-this-turn",
-        parser: parse_sentence_delayed_trigger_this_turn,
-    },
-    SentencePrimitive {
-        name: "destroy-or-exile-all-split",
-        parser: parse_sentence_destroy_or_exile_all_split,
-    },
-    SentencePrimitive {
-        name: "exile-up-to-one-each-target-type",
-        parser: parse_sentence_exile_up_to_one_each_target_type,
-    },
-    SentencePrimitive {
-        name: "exile-multi-target",
-        parser: parse_sentence_exile_multi_target,
-    },
-    SentencePrimitive {
-        name: "destroy-multi-target",
-        parser: parse_sentence_destroy_multi_target,
-    },
-    SentencePrimitive {
-        name: "reveal-selected-cards-in-your-hand",
-        parser: parse_sentence_reveal_selected_cards_in_your_hand,
-    },
-    SentencePrimitive {
-        name: "damage-unless-controller-has-source-deal-damage",
-        parser: parse_sentence_damage_unless_controller_has_source_deal_damage,
-    },
-    SentencePrimitive {
-        name: "damage-to-that-player-unless-enchanted-attacked",
-        parser: parse_sentence_damage_to_that_player_unless_enchanted_attacked,
-    },
-    SentencePrimitive {
-        name: "damage-to-that-player-half-damage-of-those-spells",
-        parser: parse_sentence_damage_to_that_player_half_damage_of_those_spells,
-    },
-    SentencePrimitive {
-        name: "unless-pays",
-        parser: parse_sentence_unless_pays,
-    },
+    primitive!(
+        "exile-target-creature-with-greatest-power",
+        10,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("exile")],
+        parse_sentence_exile_target_creature_with_greatest_power
+    ),
+    primitive!(
+        "counter-target-spell-thats-second-cast-this-turn",
+        20,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("counter")],
+        parse_sentence_counter_target_spell_thats_second_cast_this_turn
+    ),
+    primitive!(
+        "counter-target-spell-if-it-was-kicked",
+        30,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("counter")],
+        parse_sentence_counter_target_spell_if_it_was_kicked
+    ),
+    primitive!(
+        "return-half-the-creatures-they-control-to-their-owners-hand",
+        40,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("return")],
+        parse_sentence_return_half_the_creatures_they_control_to_their_owners_hand
+    ),
+    primitive!(
+        "destroy-creature-type-of-choice",
+        50,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("destroy")],
+        parse_sentence_destroy_creature_type_of_choice
+    ),
+    primitive!(
+        "pump-creature-type-of-choice",
+        60,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("target")],
+        parse_sentence_pump_creature_type_of_choice
+    ),
+    primitive!(
+        "return-multiple-targets",
+        70,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("return")],
+        parse_sentence_return_multiple_targets
+    ),
+    primitive!(
+        "choose-all-battlefield-graveyard-to-hand",
+        80,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("choose")],
+        parse_sentence_choose_all_from_battlefield_and_graveyard_to_hand
+    ),
+    primitive!(
+        "for-each-of-target-objects",
+        90,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("for")],
+        parse_sentence_for_each_of_target_objects
+    ),
+    primitive!(
+        "return-creature-type-of-choice",
+        100,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("return")],
+        parse_sentence_return_targets_of_creature_type_of_choice
+    ),
+    primitive!(
+        "distribute-counters",
+        110,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("distribute")],
+        parse_sentence_distribute_counters
+    ),
+    primitive!(
+        "keyword-then-chain",
+        120,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("target")],
+        parse_sentence_keyword_then_chain
+    ),
+    primitive!(
+        "chain-then-keyword",
+        130,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("target")],
+        parse_sentence_chain_then_keyword
+    ),
+    primitive!(
+        "exile-then-may-put-from-exile",
+        140,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("exile")],
+        parse_sentence_exile_then_may_put_from_exile
+    ),
+    primitive!(
+        "exile-then-shuffle-graveyard-into-library",
+        150,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("exile")],
+        parse_exile_then_shuffle_graveyard_into_library_sentence
+    ),
+    primitive!(
+        "exile-source-with-counters",
+        160,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("exile")],
+        parse_sentence_exile_source_with_counters
+    ),
+    primitive!(
+        "destroy-all-attached-to-target",
+        170,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("destroy")],
+        parse_sentence_destroy_all_attached_to_target
+    ),
+    primitive!(
+        "comma-then-chain-special",
+        180,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("target")],
+        parse_sentence_comma_then_chain_special
+    ),
+    primitive!(
+        "destroy-then-land-controller-graveyard-count-damage",
+        190,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("destroy")],
+        parse_sentence_destroy_then_land_controller_graveyard_count_damage
+    ),
+    primitive!(
+        "draw-then-connive",
+        200,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("draw")],
+        parse_sentence_draw_then_connive
+    ),
+    primitive!(
+        "choose-then-do-same-for-filter",
+        210,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("choose")],
+        parse_sentence_choose_then_do_same_for_filter
+    ),
+    primitive!(
+        "return-then-do-same-for-subtypes",
+        220,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("return")],
+        parse_sentence_return_then_do_same_for_subtypes
+    ),
+    primitive!(
+        "return-then-create",
+        230,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("return")],
+        parse_sentence_return_then_create
+    ),
+    primitive!(
+        "put-counter-sequence",
+        240,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("put")],
+        parse_sentence_put_counter_sequence
+    ),
+    primitive!(
+        "gets-then-fights",
+        250,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("gets")],
+        parse_sentence_gets_then_fights
+    ),
+    primitive!(
+        "return-with-counters-on-it",
+        260,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("return")],
+        parse_sentence_return_with_counters_on_it
+    ),
+    primitive!(
+        "each-player-return-with-additional-counter",
+        270,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("each")],
+        parse_sentence_each_player_return_with_additional_counter
+    ),
+    primitive!(
+        "sacrifice-any-number",
+        280,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("sacrifice")],
+        parse_sentence_sacrifice_any_number
+    ),
+    primitive!(
+        "sacrifice-one-or-more",
+        290,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("sacrifice")],
+        parse_sentence_sacrifice_one_or_more
+    ),
+    primitive!(
+        "monstrosity",
+        300,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("monstrosity")],
+        parse_sentence_monstrosity
+    ),
+    primitive!(
+        "for-each-counter-removed",
+        310,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("for")],
+        parse_sentence_for_each_counter_removed
+    ),
+    primitive!(
+        "for-each-counter-kind-put-or-remove",
+        320,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("for")],
+        parse_sentence_for_each_counter_kind_put_or_remove
+    ),
+    primitive!(
+        "take-extra-turn",
+        330,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("take")],
+        parse_sentence_take_extra_turn
+    ),
+    primitive!(
+        "earthbend",
+        340,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("earthbend")],
+        parse_sentence_earthbend
+    ),
+    primitive!(
+        "transform-with-followup",
+        350,
+        PostDiagnostic,
+        &[
+            LexRuleHeadHint::Single("transform"),
+            LexRuleHeadHint::Single("convert"),
+        ],
+        parse_sentence_transform_with_followup
+    ),
+    primitive!(
+        "enchant",
+        360,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("enchant")],
+        parse_sentence_enchant
+    ),
+    primitive!(
+        "cant-effect",
+        370,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("cant")],
+        parse_sentence_cant_effect
+    ),
+    primitive!(
+        "prevent-damage",
+        380,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("prevent")],
+        parse_sentence_prevent_damage
+    ),
+    primitive!(
+        "shared-color-target-fanout",
+        390,
+        PostDiagnostic,
+        &[
+            LexRuleHeadHint::Single("target"),
+            LexRuleHeadHint::Pair("target", "radiance"),
+        ],
+        parse_sentence_shared_color_target_fanout
+    ),
+    primitive!(
+        "gain-ability-to-source",
+        400,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("gain")],
+        parse_sentence_gain_ability_to_source
+    ),
+    primitive!(
+        "gain-ability",
+        410,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("gain")],
+        parse_sentence_gain_ability
+    ),
+    primitive!(
+        "vote-with-you",
+        420,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("you")],
+        parse_sentence_you_and_each_opponent_voted_with_you
+    ),
+    primitive!(
+        "gain-life-equal-to-power",
+        430,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("gain")],
+        parse_sentence_gain_life_equal_to_power
+    ),
+    primitive!(
+        "gain-x-plus-life",
+        440,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("gain")],
+        parse_sentence_gain_x_plus_life
+    ),
+    primitive!(
+        "for-each-exiled-this-way",
+        450,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("for")],
+        parse_sentence_for_each_exiled_this_way
+    ),
+    primitive!(
+        "for-each-put-into-graveyard-this-way",
+        460,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("for")],
+        parse_sentence_for_each_put_into_graveyard_this_way
+    ),
+    primitive!(
+        "draw-for-each-card-exiled-from-hand-this-way",
+        470,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("draw")],
+        parse_sentence_draw_for_each_card_exiled_from_hand_this_way
+    ),
+    primitive!(
+        "each-player-reveals-top-count-put-permanents-rest-graveyard",
+        480,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("each")],
+        parse_sentence_each_player_reveals_top_count_put_permanents_onto_battlefield_rest_graveyard
+    ),
+    primitive!(
+        "each-player-put-permanent-cards-exiled-with-source",
+        490,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("each")],
+        parse_sentence_each_player_put_permanent_cards_exiled_with_source
+    ),
+    primitive!(
+        "for-each-destroyed-this-way",
+        500,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("for")],
+        parse_sentence_for_each_destroyed_this_way
+    ),
+    primitive!(
+        "delayed-next-step-unless-pays",
+        510,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("at")],
+        parse_sentence_delayed_next_step_unless_pays
+    ),
+    primitive!(
+        "search-delayed-next-upkeep-unless-pays-lose-game",
+        520,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("search")],
+        parse_sentence_delayed_next_upkeep_unless_pays_lose_game
+    ),
+    primitive!(
+        "exile-then-return-same-object",
+        530,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("exile")],
+        parse_sentence_exile_then_return_same_object
+    ),
+    primitive!(
+        "search-library",
+        540,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("search")],
+        parse_sentence_search_library
+    ),
+    primitive!(
+        "shuffle-graveyard-into-library",
+        550,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("shuffle")],
+        parse_sentence_shuffle_graveyard_into_library
+    ),
+    primitive!(
+        "shuffle-object-into-library",
+        560,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("shuffle")],
+        parse_sentence_shuffle_object_into_library
+    ),
+    primitive!(
+        "exile-hand-and-graveyard-bundle",
+        570,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("exile")],
+        parse_sentence_exile_hand_and_graveyard_bundle
+    ),
+    primitive!(
+        "target-player-exiles-creature-and-graveyard",
+        580,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("target")],
+        parse_sentence_target_player_exiles_creature_and_graveyard
+    ),
+    primitive!(
+        "play-from-graveyard",
+        590,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("play")],
+        parse_sentence_play_from_graveyard
+    ),
+    primitive!(
+        "look-at-top-then-exile-one",
+        600,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("look")],
+        parse_sentence_look_at_top_then_exile_one
+    ),
+    primitive!(
+        "look-at-hand",
+        610,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("look")],
+        parse_sentence_look_at_hand
+    ),
+    primitive!(
+        "gain-life-equal-to-age",
+        620,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("gain")],
+        parse_sentence_gain_life_equal_to_age
+    ),
+    primitive!(
+        "for-each-player-doesnt",
+        630,
+        PostDiagnostic,
+        &[
+            LexRuleHeadHint::Single("for"),
+            LexRuleHeadHint::Single("then"),
+            LexRuleHeadHint::Single("each"),
+        ],
+        parse_sentence_for_each_player_doesnt
+    ),
+    primitive!(
+        "for-each-opponent-doesnt",
+        640,
+        PostDiagnostic,
+        &[
+            LexRuleHeadHint::Single("for"),
+            LexRuleHeadHint::Single("then"),
+            LexRuleHeadHint::Single("each"),
+        ],
+        parse_sentence_for_each_opponent_doesnt
+    ),
+    primitive!(
+        "each-opponent-loses-x-and-you-gain-x",
+        650,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("each")],
+        parse_sentence_each_opponent_loses_x_and_you_gain_x
+    ),
+    primitive!(
+        "vote-start",
+        660,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("starting")],
+        parse_sentence_vote_start
+    ),
+    primitive!(
+        "for-each-vote-clause",
+        670,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("for")],
+        parse_sentence_for_each_vote_clause
+    ),
+    primitive!(
+        "vote-extra",
+        680,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("vote")],
+        parse_sentence_vote_extra
+    ),
+    primitive!(
+        "after-turn",
+        690,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("after")],
+        parse_sentence_after_turn
+    ),
+    primitive!(
+        "same-name-target-fanout",
+        700,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("target")],
+        parse_sentence_same_name_target_fanout
+    ),
+    primitive!(
+        "same-name-gets-fanout",
+        710,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("target")],
+        parse_sentence_same_name_gets_fanout
+    ),
+    primitive!(
+        "delayed-next-end-step",
+        720,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("at")],
+        parse_sentence_delayed_until_next_end_step
+    ),
+    primitive!(
+        "delayed-when-that-dies-this-turn",
+        730,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("when")],
+        parse_delayed_when_that_dies_this_turn_sentence
+    ),
+    primitive!(
+        "delayed-trigger-this-turn",
+        740,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("if")],
+        parse_sentence_delayed_trigger_this_turn
+    ),
+    primitive!(
+        "destroy-or-exile-all-split",
+        750,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("destroy")],
+        parse_sentence_destroy_or_exile_all_split
+    ),
+    primitive!(
+        "exile-up-to-one-each-target-type",
+        760,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("exile")],
+        parse_sentence_exile_up_to_one_each_target_type
+    ),
+    primitive!(
+        "exile-multi-target",
+        770,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("exile")],
+        parse_sentence_exile_multi_target
+    ),
+    primitive!(
+        "destroy-multi-target",
+        780,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("destroy")],
+        parse_sentence_destroy_multi_target
+    ),
+    primitive!(
+        "reveal-selected-cards-in-your-hand",
+        790,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("reveal")],
+        parse_sentence_reveal_selected_cards_in_your_hand
+    ),
+    primitive!(
+        "damage-unless-controller-has-source-deal-damage",
+        800,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("damage")],
+        parse_sentence_damage_unless_controller_has_source_deal_damage
+    ),
+    primitive!(
+        "damage-to-that-player-unless-enchanted-attacked",
+        810,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("damage")],
+        parse_sentence_damage_to_that_player_unless_enchanted_attacked
+    ),
+    primitive!(
+        "damage-to-that-player-half-damage-of-those-spells",
+        820,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("damage")],
+        parse_sentence_damage_to_that_player_half_damage_of_those_spells
+    ),
+    primitive!(
+        "unless-pays",
+        830,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("unless")],
+        parse_sentence_unless_pays
+    ),
 ];
 
 pub(crate) static POST_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX: LazyLock<LexRuleHintIndex> =
     LazyLock::new(|| {
         build_lex_rule_hint_index(POST_CONDITIONAL_SENTENCE_PRIMITIVES.len(), |idx| {
-            sentence_primitive_head_hints(POST_CONDITIONAL_SENTENCE_PRIMITIVES[idx].name)
+            POST_CONDITIONAL_SENTENCE_PRIMITIVES[idx]
+                .head_hints
+                .to_vec()
         })
     });
 
@@ -437,6 +784,26 @@ mod tests {
                 }] if card_types.as_slice() == [CardType::Creature]
             ),
             "expected explicit self negative-type clause to parse into source-scoped remove-card-types until end of turn, got {effects:?}"
+        );
+    }
+
+    #[test]
+    fn sentence_primitive_metadata_sets_stage_and_hints() {
+        assert!(
+            PRE_CONDITIONAL_SENTENCE_PRIMITIVES
+                .iter()
+                .all(
+                    |primitive| primitive.stage == SentencePrimitiveStage::PreDiagnostic
+                        && !primitive.head_hints.is_empty()
+                )
+        );
+        assert!(
+            POST_CONDITIONAL_SENTENCE_PRIMITIVES
+                .iter()
+                .all(
+                    |primitive| primitive.stage == SentencePrimitiveStage::PostDiagnostic
+                        && !primitive.head_hints.is_empty()
+                )
         );
     }
 }

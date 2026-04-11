@@ -1,3 +1,5 @@
+use super::*;
+
 pub(crate) fn parse_sentence_each_player_return_with_additional_counter(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -164,7 +166,7 @@ fn split_choose_same_followup_filters(filter: &ObjectFilter) -> Vec<ObjectFilter
 pub(crate) fn parse_choose_then_do_same_for_filter_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    use super::super::grammar::primitives as grammar;
+    use super::super::super::grammar::primitives as grammar;
 
     if !tokens.first().is_some_and(|token| token.is_word("choose")) {
         return Ok(None);
@@ -247,7 +249,7 @@ pub(crate) fn parse_sentence_choose_then_do_same_for_filter(
 pub(crate) fn parse_sacrifice_any_number_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    use super::super::grammar::primitives as grammar;
+    use super::super::super::grammar::primitives as grammar;
 
     let (head_tokens, tail_tokens) = if let Some((head, tail)) =
         grammar::split_lexed_once_on_separator(tokens, || grammar::kw("then").void())
@@ -397,7 +399,7 @@ pub(crate) fn parse_sentence_sacrifice_one_or_more(
 pub(crate) fn parse_sentence_keyword_then_chain(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    use super::super::grammar::primitives as grammar;
+    use super::super::super::grammar::primitives as grammar;
 
     let Some((head_slice, tail_slice)) =
         grammar::split_lexed_once_on_separator(tokens, || grammar::kw("then").void())
@@ -459,7 +461,7 @@ pub(crate) fn parse_sentence_chain_then_keyword(
 pub(crate) fn parse_sentence_return_then_create(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    use super::super::grammar::primitives as grammar;
+    use super::super::super::grammar::primitives as grammar;
 
     let split = split_lexed_once_on_comma_then(tokens)
         .or_else(|| grammar::split_lexed_once_on_separator(tokens, || grammar::kw("then").void()));
@@ -496,7 +498,7 @@ pub(crate) fn parse_sentence_return_then_create(
 pub(crate) fn parse_sentence_exile_then_may_put_from_exile(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    use super::super::grammar::primitives as grammar;
+    use super::super::super::grammar::primitives as grammar;
 
     let split = split_lexed_once_on_comma_then(tokens)
         .or_else(|| grammar::split_lexed_once_on_separator(tokens, || grammar::kw("then").void()));
@@ -538,7 +540,7 @@ pub(crate) fn parse_sentence_exile_then_may_put_from_exile(
 pub(crate) fn parse_exile_then_shuffle_graveyard_into_library_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    use super::super::grammar::primitives as grammar;
+    use super::super::super::grammar::primitives as grammar;
 
     let split = split_lexed_once_on_comma_then(tokens)
         .or_else(|| grammar::split_lexed_once_on_separator(tokens, || grammar::kw("then").void()));
@@ -604,7 +606,7 @@ pub(crate) fn parse_exile_then_shuffle_graveyard_into_library_sentence(
 pub(crate) fn parse_exile_source_with_counters_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    use super::super::grammar::primitives as grammar;
+    use super::super::super::grammar::primitives as grammar;
 
     // "exile <source> with <counter descriptor> on it/them"
     let Some(after_exile) = grammar::strip_lexed_prefix_phrase(tokens, &["exile"]) else {
@@ -677,7 +679,7 @@ pub(crate) fn parse_sentence_comma_then_chain_special(
                 "s" | "'" | "’" => None,
                 _ => Some(strip_quoted_possessive_suffix(word)),
             })
-            .filter(|word| !word.is_empty())
+            .filter(|word: &&str| !word.is_empty())
             .collect()
     }
 
@@ -809,7 +811,7 @@ pub(crate) fn parse_destroy_then_land_controller_graveyard_count_damage_sentence
 pub(crate) fn parse_sentence_destroy_all_attached_to_target(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    use super::super::grammar::primitives as grammar;
+    use super::super::super::grammar::primitives as grammar;
 
     // "destroy all/each <filter> attached to <target>"
     if !tokens.first().is_some_and(|token| token.is_word("destroy")) {
@@ -916,7 +918,7 @@ pub(crate) fn find_creature_type_choice_phrase(tokens: &[OwnedLexToken]) -> Opti
     None
 }
 
-fn find_type_choice_phrase(tokens: &[OwnedLexToken]) -> Option<(usize, usize)> {
+pub(super) fn find_type_choice_phrase(tokens: &[OwnedLexToken]) -> Option<(usize, usize)> {
     find_creature_type_choice_phrase(tokens).or_else(|| {
         for idx in 0..tokens.len() {
             if tokens[idx].is_word("of")
@@ -1006,4 +1008,3 @@ pub(crate) fn find_color_choice_phrase(tokens: &[OwnedLexToken]) -> Option<(usiz
     }
     None
 }
-

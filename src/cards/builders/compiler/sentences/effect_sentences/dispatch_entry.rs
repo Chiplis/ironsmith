@@ -290,6 +290,573 @@ impl SentenceInput {
     }
 }
 
+struct SentenceDispatchState<'a> {
+    effects: &'a mut Vec<EffectAst>,
+    carried_context: &'a mut Option<CarryContext>,
+}
+
+struct SentenceParsePlan {
+    tokens: Vec<OwnedLexToken>,
+    wrap_if_result: Option<IfResultPredicate>,
+    direct_effects: Option<Vec<EffectAst>>,
+    consumed_sentences: usize,
+}
+
+impl SentenceParsePlan {
+    fn new(tokens: Vec<OwnedLexToken>) -> Self {
+        Self {
+            tokens,
+            wrap_if_result: None,
+            direct_effects: None,
+            consumed_sentences: 1,
+        }
+    }
+}
+
+enum PreParseFollowupResult {
+    Handled { consumed_sentences: usize },
+    Plan(SentenceParsePlan),
+}
+
+enum PostParseFollowupResult {
+    Handled { consumed_sentences: usize },
+}
+
+type PreParseFollowupRuleFn = for<'a> fn(
+    &mut SentenceDispatchState<'a>,
+    &[SentenceInput],
+    usize,
+    &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError>;
+
+type PostParseFollowupRuleFn = for<'a> fn(
+    &mut SentenceDispatchState<'a>,
+    &[SentenceInput],
+    usize,
+    &[OwnedLexToken],
+    &mut Vec<EffectAst>,
+)
+    -> Result<Option<PostParseFollowupResult>, CardTextError>;
+
+struct SentenceFollowupRuleDef {
+    id: &'static str,
+    priority: u16,
+    heads: &'static [&'static str],
+    run: PreParseFollowupRuleFn,
+}
+
+struct SentencePostParseRuleDef {
+    id: &'static str,
+    priority: u16,
+    heads: &'static [&'static str],
+    run: PostParseFollowupRuleFn,
+}
+
+fn effect_contains_search_library(effect: &EffectAst) -> bool {
+    if matches!(effect, EffectAst::SearchLibrary { .. }) {
+        return true;
+    }
+
+    let mut found = false;
+    for_each_nested_effects(effect, true, |nested| {
+        if !found {
+            found = nested.iter().any(effect_contains_search_library);
+        }
+    });
+    found
+}
+
+fn effect_needs_followup_library_shuffle(effect: &EffectAst) -> bool {
+    if matches!(
+        effect,
+        EffectAst::ChooseObjectsAcrossZones { zones, .. } if slice_contains(zones, &Zone::Library)
+    ) {
+        return true;
+    }
+
+    let mut found = false;
+    for_each_nested_effects(effect, true, |nested| {
+        if !found {
+            found = nested.iter().any(effect_needs_followup_library_shuffle);
+        }
+    });
+    found
+}
+
+fn is_if_you_search_library_this_way_shuffle_sentence(tokens: &[OwnedLexToken]) -> bool {
+    let words: Vec<&str> = crate::cards::builders::compiler::token_word_refs(tokens)
+        .into_iter()
+        .filter(|word| !is_article(word))
+        .collect();
+    words.as_slice()
+        == [
+            "if", "you", "search", "your", "library", "this", "way", "shuffle",
+        ]
+        || words.as_slice()
+            == [
+                "if", "you", "search", "your", "library", "this", "way", "shuffles",
+            ]
+}
+
+fn is_then_that_player_shuffles_sentence(tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::cards::builders::compiler::token_word_refs(tokens);
+    matches!(
+        words.as_slice(),
+        ["then", "that", "player", "shuffles"]
+            | ["that", "player", "shuffles"]
+            | ["then", "that", "player", "shuffle"]
+            | ["that", "player", "shuffle"]
+    )
+}
+
+fn rule_matches_sentence_head(heads: &[&str], tokens: &[OwnedLexToken]) -> bool {
+    if heads.is_empty() {
+        return true;
+    }
+    crate::cards::builders::compiler::token_word_refs(tokens)
+        .first()
+        .is_some_and(|head| heads.iter().any(|candidate| head == candidate))
+}
+
+fn run_pre_parse_followup_registry(
+    state: &mut SentenceDispatchState<'_>,
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    let mut matching_rules = PRE_PARSE_FOLLOWUP_RULES
+        .iter()
+        .filter(|rule| rule_matches_sentence_head(rule.heads, sentence_tokens))
+        .collect::<Vec<_>>();
+    matching_rules.sort_by_key(|rule| rule.priority);
+
+    for rule in matching_rules {
+        if let Some(result) = (rule.run)(state, sentences, sentence_idx, sentence_tokens)? {
+            parser_trace(
+                format!("parse_effect_sentences:followup-pre:{}", rule.id).as_str(),
+                sentence_tokens,
+            );
+            return Ok(Some(result));
+        }
+    }
+    Ok(None)
+}
+
+fn run_post_parse_followup_registry(
+    state: &mut SentenceDispatchState<'_>,
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+    sentence_effects: &mut Vec<EffectAst>,
+) -> Result<Option<PostParseFollowupResult>, CardTextError> {
+    let mut matching_rules = POST_PARSE_FOLLOWUP_RULES
+        .iter()
+        .filter(|rule| rule_matches_sentence_head(rule.heads, sentence_tokens))
+        .collect::<Vec<_>>();
+    matching_rules.sort_by_key(|rule| rule.priority);
+
+    for rule in matching_rules {
+        if let Some(result) = (rule.run)(
+            state,
+            sentences,
+            sentence_idx,
+            sentence_tokens,
+            sentence_effects,
+        )? {
+            parser_trace(
+                format!("parse_effect_sentences:followup-post:{}", rule.id).as_str(),
+                sentence_tokens,
+            );
+            return Ok(Some(result));
+        }
+    }
+    Ok(None)
+}
+
+fn pre_rule_library_shuffle_followups(
+    state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    if is_if_you_search_library_this_way_shuffle_sentence(sentence_tokens) {
+        if state
+            .effects
+            .iter()
+            .any(effect_needs_followup_library_shuffle)
+        {
+            state.effects.push(EffectAst::ShuffleLibrary {
+                player: PlayerAst::You,
+            });
+            return Ok(Some(PreParseFollowupResult::Handled {
+                consumed_sentences: 1,
+            }));
+        }
+        if state.effects.iter().any(effect_contains_search_library) {
+            return Ok(Some(PreParseFollowupResult::Handled {
+                consumed_sentences: 1,
+            }));
+        }
+    }
+
+    if is_then_that_player_shuffles_sentence(sentence_tokens)
+        && state.effects.iter().any(effect_contains_search_library)
+    {
+        state.effects.push(EffectAst::ShuffleLibrary {
+            player: PlayerAst::That,
+        });
+        return Ok(Some(PreParseFollowupResult::Handled {
+            consumed_sentences: 1,
+        }));
+    }
+
+    Ok(None)
+}
+
+fn pre_rule_still_lands_followup(
+    state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    let sentence_words = TokenWordView::new(sentence_tokens).to_word_refs();
+    let is_still_lands_followup = matches!(
+        sentence_words.as_slice(),
+        ["theyre", "still", "land"]
+            | ["theyre", "still", "lands"]
+            | ["its", "still", "a", "land"]
+            | ["its", "still", "land"]
+    );
+    if is_still_lands_followup
+        && state
+            .effects
+            .last()
+            .is_some_and(|effect| matches!(effect, EffectAst::BecomeBasePtCreature { .. }))
+    {
+        return Ok(Some(PreParseFollowupResult::Handled {
+            consumed_sentences: 1,
+        }));
+    }
+    Ok(None)
+}
+
+fn pre_rule_cant_be_regenerated_followup(
+    state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    if !is_cant_be_regenerated_followup_sentence(sentence_tokens) {
+        return Ok(None);
+    }
+    if apply_cant_be_regenerated_to_last_destroy_effect(state.effects) {
+        return Ok(Some(PreParseFollowupResult::Handled {
+            consumed_sentences: 1,
+        }));
+    }
+    if is_cant_be_regenerated_this_turn_followup_sentence(sentence_tokens)
+        && apply_cant_be_regenerated_to_last_target_effect(state.effects)
+    {
+        return Ok(Some(PreParseFollowupResult::Handled {
+            consumed_sentences: 1,
+        }));
+    }
+    Err(CardTextError::ParseError(format!(
+        "unsupported standalone cant-be-regenerated clause (clause: '{}')",
+        crate::cards::builders::compiler::token_word_refs(sentence_tokens).join(" ")
+    )))
+}
+
+fn pre_rule_copy_and_cast_followups(
+    state: &mut SentenceDispatchState<'_>,
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    if let Some((mut copy_effects, spec)) =
+        parse_same_sentence_copy_and_may_cast_copy(sentence_tokens)?
+    {
+        state.effects.append(&mut copy_effects);
+        state.effects.push(build_may_cast_tagged_effect(&spec));
+        return Ok(Some(PreParseFollowupResult::Handled {
+            consumed_sentences: 1,
+        }));
+    }
+
+    if sentence_idx + 1 < sentences.len() && is_simple_copy_reference_sentence(sentence_tokens) {
+        let next_tokens = strip_embedded_token_rules_text(sentences[sentence_idx + 1].lexed());
+        if let Some(spec) = parse_may_cast_it_sentence(&next_tokens)
+            && spec.as_copy
+        {
+            let mut effects = parse_effect_sentence_lexed(sentence_tokens)?;
+            effects.push(build_may_cast_tagged_effect(&spec));
+            return Ok(Some(PreParseFollowupResult::Plan(SentenceParsePlan {
+                tokens: sentence_tokens.to_vec(),
+                wrap_if_result: None,
+                direct_effects: Some(effects),
+                consumed_sentences: 2,
+            })));
+        }
+    }
+
+    if let Some(reduction) =
+        super::super::activation_and_restrictions::parse_copy_reference_cost_reduction_sentence(
+            sentence_tokens,
+        )
+    {
+        if attach_copy_cost_reduction_to_effects(state.effects, &reduction) {
+            return Ok(Some(PreParseFollowupResult::Handled {
+                consumed_sentences: 1,
+            }));
+        }
+        return Err(CardTextError::ParseError(format!(
+            "unsupported standalone copy cost-reduction clause (clause: '{}')",
+            crate::cards::builders::compiler::token_word_refs(sentence_tokens).join(" ")
+        )));
+    }
+
+    if let Some(spec) = parse_may_cast_it_sentence(sentence_tokens) {
+        state.effects.push(build_may_cast_tagged_effect(&spec));
+        return Ok(Some(PreParseFollowupResult::Handled {
+            consumed_sentences: 1,
+        }));
+    }
+
+    Ok(None)
+}
+
+fn pre_rule_token_followups(
+    state: &mut SentenceDispatchState<'_>,
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    if is_spawn_scion_token_mana_reminder(sentence_tokens) {
+        if state
+            .effects
+            .last()
+            .is_some_and(effect_creates_eldrazi_spawn_or_scion)
+        {
+            return Ok(Some(PreParseFollowupResult::Handled {
+                consumed_sentences: 1,
+            }));
+        }
+        return Err(CardTextError::ParseError(format!(
+            "unsupported standalone token mana reminder clause (clause: '{}')",
+            crate::cards::builders::compiler::token_word_refs(sentence_tokens).join(" ")
+        )));
+    }
+    if let Some(effect) =
+        parse_sentence_exile_that_token_when_source_leaves(sentence_tokens, state.effects)
+    {
+        state.effects.push(effect);
+        return Ok(Some(PreParseFollowupResult::Handled {
+            consumed_sentences: 1,
+        }));
+    }
+    if let Some(effect) =
+        parse_sentence_sacrifice_source_when_that_token_leaves(sentence_tokens, state.effects)
+    {
+        state.effects.push(effect);
+        return Ok(Some(PreParseFollowupResult::Handled {
+            consumed_sentences: 1,
+        }));
+    }
+    if is_generic_token_reminder_sentence(sentence_tokens)
+        && state.effects.last().is_some_and(effect_creates_any_token)
+    {
+        if append_token_reminder_to_last_create_effect(state.effects, sentence_tokens) {
+            return Ok(Some(PreParseFollowupResult::Handled {
+                consumed_sentences: 1,
+            }));
+        }
+        return Err(CardTextError::ParseError(format!(
+            "unsupported standalone token reminder clause (clause: '{}')",
+            crate::cards::builders::compiler::token_word_refs(sentence_tokens).join(" ")
+        )));
+    }
+    if is_generic_token_reminder_sentence(sentence_tokens) {
+        let reminder_words = crate::cards::builders::compiler::token_word_refs(sentence_tokens);
+        let delayed_pronoun_lifecycle =
+            matches!(reminder_words.first().copied(), Some("exile" | "sacrifice"))
+                && (grammar::contains_word(sentence_tokens, "it")
+                    || grammar::contains_word(sentence_tokens, "them"));
+        let pronoun_followup_clause =
+            grammar::words_match_any_prefix(sentence_tokens, PRONOUN_TRIGGER_PREFIXES).is_some();
+        if !delayed_pronoun_lifecycle && !pronoun_followup_clause {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported standalone token reminder clause (clause: '{}')",
+                crate::cards::builders::compiler::token_word_refs(sentence_tokens).join(" ")
+            )));
+        }
+    }
+    if let Some(effect) = parse_choose_target_prelude_sentence(sentence_tokens)? {
+        state.effects.push(effect);
+        *state.carried_context = None;
+        return Ok(Some(PreParseFollowupResult::Handled {
+            consumed_sentences: 1,
+        }));
+    }
+    if let Some(followup) = parse_token_copy_followup_sentence(sentence_tokens) {
+        if try_apply_token_copy_followup(state.effects, followup)? {
+            return Ok(Some(PreParseFollowupResult::Handled {
+                consumed_sentences: 1,
+            }));
+        }
+        let mut plan = SentenceParsePlan::new(sentence_tokens.to_vec());
+        plan.direct_effects = Some(apply_unapplied_token_copy_followup(
+            sentences[sentence_idx].lowered(),
+            sentence_tokens,
+            followup,
+        )?);
+        return Ok(Some(PreParseFollowupResult::Plan(plan)));
+    }
+    Ok(None)
+}
+
+fn pre_rule_otherwise_followup(
+    _state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    let Some(without_otherwise) = strip_otherwise_sentence_prefix(sentence_tokens) else {
+        return Ok(None);
+    };
+    let mut plan = SentenceParsePlan::new(rewrite_otherwise_referential_subject(without_otherwise));
+    plan.wrap_if_result = Some(IfResultPredicate::DidNot);
+    Ok(Some(PreParseFollowupResult::Plan(plan)))
+}
+
+fn post_rule_token_copy_and_extra_turn(
+    state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+    sentence_effects: &mut Vec<EffectAst>,
+) -> Result<Option<PostParseFollowupResult>, CardTextError> {
+    collapse_token_copy_next_end_step_exile_followup(sentence_effects, sentence_tokens);
+    collapse_token_copy_end_of_combat_exile_followup(sentence_effects, sentence_tokens);
+    if is_that_turn_end_step_sentence(sentence_tokens)
+        && let Some(extra_turn_player) = most_recent_extra_turn_player(state.effects)
+        && !sentence_effects.is_empty()
+    {
+        *sentence_effects = vec![EffectAst::DelayedUntilEndStepOfExtraTurn {
+            player: extra_turn_player,
+            effects: sentence_effects.clone(),
+        }];
+    }
+    Ok(None)
+}
+
+fn post_rule_future_zone_and_self_replacement(
+    state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+    sentence_effects: &mut Vec<EffectAst>,
+) -> Result<Option<PostParseFollowupResult>, CardTextError> {
+    let sentence_text =
+        crate::cards::builders::compiler::token_word_refs(sentence_tokens).join(" ");
+    maybe_rewrite_future_zone_replacement_sentence(sentence_effects, &sentence_text);
+    if matches!(
+        classify_instead_followup_text(&sentence_text),
+        InsteadSemantics::SelfReplacement
+    ) && sentence_effects.len() == 1
+        && !state.effects.is_empty()
+        && matches!(
+            sentence_effects.first(),
+            Some(EffectAst::Conditional { .. })
+        )
+    {
+        let Some(previous) = state.effects.pop() else {
+            return Err(CardTextError::InvariantViolation(
+                "expected previous effect for 'instead' conditional rewrite".to_string(),
+            ));
+        };
+        let previous_target = primary_target_from_effect(&previous);
+        let previous_damage_target = primary_damage_target_from_effect(&previous);
+        if let Some(EffectAst::Conditional {
+            predicate,
+            mut if_true,
+            mut if_false,
+        }) = sentence_effects.pop()
+        {
+            if let Some(target) = previous_target {
+                replace_it_target_in_effects(&mut if_true, &target);
+            }
+            if let Some(target) = previous_damage_target {
+                replace_it_damage_target_in_effects(&mut if_true, &target);
+                replace_placeholder_damage_target_in_effects(&mut if_true, &target);
+            }
+            if_false.insert(0, previous);
+            state.effects.push(EffectAst::SelfReplacement {
+                predicate,
+                if_true,
+                if_false,
+            });
+            return Ok(Some(PostParseFollowupResult::Handled {
+                consumed_sentences: 1,
+            }));
+        }
+    }
+    Ok(None)
+}
+
+const PRE_PARSE_FOLLOWUP_RULES: &[SentenceFollowupRuleDef] = &[
+    SentenceFollowupRuleDef {
+        id: "library-shuffle",
+        priority: 10,
+        heads: &["if", "then", "that"],
+        run: pre_rule_library_shuffle_followups,
+    },
+    SentenceFollowupRuleDef {
+        id: "still-lands",
+        priority: 20,
+        heads: &["theyre", "its"],
+        run: pre_rule_still_lands_followup,
+    },
+    SentenceFollowupRuleDef {
+        id: "cant-be-regenerated",
+        priority: 30,
+        heads: &["it", "they"],
+        run: pre_rule_cant_be_regenerated_followup,
+    },
+    SentenceFollowupRuleDef {
+        id: "copy-and-cast",
+        priority: 40,
+        heads: &["copy", "that"],
+        run: pre_rule_copy_and_cast_followups,
+    },
+    SentenceFollowupRuleDef {
+        id: "token-followups",
+        priority: 50,
+        heads: &["create", "exile", "sacrifice", "choose", "when"],
+        run: pre_rule_token_followups,
+    },
+    SentenceFollowupRuleDef {
+        id: "otherwise",
+        priority: 60,
+        heads: &["otherwise"],
+        run: pre_rule_otherwise_followup,
+    },
+];
+
+const POST_PARSE_FOLLOWUP_RULES: &[SentencePostParseRuleDef] = &[
+    SentencePostParseRuleDef {
+        id: "token-copy-and-extra-turn",
+        priority: 10,
+        heads: &[],
+        run: post_rule_token_copy_and_extra_turn,
+    },
+    SentencePostParseRuleDef {
+        id: "future-zone-and-self-replacement",
+        priority: 20,
+        heads: &[],
+        run: post_rule_future_zone_and_self_replacement,
+    },
+];
+
 fn future_zone_replacement_from_sentence_text(sentence_text: &str) -> Option<EffectAst> {
     let normalized = sentence_text.to_ascii_lowercase();
     let target = TargetAst::Tagged(TagKey::from(IT_TAG), None);
@@ -471,64 +1038,6 @@ fn parse_effect_sentences_from_sentence_inputs(
     let mut sentence_idx = 0usize;
     let mut carried_context: Option<CarryContext> = None;
 
-    fn effect_contains_search_library(effect: &EffectAst) -> bool {
-        if matches!(effect, EffectAst::SearchLibrary { .. }) {
-            return true;
-        }
-
-        let mut found = false;
-        for_each_nested_effects(effect, true, |nested| {
-            if !found {
-                found = nested.iter().any(effect_contains_search_library);
-            }
-        });
-        found
-    }
-
-    fn effect_needs_followup_library_shuffle(effect: &EffectAst) -> bool {
-        if matches!(
-            effect,
-            EffectAst::ChooseObjectsAcrossZones { zones, .. } if slice_contains(zones, &Zone::Library)
-        ) {
-            return true;
-        }
-
-        let mut found = false;
-        for_each_nested_effects(effect, true, |nested| {
-            if !found {
-                found = nested.iter().any(effect_needs_followup_library_shuffle);
-            }
-        });
-        found
-    }
-
-    fn is_if_you_search_library_this_way_shuffle_sentence(tokens: &[OwnedLexToken]) -> bool {
-        let words: Vec<&str> = crate::cards::builders::compiler::token_word_refs(tokens)
-            .into_iter()
-            .filter(|word| !is_article(word))
-            .collect();
-        // "If you search your library this way, shuffle."
-        words.as_slice()
-            == [
-                "if", "you", "search", "your", "library", "this", "way", "shuffle",
-            ]
-            || words.as_slice()
-                == [
-                    "if", "you", "search", "your", "library", "this", "way", "shuffles",
-                ]
-    }
-
-    fn is_then_that_player_shuffles_sentence(tokens: &[OwnedLexToken]) -> bool {
-        let words = crate::cards::builders::compiler::token_word_refs(tokens);
-        matches!(
-            words.as_slice(),
-            ["then", "that", "player", "shuffles"]
-                | ["that", "player", "shuffles"]
-                | ["then", "that", "player", "shuffle"]
-                | ["that", "player", "shuffle"]
-        )
-    }
-
     while sentence_idx < sentences.len() {
         let sentence = sentences[sentence_idx].lowered();
         if sentence.is_empty() {
@@ -561,275 +1070,42 @@ fn parse_effect_sentences_from_sentence_inputs(
         }
         sentence_tokens = rewrite_when_one_or_more_this_way_clause_prefix(&sentence_tokens);
 
-        // Oracle frequently splits shuffle followups as a standalone sentence:
-        // "If you search your library this way, shuffle." This clause is redundant when the
-        // preceding sentence already compiles a library-search effect that shuffles.
-        if is_if_you_search_library_this_way_shuffle_sentence(&sentence_tokens) {
-            if effects.iter().any(effect_needs_followup_library_shuffle) {
-                parser_trace(
-                    "parse_effect_sentences:append:if-you-search-library-this-way-shuffle",
-                    &sentence_tokens,
-                );
-                effects.push(EffectAst::ShuffleLibrary {
-                    player: PlayerAst::You,
-                });
-                sentence_idx += 1;
-                continue;
-            }
-            if effects.iter().any(effect_contains_search_library) {
-                parser_trace(
-                    "parse_effect_sentences:skip:if-you-search-library-this-way-shuffle",
-                    &sentence_tokens,
-                );
-                sentence_idx += 1;
-                continue;
-            }
-        }
-
-        if is_then_that_player_shuffles_sentence(&sentence_tokens)
-            && effects.iter().any(effect_contains_search_library)
-        {
-            parser_trace(
-                "parse_effect_sentences:append:then-that-player-shuffles",
+        let mut parse_plan = {
+            let mut state = SentenceDispatchState {
+                effects: &mut effects,
+                carried_context: &mut carried_context,
+            };
+            match run_pre_parse_followup_registry(
+                &mut state,
+                &sentences,
+                sentence_idx,
                 &sentence_tokens,
-            );
-            effects.push(EffectAst::ShuffleLibrary {
-                player: PlayerAst::That,
-            });
-            sentence_idx += 1;
-            continue;
-        }
-
-        let sentence_words = TokenWordView::new(&sentence_tokens).to_word_refs();
-        let is_still_lands_followup = matches!(
-            sentence_words.as_slice(),
-            ["theyre", "still", "land"]
-                | ["theyre", "still", "lands"]
-                | ["its", "still", "a", "land"]
-                | ["its", "still", "land"]
-        );
-        if is_still_lands_followup
-            && effects
-                .last()
-                .is_some_and(|effect| matches!(effect, EffectAst::BecomeBasePtCreature { .. }))
-        {
-            parser_trace(
-                "parse_effect_sentences:skip:still-lands-followup",
-                &sentence_tokens,
-            );
-            sentence_idx += 1;
-            continue;
-        }
-
-        let mut wraps_as_if_did_not = false;
-        if let Some(without_otherwise) = strip_otherwise_sentence_prefix(&sentence_tokens) {
-            sentence_tokens = rewrite_otherwise_referential_subject(without_otherwise);
-            wraps_as_if_did_not = true;
-        }
-        parser_trace("parse_effect_sentences:sentence", &sentence_tokens);
-
-        // "Destroy ... . It/They can't be regenerated." followups.
-        if is_cant_be_regenerated_followup_sentence(&sentence_tokens) {
-            if apply_cant_be_regenerated_to_last_destroy_effect(&mut effects) {
-                parser_trace(
-                    "parse_effect_sentences:cant-be-regenerated-followup",
-                    &sentence_tokens,
-                );
-                sentence_idx += 1;
-                continue;
-            }
-            if is_cant_be_regenerated_this_turn_followup_sentence(&sentence_tokens)
-                && apply_cant_be_regenerated_to_last_target_effect(&mut effects)
-            {
-                parser_trace(
-                    "parse_effect_sentences:cant-be-regenerated-this-turn-followup",
-                    &sentence_tokens,
-                );
-                sentence_idx += 1;
-                continue;
-            }
-            return Err(CardTextError::ParseError(format!(
-                "unsupported standalone cant-be-regenerated clause (clause: '{}')",
-                crate::cards::builders::compiler::token_word_refs(&sentence_tokens).join(" ")
-            )));
-        }
-
-        if let Some((mut copy_effects, spec)) =
-            parse_same_sentence_copy_and_may_cast_copy(&sentence_tokens)?
-        {
-            parser_trace(
-                "parse_effect_sentences:copy-reference-same-sentence-may-cast-copy",
-                &sentence_tokens,
-            );
-            effects.append(&mut copy_effects);
-            effects.push(build_may_cast_tagged_effect(&spec));
-            sentence_idx += 1;
-            continue;
-        }
-
-        if sentence_idx + 1 < sentences.len() && is_simple_copy_reference_sentence(&sentence_tokens)
-        {
-            let next_tokens = strip_embedded_token_rules_text(sentences[sentence_idx + 1].lexed());
-            if let Some(spec) = parse_may_cast_it_sentence(&next_tokens)
-                && spec.as_copy
-            {
-                parser_trace(
-                    "parse_effect_sentences:copy-reference-next-may-cast-copy",
-                    &sentence_tokens,
-                );
-                effects.extend(parse_effect_sentence_lexed(&sentence_tokens)?);
-                effects.push(build_may_cast_tagged_effect(&spec));
-                sentence_idx += 2;
-                continue;
-            }
-        }
-
-        if let Some(reduction) =
-            super::super::activation_and_restrictions::parse_copy_reference_cost_reduction_sentence(
-                &sentence_tokens,
-            )
-        {
-            if attach_copy_cost_reduction_to_effects(&mut effects, &reduction) {
-                parser_trace(
-                    "parse_effect_sentences:copy-reference-cost-reduction-followup",
-                    &sentence_tokens,
-                );
-                sentence_idx += 1;
-                continue;
-            }
-            return Err(CardTextError::ParseError(format!(
-                "unsupported standalone copy cost-reduction clause (clause: '{}')",
-                crate::cards::builders::compiler::token_word_refs(&sentence_tokens).join(" ")
-            )));
-        }
-
-        if let Some(spec) = parse_may_cast_it_sentence(&sentence_tokens) {
-            parser_trace(
-                "parse_effect_sentences:may-cast-it-sentence",
-                &sentence_tokens,
-            );
-            effects.push(build_may_cast_tagged_effect(&spec));
-            sentence_idx += 1;
-            continue;
-        }
-
-        if is_spawn_scion_token_mana_reminder(&sentence_tokens) {
-            if effects
-                .last()
-                .is_some_and(effect_creates_eldrazi_spawn_or_scion)
-            {
-                parser_trace(
-                    "parse_effect_sentences:spawn-scion-reminder",
-                    &sentence_tokens,
-                );
-                sentence_idx += 1;
-                continue;
-            }
-            return Err(CardTextError::ParseError(format!(
-                "unsupported standalone token mana reminder clause (clause: '{}')",
-                crate::cards::builders::compiler::token_word_refs(&sentence_tokens).join(" ")
-            )));
-        }
-        if let Some(effect) =
-            parse_sentence_exile_that_token_when_source_leaves(&sentence_tokens, &effects)
-        {
-            parser_trace(
-                "parse_effect_sentences:linked-token-exile-when-source-leaves",
-                &sentence_tokens,
-            );
-            effects.push(effect);
-            sentence_idx += 1;
-            continue;
-        }
-        if let Some(effect) =
-            parse_sentence_sacrifice_source_when_that_token_leaves(&sentence_tokens, &effects)
-        {
-            parser_trace(
-                "parse_effect_sentences:linked-token-sacrifice-source-when-token-leaves",
-                &sentence_tokens,
-            );
-            effects.push(effect);
-            sentence_idx += 1;
-            continue;
-        }
-        if is_generic_token_reminder_sentence(&sentence_tokens)
-            && effects.last().is_some_and(effect_creates_any_token)
-        {
-            if append_token_reminder_to_last_create_effect(&mut effects, &sentence_tokens) {
-                parser_trace(
-                    "parse_effect_sentences:token-reminder-followup",
-                    &sentence_tokens,
-                );
-                sentence_idx += 1;
-                continue;
-            }
-            return Err(CardTextError::ParseError(format!(
-                "unsupported standalone token reminder clause (clause: '{}')",
-                crate::cards::builders::compiler::token_word_refs(&sentence_tokens).join(" ")
-            )));
-        }
-        if is_generic_token_reminder_sentence(&sentence_tokens) {
-            let reminder_words = crate::cards::builders::compiler::token_word_refs(&sentence_tokens);
-            let delayed_pronoun_lifecycle =
-                matches!(reminder_words.first().copied(), Some("exile" | "sacrifice"))
-                    && (grammar::contains_word(&sentence_tokens, "it")
-                        || grammar::contains_word(&sentence_tokens, "them"));
-            let pronoun_followup_clause =
-                grammar::words_match_any_prefix(&sentence_tokens, PRONOUN_TRIGGER_PREFIXES)
-                    .is_some();
-            if delayed_pronoun_lifecycle || pronoun_followup_clause {
-                // Keep standalone pronoun-led followups on the normal parser path.
-                // They can be genuine tagged-object effects, not just token reminder text.
-            } else {
-                return Err(CardTextError::ParseError(format!(
-                    "unsupported standalone token reminder clause (clause: '{}')",
-                    crate::cards::builders::compiler::token_word_refs(&sentence_tokens).join(" ")
-                )));
-            }
-        }
-
-        if let Some(effect) = parse_choose_target_prelude_sentence(&sentence_tokens)? {
-            effects.push(effect);
-            carried_context = None;
-            sentence_idx += 1;
-            continue;
-        }
-
-        let mut sentence_effects =
-            if let Some(followup) = parse_token_copy_followup_sentence(&sentence_tokens) {
-                if try_apply_token_copy_followup(&mut effects, followup)? {
-                    parser_trace(
-                        "parse_effect_sentences:token-copy-followup",
-                        &sentence_tokens,
-                    );
-                    sentence_idx += 1;
+            )? {
+                Some(PreParseFollowupResult::Handled { consumed_sentences }) => {
+                    sentence_idx += consumed_sentences;
                     continue;
                 }
-                apply_unapplied_token_copy_followup(sentence, &sentence_tokens, followup)?
-            } else if sentence_tokens.as_slice() == sentences[sentence_idx].lexed() {
-                parse_effect_sentence_lexed(sentences[sentence_idx].lexed())?
-            } else {
-                parse_effect_sentence_lexed(&sentence_tokens)?
-            };
-        if wraps_as_if_did_not {
+                Some(PreParseFollowupResult::Plan(plan)) => plan,
+                None => SentenceParsePlan::new(sentence_tokens.clone()),
+            }
+        };
+        parser_trace("parse_effect_sentences:sentence", &parse_plan.tokens);
+
+        let mut sentence_effects = if let Some(direct_effects) = parse_plan.direct_effects.take() {
+            direct_effects
+        } else if parse_plan.tokens.as_slice() == sentences[sentence_idx].lexed() {
+            parse_effect_sentence_lexed(sentences[sentence_idx].lexed())?
+        } else {
+            parse_effect_sentence_lexed(&parse_plan.tokens)?
+        };
+        if let Some(predicate) = parse_plan.wrap_if_result {
             sentence_effects = vec![EffectAst::IfResult {
-                predicate: IfResultPredicate::DidNot,
+                predicate,
                 effects: sentence_effects,
             }];
             carried_context = None;
         }
-        collapse_token_copy_next_end_step_exile_followup(&mut sentence_effects, &sentence_tokens);
-        collapse_token_copy_end_of_combat_exile_followup(&mut sentence_effects, &sentence_tokens);
-        if is_that_turn_end_step_sentence(&sentence_tokens)
-            && let Some(extra_turn_player) = most_recent_extra_turn_player(&effects)
-            && !sentence_effects.is_empty()
-        {
-            sentence_effects = vec![EffectAst::DelayedUntilEndStepOfExtraTurn {
-                player: extra_turn_player,
-                effects: sentence_effects,
-            }];
-        }
-        if crate::cards::builders::compiler::token_word_refs(&sentence_tokens)
+        if crate::cards::builders::compiler::token_word_refs(&parse_plan.tokens)
             .first()
             .copied()
             == Some("you")
@@ -837,17 +1113,17 @@ fn parse_effect_sentences_from_sentence_inputs(
             carried_context = None;
         }
         if sentence_effects.is_empty()
-            && !is_round_up_each_time_sentence(&sentence_tokens)
-            && !is_nonsemantic_restriction_sentence(&sentence_tokens)
+            && !is_round_up_each_time_sentence(&parse_plan.tokens)
+            && !is_nonsemantic_restriction_sentence(&parse_plan.tokens)
         {
             return Err(CardTextError::ParseError(format!(
                 "sentence parsed to no semantic effects (clause: '{}')",
-                crate::cards::builders::compiler::token_word_refs(&sentence_tokens).join(" ")
+                crate::cards::builders::compiler::token_word_refs(&parse_plan.tokens).join(" ")
             )));
         }
         for effect in &mut sentence_effects {
             if let Some(context) = carried_context {
-                maybe_apply_carried_player_with_clause(effect, context, &sentence_tokens);
+                maybe_apply_carried_player_with_clause(effect, context, &parse_plan.tokens);
             }
             if let Some(context) = explicit_player_for_carry(effect) {
                 carried_context = Some(context);
@@ -873,53 +1149,27 @@ fn parse_effect_sentences_from_sentence_inputs(
                 );
             }
         }
-        let sentence_text =
-            crate::cards::builders::compiler::token_word_refs(&sentence_tokens).join(" ");
-        maybe_rewrite_future_zone_replacement_sentence(&mut sentence_effects, &sentence_text);
-        if matches!(
-            classify_instead_followup_text(&sentence_text),
-            InsteadSemantics::SelfReplacement
-        ) && sentence_effects.len() == 1
-            && effects.len() >= 1
         {
-            if matches!(
-                sentence_effects.first(),
-                Some(EffectAst::Conditional { .. })
-            ) {
-                let Some(previous) = effects.pop() else {
-                    return Err(CardTextError::InvariantViolation(
-                        "expected previous effect for 'instead' conditional rewrite".to_string(),
-                    ));
-                };
-                let previous_target = primary_target_from_effect(&previous);
-                let previous_damage_target = primary_damage_target_from_effect(&previous);
-                if let Some(EffectAst::Conditional {
-                    predicate,
-                    mut if_true,
-                    mut if_false,
-                }) = sentence_effects.pop()
-                {
-                    if let Some(target) = previous_target {
-                        replace_it_target_in_effects(&mut if_true, &target);
-                    }
-                    if let Some(target) = previous_damage_target {
-                        replace_it_damage_target_in_effects(&mut if_true, &target);
-                        replace_placeholder_damage_target_in_effects(&mut if_true, &target);
-                    }
-                    if_false.insert(0, previous);
-                    effects.push(EffectAst::SelfReplacement {
-                        predicate,
-                        if_true,
-                        if_false,
-                    });
-                    sentence_idx += 1;
-                    continue;
-                }
+            let mut state = SentenceDispatchState {
+                effects: &mut effects,
+                carried_context: &mut carried_context,
+            };
+            if let Some(PostParseFollowupResult::Handled { consumed_sentences }) =
+                run_post_parse_followup_registry(
+                    &mut state,
+                    &sentences,
+                    sentence_idx,
+                    &parse_plan.tokens,
+                    &mut sentence_effects,
+                )?
+            {
+                sentence_idx += consumed_sentences;
+                continue;
             }
         }
 
         effects.extend(sentence_effects);
-        sentence_idx += 1;
+        sentence_idx += parse_plan.consumed_sentences;
     }
 
     if let Some(last_sentence) = sentences.last() {

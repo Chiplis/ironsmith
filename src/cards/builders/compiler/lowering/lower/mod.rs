@@ -43,11 +43,8 @@ pub(crate) use parser_semantic_lowering::{
     lower_rewrite_triggered_to_chunk,
 };
 pub(crate) use parser_semantic_lowering::{
-    lower_rewrite_divvy_statement_to_chunk, lower_rewrite_empty_laboratory_statement_to_chunk,
-    lower_rewrite_nissas_encouragement_statement_to_chunk, lower_rewrite_pact_statement_to_chunk,
-    lower_rewrite_shape_anew_statement_to_chunk, lower_rewrite_soul_partition_statement_to_chunk,
-    lower_rewrite_statement_to_unsupported_chunk, lower_special_rewrite_triggered_chunk,
-    try_lower_optional_behold_additional_cost, try_lower_optional_cost_with_cast_trigger,
+    lower_special_rewrite_triggered_chunk, try_lower_optional_behold_additional_cost,
+    try_lower_optional_cost_with_cast_trigger,
 };
 #[cfg(test)]
 use parser_semantic_lowering::{

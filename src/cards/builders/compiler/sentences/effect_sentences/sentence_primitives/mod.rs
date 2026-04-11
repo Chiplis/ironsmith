@@ -77,11 +77,17 @@ use winnow::Parser as _;
 
 #[path = "choice_damage_family.rs"]
 mod choice_damage_family;
+mod combat_and_damage_family;
+mod counter_marker_family;
+mod delayed_step_family;
+mod mechanic_marker_family;
+mod registry;
+mod token_copy_control_family;
 
 pub(crate) use choice_damage_family::*;
-include!("registry.rs");
-include!("counter_marker_family.rs");
-include!("token_copy_control_family.rs");
-include!("combat_and_damage_family.rs");
-include!("delayed_step_family.rs");
-include!("mechanic_marker_family.rs");
+pub(crate) use combat_and_damage_family::*;
+pub(crate) use counter_marker_family::*;
+pub(crate) use delayed_step_family::*;
+pub(crate) use mechanic_marker_family::*;
+pub(crate) use registry::*;
+pub(crate) use token_copy_control_family::*;

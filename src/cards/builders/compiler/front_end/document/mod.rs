@@ -1169,6 +1169,22 @@ mod tests {
     }
 
     #[test]
+    fn art_rating_statement_routes_to_unsupported_reason_from_tokens() -> Result<(), CardTextError>
+    {
+        let line = single_preprocessed_line(
+            "Ask a person outside the game to rate its new art on a scale from 1 to 5.",
+        );
+
+        assert!(parse_statement_line_cst(&line)?.is_none());
+        assert_eq!(
+            classify_unsupported_line_reason(&line),
+            "outside-the-game-rating-not-supported"
+        );
+
+        Ok(())
+    }
+
+    #[test]
     fn level_item_cst_stores_parsed_payload() -> Result<(), CardTextError> {
         let line = single_preprocessed_line("Flying");
 
@@ -1931,6 +1947,12 @@ fn classify_unsupported_line_reason(line: &PreprocessedLine) -> &'static str {
     }
     if token_words_have_prefix(classification_tokens, &["choose"]) {
         return "modal-header-not-yet-supported";
+    }
+    if matches!(
+        super::grammar::structure::classify_statement_line_family_lexed(&line.tokens),
+        Some(super::grammar::structure::StatementLineFamily::ArtRating)
+    ) {
+        return "outside-the-game-rating-not-supported";
     }
     if looks_like_statement_line_lexed(line) {
         return "statement-line-not-yet-supported";

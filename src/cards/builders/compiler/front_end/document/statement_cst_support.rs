@@ -23,8 +23,10 @@ pub(super) fn parse_statement_line_cst(
 ) -> Result<Option<StatementLineCst>, CardTextError> {
     let normalized = line.info.normalized.normalized.as_str();
     let line_family = structure::classify_statement_line_family_lexed(&line.tokens);
+    if matches!(line_family, Some(structure::StatementLineFamily::ArtRating)) {
+        return Ok(None);
+    }
     let force_statement = matches!(line_family, Some(structure::StatementLineFamily::Divvy))
-        || matches!(line_family, Some(structure::StatementLineFamily::ArtRating))
         || matches!(
             line_family,
             Some(
@@ -42,14 +44,6 @@ pub(super) fn parse_statement_line_cst(
         return Ok(None);
     }
     if matches!(line_family, Some(structure::StatementLineFamily::Divvy)) {
-        return Ok(Some(StatementLineCst {
-            info: line.info.clone(),
-            text: normalized.to_string(),
-            parse_tokens: line.tokens.clone(),
-            parse_groups: Vec::new(),
-        }));
-    }
-    if matches!(line_family, Some(structure::StatementLineFamily::ArtRating)) {
         return Ok(Some(StatementLineCst {
             info: line.info.clone(),
             text: normalized.to_string(),

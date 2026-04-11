@@ -1,7 +1,9 @@
+use super::*;
+
 pub(crate) fn parse_sentence_sacrifice_at_end_of_combat(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    use super::super::grammar::primitives as grammar;
+    use super::super::super::grammar::primitives as grammar;
 
     // "sacrifice <object> at [the] end of combat"
     let Some(object_tokens) = grammar::strip_lexed_prefix_phrase(tokens, &["sacrifice"]) else {
@@ -78,7 +80,7 @@ pub(crate) fn parse_sentence_for_each_counter_removed(
 pub(crate) fn parse_sentence_for_each_counter_kind_put_or_remove(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    use super::super::grammar::primitives as grammar;
+    use super::super::super::grammar::primitives as grammar;
 
     // "for each kind of counter on <target>, put another counter of that kind on it or remove one from it"
     let Some(after_prefix) =
@@ -86,9 +88,10 @@ pub(crate) fn parse_sentence_for_each_counter_kind_put_or_remove(
     else {
         return Ok(None);
     };
-    let Some((target_tokens, tail_tokens)) =
-        grammar::split_lexed_once_on_delimiter(after_prefix, super::super::lexer::TokenKind::Comma)
-    else {
+    let Some((target_tokens, tail_tokens)) = grammar::split_lexed_once_on_delimiter(
+        after_prefix,
+        super::super::super::lexer::TokenKind::Comma,
+    ) else {
         return Ok(None);
     };
 
@@ -162,7 +165,7 @@ pub(crate) fn parse_put_counter_ladder_segments(
 pub(crate) fn parse_sentence_put_counter_sequence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    use super::super::grammar::primitives as grammar;
+    use super::super::super::grammar::primitives as grammar;
 
     if !tokens.first().is_some_and(|token| token.is_word("put")) {
         return Ok(None);
@@ -365,7 +368,7 @@ pub(crate) fn is_pump_like_effect(effect: &EffectAst) -> bool {
 pub(crate) fn parse_gets_then_fights_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    use super::super::grammar::primitives as grammar;
+    use super::super::super::grammar::primitives as grammar;
 
     let body_tokens = grammar::strip_lexed_prefix_phrase(tokens, &["then"]).unwrap_or(tokens);
     if body_tokens.is_empty() {
@@ -451,7 +454,7 @@ pub(crate) fn parse_return_with_counters_on_it_sentence(
                 "s" | "'" | "’" => None,
                 _ => Some(strip_quoted_possessive_suffix(word)),
             })
-            .filter(|word| !word.is_empty())
+            .filter(|word: &&str| !word.is_empty())
             .collect()
     }
 
@@ -539,7 +542,7 @@ pub(crate) fn parse_return_with_counters_on_it_sentence(
     let delayed_timing = if timing_words.is_empty() {
         None
     } else {
-        super::zone_handlers::parse_delayed_return_timing_words(timing_words)
+        super::super::zone_handlers::parse_delayed_return_timing_words(timing_words)
     };
     if !timing_words.is_empty() && delayed_timing.is_none() {
         return Ok(None);
@@ -589,13 +592,13 @@ pub(crate) fn parse_return_with_counters_on_it_sentence(
 
     let wrapped = if let Some(timing) = delayed_timing {
         match timing {
-            super::zone_handlers::DelayedReturnTimingAst::NextEndStep(player) => {
+            super::super::zone_handlers::DelayedReturnTimingAst::NextEndStep(player) => {
                 vec![EffectAst::DelayedUntilNextEndStep { player, effects }]
             }
-            super::zone_handlers::DelayedReturnTimingAst::NextUpkeep(player) => {
+            super::super::zone_handlers::DelayedReturnTimingAst::NextUpkeep(player) => {
                 vec![EffectAst::DelayedUntilNextUpkeep { player, effects }]
             }
-            super::zone_handlers::DelayedReturnTimingAst::EndOfCombat => {
+            super::super::zone_handlers::DelayedReturnTimingAst::EndOfCombat => {
                 vec![EffectAst::DelayedUntilEndOfCombat { effects }]
             }
         }
@@ -617,7 +620,7 @@ pub(crate) fn parse_put_onto_battlefield_with_counters_on_it_sentence(
                 "s" | "'" | "’" => None,
                 _ => Some(strip_quoted_possessive_suffix(word)),
             })
-            .filter(|word| !word.is_empty())
+            .filter(|word: &&str| !word.is_empty())
             .collect()
     }
 
@@ -856,8 +859,8 @@ pub(crate) fn parse_sentence_draw_then_connive(
 pub(crate) fn parse_if_enters_with_additional_counter_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    use super::super::grammar::primitives as grammar;
-    use super::super::lexer::TokenKind;
+    use super::super::super::grammar::primitives as grammar;
+    use super::super::super::lexer::TokenKind;
 
     // "if <predicate>, it enters with <counter descriptor> on it"
     let Some(after_if) = grammar::strip_lexed_prefix_phrase(tokens, &["if"]) else {
@@ -1012,4 +1015,3 @@ pub(crate) fn parse_each_player_return_with_additional_counter_sentence(
         effects: per_player_effects,
     }]))
 }
-

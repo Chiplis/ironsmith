@@ -78,8 +78,6 @@ pub(crate) mod reference_model;
 pub(crate) mod reference_resolution;
 #[path = "families/restriction_support.rs"]
 pub(crate) mod restriction_support;
-#[path = "lowering/rewrite_exceptions.rs"]
-pub(crate) mod rewrite_exceptions;
 #[path = "front_end/rule_engine.rs"]
 pub(crate) mod rule_engine;
 #[path = "sentences/search_library_support.rs"]
@@ -131,6 +129,7 @@ pub(crate) use grammar::values::{
     parse_count_word_rewrite, parse_mana_cost_rewrite, parse_mana_symbol_group_rewrite,
     parse_type_line_rewrite,
 };
+pub(crate) use ir::RewriteSemanticDocument as LegacySemanticDocument;
 #[cfg(test)]
 pub(crate) use ir::{RewriteKeywordLineKind, RewriteSemanticItem};
 #[cfg(test)]
@@ -168,7 +167,6 @@ pub(crate) use pipeline::parse_text_with_annotations_lowered;
 #[cfg(test)]
 pub(crate) use reference_model::RefState;
 pub(crate) use reference_model::{ReferenceEnv, ReferenceExports, ReferenceImports};
-pub(crate) use ir::RewriteSemanticDocument as LegacySemanticDocument;
 #[cfg(test)]
 pub(crate) use rule_engine::{LexClauseView, RULE_SHAPE_HAS_COMMA, RULE_SHAPE_STARTS_WHENEVER};
 #[cfg(test)]

@@ -17,10 +17,11 @@ use super::zone_handlers::parse_exile_top_library_clause;
 use crate::cards::builders::compiler::effect_sentences;
 use crate::cards::builders::{
     CardTextError, ChoiceCount, EffectAst, IT_TAG, PlayerAst, ReturnControllerAst, TagKey,
-    TargetAst, Verb,
+    TargetAst, TextSpan, Verb,
 };
 use crate::effect::Value;
 use crate::target::{ObjectFilter, PlayerFilter};
+use crate::types::Subtype;
 use crate::zone::Zone;
 
 pub(crate) fn parse_same_sentence_copy_and_may_cast_copy(
@@ -356,9 +357,378 @@ fn parse_choose_objects_then_for_each_of_those_bundle(
     Ok(Some(combined))
 }
 
+fn parser_words(tokens: &[OwnedLexToken]) -> Vec<String> {
+    tokens
+        .iter()
+        .filter(|token| {
+            !matches!(
+                token.kind,
+                TokenKind::Comma | TokenKind::Period | TokenKind::LParen | TokenKind::RParen
+            )
+        })
+        .map(|token| token.parser_text().to_string())
+        .filter(|word| !word.is_empty())
+        .collect()
+}
+
+fn parse_soul_partition_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
+    let sentences = split_lexed_sentences(tokens);
+    if sentences.len() != 3 {
+        return None;
+    }
+
+    let first_words = parser_words(sentences[0]);
+    let second_words = parser_words(sentences[1]);
+    let third_words = parser_words(sentences[2]);
+    let third_word_refs = third_words.iter().map(String::as_str).collect::<Vec<_>>();
+    let mana_word = third_words
+        .iter()
+        .find(|word| *word == "2" || *word == "{2}");
+
+    if first_words.as_slice() != ["exile", "target", "nonland", "permanent"]
+        || second_words.as_slice()
+            != [
+                "for", "as", "long", "as", "that", "card", "remains", "exiled", "its", "owner",
+                "may", "play", "it",
+            ]
+        || !matches!(
+            third_word_refs.as_slice(),
+            [
+                "a",
+                "spell",
+                "cast",
+                "by",
+                "an",
+                "opponent",
+                "this",
+                "way",
+                "costs",
+                _,
+                "more",
+                "to",
+                "cast",
+            ]
+        )
+        || mana_word.is_none()
+    {
+        return None;
+    }
+
+    let first_sentence = sentences.first()?;
+    let mut effects = effect_sentences::parse_effect_sentences_lexed(first_sentence).ok()?;
+    effects.push(EffectAst::GrantBySpec {
+        spec: crate::grant::GrantSpec::new(
+            crate::grant::Grantable::play_from(),
+            crate::filter::ObjectFilter::tagged(crate::cards::builders::TagKey::from(IT_TAG)),
+            Zone::Exile,
+        ),
+        player: crate::cards::builders::PlayerAst::ItsOwner,
+        duration: crate::grant::GrantDuration::Forever,
+    });
+    effects.push(EffectAst::GrantToTarget {
+        target: crate::cards::builders::TargetAst::Tagged(
+            crate::cards::builders::TagKey::from(IT_TAG),
+            None,
+        ),
+        grantable: crate::grant::Grantable::Ability(crate::static_abilities::StaticAbility::new(
+            crate::static_abilities::CostIncreaseManaCost::new(
+                crate::filter::ObjectFilter::spell()
+                    .without_type(crate::types::CardType::Land)
+                    .cast_by(crate::PlayerFilter::Opponent),
+                crate::mana::ManaCost::from_symbols(vec![crate::mana::ManaSymbol::Generic(2)]),
+            ),
+        )),
+        duration: crate::grant::GrantDuration::Forever,
+    });
+    Some(effects)
+}
+
+fn parse_empty_laboratory_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
+    let sentence_words = parser_words(tokens);
+    if sentence_words.as_slice()
+        != [
+            "sacrifice",
+            "x",
+            "zombies",
+            "then",
+            "reveal",
+            "cards",
+            "from",
+            "the",
+            "top",
+            "of",
+            "your",
+            "library",
+            "until",
+            "you",
+            "reveal",
+            "a",
+            "number",
+            "of",
+            "zombie",
+            "creature",
+            "cards",
+            "equal",
+            "to",
+            "the",
+            "number",
+            "of",
+            "zombies",
+            "sacrificed",
+            "this",
+            "way",
+            "put",
+            "those",
+            "cards",
+            "onto",
+            "the",
+            "battlefield",
+            "and",
+            "the",
+            "rest",
+            "on",
+            "the",
+            "bottom",
+            "of",
+            "your",
+            "library",
+            "in",
+            "a",
+            "random",
+            "order",
+        ]
+    {
+        return None;
+    }
+
+    let sacrificed_tag = TagKey::from("sacrificed_0");
+    let revealed_tag = TagKey::from("etl_revealed");
+    let matched_tag = TagKey::from("etl_matched");
+
+    let mut zombie_you_control = ObjectFilter::creature().controlled_by(PlayerFilter::You);
+    zombie_you_control.subtypes.push(Subtype::Zombie);
+
+    let mut zombie_creature_card = ObjectFilter::creature();
+    zombie_creature_card.subtypes.push(Subtype::Zombie);
+    zombie_creature_card.zone = None;
+
+    Some(vec![
+        EffectAst::ChooseObjects {
+            filter: zombie_you_control,
+            count: ChoiceCount::dynamic_x(),
+            count_value: None,
+            player: PlayerAst::You,
+            tag: sacrificed_tag.clone(),
+        },
+        EffectAst::SacrificeAll {
+            filter: ObjectFilter::tagged(sacrificed_tag),
+            player: PlayerAst::You,
+        },
+        EffectAst::ConsultTopOfLibrary {
+            player: PlayerAst::You,
+            mode: crate::cards::builders::LibraryConsultModeAst::Reveal,
+            filter: zombie_creature_card,
+            stop_rule: crate::cards::builders::LibraryConsultStopRuleAst::MatchCount(
+                crate::effect::Value::EventValue(crate::effect::EventValueSpec::Amount),
+            ),
+            all_tag: revealed_tag.clone(),
+            match_tag: matched_tag.clone(),
+        },
+        EffectAst::MoveToZone {
+            target: TargetAst::Tagged(matched_tag.clone(), None),
+            zone: Zone::Battlefield,
+            to_top: false,
+            battlefield_controller: ReturnControllerAst::Preserve,
+            battlefield_tapped: false,
+            attached_to: None,
+        },
+        EffectAst::PutTaggedRemainderOnBottomOfLibrary {
+            tag: revealed_tag,
+            keep_tagged: Some(matched_tag),
+            order: crate::cards::builders::LibraryBottomOrderAst::Random,
+            player: PlayerAst::You,
+        },
+    ])
+}
+
+fn parse_shape_anew_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
+    let sentence_words = parser_words(tokens);
+    if sentence_words.as_slice()
+        != [
+            "the",
+            "controller",
+            "of",
+            "target",
+            "artifact",
+            "sacrifices",
+            "it",
+            "then",
+            "reveals",
+            "cards",
+            "from",
+            "the",
+            "top",
+            "of",
+            "their",
+            "library",
+            "until",
+            "they",
+            "reveal",
+            "an",
+            "artifact",
+            "card",
+            "that",
+            "player",
+            "puts",
+            "that",
+            "card",
+            "onto",
+            "the",
+            "battlefield",
+            "then",
+            "shuffles",
+            "all",
+            "other",
+            "cards",
+            "revealed",
+            "this",
+            "way",
+            "into",
+            "their",
+            "library",
+        ]
+    {
+        return None;
+    }
+
+    let revealed_tag = TagKey::from("shape_anew_revealed");
+    let matched_tag = TagKey::from("shape_anew_matched");
+    let mut artifact_card = ObjectFilter::artifact();
+    artifact_card.zone = None;
+    let target = TargetAst::Object(
+        ObjectFilter::artifact().in_zone(Zone::Battlefield),
+        Some(TextSpan::synthetic()),
+        None,
+    );
+
+    Some(vec![
+        EffectAst::Sacrifice {
+            filter: ObjectFilter::default(),
+            player: PlayerAst::ItsController,
+            count: 1,
+            target: Some(target),
+        },
+        EffectAst::ConsultTopOfLibrary {
+            player: PlayerAst::That,
+            mode: crate::cards::builders::LibraryConsultModeAst::Reveal,
+            filter: artifact_card,
+            stop_rule: crate::cards::builders::LibraryConsultStopRuleAst::FirstMatch,
+            all_tag: revealed_tag,
+            match_tag: matched_tag.clone(),
+        },
+        EffectAst::MoveToZone {
+            target: TargetAst::Tagged(matched_tag, None),
+            zone: Zone::Battlefield,
+            to_top: false,
+            battlefield_controller: ReturnControllerAst::Preserve,
+            battlefield_tapped: false,
+            attached_to: None,
+        },
+        EffectAst::ShuffleLibrary {
+            player: PlayerAst::That,
+        },
+    ])
+}
+
+fn parse_nissas_encouragement_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
+    let sentence_words = parser_words(tokens);
+    if sentence_words.as_slice()
+        != [
+            "search",
+            "your",
+            "library",
+            "and",
+            "graveyard",
+            "for",
+            "a",
+            "card",
+            "named",
+            "forest",
+            "a",
+            "card",
+            "named",
+            "brambleweft",
+            "behemoth",
+            "and",
+            "a",
+            "card",
+            "named",
+            "nissa",
+            "genesis",
+            "mage",
+            "reveal",
+            "those",
+            "cards",
+            "put",
+            "them",
+            "into",
+            "your",
+            "hand",
+            "then",
+            "shuffle",
+        ]
+    {
+        return None;
+    }
+
+    let searched_tag = TagKey::from("searched_named");
+    let zones = vec![Zone::Library, Zone::Graveyard];
+    let names = ["Forest", "Brambleweft Behemoth", "Nissa, Genesis Mage"];
+    let mut effects = Vec::new();
+    for name in names {
+        let mut filter = ObjectFilter::default();
+        filter.name = Some(name.to_string());
+        effects.push(EffectAst::ChooseObjectsAcrossZones {
+            filter,
+            count: ChoiceCount::exactly(1),
+            player: PlayerAst::You,
+            tag: searched_tag.clone(),
+            zones: zones.clone(),
+            search_mode: Some(crate::effect::SearchSelectionMode::Exact),
+        });
+    }
+    effects.push(EffectAst::RevealTagged {
+        tag: searched_tag.clone(),
+    });
+    effects.push(EffectAst::MoveToZone {
+        target: TargetAst::Tagged(searched_tag, None),
+        zone: Zone::Hand,
+        to_top: false,
+        battlefield_controller: ReturnControllerAst::Preserve,
+        battlefield_tapped: false,
+        attached_to: None,
+    });
+    effects.push(EffectAst::ShuffleLibrary {
+        player: PlayerAst::You,
+    });
+    Some(effects)
+}
+
 pub(crate) fn parse_exact_card_effect_bundle_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {
+    if let Some(effects) = parse_soul_partition_bundle(tokens) {
+        return Some(effects);
+    }
+    if let Some(effects) = parse_empty_laboratory_bundle(tokens) {
+        return Some(effects);
+    }
+    if let Some(effects) = parse_shape_anew_bundle(tokens) {
+        return Some(effects);
+    }
+    if let Some(effects) = parse_nissas_encouragement_bundle(tokens) {
+        return Some(effects);
+    }
     let sentences = split_lexed_sentences(tokens);
     if sentences.len() == 2
         && let Ok(Some(effects)) =
