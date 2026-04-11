@@ -1,6 +1,10 @@
 use winnow::Parser as _;
 
 use super::super::clause_support::parse_triggered_line_lexed;
+use super::super::grammar::effects::{
+    split_change_target_clause_lexed, split_change_target_unless_clause_lexed,
+    split_choose_new_targets_clause_lexed,
+};
 use super::super::grammar::primitives as grammar;
 use super::super::lexer::{LexStream, token_word_refs};
 use super::super::lowering_support::rewrite_parsed_triggered_ability as parsed_triggered_ability;
@@ -38,25 +42,6 @@ pub(crate) struct ClausePrimitive {
 }
 
 const CHOSEN_NAME_TAG: &str = "__chosen_name__";
-const CHOOSE_NEW_TARGET_PREFIXES: &[&[&str]] = &[
-    &["choose", "new", "targets", "for"],
-    &["chooses", "new", "targets", "for"],
-    &["choose", "a", "new", "target", "for"],
-    &["chooses", "a", "new", "target", "for"],
-];
-const CHOOSE_NEW_TARGET_REFERENCE_PREFIXES: &[&[&str]] = &[
-    &["it"],
-    &["them"],
-    &["the", "copy"],
-    &["that", "copy"],
-    &["the", "spell"],
-    &["that", "spell"],
-];
-const CHANGE_TARGET_PREFIXES: &[&[&str]] = &[
-    &["change", "the", "target", "of"],
-    &["change", "the", "targets", "of"],
-    &["change", "a", "target", "of"],
-];
 const CHOOSE_CARD_NAME_PREFIXES: &[&[&str]] = &[
     &["choose"],
     &["you", "choose"],
@@ -93,23 +78,11 @@ pub(crate) fn parse_retarget_clause(
 pub(crate) fn parse_choose_new_targets_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let Some((_, mut tail_tokens)) =
-        grammar::strip_lexed_prefix_phrases(tokens, CHOOSE_NEW_TARGET_PREFIXES)
-    else {
+    let Some(split) = split_choose_new_targets_clause_lexed(tokens) else {
         return Ok(None);
     };
-    if tail_tokens.is_empty() {
-        return Err(CardTextError::ParseError(
-            "missing choose-new-targets target".to_string(),
-        ));
-    }
-
-    if let Some(if_idx) = find_token_index(tail_tokens, |token| token.is_word("if")) {
-        tail_tokens = &tail_tokens[..if_idx];
-    }
-
-    if grammar::starts_with_any_phrase(tail_tokens, CHOOSE_NEW_TARGET_REFERENCE_PREFIXES) {
-        let target = TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tail_tokens));
+    if split.reference_target {
+        let target = TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(split.target_tokens));
         return Ok(Some(EffectAst::RetargetStackObject {
             target,
             mode: RetargetModeAst::All,
@@ -117,34 +90,28 @@ pub(crate) fn parse_choose_new_targets_clause(
             require_change: false,
         }));
     }
+    let tail_tokens = split.target_tokens;
+    if tail_tokens.is_empty() {
+        return Err(CardTextError::ParseError(
+            "missing choose-new-targets target".to_string(),
+        ));
+    }
 
-    let (count, base_tokens, explicit_target) = if let Some((prefix, rest)) =
-        grammar::strip_lexed_prefix_phrases(tail_tokens, &[&["any", "number", "of"], &["target"]])
-    {
-        if prefix.len() == 3 {
-            (Some(ChoiceCount::any_number()), rest, false)
-        } else {
-            (None, rest, true)
-        }
-    } else {
-        (None, tail_tokens, false)
-    };
-
-    let mut filter = parse_stack_retarget_filter(base_tokens)?;
-    if base_tokens.iter().any(|token| token.is_word("other")) {
+    let mut filter = parse_stack_retarget_filter(tail_tokens)?;
+    if tail_tokens.iter().any(|token| token.is_word("other")) {
         filter.other = true;
     }
 
     let mut target = TargetAst::Object(
         filter,
-        if explicit_target {
+        if split.explicit_target {
             span_from_tokens(tail_tokens)
         } else {
             None
         },
         None,
     );
-    if let Some(count) = count {
+    if let Some(count) = split.count {
         target = TargetAst::WithCount(Box::new(target), count);
     }
 
@@ -164,14 +131,7 @@ pub(crate) fn parse_change_target_clause(
         return Ok(None);
     }
 
-    if let Some((main_slice, unless_slice)) =
-        super::super::grammar::primitives::split_lexed_once_on_separator(tokens, || {
-            use winnow::Parser as _;
-            super::super::grammar::primitives::kw("unless").void()
-        })
-    {
-        let main_tokens = trim_commas(main_slice);
-        let unless_tokens = trim_commas(unless_slice);
+    if let Some((main_tokens, unless_tokens)) = split_change_target_unless_clause_lexed(tokens) {
         let Some(inner) = parse_change_target_clause_inner(&main_tokens)? else {
             return Ok(None);
         };
@@ -189,32 +149,16 @@ pub(crate) fn parse_change_target_clause(
 pub(crate) fn parse_change_target_clause_inner(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let Some((_, after_prefix_tokens)) =
-        grammar::strip_lexed_prefix_phrases(tokens, CHANGE_TARGET_PREFIXES)
-    else {
+    let Some(split) = split_change_target_clause_lexed(tokens) else {
         return Ok(None);
     };
-
-    if after_prefix_tokens.is_empty() {
+    if split.target_tokens.is_empty() {
         return Err(CardTextError::ParseError(
             "missing target after change-the-target clause".to_string(),
         ));
     }
 
-    let mut tail_tokens = trim_commas(after_prefix_tokens).to_vec();
-    let mut fixed_target: Option<TargetAst> = None;
-    if let Some((before_to, to_tail)) =
-        super::super::grammar::primitives::split_lexed_once_on_separator(&tail_tokens, || {
-            use winnow::Parser as _;
-            super::super::grammar::primitives::kw("to").void()
-        })
-    {
-        if to_tail.first().is_some_and(|t| t.is_word("this")) {
-            fixed_target = Some(TargetAst::Source(span_from_tokens(to_tail)));
-            tail_tokens.truncate(before_to.len());
-        }
-    }
-
+    let tail_tokens = split.target_tokens;
     let mut filter = parse_stack_retarget_filter(&tail_tokens)?;
 
     if grammar::words_find_phrase(&tail_tokens, &["with", "a", "single", "target"]).is_some() {
@@ -256,8 +200,10 @@ pub(crate) fn parse_change_target_clause_inner(
 
     let target = TargetAst::Object(filter, span_from_tokens(tokens), None);
 
-    let mode = if let Some(fixed) = fixed_target {
-        RetargetModeAst::OneToFixed { target: fixed }
+    let mode = if split.fixed_to_source {
+        RetargetModeAst::OneToFixed {
+            target: TargetAst::Source(span_from_tokens(tokens)),
+        }
     } else {
         RetargetModeAst::All
     };

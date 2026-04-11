@@ -1,9 +1,5 @@
 type DispatchInnerNormalizedWords<'a> = TokenWordView<'a>;
 
-fn contains_dispatch_inner_phrase(words: &[&str], phrase: &[&str]) -> bool {
-    find_dispatch_inner_phrase_start(words, phrase).is_some()
-}
-
 fn find_dispatch_inner_phrase_start(words: &[&str], phrase: &[&str]) -> Option<usize> {
     find_word_slice_phrase_start(words, phrase)
 }
@@ -49,12 +45,6 @@ fn contains_word_window(words: &[&str], pattern: &[&str]) -> bool {
     false
 }
 
-fn contains_any_word_window(words: &[&str], patterns: &[&[&str]]) -> bool {
-    patterns
-        .iter()
-        .any(|pattern| contains_word_window(words, pattern))
-}
-
 fn starts_with_words(words: &[&str], prefix: &[&str]) -> bool {
     words.len() >= prefix.len()
         && words[..prefix.len()]
@@ -70,7 +60,7 @@ fn parse_next_spell_grant_sentence_lexed(
 }
 
 pub(super) fn sentence_has_enters_as_copy_rule_lexed(view: &LexClauseView<'_>) -> bool {
-    is_enters_as_copy_clause_tokens(view.tokens)
+    effect_grammar::is_enters_as_copy_clause_lexed(view.tokens)
 }
 
 sentence_unsupported_adapters_lexed!(
@@ -193,273 +183,164 @@ sentence_unsupported_adapters_lexed!(
 );
 
 pub(super) fn sentence_looks_like_supported_negated_untap_clause(tokens: &[OwnedLexToken]) -> bool {
-    let words_storage = normalize_cant_words(tokens);
-    let words = words_storage.iter().map(String::as_str).collect::<Vec<_>>();
-    let has_negated_untap = find_window_by(&words, 3, |window| {
-        window == ["dont", "untap", "during"] || window == ["doesnt", "untap", "during"]
-    })
-    .is_some();
-    let has_controllers_untap_step = find_window_by(&words, 3, |window| {
-        window == ["controllers", "untap", "step"] || window == ["controllers", "untap", "steps"]
-    })
-    .is_some();
-    let has_tapped_duration = contains_dispatch_inner_phrase(&words, &["for", "as", "long", "as"])
-        && slice_contains(&words, &"remains")
-        && slice_contains(&words, &"tapped");
-    has_negated_untap && has_controllers_untap_step && has_tapped_duration
+    effect_grammar::looks_like_supported_negated_untap_clause_lexed(tokens)
 }
 
 fn sentence_has_each_player_lose_discard_sacrifice_chain(
     _: &[&str],
     tokens: &[OwnedLexToken],
 ) -> bool {
-    grammar::words_match_any_prefix(tokens, EACH_PLAYER_PREFIXES).is_some()
-        && grammar::contains_word(tokens, "then")
-        && (grammar::contains_word(tokens, "lose") || grammar::contains_word(tokens, "loses"))
-        && (grammar::contains_word(tokens, "discard") || grammar::contains_word(tokens, "discards"))
-        && (grammar::contains_word(tokens, "sacrifice")
-            || grammar::contains_word(tokens, "sacrifices"))
+    effect_grammar::has_each_player_lose_discard_sacrifice_chain_sentence_lexed(tokens)
 }
 
 fn sentence_has_each_player_exile_sacrifice_return_exiled_clause(
     _: &[&str],
     tokens: &[OwnedLexToken],
 ) -> bool {
-    grammar::words_match_any_prefix(tokens, EACH_PLAYER_EXILES_ALL_PREFIXES).is_some()
-        && grammar::contains_word(tokens, "sacrifices")
-        && grammar::contains_word(tokens, "puts")
-        && grammar::contains_word(tokens, "exiled")
-        && grammar::contains_word(tokens, "this")
-        && grammar::contains_word(tokens, "way")
+    effect_grammar::has_each_player_exile_sacrifice_return_exiled_clause_sentence_lexed(tokens)
 }
 
 fn sentence_has_put_one_of_them_into_hand_rest_clause(
     _: &[&str],
     tokens: &[OwnedLexToken],
 ) -> bool {
-    grammar::words_find_phrase(tokens, &["one", "of", "them", "into", "your"]).is_some()
-        && grammar::contains_word(tokens, "rest")
-        && (grammar::contains_word(tokens, "graveyard")
-            || grammar::contains_word(tokens, "graveyards"))
+    effect_grammar::has_put_one_of_them_into_hand_rest_clause_sentence_lexed(tokens)
 }
 
 fn sentence_has_loses_all_abilities_with_becomes_clause(
     _: &[&str],
     tokens: &[OwnedLexToken],
 ) -> bool {
-    let has_loses_all_abilities = (grammar::contains_word(tokens, "lose")
-        || grammar::contains_word(tokens, "loses"))
-        && grammar::words_find_phrase(tokens, &["all", "abilities"]).is_some();
-    has_loses_all_abilities && grammar::contains_word(tokens, "becomes")
+    effect_grammar::has_loses_all_abilities_with_becomes_clause_sentence_lexed(tokens)
 }
 
 fn sentence_has_spent_to_cast_this_spell_without_condition(
     _: &[&str],
     tokens: &[OwnedLexToken],
 ) -> bool {
-    let has_spent_to_cast_this_spell =
-        grammar::words_find_phrase(tokens, &["was", "spent", "to", "cast", "this", "spell"])
-            .is_some();
-    has_spent_to_cast_this_spell
-        && !grammar::contains_word(tokens, "if")
-        && !grammar::contains_word(tokens, "unless")
+    effect_grammar::has_spent_to_cast_this_spell_without_condition_sentence_lexed(tokens)
 }
 
 fn sentence_has_would_enter_instead_replacement_clause(
     _: &[&str],
     tokens: &[OwnedLexToken],
 ) -> bool {
-    grammar::contains_word(tokens, "would")
-        && (grammar::contains_word(tokens, "enter") || grammar::contains_word(tokens, "enters"))
-        && grammar::contains_word(tokens, "instead")
+    effect_grammar::has_would_enter_instead_replacement_clause_sentence_lexed(tokens)
 }
 
 fn sentence_has_different_mana_value_constraint(_: &[&str], tokens: &[OwnedLexToken]) -> bool {
-    grammar::words_find_phrase(tokens, &["different", "mana", "value"]).is_some()
+    effect_grammar::has_different_mana_value_constraint_sentence_lexed(tokens)
 }
 
 fn sentence_has_most_common_color_constraint(_: &[&str], tokens: &[OwnedLexToken]) -> bool {
-    grammar::words_find_phrase(tokens, &["most", "common", "color", "among", "all"]).is_some()
-        && grammar::contains_word(tokens, "permanents")
+    effect_grammar::has_most_common_color_constraint_sentence_lexed(tokens)
 }
 
 fn sentence_has_power_vs_count_constraint(_: &[&str], tokens: &[OwnedLexToken]) -> bool {
-    grammar::contains_word(tokens, "power")
-        && grammar::words_find_phrase(
-            tokens,
-            &["less", "than", "or", "equal", "to", "the", "number", "of"],
-        )
-        .is_some()
+    effect_grammar::has_power_vs_count_constraint_sentence_lexed(tokens)
 }
 
 fn sentence_has_put_into_graveyards_from_battlefield_this_turn(
     _: &[&str],
     tokens: &[OwnedLexToken],
 ) -> bool {
-    grammar::words_find_phrase(
-        tokens,
-        &[
-            "put",
-            "into",
-            "graveyards",
-            "from",
-            "the",
-            "battlefield",
-            "this",
-            "turn",
-        ],
-    )
-    .is_some()
+    effect_grammar::has_put_into_graveyards_from_battlefield_this_turn_sentence_lexed(tokens)
 }
 
 fn sentence_has_phase_out_until_leaves_clause(_: &[&str], tokens: &[OwnedLexToken]) -> bool {
-    (grammar::contains_word(tokens, "phase")
-        || grammar::contains_word(tokens, "phases")
-        || grammar::contains_word(tokens, "phased"))
-        && grammar::contains_word(tokens, "until")
-        && grammar::words_find_phrase(tokens, &["leaves", "the", "battlefield"]).is_some()
+    effect_grammar::has_phase_out_until_leaves_clause_sentence_lexed(tokens)
 }
 
 fn sentence_has_same_name_as_another_in_hand_clause(_: &[&str], tokens: &[OwnedLexToken]) -> bool {
-    grammar::words_find_phrase(tokens, &["same", "name", "as", "another", "card", "in"]).is_some()
-        && grammar::contains_word(tokens, "hand")
+    effect_grammar::has_same_name_as_another_in_hand_clause_sentence_lexed(tokens)
 }
 
 fn sentence_has_for_each_mana_from_spent_to_cast_clause(
     _: &[&str],
     tokens: &[OwnedLexToken],
 ) -> bool {
-    grammar::words_find_phrase(tokens, &["for", "each", "mana", "from"]).is_some()
-        && grammar::contains_word(tokens, "spent")
-        && grammar::words_find_phrase(tokens, &["cast", "this", "spell", "create"]).is_some()
+    effect_grammar::has_for_each_mana_from_spent_to_cast_clause_sentence_lexed(tokens)
 }
 
 fn sentence_has_when_you_sacrifice_this_way_clause(_: &[&str], tokens: &[OwnedLexToken]) -> bool {
-    grammar::words_find_phrase(tokens, &["when", "you", "sacrifice"]).is_some()
-        && grammar::words_find_phrase(tokens, &["this", "way"]).is_some()
+    effect_grammar::has_when_you_sacrifice_this_way_clause_sentence_lexed(tokens)
 }
 
 fn sentence_has_sacrifice_any_number_then_draw_that_many_clause(
     words: &[&str],
     tokens: &[OwnedLexToken],
 ) -> bool {
-    (grammar::contains_word(tokens, "sacrifice") || grammar::contains_word(tokens, "sacrifices"))
-        && contains_word_window(words, &["any", "number", "of"])
-        && (grammar::contains_word(tokens, "draw") || grammar::contains_word(tokens, "draws"))
-        && contains_word_window(words, &["that", "many"])
+    effect_grammar::has_sacrifice_any_number_then_draw_that_many_clause_sentence_lexed(
+        words, tokens,
+    )
 }
 
 fn sentence_has_greatest_mana_value_clause(words: &[&str], _: &[OwnedLexToken]) -> bool {
-    contains_word_window(words, &["greatest", "mana", "value"])
+    effect_grammar::has_greatest_mana_value_clause_sentence_lexed(words)
 }
 
 fn sentence_has_least_power_among_creatures_clause(words: &[&str], _: &[OwnedLexToken]) -> bool {
-    contains_word_window(words, &["least", "power", "among", "creatures"])
+    effect_grammar::has_least_power_among_creatures_clause_sentence_lexed(words)
 }
 
 fn sentence_has_villainous_choice_clause(_: &[&str], tokens: &[OwnedLexToken]) -> bool {
-    grammar::contains_word(tokens, "villainous") && grammar::contains_word(tokens, "choice")
+    effect_grammar::has_villainous_choice_clause_sentence_lexed(tokens)
 }
 
 fn sentence_has_divided_evenly_clause(words: &[&str], _: &[OwnedLexToken]) -> bool {
-    contains_word_window(words, &["divided", "evenly"])
+    effect_grammar::has_divided_evenly_clause_sentence_lexed(words)
 }
 
 fn sentence_has_different_names_clause(words: &[&str], _: &[OwnedLexToken]) -> bool {
-    contains_word_window(words, &["different", "names"])
+    effect_grammar::has_different_names_clause_sentence_lexed(words)
 }
 
 fn sentence_has_chosen_at_random_clause(words: &[&str], _: &[OwnedLexToken]) -> bool {
-    contains_word_window(words, &["chosen", "at", "random"])
+    effect_grammar::has_chosen_at_random_clause_sentence_lexed(words)
 }
 
 fn sentence_has_defending_players_choice_clause(_: &[&str], tokens: &[OwnedLexToken]) -> bool {
-    grammar::words_find_phrase(tokens, &["defending", "player's", "choice"]).is_some()
-        || grammar::words_find_phrase(tokens, &["defending", "player", "choice"]).is_some()
-        || grammar::words_find_phrase(tokens, &["player's", "choice", "target"]).is_some()
-        || grammar::words_find_phrase(tokens, &["defending", "player", "s", "choice"]).is_some()
+    effect_grammar::has_defending_players_choice_clause_sentence_lexed(tokens)
 }
 
 fn sentence_has_target_creature_token_player_planeswalker_clause(
     _: &[&str],
     tokens: &[OwnedLexToken],
 ) -> bool {
-    grammar::contains_word(tokens, "target")
-        && grammar::contains_word(tokens, "creature")
-        && grammar::contains_word(tokens, "token")
-        && grammar::contains_word(tokens, "player")
-        && grammar::contains_word(tokens, "planeswalker")
+    effect_grammar::has_target_creature_token_player_planeswalker_clause_sentence_lexed(tokens)
 }
 
 fn sentence_has_if_you_sacrifice_an_island_this_way_clause(
     words: &[&str],
     _: &[OwnedLexToken],
 ) -> bool {
-    contains_word_window(words, &["if", "you", "sacrifice", "an", "island"])
-        && contains_word_window(words, &["this", "way"])
+    effect_grammar::has_if_you_sacrifice_an_island_this_way_clause_sentence_lexed(words)
 }
 
 fn sentence_has_spent_to_cast_clause(words: &[&str], _: &[OwnedLexToken]) -> bool {
-    contains_word_window(words, &["spent", "to", "cast"])
+    effect_grammar::has_spent_to_cast_clause_sentence_lexed(words)
 }
 
 fn sentence_has_face_down_clause(words: &[&str], tokens: &[OwnedLexToken]) -> bool {
-    let has_face_down = contains_word_window(words, &["face", "down"])
-        || words
-            .iter()
-            .any(|word| matches!(*word, "face-down" | "facedown"));
-    if !has_face_down {
-        return false;
-    }
-
-    // Simple "exile ... face down" clauses are handled by the generic exile
-    // parser; keep rejecting broader manifest/pile patterns here.
-    let simple_exile_face_down = grammar::words_match_any_prefix(tokens, EXILE_PREFIXES).is_some()
-        && !grammar::contains_word(tokens, "then")
-        && !grammar::contains_word(tokens, "manifest")
-        && !grammar::contains_word(tokens, "pile");
-    !simple_exile_face_down
+    effect_grammar::has_face_down_clause_sentence_lexed(words, tokens)
 }
 
 fn sentence_has_copy_spell_legendary_exception_clause(
     _: &[&str],
     tokens: &[OwnedLexToken],
 ) -> bool {
-    grammar::contains_word(tokens, "copy")
-        && grammar::contains_word(tokens, "spell")
-        && grammar::contains_word(tokens, "legendary")
-        && (grammar::contains_word(tokens, "except") || grammar::contains_word(tokens, "isnt"))
+    effect_grammar::has_copy_spell_legendary_exception_clause_sentence_lexed(tokens)
 }
 
 fn sentence_has_return_each_creature_that_isnt_list_clause(
     _: &[&str],
     tokens: &[OwnedLexToken],
 ) -> bool {
-    grammar::words_match_any_prefix(tokens, RETURN_EACH_CREATURE_ISNT_PREFIXES).is_some()
-        && grammar::contains_word(tokens, "or")
+    effect_grammar::has_return_each_creature_that_isnt_list_clause_sentence_lexed(tokens)
 }
 
 fn sentence_has_unsupported_negated_untap_clause(_: &[&str], tokens: &[OwnedLexToken]) -> bool {
-    let has_supported_control_duration =
-        grammar::words_find_phrase(tokens, &["for", "as", "long", "as", "you", "control"])
-            .is_some();
-    let has_supported_source_tapped_duration =
-        grammar::words_find_phrase(tokens, &["for", "as", "long", "as"]).is_some()
-            && grammar::contains_word(tokens, "remains")
-            && grammar::contains_word(tokens, "tapped")
-            && (grammar::contains_word(tokens, "this")
-                || grammar::contains_word(tokens, "thiss")
-                || grammar::contains_word(tokens, "source")
-                || grammar::contains_word(tokens, "artifact")
-                || grammar::contains_word(tokens, "creature")
-                || grammar::contains_word(tokens, "permanent"));
-    is_negated_untap_clause_tokens(tokens)
-        && !grammar::contains_word(tokens, "and")
-        && !grammar::contains_word(tokens, "next")
-        && !has_supported_control_duration
-        && !has_supported_source_tapped_duration
-        && grammar::contains_word(tokens, "during")
-        && (grammar::contains_word(tokens, "step") || grammar::contains_word(tokens, "steps"))
+    effect_grammar::has_unsupported_negated_untap_clause_sentence_lexed(tokens)
 }
 
 pub(crate) fn parse_effect_sentence_lexed(
@@ -753,4 +634,3 @@ fn parse_effect_sentence_with_where_x_lexed(
     }
     Ok(effects)
 }
-

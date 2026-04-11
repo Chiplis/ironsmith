@@ -23,6 +23,14 @@ use super::cst::{
     UnsupportedLineCst,
 };
 use super::cst_lowering::lower_non_metadata_rewrite_line_cst;
+use super::grammar::abilities::{
+    is_activate_only_once_each_turn_line_lexed,
+    is_doesnt_untap_during_your_untap_step_line_lexed,
+    is_land_reveal_enters_static_line_lexed,
+    is_land_reveal_enters_tapped_followup_line_lexed,
+    is_opening_hand_begin_game_static_line_lexed, is_ward_or_echo_static_prefix_line_lexed,
+    split_nested_combat_whenever_clause_lexed,
+};
 use super::grammar::primitives as grammar;
 use super::grammar::structure::split_lexed_sentences;
 use super::ir::{RewriteSemanticDocument, RewriteSemanticItem};
@@ -162,105 +170,6 @@ fn line_starts_with_trigger_intro_tokens(tokens: &[OwnedLexToken]) -> bool {
     parse_trigger_intro_tokens(tokens).is_some()
 }
 
-fn nested_combat_whenever_clause_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
-    let (_, after_intro) = grammar::parse_prefix(
-        tokens,
-        grammar::phrase(&["at", "the", "beginning", "of", "each", "combat"]),
-    )?;
-    let after_unless = trim_lexed_commas(after_intro);
-    let (_, after_pay) =
-        grammar::parse_prefix(after_unless, grammar::phrase(&["unless", "you", "pay"]))?;
-    let (_, nested_trigger_tokens) = grammar::split_lexed_once_on_comma(after_pay)?;
-    nested_trigger_tokens
-        .first()
-        .is_some_and(|token| token.is_word("whenever"))
-        .then_some(nested_trigger_tokens)
-}
-
-fn is_activate_only_once_each_turn_tokens(tokens: &[OwnedLexToken]) -> bool {
-    let Some((_, rest)) = grammar::parse_prefix(
-        tokens,
-        grammar::phrase(&["activate", "only", "once", "each", "turn"]),
-    ) else {
-        return false;
-    };
-    grammar::parse_prefix(rest, grammar::end_of_sentence_or_block())
-        .is_some_and(|(_, remainder)| remainder.is_empty())
-}
-
-fn is_doesnt_untap_during_your_untap_step_tokens(tokens: &[OwnedLexToken]) -> bool {
-    let Some((_, head_tokens)) = grammar::strip_lexed_suffix_phrases(
-        tokens,
-        &[&["untap", "during", "your", "untap", "step"]],
-    ) else {
-        return false;
-    };
-
-    let head_tokens = trim_lexed_commas(head_tokens);
-    if head_tokens.is_empty() {
-        return false;
-    }
-
-    grammar::find_prefix(head_tokens, || {
-        winnow::combinator::alt((
-            grammar::kw("don't").void(),
-            grammar::kw("dont").void(),
-            grammar::kw("doesn't").void(),
-            grammar::kw("doesnt").void(),
-            (grammar::kw("do"), grammar::kw("not")).void(),
-            (grammar::kw("does"), grammar::kw("not")).void(),
-        ))
-    })
-    .is_some()
-}
-
-fn parse_dont_word<'a>(input: &mut LexStream<'a>) -> WResult<()> {
-    winnow::combinator::alt((grammar::kw("don't"), grammar::kw("dont")))
-        .void()
-        .parse_next(input)
-}
-
-fn is_ward_or_echo_static_prefix_tokens(tokens: &[OwnedLexToken]) -> bool {
-    grammar::parse_prefix(
-        tokens,
-        winnow::combinator::alt((grammar::kw("ward"), grammar::kw("echo"))),
-    )
-    .is_some()
-}
-
-fn is_land_reveal_enters_static_tokens(tokens: &[OwnedLexToken]) -> bool {
-    grammar::parse_prefix(tokens, grammar::phrase(&["as", "this", "land", "enters"])).is_some()
-        && grammar::contains_phrase(tokens, &["you", "may", "reveal"])
-        && grammar::contains_phrase(tokens, &["from", "your", "hand"])
-}
-
-fn is_land_reveal_enters_tapped_followup_tokens(tokens: &[OwnedLexToken]) -> bool {
-    grammar::parse_prefix(tokens, |input: &mut LexStream<'_>| {
-        (
-            grammar::phrase(&["if", "you"]),
-            parse_dont_word,
-            winnow::combinator::opt(grammar::comma()),
-            winnow::combinator::alt((
-                grammar::phrase(&["this", "land", "enters", "tapped"]),
-                grammar::phrase(&["it", "enters", "tapped"]),
-            )),
-        )
-            .void()
-            .parse_next(input)
-    })
-    .is_some()
-}
-
-fn is_opening_hand_begin_game_static_tokens(tokens: &[OwnedLexToken]) -> bool {
-    grammar::parse_prefix(
-        tokens,
-        grammar::phrase(&["if", "this", "card", "is", "in", "your", "opening", "hand"]),
-    )
-    .is_some()
-        && grammar::contains_phrase(tokens, &["you", "may", "begin", "the", "game", "with"])
-        && grammar::contains_phrase(tokens, &["on", "the", "battlefield"])
-}
-
 fn is_if_you_do_exile_followup_tokens(tokens: &[OwnedLexToken]) -> bool {
     grammar::parse_prefix(tokens, |input: &mut LexStream<'_>| {
         (
@@ -278,9 +187,9 @@ fn should_try_combined_static_tokens(
     line_tokens: &[OwnedLexToken],
     next_line_tokens: &[OwnedLexToken],
 ) -> bool {
-    (is_land_reveal_enters_static_tokens(line_tokens)
-        && is_land_reveal_enters_tapped_followup_tokens(next_line_tokens))
-        || (is_opening_hand_begin_game_static_tokens(line_tokens)
+    (is_land_reveal_enters_static_line_lexed(line_tokens)
+        && is_land_reveal_enters_tapped_followup_line_lexed(next_line_tokens))
+        || (is_opening_hand_begin_game_static_line_lexed(line_tokens)
             && is_if_you_do_exile_followup_tokens(next_line_tokens))
 }
 
@@ -898,10 +807,12 @@ mod tests {
     };
     use super::{
         PreprocessedItem, TriggeredSplitProbe, classify_unsupported_line_reason,
-        diagnose_known_unsupported_rewrite_line, is_doesnt_untap_during_your_untap_step_tokens,
-        is_if_you_do_exile_followup_tokens, is_land_reveal_enters_static_tokens,
-        is_land_reveal_enters_tapped_followup_tokens, is_opening_hand_begin_game_static_tokens,
-        is_ward_or_echo_static_prefix_tokens, lex_line, looks_like_statement_line,
+        diagnose_known_unsupported_rewrite_line,
+        is_doesnt_untap_during_your_untap_step_line_lexed, is_if_you_do_exile_followup_tokens,
+        is_land_reveal_enters_static_line_lexed,
+        is_land_reveal_enters_tapped_followup_line_lexed,
+        is_opening_hand_begin_game_static_line_lexed, is_ward_or_echo_static_prefix_line_lexed,
+        lex_line, looks_like_statement_line,
         looks_like_statement_line_lexed, looks_like_static_line, looks_like_static_line_lexed,
         normalize_statement_parse_groups_lexed,
         normalize_trailing_keyword_activation_sentence_lexed,
@@ -1049,8 +960,8 @@ mod tests {
         let echo =
             lex_line("Echo {2}{R}", 0).expect("rewrite lexer should classify echo static prefix");
 
-        assert!(is_ward_or_echo_static_prefix_tokens(&ward));
-        assert!(is_ward_or_echo_static_prefix_tokens(&echo));
+        assert!(is_ward_or_echo_static_prefix_line_lexed(&ward));
+        assert!(is_ward_or_echo_static_prefix_line_lexed(&echo));
     }
 
     #[test]
@@ -1063,8 +974,8 @@ mod tests {
         let second = lex_line("If you don't, it enters tapped.", 0)
             .expect("rewrite lexer should classify followup static line");
 
-        assert!(is_land_reveal_enters_static_tokens(&first));
-        assert!(is_land_reveal_enters_tapped_followup_tokens(&second));
+        assert!(is_land_reveal_enters_static_line_lexed(&first));
+        assert!(is_land_reveal_enters_tapped_followup_line_lexed(&second));
     }
 
     #[test]
@@ -1077,7 +988,7 @@ mod tests {
         let second = lex_line("If you do exile a card from your hand.", 0)
             .expect("rewrite lexer should classify if-you-do followup line");
 
-        assert!(is_opening_hand_begin_game_static_tokens(&first));
+        assert!(is_opening_hand_begin_game_static_line_lexed(&first));
         assert!(is_if_you_do_exile_followup_tokens(&second));
     }
 
@@ -1733,14 +1644,14 @@ mod tests {
     fn untap_shape_probes_recognize_expected_token_patterns() {
         let your_step = lex_line("Lands you control don't untap during your untap step.", 0)
             .expect("rewrite lexer should classify your-untap-step probe");
-        assert!(is_doesnt_untap_during_your_untap_step_tokens(&your_step));
+        assert!(is_doesnt_untap_during_your_untap_step_line_lexed(&your_step));
 
         let your_step_do_not = lex_line(
             "Artifacts you control do not untap during your untap step.",
             0,
         )
         .expect("rewrite lexer should classify do-not untap-step probe");
-        assert!(is_doesnt_untap_during_your_untap_step_tokens(
+        assert!(is_doesnt_untap_during_your_untap_step_line_lexed(
             &your_step_do_not
         ));
 

@@ -2,7 +2,10 @@ use super::super::activation_and_restrictions::activated_line_core::{
     is_activate_only_restriction_sentence_lexed, is_trigger_only_restriction_sentence_lexed,
 };
 use super::super::clause_support::parse_trigger_clause_lexed;
-use super::super::grammar::effects::parse_conditional_sentence_family_lexed;
+use super::super::grammar::effects as effect_grammar;
+use super::super::grammar::effects::{
+    parse_conditional_sentence_family_lexed, split_labeled_effect_prefix_lexed,
+};
 use super::super::grammar::primitives::{
     self as grammar, TokenWordView, split_lexed_slices_on_and, split_lexed_slices_on_comma,
     split_lexed_slices_on_commas_or_semicolons,
@@ -46,15 +49,6 @@ use crate::target::{
 use crate::types::CardType;
 use crate::zone::Zone;
 
-const EACH_PLAYER_PREFIXES: &[&[&str]] = &[&["each", "player"]];
-const EACH_PLAYER_EXILES_ALL_PREFIXES: &[&[&str]] = &[&["each", "player", "exiles", "all"]];
-const PREVENT_DAMAGE_BY_PREFIXES: &[&[&str]] = &[&["that", "would", "be", "dealt", "by"]];
-const PREVENT_DAMAGE_TO_AND_BY_PREFIXES: &[&[&str]] =
-    &[&["that", "would", "be", "dealt", "to", "and", "dealt", "by"]];
-const PREVENT_DAMAGE_TO_PREFIXES: &[&[&str]] = &[&["that", "would", "be", "dealt", "to"]];
-const EXILE_PREFIXES: &[&[&str]] = &[&["exile"]];
-const RETURN_EACH_CREATURE_ISNT_PREFIXES: &[&[&str]] =
-    &[&["return", "each", "creature", "that", "isnt"]];
 const EXILE_ALL_CARDS_FROM_PREFIXES: &[&[&str]] = &[&["exile", "all", "cards", "from"]];
 include!("sentence_shape_predicates.rs");
 include!("labeled_prefixes.rs");

@@ -34,7 +34,8 @@ pub(super) fn parse_triggered_line_cst(
         return Err(err);
     }
 
-    if let Some(nested_trigger_tokens) = nested_combat_whenever_clause_tokens(tokens_without_cap) {
+    if let Some(nested_trigger_tokens) = split_nested_combat_whenever_clause_lexed(tokens_without_cap)
+    {
         let nested_line = rewrite_line_tokens(line, nested_trigger_tokens);
         if let Ok(parsed) = parse_triggered_line_cst(&nested_line) {
             return Ok(parsed);
@@ -216,7 +217,7 @@ pub(super) fn parse_static_line_cst(
             return Ok(Some(make_static(None)));
         }
     }
-    if is_doesnt_untap_during_your_untap_step_tokens(&lexed) {
+    if is_doesnt_untap_during_your_untap_step_line_lexed(&lexed) {
         return Ok(Some(make_static(None)));
     }
     if matches!(
@@ -230,7 +231,7 @@ pub(super) fn parse_static_line_cst(
         return Ok(Some(make_static(None)));
     }
 
-    if is_activate_only_once_each_turn_tokens(&lexed) {
+    if is_activate_only_once_each_turn_line_lexed(&lexed) {
         return Ok(Some(make_static(None)));
     }
 

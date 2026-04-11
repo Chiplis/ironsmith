@@ -1,6 +1,11 @@
 use super::super::activation_and_restrictions::activated_line_core::{
     contains_word_sequence, find_word_sequence_start, parse_named_number,
 };
+use super::super::grammar::effects as effect_grammar;
+use super::super::grammar::effects::{
+    split_for_each_opponent_doesnt_clause_lexed, split_for_each_player_doesnt_clause_lexed,
+    split_negated_who_this_way_filter_tokens_lexed,
+};
 use super::super::grammar::primitives as grammar;
 use super::super::grammar::values as shared_values;
 use super::super::lexer::OwnedLexToken;
@@ -26,20 +31,6 @@ use crate::mana::{ManaCost, ManaSymbol};
 use crate::target::{ObjectFilter, PlayerFilter, TaggedOpbjectRelation};
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
-
-const FOR_EACH_OPPONENT_PREFIXES: &[&[&str]] = &[
-    &["for", "each", "opponent"],
-    &["for", "each", "opponents"],
-    &["each", "opponent"],
-    &["each", "opponents"],
-];
-
-const FOR_EACH_PLAYER_PREFIXES: &[&[&str]] = &[
-    &["for", "each", "player"],
-    &["for", "each", "players"],
-    &["each", "player"],
-    &["each", "players"],
-];
 
 #[cfg(test)]
 pub(crate) fn parse_conditional_sentence_lexed(
@@ -345,54 +336,19 @@ pub(crate) fn parse_subtype_word(word: &str) -> Option<Subtype> {
 pub(crate) fn parse_for_each_opponent_doesnt(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let mut clause_tokens = tokens;
-    let mut clause_words = crate::cards::builders::compiler::token_word_refs(clause_tokens);
-    if clause_words.first().copied() == Some("then") {
-        clause_tokens = &clause_tokens[1..];
-        clause_words = crate::cards::builders::compiler::token_word_refs(clause_tokens);
-    }
-    if clause_words.len() < 4 {
-        return Ok(None);
-    }
-
-    let start = if let Some((prefix, _)) =
-        grammar::words_match_any_prefix(clause_tokens, FOR_EACH_OPPONENT_PREFIXES)
-    {
-        prefix.len()
-    } else {
+    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let Some(split) = split_for_each_opponent_doesnt_clause_lexed(tokens) else {
         return Ok(None);
     };
-
-    let inner_tokens = trim_commas(&clause_tokens[start..]);
-    let inner_words = crate::cards::builders::compiler::token_word_refs(&inner_tokens);
-    let starts_with_who = inner_words.first().copied() == Some("who");
-    let Some((negation_idx, negation_len)) = negated_action_word_index(&inner_words) else {
-        return Ok(None);
-    };
-    if !starts_with_who {
-        return Ok(None);
-    }
-
-    let effect_token_start = if let Some(comma_idx) =
-        find_index(&inner_tokens, |token| token.is_comma())
-    {
-        comma_idx + 1
-    } else if let Some(this_way_idx) = find_word_sequence_start(&inner_words, &["this", "way"]) {
-        token_index_for_word_index(&inner_tokens, this_way_idx + 2).unwrap_or(inner_tokens.len())
-    } else {
-        token_index_for_word_index(&inner_tokens, negation_idx + negation_len)
-            .unwrap_or(inner_tokens.len())
-    };
-    let effect_tokens = trim_commas(&inner_tokens[effect_token_start..]);
-    if effect_tokens.is_empty() {
+    if split.effect_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing effect in for each opponent who doesn't clause (clause: '{}')",
             clause_words.join(" ")
         )));
     }
 
-    let effects = parse_effect_chain_inner(&effect_tokens)?;
-    let predicate = parse_negated_who_this_way_predicate(&inner_tokens)?;
+    let effects = parse_effect_chain_inner(split.effect_tokens)?;
+    let predicate = parse_negated_who_this_way_predicate(split.inner_tokens)?;
     Ok(Some(EffectAst::ForEachOpponentDoesNot {
         effects,
         predicate,
@@ -402,104 +358,32 @@ pub(crate) fn parse_for_each_opponent_doesnt(
 pub(crate) fn parse_for_each_player_doesnt(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let mut clause_tokens = tokens;
-    let mut clause_words = crate::cards::builders::compiler::token_word_refs(clause_tokens);
-    if clause_words.first().copied() == Some("then") {
-        clause_tokens = &clause_tokens[1..];
-        clause_words = crate::cards::builders::compiler::token_word_refs(clause_tokens);
-    }
-    if clause_words.len() < 5 {
-        return Ok(None);
-    }
-
-    let start = if let Some((prefix, _)) =
-        grammar::words_match_any_prefix(clause_tokens, FOR_EACH_PLAYER_PREFIXES)
-    {
-        prefix.len()
-    } else {
+    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let Some(split) = split_for_each_player_doesnt_clause_lexed(tokens) else {
         return Ok(None);
     };
-
-    let inner_tokens = trim_commas(&clause_tokens[start..]);
-    let inner_words = crate::cards::builders::compiler::token_word_refs(&inner_tokens);
-    let starts_with_who = inner_words.first().copied() == Some("who");
-    let Some((negation_idx, negation_len)) = negated_action_word_index(&inner_words) else {
-        return Ok(None);
-    };
-    if !starts_with_who {
-        return Ok(None);
-    }
-
-    let effect_token_start = if let Some(comma_idx) =
-        find_index(&inner_tokens, |token| token.is_comma())
-    {
-        comma_idx + 1
-    } else if let Some(this_way_idx) = find_word_sequence_start(&inner_words, &["this", "way"]) {
-        token_index_for_word_index(&inner_tokens, this_way_idx + 2).unwrap_or(inner_tokens.len())
-    } else {
-        token_index_for_word_index(&inner_tokens, negation_idx + negation_len)
-            .unwrap_or(inner_tokens.len())
-    };
-
-    let effect_tokens = trim_commas(&inner_tokens[effect_token_start..]);
-    if effect_tokens.is_empty() {
+    if split.effect_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing effect in for each player who doesn't clause (clause: '{}')",
             clause_words.join(" ")
         )));
     }
 
-    let effects = parse_effect_chain_inner(&effect_tokens)?;
-    let predicate = parse_negated_who_this_way_predicate(&inner_tokens)?;
+    let effects = parse_effect_chain_inner(split.effect_tokens)?;
+    let predicate = parse_negated_who_this_way_predicate(split.inner_tokens)?;
     Ok(Some(EffectAst::ForEachPlayerDoesNot { effects, predicate }))
 }
 
 pub(crate) fn negated_action_word_index(words: &[&str]) -> Option<(usize, usize)> {
-    if let Some(idx) = find_index(words, |word| {
-        matches!(*word, "doesnt" | "didnt" | "doesn't" | "didn't")
-    }) {
-        return Some((idx, 1));
-    }
-    if let Some(idx) = find_word_sequence_start(words, &["do", "not"]) {
-        return Some((idx, 2));
-    }
-    if let Some(idx) = find_word_sequence_start(words, &["did", "not"]) {
-        return Some((idx, 2));
-    }
-    None
+    effect_grammar::negated_action_word_index(words)
 }
 
 fn parse_negated_who_this_way_predicate(
     inner_tokens: &[OwnedLexToken],
 ) -> Result<Option<PredicateAst>, CardTextError> {
-    let inner_words = crate::cards::builders::compiler::token_word_refs(inner_tokens);
-    if inner_words.first().copied() != Some("who") {
-        return Ok(None);
-    }
-    let Some(this_way_idx) = find_word_sequence_start(&inner_words, &["this", "way"]) else {
+    let Some(filter_tokens) = split_negated_who_this_way_filter_tokens_lexed(inner_tokens) else {
         return Ok(None);
     };
-    let Some((negation_idx, negation_len)) = negated_action_word_index(&inner_words) else {
-        return Ok(None);
-    };
-    let verb_idx = negation_idx + negation_len;
-    let verb = inner_words.get(verb_idx).copied().unwrap_or("");
-    if !matches!(verb, "discard" | "discarded") || this_way_idx <= verb_idx + 1 {
-        return Ok(None);
-    }
-
-    let filter_start =
-        token_index_for_word_index(inner_tokens, verb_idx + 1).unwrap_or(inner_tokens.len());
-    let filter_end =
-        token_index_for_word_index(inner_tokens, this_way_idx).unwrap_or(inner_tokens.len());
-    if filter_start >= filter_end {
-        return Ok(None);
-    }
-
-    let filter_tokens = trim_commas(&inner_tokens[filter_start..filter_end]);
-    if filter_tokens.is_empty() {
-        return Ok(None);
-    }
 
     let filter = match parse_object_filter(&filter_tokens, false) {
         Ok(filter) => filter,

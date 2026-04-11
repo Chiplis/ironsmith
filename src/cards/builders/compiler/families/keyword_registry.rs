@@ -7,6 +7,10 @@ use super::activation_and_restrictions::{
 };
 use super::clause_support::parse_effect_sentences_lexed;
 use super::cst::{KeywordLineCst, KeywordLineKindCst};
+use super::grammar::abilities::{
+    additional_cost_tail_tokens_lexed, is_additional_cost_choice_line_lexed,
+    is_standard_gift_keyword_tokens_lexed,
+};
 use super::grammar::primitives::{self as grammar, TokenWordView};
 use super::ir::RewriteKeywordLine;
 use super::keyword_families::{
@@ -611,70 +615,15 @@ fn is_standard_gift_keyword_line(raw_line: &str) -> bool {
     let Ok(tokens) = lex_line(raw_line, 0) else {
         return false;
     };
-    is_standard_gift_keyword_tokens(&tokens)
-}
-
-fn is_standard_gift_keyword_tokens(tokens: &[OwnedLexToken]) -> bool {
-    let head_tokens = tokens_before_kind(tokens, TokenKind::LParen);
-    if !token_words_have_prefix(head_tokens, &["gift"]) {
-        return false;
-    }
-    if !grammar::contains_phrase(
-        tokens,
-        &[
-            "you", "may", "promise", "an", "opponent", "a", "gift", "as", "you", "cast", "this",
-            "spell",
-        ],
-    ) || !grammar::contains_phrase(tokens, &["if", "you", "do"])
-    {
-        return false;
-    }
-
-    token_words_have_any_prefix(
-        head_tokens,
-        &[
-            &["gift", "a", "card"],
-            &["gift", "a", "treasure"],
-            &["gift", "a", "food"],
-            &["gift", "a", "tapped", "fish"],
-            &["gift", "an", "extra", "turn"],
-            &["gift", "an", "octopus"],
-        ],
-    )
+    is_standard_gift_keyword_tokens_lexed(&tokens)
 }
 
 fn additional_cost_tail_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
-    let comma_idx = tokens
-        .iter()
-        .enumerate()
-        .find_map(|(idx, token)| (token.kind == TokenKind::Comma).then_some(idx));
-    let effect_start = if let Some(idx) = comma_idx {
-        idx + 1
-    } else if let Some(idx) = find_token_index(tokens, |token| token.is_word("spell")) {
-        idx + 1
-    } else {
-        tokens.len()
-    };
-    let effect_tokens = tokens.get(effect_start..).unwrap_or_default();
-    (!effect_tokens.is_empty()).then_some(effect_tokens)
+    additional_cost_tail_tokens_lexed(tokens)
 }
 
 fn parse_additional_cost_kind(tokens: &[OwnedLexToken]) -> Result<bool, CardTextError> {
-    if grammar::parse_prefix(
-        tokens,
-        grammar::phrase(&[
-            "as",
-            "an",
-            "additional",
-            "cost",
-            "to",
-            "cast",
-            "this",
-            "spell",
-        ]),
-    )
-    .is_none()
-    {
+    if !is_additional_cost_choice_line_lexed(tokens) {
         return Ok(false);
     }
     let Some(effect_tokens) = additional_cost_tail_tokens(tokens) else {
@@ -711,12 +660,4 @@ fn token_words_have_any_prefix(tokens: &[OwnedLexToken], expected: &[&[&str]]) -
     expected
         .iter()
         .any(|phrase| token_words_have_prefix(tokens, phrase))
-}
-
-fn tokens_before_kind(tokens: &[OwnedLexToken], kind: TokenKind) -> &[OwnedLexToken] {
-    let split_idx = tokens
-        .iter()
-        .position(|token| token.kind == kind)
-        .unwrap_or(tokens.len());
-    &tokens[..split_idx]
 }

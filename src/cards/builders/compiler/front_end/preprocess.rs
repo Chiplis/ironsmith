@@ -1,4 +1,7 @@
 use super::activation_and_restrictions::keyword_action_costs::parse_single_word_keyword_action;
+use super::grammar::effects::{
+    preserve_labeled_ability_prefix_for_parse_text, should_strip_labeled_ability_prefix_text,
+};
 use super::grammar::structure::{MetadataLineKind, split_metadata_line_lexed};
 use super::lexer::lex_line;
 use super::parser_support::{
@@ -493,156 +496,6 @@ fn strip_parenthetical_with_map(text: &str, map: &[usize]) -> (String, Vec<usize
     (out, out_map)
 }
 
-fn is_labeled_ability_word_prefix(prefix: &str) -> bool {
-    let words: Vec<&str> = prefix
-        .split_whitespace()
-        .map(|word| word.trim_matches(|ch: char| !ch.is_ascii_alphanumeric()))
-        .filter(|word| !word.is_empty())
-        .collect();
-    if words.is_empty() {
-        return false;
-    }
-
-    if words.len() == 2 && words[0] == "descend" && words[1].chars().all(|ch| ch.is_ascii_digit()) {
-        return true;
-    }
-
-    if matches!(
-        words.as_slice(),
-        ["spell", "mastery"]
-            | ["totem", "armor"]
-            | ["fateful", "hour"]
-            | ["join", "forces"]
-            | ["pack", "tactics"]
-            | ["max", "speed"]
-            | ["leading", "from", "the", "front"]
-            | ["summary", "execution"]
-            | ["will", "of", "the", "council"]
-            | ["guardian", "protocols"]
-            | ["jolly", "gutpipes"]
-            | ["protection", "fighting", "style"]
-            | ["relentless", "march"]
-            | ["secret", "of", "the", "soul"]
-            | ["secrets", "of", "the", "soul"]
-            | ["flurry", "of", "blows"]
-            | ["gust", "of", "wind"]
-            | ["reverberating", "summons"]
-    ) {
-        return true;
-    }
-
-    matches!(
-        words[0],
-        "adamant"
-            | "addendum"
-            | "alliance"
-            | "ascend"
-            | "battalion"
-            | "enrage"
-            | "boast"
-            | "buyback"
-            | "cycling"
-            | "bloodrush"
-            | "channel"
-            | "chroma"
-            | "cohort"
-            | "constellation"
-            | "converge"
-            | "corrupted"
-            | "coven"
-            | "eerie"
-            | "equip"
-            | "escape"
-            | "exhaust"
-            | "flashback"
-            | "harmonize"
-            | "delirium"
-            | "domain"
-            | "ferocious"
-            | "flurry"
-            | "formidable"
-            | "hellbent"
-            | "heroic"
-            | "imprint"
-            | "inspired"
-            | "landfall"
-            | "lieutenant"
-            | "magecraft"
-            | "metalcraft"
-            | "morbid"
-            | "parley"
-            | "partner"
-            | "protector"
-            | "radiance"
-            | "raid"
-            | "renew"
-            | "replicate"
-            | "revolt"
-            | "suspend"
-            | "spectacle"
-            | "strive"
-            | "surge"
-            | "threshold"
-            | "undergrowth"
-            | "ward"
-    )
-}
-
-fn preserve_keyword_prefix_for_parse(prefix: &str) -> bool {
-    let words: Vec<&str> = prefix
-        .split_whitespace()
-        .map(|word| word.trim_matches(|ch: char| !ch.is_ascii_alphanumeric()))
-        .filter(|word| !word.is_empty())
-        .collect();
-    let Some(first) = words.first().copied() else {
-        return false;
-    };
-
-    matches!(
-        first,
-        "buyback"
-            | "bestow"
-            | "cumulative"
-            | "cycling"
-            | "echo"
-            | "equip"
-            | "escape"
-            | "flashback"
-            | "harmonize"
-            | "boast"
-            | "modular"
-            | "replicate"
-            | "reinforce"
-            | "renew"
-            | "spectacle"
-            | "strive"
-            | "surge"
-            | "suspend"
-            | "ward"
-    )
-}
-
-fn starts_with_if_clause(text: &str) -> bool {
-    let trimmed = text.trim_start();
-    trimmed == "if" || str_starts_with(trimmed, "if ")
-}
-
-fn is_generic_ability_label_prefix(prefix: &str) -> bool {
-    let words: Vec<&str> = prefix
-        .split_whitespace()
-        .map(|word| word.trim_matches(|ch: char| !ch.is_ascii_alphanumeric()))
-        .filter(|word| !word.is_empty())
-        .collect();
-    if words.is_empty() || words.len() > 4 {
-        return false;
-    }
-
-    words.iter().all(|word| {
-        word.chars().all(|ch| ch.is_ascii_alphanumeric())
-            && word.chars().any(|ch| ch.is_ascii_alphabetic())
-    })
-}
-
 fn strip_labeled_ability_word_prefix_with_map(text: &str, map: &[usize]) -> (String, Vec<usize>) {
     let separator = text
         .match_indices('—')
@@ -655,7 +508,7 @@ fn strip_labeled_ability_word_prefix_with_map(text: &str, map: &[usize]) -> (Str
     };
 
     let prefix = text[..sep_idx].trim();
-    if preserve_keyword_prefix_for_parse(prefix) {
+    if preserve_labeled_ability_prefix_for_parse_text(prefix) {
         return (text.to_string(), map.to_vec());
     }
 
@@ -676,10 +529,7 @@ fn strip_labeled_ability_word_prefix_with_map(text: &str, map: &[usize]) -> (Str
     }
 
     let remainder = text[remainder_start..].to_string();
-    let strip_known_label = is_labeled_ability_word_prefix(prefix);
-    let strip_generic_conditional_label =
-        starts_with_if_clause(&remainder) && is_generic_ability_label_prefix(prefix);
-    if !strip_known_label && !strip_generic_conditional_label {
+    if !should_strip_labeled_ability_prefix_text(prefix, &remainder) {
         return (text.to_string(), map.to_vec());
     }
 

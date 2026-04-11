@@ -13,7 +13,7 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
         return Ok(Vec::new());
     }
 
-    if let Some(stripped) = strip_labeled_effect_prefix_lexed(tokens) {
+    if let Some(stripped) = split_labeled_effect_prefix_lexed(tokens) {
         return parse_effect_sentence_lexed(stripped);
     }
     if tokens.first().is_some_and(|token| token.is_word("if"))
@@ -188,97 +188,8 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
     Ok(effects)
 }
 
-fn strip_labeled_effect_prefix_lexed(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
-    let dash_idx = find_index(tokens, |token| {
-        matches!(
-            token.kind,
-            crate::cards::builders::compiler::lexer::TokenKind::Dash
-                | crate::cards::builders::compiler::lexer::TokenKind::EmDash
-        )
-    })?;
-    if !(1..=3).any(|expected| expected == dash_idx) || dash_idx + 1 >= tokens.len() {
-        return None;
-    }
-    if tokens[..=dash_idx].iter().any(|token| {
-        !matches!(
-            token.kind,
-            crate::cards::builders::compiler::lexer::TokenKind::Word
-                | crate::cards::builders::compiler::lexer::TokenKind::Dash
-                | crate::cards::builders::compiler::lexer::TokenKind::EmDash
-        )
-    }) {
-        return None;
-    }
-
-    let prefix_words = crate::cards::builders::compiler::token_word_refs(&tokens[..dash_idx]);
-    if prefix_words.is_empty() {
-        return None;
-    }
-    let is_known_label = matches!(
-        prefix_words[0],
-        "adamant"
-            | "addendum"
-            | "ascend"
-            | "battalion"
-            | "delirium"
-            | "domain"
-            | "ferocious"
-            | "formidable"
-            | "hellbent"
-            | "metalcraft"
-            | "morbid"
-            | "radiance"
-            | "raid"
-            | "revolt"
-            | "spectacle"
-            | "spell"
-            | "surge"
-            | "threshold"
-            | "undergrowth"
-    );
-    if !is_known_label {
-        return None;
-    }
-
-    Some(&tokens[dash_idx + 1..])
-}
-
-fn is_enters_as_copy_clause_tokens(tokens: &[OwnedLexToken]) -> bool {
-    // Find "as a copy", "as an copy", or "as copy" and verify enter/enters appears before it
-    let as_copy_idx = grammar::words_find_phrase(tokens, &["as", "a", "copy"])
-        .or_else(|| grammar::words_find_phrase(tokens, &["as", "an", "copy"]))
-        .or_else(|| grammar::words_find_phrase(tokens, &["as", "copy"]));
-    match as_copy_idx {
-        Some(idx) => {
-            // Check that "enter" or "enters" appears in the tokens before the "as" position
-            tokens[..idx]
-                .iter()
-                .any(|t| t.is_word("enter") || t.is_word("enters"))
-        }
-        None => false,
-    }
-}
-
 pub(crate) fn is_negated_untap_clause(words: &[&str]) -> bool {
-    if words.len() < 3 {
-        return false;
-    }
-    let has_untap = slice_contains_any(words, &["untap", "untaps"]);
-    let has_negation = slice_contains_any(words, &["doesnt", "dont", "cant"])
-        || contains_any_word_window(words, &[&["does", "not"], &["do", "not"], &["can", "not"]]);
-    has_untap && has_negation
-}
-
-fn is_negated_untap_clause_tokens(tokens: &[OwnedLexToken]) -> bool {
-    let has_untap =
-        grammar::contains_word(tokens, "untap") || grammar::contains_word(tokens, "untaps");
-    let has_negation = grammar::contains_word(tokens, "doesnt")
-        || grammar::contains_word(tokens, "dont")
-        || grammar::contains_word(tokens, "cant")
-        || grammar::words_find_phrase(tokens, &["does", "not"]).is_some()
-        || grammar::words_find_phrase(tokens, &["do", "not"]).is_some()
-        || grammar::words_find_phrase(tokens, &["can", "not"]).is_some();
-    has_untap && has_negation
+    effect_grammar::is_negated_untap_clause_words(words)
 }
 
 pub(crate) fn parse_token_copy_modifier_sentence(
@@ -618,4 +529,3 @@ pub(crate) fn parse_token_copy_modifier_sentence_lexed(
 
     None
 }
-

@@ -32,7 +32,7 @@ pub(super) fn run_ward_or_echo_static_prefix_line_family(
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
     let normalized = ctx.line.info.normalized.normalized.as_str();
     Ok(
-        is_ward_or_echo_static_prefix_tokens(&ctx.line.tokens).then(|| {
+        is_ward_or_echo_static_prefix_line_lexed(&ctx.line.tokens).then(|| {
             LineDispatchResult::single(
                 RewriteLineCst::Static(StaticLineCst {
                     info: ctx.line.info.clone(),

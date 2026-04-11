@@ -66,3 +66,7 @@ required-features = ["tooling"]
 [[bin]]
 name = "audit_manual_parser_sections"
 path = "src/bin/audit_manual_parser_sections.rs"
+
+[[bin]]
+name = "audit_parser_module_sizes"
+path = "src/bin/audit_parser_module_sizes.rs"

@@ -152,6 +152,7 @@ pub(crate) fn conditional_label_phrase<'a>(
         "hellbent" => primitives::phrase(&["hellbent"]),
         "metalcraft" => primitives::phrase(&["metalcraft"]),
         "morbid" => primitives::phrase(&["morbid"]),
+        "radiance" => primitives::phrase(&["radiance"]),
         "raid" => primitives::phrase(&["raid"]),
         "revolt" => primitives::phrase(&["revolt"]),
         "spectacle" => primitives::phrase(&["spectacle"]),

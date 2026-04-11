@@ -11,6 +11,7 @@ use crate::effect::{Comparison, Value};
 use super::super::lexer::{
     LexStream, LexToken, OwnedLexToken, TokenKind, TokenWordView, trim_lexed_commas,
 };
+use super::super::util::{parse_card_type, parse_color, parse_subtype_flexible};
 use super::{primitives, values};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -721,6 +722,295 @@ pub(crate) fn split_lexed_sentences<'a>(tokens: &'a [OwnedLexToken]) -> Vec<&'a 
     }
 
     segments
+}
+
+fn looks_like_trigger_objectish_word(word: &str) -> bool {
+    parse_card_type(word).is_some()
+        || parse_subtype_flexible(word).is_some()
+        || word
+            .strip_suffix('s')
+            .is_some_and(|stem| parse_card_type(stem).is_some() || parse_subtype_flexible(stem).is_some())
+}
+
+fn looks_like_trigger_object_list_tail_lexed(tokens: &[OwnedLexToken]) -> bool {
+    if tokens.is_empty() {
+        return false;
+    }
+    let words_view = TokenWordView::new(tokens);
+    let words = words_view.word_refs();
+    if words.is_empty() {
+        return false;
+    }
+    let starts_with_conjunction = matches!(words.first().copied(), Some("or" | "and" | "and/or"));
+    let first_candidate = if starts_with_conjunction {
+        words.get(1).copied()
+    } else {
+        words.first().copied()
+    };
+    let Some(first_word) = first_candidate else {
+        return false;
+    };
+    looks_like_trigger_objectish_word(first_word)
+        && tokens.iter().any(|token| token.kind == TokenKind::Comma)
+}
+
+fn looks_like_trigger_discard_qualifier_tail_lexed(
+    trigger_prefix_tokens: &[OwnedLexToken],
+    tail_tokens: &[OwnedLexToken],
+) -> bool {
+    if tail_tokens.is_empty() {
+        return false;
+    }
+
+    let prefix_words_view = TokenWordView::new(trigger_prefix_tokens);
+    let prefix_words = prefix_words_view.word_refs();
+    if !(prefix_words.contains(&"discard") || prefix_words.contains(&"discards")) {
+        return false;
+    }
+
+    let tail_words_view = TokenWordView::new(tail_tokens);
+    let tail_words = tail_words_view.word_refs();
+    if tail_words.is_empty() {
+        return false;
+    }
+
+    let Some(first_word) = tail_words.first().copied() else {
+        return false;
+    };
+    let typeish = parse_card_type(first_word).is_some()
+        || matches!(
+            first_word,
+            "artifact" | "artifacts" | "creature" | "creatures"
+        )
+        || matches!(first_word, "and" | "or");
+    if !typeish {
+        return false;
+    }
+
+    primitives::find_token_index(tail_tokens, |token| token.kind == TokenKind::Comma).is_some_and(
+        |comma_idx| {
+            let before_words_view = TokenWordView::new(&tail_tokens[..comma_idx]);
+            let before_words = before_words_view.word_refs();
+            before_words.contains(&"card") || before_words.contains(&"cards")
+        },
+    )
+}
+
+fn looks_like_trigger_type_list_tail_lexed(tokens: &[OwnedLexToken]) -> bool {
+    if tokens.is_empty() {
+        return false;
+    }
+    let words_view = TokenWordView::new(tokens);
+    let words = words_view.word_refs();
+    if words.is_empty() {
+        return false;
+    }
+    let first_is_card_type = parse_card_type(words[0]).is_some()
+        || parse_subtype_flexible(words[0]).is_some()
+        || words[0].strip_suffix('s').is_some_and(|word| {
+            parse_card_type(word).is_some() || parse_subtype_flexible(word).is_some()
+        });
+    first_is_card_type
+        && (words.contains(&"spell") || words.contains(&"spells"))
+        && words.contains(&"or")
+        && tokens.iter().any(|token| token.kind == TokenKind::Comma)
+}
+
+fn looks_like_trigger_color_list_tail_lexed(tokens: &[OwnedLexToken]) -> bool {
+    if tokens.is_empty() {
+        return false;
+    }
+    let words_view = TokenWordView::new(tokens);
+    let words = words_view.word_refs();
+    if words.is_empty() {
+        return false;
+    }
+    parse_color(words[0]).is_some()
+        && words.contains(&"or")
+        && tokens.iter().any(|token| token.kind == TokenKind::Comma)
+}
+
+fn looks_like_trigger_numeric_list_tail_lexed(tokens: &[OwnedLexToken]) -> bool {
+    if tokens.is_empty() {
+        return false;
+    }
+    let words_view = TokenWordView::new(tokens);
+    let words = words_view.word_refs();
+    if words.len() < 3 || words[0].parse::<i32>().is_err() {
+        return false;
+    }
+    words.iter().skip(1).any(|word| word.parse::<i32>().is_ok()) && words.contains(&"or")
+}
+
+pub(crate) fn find_trigger_effect_list_tail_split_lexed(
+    trigger_prefix_tokens: &[OwnedLexToken],
+    tail_tokens: &[OwnedLexToken],
+) -> Option<usize> {
+    let looks_like_discard_qualifier_tail =
+        looks_like_trigger_discard_qualifier_tail_lexed(trigger_prefix_tokens, tail_tokens);
+    if !looks_like_trigger_type_list_tail_lexed(tail_tokens)
+        && !looks_like_trigger_color_list_tail_lexed(tail_tokens)
+        && !looks_like_trigger_object_list_tail_lexed(tail_tokens)
+        && !looks_like_trigger_numeric_list_tail_lexed(tail_tokens)
+        && !looks_like_discard_qualifier_tail
+    {
+        return None;
+    }
+
+    if looks_like_discard_qualifier_tail {
+        return tail_tokens.iter().enumerate().find_map(|(idx, token)| {
+            if token.kind != TokenKind::Comma {
+                return None;
+            }
+            let before_words_view = TokenWordView::new(&tail_tokens[..idx]);
+            let before_words = before_words_view.word_refs();
+            if before_words.contains(&"card") || before_words.contains(&"cards") {
+                Some(idx)
+            } else {
+                None
+            }
+        });
+    }
+
+    if looks_like_trigger_numeric_list_tail_lexed(tail_tokens) {
+        return tail_tokens
+            .iter()
+            .enumerate()
+            .rev()
+            .find_map(|(idx, token)| (token.kind == TokenKind::Comma).then_some(idx));
+    }
+
+    tail_tokens
+        .iter()
+        .enumerate()
+        .find_map(|(idx, token)| {
+            if token.kind != TokenKind::Comma {
+                return None;
+            }
+            let before_words_view = TokenWordView::new(&tail_tokens[..idx]);
+            let before_words = before_words_view.word_refs();
+            if before_words.contains(&"spell") || before_words.contains(&"spells") {
+                Some(idx)
+            } else {
+                None
+            }
+        })
+        .or_else(|| {
+            if looks_like_trigger_color_list_tail_lexed(tail_tokens)
+                || looks_like_trigger_object_list_tail_lexed(tail_tokens)
+            {
+                tail_tokens.iter().enumerate().find_map(|(idx, token)| {
+                    if token.kind != TokenKind::Comma {
+                        return None;
+                    }
+                    let Some(next_word) = tail_tokens.get(idx + 1).and_then(OwnedLexToken::as_word)
+                    else {
+                        return None;
+                    };
+                    if matches!(next_word, "and" | "or" | "and/or") {
+                        return None;
+                    }
+
+                    let next_is_list_item = if looks_like_trigger_color_list_tail_lexed(tail_tokens) {
+                        parse_color(next_word).is_some()
+                    } else {
+                        looks_like_trigger_objectish_word(next_word)
+                    };
+                    if next_is_list_item {
+                        return None;
+                    }
+                    Some(idx)
+                })
+            } else {
+                None
+            }
+        })
+}
+
+pub(crate) fn split_first_time_each_turn_trigger_suffix_lexed(
+    trigger_tokens: &[OwnedLexToken],
+) -> (&[OwnedLexToken], Option<u32>) {
+    let trigger_words = TokenWordView::new(trigger_tokens);
+    let words = trigger_words.word_refs();
+    for suffix in [
+        ["for", "the", "first", "time", "each", "turn"].as_slice(),
+        ["for", "the", "first", "time", "this", "turn"].as_slice(),
+    ] {
+        if words.ends_with(suffix) {
+            let trimmed_word_len = words.len().saturating_sub(suffix.len());
+            let trimmed_token_len = trigger_words
+                .token_index_for_word_index(trimmed_word_len)
+                .unwrap_or(trigger_tokens.len());
+            return (&trigger_tokens[..trimmed_token_len], Some(1));
+        }
+    }
+    (trigger_tokens, None)
+}
+
+pub(crate) fn rewrite_attached_controller_trigger_effect_tokens_lexed(
+    trigger_tokens: &[OwnedLexToken],
+    effects_tokens: &[OwnedLexToken],
+) -> Vec<OwnedLexToken> {
+    let trigger_words_view = TokenWordView::new(trigger_tokens);
+    let trigger_words = trigger_words_view.word_refs();
+    let mut references_enchanted_controller = false;
+    let mut idx = 0usize;
+    while idx + 2 < trigger_words.len() {
+        if trigger_words[idx] == "enchanted"
+            && matches!(
+                trigger_words[idx + 1],
+                "creature"
+                    | "creatures"
+                    | "permanent"
+                    | "permanents"
+                    | "artifact"
+                    | "artifacts"
+                    | "enchantment"
+                    | "enchantments"
+                    | "land"
+                    | "lands"
+            )
+            && trigger_words[idx + 2] == "controller"
+        {
+            references_enchanted_controller = true;
+            break;
+        }
+        idx += 1;
+    }
+    if !references_enchanted_controller {
+        return effects_tokens.to_vec();
+    }
+
+    let mut rewritten = Vec::with_capacity(effects_tokens.len());
+    let mut idx = 0usize;
+    while idx < effects_tokens.len() {
+        if idx + 1 < effects_tokens.len()
+            && effects_tokens[idx].is_word("that")
+            && effects_tokens[idx + 1].is_word("creature")
+        {
+            let mut enchanted = effects_tokens[idx].clone();
+            let _ = enchanted.replace_word("enchanted");
+            rewritten.push(enchanted);
+            rewritten.push(effects_tokens[idx + 1].clone());
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < effects_tokens.len()
+            && effects_tokens[idx].is_word("that")
+            && effects_tokens[idx + 1].is_word("permanent")
+        {
+            let mut enchanted = effects_tokens[idx].clone();
+            let _ = enchanted.replace_word("enchanted");
+            rewritten.push(enchanted);
+            rewritten.push(effects_tokens[idx + 1].clone());
+            idx += 2;
+            continue;
+        }
+        rewritten.push(effects_tokens[idx].clone());
+        idx += 1;
+    }
+
+    rewritten
 }
 
 pub(crate) fn scan_modal_header_flags(tokens: &[OwnedLexToken]) -> ModalHeaderFlags {

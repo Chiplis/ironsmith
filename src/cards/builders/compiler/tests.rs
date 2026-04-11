@@ -7510,6 +7510,38 @@ fn rewrite_lexed_effect_sentence_supports_radiance_shared_color_fanout() {
 }
 
 #[test]
+fn rewrite_grammar_split_labeled_effect_prefix_supports_two_word_labels() {
+    let lexed = lex_line("Spell mastery — Draw a card.", 0)
+        .expect("rewrite lexer should classify spell mastery sentence");
+
+    let stripped =
+        crate::cards::builders::compiler::grammar::effects::split_labeled_effect_prefix_lexed(
+            &lexed,
+        )
+        .expect("spell mastery label should be stripped by grammar helper");
+
+    assert_eq!(
+        crate::cards::builders::compiler::token_word_refs(stripped)
+            .into_iter()
+            .map(|word| word.to_ascii_lowercase())
+            .collect::<Vec<_>>(),
+        vec!["draw".to_string(), "a".to_string(), "card".to_string()]
+    );
+}
+
+#[test]
+fn rewrite_lexed_effect_sentence_does_not_strip_unknown_labeled_prefix() {
+    let lexed = lex_line("Mystery — Draw a card.", 0)
+        .expect("rewrite lexer should classify unknown labeled sentence");
+
+    let parsed = parse_effect_sentence_lexed(&lexed);
+    assert!(
+        parsed.is_err(),
+        "unknown labeled prefix should not be stripped as a known effect label"
+    );
+}
+
+#[test]
 fn rewrite_lexed_effect_sentence_preserves_non_vampire_sacrifice_filter() {
     let text = "Each player sacrifices a non-Vampire creature of their choice.";
     let lexed =
