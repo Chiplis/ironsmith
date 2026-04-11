@@ -387,6 +387,14 @@ const REGISTERED_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         parser: pairs::parse_consult_match_move_and_bottom_remainder,
     },
     SequenceRuleDef {
+        name: "consult-match-move-graveyard-remainder",
+        feature_tag: Some("consult-graveyard-remainder"),
+        priority: 229,
+        consumed_sentences: 2,
+        predicate: first_word_target_exile_look_or_reveal,
+        parser: pairs::parse_consult_match_move_all_to_graveyard,
+    },
+    SequenceRuleDef {
         name: "consult-match-into-hand-exile-others",
         feature_tag: Some("consult-hand-exile-others"),
         priority: 228,
