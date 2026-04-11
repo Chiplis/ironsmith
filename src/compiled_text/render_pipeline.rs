@@ -99,6 +99,129 @@ pub fn compiled_lines(def: &CardDefinition) -> Vec<String> {
     raw_compiled_lines(def)
 }
 
+pub(super) fn describe_alternative_cast_line(
+    method: &AlternativeCastingMethod,
+    idx: usize,
+) -> String {
+    match method {
+        method if method.is_composed_cost() => {
+            let name = method.name();
+            let mana_cost = method.mana_cost();
+            let costs = method.non_mana_costs();
+            let cast_condition = method.cast_condition();
+            let mut parts = Vec::new();
+            if let Some(cost) = mana_cost {
+                parts.push(format!("pay {}", cost.to_oracle()));
+            }
+            if !costs.is_empty() {
+                parts.push(describe_alternative_costs(&costs));
+            }
+            let clause = if parts.is_empty() {
+                "cast this spell without paying its mana cost".to_string()
+            } else {
+                parts.join(" and ")
+            };
+            let mut line = format!("You may {clause} rather than pay this spell's mana cost");
+            if !name.is_empty() {
+                line.push_str(&format!(" ({name})"));
+            }
+            if let Some(condition) = cast_condition
+                && let Some(condition_text) =
+                    crate::static_abilities::describe_this_spell_cost_condition(condition)
+            {
+                line = format!("If {condition_text}, {}", lowercase_first(&line));
+            }
+            line
+        }
+        AlternativeCastingMethod::Madness { cost } => format!("Madness {}", cost.to_oracle()),
+        AlternativeCastingMethod::Miracle { cost } => format!("Miracle {}", cost.to_oracle()),
+        AlternativeCastingMethod::Plot { cost } => format!("Plot {}", cost.to_oracle()),
+        AlternativeCastingMethod::Warp { cost } => format!("Warp {}", cost.to_oracle()),
+        AlternativeCastingMethod::Suspend { cost, time } => {
+            format!("Suspend {time}—{}", cost.to_oracle())
+        }
+        AlternativeCastingMethod::Disturb { cost } => format!("Disturb {}", cost.to_oracle()),
+        AlternativeCastingMethod::Overload { cost, .. } => {
+            format!("Overload {}", cost.to_oracle())
+        }
+        AlternativeCastingMethod::Flashback { total_cost } => {
+            let costs = method.non_mana_costs();
+            let mana_cost = total_cost
+                .mana_cost()
+                .map(|cost| cost.to_oracle())
+                .unwrap_or_else(|| "{0}".to_string());
+            if costs.is_empty() {
+                format!("Flashback—{mana_cost}")
+            } else {
+                let extra = capitalize_first(&describe_alternative_costs(&costs));
+                format!("Flashback—{mana_cost}, {extra}")
+            }
+        }
+        AlternativeCastingMethod::Harmonize { total_cost } => {
+            let costs = method.non_mana_costs();
+            let mana_cost = total_cost
+                .mana_cost()
+                .map(|cost| cost.to_oracle())
+                .unwrap_or_else(|| "{0}".to_string());
+            if costs.is_empty() {
+                format!("Harmonize {mana_cost}")
+            } else {
+                let extra = capitalize_first(&describe_alternative_costs(&costs));
+                format!("Harmonize {mana_cost}, {extra}")
+            }
+        }
+        AlternativeCastingMethod::JumpStart => "Jump-start".to_string(),
+        AlternativeCastingMethod::Escape { cost, exile_count } => {
+            let count_text = small_number_word(*exile_count)
+                .map(str::to_string)
+                .unwrap_or_else(|| exile_count.to_string());
+            if let Some(cost) = cost {
+                format!(
+                    "Escape—{}, Exile {count_text} other cards from your graveyard",
+                    cost.to_oracle()
+                )
+            } else {
+                format!("Escape—Exile {count_text} other cards from your graveyard")
+            }
+        }
+        AlternativeCastingMethod::Dash { cost } => format!("Dash {}", cost.to_oracle()),
+        AlternativeCastingMethod::Bestow { total_cost } => {
+            let costs = method.non_mana_costs();
+            let mana_cost = total_cost
+                .mana_cost()
+                .map(|cost| cost.to_oracle())
+                .unwrap_or_else(|| "{0}".to_string());
+            if costs.is_empty() {
+                format!("Bestow {mana_cost}")
+            } else {
+                let extra = capitalize_first(&describe_alternative_costs(&costs));
+                format!("Bestow {mana_cost}, {extra}")
+            }
+        }
+        other => {
+            if other.name().eq_ignore_ascii_case("Parsed alternative cost") {
+                if let Some(cost) = other.mana_cost() {
+                    format!(
+                        "You may pay {} rather than pay this spell's mana cost",
+                        cost.to_oracle()
+                    )
+                } else {
+                    "You may cast this spell rather than pay its mana cost".to_string()
+                }
+            } else if let Some(cost) = other.mana_cost() {
+                format!(
+                    "Alternative cast {}: {} {}",
+                    idx + 1,
+                    other.name(),
+                    cost.to_oracle()
+                )
+            } else {
+                format!("Alternative cast {}: {}", idx + 1, other.name())
+            }
+        }
+    }
+}
+
 fn should_suppress_rendered_ability_line(def: &CardDefinition, line: &str) -> bool {
     let has_visible_gift_line = def
         .optional_costs
@@ -144,147 +267,7 @@ pub(super) fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                 .is_some()
     });
     for (idx, method) in def.alternative_casts.iter().enumerate() {
-        match method {
-            method if method.is_composed_cost() => {
-                let name = method.name();
-                let mana_cost = method.mana_cost();
-                let costs = method.non_mana_costs();
-                let cast_condition = method.cast_condition();
-                let mut parts = Vec::new();
-                if let Some(cost) = mana_cost {
-                    parts.push(format!("pay {}", cost.to_oracle()));
-                }
-                if !costs.is_empty() {
-                    parts.push(describe_alternative_costs(&costs));
-                }
-                let clause = if parts.is_empty() {
-                    "cast this spell without paying its mana cost".to_string()
-                } else {
-                    parts.join(" and ")
-                };
-                let mut line = format!("You may {clause} rather than pay this spell's mana cost");
-                if !name.is_empty() {
-                    line.push_str(&format!(" ({name})"));
-                }
-                if let Some(condition) = cast_condition
-                    && let Some(condition_text) =
-                        crate::static_abilities::describe_this_spell_cost_condition(condition)
-                {
-                    line = format!("If {condition_text}, {}", lowercase_first(&line));
-                }
-                alternative_cast_lines.push(line);
-            }
-            AlternativeCastingMethod::Madness { cost } => {
-                alternative_cast_lines.push(format!("Madness {}", cost.to_oracle()));
-            }
-            AlternativeCastingMethod::Miracle { cost } => {
-                alternative_cast_lines.push(format!("Miracle {}", cost.to_oracle()));
-            }
-            AlternativeCastingMethod::Plot { cost } => {
-                alternative_cast_lines.push(format!("Plot {}", cost.to_oracle()));
-            }
-            AlternativeCastingMethod::Warp { cost } => {
-                alternative_cast_lines.push(format!("Warp {}", cost.to_oracle()));
-            }
-            AlternativeCastingMethod::Suspend { cost, time } => {
-                alternative_cast_lines.push(format!("Suspend {time}—{}", cost.to_oracle()));
-            }
-            AlternativeCastingMethod::Disturb { cost } => {
-                alternative_cast_lines.push(format!("Disturb {}", cost.to_oracle()));
-            }
-            AlternativeCastingMethod::Overload { cost, .. } => {
-                alternative_cast_lines.push(format!("Overload {}", cost.to_oracle()));
-            }
-            AlternativeCastingMethod::Flashback { total_cost } => {
-                let costs = method.non_mana_costs();
-                let mana_cost = total_cost
-                    .mana_cost()
-                    .map(|cost| cost.to_oracle())
-                    .unwrap_or_else(|| "{0}".to_string());
-                if costs.is_empty() {
-                    alternative_cast_lines.push(format!("Flashback—{mana_cost}"));
-                } else {
-                    let extra = capitalize_first(&describe_alternative_costs(&costs));
-                    alternative_cast_lines.push(format!("Flashback—{mana_cost}, {extra}"));
-                }
-            }
-            AlternativeCastingMethod::Harmonize { total_cost } => {
-                let costs = method.non_mana_costs();
-                let mana_cost = total_cost
-                    .mana_cost()
-                    .map(|cost| cost.to_oracle())
-                    .unwrap_or_else(|| "{0}".to_string());
-                if costs.is_empty() {
-                    alternative_cast_lines.push(format!("Harmonize {mana_cost}"));
-                } else {
-                    let extra = capitalize_first(&describe_alternative_costs(&costs));
-                    alternative_cast_lines.push(format!("Harmonize {mana_cost}, {extra}"));
-                }
-            }
-            AlternativeCastingMethod::JumpStart => {
-                alternative_cast_lines.push("Jump-start".to_string());
-            }
-            AlternativeCastingMethod::Escape { cost, exile_count } => {
-                let count_text = small_number_word(*exile_count)
-                    .map(str::to_string)
-                    .unwrap_or_else(|| exile_count.to_string());
-                if let Some(cost) = cost {
-                    alternative_cast_lines.push(format!(
-                        "Escape—{}, Exile {count_text} other cards from your graveyard",
-                        cost.to_oracle()
-                    ));
-                } else {
-                    alternative_cast_lines.push(format!(
-                        "Escape—Exile {count_text} other cards from your graveyard"
-                    ));
-                }
-            }
-            AlternativeCastingMethod::Dash { cost } => {
-                alternative_cast_lines.push(format!("Dash {}", cost.to_oracle()));
-            }
-            AlternativeCastingMethod::Bestow { total_cost } => {
-                let costs = method.non_mana_costs();
-                let mana_cost = total_cost
-                    .mana_cost()
-                    .map(|cost| cost.to_oracle())
-                    .unwrap_or_else(|| "{0}".to_string());
-                if costs.is_empty() {
-                    alternative_cast_lines.push(format!("Bestow {mana_cost}"));
-                } else {
-                    let extra = capitalize_first(&describe_alternative_costs(&costs));
-                    alternative_cast_lines.push(format!("Bestow {mana_cost}, {extra}"));
-                }
-            }
-            other => {
-                if other.name().eq_ignore_ascii_case("Parsed alternative cost") {
-                    if let Some(cost) = other.mana_cost() {
-                        alternative_cast_lines.push(format!(
-                            "You may pay {} rather than pay this spell's mana cost",
-                            cost.to_oracle()
-                        ));
-                    } else {
-                        alternative_cast_lines.push(
-                            "You may cast this spell rather than pay its mana cost".to_string(),
-                        );
-                    }
-                    continue;
-                }
-                if let Some(cost) = other.mana_cost() {
-                    alternative_cast_lines.push(format!(
-                        "Alternative cast {}: {} {}",
-                        idx + 1,
-                        other.name(),
-                        cost.to_oracle()
-                    ));
-                } else {
-                    alternative_cast_lines.push(format!(
-                        "Alternative cast {}: {}",
-                        idx + 1,
-                        other.name()
-                    ));
-                }
-            }
-        }
+        alternative_cast_lines.push(describe_alternative_cast_line(method, idx));
     }
     for cost in &def.optional_costs {
         let line = describe_optional_cost_line(cost);
@@ -467,6 +450,24 @@ pub(super) fn normalize_rendered_line_for_card(def: &CardDefinition, line: &str)
             strip_rebalance_prefix(short).to_string()
         }
     };
+    let lead_display_name = {
+        let lead = display_name
+            .split_whitespace()
+            .next()
+            .map(str::trim)
+            .unwrap_or(display_name.as_str());
+        let lead_lower = lead.to_ascii_lowercase();
+        if lead.len() >= 3
+            && lead_lower != "the"
+            && lead_lower != "a"
+            && lead_lower != "an"
+            && (display_name.contains(" of ") || display_name.contains(','))
+        {
+            Some(lead.to_string())
+        } else {
+            None
+        }
+    };
     let oracle_mentions_name = {
         let oracle_text = def.card.oracle_text.to_ascii_lowercase();
         let full_name = def.card.name.trim().to_ascii_lowercase();
@@ -495,6 +496,24 @@ pub(super) fn normalize_rendered_line_for_card(def: &CardDefinition, line: &str)
         let lowered = display_name.to_ascii_lowercase();
         !lowered.is_empty() && oracle_lower.contains(&format!("{lowered}'s "))
     };
+    let oracle_uses_named_transform_return = lead_display_name.as_ref().and_then(|lead| {
+        let lead_lower = lead.to_ascii_lowercase();
+        if oracle_lower.contains(&format!(
+            "exile {lead_lower}, then return him to the battlefield transformed under his owner's control"
+        )) {
+            Some((lead.clone(), "him", "his"))
+        } else if oracle_lower.contains(&format!(
+            "exile {lead_lower}, then return her to the battlefield transformed under her owner's control"
+        )) {
+            Some((lead.clone(), "her", "her"))
+        } else if oracle_lower.contains(&format!(
+            "exile {lead_lower}, then return it to the battlefield transformed under its owner's control"
+        )) {
+            Some((lead.clone(), "it", "its"))
+        } else {
+            None
+        }
+    });
     // Normalize card name self-references to "this" for pattern matching,
     // mirroring the parser's replace_names_with_map normalization.
     let oracle_normalized = {
@@ -716,6 +735,23 @@ pub(super) fn normalize_rendered_line_for_card(def: &CardDefinition, line: &str)
                     "Destroy target blocked creature.",
                 )
                 .replace("Destroy target creature", "Destroy target blocked creature");
+        }
+        if let Some((name, object_pronoun, possessive_pronoun)) =
+            oracle_uses_named_transform_return.as_ref()
+        {
+            phrased = phrased
+                .replace(
+                    "exile this creature, then return it to the battlefield transformed under its owner's control",
+                    &format!(
+                        "exile {name}, then return {object_pronoun} to the battlefield transformed under {possessive_pronoun} owner's control"
+                    ),
+                )
+                .replace(
+                    "Exile this creature, then return it to the battlefield transformed under its owner's control",
+                    &format!(
+                        "Exile {name}, then return {object_pronoun} to the battlefield transformed under {possessive_pronoun} owner's control"
+                    ),
+                );
         }
         if has_hornbeetle_counter_phrase {
             phrased = phrased

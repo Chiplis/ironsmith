@@ -30,8 +30,8 @@ use super::clause_support::{
     parse_trigger_clause_lexed, parse_triggered_line_lexed,
 };
 use super::compile_support::{
-    collect_tag_spans_from_effects_with_context, materialize_prepared_effects_with_trigger_context,
-    compile_condition_from_predicate_ast_with_env,
+    collect_tag_spans_from_effects_with_context, compile_condition_from_predicate_ast_with_env,
+    materialize_prepared_effects_with_trigger_context,
     trigger_binds_player_reference_context as rewrite_trigger_binds_player_reference_context,
 };
 use super::effect_pipeline::{
@@ -58,8 +58,8 @@ use super::lowering_support::{
 use super::modal_support::{parse_modal_header, replace_modal_header_x_in_effects_ast};
 use super::parser_support::split_text_for_parse;
 use super::reference_model::LoweredEffects;
-use super::reference_model::ReferenceExports;
 use super::reference_model::ReferenceEnv;
+use super::reference_model::ReferenceExports;
 use super::restriction_support::{
     apply_pending_mana_restriction, apply_pending_restrictions_to_ability, is_restrictable_ability,
 };
@@ -2375,10 +2375,7 @@ fn lower_rewrite_triggered_to_chunk_impl(
         lower_special_rewrite_triggered_chunk(line, trigger_parse_tokens, effect_parse_tokens)?
     {
         return apply_chosen_option_to_triggered_chunk(
-            apply_explicit_intervening_if_to_triggered_chunk(
-                chunk,
-                line.intervening_if.clone(),
-            )?,
+            apply_explicit_intervening_if_to_triggered_chunk(chunk, line.intervening_if.clone())?,
             &line.full_text,
             inferred_max_triggers_per_turn,
             chosen_option_label,
@@ -3112,233 +3109,7 @@ fn lower_rewrite_keyword_to_chunk_impl(
     line: &super::RewriteKeywordLine,
     parse_tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
-    if let Some(chunk) = try_lower_optional_cost_with_cast_trigger(line, parse_tokens)? {
-        return Ok(chunk);
-    }
-    if let Some(chunk) = try_lower_optional_behold_additional_cost(line, parse_tokens)? {
-        return Ok(chunk);
-    }
-    let tokens = parse_tokens;
-    match line.kind {
-        super::RewriteKeywordLineKind::AdditionalCost => {
-            let effect_tokens = additional_cost_tail_tokens(&tokens).ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "rewrite keyword lowering could not find additional cost tail '{}'",
-                    line.info.raw_line
-                ))
-            })?;
-            let effects = parse_effect_sentences_lexed(effect_tokens)?;
-            Ok(LineAst::AdditionalCost { effects })
-        }
-        super::RewriteKeywordLineKind::AdditionalCostChoice => {
-            let effect_tokens = additional_cost_tail_tokens(&tokens).ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "rewrite keyword lowering could not find additional cost-choice tail '{}'",
-                    line.info.raw_line
-                ))
-            })?;
-            let options =
-                parse_additional_cost_choice_options_lexed(effect_tokens)?.ok_or_else(|| {
-                    CardTextError::ParseError(format!(
-                        "rewrite keyword lowering could not parse additional cost-choice '{}'",
-                        line.info.raw_line
-                    ))
-                })?;
-            Ok(LineAst::AdditionalCostChoice { options })
-        }
-        super::RewriteKeywordLineKind::AlternativeCast => {
-            if let Some(method) = parse_self_free_cast_alternative_cost_line_lexed(&tokens) {
-                Ok(LineAst::AlternativeCastingMethod(method))
-            } else if let Some(method) =
-                parse_you_may_rather_than_spell_cost_line_lexed(&tokens, line.text.as_str())?
-            {
-                Ok(LineAst::AlternativeCastingMethod(method))
-            } else if let Some(method) =
-                parse_if_conditional_alternative_cost_line_lexed(&tokens, line.text.as_str())?
-            {
-                Ok(LineAst::AlternativeCastingMethod(method))
-            } else {
-                Err(CardTextError::ParseError(format!(
-                    "rewrite keyword lowering could not parse alternative cost line '{}'",
-                    line.info.raw_line
-                )))
-            }
-        }
-        super::RewriteKeywordLineKind::Bestow => parse_bestow_line_lexed(&tokens)?
-            .map(LineAst::AlternativeCastingMethod)
-            .ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "rewrite keyword lowering could not parse bestow line '{}'",
-                    line.info.raw_line
-                ))
-            }),
-        super::RewriteKeywordLineKind::Bargain => parse_bargain_line_lexed(&tokens)?
-            .map(LineAst::OptionalCost)
-            .ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "rewrite keyword lowering could not parse bargain line '{}'",
-                    line.info.raw_line
-                ))
-            }),
-        super::RewriteKeywordLineKind::Buyback => parse_buyback_line_lexed(&tokens)?
-            .map(LineAst::OptionalCost)
-            .ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "rewrite keyword lowering could not parse buyback line '{}'",
-                    line.info.raw_line
-                ))
-            }),
-        super::RewriteKeywordLineKind::Channel => parse_channel_line_lexed(&tokens)?
-            .map(LineAst::Ability)
-            .ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "rewrite keyword lowering could not parse channel line '{}'",
-                    line.info.raw_line
-                ))
-            }),
-        super::RewriteKeywordLineKind::Cycling => parse_cycling_line_lexed(&tokens)?
-            .map(LineAst::Ability)
-            .ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "rewrite keyword lowering could not parse cycling line '{}'",
-                    line.info.raw_line
-                ))
-            }),
-        super::RewriteKeywordLineKind::Equip => parse_equip_line_lexed(&tokens)?
-            .map(LineAst::Ability)
-            .ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "rewrite keyword lowering could not parse equip line '{}'",
-                    line.info.raw_line
-                ))
-            }),
-        super::RewriteKeywordLineKind::Escape => parse_escape_line_lexed(&tokens)?
-            .map(LineAst::AlternativeCastingMethod)
-            .ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "rewrite keyword lowering could not parse escape line '{}'",
-                    line.info.raw_line
-                ))
-            }),
-        super::RewriteKeywordLineKind::Flashback => parse_flashback_line_lexed(&tokens)?
-            .map(LineAst::AlternativeCastingMethod)
-            .ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "rewrite keyword lowering could not parse flashback line '{}'",
-                    line.info.raw_line
-                ))
-            }),
-        super::RewriteKeywordLineKind::Harmonize => parse_harmonize_line_lexed(&tokens)?
-            .map(LineAst::AlternativeCastingMethod)
-            .ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "rewrite keyword lowering could not parse harmonize line '{}'",
-                    line.info.raw_line
-                ))
-            }),
-        super::RewriteKeywordLineKind::Kicker => parse_kicker_line_lexed(&tokens)?
-            .map(LineAst::OptionalCost)
-            .ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "rewrite keyword lowering could not parse kicker line '{}'",
-                    line.info.raw_line
-                ))
-            }),
-        super::RewriteKeywordLineKind::Madness => parse_madness_line_lexed(&tokens)?
-            .map(LineAst::AlternativeCastingMethod)
-            .ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "rewrite keyword lowering could not parse madness line '{}'",
-                    line.info.raw_line
-                ))
-            }),
-        super::RewriteKeywordLineKind::Morph => parse_morph_keyword_line_lexed(&tokens)?
-            .map(LineAst::Ability)
-            .ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "rewrite keyword lowering could not parse morph line '{}'",
-                    line.info.raw_line
-                ))
-            }),
-        super::RewriteKeywordLineKind::Multikicker => parse_multikicker_line_lexed(&tokens)?
-            .map(LineAst::OptionalCost)
-            .ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "rewrite keyword lowering could not parse multikicker line '{}'",
-                    line.info.raw_line
-                ))
-            }),
-        super::RewriteKeywordLineKind::Offspring => parse_offspring_line_lexed(&tokens)?
-            .map(LineAst::OptionalCost)
-            .ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "rewrite keyword lowering could not parse offspring line '{}'",
-                    line.info.raw_line
-                ))
-            }),
-        super::RewriteKeywordLineKind::Reinforce => parse_reinforce_line_lexed(&tokens)?
-            .map(LineAst::Ability)
-            .ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "rewrite keyword lowering could not parse reinforce line '{}'",
-                    line.info.raw_line
-                ))
-            }),
-        super::RewriteKeywordLineKind::Squad => {
-            if let Some(effect_tokens) = optional_cost_tail_effect_tokens(&tokens)
-                && let Ok(effects) = parse_effect_sentences_lexed(effect_tokens)
-                && !effects.is_empty()
-            {
-                return Ok(LineAst::Statement { effects });
-            }
-            parse_squad_line_lexed(&tokens)?
-                .map(LineAst::OptionalCost)
-                .ok_or_else(|| {
-                    CardTextError::ParseError(format!(
-                        "rewrite keyword lowering could not parse squad line '{}'",
-                        line.info.raw_line
-                    ))
-                })
-        }
-        super::RewriteKeywordLineKind::Transmute => parse_transmute_line_lexed(&tokens)?
-            .map(LineAst::Ability)
-            .ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "rewrite keyword lowering could not parse transmute line '{}'",
-                    line.info.raw_line
-                ))
-            }),
-        super::RewriteKeywordLineKind::Entwine => parse_entwine_line_lexed(&tokens)?
-            .map(LineAst::OptionalCost)
-            .ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "rewrite keyword lowering could not parse entwine line '{}'",
-                    line.info.raw_line
-                ))
-            }),
-        super::RewriteKeywordLineKind::CastThisSpellOnly => {
-            parse_cast_this_spell_only_line_lexed(&tokens)?
-                .map(|ability| LineAst::StaticAbility(ability.into()))
-                .ok_or_else(|| {
-                    CardTextError::ParseError(format!(
-                        "rewrite keyword lowering could not parse cast restriction line '{}'",
-                        line.info.raw_line
-                    ))
-                })
-        }
-        super::RewriteKeywordLineKind::Gift => lower_gift_keyword_to_chunk(line),
-        super::RewriteKeywordLineKind::Warp => parse_warp_line_lexed(&tokens)?
-            .map(LineAst::AlternativeCastingMethod)
-            .ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "rewrite keyword lowering could not parse warp line '{}'",
-                    line.info.raw_line
-                ))
-            }),
-        super::RewriteKeywordLineKind::ExertAttack => {
-            lower_exert_attack_keyword_to_chunk(line, parse_tokens)
-        }
-    }
+    super::keyword_registry::lower_keyword_line_ast(line, parse_tokens)
 }
 
 fn strip_exert_reminder_suffix_for_lowering(text: &str) -> &str {
@@ -3387,7 +3158,7 @@ fn normalize_exert_followup_source_reference_tokens(
     normalized
 }
 
-fn lower_exert_attack_keyword_to_chunk(
+pub(crate) fn lower_exert_attack_keyword_line(
     line: &super::RewriteKeywordLine,
     parse_tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
@@ -3547,7 +3318,9 @@ fn rewrite_copy_count_to_times_paid_label_rewrite(effects: &mut [EffectAst], lab
     }
 }
 
-fn lower_gift_keyword_to_chunk(line: &super::RewriteKeywordLine) -> Result<LineAst, CardTextError> {
+pub(crate) fn lower_gift_keyword_line(
+    line: &super::RewriteKeywordLine,
+) -> Result<LineAst, CardTextError> {
     let (followup_text, effects) =
         standard_gift_followup(line.info.raw_line.as_str()).ok_or_else(|| {
             CardTextError::ParseError(format!(
@@ -3686,6 +3459,19 @@ fn standard_gift_timing(text: &str) -> Option<GiftTimingAst> {
     } else {
         Some(variant.default_timing())
     }
+}
+
+pub(crate) fn lower_keyword_special_cases(
+    line: &super::RewriteKeywordLine,
+    parse_tokens: &[OwnedLexToken],
+) -> Result<Option<LineAst>, CardTextError> {
+    if let Some(chunk) = try_lower_optional_cost_with_cast_trigger(line, parse_tokens)? {
+        return Ok(Some(chunk));
+    }
+    if let Some(chunk) = try_lower_optional_behold_additional_cost(line, parse_tokens)? {
+        return Ok(Some(chunk));
+    }
+    Ok(None)
 }
 
 fn try_lower_optional_cost_with_cast_trigger(
@@ -4173,8 +3959,8 @@ fn split_rewrite_activated_effect_text_fallback(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cards::builders::parser::document_parser::parse_text_to_semantic_document;
     use crate::cards::builders::parser::RewriteKeywordLineKind;
+    use crate::cards::builders::parser::document_parser::parse_text_to_semantic_document;
     use crate::cards::builders::{
         CardDefinitionBuilder, CardId, CardType, LineAst, NormalizedLine,
     };
@@ -5101,11 +4887,11 @@ fn apply_explicit_intervening_if_to_triggered_chunk(
                     });
                 }
                 if let Some(effects_ast) = parsed.effects_ast.take() {
-                    if let [EffectAst::Conditional {
-                        if_true,
-                        if_false,
-                        ..
-                    }] = effects_ast.as_slice()
+                    if let [
+                        EffectAst::Conditional {
+                            if_true, if_false, ..
+                        },
+                    ] = effects_ast.as_slice()
                         && if_false.is_empty()
                     {
                         parsed.effects_ast = Some(if_true.clone());
@@ -5120,12 +4906,6 @@ fn apply_explicit_intervening_if_to_triggered_chunk(
         }
         other => Ok(other),
     }
-}
-
-fn optional_cost_tail_effect_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
-    let comma_idx = find_index(tokens, |token| token.kind == TokenKind::Comma)?;
-    let effect_tokens = trim_lexed_commas(tokens.get(comma_idx + 1..).unwrap_or_default());
-    (!effect_tokens.is_empty()).then_some(effect_tokens)
 }
 
 fn rewrite_item_to_normalized_item(
@@ -5152,10 +4932,8 @@ fn rewrite_item_to_normalized_item(
             )?)))
         }
         RewriteSemanticItem::Triggered(line) => {
-            let parsed = apply_explicit_intervening_if_to_triggered_chunk(
-                line.parsed,
-                line.intervening_if,
-            )?;
+            let parsed =
+                apply_explicit_intervening_if_to_triggered_chunk(line.parsed, line.intervening_if)?;
             Ok(Some(NormalizedCardItem::Line(normalize_rewrite_line_ast(
                 line.info.clone(),
                 vec![parsed],

@@ -633,6 +633,25 @@ pub(crate) fn parse_shuffle_object_into_library_sentence(
     if !grammar::contains_word(&destination_tokens, "library") {
         return Ok(None);
     }
+    let trailing_tokens = find_token_index(&destination_tokens, |token| token.is_word("library"))
+        .map(|idx| trim_commas(&destination_tokens[idx + 1..]).to_vec())
+        .unwrap_or_default();
+    let append_trailing =
+        |mut effects: Vec<EffectAst>| -> Result<Option<Vec<EffectAst>>, CardTextError> {
+            if trailing_tokens.is_empty() {
+                return Ok(Some(effects));
+            }
+            let mut trailing_effects = parse_effect_chain(&trailing_tokens)?;
+            for effect in &mut trailing_effects {
+                maybe_apply_carried_player_with_clause(
+                    effect,
+                    CarryContext::Player(player),
+                    &trailing_tokens,
+                );
+            }
+            effects.extend(trailing_effects);
+            Ok(Some(effects))
+        };
 
     let target_tokens = trim_commas(&body_tokens[..into_idx]);
     if target_tokens.is_empty() {
@@ -645,7 +664,7 @@ pub(crate) fn parse_shuffle_object_into_library_sentence(
             ["them"] | ["those", "cards"] | ["those", "objects"] | ["those"]
         )
     {
-        return Ok(Some(vec![EffectAst::ForEachTagged {
+        return append_trailing(vec![EffectAst::ForEachTagged {
             tag: TagKey::from(IT_TAG),
             effects: vec![
                 EffectAst::MoveToZone {
@@ -663,14 +682,14 @@ pub(crate) fn parse_shuffle_object_into_library_sentence(
                     player: PlayerAst::ItsOwner,
                 },
             ],
-        }]));
+        }]);
     }
     let target = parse_target_phrase(&target_tokens)?;
 
-    Ok(Some(vec![EffectAst::ShuffleObjectsIntoLibrary {
+    append_trailing(vec![EffectAst::ShuffleObjectsIntoLibrary {
         target,
         player,
-    }]))
+    }])
 }
 
 pub(crate) fn parse_exile_hand_and_graveyard_bundle_sentence(

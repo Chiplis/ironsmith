@@ -134,11 +134,16 @@ fn resolve_contextual_player_filter(
     refs: &ReferenceEnv,
 ) -> Result<PlayerFilter, CardTextError> {
     Ok(match filter {
-        PlayerFilter::IteratedPlayer => refs
-            .known_last_player_filter()
-            .filter(|filter| !filter.mentions_iterated_player())
-            .cloned()
-            .unwrap_or(PlayerFilter::IteratedPlayer),
+        PlayerFilter::IteratedPlayer => {
+            if refs.iterated_player {
+                PlayerFilter::IteratedPlayer
+            } else {
+                refs.known_last_player_filter()
+                    .filter(|filter| !filter.mentions_iterated_player())
+                    .cloned()
+                    .unwrap_or(PlayerFilter::IteratedPlayer)
+            }
+        }
         PlayerFilter::Target(inner) => {
             PlayerFilter::Target(Box::new(resolve_contextual_player_filter(inner, refs)?))
         }

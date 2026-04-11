@@ -12,12 +12,14 @@ use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
+use crate::card::LinkedFaceLayout;
 use crate::cards::{
     CardDefinition, CardDefinitionBuilder, generated_definition_has_unimplemented_content,
 };
 use crate::compiled_text::canonical_compiled_lines;
 use crate::ids::CardId;
 use crate::semantic_compare::{compare_card_semantics_scored, report_embedding_config};
+use crate::text_cleanup::strip_parenthetical_text;
 
 pub const DEFAULT_DB_PATH: &str = "reports/engine-status.sqlite3";
 pub const SCRYFALL_TAGGER_TAGS_URL: &str = "https://scryfall.com/docs/tagger-tags";
@@ -47,9 +49,12 @@ query FetchOracleCardTagPage($slug: String!, $type: TagType!, $page: Int) {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CardPayload {
     pub name: String,
+    pub parse_name: Option<String>,
     pub oracle_text: String,
     pub metadata_lines: Vec<String>,
     pub parse_input: String,
+    pub other_face_name: Option<String>,
+    pub linked_face_layout: Option<LinkedFaceLayout>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -245,18 +250,20 @@ pub fn parse_card_with_fallback(name: &str, parse_input: &str) -> ParseAttempt {
 }
 
 pub fn compile_snapshot_from_payload(payload: &CardPayload) -> CompilationSnapshot {
-    let attempt = parse_card_with_fallback(&payload.name, &payload.parse_input);
+    let attempt = parse_card_payload_with_fallback(payload);
     snapshot_from_attempt(payload, &attempt)
 }
 
 pub fn snapshot_from_attempt(payload: &CardPayload, attempt: &ParseAttempt) -> CompilationSnapshot {
-    CompilationSnapshot::from_definition_result(
-        &payload.name,
+    let mut snapshot = CompilationSnapshot::from_definition_result(
+        payload.parse_name.as_deref().unwrap_or(&payload.name),
         &payload.oracle_text,
         attempt.status,
         attempt.parse_error.clone(),
         attempt.definition.as_ref(),
-    )
+    );
+    snapshot.card_name = payload.name.clone();
+    snapshot
 }
 
 impl CompilationSnapshot {
@@ -267,6 +274,7 @@ impl CompilationSnapshot {
         parse_error: Option<String>,
         definition: Option<&CardDefinition>,
     ) -> Self {
+        let stored_oracle_text = strip_parenthetical_text(oracle_text);
         let (
             compiled_text,
             compiled_card_definition,
@@ -287,7 +295,7 @@ impl CompilationSnapshot {
                 semantic_mismatch,
             ) = compare_card_semantics_scored(
                 card_name,
-                oracle_text,
+                &stored_oracle_text,
                 &compiled,
                 report_embedding_config(),
             );
@@ -307,7 +315,7 @@ impl CompilationSnapshot {
 
         let mut snapshot = Self {
             card_name: card_name.to_string(),
-            oracle_text: oracle_text.to_string(),
+            oracle_text: stored_oracle_text,
             parse_status,
             parse_error,
             compiled_text,
@@ -734,9 +742,10 @@ impl CardStatusDb {
                     Some(existing_hash) if existing_hash == &row.content_hash => unchanged += 1,
                     Some(_) => updated += 1,
                 }
+                let stored_oracle_text = strip_parenthetical_text(&row.payload.oracle_text);
                 upsert.execute(params![
                     row.payload.name.as_str(),
-                    row.payload.oracle_text.as_str(),
+                    stored_oracle_text,
                     row.payload.parse_input.as_str(),
                     row.raw_card_json.as_str(),
                     row.mana_cost.as_deref(),
@@ -969,9 +978,12 @@ impl CardStatusDb {
             .query_map([], |row| {
                 Ok(CardPayload {
                     name: row.get(0)?,
+                    parse_name: None,
                     oracle_text: row.get(1)?,
                     metadata_lines: Vec::new(),
                     parse_input: row.get(2)?,
+                    other_face_name: None,
+                    linked_face_layout: None,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -1309,7 +1321,7 @@ fn registry_card_content_hash(
     let mut hasher = Sha256::new();
     hasher.update(payload.name.as_bytes());
     hasher.update([0]);
-    hasher.update(payload.oracle_text.as_bytes());
+    hasher.update(strip_parenthetical_text(&payload.oracle_text).as_bytes());
     hasher.update([0]);
     hasher.update(payload.parse_input.as_bytes());
     hasher.update([0]);
@@ -1366,18 +1378,24 @@ fn build_registry_card_record(card: &Value) -> Option<RegistryCardRecord> {
     if name.is_empty() {
         return None;
     }
+    let parse_name = face
+        .and_then(|value| value.get("name"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && *value != name)
+        .map(ToOwned::to_owned);
 
     let oracle_text = pick_field(card, face, "oracle_text")?.trim().to_string();
     if oracle_text.is_empty() {
         return None;
     }
 
-    let mana_cost = pick_field(card, face, "mana_cost");
-    let type_line = pick_field(card, face, "type_line");
-    let power = pick_field(card, face, "power");
-    let toughness = pick_field(card, face, "toughness");
-    let loyalty = pick_field(card, face, "loyalty");
-    let defense = pick_field(card, face, "defense");
+    let mana_cost = pick_field_preferring_face(card, face, "mana_cost");
+    let type_line = pick_field_preferring_face(card, face, "type_line");
+    let power = pick_field_preferring_face(card, face, "power");
+    let toughness = pick_field_preferring_face(card, face, "toughness");
+    let loyalty = pick_field_preferring_face(card, face, "loyalty");
+    let defense = pick_field_preferring_face(card, face, "defense");
 
     let mut metadata_lines = Vec::new();
     if let Some(mana_cost) = mana_cost
@@ -1410,11 +1428,23 @@ fn build_registry_card_record(card: &Value) -> Option<RegistryCardRecord> {
     }
 
     let parse_input = build_parse_input(&metadata_lines, &oracle_text);
+    let linked_face_layout = linked_face_layout_from_card(card);
+    let other_face_name = linked_face_layout.and_then(|_| {
+        get_second_face(card)
+            .and_then(|value| value.get("name"))
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+    });
     let payload = CardPayload {
         name,
+        parse_name,
         oracle_text,
         metadata_lines,
         parse_input,
+        other_face_name,
+        linked_face_layout,
     };
     let layout = card
         .get("layout")
@@ -1553,6 +1583,12 @@ fn get_first_face(card: &Value) -> Option<&Value> {
         .and_then(|faces| faces.first())
 }
 
+fn get_second_face(card: &Value) -> Option<&Value> {
+    card.get("card_faces")
+        .and_then(Value::as_array)
+        .and_then(|faces| faces.get(1))
+}
+
 fn value_to_string(value: &Value) -> Option<String> {
     if value.is_null() {
         return None;
@@ -1569,6 +1605,112 @@ fn pick_field(card: &Value, face: Option<&Value>, key: &str) -> Option<String> {
     }
     face.and_then(|value| value.get(key))
         .and_then(value_to_string)
+}
+
+fn pick_field_preferring_face(card: &Value, face: Option<&Value>, key: &str) -> Option<String> {
+    if let Some(value) = face
+        .and_then(|value| value.get(key))
+        .and_then(value_to_string)
+    {
+        return Some(value);
+    }
+    card.get(key).and_then(value_to_string)
+}
+
+fn linked_face_layout_from_card(card: &Value) -> Option<LinkedFaceLayout> {
+    match card.get("layout").and_then(Value::as_str).map(str::trim) {
+        Some("transform") => Some(LinkedFaceLayout::TransformLike),
+        Some("split") => Some(LinkedFaceLayout::Split),
+        _ => None,
+    }
+}
+
+fn decorate_definition_from_payload(definition: &mut CardDefinition, payload: &CardPayload) {
+    let Some(layout) = payload.linked_face_layout else {
+        return;
+    };
+    if layout == LinkedFaceLayout::None {
+        return;
+    }
+
+    definition.card.linked_face_layout = layout;
+    if let Some(other_face_name) = payload.other_face_name.as_ref() {
+        definition.card.other_face_name = Some(other_face_name.clone());
+        if definition.card.other_face.is_none() {
+            definition.card.other_face = Some(CardId::new());
+        }
+    }
+}
+
+fn definition_from_payload(
+    payload: &CardPayload,
+    card_id: CardId,
+) -> Result<CardDefinition, String> {
+    let parse_name = payload.parse_name.as_deref().unwrap_or(&payload.name);
+    let mut definition = CardDefinitionBuilder::new(card_id, parse_name)
+        .parse_text(payload.parse_input.clone())
+        .map_err(|err| format!("{err:?}"))?;
+    decorate_definition_from_payload(&mut definition, payload);
+    Ok(definition)
+}
+
+fn parse_card_payload(payload: &CardPayload, allow_unsupported: bool) -> ParseAttempt {
+    with_allow_unsupported(allow_unsupported, || {
+        let result = panic::catch_unwind(AssertUnwindSafe(|| {
+            definition_from_payload(payload, CardId::from_raw(FIXED_SNAPSHOT_CARD_ID))
+        }));
+        match result {
+            Ok(Ok(definition)) => ParseAttempt {
+                status: ParseStatus::StrictCompiled,
+                parse_error: None,
+                definition: Some(definition),
+            },
+            Ok(Err(err)) => ParseAttempt {
+                status: ParseStatus::ParseFailed,
+                parse_error: Some(err),
+                definition: None,
+            },
+            Err(payload) => ParseAttempt {
+                status: ParseStatus::ParseFailed,
+                parse_error: Some(format!("panic: {}", panic_payload_to_string(payload))),
+                definition: None,
+            },
+        }
+    })
+}
+
+fn parse_card_payload_with_fallback(payload: &CardPayload) -> ParseAttempt {
+    match parse_card_payload(payload, false) {
+        ParseAttempt {
+            status: ParseStatus::StrictCompiled,
+            definition,
+            ..
+        } => ParseAttempt {
+            status: ParseStatus::StrictCompiled,
+            parse_error: None,
+            definition,
+        },
+        strict_failure => match parse_card_payload(payload, true) {
+            ParseAttempt {
+                status: ParseStatus::StrictCompiled,
+                definition,
+                ..
+            } => ParseAttempt {
+                status: ParseStatus::CompiledWithAllowUnsupported,
+                parse_error: None,
+                definition,
+            },
+            _ => ParseAttempt {
+                status: ParseStatus::ParseFailed,
+                parse_error: strict_failure.parse_error,
+                definition: None,
+            },
+        },
+    }
+}
+
+pub fn compile_definition_from_payload(payload: &CardPayload) -> Result<CardDefinition, String> {
+    definition_from_payload(payload, CardId::new())
 }
 
 #[cfg(test)]
@@ -1588,11 +1730,14 @@ mod tests {
     fn lightning_bolt_payload() -> CardPayload {
         CardPayload {
             name: "Lightning Bolt".to_string(),
+            parse_name: None,
             oracle_text: "Lightning Bolt deals 3 damage to any target.".to_string(),
             metadata_lines: vec!["Mana cost: {R}".to_string(), "Type: Instant".to_string()],
             parse_input:
                 "Mana cost: {R}\nType: Instant\nLightning Bolt deals 3 damage to any target."
                     .to_string(),
+            other_face_name: None,
+            linked_face_layout: None,
         }
     }
 
@@ -1753,14 +1898,34 @@ mod tests {
             .expect("snapshot should include compiled text");
 
         assert!(
-            stored_text.contains(
-                "Whenever this creature attacks, you may tap another nonattacking creature you control. When you do, this creature gets +X/+0 until end of turn, where X is that creature's power."
-            ),
-            "expected normalized enlist text in snapshot, got {stored_text}"
+            stored_text.contains("Enlist"),
+            "expected snapshot to keep the enlist keyword surface, got {stored_text}"
         );
         assert!(
             !stored_text.contains("enlist_attacker") && !stored_text.contains("enlisted_creature"),
             "expected snapshot to avoid raw enlist tags, got {stored_text}"
+        );
+    }
+
+    #[test]
+    fn compilation_snapshot_strips_parenthetical_text_from_stored_surfaces() {
+        let oracle = "Flying (This creature can't be blocked except by creatures with flying or reach.)\nCycling {2} ({2}, Discard this card: Draw a card.)";
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Reminder Bird")
+            .parse_text(oracle)
+            .expect("reminder bird should parse");
+
+        let snapshot = CompilationSnapshot::from_definition_result(
+            "Reminder Bird",
+            oracle,
+            ParseStatus::StrictCompiled,
+            None,
+            Some(&definition),
+        );
+
+        assert_eq!(snapshot.oracle_text, "Flying\nCycling {2}");
+        assert_eq!(
+            snapshot.compiled_text.as_deref(),
+            Some("Flying\nCycling {2}")
         );
     }
 
@@ -2047,10 +2212,13 @@ mod tests {
         let lightning = compile_snapshot_from_payload(&lightning_bolt_payload());
         let shock = compile_snapshot_from_payload(&CardPayload {
             name: "Shock".to_string(),
+            parse_name: None,
             oracle_text: "Shock deals 2 damage to any target.".to_string(),
             metadata_lines: vec!["Mana cost: {R}".to_string(), "Type: Instant".to_string()],
             parse_input: "Mana cost: {R}\nType: Instant\nShock deals 2 damage to any target."
                 .to_string(),
+            other_face_name: None,
+            linked_face_layout: None,
         });
 
         db.insert_snapshot_if_changed(&lightning)
@@ -2112,10 +2280,13 @@ mod tests {
 
         let shock = compile_snapshot_from_payload(&CardPayload {
             name: "Shock".to_string(),
+            parse_name: None,
             oracle_text: "Shock deals 2 damage to any target.".to_string(),
             metadata_lines: vec!["Mana cost: {R}".to_string(), "Type: Instant".to_string()],
             parse_input: "Mana cost: {R}\nType: Instant\nShock deals 2 damage to any target."
                 .to_string(),
+            other_face_name: None,
+            linked_face_layout: None,
         });
 
         db.insert_snapshot_if_changed(&first_lightning)
@@ -2160,6 +2331,42 @@ mod tests {
             .latest_snapshot_hash("Lightning Bolt")
             .expect("fetch latest lightning hash");
         assert_eq!(latest_hash.as_deref(), Some("lightning-bolt-v2"));
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn replace_registry_cards_stores_stripped_oracle_text_but_keeps_raw_parse_input() {
+        let path = unique_temp_path("registry-strip");
+        let mut db = CardStatusDb::open(&path).expect("open db");
+        let rows = load_registry_cards_from_values(vec![serde_json::json!({
+            "name": "Sky Drake",
+            "oracle_text": "Flying (This creature can't be blocked except by creatures with flying or reach.)",
+            "mana_cost": "{1}{U}",
+            "type_line": "Creature — Drake",
+            "power": "2",
+            "toughness": "1"
+        })]);
+        let record = rows
+            .get("Sky Drake")
+            .expect("sky drake registry row")
+            .clone();
+
+        db.replace_registry_cards(&[record])
+            .expect("replace registry row");
+
+        let (oracle_text, parse_input): (String, String) = db
+            .connection()
+            .query_row(
+                "SELECT oracle_text, parse_input FROM registry_card WHERE card_name = 'Sky Drake'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("query registry row");
+        assert_eq!(oracle_text, "Flying");
+        assert!(parse_input.contains(
+            "Flying (This creature can't be blocked except by creatures with flying or reach.)"
+        ));
 
         let _ = fs::remove_file(path);
     }

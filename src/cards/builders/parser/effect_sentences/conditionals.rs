@@ -137,6 +137,7 @@ pub(crate) fn parse_subtype_word(word: &str) -> Option<Subtype> {
         "scion" | "scions" => Some(Subtype::Scion),
         "elemental" => Some(Subtype::Elemental),
         "elephant" => Some(Subtype::Elephant),
+        "elk" => Some(Subtype::Elk),
         "elf" | "elves" => Some(Subtype::Elf),
         "faerie" => Some(Subtype::Faerie),
         "fish" => Some(Subtype::Fish),

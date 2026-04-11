@@ -1999,6 +1999,11 @@ pub(crate) enum EffectAst {
         reveal: bool,
         if_not_chosen: Vec<EffectAst>,
     },
+    ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary {
+        player: PlayerAst,
+        spell_filter: ObjectFilter,
+        order: LibraryBottomOrderAst,
+    },
     ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary {
         player: PlayerAst,
         battlefield_filter: ObjectFilter,
@@ -6049,6 +6054,16 @@ mod target_parse_tests {
     }
 
     #[test]
+    fn parse_target_it_as_tagged_reference() {
+        let tokens = tokenize_line("it", 0);
+        let target = parse_target_phrase(&tokens).expect("parse it");
+        match target {
+            TargetAst::Tagged(tag, _) => assert_eq!(tag.as_str(), IT_TAG),
+            other => panic!("expected tagged it reference, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn parse_target_this_as_source() {
         let tokens = tokenize_line("this", 0);
         let target = parse_target_phrase(&tokens).expect("parse this");
@@ -7598,6 +7613,52 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
                 _ => None,
             })
             .collect();
+        assert!(
+            static_ids.contains(&StaticAbilityId::RemoveAllAbilitiesForFilter),
+            "expected lose-all-abilities static, got {static_ids:?}"
+        );
+        assert!(
+            static_ids.contains(&StaticAbilityId::SetCardTypes),
+            "expected set-card-types static, got {static_ids:?}"
+        );
+        assert!(
+            static_ids.contains(&StaticAbilityId::SetCreatureSubtypes),
+            "expected creature-subtype reset static, got {static_ids:?}"
+        );
+        assert!(
+            static_ids.contains(&StaticAbilityId::SetColors),
+            "expected set-colors static, got {static_ids:?}"
+        );
+        assert!(
+            static_ids.contains(&StaticAbilityId::SetBasePowerToughnessForFilter),
+            "expected set-base-power/toughness static, got {static_ids:?}"
+        );
+    }
+
+    #[test]
+    fn parse_bestow_enchanted_creature_loses_abilities_and_transforms_with_base_pt() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Trickster's Elk Variant")
+            .parse_text(
+                "Bestow {1}{G}\nEnchanted creature loses all abilities and is a green Elk creature with base power and toughness 3/3.",
+            )
+            .expect("bestow elk transform line should parse");
+
+        let static_ids: Vec<_> = def
+            .abilities
+            .iter()
+            .filter_map(|ability| match &ability.kind {
+                AbilityKind::Static(static_ability) => Some(static_ability.id()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            matches!(
+                def.alternative_casts.as_slice(),
+                [AlternativeCastingMethod::Bestow { .. }]
+            ),
+            "expected bestow alternative cast, got {:?}",
+            def.alternative_casts
+        );
         assert!(
             static_ids.contains(&StaticAbilityId::RemoveAllAbilitiesForFilter),
             "expected lose-all-abilities static, got {static_ids:?}"
@@ -9476,6 +9537,35 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         assert!(
             debug.contains("OwnerOf("),
             "expected owner-of-target library shuffle, got {debug}"
+        );
+        assert!(
+            !debug.contains("target: Source"),
+            "expected shuffle clause to keep the chosen target instead of falling back to source, got {debug}"
+        );
+    }
+
+    #[test]
+    fn parse_blink_keeps_targeted_shuffle_investigate_and_token_trigger() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Blink")
+            .card_types(vec![CardType::Enchantment])
+            .subtypes(vec![Subtype::Saga])
+            .parse_text(
+                "I, III — Choose target creature. Its owner shuffles it into their library, then investigates. (They create a Clue token.)\nII, IV — Create a 2/2 black Alien Angel artifact creature token with first strike, vigilance, and \"Whenever an opponent casts a creature spell, this token isn't a creature until end of turn.\"",
+            )
+            .expect("Blink text should parse");
+
+        let debug = format!("{def:#?}");
+        assert!(
+            debug.contains("InvestigateEffect"),
+            "expected Blink to keep the investigate follow-up, got {debug}"
+        );
+        assert!(
+            !debug.contains("target: Source"),
+            "expected Blink shuffle clause to keep the chosen creature, got {debug}"
+        );
+        assert!(
+            debug.contains("Whenever an opponent casts a creature spell, this token isn't a creature until end of turn."),
+            "expected Blink token to preserve the quoted trigger, got {debug}"
         );
     }
 
@@ -13591,8 +13681,10 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         let effects = def.spell_effect.expect("spell effects");
         let debug = format!("{effects:?}");
         assert!(
-            debug.contains("Boar") && !debug.contains("name: \"Food\""),
-            "expected creature token to remain Boar rather than Food, got {debug}"
+            debug.contains("name: \"Boar\"")
+                && debug.contains("subtypes: [Boar]")
+                && debug.contains("when this token dies, create a food token."),
+            "expected outer created token to remain a Boar while keeping the Food trigger, got {debug}"
         );
     }
 

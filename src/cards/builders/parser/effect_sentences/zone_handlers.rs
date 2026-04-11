@@ -877,7 +877,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
             ReturnControllerAst::You
         } else if destination_words
             .iter()
-            .any(|word| *word == "owner" || *word == "owners")
+            .any(|word| matches!(*word, "owner" | "owners" | "owner's" | "owners'"))
             && slice_contains(&destination_words, &"control")
         {
             ReturnControllerAst::Owner

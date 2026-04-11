@@ -4044,13 +4044,14 @@ pub(super) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             idx += 2;
         }
 
-        let battlefield_suffix_len = if slice_ends_with(&filtered[idx..], &["on", "the", "battlefield"]) {
-            Some(3usize)
-        } else if slice_ends_with(&filtered[idx..], &["on", "battlefield"]) {
-            Some(2usize)
-        } else {
-            None
-        };
+        let battlefield_suffix_len =
+            if slice_ends_with(&filtered[idx..], &["on", "the", "battlefield"]) {
+                Some(3usize)
+            } else if slice_ends_with(&filtered[idx..], &["on", "battlefield"]) {
+                Some(2usize)
+            } else {
+                None
+            };
         if let Some(battlefield_suffix_len) = battlefield_suffix_len {
             let raw_filter_words = &filtered[idx..filtered.len() - battlefield_suffix_len];
             let other = raw_filter_words
@@ -4590,9 +4591,10 @@ pub(super) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         );
         return Ok(PredicateAst::ThisSpellPaidLabel(label));
     }
-    if filtered.as_slice() == ["it", "was", "kicked"]
-        || filtered.as_slice() == ["that", "was", "kicked"]
-    {
+    if filtered.as_slice() == ["it", "was", "kicked"] {
+        return Ok(PredicateAst::ThisSpellWasKicked);
+    }
+    if filtered.as_slice() == ["that", "was", "kicked"] {
         return Ok(PredicateAst::TargetWasKicked);
     }
 

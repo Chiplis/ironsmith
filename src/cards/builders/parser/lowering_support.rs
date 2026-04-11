@@ -2,7 +2,7 @@ use crate::ability::{Ability, AbilityKind, TriggeredAbility};
 use crate::cards::ParseAnnotations;
 use crate::cards::builders::{
     CardDefinitionBuilder, CardTextError, EffectAst, KeywordAction, LineInfo, ParsedAbility,
-    PredicateAst, StaticAbilityAst, TriggerSpec,
+    PredicateAst, StaticAbilityAst, TargetAst, TriggerSpec,
 };
 use crate::effect::{Condition, Effect, EffectMode, EventValueSpec};
 use crate::filter::ObjectFilter;
@@ -12,11 +12,12 @@ use crate::target::{ChooseSpec, PlayerFilter};
 use crate::zone::Zone;
 
 use super::compile_support::{
-    collect_tag_spans_from_effects_with_context, compile_trigger_spec, effects_reference_it_tag,
-    effects_reference_its_controller, effects_reference_tag, ensure_concrete_trigger_spec,
-    inferred_trigger_player_filter, materialize_prepared_effects_with_trigger_context,
-    materialize_prepared_statement_effects, materialize_prepared_triggered_effects,
-    trigger_binds_player_reference_context, trigger_supports_event_value,
+    collect_tag_spans_from_effects_with_context, compile_trigger_spec, effect_references_it_tag,
+    effects_reference_it_tag, effects_reference_its_controller, effects_reference_tag,
+    ensure_concrete_trigger_spec, inferred_trigger_player_filter,
+    materialize_prepared_effects_with_trigger_context, materialize_prepared_statement_effects,
+    materialize_prepared_triggered_effects, trigger_binds_player_reference_context,
+    trigger_supports_event_value,
 };
 use super::effect_ast_normalization::normalize_effects_ast;
 use super::effect_pipeline::{
@@ -27,6 +28,34 @@ use super::effect_pipeline::{
 use super::reference_model::{LoweredEffects, ReferenceEnv, ReferenceExports, ReferenceImports};
 use super::reference_resolution::{EffectReferenceResolutionConfig, annotate_effect_sequence};
 use super::util::classify_instead_followup_text;
+
+fn target_can_establish_local_object_reference(target: &TargetAst) -> bool {
+    match target {
+        TargetAst::Tagged(_, _) | TargetAst::Object(_, _, _) => true,
+        TargetAst::WithCount(inner, _) => target_can_establish_local_object_reference(inner),
+        TargetAst::Source(_)
+        | TargetAst::AnyTarget(_)
+        | TargetAst::AnyOtherTarget(_)
+        | TargetAst::Player(_, _)
+        | TargetAst::PlayerOrPlaneswalker(_, _)
+        | TargetAst::AttackedPlayerOrPlaneswalker(_)
+        | TargetAst::Spell(_) => false,
+    }
+}
+
+fn has_local_target_prelude_before_it_reference(effects: &[EffectAst]) -> bool {
+    for effect in effects {
+        if effect_references_it_tag(effect) {
+            return false;
+        }
+        if let EffectAst::TargetOnly { target } = effect
+            && target_can_establish_local_object_reference(target)
+        {
+            return true;
+        }
+    }
+    false
+}
 
 fn rewrite_prepare_effects_from_normalized(
     semantic_effects: Vec<EffectAst>,
@@ -135,7 +164,9 @@ pub(crate) fn rewrite_prepare_effects_with_trigger_context_for_lowering(
 ) -> Result<PreparedEffectsForLowering, CardTextError> {
     let imports = imports.into();
     let normalized = normalize_effects_ast(effects);
+    let has_local_target_prelude = has_local_target_prelude_before_it_reference(&normalized);
     let default_last_object_tag = if imports.last_object_tag.is_none()
+        && !has_local_target_prelude
         && (effects_reference_it_tag(&normalized) || effects_reference_its_controller(&normalized))
     {
         Some(crate::cards::builders::TagKey::from(
@@ -213,6 +244,7 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
     ensure_concrete_trigger_spec(&trigger)?;
 
     let normalized = normalize_effects_ast(effects);
+    let has_local_target_prelude = has_local_target_prelude_before_it_reference(&normalized);
     let mut body_effects = normalized.clone();
     let mut intervening_if = match &trigger {
         TriggerSpec::StateBased { condition, .. } => Some(condition.clone()),
@@ -241,27 +273,28 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
         }
     }
 
-    let default_last_object_tag =
-        if effects_reference_it_tag(&normalized) || effects_reference_its_controller(&normalized) {
-            Some(crate::cards::builders::TagKey::from(
-                if matches!(&trigger, TriggerSpec::ThisAttacksWithExactlyNOthers(1)) {
-                    // Exact single-partner attack triggers can bind "that creature"
-                    // to the other attacker snapshot captured at trigger time.
-                    "other_attacker"
-                } else if matches!(
-                    &trigger,
-                    TriggerSpec::ThisDealsDamageTo(_)
-                        | TriggerSpec::ThisDealsCombatDamageTo(_)
-                        | TriggerSpec::DealsCombatDamageTo { .. }
-                ) {
-                    "damaged"
-                } else {
-                    "triggering"
-                },
-            ))
-        } else {
-            None
-        };
+    let default_last_object_tag = if !has_local_target_prelude
+        && (effects_reference_it_tag(&normalized) || effects_reference_its_controller(&normalized))
+    {
+        Some(crate::cards::builders::TagKey::from(
+            if matches!(&trigger, TriggerSpec::ThisAttacksWithExactlyNOthers(1)) {
+                // Exact single-partner attack triggers can bind "that creature"
+                // to the other attacker snapshot captured at trigger time.
+                "other_attacker"
+            } else if matches!(
+                &trigger,
+                TriggerSpec::ThisDealsDamageTo(_)
+                    | TriggerSpec::ThisDealsCombatDamageTo(_)
+                    | TriggerSpec::DealsCombatDamageTo { .. }
+            ) {
+                "damaged"
+            } else {
+                "triggering"
+            },
+        ))
+    } else {
+        None
+    };
 
     let prepared = rewrite_prepare_effects_from_normalized(
         body_effects,

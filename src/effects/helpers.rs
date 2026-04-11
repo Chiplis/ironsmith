@@ -2757,7 +2757,8 @@ mod tests {
             .build();
         let battlefield_id = game.create_object_from_card(&creature, alice, Zone::Battlefield);
         let snapshot = ObjectSnapshot::from_object(
-            game.object(battlefield_id).expect("battlefield object should exist"),
+            game.object(battlefield_id)
+                .expect("battlefield object should exist"),
             &game,
         );
 

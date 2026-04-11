@@ -137,8 +137,7 @@ mod tests {
 
         let ctx = ExecutionContext::new_default(source, alice);
         assert!(
-            evaluate_condition(&game, &condition, &ctx)
-                .expect("tied life totals should evaluate"),
+            evaluate_condition(&game, &condition, &ctx).expect("tied life totals should evaluate"),
             "expected tied life totals to satisfy the no-opponent-has-more-life condition"
         );
 

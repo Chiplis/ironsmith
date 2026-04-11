@@ -308,7 +308,10 @@ fn guild_artisan_grants_treasure_trigger_when_commander_attacks_tied_life_leader
         .iter()
         .filter(|&&id| game.object(id).is_some_and(|obj| obj.name == "Treasure"))
         .count();
-    assert_eq!(treasure_count, 2, "expected two Treasure tokens after resolution");
+    assert_eq!(
+        treasure_count, 2,
+        "expected two Treasure tokens after resolution"
+    );
 }
 
 #[test]
@@ -889,16 +892,10 @@ fn crystalline_resonance_copies_target_permanent_when_you_cycle() {
         for _ in 0..8 {
             progress = match progress {
                 crate::decision::GameProgress::NeedsDecisionCtx(ctx) => {
-                    apply_decision_context_with_dm(
-                        game,
-                        trigger_queue,
-                        state,
-                        &ctx,
-                        dm,
-                    )
-                    .unwrap_or_else(|err| {
-                        panic!("{label} decision should resolve: {err}");
-                    })
+                    apply_decision_context_with_dm(game, trigger_queue, state, &ctx, dm)
+                        .unwrap_or_else(|err| {
+                            panic!("{label} decision should resolve: {err}");
+                        })
                 }
                 crate::decision::GameProgress::Continue
                 | crate::decision::GameProgress::StackResolved
@@ -1042,16 +1039,18 @@ fn crystalline_resonance_copies_target_permanent_when_you_cycle() {
 
     assert!(
         still_copied_chars.card_types.contains(&CardType::Creature)
-            && !still_copied_chars.card_types.contains(&CardType::Enchantment),
+            && !still_copied_chars
+                .card_types
+                .contains(&CardType::Enchantment),
         "the copy should last until the start of the controller's next turn"
     );
 
     game.turn.active_player = alice;
     game.turn.turn_number += 1;
     game.refresh_continuous_state();
-    let post_turn_chars = game
-        .calculated_characteristics(resonance_id)
-        .expect("Crystalline Resonance should still have characteristics after its next turn begins");
+    let post_turn_chars = game.calculated_characteristics(resonance_id).expect(
+        "Crystalline Resonance should still have characteristics after its next turn begins",
+    );
 
     assert!(
         post_turn_chars.card_types.contains(&CardType::Enchantment)
@@ -1059,8 +1058,7 @@ fn crystalline_resonance_copies_target_permanent_when_you_cycle() {
         "the copy should expire on the controller's next turn"
     );
     assert_eq!(
-        post_turn_chars.name,
-        "Crystalline Resonance",
+        post_turn_chars.name, "Crystalline Resonance",
         "the enchantment should return to its original name once the copy expires"
     );
 }
@@ -1851,9 +1849,14 @@ fn test_portcullis_exiles_entrying_creature_and_returns_it_when_it_leaves() {
     resolve_stack_entry(&mut game).expect("Portcullis trigger should resolve");
 
     let exiled = game.get_exiled_with_source_links(portcullis_id).to_vec();
-    assert_eq!(exiled.len(), 1, "Portcullis should track exactly one exiled creature");
+    assert_eq!(
+        exiled.len(),
+        1,
+        "Portcullis should track exactly one exiled creature"
+    );
     assert!(
-        game.object(exiled[0]).is_some_and(|obj| obj.zone == Zone::Exile),
+        game.object(exiled[0])
+            .is_some_and(|obj| obj.zone == Zone::Exile),
         "the entering creature should be exiled while Portcullis is on the battlefield"
     );
 
@@ -1871,9 +1874,8 @@ fn test_portcullis_exiles_entrying_creature_and_returns_it_when_it_leaves() {
 
     assert!(
         game.battlefield.iter().any(|&id| {
-            game.object(id).is_some_and(|obj| {
-                obj.name == "Portcullis Test Entrant" && obj.controller == bob
-            })
+            game.object(id)
+                .is_some_and(|obj| obj.name == "Portcullis Test Entrant" && obj.controller == bob)
         }),
         "the exiled creature should return to the battlefield under its owner's control"
     );

@@ -3027,8 +3027,22 @@ pub fn normalize_card_self_references_for_compare(text: &str, card_name: &str) -
         .next()
         .map(str::trim)
         .unwrap_or(left_half);
+    let lead_name = left_half
+        .split_whitespace()
+        .next()
+        .map(str::trim)
+        .unwrap_or(left_half);
 
     let mut names = vec![full_name, left_half, short_name];
+    let lead_name_lower = lead_name.to_ascii_lowercase();
+    if lead_name.len() >= 3
+        && lead_name_lower != "the"
+        && lead_name_lower != "a"
+        && lead_name_lower != "an"
+        && (left_half.contains(" of ") || left_half.contains(','))
+    {
+        names.push(lead_name);
+    }
     if let Some(stripped) = full_name
         .strip_prefix("A-")
         .or_else(|| full_name.strip_prefix("a-"))
@@ -3044,6 +3058,12 @@ pub fn normalize_card_self_references_for_compare(text: &str, card_name: &str) -
     if let Some(stripped) = short_name
         .strip_prefix("A-")
         .or_else(|| short_name.strip_prefix("a-"))
+    {
+        names.push(stripped);
+    }
+    if let Some(stripped) = lead_name
+        .strip_prefix("A-")
+        .or_else(|| lead_name.strip_prefix("a-"))
     {
         names.push(stripped);
     }
@@ -4908,8 +4928,9 @@ pub fn compare_card_semantics(
 mod tests {
     use super::{
         EmbeddingConfig, compare_card_semantics_scored, compare_semantics_scored,
-        compiled_comparison_tokens, normalize_trigger_subject_for_compare, reminder_clauses,
-        semantic_clauses, strip_reminder_text_for_comparison,
+        compiled_comparison_tokens, normalize_card_self_references_for_compare,
+        normalize_trigger_subject_for_compare, reminder_clauses, semantic_clauses,
+        strip_reminder_text_for_comparison,
     };
 
     fn strict_embedding() -> Option<EmbeddingConfig> {
@@ -5731,6 +5752,21 @@ Pay 3 life: Add {R}.";
         assert!(
             !mismatch,
             "expected no mismatch for unleash keyword scaffolding"
+        );
+    }
+
+    #[test]
+    fn compare_card_semantics_normalizes_titled_legend_short_self_reference() {
+        let oracle = "At the beginning of each of your postcombat main phases, if you gained 3 or more life this turn, exile Sorin, then return him to the battlefield transformed under his owner's control.";
+        let normalized =
+            normalize_card_self_references_for_compare(oracle, "Sorin of House Markov");
+        assert!(
+            normalized.contains("exile this"),
+            "expected titled-legend short self-reference normalization to replace the lead name, got {normalized}"
+        );
+        assert!(
+            !normalized.contains("Sorin"),
+            "expected titled-legend short self-reference normalization to remove the lead name, got {normalized}"
         );
     }
 

@@ -895,14 +895,19 @@ pub(crate) fn parse_become_clause(
     } else {
         rest_tokens.as_slice()
     };
-    let (duration, subject_tokens_vec, become_tokens) =
-        if let Some((duration, remainder)) = parse_restriction_duration(&subject_tokens)? {
-            (duration, remainder, become_clause_tokens.to_vec())
-        } else if let Some((duration, remainder)) = parse_restriction_duration(become_clause_tokens)? {
-            (duration, subject_tokens.clone(), remainder)
-        } else {
-            (Until::Forever, subject_tokens.clone(), become_clause_tokens.to_vec())
-        };
+    let (duration, subject_tokens_vec, become_tokens) = if let Some((duration, remainder)) =
+        parse_restriction_duration(&subject_tokens)?
+    {
+        (duration, remainder, become_clause_tokens.to_vec())
+    } else if let Some((duration, remainder)) = parse_restriction_duration(become_clause_tokens)? {
+        (duration, subject_tokens.clone(), remainder)
+    } else {
+        (
+            Until::Forever,
+            subject_tokens.clone(),
+            become_clause_tokens.to_vec(),
+        )
+    };
     let subject_tokens = subject_tokens_vec.as_slice();
     let subject_word_view = ClauseDispatchCompatWords::new(subject_tokens);
     let subject_words = subject_word_view.to_word_refs();

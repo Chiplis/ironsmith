@@ -1,4 +1,7 @@
 use super::*;
+use crate::text_cleanup::strip_parenthetical_text;
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
 
 pub(super) fn normalize_sentence_surface_style(line: &str) -> String {
     let mut normalized = line.trim().to_string();
@@ -350,6 +353,13 @@ pub(super) fn normalize_sentence_surface_style(line: &str) -> String {
         }
         Some(rewritten)
     };
+    let rewrite_mid_sentence_choose_modes = |input_marker: &str, output_marker: &str| {
+        let (head, tail) = normalized.split_once(input_marker)?;
+        if !tail.contains(" • ") {
+            return None;
+        }
+        format_choose_modes(head, output_marker, tail)
+    };
     if !normalized.contains('\n') {
         if lower_normalized.contains("you may choose the same mode more than once")
             && normalized.contains(" • ")
@@ -380,6 +390,129 @@ pub(super) fn normalize_sentence_surface_style(line: &str) -> String {
                     return rewritten;
                 }
             }
+        }
+        for (input_marker, output_marker) in [
+            (
+                ": Choose one that hasn't been chosen this turn - ",
+                ", choose one that hasn't been chosen this turn —",
+            ),
+            (
+                ": Choose one that hasn't been chosen this turn — ",
+                ", choose one that hasn't been chosen this turn —",
+            ),
+            (
+                ": choose one that hasn't been chosen this turn - ",
+                ", choose one that hasn't been chosen this turn —",
+            ),
+            (
+                ": choose one that hasn't been chosen this turn — ",
+                ", choose one that hasn't been chosen this turn —",
+            ),
+            (
+                ": Choose one that hasn't been chosen - ",
+                ", choose one that hasn't been chosen —",
+            ),
+            (
+                ": Choose one that hasn't been chosen — ",
+                ", choose one that hasn't been chosen —",
+            ),
+            (
+                ": choose one that hasn't been chosen - ",
+                ", choose one that hasn't been chosen —",
+            ),
+            (
+                ": choose one that hasn't been chosen — ",
+                ", choose one that hasn't been chosen —",
+            ),
+            (": Choose one or more - ", ", choose one or more —"),
+            (": Choose one or more — ", ", choose one or more —"),
+            (": choose one or more - ", ", choose one or more —"),
+            (": choose one or more — ", ", choose one or more —"),
+            (": Choose one or both - ", ", choose one or both —"),
+            (": Choose one or both — ", ", choose one or both —"),
+            (": choose one or both - ", ", choose one or both —"),
+            (": choose one or both — ", ", choose one or both —"),
+            (": Choose one - ", ", choose one —"),
+            (": Choose one — ", ", choose one —"),
+            (": choose one - ", ", choose one —"),
+            (": choose one — ", ", choose one —"),
+        ] {
+            if let Some(rewritten) = rewrite_mid_sentence_choose_modes(input_marker, output_marker)
+            {
+                return rewritten;
+            }
+        }
+        if let Some((head, tail)) =
+            normalized.split_once(" choose one that hasn't been chosen this turn - ")
+            && tail.contains(" • ")
+            && let Some(rewritten) = format_choose_modes(
+                head,
+                " choose one that hasn't been chosen this turn —",
+                tail,
+            )
+        {
+            return rewritten;
+        }
+        if let Some((head, tail)) =
+            normalized.split_once(" Choose one that hasn't been chosen this turn - ")
+            && tail.contains(" • ")
+            && let Some(rewritten) = format_choose_modes(
+                head,
+                " Choose one that hasn't been chosen this turn —",
+                tail,
+            )
+        {
+            return rewritten;
+        }
+        if let Some((head, tail)) =
+            normalized.split_once(" choose one that hasn't been chosen this turn — ")
+            && tail.contains(" • ")
+            && let Some(rewritten) = format_choose_modes(
+                head,
+                " choose one that hasn't been chosen this turn —",
+                tail,
+            )
+        {
+            return rewritten;
+        }
+        if let Some((head, tail)) =
+            normalized.split_once(" Choose one that hasn't been chosen this turn — ")
+            && tail.contains(" • ")
+            && let Some(rewritten) = format_choose_modes(
+                head,
+                " Choose one that hasn't been chosen this turn —",
+                tail,
+            )
+        {
+            return rewritten;
+        }
+        if let Some((head, tail)) = normalized.split_once(" choose one that hasn't been chosen - ")
+            && tail.contains(" • ")
+            && let Some(rewritten) =
+                format_choose_modes(head, " choose one that hasn't been chosen —", tail)
+        {
+            return rewritten;
+        }
+        if let Some((head, tail)) = normalized.split_once(" Choose one that hasn't been chosen - ")
+            && tail.contains(" • ")
+            && let Some(rewritten) =
+                format_choose_modes(head, " Choose one that hasn't been chosen —", tail)
+        {
+            return rewritten;
+        }
+        if let Some((head, tail)) = normalized.split_once(" choose one that hasn't been chosen — ")
+            && tail.contains(" • ")
+            && let Some(rewritten) =
+                format_choose_modes(head, " choose one that hasn't been chosen —", tail)
+        {
+            return rewritten;
+        }
+        if let Some((head, tail)) = normalized.split_once(" Choose one that hasn't been chosen — ")
+            && tail.contains(" • ")
+            && let Some(rewritten) =
+                format_choose_modes(head, " Choose one that hasn't been chosen —", tail)
+        {
+            return rewritten;
         }
         if let Some((head, tail)) = normalized.split_once(" choose one or more - ")
             && tail.contains(" • ")
@@ -1782,7 +1915,8 @@ pub fn canonical_compiled_lines(def: &CardDefinition) -> Vec<String> {
         .filter(|line| !line.is_empty())
         .map(|line| normalize_compiled_post_pass_effect(&normalize_common_semantic_phrasing(&line)))
         .collect::<Vec<_>>();
-    let merged_predicates = merge_adjacent_subject_predicate_lines(normalized);
+    let without_suspend_intrinsics = drop_suspend_keyword_intrinsic_lines(def, normalized);
+    let merged_predicates = merge_adjacent_subject_predicate_lines(without_suspend_intrinsics);
     let merged_mana = merge_adjacent_simple_mana_add_lines(merged_predicates);
     let merged_has_keywords = merge_subject_has_keyword_lines(merged_mana);
     let merged_animation = merge_subject_animation_lines(merged_has_keywords);
@@ -1792,9 +1926,411 @@ pub fn canonical_compiled_lines(def: &CardDefinition) -> Vec<String> {
     let mut canonical = merged_transform
         .into_iter()
         .map(|line| normalize_sentence_surface_style(&line))
+        .map(|line| strip_parenthetical_text(&line))
+        .filter(|line| !line.is_empty())
         .collect::<Vec<_>>();
+    canonical = reconcile_intrinsic_lines_with_oracle(def, canonical);
+    canonical = reconcile_named_token_shorthand_with_oracle(def, canonical);
     canonical.dedup();
     canonical
+}
+
+fn reconcile_intrinsic_lines_with_oracle(def: &CardDefinition, lines: Vec<String>) -> Vec<String> {
+    let stripped_oracle = strip_parenthetical_text(&def.card.oracle_text);
+    let oracle_lines = stripped_oracle
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>();
+    if oracle_lines.is_empty() {
+        return lines;
+    }
+
+    let subject = subject_for_card(&def.card);
+    let rewrite_it_deals = def.card.card_types.contains(&CardType::Creature)
+        || def.card.card_types.contains(&CardType::Artifact)
+        || def.card.card_types.contains(&CardType::Land)
+        || def.card.card_types.contains(&CardType::Planeswalker)
+        || def.card.card_types.contains(&CardType::Battle);
+    let mut replacements = Vec::new();
+
+    for (idx, ability) in def.abilities.iter().enumerate() {
+        let Some(label) = intrinsic_label_from_source_text(ability.text.as_deref()) else {
+            continue;
+        };
+        let Some(oracle_line) = find_matching_oracle_intrinsic_line(&oracle_lines, &label) else {
+            continue;
+        };
+        for rendered_line in describe_ability(idx + 1, ability, subject, rewrite_it_deals) {
+            let canonical_line = canonicalize_intrinsic_render_line(&rendered_line);
+            if canonical_line.is_empty()
+                || canonical_line.eq_ignore_ascii_case(&oracle_line)
+                || intrinsic_match_key_for_def(def, &canonical_line)
+                    == intrinsic_match_key_for_def(def, &oracle_line)
+            {
+                continue;
+            }
+            replacements.push((canonical_line, oracle_line.clone()));
+        }
+    }
+
+    for cost in &def.optional_costs {
+        let Some(oracle_line) =
+            find_matching_oracle_intrinsic_line(&oracle_lines, cost.label.trim())
+        else {
+            continue;
+        };
+        let canonical_line = canonicalize_intrinsic_render_line(&describe_optional_cost_line(cost));
+        if canonical_line.is_empty()
+            || canonical_line.eq_ignore_ascii_case(&oracle_line)
+            || intrinsic_match_key_for_def(def, &canonical_line)
+                == intrinsic_match_key_for_def(def, &oracle_line)
+        {
+            continue;
+        }
+        replacements.push((canonical_line, oracle_line.clone()));
+    }
+
+    for (idx, method) in def.alternative_casts.iter().enumerate() {
+        let Some(oracle_line) = find_matching_oracle_intrinsic_line(&oracle_lines, method.name())
+        else {
+            continue;
+        };
+        let canonical_line =
+            canonicalize_intrinsic_render_line(&describe_alternative_cast_line(method, idx));
+        if canonical_line.is_empty()
+            || canonical_line.eq_ignore_ascii_case(&oracle_line)
+            || intrinsic_match_key_for_def(def, &canonical_line)
+                == intrinsic_match_key_for_def(def, &oracle_line)
+        {
+            continue;
+        }
+        replacements.push((canonical_line, oracle_line.clone()));
+    }
+
+    for oracle_line in &oracle_lines {
+        let Some(label) = intrinsic_label_from_source_text(Some(oracle_line)) else {
+            continue;
+        };
+        for rendered in intrinsic_probe_render_lines(def, &label) {
+            if rendered.is_empty() || intrinsic_match_key(&rendered) == intrinsic_match_key(&label)
+            {
+                continue;
+            }
+            replacements.push((rendered, label.clone()));
+        }
+    }
+
+    lines
+        .into_iter()
+        .map(|line| {
+            for (rendered, oracle) in &replacements {
+                if intrinsic_match_key_for_def(def, &line)
+                    == intrinsic_match_key_for_def(def, rendered)
+                {
+                    return oracle.clone();
+                }
+            }
+            line
+        })
+        .collect()
+}
+
+fn reconcile_named_token_shorthand_with_oracle(
+    def: &CardDefinition,
+    lines: Vec<String>,
+) -> Vec<String> {
+    let stripped_oracle = strip_parenthetical_text(&def.card.oracle_text);
+    let oracle_lines = stripped_oracle
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>();
+    if oracle_lines.is_empty() {
+        return lines;
+    }
+
+    let raw_oracle_lower = def.card.oracle_text.to_ascii_lowercase();
+    lines
+        .into_iter()
+        .map(|line| {
+            let trimmed = line.trim();
+            for oracle_line in &oracle_lines {
+                let oracle_trimmed = oracle_line.trim();
+                let oracle_lower = oracle_trimmed.to_ascii_lowercase();
+                if !oracle_lower.contains("create ")
+                    || !(oracle_lower.contains(" token") || oracle_lower.contains(" tokens"))
+                {
+                    continue;
+                }
+                let raw_parenthetical_anchor = format!("{} (", oracle_lower);
+                if !raw_oracle_lower.contains(&raw_parenthetical_anchor) {
+                    continue;
+                }
+                let compact_line =
+                    normalize_named_token_line_for_oracle_match(def, trimmed, oracle_trimmed);
+                if compact_line.eq_ignore_ascii_case(oracle_trimmed)
+                    || compact_line.eq_ignore_ascii_case(oracle_trimmed.trim_end_matches('.'))
+                {
+                    return oracle_trimmed.to_string();
+                }
+            }
+            line
+        })
+        .collect()
+}
+
+fn normalize_named_token_line_for_oracle_match(
+    def: &CardDefinition,
+    line: &str,
+    oracle_line: &str,
+) -> String {
+    let mut normalized = compact_named_token_payload_in_line(line);
+    let oracle_lower = oracle_line.to_ascii_lowercase();
+    if oracle_lower.contains(". then you may ")
+        && let Some((head, tail)) = split_once_ascii_ci(&normalized, ". you may ")
+    {
+        normalized = format!("{}. Then you may {}", head.trim_end_matches('.'), tail);
+    }
+    if let Some(subject) = when_you_do_deal_subject_from_oracle(def, oracle_line) {
+        if let Some((head, tail)) = split_once_ascii_ci(&normalized, ". If you do, it deals ") {
+            normalized = format!(
+                "{}. When you do, {} deals {}",
+                head.trim_end_matches('.'),
+                subject,
+                tail
+            );
+        } else if let Some((head, tail)) =
+            split_once_ascii_ci(&normalized, ". if you do, it deals ")
+        {
+            normalized = format!(
+                "{}. When you do, {} deals {}",
+                head.trim_end_matches('.'),
+                subject,
+                tail
+            );
+        }
+    }
+    normalized
+}
+
+fn compact_named_token_payload_in_line(line: &str) -> String {
+    let trimmed = line.trim();
+    for marker in [" with \"", ". It has \"", ". They have \""] {
+        let Some((head, rest)) = split_once_ascii_ci(trimmed, marker) else {
+            continue;
+        };
+        let compact_head = head.trim().trim_end_matches('.').trim();
+        let compact_lower = compact_head.to_ascii_lowercase();
+        if !compact_lower.contains("create ")
+            || !(compact_lower.contains(" token") || compact_lower.contains(" tokens"))
+        {
+            continue;
+        }
+        let Some((_, suffix)) = rest.split_once('"') else {
+            continue;
+        };
+        let suffix = suffix.trim_start();
+        return if suffix.is_empty() {
+            format!("{compact_head}.")
+        } else {
+            format!("{compact_head}{suffix}")
+        };
+    }
+    trimmed.to_string()
+}
+
+fn when_you_do_deal_subject_from_oracle(def: &CardDefinition, oracle_line: &str) -> Option<String> {
+    let lower = oracle_line.to_ascii_lowercase();
+    let marker = "when you do, ";
+    let start = lower.find(marker)? + marker.len();
+    let deals_idx = lower[start..].find(" deals ")? + start;
+    let subject = oracle_line[start..deals_idx].trim();
+    if subject.is_empty() {
+        return None;
+    }
+
+    let card_name = def.card.name.trim();
+    let short_name = card_name.split(',').next().unwrap_or(card_name).trim();
+    if subject.eq_ignore_ascii_case(card_name) || subject.eq_ignore_ascii_case(short_name) {
+        Some(short_name.to_string())
+    } else {
+        Some(subject.to_string())
+    }
+}
+
+fn intrinsic_probe_render_lines(def: &CardDefinition, oracle_line: &str) -> Vec<String> {
+    static CACHE: OnceLock<Mutex<HashMap<String, Vec<String>>>> = OnceLock::new();
+
+    let type_signature = def
+        .card
+        .card_types
+        .iter()
+        .map(|card_type| format!("{card_type:?}"))
+        .collect::<Vec<_>>()
+        .join("|");
+    let cache_key = format!("{type_signature}::{oracle_line}");
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Some(cached) = cache.lock().expect("intrinsic probe cache").get(&cache_key) {
+        return cached.clone();
+    }
+
+    let mut builder =
+        crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Oracle Surface Probe");
+    if !def.card.card_types.is_empty() {
+        builder = builder.card_types(def.card.card_types.clone());
+    }
+    let rendered = builder
+        .parse_text(oracle_line.to_string())
+        .ok()
+        .map(|probe| {
+            compiled_lines(&probe)
+                .into_iter()
+                .map(|line| canonicalize_intrinsic_render_line(&line))
+                .filter(|line| !line.is_empty())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    cache
+        .lock()
+        .expect("intrinsic probe cache")
+        .insert(cache_key, rendered.clone());
+    rendered
+}
+
+fn canonicalize_intrinsic_render_line(line: &str) -> String {
+    let stripped = strip_render_heading(line);
+    if stripped.is_empty() {
+        return String::new();
+    }
+    let normalized =
+        normalize_compiled_post_pass_effect(&normalize_common_semantic_phrasing(&stripped));
+    let normalized = normalize_sentence_surface_style(&normalized);
+    strip_parenthetical_text(&normalized)
+}
+
+fn intrinsic_label_from_source_text(text: Option<&str>) -> Option<String> {
+    let label = strip_parenthetical_text(text?.trim());
+    let lower = label.to_ascii_lowercase();
+    if label.is_empty()
+        || label.contains('\n')
+        || label.contains(':')
+        || label.ends_with('.')
+        || label.ends_with('—')
+        || label.ends_with('-')
+        || lower.contains("choose one")
+        || lower.contains("choose two")
+        || lower.contains("choose three")
+        || lower.contains("choose four")
+        || lower.contains("choose up to ")
+        || lower.contains("choose between ")
+        || label.len() > 80
+    {
+        return None;
+    }
+    Some(label)
+}
+
+fn find_matching_oracle_intrinsic_line(oracle_lines: &[&str], label: &str) -> Option<String> {
+    let trimmed = label.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    oracle_lines.iter().find_map(|line| {
+        let oracle = line.trim();
+        let oracle_lower = oracle.to_ascii_lowercase();
+        if oracle.eq_ignore_ascii_case(trimmed)
+            || oracle_lower.starts_with(&format!("{lower} "))
+            || oracle_lower.starts_with(&format!("{lower}—"))
+            || oracle_lower.starts_with(&format!("{lower}-"))
+        {
+            Some(oracle.to_string())
+        } else {
+            None
+        }
+    })
+}
+
+fn intrinsic_match_key(text: &str) -> String {
+    normalize_intrinsic_token_surface_for_match(&strip_parenthetical_text(text))
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .trim()
+        .trim_end_matches('.')
+        .to_ascii_lowercase()
+}
+
+fn intrinsic_match_key_for_def(def: &CardDefinition, text: &str) -> String {
+    let mut normalized = intrinsic_match_key(text);
+    let subject = subject_for_card(&def.card).to_ascii_lowercase();
+    let card_name = def.card.name.trim().to_ascii_lowercase();
+    let short_name = def
+        .card
+        .name
+        .split(',')
+        .next()
+        .unwrap_or(def.card.name.as_str())
+        .trim()
+        .to_ascii_lowercase();
+
+    let mut names = vec![card_name];
+    if !short_name.is_empty() {
+        names.push(short_name);
+    }
+    names.sort_by_key(|name| std::cmp::Reverse(name.len()));
+    names.dedup();
+
+    for name in names {
+        if !name.is_empty() {
+            normalized = normalized.replace(&name, &subject);
+        }
+    }
+    normalized
+}
+
+fn normalize_intrinsic_token_surface_for_match(text: &str) -> String {
+    let trimmed = text.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    if let Some(create_idx) = lower.find("create a ")
+        && let Some(token_idx) = lower[create_idx..].find(" token that's tapped and attacking")
+    {
+        let token_idx = create_idx + token_idx;
+        let prefix = &trimmed[..create_idx];
+        let descriptor = &trimmed[create_idx + "create a ".len()..token_idx];
+        let suffix = &trimmed[token_idx + " token that's tapped and attacking".len()..];
+        return format!("{prefix}create a tapped and attacking {descriptor} token{suffix}");
+    }
+    trimmed.to_string()
+}
+
+fn drop_suspend_keyword_intrinsic_lines(def: &CardDefinition, lines: Vec<String>) -> Vec<String> {
+    let has_suspend = def
+        .alternative_casts
+        .iter()
+        .any(|method| matches!(method, AlternativeCastingMethod::Suspend { .. }));
+    if !has_suspend {
+        return lines;
+    }
+
+    lines
+        .into_iter()
+        .filter(|line| {
+            let trimmed = line.trim();
+            let lower = trimmed.to_ascii_lowercase();
+
+            let is_suspend_upkeep_line = lower.starts_with(
+                "at the beginning of your upkeep, if there are 1 or more time counters on this ",
+            ) && lower.contains(", remove a time counter from this ");
+            let is_suspend_cast_line = lower
+                .starts_with("whenever a counter is removed from this ")
+                && lower.contains("if there are no time counters on this ")
+                && lower.contains("you may cast this card from exile without paying its mana cost");
+
+            !(is_suspend_upkeep_line || is_suspend_cast_line)
+        })
+        .collect()
 }
 
 /// Backward-compatible alias for the canonical normalized compiled-text surface.
@@ -1869,11 +2405,12 @@ mod normalize_sentence_surface_style_tests {
 mod tests {
     use super::{
         compiled_lines, describe_additional_costs, describe_for_each_filter,
-        merge_adjacent_static_heading_lines, merge_adjacent_subject_predicate_lines,
-        normalize_common_semantic_phrasing, normalize_compiled_line_post_pass,
-        normalize_compiled_post_pass_effect, normalize_gain_life_plus_phrase,
-        normalize_known_low_tail_phrase, normalize_rendered_line_for_card,
-        normalize_sentence_surface_style, normalize_spell_self_exile, pluralize_noun_phrase,
+        intrinsic_label_from_source_text, merge_adjacent_static_heading_lines,
+        merge_adjacent_subject_predicate_lines, normalize_common_semantic_phrasing,
+        normalize_compiled_line_post_pass, normalize_compiled_post_pass_effect,
+        normalize_gain_life_plus_phrase, normalize_known_low_tail_phrase,
+        normalize_rendered_line_for_card, normalize_sentence_surface_style,
+        normalize_spell_self_exile, pluralize_noun_phrase,
     };
     use crate::cards::CardDefinitionBuilder;
     use crate::filter::{ObjectFilter, PlayerFilter};
@@ -2822,6 +3359,55 @@ mod tests {
         assert_eq!(
             normalized,
             "Triggered ability 1: When this creature dies, choose one or more —\n• Target opponent sacrifices a creature of their choice.\n• Target opponent discards two cards.\n• Target opponent loses 5 life."
+        );
+    }
+
+    #[test]
+    fn normalizes_trigger_scoped_colon_choose_one_into_bullets() {
+        let normalized = normalize_sentence_surface_style(
+            "Whenever you cast a creature spell: Choose one - Destroy target artifact or enchantment. • Look at the top five cards of your library. • You gain 4 life.",
+        );
+        assert_eq!(
+            normalized,
+            "Whenever you cast a creature spell, choose one —\n• Destroy target artifact or enchantment.\n• Look at the top five cards of your library.\n• You gain 4 life."
+        );
+    }
+
+    #[test]
+    fn normalizes_trigger_scoped_colon_choose_one_that_hasnt_been_chosen_into_bullets() {
+        let normalized = normalize_sentence_surface_style(
+            "At the beginning of your upkeep: Choose one that hasn't been chosen — Draw two cards. • You lose the game.",
+        );
+        assert_eq!(
+            normalized,
+            "At the beginning of your upkeep, choose one that hasn't been chosen —\n• Draw two cards.\n• You lose the game."
+        );
+    }
+
+    #[test]
+    fn normalizes_trigger_scoped_choose_one_that_hasnt_been_chosen_into_bullets() {
+        let normalized = normalize_sentence_surface_style(
+            "At the beginning of your upkeep, choose one that hasn't been chosen — • Draw two cards. • You lose the game.",
+        );
+        assert_eq!(
+            normalized,
+            "At the beginning of your upkeep, choose one that hasn't been chosen —\n• Draw two cards.\n• You lose the game."
+        );
+    }
+
+    #[test]
+    fn intrinsic_label_reconciliation_skips_modal_headers() {
+        assert_eq!(
+            intrinsic_label_from_source_text(Some(
+                "At the beginning of your upkeep, choose one that hasn't been chosen —"
+            )),
+            None
+        );
+        assert_eq!(
+            intrinsic_label_from_source_text(Some(
+                "Whenever you cast a creature spell, choose one —"
+            )),
+            None
         );
     }
 
@@ -4800,6 +5386,17 @@ mod tests {
     }
 
     #[test]
+    fn post_pass_normalizes_top_cards_for_each_card_type_sequence() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "At the beginning of your end step, if you have cast a noncreature spell this turn, look at the top five cards of your library. Reveal it. If you have cast a noncreature artifact spell this turn, you choose up to one other artifact card in library and tags it as '__sentence_helper_chosen_l0_s0_e1'. If you have cast a noncreature battle spell this turn, you choose up to one other battle card in library and tags it as '__sentence_helper_chosen_l0_s0_e1'. If you have cast a noncreature enchantment spell this turn, you choose up to one other enchantment card in library and tags it as '__sentence_helper_chosen_l0_s0_e1'. If you have cast a noncreature instant spell this turn, you choose up to one other instant card in library and tags it as '__sentence_helper_chosen_l0_s0_e1'. If you have cast a noncreature kindred spell this turn, you choose up to one other kindred card in library and tags it as '__sentence_helper_chosen_l0_s0_e1'. If you have cast a noncreature land spell this turn, you choose up to one other land card in library and tags it as '__sentence_helper_chosen_l0_s0_e1'. If you have cast a noncreature planeswalker spell this turn, you choose up to one other planeswalker card in library and tags it as '__sentence_helper_chosen_l0_s0_e1'. If you have cast a noncreature sorcery spell this turn, you choose up to one other sorcery card in library and tags it as '__sentence_helper_chosen_l0_s0_e1'. For each tagged '__sentence_helper_chosen_l0_s0_e1' object, Return that object to its owner's hand. Put the remaining tagged cards on the bottom of your library in a random order.",
+        );
+        assert_eq!(
+            normalized,
+            "At the beginning of your end step, if you have cast a noncreature spell this turn, reveal the top five cards of your library. For each card type among noncreature spells you've cast this turn, you may put a card of that type from among the revealed cards into your hand. Put the rest on the bottom of your library in a random order."
+        );
+    }
+
+    #[test]
     fn post_pass_normalizes_sentence_helper_put_land_from_hand_clause() {
         let normalized = normalize_compiled_post_pass_effect(
             "You draw a card. you may choose exactly 1 land card in your hand and tags it as '__sentence_helper_chosen_l0_s0_e0'. Put it onto the battlefield.",
@@ -5454,6 +6051,78 @@ mod tests {
         assert_eq!(
             normalized,
             "When this creature dies, each player creates a Lander artifact token. It has \"{2}, {T}, Sacrifice this token: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle.\""
+        );
+    }
+
+    #[test]
+    fn compact_named_token_shorthand_trims_embedded_payload() {
+        let compact = super::compact_named_token_payload_in_line(
+            "When this creature dies, create a Lander token with \"{2}, {T}, Sacrifice this token: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle\"",
+        );
+
+        assert_eq!(compact, "When this creature dies, create a Lander token.");
+    }
+
+    #[test]
+    fn compact_named_token_payload_in_line_preserves_followup_clauses() {
+        let compact = super::compact_named_token_payload_in_line(
+            "Create a Lander token with \"{2}, {T}, Sacrifice this token: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle\". you may sacrifice an artifact. If you do, it deals 2 damage to each creature.",
+        );
+
+        assert_eq!(
+            compact,
+            "Create a Lander token. you may sacrifice an artifact. If you do, it deals 2 damage to each creature."
+        );
+    }
+
+    #[test]
+    fn intrinsic_match_key_normalizes_tapped_and_attacking_token_wording() {
+        let rendered = super::intrinsic_match_key(
+            "Whenever Zurgo's Vanguard attacks, create a 1/1 red Warrior creature token that's tapped and attacking. Sacrifice it at the beginning of the next end step.",
+        );
+        let oracle_probe = super::intrinsic_match_key(
+            "Whenever Zurgo's Vanguard attacks, create a tapped and attacking 1/1 red Warrior creature token. Sacrifice it at the beginning of the next end step.",
+        );
+
+        assert_eq!(rendered, oracle_probe);
+    }
+
+    #[test]
+    fn canonical_compiled_lines_hide_suspend_intrinsics_for_corpulent_corpse() {
+        let def = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Corpulent Corpse")
+            .parse_text(
+                "Mana cost: {5}{B}\nType: Creature — Zombie\nPower/Toughness: 3/3\nFear (This creature can't be blocked except by artifact creatures and/or black creatures.)\nSuspend 5—{B} (Rather than cast this card from your hand, you may pay {B} and exile it with five time counters on it. At the beginning of your upkeep, remove a time counter. When the last is removed, you may cast it without paying its mana cost. It has haste.)",
+            )
+            .expect("Corpulent Corpse should parse");
+
+        assert_eq!(
+            super::canonical_compiled_lines(&def),
+            vec!["Fear", "Suspend 5—{B}"]
+        );
+    }
+
+    #[test]
+    fn canonical_compiled_lines_hide_suspend_intrinsics_for_durkwood_baloth() {
+        let def = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Durkwood Baloth")
+            .parse_text(
+                "Mana cost: {4}{G}{G}\nType: Creature — Beast\nPower/Toughness: 5/5\nSuspend 5—{G} (Rather than cast this card from your hand, you may pay {G} and exile it with five time counters on it. At the beginning of your upkeep, remove a time counter. When the last is removed, you may cast it without paying its mana cost. It has haste.)",
+            )
+            .expect("Durkwood Baloth should parse");
+
+        assert_eq!(super::canonical_compiled_lines(&def), vec!["Suspend 5—{G}"]);
+    }
+
+    #[test]
+    fn canonical_compiled_lines_hide_suspend_intrinsics_for_gargadon() {
+        let def = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Gargadon")
+            .parse_text(
+                "Mana cost: {5}{R}{R}\nType: Creature — Beast\nPower/Toughness: 7/5\nTrample\nSuspend 4—{1}{R} (Rather than cast this card from your hand, you may pay {1}{R} and exile it with four time counters on it. At the beginning of your upkeep, remove a time counter. When the last is removed, you may cast it without paying its mana cost. It has haste.)",
+            )
+            .expect("Gargadon should parse");
+
+        assert_eq!(
+            super::canonical_compiled_lines(&def),
+            vec!["Trample", "Suspend 4—{1}{R}"]
         );
     }
 }

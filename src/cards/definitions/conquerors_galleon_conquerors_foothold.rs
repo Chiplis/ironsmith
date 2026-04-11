@@ -53,8 +53,8 @@ mod tests {
     use crate::ability::AbilityKind;
     use crate::events::combat::CreatureAttackedEvent;
     use crate::events::phase::EndOfCombatEvent;
-    use crate::ids::CardId;
     use crate::game_loop::{put_triggers_on_stack, resolve_stack_entry};
+    use crate::ids::CardId;
     use crate::ids::PlayerId;
     use crate::triggers::{AttackEventTarget, TriggerEvent, TriggerQueue, check_triggers};
     use crate::zone::Zone;
@@ -82,16 +82,16 @@ mod tests {
             foothold.card.other_face_name.as_deref(),
             Some("Conqueror's Galleon")
         );
+        assert_eq!(galleon.card.other_face, Some(CardId::from_raw(FOOTHOLD_ID)));
+        assert_eq!(foothold.card.other_face, Some(CardId::from_raw(GALLEON_ID)));
         assert_eq!(
-            galleon.card.other_face,
-            Some(CardId::from_raw(FOOTHOLD_ID))
+            galleon.card.linked_face_layout,
+            LinkedFaceLayout::TransformLike
         );
         assert_eq!(
-            foothold.card.other_face,
-            Some(CardId::from_raw(GALLEON_ID))
+            foothold.card.linked_face_layout,
+            LinkedFaceLayout::TransformLike
         );
-        assert_eq!(galleon.card.linked_face_layout, LinkedFaceLayout::TransformLike);
-        assert_eq!(foothold.card.linked_face_layout, LinkedFaceLayout::TransformLike);
         assert_eq!(galleon.abilities.len(), 2);
         assert_eq!(foothold.abilities.len(), 4);
     }
@@ -114,15 +114,17 @@ mod tests {
         );
 
         let attack_event = TriggerEvent::new_with_provenance(
-            CreatureAttackedEvent::new(galleon_id, AttackEventTarget::Player(PlayerId::from_index(1))),
+            CreatureAttackedEvent::new(
+                galleon_id,
+                AttackEventTarget::Player(PlayerId::from_index(1)),
+            ),
             crate::provenance::ProvNodeId::default(),
         );
         let mut trigger_queue = TriggerQueue::new();
         for trigger in check_triggers(&game, &attack_event) {
             trigger_queue.add(trigger);
         }
-        put_triggers_on_stack(&mut game, &mut trigger_queue)
-            .expect("should queue attack trigger");
+        put_triggers_on_stack(&mut game, &mut trigger_queue).expect("should queue attack trigger");
         while !game.stack_is_empty() {
             resolve_stack_entry(&mut game).expect("resolve attack trigger");
         }

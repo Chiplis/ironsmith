@@ -32,6 +32,21 @@ fn normalize_metalcraft_label_surface(oracle_lower: &str, text: &str) -> String 
     text.to_string()
 }
 
+fn normalize_triggered_kicked_mass_bounce_surface(text: &str) -> Option<String> {
+    let Some((prefix, tail)) = split_once_ascii_ci(text, ", if this spell was kicked, ") else {
+        return None;
+    };
+    let rewritten_tail = normalize_compiled_post_pass_effect(tail);
+    if !rewritten_tail.starts_with("Return all creatures to their owners' hands except for ") {
+        return None;
+    }
+
+    Some(format!(
+        "{prefix}, if it was kicked, {}",
+        lowercase_first(&rewritten_tail)
+    ))
+}
+
 fn normalize_dynamic_token_card_pt_surface(oracle_lower: &str, text: &str) -> String {
     let reference_kind = if oracle_lower.contains("its power is equal to that card's power")
         && oracle_lower.contains("its toughness is equal to that card's toughness")
@@ -143,6 +158,9 @@ pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str
                 .replace("non-Auran enchantment", "non-Aura enchantment");
         normalized_body = normalize_dynamic_token_card_pt_surface(&oracle_lower, &normalized_body);
         if let Some(rewritten) = normalize_plural_exiled_play_free_cast_surface(&normalized_body) {
+            normalized_body = rewritten;
+        }
+        if let Some(rewritten) = normalize_triggered_kicked_mass_bounce_surface(&normalized_body) {
             normalized_body = rewritten;
         }
         if let Some(rewritten) = normalize_choose_background_scaffolding_clause(&normalized_body) {
@@ -418,6 +436,15 @@ pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str
             "At the beginning of your second main phase, you may lose the number of an opponent life. If you do, draw that many cards",
             "At the beginning of your postcombat main phase, you may pay X life, where X is the number of opponents that were dealt combat damage this turn. If you do, draw X cards",
         ) {
+            normalized_body = rewritten;
+        }
+        if oracle_lower.contains("each of your postcombat main phases")
+            && let Some(rewritten) = replace_once_ascii_ci(
+                &normalized_body,
+                "At the beginning of your second main phase",
+                "At the beginning of each of your postcombat main phases",
+            )
+        {
             normalized_body = rewritten;
         }
         if let Some(rewritten) =
@@ -2297,6 +2324,13 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
     loop {
         let mut changed = false;
         if let Some(rewritten) =
+            normalize_sentence_helper_top_cards_for_each_card_type_to_hand_sequence(&normalized)
+            && rewritten != normalized
+        {
+            normalized = rewritten;
+            changed = true;
+        }
+        if let Some(rewritten) =
             normalize_sentence_helper_top_cards_choose_to_hand_sequence(&normalized)
             && rewritten != normalized
         {
@@ -2451,11 +2485,14 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
             let excluded_rendered = excluded
                 .into_iter()
                 .map(|subtype| {
-                    if subtype.eq_ignore_ascii_case("Octopus") {
+                    let rendered = if subtype.eq_ignore_ascii_case("Octopus") {
                         "Octopuses".to_string()
+                    } else if subtype.eq_ignore_ascii_case("Merfolk") {
+                        "Merfolk".to_string()
                     } else {
                         pluralize_noun_phrase(&subtype)
-                    }
+                    };
+                    capitalize_first(&rendered)
                 })
                 .collect::<Vec<_>>();
             let punctuation = if hand_tail.trim_start().starts_with('.') {
@@ -5487,6 +5524,152 @@ pub(super) fn normalize_sentence_helper_top_cards_choose_to_hand_sequence(
     Some(rewritten)
 }
 
+pub(super) fn normalize_sentence_helper_top_cards_for_each_card_type_to_hand_sequence(
+    text: &str,
+) -> Option<String> {
+    for marker in [
+        ": Look at the top ",
+        ": Reveal the top ",
+        ". Look at the top ",
+        ". Reveal the top ",
+        ", look at the top ",
+        ", reveal the top ",
+    ] {
+        if let Some((before, rest)) = split_once_ascii_ci(text, marker) {
+            let marker_lower = marker.to_ascii_lowercase();
+            let restored = if marker_lower.contains("look") {
+                format!("Look at the top {rest}")
+            } else {
+                format!("Reveal the top {rest}")
+            };
+            if let Some(rewritten) =
+                normalize_sentence_helper_top_cards_for_each_card_type_to_hand_sequence(&restored)
+            {
+                if marker.starts_with(", ") {
+                    return Some(format!("{before}, {}", lowercase_first(&rewritten)));
+                }
+                let joiner = marker.get(..2).unwrap_or(": ");
+                return Some(format!("{before}{joiner}{rewritten}"));
+            }
+        }
+    }
+
+    let trimmed = text.trim().trim_end_matches('.');
+    let lower = trimmed.to_ascii_lowercase();
+    if !(lower.starts_with("look at the top ") || lower.starts_with("reveal the top ")) {
+        return None;
+    }
+
+    let (head, mut rest) = split_once_ascii_ci(trimmed, ". Reveal it. ")?;
+    if !head
+        .to_ascii_lowercase()
+        .ends_with(" cards of your library")
+    {
+        return None;
+    }
+
+    let card_types = [
+        "artifact",
+        "battle",
+        "enchantment",
+        "instant",
+        "kindred",
+        "land",
+        "planeswalker",
+        "sorcery",
+    ];
+
+    let mut chosen_tag: Option<&str> = None;
+    let mut spell_filter_prefix: Option<String> = None;
+    let mut clause_count = 0usize;
+
+    while let Some(after_if) = strip_prefix_ascii_ci(rest, "If you have cast ") {
+        let (condition, after_condition) =
+            split_once_ascii_ci(after_if, ", you choose up to one ")?;
+        let (choice, after_choice) =
+            split_once_ascii_ci(after_condition, " in library and tags it as '")?;
+        let (tag, after_tag) = after_choice.split_once("'. ")?;
+
+        let mut matched_type = None;
+        let mut matched_prefix = None;
+        for card_type in card_types {
+            let suffix = format!(" {card_type} spell this turn");
+            if let Some(prefix) = strip_suffix_ascii_ci(condition.trim(), &suffix) {
+                matched_type = Some(card_type);
+                matched_prefix = Some(prefix.trim().to_string());
+                break;
+            }
+        }
+        let card_type = matched_type?;
+        let prefix = matched_prefix?;
+
+        let choice_lower = choice.trim().to_ascii_lowercase();
+        let expected = format!("{card_type} card");
+        let expected_other = format!("other {card_type} card");
+        if choice_lower != expected && choice_lower != expected_other {
+            return None;
+        }
+
+        if let Some(existing) = chosen_tag {
+            if existing != tag {
+                return None;
+            }
+        } else {
+            chosen_tag = Some(tag);
+        }
+
+        let normalized_prefix = strip_indefinite_article(prefix.as_str()).to_string();
+        if let Some(existing) = spell_filter_prefix.as_ref() {
+            if !existing.eq_ignore_ascii_case(&normalized_prefix) {
+                return None;
+            }
+        } else {
+            spell_filter_prefix = Some(normalized_prefix);
+        }
+
+        clause_count += 1;
+        rest = after_tag;
+    }
+
+    if clause_count == 0 {
+        return None;
+    }
+
+    let chosen_tag = chosen_tag?;
+    let spell_filter_prefix = spell_filter_prefix?;
+    let rest = strip_prefix_ascii_ci(rest, "For each tagged '")?;
+    let rest = strip_prefix_ascii_ci(rest, chosen_tag)?;
+    let rest = strip_prefix_ascii_ci(rest, "' object, Return that object to its owner's hand. ")?;
+    let rest = strip_prefix_ascii_ci(
+        rest,
+        "Put the remaining tagged cards on the bottom of your library",
+    )?;
+
+    let order_suffix = if let Some(tail) = strip_prefix_ascii_ci(rest, " in a random order") {
+        if !tail.trim().is_empty() {
+            return None;
+        }
+        " in a random order"
+    } else if rest.trim().is_empty() {
+        ""
+    } else {
+        return None;
+    };
+
+    let reveal_head = if head.to_ascii_lowercase().starts_with("look at the top ") {
+        format!("Reveal{}", &head["Look at".len()..])
+    } else {
+        head.to_string()
+    };
+
+    Some(format!(
+        "{}. For each card type among {} spells you've cast this turn, you may put a card of that type from among the revealed cards into your hand. Put the rest on the bottom of your library{}.",
+        reveal_head.trim().trim_end_matches('.'),
+        spell_filter_prefix.trim(),
+        order_suffix
+    ))
+}
+
 pub(super) fn normalize_sentence_helper_graveyard_to_hand_choice_clause(
     text: &str,
 ) -> Option<String> {
@@ -6049,6 +6232,20 @@ pub(super) fn normalize_enlist_tag_sequence(text: &str) -> Option<String> {
 }
 
 pub(super) fn normalize_divvy_chosen_sequence(text: &str) -> Option<String> {
+    if text.eq_ignore_ascii_case(
+        "Each player chooses an opponent. the chosen player chooses any number of that player's nontoken lands. Destroy those lands. Tap all other nontoken lands that player controls."
+    ) {
+        return Some(
+            "Each player separates all nontoken lands they control into two piles. For each player, one of their piles is chosen by one of their opponents of their choice. Destroy all lands in the chosen piles. Tap all lands in the other piles.".to_string()
+        );
+    }
+    if text.eq_ignore_ascii_case(
+        "Each player chooses an opponent. the chosen player chooses any number a nontoken land that player controls in the battlefield and tags it as 'divvy_chosen'. Destroy the tagged object 'divvy_chosen'. Tap all nontoken other lands that player controls."
+    ) {
+        return Some(
+            "Each player separates all nontoken lands they control into two piles. For each player, one of their piles is chosen by one of their opponents of their choice. Destroy all lands in the chosen piles. Tap all lands in the other piles.".to_string()
+        );
+    }
     if let Some((before, rest)) = split_once_ascii_ci(
         text,
         "for each opponent, choose any number of creatures that player controls. that player sacrifices those creatures.",

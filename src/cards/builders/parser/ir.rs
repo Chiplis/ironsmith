@@ -7,6 +7,7 @@ use crate::cards::builders::{
 };
 use crate::cost::TotalCost;
 
+use super::cst::KeywordLineKindCst;
 use super::shared_types::LineInfo;
 
 #[derive(Debug, Clone)]
@@ -39,34 +40,7 @@ pub(crate) struct RewriteKeywordLine {
     pub(crate) parsed: LineAst,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RewriteKeywordLineKind {
-    AdditionalCost,
-    AdditionalCostChoice,
-    AlternativeCast,
-    Bestow,
-    Bargain,
-    Buyback,
-    Channel,
-    Cycling,
-    Equip,
-    Escape,
-    Flashback,
-    Harmonize,
-    Kicker,
-    Madness,
-    Morph,
-    Multikicker,
-    Offspring,
-    Reinforce,
-    Squad,
-    Transmute,
-    Entwine,
-    CastThisSpellOnly,
-    Gift,
-    Warp,
-    ExertAttack,
-}
+pub(crate) type RewriteKeywordLineKind = KeywordLineKindCst;
 
 #[derive(Debug, Clone)]
 pub(crate) struct RewriteActivatedLine {

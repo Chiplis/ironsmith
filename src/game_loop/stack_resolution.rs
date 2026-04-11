@@ -275,7 +275,8 @@ pub(super) fn resolve_stack_entry_full(
     // Create execution context
     // Resolution effects use EventCause::from_effect to distinguish from cost effects
     let execution_source = if entry.is_ability {
-        entry.source_snapshot
+        entry
+            .source_snapshot
             .as_ref()
             .map(|snapshot| snapshot.object_id)
             .unwrap_or(entry.object_id)

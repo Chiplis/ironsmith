@@ -1571,29 +1571,32 @@ pub fn verify_intervening_if(
     trigger_identity: Option<TriggerIdentity>,
 ) -> bool {
     let defending_player = if event.kind() == crate::events::traits::EventKind::CreatureAttacked {
-        event.downcast::<crate::events::combat::CreatureAttackedEvent>()
+        event
+            .downcast::<crate::events::combat::CreatureAttackedEvent>()
             .and_then(|attacked| match attacked.target {
                 crate::triggers::AttackEventTarget::Player(player_id) => Some(player_id),
-                crate::triggers::AttackEventTarget::Planeswalker(planeswalker_id) => {
-                    game.object(planeswalker_id).map(|planeswalker| planeswalker.controller)
-                }
+                crate::triggers::AttackEventTarget::Planeswalker(planeswalker_id) => game
+                    .object(planeswalker_id)
+                    .map(|planeswalker| planeswalker.controller),
             })
     } else if event.kind() == crate::events::traits::EventKind::CreatureAttackedAndUnblocked {
-        event.downcast::<crate::events::combat::CreatureAttackedAndUnblockedEvent>()
+        event
+            .downcast::<crate::events::combat::CreatureAttackedAndUnblockedEvent>()
             .and_then(|attacked| match attacked.target {
                 crate::triggers::AttackEventTarget::Player(player_id) => Some(player_id),
-                crate::triggers::AttackEventTarget::Planeswalker(planeswalker_id) => {
-                    game.object(planeswalker_id).map(|planeswalker| planeswalker.controller)
-                }
+                crate::triggers::AttackEventTarget::Planeswalker(planeswalker_id) => game
+                    .object(planeswalker_id)
+                    .map(|planeswalker| planeswalker.controller),
             })
     } else if event.kind() == crate::events::traits::EventKind::CreatureBecameBlocked {
-        event.downcast::<crate::events::combat::CreatureBecameBlockedEvent>()
+        event
+            .downcast::<crate::events::combat::CreatureBecameBlockedEvent>()
             .and_then(|blocked| blocked.attack_target)
             .and_then(|target| match target {
                 crate::triggers::AttackEventTarget::Player(player_id) => Some(player_id),
-                crate::triggers::AttackEventTarget::Planeswalker(planeswalker_id) => {
-                    game.object(planeswalker_id).map(|planeswalker| planeswalker.controller)
-                }
+                crate::triggers::AttackEventTarget::Planeswalker(planeswalker_id) => game
+                    .object(planeswalker_id)
+                    .map(|planeswalker| planeswalker.controller),
             })
     } else {
         None

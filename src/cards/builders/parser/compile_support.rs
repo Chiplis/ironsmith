@@ -1638,6 +1638,10 @@ macro_rules! direct_target_effect_variants {
                 target: $target,
                 ..
             }
+            | EffectAst::ShuffleObjectsIntoLibrary {
+                target: $target,
+                ..
+            }
             | EffectAst::CreateTokenCopyFromSource {
                 source: $target,
                 ..
@@ -2101,6 +2105,7 @@ pub(crate) fn effect_references_its_controller(effect: &EffectAst) -> bool {
         | EffectAst::ShuffleHandAndGraveyardIntoLibrary { player }
         | EffectAst::ShuffleGraveyardIntoLibrary { player }
         | EffectAst::ShuffleLibrary { player }
+        | EffectAst::ShuffleObjectsIntoLibrary { player, .. }
         | EffectAst::Sacrifice { player, .. }
         | EffectAst::SacrificeAll { player, .. }
         | EffectAst::ChooseObjects { player, .. }
@@ -7169,6 +7174,109 @@ fn try_compile_visibility_and_card_selection_effect(
             ctx.last_effect_id = Some(move_to_hand_id);
             (compiled, choices)
         }
+        EffectAst::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary {
+            player,
+            spell_filter,
+            order,
+        } => {
+            use crate::effect::{Condition, Value, ValueComparisonOperator};
+            use crate::target::{ObjectFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
+
+            let looked_tag = ctx.last_object_tag.clone().ok_or_else(|| {
+                CardTextError::ParseError(
+                    "unable to resolve looked-at cards without prior reference".to_string(),
+                )
+            })?;
+
+            let (chooser, choices) =
+                resolve_effect_player_filter(*player, ctx, true, true, false)?;
+
+            let chosen_tag = ctx.next_tag("chosen");
+            let chosen_tag_key: TagKey = chosen_tag.as_str().into();
+            let card_type_modes = [
+                CardType::Artifact,
+                CardType::Battle,
+                CardType::Enchantment,
+                CardType::Instant,
+                CardType::Kindred,
+                CardType::Land,
+                CardType::Planeswalker,
+                CardType::Sorcery,
+            ];
+
+            let mut compiled = Vec::new();
+            for card_type in card_type_modes {
+                let mut typed_spell_filter = spell_filter.clone();
+                if !typed_spell_filter.card_types.contains(&card_type) {
+                    typed_spell_filter.card_types.push(card_type);
+                }
+
+                let mut choose_filter = ObjectFilter::default();
+                choose_filter.zone = Some(Zone::Library);
+                choose_filter.card_types.push(card_type);
+                choose_filter
+                    .tagged_constraints
+                    .push(TaggedObjectConstraint {
+                        tag: TagKey::from(looked_tag.as_str()),
+                        relation: TaggedOpbjectRelation::IsTaggedObject,
+                    });
+                choose_filter
+                    .tagged_constraints
+                    .push(TaggedObjectConstraint {
+                        tag: chosen_tag_key.clone(),
+                        relation: TaggedOpbjectRelation::IsNotTaggedObject,
+                    });
+
+                let choose = Effect::new(
+                    crate::effects::ChooseObjectsEffect::new(
+                        choose_filter,
+                        ChoiceCount::up_to(1),
+                        chooser.clone(),
+                        chosen_tag_key.clone(),
+                    )
+                    .in_zone(Zone::Library),
+                );
+
+                compiled.push(Effect::conditional(
+                    Condition::ValueComparison {
+                        left: Value::SpellsCastThisTurnMatching {
+                            player: chooser.clone(),
+                            filter: typed_spell_filter,
+                            exclude_source: false,
+                        },
+                        operator: ValueComparisonOperator::GreaterThanOrEqual,
+                        right: Value::Fixed(1),
+                    },
+                    vec![choose],
+                    Vec::new(),
+                ));
+            }
+
+            compiled.push(Effect::for_each_tagged(
+                chosen_tag.clone(),
+                vec![Effect::move_to_zone(
+                    ChooseSpec::Iterated,
+                    Zone::Hand,
+                    false,
+                )],
+            ));
+            compiled.push(Effect::put_tagged_remainder_on_library_bottom(
+                looked_tag,
+                Some(chosen_tag_key),
+                match order {
+                    crate::cards::builders::LibraryBottomOrderAst::Random => {
+                        crate::effects::consult_helpers::LibraryBottomOrder::Random
+                    }
+                    crate::cards::builders::LibraryBottomOrderAst::ChooserChooses => {
+                        crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses
+                    }
+                },
+                chooser,
+            ));
+
+            ctx.last_object_tag = Some(chosen_tag);
+            (compiled, choices)
+        }
         EffectAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary {
             player,
             battlefield_filter,
@@ -8846,7 +8954,9 @@ fn try_compile_object_zone_and_exchange_effect(
                 });
                 resolved_filter.owner = ctx.last_player_filter.clone();
             }
-            preserve_chooser_relative_player_filters(filter, &mut resolved_filter, &chooser);
+            if !matches!(chooser, PlayerFilter::ChosenPlayer) {
+                preserve_chooser_relative_player_filters(filter, &mut resolved_filter, &chooser);
+            }
             let choice_zone = resolved_filter.ensure_zone(Zone::Battlefield);
             if choice_zone == Zone::Battlefield
                 && resolved_filter.controller.is_none()
@@ -8898,7 +9008,9 @@ fn try_compile_object_zone_and_exchange_effect(
                 });
                 resolved_filter.owner = ctx.last_player_filter.clone();
             }
-            preserve_chooser_relative_player_filters(filter, &mut resolved_filter, &chooser);
+            if !matches!(chooser, PlayerFilter::ChosenPlayer) {
+                preserve_chooser_relative_player_filters(filter, &mut resolved_filter, &chooser);
+            }
             if slice_contains(zones.as_slice(), &Zone::Battlefield)
                 && resolved_filter.controller.is_none()
                 && resolved_filter.tagged_constraints.is_empty()
@@ -10000,6 +10112,76 @@ pub(crate) fn parse_equipment_rules_text(words: &[&str], source_text: &str) -> O
     }
 }
 
+fn extract_double_quoted_token_rules_text(source_text: &str) -> Option<String> {
+    let start = source_text.find('"')?;
+    let rest = &source_text[start + 1..];
+    let end = rest.find('"')?;
+    let quoted = rest[..end].trim();
+    if quoted.is_empty() {
+        None
+    } else {
+        Some(quoted.to_string())
+    }
+}
+
+fn extract_inline_token_rules_text(source_text: &str) -> Option<String> {
+    let lower = source_text.to_ascii_lowercase();
+    let with_idx = lower.find(" with ")?;
+    let tail = source_text.get(with_idx + " with ".len()..)?.trim();
+    let tail_lower = tail.to_ascii_lowercase();
+
+    let mut starts = Vec::new();
+    for needle in ["whenever ", "when ", "at "] {
+        if let Some(idx) = tail_lower.find(needle) {
+            starts.push(idx);
+        }
+    }
+    let start = starts.into_iter().min()?;
+    let rules_text = tail.get(start..)?.trim();
+    if rules_text.is_empty() {
+        None
+    } else {
+        Some(rules_text.to_string())
+    }
+}
+
+fn normalize_token_self_reference_for_parser(rules_text: &str, self_reference: &str) -> String {
+    rules_text
+        .replace("This token", self_reference)
+        .replace("this token", &self_reference.to_ascii_lowercase())
+}
+
+fn try_parse_quoted_token_rules_text(
+    builder: &CardDefinitionBuilder,
+    source_text: &str,
+    self_reference: &str,
+) -> Option<CardDefinition> {
+    let quoted = extract_double_quoted_token_rules_text(source_text)
+        .or_else(|| extract_inline_token_rules_text(source_text))?;
+    let quoted_lower = quoted.to_ascii_lowercase();
+    let looks_triggered = quoted_lower.starts_with("when ")
+        || quoted_lower.starts_with("whenever ")
+        || quoted_lower.starts_with("at ");
+    let looks_activated = quoted.contains(':');
+    if !looks_triggered && !looks_activated {
+        return None;
+    }
+
+    let normalized = normalize_token_self_reference_for_parser(&quoted, self_reference);
+    let base_ability_count = builder.clone().build().abilities.len();
+    let mut parsed = builder.clone().parse_text(&normalized).ok()?;
+    if parsed.abilities.len() == base_ability_count + 1 {
+        if let Some(last) = parsed.abilities.last_mut() {
+            let mut original = quoted.trim().to_string();
+            if !original.ends_with(['.', '!', '?']) {
+                original.push('.');
+            }
+            last.text = Some(original);
+        }
+    }
+    Some(parsed)
+}
+
 pub(crate) fn token_dies_deals_damage_any_target_ability(amount: i32) -> Ability {
     let target = ChooseSpec::AnyTarget;
     Ability {
@@ -11085,6 +11267,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
         if enchantment_before_creature {
             card_types.insert(0, CardType::Enchantment);
         }
+        let is_creature_token = card_types.contains(&CardType::Creature);
 
         let (power, toughness) = words.iter().find_map(|word| parse_token_pt(word))?;
 
@@ -11385,6 +11568,17 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
         }
         if has_words(&["double", "strike"]) {
             builder = builder.double_strike();
+        }
+        if let Some(parsed) = try_parse_quoted_token_rules_text(
+            &builder,
+            name,
+            if is_creature_token {
+                "This creature"
+            } else {
+                "This permanent"
+            },
+        ) {
+            return Some(parsed);
         }
         if has_word("mercenary") && has_words(&["creature", "1/1", "red"]) {
             let target =
@@ -11894,6 +12088,67 @@ mod parse_compile_tests {
         assert!(
             format!("{def:?}").contains("Equipped creature has"),
             "expected reparsed equipment token to keep the granted ability, got {def:#?}"
+        );
+    }
+
+    #[test]
+    fn token_definition_reparses_quoted_triggered_rules_text() {
+        let source_text = "2/2 black Alien Angel artifact creature token with first strike, vigilance, and \"Whenever an opponent casts a creature spell, this token isn't a creature until end of turn.\"";
+
+        let def =
+            token_definition_for(source_text).expect("quoted token trigger should build a token");
+        let debug = format!("{def:#?}");
+
+        assert!(
+            debug.contains("Whenever an opponent casts a creature spell, this token isn't a creature until end of turn."),
+            "expected token text to preserve the original quoted trigger, got {debug}"
+        );
+        assert!(
+            debug.contains("RemoveCardTypes"),
+            "expected quoted trigger to compile into a real remove-card-types effect, got {debug}"
+        );
+    }
+
+    #[test]
+    fn token_definition_reparses_unquoted_triggered_rules_tail() {
+        let source_text = "2/2 black Alien Angel artifact creature token with first strike, vigilance, and Whenever an opponent casts a creature spell, this token isn't a creature until end of turn.";
+
+        let def = token_definition_for(source_text)
+            .expect("unquoted preserved trigger tail should still build a token");
+        let debug = format!("{def:#?}");
+
+        assert!(
+            debug.contains("Whenever an opponent casts a creature spell, this token isn't a creature until end of turn."),
+            "expected token text to preserve the inline trigger tail, got {debug}"
+        );
+        assert!(
+            debug.contains("RemoveCardTypes"),
+            "expected inline trigger tail to compile into a real remove-card-types effect, got {debug}"
+        );
+    }
+
+    #[test]
+    fn try_parse_quoted_token_rules_text_parses_blink_trigger() {
+        let builder = CardDefinitionBuilder::new(CardId::new(), "Alien Angel")
+            .token()
+            .card_types(vec![CardType::Artifact, CardType::Creature])
+            .subtypes(vec![Subtype::Alien, Subtype::Angel])
+            .color_indicator(ColorSet::BLACK)
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .first_strike()
+            .vigilance();
+        let source_text = "2/2 black Alien Angel artifact creature token with first strike, vigilance, and \"Whenever an opponent casts a creature spell, this token isn't a creature until end of turn.\"";
+        let parsed = try_parse_quoted_token_rules_text(&builder, source_text, "This creature")
+            .expect("quoted trigger should parse generically");
+        let debug = format!("{parsed:#?}");
+
+        assert!(
+            debug.contains("RemoveCardTypes"),
+            "expected generic quoted-token parse to compile remove-card-types, got {debug}"
+        );
+        assert!(
+            debug.contains("until: EndOfTurn"),
+            "expected generic quoted-token parse to keep until-end-of-turn duration, got {debug}"
         );
     }
 

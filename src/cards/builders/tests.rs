@@ -122,7 +122,8 @@ fn test_deep_gnome_terramancer_ignores_played_lands() {
     let land_def = CardDefinitionBuilder::new(CardId::from_raw(2), "Test Land")
         .card_types(vec![CardType::Land])
         .build();
-    let land_id = game.create_object_from_definition(&land_def, bob, crate::zone::Zone::Battlefield);
+    let land_id =
+        game.create_object_from_definition(&land_def, bob, crate::zone::Zone::Battlefield);
 
     let effect_event = crate::events::RawEvent::new(
         crate::events::ZoneChangeEvent::with_cause(
@@ -156,7 +157,9 @@ fn test_deep_gnome_terramancer_ignores_played_lands() {
     );
     let played_triggered = crate::triggers::check_triggers(&game, &played_event);
     assert!(
-        played_triggered.iter().all(|entry| entry.source != gnome_id),
+        played_triggered
+            .iter()
+            .all(|entry| entry.source != gnome_id),
         "expected Deep Gnome Terramancer not to trigger for a played land, got {played_triggered:#?}"
     );
 }
@@ -3479,10 +3482,8 @@ fn test_parse_training_keyword_line() {
 
     let rendered = oracle_like_lines(&def).join(" ");
     assert!(
-        rendered.contains(
-            "Whenever this creature attacks with another creature with greater power, put a +1/+1 counter on this creature"
-        ),
-        "expected canonical training trigger text in render output, got {rendered}"
+        rendered.contains("Training"),
+        "expected training keyword render in output, got {rendered}"
     );
     assert!(
         !rendered.contains("EmitKeywordActionEffect"),
@@ -3574,8 +3575,8 @@ fn test_parse_echo_keyword_line_with_mana_cost() {
 
     let rendered = oracle_like_lines(&def).join(" ");
     assert!(
-        rendered.to_ascii_lowercase().contains("echo counter"),
-        "expected echo runtime text in render output, got {rendered}"
+        rendered.contains("Echo {2}{R}"),
+        "expected echo keyword render in output, got {rendered}"
     );
 
     let debug = format!("{def:#?}").to_ascii_lowercase();
@@ -4000,10 +4001,8 @@ fn test_parse_conspire_keyword_line_compiles_to_optional_cost() {
     let rendered = oracle_like_lines(&def).join(" ");
     let rendered_lower = rendered.to_ascii_lowercase();
     assert!(
-        rendered.contains(
-            "Conspire (As you cast this spell, you may tap two untapped creatures you control that share a color with it."
-        ),
-        "expected conspire reminder text in compiled output, got {rendered}"
+        rendered.contains("Conspire"),
+        "expected conspire keyword in compiled output, got {rendered}"
     );
     assert!(
         rendered_lower.contains("draw a card"),
@@ -9288,6 +9287,7 @@ fn parse_triggered_put_into_graveyard_from_anywhere() {
     assert!(
         joined.contains("is put into a graveyard from anywhere")
             && (joined.contains("shuffle it into its owner's library")
+                || joined.contains("shuffle it into your library")
                 || (joined.contains("put it on the bottom of its owner's library")
                     && joined.contains("shuffle your library"))),
         "expected graveyard-from-anywhere trigger wording, got {joined}"
@@ -14745,7 +14745,7 @@ fn parse_semicolon_keyword_line_does_not_force_comma_merge() {
         "expected first strike keyword rendering, got {rendered}"
     );
     assert!(
-        rendered.contains("Banding"),
+        rendered.to_ascii_lowercase().contains("banding"),
         "expected banding keyword rendering, got {rendered}"
     );
 }
@@ -16012,6 +16012,43 @@ fn parse_delayed_return_at_next_end_step_parses() {
     assert!(
         debug.contains("MoveToZoneEffect"),
         "expected delayed return-to-battlefield payload, got {debug}"
+    );
+}
+
+#[test]
+fn parse_source_pronoun_transformed_return_uses_object_motion_not_player_return() {
+    let def = CardDefinitionBuilder::new(
+        CardId::from_raw(1),
+        "Sorin of House Markov // Sorin, Ravenous Neonate",
+    )
+    .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)], vec![ManaSymbol::Black]]))
+    .card_types(vec![CardType::Creature])
+    .subtypes(vec![Subtype::Human, Subtype::Noble])
+    .power_toughness(PowerToughness::fixed(1, 4))
+    .parse_text(
+        "Lifelink\nExtort (Whenever you cast a spell, you may pay {W/B}. If you do, each opponent loses 1 life and you gain that much life.)\nAt the beginning of each of your postcombat main phases, if you gained 3 or more life this turn, exile Sorin, then return him to the battlefield transformed under his owner's control.",
+    )
+    .expect("sorin transform line should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "At the beginning of each of your postcombat main phases, if you gained 3 or more life this turn, exile Sorin, then return him to the battlefield transformed under his owner's control."
+        ),
+        "expected oracle-like transformed return wording, got {rendered}"
+    );
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("MoveToZoneEffect")
+            && debug.contains("zone: Exile")
+            && debug.contains("zone: Battlefield")
+            && debug.contains("TransformEffect"),
+        "expected blink-style transformed return payload, got {debug}"
+    );
+    assert!(
+        !debug.contains("ReturnFromGraveyardToBattlefieldEffect")
+            && !debug.contains("target: Player(IteratedPlayer)"),
+        "expected source pronoun to avoid player/graveyard lowering, got {debug}"
     );
 }
 
@@ -18393,8 +18430,8 @@ fn goddric_cloaked_reveler_keeps_conditional_dragon_animation() {
         "expected granted activated ability payload in compiled text, got {rendered}"
     );
     assert!(
-        rendered.contains("loses all other creature types"),
-        "expected subtype-replacement reminder text, got {rendered}"
+        !rendered.contains("loses all other creature types"),
+        "expected stripped reminder text to omit subtype replacement note, got {rendered}"
     );
     let celebration_lines = oracle_like
         .iter()
@@ -19130,7 +19167,7 @@ fn render_make_an_example_preserves_choose_then_sacrifice_surface() {
     let canonical = oracle_like_lines(&def).join(" ");
     assert_eq!(
         canonical,
-        "Each opponent separates the creatures they control into two piles. For each opponent, you choose one of their piles. Each opponent sacrifices the creatures in their chosen pile. (Piles can be empty.)"
+        "Each opponent separates the creatures they control into two piles. For each opponent, you choose one of their piles. Each opponent sacrifices the creatures in their chosen pile."
     );
 }
 
@@ -21539,12 +21576,67 @@ fn oracle_render_regression_named_cards_compile_cleanly() {
 
     let tolaria = oracle_like_lines(&parse_oracle_card_definition("Tolaria West")).join("\n");
     assert!(
-        tolaria.contains("Transmute {1}{U}{U}") && tolaria.contains("mana value"),
+        tolaria.contains("Transmute {1}{U}{U}"),
         "expected Tolaria West transmute rendering, got {tolaria}"
     );
     assert!(
         !tolaria.contains("permanent card"),
         "expected Tolaria West to avoid placeholder search text, got {tolaria}"
+    );
+
+    let solkanar =
+        oracle_like_lines(&parse_oracle_card_definition("Sol'Kanar the Tainted")).join("\n");
+    assert!(
+        solkanar.contains("• Draw a card.")
+            && solkanar.contains("• Each opponent loses 2 life and you gain 2 life.")
+            && solkanar.contains(
+                "• Exile Sol'Kanar, then return it to the battlefield under an opponent's control."
+            ),
+        "expected Sol'Kanar the Tainted to keep all modal bullet options, got {solkanar}"
+    );
+
+    let silverback =
+        oracle_like_lines(&parse_oracle_card_definition("Silverback Elder")).join("\n");
+    assert!(
+        silverback.contains("• Destroy target artifact or enchantment.")
+            && silverback.contains("• Look at the top five cards of your library.")
+            && silverback.contains("• You gain 4 life."),
+        "expected Silverback Elder to keep all modal bullet options, got {silverback}"
+    );
+
+    let ojutai = oracle_like_lines(&parse_oracle_card_definition("Ojutai Exemplars")).join("\n");
+    assert!(
+        ojutai.contains("• Tap target creature.")
+            && ojutai.contains("• This creature gains first strike and lifelink until end of turn.")
+            && ojutai.contains("• Exile this creature, then return it to the battlefield tapped under its owner's control."),
+        "expected Ojutai Exemplars to keep all modal bullet options, got {ojutai}"
+    );
+
+    let pact = oracle_like_lines(&parse_oracle_card_definition("Demonic Pact")).join("\n");
+    assert!(
+        pact.contains("• This enchantment deals 4 damage to any target and you gain 4 life.")
+            && pact.contains("• Target opponent discards two cards.")
+            && pact.contains("• Draw two cards.")
+            && pact.contains("• You lose the game."),
+        "expected Demonic Pact to keep all modal bullet options, got {pact}"
+    );
+}
+
+#[test]
+fn raw_render_regression_demonic_pact_keeps_modal_bullets() {
+    let def = parse_oracle_card_definition("Demonic Pact");
+    let rendered = compiled_lines(&def).join("\n");
+
+    assert!(
+        rendered
+            .to_ascii_lowercase()
+            .contains("choose one that hasn't been chosen")
+            && rendered
+                .contains("• This enchantment deals 4 damage to any target and you gain 4 life.")
+            && rendered.contains("• Target opponent discards two cards.")
+            && rendered.contains("• Draw two cards.")
+            && rendered.contains("• You lose the game."),
+        "expected Demonic Pact raw compiled text to keep all modal bullet options, got {rendered}"
     );
 }
 
@@ -21552,14 +21644,76 @@ fn oracle_render_regression_named_cards_compile_cleanly() {
 fn oracle_like_lines_normalize_remaining_tag_scaffolding_regressions() {
     let argivian = oracle_like_lines(&parse_oracle_card_definition("Argivian Cavalier")).join("\n");
     assert!(
-        argivian.contains(
-            "Whenever this creature attacks, you may tap another nonattacking creature you control. When you do, this creature gets +X/+0 until end of turn, where X is that creature's power."
-        ),
-        "expected Argivian Cavalier enlist text to normalize, got {argivian}"
+        argivian.contains("Enlist"),
+        "expected Argivian Cavalier to keep the enlist keyword surface, got {argivian}"
     );
     assert!(
         !argivian.contains("enlist_attacker") && !argivian.contains("enlisted_creature"),
         "expected Argivian Cavalier to avoid raw enlist tags, got {argivian}"
+    );
+
+    let barkweave =
+        oracle_like_lines(&parse_oracle_card_definition("Barkweave Crusher")).join("\n");
+    assert_eq!(
+        barkweave, "Enlist",
+        "expected Barkweave Crusher to collapse enlist back to the keyword surface, got {barkweave}"
+    );
+
+    let automate =
+        oracle_like_lines(&parse_oracle_card_definition("Accomplished Automaton")).join("\n");
+    assert!(
+        automate.contains("Fabricate 1"),
+        "expected Accomplished Automaton to keep the fabricate keyword surface, got {automate}"
+    );
+    assert!(
+        !automate.contains("choose one"),
+        "expected Accomplished Automaton to avoid fabricate reminder expansion, got {automate}"
+    );
+
+    let spikewheel =
+        oracle_like_lines(&parse_oracle_card_definition("Spikewheel Acrobat")).join("\n");
+    assert!(
+        spikewheel.contains("Spectacle {2}{R}"),
+        "expected Spikewheel Acrobat to keep the spectacle keyword surface, got {spikewheel}"
+    );
+    assert!(
+        !spikewheel.contains("rather than pay this spell's mana cost"),
+        "expected Spikewheel Acrobat to avoid spectacle reminder expansion, got {spikewheel}"
+    );
+
+    let beamsaw = oracle_like_lines(&parse_oracle_card_definition("Beamsaw Prospector")).join("\n");
+    assert_eq!(
+        beamsaw, "When this creature dies, create a Lander token.",
+        "expected Beamsaw Prospector to keep the compact Lander token surface, got {beamsaw}"
+    );
+    assert!(
+        !beamsaw.contains("Sacrifice this token:")
+            && !beamsaw.contains("Search your library for a basic land card"),
+        "expected Beamsaw Prospector to avoid leaking the Lander token reminder payload, got {beamsaw}"
+    );
+
+    let lithobraking = oracle_like_lines(&parse_oracle_card_definition("Lithobraking")).join("\n");
+    assert_eq!(
+        lithobraking,
+        "Create a Lander token. Then you may sacrifice an artifact. When you do, Lithobraking deals 2 damage to each creature.",
+        "expected Lithobraking to keep the compact Lander line and oracle when-you-do phrasing, got {lithobraking}"
+    );
+
+    let zurgo = oracle_like_lines(&parse_oracle_card_definition("Zurgo's Vanguard")).join("\n");
+    assert!(
+        zurgo.contains("Mobilize 1"),
+        "expected Zurgo's Vanguard to keep the mobilize keyword surface, got {zurgo}"
+    );
+    assert!(
+        !zurgo.contains("Warrior creature token that's tapped and attacking")
+            && !zurgo.contains("Whenever Zurgo's Vanguard attacks, create"),
+        "expected Zurgo's Vanguard to avoid expanded mobilize reminder text, got {zurgo}"
+    );
+
+    let mistform = oracle_like_lines(&parse_oracle_card_definition("Mistform Ultimus")).join("\n");
+    assert_eq!(
+        mistform, "Mistform Ultimus is every creature type.",
+        "expected Mistform Ultimus to keep prose oracle text instead of collapsing to a keyword, got {mistform}"
     );
 
     let adewale =
@@ -22488,11 +22642,56 @@ fn parse_beza_relative_opponent_comparisons() {
 
 #[test]
 fn parse_thieving_skydiver_equipment_followup_condition() {
-    CardDefinitionBuilder::new(CardId::new(), "Thieving Skydiver Variant")
+    let def = CardDefinitionBuilder::new(CardId::new(), "Thieving Skydiver Variant")
         .parse_text(
             "When this creature enters, if it was kicked, gain control of target artifact with mana value X or less. If that artifact is an Equipment, attach it to this creature.",
         )
         .expect("tagged equipment followup should parse");
+
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) if triggered.trigger.display().contains("enters") => {
+                Some(triggered)
+            }
+            _ => None,
+        })
+        .expect("Thieving Skydiver variant should have an ETB trigger");
+
+    assert_eq!(
+        triggered.intervening_if.as_ref(),
+        Some(&Condition::ThisSpellWasKicked),
+        "ETB kicked followups should check whether the source spell was kicked",
+    );
+}
+
+#[test]
+fn parse_counter_target_spell_if_it_was_kicked_keeps_target_predicate() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Recoil Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Counter target spell if it was kicked.")
+        .expect("target-spell kicked followup should parse");
+
+    let spell = def.spell_effect.as_ref().expect("spell effect");
+    let debug = format!("{spell:?}");
+    assert!(
+        debug.contains("TargetWasKicked"),
+        "target-spell kicked condition should keep using TargetWasKicked, got {debug}"
+    );
+}
+
+#[test]
+fn parse_oracle_slinn_voda_renders_kicked_exception_bounce_cleanly() {
+    let def = parse_oracle_card_definition("Slinn Voda, the Rising Deep");
+    let rendered = compiled_lines(&def).join(" ");
+
+    assert!(
+        rendered.contains(
+            "Triggered ability 1: When Slinn Voda enters, if it was kicked, return all creatures to their owners' hands except for Merfolk, Krakens, Leviathans, Octopuses, and Serpents."
+        ),
+        "expected Slinn Voda compiled text to preserve kicked ETB exception wording, got {rendered}"
+    );
 }
 
 #[test]
@@ -23006,6 +23205,50 @@ fn parse_oracle_winding_way_card_type_choice_regression() {
             && debug.contains("LookAtTopCardsEffect")
             && debug.contains("zone: Graveyard"),
         "expected chosen-card-type looked-card lowering, got {debug}"
+    );
+}
+
+#[test]
+fn parse_oracle_hurkyl_master_wizard_card_type_gather_regression() {
+    let def = parse_oracle_card_definition("Hurkyl, Master Wizard");
+    let rendered = compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        rendered_lower.contains("reveal the top five cards of your library"),
+        "expected Hurkyl to keep the top-five reveal, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("__sentence_helper"),
+        "expected Hurkyl to avoid leaking helper tags, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("LookAtTopCardsEffect")
+            && debug.contains("PutTaggedRemainderOnLibraryBottomEffect"),
+        "expected looked-card gather lowering for Hurkyl, got {debug}"
+    );
+    assert!(
+        !debug.contains("RevealTopEffect") && !debug.contains("ForEachObject"),
+        "expected Hurkyl to avoid the old reveal-top/foreach-object lowering, got {debug}"
+    );
+}
+
+#[test]
+fn parse_oracle_bend_or_break_keeps_divvy_pile_control_binding() {
+    let def = parse_oracle_card_definition("Bend or Break");
+    let rendered = crate::compiled_text::canonical_compiled_lines(&def).join(" ");
+
+    assert_eq!(
+        rendered,
+        "Each player separates all nontoken lands they control into two piles. For each player, one of their piles is chosen by one of their opponents of their choice. Destroy all lands in the chosen piles. Tap all lands in the other piles."
+    );
+
+    let raw = format!("{:?}", def.spell_effect);
+    assert!(
+        raw.contains("chooser: ChosenPlayer") && raw.contains("controller: Some(IteratedPlayer)"),
+        "expected chosen opponent to choose from the iterated player's lands, got {raw}"
     );
 }
 
@@ -23794,13 +24037,9 @@ fn parse_wulfgar_of_icewind_dale_with_melee_keyword() {
         .expect("wulfgar text should parse");
 
     let rendered = oracle_like_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
     assert!(
-        rendered
-            .to_ascii_lowercase()
-            .contains("for each opponent you attacked this combat")
-            && rendered
-                .to_ascii_lowercase()
-                .contains("triggers an additional time"),
+        rendered.contains("Melee") && rendered_lower.contains("triggers an additional time"),
         "expected melee keyword plus trigger doubling, got {rendered}"
     );
 }
@@ -23896,6 +24135,28 @@ fn anti_venom_static_damage_replacement_compiles() {
         rendered.contains("prevent that damage")
             && rendered.contains("put that many +1/+1 counters"),
         "expected damage replacement rendering, got {rendered}"
+    );
+}
+
+#[test]
+fn amy_rose_attach_to_her_uses_source_reference() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Amy Rose")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .parse_text(
+            "Haste\nWhenever Amy Rose attacks, attach up to one target Equipment to her. Then up to one other target attacking creature gets +X/+0 until end of turn, where X is Amy Rose's power.",
+        )
+        .expect("amy rose should parse");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("AttachObjectsEffect") && debug.contains("target: Source"),
+        "expected attachment target to resolve to the source, got {debug}"
     );
 }
 

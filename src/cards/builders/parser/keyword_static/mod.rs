@@ -2139,7 +2139,9 @@ fn parse_trigger_duplication_event_matcher(
         }),
         (&["attacking"], |filter| Trigger::attacks(filter)),
         (&["dying"], |filter| Trigger::dies(filter)),
-        (&["entering"], |filter| Trigger::enters_battlefield(filter, None)),
+        (&["entering"], |filter| {
+            Trigger::enters_battlefield(filter, None)
+        }),
     ];
 
     for (suffix, build) in suffixes {

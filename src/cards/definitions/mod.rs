@@ -36,10 +36,10 @@ mod butcher_ghoul;
 mod cataclysm;
 mod cataclysmic_gearhulk;
 mod charismatic_conqueror;
-mod conquerors_galleon_conquerors_foothold;
 mod chrome_mox;
 mod command_the_mind;
 mod command_tower;
+mod conquerors_galleon_conquerors_foothold;
 mod counterspell;
 mod crusade;
 mod culling_the_weak;
@@ -190,12 +190,10 @@ pub use butcher_ghoul::butcher_ghoul;
 pub use cataclysm::cataclysm;
 pub use cataclysmic_gearhulk::cataclysmic_gearhulk;
 pub use charismatic_conqueror::charismatic_conqueror;
-pub use conquerors_galleon_conquerors_foothold::{
-    conquerors_galleon, conquerors_foothold,
-};
 pub use chrome_mox::chrome_mox;
 pub use command_the_mind::command_the_mind;
 pub use command_tower::command_tower;
+pub use conquerors_galleon_conquerors_foothold::{conquerors_foothold, conquerors_galleon};
 pub use counterspell::counterspell;
 pub use crusade::crusade;
 pub use culling_the_weak::culling_the_weak;

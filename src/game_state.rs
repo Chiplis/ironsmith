@@ -1814,8 +1814,7 @@ impl GameState {
         self.continuous_state_dirty.set(false);
         self.continuous_state_revision
             .set(self.continuous_effects.revision());
-        self.continuous_state_turn_number
-            .set(self.turn.turn_number);
+        self.continuous_state_turn_number.set(self.turn.turn_number);
         self.continuous_state_active_player
             .set(self.turn.active_player);
         self.continuous_state_phase.set(self.turn.phase);

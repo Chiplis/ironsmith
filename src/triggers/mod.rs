@@ -216,10 +216,7 @@ impl Trigger {
 
     /// Create a "when [filter] enters the battlefield" trigger.
     pub fn enters_battlefield(filter: ObjectFilter, cause_filter: Option<CauseFilter>) -> Self {
-        Self::new(
-            ZoneChangeTrigger::enters_battlefield(filter)
-                .cause_filter(cause_filter),
-        )
+        Self::new(ZoneChangeTrigger::enters_battlefield(filter).cause_filter(cause_filter))
     }
 
     /// Create a "when one or more [filter] enter the battlefield" trigger.

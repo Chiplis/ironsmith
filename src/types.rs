@@ -202,6 +202,7 @@ pub enum Subtype {
     Scion,
     Elemental,
     Elephant,
+    Elk,
     Elf,
     Faerie,
     Fish,
@@ -468,6 +469,7 @@ impl Subtype {
             Subtype::Scion,
             Subtype::Elemental,
             Subtype::Elephant,
+            Subtype::Elk,
             Subtype::Elf,
             Subtype::Faerie,
             Subtype::Fish,
@@ -772,6 +774,7 @@ impl Subtype {
                 | Subtype::Scion
                 | Subtype::Elemental
                 | Subtype::Elephant
+                | Subtype::Elk
                 | Subtype::Elf
                 | Subtype::Faerie
                 | Subtype::Fish

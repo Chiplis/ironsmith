@@ -6535,7 +6535,10 @@ pub(super) fn describe_apply_continuous_clauses(
                 source,
                 preserve_source_abilities: _,
             } => {
-                clauses.push(format!("becomes a copy of {}", describe_choose_spec(source)));
+                clauses.push(format!(
+                    "becomes a copy of {}",
+                    describe_choose_spec(source)
+                ));
             }
             crate::effects::continuous::RuntimeModification::ModifyPowerToughness {
                 power,
@@ -6601,7 +6604,9 @@ pub(super) fn describe_apply_continuous_tail(
     }
 }
 
-fn apply_continuous_preserves_source_abilities(effect: &crate::effects::ApplyContinuousEffect) -> bool {
+fn apply_continuous_preserves_source_abilities(
+    effect: &crate::effects::ApplyContinuousEffect,
+) -> bool {
     effect.runtime_modifications.iter().any(|runtime| {
         matches!(
             runtime,

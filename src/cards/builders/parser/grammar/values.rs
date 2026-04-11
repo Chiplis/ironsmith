@@ -60,13 +60,14 @@ where
 
 fn finish_text_parse<'a, O, E>(
     raw: &'a str,
-    mut parser: impl Parser<&'a str, O, E>,
+    parser: impl Parser<&'a str, O, E>,
     label: &str,
 ) -> Result<O, CardTextError>
 where
-    E: std::fmt::Display,
+    E: std::fmt::Display + ParserError<&'a str>,
 {
     let mut input = raw.trim();
+    let mut parser = primitives::maybe_trace(label, parser);
     let parsed = parser
         .parse_next(&mut input)
         .map_err(|err| CardTextError::ParseError(format!("rewrite {label} parse failed: {err}")))?;

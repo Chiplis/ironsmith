@@ -771,6 +771,17 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             idx += 2;
             continue;
         }
+        if idx + 2 < filtered.len()
+            && let Some(compact) = describe_exile_return_then_transform(
+                filtered[idx],
+                filtered[idx + 1],
+                filtered[idx + 2],
+            )
+        {
+            parts.push(compact);
+            idx += 3;
+            continue;
+        }
         if idx + 1 < filtered.len()
             && let Some(tagged) = filtered[idx].downcast_ref::<crate::effects::TaggedEffect>()
             && let Some(move_back) =
@@ -1577,6 +1588,47 @@ pub(super) fn describe_exile_then_return(
     };
     Some(format!(
         "Exile {target}, then return {return_object} to the battlefield{tapped_suffix}{controller_suffix}"
+    ))
+}
+
+pub(super) fn describe_exile_return_then_transform(
+    exile_effect: &Effect,
+    return_effect: &Effect,
+    transform_effect: &Effect,
+) -> Option<String> {
+    let exile_move = exile_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let move_back = return_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let transform = transform_effect.downcast_ref::<crate::effects::TransformEffect>()?;
+    if exile_move.zone != Zone::Exile || move_back.zone != Zone::Battlefield {
+        return None;
+    }
+    if exile_move.target != move_back.target || move_back.target != transform.target {
+        return None;
+    }
+
+    let target = describe_choose_spec(&exile_move.target);
+    let return_object = if choose_spec_allows_multiple(&exile_move.target) {
+        "them"
+    } else {
+        "it"
+    };
+    let owner_control_suffix = if choose_spec_allows_multiple(&exile_move.target) {
+        " under their owners' control"
+    } else {
+        " under its owner's control"
+    };
+    let tapped_suffix = if move_back.enters_tapped {
+        " tapped"
+    } else {
+        ""
+    };
+    let controller_suffix = match move_back.battlefield_controller {
+        crate::effects::BattlefieldController::Preserve => "",
+        crate::effects::BattlefieldController::Owner => owner_control_suffix,
+        crate::effects::BattlefieldController::You => " under your control",
+    };
+    Some(format!(
+        "Exile {target}, then return {return_object} to the battlefield{tapped_suffix} transformed{controller_suffix}"
     ))
 }
 
@@ -10686,7 +10738,10 @@ pub(super) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
         return Some(raw_text.to_string());
     }
     if text == "extort" {
-        return Some("Extort".to_string());
+        return Some(
+            "Extort (Whenever you cast a spell, you may pay {W/B}. If you do, each opponent loses 1 life and you gain that much life.)"
+                .to_string(),
+        );
     }
     if text == "partner" {
         return Some("Partner".to_string());

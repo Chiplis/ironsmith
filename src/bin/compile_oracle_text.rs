@@ -5,8 +5,8 @@ use ironsmith::cards::{CardDefinition, CardDefinitionBuilder, CardRegistry};
 use ironsmith::compiled_text::{canonical_compiled_lines, raw_compiled_lines};
 use ironsmith::ids::CardId;
 use ironsmith_tools::{
-    CardStatusDb, build_parse_input, compile_snapshot_from_payload, default_db_path,
-    load_card_by_name,
+    CardStatusDb, build_parse_input, compile_definition_from_payload,
+    compile_snapshot_from_payload, default_db_path, load_card_by_name,
 };
 
 const DEFAULT_PROBE_NAME: &str = "Parser Probe";
@@ -83,9 +83,12 @@ fn snapshot_payload_for_db(
     let parse_input_matches = card.parse_input.trim() == parse_input.trim();
     (oracle_matches && parse_input_matches).then(|| ironsmith_tools::CardPayload {
         name: card.name.clone(),
+        parse_name: card.parse_name.clone(),
         oracle_text: card.oracle_text.clone(),
         metadata_lines: card.metadata_lines.clone(),
         parse_input: card.parse_input.clone(),
+        other_face_name: card.other_face_name.clone(),
+        linked_face_layout: card.linked_face_layout,
     })
 }
 
@@ -157,9 +160,12 @@ fn payload_from_definition(definition: &CardDefinition) -> ironsmith_tools::Card
 
     ironsmith_tools::CardPayload {
         name: definition.name().to_string(),
+        parse_name: None,
         oracle_text,
         metadata_lines,
         parse_input,
+        other_face_name: definition.card.other_face_name.clone(),
+        linked_face_layout: Some(definition.card.linked_face_layout),
     }
 }
 
@@ -227,12 +233,13 @@ fn compile_job_for_name(
             let oracle_text = card.oracle_text.clone();
             let parse_input = build_parse_input(&card.metadata_lines, &card.oracle_text);
             let db_payload = snapshot_payload_for_db(Some(&card), &oracle_text, &parse_input);
+            let compiled_definition = compile_definition_from_payload(&card).ok();
             Ok(CompileJob {
                 name,
                 oracle_text,
                 parse_input,
                 db_payload,
-                compiled_definition: None,
+                compiled_definition,
             })
         }
         (None, None) => Err(format!("unknown card name: {name}")),
@@ -499,6 +506,7 @@ mod tests {
     fn snapshot_payload_for_db_accepts_canonical_stdin_parse_block() {
         let payload = CardPayload {
             name: "House Cartographer".to_string(),
+            parse_name: None,
             oracle_text: "Survival — At the beginning of your second main phase, if this creature is tapped, reveal cards from the top of your library until you reveal a land card. Put that card into your hand and the rest on the bottom of your library in a random order.".to_string(),
             metadata_lines: vec![
                 "Mana cost: {1}{G}".to_string(),
@@ -506,6 +514,8 @@ mod tests {
                 "Power/Toughness: 2/2".to_string(),
             ],
             parse_input: "Mana cost: {1}{G}\nType: Creature — Human Scout Survivor\nPower/Toughness: 2/2\nSurvival — At the beginning of your second main phase, if this creature is tapped, reveal cards from the top of your library until you reveal a land card. Put that card into your hand and the rest on the bottom of your library in a random order.".to_string(),
+            other_face_name: None,
+            linked_face_layout: None,
         };
 
         let matched =
@@ -521,6 +531,7 @@ mod tests {
     fn snapshot_payload_for_db_rejects_modified_override_text() {
         let payload = CardPayload {
             name: "House Cartographer".to_string(),
+            parse_name: None,
             oracle_text: "Survival — At the beginning of your second main phase, if this creature is tapped, reveal cards from the top of your library until you reveal a land card. Put that card into your hand and the rest on the bottom of your library in a random order.".to_string(),
             metadata_lines: vec![
                 "Mana cost: {1}{G}".to_string(),
@@ -528,6 +539,8 @@ mod tests {
                 "Power/Toughness: 2/2".to_string(),
             ],
             parse_input: "Mana cost: {1}{G}\nType: Creature — Human Scout Survivor\nPower/Toughness: 2/2\nSurvival — At the beginning of your second main phase, if this creature is tapped, reveal cards from the top of your library until you reveal a land card. Put that card into your hand and the rest on the bottom of your library in a random order.".to_string(),
+            other_face_name: None,
+            linked_face_layout: None,
         };
 
         let matched =
@@ -574,5 +587,42 @@ mod tests {
         );
         assert_eq!(definition.card.other_face, Some(CardId::from_raw(234_002)));
         assert!(job.parse_input.contains("Mana cost: {4}"));
+    }
+
+    #[test]
+    fn compile_job_for_name_preserves_registry_transform_face_metadata() {
+        let cards_path = format!("{}/../../cards.json", env!("CARGO_MANIFEST_DIR"));
+        let job = compile_job_for_name(
+            &cards_path,
+            "Sorin of House Markov // Sorin, Ravenous Neonate",
+            None,
+        )
+        .expect("Sorin should exist");
+
+        assert_eq!(job.name, "Sorin of House Markov // Sorin, Ravenous Neonate");
+        assert!(
+            job.parse_input
+                .contains("Type: Legendary Creature — Human Noble"),
+            "front-face type line should drive the parse block"
+        );
+        assert!(
+            !job.parse_input.contains("// Legendary Planeswalker"),
+            "combined type line should not leak into the front-face parse block"
+        );
+
+        let definition = job
+            .compiled_definition
+            .as_ref()
+            .expect("transform registry card should compile with linkage metadata");
+        assert_eq!(definition.card.name, "Sorin of House Markov");
+        assert_eq!(
+            definition.card.other_face_name.as_deref(),
+            Some("Sorin, Ravenous Neonate")
+        );
+        assert_eq!(
+            definition.card.linked_face_layout,
+            ironsmith::card::LinkedFaceLayout::TransformLike
+        );
+        assert!(definition.card.other_face.is_some());
     }
 }

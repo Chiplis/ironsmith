@@ -215,6 +215,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::PutSomeIntoHandRestOnBottomOfLibrary { .. } => {}
         EffectAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard { .. } => {}
         EffectAst::ChooseFromLookedCardsIntoHandRestOnBottomOfLibrary { .. } => {}
+        EffectAst::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary { .. } => {}
         EffectAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary {
             ..
         } => {}

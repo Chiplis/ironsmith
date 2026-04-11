@@ -556,14 +556,14 @@ pub(crate) fn parse_triggered_times_each_turn_sentence(
 }
 
 pub(crate) fn parse_triggered_times_each_turn_from_words(words: &[&str]) -> Option<u32> {
-    let (count_idx, prefix_len) = if slice_starts_with(words, &["this", "ability", "triggers", "only"])
-    {
-        (4usize, 4usize)
-    } else if slice_starts_with(words, &["do", "this", "only"]) {
-        (3usize, 3usize)
-    } else {
-        return None;
-    };
+    let (count_idx, prefix_len) =
+        if slice_starts_with(words, &["this", "ability", "triggers", "only"]) {
+            (4usize, 4usize)
+        } else if slice_starts_with(words, &["do", "this", "only"]) {
+            (3usize, 3usize)
+        } else {
+            return None;
+        };
 
     if words.len() < prefix_len + 3 {
         return None;

@@ -1816,6 +1816,12 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
             target_count,
         ));
     }
+    if all_words.as_slice() == ["it"] {
+        return Ok(wrap_target_count(
+            TargetAst::Tagged(TagKey::from(IT_TAG), span),
+            target_count,
+        ));
+    }
 
     let remaining_words: Vec<&str> = all_words
         .iter()
@@ -2470,10 +2476,10 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
     if remaining_words.as_slice() == ["itself"] {
         return Ok(wrap_target_count(TargetAst::Source(span), target_count));
     }
-    if matches!(
-        remaining_words.as_slice(),
-        ["them"] | ["him"] | ["her"] | ["that", "player"]
-    ) {
+    if matches!(remaining_words.as_slice(), ["him"] | ["her"]) {
+        return Ok(wrap_target_count(TargetAst::Source(span), target_count));
+    }
+    if matches!(remaining_words.as_slice(), ["them"] | ["that", "player"]) {
         return Ok(wrap_target_count(
             TargetAst::Player(PlayerFilter::target_player(), target_span),
             target_count,

@@ -47,6 +47,7 @@ pub mod static_ability_processor;
 pub mod tag;
 pub mod target;
 pub mod targeting;
+pub(crate) mod text_cleanup;
 #[cfg(feature = "tooling")]
 pub mod tooling;
 pub(crate) mod trigger_identity;

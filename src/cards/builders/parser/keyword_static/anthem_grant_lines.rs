@@ -1088,6 +1088,13 @@ pub(crate) fn parse_lose_all_abilities_and_base_pt_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     let words = crate::cards::builders::parser::token_word_refs(tokens);
+    if anthem_find_word_sequence_index(&words, &["with", "base", "power", "and", "toughness"])
+        .is_some()
+        && anthem_find_word_index(&words, |word| matches!(word, "is" | "are")).is_some()
+    {
+        return Ok(None);
+    }
+
     let lose_idx = anthem_find_word_index(&words, |word| matches!(word, "lose" | "loses"));
     let Some(lose_idx) = lose_idx else {
         return Ok(None);

@@ -1,5 +1,7 @@
+use std::{cell::Cell, fmt};
+
 use winnow::combinator::{alt, eof, opt, peek, preceded, repeat};
-use winnow::error::{ContextError, ErrMode, ParseError, StrContext, StrContextValue};
+use winnow::error::{ContextError, ErrMode, ParseError, ParserError, StrContext, StrContextValue};
 use winnow::prelude::*;
 use winnow::stream::Stream;
 use winnow::token::{any, literal, take_till};
@@ -9,6 +11,131 @@ use crate::mana::ManaSymbol;
 
 pub(crate) use super::super::lexer::TokenWordView;
 use super::super::lexer::{LexStream, LexToken, TokenKind};
+
+pub(crate) struct MaybeTrace<P, D> {
+    parser: P,
+    name: D,
+}
+
+impl<P, D> MaybeTrace<P, D> {
+    fn new(name: D, parser: P) -> Self {
+        Self { parser, name }
+    }
+}
+
+impl<I, O, E, P, D> Parser<I, O, E> for MaybeTrace<P, D>
+where
+    I: Stream,
+    E: ParserError<I>,
+    P: Parser<I, O, E>,
+    D: fmt::Display,
+{
+    fn parse_next(&mut self, input: &mut I) -> core::result::Result<O, E> {
+        if super::super::util::parser_trace_enabled() {
+            let depth = TraceDepth::enter();
+            let start = input.checkpoint();
+            eprintln!(
+                "{:depth$}> {} | {}",
+                "",
+                self.name,
+                StreamTrace(input),
+                depth = depth.get()
+            );
+            let result = self.parser.parse_next(input);
+            let consumed = input.offset_from(&start);
+            let status = if result.is_ok() {
+                format!("ok +{consumed}")
+            } else if result.as_ref().err().is_some_and(ParserError::is_backtrack) {
+                "backtrack".to_string()
+            } else if result
+                .as_ref()
+                .err()
+                .is_some_and(ParserError::is_incomplete)
+            {
+                "incomplete".to_string()
+            } else {
+                "cut".to_string()
+            };
+            eprintln!(
+                "{:depth$}< {} | {}",
+                "",
+                self.name,
+                status,
+                depth = depth.get()
+            );
+            result
+        } else {
+            self.parser.parse_next(input)
+        }
+    }
+}
+
+pub(crate) fn maybe_trace<P, D>(name: D, parser: P) -> MaybeTrace<P, D> {
+    MaybeTrace::new(name, parser)
+}
+
+struct StaticTraceLabel {
+    kind: &'static str,
+    detail: &'static str,
+}
+
+impl fmt::Display for StaticTraceLabel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}({})", self.kind, self.detail)
+    }
+}
+
+struct PhraseTraceLabel(&'static [&'static str]);
+
+impl fmt::Display for PhraseTraceLabel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("phrase(")?;
+        for (idx, word) in self.0.iter().enumerate() {
+            if idx > 0 {
+                f.write_str(" ")?;
+            }
+            f.write_str(word)?;
+        }
+        f.write_str(")")
+    }
+}
+
+thread_local! {
+    static TRACE_DEPTH: Cell<usize> = const { Cell::new(0) };
+}
+
+struct TraceDepth {
+    depth: usize,
+}
+
+impl TraceDepth {
+    fn enter() -> Self {
+        let depth = TRACE_DEPTH.with(|value| {
+            let depth = value.get();
+            value.set(depth + 1);
+            depth
+        });
+        Self { depth }
+    }
+
+    fn get(&self) -> usize {
+        self.depth
+    }
+}
+
+impl Drop for TraceDepth {
+    fn drop(&mut self) {
+        TRACE_DEPTH.with(|value| value.set(self.depth));
+    }
+}
+
+struct StreamTrace<'a, I>(&'a I);
+
+impl<I: Stream> fmt::Display for StreamTrace<'_, I> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.trace(f)
+    }
+}
 
 fn failure_location<'a>(
     tokens: &'a LexStream<'a>,
@@ -56,9 +183,10 @@ fn format_parse_error(
 
 pub(crate) fn parse_all<'a, O>(
     tokens: &'a [LexToken],
-    mut parser: impl Parser<LexStream<'a>, O, ErrMode<ContextError>>,
+    parser: impl Parser<LexStream<'a>, O, ErrMode<ContextError>>,
     label: &str,
 ) -> Result<O, CardTextError> {
+    let mut parser = maybe_trace(label, parser);
     parser
         .parse(LexStream::new(tokens))
         .map_err(|err| format_parse_error(label, err, None))
@@ -66,10 +194,11 @@ pub(crate) fn parse_all<'a, O>(
 
 pub(crate) fn parse_all_with_display_line<'a, O>(
     tokens: &'a [LexToken],
-    mut parser: impl Parser<LexStream<'a>, O, ErrMode<ContextError>>,
+    parser: impl Parser<LexStream<'a>, O, ErrMode<ContextError>>,
     label: &str,
     display_line_index: usize,
 ) -> Result<O, CardTextError> {
+    let mut parser = maybe_trace(label, parser);
     parser
         .parse(LexStream::new(tokens))
         .map_err(|err| format_parse_error(label, err, Some(display_line_index)))
@@ -86,10 +215,11 @@ pub(crate) fn parse_prefix<'a, O>(
 
 pub(crate) fn parse_all_or_none<'a, O>(
     tokens: &'a [LexToken],
-    mut parser: impl Parser<LexStream<'a>, O, ErrMode<ContextError>>,
+    parser: impl Parser<LexStream<'a>, O, ErrMode<ContextError>>,
     label: &str,
 ) -> Result<Option<O>, CardTextError> {
     let mut input = LexStream::new(tokens);
+    let mut parser = maybe_trace(label, parser);
     match parser.parse_next(&mut input) {
         Ok(value) => {
             if input.is_empty() {
@@ -251,9 +381,15 @@ fn punctuation<'a>(
     expected: TokenKind,
     label: &'static str,
 ) -> impl Parser<LexStream<'a>, &'a LexToken, ErrMode<ContextError>> {
-    token_kind(expected)
-        .context(StrContext::Label(label))
-        .context(StrContext::Expected(StrContextValue::Description(label)))
+    maybe_trace(
+        StaticTraceLabel {
+            kind: "punct",
+            detail: label,
+        },
+        token_kind(expected)
+            .context(StrContext::Label(label))
+            .context(StrContext::Expected(StrContextValue::Description(label))),
+    )
 }
 
 pub(crate) fn word_text<'a>(input: &mut LexStream<'a>) -> Result<&'a str, ErrMode<ContextError>> {
@@ -284,9 +420,15 @@ pub(crate) fn word_parser_text<'a>(
 pub(crate) fn kw<'a>(
     expected: &'static str,
 ) -> impl Parser<LexStream<'a>, &'a LexToken, ErrMode<ContextError>> {
-    any.verify(move |token: &&LexToken| token.is_word(expected))
-        .context(StrContext::Label("keyword"))
-        .context(StrContext::Expected(StrContextValue::Description(expected)))
+    maybe_trace(
+        StaticTraceLabel {
+            kind: "kw",
+            detail: expected,
+        },
+        any.verify(move |token: &&LexToken| token.is_word(expected))
+            .context(StrContext::Label("keyword"))
+            .context(StrContext::Expected(StrContextValue::Description(expected))),
+    )
 }
 
 pub(crate) fn comma<'a>() -> impl Parser<LexStream<'a>, &'a LexToken, ErrMode<ContextError>> {
@@ -518,20 +660,23 @@ pub(crate) fn collect_mana_pip_groups<'a>(
 pub(crate) fn phrase<'a>(
     expected: &'static [&'static str],
 ) -> impl Parser<LexStream<'a>, (), ErrMode<ContextError>> {
-    move |input: &mut LexStream<'a>| {
-        for word in expected {
-            if let Err(err) = kw(*word).parse_next(input) {
-                return Err(err.map(|mut inner| {
-                    inner.push(StrContext::Label("phrase"));
-                    inner.push(StrContext::Expected(StrContextValue::Description(
-                        "word phrase",
-                    )));
-                    inner
-                }));
+    maybe_trace(
+        PhraseTraceLabel(expected),
+        move |input: &mut LexStream<'a>| {
+            for word in expected {
+                if let Err(err) = kw(*word).parse_next(input) {
+                    return Err(err.map(|mut inner| {
+                        inner.push(StrContext::Label("phrase"));
+                        inner.push(StrContext::Expected(StrContextValue::Description(
+                            "word phrase",
+                        )));
+                        inner
+                    }));
+                }
             }
-        }
-        Ok(())
-    }
+            Ok(())
+        },
+    )
 }
 
 pub(crate) fn any_phrase<'a, 'b>(

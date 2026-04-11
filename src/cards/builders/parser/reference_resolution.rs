@@ -329,9 +329,12 @@ fn advance_reference_frame_for_effect(
         | EffectAst::ShuffleHandAndGraveyardIntoLibrary { player }
         | EffectAst::ShuffleGraveyardIntoLibrary { player }
         | EffectAst::ReorderGraveyard { player }
-        | EffectAst::ShuffleLibrary { player }
-        | EffectAst::ShuffleObjectsIntoLibrary { player, .. } => {
+        | EffectAst::ShuffleLibrary { player } => {
             track_effect_player(player.clone(), frame, true, true)?;
+        }
+        EffectAst::ShuffleObjectsIntoLibrary { target, player } => {
+            track_effect_player(player.clone(), frame, true, true)?;
+            maybe_tag_target(target, frame, id_gen, "moved")?;
         }
         EffectAst::ExchangeLifeTotals { player1, player2 } => {
             track_effect_player(*player1, frame, true, true)?;
@@ -376,6 +379,10 @@ fn advance_reference_frame_for_effect(
         }
         EffectAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard { player, .. }
         | EffectAst::ChooseFromLookedCardsIntoHandRestOnBottomOfLibrary { player, .. }
+        | EffectAst::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary {
+            player,
+            ..
+        }
         | EffectAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary {
             player,
             ..

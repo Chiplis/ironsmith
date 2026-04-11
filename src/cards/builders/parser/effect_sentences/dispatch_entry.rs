@@ -17,6 +17,7 @@ use super::super::lexer::{LexStream, OwnedLexToken, TokenKind, split_lexed_sente
 use super::super::object_filters::{
     is_comparison_or_delimiter, parse_object_filter, parse_object_filter_lexed,
 };
+use super::super::parse_spell_filter_lexed;
 use super::super::permission_helpers::{
     parse_until_end_of_turn_may_play_tagged_clause,
     parse_until_your_next_turn_may_play_tagged_clause,
@@ -245,10 +246,9 @@ fn looks_like_source_leaves_return_followup_sentence(tokens: &[OwnedLexToken]) -
 
 fn promote_exile_effect_to_source_leaves(effect: EffectAst) -> Option<EffectAst> {
     match effect {
-        EffectAst::Exile { target, face_down } => Some(EffectAst::ExileUntilSourceLeaves {
-            target,
-            face_down,
-        }),
+        EffectAst::Exile { target, face_down } => {
+            Some(EffectAst::ExileUntilSourceLeaves { target, face_down })
+        }
         EffectAst::ExileAll { filter, face_down } => Some(EffectAst::ExileUntilSourceLeaves {
             target: TargetAst::Object(filter, None, None),
             face_down,
@@ -281,8 +281,7 @@ fn parse_exile_then_source_leaves_return_bundle(
     let [first_effect] = first_effects.as_slice() else {
         return Ok(None);
     };
-    let Some(rewritten_first_effect) =
-        promote_exile_effect_to_source_leaves(first_effect.clone())
+    let Some(rewritten_first_effect) = promote_exile_effect_to_source_leaves(first_effect.clone())
     else {
         return Ok(None);
     };
@@ -305,10 +304,8 @@ const PRONOUN_TRIGGER_PREFIXES: &[&[&str]] = &[
 fn parse_exact_card_effect_bundle_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
     let sentences = split_lexed_sentences(tokens);
     if sentences.len() == 2
-        && let Ok(Some(effects)) = parse_exile_then_source_leaves_return_bundle(
-            sentences[0],
-            sentences[1],
-        )
+        && let Ok(Some(effects)) =
+            parse_exile_then_source_leaves_return_bundle(sentences[0], sentences[1])
     {
         return Some(effects);
     }
@@ -3052,6 +3049,99 @@ fn parse_top_cards_put_match_into_hand_rest_graveyard(
     Ok(Some(effects))
 }
 
+fn parse_top_cards_for_each_card_type_among_spells_put_matching_into_hand_rest_bottom(
+    first: &[OwnedLexToken],
+    second: &[OwnedLexToken],
+    third: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some((player, count, reveal_top)) = parse_top_cards_view_sentence(first) else {
+        return Ok(None);
+    };
+    if !reveal_top {
+        return Ok(None);
+    }
+
+    let second_tokens = trim_commas(second);
+    let second_words = TokenWordView::new(&second_tokens);
+    let word_refs = second_words.word_refs();
+    if !slice_starts_with(&word_refs, &["for", "each", "card", "type", "among"]) {
+        return Ok(None);
+    }
+
+    let Some(put_idx) = find_word_sequence_start(&word_refs[5..], &["you", "may", "put"]) else {
+        return Ok(None);
+    };
+    let put_idx = put_idx + 5;
+    let mut tail_idx = put_idx + 3;
+    if word_refs.get(tail_idx).is_some_and(|word| is_article(word)) {
+        tail_idx += 1;
+    }
+    if !slice_starts_with(
+        &word_refs[tail_idx..],
+        &[
+            "card", "of", "that", "type", "from", "among", "the", "revealed", "cards", "into",
+        ],
+    ) || !slice_contains(&word_refs[tail_idx..], &"hand")
+    {
+        return Ok(None);
+    }
+
+    let filter_start = second_words
+        .token_index_for_word_index(5)
+        .unwrap_or(second_tokens.len());
+    let filter_end = second_words
+        .token_index_for_word_index(put_idx)
+        .unwrap_or(second_tokens.len());
+    let filter_tokens = trim_commas(&second_tokens[filter_start..filter_end]);
+    let filter_word_view = TokenWordView::new(&filter_tokens);
+    let filter_words = filter_word_view.word_refs();
+    let suffix_patterns: &[&[&str]] = &[
+        &["youve", "cast", "this", "turn"],
+        &["you", "have", "cast", "this", "turn"],
+        &["you", "cast", "this", "turn"],
+    ];
+    let Some(suffix) = suffix_patterns
+        .iter()
+        .copied()
+        .find(|suffix| slice_ends_with(&filter_words, suffix))
+    else {
+        return Ok(None);
+    };
+    let filter_word_len = filter_words.len().saturating_sub(suffix.len());
+    let filter_token_end =
+        token_index_for_word_index(&filter_tokens, filter_word_len).unwrap_or(filter_tokens.len());
+    let filter_prefix_tokens = trim_commas(&filter_tokens[..filter_token_end]);
+    let mut spell_filter = parse_spell_filter_lexed(&filter_prefix_tokens);
+    spell_filter.zone = Some(Zone::Stack);
+    spell_filter.has_mana_cost = true;
+
+    let third_words = TokenWordView::new(third);
+    if !matches!(third_words.first(), Some("put" | "puts"))
+        || third_words.find_word("rest").is_none()
+    {
+        return Ok(None);
+    }
+    let Some(order) = parse_consult_remainder_order(&third_words.word_refs()) else {
+        return Ok(None);
+    };
+
+    Ok(Some(vec![
+        EffectAst::LookAtTopCards {
+            player,
+            count,
+            tag: TagKey::from(IT_TAG),
+        },
+        EffectAst::RevealTagged {
+            tag: TagKey::from(IT_TAG),
+        },
+        EffectAst::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary {
+            player,
+            spell_filter,
+            order,
+        },
+    ]))
+}
+
 fn parse_top_cards_put_match_onto_battlefield_and_match_into_hand_rest_bottom(
     first: &[OwnedLexToken],
     second: &[OwnedLexToken],
@@ -3509,7 +3599,7 @@ fn parse_triple_sentence_sequence(
     second: &[OwnedLexToken],
     third: &[OwnedLexToken],
 ) -> Result<Option<(&'static str, Vec<EffectAst>)>, CardTextError> {
-    const RULES: [(&str, TripleSentenceRule); 11] = [
+    const RULES: [(&str, TripleSentenceRule); 12] = [
         (
             "mill-then-put-from-among-into-hand-then-if-you-dont",
             parse_mill_then_may_put_from_among_into_hand_then_if_you_dont,
@@ -3533,6 +3623,10 @@ fn parse_triple_sentence_sequence(
         (
             "top-cards-put-match-into-hand-rest-graveyard",
             parse_top_cards_put_match_into_hand_rest_graveyard,
+        ),
+        (
+            "top-cards-for-each-card-type-among-spells-put-matching-into-hand-rest-bottom",
+            parse_top_cards_for_each_card_type_among_spells_put_matching_into_hand_rest_bottom,
         ),
         (
             "top-cards-put-match-onto-battlefield-and-into-hand-rest-bottom",
@@ -3613,6 +3707,10 @@ fn parse_triple_sentence_sequence(
             ),
         ],
         Some(("reveal", Some("the"))) | Some(("reveal", Some("top"))) => &[
+            (
+                "top-cards-for-each-card-type-among-spells-put-matching-into-hand-rest-bottom",
+                parse_top_cards_for_each_card_type_among_spells_put_matching_into_hand_rest_bottom,
+            ),
             (
                 "top-cards-put-match-onto-battlefield-and-into-hand-rest-bottom",
                 parse_top_cards_put_match_onto_battlefield_and_match_into_hand_rest_bottom,
@@ -4072,7 +4170,8 @@ fn parse_effect_sentences_from_sentence_inputs(
             continue;
         }
 
-        let sentence_words = crate::cards::builders::parser::token_word_refs(&sentence_tokens);
+        let sentence_words =
+            crate::cards::builders::parser::TokenWordView::new(&sentence_tokens).to_word_refs();
         let is_still_lands_followup = matches!(
             sentence_words.as_slice(),
             ["theyre", "still", "land"]
@@ -4513,8 +4612,8 @@ mod tests {
     use super::super::super::lexer::lex_line;
     use super::super::super::permission_helpers::parse_until_end_of_turn_may_play_tagged_clause;
     use super::super::super::util::{parse_subject, trim_commas};
-    use super::super::{parse_effect_chain, parse_effect_sentence_lexed};
     use super::super::zone_handlers::parse_exile_top_library_clause;
+    use super::super::{parse_effect_chain, parse_effect_sentence_lexed};
     use super::{
         ConsultCastCost, ConsultCastTiming, Verb, parse_bargained_face_down_cast_mana_value_gate,
         parse_consult_cast_clause, parse_consult_condition_value,
@@ -4745,6 +4844,36 @@ mod tests {
             !debug.contains("returnfromgraveyardtobattlefield"),
             "expected source-leaves bundle not to lower into graveyard-return, got {debug}"
         );
+    }
+
+    #[test]
+    fn reveal_top_then_for_each_card_type_bundle_parses_directly() {
+        let tokens = lex_line(
+            "Reveal the top five cards of your library. For each card type among noncreature spells you've cast this turn, you may put a card of that type from among the revealed cards into your hand. Put the rest on the bottom of your library in a random order.",
+            0,
+        )
+        .expect("rewrite lexer should classify Hurkyl reveal bundle");
+
+        let sentences = split_lexed_sentences(&tokens);
+        assert_eq!(sentences.len(), 3, "{sentences:#?}");
+
+        let parsed =
+            super::parse_top_cards_for_each_card_type_among_spells_put_matching_into_hand_rest_bottom(
+                sentences[0],
+                sentences[1],
+                sentences[2],
+            )
+            .expect("Hurkyl reveal bundle helper should not error")
+            .expect("Hurkyl reveal bundle helper should parse");
+
+        assert!(matches!(
+            parsed.as_slice(),
+            [
+                crate::cards::builders::EffectAst::LookAtTopCards { .. },
+                crate::cards::builders::EffectAst::RevealTagged { .. },
+                crate::cards::builders::EffectAst::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary { .. },
+            ]
+        ));
     }
 
     #[test]

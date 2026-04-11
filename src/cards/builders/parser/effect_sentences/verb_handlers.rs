@@ -3512,6 +3512,16 @@ pub(crate) fn parse_put_into_hand(
                 .is_some()
                     || grammar::words_match_prefix(
                         &tokens[idx..],
+                        &["under", "his", "owners", "control"],
+                    )
+                    .is_some()
+                    || grammar::words_match_prefix(
+                        &tokens[idx..],
+                        &["under", "her", "owners", "control"],
+                    )
+                    .is_some()
+                    || grammar::words_match_prefix(
+                        &tokens[idx..],
                         &["under", "their", "owners", "control"],
                     )
                     .is_some()
@@ -3831,6 +3841,8 @@ pub(crate) fn parse_put_into_hand(
         let supported_control_tail = destination_tail.is_empty()
             || destination_tail.as_slice() == ["under", "your", "control"]
             || destination_tail.as_slice() == ["under", "its", "owners", "control"]
+            || destination_tail.as_slice() == ["under", "his", "owners", "control"]
+            || destination_tail.as_slice() == ["under", "her", "owners", "control"]
             || destination_tail.as_slice() == ["under", "their", "owners", "control"]
             || destination_tail.as_slice() == ["under", "that", "players", "control"];
         if !supported_control_tail {
@@ -3843,6 +3855,8 @@ pub(crate) fn parse_put_into_hand(
         {
             ReturnControllerAst::You
         } else if destination_tail.as_slice() == ["under", "its", "owners", "control"]
+            || destination_tail.as_slice() == ["under", "his", "owners", "control"]
+            || destination_tail.as_slice() == ["under", "her", "owners", "control"]
             || destination_tail.as_slice() == ["under", "their", "owners", "control"]
             || destination_tail.as_slice() == ["under", "that", "players", "control"]
         {

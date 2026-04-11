@@ -1917,7 +1917,10 @@ fn rewrite_lexed_restriction_parsers_match_activation_trigger_and_mana_shapes() 
         parse_triggered_times_each_turn_lexed(&trigger_only),
         Some(1)
     );
-    assert_eq!(parse_triggered_times_each_turn_lexed(&do_this_only), Some(1));
+    assert_eq!(
+        parse_triggered_times_each_turn_lexed(&do_this_only),
+        Some(1)
+    );
     assert!(matches!(
         parse_mana_usage_restriction_sentence_lexed(&mana_only),
         Some(crate::ability::ManaUsageRestriction::CastSpell {
@@ -8130,7 +8133,9 @@ fn rewrite_semantic_parse_accepts_do_this_only_once_each_turn_trigger_cap()
         triggered.effect_text
     );
     assert!(
-        !triggered.effect_text.contains("Do this only once each turn"),
+        !triggered
+            .effect_text
+            .contains("Do this only once each turn"),
         "cap sentence should stay out of the effect text: {}",
         triggered.effect_text
     );
@@ -8479,8 +8484,11 @@ fn rewrite_grammar_no_opponent_has_more_life_than_that_player_predicate_parses()
 
 #[test]
 fn rewrite_grammar_battlefield_count_predicate_parses_other_creatures() {
-    let tokens = lex_line("there are two or more other creatures on the battlefield", 0)
-        .expect("rewrite lexer should classify battlefield-count predicate");
+    let tokens = lex_line(
+        "there are two or more other creatures on the battlefield",
+        0,
+    )
+    .expect("rewrite lexer should classify battlefield-count predicate");
 
     let debug = format!(
         "{:?}",
@@ -8570,14 +8578,16 @@ fn rewrite_lexed_trigger_clause_accepts_attack_target_tail() {
     let parsed = super::parse_trigger_clause_lexed(&tokens)
         .expect("attack trigger clause with player tail should parse");
 
-    assert!(matches!(parsed, crate::cards::builders::TriggerSpec::ThisAttacks));
+    assert!(matches!(
+        parsed,
+        crate::cards::builders::TriggerSpec::ThisAttacks
+    ));
 }
 
 #[test]
 fn rewrite_lexed_static_grant_line_ignores_inner_has_in_quoted_trigger() {
     let text = "Commander creatures you own have \"Whenever this creature attacks a player, if no opponent has more life than that player, you create two Treasure tokens.\"";
-    let tokens =
-        lex_line(text, 0).expect("rewrite lexer should classify Guild Artisan grant line");
+    let tokens = lex_line(text, 0).expect("rewrite lexer should classify Guild Artisan grant line");
 
     let parsed = super::clause_support::parse_static_ability_ast_line_lexed(&tokens)
         .expect("Guild Artisan static grant should parse");
@@ -8587,7 +8597,10 @@ fn rewrite_lexed_static_grant_line_ignores_inner_has_in_quoted_trigger() {
         debug.contains("GrantObjectAbilityForFilter") || debug.contains("GrantObjectAbility"),
         "{debug}"
     );
-    assert!(debug.contains("PlayerHasNoOpponentWithMoreLifeThan"), "{debug}");
+    assert!(
+        debug.contains("PlayerHasNoOpponentWithMoreLifeThan"),
+        "{debug}"
+    );
     assert!(debug.contains("ThisAttacksTrigger"), "{debug}");
     assert!(
         debug.contains("intervening_if: Some")

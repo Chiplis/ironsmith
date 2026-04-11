@@ -20,6 +20,7 @@ use super::super::util::{
 };
 use super::super::util::{parse_target_phrase, parse_value, span_from_tokens};
 use super::dispatch_inner::merge_filters;
+use super::search_library::parse_restriction_duration;
 use super::sentence_helpers::*;
 use super::verb_handlers::parse_half_rounded_down_draw_count_words;
 use super::zone_counter_helpers::parse_convert;
@@ -72,21 +73,6 @@ const MECHANIC_MARKER_PREFIXES: &[&[&str]] = &[
     ],
     &["stand", "and", "fight"],
     &["it", "doesnt", "untap", "during"],
-];
-const IT_BECOME_PREFIXES: &[&[&str]] = &[
-    &["its"],
-    &["it", "is"],
-    &["it", "s"],
-    &["it\u{2019}s"],
-    &["it’s"],
-];
-const THEY_BECOME_PREFIXES: &[&[&str]] = &[
-    &["each", "of", "them", "is"],
-    &["they", "are"],
-    &["they", "re"],
-    &["theyre"],
-    &["they\u{2019}re"],
-    &["they’re"],
 ];
 #[allow(unused_imports)]
 use crate::cards::builders::{
@@ -175,6 +161,25 @@ fn sentence_primitive_head_hints(name: &'static str) -> Vec<SentencePrimitiveHea
             SentencePrimitiveHeadHint::Single("each"),
             SentencePrimitiveHeadHint::Pair("for", "each"),
             SentencePrimitiveHeadHint::Pair("then", "each"),
+        ];
+    }
+    if name == "implicit-become-clause" {
+        return vec![
+            SentencePrimitiveHeadHint::Single("it"),
+            SentencePrimitiveHeadHint::Single("its"),
+            SentencePrimitiveHeadHint::Single("it's"),
+            SentencePrimitiveHeadHint::Single("it’s"),
+            SentencePrimitiveHeadHint::Single("they"),
+            SentencePrimitiveHeadHint::Single("they're"),
+            SentencePrimitiveHeadHint::Single("they’re"),
+            SentencePrimitiveHeadHint::Single("this"),
+            SentencePrimitiveHeadHint::Single("each"),
+            SentencePrimitiveHeadHint::Pair("it", "is"),
+            SentencePrimitiveHeadHint::Pair("they", "are"),
+            SentencePrimitiveHeadHint::Pair("this", "creature"),
+            SentencePrimitiveHeadHint::Pair("this", "permanent"),
+            SentencePrimitiveHeadHint::Pair("this", "land"),
+            SentencePrimitiveHeadHint::Pair("each", "of"),
         ];
     }
 
@@ -1484,6 +1489,8 @@ pub(crate) fn parse_return_with_counters_on_it_sentence(
         ReturnControllerAst::You
     } else if destination_tail == ["under", "its", "owner", "control"]
         || destination_tail == ["under", "their", "owner", "control"]
+        || destination_tail == ["under", "his", "owner", "control"]
+        || destination_tail == ["under", "her", "owner", "control"]
         || destination_tail == ["under", "that", "player", "control"]
     {
         ReturnControllerAst::Owner
@@ -1641,6 +1648,8 @@ pub(crate) fn parse_put_onto_battlefield_with_counters_on_it_sentence(
         || destination_tail == ["under", "your", "control"]
         || destination_tail == ["under", "its", "owner", "control"]
         || destination_tail == ["under", "their", "owner", "control"]
+        || destination_tail == ["under", "his", "owner", "control"]
+        || destination_tail == ["under", "her", "owner", "control"]
         || destination_tail == ["under", "that", "player", "control"];
     if !supported_control_tail {
         return Ok(None);
@@ -1649,6 +1658,8 @@ pub(crate) fn parse_put_onto_battlefield_with_counters_on_it_sentence(
         ReturnControllerAst::You
     } else if destination_tail == ["under", "its", "owner", "control"]
         || destination_tail == ["under", "their", "owner", "control"]
+        || destination_tail == ["under", "his", "owner", "control"]
+        || destination_tail == ["under", "her", "owner", "control"]
         || destination_tail == ["under", "that", "player", "control"]
     {
         ReturnControllerAst::Owner
@@ -5694,22 +5705,28 @@ pub(crate) fn parse_sentence_fallback_mechanic_marker(
 pub(crate) fn parse_sentence_implicit_become_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let rest_word_idx = if let Some((prefix, _)) =
-        grammar::words_match_any_prefix(tokens, IT_BECOME_PREFIXES)
-    {
-        prefix.len()
-    } else if let Some((prefix, _)) = grammar::words_match_any_prefix(tokens, THEY_BECOME_PREFIXES)
-    {
-        prefix.len()
-    } else {
-        return Ok(None);
+    let clause_words = TokenWordView::new(tokens).to_word_refs();
+    let (target, rest_word_idx) = match clause_words.as_slice() {
+        ["this", "permanent", ..] | ["this", "creature", ..] | ["this", "land", ..] => {
+            (TargetAst::Source(None), 2)
+        }
+        ["this", ..] => (TargetAst::Source(None), 1),
+        ["each", "of", "them", ..] => (TargetAst::Tagged(TagKey::from(IT_TAG), None), 3),
+        ["they", ..] => (TargetAst::Tagged(TagKey::from(IT_TAG), None), 1),
+        ["its", ..] | ["it", ..] => (TargetAst::Tagged(TagKey::from(IT_TAG), None), 1),
+        _ => return Ok(None),
     };
-
-    let target = TargetAst::Tagged(TagKey::from(IT_TAG), None);
 
     let rest_token_idx = token_index_for_word_index(tokens, rest_word_idx).unwrap_or(tokens.len());
     let rest_tokens = trim_commas(&tokens[rest_token_idx..]);
-    let mut rest_words = crate::cards::builders::parser::token_word_refs(&rest_tokens);
+    let (mut duration, duration_remainder) =
+        if let Some((duration, remainder)) = parse_restriction_duration(&rest_tokens)? {
+            (duration, remainder)
+        } else {
+            (Until::Forever, rest_tokens.to_vec())
+        };
+    let rest_tokens = trim_commas(&duration_remainder);
+    let mut rest_words = TokenWordView::new(&rest_tokens).to_word_refs();
     if rest_words.first().copied() == Some("still") {
         rest_words.remove(0);
     }
@@ -5717,16 +5734,51 @@ pub(crate) fn parse_sentence_implicit_become_clause(
         return Ok(None);
     }
 
-    let negative_type_words =
-        if slice_starts_with(&rest_words, &["not", "a"]) && rest_words.len() > 2 {
-            Some(&rest_words[2..])
-        } else if slice_starts_with(&rest_words, &["not", "an"]) && rest_words.len() > 2 {
-            Some(&rest_words[2..])
-        } else if slice_starts_with(&rest_words, &["not"]) && rest_words.len() > 1 {
+    let negated = if slice_starts_with(&rest_words, &["is", "not"])
+        || slice_starts_with(&rest_words, &["are", "not"])
+    {
+        rest_words.drain(..2);
+        true
+    } else if matches!(
+        rest_words.first().copied(),
+        Some("isnt" | "isn't" | "arent" | "aren't")
+    ) {
+        rest_words.remove(0);
+        true
+    } else {
+        if matches!(rest_words.first().copied(), Some("is" | "are" | "s" | "’s")) {
+            rest_words.remove(0);
+        }
+        false
+    };
+    if slice_ends_with(&rest_words, &["until", "end", "of", "turn"]) {
+        duration = Until::EndOfTurn;
+        let new_len = rest_words.len().saturating_sub(4);
+        rest_words.truncate(new_len);
+    }
+    if rest_words.is_empty() {
+        return Ok(None);
+    }
+
+    let negative_type_words = if negated {
+        if rest_words
+            .first()
+            .copied()
+            .is_some_and(|word| matches!(word, "a" | "an" | "the"))
+        {
             Some(&rest_words[1..])
         } else {
-            None
-        };
+            Some(&rest_words[..])
+        }
+    } else if slice_starts_with(&rest_words, &["not", "a"]) && rest_words.len() > 2 {
+        Some(&rest_words[2..])
+    } else if slice_starts_with(&rest_words, &["not", "an"]) && rest_words.len() > 2 {
+        Some(&rest_words[2..])
+    } else if slice_starts_with(&rest_words, &["not"]) && rest_words.len() > 1 {
+        Some(&rest_words[1..])
+    } else {
+        None
+    };
     if let Some(type_words) = negative_type_words {
         let mut card_types = Vec::new();
         let mut all_card_types = true;
@@ -5744,7 +5796,7 @@ pub(crate) fn parse_sentence_implicit_become_clause(
             return Ok(Some(vec![EffectAst::RemoveCardTypes {
                 target,
                 card_types,
-                duration: Until::Forever,
+                duration,
             }]));
         }
     }
@@ -5801,12 +5853,12 @@ pub(crate) fn parse_sentence_implicit_become_clause(
                 power,
                 toughness,
                 target: target.clone(),
-                duration: Until::Forever,
+                duration: duration.clone(),
             },
             EffectAst::AddSubtypes {
                 target,
                 subtypes,
-                duration: Until::Forever,
+                duration,
             },
         ]));
     }
@@ -5836,7 +5888,7 @@ pub(crate) fn parse_sentence_implicit_become_clause(
         return Ok(Some(vec![EffectAst::AddCardTypes {
             target,
             card_types,
-            duration: Until::Forever,
+            duration,
         }]));
     }
 
@@ -5856,7 +5908,7 @@ pub(crate) fn parse_sentence_implicit_become_clause(
     Ok(Some(vec![EffectAst::AddSubtypes {
         target,
         subtypes,
-        duration: Until::Forever,
+        duration,
     }]))
 }
 
@@ -6268,3 +6320,29 @@ pub(crate) const POST_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
 
 pub(crate) static POST_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX: LazyLock<SentencePrimitiveIndex> =
     LazyLock::new(|| build_sentence_primitive_index(POST_CONDITIONAL_SENTENCE_PRIMITIVES));
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cards::builders::parser::util::tokenize_line;
+
+    #[test]
+    fn parse_sentence_implicit_become_clause_handles_explicit_self_negative_type_with_duration() {
+        let tokens = tokenize_line("this creature isn't a creature until end of turn.", 0);
+        let effects = parse_sentence_implicit_become_clause(&tokens)
+            .expect("parse should succeed")
+            .expect("clause should be recognized");
+
+        assert!(
+            matches!(
+                effects.as_slice(),
+                [EffectAst::RemoveCardTypes {
+                    target: TargetAst::Source(_),
+                    card_types,
+                    duration: Until::EndOfTurn,
+                }] if card_types.as_slice() == [CardType::Creature]
+            ),
+            "expected explicit self negative-type clause to parse into source-scoped remove-card-types until end of turn, got {effects:?}"
+        );
+    }
+}

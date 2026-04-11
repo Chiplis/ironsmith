@@ -222,16 +222,16 @@ mod tests {
     use super::*;
     use crate::card::{LinkedFaceLayout, PowerToughness};
     use crate::cards::{CardDefinition, CardDefinitionBuilder};
+    use crate::events::EventKind;
     use crate::events::combat::CreatureAttackedEvent;
     use crate::events::phase::EndOfCombatEvent;
-    use crate::events::EventKind;
     use crate::executor::ExecutionContext;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::snapshot::ObjectSnapshot;
     use crate::triggers::{
-        AttackEventTarget, TransformsTrigger, TriggerContext, TriggerMatcher, TriggerQueue,
-        TriggerEvent, check_triggers,
+        AttackEventTarget, TransformsTrigger, TriggerContext, TriggerEvent, TriggerMatcher,
+        TriggerQueue, check_triggers,
     };
     use crate::types::{CardType, Subtype};
     use std::sync::{Mutex, MutexGuard, OnceLock};
@@ -384,10 +384,8 @@ mod tests {
 
         let mut game = crate::tests::test_helpers::setup_two_player_game();
         let alice = PlayerId::from_index(0);
-        let front = register_conquerors_galleon_pair(
-            CardId::from_raw(79_200),
-            CardId::from_raw(79_201),
-        );
+        let front =
+            register_conquerors_galleon_pair(CardId::from_raw(79_200), CardId::from_raw(79_201));
         let source = game.create_object_from_definition(&front, alice, Zone::Battlefield);
 
         assert!(
@@ -425,7 +423,10 @@ mod tests {
             1,
             "attack trigger should schedule one delayed end-of-combat trigger"
         );
-        assert!(game.exile.is_empty(), "Galleon should not exile immediately");
+        assert!(
+            game.exile.is_empty(),
+            "Galleon should not exile immediately"
+        );
 
         let end_of_combat_event = TriggerEvent::new_with_provenance(
             EndOfCombatEvent::new(),
