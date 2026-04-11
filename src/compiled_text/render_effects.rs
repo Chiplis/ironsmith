@@ -454,6 +454,65 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             }
         }
 
+        fn render_consult_reveal_put_all_revealed_into_graveyard(
+            effects: &[&Effect],
+        ) -> Option<String> {
+            if effects.len() != 2 {
+                return None;
+            }
+
+            let consult = effects[0].downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>()?;
+            if consult.mode != crate::effects::consult_helpers::LibraryConsultMode::Reveal {
+                return None;
+            }
+
+            let move_effect = unwrap_tag_wrappers(effects[1]);
+            let move_to_zone = move_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+            if move_to_zone.zone != Zone::Graveyard || move_to_zone.to_top {
+                return None;
+            }
+            if !matches!(
+                &move_to_zone.target,
+                ChooseSpec::Tagged(tag) if tag == &consult.all_tag
+            ) {
+                return None;
+            }
+
+            let player = describe_player_filter(&consult.player);
+            let library_owner = describe_possessive_player_filter(&consult.player);
+            let reveal_verb = player_verb(&player, "reveal", "reveals");
+            let put_verb = player_verb(&player, "put", "puts");
+            let pronoun = if player == "you" { "you" } else { "they" };
+            let pronoun_reveal_verb = if pronoun == "you" || pronoun == "they" {
+                "reveal"
+            } else {
+                "reveals"
+            };
+            let selection = describe_search_selection_with_cards(&consult.filter.description());
+            let stop_text = match &consult.stop_rule {
+                crate::effects::ConsultTopOfLibraryStopRule::FirstMatch => selection,
+                crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1)) => {
+                    selection
+                }
+                crate::effects::ConsultTopOfLibraryStopRule::MatchCount(count) => format!(
+                    "{} {}",
+                    describe_value(count),
+                    pluralize_noun_phrase(&selection)
+                ),
+            };
+            let graveyard_owner = describe_possessive_player_filter(&consult.player);
+
+            if player == "you" {
+                Some(format!(
+                    "{player} {reveal_verb} cards from the top of {library_owner} library until {pronoun} {pronoun_reveal_verb} {stop_text}, put all cards revealed this way into {graveyard_owner} graveyard"
+                ))
+            } else {
+                Some(format!(
+                    "{player} {reveal_verb} cards from the top of {library_owner} library until {pronoun} {pronoun_reveal_verb} {stop_text}, then {player} {put_verb} all cards revealed this way into {graveyard_owner} graveyard"
+                ))
+            }
+        }
+
         fn render_sacrifice_then_consult_reveal_put_battlefield_rest_bottom(
             effects: &[&Effect],
         ) -> Option<String> {
@@ -680,6 +739,17 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         {
             parts.push(rendered);
             idx += 3;
+            continue;
+        }
+
+        if idx + 1 < filtered.len()
+            && let Some(rendered) = render_consult_reveal_put_all_revealed_into_graveyard(&[
+                filtered[idx],
+                filtered[idx + 1],
+            ])
+        {
+            parts.push(rendered);
+            idx += 2;
             continue;
         }
 
