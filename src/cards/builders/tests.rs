@@ -4601,18 +4601,26 @@ fn test_parse_evolving_door_compiles_color_count_search_and_may_cast() {
         )
         .expect("evolving door should parse");
 
-    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
         rendered.contains("search your library for a creature card")
             && rendered.contains("that's exactly that many colors plus one")
             && rendered.contains("you may cast the exiled card"),
-        "expected Evolving Door search and may-cast wording, got {rendered}"
+        "expected Evolving Door compiled search and may-cast wording, got {rendered}"
     );
     assert!(
         !rendered.contains("you searches")
             && !rendered.contains("cast the tagged object")
             && !rendered.contains("color count equal to the number of colors among"),
-        "expected Evolving Door to normalize the awkward search/cast phrasing, got {rendered}"
+        "expected Evolving Door to normalize the awkward compiled phrasing, got {rendered}"
+    );
+
+    let oracle_rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        oracle_rendered.contains("search your library for a creature card")
+            && oracle_rendered.contains("that's exactly that many colors plus one")
+            && oracle_rendered.contains("you may cast the exiled card"),
+        "expected Evolving Door oracle-like wording, got {oracle_rendered}"
     );
 
     let debug = format!("{def:#?}").to_ascii_lowercase();

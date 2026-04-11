@@ -1037,6 +1037,23 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             idx += 3;
             continue;
         }
+        if idx + 3 < filtered.len()
+            && let Some(choose) =
+                filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(shuffle) =
+                filtered[idx + 2].downcast_ref::<crate::effects::ShuffleLibraryEffect>()
+        {
+            if let Some(compact) = describe_search_choose_then_exile_and_cast(
+                choose,
+                filtered[idx + 1],
+                shuffle,
+                filtered[idx + 3],
+            ) {
+                parts.push(compact);
+                idx += 4;
+                continue;
+            }
+        }
         if idx + 1 < filtered.len()
             && let Some(choose) =
                 filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
@@ -5933,6 +5950,108 @@ pub(super) fn describe_search_choose_for_each(
         }
     }
     Some(text)
+}
+
+fn describe_search_color_count_selection(
+    choose: &crate::effects::ChooseObjectsEffect,
+) -> Option<String> {
+    let crate::filter::Comparison::EqualExpr(color_count) = choose.filter.color_count.as_ref()?
+    else {
+        return None;
+    };
+    let crate::effect::Value::Add(left, right) = color_count.as_ref() else {
+        return None;
+    };
+    if !matches!(
+        (left.as_ref(), right.as_ref()),
+        (crate::effect::Value::ColorsAmong(_), crate::effect::Value::Fixed(1))
+            | (crate::effect::Value::Fixed(1), crate::effect::Value::ColorsAmong(_))
+    ) {
+        return None;
+    }
+
+    let mut filter = choose.filter.clone();
+    filter.zone = None;
+    filter.owner = None;
+    filter.controller = None;
+    filter.color_count = None;
+    Some(format!(
+        "{} that's exactly that many colors plus one",
+        describe_search_selection_with_cards(&filter.description())
+    ))
+}
+
+pub(super) fn describe_search_choose_then_exile_and_cast(
+    choose: &crate::effects::ChooseObjectsEffect,
+    move_effect: &Effect,
+    shuffle: &crate::effects::ShuffleLibraryEffect,
+    cast_effect: &Effect,
+) -> Option<String> {
+    fn unwrap_effect(effect: &Effect) -> &Effect {
+        if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+            return tagged.effect.as_ref();
+        }
+        if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+            return with_id.effect.as_ref();
+        }
+        effect
+    }
+
+    fn extract_cast_tagged(effect: &Effect) -> Option<&crate::effects::CastTaggedEffect> {
+        let effect = unwrap_effect(effect);
+        if let Some(cast_tagged) = effect.downcast_ref::<crate::effects::CastTaggedEffect>() {
+            return Some(cast_tagged);
+        }
+        let may = effect.downcast_ref::<crate::effects::MayEffect>()?;
+        if may.effects.len() != 1 {
+            return None;
+        }
+        may.effects[0].downcast_ref::<crate::effects::CastTaggedEffect>()
+    }
+
+    if !choose.is_search
+        || choose.count.max != Some(1)
+        || choose_search_zones(choose) != Some(vec![Zone::Library])
+    {
+        return None;
+    }
+
+    let move_to_zone = unwrap_effect(move_effect).downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if move_to_zone.zone != Zone::Exile
+        || !matches!(
+            &move_to_zone.target,
+            ChooseSpec::Tagged(tag) if tag == &choose.tag
+        )
+        || shuffle.player != choose.chooser
+    {
+        return None;
+    }
+
+    let cast_tagged = extract_cast_tagged(cast_effect)?;
+    if cast_tagged.tag != choose.tag {
+        return None;
+    }
+
+    let search_origin = describe_search_origin_zones(choose)?;
+    let selection = describe_search_color_count_selection(choose).unwrap_or_else(|| {
+        let mut filter = choose.filter.clone();
+        filter.zone = None;
+        filter.owner = None;
+        filter.controller = None;
+        filter.color_count = None;
+        describe_search_selection_with_cards(&filter.description())
+    });
+    let cast_clause = if cast_tagged.allow_land {
+        "You may play the exiled card".to_string()
+    } else if cast_tagged.without_paying_mana_cost {
+        "You may cast the exiled card without paying its mana cost".to_string()
+    } else {
+        "You may cast the exiled card".to_string()
+    };
+
+    Some(format!(
+        "Search {search_origin} for {selection}. Exile that card, then shuffle. {cast_clause}."
+    ))
 }
 
 pub(super) fn describe_choose_then_for_each_same_name_search_to_battlefield(
