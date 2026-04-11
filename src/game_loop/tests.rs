@@ -15130,6 +15130,146 @@ fn test_search_library_selects_specific_card() {
 }
 
 #[test]
+fn test_evolving_door_finds_two_color_creature_and_respects_may_cast_decline() {
+    use crate::ability::AbilityKind;
+    use crate::decision::DecisionMaker;
+    use crate::executor::resolve_stack_entry_with_dm_and_triggers;
+
+    #[derive(Default)]
+    struct DeclineMayDecisionMaker;
+
+    impl DecisionMaker for DeclineMayDecisionMaker {
+        fn decide_boolean(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            false
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let evolving_door = CardDefinitionBuilder::new(CardId::new(), "Evolving Door Probe")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "{1}, {T}, Sacrifice a creature: Count the colors of the sacrificed creature, then search your library for a creature card that's exactly that many colors plus one. Exile that card, then shuffle. You may cast the exiled card. Activate only as a sorcery.",
+        )
+        .expect("evolving door probe should parse");
+    let door_id = game.create_object_from_definition(&evolving_door, alice, Zone::Battlefield);
+
+    let one_color_fodder = CardBuilder::new(CardId::new(), "One Color Fodder")
+        .card_types(vec![CardType::Creature])
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Green]]))
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let _one_color_id = game.create_object_from_card(&one_color_fodder, alice, Zone::Library);
+
+    let two_color_prize = CardBuilder::new(CardId::new(), "Two Color Prize")
+        .card_types(vec![CardType::Creature])
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Green],
+            vec![ManaSymbol::Blue],
+        ]))
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+    let _two_color_id = game.create_object_from_card(&two_color_prize, alice, Zone::Library);
+
+    let sacrifice_fodder = CardBuilder::new(CardId::new(), "Sacrificial Fodder")
+        .card_types(vec![CardType::Creature])
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Green]]))
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let fodder_id = game.create_object_from_card(&sacrifice_fodder, alice, Zone::Battlefield);
+
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 1);
+
+    let ability_index = game
+        .object(door_id)
+        .expect("evolving door should exist")
+        .abilities
+        .iter()
+        .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .expect("evolving door should have an activated ability");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = DeclineMayDecisionMaker::default();
+
+    let activate = PriorityResponse::PriorityAction(LegalAction::ActivateAbility {
+        source: door_id,
+        ability_index,
+    });
+    let progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &activate,
+        &mut dm,
+    )
+    .expect("activation should start");
+
+    match progress {
+        crate::decision::GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::SelectObjects(_),
+        ) => {}
+        other => panic!(
+            "expected Evolving Door to ask for a sacrificed creature first, got {:?}",
+            other
+        ),
+    }
+
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::SacrificeTarget(fodder_id),
+        &mut dm,
+    )
+    .expect("should sacrifice a creature to activate Evolving Door");
+
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "Evolving Door's activated ability should be on the stack after costs are paid"
+    );
+
+    resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+        .expect("Evolving Door should resolve");
+
+    assert!(
+        game.exile.iter().any(|&id| game
+            .object(id)
+            .is_some_and(|obj| obj.name == "Two Color Prize")),
+        "Evolving Door should exile the two-color creature when the sacrificed creature has one color"
+    );
+    assert!(
+        !game.exile.iter().any(|&id| game
+            .object(id)
+            .is_some_and(|obj| obj.name == "One Color Fodder")),
+        "Evolving Door should not be able to choose the one-color creature from the library"
+    );
+    assert!(
+        !game.battlefield.iter().any(|&id| game
+            .object(id)
+            .is_some_and(|obj| obj.name == "Two Color Prize")),
+        "declining the may-cast choice should leave the exiled creature in exile"
+    );
+}
+
+#[test]
 fn test_silverglade_elemental_may_search_puts_forest_onto_battlefield() {
     use crate::ability::AbilityKind;
     use crate::card::{CardBuilder, PowerToughness};

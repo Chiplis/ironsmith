@@ -1275,6 +1275,7 @@ pub(super) fn parse_object_filter_inner(
         || filter.monocolored
         || filter.all_colors.is_some()
         || filter.exactly_two_colors.is_some()
+        || filter.color_count.is_some()
         || filter.historic
         || filter.nonhistoric
         || filter.power.is_some()
@@ -1335,6 +1336,7 @@ pub(super) fn parse_object_filter_inner(
         || filter.monocolored
         || filter.all_colors.is_some()
         || filter.exactly_two_colors.is_some()
+        || filter.color_count.is_some()
         || filter.historic
         || filter.nonhistoric
         || filter.power.is_some()

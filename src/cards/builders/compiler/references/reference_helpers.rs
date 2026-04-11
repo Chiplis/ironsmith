@@ -1,6 +1,6 @@
 use crate::cards::builders::{CardTextError, IT_TAG, PlayerAst, TagKey, TargetAst};
 use crate::effect::{EventValueSpec, Restriction, Value};
-use crate::filter::{ObjectFilter, ObjectRef, PlayerFilter, TaggedOpbjectRelation};
+use crate::filter::{Comparison, ObjectFilter, ObjectRef, PlayerFilter, TaggedOpbjectRelation};
 use crate::target::ChooseSpec;
 use crate::zone::Zone;
 
@@ -167,6 +167,33 @@ fn resolve_contextual_player_filter(
     })
 }
 
+fn resolve_object_filter_comparison(
+    comparison: &Comparison,
+    refs: &ReferenceEnv,
+) -> Result<Comparison, CardTextError> {
+    Ok(match comparison {
+        Comparison::EqualExpr(value) => {
+            Comparison::EqualExpr(Box::new(resolve_value_it_tag(value, refs)?))
+        }
+        Comparison::NotEqualExpr(value) => {
+            Comparison::NotEqualExpr(Box::new(resolve_value_it_tag(value, refs)?))
+        }
+        Comparison::LessThanExpr(value) => {
+            Comparison::LessThanExpr(Box::new(resolve_value_it_tag(value, refs)?))
+        }
+        Comparison::LessThanOrEqualExpr(value) => {
+            Comparison::LessThanOrEqualExpr(Box::new(resolve_value_it_tag(value, refs)?))
+        }
+        Comparison::GreaterThanExpr(value) => {
+            Comparison::GreaterThanExpr(Box::new(resolve_value_it_tag(value, refs)?))
+        }
+        Comparison::GreaterThanOrEqualExpr(value) => {
+            Comparison::GreaterThanOrEqualExpr(Box::new(resolve_value_it_tag(value, refs)?))
+        }
+        _ => comparison.clone(),
+    })
+}
+
 fn resolve_object_filter_player_refs(
     filter: &ObjectFilter,
     refs: &ReferenceEnv,
@@ -180,6 +207,18 @@ fn resolve_object_filter_player_refs(
     }
     if let Some(owner) = resolved.owner.as_mut() {
         *owner = resolve_contextual_player_filter(owner, refs)?;
+    }
+    if let Some(power) = resolved.power.as_mut() {
+        *power = resolve_object_filter_comparison(power, refs)?;
+    }
+    if let Some(toughness) = resolved.toughness.as_mut() {
+        *toughness = resolve_object_filter_comparison(toughness, refs)?;
+    }
+    if let Some(mana_value) = resolved.mana_value.as_mut() {
+        *mana_value = resolve_object_filter_comparison(mana_value, refs)?;
+    }
+    if let Some(color_count) = resolved.color_count.as_mut() {
+        *color_count = resolve_object_filter_comparison(color_count, refs)?;
     }
     if let Some(targets_player) = resolved.targets_player.as_mut() {
         *targets_player = resolve_contextual_player_filter(targets_player, refs)?;

@@ -2,6 +2,7 @@ use crate::cards::builders::{
     CardTextError, EffectAst, IT_TAG, IdGenContext, PlayerAst, TargetAst, TriggerSpec,
 };
 use crate::effect::{EffectId, EventValueSpec};
+use crate::filter::Comparison;
 use crate::target::ChooseSpec;
 use crate::target::ObjectRef;
 use crate::{ObjectFilter, PlayerFilter, Value};
@@ -1975,10 +1976,35 @@ fn bind_unresolved_it_in_player_filter(filter: &mut PlayerFilter, seed_tag: &Tag
 }
 
 #[cfg(test)]
+fn bind_unresolved_it_in_comparison(comparison: &mut Comparison, seed_tag: &TagKey) -> usize {
+    match comparison {
+        Comparison::EqualExpr(value)
+        | Comparison::NotEqualExpr(value)
+        | Comparison::LessThanExpr(value)
+        | Comparison::LessThanOrEqualExpr(value)
+        | Comparison::GreaterThanExpr(value)
+        | Comparison::GreaterThanOrEqualExpr(value) => bind_unresolved_it_in_value(value, seed_tag),
+        _ => 0,
+    }
+}
+
+#[cfg(test)]
 fn bind_unresolved_it_in_filter(filter: &mut ObjectFilter, seed_tag: &TagKey) -> usize {
     let mut replacements = 0;
     for constraint in &mut filter.tagged_constraints {
         replacements += bind_unresolved_it_in_tag(&mut constraint.tag, seed_tag);
+    }
+    if let Some(power) = filter.power.as_mut() {
+        replacements += bind_unresolved_it_in_comparison(power, seed_tag);
+    }
+    if let Some(toughness) = filter.toughness.as_mut() {
+        replacements += bind_unresolved_it_in_comparison(toughness, seed_tag);
+    }
+    if let Some(mana_value) = filter.mana_value.as_mut() {
+        replacements += bind_unresolved_it_in_comparison(mana_value, seed_tag);
+    }
+    if let Some(color_count) = filter.color_count.as_mut() {
+        replacements += bind_unresolved_it_in_comparison(color_count, seed_tag);
     }
     if let Some(owner) = filter.owner.as_mut() {
         replacements += bind_unresolved_it_in_player_filter(owner, seed_tag);

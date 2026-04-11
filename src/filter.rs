@@ -672,6 +672,15 @@ fn resolve_filter_comparison_rhs_value(
             }
             Some(count * *factor)
         }
+        Value::ColorsAmong(filter) => {
+            let mut colors = ColorSet::new();
+            for object in game.objects_in_deterministic_order() {
+                if filter.matches(object, ctx, game) {
+                    colors = colors.union(object.colors());
+                }
+            }
+            Some(colors.count() as i32)
+        }
         Value::CountersOnSource(counter_type) => {
             let source = game.object(ctx.source?)?;
             Some(source.counters.get(counter_type).copied().unwrap_or(0) as i32)
@@ -1187,6 +1196,9 @@ pub struct ObjectFilter {
     /// If set, require (true) or exclude (false) objects that are exactly two colors.
     pub exactly_two_colors: Option<bool>,
 
+    /// Color-count comparison (distinct colors the object has).
+    pub color_count: Option<Comparison>,
+
     /// If true, must be historic (artifact, legendary, or Saga)
     pub historic: bool,
 
@@ -1387,6 +1399,7 @@ impl ObjectFilter {
             || self.monocolored
             || self.all_colors.is_some()
             || self.exactly_two_colors.is_some()
+            || self.color_count.is_some()
             || self.historic
             || self.nonhistoric
             || self.modified
@@ -1839,6 +1852,12 @@ impl ObjectFilter {
     /// Require mana value to satisfy a comparison.
     pub fn with_mana_value(mut self, cmp: Comparison) -> Self {
         self.mana_value = Some(cmp);
+        self
+    }
+
+    /// Require color count to satisfy a comparison.
+    pub fn with_color_count(mut self, cmp: Comparison) -> Self {
+        self.color_count = Some(cmp);
         self
     }
 
@@ -2771,6 +2790,12 @@ impl ObjectFilter {
                 return false;
             }
         }
+        if let Some(color_count_cmp) = &self.color_count {
+            let color_count = object.colors().count() as i32;
+            if !color_count_cmp.satisfies_with_context(color_count, game, ctx, stack_entry) {
+                return false;
+            }
+        }
 
         let is_historic = object.card_types.contains(&CardType::Artifact)
             || object.supertypes.contains(&Supertype::Legendary)
@@ -3287,6 +3312,12 @@ impl ObjectFilter {
         if let Some(require_exactly_two_colors) = self.exactly_two_colors {
             let is_exactly_two_colors = snapshot.colors.count() == 2;
             if require_exactly_two_colors != is_exactly_two_colors {
+                return false;
+            }
+        }
+        if let Some(color_count_cmp) = &self.color_count {
+            let color_count = snapshot.colors.count() as i32;
+            if !color_count_cmp.satisfies_with_context(color_count, game, ctx, None) {
                 return false;
             }
         }
@@ -4186,6 +4217,9 @@ impl ObjectFilter {
                 describe_comparison(mana_value)
             ));
         }
+        if let Some(ref color_count) = self.color_count {
+            parts.push(format!("with color count {}", describe_comparison(color_count)));
+        }
         if let Some(mana_value_parity) = self.mana_value_parity {
             parts.push(mana_value_parity.describe_axis("mana value"));
         }
@@ -5023,6 +5057,7 @@ fn describe_comparison(cmp: &Comparison) -> String {
             Value::CountScaled(filter, factor) => {
                 format!("{factor} times the number of {}", filter.description())
             }
+            Value::ColorsAmong(filter) => format!("the number of colors among {}", filter.description()),
             Value::CountersOnSource(counter_type) => {
                 format!(
                     "the number of {} counters on this",

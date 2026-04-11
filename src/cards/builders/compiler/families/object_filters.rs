@@ -724,6 +724,7 @@ pub(crate) fn spell_filter_has_identity(filter: &ObjectFilter) -> bool {
         || filter.chosen_creature_type
         || filter.excluded_chosen_creature_type
         || filter.colors.is_some()
+        || filter.color_count.is_some()
         || filter.power.is_some()
         || filter.power_parity.is_some()
         || filter.toughness.is_some()
@@ -754,6 +755,9 @@ pub(crate) fn merge_spell_filters(base: &mut ObjectFilter, extra: ObjectFilter) 
     base.chosen_color |= extra.chosen_color;
     base.chosen_creature_type |= extra.chosen_creature_type;
     base.excluded_chosen_creature_type |= extra.excluded_chosen_creature_type;
+    if base.color_count.is_none() {
+        base.color_count = extra.color_count;
+    }
     if base.alternative_cast.is_none() {
         base.alternative_cast = extra.alternative_cast;
     }

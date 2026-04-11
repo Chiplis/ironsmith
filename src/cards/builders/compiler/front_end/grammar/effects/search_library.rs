@@ -361,6 +361,44 @@ pub(crate) fn strip_search_library_leading_count_tokens(
     tokens
 }
 
+fn strip_search_library_color_count_phrase_lexed(
+    tokens: &[OwnedLexToken],
+) -> Option<(Vec<OwnedLexToken>, crate::filter::Comparison)> {
+    let trimmed = trim_commas(tokens);
+    let patterns: [&[&str]; 4] = [
+        &["thats", "exactly", "that", "many", "colors", "plus"],
+        &["thats", "that", "many", "colors", "plus"],
+        &["exactly", "that", "many", "colors", "plus"],
+        &["that", "many", "colors", "plus"],
+    ];
+
+    for pattern in patterns {
+        let Some((start, _, rest)) = grammar::find_prefix(&trimmed, || grammar::phrase(pattern))
+        else {
+            continue;
+        };
+        let rest = trim_commas(rest);
+        let Some((count, consumed)) = parse_number(rest) else {
+            continue;
+        };
+        let mut stripped = trim_commas(&trimmed[..start]).to_vec();
+        stripped.extend_from_slice(trim_commas(&rest[consumed..]));
+
+        let colors_expr = crate::effect::Value::ColorsAmong(crate::target::ObjectFilter::tagged(
+            crate::cards::builders::IT_TAG,
+        ));
+        let comparison = crate::filter::Comparison::EqualExpr(Box::new(
+            crate::effect::Value::Add(
+                Box::new(colors_expr),
+                Box::new(crate::effect::Value::Fixed(count as i32)),
+            ),
+        ));
+        return Some((stripped, comparison));
+    }
+
+    None
+}
+
 pub(crate) fn is_default_search_library_card_selector(tokens: &[OwnedLexToken]) -> bool {
     let words = parser_text_word_refs(tokens)
         .into_iter()
@@ -967,11 +1005,18 @@ pub(crate) fn parse_search_library_object_filter_lexed(
     filter_tokens: &[OwnedLexToken],
     words_all: &[&str],
 ) -> Result<ObjectFilter, CardTextError> {
-    let filter_words = parser_text_word_refs(filter_tokens)
+    let (filter_tokens, color_count) = if let Some((stripped, color_count)) =
+        strip_search_library_color_count_phrase_lexed(filter_tokens)
+    {
+        (stripped, Some(color_count))
+    } else {
+        (filter_tokens.to_vec(), None)
+    };
+    let filter_words = parser_text_word_refs(&filter_tokens)
         .into_iter()
         .filter(|word| !is_article(word))
         .collect::<Vec<_>>();
-    let parser_words = parser_word_token_positions(filter_tokens);
+    let parser_words = parser_word_token_positions(&filter_tokens);
 
     if let Some(named_idx) = find_parser_word_position(&parser_words, "named") {
         let negated_named = parser_words[..named_idx]
@@ -1015,25 +1060,40 @@ pub(crate) fn parse_search_library_object_filter_lexed(
         } else {
             base_filter.name = Some(name);
         }
+        if let Some(color_count) = color_count {
+            base_filter.color_count = Some(color_count);
+        }
         Ok(base_filter)
     } else if filter_words.len() == 1 && (filter_words[0] == "card" || filter_words[0] == "cards") {
-        Ok(ObjectFilter::default())
+        let mut filter = ObjectFilter::default();
+        if let Some(color_count) = color_count {
+            filter.color_count = Some(color_count);
+        }
+        Ok(filter)
     } else if word_slice_contains(&filter_words, "or") {
-        parse_search_library_disjunction_filter(filter_tokens)
-            .or_else(|| parse_object_filter(filter_tokens, false).ok())
+        let mut filter = parse_search_library_disjunction_filter(&filter_tokens)
+            .or_else(|| parse_object_filter(&filter_tokens, false).ok())
             .ok_or_else(|| {
                 CardTextError::ParseError(format!(
                     "unsupported search filter in search-library sentence (clause: '{}')",
                     words_all.join(" ")
                 ))
-            })
+            })?;
+        if let Some(color_count) = color_count {
+            filter.color_count = Some(color_count);
+        }
+        Ok(filter)
     } else {
-        parse_object_filter(filter_tokens, false).map_err(|_| {
+        let mut filter = parse_object_filter(&filter_tokens, false).map_err(|_| {
             CardTextError::ParseError(format!(
                 "unsupported search filter in search-library sentence (clause: '{}')",
                 words_all.join(" ")
             ))
-        })
+        })?;
+        if let Some(color_count) = color_count {
+            filter.color_count = Some(color_count);
+        }
+        Ok(filter)
     }
 }
 

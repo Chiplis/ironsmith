@@ -4589,6 +4589,37 @@ fn test_parse_overload_keyword_line_compiles_to_alternative_cast_and_rewritten_e
 }
 
 #[test]
+fn test_parse_evolving_door_compiles_color_count_search_and_may_cast() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Evolving Door Probe")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "{1}, {T}, Sacrifice a creature: Count the colors of the sacrificed creature, then search your library for a creature card that's exactly that many colors plus one. Exile that card, then shuffle. You may cast the exiled card. Activate only as a sorcery.",
+        )
+        .expect("evolving door should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("search your library for a creature card")
+            && rendered.contains("you may cast"),
+        "expected Evolving Door search and may-cast wording, got {rendered}"
+    );
+
+    let debug = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        debug.contains("color_count") && debug.contains("colorsamong") && debug.contains("may"),
+        "expected Evolving Door to compile a color-count comparison and a may wrapper, got {debug}"
+    );
+    assert!(
+        !debug.contains("unsupported"),
+        "Evolving Door parse should avoid unsupported placeholders, got {debug}"
+    );
+}
+
+#[test]
 fn test_parse_triggered_explore_clause_without_fallback_marker() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Explore Trigger Probe")
         .card_types(vec![CardType::Creature])
