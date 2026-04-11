@@ -3,6 +3,7 @@
 use crate::cards::builders::{CardTextError, IT_TAG, TagKey};
 use crate::effect::{Value, ValueComparisonOperator};
 use crate::target::{ChooseSpec, PlayerFilter};
+use crate::{ObjectFilter, Zone};
 
 use super::effect_sentences::trim_edge_punctuation;
 use super::grammar::primitives::TokenWordView;
@@ -467,6 +468,12 @@ pub(crate) fn parse_equal_to_aggregate_filter_value(tokens: &[OwnedLexToken]) ->
     }
     idx += 1;
 
+    if aggregate == "greatest" && value_kind == "mana_value" {
+        if let Some(value) = parse_where_x_greatest_commander_mana_value(tokens, idx) {
+            return Some(value);
+        }
+    }
+
     let object_start_token_idx = token_index_for_word_index(tokens, idx)?;
     let filter_tokens = &tokens[object_start_token_idx..];
     let filter = parse_object_filter(filter_tokens, false).ok()?;
@@ -480,6 +487,70 @@ pub(crate) fn parse_equal_to_aggregate_filter_value(tokens: &[OwnedLexToken]) ->
         ("greatest", "mana_value") => Some(Value::GreatestManaValue(filter)),
         _ => None,
     }
+}
+
+pub(crate) fn parse_where_x_greatest_commander_mana_value(
+    tokens: &[OwnedLexToken],
+    commander_start_word_idx: usize,
+) -> Option<Value> {
+    let commander_start_token_idx = token_index_for_word_index(tokens, commander_start_word_idx)?;
+    let commander_words =
+        crate::cards::builders::compiler::token_word_refs(&tokens[commander_start_token_idx..]);
+    let normalized: Vec<&str> = commander_words
+        .iter()
+        .copied()
+        .filter(|word| !is_article(word))
+        .collect();
+    let owner = match normalized.as_slice() {
+        [
+            "commander",
+            "you",
+            "own",
+            "on",
+            "battlefield",
+            "or",
+            "in",
+            "command",
+            "zone",
+        ] => PlayerFilter::You,
+        [
+            "commander",
+            "they",
+            "own",
+            "on",
+            "battlefield",
+            "or",
+            "in",
+            "command",
+            "zone",
+        ]
+        | [
+            "commander",
+            "that",
+            "player",
+            "owns",
+            "on",
+            "battlefield",
+            "or",
+            "in",
+            "command",
+            "zone",
+        ] => PlayerFilter::IteratedPlayer,
+        _ => return None,
+    };
+
+    let mut battlefield_commander = ObjectFilter::default();
+    battlefield_commander.zone = Some(Zone::Battlefield);
+    battlefield_commander.is_commander = true;
+    battlefield_commander.owner = Some(owner);
+
+    let mut command_zone_commander = battlefield_commander.clone();
+    command_zone_commander.zone = Some(Zone::Command);
+
+    let mut combined = ObjectFilter::default();
+    combined.any_of = vec![battlefield_commander, command_zone_commander];
+
+    Some(Value::GreatestManaValue(combined))
 }
 
 pub(crate) fn parse_equal_to_number_of_filter_value_lexed(
@@ -705,6 +776,12 @@ pub(crate) fn parse_equal_to_aggregate_filter_value_lexed(
         return None;
     }
     idx += 1;
+
+    if aggregate == "greatest" && value_kind == "mana_value" {
+        if let Some(value) = parse_where_x_greatest_commander_mana_value(tokens, idx) {
+            return Some(value);
+        }
+    }
 
     let object_start_token_idx = clause_words.token_index_for_word_index(idx)?;
     let filter_tokens = &tokens[object_start_token_idx..];

@@ -3228,6 +3228,136 @@ pub(super) fn describe_for_players_reveal_top_mana_value_life_then_put_into_hand
     ))
 }
 
+fn describe_for_players_collision_of_realms(
+    for_players: &crate::effects::ForPlayersEffect,
+) -> Option<String> {
+    fn unwrap_tagged<'a>(effect: &'a Effect) -> &'a Effect {
+        if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+            return unwrap_tagged(&tagged.effect);
+        }
+        effect
+    }
+
+    let is_collision_player = |player: &PlayerFilter| {
+        matches!(
+            player,
+            PlayerFilter::OwnerOf(crate::filter::ObjectRef::Tagged(tag))
+                if tag.as_str() == "collision_all_shuffled"
+        )
+    };
+
+    if for_players.filter != PlayerFilter::Any || for_players.effects.len() != 5 {
+        return None;
+    }
+
+    let tagged_all = for_players.effects[0]
+        .downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
+    if tagged_all.tag.as_str() != "collision_all_shuffled"
+        || tagged_all.zone != Some(Zone::Battlefield)
+        || !tagged_all.additional_zones.is_empty()
+    {
+        return None;
+    }
+    if tagged_all.filter.zone != Some(Zone::Battlefield)
+        || tagged_all.filter.owner != Some(PlayerFilter::IteratedPlayer)
+        || tagged_all.filter.card_types != vec![crate::types::CardType::Creature]
+        || tagged_all.filter.nontoken
+    {
+        return None;
+    }
+
+    let tagged = for_players.effects[1]
+        .downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
+    if tagged.tag.as_str() != "collision_nontoken_shuffled"
+        || tagged.zone != Some(Zone::Battlefield)
+        || !tagged.additional_zones.is_empty()
+    {
+        return None;
+    }
+    if tagged.filter.zone != Some(Zone::Battlefield)
+        || tagged.filter.owner != Some(PlayerFilter::IteratedPlayer)
+        || tagged.filter.card_types != vec![crate::types::CardType::Creature]
+        || !tagged.filter.nontoken
+    {
+        return None;
+    }
+
+    let move_to_library = unwrap_tagged(&for_players.effects[2])
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if move_to_library.zone != Zone::Library || move_to_library.to_top {
+        return None;
+    }
+    let ChooseSpec::Tagged(shuffle_tag) = move_to_library.target.base() else {
+        return None;
+    };
+    if shuffle_tag.as_str() != "collision_all_shuffled" {
+        return None;
+    }
+
+    let shuffle = for_players.effects[3]
+        .downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
+    if !is_collision_player(&shuffle.player) {
+        return None;
+    }
+
+    let conditional = for_players.effects[4]
+        .downcast_ref::<crate::effects::ConditionalEffect>()?;
+    let crate::effect::Condition::PlayerTaggedObjectMatches {
+        player,
+        tag,
+        filter,
+    } = &conditional.condition
+    else {
+        return None;
+    };
+    if !is_collision_player(player)
+        || tag.as_str() != "collision_nontoken_shuffled"
+        || filter.zone != Some(Zone::Library)
+        || !conditional.if_false.is_empty()
+        || conditional.if_true.len() != 3
+    {
+        return None;
+    }
+
+    let consult = conditional.if_true[0]
+        .downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>()?;
+    if !is_collision_player(&consult.player)
+        || consult.mode != crate::effects::consult_helpers::LibraryConsultMode::Reveal
+        || consult.stop_rule != crate::effects::ConsultTopOfLibraryStopRule::FirstMatch
+        || consult.filter.zone.is_some()
+        || consult.filter.card_types != vec![crate::types::CardType::Creature]
+    {
+        return None;
+    }
+
+    let move_to_battlefield = unwrap_tagged(&conditional.if_true[1])
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if move_to_battlefield.zone != Zone::Battlefield
+        || move_to_battlefield.to_top
+        || move_to_battlefield.enters_tapped
+    {
+        return None;
+    }
+    let ChooseSpec::Tagged(matched_tag) = move_to_battlefield.target.base() else {
+        return None;
+    };
+    if matched_tag.as_str() != "collision_matched" {
+        return None;
+    }
+
+    let rest = conditional.if_true[2]
+        .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
+    if !is_collision_player(&rest.player)
+        || rest.tag.as_str() != "collision_revealed"
+        || rest.keep_tagged.as_ref().is_none_or(|tag| tag.as_str() != "collision_matched")
+        || rest.order != crate::effects::consult_helpers::LibraryBottomOrder::Random
+    {
+        return None;
+    }
+
+    Some("Each player shuffles all creatures they own into their library. Each player who shuffled a nontoken creature into their library this way reveals cards from the top of their library until they reveal a creature card, then puts that card onto the battlefield and the rest on the bottom of their library in a random order.".to_string())
+}
+
 pub(super) fn describe_draw_for_each(draw: &crate::effects::DrawCardsEffect) -> Option<String> {
     let player = describe_player_filter(&draw.player);
     let verb = player_verb(&player, "draw", "draws");
@@ -6185,6 +6315,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         );
     }
     if let Some(for_players) = effect.downcast_ref::<crate::effects::ForPlayersEffect>() {
+        if let Some(compact) = describe_for_players_collision_of_realms(for_players) {
+            return compact;
+        }
         if let Some(compact) =
             describe_for_players_reveal_top_mana_value_life_then_put_into_hand(for_players)
         {
@@ -7387,6 +7520,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             .map(describe_mana_symbol)
             .collect::<Vec<_>>()
             .join("");
+        if matches!(add_mana.player, PlayerFilter::ChosenPlayer) {
+            return format!(
+                "A player of your choice adds {}",
+                if mana.is_empty() { "{0}" } else { &mana }
+            );
+        }
         if !matches!(add_mana.player, PlayerFilter::You) {
             let player = describe_player_filter(&add_mana.player);
             return format!(

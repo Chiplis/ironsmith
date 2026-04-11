@@ -2050,7 +2050,6 @@ fn reconcile_named_token_shorthand_with_oracle(
         return lines;
     }
 
-    let raw_oracle_lower = def.card.oracle_text.to_ascii_lowercase();
     lines
         .into_iter()
         .map(|line| {
@@ -2061,10 +2060,6 @@ fn reconcile_named_token_shorthand_with_oracle(
                 if !oracle_lower.contains("create ")
                     || !(oracle_lower.contains(" token") || oracle_lower.contains(" tokens"))
                 {
-                    continue;
-                }
-                let raw_parenthetical_anchor = format!("{} (", oracle_lower);
-                if !raw_oracle_lower.contains(&raw_parenthetical_anchor) {
                     continue;
                 }
                 let compact_line =
@@ -6028,6 +6023,33 @@ mod tests {
     }
 
     #[test]
+    fn post_pass_normalizes_ouphe_vandals_artifact_source_surface() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "Counter target activated ability from an artifact source. If it matches permanent, destroy that artifact.",
+        );
+        assert_eq!(
+            normalized,
+            "Counter target activated ability from an artifact source and destroy that artifact if it's on the battlefield."
+        );
+    }
+
+    #[test]
+    fn post_pass_normalizes_imposing_grandeur_surface() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Imposing Grandeur")
+            .card_types(vec![CardType::Sorcery])
+            .parse_text(
+                "Each player may discard their hand and draw cards equal to the greatest mana value of a commander they own on the battlefield or in the command zone.",
+            )
+            .expect("Imposing Grandeur should parse");
+        assert_eq!(
+            super::canonical_compiled_lines(&def),
+            vec![
+                "Each player may discard their hand and draw cards equal to the greatest mana value of a commander they own on the battlefield or in the command zone.".to_string()
+            ]
+        );
+    }
+
+    #[test]
     fn token_blueprint_renders_explicit_colorless_noncreature_artifact() {
         let token =
             crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Cragflame")
@@ -6083,6 +6105,24 @@ mod tests {
         assert_eq!(
             compact,
             "Create a Lander token. you may sacrifice an artifact. If you do, it deals 2 damage to each creature."
+        );
+    }
+
+    #[test]
+    fn canonical_compiled_lines_compact_named_token_payload_when_card_oracle_is_stripped() {
+        let mut def = crate::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Galactic Wayfarer",
+        )
+        .parse_text(
+            "Mana cost: {2}{G}\nType: Creature — Human Scout\nPower/Toughness: 3/3\nWhen this creature enters, create a Lander token. (It's an artifact with \"{2}, {T}, Sacrifice this token: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle.\")",
+        )
+        .expect("Galactic Wayfarer should parse");
+        def.card.oracle_text = "When this creature enters, create a Lander token.".to_string();
+
+        assert_eq!(
+            super::canonical_compiled_lines(&def),
+            vec!["When this creature enters, create a Lander token.".to_string()]
         );
     }
 

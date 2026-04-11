@@ -68,6 +68,23 @@ fn write_cards_with_unsupported_json(path: &Path) {
     .expect("write cards.json with unsupported card");
 }
 
+fn write_cards_with_parenthetical_json(path: &Path) {
+    fs::write(
+        path,
+        r#"[
+  {
+    "name":"Sky Drake",
+    "oracle_text":"Flying (This creature can't be blocked except by creatures with flying or reach.)",
+    "mana_cost":"{1}{U}",
+    "type_line":"Creature — Drake",
+    "power":"2",
+    "toughness":"1"
+  }
+]"#,
+    )
+    .expect("write cards.json with parenthetical reminder text");
+}
+
 fn query_count(db_path: &Path, sql: &str) -> i64 {
     let conn = Connection::open(db_path).expect("open sqlite db");
     conn.query_row(sql, [], |row| row.get(0))
@@ -270,6 +287,46 @@ fn sync_registry_db_writes_registry_rows_by_default() {
         query_count(&db_path, "SELECT COUNT(*) FROM registry_card"),
         2
     );
+}
+
+#[test]
+fn sync_bins_strip_parenthetical_text_from_stored_oracle_and_compiled_columns() {
+    let dir = tempdir().expect("tempdir");
+    let cards_path = dir.path().join("cards.json");
+    let db_path = dir.path().join("engine-status.sqlite3");
+    write_cards_with_parenthetical_json(&cards_path);
+
+    sync_registry_db(&cards_path, &db_path);
+
+    let status = Command::new(env!("CARGO_BIN_EXE_sync_card_status_db"))
+        .arg("--db-path")
+        .arg(&db_path)
+        .status()
+        .expect("run sync_card_status_db");
+    assert!(status.success(), "sync_card_status_db should succeed");
+
+    let conn = Connection::open(&db_path).expect("open sqlite db");
+    let (registry_oracle, registry_parse_input): (String, String) = conn
+        .query_row(
+            "SELECT oracle_text, parse_input FROM registry_card WHERE card_name = 'Sky Drake'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .expect("registry sky drake row");
+    let (compiled_oracle, compiled_text): (String, String) = conn
+        .query_row(
+            "SELECT oracle_text, compiled_text FROM latest_card_compilation WHERE card_name = 'Sky Drake'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .expect("compiled sky drake row");
+
+    assert_eq!(registry_oracle, "Flying");
+    assert_eq!(compiled_oracle, "Flying");
+    assert_eq!(compiled_text, "Flying");
+    assert!(registry_parse_input.contains(
+        "Flying (This creature can't be blocked except by creatures with flying or reach.)"
+    ));
 }
 
 #[test]
@@ -583,7 +640,8 @@ fn compile_oracle_text_uses_builtin_linked_face_metadata_for_transform_pairs() {
         "compile_oracle_text should succeed for builtin transform pairs"
     );
 
-    let stdout = String::from_utf8(output.stdout).expect("compile_oracle_text stdout should be utf8");
+    let stdout =
+        String::from_utf8(output.stdout).expect("compile_oracle_text stdout should be utf8");
     assert!(
         stdout.contains("other_face: Some"),
         "expected builtin linked-face metadata in output, got {stdout}"

@@ -205,6 +205,7 @@ pub(crate) fn parse_subtype_word(word: &str) -> Option<Subtype> {
         "ooze" => Some(Subtype::Ooze),
         "orc" => Some(Subtype::Orc),
         "otter" => Some(Subtype::Otter),
+        "ouphe" | "ouphes" => Some(Subtype::Ouphe),
         "ox" => Some(Subtype::Ox),
         "oyster" => Some(Subtype::Oyster),
         "peasant" => Some(Subtype::Peasant),

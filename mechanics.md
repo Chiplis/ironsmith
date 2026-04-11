@@ -1,0 +1,274 @@
+# MTG Mechanics
+
+- Source: Magic Comprehensive Rules (2026-02-27)
+- Rules TXT: https://media.wizards.com/2026/downloads/MagicCompRules%2020260227.txt
+- Scope: This file catalogs the keyword actions from rule 701 and the keyword abilities from rule 702 of the current Comprehensive Rules.
+- Note: This is not every named concept in Magic. Ability words, card types/subtypes, special game variants, and other named rules objects outside 701/702 are intentionally excluded.
+
+## Keyword Actions (67)
+
+- ~~`701.2` Activate~~
+- ~~`701.3` Attach~~
+- ~~`701.4` Behold~~
+- ~~`701.5` Cast~~
+- ~~`701.6` Counter~~
+- ~~`701.7` Create~~
+- ~~`701.8` Destroy~~
+- ~~`701.9` Discard~~
+- ~~`701.10` Double~~
+- ~~`701.11` Triple~~
+- ~~`701.12` Exchange~~
+- ~~`701.13` Exile~~
+- ~~`701.14` Fight~~
+- ~~`701.15` Goad~~
+- ~~`701.16` Investigate~~
+- ~~`701.17` Mill~~
+- ~~`701.18` Play~~
+- ~~`701.19` Regenerate~~
+- ~~`701.20` Reveal~~
+- ~~`701.21` Sacrifice~~
+- ~~`701.22` Scry~~
+- ~~`701.23` Search~~
+- ~~`701.24` Shuffle~~
+- ~~`701.25` Surveil~~
+- ~~`701.26` Tap and Untap~~
+- ~~`701.27` Transform~~
+- ~~`701.28` Convert~~
+- ~~`701.29` Fateseal~~
+- ~~`701.30` Clash~~
+- ~~`701.31` Planeswalk~~
+  - Blocked by missing broader `901 Planechase` subsystem support; see `reports/cards/planeswalk_planechase_runtime_gap_2026-03-30.md`.
+- ~~`701.32` Set in Motion~~
+  - Archenemy-only (`904`); not part of Standard/Modern/Legacy/Vintage/Commander support scope.
+- ~~`701.33` Abandon~~
+  - Archenemy ongoing-scheme action (`904`); not part of Standard/Modern/Legacy/Vintage/Commander support scope.
+- ~~`701.34` Proliferate~~
+- ~~`701.35` Detain~~
+- ~~`701.36` Populate~~
+- [x] `701.37` Monstrosity
+- ~~`701.38` Vote~~
+- ~~`701.39` Bolster~~
+- ~~`701.40` Manifest~~
+- ~~`701.41` Support~~
+- ~~`701.42` Meld~~
+- ~~`701.43` Exert~~
+  - Remaining strict-parse misses on cards such as `Arena of Glory` are blocked by separate mana-spend predicate parsing gaps, not by Exert support itself.
+- [x] `701.44` Explore
+- ~~`701.45` Assemble~~
+  - Explicitly scoped to `Unstable` / Contraptions by `701.45a`; see `reports/cards/assemble_contraption_runtime_gap_2026-04-01.md`.
+- [x] `701.46` Adapt
+- ~~`701.47` Amass~~
+- `701.48` Learn
+- `701.49` Venture into the Dungeon
+- `701.50` Connive
+- `701.51` Open an Attraction
+- `701.52` Roll to Visit Your Attractions
+- `701.53` Incubate
+- `701.54` The Ring Tempts You
+- `701.55` Face a Villainous Choice
+- `701.56` Time Travel
+- `701.57` Discover
+- `701.58` Cloak
+- `701.59` Collect Evidence
+- `701.60` Suspect
+- `701.61` Forage
+- `701.62` Manifest Dread
+- `701.63` Endure
+- `701.64` Harness
+- `701.65` Airbend
+- `701.66` Earthbend
+- `701.67` Waterbend
+- `701.68` Blight
+
+## Keyword Abilities (189)
+
+- `702.2` Deathtouch
+- `702.3` Defender
+- `702.4` Double Strike
+- `702.5` Enchant
+- `702.6` Equip
+- `702.7` First Strike
+- `702.8` Flash
+- `702.9` Flying
+- `702.10` Haste
+- `702.11` Hexproof
+- `702.12` Indestructible
+- `702.13` Intimidate
+- `702.14` Landwalk
+- `702.15` Lifelink
+- `702.16` Protection
+- `702.17` Reach
+- `702.18` Shroud
+- `702.19` Trample
+- `702.20` Vigilance
+- `702.21` Ward
+- `702.22` Banding
+- `702.23` Rampage
+- `702.24` Cumulative Upkeep
+- `702.25` Flanking
+- `702.26` Phasing
+- `702.27` Buyback
+- `702.28` Shadow
+- `702.29` Cycling
+- `702.30` Echo
+- `702.31` Horsemanship
+- `702.32` Fading
+- `702.33` Kicker
+- `702.34` Flashback
+- `702.35` Madness
+- `702.36` Fear
+- `702.37` Morph
+- `702.38` Amplify
+- `702.39` Provoke
+- `702.40` Storm
+- `702.41` Affinity
+- `702.42` Entwine
+- `702.43` Modular
+- `702.44` Sunburst
+- `702.45` Bushido
+- `702.46` Soulshift
+- `702.47` Splice
+- `702.48` Offering
+- `702.49` Ninjutsu
+- `702.50` Epic
+- `702.51` Convoke
+- `702.52` Dredge
+- `702.53` Transmute
+- `702.54` Bloodthirst
+- `702.55` Haunt
+- `702.56` Replicate
+- `702.57` Forecast
+- `702.58` Graft
+- `702.59` Recover
+- `702.60` Ripple
+- `702.61` Split Second
+- `702.62` Suspend
+- `702.63` Vanishing
+- `702.64` Absorb
+- `702.65` Aura Swap
+- `702.66` Delve
+- `702.67` Fortify
+- `702.68` Frenzy
+- `702.69` Gravestorm
+- `702.70` Poisonous
+- `702.71` Transfigure
+- `702.72` Champion
+- `702.73` Changeling
+- `702.74` Evoke
+- `702.75` Hideaway
+- `702.76` Prowl
+- `702.77` Reinforce
+- `702.78` Conspire
+- `702.79` Persist
+- `702.80` Wither
+- `702.81` Retrace
+- `702.82` Devour
+- `702.83` Exalted
+- `702.84` Unearth
+- `702.85` Cascade
+- `702.86` Annihilator
+- `702.87` Level Up
+- `702.88` Rebound
+- `702.89` Umbra Armor
+- `702.90` Infect
+- `702.91` Battle Cry
+- `702.92` Living Weapon
+- `702.93` Undying
+- `702.94` Miracle
+- `702.95` Soulbond
+- `702.96` Overload
+- `702.97` Scavenge
+- `702.98` Unleash
+- `702.99` Cipher
+- `702.100` Evolve
+- `702.101` Extort
+- `702.102` Fuse
+- `702.103` Bestow
+- `702.104` Tribute
+- `702.105` Dethrone
+- ~~`702.106` Hidden Agenda~~
+  - Conspiracy Draft / limited-only (`315`, `905`); not used in constructed Standard/Modern/Legacy/Vintage/Commander.
+- `702.107` Outlast
+- `702.108` Prowess
+- `702.109` Dash
+- `702.110` Exploit
+- `702.111` Menace
+- `702.112` Renown
+- `702.113` Awaken
+- `702.114` Devoid
+- `702.115` Ingest
+- `702.116` Myriad
+- `702.117` Surge
+- `702.118` Skulk
+- `702.119` Emerge
+- `702.120` Escalate
+- `702.121` Melee
+- `702.122` Crew
+- `702.123` Fabricate
+- `702.124` Partner
+- `702.125` Undaunted
+- `702.126` Improvise
+- `702.127` Aftermath
+- `702.128` Embalm
+- `702.129` Eternalize
+- `702.130` Afflict
+- `702.131` Ascend
+- `702.132` Assist
+- `702.133` Jump-Start
+- `702.134` Mentor
+- `702.135` Afterlife
+- `702.136` Riot
+- `702.137` Spectacle
+- `702.138` Escape
+- `702.139` Companion
+- `702.140` Mutate
+- `702.141` Encore
+- `702.142` Boast
+- `702.143` Foretell
+- `702.144` Demonstrate
+- `702.145` Daybound and Nightbound
+- `702.146` Disturb
+- `702.147` Decayed
+- `702.148` Cleave
+- `702.149` Training
+- `702.150` Compleated
+- `702.151` Reconfigure
+- `702.152` Blitz
+- `702.153` Casualty
+- `702.154` Enlist
+- `702.155` Read Ahead
+- `702.156` Ravenous
+- `702.157` Squad
+- `702.158` Space Sculptor
+- `702.159` Visit
+- `702.160` Prototype
+- `702.161` Living Metal
+- `702.162` More Than Meets the Eye
+- `702.163` For Mirrodin!
+- `702.164` Toxic
+- `702.165` Backup
+- `702.166` Bargain
+- `702.167` Craft
+- `702.168` Disguise
+- `702.169` Solved
+- `702.170` Plot
+- `702.171` Saddle
+- `702.172` Spree
+- `702.173` Freerunning
+- `702.174` Gift
+- `702.175` Offspring
+- `702.176` Impending
+- `702.177` Exhaust
+- `702.178` Max Speed
+- `702.179` Start Your Engines!
+- `702.180` Harmonize
+- `702.181` Mobilize
+- `702.182` Job Select
+- `702.183` Tiered
+- `702.184` Station
+- `702.185` Warp
+- `702.186` ∞ (Infinity)
+- `702.187` Mayhem
+- `702.188` Web-slinging
+- `702.189` Firebending
+- `702.190` Sneak

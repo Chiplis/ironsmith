@@ -16,8 +16,9 @@ use super::dispatch_entry::parse_reveal_top_count_put_all_matching_into_hand_res
 use super::zone_handlers::parse_exile_top_library_clause;
 use crate::cards::builders::compiler::effect_sentences;
 use crate::cards::builders::{
-    CardTextError, ChoiceCount, EffectAst, IT_TAG, PlayerAst, ReturnControllerAst, TagKey,
-    TargetAst, TextSpan, Verb,
+    CardTextError, ChoiceCount, EffectAst, IT_TAG, LibraryBottomOrderAst,
+    LibraryConsultModeAst, LibraryConsultStopRuleAst, PlayerAst, PredicateAst,
+    ReturnControllerAst, TagKey, TargetAst, TextSpan, Verb,
 };
 use crate::effect::Value;
 use crate::target::{ObjectFilter, PlayerFilter};
@@ -640,6 +641,148 @@ fn parse_shape_anew_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
     ])
 }
 
+fn parse_collision_of_realms_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
+    let sentence_words = parser_words(tokens);
+    if sentence_words.as_slice()
+        != [
+            "each",
+            "player",
+            "shuffles",
+            "all",
+            "creatures",
+            "they",
+            "own",
+            "into",
+            "their",
+            "library",
+            "each",
+            "player",
+            "who",
+            "shuffled",
+            "a",
+            "nontoken",
+            "creature",
+            "into",
+            "their",
+            "library",
+            "this",
+            "way",
+            "reveals",
+            "cards",
+            "from",
+            "the",
+            "top",
+            "of",
+            "their",
+            "library",
+            "until",
+            "they",
+            "reveal",
+            "a",
+            "creature",
+            "card",
+            "then",
+            "puts",
+            "that",
+            "card",
+            "onto",
+            "the",
+            "battlefield",
+            "and",
+            "the",
+            "rest",
+            "on",
+            "the",
+            "bottom",
+            "of",
+            "their",
+            "library",
+            "in",
+            "a",
+            "random",
+            "order",
+        ]
+    {
+        return None;
+    }
+
+    let mut owned_creatures = ObjectFilter::creature();
+    owned_creatures.zone = Some(Zone::Battlefield);
+    owned_creatures.owner = Some(PlayerFilter::IteratedPlayer);
+
+    let mut owned_nontoken_creatures = owned_creatures.clone();
+    owned_nontoken_creatures.nontoken = true;
+
+    let mut tagged_library_filter = ObjectFilter::default();
+    tagged_library_filter.zone = Some(Zone::Library);
+
+    let mut creature_card = ObjectFilter::creature();
+    creature_card.zone = None;
+
+    let tagged_creatures = TagKey::from("collision_all_shuffled");
+    let tagged_nontoken = TagKey::from("collision_nontoken_shuffled");
+    let revealed_tag = TagKey::from("collision_revealed");
+    let matched_tag = TagKey::from("collision_matched");
+
+    Some(vec![EffectAst::ForEachPlayer {
+        effects: vec![
+            EffectAst::TagMatchingObjects {
+                filter: owned_creatures.clone(),
+                zones: vec![Zone::Battlefield],
+                tag: tagged_creatures.clone(),
+            },
+            EffectAst::TagMatchingObjects {
+                filter: owned_nontoken_creatures,
+                zones: vec![Zone::Battlefield],
+                tag: tagged_nontoken.clone(),
+            },
+            EffectAst::MoveToZone {
+                target: TargetAst::Tagged(tagged_creatures, None),
+                zone: Zone::Library,
+                to_top: false,
+                battlefield_controller: ReturnControllerAst::Preserve,
+                battlefield_tapped: false,
+                attached_to: None,
+            },
+            EffectAst::ShuffleLibrary {
+                player: PlayerAst::That,
+            },
+            EffectAst::Conditional {
+                predicate: PredicateAst::PlayerTaggedObjectMatches {
+                    player: PlayerAst::That,
+                    tag: tagged_nontoken,
+                    filter: tagged_library_filter,
+                },
+                if_true: vec![
+                    EffectAst::ConsultTopOfLibrary {
+                        player: PlayerAst::That,
+                        mode: LibraryConsultModeAst::Reveal,
+                        filter: creature_card,
+                        stop_rule: LibraryConsultStopRuleAst::FirstMatch,
+                        all_tag: revealed_tag.clone(),
+                        match_tag: matched_tag.clone(),
+                    },
+                    EffectAst::MoveToZone {
+                        target: TargetAst::Tagged(matched_tag.clone(), None),
+                        zone: Zone::Battlefield,
+                        to_top: false,
+                        battlefield_controller: ReturnControllerAst::Preserve,
+                        battlefield_tapped: false,
+                        attached_to: None,
+                    },
+                    EffectAst::PutTaggedRemainderOnBottomOfLibrary {
+                        tag: revealed_tag,
+                        keep_tagged: Some(matched_tag),
+                        order: LibraryBottomOrderAst::Random,
+                        player: PlayerAst::That,
+                    },
+                ],
+                if_false: Vec::new(),
+            },
+        ],
+    }])
+}
+
 fn parse_nissas_encouragement_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
     let sentence_words = parser_words(tokens);
     if sentence_words.as_slice()
@@ -724,6 +867,9 @@ pub(crate) fn parse_exact_card_effect_bundle_lexed(
         return Some(effects);
     }
     if let Some(effects) = parse_shape_anew_bundle(tokens) {
+        return Some(effects);
+    }
+    if let Some(effects) = parse_collision_of_realms_bundle(tokens) {
         return Some(effects);
     }
     if let Some(effects) = parse_nissas_encouragement_bundle(tokens) {

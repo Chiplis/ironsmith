@@ -5029,6 +5029,46 @@ fn test_parse_counter_target_activated_ability_from_artifact_source_clause() {
 }
 
 #[test]
+fn test_parse_ouphe_vandals_preserves_type_line_and_artifact_source_target() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Ouphe Vandals")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![crate::types::Subtype::Ouphe, crate::types::Subtype::Rogue])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text(
+            "{G}, Sacrifice this creature: Counter target activated ability from an artifact source and destroy that artifact if it's on the battlefield. (Mana abilities can't be targeted.)",
+        )
+        .expect("Ouphe Vandals should parse");
+
+    assert!(
+        def.card.subtypes.contains(&crate::types::Subtype::Ouphe),
+        "expected Ouphe subtype to survive type-line parsing, got {:?}",
+        def.card.subtypes
+    );
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("counter target activated ability from an artifact source"),
+        "expected activated-ability-from-artifact-source wording in oracle-like output, got {rendered}"
+    );
+    assert!(
+        rendered.contains("destroy that artifact if it"),
+        "expected battlefield-gated destroy clause in oracle-like output, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("counter target artifact spell"),
+        "expected oracle-like output to avoid collapsing Ouphe Vandals to artifact spell wording, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("matches permanent"),
+        "expected oracle-like output to avoid the generic matches-permanent fallback, got {rendered}"
+    );
+}
+
+#[test]
 fn test_parse_counter_target_ability_or_legendary_spell_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Tales End Probe")
         .card_types(vec![CardType::Instant])
@@ -11208,6 +11248,31 @@ fn parse_untap_during_each_other_players_untap_step_as_static_ability() {
 }
 
 #[test]
+fn parse_victory_chimes_keeps_singular_untap_step_line_static() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Victory Chimes")
+        .card_types(vec![CardType::Artifact])
+        .parse_text("Untap this artifact during each other player's untap step.\n{T}: A player of your choice adds {C}.")
+        .expect("Victory Chimes should parse");
+
+    assert!(
+        def.spell_effect.is_none(),
+        "victory chimes untap line should not lower as a spell effect: {:#?}",
+        def.spell_effect
+    );
+
+    let rendered = oracle_like_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    assert!(
+        rendered_lower.contains("untap this artifact during each other player's untap step"),
+        "expected static untap line in oracle-like output, got {rendered}"
+    );
+    assert!(
+        rendered.contains("A player of your choice adds {C}."),
+        "expected chosen-player mana wording in oracle-like output, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_dark_deal_that_many_minus_one_keeps_prior_effect_reference() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Dark Deal Variant")
         .parse_text("Each player discards all the cards in their hand, then draws that many cards minus one.")
@@ -15253,6 +15318,36 @@ fn parse_spells_cost_modifier_supports_extended_where_x_clauses() {
         .parse_text(*clause)
         .expect("extended where-X spells-cost modifier should parse");
     }
+}
+
+#[test]
+fn parse_imposing_grandeur_tracks_commander_mana_value_in_battlefield_or_command_zone() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Imposing Grandeur")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Each player may discard their hand and draw cards equal to the greatest mana value of a commander they own on the battlefield or in the command zone.",
+        )
+        .expect("Imposing Grandeur should parse");
+
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        debug.contains("GreatestManaValue"),
+        "expected greatest-mana-value aggregate in spell effect, got {debug}"
+    );
+    assert!(
+        debug.contains("any_of: [")
+            && debug.contains("Battlefield")
+            && debug.contains("Command"),
+        "expected battlefield and command-zone commander filters, got {debug}"
+    );
+    assert!(
+        debug.contains("is_commander: true"),
+        "expected commander restriction in aggregate filter, got {debug}"
+    );
+    assert!(
+        debug.contains("owner: Some(") && debug.contains("IteratedPlayer"),
+        "expected per-player ownership in aggregate filter, got {debug}"
+    );
 }
 
 #[test]
@@ -21756,6 +21851,25 @@ fn oracle_like_lines_normalize_remaining_tag_scaffolding_regressions() {
 }
 
 #[test]
+fn oracle_like_lines_normalize_do_or_die_divvy_destroy_clause() {
+    let def = parse_oracle_card_definition("Do or Die");
+    let rendered = oracle_like_lines(&def).join(" ");
+
+    assert!(
+        rendered.contains("Separate all creatures target player controls into two piles.")
+            && rendered.contains("Destroy all creatures in the pile of that player's choice.")
+            && rendered.contains("They can't be regenerated."),
+        "expected Do or Die to render its two-pile destroy clause, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("divvy_chosen") && debug.contains("DestroyNoRegenerationEffect"),
+        "expected Do or Die to keep the divvy destroy structure, got {debug}"
+    );
+}
+
+#[test]
 fn parse_oracle_chaos_warp_shuffle_clause_regression() {
     let def = parse_oracle_card_definition("Chaos Warp");
 
@@ -23572,6 +23686,39 @@ fn parse_oath_of_druids_maps_to_upkeep_consult_effects() {
             && rendered.contains("that card onto the battlefield")
             && rendered.contains("all other cards revealed this way into their graveyard"),
         "expected Oath of Druids oracle-like text to stay close to the oracle, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_collision_of_realms_uses_consult_and_bottom_remainder() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Collision of Realms")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Each player shuffles all creatures they own into their library. Each player who shuffled a nontoken creature into their library this way reveals cards from the top of their library until they reveal a creature card, then puts that card onto the battlefield and the rest on the bottom of their library in a random order.",
+        )
+        .expect("Collision of Realms should parse");
+
+    let raw = format!("{:?}", def.spell_effect);
+    assert!(
+        raw.contains("ForPlayersEffect")
+            && raw.contains("TagMatchingObjectsEffect")
+            && raw.contains("MoveToZoneEffect")
+            && raw.contains("zone: Library")
+            && raw.contains("ShuffleLibraryEffect")
+            && raw.contains("ConsultTopOfLibraryEffect")
+            && raw.contains("PutTaggedRemainderOnLibraryBottomEffect"),
+        "expected Collision of Realms to keep its tagged shuffle-and-consult structure, got {raw}"
+    );
+
+    let rendered = oracle_like_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    assert!(
+        rendered_lower.contains("each player shuffles all creatures they own into their library")
+            && rendered_lower.contains("who shuffled a nontoken creature into their library this way")
+            && rendered_lower.contains("until they reveal a creature card")
+            && rendered_lower.contains("that card onto the battlefield")
+            && rendered_lower.contains("the rest on the bottom of their library in a random order"),
+        "expected Collision of Realms oracle-like text to stay close to the oracle, got {rendered}"
     );
 }
 

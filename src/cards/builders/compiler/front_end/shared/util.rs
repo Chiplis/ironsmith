@@ -539,6 +539,7 @@ pub(crate) fn parse_subtype_word(word: &str) -> Option<Subtype> {
 
     match candidate.as_str() {
         "mice" => return Some(Subtype::Mouse),
+        "ouphe" => return Some(Subtype::Ouphe),
         "spacecraft" => return Some(Subtype::Spacecraft),
         _ => {}
     }
@@ -1563,6 +1564,11 @@ pub(crate) fn parse_subject(tokens: &[OwnedLexToken]) -> SubjectAst {
     {
         return SubjectAst::Player(PlayerAst::Target);
     }
+    if words_have_prefix(slice, &["a", "player", "of", "your", "choice"])
+        || words_have_prefix(slice, &["player", "of", "your", "choice"])
+    {
+        return SubjectAst::Player(PlayerAst::Chosen);
+    }
 
     if words_have_prefix(slice, &["opponent"])
         || words_have_prefix(slice, &["opponents"])
@@ -1707,6 +1713,18 @@ pub(crate) fn parse_target_count_range_prefix(
         },
         first_used + 1 + second_used,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cards::builders::compiler::lexer::lex_line;
+
+    #[test]
+    fn parse_subject_recognizes_a_player_of_your_choice() {
+        let tokens = lex_line("A player of your choice adds {C}.", 0).unwrap();
+        assert_eq!(parse_subject(&tokens), SubjectAst::Player(PlayerAst::Chosen));
+    }
 }
 
 pub(crate) fn wrap_target_count(target: TargetAst, target_count: Option<ChoiceCount>) -> TargetAst {

@@ -748,6 +748,19 @@ fn rewrite_structure_untap_all_other_players_untap_step_shape_parser_recognizes_
 }
 
 #[test]
+fn rewrite_structure_untap_singular_other_players_untap_step_shape_parser_recognizes_line() {
+    let tokens = lex_line(
+        "Untap this artifact during each other player's untap step.",
+        0,
+    )
+    .expect("rewrite lexer should classify singular untap other-players untap-step line");
+    assert_eq!(
+        super::grammar::structure::classify_static_line_family_lexed(&tokens),
+        Some(super::grammar::structure::StaticLineFamily::UntapAllDuringEachOtherPlayersUntapStep)
+    );
+}
+
+#[test]
 fn rewrite_structure_next_turn_cast_lock_shape_parser_recognizes_line() {
     let tokens = lex_line(
         "Each opponent can't cast instant or sorcery spells during that player's next turn.",

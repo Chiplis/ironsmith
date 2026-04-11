@@ -23,6 +23,7 @@ use crate::cards::builders::compiler::util::{
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct UntapEachOtherPlayersUntapStepSpec<'a> {
+    pub(crate) untap_all: bool,
     pub(crate) subject_tokens: &'a [OwnedLexToken],
 }
 
@@ -132,12 +133,15 @@ fn parse_each_other_players_untap_step_suffix<'a>(
 pub(crate) fn split_untap_each_other_players_untap_step_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<UntapEachOtherPlayersUntapStepSpec<'_>> {
-    let (_, remainder) =
-        primitives::parse_prefix(tokens, (primitives::kw("untap"), primitives::kw("all")))?;
+    let ((_, untap_all), remainder) =
+        primitives::parse_prefix(tokens, (primitives::kw("untap"), opt(primitives::kw("all"))))?;
     let (subject_tokens, ()) = primitives::split_lexed_once_before_suffix(remainder, 1, || {
         parse_each_other_players_untap_step_suffix
     })?;
-    Some(UntapEachOtherPlayersUntapStepSpec { subject_tokens })
+    Some(UntapEachOtherPlayersUntapStepSpec {
+        untap_all: untap_all.is_some(),
+        subject_tokens,
+    })
 }
 
 fn parse_activated_abilities_cant_be_activated_suffix<'a>(
@@ -1148,6 +1152,22 @@ mod tests {
             TokenWordView::new(spec.subject_tokens).word_refs(),
             ["creatures"]
         );
+        assert!(spec.untap_all);
+    }
+
+    #[test]
+    fn untap_each_other_players_untap_step_supports_singular_subjects() {
+        let tokens = lex_line(
+            "Untap this artifact during each other player's untap step.",
+            0,
+        )
+        .unwrap();
+        let spec = split_untap_each_other_players_untap_step_line_lexed(&tokens).unwrap();
+        assert_eq!(
+            TokenWordView::new(spec.subject_tokens).word_refs(),
+            ["this", "artifact"]
+        );
+        assert!(!spec.untap_all);
     }
 
     #[test]

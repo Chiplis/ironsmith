@@ -32,6 +32,22 @@ fn normalize_metalcraft_label_surface(oracle_lower: &str, text: &str) -> String 
     text.to_string()
 }
 
+fn normalize_counter_artifact_source_destroy_surface(text: &str) -> Option<String> {
+    let lower = text.to_ascii_lowercase();
+    let needles = [
+        "counter target activated ability from an artifact source. if it matches permanent, destroy that artifact.",
+        "counter target activated ability from an artifact source. if it's on the battlefield, destroy that artifact.",
+    ];
+    let (idx, needle) = needles
+        .iter()
+        .find_map(|needle| lower.find(needle).map(|idx| (idx, *needle)))?;
+    let before = &text[..idx];
+    let after = &text[idx + needle.len()..];
+    Some(format!(
+        "{before}Counter target activated ability from an artifact source and destroy that artifact if it's on the battlefield.{after}"
+    ))
+}
+
 fn normalize_triggered_kicked_mass_bounce_surface(text: &str) -> Option<String> {
     let Some((prefix, tail)) = split_once_ascii_ci(text, ", if this spell was kicked, ") else {
         return None;
@@ -101,6 +117,17 @@ fn normalize_dynamic_token_card_pt_surface(oracle_lower: &str, text: &str) -> St
     }
     rewritten.push('.');
     rewritten
+}
+
+fn render_draw_count_phrase(count: &str) -> String {
+    let trimmed = count.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    if lower
+        == "the greatest mana value among commanders that player owns on the battlefield and in the command zone"
+    {
+        return "cards equal to the greatest mana value of a commander they own on the battlefield or in the command zone".to_string();
+    }
+    format!("{trimmed} cards")
 }
 
 fn normalize_plural_exiled_play_free_cast_surface(text: &str) -> Option<String> {
@@ -971,6 +998,24 @@ pub(super) fn normalize_for_each_clause_surface(text: String) -> String {
         return format!(
             "{prefix}each player may discard their hand and draw {count} cards. For each opponent who does, {}",
             tail.trim()
+        );
+    }
+    if let Some((prefix, count)) =
+        text.split_once("Each player may discard their hand. that player draws ")
+        && let Some(count) = count.strip_suffix(" cards.")
+    {
+        return format!(
+            "{prefix}Each player may discard their hand and draw {}.",
+            render_draw_count_phrase(count)
+        );
+    }
+    if let Some((prefix, count)) =
+        text.split_once("each player may discard their hand. that player draws ")
+        && let Some(count) = count.strip_suffix(" cards.")
+    {
+        return format!(
+            "{prefix}each player may discard their hand and draw {}.",
+            render_draw_count_phrase(count)
         );
     }
     if let Some((prefix, rest)) = text
@@ -2349,6 +2394,9 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
         normalized = rewritten;
     }
     if let Some(rewritten) = normalize_one_or_more_combat_damage_treasure_line(&normalized) {
+        normalized = rewritten;
+    }
+    if let Some(rewritten) = normalize_counter_artifact_source_destroy_surface(&normalized) {
         normalized = rewritten;
     }
     normalized = normalize_conditional_target_player_pronouns(&normalized);
@@ -6300,6 +6348,15 @@ pub(super) fn normalize_divvy_chosen_sequence(text: &str) -> Option<String> {
         return Some(format!(
             "{before} chooses any number of that player's nontoken lands. Destroy those lands. Tap all other nontoken lands that player controls."
         ));
+    }
+    if let Some((_before, _rest)) = split_once_ascii_ci(
+        text,
+        " chooses any number target player's creature in the battlefield and tags it as 'divvy_chosen'. Destroy the tagged object 'divvy_chosen'. It can't be regenerated.",
+    ) {
+        return Some(
+            "Separate all creatures target player controls into two piles. Destroy all creatures in the pile of that player's choice. They can't be regenerated."
+                .to_string(),
+        );
     }
     if let Some((before, rest)) = split_once_ascii_ci(
         text,

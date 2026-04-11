@@ -3957,6 +3957,16 @@ impl ObjectFilter {
                     .all(|card_type| self.card_types.contains(card_type))
         };
 
+        let stack_source_ability = matches!(self.zone, Some(Zone::Stack))
+            && matches!(
+                self.stack_kind,
+                Some(
+                    StackObjectKind::Ability
+                        | StackObjectKind::ActivatedAbility
+                        | StackObjectKind::TriggeredAbility
+                )
+            );
+
         let mut type_phrase = if !self.all_card_types.is_empty() {
             Some((
                 true,
@@ -3967,7 +3977,14 @@ impl ObjectFilter {
                     .join(" "),
             ))
         } else if !self.card_types.is_empty() {
-            if has_all_permanent_types {
+            if stack_source_ability {
+                let kind = self.stack_kind.unwrap_or(StackObjectKind::Ability);
+                post_noun_qualifiers.push(format!(
+                    "from {} source",
+                    describe_card_type_source_phrase(&self.card_types)
+                ));
+                Some((false, describe_stack_object_kind(kind).to_string()))
+            } else if has_all_permanent_types {
                 Some((true, "permanent".to_string()))
             } else {
                 let joiner = if self.zone == Some(Zone::Stack)
@@ -4010,13 +4027,7 @@ impl ObjectFilter {
                                 StackObjectKind::SpellOrAbility
                             }
                         });
-                        match kind {
-                            StackObjectKind::Spell => "spell",
-                            StackObjectKind::Ability => "ability",
-                            StackObjectKind::ActivatedAbility => "activated ability",
-                            StackObjectKind::TriggeredAbility => "triggered ability",
-                            StackObjectKind::SpellOrAbility => "spell or ability",
-                        }
+                        describe_stack_object_kind(kind)
                     }
                     Some(Zone::Graveyard)
                     | Some(Zone::Hand)
@@ -4682,6 +4693,49 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
 
 fn describe_card_type_word(card_type: CardType) -> &'static str {
     card_type.name()
+}
+
+fn describe_card_type_list(card_types: &[CardType]) -> String {
+    match card_types {
+        [] => String::new(),
+        [single] => single.name().to_string(),
+        [first, second] => format!("{} or {}", first.name(), second.name()),
+        _ => {
+            let mut names = card_types
+                .iter()
+                .map(|card_type| card_type.name())
+                .collect::<Vec<_>>();
+            let last = names.pop().expect("card type list is non-empty");
+            format!("{}, or {}", names.join(", "), last)
+        }
+    }
+}
+
+fn describe_card_type_source_phrase(card_types: &[CardType]) -> String {
+    let types = describe_card_type_list(card_types);
+    if types.is_empty() {
+        return "a source".to_string();
+    }
+    let article = if types
+        .chars()
+        .next()
+        .is_some_and(|ch| matches!(ch.to_ascii_lowercase(), 'a' | 'e' | 'i' | 'o' | 'u'))
+    {
+        "an"
+    } else {
+        "a"
+    };
+    format!("{article} {types}")
+}
+
+fn describe_stack_object_kind(kind: StackObjectKind) -> &'static str {
+    match kind {
+        StackObjectKind::Spell => "spell",
+        StackObjectKind::Ability => "ability",
+        StackObjectKind::ActivatedAbility => "activated ability",
+        StackObjectKind::TriggeredAbility => "triggered ability",
+        StackObjectKind::SpellOrAbility => "spell or ability",
+    }
 }
 
 fn alternative_cast_matches_kind(

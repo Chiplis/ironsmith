@@ -1669,6 +1669,21 @@ mod tests {
         assert!(looks_like_static_line(
             other_players_text.to_ascii_lowercase().as_str()
         ));
+
+        let singular_other_players_text =
+            "Untap this artifact during each other player's untap step.";
+        let singular_other_players = lex_line(singular_other_players_text, 0)
+            .expect("rewrite lexer should classify singular other-players untap-step probe");
+        assert_eq!(
+            classify_static_line_family_lexed(&singular_other_players),
+            Some(StaticLineFamily::UntapAllDuringEachOtherPlayersUntapStep)
+        );
+        assert!(!looks_like_statement_line(
+            singular_other_players_text.to_ascii_lowercase().as_str()
+        ));
+        assert!(looks_like_static_line(
+            singular_other_players_text.to_ascii_lowercase().as_str()
+        ));
     }
 
     #[test]

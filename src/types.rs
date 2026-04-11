@@ -270,6 +270,7 @@ pub enum Subtype {
     Ooze,
     Orc,
     Otter,
+    Ouphe,
     Ox,
     Oyster,
     Peasant,
@@ -536,6 +537,7 @@ impl Subtype {
             Subtype::Ooze,
             Subtype::Orc,
             Subtype::Otter,
+            Subtype::Ouphe,
             Subtype::Ox,
             Subtype::Oyster,
             Subtype::Peasant,
@@ -841,6 +843,7 @@ impl Subtype {
                 | Subtype::Ooze
                 | Subtype::Orc
                 | Subtype::Otter
+                | Subtype::Ouphe
                 | Subtype::Ox
                 | Subtype::Oyster
                 | Subtype::Peasant

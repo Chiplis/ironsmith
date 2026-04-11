@@ -24,7 +24,7 @@ use crate::text_cleanup::strip_parenthetical_text;
 pub const DEFAULT_DB_PATH: &str = "reports/engine-status.sqlite3";
 pub const SCRYFALL_TAGGER_TAGS_URL: &str = "https://scryfall.com/docs/tagger-tags";
 pub const TAGGER_BASE_URL: &str = "https://tagger.scryfall.com";
-const DB_SCHEMA_VERSION: i64 = 4;
+const DB_SCHEMA_VERSION: i64 = 5;
 const FIXED_SNAPSHOT_CARD_ID: u32 = 1;
 const SUPPORTED_PAPER_FORMATS: &[&str] = &["commander", "standard", "modern", "legacy", "vintage"];
 const TAGGER_FETCH_ORACLE_CARD_TAG_QUERY: &str = r#"
@@ -51,6 +51,7 @@ pub struct CardPayload {
     pub name: String,
     pub parse_name: Option<String>,
     pub oracle_text: String,
+    pub raw_oracle_text: String,
     pub metadata_lines: Vec<String>,
     pub parse_input: String,
     pub other_face_name: Option<String>,
@@ -99,6 +100,7 @@ pub struct ParseAttempt {
 pub struct CompilationSnapshot {
     pub card_name: String,
     pub oracle_text: String,
+    pub raw_oracle_text: String,
     pub parse_status: ParseStatus,
     pub parse_error: Option<String>,
     pub compiled_text: Option<String>,
@@ -196,6 +198,10 @@ pub fn build_parse_input(metadata_lines: &[String], oracle_text: &str) -> String
     lines.join("\n")
 }
 
+pub fn postprocess_oracle_text(text: &str) -> String {
+    strip_parenthetical_text(text)
+}
+
 pub fn load_canonical_cards(path: &str) -> Result<BTreeMap<String, CardPayload>, Box<dyn Error>> {
     let raw = fs::read_to_string(path)?;
     let cards: Vec<Value> = serde_json::from_str(&raw)?;
@@ -263,6 +269,8 @@ pub fn snapshot_from_attempt(payload: &CardPayload, attempt: &ParseAttempt) -> C
         attempt.definition.as_ref(),
     );
     snapshot.card_name = payload.name.clone();
+    snapshot.raw_oracle_text = payload.raw_oracle_text.clone();
+    snapshot.content_hash = snapshot.compute_content_hash();
     snapshot
 }
 
@@ -316,6 +324,7 @@ impl CompilationSnapshot {
         let mut snapshot = Self {
             card_name: card_name.to_string(),
             oracle_text: stored_oracle_text,
+            raw_oracle_text: oracle_text.to_string(),
             parse_status,
             parse_error,
             compiled_text,
@@ -337,6 +346,8 @@ impl CompilationSnapshot {
         hasher.update(self.card_name.as_bytes());
         hasher.update([0]);
         hasher.update(self.oracle_text.as_bytes());
+        hasher.update([0]);
+        hasher.update(self.raw_oracle_text.as_bytes());
         hasher.update([0]);
         hasher.update(self.parse_status.as_str().as_bytes());
         hasher.update([0]);
@@ -410,11 +421,40 @@ impl CardStatusDb {
             }
         }
 
+        if version > 0 && version < 5 {
+            let card_compilation_has_raw: bool = self
+                .conn
+                .prepare("SELECT raw_oracle_text FROM card_compilation LIMIT 0")
+                .is_ok();
+            if !card_compilation_has_raw {
+                self.conn.execute_batch(
+                    "ALTER TABLE card_compilation ADD COLUMN raw_oracle_text TEXT NOT NULL DEFAULT '';
+                     UPDATE card_compilation
+                     SET raw_oracle_text = oracle_text
+                     WHERE raw_oracle_text = '';",
+                )?;
+            }
+
+            let registry_card_has_raw: bool = self
+                .conn
+                .prepare("SELECT raw_oracle_text FROM registry_card LIMIT 0")
+                .is_ok();
+            if !registry_card_has_raw {
+                self.conn.execute_batch(
+                    "ALTER TABLE registry_card ADD COLUMN raw_oracle_text TEXT NOT NULL DEFAULT '';
+                     UPDATE registry_card
+                     SET raw_oracle_text = oracle_text
+                     WHERE raw_oracle_text = '';",
+                )?;
+            }
+        }
+
         self.conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS card_compilation (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 card_name TEXT NOT NULL,
                 oracle_text TEXT NOT NULL,
+                raw_oracle_text TEXT NOT NULL,
                 parse_status TEXT NOT NULL,
                 parse_error TEXT,
                 compiled_text TEXT,
@@ -449,6 +489,7 @@ impl CardStatusDb {
             CREATE TABLE IF NOT EXISTS registry_card (
                 card_name TEXT PRIMARY KEY,
                 oracle_text TEXT NOT NULL,
+                raw_oracle_text TEXT NOT NULL,
                 parse_input TEXT NOT NULL,
                 raw_card_json TEXT NOT NULL,
                 mana_cost TEXT,
@@ -506,6 +547,7 @@ impl CardStatusDb {
             "INSERT OR IGNORE INTO card_compilation (
                 card_name,
                 oracle_text,
+                raw_oracle_text,
                 parse_status,
                 parse_error,
                 compiled_text,
@@ -517,10 +559,11 @@ impl CardStatusDb {
                 semantic_mismatch,
                 has_unimplemented,
                 content_hash
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             params![
                 snapshot.card_name,
                 snapshot.oracle_text,
+                snapshot.raw_oracle_text,
                 snapshot.parse_status.as_str(),
                 snapshot.parse_error,
                 snapshot.compiled_text,
@@ -710,6 +753,7 @@ impl CardStatusDb {
                 "INSERT INTO registry_card (
                     card_name,
                     oracle_text,
+                    raw_oracle_text,
                     parse_input,
                     raw_card_json,
                     mana_cost,
@@ -721,9 +765,10 @@ impl CardStatusDb {
                     layout,
                     content_hash,
                     updated_at
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
                 ON CONFLICT(card_name) DO UPDATE SET
                     oracle_text = excluded.oracle_text,
+                    raw_oracle_text = excluded.raw_oracle_text,
                     parse_input = excluded.parse_input,
                     raw_card_json = excluded.raw_card_json,
                     mana_cost = excluded.mana_cost,
@@ -746,6 +791,7 @@ impl CardStatusDb {
                 upsert.execute(params![
                     row.payload.name.as_str(),
                     stored_oracle_text,
+                    row.payload.raw_oracle_text.as_str(),
                     row.payload.parse_input.as_str(),
                     row.raw_card_json.as_str(),
                     row.mana_cost.as_deref(),
@@ -970,7 +1016,7 @@ impl CardStatusDb {
 
     pub fn registry_card_payloads(&self) -> Result<Vec<CardPayload>, Box<dyn Error>> {
         let mut stmt = self.conn.prepare(
-            "SELECT card_name, oracle_text, parse_input
+            "SELECT card_name, oracle_text, raw_oracle_text, parse_input
              FROM registry_card
              ORDER BY card_name ASC",
         )?;
@@ -980,8 +1026,9 @@ impl CardStatusDb {
                     name: row.get(0)?,
                     parse_name: None,
                     oracle_text: row.get(1)?,
+                    raw_oracle_text: row.get(2)?,
                     metadata_lines: Vec::new(),
-                    parse_input: row.get(2)?,
+                    parse_input: row.get(3)?,
                     other_face_name: None,
                     linked_face_layout: None,
                 })
@@ -1321,7 +1368,9 @@ fn registry_card_content_hash(
     let mut hasher = Sha256::new();
     hasher.update(payload.name.as_bytes());
     hasher.update([0]);
-    hasher.update(strip_parenthetical_text(&payload.oracle_text).as_bytes());
+    hasher.update(payload.oracle_text.as_bytes());
+    hasher.update([0]);
+    hasher.update(payload.raw_oracle_text.as_bytes());
     hasher.update([0]);
     hasher.update(payload.parse_input.as_bytes());
     hasher.update([0]);
@@ -1385,10 +1434,11 @@ fn build_registry_card_record(card: &Value) -> Option<RegistryCardRecord> {
         .filter(|value| !value.is_empty() && *value != name)
         .map(ToOwned::to_owned);
 
-    let oracle_text = pick_field(card, face, "oracle_text")?.trim().to_string();
-    if oracle_text.is_empty() {
+    let raw_oracle_text = pick_field(card, face, "oracle_text")?.trim().to_string();
+    if raw_oracle_text.is_empty() {
         return None;
     }
+    let oracle_text = strip_parenthetical_text(&raw_oracle_text);
 
     let mana_cost = pick_field_preferring_face(card, face, "mana_cost");
     let type_line = pick_field_preferring_face(card, face, "type_line");
@@ -1427,7 +1477,7 @@ fn build_registry_card_record(card: &Value) -> Option<RegistryCardRecord> {
         metadata_lines.push(format!("Defense: {}", defense.trim()));
     }
 
-    let parse_input = build_parse_input(&metadata_lines, &oracle_text);
+    let parse_input = build_parse_input(&metadata_lines, &raw_oracle_text);
     let linked_face_layout = linked_face_layout_from_card(card);
     let other_face_name = linked_face_layout.and_then(|_| {
         get_second_face(card)
@@ -1441,6 +1491,7 @@ fn build_registry_card_record(card: &Value) -> Option<RegistryCardRecord> {
         name,
         parse_name,
         oracle_text,
+        raw_oracle_text,
         metadata_lines,
         parse_input,
         other_face_name,
@@ -1626,6 +1677,7 @@ fn linked_face_layout_from_card(card: &Value) -> Option<LinkedFaceLayout> {
 }
 
 fn decorate_definition_from_payload(definition: &mut CardDefinition, payload: &CardPayload) {
+    definition.card.oracle_text = payload.oracle_text.clone();
     let Some(layout) = payload.linked_face_layout else {
         return;
     };
@@ -1732,6 +1784,7 @@ mod tests {
             name: "Lightning Bolt".to_string(),
             parse_name: None,
             oracle_text: "Lightning Bolt deals 3 damage to any target.".to_string(),
+            raw_oracle_text: "Lightning Bolt deals 3 damage to any target.".to_string(),
             metadata_lines: vec!["Mana cost: {R}".to_string(), "Type: Instant".to_string()],
             parse_input:
                 "Mana cost: {R}\nType: Instant\nLightning Bolt deals 3 damage to any target."
@@ -1923,6 +1976,7 @@ mod tests {
         );
 
         assert_eq!(snapshot.oracle_text, "Flying\nCycling {2}");
+        assert_eq!(snapshot.raw_oracle_text, oracle);
         assert_eq!(
             snapshot.compiled_text.as_deref(),
             Some("Flying\nCycling {2}")
@@ -2214,6 +2268,7 @@ mod tests {
             name: "Shock".to_string(),
             parse_name: None,
             oracle_text: "Shock deals 2 damage to any target.".to_string(),
+            raw_oracle_text: "Shock deals 2 damage to any target.".to_string(),
             metadata_lines: vec!["Mana cost: {R}".to_string(), "Type: Instant".to_string()],
             parse_input: "Mana cost: {R}\nType: Instant\nShock deals 2 damage to any target."
                 .to_string(),
@@ -2282,6 +2337,7 @@ mod tests {
             name: "Shock".to_string(),
             parse_name: None,
             oracle_text: "Shock deals 2 damage to any target.".to_string(),
+            raw_oracle_text: "Shock deals 2 damage to any target.".to_string(),
             metadata_lines: vec!["Mana cost: {R}".to_string(), "Type: Instant".to_string()],
             parse_input: "Mana cost: {R}\nType: Instant\nShock deals 2 damage to any target."
                 .to_string(),
@@ -2355,15 +2411,19 @@ mod tests {
         db.replace_registry_cards(&[record])
             .expect("replace registry row");
 
-        let (oracle_text, parse_input): (String, String) = db
+        let (oracle_text, raw_oracle_text, parse_input): (String, String, String) = db
             .connection()
             .query_row(
-                "SELECT oracle_text, parse_input FROM registry_card WHERE card_name = 'Sky Drake'",
+                "SELECT oracle_text, raw_oracle_text, parse_input FROM registry_card WHERE card_name = 'Sky Drake'",
                 [],
-                |row| Ok((row.get(0)?, row.get(1)?)),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .expect("query registry row");
         assert_eq!(oracle_text, "Flying");
+        assert_eq!(
+            raw_oracle_text,
+            "Flying (This creature can't be blocked except by creatures with flying or reach.)"
+        );
         assert!(parse_input.contains(
             "Flying (This creature can't be blocked except by creatures with flying or reach.)"
         ));

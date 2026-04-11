@@ -4559,6 +4559,10 @@ pub(super) fn describe_object_count(value: &Value) -> String {
 }
 
 pub(super) fn describe_count_filter_value_subject(filter: &ObjectFilter) -> String {
+    if let Some(subject) = describe_commander_zone_union_subject(filter) {
+        return subject;
+    }
+
     let has_sacrificed_tag = filter.tagged_constraints.iter().any(|constraint| {
         constraint.relation == TaggedOpbjectRelation::IsTaggedObject
             && matches!(
@@ -4610,6 +4614,61 @@ pub(super) fn describe_count_filter_value_subject(filter: &ObjectFilter) -> Stri
     }
 
     subject
+}
+
+fn describe_commander_zone_union_subject(filter: &ObjectFilter) -> Option<String> {
+    if filter.any_of.len() < 2 {
+        return None;
+    }
+
+    let mut common = filter.any_of.first()?.clone();
+    common.zone = None;
+
+    if !common.is_commander
+        || !common.card_types.is_empty()
+        || !common.all_card_types.is_empty()
+        || !common.subtypes.is_empty()
+        || common.type_or_subtype_union
+        || common.name.is_some()
+        || common.excluded_name.is_some()
+    {
+        return None;
+    }
+
+    if filter.any_of.iter().any(|nested| {
+        if !nested.any_of.is_empty() {
+            return true;
+        }
+        let mut comparable = nested.clone();
+        comparable.zone = None;
+        comparable != common
+    }) {
+        return None;
+    }
+
+    let mut zone_phrases = Vec::new();
+    for zone in filter.any_of.iter().filter_map(|nested| nested.zone) {
+        let phrase = match zone {
+            Zone::Battlefield => "on the battlefield",
+            Zone::Command => "in the command zone",
+            _ => return None,
+        };
+        if !zone_phrases.contains(&phrase.to_string()) {
+            zone_phrases.push(phrase.to_string());
+        }
+    }
+
+    if zone_phrases.is_empty() {
+        return None;
+    }
+
+    let subject = if let Some(owner) = common.owner.as_ref() {
+        let owner_text = describe_player_filter(owner);
+        format!("commanders {owner_text} {}", player_verb(&owner_text, "own", "owns"))
+    } else {
+        "commanders".to_string()
+    };
+    Some(format!("{subject} {}", join_with_and(&zone_phrases)))
 }
 
 pub(super) fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {

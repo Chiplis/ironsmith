@@ -386,15 +386,7 @@ fn is_statement_verb_word(word: &str) -> bool {
 pub(crate) fn classify_static_line_family_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<StaticLineFamily> {
-    if primitives::parse_prefix(tokens, primitives::phrase(&["untap", "all"])).is_some()
-        && primitives::contains_any_phrase(
-            tokens,
-            &[
-                &["during", "each", "other", "player's", "untap", "step"],
-                &["during", "each", "other", "players", "untap", "step"],
-            ],
-        )
-    {
+    if super::abilities::split_untap_each_other_players_untap_step_line_lexed(tokens).is_some() {
         return Some(StaticLineFamily::UntapAllDuringEachOtherPlayersUntapStep);
     }
 

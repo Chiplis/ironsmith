@@ -85,6 +85,7 @@ fn snapshot_payload_for_db(
         name: card.name.clone(),
         parse_name: card.parse_name.clone(),
         oracle_text: card.oracle_text.clone(),
+        raw_oracle_text: card.raw_oracle_text.clone(),
         metadata_lines: card.metadata_lines.clone(),
         parse_input: card.parse_input.clone(),
         other_face_name: card.other_face_name.clone(),
@@ -154,14 +155,16 @@ fn metadata_lines_from_definition(definition: &CardDefinition) -> Vec<String> {
 }
 
 fn payload_from_definition(definition: &CardDefinition) -> ironsmith_tools::CardPayload {
-    let oracle_text = definition.card.oracle_text.clone();
+    let raw_oracle_text = definition.card.oracle_text.clone();
+    let oracle_text = ironsmith_tools::postprocess_oracle_text(&raw_oracle_text);
     let metadata_lines = metadata_lines_from_definition(definition);
-    let parse_input = build_parse_input(&metadata_lines, &oracle_text);
+    let parse_input = build_parse_input(&metadata_lines, &raw_oracle_text);
 
     ironsmith_tools::CardPayload {
         name: definition.name().to_string(),
         parse_name: None,
         oracle_text,
+        raw_oracle_text,
         metadata_lines,
         parse_input,
         other_face_name: definition.card.other_face_name.clone(),
@@ -182,9 +185,12 @@ fn compile_job_for_name(
     name: &str,
     input_text: Option<&str>,
 ) -> Result<CompileJob, String> {
-    // When the caller is asking for a named card without ad hoc text, prefer the
-    // source-backed built-in definition so handwritten metadata wins over the registry file.
+    let card_input = load_card_by_name(cards_path, name).map_err(|err| err.to_string())?;
+    // Prefer the payload-backed cards.json entry when available so inspection reflects the
+    // active parser/lowering path. Fall back to registry-backed definitions only when the card
+    // is not present in the source snapshot and the caller did not supply ad hoc text.
     if input_text.is_none()
+        && card_input.is_none()
         && let Ok(definition) = CardRegistry::try_compile_card(name)
     {
         let payload = payload_from_definition(&definition);
@@ -197,7 +203,6 @@ fn compile_job_for_name(
         });
     }
 
-    let card_input = load_card_by_name(cards_path, name).map_err(|err| err.to_string())?;
     match (input_text, card_input) {
         (Some(text), Some(card)) if !text_includes_metadata(text) => {
             let parse_input = build_parse_input(&card.metadata_lines, text);
@@ -231,7 +236,7 @@ fn compile_job_for_name(
         (None, Some(card)) => {
             let name = card.name.clone();
             let oracle_text = card.oracle_text.clone();
-            let parse_input = build_parse_input(&card.metadata_lines, &card.oracle_text);
+            let parse_input = card.parse_input.clone();
             let db_payload = snapshot_payload_for_db(Some(&card), &oracle_text, &parse_input);
             let compiled_definition = compile_definition_from_payload(&card).ok();
             Ok(CompileJob {
@@ -265,8 +270,15 @@ fn print_compiled_job(
         })?;
         &parsed_definition
     };
+    let mut display_def = def.clone();
+    display_def.card.oracle_text = job.oracle_text.clone();
+    for ability in &mut display_def.abilities {
+        if let Some(text) = ability.text.as_mut() {
+            *text = ironsmith_tools::postprocess_oracle_text(text);
+        }
+    }
 
-    println!("Name: {}", def.card.name);
+    println!("Name: {}", display_def.card.name);
     if detailed {
         println!("Oracle text:");
         println!("{}", job.oracle_text.trim());
@@ -275,7 +287,8 @@ fn print_compiled_job(
     }
     println!(
         "Type: {}",
-        def.card
+        display_def
+            .card
             .card_types
             .iter()
             .map(|t| format!("{t:?}"))
@@ -284,12 +297,12 @@ fn print_compiled_job(
     );
     println!("Compiled abilities/effects");
     if raw {
-        println!("- {:#?}", def);
+        println!("- {:#?}", display_def);
     } else {
         let lines = if detailed {
-            raw_compiled_lines(&def)
+            raw_compiled_lines(&display_def)
         } else {
-            canonical_compiled_lines(&def)
+            canonical_compiled_lines(&display_def)
         };
         if lines.is_empty() {
             println!("- <none>");
@@ -301,7 +314,7 @@ fn print_compiled_job(
     }
     if show_definition {
         println!("Compiled card definition:");
-        println!("{:#?}", def);
+        println!("{:#?}", display_def);
     }
 
     store_snapshot_if_requested(should_write_db, job.db_payload.as_ref(), db_path)?;
@@ -508,6 +521,7 @@ mod tests {
             name: "House Cartographer".to_string(),
             parse_name: None,
             oracle_text: "Survival — At the beginning of your second main phase, if this creature is tapped, reveal cards from the top of your library until you reveal a land card. Put that card into your hand and the rest on the bottom of your library in a random order.".to_string(),
+            raw_oracle_text: "Survival — At the beginning of your second main phase, if this creature is tapped, reveal cards from the top of your library until you reveal a land card. Put that card into your hand and the rest on the bottom of your library in a random order.".to_string(),
             metadata_lines: vec![
                 "Mana cost: {1}{G}".to_string(),
                 "Type: Creature — Human Scout Survivor".to_string(),
@@ -533,6 +547,7 @@ mod tests {
             name: "House Cartographer".to_string(),
             parse_name: None,
             oracle_text: "Survival — At the beginning of your second main phase, if this creature is tapped, reveal cards from the top of your library until you reveal a land card. Put that card into your hand and the rest on the bottom of your library in a random order.".to_string(),
+            raw_oracle_text: "Survival — At the beginning of your second main phase, if this creature is tapped, reveal cards from the top of your library until you reveal a land card. Put that card into your hand and the rest on the bottom of your library in a random order.".to_string(),
             metadata_lines: vec![
                 "Mana cost: {1}{G}".to_string(),
                 "Type: Creature — Human Scout Survivor".to_string(),

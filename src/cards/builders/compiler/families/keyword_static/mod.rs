@@ -719,10 +719,14 @@ fn parse_static_ability_ast_line_early_lexed(
         let filter = parse_object_filter(&subject_tokens, false)?;
         let subject_text =
             crate::cards::builders::compiler::token_word_refs(&subject_tokens).join(" ");
+        let display = if spec.untap_all {
+            format!("Untap all {subject_text} during each other player's untap step")
+        } else {
+            format!("Untap {subject_text} during each other player's untap step")
+        };
         return Ok(Some(vec![
             StaticAbility::untap_during_each_other_players_untap_step(
-                filter,
-                format!("Untap all {subject_text} during each other player's untap step"),
+                filter, display,
             )
             .into(),
         ]));

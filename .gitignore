@@ -1,6 +1,8 @@
 cards.json
 .DS_Store
 .playwright-screens
+.agents
+.codex
 /replays
 /target
 .idea
