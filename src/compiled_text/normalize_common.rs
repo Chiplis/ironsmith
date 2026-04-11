@@ -7311,7 +7311,7 @@ pub(super) fn describe_basic_land_types_among(filter: &ObjectFilter) -> String {
 }
 
 pub(super) fn describe_colors_among(filter: &ObjectFilter) -> String {
-    format!("color among {}", describe_for_each_filter(filter))
+    format!("colors among {}", describe_for_each_filter(filter))
 }
 
 pub(super) fn describe_effect_predicate(predicate: &EffectPredicate) -> String {

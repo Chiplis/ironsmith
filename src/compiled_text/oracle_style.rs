@@ -3552,6 +3552,17 @@ mod tests {
     }
 
     #[test]
+    fn post_pass_normalizes_color_count_search_exile_cast_clause() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "You searches for up to one creature with color count equal to the number of colors among the sacrificed creature plus 1 in a library and tags it as 'searched'. Exile the tagged object 'searched'. Shuffle your library. cast the tagged object 'searched'.",
+        );
+        assert_eq!(
+            normalized,
+            "Search your library for a creature card that's exactly that many colors plus one. Exile that card, then shuffle. You may cast the exiled card."
+        );
+    }
+
+    #[test]
     fn post_pass_merges_for_each_opponent_discards_then_loses_chain() {
         let normalized = normalize_compiled_post_pass_effect(
             "When this creature enters, for each opponent, that player discards a card. For each opponent, that player loses 2 life.",

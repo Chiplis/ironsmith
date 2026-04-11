@@ -3050,6 +3050,9 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
     if let Some(rewritten) = normalize_search_reveal_battlefield_or_hand_clause(&normalized) {
         return rewritten;
     }
+    if let Some(rewritten) = normalize_search_color_count_exile_cast_clause(&normalized) {
+        return rewritten;
+    }
     if let Some(rewritten) = normalize_search_face_down_exile_cast_else_hand_clause(&normalized) {
         return rewritten;
     }
@@ -6781,6 +6784,45 @@ pub(super) fn normalize_search_reveal_battlefield_or_hand_clause(text: &str) -> 
             &append_sentence_tail(rewritten, tail),
             "",
         ));
+    }
+    None
+}
+
+pub(super) fn normalize_search_color_count_exile_cast_clause(text: &str) -> Option<String> {
+    let patterns = [
+        "you searches for up to one ",
+        "you may searches for up to one ",
+    ];
+    for marker in patterns {
+        let Some((before, rest)) = split_once_ascii_ci(text, marker) else {
+            continue;
+        };
+        let Some((descriptor_raw, after)) = split_once_ascii_ci(
+            rest,
+            " in a library and tags it as 'searched'. Exile the tagged object 'searched'. Shuffle your library. cast the tagged object 'searched'.",
+        ) else {
+            continue;
+        };
+        let Some((subject_raw, color_count_raw)) = split_once_ascii_ci(
+            descriptor_raw,
+            " with color count equal to the number of colors among ",
+        ) else {
+            continue;
+        };
+        if !color_count_raw.trim_end().ends_with(" plus 1") {
+            continue;
+        }
+
+        let subject = with_indefinite_article(strip_leading_article(subject_raw.trim()));
+        let subject = if subject.ends_with("card") {
+            subject
+        } else {
+            format!("{subject} card")
+        };
+        let rewritten = format!(
+            "search your library for {subject} that's exactly that many colors plus one. Exile that card, then shuffle. You may cast the exiled card."
+        );
+        return Some(apply_replacement_with_case(before, &rewritten, after));
     }
     None
 }

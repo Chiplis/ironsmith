@@ -4604,8 +4604,15 @@ fn test_parse_evolving_door_compiles_color_count_search_and_may_cast() {
     let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
         rendered.contains("search your library for a creature card")
-            && rendered.contains("you may cast"),
+            && rendered.contains("that's exactly that many colors plus one")
+            && rendered.contains("you may cast the exiled card"),
         "expected Evolving Door search and may-cast wording, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("you searches")
+            && !rendered.contains("cast the tagged object")
+            && !rendered.contains("color count equal to the number of colors among"),
+        "expected Evolving Door to normalize the awkward search/cast phrasing, got {rendered}"
     );
 
     let debug = format!("{def:#?}").to_ascii_lowercase();

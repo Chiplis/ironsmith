@@ -3007,6 +3007,13 @@ pub(super) fn describe_for_each_filter(filter: &ObjectFilter) -> String {
 
     let description = base_filter.description();
     let mut base = strip_indefinite_article(&description).to_string();
+    let has_sacrificed_tag = filter.tagged_constraints.iter().any(|constraint| {
+        constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            && matches!(
+                tag_action_from_name(constraint.tag.as_str()),
+                Some("sacrificed")
+            )
+    });
     if let Some(rest) = base.strip_prefix("another ") {
         base = format!("other {rest}");
     }
@@ -3034,6 +3041,9 @@ pub(super) fn describe_for_each_filter(filter: &ObjectFilter) -> String {
             }
         }
         base = format!("{base} {action} this way");
+    }
+    if has_sacrificed_tag && !base.to_ascii_lowercase().starts_with("the sacrificed ") {
+        base = format!("the sacrificed {}", base.trim_start_matches("the ").trim());
     }
 
     if let Some(controller) = &filter.controller {
