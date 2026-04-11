@@ -1,12 +1,12 @@
+use crate::TagKey;
 use crate::alternative_cast::AlternativeCastingMethod;
 use crate::cards::ParseAnnotations;
 use crate::cards::builders::{
-    CardDefinitionBuilder, CardTextError, EffectAst, GiftTimingAst, KeywordAction, LineInfo,
-    ParsedAbility, ParsedLevelAbilityAst, ParsedModalHeader, ParsedRestrictions, PredicateAst,
-    StaticAbilityAst, TriggerSpec,
+    CardDefinitionBuilder, EffectAst, GiftTimingAst, KeywordAction, LineInfo, ParsedAbility,
+    ParsedLevelAbilityAst, ParsedModalHeader, ParsedRestrictions, PredicateAst, StaticAbilityAst,
+    TriggerSpec,
 };
 use crate::cost::OptionalCost;
-use crate::{CardDefinition, TagKey};
 
 use super::reference_model::{
     AnnotatedEffectSequence, ReferenceEnv, ReferenceExports, ReferenceImports,
@@ -136,12 +136,4 @@ pub(crate) struct NormalizedCardAst {
     pub(crate) annotations: ParseAnnotations,
     pub(crate) items: Vec<NormalizedCardItem>,
     pub(crate) allow_unsupported: bool,
-}
-
-pub(crate) fn parse_text_with_annotations(
-    builder: CardDefinitionBuilder,
-    text: String,
-    allow_unsupported: bool,
-) -> Result<(CardDefinition, ParseAnnotations), CardTextError> {
-    super::parse_text_with_annotations_lowered(builder, text, allow_unsupported)
 }

@@ -294,7 +294,10 @@ pub(crate) fn target_object_filter_mut(target: &mut TargetAst) -> Option<&mut Ob
     }
 }
 
-fn merge_it_match_filter_into_target(target: &mut TargetAst, it_filter: &ObjectFilter) -> bool {
+pub(crate) fn merge_it_match_filter_into_target(
+    target: &mut TargetAst,
+    it_filter: &ObjectFilter,
+) -> bool {
     if let TargetAst::Tagged(tag, span) = target {
         let mut filter = ObjectFilter::default();
         filter.tagged_constraints.push(TaggedObjectConstraint {
@@ -1087,7 +1090,7 @@ pub(crate) fn parse_convert(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
     parse_transform_like(tokens, |target| EffectAst::Convert { target })
 }
 
-fn exile_subject_owner_filter(subject: Option<SubjectAst>) -> Option<PlayerFilter> {
+pub(crate) fn exile_subject_owner_filter(subject: Option<SubjectAst>) -> Option<PlayerFilter> {
     match subject {
         Some(SubjectAst::Player(PlayerAst::Target)) => Some(PlayerFilter::target_player()),
         Some(SubjectAst::Player(PlayerAst::TargetOpponent)) => {
@@ -1099,7 +1102,10 @@ fn exile_subject_owner_filter(subject: Option<SubjectAst>) -> Option<PlayerFilte
     }
 }
 
-fn apply_exile_subject_owner_context(filter: &mut ObjectFilter, subject: Option<SubjectAst>) {
+pub(crate) fn apply_exile_subject_owner_context(
+    filter: &mut ObjectFilter,
+    subject: Option<SubjectAst>,
+) {
     let Some(owner_filter) = exile_subject_owner_filter(subject) else {
         return;
     };

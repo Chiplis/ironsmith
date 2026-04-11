@@ -66,6 +66,7 @@ use super::lowering_support::rewrite_parsed_triggered_ability as parsed_triggere
 use super::object_filters::{
     find_word_slice_phrase_start, parse_object_filter, parse_object_filter_lexed,
 };
+use super::rule_engine::{LexRuleHeadHint, LexRuleHintIndex, build_lex_rule_hint_index};
 use super::static_ability_helpers::lower_granted_abilities_ast_to_object_abilities;
 use super::token_primitives::{
     find_index, find_window_by, lexed_head_words, rfind_index, slice_contains, slice_ends_with,
@@ -205,16 +206,7 @@ struct StaticAbilityLineRuleDef {
     rule: StaticAbilityLineRuleAst,
 }
 
-struct StaticAbilityLineRuleIndex {
-    by_head: std::collections::HashMap<&'static str, Vec<usize>>,
-    by_head_pair: std::collections::HashMap<(&'static str, &'static str), Vec<usize>>,
-}
-
-#[derive(Clone, Copy)]
-enum StaticAbilityLineHeadHint {
-    Single(&'static str),
-    Pair(&'static str, &'static str),
-}
+type StaticAbilityLineHeadHint = LexRuleHeadHint;
 
 fn run_static_ability_ast_line_rule(
     rule: StaticAbilityLineRuleAst,
@@ -248,30 +240,6 @@ fn try_static_ability_ast_line_rule_indices(
     }
 
     None
-}
-
-fn build_static_ability_line_rule_index(
-    rules: &'static [StaticAbilityLineRuleDef],
-) -> StaticAbilityLineRuleIndex {
-    let mut by_head = std::collections::HashMap::<&'static str, Vec<usize>>::new();
-    let mut by_head_pair =
-        std::collections::HashMap::<(&'static str, &'static str), Vec<usize>>::new();
-    for (idx, rule) in rules.iter().enumerate() {
-        for head in static_ability_rule_head_hints(rule.id) {
-            match head {
-                StaticAbilityLineHeadHint::Single(word) => {
-                    by_head.entry(word).or_default().push(idx);
-                }
-                StaticAbilityLineHeadHint::Pair(first, second) => {
-                    by_head_pair.entry((first, second)).or_default().push(idx);
-                }
-            }
-        }
-    }
-    StaticAbilityLineRuleIndex {
-        by_head,
-        by_head_pair,
-    }
 }
 
 fn static_ability_rule_head_hints(rule_id: &'static str) -> Vec<StaticAbilityLineHeadHint> {
@@ -670,8 +638,12 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
     ]
 }
 
-static STATIC_ABILITY_AST_LINE_RULE_INDEX: LazyLock<StaticAbilityLineRuleIndex> =
-    LazyLock::new(|| build_static_ability_line_rule_index(static_ability_ast_line_rules()));
+static STATIC_ABILITY_AST_LINE_RULE_INDEX: LazyLock<LexRuleHintIndex> = LazyLock::new(|| {
+    let rules = static_ability_ast_line_rules();
+    build_lex_rule_hint_index(rules.len(), |idx| {
+        static_ability_rule_head_hints(rules[idx].id)
+    })
+});
 
 fn parse_static_ability_ast_line_lowered(
     tokens: &[OwnedLexToken],
@@ -681,29 +653,14 @@ fn parse_static_ability_ast_line_lowered(
     let mut tried = vec![false; rules.len()];
     let mut deferred_error: Option<CardTextError> = None;
 
-    if let Some(second) = second
-        && let Some(candidate_indices) = STATIC_ABILITY_AST_LINE_RULE_INDEX
-            .by_head_pair
-            .get(&(head, second))
-    {
+    let candidate_indices = STATIC_ABILITY_AST_LINE_RULE_INDEX.candidate_indices(head, second);
+    if !candidate_indices.is_empty() {
         if let Some(abilities) = try_static_ability_ast_line_rule_indices(
             rules,
             tokens,
             &mut tried,
             &mut deferred_error,
-            candidate_indices,
-        ) {
-            return Ok(Some(abilities));
-        }
-    }
-
-    if let Some(candidate_indices) = STATIC_ABILITY_AST_LINE_RULE_INDEX.by_head.get(head) {
-        if let Some(abilities) = try_static_ability_ast_line_rule_indices(
-            rules,
-            tokens,
-            &mut tried,
-            &mut deferred_error,
-            candidate_indices,
+            &candidate_indices,
         ) {
             return Ok(Some(abilities));
         }

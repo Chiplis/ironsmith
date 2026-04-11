@@ -29,6 +29,7 @@ use super::super::lexer::{
     LexStream, OwnedLexToken, TokenKind, parser_token_word_positions, parser_token_word_refs,
     split_lexed_sentences, token_word_refs,
 };
+use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed};
 use super::super::token_primitives::{
     contains_window as word_slice_contains_sequence, find_any_str_index as word_slice_find_any,
     find_index as find_token_index, find_str_index as word_slice_find,
@@ -37,9 +38,9 @@ use super::super::token_primitives::{
     slice_contains_str as word_slice_contains, slice_ends_with as word_slice_ends_with,
     slice_starts_with as word_slice_starts_with,
 };
-use super::super::util::{is_article, parse_subject};
-use super::super::{parse_number, parse_object_filter, parse_object_filter_lexed};
-use super::super::{parse_target_phrase, span_from_tokens, trim_commas};
+use super::super::util::{
+    is_article, parse_number, parse_subject, parse_target_phrase, span_from_tokens, trim_commas,
+};
 use super::primitives;
 
 const CHOSEN_NAME_TAG: &str = "__chosen_name__";

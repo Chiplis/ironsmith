@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use crate::cards::builders::CardTextError;
+use std::collections::HashMap;
 
 use super::lexer::{OwnedLexToken, TokenKind, TokenWordView, token_word_refs};
 
@@ -186,6 +187,57 @@ fn clause_shape_lexed(tokens: &[OwnedLexToken], words: &LexClauseWords) -> u32 {
 pub(crate) type ClauseRuleFn<T> = for<'a> fn(&ClauseView<'a>) -> Result<Option<T>, CardTextError>;
 pub(crate) type LexClauseRuleFn<T> =
     for<'a> fn(&LexClauseView<'a>) -> Result<Option<T>, CardTextError>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LexRuleHeadHint {
+    Single(&'static str),
+    Pair(&'static str, &'static str),
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct LexRuleHintIndex {
+    by_head: HashMap<&'static str, Vec<usize>>,
+    by_head_pair: HashMap<(&'static str, &'static str), Vec<usize>>,
+}
+
+pub(crate) fn build_lex_rule_hint_index(
+    rule_count: usize,
+    mut head_hints_for_rule: impl FnMut(usize) -> Vec<LexRuleHeadHint>,
+) -> LexRuleHintIndex {
+    let mut by_head = HashMap::<&'static str, Vec<usize>>::new();
+    let mut by_head_pair = HashMap::<(&'static str, &'static str), Vec<usize>>::new();
+    for idx in 0..rule_count {
+        for hint in head_hints_for_rule(idx) {
+            match hint {
+                LexRuleHeadHint::Single(word) => by_head.entry(word).or_default().push(idx),
+                LexRuleHeadHint::Pair(first, second) => {
+                    by_head_pair.entry((first, second)).or_default().push(idx);
+                }
+            }
+        }
+    }
+    LexRuleHintIndex {
+        by_head,
+        by_head_pair,
+    }
+}
+
+impl LexRuleHintIndex {
+    pub(crate) fn candidate_indices(&self, head: &str, second: Option<&str>) -> Vec<usize> {
+        let mut candidate_indices = Vec::new();
+        if let Some(second) = second
+            && let Some(indices) = self.by_head_pair.get(&(head, second))
+        {
+            candidate_indices.extend(indices.iter().copied());
+        }
+        if let Some(indices) = self.by_head.get(head) {
+            candidate_indices.extend(indices.iter().copied());
+        }
+        candidate_indices.sort_unstable();
+        candidate_indices.dedup();
+        candidate_indices
+    }
+}
 
 #[derive(Clone, Copy)]
 pub(crate) struct RuleDef<T> {

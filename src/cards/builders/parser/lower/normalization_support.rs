@@ -1,0 +1,481 @@
+use super::*;
+
+#[derive(Debug, Clone, Default)]
+pub(super) struct RewriteNormalizationState {
+    latest_spell_exports: ReferenceExports,
+    latest_additional_cost_exports: ReferenceExports,
+}
+
+impl RewriteNormalizationState {
+    fn statement_reference_imports(&self) -> ReferenceImports {
+        let additional_cost_imports = self.latest_additional_cost_exports.to_imports();
+        if !additional_cost_imports.is_empty() {
+            return additional_cost_imports.into();
+        }
+        self.latest_spell_exports.to_imports().into()
+    }
+}
+
+fn normalize_rewrite_parsed_ability(
+    parsed: ParsedAbility,
+) -> Result<NormalizedParsedAbility, CardTextError> {
+    let prepared = match parsed.effects_ast.as_ref() {
+        None => None,
+        Some(_)
+            if matches!(
+                &parsed.ability.kind,
+                AbilityKind::Activated(activated)
+                    if !activated.effects.is_empty() || !activated.choices.is_empty()
+            ) =>
+        {
+            None
+        }
+        Some(_)
+            if matches!(
+                &parsed.ability.kind,
+                AbilityKind::Triggered(triggered)
+                    if !triggered.effects.is_empty() || !triggered.choices.is_empty()
+            ) =>
+        {
+            None
+        }
+        Some(effects_ast) => match (&parsed.ability.kind, parsed.trigger_spec.as_ref()) {
+            (AbilityKind::Triggered(_), Some(trigger)) => {
+                let (trigger, prepared) = rewrite_prepare_triggered_effects_for_lowering(
+                    trigger.clone(),
+                    effects_ast,
+                    parsed.reference_imports.clone(),
+                )?;
+                Some(NormalizedPreparedAbility::Triggered { trigger, prepared })
+            }
+            (AbilityKind::Activated(_), _) => Some(NormalizedPreparedAbility::Activated(
+                rewrite_prepare_effects_with_trigger_context_for_lowering(
+                    None,
+                    effects_ast,
+                    parsed.reference_imports.clone(),
+                )?,
+            )),
+            _ => None,
+        },
+    };
+
+    Ok(NormalizedParsedAbility { parsed, prepared })
+}
+
+fn normalize_rewrite_line_ast(
+    info: crate::cards::builders::LineInfo,
+    chunks: Vec<LineAst>,
+    restrictions: ParsedRestrictions,
+    state: &mut RewriteNormalizationState,
+) -> Result<NormalizedLineAst, CardTextError> {
+    let mut normalized_chunks = Vec::with_capacity(chunks.len());
+    for chunk in chunks {
+        normalized_chunks.push(match chunk {
+            LineAst::Abilities(actions) => NormalizedLineChunk::Abilities(actions),
+            LineAst::StaticAbility(ability) => NormalizedLineChunk::StaticAbility(ability),
+            LineAst::StaticAbilities(abilities) => NormalizedLineChunk::StaticAbilities(abilities),
+            LineAst::Ability(parsed) => {
+                NormalizedLineChunk::Ability(normalize_rewrite_parsed_ability(parsed)?)
+            }
+            LineAst::Triggered {
+                trigger,
+                effects,
+                max_triggers_per_turn,
+            } => {
+                let (trigger, prepared) = rewrite_prepare_triggered_effects_for_lowering(
+                    trigger,
+                    &effects,
+                    ReferenceImports::default(),
+                )?;
+                NormalizedLineChunk::Triggered {
+                    trigger,
+                    prepared,
+                    max_triggers_per_turn,
+                }
+            }
+            LineAst::Statement { effects } => {
+                let prepared = rewrite_prepare_effects_for_lowering(
+                    &effects,
+                    state.statement_reference_imports(),
+                )?;
+                state.latest_spell_exports = prepared.exports.clone();
+                NormalizedLineChunk::Statement {
+                    effects_ast: effects,
+                    prepared,
+                }
+            }
+            LineAst::AdditionalCost { effects } => {
+                let effects = rewrite_normalize_additional_cost_sacrifice_tags(effects);
+                let prepared =
+                    rewrite_prepare_effects_for_lowering(&effects, ReferenceImports::default())?;
+                state.latest_additional_cost_exports = prepared.exports.clone();
+                NormalizedLineChunk::AdditionalCost {
+                    effects_ast: effects,
+                    prepared,
+                }
+            }
+            LineAst::OptionalCost(cost) => NormalizedLineChunk::OptionalCost(cost),
+            LineAst::GiftKeyword {
+                cost,
+                effects,
+                followup_text,
+                timing,
+            } => {
+                let prepared =
+                    rewrite_prepare_effects_for_lowering(&effects, ReferenceImports::default())?;
+                NormalizedLineChunk::GiftKeyword {
+                    cost,
+                    prepared,
+                    followup_text,
+                    timing,
+                }
+            }
+            LineAst::OptionalCostWithCastTrigger {
+                cost,
+                effects,
+                followup_text,
+            } => {
+                let prepared = rewrite_prepare_effects_for_lowering(
+                    &effects,
+                    state.latest_additional_cost_exports.to_imports(),
+                )?;
+                NormalizedLineChunk::OptionalCostWithCastTrigger {
+                    cost,
+                    prepared,
+                    followup_text,
+                }
+            }
+            LineAst::AdditionalCostChoice { options } => {
+                let mut normalized_options = Vec::with_capacity(options.len());
+                let mut exports = ReferenceExports::default();
+                let mut saw_option = false;
+                for option in options {
+                    let prepared = rewrite_prepare_effects_for_lowering(
+                        &option.effects,
+                        ReferenceImports::default(),
+                    )?;
+                    exports = if saw_option {
+                        ReferenceExports::join(&exports, &prepared.exports)
+                    } else {
+                        saw_option = true;
+                        prepared.exports.clone()
+                    };
+                    normalized_options.push(NormalizedAdditionalCostChoiceOptionAst {
+                        description: option.description,
+                        effects_ast: option.effects,
+                        prepared,
+                    });
+                }
+                state.latest_additional_cost_exports = exports;
+                NormalizedLineChunk::AdditionalCostChoice {
+                    options: normalized_options,
+                }
+            }
+            LineAst::AlternativeCastingMethod(method) => {
+                NormalizedLineChunk::AlternativeCastingMethod(method)
+            }
+        });
+    }
+
+    Ok(NormalizedLineAst {
+        info,
+        chunks: normalized_chunks,
+        restrictions,
+    })
+}
+
+fn normalize_rewrite_modal_ast(modal: ParsedModalAst) -> Result<NormalizedModalAst, CardTextError> {
+    let prepared_prefix = if modal.header.prefix_effects_ast.is_empty() {
+        None
+    } else if modal.header.trigger.is_some() || modal.header.activated.is_some() {
+        Some(rewrite_prepare_effects_with_trigger_context_for_lowering(
+            modal.header.trigger.as_ref(),
+            &modal.header.prefix_effects_ast,
+            ReferenceImports::default(),
+        )?)
+    } else {
+        Some(rewrite_prepare_effects_for_lowering(
+            &modal.header.prefix_effects_ast,
+            ReferenceImports::default(),
+        )?)
+    };
+
+    let mut modes = Vec::with_capacity(modal.modes.len());
+    for mode in modal.modes {
+        let prepared =
+            rewrite_prepare_effects_for_lowering(&mode.effects_ast, ReferenceImports::default())?;
+        modes.push(NormalizedModalModeAst {
+            info: mode.info,
+            description: mode.description,
+            prepared,
+        });
+    }
+
+    Ok(NormalizedModalAst {
+        header: modal.header,
+        prepared_prefix,
+        modes,
+    })
+}
+
+pub(super) fn apply_chosen_option_to_triggered_chunk(
+    chunk: LineAst,
+    full_text: &str,
+    max_triggers_per_turn: Option<u32>,
+    chosen_option_label: Option<&str>,
+) -> Result<LineAst, CardTextError> {
+    let max_condition = max_triggers_per_turn.map(crate::ConditionExpr::MaxTimesEachTurn);
+    let combined_condition = match (chosen_option_label, max_condition.clone()) {
+        (Some(label), Some(max)) => Some(crate::ConditionExpr::And(
+            Box::new(crate::ConditionExpr::SourceChosenOption(label.to_string())),
+            Box::new(max),
+        )),
+        (Some(label), None) => Some(crate::ConditionExpr::SourceChosenOption(label.to_string())),
+        (None, Some(max)) => Some(max),
+        (None, None) => None,
+    };
+
+    match chunk {
+        LineAst::Triggered {
+            trigger,
+            effects,
+            max_triggers_per_turn: chunk_max_triggers_per_turn,
+        } => {
+            let merged_max_condition = chunk_max_triggers_per_turn
+                .or(max_triggers_per_turn)
+                .map(crate::ConditionExpr::MaxTimesEachTurn);
+            let merged_condition = match (chosen_option_label, merged_max_condition) {
+                (Some(label), Some(max)) => Some(crate::ConditionExpr::And(
+                    Box::new(crate::ConditionExpr::SourceChosenOption(label.to_string())),
+                    Box::new(max),
+                )),
+                (Some(label), None) => {
+                    Some(crate::ConditionExpr::SourceChosenOption(label.to_string()))
+                }
+                (None, Some(max)) => Some(max),
+                (None, None) => None,
+            };
+            Ok(LineAst::Ability(rewrite_parsed_triggered_ability(
+                trigger.clone(),
+                effects,
+                infer_rewrite_triggered_functional_zones(&trigger, full_text),
+                Some(full_text.to_string()),
+                merged_condition,
+                ReferenceImports::default(),
+            )))
+        }
+        LineAst::Ability(mut parsed) => {
+            if let AbilityKind::Triggered(triggered) = &mut parsed.ability.kind
+                && let Some(condition) = combined_condition
+            {
+                triggered.intervening_if = Some(match triggered.intervening_if.take() {
+                    Some(existing) => {
+                        crate::ConditionExpr::And(Box::new(existing), Box::new(condition))
+                    }
+                    None => condition,
+                });
+            }
+            if parsed.ability.text.is_none() {
+                parsed.ability.text = Some(full_text.to_string());
+            }
+            Ok(LineAst::Ability(parsed))
+        }
+        other => Ok(other),
+    }
+}
+
+pub(super) fn apply_explicit_intervening_if_to_triggered_chunk(
+    chunk: LineAst,
+    explicit_intervening_if: Option<PredicateAst>,
+) -> Result<LineAst, CardTextError> {
+    let Some(predicate) = explicit_intervening_if else {
+        return Ok(chunk);
+    };
+
+    match chunk {
+        LineAst::Triggered {
+            trigger,
+            effects,
+            max_triggers_per_turn,
+        } => {
+            if matches!(
+                effects.as_slice(),
+                [EffectAst::Conditional { if_false, .. }] if if_false.is_empty()
+            ) {
+                Ok(LineAst::Triggered {
+                    trigger,
+                    effects,
+                    max_triggers_per_turn,
+                })
+            } else {
+                Ok(LineAst::Triggered {
+                    trigger,
+                    effects: vec![EffectAst::Conditional {
+                        predicate,
+                        if_true: effects,
+                        if_false: Vec::new(),
+                    }],
+                    max_triggers_per_turn,
+                })
+            }
+        }
+        LineAst::Ability(mut parsed) => {
+            let compiled_condition = compile_condition_from_predicate_ast_with_env(
+                &predicate,
+                &ReferenceEnv::from_imports(&parsed.reference_imports, false, false, false, None),
+                None,
+            );
+            if let Ok(condition) = compiled_condition {
+                if let AbilityKind::Triggered(triggered) = &mut parsed.ability.kind {
+                    triggered.intervening_if = Some(match triggered.intervening_if.take() {
+                        Some(existing) => {
+                            crate::ConditionExpr::And(Box::new(existing), Box::new(condition))
+                        }
+                        None => condition,
+                    });
+                }
+                if let Some(effects_ast) = parsed.effects_ast.take() {
+                    if let [
+                        EffectAst::Conditional {
+                            if_true, if_false, ..
+                        },
+                    ] = effects_ast.as_slice()
+                        && if_false.is_empty()
+                    {
+                        parsed.effects_ast = Some(if_true.clone());
+                    } else {
+                        parsed.effects_ast = Some(effects_ast);
+                    }
+                }
+            } else if let Some(effects_ast) = parsed.effects_ast.take() {
+                parsed.effects_ast = Some(effects_ast);
+            }
+            Ok(LineAst::Ability(parsed))
+        }
+        other => Ok(other),
+    }
+}
+
+fn rewrite_item_to_normalized_item(
+    item: RewriteSemanticItem,
+    _allow_unsupported: bool,
+    state: &mut RewriteNormalizationState,
+) -> Result<Option<NormalizedCardItem>, CardTextError> {
+    match item {
+        RewriteSemanticItem::Metadata => Ok(None),
+        RewriteSemanticItem::Keyword(line) => {
+            Ok(Some(NormalizedCardItem::Line(normalize_rewrite_line_ast(
+                line.info.clone(),
+                vec![line.parsed],
+                ParsedRestrictions::default(),
+                state,
+            )?)))
+        }
+        RewriteSemanticItem::Activated(line) => {
+            Ok(Some(NormalizedCardItem::Line(normalize_rewrite_line_ast(
+                line.info.clone(),
+                vec![line.parsed],
+                line.restrictions,
+                state,
+            )?)))
+        }
+        RewriteSemanticItem::Triggered(line) => {
+            let parsed =
+                apply_explicit_intervening_if_to_triggered_chunk(line.parsed, line.intervening_if)?;
+            Ok(Some(NormalizedCardItem::Line(normalize_rewrite_line_ast(
+                line.info.clone(),
+                vec![parsed],
+                ParsedRestrictions::default(),
+                state,
+            )?)))
+        }
+        RewriteSemanticItem::Static(line) => {
+            let mut restrictions = ParsedRestrictions::default();
+            let chunks = if line.text == "activate only once each turn." {
+                restrictions
+                    .activation
+                    .push("Activate only once each turn".to_string());
+                Vec::new()
+            } else {
+                vec![line.parsed]
+            };
+            Ok(Some(NormalizedCardItem::Line(normalize_rewrite_line_ast(
+                line.info.clone(),
+                chunks,
+                restrictions,
+                state,
+            )?)))
+        }
+        RewriteSemanticItem::Statement(line) => {
+            Ok(Some(NormalizedCardItem::Line(normalize_rewrite_line_ast(
+                line.info.clone(),
+                line.parsed_chunks,
+                ParsedRestrictions::default(),
+                state,
+            )?)))
+        }
+        RewriteSemanticItem::Unsupported(line) => {
+            Ok(Some(NormalizedCardItem::Line(normalize_rewrite_line_ast(
+                line.info.clone(),
+                vec![rewrite_unsupported_line_ast(
+                    line.info.raw_line.as_str(),
+                    line.reason_code,
+                )],
+                ParsedRestrictions::default(),
+                state,
+            )?)))
+        }
+        RewriteSemanticItem::Modal(modal) => Ok(Some(NormalizedCardItem::Modal(
+            normalize_rewrite_modal_ast(match lower_rewrite_modal_to_item(modal)? {
+                ParsedCardItem::Modal(modal) => modal,
+                _ => unreachable!("rewrite modal lowering returned non-modal item"),
+            })?,
+        ))),
+        RewriteSemanticItem::LevelHeader(level) => Ok(Some(NormalizedCardItem::LevelAbility(
+            ParsedLevelAbilityAst {
+                min_level: level.min_level,
+                max_level: level.max_level,
+                pt: level.pt,
+                items: level.items.into_iter().map(|item| item.parsed).collect(),
+            },
+        ))),
+        RewriteSemanticItem::SagaChapter(saga) => {
+            Ok(Some(NormalizedCardItem::Line(normalize_rewrite_line_ast(
+                saga.info.clone(),
+                vec![LineAst::Triggered {
+                    trigger: TriggerSpec::SagaChapter(saga.chapters),
+                    effects: saga.effects_ast,
+                    max_triggers_per_turn: None,
+                }],
+                ParsedRestrictions::default(),
+                state,
+            )?)))
+        }
+    }
+}
+
+pub(crate) fn rewrite_document_to_normalized_card_ast(
+    doc: RewriteSemanticDocument,
+) -> Result<NormalizedCardAst, CardTextError> {
+    let RewriteSemanticDocument {
+        builder,
+        annotations,
+        items,
+        allow_unsupported,
+    } = doc;
+    let mut state = RewriteNormalizationState::default();
+    let mut normalized_items = Vec::new();
+    for item in items {
+        let maybe_item = rewrite_item_to_normalized_item(item, allow_unsupported, &mut state)?;
+        if let Some(item) = maybe_item {
+            normalized_items.push(item);
+        }
+    }
+
+    Ok(NormalizedCardAst {
+        builder,
+        annotations,
+        items: normalized_items,
+        allow_unsupported,
+    })
+}

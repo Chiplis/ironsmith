@@ -10,7 +10,7 @@ use super::super::grammar::primitives as grammar;
 use super::super::keyword_static::{
     parse_pt_modifier, parse_pt_modifier_values, parse_where_x_value_clause,
 };
-use super::super::parse_object_filter;
+use super::super::object_filters::parse_object_filter;
 use super::super::token_primitives::{
     contains_window as word_slice_contains_sequence, find_index as find_token_index,
     find_str_by as find_word_index, find_window_index as find_word_sequence_index,

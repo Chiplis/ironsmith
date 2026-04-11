@@ -1,7 +1,7 @@
 use super::leaf::ActivationCostCst;
 use super::lexer::OwnedLexToken;
 use super::shared_types::{LineInfo, MetadataLine};
-use crate::cards::builders::PredicateAst;
+use crate::cards::builders::{EffectAst, ParsedLevelAbilityItemAst, PredicateAst};
 
 #[derive(Debug, Clone)]
 pub(crate) struct RewriteDocumentCst {
@@ -121,7 +121,7 @@ pub(crate) struct ModalBlockCst {
 pub(crate) struct ModalModeCst {
     pub(crate) info: LineInfo,
     pub(crate) text: String,
-    pub(crate) parse_tokens: Vec<OwnedLexToken>,
+    pub(crate) effects_ast: Vec<EffectAst>,
 }
 
 #[derive(Debug, Clone)]
@@ -142,8 +142,8 @@ pub(crate) enum LevelItemKindCst {
 pub(crate) struct LevelItemCst {
     pub(crate) info: LineInfo,
     pub(crate) text: String,
-    pub(crate) parse_tokens: Vec<OwnedLexToken>,
     pub(crate) kind: LevelItemKindCst,
+    pub(crate) parsed: ParsedLevelAbilityItemAst,
 }
 
 #[derive(Debug, Clone)]
@@ -151,7 +151,7 @@ pub(crate) struct SagaChapterLineCst {
     pub(crate) info: LineInfo,
     pub(crate) chapters: Vec<u32>,
     pub(crate) text: String,
-    pub(crate) parse_tokens: Vec<OwnedLexToken>,
+    pub(crate) effects_ast: Vec<EffectAst>,
 }
 
 #[derive(Debug, Clone)]

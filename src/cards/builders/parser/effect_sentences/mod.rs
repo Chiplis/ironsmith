@@ -38,20 +38,29 @@ pub(crate) enum TokenCopyFollowup {
 }
 
 mod chain_carry;
+mod bundle_rules;
 mod clause_dispatch;
 pub(crate) mod clause_pattern_helpers;
 mod clause_primitives;
 pub(crate) mod conditionals;
+mod consult_family;
 mod creation_handlers;
 mod dispatch_entry;
 mod dispatch_inner;
 mod divvy;
+mod fanout_family;
 mod for_each_helpers;
 mod gain_ability;
 mod lex_chain_helpers;
+mod looked_cards_family;
+mod next_spell_family;
 mod search_library;
 mod sentence_helpers;
+mod sentence_registry;
+mod sentence_unsupported;
 mod sentence_primitives;
+mod sequence_rules;
+mod special_sentence_family;
 mod verb_dispatch;
 mod verb_handlers;
 mod zone_counter_helpers;
@@ -80,8 +89,13 @@ pub(crate) use clause_primitives::{
     parse_must_be_blocked_if_able_clause, parse_must_block_if_able_clause, run_clause_primitives,
 };
 pub(crate) use conditionals::*;
+pub(crate) use dispatch_entry::SentenceInput;
 pub(crate) use dispatch_entry::*;
 pub(crate) use dispatch_inner::*;
+pub(crate) use fanout_family::{
+    parse_same_name_gets_fanout_sentence, parse_same_name_target_fanout_sentence,
+    parse_shared_color_target_fanout_sentence,
+};
 pub(crate) use gain_ability::*;
 pub(crate) use lex_chain_helpers::find_verb_lexed;
 pub(crate) use search_library::*;
@@ -90,3 +104,4 @@ pub(crate) use sentence_helpers::{
     parse_half_starting_life_total_value, parse_sentence_put_multiple_counters_on_target,
 };
 pub(crate) use sentence_primitives::*;
+pub(crate) use sequence_rules::try_parse_registered_sequence_rule;

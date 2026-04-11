@@ -11,8 +11,8 @@ pub(crate) use super::effect_sentences::{
     is_negated_untap_clause, parse_granted_activated_or_triggered_ability_for_gain,
     parse_subtype_word, trim_edge_punctuation,
 };
+pub(crate) use super::grammar::filters::parse_spell_filter_with_grammar_entrypoint as parse_spell_filter;
 pub(crate) use super::object_filters::{merge_spell_filters, spell_filter_has_identity};
-pub(crate) use super::parse_spell_filter;
 pub(crate) use super::parser_support::is_at_trigger_intro;
 pub(crate) use super::permission_helpers::parse_permission_clause_spec;
 pub(crate) use super::static_ability_helpers::static_ability_for_keyword_action;

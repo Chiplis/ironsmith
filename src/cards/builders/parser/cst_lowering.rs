@@ -1,7 +1,6 @@
 use crate::ability::ActivationTiming;
-use crate::cards::builders::{CardTextError, ParsedLevelAbilityItemAst};
+use crate::cards::builders::CardTextError;
 
-use super::clause_support::parse_ability_line_lexed;
 use super::cst::{
     ActivatedLineCst, KeywordLineCst, LevelItemKindCst, RewriteLineCst, SagaChapterLineCst,
     StatementLineCst, StaticLineCst, TriggeredLineCst,
@@ -13,11 +12,10 @@ use super::ir::{
 };
 use super::keyword_registry::lower_keyword_line_cst;
 use super::leaf::lower_activation_cost_cst;
-use super::lower::{
-    lower_rewrite_activated_to_chunk, lower_rewrite_statement_token_groups_to_chunks,
-    lower_rewrite_static_to_chunk, lower_rewrite_triggered_to_chunk,
+use super::lower::{lower_rewrite_activated_to_chunk, lower_rewrite_static_to_chunk};
+use super::rewrite_exceptions::{
+    lower_rewrite_statement_token_groups_to_chunks, lower_rewrite_triggered_to_chunk,
 };
-use super::{parse_effect_sentences_lexed, parse_static_ability_ast_line_lexed};
 
 pub(crate) fn lower_non_metadata_rewrite_line_cst(
     line: RewriteLineCst,
@@ -152,15 +150,12 @@ fn lower_modal_block(
         modes: modal
             .modes
             .into_iter()
-            .map(|mode| {
-                let effects_ast = parse_effect_sentences_lexed(&mode.parse_tokens)?;
-                Ok(RewriteModalMode {
-                    info: mode.info,
-                    text: mode.text,
-                    effects_ast,
-                })
+            .map(|mode| RewriteModalMode {
+                info: mode.info,
+                text: mode.text,
+                effects_ast: mode.effects_ast,
             })
-            .collect::<Result<Vec<_>, CardTextError>>()?,
+            .collect(),
     }))
 }
 
@@ -174,49 +169,24 @@ fn lower_level_header(
         items: level
             .items
             .into_iter()
-            .map(|item| {
-                let parsed = match item.kind {
-                    LevelItemKindCst::KeywordActions => {
-                        let actions =
-                            parse_ability_line_lexed(&item.parse_tokens).ok_or_else(|| {
-                                CardTextError::ParseError(format!(
-                                    "rewrite level lowering could not parse keyword line '{}'",
-                                    item.info.raw_line
-                                ))
-                            })?;
-                        ParsedLevelAbilityItemAst::KeywordActions(actions)
-                    }
-                    LevelItemKindCst::StaticAbilities => {
-                        let abilities = parse_static_ability_ast_line_lexed(&item.parse_tokens)?
-                            .ok_or_else(|| {
-                                CardTextError::ParseError(format!(
-                                    "rewrite level lowering could not parse static line '{}'",
-                                    item.info.raw_line
-                                ))
-                            })?;
-                        ParsedLevelAbilityItemAst::StaticAbilities(abilities)
-                    }
-                };
-                Ok(RewriteLevelItem {
-                    info: item.info,
-                    text: item.text,
-                    kind: match item.kind {
-                        LevelItemKindCst::KeywordActions => RewriteLevelItemKind::KeywordActions,
-                        LevelItemKindCst::StaticAbilities => RewriteLevelItemKind::StaticAbilities,
-                    },
-                    parsed,
-                })
+            .map(|item| RewriteLevelItem {
+                info: item.info,
+                text: item.text,
+                kind: match item.kind {
+                    LevelItemKindCst::KeywordActions => RewriteLevelItemKind::KeywordActions,
+                    LevelItemKindCst::StaticAbilities => RewriteLevelItemKind::StaticAbilities,
+                },
+                parsed: item.parsed,
             })
-            .collect::<Result<Vec<_>, CardTextError>>()?,
+            .collect(),
     }))
 }
 
 fn lower_saga_chapter(saga: SagaChapterLineCst) -> Result<RewriteSemanticItem, CardTextError> {
-    let effects_ast = parse_effect_sentences_lexed(&saga.parse_tokens)?;
     Ok(RewriteSemanticItem::SagaChapter(RewriteSagaChapterLine {
         info: saga.info,
         chapters: saga.chapters,
         text: saga.text,
-        effects_ast,
+        effects_ast: saga.effects_ast,
     }))
 }

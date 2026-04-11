@@ -8,7 +8,9 @@ use crate::cards::TextSpan;
 use crate::cards::builders::{CardTextError, EffectAst, IfResultPredicate, PredicateAst};
 use crate::effect::{Comparison, Value};
 
-use super::super::lexer::{LexStream, LexToken, OwnedLexToken, TokenKind, trim_lexed_commas};
+use super::super::lexer::{
+    LexStream, LexToken, OwnedLexToken, TokenKind, TokenWordView, trim_lexed_commas,
+};
 use super::{primitives, values};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -47,6 +49,24 @@ pub(crate) enum MetadataLineKind {
 pub(crate) struct MetadataLineSpec<'a> {
     pub(crate) kind: MetadataLineKind,
     pub(crate) value_tokens: &'a [OwnedLexToken],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum StatementLineFamily {
+    PactNextUpkeep,
+    NextTurnCantCast,
+    Divvy,
+    ArtRating,
+    ExilePlayCostsMore,
+    Vote,
+    Generic,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum StaticLineFamily {
+    UntapAllDuringEachOtherPlayersUntapStep,
+    GrantedQuotedAbility,
+    Generic,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -165,31 +185,21 @@ pub(crate) fn split_metadata_line_lexed(tokens: &[OwnedLexToken]) -> Option<Meta
         .or_else(|| match_metadata_prefix(tokens, &["defense"], MetadataLineKind::Defense))
 }
 
-pub(crate) fn looks_like_pact_next_upkeep_line_lexed(tokens: &[OwnedLexToken]) -> bool {
-    primitives::contains_phrase(
+pub(crate) fn classify_statement_line_family_lexed(
+    tokens: &[OwnedLexToken],
+) -> Option<StatementLineFamily> {
+    if primitives::contains_phrase(
         tokens,
         &["at", "the", "beginning", "of", "your", "next", "upkeep"],
     ) && primitives::contains_phrase(tokens, &["lose", "the", "game"])
         && (primitives::contains_phrase(tokens, &["if", "you", "dont"])
             || primitives::contains_phrase(tokens, &["if", "you", "don't"])
             || primitives::contains_phrase(tokens, &["if", "you", "do", "not"]))
-}
+    {
+        return Some(StatementLineFamily::PactNextUpkeep);
+    }
 
-pub(crate) fn looks_like_untap_all_during_each_other_players_untap_step_line_lexed(
-    tokens: &[OwnedLexToken],
-) -> bool {
-    primitives::parse_prefix(tokens, primitives::phrase(&["untap", "all"])).is_some()
-        && primitives::contains_any_phrase(
-            tokens,
-            &[
-                &["during", "each", "other", "player's", "untap", "step"],
-                &["during", "each", "other", "players", "untap", "step"],
-            ],
-        )
-}
-
-pub(crate) fn looks_like_next_turn_cant_cast_line_lexed(tokens: &[OwnedLexToken]) -> bool {
-    primitives::contains_any_phrase(
+    if primitives::contains_any_phrase(
         tokens,
         &[
             &["during", "that", "player's", "next", "turn"],
@@ -202,11 +212,11 @@ pub(crate) fn looks_like_next_turn_cant_cast_line_lexed(tokens: &[OwnedLexToken]
             &["cant", "cast"],
             &["can", "not", "cast"],
         ],
-    )
-}
+    ) {
+        return Some(StatementLineFamily::NextTurnCantCast);
+    }
 
-pub(crate) fn looks_like_divvy_statement_line_lexed(tokens: &[OwnedLexToken]) -> bool {
-    primitives::contains_any_phrase(
+    if primitives::contains_any_phrase(
         tokens,
         &[
             &["into", "two", "piles"],
@@ -218,11 +228,51 @@ pub(crate) fn looks_like_divvy_statement_line_lexed(tokens: &[OwnedLexToken]) ->
             &["chosen", "pile"],
             &["chosen", "piles"],
         ],
-    )
-}
+    ) {
+        return Some(StatementLineFamily::Divvy);
+    }
 
-pub(crate) fn looks_like_vote_statement_line_lexed(tokens: &[OwnedLexToken]) -> bool {
-    (primitives::parse_prefix(tokens, primitives::phrase(&["starting", "with"])).is_some()
+    if primitives::contains_phrase(
+        tokens,
+        &[
+            "ask", "a", "person", "outside", "the", "game", "to", "rate", "its", "new", "art",
+            "on", "a", "scale", "from", "1", "to", "5",
+        ],
+    ) {
+        return Some(StatementLineFamily::ArtRating);
+    }
+
+    let sentence_words_match = |sentence_tokens: &[OwnedLexToken], expected: &[&str]| {
+        let words = TokenWordView::new(sentence_tokens);
+        words.len() == expected.len() && words.slice_eq(0, expected)
+    };
+    let sentences = split_lexed_sentences(tokens)
+        .into_iter()
+        .filter(|sentence| !sentence.is_empty())
+        .collect::<Vec<_>>();
+    if matches!(
+        sentences.as_slice(),
+        [first, second, third]
+            if sentence_words_match(first, &["exile", "target", "nonland", "permanent"])
+                && sentence_words_match(
+                    second,
+                    &[
+                        "for", "as", "long", "as", "that", "card", "remains", "exiled", "its",
+                        "owner", "may", "play", "it",
+                    ],
+                )
+                && sentence_words_match(
+                    third,
+                    &[
+                        "a", "spell", "cast", "by", "an", "opponent", "this", "way", "costs",
+                        "2", "more", "to", "cast",
+                    ],
+                )
+    ) {
+        return Some(StatementLineFamily::ExilePlayCostsMore);
+    }
+
+    if (primitives::parse_prefix(tokens, primitives::phrase(&["starting", "with"])).is_some()
         || primitives::parse_prefix(tokens, primitives::phrase(&["each", "player", "votes"]))
             .is_some()
         || primitives::parse_prefix(
@@ -233,6 +283,38 @@ pub(crate) fn looks_like_vote_statement_line_lexed(tokens: &[OwnedLexToken]) -> 
         && (primitives::contains_word(tokens, "vote")
             || primitives::contains_word(tokens, "votes")
             || primitives::contains_word(tokens, "voting"))
+    {
+        return Some(StatementLineFamily::Vote);
+    }
+
+    let words = tokens
+        .iter()
+        .filter_map(OwnedLexToken::as_word)
+        .map(|word| word.to_ascii_lowercase())
+        .collect::<Vec<_>>();
+    let word_refs = words.iter().map(String::as_str).collect::<Vec<_>>();
+    if word_refs.is_empty() {
+        return None;
+    }
+
+    let starts_with_each_player_statement = matches!(
+        word_refs.as_slice(),
+        ["each", "player", third, ..] if is_statement_verb_word(third)
+    );
+    let starts_with_quantified_target_player_statement = matches!(
+        word_refs.as_slice(),
+        [_, "target", "player", fourth, ..] | [_, "target", "players", fourth, ..]
+            if is_statement_verb_word(fourth)
+    );
+
+    (starts_with_each_player_statement
+        || starts_with_quantified_target_player_statement
+        || is_statement_verb_word(word_refs[0])
+        || matches!(word_refs.as_slice(), ["this", "spell", third, ..] if is_statement_verb_word(third))
+        || matches!(word_refs.as_slice(), [_, second, ..] if is_statement_verb_word(second))
+        || matches!(word_refs.first(), Some(&"target")
+            if word_refs.iter().skip(1).any(|word| is_statement_verb_word(word))))
+    .then_some(StatementLineFamily::Generic)
 }
 
 fn is_statement_verb_word(word: &str) -> bool {
@@ -287,38 +369,36 @@ fn is_statement_verb_word(word: &str) -> bool {
     )
 }
 
-pub(crate) fn looks_like_generic_statement_line_lexed(tokens: &[OwnedLexToken]) -> bool {
-    let words = tokens
-        .iter()
-        .filter_map(OwnedLexToken::as_word)
-        .map(|word| word.to_ascii_lowercase())
-        .collect::<Vec<_>>();
-    let word_refs = words.iter().map(String::as_str).collect::<Vec<_>>();
-    if word_refs.is_empty() {
-        return false;
+pub(crate) fn classify_static_line_family_lexed(
+    tokens: &[OwnedLexToken],
+) -> Option<StaticLineFamily> {
+    if primitives::parse_prefix(tokens, primitives::phrase(&["untap", "all"])).is_some()
+        && primitives::contains_any_phrase(
+            tokens,
+            &[
+                &["during", "each", "other", "player's", "untap", "step"],
+                &["during", "each", "other", "players", "untap", "step"],
+            ],
+        )
+    {
+        return Some(StaticLineFamily::UntapAllDuringEachOtherPlayersUntapStep);
     }
 
-    let starts_with_each_player_statement = matches!(
-        word_refs.as_slice(),
-        ["each", "player", third, ..] if is_statement_verb_word(third)
-    );
-    let starts_with_quantified_target_player_statement = matches!(
-        word_refs.as_slice(),
-        [_, "target", "player", fourth, ..] | [_, "target", "players", fourth, ..]
-            if is_statement_verb_word(fourth)
-    );
+    if let Some(quote_idx) = primitives::find_token_index(tokens, |token| token.is_quote()) {
+        let head = trim_lexed_commas(&tokens[..quote_idx]);
+        if !head.is_empty()
+            && !head.iter().any(|token| token.kind == TokenKind::Period)
+            && primitives::words_match_any_prefix(head, &[&["this"], &["it"], &["all"], &["each"]])
+                .is_some()
+        {
+            let words = TokenWordView::new(head);
+            if words.find_word("has").is_some() || words.find_word("have").is_some() {
+                return Some(StaticLineFamily::GrantedQuotedAbility);
+            }
+        }
+    }
 
-    starts_with_each_player_statement
-        || starts_with_quantified_target_player_statement
-        || is_statement_verb_word(word_refs[0])
-        || matches!(word_refs.as_slice(), ["this", "spell", third, ..] if is_statement_verb_word(third))
-        || matches!(word_refs.as_slice(), [_, second, ..] if is_statement_verb_word(second))
-        || matches!(word_refs.first(), Some(&"target")
-            if word_refs.iter().skip(1).any(|word| is_statement_verb_word(word)))
-}
-
-pub(crate) fn looks_like_generic_static_line_lexed(tokens: &[OwnedLexToken]) -> bool {
-    primitives::parse_prefix(tokens, primitives::phrase(&["this"])).is_some()
+    (primitives::parse_prefix(tokens, primitives::phrase(&["this"])).is_some()
         || primitives::parse_prefix(tokens, primitives::phrase(&["enchanted"])).is_some()
         || primitives::parse_prefix(tokens, primitives::phrase(&["equipped"])).is_some()
         || primitives::parse_prefix(tokens, primitives::phrase(&["fortified"])).is_some()
@@ -331,7 +411,8 @@ pub(crate) fn looks_like_generic_static_line_lexed(tokens: &[OwnedLexToken]) -> 
         || primitives::contains_word(tokens, "can")
         || primitives::contains_word(tokens, "has")
         || primitives::contains_word(tokens, "have")
-        || primitives::contains_phrase(tokens, &["maximum", "hand", "size"])
+        || primitives::contains_phrase(tokens, &["maximum", "hand", "size"]))
+    .then_some(StaticLineFamily::Generic)
 }
 
 fn parse_modeled_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {

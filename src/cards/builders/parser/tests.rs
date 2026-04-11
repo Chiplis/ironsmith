@@ -43,6 +43,75 @@ fn parse_error_message<T>(result: Result<T, CardTextError>) -> String {
 }
 
 #[test]
+fn parser_mod_non_test_reexports_stay_minimal() {
+    let mod_rs = fs::read_to_string(Path::new(file!()).with_file_name("mod.rs"))
+        .expect("parser mod.rs should be readable");
+    let allowed = [
+        "pub(crate) use activation_and_restrictions::{ is_activate_only_restriction_sentence_lexed, is_trigger_only_restriction_sentence_lexed, };",
+        "pub(crate) use effect_sentences::{CarryContext, TokenCopyFollowup, Verb, parse_type_line};",
+        "pub(crate) use grammar::filters::parse_object_filter_with_grammar_entrypoint as parse_object_filter;",
+        "pub(crate) use grammar::filters::parse_spell_filter_with_grammar_entrypoint as parse_spell_filter;",
+        "pub(crate) use grammar::filters::parse_spell_filter_with_grammar_entrypoint_lexed as parse_spell_filter_lexed;",
+        "pub(crate) use grammar::structure::parse_predicate_with_grammar_entrypoint_lexed as parse_predicate_lexed;",
+        "pub(crate) use lexer::{OwnedLexToken, token_word_refs};",
+        "pub(crate) use object_filters::{ is_comparison_or_delimiter, merge_spell_filters, parse_object_filter_lexed, spell_filter_has_identity, };",
+        "pub(crate) use permission_helpers::{PermissionClauseSpec, PermissionLifetime};",
+        "pub(crate) use pipeline::parse_text_with_annotations;",
+        "pub(crate) use reference_model::{ReferenceEnv, ReferenceExports, ReferenceImports};",
+        "pub(crate) use shared_types::{ CompileContext, EffectLoweringContext, IdGenContext, LineInfo, LoweringFrame, MetadataLine, NormalizedLine, };",
+        "pub(crate) use util::{ SubjectAst, contains_until_end_of_turn, find_activation_cost_start, is_basic_color_word, is_sentence_helper_tag, parse_counter_type_from_tokens, parse_counter_type_word, parse_number, parse_number_or_x_value, parse_power_toughness, parse_scryfall_mana_cost, parse_target_phrase, replace_unbound_x_with_value, span_from_tokens, starts_with_activation_cost, token_index_for_word_index, value_contains_unbound_x, words, };",
+    ];
+
+    let mut non_test_reexports = Vec::new();
+    let mut prev_cfg_test = false;
+    let mut current_reexport = None::<String>;
+    for line in mod_rs.lines() {
+        let trimmed = line.trim();
+        if let Some(current) = current_reexport.as_mut() {
+            if !trimmed.is_empty() {
+                if !current.is_empty() {
+                    current.push(' ');
+                }
+                current.push_str(trimmed);
+            }
+            if trimmed.ends_with(';') {
+                if !prev_cfg_test {
+                    non_test_reexports
+                        .push(current.split_whitespace().collect::<Vec<_>>().join(" "));
+                }
+                current_reexport = None;
+                prev_cfg_test = false;
+            }
+            continue;
+        }
+        if trimmed == "#[cfg(test)]" {
+            prev_cfg_test = true;
+            continue;
+        }
+        if trimmed.starts_with("pub(crate) use ") {
+            current_reexport = Some(trimmed.to_string());
+            if trimmed.ends_with(';') {
+                if !prev_cfg_test {
+                    non_test_reexports
+                        .push(trimmed.split_whitespace().collect::<Vec<_>>().join(" "));
+                }
+                current_reexport = None;
+                prev_cfg_test = false;
+            }
+            continue;
+        }
+        if !trimmed.is_empty() {
+            prev_cfg_test = false;
+        }
+    }
+
+    assert_eq!(
+        non_test_reexports, allowed,
+        "non-test parser reexports changed; prefer importing concrete modules directly"
+    );
+}
+
+#[test]
 fn rewrite_lexer_tracks_spans_for_activation_lines() {
     let tokens = lex_line("{T}, Sacrifice a creature: Add {B}{B}.", 3)
         .expect("rewrite lexer should classify activation line");
@@ -668,8 +737,9 @@ fn rewrite_structure_untap_all_other_players_untap_step_shape_parser_recognizes_
         0,
     )
     .expect("rewrite lexer should classify untap-all other-players untap-step line");
-    assert!(
-        super::grammar::structure::looks_like_untap_all_during_each_other_players_untap_step_line_lexed(&tokens)
+    assert_eq!(
+        super::grammar::structure::classify_static_line_family_lexed(&tokens),
+        Some(super::grammar::structure::StaticLineFamily::UntapAllDuringEachOtherPlayersUntapStep)
     );
 }
 
@@ -680,7 +750,10 @@ fn rewrite_structure_next_turn_cast_lock_shape_parser_recognizes_line() {
         0,
     )
     .expect("rewrite lexer should classify next-turn cast-lock line");
-    assert!(super::grammar::structure::looks_like_next_turn_cant_cast_line_lexed(&tokens));
+    assert_eq!(
+        super::grammar::structure::classify_statement_line_family_lexed(&tokens),
+        Some(super::grammar::structure::StatementLineFamily::NextTurnCantCast)
+    );
 }
 
 #[test]
@@ -690,7 +763,10 @@ fn rewrite_structure_divvy_statement_shape_parser_recognizes_line() {
         0,
     )
     .expect("rewrite lexer should classify divvy pile line");
-    assert!(super::grammar::structure::looks_like_divvy_statement_line_lexed(&tokens));
+    assert_eq!(
+        super::grammar::structure::classify_statement_line_family_lexed(&tokens),
+        Some(super::grammar::structure::StatementLineFamily::Divvy)
+    );
 }
 
 #[test]
@@ -700,7 +776,36 @@ fn rewrite_structure_vote_statement_shape_parser_recognizes_line() {
         0,
     )
     .expect("rewrite lexer should classify vote statement line");
-    assert!(super::grammar::structure::looks_like_vote_statement_line_lexed(&tokens));
+    assert_eq!(
+        super::grammar::structure::classify_statement_line_family_lexed(&tokens),
+        Some(super::grammar::structure::StatementLineFamily::Vote)
+    );
+}
+
+#[test]
+fn rewrite_structure_art_rating_statement_shape_parser_recognizes_line() {
+    let tokens = lex_line(
+        "Ask a person outside the game to rate its new art on a scale from 1 to 5.",
+        0,
+    )
+    .expect("rewrite lexer should classify art-rating statement line");
+    assert_eq!(
+        super::grammar::structure::classify_statement_line_family_lexed(&tokens),
+        Some(super::grammar::structure::StatementLineFamily::ArtRating)
+    );
+}
+
+#[test]
+fn rewrite_structure_exile_play_costs_more_statement_shape_parser_recognizes_line() {
+    let tokens = lex_line(
+        "Exile target nonland permanent. For as long as that card remains exiled, its owner may play it. A spell cast by an opponent this way costs 2 more to cast.",
+        0,
+    )
+    .expect("rewrite lexer should classify exile-play-costs-more statement line");
+    assert_eq!(
+        super::grammar::structure::classify_statement_line_family_lexed(&tokens),
+        Some(super::grammar::structure::StatementLineFamily::ExilePlayCostsMore)
+    );
 }
 
 #[test]
@@ -714,7 +819,10 @@ fn rewrite_structure_generic_statement_shape_parser_recognizes_heads() {
     ] {
         let tokens =
             lex_line(text, 0).expect("rewrite lexer should classify generic statement-head line");
-        assert!(super::grammar::structure::looks_like_generic_statement_line_lexed(&tokens));
+        assert_eq!(
+            super::grammar::structure::classify_statement_line_family_lexed(&tokens),
+            Some(super::grammar::structure::StatementLineFamily::Generic)
+        );
     }
 }
 
@@ -728,8 +836,24 @@ fn rewrite_structure_generic_static_shape_parser_recognizes_heads() {
     ] {
         let tokens =
             lex_line(text, 0).expect("rewrite lexer should classify generic static-head line");
-        assert!(super::grammar::structure::looks_like_generic_static_line_lexed(&tokens));
+        assert_eq!(
+            super::grammar::structure::classify_static_line_family_lexed(&tokens),
+            Some(super::grammar::structure::StaticLineFamily::Generic)
+        );
     }
+}
+
+#[test]
+fn rewrite_structure_granted_quoted_static_shape_parser_recognizes_line() {
+    let tokens = lex_line(
+        "It has \"When this token dies, it deals 1 damage to any target.\"",
+        0,
+    )
+    .expect("rewrite lexer should classify granted quoted static line");
+    assert_eq!(
+        super::grammar::structure::classify_static_line_family_lexed(&tokens),
+        Some(super::grammar::structure::StaticLineFamily::GrantedQuotedAbility)
+    );
 }
 
 #[test]
@@ -6755,6 +6879,139 @@ fn rewrite_lexed_effect_sequence_builds_self_replacement_for_full_party_followup
     let debug = format!("{parsed:?}");
 
     assert!(debug.contains("SelfReplacement"), "{debug}");
+}
+
+fn registry_sentence_inputs(text: &str) -> Vec<super::effect_sentences::SentenceInput> {
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify registry test text");
+    split_lexed_sentences(&lexed)
+        .into_iter()
+        .map(super::effect_sentences::SentenceInput::from_lexed)
+        .collect()
+}
+
+#[test]
+fn rewrite_sequence_registry_matches_search_upkeep_lose_game_bundle() {
+    let sentences = registry_sentence_inputs(
+        "search your library for a green creature card, reveal it, put it into your hand, then shuffle. at the beginning of your next upkeep, pay {2}{g}{g}. if you don't, you lose the game.",
+    );
+
+    let matched = super::effect_sentences::try_parse_registered_sequence_rule(&sentences, 0)
+        .expect("registry lookup should not error")
+        .expect("registry should match search upkeep bundle");
+    let debug = format!("{:#?}", matched.effects);
+
+    assert_eq!(
+        matched.name,
+        "search-then-next-upkeep-unless-pays-lose-game"
+    );
+    assert_eq!(matched.consumed_sentences, 3);
+    assert!(debug.contains("DelayedUntilNextUpkeep"), "{debug}");
+    assert!(debug.contains("LoseGame"), "{debug}");
+}
+
+#[test]
+fn rewrite_sequence_registry_matches_tap_lock_followup() {
+    let sentences = registry_sentence_inputs(
+        "tap all creatures target player controls. they don't untap during their controllers' next untap steps for as long as this artifact remains tapped.",
+    );
+
+    let matched = super::effect_sentences::try_parse_registered_sequence_rule(&sentences, 0)
+        .expect("registry lookup should not error")
+        .expect("registry should match tap-lock bundle");
+    let debug = format!("{:#?}", matched.effects);
+
+    assert_eq!(
+        matched.name,
+        "tap-all-then-they-dont-untap-while-source-tapped"
+    );
+    assert_eq!(matched.consumed_sentences, 2);
+    assert!(debug.contains("TapAll"), "{debug}");
+    assert!(debug.contains("Untap"), "{debug}");
+    assert!(debug.contains("SourceIsTapped"), "{debug}");
+}
+
+#[test]
+fn rewrite_sequence_registry_matches_damage_prevention_counter_followup() {
+    let sentences = registry_sentence_inputs(
+        "prevent the next 1 damage that would be dealt to target creature this turn. for each 1 damage prevented this way, put a +1/+1 counter on it.",
+    );
+
+    let matched = super::effect_sentences::try_parse_registered_sequence_rule(&sentences, 0)
+        .expect("registry lookup should not error")
+        .expect("registry should match damage-prevention bundle");
+    let debug = format!("{:#?}", matched.effects);
+
+    assert_eq!(matched.name, "damage-prevention-then-put-counters");
+    assert_eq!(matched.consumed_sentences, 2);
+    assert!(
+        debug.contains("PreventDamageToTargetPutCounters"),
+        "{debug}"
+    );
+    assert!(debug.contains("PlusOnePlusOne"), "{debug}");
+}
+
+#[test]
+fn rewrite_sequence_registry_matches_consult_cast_bottom_bundle() {
+    let sentences = registry_sentence_inputs(
+        "Exile cards from the top of your library until you exile a nonland card. You may cast that card without paying its mana cost. Put all cards exiled this way that weren't cast this way on the bottom of your library in a random order.",
+    );
+
+    let matched = super::effect_sentences::try_parse_registered_sequence_rule(&sentences, 0)
+        .expect("registry lookup should not error")
+        .expect("registry should match consult cast-bottom bundle");
+    let debug = format!("{:#?}", matched.effects);
+
+    assert_eq!(matched.name, "exile-until-match-cast-rest-bottom");
+    assert_eq!(matched.consumed_sentences, 3);
+    assert!(debug.contains("CastTagged"), "{debug}");
+    assert!(
+        debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+        "{debug}"
+    );
+}
+
+#[test]
+fn rewrite_sequence_registry_matches_target_opponent_consult_cast_bottom_bundle() {
+    let sentences = registry_sentence_inputs(
+        "Target opponent exiles cards from the top of their library until they exile an instant or sorcery card. You may cast that card without paying its mana cost. Then put the exiled cards that weren't cast this way on the bottom of that library in a random order.",
+    );
+
+    let matched = super::effect_sentences::try_parse_registered_sequence_rule(&sentences, 0)
+        .expect("registry lookup should not error")
+        .expect("registry should match target-opponent consult cast-bottom bundle");
+    let debug = format!("{:#?}", matched.effects);
+
+    assert_eq!(matched.name, "exile-until-match-cast-rest-bottom");
+    assert_eq!(matched.consumed_sentences, 3);
+    assert!(debug.contains("ConsultTopOfLibrary"), "{debug}");
+    assert!(debug.contains("TargetOpponent"), "{debug}");
+    assert!(
+        debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+        "{debug}"
+    );
+}
+
+#[test]
+fn rewrite_sequence_registry_matches_looked_cards_kicker_override_bundle() {
+    let sentences = registry_sentence_inputs(
+        "Look at the top X cards of your library, where X is the number of lands you control. Put one of those cards into your hand. If this spell was kicked, put two of those cards into your hand instead. Put the rest on the bottom of your library in a random order.",
+    );
+
+    let matched = super::effect_sentences::try_parse_registered_sequence_rule(&sentences, 0)
+        .expect("registry lookup should not error")
+        .expect("registry should match looked-cards kicker override bundle");
+    let debug = format!("{:#?}", matched.effects);
+
+    assert_eq!(
+        matched.name,
+        "look-at-top-put-counted-into-hand-rest-bottom-kicker-override"
+    );
+    assert_eq!(matched.consumed_sentences, 4);
+    assert!(debug.contains("ThisSpellWasKicked"), "{debug}");
+    assert!(
+        debug.contains("PutSomeIntoHandRestOnBottomOfLibrary"),
+        "{debug}"
+    );
 }
 
 #[test]

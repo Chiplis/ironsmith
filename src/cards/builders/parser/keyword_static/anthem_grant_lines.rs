@@ -3467,7 +3467,7 @@ pub(crate) fn parse_heterogeneous_granted_tail(
             continue;
         }
 
-        if let Some(abilities) = super::parse_static_ability_ast_line_lexed(&segment)? {
+        if let Some(abilities) = parse_static_ability_ast_line_lexed(&segment)? {
             parsed.granted_static.extend(abilities);
             continue;
         }
@@ -3679,7 +3679,7 @@ fn parse_continuing_anthem_granted_segment(
         return Ok(Some(vec![grant_for_anthem_subject(clause, marker)]));
     }
 
-    if let Some(abilities) = super::parse_static_ability_ast_line_lexed(&ability_tokens)? {
+    if let Some(abilities) = parse_static_ability_ast_line_lexed(&ability_tokens)? {
         return Ok(Some(grant_static_anthem_abilities_for_subject(
             clause, abilities,
         )));

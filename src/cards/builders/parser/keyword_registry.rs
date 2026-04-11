@@ -9,6 +9,9 @@ use super::clause_support::parse_effect_sentences_lexed;
 use super::cst::{KeywordLineCst, KeywordLineKindCst};
 use super::grammar::primitives::{self as grammar, TokenWordView};
 use super::ir::RewriteKeywordLine;
+use super::keyword_families::{
+    KeywordDispatchHint, KeywordLineRule, keyword_line_rules, parse_keyword_dispatch_hint,
+};
 use super::keyword_static::parse_if_this_spell_costs_less_to_cast_line_lexed;
 use super::lexer::{OwnedLexToken, TokenKind, lex_line, render_token_slice, trim_lexed_commas};
 use super::lower::{
@@ -31,196 +34,6 @@ use super::util::{
     parse_you_may_rather_than_spell_cost_line_lexed, preserve_keyword_prefix_for_parse,
 };
 
-type KeywordRuleFn = fn(&PreprocessedLine, &[OwnedLexToken]) -> Result<bool, CardTextError>;
-type KeywordLowerFn = fn(&RewriteKeywordLine, &[OwnedLexToken]) -> Result<LineAst, CardTextError>;
-
-#[derive(Clone, Copy)]
-struct KeywordLineRule {
-    cst_kind: KeywordLineKindCst,
-    hints: &'static [KeywordDispatchHint],
-    matches: KeywordRuleFn,
-    lower: KeywordLowerFn,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum KeywordDispatchHint {
-    AdditionalCostFamily,
-    AlternativeOrExertFamily,
-    Bestow,
-    Bargain,
-    Buyback,
-    Channel,
-    Cycling,
-    Reinforce,
-    Equip,
-    Kicker,
-    Flashback,
-    Harmonize,
-    Multikicker,
-    Entwine,
-    Offspring,
-    Madness,
-    Escape,
-    MorphFamily,
-    Squad,
-    Transmute,
-    CastThisSpellOnly,
-    Gift,
-    Warp,
-}
-
-const KEYWORD_LINE_RULES: &[KeywordLineRule] = &[
-    KeywordLineRule {
-        cst_kind: KeywordLineKindCst::AdditionalCostChoice,
-        hints: &[KeywordDispatchHint::AdditionalCostFamily],
-        matches: matches_additional_cost_choice,
-        lower: lower_additional_cost_choice,
-    },
-    KeywordLineRule {
-        cst_kind: KeywordLineKindCst::AdditionalCost,
-        hints: &[KeywordDispatchHint::AdditionalCostFamily],
-        matches: matches_additional_cost,
-        lower: lower_additional_cost,
-    },
-    KeywordLineRule {
-        cst_kind: KeywordLineKindCst::AlternativeCast,
-        hints: &[KeywordDispatchHint::AlternativeOrExertFamily],
-        matches: matches_alternative_cast,
-        lower: lower_alternative_cast,
-    },
-    KeywordLineRule {
-        cst_kind: KeywordLineKindCst::Bestow,
-        hints: &[KeywordDispatchHint::Bestow],
-        matches: matches_bestow,
-        lower: lower_bestow,
-    },
-    KeywordLineRule {
-        cst_kind: KeywordLineKindCst::Bargain,
-        hints: &[KeywordDispatchHint::Bargain],
-        matches: matches_bargain,
-        lower: lower_bargain,
-    },
-    KeywordLineRule {
-        cst_kind: KeywordLineKindCst::Buyback,
-        hints: &[KeywordDispatchHint::Buyback],
-        matches: matches_buyback,
-        lower: lower_buyback,
-    },
-    KeywordLineRule {
-        cst_kind: KeywordLineKindCst::Channel,
-        hints: &[KeywordDispatchHint::Channel],
-        matches: matches_channel,
-        lower: lower_channel,
-    },
-    KeywordLineRule {
-        cst_kind: KeywordLineKindCst::Cycling,
-        hints: &[KeywordDispatchHint::Cycling],
-        matches: matches_cycling,
-        lower: lower_cycling,
-    },
-    KeywordLineRule {
-        cst_kind: KeywordLineKindCst::Reinforce,
-        hints: &[KeywordDispatchHint::Reinforce],
-        matches: matches_reinforce,
-        lower: lower_reinforce,
-    },
-    KeywordLineRule {
-        cst_kind: KeywordLineKindCst::Equip,
-        hints: &[KeywordDispatchHint::Equip],
-        matches: matches_equip,
-        lower: lower_equip,
-    },
-    KeywordLineRule {
-        cst_kind: KeywordLineKindCst::Kicker,
-        hints: &[KeywordDispatchHint::Kicker],
-        matches: matches_kicker,
-        lower: lower_kicker,
-    },
-    KeywordLineRule {
-        cst_kind: KeywordLineKindCst::Flashback,
-        hints: &[KeywordDispatchHint::Flashback],
-        matches: matches_flashback,
-        lower: lower_flashback,
-    },
-    KeywordLineRule {
-        cst_kind: KeywordLineKindCst::Harmonize,
-        hints: &[KeywordDispatchHint::Harmonize],
-        matches: matches_harmonize,
-        lower: lower_harmonize,
-    },
-    KeywordLineRule {
-        cst_kind: KeywordLineKindCst::Multikicker,
-        hints: &[KeywordDispatchHint::Multikicker],
-        matches: matches_multikicker,
-        lower: lower_multikicker,
-    },
-    KeywordLineRule {
-        cst_kind: KeywordLineKindCst::Entwine,
-        hints: &[KeywordDispatchHint::Entwine],
-        matches: matches_entwine,
-        lower: lower_entwine,
-    },
-    KeywordLineRule {
-        cst_kind: KeywordLineKindCst::Offspring,
-        hints: &[KeywordDispatchHint::Offspring],
-        matches: matches_offspring,
-        lower: lower_offspring,
-    },
-    KeywordLineRule {
-        cst_kind: KeywordLineKindCst::Madness,
-        hints: &[KeywordDispatchHint::Madness],
-        matches: matches_madness,
-        lower: lower_madness,
-    },
-    KeywordLineRule {
-        cst_kind: KeywordLineKindCst::Escape,
-        hints: &[KeywordDispatchHint::Escape],
-        matches: matches_escape,
-        lower: lower_escape,
-    },
-    KeywordLineRule {
-        cst_kind: KeywordLineKindCst::Morph,
-        hints: &[KeywordDispatchHint::MorphFamily],
-        matches: matches_morph,
-        lower: lower_morph,
-    },
-    KeywordLineRule {
-        cst_kind: KeywordLineKindCst::Squad,
-        hints: &[KeywordDispatchHint::Squad],
-        matches: matches_squad,
-        lower: lower_squad,
-    },
-    KeywordLineRule {
-        cst_kind: KeywordLineKindCst::Transmute,
-        hints: &[KeywordDispatchHint::Transmute],
-        matches: matches_transmute,
-        lower: lower_transmute,
-    },
-    KeywordLineRule {
-        cst_kind: KeywordLineKindCst::CastThisSpellOnly,
-        hints: &[KeywordDispatchHint::CastThisSpellOnly],
-        matches: matches_cast_this_spell_only,
-        lower: lower_cast_this_spell_only,
-    },
-    KeywordLineRule {
-        cst_kind: KeywordLineKindCst::Gift,
-        hints: &[KeywordDispatchHint::Gift],
-        matches: matches_gift,
-        lower: lower_gift,
-    },
-    KeywordLineRule {
-        cst_kind: KeywordLineKindCst::Warp,
-        hints: &[KeywordDispatchHint::Warp],
-        matches: matches_warp,
-        lower: lower_warp,
-    },
-    KeywordLineRule {
-        cst_kind: KeywordLineKindCst::ExertAttack,
-        hints: &[KeywordDispatchHint::AlternativeOrExertFamily],
-        matches: matches_exert_attack,
-        lower: lower_exert_attack,
-    },
-];
 
 pub(crate) fn parse_keyword_line_cst(
     line: &PreprocessedLine,
@@ -230,8 +43,9 @@ pub(crate) fn parse_keyword_line_cst(
     let Some(hint) = parse_keyword_dispatch_hint(&tokens) else {
         return Ok(None);
     };
+    let rules = keyword_line_rules();
 
-    for rule in KEYWORD_LINE_RULES {
+    for rule in &rules {
         if !rule.hints.contains(&hint) {
             continue;
         }
@@ -247,75 +61,6 @@ pub(crate) fn parse_keyword_line_cst(
 
     Ok(None)
 }
-
-fn parse_keyword_dispatch_hint(tokens: &[OwnedLexToken]) -> Option<KeywordDispatchHint> {
-    let hinted = grammar::parse_prefix(
-        tokens,
-        winnow::combinator::alt((
-            winnow::combinator::alt((
-                grammar::phrase(&[
-                    "as",
-                    "an",
-                    "additional",
-                    "cost",
-                    "to",
-                    "cast",
-                    "this",
-                    "spell",
-                ])
-                .value(KeywordDispatchHint::AdditionalCostFamily),
-                grammar::kw("you").value(KeywordDispatchHint::AlternativeOrExertFamily),
-                grammar::kw("if").value(KeywordDispatchHint::AlternativeOrExertFamily),
-                grammar::kw("bestow").value(KeywordDispatchHint::Bestow),
-                grammar::kw("bargain").value(KeywordDispatchHint::Bargain),
-                grammar::kw("buyback").value(KeywordDispatchHint::Buyback),
-                grammar::kw("channel").value(KeywordDispatchHint::Channel),
-                grammar::kw("cycling").value(KeywordDispatchHint::Cycling),
-            )),
-            winnow::combinator::alt((
-                grammar::kw("reinforce").value(KeywordDispatchHint::Reinforce),
-                grammar::kw("equip").value(KeywordDispatchHint::Equip),
-                grammar::kw("kicker").value(KeywordDispatchHint::Kicker),
-                grammar::kw("flashback").value(KeywordDispatchHint::Flashback),
-                grammar::kw("harmonize").value(KeywordDispatchHint::Harmonize),
-                grammar::kw("multikicker").value(KeywordDispatchHint::Multikicker),
-                grammar::kw("entwine").value(KeywordDispatchHint::Entwine),
-                grammar::kw("offspring").value(KeywordDispatchHint::Offspring),
-            )),
-            winnow::combinator::alt((
-                grammar::kw("madness").value(KeywordDispatchHint::Madness),
-                grammar::kw("escape").value(KeywordDispatchHint::Escape),
-                grammar::kw("morph").value(KeywordDispatchHint::MorphFamily),
-                grammar::kw("megamorph").value(KeywordDispatchHint::MorphFamily),
-                grammar::kw("squad").value(KeywordDispatchHint::Squad),
-                grammar::kw("transmute").value(KeywordDispatchHint::Transmute),
-                grammar::phrase(&["cast", "this", "spell", "only"])
-                    .value(KeywordDispatchHint::CastThisSpellOnly),
-                grammar::kw("gift").value(KeywordDispatchHint::Gift),
-                grammar::kw("warp").value(KeywordDispatchHint::Warp),
-            )),
-        )),
-    )
-    .map(|(hint, _)| hint);
-    if hinted.is_some() {
-        return hinted;
-    }
-
-    let word_view = TokenWordView::new(tokens);
-    let first = word_view.get(0)?;
-    if first == "basic" {
-        if word_view.get(1) == Some("landcycling") {
-            return Some(KeywordDispatchHint::Cycling);
-        }
-        return None;
-    }
-    if str_strip_suffix(first, "cycling").is_some() {
-        return Some(KeywordDispatchHint::Cycling);
-    }
-
-    None
-}
-
 pub(crate) fn lower_keyword_line_cst(
     keyword: KeywordLineCst,
 ) -> Result<RewriteKeywordLine, CardTextError> {
@@ -338,8 +83,9 @@ pub(crate) fn lower_keyword_line_ast(
     if let Some(chunk) = lower_keyword_special_cases(line, parse_tokens)? {
         return Ok(chunk);
     }
+    let rules = keyword_line_rules();
 
-    let rule = KEYWORD_LINE_RULES
+    let rule = rules
         .iter()
         .find(|rule| rule.cst_kind == line.kind)
         .ok_or_else(|| {
@@ -392,7 +138,7 @@ fn optional_cost_tail_effect_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedL
     (!effect_tokens.is_empty()).then_some(effect_tokens)
 }
 
-fn lower_additional_cost(
+pub(super) fn lower_additional_cost(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
@@ -406,7 +152,7 @@ fn lower_additional_cost(
     Ok(LineAst::AdditionalCost { effects })
 }
 
-fn lower_additional_cost_choice(
+pub(super) fn lower_additional_cost_choice(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
@@ -424,7 +170,7 @@ fn lower_additional_cost_choice(
     Ok(LineAst::AdditionalCostChoice { options })
 }
 
-fn lower_alternative_cast(
+pub(super) fn lower_alternative_cast(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
@@ -447,7 +193,7 @@ fn lower_alternative_cast(
     )))
 }
 
-fn lower_bestow(
+pub(super) fn lower_bestow(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
@@ -458,7 +204,7 @@ fn lower_bestow(
     )?))
 }
 
-fn lower_bargain(
+pub(super) fn lower_bargain(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
@@ -469,7 +215,7 @@ fn lower_bargain(
     )?))
 }
 
-fn lower_buyback(
+pub(super) fn lower_buyback(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
@@ -480,7 +226,7 @@ fn lower_buyback(
     )?))
 }
 
-fn lower_channel(
+pub(super) fn lower_channel(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
@@ -491,7 +237,7 @@ fn lower_channel(
     )?))
 }
 
-fn lower_cycling(
+pub(super) fn lower_cycling(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
@@ -502,7 +248,7 @@ fn lower_cycling(
     )?))
 }
 
-fn lower_equip(
+pub(super) fn lower_equip(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
@@ -513,7 +259,7 @@ fn lower_equip(
     )?))
 }
 
-fn lower_escape(
+pub(super) fn lower_escape(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
@@ -524,7 +270,7 @@ fn lower_escape(
     )?))
 }
 
-fn lower_flashback(
+pub(super) fn lower_flashback(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
@@ -535,7 +281,7 @@ fn lower_flashback(
     )?))
 }
 
-fn lower_harmonize(
+pub(super) fn lower_harmonize(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
@@ -546,7 +292,7 @@ fn lower_harmonize(
     )?))
 }
 
-fn lower_kicker(
+pub(super) fn lower_kicker(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
@@ -557,7 +303,7 @@ fn lower_kicker(
     )?))
 }
 
-fn lower_madness(
+pub(super) fn lower_madness(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
@@ -568,7 +314,7 @@ fn lower_madness(
     )?))
 }
 
-fn lower_morph(
+pub(super) fn lower_morph(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
@@ -579,7 +325,7 @@ fn lower_morph(
     )?))
 }
 
-fn lower_multikicker(
+pub(super) fn lower_multikicker(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
@@ -590,7 +336,7 @@ fn lower_multikicker(
     )?))
 }
 
-fn lower_offspring(
+pub(super) fn lower_offspring(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
@@ -601,7 +347,7 @@ fn lower_offspring(
     )?))
 }
 
-fn lower_reinforce(
+pub(super) fn lower_reinforce(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
@@ -612,7 +358,7 @@ fn lower_reinforce(
     )?))
 }
 
-fn lower_squad(
+pub(super) fn lower_squad(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
@@ -630,7 +376,7 @@ fn lower_squad(
     )?))
 }
 
-fn lower_transmute(
+pub(super) fn lower_transmute(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
@@ -641,7 +387,7 @@ fn lower_transmute(
     )?))
 }
 
-fn lower_entwine(
+pub(super) fn lower_entwine(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
@@ -652,7 +398,7 @@ fn lower_entwine(
     )?))
 }
 
-fn lower_cast_this_spell_only(
+pub(super) fn lower_cast_this_spell_only(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
@@ -666,14 +412,14 @@ fn lower_cast_this_spell_only(
     ))
 }
 
-fn lower_gift(
+pub(super) fn lower_gift(
     line: &RewriteKeywordLine,
     _tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
     lower_gift_keyword_line(line)
 }
 
-fn lower_warp(
+pub(super) fn lower_warp(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
@@ -684,176 +430,185 @@ fn lower_warp(
     )?))
 }
 
-fn lower_exert_attack(
+pub(super) fn lower_exert_attack(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
     lower_exert_attack_keyword_line(line, tokens)
 }
 
-fn matches_additional_cost_choice(
+pub(super) fn matches_additional_cost_choice(
     _line: &PreprocessedLine,
     tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
     parse_additional_cost_kind(tokens)
 }
 
-fn matches_additional_cost(
+pub(super) fn matches_additional_cost(
     _line: &PreprocessedLine,
     tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
     Ok(additional_cost_tail_tokens(tokens).is_some() && !parse_additional_cost_kind(tokens)?)
 }
 
-fn matches_alternative_cast(
+pub(super) fn matches_alternative_cast(
     _line: &PreprocessedLine,
     tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
     parse_alternative_cast_kind(tokens)
 }
 
-fn matches_bestow(
+pub(super) fn matches_bestow(
     _line: &PreprocessedLine,
     tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
     Ok(parse_bestow_line_lexed(tokens)?.is_some())
 }
 
-fn matches_bargain(
+pub(super) fn matches_bargain(
     _line: &PreprocessedLine,
     tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
     Ok(parse_bargain_line_lexed(tokens)?.is_some())
 }
 
-fn matches_buyback(
+pub(super) fn matches_buyback(
     _line: &PreprocessedLine,
     tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
     Ok(parse_buyback_line_lexed(tokens)?.is_some())
 }
 
-fn matches_channel(
+pub(super) fn matches_channel(
     _line: &PreprocessedLine,
     tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
     Ok(parse_channel_line_lexed(tokens)?.is_some())
 }
 
-fn matches_cycling(
+pub(super) fn matches_cycling(
     _line: &PreprocessedLine,
     tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
     Ok(parse_cycling_line_lexed(tokens)?.is_some())
 }
 
-fn matches_reinforce(
+pub(super) fn matches_reinforce(
     _line: &PreprocessedLine,
     tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
     Ok(parse_reinforce_line_lexed(tokens)?.is_some())
 }
 
-fn matches_equip(
+pub(super) fn matches_equip(
     _line: &PreprocessedLine,
     tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
     Ok(parse_equip_line_lexed(tokens)?.is_some())
 }
 
-fn matches_kicker(
+pub(super) fn matches_kicker(
     _line: &PreprocessedLine,
     tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
     Ok(parse_kicker_line_lexed(tokens)?.is_some())
 }
 
-fn matches_flashback(
+pub(super) fn matches_flashback(
     _line: &PreprocessedLine,
     tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
     Ok(parse_flashback_line_lexed(tokens)?.is_some())
 }
 
-fn matches_harmonize(
+pub(super) fn matches_harmonize(
     _line: &PreprocessedLine,
     tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
     Ok(parse_harmonize_line_lexed(tokens)?.is_some())
 }
 
-fn matches_multikicker(
+pub(super) fn matches_multikicker(
     _line: &PreprocessedLine,
     tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
     Ok(parse_multikicker_line_lexed(tokens)?.is_some())
 }
 
-fn matches_entwine(
+pub(super) fn matches_entwine(
     _line: &PreprocessedLine,
     tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
     Ok(parse_entwine_line_lexed(tokens)?.is_some())
 }
 
-fn matches_offspring(
+pub(super) fn matches_offspring(
     _line: &PreprocessedLine,
     tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
     Ok(parse_offspring_line_lexed(tokens)?.is_some())
 }
 
-fn matches_madness(
+pub(super) fn matches_madness(
     _line: &PreprocessedLine,
     tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
     Ok(parse_madness_line_lexed(tokens)?.is_some())
 }
 
-fn matches_escape(
+pub(super) fn matches_escape(
     _line: &PreprocessedLine,
     tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
     Ok(parse_escape_line_lexed(tokens)?.is_some())
 }
 
-fn matches_morph(line: &PreprocessedLine, tokens: &[OwnedLexToken]) -> Result<bool, CardTextError> {
+pub(super) fn matches_morph(
+    line: &PreprocessedLine,
+    tokens: &[OwnedLexToken],
+) -> Result<bool, CardTextError> {
     if is_morph_family_dash_keyword_line(&line.tokens) {
         return Ok(false);
     }
     Ok(parse_morph_keyword_line_lexed(tokens)?.is_some())
 }
 
-fn matches_squad(
+pub(super) fn matches_squad(
     _line: &PreprocessedLine,
     tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
     Ok(parse_squad_line_lexed(tokens)?.is_some())
 }
 
-fn matches_transmute(
+pub(super) fn matches_transmute(
     _line: &PreprocessedLine,
     tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
     Ok(parse_transmute_line_lexed(tokens)?.is_some())
 }
 
-fn matches_cast_this_spell_only(
+pub(super) fn matches_cast_this_spell_only(
     _line: &PreprocessedLine,
     tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
     Ok(parse_cast_this_spell_only_line_lexed(tokens)?.is_some())
 }
 
-fn matches_gift(line: &PreprocessedLine, _tokens: &[OwnedLexToken]) -> Result<bool, CardTextError> {
+pub(super) fn matches_gift(
+    line: &PreprocessedLine,
+    _tokens: &[OwnedLexToken],
+) -> Result<bool, CardTextError> {
     Ok(is_standard_gift_keyword_line(line.info.raw_line.as_str()))
 }
 
-fn matches_warp(_line: &PreprocessedLine, tokens: &[OwnedLexToken]) -> Result<bool, CardTextError> {
+pub(super) fn matches_warp(
+    _line: &PreprocessedLine,
+    tokens: &[OwnedLexToken],
+) -> Result<bool, CardTextError> {
     Ok(parse_warp_line_lexed(tokens)?.is_some())
 }
 
-fn matches_exert_attack(
+pub(super) fn matches_exert_attack(
     _line: &PreprocessedLine,
     tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {

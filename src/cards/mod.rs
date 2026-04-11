@@ -320,9 +320,11 @@ impl CardRegistry {
         {
             generated_registry::register_generated_parser_cards(self);
             self.register_builtin_handwritten_cards_if(|_| true);
-            return;
         }
-        generated_registry::register_generated_parser_cards(self);
+        #[cfg(not(test))]
+        {
+            generated_registry::register_generated_parser_cards(self);
+        }
     }
 
     /// Number of generated registry parse entries available for chunked preload.

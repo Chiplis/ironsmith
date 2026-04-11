@@ -16,7 +16,6 @@ use super::super::util::{
 };
 use super::super::value_helpers::parse_filter_comparison_tokens;
 use super::{parse_effect_chain, parse_effect_chain_inner, parse_effect_chain_lexed};
-use crate::card::{PowerToughness, PtValue};
 #[allow(unused_imports)]
 use crate::cards::builders::{
     CardTextError, EffectAst, ExtraTurnAnchorAst, IT_TAG, IfResultPredicate, PlayerAst,
@@ -331,39 +330,6 @@ pub(crate) fn parse_subtype_word(word: &str) -> Option<Subtype> {
         "vraska" => Some(Subtype::Vraska),
         _ => None,
     }
-}
-
-pub(crate) fn parse_power_toughness(raw: &str) -> Option<PowerToughness> {
-    let trimmed = raw.trim();
-    let parts: Vec<&str> = trimmed.split('/').collect();
-    if parts.len() != 2 {
-        return None;
-    }
-
-    let power = parse_pt_value(parts[0].trim())?;
-    let toughness = parse_pt_value(parts[1].trim())?;
-    Some(PowerToughness::new(power, toughness))
-}
-
-pub(crate) fn parse_pt_value(raw: &str) -> Option<PtValue> {
-    if raw == ".5" || raw == "0.5" {
-        return Some(PtValue::Fixed(0));
-    }
-    if raw == "*" {
-        return Some(PtValue::Star);
-    }
-    if let Some(stripped) = str_strip_prefix(raw, "*+") {
-        let value = stripped.trim().parse::<i32>().ok()?;
-        return Some(PtValue::StarPlus(value));
-    }
-    if let Some(stripped) = str_strip_suffix(raw, "+*") {
-        let value = stripped.trim().parse::<i32>().ok()?;
-        return Some(PtValue::StarPlus(value));
-    }
-    if let Ok(value) = raw.parse::<i32>() {
-        return Some(PtValue::Fixed(value));
-    }
-    None
 }
 
 pub(crate) fn parse_for_each_opponent_doesnt(
