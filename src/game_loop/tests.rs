@@ -15939,6 +15939,121 @@ fn test_silverglade_elemental_may_search_puts_forest_onto_battlefield() {
     assert!(forest_on_battlefield, "forest should be on battlefield");
 }
 
+#[test]
+fn test_oreskos_explorer_searches_for_players_with_more_lands_than_you() {
+    use crate::ability::AbilityKind;
+    use crate::card::PowerToughness;
+    use crate::cards::builders::CardDefinitionBuilder;
+    use crate::cards::definitions::basic_plains;
+    use crate::decision::DecisionMaker;
+    use crate::executor::ExecutionContext;
+    use crate::ids::{CardId, ObjectId, PlayerId};
+    use crate::mana::{ManaCost, ManaSymbol};
+    use crate::types::CardType;
+
+    struct ChoosePlainsDecisionMaker;
+
+    impl DecisionMaker for ChoosePlainsDecisionMaker {
+        fn decide_objects(
+            &mut self,
+            game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            ctx.candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .filter(|candidate| {
+                    game.object(candidate.id)
+                        .is_some_and(|obj| obj.name == "Plains")
+                })
+                .map(|candidate| candidate.id)
+                .take(2)
+                .collect()
+        }
+    }
+
+    let mut game = GameState::new(
+        vec![
+            "Alice".to_string(),
+            "Bob".to_string(),
+            "Charlie".to_string(),
+        ],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+
+    game.create_object_from_definition(&basic_plains(), alice, Zone::Battlefield);
+    game.create_object_from_definition(&basic_plains(), bob, Zone::Battlefield);
+    game.create_object_from_definition(&basic_plains(), bob, Zone::Battlefield);
+    game.create_object_from_definition(&basic_plains(), charlie, Zone::Battlefield);
+    game.create_object_from_definition(&basic_plains(), charlie, Zone::Battlefield);
+    game.create_object_from_definition(&basic_plains(), charlie, Zone::Battlefield);
+
+    let oreskos = CardDefinitionBuilder::new(CardId::new(), "Oreskos Explorer")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text(
+            "When this creature enters, search your library for up to X Plains cards, where X is the number of players who control more lands than you. Reveal those cards, put them into your hand, then shuffle.",
+        )
+        .expect("Oreskos Explorer text should parse");
+
+    let source_id = game.create_object_from_definition(&oreskos, alice, Zone::Battlefield);
+    let triggered = game
+        .object(source_id)
+        .expect("Oreskos Explorer should exist on the battlefield")
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) if triggered.trigger.display().contains("enters") => {
+                Some(triggered)
+            }
+            _ => None,
+        })
+        .expect("Oreskos Explorer should have an ETB trigger");
+
+    game.create_object_from_definition(&basic_plains(), alice, Zone::Library);
+    game.create_object_from_definition(&basic_plains(), alice, Zone::Library);
+    game.create_object_from_definition(&basic_plains(), alice, Zone::Library);
+    let library_before = game.player(alice).expect("alice exists").library.len();
+    let hand_before = game.player(alice).expect("alice exists").hand.len();
+
+    let mut dm = ChoosePlainsDecisionMaker;
+    let mut ctx = ExecutionContext::new_default(source_id, alice).with_decision_maker(&mut dm);
+    let outcome =
+        execute_effect(&mut game, &triggered.effects[0], &mut ctx).expect("effect resolves");
+
+    assert_eq!(
+        outcome.as_count(),
+        Some(2),
+        "Oreskos Explorer should search for two Plains when two players control more lands"
+    );
+
+    let alice_state = game.player(alice).expect("alice exists");
+    assert_eq!(
+        alice_state.hand.len(),
+        hand_before + 2,
+        "Oreskos Explorer should put two Plains into hand"
+    );
+    assert_eq!(
+        alice_state.library.len(),
+        library_before - 2,
+        "Oreskos Explorer should remove two cards from the library"
+    );
+
+    let plains_in_hand = alice_state
+        .hand
+        .iter()
+        .filter(|&&id| game.object(id).is_some_and(|obj| obj.name == "Plains"))
+        .count();
+    assert_eq!(plains_in_hand, 2, "Oreskos Explorer should find two Plains");
+}
+
 fn doubling_chant_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::new(), "Doubling Chant")
         .mana_cost(ManaCost::from_pips(vec![

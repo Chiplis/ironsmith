@@ -116,6 +116,18 @@ pub fn resolve_value(
                 .count();
             Ok(count as i32)
         }
+        Value::PlayersWhoControlMoreThanYou(filter) => {
+            let your_count = count_matching_objects_for_player(game, filter, ctx.controller, ctx);
+            let count = game
+                .players
+                .iter()
+                .filter(|player| player.is_in_game())
+                .filter(|player| {
+                    count_matching_objects_for_player(game, filter, player.id, ctx) > your_count
+                })
+                .count();
+            Ok(count as i32)
+        }
         Value::CountScaled(filter, multiplier) => {
             let filter_ctx = ctx.filter_context(game);
             if let Some(snapshots) = value_tagged_snapshots_for_filter(filter, ctx) {
@@ -1029,6 +1041,21 @@ fn value_candidate_ids_for_filter(
         }
     }
     ids
+}
+
+fn count_matching_objects_for_player(
+    game: &GameState,
+    filter: &crate::filter::ObjectFilter,
+    player_id: PlayerId,
+    ctx: &ExecutionContext,
+) -> usize {
+    let filter_ctx = ctx.filter_context(game);
+    value_candidate_ids_for_filter(game, filter, ctx)
+        .into_iter()
+        .filter_map(|id| game.object(id))
+        .filter(|obj| obj.controller == player_id)
+        .filter(|obj| filter.matches(obj, &filter_ctx, game))
+        .count()
 }
 
 fn value_tagged_snapshots_for_filter<'a>(

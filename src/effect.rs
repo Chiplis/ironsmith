@@ -881,6 +881,9 @@ pub enum Value {
     /// The number of players matching a filter
     CountPlayers(PlayerFilter),
 
+    /// The number of players who control more matching objects than you.
+    PlayersWhoControlMoreThanYou(crate::target::ObjectFilter),
+
     /// The size of a player's party (max one each of Cleric, Rogue, Warrior, Wizard).
     PartySize(PlayerFilter),
 
