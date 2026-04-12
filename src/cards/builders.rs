@@ -12022,7 +12022,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         assert!(
             abilities_debug.contains("LessThanOrEqualExpr")
                 && abilities_debug.contains("amassed_0")
-                && abilities_debug.contains("__it__"),
+                && abilities_debug.contains("PowerOf"),
             "expected target power bound to reference the amassed Army, got {abilities_debug}"
         );
     }

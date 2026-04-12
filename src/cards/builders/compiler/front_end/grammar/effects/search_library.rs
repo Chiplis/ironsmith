@@ -373,27 +373,33 @@ fn strip_search_library_color_count_phrase_lexed(
     ];
 
     for pattern in patterns {
-        let Some((start, _, rest)) = grammar::find_prefix(&trimmed, || grammar::phrase(pattern))
-        else {
-            continue;
-        };
-        let rest = trim_commas(rest);
-        let Some((count, consumed)) = parse_number(rest) else {
-            continue;
-        };
-        let mut stripped = trim_commas(&trimmed[..start]).to_vec();
-        stripped.extend_from_slice(trim_commas(&rest[consumed..]));
+        let mut cursor = 0usize;
+        while cursor < trimmed.len() {
+            let Some((_, rest)) =
+                primitives::parse_prefix(&trimmed[cursor..], primitives::phrase(pattern))
+            else {
+                cursor += 1;
+                continue;
+            };
+            let rest = trim_commas(rest);
+            let Some((count, consumed)) = parse_number(&rest) else {
+                cursor += 1;
+                continue;
+            };
+            let mut stripped = trim_commas(&trimmed[..cursor]).to_vec();
+            stripped.extend_from_slice(&trim_commas(&rest[consumed..]));
 
-        let colors_expr = crate::effect::Value::ColorsAmong(crate::target::ObjectFilter::tagged(
-            crate::cards::builders::IT_TAG,
-        ));
-        let comparison = crate::filter::Comparison::EqualExpr(Box::new(
-            crate::effect::Value::Add(
-                Box::new(colors_expr),
-                Box::new(crate::effect::Value::Fixed(count as i32)),
-            ),
-        ));
-        return Some((stripped, comparison));
+            let colors_expr = crate::effect::Value::ColorsAmong(
+                crate::target::ObjectFilter::tagged(crate::cards::builders::IT_TAG),
+            );
+            let comparison = crate::filter::Comparison::EqualExpr(Box::new(
+                crate::effect::Value::Add(
+                    Box::new(colors_expr),
+                    Box::new(crate::effect::Value::Fixed(count as i32)),
+                ),
+            ));
+            return Some((stripped, comparison));
+        }
     }
 
     None

@@ -220,9 +220,7 @@ impl EffectExecutor for MoveToZoneEffect {
                 EventOutcome::Replaced => {
                     any_replaced = true;
                 }
-                EventOutcome::NotApplicable => {
-                    continue;
-                }
+                EventOutcome::NotApplicable => continue,
             }
         }
 

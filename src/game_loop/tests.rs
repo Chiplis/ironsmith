@@ -7847,6 +7847,22 @@ fn test_may_effect_with_callback() {
         ) -> bool {
             false
         }
+
+        fn decide_objects(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            let legal: Vec<ObjectId> = ctx
+                .candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .map(|candidate| candidate.id)
+                .collect();
+            let required = ctx.min.max(1);
+            let count = ctx.max.unwrap_or(required).min(legal.len()).max(required);
+            legal.into_iter().take(count).collect()
+        }
     }
 
     let mut game = setup_game();
@@ -15250,7 +15266,7 @@ fn test_search_library_selects_specific_card() {
 fn test_evolving_door_finds_two_color_creature_and_respects_may_cast_decline() {
     use crate::ability::AbilityKind;
     use crate::decision::DecisionMaker;
-    use crate::executor::resolve_stack_entry_with_dm_and_triggers;
+    use crate::game_loop::resolve_stack_entry_with_dm_and_triggers;
 
     #[derive(Default)]
     struct DeclineMayDecisionMaker;
@@ -15262,6 +15278,22 @@ fn test_evolving_door_finds_two_color_creature_and_respects_may_cast_decline() {
             _ctx: &crate::decisions::context::BooleanContext,
         ) -> bool {
             false
+        }
+
+        fn decide_objects(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            let legal: Vec<ObjectId> = ctx
+                .candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .map(|candidate| candidate.id)
+                .collect();
+            let required = ctx.min.max(1);
+            let count = ctx.max.unwrap_or(required).min(legal.len()).max(required);
+            legal.into_iter().take(count).collect()
         }
     }
 
@@ -15283,10 +15315,10 @@ fn test_evolving_door_finds_two_color_creature_and_respects_may_cast_decline() {
         )
         .expect("evolving door probe should parse");
     let door_id = game.create_object_from_definition(&evolving_door, alice, Zone::Battlefield);
-
     let one_color_fodder = CardBuilder::new(CardId::new(), "One Color Fodder")
         .card_types(vec![CardType::Creature])
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Green]]))
+        .color_indicator(crate::color::ColorSet::GREEN)
         .power_toughness(PowerToughness::fixed(2, 2))
         .build();
     let _one_color_id = game.create_object_from_card(&one_color_fodder, alice, Zone::Library);
@@ -15297,6 +15329,9 @@ fn test_evolving_door_finds_two_color_creature_and_respects_may_cast_decline() {
             vec![ManaSymbol::Green],
             vec![ManaSymbol::Blue],
         ]))
+        .color_indicator(
+            crate::color::ColorSet::GREEN.union(crate::color::ColorSet::BLUE),
+        )
         .power_toughness(PowerToughness::fixed(3, 3))
         .build();
     let _two_color_id = game.create_object_from_card(&two_color_prize, alice, Zone::Library);
@@ -15304,6 +15339,7 @@ fn test_evolving_door_finds_two_color_creature_and_respects_may_cast_decline() {
     let sacrifice_fodder = CardBuilder::new(CardId::new(), "Sacrificial Fodder")
         .card_types(vec![CardType::Creature])
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Green]]))
+        .color_indicator(crate::color::ColorSet::GREEN)
         .power_toughness(PowerToughness::fixed(2, 2))
         .build();
     let fodder_id = game.create_object_from_card(&sacrifice_fodder, alice, Zone::Battlefield);
@@ -15338,12 +15374,38 @@ fn test_evolving_door_finds_two_color_creature_and_respects_may_cast_decline() {
     )
     .expect("activation should start");
 
+    let progress = match progress {
+        crate::decision::GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::SelectOptions(cost_ctx),
+        ) => {
+            let sacrifice_cost_index = cost_ctx
+                .options
+                .iter()
+                .find(|option| option.description.to_ascii_lowercase().contains("sacrifice"))
+                .map(|option| option.index)
+                .expect("expected a sacrifice cost option for Evolving Door");
+
+            apply_priority_response_with_dm(
+                &mut game,
+                &mut trigger_queue,
+                &mut state,
+                &PriorityResponse::NextCostChoice(sacrifice_cost_index),
+                &mut dm,
+            )
+            .expect("choosing the sacrifice cost should continue Evolving Door activation")
+        }
+        other => panic!(
+            "expected Evolving Door to ask for a cost choice first, got {:?}",
+            other
+        ),
+    };
+
     match progress {
         crate::decision::GameProgress::NeedsDecisionCtx(
             crate::decisions::context::DecisionContext::SelectObjects(_),
         ) => {}
         other => panic!(
-            "expected Evolving Door to ask for a sacrificed creature first, got {:?}",
+            "expected Evolving Door to ask for a sacrificed creature after choosing the cost, got {:?}",
             other
         ),
     }
@@ -16195,7 +16257,7 @@ fn test_the_stasis_coffin_activation_grants_protection_and_exiles_itself() {
     let mut state = PriorityLoopState::new(game.players_in_game());
     let mut dm = AutoPassDecisionMaker;
 
-    apply_priority_response_with_dm(
+    let progress = apply_priority_response_with_dm(
         &mut game,
         &mut trigger_queue,
         &mut state,
@@ -16204,10 +16266,52 @@ fn test_the_stasis_coffin_activation_grants_protection_and_exiles_itself() {
     )
     .expect("activating The Stasis Coffin should succeed");
 
-    assert_eq!(
-        game.object(coffin_id).expect("coffin exists").zone,
-        Zone::Exile,
-        "The Stasis Coffin should exile itself as part of the activation cost"
+    let progress = match progress {
+        crate::decision::GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::SelectOptions(cost_ctx),
+        ) => {
+            let exile_cost_index = cost_ctx
+                .options
+                .iter()
+                .find(|option| option.description.to_ascii_lowercase().contains("exile"))
+                .map(|option| option.index)
+                .expect("expected an exile cost option for The Stasis Coffin");
+
+            apply_priority_response_with_dm(
+                &mut game,
+                &mut trigger_queue,
+                &mut state,
+                &PriorityResponse::NextCostChoice(exile_cost_index),
+                &mut dm,
+            )
+            .expect("choosing the exile cost should continue The Stasis Coffin activation")
+        }
+        other => panic!(
+            "expected The Stasis Coffin to ask for a cost choice first, got {:?}",
+            other
+        ),
+    };
+
+    assert!(
+        matches!(
+            progress,
+            crate::decision::GameProgress::Continue
+                | crate::decision::GameProgress::NeedsDecisionCtx(
+                    crate::decisions::context::DecisionContext::Priority(_)
+                )
+        ),
+        "expected The Stasis Coffin activation to proceed to the priority window after choosing the exile cost, got {:?}",
+        progress
+    );
+
+    let coffin_exiled = game
+        .exile
+        .iter()
+        .filter_map(|&id| game.object(id))
+        .any(|obj| obj.name == "The Stasis Coffin" && obj.controller == alice);
+    assert!(
+        coffin_exiled,
+        "The Stasis Coffin should be in exile after its activation cost is paid"
     );
 
     resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)

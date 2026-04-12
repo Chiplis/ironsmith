@@ -673,6 +673,25 @@ fn resolve_filter_comparison_rhs_value(
             Some(count * *factor)
         }
         Value::ColorsAmong(filter) => {
+            let only_is_tagged_constraints = !filter.tagged_constraints.is_empty()
+                && filter.tagged_constraints.iter().all(|constraint| {
+                    constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                });
+            if only_is_tagged_constraints {
+                let mut seen = std::collections::HashSet::new();
+                let mut colors = ColorSet::new();
+                for constraint in &filter.tagged_constraints {
+                    let Some(snapshots) = ctx.tagged_objects.get(constraint.tag.as_str()) else {
+                        continue;
+                    };
+                    for snapshot in snapshots {
+                        if seen.insert(snapshot.object_id) {
+                            colors = colors.union(snapshot.colors);
+                        }
+                    }
+                }
+                return Some(colors.count() as i32);
+            }
             let mut colors = ColorSet::new();
             for object in game.objects_in_deterministic_order() {
                 if filter.matches(object, ctx, game) {
