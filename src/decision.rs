@@ -12302,7 +12302,9 @@ mod tests {
             .unwrap()
             .abilities
             .push(Ability::static_ability(StaticAbility::morph(
-                crate::mana::ManaCost::from_pips(vec![vec![crate::mana::ManaSymbol::Green]]),
+                crate::cost::TotalCost::mana(crate::mana::ManaCost::from_pips(vec![vec![
+                    crate::mana::ManaSymbol::Green,
+                ]])),
             )));
         game.set_face_down(creature_id);
         game.player_mut(alice)
@@ -12346,7 +12348,9 @@ mod tests {
             .unwrap()
             .abilities
             .push(Ability::static_ability(StaticAbility::morph(
-                crate::mana::ManaCost::from_pips(vec![vec![crate::mana::ManaSymbol::Green]]),
+                crate::cost::TotalCost::mana(crate::mana::ManaCost::from_pips(vec![vec![
+                    crate::mana::ManaSymbol::Green,
+                ]])),
             )));
         game.player_mut(alice)
             .unwrap()

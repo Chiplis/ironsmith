@@ -12089,7 +12089,7 @@ fn parse_morph_keyword_line() {
 
     let compiled = compiled_lines(&def).join(" ");
     assert!(
-        compiled.to_ascii_lowercase().contains("morph {3}{r}"),
+        compiled.to_ascii_lowercase().contains("morph") && compiled.contains("{3}{R}"),
         "expected morph line in compiled text, got {compiled}"
     );
 }
@@ -12117,7 +12117,7 @@ fn parse_megamorph_keyword_line() {
 
     let compiled = compiled_lines(&def).join(" ");
     assert!(
-        compiled.to_ascii_lowercase().contains("megamorph {5}{g}"),
+        compiled.to_ascii_lowercase().contains("megamorph") && compiled.contains("{5}{G}"),
         "expected megamorph line in compiled text, got {compiled}"
     );
 }
@@ -12131,8 +12131,42 @@ fn parse_morph_keyword_line_with_trailing_clause_fails() {
 
     let message = format!("{err:?}").to_ascii_lowercase();
     assert!(
-        message.contains("unsupported trailing morph clause"),
+        message.contains("unsupported morph cost clause"),
         "expected trailing morph clause parse error, got {message}"
+    );
+}
+
+#[test]
+fn parse_zombie_cutthroat_morph_life_cost_stays_static() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Zombie Cutthroat")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 4))
+        .parse_text("Morph—Pay 5 life.")
+        .expect("Zombie Cutthroat morph cost should parse");
+
+    let ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+
+    assert!(
+        ids.contains(&crate::static_abilities::StaticAbilityId::Morph),
+        "expected Zombie Cutthroat to compile as a morph static ability, got {ids:?}"
+    );
+    assert!(
+        def.spell_effect.is_none(),
+        "morph life cost should not lower into a top-level spell effect: {:?}",
+        def.spell_effect
+    );
+
+    let compiled = compiled_lines(&def).join(" ");
+    assert!(
+        compiled.contains("Morph") && compiled.contains("Pay 5 life"),
+        "expected Zombie Cutthroat compiled text to keep its morph life cost, got {compiled}"
     );
 }
 

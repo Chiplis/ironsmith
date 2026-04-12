@@ -27,7 +27,7 @@ use super::effect_sentences::find_verb;
 use super::grammar::primitives::{split_lexed_slices_on_or, token_slice_span};
 use super::keyword_static::keyword_action_to_static_ability;
 use super::keyword_static::parse_this_spell_cost_condition;
-use super::lexer::{OwnedLexToken, TokenKind, TokenWordView, lex_line};
+use super::lexer::{OwnedLexToken, TokenKind, TokenWordView, lex_line, render_token_slice};
 use super::object_filters::parse_object_filter;
 use super::token_primitives::{
     self as shared_tokens, find_index, find_window_by, slice_contains, slice_ends_with,
@@ -3384,28 +3384,30 @@ pub(crate) fn parse_morph_keyword_line(
         _ => return Ok(None),
     };
 
-    let Some((cost, consumed_cost_tokens)) =
-        leading_mana_cost_from_tokens(tokens.get(1..).unwrap_or_default())
-    else {
+    let cost_tokens = tokens.get(1..).unwrap_or_default();
+    if cost_tokens.is_empty() {
         let mechanic = if is_megamorph { "megamorph" } else { "morph" };
         return Err(CardTextError::ParseError(format!(
-            "{mechanic} keyword missing mana cost"
+            "{mechanic} keyword missing cost"
         )));
-    };
-    let consumed = 1 + consumed_cost_tokens;
+    }
 
-    let trailing_view = UtilWordView::new(tokens.get(consumed..).unwrap_or_default());
-    let trailing_words = trailing_view.to_word_refs();
-    if !trailing_words.is_empty() {
+    let cost = parse_activation_cost(cost_tokens).map_err(|_| {
+        let mechanic = if is_megamorph { "megamorph" } else { "morph" };
+        CardTextError::ParseError(format!(
+            "unsupported {mechanic} cost clause (line: '{}')",
+            render_token_slice(cost_tokens).trim()
+        ))
+    })?;
+    if cost.is_free() {
         let mechanic = if is_megamorph { "megamorph" } else { "morph" };
         return Err(CardTextError::ParseError(format!(
-            "unsupported trailing {mechanic} clause (line: '{}')",
-            trailing_words.join(" ")
+            "{mechanic} keyword missing cost"
         )));
     }
 
     let label = if is_megamorph { "Megamorph" } else { "Morph" };
-    let text = format!("{label} {}", cost.to_oracle());
+    let text = format!("{label}—{}", cost.display());
     let static_ability = if is_megamorph {
         StaticAbility::megamorph(cost)
     } else {

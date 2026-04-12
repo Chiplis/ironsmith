@@ -706,7 +706,7 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
     }
 
     /// Get turn-face-up cost if this is a morph/megamorph ability.
-    fn turn_face_up_cost(&self) -> Option<&crate::mana::ManaCost> {
+    fn turn_face_up_cost(&self) -> Option<&crate::cost::TotalCost> {
         None
     }
 
@@ -1316,7 +1316,7 @@ impl StaticAbility {
         self.0.ward_cost()
     }
 
-    pub fn turn_face_up_cost(&self) -> Option<&crate::mana::ManaCost> {
+    pub fn turn_face_up_cost(&self) -> Option<&crate::cost::TotalCost> {
         self.0.turn_face_up_cost()
     }
 
@@ -1752,11 +1752,11 @@ impl StaticAbility {
         Self::new(Bloodthirst::new(amount))
     }
 
-    pub fn morph(cost: crate::mana::ManaCost) -> Self {
+    pub fn morph(cost: crate::cost::TotalCost) -> Self {
         Self::new(Morph::new(cost))
     }
 
-    pub fn megamorph(cost: crate::mana::ManaCost) -> Self {
+    pub fn megamorph(cost: crate::cost::TotalCost) -> Self {
         Self::new(Megamorph::new(cost))
     }
 

@@ -101,13 +101,13 @@ fn describe_redirect_zone_phrase(zone: Zone) -> &'static str {
 }
 
 /// Morph keyword ability (turn face up by paying morph cost as a special action).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Morph {
-    pub cost: ManaCost,
+    pub cost: crate::cost::TotalCost,
 }
 
 impl Morph {
-    pub fn new(cost: ManaCost) -> Self {
+    pub fn new(cost: crate::cost::TotalCost) -> Self {
         Self { cost }
     }
 }
@@ -118,26 +118,26 @@ impl StaticAbilityKind for Morph {
     }
 
     fn display(&self) -> String {
-        format!("Morph {}", self.cost.to_oracle())
+        format!("Morph {}", self.cost.display())
     }
 
     fn is_keyword(&self) -> bool {
         true
     }
 
-    fn turn_face_up_cost(&self) -> Option<&ManaCost> {
+    fn turn_face_up_cost(&self) -> Option<&crate::cost::TotalCost> {
         Some(&self.cost)
     }
 }
 
 /// Megamorph keyword ability (turn face up by paying megamorph cost as a special action).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Megamorph {
-    pub cost: ManaCost,
+    pub cost: crate::cost::TotalCost,
 }
 
 impl Megamorph {
-    pub fn new(cost: ManaCost) -> Self {
+    pub fn new(cost: crate::cost::TotalCost) -> Self {
         Self { cost }
     }
 }
@@ -148,14 +148,14 @@ impl StaticAbilityKind for Megamorph {
     }
 
     fn display(&self) -> String {
-        format!("Megamorph {}", self.cost.to_oracle())
+        format!("Megamorph {}", self.cost.display())
     }
 
     fn is_keyword(&self) -> bool {
         true
     }
 
-    fn turn_face_up_cost(&self) -> Option<&ManaCost> {
+    fn turn_face_up_cost(&self) -> Option<&crate::cost::TotalCost> {
         Some(&self.cost)
     }
 
@@ -3373,7 +3373,9 @@ mod tests {
 
     #[test]
     fn test_morph_static_ability_reports_turn_face_up_cost() {
-        let cost = ManaCost::from_pips(vec![vec![crate::mana::ManaSymbol::Generic(3)]]);
+        let cost = crate::cost::TotalCost::mana(ManaCost::from_pips(vec![vec![
+            crate::mana::ManaSymbol::Generic(3),
+        ]]));
         let ability = Morph::new(cost.clone());
         assert_eq!(ability.id(), StaticAbilityId::Morph);
         assert_eq!(ability.turn_face_up_cost(), Some(&cost));
@@ -3382,7 +3384,9 @@ mod tests {
 
     #[test]
     fn test_megamorph_static_ability_reports_turn_face_up_cost() {
-        let cost = ManaCost::from_pips(vec![vec![crate::mana::ManaSymbol::Green]]);
+        let cost = crate::cost::TotalCost::mana(ManaCost::from_pips(vec![vec![
+            crate::mana::ManaSymbol::Green,
+        ]]));
         let ability = Megamorph::new(cost.clone());
         assert_eq!(ability.id(), StaticAbilityId::Megamorph);
         assert_eq!(ability.turn_face_up_cost(), Some(&cost));
