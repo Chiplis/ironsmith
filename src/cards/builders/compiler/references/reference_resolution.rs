@@ -1383,6 +1383,7 @@ fn resolve_effect_result_values_in_fields(
             resolve_effect_result_value(count, state)?;
         }
         EffectAst::ChooseObjects { count_value, .. }
+        | EffectAst::ChooseObjectsAcrossZones { count_value, .. }
         | EffectAst::SearchLibrary { count_value, .. } => {
             if let Some(count_value) = count_value.as_mut() {
                 resolve_effect_result_value(count_value, state)?;
@@ -1781,8 +1782,17 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                     .unwrap_or(0)
                 + bind_unresolved_it_in_tag(tag, seed_tag)
         }
-        EffectAst::ChooseObjectsAcrossZones { filter, tag, .. } => {
+        EffectAst::ChooseObjectsAcrossZones {
+            filter,
+            count_value,
+            tag,
+            ..
+        } => {
             bind_unresolved_it_in_filter(filter, seed_tag)
+                + count_value
+                    .as_mut()
+                    .map(|value| bind_unresolved_it_in_value(value, seed_tag))
+                    .unwrap_or(0)
                 + bind_unresolved_it_in_tag(tag, seed_tag)
         }
         EffectAst::ChoosePlayer { .. } => 0,

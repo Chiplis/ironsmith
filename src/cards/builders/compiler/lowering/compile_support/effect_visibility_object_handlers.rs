@@ -964,6 +964,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
         EffectAst::ChooseObjectsAcrossZones {
             filter,
             count,
+            count_value,
             player,
             tag,
             zones,
@@ -1004,6 +1005,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                 chooser,
                 tag.clone(),
             )
+            .with_count_value_opt(count_value.clone())
             .in_zones(zones.clone());
             if let Some(search_mode) = search_mode {
                 choose_effect = match search_mode {

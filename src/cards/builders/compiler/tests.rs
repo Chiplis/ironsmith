@@ -4456,7 +4456,7 @@ fn rewrite_search_library_count_prefix_parser_tracks_search_modes() {
 
     assert_eq!(
         format!("{:?}", parsed.count),
-        format!("{:?}", crate::cards::builders::ChoiceCount::dynamic_x())
+        format!("{:?}", crate::cards::builders::ChoiceCount::up_to_dynamic_x())
     );
     assert_eq!(
         parsed.search_mode,

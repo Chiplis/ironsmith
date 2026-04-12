@@ -991,6 +991,7 @@ pub(crate) enum EffectAst {
     ChooseObjectsAcrossZones {
         filter: ObjectFilter,
         count: ChoiceCount,
+        count_value: Option<Value>,
         player: PlayerAst,
         tag: TagKey,
         zones: Vec<Zone>,

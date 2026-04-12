@@ -26,7 +26,8 @@ use super::super::search_library_support::{
     apply_search_library_mana_constraint, extract_search_library_mana_constraint,
     is_same_name_that_reference_words, normalize_search_library_filter,
     parse_restriction_duration_lexed, parse_search_library_disjunction_filter,
-    split_search_same_name_reference_filter, word_slice_mentions_nth_from_top,
+    split_search_library_count_value_clause_lexed, split_search_same_name_reference_filter,
+    word_slice_mentions_nth_from_top,
     word_slice_starts_with_any, zone_slice_contains,
 };
 use super::super::token_primitives::{
@@ -1025,16 +1026,24 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     }
 
     let raw_filter_tokens = trim_commas(&search_tokens[filter_start..filter_end]);
+    let (filter_tokens, count_value) =
+        if let Some((base_filter_tokens, count_value)) =
+            split_search_library_count_value_clause_lexed(&raw_filter_tokens)?
+        {
+            (base_filter_tokens, Some(count_value))
+        } else {
+            (raw_filter_tokens.clone(), None)
+        };
     let (filter_tokens, mana_constraint) = if let Some((base_filter_tokens, mana_constraint)) =
-        extract_search_library_mana_constraint(&raw_filter_tokens)
+        extract_search_library_mana_constraint(&filter_tokens)
     {
         (base_filter_tokens, Some(mana_constraint))
     } else {
-        (raw_filter_tokens.clone(), None)
+        (filter_tokens.clone(), None)
     };
     let same_name_split = parse_search_library_same_name_reference_lexed(
-        &raw_filter_tokens,
-        filter_tokens,
+        &filter_tokens,
+        filter_tokens.clone(),
         &words_all,
     )?;
     let filter_tokens = same_name_split.filter_tokens;
@@ -1115,6 +1124,7 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
         let mut per_object_effects = vec![EffectAst::ChooseObjectsAcrossZones {
             filter,
             count,
+            count_value: count_value.clone(),
             player: chooser,
             tag: searched_tag.clone(),
             zones: search_zones.clone(),
@@ -1184,6 +1194,7 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
             sequence.push(EffectAst::ChooseObjectsAcrossZones {
                 filter: named_filter,
                 count: ChoiceCount::exactly(1),
+                count_value: None,
                 player: chooser,
                 tag: searched_tag.clone(),
                 zones: zones.clone(),
@@ -1213,6 +1224,7 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
         let mut sequence = vec![EffectAst::ChooseObjectsAcrossZones {
             filter,
             count,
+            count_value: count_value.clone(),
             player: chooser,
             tag: chosen_tag.clone(),
             zones: search_zones_override.unwrap_or_else(|| vec![Zone::Library]),
@@ -1235,6 +1247,7 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
         let mut sequence = vec![EffectAst::ChooseObjectsAcrossZones {
             filter,
             count,
+            count_value: count_value.clone(),
             player: chooser,
             tag: chosen_tag.clone(),
             zones: search_zones.clone(),
@@ -1306,6 +1319,7 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
             EffectAst::ChooseObjectsAcrossZones {
                 filter,
                 count,
+                count_value: count_value.clone(),
                 player: chooser,
                 tag: searched_tag.clone(),
                 zones: vec![Zone::Library],
@@ -1384,11 +1398,11 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
             SearchLibrarySameNameReference::Choose { filter, tag } => {
                 effects.insert(
                     0,
-                    EffectAst::ChooseObjects {
-                        filter,
-                        count: ChoiceCount::exactly(1),
-                        count_value: None,
-                        player,
+            EffectAst::ChooseObjects {
+                filter,
+                count: ChoiceCount::exactly(1),
+                count_value: None,
+                player,
                         tag,
                     },
                 );
