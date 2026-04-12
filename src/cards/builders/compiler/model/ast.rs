@@ -448,6 +448,7 @@ pub(crate) enum PredicateAst {
     YouAttackedWithExactlyNOtherCreaturesThisCombat(u32),
     CreatureDiedThisTurn,
     CreatureDiedThisTurnOrMore(u32),
+    PermanentLeftBattlefieldThisTurn,
     PermanentLeftBattlefieldUnderYourControlThisTurn,
     YouHaveFullParty,
     YouAttackedThisTurn,

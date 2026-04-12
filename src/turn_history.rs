@@ -438,6 +438,13 @@ impl TurnHistory {
             .count() as u32
     }
 
+    pub fn permanents_left_battlefield_this_turn(&self) -> u32 {
+        self.projected_records()
+            .filter_map(|record| record.event.downcast::<ZoneChangeEvent>())
+            .filter(|event| event.from == Zone::Battlefield)
+            .count() as u32
+    }
+
     pub fn creatures_left_battlefield_under_controller(&self, player: PlayerId) -> u32 {
         self.projected_records()
             .filter_map(|record| record.event.downcast::<ZoneChangeEvent>())

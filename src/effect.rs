@@ -2119,6 +2119,9 @@ pub enum Condition {
     /// An opponent lost life this turn.
     OpponentLostLifeThisTurn,
 
+    /// A permanent left the battlefield this turn.
+    PermanentLeftBattlefieldThisTurn,
+
     /// A permanent left the battlefield under your control this turn.
     PermanentLeftBattlefieldUnderYourControlThisTurn,
 

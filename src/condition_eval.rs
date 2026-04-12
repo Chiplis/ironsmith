@@ -322,6 +322,9 @@ fn evaluate_condition_shared_core(
                     .any(|opponent| game.turn_history.player_lost_life_this_turn(*opponent)),
             )
         }
+        Condition::PermanentLeftBattlefieldThisTurn => {
+            Some(game.turn_history.permanents_left_battlefield_this_turn() > 0)
+        }
         Condition::PermanentLeftBattlefieldUnderYourControlThisTurn => Some(
             game.turn_history
                 .permanents_left_battlefield_under_controller(ctx.controller)
@@ -441,6 +444,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::CastSpellThisTurn => {}
         Condition::AttackedThisTurn => {}
         Condition::OpponentLostLifeThisTurn => {}
+        Condition::PermanentLeftBattlefieldThisTurn => {}
         Condition::PermanentLeftBattlefieldUnderYourControlThisTurn => {}
         Condition::SourceWasCast => {}
         Condition::ThisSpellWasCastFromZone(..) => {}
@@ -1271,6 +1275,7 @@ pub fn evaluate_condition_external(
         | Condition::CastSpellThisTurn
         | Condition::AttackedThisTurn
         | Condition::OpponentLostLifeThisTurn
+        | Condition::PermanentLeftBattlefieldThisTurn
         | Condition::PermanentLeftBattlefieldUnderYourControlThisTurn
         | Condition::SourceWasCast
         | Condition::NoSpellsWereCastLastTurn
@@ -1949,6 +1954,7 @@ fn evaluate_condition_simple(
         | Condition::CastSpellThisTurn
         | Condition::AttackedThisTurn
         | Condition::OpponentLostLifeThisTurn
+        | Condition::PermanentLeftBattlefieldThisTurn
         | Condition::PermanentLeftBattlefieldUnderYourControlThisTurn
         | Condition::SourceWasCast
         | Condition::NoSpellsWereCastLastTurn
@@ -2906,6 +2912,7 @@ fn evaluate_condition(
         | Condition::CastSpellThisTurn
         | Condition::AttackedThisTurn
         | Condition::OpponentLostLifeThisTurn
+        | Condition::PermanentLeftBattlefieldThisTurn
         | Condition::PermanentLeftBattlefieldUnderYourControlThisTurn
         | Condition::SourceWasCast
         | Condition::NoSpellsWereCastLastTurn

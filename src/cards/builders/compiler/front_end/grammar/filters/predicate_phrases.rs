@@ -721,6 +721,25 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
 
     if matches!(
         filtered.as_slice(),
+        ["no", "permanent", "left", "battlefield", "this", "turn"]
+            | ["no", "permanents", "left", "battlefield", "this", "turn"]
+    ) {
+        return Ok(PredicateAst::Not(Box::new(
+            PredicateAst::PermanentLeftBattlefieldThisTurn,
+        )));
+    }
+
+    if matches!(
+        filtered.as_slice(),
+        ["a", "permanent", "left", "battlefield", "this", "turn"]
+            | ["permanent", "left", "battlefield", "this", "turn"]
+            | ["permanents", "left", "battlefield", "this", "turn"]
+    ) {
+        return Ok(PredicateAst::PermanentLeftBattlefieldThisTurn);
+    }
+
+    if matches!(
+        filtered.as_slice(),
         [
             "permanent",
             "left",

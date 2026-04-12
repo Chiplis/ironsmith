@@ -444,6 +444,9 @@ pub(crate) fn compile_condition_from_predicate_ast(
         }
         PredicateAst::YourTurn => Condition::YourTurn,
         PredicateAst::CreatureDiedThisTurn => Condition::CreatureDiedThisTurn,
+        PredicateAst::PermanentLeftBattlefieldThisTurn => {
+            Condition::PermanentLeftBattlefieldThisTurn
+        }
         PredicateAst::PermanentLeftBattlefieldUnderYourControlThisTurn => {
             Condition::PermanentLeftBattlefieldUnderYourControlThisTurn
         }

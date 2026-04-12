@@ -160,6 +160,97 @@ fn test_monarch_end_step_draws_a_card() {
 }
 
 #[test]
+fn sarevok_deathbringer_end_step_hits_active_player_when_no_permanent_left() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let sarevok = CardDefinitionBuilder::new(CardId::from_raw(81_001), "Sarevok, Deathbringer")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 4))
+        .parse_text(
+            "At the beginning of each player's end step, if no permanents left the battlefield this turn, that player loses X life, where X is Sarevok's power.\nChoose a Background (You can have a Background as a second commander.)",
+        )
+        .expect("Sarevok, Deathbringer should parse");
+    game.create_object_from_definition(&sarevok, alice, Zone::Battlefield);
+
+    game.turn.active_player = bob;
+    game.turn.phase = Phase::Ending;
+    game.turn.step = Some(crate::game_state::Step::End);
+
+    let bob_life_before = game.player(bob).expect("bob exists").life;
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Sarevok should trigger on each player's end step when nothing left the battlefield"
+    );
+
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Sarevok trigger should go on the stack");
+    resolve_stack_entry(&mut game).expect("Sarevok trigger should resolve");
+
+    assert_eq!(
+        game.player(bob).expect("bob exists").life,
+        bob_life_before - 3,
+        "Sarevok should make the active player lose life equal to its power"
+    );
+}
+
+#[test]
+fn sarevok_deathbringer_skips_end_step_if_a_permanent_left_battlefield() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let sarevok = CardDefinitionBuilder::new(CardId::from_raw(81_002), "Sarevok, Deathbringer")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 4))
+        .parse_text(
+            "At the beginning of each player's end step, if no permanents left the battlefield this turn, that player loses X life, where X is Sarevok's power.\nChoose a Background (You can have a Background as a second commander.)",
+        )
+        .expect("Sarevok, Deathbringer should parse");
+    game.create_object_from_definition(&sarevok, alice, Zone::Battlefield);
+
+    let departing = CardBuilder::new(CardId::from_raw(81_003), "Leaving Permanent")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let departing_id = game.create_object_from_card(&departing, alice, Zone::Battlefield);
+    let departing_snapshot = {
+        let object = game
+            .object(departing_id)
+            .expect("departing permanent exists");
+        crate::snapshot::ObjectSnapshot::from_object(object, &game)
+    };
+    let zone_change = crate::events::RawEvent::new(
+        crate::events::ZoneChangeEvent::with_cause(
+            departing_id,
+            Zone::Battlefield,
+            Zone::Graveyard,
+            crate::events::cause::EventCause::effect(),
+            Some(departing_snapshot.clone()),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    game.turn_history
+        .record_event(&zone_change, Some(departing_snapshot), None);
+
+    game.turn.active_player = bob;
+    game.turn.phase = Phase::Ending;
+    game.turn.step = Some(crate::game_state::Step::End);
+
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+
+    assert!(
+        trigger_queue.entries.is_empty(),
+        "Sarevok should not trigger if any permanent left the battlefield this turn"
+    );
+}
+
+#[test]
 fn exert_attack_choice_draws_card_and_skips_only_next_untap() {
     #[derive(Default)]
     struct AcceptBooleanDecisionMaker;
