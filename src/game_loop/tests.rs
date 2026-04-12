@@ -16004,18 +16004,27 @@ fn test_oreskos_explorer_searches_for_players_with_more_lands_than_you() {
         .expect("Oreskos Explorer text should parse");
 
     let source_id = game.create_object_from_definition(&oreskos, alice, Zone::Battlefield);
-    let triggered = game
-        .object(source_id)
-        .expect("Oreskos Explorer should exist on the battlefield")
-        .abilities
-        .iter()
-        .find_map(|ability| match &ability.kind {
-            AbilityKind::Triggered(triggered) if triggered.trigger.display().contains("enters") => {
-                Some(triggered)
-            }
-            _ => None,
-        })
-        .expect("Oreskos Explorer should have an ETB trigger");
+    let triggered_effect = {
+        let triggered = game
+            .object(source_id)
+            .expect("Oreskos Explorer should exist on the battlefield")
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Triggered(triggered)
+                    if triggered.trigger.display().contains("enters") =>
+                {
+                    Some(triggered)
+                }
+                _ => None,
+            })
+            .expect("Oreskos Explorer should have an ETB trigger");
+        assert!(
+            !triggered.effects.is_empty(),
+            "Oreskos Explorer trigger should have effects"
+        );
+        triggered.effects[0].clone()
+    };
 
     game.create_object_from_definition(&basic_plains(), alice, Zone::Library);
     game.create_object_from_definition(&basic_plains(), alice, Zone::Library);
@@ -16026,7 +16035,7 @@ fn test_oreskos_explorer_searches_for_players_with_more_lands_than_you() {
     let mut dm = ChoosePlainsDecisionMaker;
     let mut ctx = ExecutionContext::new_default(source_id, alice).with_decision_maker(&mut dm);
     let outcome =
-        execute_effect(&mut game, &triggered.effects[0], &mut ctx).expect("effect resolves");
+        execute_effect(&mut game, &triggered_effect, &mut ctx).expect("effect resolves");
 
     assert_eq!(
         outcome.as_count(),
