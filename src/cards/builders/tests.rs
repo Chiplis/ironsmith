@@ -3,12 +3,13 @@ use crate::ability::AbilityKind;
 use crate::color::Color;
 use crate::compiled_text::{compiled_lines, oracle_like_lines};
 use crate::effects::{
-    AddManaEffect, ChooseModeEffect, CreateTokenEffect, GainLifeEffect,
-    ReturnFromGraveyardToHandEffect,
+    AddManaEffect, ChooseModeEffect, ConsultTopOfLibraryEffect, CreateTokenEffect, GainLifeEffect,
+    MoveToZoneEffect, ReturnFromGraveyardToHandEffect, TaggedEffect, TargetOnlyEffect,
 };
 use crate::object::AuraAttachmentFilter;
 use crate::static_abilities::StaticAbilityId;
 use crate::target::{ChooseSpec, PlayerFilter};
+use crate::zone::Zone;
 use crate::{ObjectId, PlayerId};
 use std::collections::HashMap;
 use std::sync::OnceLock;
@@ -23779,18 +23780,49 @@ fn parse_mind_funeral_tracks_passive_consult_count_and_graveyard_followup() {
         )
         .expect("Mind Funeral should parse");
 
-    let spell_debug = format!("{:#?}", def.spell_effect);
+    let spell_effect = def.spell_effect.as_ref().expect("spell effects");
+    assert_eq!(spell_effect.segments.len(), 1);
+    let effects = &spell_effect.segments[0].default_effects;
+    let graveyard_move_is_ok = |effect: &Effect| {
+        effect
+            .downcast_ref::<MoveToZoneEffect>()
+            .is_some_and(|move_to_zone| {
+                move_to_zone.zone == Zone::Graveyard
+                    && matches!(&move_to_zone.target, ChooseSpec::Tagged(_))
+            })
+            || effect.downcast_ref::<TaggedEffect>().is_some_and(|effect| {
+                effect
+                    .effect
+                    .downcast_ref::<MoveToZoneEffect>()
+                    .is_some_and(|move_to_zone| {
+                        move_to_zone.zone == Zone::Graveyard
+                            && matches!(
+                                &move_to_zone.target,
+                                ChooseSpec::Tagged(tag) if tag == &effect.tag
+                            )
+                    })
+            })
+    };
     assert!(
-        spell_debug.contains("ConsultTopOfLibraryEffect")
-            && spell_debug.contains("MatchCount")
-            && spell_debug.contains("Fixed(4)")
-            && spell_debug.contains("MoveToZoneEffect")
-            && spell_debug.contains("zone: Graveyard"),
-        "expected Mind Funeral to lower to a counted consult plus graveyard move, got {spell_debug}"
-    );
-    assert!(
-        !spell_debug.contains("RevealTopEffect"),
-        "expected Mind Funeral to avoid single-card reveal lowering, got {spell_debug}"
+        effects.len() == 3
+            && effects[0]
+                .downcast_ref::<TargetOnlyEffect>()
+                .is_some_and(|effect| {
+                    matches!(&effect.target, ChooseSpec::Player(PlayerFilter::Opponent))
+                })
+            && effects[1]
+                .downcast_ref::<ConsultTopOfLibraryEffect>()
+                .is_some_and(|effect| {
+                    effect.mode == crate::effects::consult_helpers::LibraryConsultMode::Reveal
+                        && matches!(
+                            &effect.stop_rule,
+                            crate::effects::ConsultTopOfLibraryStopRule::MatchCount(
+                                crate::effect::Value::Fixed(4)
+                            )
+                        )
+                })
+            && graveyard_move_is_ok(&effects[2]),
+        "expected Mind Funeral to lower to a target-only consult plus tagged graveyard move, got {spell_effect:?}"
     );
 
     let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
