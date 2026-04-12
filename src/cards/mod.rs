@@ -699,6 +699,18 @@ fn try_compile_builtin_card_by_name(name: &str) -> Option<CardDefinition> {
                 .is_some_and(|stripped| stripped == requested_key)
     });
 
+    let targeted_match = registry
+        .get(name)
+        .cloned()
+        .or_else(|| loose_name_match(&registry, name).cloned());
+    if targeted_match.is_some() {
+        return targeted_match;
+    }
+
+    // Multi-face handwritten cards can have a printed name that does not map cleanly
+    // back to the constructor function name. If the targeted probe misses, fall back
+    // to the handwritten-only registry before consulting generated data.
+    registry.register_builtin_handwritten_cards_if(|_| true);
     registry
         .get(name)
         .cloned()

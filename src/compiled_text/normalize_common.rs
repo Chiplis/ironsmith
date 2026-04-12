@@ -2977,7 +2977,8 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         return "When this creature is put into your graveyard from the battlefield, at the beginning of the next end step, you lose 1 life and return this card to your hand.".to_string();
     }
     if let Some(rest) = strip_prefix_ascii_ci(&normalized, "Whenever a ")
-        && let Some(subject) = rest.strip_suffix(" you own dies, put it on top of its owner's library.")
+        && let Some(subject) =
+            rest.strip_suffix(" you own dies, put it on top of its owner's library.")
     {
         return format!(
             "Whenever a {subject} is put into your graveyard from the battlefield, put that card on top of your library."

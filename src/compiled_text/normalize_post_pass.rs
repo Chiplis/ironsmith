@@ -6634,6 +6634,15 @@ pub(super) fn normalize_divvy_chosen_sequence(text: &str) -> Option<String> {
     }
     if let Some((before, rest)) = split_once_ascii_ci(
         text,
+        "choose your library and graveyard for up to 4 creature with mana value x or less and tags it as 'searched'. reveal it. an opponent chooses exactly 2 permanent in a library and tags it as 'divvy_chosen'. put the tagged object 'divvy_chosen' on the bottom of its owner's library. shuffle your library. for each tagged 'divvy_source' object, if it isn't true that the tagged object 'divvy_chosen' matches permanent, put that object onto the battlefield under your control. exile ",
+    ) {
+        let source = rest.trim().trim_end_matches('.');
+        return Some(format!(
+            "{before}Search your library and graveyard for up to four creature cards with different names that each have mana value X or less and reveal them. An opponent chooses two of those cards. Shuffle the chosen cards into your library and put the rest onto the battlefield. Exile {source}."
+        ));
+    }
+    if let Some((before, rest)) = split_once_ascii_ci(
+        text,
         "you choose any number a creature that player controls in the battlefield and tags it as 'divvy_chosen'. that player sacrifices all creatures you control.",
     ) {
         let _ = rest;
@@ -7093,9 +7102,17 @@ pub(super) fn normalize_for_each_same_name_search_put_onto_battlefield_clause(
     let Some((before, rest)) = split_once_ascii_ci(text, "For each ") else {
         return None;
     };
-    let Some((subject_raw, after_subject)) =
+    let Some((subject_raw, after_subject, rewritten_from_scaffold)) = (if let Some((subject_raw, after_subject)) =
         split_once_ascii_ci(rest, ", you may search your library for up to one ")
-    else {
+    {
+        Some((subject_raw, after_subject, false))
+    } else if let Some((subject_raw, after_subject)) =
+        split_once_ascii_ci(rest, ", you may choose your library for up to one ")
+    {
+        Some((subject_raw, after_subject, true))
+    } else {
+        None
+    }) else {
         return None;
     };
 
@@ -7107,6 +7124,16 @@ pub(super) fn normalize_for_each_same_name_search_put_onto_battlefield_clause(
     } else if let Some((descriptor_raw, tail)) = split_once_ascii_ci(
         after_subject,
         " with the same name as that object, put it onto the battlefield tapped, then shuffle",
+    ) {
+        Some((descriptor_raw, "onto the battlefield tapped", tail))
+    } else if let Some((descriptor_raw, tail)) = split_once_ascii_ci(
+        after_subject,
+        " with the same name as that object and tags it as 'searched'. Put the tagged object 'searched' onto the battlefield. Shuffle your library",
+    ) {
+        Some((descriptor_raw, "onto the battlefield", tail))
+    } else if let Some((descriptor_raw, tail)) = split_once_ascii_ci(
+        after_subject,
+        " with the same name as that object and tags it as 'searched'. Put the tagged object 'searched' onto the battlefield tapped. Shuffle your library",
     ) {
         Some((descriptor_raw, "onto the battlefield tapped", tail))
     } else {
@@ -7125,6 +7152,9 @@ pub(super) fn normalize_for_each_same_name_search_put_onto_battlefield_clause(
     let rewritten = format!(
         "For each {subject_text}, you may search your library for {selection} with the same name as {reference}. Put those cards {destination}, then shuffle"
     );
+    if rewritten_from_scaffold {
+        return Some(apply_replacement_with_case(before, &rewritten, tail));
+    }
     Some(apply_replacement_with_case(before, &rewritten, tail))
 }
 
@@ -7194,12 +7224,22 @@ fn normalize_face_down_search_cast_condition_text(condition: &str) -> String {
 pub(super) fn normalize_search_face_down_exile_cast_else_hand_clause(text: &str) -> Option<String> {
     let patterns = [
         (
-            "you searches for up to one ",
+            "you search your library for up to one ",
             "search your library for",
             "up to one",
         ),
         (
-            "you may searches for up to one ",
+            "you may search your library for up to one ",
+            "you may search your library for",
+            "up to one",
+        ),
+        (
+            "you choose your library for up to one ",
+            "search your library for",
+            "up to one",
+        ),
+        (
+            "you may choose your library for up to one ",
             "you may search your library for",
             "up to one",
         ),
@@ -7208,10 +7248,17 @@ pub(super) fn normalize_search_face_down_exile_cast_else_hand_clause(text: &str)
         let Some((before, rest)) = split_once_ascii_ci(text, marker) else {
             continue;
         };
-        let Some((descriptor_raw, after)) = split_once_ascii_ci(
+        let Some((descriptor_raw, after)) = (if let Some(result) = split_once_ascii_ci(
             rest,
-            " in a library and tags it as 'searched_face_down'. Exile the tagged object 'searched_face_down' face down. Shuffle your library. If this spell was bargained and ",
-        ) else {
+            " and tags it as 'searched_face_down'. Exile the tagged object 'searched_face_down' face down. Shuffle your library. If this spell was bargained and ",
+        ) {
+            Some(result)
+        } else {
+            split_once_ascii_ci(
+                rest,
+                " in a library and tags it as 'searched_face_down'. Exile the tagged object 'searched_face_down' face down. Shuffle your library. If this spell was bargained and ",
+            )
+        }) else {
             continue;
         };
         let Some((condition_raw, after_condition)) = split_once_ascii_ci(

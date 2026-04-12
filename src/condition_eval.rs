@@ -2661,8 +2661,10 @@ fn evaluate_condition(
         }
         Condition::TaggedObjectMatches(tag, filter) => {
             let filter_ctx = ctx.filter_context(game);
-            if let Some(snapshot) = ctx.get_tagged(tag.as_str()) {
-                return Ok(filter.matches_snapshot(snapshot, &filter_ctx, game));
+            if let Some(tagged) = ctx.get_tagged_all(tag.as_str()) {
+                return Ok(tagged
+                    .iter()
+                    .any(|snapshot| filter.matches_snapshot(snapshot, &filter_ctx, game)));
             }
 
             // Some compile-time conditional lowering paths synthesize a branch-local tag

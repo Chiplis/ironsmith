@@ -995,6 +995,9 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             }
             let followup_player = choose_followup_player_filter(&resolved_filter, &chooser)
                 .unwrap_or_else(|| chooser.clone());
+            let chooses_tagged_pool = resolved_filter.tagged_constraints.iter().any(|constraint| {
+                matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
+            });
             let mut choose_effect = crate::effects::ChooseObjectsEffect::new(
                 resolved_filter,
                 *count,
@@ -1012,7 +1015,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                         choose_effect.as_all_matching_search()
                     }
                 };
-            } else if slice_contains(zones.as_slice(), &Zone::Library) {
+            } else if slice_contains(zones.as_slice(), &Zone::Library) && !chooses_tagged_pool {
                 choose_effect = choose_effect.as_search();
             }
             let effect = Effect::new(choose_effect);

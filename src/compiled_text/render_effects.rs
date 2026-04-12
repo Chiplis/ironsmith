@@ -6793,7 +6793,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         let choose_verb = player_verb(&chooser, "choose", "chooses");
         let search_like = choose.is_search
             || (choose_primary_zone(choose) == Some(Zone::Library)
-                && choose.tag.as_str().starts_with("searched_"));
+                && choose.tag.as_str().starts_with("searched"));
         let filter_text = choose.filter.description();
         let search_origin = if search_like {
             describe_search_origin_zones(choose)
@@ -6819,9 +6819,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         } else {
             format!("{} {}", describe_choice_count(&choose.count), filter_text)
         };
-        if search_like
-            && let Some(search_origin) = search_origin
-        {
+        if search_like && let Some(search_origin) = search_origin {
             let pronoun = if choose.count.max == Some(1) {
                 "it"
             } else {
@@ -6835,7 +6833,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             return format!(
                 "{} {} {} for {}{} and tags it as '{}'",
                 chooser,
-                choose_verb,
+                player_verb(&chooser, "search", "searches"),
                 search_origin,
                 choice_text,
                 reveal_clause,

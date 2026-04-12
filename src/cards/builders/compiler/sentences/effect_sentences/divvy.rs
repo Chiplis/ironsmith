@@ -17,11 +17,17 @@ fn membership_predicate_for_iterated_object(tag: &str) -> PredicateAst {
     )
 }
 
-fn parse_single_effect_sentence(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
-    parse_effect_sentence_lexed(tokens)?
-        .into_iter()
-        .next()
-        .ok_or_else(|| CardTextError::ParseError("missing effect sentence".to_string()))
+fn parse_effect_sentence_sequence(
+    tokens: &[OwnedLexToken],
+) -> Result<Vec<EffectAst>, CardTextError> {
+    let effects = parse_effect_sentence_lexed(tokens)?;
+    if effects.is_empty() {
+        Err(CardTextError::ParseError(
+            "missing effect sentence".to_string(),
+        ))
+    } else {
+        Ok(effects)
+    }
 }
 
 fn normalized_divvy_match_word(word: &str) -> String {
@@ -573,8 +579,8 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         &sentence_words,
         &["the", "other", "into", "your", "graveyard"],
     ) {
-        return Ok(Some(vec![
-            parse_single_effect_sentence(sentences[0].lowered())?,
+        let mut effects = parse_effect_sentence_sequence(sentences[0].lowered())?;
+        effects.extend(vec![
             EffectAst::TagMatchingObjects {
                 filter: ObjectFilter::tagged(TagKey::from(IT_TAG)),
                 zones: vec![Zone::Exile],
@@ -607,7 +613,8 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                     }],
                 }],
             },
-        ]));
+        ]);
+        return Ok(Some(effects));
     }
 
     if matches_sentence_sequence(
@@ -660,8 +667,8 @@ pub(super) fn try_parse_divvy_sentence_sequence(
             ],
         ],
     ) {
-        return Ok(Some(vec![
-            parse_single_effect_sentence(sentences[0].lowered())?,
+        let mut effects = parse_effect_sentence_sequence(sentences[0].lowered())?;
+        effects.extend(vec![
             EffectAst::TagMatchingObjects {
                 filter: ObjectFilter::tagged(TagKey::from(IT_TAG)),
                 zones: vec![Zone::Exile],
@@ -698,7 +705,8 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                     }],
                 }],
             },
-        ]));
+        ]);
+        return Ok(Some(effects));
     }
 
     if first_sentence_has_prefix(
@@ -742,8 +750,8 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         &sentence_words,
         &["put", "the", "rest", "onto", "the", "battlefield"],
     ) {
-        return Ok(Some(vec![
-            parse_single_effect_sentence(sentences[0].lowered())?,
+        let mut effects = parse_effect_sentence_sequence(sentences[0].lowered())?;
+        effects.extend(vec![
             EffectAst::TagMatchingObjects {
                 filter: ObjectFilter::tagged(TagKey::from(IT_TAG)),
                 zones: vec![Zone::Library, Zone::Graveyard],
@@ -757,17 +765,6 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                 zones: vec![Zone::Library, Zone::Graveyard],
                 search_mode: None,
             },
-            EffectAst::MoveToZone {
-                target: TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
-                zone: Zone::Library,
-                to_top: false,
-                battlefield_controller: ReturnControllerAst::Preserve,
-                battlefield_tapped: false,
-                attached_to: None,
-            },
-            EffectAst::ShuffleLibrary {
-                player: PlayerAst::You,
-            },
             EffectAst::ForEachTagged {
                 tag: TagKey::from("divvy_source"),
                 effects: vec![EffectAst::Conditional {
@@ -777,17 +774,32 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                         target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
                         zone: Zone::Battlefield,
                         to_top: false,
-                        battlefield_controller: ReturnControllerAst::You,
+                        battlefield_controller: ReturnControllerAst::Preserve,
                         battlefield_tapped: false,
                         attached_to: None,
                     }],
                 }],
             },
+            EffectAst::ForEachTagged {
+                tag: TagKey::from("divvy_chosen"),
+                effects: vec![EffectAst::MoveToZone {
+                    target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                    zone: Zone::Library,
+                    to_top: false,
+                    battlefield_controller: ReturnControllerAst::Preserve,
+                    battlefield_tapped: false,
+                    attached_to: None,
+                }],
+            },
+            EffectAst::ShuffleLibrary {
+                player: PlayerAst::You,
+            },
             EffectAst::Exile {
                 target: TargetAst::Source(None),
                 face_down: false,
             },
-        ]));
+        ]);
+        return Ok(Some(effects));
     }
 
     if sentences.len() >= 2

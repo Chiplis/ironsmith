@@ -402,6 +402,9 @@ pub struct FilterContext {
     /// The current iterated player (for ForEachOpponent/ForEachPlayer effects)
     pub iterated_player: Option<PlayerId>,
 
+    /// X value carried by the current resolving spell or ability, if any.
+    pub x_value: Option<u32>,
+
     /// The player chosen for the source permanent or spell, if any.
     pub chosen_player: Option<PlayerId>,
 
@@ -464,6 +467,12 @@ impl FilterContext {
     /// Set the iterated player (for ForEachOpponent/ForEachPlayer effects).
     pub fn with_iterated_player(mut self, player: Option<PlayerId>) -> Self {
         self.iterated_player = player;
+        self
+    }
+
+    /// Set the current X value for dynamic comparisons in filters.
+    pub fn with_x_value(mut self, x_value: Option<u32>) -> Self {
+        self.x_value = x_value;
         self
     }
 
@@ -648,12 +657,42 @@ fn resolve_filter_comparison_rhs_value(
         counters.values().copied().sum::<u32>() as i32
     }
 
+    fn resolve_x_value(
+        game: &crate::game_state::GameState,
+        ctx: &FilterContext,
+        stack_entry: Option<&crate::game_state::StackEntry>,
+    ) -> Option<i32> {
+        ctx.x_value
+            .or_else(|| stack_entry.and_then(|entry| entry.x_value))
+            .or_else(|| {
+                ctx.source.and_then(|source| {
+                    game.stack
+                        .iter()
+                        .find(|entry| entry.object_id == source)
+                        .and_then(|entry| entry.x_value)
+                })
+            })
+            .or_else(|| {
+                ctx.source
+                    .and_then(|source| game.object(source).and_then(|object| object.x_value))
+            })
+            .map(|value| value as i32)
+    }
+
     match rhs {
         Value::Fixed(value) => Some(*value),
+        Value::X => resolve_x_value(game, ctx, stack_entry),
+        Value::XTimes(multiplier) => {
+            resolve_x_value(game, ctx, stack_entry).map(|value| value * multiplier)
+        }
         Value::Add(left, right) => Some(
             resolve_filter_comparison_rhs_value(left, game, ctx, stack_entry)?
                 + resolve_filter_comparison_rhs_value(right, game, ctx, stack_entry)?,
         ),
+        Value::Scaled(inner, multiplier) => {
+            resolve_filter_comparison_rhs_value(inner, game, ctx, stack_entry)
+                .map(|value| value * multiplier)
+        }
         Value::Count(filter) => {
             let mut count = 0i32;
             for object in game.objects_in_deterministic_order() {

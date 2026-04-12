@@ -508,6 +508,7 @@ fn evaluate_value(
                 attacking_player: None,
                 your_commanders: Vec::new(),
                 iterated_player: None,
+                x_value: None,
                 chosen_player: None,
                 target_players: Vec::new(),
                 target_objects: Vec::new(),

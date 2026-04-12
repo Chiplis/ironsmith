@@ -830,6 +830,7 @@ impl<'a> ExecutionContext<'a> {
         let mut filter_ctx = game
             .filter_context_for(self.controller, Some(self.source))
             .with_iterated_player(self.iterated_player)
+            .with_x_value(self.x_value)
             .with_chosen_player(
                 self.chosen_player
                     .or_else(|| game.chosen_player(self.source)),

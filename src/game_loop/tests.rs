@@ -2422,9 +2422,10 @@ fn test_mortuary_triggers_for_owned_creatures_even_if_control_changed() {
             .expect("alice exists")
             .library
             .last()
-            .copied(),
-        Some(alice_owned_creature),
-        "Mortuary should put the owned creature on top of your library"
+            .and_then(|id| game.object(*id))
+            .map(|object| object.name.as_str()),
+        Some("Alice Creature"),
+        "Mortuary should put the owned creature onto the top of your library"
     );
 
     let bob_owned_creature = create_creature(&mut game, "Bob Creature", bob, 2, 2);
@@ -2444,7 +2445,10 @@ fn test_mortuary_triggers_for_owned_creatures_even_if_control_changed() {
         game.player(bob)
             .expect("bob exists")
             .graveyard
-            .contains(&bob_owned_creature),
+            .iter()
+            .any(|id| game
+                .object(*id)
+                .is_some_and(|object| object.name == "Bob Creature")),
         "the non-owned creature should remain in its owner's graveyard"
     );
 }
@@ -2607,7 +2611,9 @@ fn ecological_appreciation_puts_two_chosen_cards_back_and_recruits_the_rest() {
 
     fn test_creature(name: &str, mana_value: u8) -> crate::cards::CardDefinition {
         CardDefinitionBuilder::new(CardId::new(), name)
-            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(mana_value)]]))
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(
+                mana_value,
+            )]]))
             .card_types(vec![CardType::Creature])
             .power_toughness(PowerToughness::fixed(2, 2))
             .build()
@@ -2635,7 +2641,11 @@ fn ecological_appreciation_puts_two_chosen_cards_back_and_recruits_the_rest() {
                     ctx.min, 0,
                     "Ecological Appreciation search should allow finding fewer than four cards"
                 );
-                assert_eq!(ctx.max, Some(4), "Ecological Appreciation should look for up to four");
+                assert_eq!(
+                    ctx.max,
+                    Some(4),
+                    "Ecological Appreciation should look for up to four"
+                );
                 return legal.into_iter().map(|candidate| candidate.id).collect();
             }
 
@@ -2644,7 +2654,11 @@ fn ecological_appreciation_puts_two_chosen_cards_back_and_recruits_the_rest() {
                 "the opponent should make the divvy choice"
             );
             assert_eq!(ctx.min, 2, "the opponent should choose exactly two cards");
-            assert_eq!(ctx.max, Some(2), "the opponent should choose exactly two cards");
+            assert_eq!(
+                ctx.max,
+                Some(2),
+                "the opponent should choose exactly two cards"
+            );
 
             ["Library Alpha", "Graveyard Alpha"]
                 .into_iter()
@@ -2667,28 +2681,20 @@ fn ecological_appreciation_puts_two_chosen_cards_back_and_recruits_the_rest() {
     let bob = PlayerId::from_index(1);
 
     let text = "Mana cost: {X}{2}{G}\nType: Sorcery\nSearch your library and graveyard for up to four creature cards with different names that each have mana value X or less and reveal them. An opponent chooses two of those cards. Shuffle the chosen cards into your library and put the rest onto the battlefield. Exile Ecological Appreciation.";
-    let ecological_appreciation = CardDefinitionBuilder::new(
-        CardId::from_raw(91_001),
-        "Ecological Appreciation",
-    )
-    .parse_text(text)
-    .expect("Ecological Appreciation should parse");
+    let ecological_appreciation =
+        CardDefinitionBuilder::new(CardId::from_raw(91_001), "Ecological Appreciation")
+            .parse_text(text)
+            .expect("Ecological Appreciation should parse");
 
-    let source_id = game.create_object_from_definition(
-        &ecological_appreciation,
-        alice,
-        Zone::Stack,
-    );
+    let source_id =
+        game.create_object_from_definition(&ecological_appreciation, alice, Zone::Stack);
     let _library_alpha = game.create_object_from_definition(
         &test_creature("Library Alpha", 1),
         alice,
         Zone::Library,
     );
-    let _library_beta = game.create_object_from_definition(
-        &test_creature("Library Beta", 2),
-        alice,
-        Zone::Library,
-    );
+    let _library_beta =
+        game.create_object_from_definition(&test_creature("Library Beta", 2), alice, Zone::Library);
     let _graveyard_alpha = game.create_object_from_definition(
         &test_creature("Graveyard Alpha", 1),
         alice,
@@ -2716,12 +2722,18 @@ fn ecological_appreciation_puts_two_chosen_cards_back_and_recruits_the_rest() {
     };
 
     assert_eq!(
-        zone_has_name(&game.player(alice).expect("alice exists").library, "Library Alpha"),
+        zone_has_name(
+            &game.player(alice).expect("alice exists").library,
+            "Library Alpha"
+        ),
         true,
         "the chosen library card should return to the library"
     );
     assert_eq!(
-        zone_has_name(&game.player(alice).expect("alice exists").library, "Graveyard Alpha"),
+        zone_has_name(
+            &game.player(alice).expect("alice exists").library,
+            "Graveyard Alpha"
+        ),
         true,
         "the chosen graveyard card should also return to the library"
     );

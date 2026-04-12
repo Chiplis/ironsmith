@@ -7233,7 +7233,9 @@ fn rewrite_ecological_appreciation_multi_zone_search_keeps_the_divvy_bundle_shap
         .parse_text(text)
         .expect("Ecological Appreciation should parse");
 
-    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let rendered = crate::compiled_text::compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
     assert!(
         rendered.contains("library and graveyard")
             && rendered.contains("reveal")
@@ -7243,12 +7245,19 @@ fn rewrite_ecological_appreciation_multi_zone_search_keeps_the_divvy_bundle_shap
 
     let debug = format!("{:#?}", def.spell_effect);
     assert!(
-        debug.contains("ChooseObjectsAcrossZones"),
-        "expected the search clause to lower through the multi-zone search chooser, got {debug}"
+        debug.contains("additional_zones: [\n                                Graveyard,\n                            ]"),
+        "expected the search clause to keep the multi-zone chooser data in the compiled effect, got {debug}"
     );
     assert!(
         debug.contains("RevealTaggedEffect") && debug.contains("ShuffleLibraryEffect"),
         "expected the search clause to keep the reveal and shuffle follow-ups, got {debug}"
+    );
+    assert!(
+        debug.contains("tag: TagKey(\n                                \"divvy_chosen\"")
+            && debug.contains("is_search: false")
+            && debug.contains("ForEachTaggedEffect")
+            && debug.contains("ConditionalEffect"),
+        "expected the opponent's pile choice to stay a choice among found cards and the rest to move through the tagged source loop, got {debug}"
     );
 }
 

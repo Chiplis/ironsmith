@@ -1215,11 +1215,20 @@ pub fn resolve_player_filter(
             ))
         }
         PlayerFilter::Opponent => {
-            // Single opponent - try to find one from targets, otherwise error
             for target in &ctx.targets {
                 if let ResolvedTarget::Player(id) = target {
                     return Ok(*id);
                 }
+            }
+            let mut opponents = game
+                .players
+                .iter()
+                .filter(|player| player.id != ctx.controller && player.is_in_game())
+                .map(|player| player.id);
+            if let Some(opponent) = opponents.next()
+                && opponents.next().is_none()
+            {
+                return Ok(opponent);
             }
             Err(ExecutionError::UnresolvableValue(
                 "Opponent filter requires a targeted player".to_string(),

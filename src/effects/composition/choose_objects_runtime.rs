@@ -268,6 +268,15 @@ fn should_auto_choose_single_candidate(candidates: &[ObjectId], min: usize, max:
     candidates.len() == 1 && min == 1 && max == 1
 }
 
+fn filter_references_tagged_pool(effect: &ChooseObjectsEffect) -> bool {
+    effect.filter.tagged_constraints.iter().any(|constraint| {
+        matches!(
+            constraint.relation,
+            crate::target::TaggedOpbjectRelation::IsTaggedObject
+        )
+    })
+}
+
 fn graveyard_candidate_players(
     effect: &ChooseObjectsEffect,
     game: &GameState,
@@ -291,6 +300,10 @@ fn graveyard_candidate_players(
     }
 
     if effect.filter.single_graveyard {
+        return Ok(game.players.iter().map(|player| player.id).collect());
+    }
+
+    if filter_references_tagged_pool(effect) {
         return Ok(game.players.iter().map(|player| player.id).collect());
     }
 
@@ -319,6 +332,10 @@ fn hand_candidate_players(
         return Ok(owners);
     }
 
+    if filter_references_tagged_pool(effect) {
+        return Ok(game.players.iter().map(|player| player.id).collect());
+    }
+
     Ok(vec![chooser_id])
 }
 
@@ -342,6 +359,9 @@ fn library_candidate_players(
             )));
         }
         return Ok(owners);
+    }
+    if filter_references_tagged_pool(effect) {
+        return Ok(game.players.iter().map(|player| player.id).collect());
     }
     Ok(vec![chooser_id])
 }
