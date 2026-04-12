@@ -2519,6 +2519,23 @@ mod tests {
     }
 
     #[test]
+    fn normalizes_mortuary_style_graveyard_ownership_to_oracle_text() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Mortuary")
+            .oracle_text(
+                "Whenever a creature is put into your graveyard from the battlefield, put that card on top of your library.",
+            )
+            .build();
+        let normalized = normalize_compiled_line_post_pass(
+            &def,
+            "Triggered ability 1: Whenever a creature you own dies, put it on top of its owner's library.",
+        );
+        assert_eq!(
+            normalized,
+            "Triggered ability 1: Whenever a creature is put into your graveyard from the battlefield, put that card on top of your library."
+        );
+    }
+
+    #[test]
     fn normalizes_spawn_token_inline_quoted_cost_punctuation() {
         let normalized = normalize_common_semantic_phrasing(
             "When this permanent enters, create two 0/1 colorless Eldrazi Spawn creature tokens with \"Sacrifice this creature, add {C}\"",

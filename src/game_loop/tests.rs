@@ -2372,6 +2372,84 @@ fn test_bridge_from_below_token_trigger_fizzles_if_bridge_leaves_graveyard() {
 }
 
 #[test]
+fn test_mortuary_triggers_for_owned_creatures_even_if_control_changed() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let mortuary_id = game.create_object_from_card(
+        &CardBuilder::new(CardId::new(), "Mortuary Probe")
+            .card_types(vec![CardType::Enchantment])
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+    if let Some(obj) = game.object_mut(mortuary_id) {
+        obj.abilities.push(Ability::triggered(
+            Trigger::dies(crate::target::ObjectFilter::creature().owned_by(PlayerFilter::You)),
+            crate::resolution::ResolutionProgram::from_effects(vec![
+                Effect::tag_triggering_object("triggering"),
+                Effect::move_to_zone(
+                    crate::target::ChooseSpec::Tagged("triggering".into()),
+                    Zone::Library,
+                    true,
+                ),
+            ]),
+        ));
+    }
+
+    let alice_owned_creature = create_creature(&mut game, "Alice Creature", alice, 2, 2);
+    game.object_mut(alice_owned_creature)
+        .expect("alice creature exists")
+        .controller = bob;
+
+    let moved = game.move_object_by_effect(alice_owned_creature, Zone::Graveyard);
+    assert!(moved.is_some(), "owned creature should move to graveyard");
+
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Mortuary should trigger when a creature you own dies, even if another player controlled it"
+    );
+
+    put_triggers_on_stack(&mut game, &mut trigger_queue).expect("Mortuary trigger should stack");
+    resolve_stack_entry(&mut game).expect("Mortuary trigger should resolve");
+
+    assert_eq!(
+        game.player(alice)
+            .expect("alice exists")
+            .library
+            .last()
+            .copied(),
+        Some(alice_owned_creature),
+        "Mortuary should put the owned creature on top of your library"
+    );
+
+    let bob_owned_creature = create_creature(&mut game, "Bob Creature", bob, 2, 2);
+    game.object_mut(bob_owned_creature)
+        .expect("bob creature exists")
+        .controller = alice;
+
+    let moved = game.move_object_by_effect(bob_owned_creature, Zone::Graveyard);
+    assert!(moved.is_some(), "bob creature should move to graveyard");
+
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    assert!(
+        trigger_queue.entries.is_empty(),
+        "Mortuary should not trigger when a creature you don't own dies, even if you controlled it"
+    );
+    assert!(
+        game.player(bob)
+            .expect("bob exists")
+            .graveyard
+            .contains(&bob_owned_creature),
+        "the non-owned creature should remain in its owner's graveyard"
+    );
+}
+
+#[test]
 fn test_stangg_linked_twin_sacrifice_survives_legend_rule_for_other_twin() {
     use crate::ability::AbilityKind;
     use crate::cards::CardDefinitionBuilder;
