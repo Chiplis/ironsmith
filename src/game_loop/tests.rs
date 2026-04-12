@@ -15707,6 +15707,335 @@ fn test_silverglade_elemental_may_search_puts_forest_onto_battlefield() {
     assert!(forest_on_battlefield, "forest should be on battlefield");
 }
 
+fn doubling_chant_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), "Doubling Chant")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(5)],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "For each creature you control, you may search your library for a creature card with the same name as that creature. Put those cards onto the battlefield, then shuffle.",
+        )
+        .expect("Doubling Chant should parse")
+}
+
+fn count_battlefield_permanents_named(game: &GameState, controller: PlayerId, name: &str) -> usize {
+    game.battlefield
+        .iter()
+        .filter(|&&id| {
+            game.object(id)
+                .is_some_and(|obj| obj.controller == controller && obj.name == name)
+        })
+        .count()
+}
+
+#[test]
+fn test_doubling_chant_resolves_search_for_each_creature_you_control() {
+    use crate::cards::definitions::{grizzly_bears, llanowar_elves};
+    use std::collections::VecDeque;
+
+    struct DoublingChantDecisionMaker {
+        may_choices: VecDeque<bool>,
+    }
+
+    impl DecisionMaker for DoublingChantDecisionMaker {
+        fn decide_boolean(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            self.may_choices
+                .pop_front()
+                .expect("expected one may decision per creature iteration")
+        }
+
+        fn decide_objects(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            ctx.candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .map(|candidate| candidate.id)
+                .take(1)
+                .collect()
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    game.create_object_from_definition(&grizzly_bears(), alice, Zone::Battlefield);
+    game.create_object_from_definition(&llanowar_elves(), alice, Zone::Battlefield);
+
+    let bears_library_id =
+        game.create_object_from_definition(&grizzly_bears(), alice, Zone::Library);
+    let elf_library_id =
+        game.create_object_from_definition(&llanowar_elves(), alice, Zone::Library);
+
+    let battlefield_bears_before =
+        count_battlefield_permanents_named(&game, alice, "Grizzly Bears");
+    let battlefield_elves_before =
+        count_battlefield_permanents_named(&game, alice, "Llanowar Elves");
+    let library_before = game.player(alice).expect("alice exists").library.len();
+
+    let doubling_chant = doubling_chant_definition();
+    let spell_id = game.create_object_from_definition(&doubling_chant, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(spell_id, alice));
+
+    let mut dm = DoublingChantDecisionMaker {
+        may_choices: VecDeque::from(vec![true, true]),
+    };
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Doubling Chant should resolve");
+
+    assert_eq!(
+        count_battlefield_permanents_named(&game, alice, "Grizzly Bears"),
+        battlefield_bears_before + 1,
+        "Doubling Chant should put a Grizzly Bears match onto the battlefield"
+    );
+    assert_eq!(
+        count_battlefield_permanents_named(&game, alice, "Llanowar Elves"),
+        battlefield_elves_before + 1,
+        "Doubling Chant should put a Llanowar Elves match onto the battlefield"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").library.len(),
+        library_before - 2,
+        "each accepted search should remove its matching creature from the library"
+    );
+    assert!(
+        game.object(bears_library_id).is_none(),
+        "the searched Grizzly Bears should become a new battlefield object"
+    );
+    assert!(
+        game.object(elf_library_id).is_none(),
+        "the searched Llanowar Elves should become a new battlefield object"
+    );
+}
+
+#[test]
+fn test_doubling_chant_declined_iteration_leaves_matching_card_in_library() {
+    use crate::cards::definitions::{grizzly_bears, llanowar_elves};
+    use std::collections::VecDeque;
+
+    struct DoublingChantDecisionMaker {
+        may_choices: VecDeque<bool>,
+    }
+
+    impl DecisionMaker for DoublingChantDecisionMaker {
+        fn decide_boolean(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            self.may_choices
+                .pop_front()
+                .expect("expected one may decision per creature iteration")
+        }
+
+        fn decide_objects(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            ctx.candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .map(|candidate| candidate.id)
+                .take(1)
+                .collect()
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    // Battlefield creation order drives the per-creature iteration order here:
+    // Grizzly Bears resolves first, then Llanowar Elves.
+    game.create_object_from_definition(&grizzly_bears(), alice, Zone::Battlefield);
+    game.create_object_from_definition(&llanowar_elves(), alice, Zone::Battlefield);
+
+    let bears_library_id =
+        game.create_object_from_definition(&grizzly_bears(), alice, Zone::Library);
+    let elf_library_id =
+        game.create_object_from_definition(&llanowar_elves(), alice, Zone::Library);
+
+    let battlefield_bears_before =
+        count_battlefield_permanents_named(&game, alice, "Grizzly Bears");
+    let battlefield_elves_before =
+        count_battlefield_permanents_named(&game, alice, "Llanowar Elves");
+    let library_before = game.player(alice).expect("alice exists").library.len();
+
+    let doubling_chant = doubling_chant_definition();
+    let spell_id = game.create_object_from_definition(&doubling_chant, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(spell_id, alice));
+
+    let mut dm = DoublingChantDecisionMaker {
+        may_choices: VecDeque::from(vec![true, false]),
+    };
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Doubling Chant should resolve");
+
+    assert_eq!(
+        count_battlefield_permanents_named(&game, alice, "Grizzly Bears"),
+        battlefield_bears_before + 1,
+        "accepting the first iteration should put the matching Grizzly Bears onto the battlefield"
+    );
+    assert_eq!(
+        count_battlefield_permanents_named(&game, alice, "Llanowar Elves"),
+        battlefield_elves_before,
+        "declining the second iteration should leave Llanowar Elves unchanged on the battlefield"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").library.len(),
+        library_before - 1,
+        "declining one iteration should leave its matching library card in place"
+    );
+    assert!(
+        game.object(bears_library_id).is_none(),
+        "the accepted Grizzly Bears search should move that card out of the library"
+    );
+    assert!(
+        game.player(alice)
+            .expect("alice exists")
+            .library
+            .contains(&elf_library_id),
+        "the declined Llanowar Elves search should leave that card in the library"
+    );
+}
+
+#[test]
+fn test_doubling_chant_same_name_search_prompts_are_user_facing() {
+    use crate::cards::definitions::ornithopter;
+    use std::collections::VecDeque;
+
+    struct DoublingChantPromptDecisionMaker {
+        may_choices: VecDeque<bool>,
+        boolean_prompts: Vec<String>,
+        object_prompts: Vec<String>,
+        object_candidate_names: Vec<String>,
+        object_candidate_ids: Vec<ObjectId>,
+    }
+
+    impl DecisionMaker for DoublingChantPromptDecisionMaker {
+        fn decide_boolean(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            self.boolean_prompts.push(ctx.description.clone());
+            self.may_choices
+                .pop_front()
+                .expect("expected one may decision for the Doubling Chant iteration")
+        }
+
+        fn decide_objects(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            self.object_prompts.push(ctx.description.clone());
+            self.object_candidate_names = ctx
+                .candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .map(|candidate| candidate.name.clone())
+                .collect();
+            self.object_candidate_ids = ctx
+                .candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .map(|candidate| candidate.id)
+                .collect();
+            self.object_candidate_ids.iter().copied().take(1).collect()
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let battlefield_ornithopter =
+        game.create_object_from_definition(&ornithopter(), alice, Zone::Battlefield);
+    let library_ornithopter_a =
+        game.create_object_from_definition(&ornithopter(), alice, Zone::Library);
+    let library_ornithopter_b =
+        game.create_object_from_definition(&ornithopter(), alice, Zone::Library);
+
+    let doubling_chant = doubling_chant_definition();
+    let spell_id = game.create_object_from_definition(&doubling_chant, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(spell_id, alice));
+
+    let mut dm = DoublingChantPromptDecisionMaker {
+        may_choices: VecDeque::from(vec![true]),
+        boolean_prompts: Vec::new(),
+        object_prompts: Vec::new(),
+        object_candidate_names: Vec::new(),
+        object_candidate_ids: Vec::new(),
+    };
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Doubling Chant should resolve");
+
+    let may_prompt = dm
+        .boolean_prompts
+        .first()
+        .expect("Doubling Chant should prompt for the optional same-name search")
+        .to_ascii_lowercase();
+    assert!(
+        may_prompt.contains("search your library for")
+            && may_prompt.contains("creature card")
+            && may_prompt.contains("same name as ornithopter"),
+        "expected a user-facing Doubling Chant may prompt, got {:?}",
+        dm.boolean_prompts
+    );
+    assert!(
+        !may_prompt.contains("tags it as 'searched'"),
+        "Doubling Chant may prompt should not expose internal search tags: {:?}",
+        dm.boolean_prompts
+    );
+
+    let object_prompt = dm
+        .object_prompts
+        .first()
+        .expect("accepting the may prompt should produce a library-choice prompt")
+        .to_ascii_lowercase();
+    assert!(
+        object_prompt.contains("search your library for")
+            && object_prompt.contains("creature card")
+            && object_prompt.contains("same name as ornithopter"),
+        "expected a user-facing Doubling Chant search prompt, got {:?}",
+        dm.object_prompts
+    );
+    assert_eq!(
+        dm.object_candidate_names,
+        vec!["Ornithopter".to_string(), "Ornithopter".to_string()],
+        "Doubling Chant should present the matching library Ornithopters as candidates"
+    );
+    assert!(
+        !dm.object_candidate_ids.contains(&battlefield_ornithopter),
+        "the battlefield Ornithopter should not appear in the library search candidates"
+    );
+    assert!(
+        dm.object_candidate_ids.contains(&library_ornithopter_a)
+            && dm.object_candidate_ids.contains(&library_ornithopter_b),
+        "the search candidates should point at the library Ornithopter objects"
+    );
+}
+
 #[test]
 fn test_sundering_eruption_lets_target_controller_search_after_land_dies() {
     use crate::cards::builders::CardDefinitionBuilder;

@@ -381,7 +381,7 @@ impl CardRegistry {
     ///
     /// Used to distinguish "card not in database" from "card exists but failed to compile".
     pub fn try_compile_card(name: &str) -> Result<CardDefinition, String> {
-        if let Some(definition) = builtin_registry().get(name).cloned() {
+        if let Some(definition) = try_compile_builtin_card_by_name(name) {
             return Ok(definition);
         }
 
@@ -683,6 +683,26 @@ fn reject_unsupported_generated_definition(
     }
 
     Ok(definition)
+}
+
+fn try_compile_builtin_card_by_name(name: &str) -> Option<CardDefinition> {
+    let requested_key = normalize_card_constructor_key(name);
+    if requested_key.is_empty() {
+        return None;
+    }
+
+    let mut registry = CardRegistry::new();
+    registry.register_builtin_handwritten_cards_if(|constructor_key| {
+        requested_key == constructor_key
+            || constructor_key
+                .strip_prefix("basic_")
+                .is_some_and(|stripped| stripped == requested_key)
+    });
+
+    registry
+        .get(name)
+        .cloned()
+        .or_else(|| loose_name_match(&registry, name).cloned())
 }
 
 fn normalize_card_constructor_key(name: &str) -> String {
@@ -1076,6 +1096,22 @@ mod tests {
         assert!(registry.get("Lightning Bolt").is_some());
         assert!(registry.get("Forest").is_some());
         assert_eq!(registry.len(), 2);
+    }
+
+    #[test]
+    fn try_compile_card_can_resolve_handwritten_cards_without_full_builtin_registry() {
+        let definition = CardRegistry::try_compile_card("Lightning Bolt")
+            .expect("handwritten card should compile");
+        assert_eq!(definition.name(), "Lightning Bolt");
+        assert!(definition.is_spell());
+    }
+
+    #[test]
+    fn try_compile_card_can_resolve_basic_lands_by_name() {
+        let definition =
+            CardRegistry::try_compile_card("Forest").expect("basic land should compile");
+        assert_eq!(definition.name(), "Forest");
+        assert!(definition.card.is_land());
     }
 
     #[cfg(feature = "generated-registry")]

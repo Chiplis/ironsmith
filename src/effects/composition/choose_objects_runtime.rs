@@ -172,6 +172,98 @@ fn article_for_count(min: usize, max: usize) -> &'static str {
     }
 }
 
+fn filter_has_same_name_constraint(filter: &ObjectFilter) -> bool {
+    filter.tagged_constraints.iter().any(|constraint| {
+        constraint.relation == crate::filter::TaggedOpbjectRelation::SameNameAsTagged
+    })
+}
+
+fn same_name_reference_label(filter: &ObjectFilter) -> &'static str {
+    if filter.card_types.len() == 1 {
+        filter.card_types[0].selection_name()
+    } else {
+        "object"
+    }
+}
+
+fn same_name_reference_name(
+    game: &GameState,
+    ctx: &ExecutionContext,
+    filter: &ObjectFilter,
+) -> Option<String> {
+    if let Some(object_id) = ctx.iterated_object {
+        if let Some(object) = game.object(object_id) {
+            return Some(object.name.clone());
+        }
+    }
+
+    let constraint = filter.tagged_constraints.iter().find(|constraint| {
+        constraint.relation == crate::filter::TaggedOpbjectRelation::SameNameAsTagged
+    })?;
+    ctx.get_tagged(constraint.tag.as_str())
+        .map(|snapshot| snapshot.name.clone())
+}
+
+fn search_card_noun(filter: &ObjectFilter, singular: bool) -> String {
+    if filter.card_types.is_empty() {
+        return if singular {
+            "card".to_string()
+        } else {
+            "cards".to_string()
+        };
+    }
+
+    let types = filter
+        .card_types
+        .iter()
+        .map(|card_type| card_type.selection_name())
+        .collect::<Vec<_>>()
+        .join(" or ");
+
+    if singular {
+        format!("{types} card")
+    } else {
+        format!("{types} cards")
+    }
+}
+
+fn search_quantity_prefix(min: usize, max: usize) -> String {
+    if max == 1 {
+        if min == 0 {
+            "up to one".to_string()
+        } else {
+            "a".to_string()
+        }
+    } else if min == 0 {
+        format!("up to {max}")
+    } else if min == max {
+        max.to_string()
+    } else {
+        format!("{min} to {max}")
+    }
+}
+
+pub(crate) fn friendly_same_name_search_prompt(
+    game: &GameState,
+    ctx: &ExecutionContext,
+    filter: &ObjectFilter,
+    min: usize,
+    max: usize,
+) -> Option<String> {
+    if !filter_has_same_name_constraint(filter) || max == 0 {
+        return None;
+    }
+
+    let quantity = search_quantity_prefix(min, max);
+    let noun = search_card_noun(filter, max == 1);
+    let reference = same_name_reference_name(game, ctx, filter)
+        .unwrap_or_else(|| format!("that {}", same_name_reference_label(filter)));
+
+    Some(format!(
+        "Search your library for {quantity} {noun} with the same name as {reference}"
+    ))
+}
+
 fn should_auto_choose_single_candidate(candidates: &[ObjectId], min: usize, max: usize) -> bool {
     candidates.len() == 1 && min == 1 && max == 1
 }
@@ -688,7 +780,12 @@ pub(crate) fn run_choose_objects(
         0
     };
 
-    let description = if effect.description == "Choose" {
+    let description = if effect.is_search
+        && matches!(effect.description, "Choose" | "card" | "cards" | "objects")
+        && let Some(prompt) = friendly_same_name_search_prompt(game, ctx, &effect.filter, min, max)
+    {
+        prompt
+    } else if effect.description == "Choose" {
         let tag_str = effect.tag.as_str();
         let verb = if tag_str.starts_with("sacrificed") {
             "sacrifice"

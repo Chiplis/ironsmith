@@ -13754,6 +13754,128 @@ mod tests {
     }
 
     #[test]
+    fn doubling_chant_same_name_search_prompts_are_ui_friendly_in_wasm_flow() {
+        let mut wasm = WasmGame::new();
+        let alice = PlayerId::from_index(0);
+
+        wasm.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+        wasm.game.turn.active_player = alice;
+        wasm.game.turn.priority_player = Some(alice);
+        wasm.game.turn.phase = Phase::FirstMain;
+        wasm.game.turn.step = None;
+
+        wasm.add_card_to_zone(
+            0,
+            "Omniscience".to_string(),
+            "battlefield".to_string(),
+            true,
+        )
+        .expect("Omniscience should be added to the battlefield");
+        let battlefield_ornithopter = ObjectId::from_raw(
+            wasm.add_card_to_zone(
+                0,
+                "Ornithopter".to_string(),
+                "battlefield".to_string(),
+                true,
+            )
+            .expect("battlefield Ornithopter should be added"),
+        );
+        let library_ornithopter_a = wasm
+            .add_card_to_zone(0, "Ornithopter".to_string(), "library".to_string(), true)
+            .expect("first library Ornithopter should be added");
+        let library_ornithopter_b = wasm
+            .add_card_to_zone(0, "Ornithopter".to_string(), "library".to_string(), true)
+            .expect("second library Ornithopter should be added");
+        let spell_id = ObjectId::from_raw(
+            wasm.add_card_to_zone(0, "Doubling Chant".to_string(), "hand".to_string(), true)
+                .expect("Doubling Chant should be added to hand"),
+        );
+
+        wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
+        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+            alice,
+            compute_legal_actions(&wasm.game, alice),
+        )));
+
+        dispatch_matching_priority_action(
+            &mut wasm,
+            |action| matches!(action, LegalAction::CastSpell { spell_id: id, .. } if *id == spell_id),
+        );
+
+        let free_cast_index = match wasm.pending_decision.as_ref() {
+            Some(DecisionContext::SelectOptions(ctx)) => ctx
+                .options
+                .iter()
+                .position(|option| option.description.contains("Without paying mana cost"))
+                .expect("Doubling Chant should surface an Omniscience cast option"),
+            other => panic!("expected Doubling Chant cast-method choice, got {other:?}"),
+        };
+        dispatch_select_options(&mut wasm, &[free_cast_index]);
+        dispatch_pass_priority(&mut wasm);
+
+        let may_ctx = match wasm.pending_decision.as_ref() {
+            Some(DecisionContext::Boolean(ctx)) => ctx,
+            other => panic!("expected Doubling Chant may prompt on resolution, got {other:?}"),
+        };
+        let may_text = may_ctx.description.to_ascii_lowercase();
+        assert!(
+            may_text.contains(
+                "search your library for a creature card with the same name as ornithopter"
+            ),
+            "expected a user-facing Doubling Chant may prompt, got {:?}",
+            may_ctx.description
+        );
+        assert!(
+            !may_text.contains("tags it as 'searched'"),
+            "Doubling Chant may prompt should not expose internal search tags: {:?}",
+            may_ctx.description
+        );
+
+        dispatch_select_options(&mut wasm, &[1]);
+
+        let select_ctx = match wasm.pending_decision.as_ref() {
+            Some(DecisionContext::SelectObjects(ctx)) => ctx,
+            other => panic!(
+                "expected Doubling Chant library choice after accepting the may, got {other:?}"
+            ),
+        };
+        let select_text = select_ctx.description.to_ascii_lowercase();
+        assert!(
+            select_text.contains(
+                "search your library for a creature card with the same name as ornithopter"
+            ),
+            "expected a user-facing Doubling Chant search prompt, got {:?}",
+            select_ctx.description
+        );
+        assert_eq!(
+            select_ctx.candidates.len(),
+            2,
+            "the search prompt should expose the two matching library Ornithopters"
+        );
+        assert!(
+            select_ctx
+                .candidates
+                .iter()
+                .all(|candidate| candidate.name == "Ornithopter"),
+            "Doubling Chant search candidates should be the matching library cards"
+        );
+        let candidate_ids: Vec<u64> = select_ctx
+            .candidates
+            .iter()
+            .map(|candidate| candidate.id.0)
+            .collect();
+        assert!(
+            !candidate_ids.contains(&battlefield_ornithopter.0),
+            "the battlefield Ornithopter should not appear in the library search candidates"
+        );
+        assert!(
+            candidate_ids.contains(&library_ornithopter_a)
+                && candidate_ids.contains(&library_ornithopter_b),
+            "the search candidates should point at the library Ornithopter objects"
+        );
+    }
+
+    #[test]
     fn saw_in_half_formidable_speaker_no_advances_resolution_chain() {
         let mut wasm = WasmGame::new();
         let alice = PlayerId::from_index(0);

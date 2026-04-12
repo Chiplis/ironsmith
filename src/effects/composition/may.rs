@@ -93,8 +93,26 @@ impl EffectExecutor for MayEffect {
             return Ok(EffectOutcome::declined());
         }
 
-        // Generate a description from the effects
-        let description = crate::compiled_text::compile_effect_list(&self.effects);
+        // Prefer a friendly search prompt over the raw compiled lowering text
+        // for same-name library searches like Doubling Chant.
+        let description = self
+            .effects
+            .first()
+            .and_then(|effect| {
+                let choose = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+                if !choose.is_search {
+                    return None;
+                }
+                let max = choose.count.max.unwrap_or(choose.count.min);
+                super::choose_objects_runtime::friendly_same_name_search_prompt(
+                    game,
+                    ctx,
+                    &choose.filter,
+                    choose.count.min,
+                    max,
+                )
+            })
+            .unwrap_or_else(|| crate::compiled_text::compile_effect_list(&self.effects));
         let description = if description.trim().is_empty() {
             "perform the effect".to_string()
         } else {
