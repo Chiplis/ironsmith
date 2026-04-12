@@ -4131,6 +4131,10 @@ fn rewrite_intuition_search_stays_card_based_in_compiled_text() {
         .join(" ")
         .trim()
         .to_string();
+    let rendered = rendered
+        .strip_prefix("Spell effects: ")
+        .unwrap_or(rendered.as_str())
+        .to_string();
     assert!(
         rendered
             == "Search your library for three cards and reveal them. Target opponent chooses one. Put that card into your hand and the rest into your graveyard. Then shuffle.",
@@ -4456,7 +4460,10 @@ fn rewrite_search_library_count_prefix_parser_tracks_search_modes() {
 
     assert_eq!(
         format!("{:?}", parsed.count),
-        format!("{:?}", crate::cards::builders::ChoiceCount::up_to_dynamic_x())
+        format!(
+            "{:?}",
+            crate::cards::builders::ChoiceCount::up_to_dynamic_x()
+        )
     );
     assert_eq!(
         parsed.search_mode,

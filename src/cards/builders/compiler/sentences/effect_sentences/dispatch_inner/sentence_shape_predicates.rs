@@ -420,32 +420,46 @@ fn parse_effect_sentence_with_where_x_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
     fn replace_search_filter_x(effect: &mut EffectAst, replacement: &Value) {
-        if let EffectAst::SearchLibrary {
-            filter,
-            count,
-            count_value,
-            ..
-        } = effect
-        {
-            if count.dynamic_x && count_value.is_none() {
-                *count_value = Some(replacement.clone());
+        let (filter, count, count_value) = match effect {
+            EffectAst::SearchLibrary {
+                filter,
+                count,
+                count_value,
+                ..
             }
-            if let Some(mana_value) = filter.mana_value.as_mut() {
-                use crate::filter::Comparison;
+            | EffectAst::ChooseObjects {
+                filter,
+                count,
+                count_value,
+                ..
+            }
+            | EffectAst::ChooseObjectsAcrossZones {
+                filter,
+                count,
+                count_value,
+                ..
+            } => (filter, count, count_value),
+            _ => return,
+        };
 
-                match mana_value {
-                    Comparison::EqualExpr(value)
-                    | Comparison::NotEqualExpr(value)
-                    | Comparison::LessThanExpr(value)
-                    | Comparison::LessThanOrEqualExpr(value)
-                    | Comparison::GreaterThanExpr(value)
-                    | Comparison::GreaterThanOrEqualExpr(value)
-                        if matches!(value.as_ref(), Value::X) =>
-                    {
-                        **value = replacement.clone();
-                    }
-                    _ => {}
+        if count.dynamic_x && count_value.is_none() {
+            *count_value = Some(replacement.clone());
+        }
+        if let Some(mana_value) = filter.mana_value.as_mut() {
+            use crate::filter::Comparison;
+
+            match mana_value {
+                Comparison::EqualExpr(value)
+                | Comparison::NotEqualExpr(value)
+                | Comparison::LessThanExpr(value)
+                | Comparison::LessThanOrEqualExpr(value)
+                | Comparison::GreaterThanExpr(value)
+                | Comparison::GreaterThanOrEqualExpr(value)
+                    if matches!(value.as_ref(), Value::X) =>
+                {
+                    **value = replacement.clone();
                 }
+                _ => {}
             }
         }
     }

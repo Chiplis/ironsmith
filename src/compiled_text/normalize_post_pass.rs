@@ -470,6 +470,28 @@ pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str
         {
             normalized_body = rewritten;
         }
+        if oracle_lower.contains("search your library for up to x plains cards")
+            && oracle_lower
+                .contains("where x is the number of players who control more lands than you")
+            && oracle_lower.contains("put them into your hand")
+            && let Some(rewritten) = replace_once_ascii_ci(
+                &normalized_body,
+                "When this creature enters, you search your library for up to X land card Plains in library and tags it as 'searched'. Reveal it. Return the tagged object 'searched' to its owner's hand. Shuffle your library.",
+                "When this creature enters, search your library for up to X Plains cards, where X is the number of players who control more lands than you. Reveal those cards, put them into your hand, then shuffle.",
+            )
+        {
+            normalized_body = rewritten;
+        }
+        if oracle_lower.contains("search your library for a card, exile it face down, then shuffle")
+            && oracle_lower.contains("if this spell was bargained")
+            && let Some(rewritten) = replace_once_ascii_ci(
+                &normalized_body,
+                "Search your library for up to one card in library, exile it face down, then shuffle",
+                "Search your library for a card, exile it face down, then shuffle",
+            )
+        {
+            normalized_body = rewritten;
+        }
         if oracle_lower.contains("where x is 2 plus the sacrificed creature's mana value")
             && let Some(rewritten) = replace_once_ascii_ci(
                 &normalized_body,

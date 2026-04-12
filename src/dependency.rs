@@ -1180,6 +1180,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::CreaturesDiedThisTurn
         | Value::CreaturesDiedThisTurnControlledBy(_)
         | Value::CountPlayers(_)
+        | Value::PlayersWhoControlMoreThanYou(_)
         | Value::PartySize(_)
         | Value::Devotion { .. }
         | Value::DevotionToChosenColor(_)

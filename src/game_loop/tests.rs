@@ -9,6 +9,7 @@ use crate::decision::{AutoPassDecisionMaker, DecisionMaker, SelectFirstDecisionM
 use crate::effect::{Effect, EventValueSpec, Until, Value};
 use crate::events::EventKind;
 use crate::events::spells::SpellCastEvent;
+use crate::events::zones::EnterBattlefieldEvent;
 use crate::game_state::Phase;
 use crate::ids::CardId;
 use crate::mana::{ManaCost, ManaSymbol};
@@ -16,6 +17,7 @@ use crate::object::ObjectKind;
 use crate::static_abilities::StaticAbility;
 use crate::target::PlayerFilter;
 use crate::triggers::Trigger;
+use crate::triggers::TriggerEvent;
 use crate::types::CardType;
 
 fn setup_game() -> GameState {
@@ -16004,7 +16006,7 @@ fn test_oreskos_explorer_searches_for_players_with_more_lands_than_you() {
         .expect("Oreskos Explorer text should parse");
 
     let source_id = game.create_object_from_definition(&oreskos, alice, Zone::Battlefield);
-    let triggered_effect = {
+    let triggered_effects = {
         let triggered = game
             .object(source_id)
             .expect("Oreskos Explorer should exist on the battlefield")
@@ -16023,7 +16025,7 @@ fn test_oreskos_explorer_searches_for_players_with_more_lands_than_you() {
             !triggered.effects.is_empty(),
             "Oreskos Explorer trigger should have effects"
         );
-        triggered.effects[0].clone()
+        triggered.effects.clone()
     };
 
     game.create_object_from_definition(&basic_plains(), alice, Zone::Library);
@@ -16033,20 +16035,21 @@ fn test_oreskos_explorer_searches_for_players_with_more_lands_than_you() {
     let hand_before = game.player(alice).expect("alice exists").hand.len();
 
     let mut dm = ChoosePlainsDecisionMaker;
-    let mut ctx = ExecutionContext::new_default(source_id, alice).with_decision_maker(&mut dm);
-    let outcome =
-        execute_effect(&mut game, &triggered_effect, &mut ctx).expect("effect resolves");
-
-    assert_eq!(
-        outcome.as_count(),
-        Some(2),
-        "Oreskos Explorer should search for two Plains when two players control more lands"
+    let etb_event = TriggerEvent::new_with_provenance(
+        EnterBattlefieldEvent::new(source_id, Zone::Hand),
+        crate::provenance::ProvNodeId::default(),
     );
+    let mut ctx = ExecutionContext::new_default(source_id, alice)
+        .with_decision_maker(&mut dm)
+        .with_triggering_event(etb_event);
+    for effect in &triggered_effects {
+        execute_effect(&mut game, effect, &mut ctx).expect("effect resolves");
+    }
 
     let alice_state = game.player(alice).expect("alice exists");
+    let found_plains = alice_state.hand.len() - hand_before;
     assert_eq!(
-        alice_state.hand.len(),
-        hand_before + 2,
+        found_plains, 2,
         "Oreskos Explorer should put two Plains into hand"
     );
     assert_eq!(
