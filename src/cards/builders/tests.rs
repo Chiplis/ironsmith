@@ -10769,6 +10769,41 @@ fn parse_optional_reveal_first_draw_trigger_clause() {
 }
 
 #[test]
+fn parse_sacellum_godspeaker_reveals_any_number_from_hand_and_counts_revealed_cards() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Sacellum Godspeaker")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elf, Subtype::Druid])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text(
+            "{T}: Reveal any number of creature cards with power 5 or greater from your hand. Add {G} for each card revealed this way.",
+        )
+        .expect("Sacellum Godspeaker should parse");
+
+    let abilities_debug = format!("{:#?}", def.abilities);
+    assert!(
+        abilities_debug.contains("ChooseObjectsEffect")
+            && abilities_debug.contains("RevealTaggedEffect")
+            && abilities_debug.contains("AddScaledManaEffect")
+            && abilities_debug.contains("min: 0")
+            && abilities_debug.contains("max: None"),
+        "expected any-number reveal-from-hand lowering with scaled green mana, got {abilities_debug}"
+    );
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("reveal any number of creature cards with power 5 or greater from your hand")
+            && rendered.contains("add {g} for each card revealed this way")
+            && !rendered.contains("reveal it")
+            && !rendered.contains("for each permanent"),
+        "expected Sacellum Godspeaker oracle-like text to stay on the revealed-card wording, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_god_eternal_kefnet_reveal_copy_cost_reduction_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "God-Eternal Kefnet Variant")
         .card_types(vec![CardType::Creature])

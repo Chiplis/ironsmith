@@ -365,7 +365,9 @@ pub(crate) fn parse_sentence_reveal_selected_cards_in_your_hand(
     use super::super::super::grammar::primitives as grammar;
 
     let in_your_hand = grammar::strip_lexed_suffix_phrase(tokens, &["in", "your", "hand"])
-        .or_else(|| grammar::strip_lexed_suffix_phrase(tokens, &["in", "your", "hands"]));
+        .or_else(|| grammar::strip_lexed_suffix_phrase(tokens, &["in", "your", "hands"]))
+        .or_else(|| grammar::strip_lexed_suffix_phrase(tokens, &["from", "your", "hand"]))
+        .or_else(|| grammar::strip_lexed_suffix_phrase(tokens, &["from", "your", "hands"]));
     let Some(before_in) = in_your_hand else {
         return Ok(None);
     };

@@ -13,7 +13,7 @@ use crate::filter::AlternativeCastKind;
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::object::CounterType;
 use crate::static_abilities::{StaticAbility, StaticAbilityId};
-use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
+use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter, TaggedOpbjectRelation};
 use crate::types::{CardType, Subtype, SubtypeFamily, Supertype};
 use crate::zone::Zone;
 use crate::{ChoiceCount, PowerToughness, PtValue, TagKey};
@@ -130,6 +130,26 @@ pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value,
     let mut filter_end = idx;
     while filter_end < words.len() && !matches!(words[filter_end], "plus" | "minus") {
         filter_end += 1;
+    }
+
+    let this_way_start = word_refs_find_sequence(&words[idx..filter_end], &["this", "way"])
+        .map(|relative_idx| idx + relative_idx);
+    if let Some(this_way_start) = this_way_start {
+        for candidate_end in (idx + 1..this_way_start).rev() {
+            let candidate_tokens = words[idx..candidate_end]
+                .iter()
+                .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+                .collect::<Vec<_>>();
+            if let Ok(filter) = parse_object_filter(&candidate_tokens, other) {
+                return Some((
+                    Value::Count(filter.match_tagged(
+                        TagKey::from(IT_TAG),
+                        TaggedOpbjectRelation::IsTaggedObject,
+                    )),
+                    filter_end,
+                ));
+            }
+        }
     }
     let filter_tokens = words[idx..filter_end]
         .iter()
@@ -1799,6 +1819,26 @@ mod tests {
     fn parse_subject_recognizes_a_player_of_your_choice() {
         let tokens = lex_line("A player of your choice adds {C}.", 0).unwrap();
         assert_eq!(parse_subject(&tokens), SubjectAst::Player(PlayerAst::Chosen));
+    }
+
+    #[test]
+    fn parse_for_each_count_value_words_binds_revealed_this_way_to_it_tag() {
+        let words = ["for", "each", "card", "revealed", "this", "way"];
+
+        let (value, used_words) =
+            parse_for_each_count_value_words(&words).expect("count phrase should parse");
+
+        assert_eq!(used_words, words.len());
+        let Value::Count(filter) = value else {
+            panic!("expected a counted object filter, got {value:?}");
+        };
+        assert!(
+            filter.tagged_constraints.iter().any(|constraint| {
+                constraint.tag.as_str() == IT_TAG
+                    && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+            }),
+            "expected the revealed-this-way count to bind to IT_TAG, got {filter:?}"
+        );
     }
 }
 
