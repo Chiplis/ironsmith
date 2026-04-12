@@ -260,6 +260,104 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         ))
     }
 
+    fn downcast_exile<'a>(effect: &'a Effect) -> Option<&'a crate::effects::ExileEffect> {
+        if let Some(exile) = effect.downcast_ref::<crate::effects::ExileEffect>() {
+            return Some(exile);
+        }
+        effect
+            .downcast_ref::<crate::effects::TaggedEffect>()?
+            .effect
+            .downcast_ref::<crate::effects::ExileEffect>()
+    }
+
+    fn downcast_move_to_zone<'a>(
+        effect: &'a Effect,
+    ) -> Option<&'a crate::effects::MoveToZoneEffect> {
+        if let Some(move_to_zone) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>() {
+            return Some(move_to_zone);
+        }
+        if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+            return tagged
+                .effect
+                .downcast_ref::<crate::effects::MoveToZoneEffect>();
+        }
+        effect
+            .downcast_ref::<crate::effects::WithIdEffect>()?
+            .effect
+            .downcast_ref::<crate::effects::MoveToZoneEffect>()
+    }
+
+    fn move_to_zone_uses_tag(
+        move_to_zone: &crate::effects::MoveToZoneEffect,
+        tag: &str,
+        zone: Zone,
+    ) -> bool {
+        move_to_zone.zone == zone
+            && matches!(move_to_zone.target.base(), ChooseSpec::Tagged(found) if found.as_str() == tag)
+    }
+
+    fn describe_split_the_spoils_divvy_bundle(filtered: &[&Effect]) -> Option<String> {
+        let [exile_effect, tag_effect, choose_effect, unless_effect] = filtered else {
+            return None;
+        };
+
+        let _exile = downcast_exile(exile_effect)?;
+        let tag_matching = tag_effect.downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
+        let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+        let unless_action = unless_effect.downcast_ref::<crate::effects::UnlessActionEffect>()?;
+
+        if tag_matching.tag.as_str() != "divvy_source"
+            || choose.tag.as_str() != "divvy_pile"
+            || choose.chooser != PlayerFilter::You
+            || choose_primary_zone(choose) != Some(Zone::Exile)
+            || choose.is_search
+            || !choose.count.is_any_number()
+            || unless_action.player != PlayerFilter::Opponent
+        {
+            return None;
+        }
+
+        let [main_selected, main_rest] = unless_action.effects.as_slice() else {
+            return None;
+        };
+        let [alt_selected, alt_rest] = unless_action.alternative.as_slice() else {
+            return None;
+        };
+
+        let main_selected = downcast_move_to_zone(main_selected)?;
+        let alt_selected = alt_selected.downcast_ref::<crate::effects::ReturnToHandEffect>()?;
+        let (_, main_rest) = for_each_tagged_for_compaction(main_rest)?;
+        let (_, alt_rest) = for_each_tagged_for_compaction(alt_rest)?;
+
+        if !move_to_zone_uses_tag(main_selected, choose.tag.as_str(), Zone::Graveyard)
+            || !return_to_hand_uses_chosen_tag(alt_selected, choose.tag.as_str())
+            || !for_each_moves_unselected_to_zone(
+                main_rest,
+                tag_matching.tag.as_str(),
+                choose.tag.as_str(),
+                Zone::Hand,
+            )
+            || !for_each_moves_unselected_to_zone(
+                alt_rest,
+                tag_matching.tag.as_str(),
+                choose.tag.as_str(),
+                Zone::Graveyard,
+            )
+        {
+            return None;
+        }
+
+        let exile_text =
+            describe_effect(exile_effect).replace(" in your graveyard", " from your graveyard");
+        Some(format!(
+            "{exile_text} and separate them into two piles. An opponent chooses one of those piles. Put that pile into your hand and the other into your graveyard."
+        ))
+    }
+
+    if let Some(compact) = describe_split_the_spoils_divvy_bundle(&filtered) {
+        return compact;
+    }
+
     if effects.len() == 2
         && let Some(target_only) = effects[0].downcast_ref::<crate::effects::TargetOnlyEffect>()
         && let Some(create_token) =

@@ -10271,6 +10271,266 @@ fn test_make_an_example_sacrifices_the_chosen_pile() {
 }
 
 #[test]
+fn test_split_the_spoils_opponent_can_take_the_split_pile_into_hand() {
+    use crate::decision::DecisionMaker;
+    use crate::executor::{ExecutionContext, execute_effect};
+
+    struct SplitTheSpoilsDecisionMaker {
+        caster: PlayerId,
+        opponent: PlayerId,
+        split_names: &'static [&'static str],
+        choose_split_pile: bool,
+    }
+
+    impl DecisionMaker for SplitTheSpoilsDecisionMaker {
+        fn decide_boolean(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::BooleanChoiceContext,
+        ) -> bool {
+            self.choose_split_pile
+        }
+
+        fn decide_objects(
+            &mut self,
+            game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            let legal = ctx
+                .candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .collect::<Vec<_>>();
+
+            if ctx.player == self.caster {
+                return self
+                    .split_names
+                    .iter()
+                    .map(|wanted_name| {
+                        legal
+                            .iter()
+                            .find(|candidate| {
+                                game.object(candidate.id)
+                                    .is_some_and(|object| object.name == *wanted_name)
+                            })
+                            .map(|candidate| candidate.id)
+                            .unwrap_or_else(|| {
+                                panic!("expected to find {wanted_name} in the split")
+                            })
+                    })
+                    .collect();
+            }
+
+            assert_eq!(
+                ctx.player, self.opponent,
+                "only the opponent should make the final pile-selection decision"
+            );
+            Vec::new()
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let split_the_spoils = CardDefinitionBuilder::new(CardId::from_raw(91_100), "Split the Spoils")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Exile up to five target permanent cards from your graveyard and separate them into two piles. An opponent chooses one of those piles. Put that pile into your hand and the other into your graveyard.",
+        )
+        .expect("Split the Spoils should parse");
+
+    let source_id = game.create_object_from_definition(&split_the_spoils, alice, Zone::Stack);
+    let alpha = CardBuilder::new(CardId::from_raw(91_110), "Spoils Alpha")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let beta = CardBuilder::new(CardId::from_raw(91_111), "Spoils Beta")
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let gamma = CardBuilder::new(CardId::from_raw(91_112), "Spoils Gamma")
+        .card_types(vec![CardType::Land])
+        .build();
+    let alpha_id = game.create_object_from_card(&alpha, alice, Zone::Graveyard);
+    let beta_id = game.create_object_from_card(&beta, alice, Zone::Graveyard);
+    let gamma_id = game.create_object_from_card(&gamma, alice, Zone::Graveyard);
+
+    let spell_effects = split_the_spoils
+        .spell_effect
+        .as_ref()
+        .expect("Split the Spoils should have spell effects");
+    let mut dm = SplitTheSpoilsDecisionMaker {
+        caster: alice,
+        opponent: bob,
+        split_names: &["Spoils Alpha", "Spoils Beta"],
+        choose_split_pile: true,
+    };
+    let mut ctx = ExecutionContext::new_default(source_id, alice)
+        .with_targets(vec![
+            crate::executor::ResolvedTarget::Object(alpha_id),
+            crate::executor::ResolvedTarget::Object(beta_id),
+            crate::executor::ResolvedTarget::Object(gamma_id),
+        ])
+        .with_decision_maker(&mut dm);
+
+    for effect in spell_effects {
+        execute_effect(&mut game, effect, &mut ctx)
+            .expect("Split the Spoils effect should resolve");
+    }
+
+    let alice_hand = game.player(alice).expect("alice exists").hand.clone();
+    let alice_graveyard = game.player(alice).expect("alice exists").graveyard.clone();
+    assert!(
+        alice_hand.iter().any(|&id| game
+            .object(id)
+            .is_some_and(|obj| obj.name == "Spoils Alpha"))
+            && alice_hand
+                .iter()
+                .any(|&id| game.object(id).is_some_and(|obj| obj.name == "Spoils Beta")),
+        "the split pile should move into hand when the opponent chooses it"
+    );
+    assert!(
+        alice_graveyard.iter().any(|&id| game
+            .object(id)
+            .is_some_and(|obj| obj.name == "Spoils Gamma")),
+        "the complement pile should return to the graveyard"
+    );
+}
+
+#[test]
+fn test_split_the_spoils_opponent_can_take_the_other_pile_into_hand() {
+    use crate::decision::DecisionMaker;
+    use crate::executor::{ExecutionContext, execute_effect};
+
+    struct SplitTheSpoilsDecisionMaker {
+        caster: PlayerId,
+        opponent: PlayerId,
+        split_names: &'static [&'static str],
+        choose_split_pile: bool,
+    }
+
+    impl DecisionMaker for SplitTheSpoilsDecisionMaker {
+        fn decide_boolean(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::BooleanChoiceContext,
+        ) -> bool {
+            self.choose_split_pile
+        }
+
+        fn decide_objects(
+            &mut self,
+            game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            let legal = ctx
+                .candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .collect::<Vec<_>>();
+
+            if ctx.player == self.caster {
+                return self
+                    .split_names
+                    .iter()
+                    .map(|wanted_name| {
+                        legal
+                            .iter()
+                            .find(|candidate| {
+                                game.object(candidate.id)
+                                    .is_some_and(|object| object.name == *wanted_name)
+                            })
+                            .map(|candidate| candidate.id)
+                            .unwrap_or_else(|| {
+                                panic!("expected to find {wanted_name} in the split")
+                            })
+                    })
+                    .collect();
+            }
+
+            assert_eq!(
+                ctx.player, self.opponent,
+                "only the opponent should make the final pile-selection decision"
+            );
+            Vec::new()
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let split_the_spoils = CardDefinitionBuilder::new(CardId::from_raw(91_101), "Split the Spoils")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Exile up to five target permanent cards from your graveyard and separate them into two piles. An opponent chooses one of those piles. Put that pile into your hand and the other into your graveyard.",
+        )
+        .expect("Split the Spoils should parse");
+
+    let source_id = game.create_object_from_definition(&split_the_spoils, alice, Zone::Stack);
+    let alpha = CardBuilder::new(CardId::from_raw(91_120), "Spoils Delta")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let beta = CardBuilder::new(CardId::from_raw(91_121), "Spoils Epsilon")
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let gamma = CardBuilder::new(CardId::from_raw(91_122), "Spoils Zeta")
+        .card_types(vec![CardType::Land])
+        .build();
+    let alpha_id = game.create_object_from_card(&alpha, alice, Zone::Graveyard);
+    let beta_id = game.create_object_from_card(&beta, alice, Zone::Graveyard);
+    let gamma_id = game.create_object_from_card(&gamma, alice, Zone::Graveyard);
+
+    let spell_effects = split_the_spoils
+        .spell_effect
+        .as_ref()
+        .expect("Split the Spoils should have spell effects");
+    let mut dm = SplitTheSpoilsDecisionMaker {
+        caster: alice,
+        opponent: bob,
+        split_names: &["Spoils Delta", "Spoils Epsilon"],
+        choose_split_pile: false,
+    };
+    let mut ctx = ExecutionContext::new_default(source_id, alice)
+        .with_targets(vec![
+            crate::executor::ResolvedTarget::Object(alpha_id),
+            crate::executor::ResolvedTarget::Object(beta_id),
+            crate::executor::ResolvedTarget::Object(gamma_id),
+        ])
+        .with_decision_maker(&mut dm);
+
+    for effect in spell_effects {
+        execute_effect(&mut game, effect, &mut ctx)
+            .expect("Split the Spoils effect should resolve");
+    }
+
+    let alice_hand = game.player(alice).expect("alice exists").hand.clone();
+    let alice_graveyard = game.player(alice).expect("alice exists").graveyard.clone();
+    assert!(
+        alice_hand
+            .iter()
+            .any(|&id| game.object(id).is_some_and(|obj| obj.name == "Spoils Zeta")),
+        "the complement pile should move into hand when the opponent declines the split pile"
+    );
+    assert!(
+        alice_graveyard.iter().any(|&id| game
+            .object(id)
+            .is_some_and(|obj| obj.name == "Spoils Delta"))
+            && alice_graveyard.iter().any(|&id| game
+                .object(id)
+                .is_some_and(|obj| obj.name == "Spoils Epsilon")),
+        "the original split pile should go back to the graveyard when the other pile is chosen"
+    );
+}
+
+#[test]
 fn test_dash_grants_haste_and_returns_to_hand_at_next_end_step() {
     use crate::cards::CardDefinitionBuilder;
     use crate::mana::{ManaCost, ManaSymbol};
