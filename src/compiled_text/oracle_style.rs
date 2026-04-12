@@ -5872,6 +5872,17 @@ mod tests {
     }
 
     #[test]
+    fn post_pass_normalizes_may_search_put_onto_battlefield_clause() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "You may searches for up to one creature in a library and tags it as 'searched'. Put the tagged object 'searched' onto the battlefield. Shuffle your library.",
+        );
+        assert_eq!(
+            normalized,
+            "You may search your library for up to one creature, put it onto the battlefield, then shuffle."
+        );
+    }
+
+    #[test]
     fn post_pass_normalizes_search_reveal_into_hand_clause() {
         let normalized = normalize_compiled_post_pass_effect(
             "Activated ability 1: {3}, {T}, Sacrifice this artifact: you searches for up to one Island or Swamp or Mountain in a library and tags it as 'searched'. Reveal it. Return the tagged object 'searched' to its owner's hand. Shuffle your library.",

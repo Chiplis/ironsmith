@@ -3085,6 +3085,9 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
     if let Some(rewritten) = normalize_search_put_onto_battlefield_clause(&normalized) {
         return rewritten;
     }
+    if let Some(rewritten) = normalize_search_may_put_onto_battlefield_clause(&normalized) {
+        return rewritten;
+    }
     if let Some(rewritten) = normalize_search_reveal_into_hand_clause(&normalized) {
         return rewritten;
     }
@@ -6814,6 +6817,73 @@ pub(super) fn normalize_search_put_onto_battlefield_clause(text: &str) -> Option
             "Put the tagged object 'searched' onto the battlefield. Shuffle your library",
         ) {
             Some(("onto the battlefield", tail))
+        } else {
+            None
+        };
+        let Some((destination, tail)) = battlefield_suffix else {
+            continue;
+        };
+
+        let rewritten =
+            format!("{lead} {subject}, {put_verb} {pronoun} {destination}, then {shuffle_verb}");
+        return Some(apply_replacement_with_case(
+            before,
+            &append_sentence_tail(rewritten, tail),
+            "",
+        ));
+    }
+    None
+}
+
+pub(super) fn normalize_search_may_put_onto_battlefield_clause(text: &str) -> Option<String> {
+    let patterns = [
+        (
+            "you may searches for up to one ",
+            "up to one",
+            "you may search your library for",
+            "put",
+            "shuffle",
+        ),
+        (
+            "you may search for up to one ",
+            "up to one",
+            "you may search your library for",
+            "put",
+            "shuffle",
+        ),
+        (
+            "you searches for up to one ",
+            "up to one",
+            "you may search your library for",
+            "put",
+            "shuffle",
+        ),
+    ];
+    for (marker, selection_kind, lead, put_verb, shuffle_verb) in patterns {
+        let Some((before, rest)) = split_once_ascii_ci(text, marker) else {
+            continue;
+        };
+        let Some((descriptor_raw, after)) =
+            split_once_ascii_ci(rest, " in a library and tags it as 'searched'. ")
+        else {
+            continue;
+        };
+        let Some((subject, pronoun)) =
+            render_search_subject_and_pronoun(descriptor_raw, selection_kind)
+        else {
+            continue;
+        };
+
+        let battlefield_suffix = if let Some(tail) = strip_prefix_ascii_ci(
+            after,
+            "Put the tagged object 'searched' onto the battlefield. Shuffle your library",
+        ) {
+            Some(("onto the battlefield", tail))
+        } else if let Some(tail) = strip_prefix_ascii_ci(
+            after,
+            "Put the tagged object 'searched' onto the battlefield tapped. Shuffle your library",
+        ) {
+            Some(("onto the battlefield tapped", tail))
         } else {
             None
         };

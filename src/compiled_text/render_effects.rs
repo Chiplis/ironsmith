@@ -5090,6 +5090,72 @@ pub(super) fn describe_may_search_library_and_or_nonlibrary(
     Some(text)
 }
 
+pub(super) fn describe_may_search_then_put_onto_battlefield(
+    may: &crate::effects::MayEffect,
+) -> Option<String> {
+    fn downcast_move_to_zone<'a>(effect: &'a Effect) -> Option<&'a crate::effects::MoveToZoneEffect> {
+        if let Some(move_to_zone) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>() {
+            return Some(move_to_zone);
+        }
+        effect
+            .downcast_ref::<crate::effects::TaggedEffect>()?
+            .effect
+            .downcast_ref::<crate::effects::MoveToZoneEffect>()
+    }
+
+    let [choose_effect, move_effect, shuffle_effect] = may.effects.as_slice() else {
+        return None;
+    };
+
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    if !choose.is_search
+        || choose_primary_zone(choose) != Some(Zone::Library)
+        || choose.count.max != Some(1)
+        || choose.count.dynamic_x
+    {
+        return None;
+    }
+
+    let move_to_zone = downcast_move_to_zone(move_effect)?;
+    if move_to_zone.zone != Zone::Battlefield
+        || !matches!(&move_to_zone.target, ChooseSpec::Tagged(tag) if tag == &choose.tag)
+    {
+        return None;
+    }
+
+    let shuffle = shuffle_effect.downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
+    if shuffle.player != choose.chooser {
+        return None;
+    }
+
+    let actor = may.decider.as_ref().unwrap_or(&choose.chooser);
+    if actor != &choose.chooser {
+        return None;
+    }
+
+    let search_origin = describe_search_origin_zones(choose)?;
+    let mut display_filter = choose.filter.clone();
+    if display_filter.owner.as_ref() == Some(&choose.chooser) {
+        display_filter.owner = None;
+    }
+    let selection = describe_search_selection_with_cards(&display_filter.description());
+    let actor_text = describe_player_filter(actor);
+    let may_clause = if actor_text == "you" {
+        "You may".to_string()
+    } else {
+        format!("{} may", capitalize_first(&actor_text))
+    };
+    let pronoun = if choose.count.max == Some(1) {
+        "it"
+    } else {
+        "them"
+    };
+
+    Some(format!(
+        "{may_clause} search {search_origin} for {selection}. Put {pronoun} onto the battlefield, then shuffle"
+    ))
+}
+
 pub(super) fn describe_may_choose_reveal_and_move_to_hand(
     may: &crate::effects::MayEffect,
 ) -> Option<String> {
@@ -8752,6 +8818,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     }
     if let Some(may) = effect.downcast_ref::<crate::effects::MayEffect>() {
         if let Some(compact) = describe_may_enlist(may) {
+            return compact;
+        }
+        if let Some(compact) = describe_may_search_then_put_onto_battlefield(may) {
             return compact;
         }
         if let Some(compact) = describe_may_choose_reveal_and_move_to_hand(may) {

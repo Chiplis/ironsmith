@@ -4712,6 +4712,48 @@ fn test_parse_evolving_door_compiles_color_count_search_and_may_cast() {
 }
 
 #[test]
+fn test_parse_doubling_chant_compiles_search_put_onto_battlefield_and_shuffle() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Doubling Chant Probe")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(5)],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "For each creature you control, you may search your library for a creature card with the same name as that creature. Put those cards onto the battlefield, then shuffle.",
+        )
+        .expect("doubling chant should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("search your library for")
+            && rendered.contains("onto the battlefield")
+            && rendered.contains("shuffle"),
+        "expected Doubling Chant compiled search/battlefield/shuffle wording, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("tags it as 'searched'")
+            && !rendered.contains("cast the tagged object")
+            && !rendered.contains("you searches"),
+        "expected Doubling Chant to avoid debug-style search scaffolding, got {rendered}"
+    );
+
+    let oracle_rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        oracle_rendered.contains("same name as that")
+            && oracle_rendered.contains("onto the battlefield")
+            && oracle_rendered.contains("shuffle"),
+        "expected Doubling Chant oracle-like wording, got {oracle_rendered}"
+    );
+
+    let debug = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        debug.contains("same name") && debug.contains("may") && debug.contains("shuffle"),
+        "expected Doubling Chant to compile the same-name search and may wrapper, got {debug}"
+    );
+}
+
+#[test]
 fn test_parse_triggered_explore_clause_without_fallback_marker() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Explore Trigger Probe")
         .card_types(vec![CardType::Creature])
