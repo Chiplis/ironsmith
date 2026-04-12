@@ -5237,9 +5237,9 @@ mod tests {
 
     #[test]
     fn semantic_phrasing_keeps_negated_permanent_left_battlefield_condition_readable() {
-        let normalized = normalize_common_semantic_phrasing(
+        let normalized = normalize_compiled_post_pass_effect(&normalize_common_semantic_phrasing(
             "At the beginning of each end step, if not (a permanent left the battlefield this turn), that player loses life equal to this creature's power.",
-        );
+        ));
         assert_eq!(
             normalized,
             "At the beginning of each player's end step, if no permanents left the battlefield this turn, that player loses X life, where X is this creature's power."

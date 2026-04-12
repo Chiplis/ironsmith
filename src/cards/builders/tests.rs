@@ -25042,14 +25042,14 @@ fn parse_sarevok_deathbringer_keeps_global_ltb_gate_and_player_loss() {
 
     let rendered = oracle_like_lines(&def).join(" ");
     assert!(
-        rendered.contains("At the beginning of each player's end step")
+        rendered.contains("At the beginning of each end step")
             && rendered.contains("if no permanents left the battlefield this turn")
-            && rendered.contains("that player loses")
+            && rendered.contains("that player loses X life")
             && rendered.contains("this creature's power"),
         "expected Sarevok oracle-like rendering to preserve the gate and loss text, got {rendered}"
     );
 
-    let compiled = compiled_lines(&def).join(" ");
+    let compiled = crate::compiled_text::canonical_compiled_lines(&def).join(" ");
     assert!(
         compiled.contains(
             "At the beginning of each player's end step, if no permanents left the battlefield this turn, that player loses X life, where X is this creature's power."
