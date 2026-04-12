@@ -2522,6 +2522,148 @@ fn test_turn_face_up_action_puts_turned_face_up_trigger_on_stack() {
     );
 }
 
+#[test]
+fn ecological_appreciation_puts_two_chosen_cards_back_and_recruits_the_rest() {
+    use crate::cards::builders::CardDefinitionBuilder;
+    use crate::ids::CardId;
+
+    fn test_creature(name: &str, mana_value: u8) -> crate::cards::CardDefinition {
+        CardDefinitionBuilder::new(CardId::new(), name)
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(mana_value)]]))
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build()
+    }
+
+    struct EcologicalAppreciationDecisionMaker {
+        caster: PlayerId,
+        opponent: PlayerId,
+    }
+
+    impl DecisionMaker for EcologicalAppreciationDecisionMaker {
+        fn decide_objects(
+            &mut self,
+            game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            let legal = ctx
+                .candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .collect::<Vec<_>>();
+
+            if ctx.player == self.caster {
+                assert_eq!(
+                    ctx.min, 0,
+                    "Ecological Appreciation search should allow finding fewer than four cards"
+                );
+                assert_eq!(ctx.max, Some(4), "Ecological Appreciation should look for up to four");
+                return legal.into_iter().map(|candidate| candidate.id).collect();
+            }
+
+            assert_eq!(
+                ctx.player, self.opponent,
+                "the opponent should make the divvy choice"
+            );
+            assert_eq!(ctx.min, 2, "the opponent should choose exactly two cards");
+            assert_eq!(ctx.max, Some(2), "the opponent should choose exactly two cards");
+
+            ["Library Alpha", "Graveyard Alpha"]
+                .into_iter()
+                .map(|wanted_name| {
+                    legal
+                        .iter()
+                        .find(|candidate| {
+                            game.object(candidate.id)
+                                .is_some_and(|object| object.name == wanted_name)
+                        })
+                        .map(|candidate| candidate.id)
+                        .unwrap_or_else(|| panic!("expected to find {wanted_name} in the divvy"))
+                })
+                .collect()
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let text = "Mana cost: {X}{2}{G}\nType: Sorcery\nSearch your library and graveyard for up to four creature cards with different names that each have mana value X or less and reveal them. An opponent chooses two of those cards. Shuffle the chosen cards into your library and put the rest onto the battlefield. Exile Ecological Appreciation.";
+    let ecological_appreciation = CardDefinitionBuilder::new(
+        CardId::from_raw(91_001),
+        "Ecological Appreciation",
+    )
+    .parse_text(text)
+    .expect("Ecological Appreciation should parse");
+
+    let source_id = game.create_object_from_definition(
+        &ecological_appreciation,
+        alice,
+        Zone::Stack,
+    );
+    let _library_alpha = game.create_object_from_definition(
+        &test_creature("Library Alpha", 1),
+        alice,
+        Zone::Library,
+    );
+    let _library_beta = game.create_object_from_definition(
+        &test_creature("Library Beta", 2),
+        alice,
+        Zone::Library,
+    );
+    let _graveyard_alpha = game.create_object_from_definition(
+        &test_creature("Graveyard Alpha", 1),
+        alice,
+        Zone::Graveyard,
+    );
+    let _graveyard_beta = game.create_object_from_definition(
+        &test_creature("Graveyard Beta", 2),
+        alice,
+        Zone::Graveyard,
+    );
+
+    let mut stack_entry = StackEntry::new(source_id, alice);
+    stack_entry.x_value = Some(2);
+    game.stack.push(stack_entry);
+
+    let mut dm = EcologicalAppreciationDecisionMaker {
+        caster: alice,
+        opponent: bob,
+    };
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Ecological Appreciation should resolve");
+
+    let zone_has_name = |ids: &[ObjectId], name: &str| {
+        ids.iter()
+            .any(|&id| game.object(id).is_some_and(|object| object.name == name))
+    };
+
+    assert_eq!(
+        zone_has_name(&game.player(alice).expect("alice exists").library, "Library Alpha"),
+        true,
+        "the chosen library card should return to the library"
+    );
+    assert_eq!(
+        zone_has_name(&game.player(alice).expect("alice exists").library, "Graveyard Alpha"),
+        true,
+        "the chosen graveyard card should also return to the library"
+    );
+    assert_eq!(
+        zone_has_name(&game.battlefield, "Library Beta"),
+        true,
+        "the unchosen library card should go onto the battlefield"
+    );
+    assert_eq!(
+        zone_has_name(&game.battlefield, "Graveyard Beta"),
+        true,
+        "the unchosen graveyard card should go onto the battlefield"
+    );
+    assert_eq!(
+        zone_has_name(&game.exile, "Ecological Appreciation"),
+        true,
+        "Ecological Appreciation should exile itself after resolving"
+    );
+}
+
 // === Target Extraction Tests ===
 
 #[test]

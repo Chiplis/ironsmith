@@ -6795,6 +6795,11 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             || (choose_primary_zone(choose) == Some(Zone::Library)
                 && choose.tag.as_str().starts_with("searched_"));
         let filter_text = choose.filter.description();
+        let search_origin = if search_like {
+            describe_search_origin_zones(choose)
+        } else {
+            None
+        };
         let choice_text = if choose.top_only {
             if let Some(exact) = choose_exact_count(choose) {
                 if exact > 1 {
@@ -6814,6 +6819,29 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         } else {
             format!("{} {}", describe_choice_count(&choose.count), filter_text)
         };
+        if search_like
+            && let Some(search_origin) = search_origin
+        {
+            let pronoun = if choose.count.max == Some(1) {
+                "it"
+            } else {
+                "them"
+            };
+            let reveal_clause = if choose.reveal {
+                format!(", reveal {pronoun}")
+            } else {
+                String::new()
+            };
+            return format!(
+                "{} {} {} for {}{} and tags it as '{}'",
+                chooser,
+                choose_verb,
+                search_origin,
+                choice_text,
+                reveal_clause,
+                choose.tag.as_str()
+            );
+        }
         let (zone_phrase, zone_keyword) = match choose_primary_zone(choose) {
             Some(Zone::Battlefield) => ("the battlefield", "battlefield"),
             Some(Zone::Hand) => ("a hand", "hand"),
