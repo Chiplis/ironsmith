@@ -6000,6 +6000,10 @@ pub(crate) fn describe_value(value: &Value) -> String {
             describe_possessive_player_filter(filter)
         ),
         Value::CountPlayers(filter) => format!("the number of {}", describe_player_filter(filter)),
+        Value::PlayersWhoControlMoreThanYou(filter) => format!(
+            "the number of players who control more {} than you",
+            describe_count_filter_value_subject(filter)
+        ),
         Value::PartySize(filter) => {
             format!(
                 "the number of creatures in {} party",

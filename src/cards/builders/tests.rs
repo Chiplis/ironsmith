@@ -23897,6 +23897,37 @@ fn parse_tithe_separate_searches_then_reveal_to_hand() {
 }
 
 #[test]
+fn parse_oreskos_explorer_uses_player_land_comparison_for_x() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Oreskos Explorer")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text(
+            "When this creature enters, search your library for up to X Plains cards, where X is the number of players who control more lands than you. Reveal those cards, put them into your hand, then shuffle.",
+        )
+        .expect("Oreskos Explorer text should parse");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("PlayersWhoControlMoreThanYou"),
+        "expected Oreskos Explorer to lower into the player-comparison value, got {debug}"
+    );
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("up to x plains")
+            && rendered.contains("players who control more lands than you")
+            && rendered.contains("reveal those cards")
+            && rendered.contains("put them into your hand")
+            && rendered.contains("shuffle"),
+        "expected Oreskos Explorer oracle-like text to stay close to the card, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_oath_of_druids_maps_to_upkeep_consult_effects() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Oath of Druids")
         .card_types(vec![CardType::Enchantment])

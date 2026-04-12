@@ -719,6 +719,12 @@ pub(crate) fn parse_where_x_value_clause(tokens: &[OwnedLexToken]) -> Option<Val
         return Some(value);
     }
 
+    if let Some(value) =
+        crate::cards::builders::compiler::front_end::grammar::values::parse_players_who_control_more_than_you_value_lexed(tokens)
+    {
+        return Some(value);
+    }
+
     if let Some(value) = parse_where_x_life_gained_this_turn_value(tokens) {
         return Some(value);
     }

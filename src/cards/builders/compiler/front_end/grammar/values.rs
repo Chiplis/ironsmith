@@ -17,6 +17,7 @@ use crate::types::{CardType, Subtype, Supertype};
 use super::super::activation_and_restrictions::activated_line_core::find_word_sequence_start;
 use super::super::lexer::{LexStream, OwnedLexToken, TokenKind, lex_line, parser_token_word_refs};
 use super::super::token_primitives::{find_index, slice_contains, slice_starts_with};
+use super::super::object_filters::parse_object_filter_lexed;
 #[cfg(test)]
 use super::super::util::parse_subtype_word;
 use super::super::util::{
@@ -121,6 +122,67 @@ pub(crate) fn parse_max_cards_in_hand_value_lexed(tokens: &[OwnedLexToken]) -> O
     ]
     .into_iter()
     .find_map(|(phrase, value)| matches_exact_value_phrase_lexed(tokens, phrase).then_some(value))
+}
+
+pub(crate) fn parse_players_who_control_more_than_you_value_lexed(
+    tokens: &[OwnedLexToken],
+) -> Option<Value> {
+    let words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let mut idx = if matches!(words.as_slice(), ["where", "x", "is", ..]) {
+        3usize
+    } else {
+        0usize
+    };
+
+    if words.get(idx).copied() == Some("the") {
+        idx += 1;
+    }
+    if matches!(words.get(idx).copied(), Some("number")) {
+        if words.get(idx + 1).copied() != Some("of") {
+            return None;
+        }
+        idx += 2;
+    }
+
+    if words.get(idx).copied() != Some("players") {
+        return None;
+    }
+    idx += 1;
+
+    if words.get(idx).copied() != Some("who") {
+        return None;
+    }
+    idx += 1;
+
+    if words.get(idx).copied() != Some("control") {
+        return None;
+    }
+    idx += 1;
+
+    if words.get(idx).copied() != Some("more") {
+        return None;
+    }
+    idx += 1;
+
+    let Some(than_offset) =
+        crate::cards::builders::compiler::token_primitives::find_window_index(&words[idx..], &["than"]) else {
+        return None;
+    };
+    let than_idx = idx + than_offset;
+    let tail = &words[than_idx..];
+    if tail != ["than", "you"] {
+        return None;
+    }
+
+    let filter_start_token_idx = token_index_for_word_index(tokens, idx)?;
+    let filter_end_token_idx = token_index_for_word_index(tokens, than_idx)?;
+    let filter_tokens = &tokens[filter_start_token_idx..filter_end_token_idx];
+    if filter_tokens.is_empty() {
+        return None;
+    }
+
+    let filter = parse_object_filter_lexed(filter_tokens, false).ok()?;
+    Some(Value::PlayersWhoControlMoreThanYou(filter))
 }
 
 pub(crate) fn parse_mana_symbol_inner(input: &mut &str) -> WResult<ManaSymbol> {
