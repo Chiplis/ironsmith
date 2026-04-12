@@ -10233,6 +10233,118 @@ fn test_gargoyle_sentinel_gains_flying_only_for_itself_until_end_of_turn() {
 }
 
 #[test]
+fn test_sacellum_godspeaker_reveals_hand_creatures_and_adds_green_mana() {
+    use crate::PriorityResponse;
+    use crate::decision::compute_legal_actions;
+    use crate::game_loop::{
+        PriorityLoopState, apply_priority_response_with_dm, resolve_stack_entry,
+    };
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let sacellum_def = CardDefinitionBuilder::new(CardId::from_raw(99031), "Sacellum Godspeaker")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![crate::types::Subtype::Elf, crate::types::Subtype::Druid])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text(
+            "{T}: Reveal any number of creature cards with power 5 or greater from your hand. Add {G} for each card revealed this way.",
+        )
+        .expect("Sacellum Godspeaker should parse");
+    let sacellum_id = game.create_object_from_definition(&sacellum_def, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(sacellum_id);
+
+    let qualifying_one = CardBuilder::new(CardId::from_raw(99032), "Hill Giant Hand Probe")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(5, 5))
+        .build();
+    game.create_object_from_card(&qualifying_one, alice, Zone::Hand);
+
+    let qualifying_two = CardBuilder::new(CardId::from_raw(99033), "Force of Nature Hand Probe")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(8, 8))
+        .build();
+    game.create_object_from_card(&qualifying_two, alice, Zone::Hand);
+
+    let nonqualifying = CardBuilder::new(CardId::from_raw(99034), "Small Hand Probe")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .build();
+    game.create_object_from_card(&nonqualifying, alice, Zone::Hand);
+
+    let ability_index = game
+        .object(sacellum_id)
+        .expect("Sacellum Godspeaker exists")
+        .abilities
+        .iter()
+        .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .expect("Sacellum Godspeaker should have an activated ability");
+
+    let activate_action = compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::ActivateAbility {
+                    source,
+                    ability_index: idx,
+                } if *source == sacellum_id && *idx == ability_index
+            )
+        })
+        .expect("Sacellum Godspeaker activation should be legal");
+
+    let hand_before = game.player(alice).expect("alice exists").hand.len();
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("Sacellum Godspeaker activation should succeed");
+
+    assert!(
+        game.is_tapped(sacellum_id),
+        "Sacellum Godspeaker should tap as part of its activation cost"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").hand.len(),
+        hand_before,
+        "revealing cards should not move them out of hand"
+    );
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "Sacellum Godspeaker's activated ability should be on the stack"
+    );
+
+    resolve_stack_entry(&mut game).expect("Sacellum Godspeaker ability should resolve");
+
+    assert_eq!(
+        game.player(alice).expect("alice exists").mana_pool.green,
+        2,
+        "Sacellum Godspeaker should add one green mana for each qualifying revealed card"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").mana_pool.total(),
+        2,
+        "the mana pool should only contain the two green mana from Sacellum Godspeaker"
+    );
+}
+
+#[test]
 fn test_suspend_creature_gains_haste_until_control_changes() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
