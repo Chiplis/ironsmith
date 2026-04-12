@@ -18,67 +18,14 @@ const labelClass =
 const selectClass =
   "fantasy-field w-full px-3 py-2 text-[14px] text-foreground outline-none disabled:cursor-not-allowed disabled:opacity-50";
 
-function formatPercent(value, digits = 1) {
-  const amount = Number(value);
-  if (!Number.isFinite(amount)) return null;
-  return `${(amount * 100).toFixed(digits)}%`;
-}
-
-function formatCardLoadDiagnosticsClipboard(diagnostics, fallbackName, fallbackError, includeDebug = false) {
-  const compiledText = Array.isArray(diagnostics?.compiledText) && diagnostics.compiledText.length > 0
-    ? diagnostics.compiledText.join("\n")
-    : "-";
-  const compiledAbilities = Array.isArray(diagnostics?.compiledAbilities) && diagnostics.compiledAbilities.length > 0
-    ? diagnostics.compiledAbilities.join("\n")
-    : "-";
-  const primaryError = diagnostics?.error || fallbackError || null;
-  const parseError = diagnostics?.parseError || null;
-
+function formatAddCardFailureClipboard(cardName, zone, errorMessage) {
   return [
-    diagnostics?.canonicalName || fallbackName ? `Card: ${diagnostics?.canonicalName || fallbackName}` : "",
-    diagnostics?.query ? `Query: ${diagnostics.query}` : "",
-    primaryError ? `Error: ${primaryError}` : "",
-    parseError && parseError !== primaryError ? `Parse error: ${parseError}` : "",
-    includeDebug && formatPercent(diagnostics?.semanticScore)
-      ? `Similarity score: ${formatPercent(diagnostics?.semanticScore)}`
-      : "",
-    Number.isFinite(diagnostics?.thresholdPercent) ? `Threshold: ${diagnostics.thresholdPercent.toFixed(0)}%` : "",
-    `Oracle text:\n${diagnostics?.oracleText || "-"}`,
-    `Compiled text:\n${compiledText}`,
-    `Compiled abilities:\n${compiledAbilities}`,
+    cardName ? `Card: ${cardName}` : "",
+    zone ? `Zone: ${zone}` : "",
+    errorMessage ? `Error: ${errorMessage}` : "",
   ]
     .filter(Boolean)
     .join("\n\n");
-}
-
-function buildLowFidelityNotice(diagnostics, fallbackName, zone, includeDebug = false) {
-  const semanticScore = Number(diagnostics?.semanticScore);
-  const thresholdPercent = Number(diagnostics?.thresholdPercent);
-  if (!Number.isFinite(semanticScore) || !Number.isFinite(thresholdPercent)) {
-    return null;
-  }
-
-  const fidelityPercent = semanticScore * 100;
-  if (fidelityPercent >= thresholdPercent) {
-    return null;
-  }
-
-  const canonicalName = diagnostics?.canonicalName || fallbackName;
-  const warningMessage =
-    `Added ${canonicalName} to ${zone} at ${fidelityPercent.toFixed(1)}% fidelity, below the current ${thresholdPercent.toFixed(0)}% threshold.`;
-
-  return {
-    tone: "warning",
-    title: `Added ${canonicalName} below threshold`,
-    body: `Fidelity ${fidelityPercent.toFixed(1)}% is below the current ${thresholdPercent.toFixed(0)}% threshold. Click to copy diagnostics.`,
-    copyText: formatCardLoadDiagnosticsClipboard(
-      diagnostics,
-      canonicalName,
-      warningMessage,
-      includeDebug
-    ),
-    copyStatusMessage: `Copied diagnostics for ${canonicalName}`,
-  };
 }
 
 export default function AddCardSheet({
@@ -92,7 +39,6 @@ export default function AddCardSheet({
     refresh,
     runWasmInteraction,
     setStatus,
-    inspectorDebug,
     multiplayer,
   } = useGame();
   const [open, setOpen] = useState(false);
@@ -195,43 +141,24 @@ export default function AddCardSheet({
       }
       try {
         await game.addCardToZone(selectedPlayer, name, zone, skipTriggers);
-        let lowFidelityNotice = null;
-        if (game && typeof game.cardLoadDiagnostics === "function") {
-          try {
-            const diagnostics = await game.cardLoadDiagnostics(name);
-            lowFidelityNotice = buildLowFidelityNotice(diagnostics, name, zone, inspectorDebug);
-          } catch (diagnosticsError) {
-            console.warn("cardLoadDiagnostics failed:", diagnosticsError);
-          }
-        }
         setCardName("");
         setAutocompleteOptions([]);
         setAutocompleteOpen(false);
         setAutocompleteIndex(-1);
         closeSheet();
+        // Keep the add-card critical path limited to the mutation + refresh.
+        // Follow-up diagnostics are intentionally omitted here because a hung
+        // worker call would leave the shared interaction gate blocked.
         await refresh(`Added ${name} to ${zone}`);
-        if (lowFidelityNotice && typeof onAddCardNotice === "function") {
-          onAddCardNotice(lowFidelityNotice);
-        }
       } catch (err) {
         const errMsg = String(err?.message || err);
         setStatus(`Add card failed: ${errMsg}`, true);
         if (typeof onAddCardNotice === "function") {
-          let copyText = `Card: ${name}\n\nError: ${errMsg}`;
-          if (game && typeof game.cardLoadDiagnostics === "function") {
-            try {
-              const diagnostics = await game.cardLoadDiagnostics(name, errMsg);
-              copyText = formatCardLoadDiagnosticsClipboard(diagnostics, name, errMsg, inspectorDebug);
-            } catch (diagnosticsError) {
-              console.warn("cardLoadDiagnostics failed:", diagnosticsError);
-            }
-          }
-
           onAddCardNotice({
             tone: "error",
             title: `Could not add ${name}`,
             body: `${errMsg} Click to copy diagnostics.`,
-            copyText,
+            copyText: formatAddCardFailureClipboard(name, zone, errMsg),
             copyStatusMessage: `Copied diagnostics for ${name}`,
           });
         }
@@ -242,7 +169,6 @@ export default function AddCardSheet({
     cardName,
     closeSheet,
     game,
-    inspectorDebug,
     onAddCardNotice,
     refresh,
     runWasmInteraction,
