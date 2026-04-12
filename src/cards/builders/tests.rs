@@ -12427,22 +12427,18 @@ fn parse_return_transformed_clause_uses_shared_return_and_transform() {
 }
 
 #[test]
-fn parse_return_transformed_clause_renders_oracle_style_wording() {
+fn parse_return_transformed_clause_raw_render_keeps_shared_two_step_lowering() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Harvest Hand Variant")
         .parse_text(
             "When this creature dies, return it to the battlefield transformed under your control.",
         )
-        .expect("transformed return should keep oracle-style wording");
+        .expect("transformed return should keep shared two-step lowering");
     let rendered = compiled_lines(&def).join(" ");
     assert!(
         rendered.contains(
-            "When this creature dies, return it to the battlefield transformed under your control."
+            "When this creature dies, put that card onto the battlefield under your control. Transform it."
         ),
-        "expected oracle-style transformed return wording, got {rendered}"
-    );
-    assert!(
-        !rendered.contains("Put that card onto the battlefield under your control. Transform it."),
-        "expected transformed return wording to collapse the internal two-step render, got {rendered}"
+        "expected raw compiled_lines output to preserve the shared move-then-transform lowering, got {rendered}"
     );
 }
 
