@@ -23912,8 +23912,10 @@ fn parse_oreskos_explorer_uses_player_land_comparison_for_x() {
 
     let debug = format!("{:?}", def.abilities);
     assert!(
-        debug.contains("PlayersWhoControlMoreThanYou"),
-        "expected Oreskos Explorer to lower into the player-comparison value, got {debug}"
+        debug.contains("up_to_x: true")
+            && debug.contains("PlayersWhoControlMoreThanYou")
+            && debug.contains("count_value: Some"),
+        "expected Oreskos Explorer to preserve the optional dynamic count and player-comparison value, got {debug}"
     );
 
     let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();

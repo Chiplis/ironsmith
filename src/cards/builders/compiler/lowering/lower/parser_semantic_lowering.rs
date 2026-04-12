@@ -369,6 +369,7 @@ pub(crate) fn lower_special_rewrite_triggered_chunk(
         effects.push(EffectAst::ChooseObjectsAcrossZones {
             filter: ObjectFilter::tagged(TagKey::from("divvy_source")),
             count: ChoiceCount::exactly(1),
+            count_value: None,
             player: PlayerAst::Opponent,
             tag: TagKey::from("divvy_chosen"),
             zones: vec![Zone::Library],

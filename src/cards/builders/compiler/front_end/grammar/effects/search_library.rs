@@ -900,7 +900,7 @@ pub(crate) fn parse_search_library_count_prefix_lexed(
         && count_tokens[1].is_word("to")
     {
         if count_tokens.get(2).is_some_and(|token| token.is_word("x")) {
-            count = ChoiceCount::dynamic_x();
+            count = ChoiceCount::up_to_dynamic_x();
             search_mode = SearchSelectionMode::Optional;
             count_used = 3;
         } else if let Some((value, used)) = parse_number(&count_tokens[2..]) {

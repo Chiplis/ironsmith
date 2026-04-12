@@ -270,6 +270,7 @@ fn parse_reveal_from_outside_game_or_choose_face_up_exile_to_hand(
         EffectAst::ChooseObjectsAcrossZones {
             filter: choose_filter,
             count: ChoiceCount::exactly(1),
+            count_value: None,
             player: PlayerAst::You,
             tag: chosen_tag.clone(),
             zones: vec![Zone::Exile],
@@ -834,6 +835,7 @@ fn parse_nissas_encouragement_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<Eff
         effects.push(EffectAst::ChooseObjectsAcrossZones {
             filter,
             count: ChoiceCount::exactly(1),
+            count_value: None,
             player: PlayerAst::You,
             tag: searched_tag.clone(),
             zones: zones.clone(),

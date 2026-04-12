@@ -589,6 +589,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
             EffectAst::ChooseObjectsAcrossZones {
                 filter: ObjectFilter::tagged(TagKey::from("divvy_source")),
                 count: ChoiceCount::any_number(),
+                count_value: None,
                 player: PlayerAst::Opponent,
                 tag: TagKey::from("divvy_chosen"),
                 zones: vec![Zone::Exile],
@@ -677,6 +678,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
             EffectAst::ChooseObjectsAcrossZones {
                 filter: ObjectFilter::tagged(TagKey::from("divvy_source")),
                 count: ChoiceCount::any_number(),
+                count_value: None,
                 player: PlayerAst::Opponent,
                 tag: TagKey::from("divvy_chosen"),
                 zones: vec![Zone::Exile],
@@ -760,6 +762,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
             EffectAst::ChooseObjectsAcrossZones {
                 filter: ObjectFilter::tagged(TagKey::from("divvy_source")),
                 count: ChoiceCount::exactly(2),
+                count_value: None,
                 player: PlayerAst::Opponent,
                 tag: TagKey::from("divvy_chosen"),
                 zones: vec![Zone::Library, Zone::Graveyard],
@@ -828,6 +831,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         effects.push(EffectAst::ChooseObjectsAcrossZones {
             filter: ObjectFilter::tagged(TagKey::from("divvy_source")),
             count: ChoiceCount::exactly(1),
+            count_value: None,
             player: PlayerAst::Opponent,
             tag: TagKey::from("divvy_chosen"),
             zones: vec![Zone::Library],
@@ -881,6 +885,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         effects.push(EffectAst::ChooseObjectsAcrossZones {
             filter: ObjectFilter::tagged(TagKey::from("divvy_source")),
             count: ChoiceCount::exactly(1),
+            count_value: None,
             player: PlayerAst::TargetOpponent,
             tag: TagKey::from("divvy_chosen"),
             zones: vec![Zone::Library],

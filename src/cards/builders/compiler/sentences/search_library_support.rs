@@ -8,6 +8,7 @@ use super::token_primitives::{
 };
 use super::util::trim_commas;
 use crate::cards::builders::CardTextError;
+use crate::effect::Value;
 use crate::target::ObjectFilter;
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
@@ -362,4 +363,35 @@ pub(crate) fn normalize_search_library_filter(filter: &mut ObjectFilter) {
     for nested in &mut filter.any_of {
         normalize_search_library_filter(nested);
     }
+}
+
+pub(crate) fn split_search_library_count_value_clause_lexed(
+    filter_tokens: &[OwnedLexToken],
+) -> Result<Option<(Vec<OwnedLexToken>, Value)>, CardTextError> {
+    let Some((where_idx, _, _)) =
+        grammar::find_prefix(filter_tokens, || grammar::phrase(&["where", "x", "is"]))
+    else {
+        return Ok(None);
+    };
+
+    let count_value_tokens = trim_lexed_commas(&filter_tokens[where_idx..]).to_vec();
+    let Some(count_value) =
+        super::grammar::values::parse_players_who_control_more_than_you_value_lexed(
+            count_value_tokens.as_slice(),
+        )
+    else {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported search-library count clause (clause: '{}')",
+            token_words(&count_value_tokens).join(" ")
+        )));
+    };
+
+    let base_filter_tokens = trim_commas(&filter_tokens[..where_idx]).to_vec();
+    if base_filter_tokens.is_empty() {
+        return Err(CardTextError::ParseError(
+            "missing search library filter before where-x clause".to_string(),
+        ));
+    }
+
+    Ok(Some((base_filter_tokens, count_value)))
 }
