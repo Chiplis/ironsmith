@@ -5236,6 +5236,17 @@ mod tests {
     }
 
     #[test]
+    fn semantic_phrasing_keeps_negated_permanent_left_battlefield_condition_readable() {
+        let normalized = normalize_common_semantic_phrasing(
+            "At the beginning of each end step, if not (a permanent left the battlefield this turn), that player loses life equal to this creature's power.",
+        );
+        assert_eq!(
+            normalized,
+            "At the beginning of each end step, if no permanents left the battlefield this turn, that player loses life equal to this creature's power."
+        );
+    }
+
+    #[test]
     fn post_pass_normalizes_self_return_tag_scaffolding() {
         let normalized = normalize_compiled_post_pass_effect(
             "{2}{U}, Discard two cards: you choose exactly 1 this card in your graveyard and tags it as 'chosen_return_0'. Return it from graveyard to the battlefield tapped.",

@@ -25052,6 +25052,13 @@ fn parse_sarevok_deathbringer_keeps_global_ltb_gate_and_player_loss() {
             && rendered.contains("this creature's power"),
         "expected Sarevok oracle-like rendering to preserve the gate and loss text, got {rendered}"
     );
+
+    let compiled = compiled_lines(&def).join(" ");
+    assert!(
+        compiled.contains("if no permanents left the battlefield this turn")
+            && !compiled.contains("if not"),
+        "expected Sarevok compiled text to render the negated condition clearly, got {compiled}"
+    );
 }
 
 #[test]
