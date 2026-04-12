@@ -902,54 +902,85 @@ pub(crate) fn parse_target_player_exiles_creature_and_graveyard_sentence(
 pub(crate) fn parse_for_each_exiled_this_way_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if grammar::words_match_prefix(tokens, &["for", "each"]).is_none() {
+        return Ok(None);
+    }
+    let words_all = token_words(tokens);
+    let refers_to_exiled =
+        grammar::words_find_phrase(tokens, &["exiled", "this", "way"]).is_some();
+    if !refers_to_exiled {
+        return Ok(None);
+    }
     if grammar::words_match_prefix(
         tokens,
         &["for", "each", "permanent", "exiled", "this", "way"],
     )
-    .is_none()
+    .is_some()
+        && grammar::contains_word(tokens, "shares")
+        && grammar::contains_word(tokens, "card")
+        && grammar::contains_word(tokens, "type")
+        && grammar::contains_word(tokens, "library")
+        && grammar::contains_word(tokens, "battlefield")
     {
-        return Ok(None);
-    }
-    if !grammar::contains_word(tokens, "shares")
-        || !grammar::contains_word(tokens, "card")
-        || !grammar::contains_word(tokens, "type")
-        || !grammar::contains_word(tokens, "library")
-        || !grammar::contains_word(tokens, "battlefield")
-    {
-        return Ok(None);
+        let filter_tokens = lex_line("a permanent that shares a card type with it", 0)?;
+        let filter = parse_object_filter_lexed(&filter_tokens, false)?;
+        let revealed_tag = helper_tag_for_tokens(tokens, "revealed");
+        let matched_tag = helper_tag_for_tokens(tokens, "chosen");
+
+        return Ok(Some(vec![EffectAst::ForEachTagged {
+            tag: IT_TAG.into(),
+            effects: vec![
+                EffectAst::ConsultTopOfLibrary {
+                    player: PlayerAst::Implicit,
+                    mode: LibraryConsultModeAst::Reveal,
+                    filter,
+                    stop_rule: LibraryConsultStopRuleAst::FirstMatch,
+                    all_tag: revealed_tag.clone(),
+                    match_tag: matched_tag.clone(),
+                },
+                EffectAst::MoveToZone {
+                    target: TargetAst::Tagged(matched_tag.clone(), None),
+                    zone: Zone::Battlefield,
+                    to_top: false,
+                    battlefield_controller: ReturnControllerAst::Preserve,
+                    battlefield_tapped: false,
+                    attached_to: None,
+                },
+                EffectAst::PutTaggedRemainderOnBottomOfLibrary {
+                    tag: revealed_tag,
+                    keep_tagged: Some(matched_tag),
+                    order: LibraryBottomOrderAst::Random,
+                    player: PlayerAst::Implicit,
+                },
+            ],
+        }]));
     }
 
-    let filter_tokens = lex_line("a permanent that shares a card type with it", 0)?;
-    let filter = parse_object_filter_lexed(&filter_tokens, false)?;
-    let revealed_tag = helper_tag_for_tokens(tokens, "revealed");
-    let matched_tag = helper_tag_for_tokens(tokens, "chosen");
+    let (_before, after_comma) = grammar::split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
+        .ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "missing comma after 'for each ... exiled this way' clause (clause: '{}')",
+                words_all.join(" ")
+            ))
+        })?;
+    let effect_tokens = trim_commas(after_comma);
+    if effect_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing effect after 'for each ... exiled this way' clause (clause: '{}')",
+            words_all.join(" ")
+        )));
+    }
+    let effects = parse_effect_chain(&effect_tokens)?;
+    if effects.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "empty effect after 'for each ... exiled this way' clause (clause: '{}')",
+            words_all.join(" ")
+        )));
+    }
 
     Ok(Some(vec![EffectAst::ForEachTagged {
         tag: IT_TAG.into(),
-        effects: vec![
-            EffectAst::ConsultTopOfLibrary {
-                player: PlayerAst::Implicit,
-                mode: LibraryConsultModeAst::Reveal,
-                filter,
-                stop_rule: LibraryConsultStopRuleAst::FirstMatch,
-                all_tag: revealed_tag.clone(),
-                match_tag: matched_tag.clone(),
-            },
-            EffectAst::MoveToZone {
-                target: TargetAst::Tagged(matched_tag.clone(), None),
-                zone: Zone::Battlefield,
-                to_top: false,
-                battlefield_controller: ReturnControllerAst::Preserve,
-                battlefield_tapped: false,
-                attached_to: None,
-            },
-            EffectAst::PutTaggedRemainderOnBottomOfLibrary {
-                tag: revealed_tag,
-                keep_tagged: Some(matched_tag),
-                order: LibraryBottomOrderAst::Random,
-                player: PlayerAst::Implicit,
-            },
-        ],
+        effects,
     }]))
 }
 

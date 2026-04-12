@@ -12364,7 +12364,7 @@ fn parse_reveal_hand_choose_card_from_it_clause() {
     assert!(
         joined.contains("lookathandeffect")
             && joined.contains("chooseobjectseffect")
-            && joined.contains("exileeffect"),
+            && (joined.contains("exileeffect") || joined.contains("movetozoneeffect")),
         "expected reveal-hand choose-then-exile effect chain, got {joined}"
     );
 }
@@ -13974,6 +13974,45 @@ fn parse_search_its_controller_graveyard_hand_and_library_exiles_same_name_cards
             || debug
                 .contains("shufflelibraryeffect { player: controllerof(tagged(tagkey(\"exiled_"),
         "expected shuffle to target the searched player's controller, got {debug}"
+    );
+}
+
+#[test]
+fn parse_oracle_reap_intellect_regression() {
+    let def = parse_oracle_card_definition("Reap Intellect");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let debug = format!("{:?}", def.spell_effect).to_ascii_lowercase();
+    assert!(
+        rendered.contains("target opponent reveals their hand"),
+        "expected Reap Intellect to reveal target opponent's hand, got {rendered}"
+    );
+    assert!(
+        rendered.contains("choose up to x nonland cards from it and exile them")
+            || rendered.contains("choose up to x nonland card from it and exile them"),
+        "expected Reap Intellect to keep the hand-choice exile clause, got {rendered}; debug={debug}"
+    );
+    assert!(
+        rendered.contains("search that player's graveyard, hand, and library")
+            && (rendered.contains("with the same name as that object")
+                || rendered.contains("with the same name as that card"))
+            && rendered.contains("exile them")
+            && rendered.contains("that player shuffles"),
+        "expected Reap Intellect to keep the same-name search/exile/shuffle follow-up, got {rendered}; debug={debug}"
+    );
+    assert!(
+        !rendered.contains("exile target opponent")
+            && !rendered.contains("you search your graveyard, hand, and library"),
+        "expected Reap Intellect to avoid player-exile and wrong-owner fallback text, got {rendered}; debug={debug}"
+    );
+
+    assert!(
+        debug.contains("lookathandeffect")
+            && debug.contains("chooseobjectseffect")
+            && debug.contains("zone: some(hand)")
+            && debug.contains("samenameastagged")
+            && debug.contains("shufflelibraryeffect"),
+        "expected Reap Intellect to lower to hand choice plus same-name search, got {debug}"
     );
 }
 

@@ -8879,24 +8879,46 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 if display_filter.owner.as_ref() == Some(&search_slots.player) {
                     display_filter.owner = None;
                 }
-                describe_search_selection_with_cards(&display_filter.description())
+                if display_filter.zone == Some(Zone::Library) {
+                    display_filter.zone = None;
+                }
+                let mut selection = display_filter.description();
+                if let Some(head) = selection.strip_suffix(" card") {
+                    let first_word = head.split_whitespace().next().unwrap_or_default();
+                    if !matches!(
+                        first_word,
+                        "a" | "an" | "the" | "target" | "another" | "each" | "all" | "up" | "any"
+                    ) {
+                        selection = head.to_string();
+                    }
+                }
+                describe_search_selection_with_cards(&selection)
             })
             .collect();
-        let joined = if selections.len() == 2 {
-            format!("{} and {}", selections[0], selections[1])
-        } else {
-            selections.join(", ")
-        };
-        let reveal = if search_slots.reveal {
-            "reveal those cards, "
-        } else {
-            ""
-        };
+        let joined = join_with_and(&selections);
+        if search_slots.reveal {
+            let separator = if selections.len() >= 3 && search_slots.destination == Zone::Hand {
+                ". "
+            } else {
+                ", "
+            };
+            let reveal_clause = if separator == ". " {
+                "Reveal those cards"
+            } else {
+                "reveal those cards"
+            };
+            return format!(
+                "Search {} library for {}{}{reveal_clause}, put them {}, then shuffle",
+                describe_possessive_player_filter(&search_slots.player),
+                joined,
+                separator,
+                destination
+            );
+        }
         return format!(
-            "Search {} library for {}, {}put them {}, then shuffle",
+            "Search {} library for {}, put them {}, then shuffle",
             describe_possessive_player_filter(&search_slots.player),
             joined,
-            reveal,
             destination
         );
     }

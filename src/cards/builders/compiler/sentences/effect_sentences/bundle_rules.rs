@@ -373,6 +373,132 @@ fn parser_words(tokens: &[OwnedLexToken]) -> Vec<String> {
         .collect()
 }
 
+fn split_search_library_slot_filter_items_lexed(
+    filter_tokens: &[OwnedLexToken],
+) -> Option<Vec<Vec<OwnedLexToken>>> {
+    let mut items = Vec::new();
+    let mut item_start = 0usize;
+    let mut cursor = 0usize;
+
+    while cursor < filter_tokens.len() {
+        let mut next_item_start = None;
+        if filter_tokens[cursor].is_comma() || filter_tokens[cursor].is_word("and") {
+            let mut probe = cursor;
+            while filter_tokens
+                .get(probe)
+                .is_some_and(OwnedLexToken::is_comma)
+            {
+                probe += 1;
+            }
+            if filter_tokens
+                .get(probe)
+                .is_some_and(|token| token.is_word("and"))
+            {
+                probe += 1;
+                while filter_tokens
+                    .get(probe)
+                    .is_some_and(OwnedLexToken::is_comma)
+                {
+                    probe += 1;
+                }
+            }
+            if filter_tokens
+                .get(probe)
+                .is_some_and(|token| token.is_word("a") || token.is_word("an"))
+                && probe > cursor
+            {
+                next_item_start = Some(probe);
+            }
+        }
+
+        if let Some(start) = next_item_start {
+            let item = trim_commas(&filter_tokens[item_start..cursor]);
+            if item.is_empty() {
+                return None;
+            }
+            items.push(item);
+            item_start = start;
+            cursor = start;
+            continue;
+        }
+
+        cursor += 1;
+    }
+
+    let item = trim_commas(&filter_tokens[item_start..]);
+    if item.is_empty() {
+        return None;
+    }
+    items.push(item);
+
+    (items.len() >= 2).then_some(items)
+}
+
+fn parse_search_library_slots_to_hand_bundle(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let sentence_words = parser_words(tokens);
+    if sentence_words.len() < 15 || sentence_words[..4] != ["search", "your", "library", "for"] {
+        return Ok(None);
+    }
+
+    let reveal_phrase = ["reveal", "those", "cards"];
+    let put_them_phrase = ["put", "them", "into", "your", "hand", "then", "shuffle"];
+    let put_those_cards_phrase = [
+        "put", "those", "cards", "into", "your", "hand", "then", "shuffle",
+    ];
+    let Some(reveal_word_idx) = sentence_words
+        .windows(reveal_phrase.len())
+        .position(|window| window == reveal_phrase)
+    else {
+        return Ok(None);
+    };
+    let tail_words = &sentence_words[reveal_word_idx + reveal_phrase.len()..];
+    if tail_words != put_them_phrase && tail_words != put_those_cards_phrase {
+        return Ok(None);
+    }
+
+    let Some(for_idx) = find_index(tokens, |token: &OwnedLexToken| token.is_word("for")) else {
+        return Ok(None);
+    };
+    let Some(reveal_idx) = find_index(tokens, |token: &OwnedLexToken| token.is_word("reveal"))
+    else {
+        return Ok(None);
+    };
+    if reveal_idx <= for_idx + 1 {
+        return Ok(None);
+    }
+
+    let filter_items = split_search_library_slot_filter_items_lexed(&trim_commas(
+        &tokens[for_idx + 1..reveal_idx],
+    ))
+    .ok_or_else(|| {
+        CardTextError::ParseError(
+            "expected multiple slot filters in search-library hand bundle".to_string(),
+        )
+    })?;
+
+    let mut slots = Vec::new();
+    for item in filter_items {
+        let mut filter = parse_object_filter_lexed(&item, false)?;
+        filter.zone = Some(Zone::Library);
+        if filter.owner.is_none() {
+            filter.owner = Some(PlayerFilter::You);
+        }
+        slots.push(crate::cards::builders::SearchLibrarySlotAst {
+            filter,
+            optional: true,
+        });
+    }
+
+    Ok(Some(vec![EffectAst::SearchLibrarySlotsToHand {
+        slots,
+        player: PlayerAst::You,
+        reveal: true,
+        progress_tag: TagKey::from("search_library_slots_progress"),
+    }]))
+}
+
 fn parse_soul_partition_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
     let sentences = split_lexed_sentences(tokens);
     if sentences.len() != 3 {
@@ -952,6 +1078,9 @@ pub(crate) fn parse_exact_card_effect_bundle_lexed(
         combined.append(&mut effects);
         return Some(combined);
     }
+    if let Ok(Some(effects)) = parse_search_library_slots_to_hand_bundle(tokens) {
+        return Some(effects);
+    }
     let sentence_words = tokens
         .iter()
         .filter_map(|token| match token.kind {
@@ -1038,40 +1167,6 @@ pub(crate) fn parse_exact_card_effect_bundle_lexed(
                 may_choose_new_targets: true,
             }],
             if_false: Vec::new(),
-        }]);
-    }
-
-    if sentence_words.as_slice()
-        == [
-            "search", "your", "library", "for", "a", "basic", "forest", "card", "and", "a",
-            "basic", "plains", "card", "reveal", "those", "cards", "put", "them", "into", "your",
-            "hand", "then", "shuffle",
-        ]
-    {
-        return Some(vec![EffectAst::SearchLibrarySlotsToHand {
-            slots: vec![
-                crate::cards::builders::SearchLibrarySlotAst {
-                    filter: ObjectFilter::default()
-                        .in_zone(Zone::Library)
-                        .owned_by(PlayerFilter::You)
-                        .with_type(crate::types::CardType::Land)
-                        .with_supertype(crate::types::Supertype::Basic)
-                        .with_subtype(crate::types::Subtype::Forest),
-                    optional: true,
-                },
-                crate::cards::builders::SearchLibrarySlotAst {
-                    filter: ObjectFilter::default()
-                        .in_zone(Zone::Library)
-                        .owned_by(PlayerFilter::You)
-                        .with_type(crate::types::CardType::Land)
-                        .with_supertype(crate::types::Supertype::Basic)
-                        .with_subtype(crate::types::Subtype::Plains),
-                    optional: true,
-                },
-            ],
-            player: PlayerAst::You,
-            reveal: true,
-            progress_tag: TagKey::from("yasharn_search_progress"),
         }]);
     }
 

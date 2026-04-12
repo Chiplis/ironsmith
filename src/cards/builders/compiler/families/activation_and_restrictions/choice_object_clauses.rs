@@ -49,16 +49,29 @@ pub(crate) fn parse_target_player_choose_objects_clause(
         && choose_object_tokens
             .get(1)
             .is_some_and(|token| token.is_word("to"))
-        && let Some((value, used)) = parse_number(&choose_object_tokens[2..])
     {
-        count = ChoiceCount {
-            min: 0,
-            max: Some(value as usize),
-            dynamic_x: false,
-            up_to_x: false,
-            random: false,
-        };
-        choose_object_tokens = trim_commas(&choose_object_tokens[2 + used..]);
+        if choose_object_tokens
+            .get(2)
+            .is_some_and(|token| token.is_word("x"))
+        {
+            count = ChoiceCount::up_to_dynamic_x();
+            choose_object_tokens = trim_commas(&choose_object_tokens[3..]);
+        } else if let Some((value, used)) = parse_number(&choose_object_tokens[2..]) {
+            count = ChoiceCount {
+                min: 0,
+                max: Some(value as usize),
+                dynamic_x: false,
+                up_to_x: false,
+                random: false,
+            };
+            choose_object_tokens = trim_commas(&choose_object_tokens[2 + used..]);
+        }
+    } else if choose_object_tokens
+        .first()
+        .is_some_and(|token| token.is_word("x"))
+    {
+        count = ChoiceCount::dynamic_x();
+        choose_object_tokens = trim_commas(&choose_object_tokens[1..]);
     } else if let Some((value, used)) = parse_number(&choose_object_tokens) {
         count = ChoiceCount::exactly(value as usize);
         choose_object_tokens = trim_commas(&choose_object_tokens[used..]);
@@ -186,22 +199,34 @@ pub(crate) fn parse_you_choose_objects_clause(
         break;
     }
     let mut count = ChoiceCount::exactly(1);
-    if slice_starts_with(&choose_words, &["up", "to"])
-        && let Some((value, used)) = parse_number(
+    if slice_starts_with(&choose_words, &["up", "to"]) {
+        if choose_words
+            .get(2)
+            .is_some_and(|word| word.eq_ignore_ascii_case("x"))
+        {
+            count = ChoiceCount::up_to_dynamic_x();
+            choose_words = choose_words[3..].to_vec();
+        } else if let Some((value, used)) = parse_number(
             &choose_words[2..]
                 .iter()
                 .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
                 .collect::<Vec<_>>(),
-        )
+        ) {
+            count = ChoiceCount {
+                min: 0,
+                max: Some(value as usize),
+                dynamic_x: false,
+                up_to_x: false,
+                random: false,
+            };
+            choose_words = choose_words[2 + used..].to_vec();
+        }
+    } else if choose_words
+        .first()
+        .is_some_and(|word| word.eq_ignore_ascii_case("x"))
     {
-        count = ChoiceCount {
-            min: 0,
-            max: Some(value as usize),
-            dynamic_x: false,
-            up_to_x: false,
-            random: false,
-        };
-        choose_words = choose_words[2 + used..].to_vec();
+        count = ChoiceCount::dynamic_x();
+        choose_words = choose_words[1..].to_vec();
     } else if let Some((value, used)) = parse_number(
         &choose_words
             .iter()

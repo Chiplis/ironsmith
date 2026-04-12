@@ -10804,6 +10804,64 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_yasharn_search_uses_generic_library_slots_bundle() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Yasharn Variant")
+            .card_types(vec![CardType::Creature])
+            .parse_text(
+                "When this creature enters, search your library for a basic Forest card and a basic Plains card, reveal those cards, put them into your hand, then shuffle.",
+            )
+            .expect("parse Yasharn-style bundle");
+
+        let debug = format!("{:?}", def.abilities);
+        assert!(
+            debug.contains("SearchLibrarySlotsEffect"),
+            "expected slot-based search effect, got {debug}"
+        );
+        assert!(
+            debug.contains("subtypes: [Forest]") && debug.contains("subtypes: [Plains]"),
+            "expected Forest and Plains slot filters, got {debug}"
+        );
+
+        let rendered = compiled_lines(&def).join(" ");
+        assert!(
+            rendered.contains(
+                "search your library for a basic Forest card and a basic Plains card, reveal those cards, put them into your hand, then shuffle"
+            ),
+            "expected oracle-like slot-search text, got {rendered}"
+        );
+    }
+
+    #[test]
+    fn parse_gem_of_becoming_search_tracks_each_land_slot() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Gem of Becoming")
+            .card_types(vec![CardType::Artifact])
+            .parse_text(
+                "{3}, {T}, Sacrifice this artifact: Search your library for an Island card, a Swamp card, and a Mountain card. Reveal those cards, put them into your hand, then shuffle.",
+            )
+            .expect("parse Gem of Becoming search");
+
+        let debug = format!("{:?}", def.abilities);
+        assert!(
+            debug.contains("SearchLibrarySlotsEffect"),
+            "expected slot-based search effect, got {debug}"
+        );
+        assert!(
+            debug.contains("subtypes: [Island]")
+                && debug.contains("subtypes: [Swamp]")
+                && debug.contains("subtypes: [Mountain]"),
+            "expected Island, Swamp, and Mountain slot filters, got {debug}"
+        );
+
+        let rendered = compiled_lines(&def).join(" ");
+        assert!(
+            rendered.contains(
+                "Search your library for an Island card, a Swamp card, and a Mountain card. Reveal those cards, put them into your hand, then shuffle"
+            ),
+            "expected oracle-like Gem text, got {rendered}"
+        );
+    }
+
+    #[test]
     fn parse_construct_token_with_explicit_pt_does_not_force_karnstruct_stats() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Sokenzan Smelter Variant")
             .parse_text(

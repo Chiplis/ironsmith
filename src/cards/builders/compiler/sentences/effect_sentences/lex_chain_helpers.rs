@@ -184,7 +184,19 @@ fn starts_with_inline_token_rules_continuation(words: &[&str]) -> bool {
 }
 
 fn starts_with_nonverb_effect_head(words: &[&str]) -> bool {
-    words.first().is_some_and(|word| {
+    matches!(
+        words,
+        ["choose" | "chooses", ..]
+            | ["you", "choose" | "chooses", ..]
+            | ["that", "player" | "players", "choose" | "chooses", ..]
+            | ["the", "voter", "choose" | "chooses", ..]
+            | [
+                "target",
+                "player" | "players" | "opponent" | "opponents",
+                "choose" | "chooses",
+                ..
+            ]
+    ) || words.first().is_some_and(|word| {
         matches!(
             *word,
             "double"

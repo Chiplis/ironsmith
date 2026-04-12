@@ -2552,6 +2552,12 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
             normalized = rewritten;
             changed = true;
         }
+        if let Some(rewritten) = normalize_revealed_hand_choose_exile_clause(&normalized)
+            && rewritten != normalized
+        {
+            normalized = rewritten;
+            changed = true;
+        }
         if let Some(rewritten) =
             normalize_sentence_helper_choose_exiled_card_play_clause(&normalized)
             && rewritten != normalized
@@ -3135,6 +3141,9 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
     if let Some(rewritten) =
         normalize_for_each_same_name_search_put_onto_battlefield_clause(&normalized)
     {
+        return rewritten;
+    }
+    if let Some(rewritten) = normalize_for_each_same_name_search_exile_shuffle_clause(&normalized) {
         return rewritten;
     }
     if let Some(rewritten) = normalize_search_reveal_into_hand_clause(&normalized) {
@@ -6446,6 +6455,49 @@ pub(super) fn normalize_sentence_helper_simple_exile_clause(text: &str) -> Optio
     None
 }
 
+pub(super) fn normalize_revealed_hand_choose_exile_clause(text: &str) -> Option<String> {
+    let patterns = [
+        ("you choose up to x ", "up to X", "them"),
+        ("you choose exactly 1 ", "exactly one", "it"),
+        ("you choose up to one ", "up to one", "it"),
+    ];
+    let hand_markers = [
+        " in target opponent's hand and tags it as '__it__'. Exile that object",
+        " in target player's hand and tags it as '__it__'. Exile that object",
+        " in that player's hand and tags it as '__it__'. Exile that object",
+        " in their hand and tags it as '__it__'. Exile that object",
+    ];
+
+    for (marker, selection_kind, pronoun) in patterns {
+        let Some((before, rest)) = split_once_ascii_ci(text, marker) else {
+            continue;
+        };
+        if !before.to_ascii_lowercase().contains("reveals their hand") {
+            continue;
+        }
+
+        for hand_marker in hand_markers {
+            let Some((descriptor_raw, tail)) = split_once_ascii_ci(rest, hand_marker) else {
+                continue;
+            };
+            let descriptor = strip_leading_article(descriptor_raw.trim());
+            let subject = match selection_kind {
+                "up to X" => format!(
+                    "up to {}",
+                    render_choose_subject_for_count_token(descriptor, "X")
+                ),
+                "up to one" => format!("up to one {descriptor}"),
+                "exactly one" => with_indefinite_article(descriptor),
+                _ => return None,
+            };
+            let replacement = format!("choose {subject} from it and exile {pronoun}");
+            return Some(apply_replacement_with_case(before, &replacement, tail));
+        }
+    }
+
+    None
+}
+
 pub(super) fn normalize_sentence_helper_choose_exiled_card_play_clause(
     text: &str,
 ) -> Option<String> {
@@ -7145,6 +7197,39 @@ fn for_each_subject_reference_phrase(subject: &str) -> &'static str {
     } else {
         "that object"
     }
+}
+
+pub(super) fn normalize_for_each_same_name_search_exile_shuffle_clause(
+    text: &str,
+) -> Option<String> {
+    let (before, rest) = split_once_ascii_ci(text, "For each ")?;
+    let (subject_raw, after_subject) = split_once_ascii_ci(rest, ", you search ")?;
+
+    let subject_text = match subject_raw.trim().to_ascii_lowercase().as_str() {
+        "card in exile" => "card exiled this way".to_string(),
+        "cards in exile" => "cards exiled this way".to_string(),
+        other => other.to_string(),
+    };
+
+    let tail = if let Some(tail) = strip_prefix_ascii_ci(
+        after_subject,
+        "target player's graveyard, hand, and library for any number permanent with the same name as that object target player owns and tags it as 'searched'. For each tagged 'searched' object, Exile the tagged object 'searched'. Shuffle target player's library",
+    ) {
+        tail
+    } else if let Some(tail) = strip_prefix_ascii_ci(
+        after_subject,
+        "that player's graveyard, hand, and library for any number permanent with the same name as that object that player owns and tags it as 'searched'. For each tagged 'searched' object, Exile the tagged object 'searched'. Shuffle that player's library",
+    ) {
+        tail
+    } else {
+        return None;
+    };
+
+    let reference = for_each_subject_reference_phrase(&subject_text);
+    let rewritten = format!(
+        "For each {subject_text}, search that player's graveyard, hand, and library for any number of cards with the same name as {reference} and exile them. Then that player shuffles"
+    );
+    Some(apply_replacement_with_case(before, &rewritten, tail))
 }
 
 pub(super) fn normalize_for_each_same_name_search_put_onto_battlefield_clause(

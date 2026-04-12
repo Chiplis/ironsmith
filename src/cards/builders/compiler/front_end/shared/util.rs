@@ -2699,7 +2699,13 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
     if matches!(remaining_words.as_slice(), ["him"] | ["her"]) {
         return Ok(wrap_target_count(TargetAst::Source(span), target_count));
     }
-    if matches!(remaining_words.as_slice(), ["them"] | ["that", "player"]) {
+    if remaining_words.as_slice() == ["them"] {
+        return Ok(wrap_target_count(
+            TargetAst::Tagged(TagKey::from(IT_TAG), span),
+            target_count,
+        ));
+    }
+    if remaining_words.as_slice() == ["that", "player"] {
         return Ok(wrap_target_count(
             TargetAst::Player(PlayerFilter::target_player(), target_span),
             target_count,
