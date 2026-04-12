@@ -304,6 +304,42 @@ pub(crate) fn parse_get(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
+    fn parse_pump_for_each_tail(
+        tail_tokens: &[OwnedLexToken],
+        subject: Option<SubjectAst>,
+        power_per: i32,
+        toughness_per: i32,
+        clause_words: &[&str],
+    ) -> Result<Option<EffectAst>, CardTextError> {
+        if grammar::words_match_prefix(tail_tokens, &["until", "end", "of", "turn", "for", "each"])
+            .is_none()
+        {
+            return Ok(None);
+        }
+
+        let count = parse_get_for_each_count_value(&tail_tokens[4..])?.ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "unsupported get-for-each filter (clause: '{}')",
+                clause_words.join(" ")
+            ))
+        })?;
+        let target = match subject {
+            Some(SubjectAst::This) => TargetAst::Source(None),
+            _ => {
+                return Err(CardTextError::ParseError(
+                    "unsupported get clause (missing subject)".to_string(),
+                ));
+            }
+        };
+        Ok(Some(EffectAst::PumpForEach {
+            power_per,
+            toughness_per,
+            target,
+            count,
+            duration: Until::EndOfTurn,
+        }))
+    }
+
     let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
     if grammar::contains_word(tokens, "poison")
         && (grammar::contains_word(tokens, "counter") || grammar::contains_word(tokens, "counters"))
@@ -389,37 +425,27 @@ pub(crate) fn parse_get(
         && let Ok((power_per, toughness_per)) = parse_pt_modifier(mod_token)
     {
         let tail_tokens = tokens.get(modifier_start + 1..).unwrap_or_default();
-        if grammar::words_match_prefix(tail_tokens, &["until", "end", "of", "turn", "for", "each"])
-            .is_some()
+        if let Some(effect) =
+            parse_pump_for_each_tail(tail_tokens, subject, power_per, toughness_per, &clause_words)?
         {
-            let filter_tokens = &tail_tokens[6..];
-            let filter = parse_object_filter(filter_tokens, false).map_err(|_| {
-                CardTextError::ParseError(format!(
-                    "unsupported get-for-each filter (clause: '{}')",
-                    clause_words.join(" ")
-                ))
-            })?;
-            let target = match subject {
-                Some(SubjectAst::This) => TargetAst::Source(None),
-                _ => {
-                    return Err(CardTextError::ParseError(
-                        "unsupported get clause (missing subject)".to_string(),
-                    ));
-                }
-            };
-            return Ok(EffectAst::PumpForEach {
-                power_per,
-                toughness_per,
-                target,
-                count: Value::Count(filter),
-                duration: Until::EndOfTurn,
-            });
+            return Ok(effect);
         }
     }
 
     if let Some(mod_token) = tokens.first().and_then(OwnedLexToken::as_word)
         && let Ok((power, toughness)) = parse_pt_modifier_values(mod_token)
     {
+        if let (Value::Fixed(power_per), Value::Fixed(toughness_per)) = (&power, &toughness)
+            && let Some(effect) = parse_pump_for_each_tail(
+                tokens.get(1..).unwrap_or_default(),
+                subject,
+                *power_per,
+                *toughness_per,
+                &clause_words,
+            )?
+        {
+            return Ok(effect);
+        }
         let (power, toughness, duration, condition) =
             parse_get_modifier_values_with_tail(tokens, power, toughness)?;
         let target = match subject {
@@ -443,6 +469,17 @@ pub(crate) fn parse_get(
         && let Some(mod_token) = collapsed_tokens.first().and_then(OwnedLexToken::as_word)
         && let Ok((power, toughness)) = parse_pt_modifier_values(mod_token)
     {
+        if let (Value::Fixed(power_per), Value::Fixed(toughness_per)) = (&power, &toughness)
+            && let Some(effect) = parse_pump_for_each_tail(
+                collapsed_tokens.get(1..).unwrap_or_default(),
+                subject,
+                *power_per,
+                *toughness_per,
+                &clause_words,
+            )?
+        {
+            return Ok(effect);
+        }
         let (power, toughness, duration, condition) =
             parse_get_modifier_values_with_tail(&collapsed_tokens, power, toughness)?;
         let target = match subject {

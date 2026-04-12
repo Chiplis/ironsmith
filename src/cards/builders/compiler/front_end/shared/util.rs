@@ -1269,10 +1269,6 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
         return Some((Value::ManaValueOf(Box::new(ChooseSpec::Source)), 4));
     }
 
-    if let Some(result) = parse_for_each_count_value_words(words) {
-        return Some(result);
-    }
-
     let matching_prefix_len = |patterns: &[&[&str]]| {
         patterns
             .iter()

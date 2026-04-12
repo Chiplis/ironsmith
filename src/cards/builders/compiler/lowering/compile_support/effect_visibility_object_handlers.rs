@@ -4,6 +4,105 @@ pub(super) fn try_compile_visibility_and_card_selection_effect(
     effect: &EffectAst,
     ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
+    fn compile_choose_from_looked_cards_for_each_card_type_into_hand_rest_on_bottom_of_library(
+        player: PlayerAst,
+        order: crate::cards::builders::LibraryBottomOrderAst,
+        card_type_modes: &[CardType],
+        spell_filter: Option<&ObjectFilter>,
+        ctx: &mut EffectLoweringContext,
+    ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
+        use crate::effect::{Condition, Value, ValueComparisonOperator};
+        use crate::target::{ObjectFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
+
+        let looked_tag = ctx.last_object_tag.clone().ok_or_else(|| {
+            CardTextError::ParseError(
+                "unable to resolve looked-at cards without prior reference".to_string(),
+            )
+        })?;
+
+        let (chooser, choices) = resolve_effect_player_filter(player, ctx, true, true, false)?;
+
+        let chosen_tag = ctx.next_tag("chosen");
+        let chosen_tag_key: TagKey = chosen_tag.as_str().into();
+
+        let mut compiled = Vec::new();
+        for card_type in card_type_modes {
+            let mut choose_filter = ObjectFilter::default();
+            choose_filter.zone = Some(Zone::Library);
+            choose_filter.card_types.push(*card_type);
+            choose_filter
+                .tagged_constraints
+                .push(TaggedObjectConstraint {
+                    tag: TagKey::from(looked_tag.as_str()),
+                    relation: TaggedOpbjectRelation::IsTaggedObject,
+                });
+            choose_filter
+                .tagged_constraints
+                .push(TaggedObjectConstraint {
+                    tag: chosen_tag_key.clone(),
+                    relation: TaggedOpbjectRelation::IsNotTaggedObject,
+                });
+
+            let choose = Effect::new(
+                crate::effects::ChooseObjectsEffect::new(
+                    choose_filter,
+                    ChoiceCount::up_to(1),
+                    chooser.clone(),
+                    chosen_tag_key.clone(),
+                )
+                .in_zone(Zone::Library),
+            );
+
+            if let Some(spell_filter) = spell_filter {
+                let mut typed_spell_filter = (*spell_filter).clone();
+                if !typed_spell_filter.card_types.contains(card_type) {
+                    typed_spell_filter.card_types.push(*card_type);
+                }
+
+                compiled.push(Effect::conditional(
+                    Condition::ValueComparison {
+                        left: Value::SpellsCastThisTurnMatching {
+                            player: chooser.clone(),
+                            filter: typed_spell_filter,
+                            exclude_source: false,
+                        },
+                        operator: ValueComparisonOperator::GreaterThanOrEqual,
+                        right: Value::Fixed(1),
+                    },
+                    vec![choose],
+                    Vec::new(),
+                ));
+            } else {
+                compiled.push(choose);
+            }
+        }
+
+        compiled.push(Effect::for_each_tagged(
+            chosen_tag.clone(),
+            vec![Effect::move_to_zone(
+                ChooseSpec::Iterated,
+                Zone::Hand,
+                false,
+            )],
+        ));
+        compiled.push(Effect::put_tagged_remainder_on_library_bottom(
+            looked_tag,
+            Some(chosen_tag_key),
+            match order {
+                crate::cards::builders::LibraryBottomOrderAst::Random => {
+                    crate::effects::consult_helpers::LibraryBottomOrder::Random
+                }
+                crate::cards::builders::LibraryBottomOrderAst::ChooserChooses => {
+                    crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses
+                }
+            },
+            chooser,
+        ));
+
+        ctx.last_object_tag = Some(chosen_tag);
+        Ok((compiled, choices))
+    }
+
     let compiled = match effect {
         EffectAst::LookAtHand { target } => {
             let (effects, choices) = compile_effect_for_target(target, ctx, |spec| {
@@ -502,22 +601,10 @@ pub(super) fn try_compile_visibility_and_card_selection_effect(
             player,
             spell_filter,
             order,
-        } => {
-            use crate::effect::{Condition, Value, ValueComparisonOperator};
-            use crate::target::{ObjectFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
-
-            let looked_tag = ctx.last_object_tag.clone().ok_or_else(|| {
-                CardTextError::ParseError(
-                    "unable to resolve looked-at cards without prior reference".to_string(),
-                )
-            })?;
-
-            let (chooser, choices) =
-                resolve_effect_player_filter(*player, ctx, true, true, false)?;
-
-            let chosen_tag = ctx.next_tag("chosen");
-            let chosen_tag_key: TagKey = chosen_tag.as_str().into();
-            let card_type_modes = [
+        } => compile_choose_from_looked_cards_for_each_card_type_into_hand_rest_on_bottom_of_library(
+            *player,
+            order.clone(),
+            &[
                 CardType::Artifact,
                 CardType::Battle,
                 CardType::Enchantment,
@@ -526,81 +613,29 @@ pub(super) fn try_compile_visibility_and_card_selection_effect(
                 CardType::Land,
                 CardType::Planeswalker,
                 CardType::Sorcery,
-            ];
-
-            let mut compiled = Vec::new();
-            for card_type in card_type_modes {
-                let mut typed_spell_filter = spell_filter.clone();
-                if !typed_spell_filter.card_types.contains(&card_type) {
-                    typed_spell_filter.card_types.push(card_type);
-                }
-
-                let mut choose_filter = ObjectFilter::default();
-                choose_filter.zone = Some(Zone::Library);
-                choose_filter.card_types.push(card_type);
-                choose_filter
-                    .tagged_constraints
-                    .push(TaggedObjectConstraint {
-                        tag: TagKey::from(looked_tag.as_str()),
-                        relation: TaggedOpbjectRelation::IsTaggedObject,
-                    });
-                choose_filter
-                    .tagged_constraints
-                    .push(TaggedObjectConstraint {
-                        tag: chosen_tag_key.clone(),
-                        relation: TaggedOpbjectRelation::IsNotTaggedObject,
-                    });
-
-                let choose = Effect::new(
-                    crate::effects::ChooseObjectsEffect::new(
-                        choose_filter,
-                        ChoiceCount::up_to(1),
-                        chooser.clone(),
-                        chosen_tag_key.clone(),
-                    )
-                    .in_zone(Zone::Library),
-                );
-
-                compiled.push(Effect::conditional(
-                    Condition::ValueComparison {
-                        left: Value::SpellsCastThisTurnMatching {
-                            player: chooser.clone(),
-                            filter: typed_spell_filter,
-                            exclude_source: false,
-                        },
-                        operator: ValueComparisonOperator::GreaterThanOrEqual,
-                        right: Value::Fixed(1),
-                    },
-                    vec![choose],
-                    Vec::new(),
-                ));
-            }
-
-            compiled.push(Effect::for_each_tagged(
-                chosen_tag.clone(),
-                vec![Effect::move_to_zone(
-                    ChooseSpec::Iterated,
-                    Zone::Hand,
-                    false,
-                )],
-            ));
-            compiled.push(Effect::put_tagged_remainder_on_library_bottom(
-                looked_tag,
-                Some(chosen_tag_key),
-                match order {
-                    crate::cards::builders::LibraryBottomOrderAst::Random => {
-                        crate::effects::consult_helpers::LibraryBottomOrder::Random
-                    }
-                    crate::cards::builders::LibraryBottomOrderAst::ChooserChooses => {
-                        crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses
-                    }
-                },
-                chooser,
-            ));
-
-            ctx.last_object_tag = Some(chosen_tag);
-            (compiled, choices)
-        }
+            ],
+            Some(spell_filter),
+            ctx,
+        )?,
+        EffectAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary {
+            player,
+            order,
+        } => compile_choose_from_looked_cards_for_each_card_type_into_hand_rest_on_bottom_of_library(
+            *player,
+            order.clone(),
+            &[
+                CardType::Artifact,
+                CardType::Battle,
+                CardType::Creature,
+                CardType::Enchantment,
+                CardType::Instant,
+                CardType::Land,
+                CardType::Planeswalker,
+                CardType::Sorcery,
+            ],
+            None,
+            ctx,
+        )?,
         EffectAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary {
             player,
             battlefield_filter,

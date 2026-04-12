@@ -434,6 +434,22 @@ pub(super) fn parse_top_cards_for_each_card_type_among_spells_put_matching_into_
     )
 }
 
+#[cfg(test)]
+pub(super) fn parse_top_cards_for_each_card_type_put_matching_into_hand_rest_bottom(
+    first: &[OwnedLexToken],
+    second: &[OwnedLexToken],
+    third: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    super::sequence_rules::triples::parse_top_cards_for_each_card_type_put_matching_into_hand_rest_bottom(
+        &[
+            SentenceInput::from_lexed(first),
+            SentenceInput::from_lexed(second),
+            SentenceInput::from_lexed(third),
+        ],
+        0,
+    )
+}
+
 pub(super) fn parse_looked_card_choice_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
     looked_cards_family::parse_looked_card_choice_filter(tokens)
 }
@@ -1021,6 +1037,35 @@ mod tests {
                 crate::cards::builders::EffectAst::LookAtTopCards { .. },
                 crate::cards::builders::EffectAst::RevealTagged { .. },
                 crate::cards::builders::EffectAst::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary { .. },
+            ]
+        ));
+    }
+
+    #[test]
+    fn reveal_top_then_for_each_card_type_bundle_parses_atraxa_variant() {
+        let tokens = lex_line(
+            "Reveal the top ten cards of your library. For each card type, you may put a card of that type from among the revealed cards into your hand. Put the rest on the bottom of your library in a random order.",
+            0,
+        )
+        .expect("rewrite lexer should classify Atraxa reveal bundle");
+
+        let sentences = split_lexed_sentences(&tokens);
+        assert_eq!(sentences.len(), 3, "{sentences:#?}");
+
+        let parsed = super::parse_top_cards_for_each_card_type_put_matching_into_hand_rest_bottom(
+            sentences[0],
+            sentences[1],
+            sentences[2],
+        )
+        .expect("Atraxa reveal bundle helper should not error")
+        .expect("Atraxa reveal bundle helper should parse");
+
+        assert!(matches!(
+            parsed.as_slice(),
+            [
+                crate::cards::builders::EffectAst::LookAtTopCards { .. },
+                crate::cards::builders::EffectAst::RevealTagged { .. },
+                crate::cards::builders::EffectAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary { .. },
             ]
         ));
     }

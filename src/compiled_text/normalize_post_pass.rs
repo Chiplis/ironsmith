@@ -2409,6 +2409,12 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
     }
     loop {
         let mut changed = false;
+        if let Some(rewritten) = normalize_sentence_helper_top_cards_for_each_card_type_revealed_cards_to_hand_sequence(&normalized)
+            && rewritten != normalized
+        {
+            normalized = rewritten;
+            changed = true;
+        }
         if let Some(rewritten) =
             normalize_sentence_helper_top_cards_for_each_card_type_to_hand_sequence(&normalized)
             && rewritten != normalized
@@ -5755,6 +5761,145 @@ pub(super) fn normalize_sentence_helper_top_cards_for_each_card_type_to_hand_seq
         "{}. For each card type among {} spells you've cast this turn, you may put a card of that type from among the revealed cards into your hand. Put the rest on the bottom of your library{}.",
         reveal_head.trim().trim_end_matches('.'),
         spell_filter_prefix.trim(),
+        order_suffix
+    ))
+}
+
+pub(super) fn normalize_sentence_helper_top_cards_for_each_card_type_revealed_cards_to_hand_sequence(
+    text: &str,
+) -> Option<String> {
+    for marker in [
+        ": Look at the top ",
+        ": Reveal the top ",
+        ". Look at the top ",
+        ". Reveal the top ",
+        ", look at the top ",
+        ", reveal the top ",
+    ] {
+        if let Some((before, rest)) = split_once_ascii_ci(text, marker) {
+            let marker_lower = marker.to_ascii_lowercase();
+            let restored = if marker_lower.contains("look") {
+                format!("Look at the top {rest}")
+            } else {
+                format!("Reveal the top {rest}")
+            };
+            if let Some(rewritten) =
+                normalize_sentence_helper_top_cards_for_each_card_type_revealed_cards_to_hand_sequence(&restored)
+            {
+                if marker.starts_with(", ") {
+                    return Some(format!("{before}, {}", lowercase_first(&rewritten)));
+                }
+                let joiner = marker.get(..2).unwrap_or(": ");
+                return Some(format!("{before}{joiner}{rewritten}"));
+            }
+        }
+    }
+
+    let trimmed = text.trim().trim_end_matches('.');
+    let lower = trimmed.to_ascii_lowercase();
+    if !(lower.starts_with("look at the top ") || lower.starts_with("reveal the top ")) {
+        return None;
+    }
+
+    let (head, mut rest) = split_once_ascii_ci(trimmed, ". Reveal it. ")?;
+    if !head
+        .to_ascii_lowercase()
+        .ends_with(" cards of your library")
+    {
+        return None;
+    }
+
+    let card_types = [
+        "artifact",
+        "battle",
+        "creature",
+        "enchantment",
+        "instant",
+        "land",
+        "planeswalker",
+        "sorcery",
+    ];
+
+    let mut chosen_tag: Option<&str> = None;
+    let mut clause_count = 0usize;
+    let choice_prefixes = [
+        "you choose exactly 1 ",
+        "you may choose exactly 1 ",
+        "you choose up to one ",
+        "you may choose up to one ",
+    ];
+
+    while let Some(after_choice) = choice_prefixes
+        .iter()
+        .copied()
+        .find_map(|prefix| strip_prefix_ascii_ci(rest, prefix))
+    {
+        let (choice, after_choice) =
+            split_once_ascii_ci(after_choice, " in library and tags it as '")?;
+        let (tag, after_tag) = after_choice.split_once("'. ")?;
+        if !tag.starts_with("__sentence_helper_chosen_") {
+            return None;
+        }
+
+        let choice_lower = choice.trim().to_ascii_lowercase();
+        let mut matched_type = false;
+        for card_type in card_types {
+            let expected = format!("{card_type} card");
+            let expected_other = format!("other {card_type} card");
+            if choice_lower == expected || choice_lower == expected_other {
+                matched_type = true;
+                break;
+            }
+        }
+        if !matched_type {
+            return None;
+        }
+
+        if let Some(existing) = chosen_tag {
+            if existing != tag {
+                return None;
+            }
+        } else {
+            chosen_tag = Some(tag);
+        }
+
+        clause_count += 1;
+        rest = after_tag;
+    }
+
+    if clause_count == 0 {
+        return None;
+    }
+
+    let chosen_tag = chosen_tag?;
+    let rest = strip_prefix_ascii_ci(rest, "For each tagged '")?;
+    let rest = strip_prefix_ascii_ci(rest, chosen_tag)?;
+    let rest = strip_prefix_ascii_ci(rest, "' object, Return that object to its owner's hand. ")?;
+    let rest = strip_prefix_ascii_ci(
+        rest,
+        "Put the remaining tagged cards on the bottom of your library",
+    )?;
+
+    let order_suffix = if let Some(tail) = strip_prefix_ascii_ci(rest, " in a random order") {
+        if !tail.trim().is_empty() {
+            return None;
+        }
+        " in a random order"
+    } else if rest.trim().is_empty() {
+        ""
+    } else {
+        return None;
+    };
+
+    let reveal_head = if head.to_ascii_lowercase().starts_with("look at the top ") {
+        format!("Reveal{}", &head["Look at".len()..])
+    } else {
+        head.to_string()
+    };
+
+    Some(format!(
+        "{}. For each card type, you may put a card of that type from among the revealed cards into your hand. Put the rest on the bottom of your library{}.",
+        reveal_head.trim().trim_end_matches('.'),
         order_suffix
     ))
 }

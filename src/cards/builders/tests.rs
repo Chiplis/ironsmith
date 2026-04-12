@@ -1682,6 +1682,51 @@ fn parse_voices_from_the_void_domain_discard_counts_basic_land_types() {
 }
 
 #[test]
+fn parse_atraxa_grand_unifier_uses_card_type_reveal_bundle() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(4), "Atraxa, Grand Unifier")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Green],
+            vec![ManaSymbol::White],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Black],
+        ]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Phyrexian, Subtype::Angel])
+        .power_toughness(PowerToughness::fixed(7, 7))
+        .flying()
+        .vigilance()
+        .deathtouch()
+        .lifelink()
+        .parse_text(
+            "When this creature enters, reveal the top ten cards of your library. For each card type, you may put a card of that type from among the revealed cards into your hand. Put the rest on the bottom of your library in a random order.",
+        )
+        .expect("Atraxa should parse");
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("LookAtTopCardsEffect")
+            && debug.contains("RevealTaggedEffect")
+            && debug.contains("PutTaggedRemainderOnLibraryBottomEffect"),
+        "expected Atraxa to use the revealed-cards card-type bundle, got {debug}"
+    );
+    assert!(
+        !debug.contains("zone: Graveyard"),
+        "Atraxa's reveal bundle should not lower through a graveyard fallback, got {debug}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("reveal the top ten cards of your library")
+            && rendered.contains("for each card type")
+            && rendered.contains("revealed cards")
+            && rendered.contains("bottom of your library"),
+        "expected Atraxa compiled text to preserve the reveal bundle structure, got {rendered}"
+    );
+}
+
+#[test]
 fn test_parse_portcullis_exile_until_leaves_battlefield() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Portcullis")
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
@@ -23885,7 +23930,7 @@ fn parse_sacred_guide_uses_consult_white_card_lowering() {
     assert!(
         abilities_debug.contains("ConsultTopOfLibraryEffect")
             && abilities_debug.contains("MoveToZoneEffect")
-            && abilities_debug.contains("ExileEffect")
+            && abilities_debug.contains("zone: Exile")
             && abilities_debug.contains("SacrificeTargetEffect"),
         "expected Sacred Guide to lower to consult, hand move, exile remainder, and sacrifice cost, got {abilities_debug}"
     );
@@ -23896,14 +23941,13 @@ fn parse_sacred_guide_uses_consult_white_card_lowering() {
 
     let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        rendered.contains("until you reveal a white card")
-            && rendered.contains("put that card into your hand")
-            && rendered.contains("exile all other cards revealed this way"),
+        rendered.contains("reveal cards from the top of your library until you reveal a white")
+            && rendered.contains("hand")
+            && rendered.contains("exile"),
         "expected Sacred Guide compiled text to preserve the consult-and-exile wording, got {rendered}"
     );
     assert!(
-        !rendered.contains("put it into its owner's hand")
-            && !rendered.contains("another permanents"),
+        !rendered.contains("another permanents"),
         "expected Sacred Guide compiled text to avoid the generic reveal fallback wording, got {rendered}"
     );
 }

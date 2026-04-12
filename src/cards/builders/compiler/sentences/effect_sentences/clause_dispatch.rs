@@ -400,7 +400,20 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
             if let Some(mod_token) = modifier_tail.first().and_then(OwnedLexToken::as_word)
                 && let Ok((power, toughness)) = parse_pt_modifier_values(mod_token)
             {
-                if let Some(count) = parse_get_for_each_count_value(modifier_tail)? {
+                let count = parse_get_for_each_count_value(modifier_tail)?.or_else(|| {
+                    let tail_after_modifier = modifier_tail.get(1..).unwrap_or_default();
+                    if grammar::words_match_prefix(
+                        tail_after_modifier,
+                        &["until", "end", "of", "turn", "for", "each"],
+                    )
+                    .is_some()
+                    {
+                        parse_get_for_each_count_value(&tail_after_modifier[4..]).ok().flatten()
+                    } else {
+                        None
+                    }
+                });
+                if let Some(count) = count {
                     let modifier_word_view = ClauseDispatchCompatWords::new(modifier_tail);
                     let modifier_words = modifier_word_view.to_word_refs();
                     let duration = if starts_with_until_end_of_turn(&modifier_words)

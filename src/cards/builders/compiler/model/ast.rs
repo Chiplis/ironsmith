@@ -935,6 +935,10 @@ pub(crate) enum EffectAst {
         spell_filter: ObjectFilter,
         order: LibraryBottomOrderAst,
     },
+    ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary {
+        player: PlayerAst,
+        order: LibraryBottomOrderAst,
+    },
     ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary {
         player: PlayerAst,
         battlefield_filter: ObjectFilter,

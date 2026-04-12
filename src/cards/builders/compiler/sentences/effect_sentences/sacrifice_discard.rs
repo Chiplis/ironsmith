@@ -264,6 +264,16 @@ pub(crate) fn parse_discard(
     } else {
         &[]
     };
+    if let Some(dynamic_count) = parse_get_for_each_count_value(trailing_tokens)? {
+        count = dynamic_count;
+        return Ok(EffectAst::Discard {
+            count,
+            player,
+            random: false,
+            filter: discard_filter,
+            tag: None,
+        });
+    }
     let trailing_words = crate::cards::builders::compiler::token_word_refs(trailing_tokens);
     let random = trailing_words.as_slice() == ["at", "random"];
     if !trailing_words.is_empty() && !random {

@@ -408,6 +408,74 @@ pub(crate) fn parse_top_cards_for_each_card_type_among_spells_put_matching_into_
     ]))
 }
 
+pub(crate) fn parse_top_cards_for_each_card_type_put_matching_into_hand_rest_bottom(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some((player, count, reveal_top)) =
+        parse_top_cards_view_sentence(sentences[sentence_idx].lowered())
+    else {
+        return Ok(None);
+    };
+    if !reveal_top {
+        return Ok(None);
+    }
+
+    let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
+    let second_words = TokenWordView::new(&second_tokens);
+    let word_refs = second_words.word_refs();
+    if !slice_starts_with(&word_refs, &["for", "each", "card", "type"]) {
+        return Ok(None);
+    }
+    if word_refs.get(4).is_some_and(|word| *word == "among") {
+        return Ok(None);
+    }
+
+    let Some(put_idx) = find_word_sequence_start(&word_refs[4..], &["you", "may", "put"]) else {
+        return Ok(None);
+    };
+    let put_idx = put_idx + 4;
+    let mut tail_idx = put_idx + 3;
+    if word_refs.get(tail_idx).is_some_and(|word| is_article(word)) {
+        tail_idx += 1;
+    }
+    if !slice_starts_with(
+        &word_refs[tail_idx..],
+        &[
+            "card", "of", "that", "type", "from", "among", "the", "revealed", "cards", "into",
+        ],
+    ) || !slice_contains(&word_refs[tail_idx..], &"hand")
+    {
+        return Ok(None);
+    }
+
+    let third_words = TokenWordView::new(sentences[sentence_idx + 2].lowered());
+    if !matches!(third_words.first(), Some("put" | "puts"))
+        || third_words.find_word("rest").is_none()
+    {
+        return Ok(None);
+    }
+    let Some(order) = effect_sentences::parse_consult_remainder_order(&third_words.word_refs())
+    else {
+        return Ok(None);
+    };
+
+    Ok(Some(vec![
+        EffectAst::LookAtTopCards {
+            player,
+            count,
+            tag: TagKey::from(crate::cards::builders::IT_TAG),
+        },
+        EffectAst::RevealTagged {
+            tag: TagKey::from(crate::cards::builders::IT_TAG),
+        },
+        EffectAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary {
+            player,
+            order,
+        },
+    ]))
+}
+
 pub(super) fn parse_top_cards_put_match_onto_battlefield_and_match_into_hand_rest_bottom(
     sentences: &[SentenceInput],
     sentence_idx: usize,

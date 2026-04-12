@@ -7792,7 +7792,7 @@ fn test_legend_rule_decision() {
 
     // Create two legendary creatures with the same name
     let legend_card = CardBuilder::new(CardId::from_raw(1), "Isamaru, Hound of Konda")
-        .supertypes(vec![Supertype::Legendary])
+        .supertypes(vec![crate::types::Supertype::Legendary])
         .card_types(vec![CardType::Creature])
         .power_toughness(crate::card::PowerToughness::fixed(2, 2))
         .build();
@@ -9168,7 +9168,7 @@ fn test_legend_rule_no_decision_when_different_names() {
 
     // Create two legendary creatures with DIFFERENT names
     let legend1_card = CardBuilder::new(CardId::from_raw(1), "Isamaru")
-        .supertypes(vec![Supertype::Legendary])
+        .supertypes(vec![crate::types::Supertype::Legendary])
         .card_types(vec![CardType::Creature])
         .power_toughness(crate::card::PowerToughness::fixed(2, 2))
         .build();
@@ -16511,6 +16511,162 @@ fn voices_from_the_void_discards_one_card_per_basic_land_type() {
         game.player(bob).expect("bob exists").graveyard.len(),
         3,
         "the discard count should match the three basic land types on Alice's battlefield"
+    );
+}
+
+#[test]
+fn atraxa_grand_unifier_puts_one_card_per_type_into_hand_and_bottoms_the_rest() {
+    use crate::executor::ExecutionContext;
+    use crate::types::Supertype;
+
+    fn build_library_card(id: u32, name: &str, card_type: CardType) -> crate::card::Card {
+        let mut builder = CardBuilder::new(CardId::from_raw(id), name).card_types(vec![card_type]);
+        match card_type {
+            CardType::Creature => {
+                builder = builder.power_toughness(PowerToughness::fixed(1, 1));
+            }
+            CardType::Planeswalker => {
+                builder = builder.loyalty(4);
+            }
+            CardType::Battle => {
+                builder = builder.defense(3);
+            }
+            _ => {}
+        }
+        builder.build()
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let def = CardDefinitionBuilder::new(CardId::from_raw(91_000), "Atraxa, Grand Unifier")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Green],
+            vec![ManaSymbol::White],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Black],
+        ]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Phyrexian, Subtype::Angel])
+        .power_toughness(PowerToughness::fixed(7, 7))
+        .flying()
+        .vigilance()
+        .deathtouch()
+        .lifelink()
+        .parse_text(
+            "When this creature enters, reveal the top ten cards of your library. For each card type, you may put a card of that type from among the revealed cards into your hand. Put the rest on the bottom of your library in a random order.",
+        )
+        .expect("Atraxa should parse");
+
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Atraxa should have a triggered ability");
+
+    let source_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    game.create_object_from_card(
+        &build_library_card(91_001, "Bottom Artifact", CardType::Artifact),
+        alice,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &build_library_card(91_002, "Bottom Land", CardType::Land),
+        alice,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &build_library_card(91_003, "Top Sorcery", CardType::Sorcery),
+        alice,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &build_library_card(91_004, "Top Planeswalker", CardType::Planeswalker),
+        alice,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &build_library_card(91_005, "Top Land", CardType::Land),
+        alice,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &build_library_card(91_006, "Top Instant", CardType::Instant),
+        alice,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &build_library_card(91_007, "Top Enchantment", CardType::Enchantment),
+        alice,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &build_library_card(91_008, "Top Creature", CardType::Creature),
+        alice,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &build_library_card(91_009, "Top Battle", CardType::Battle),
+        alice,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &build_library_card(91_010, "Top Artifact", CardType::Artifact),
+        alice,
+        Zone::Library,
+    );
+
+    let mut dm = SelectFirstDecisionMaker;
+    let mut ctx = ExecutionContext::new(source_id, alice, &mut dm);
+    for effect in &triggered.effects {
+        crate::executor::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Atraxa ETB effect should resolve");
+    }
+
+    assert_eq!(
+        game.player(alice).expect("alice exists").hand.len(),
+        8,
+        "Atraxa should put one card of each standard card type into hand"
+    );
+    assert!(
+        game.player(alice).expect("alice exists").graveyard.is_empty(),
+        "Atraxa should put the unrevealed remainder on the library bottom, not into the graveyard"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").library.len(),
+        2,
+        "two duplicate cards should remain on the bottom of the library"
+    );
+    for card_type in [
+        CardType::Artifact,
+        CardType::Battle,
+        CardType::Creature,
+        CardType::Enchantment,
+        CardType::Instant,
+        CardType::Land,
+        CardType::Planeswalker,
+        CardType::Sorcery,
+    ] {
+        assert_eq!(
+            game.player(alice)
+                .expect("alice exists")
+                .hand
+                .iter()
+                .filter(|&&id| game.object(id).is_some_and(|obj| obj.has_card_type(card_type)))
+                .count(),
+            1,
+            "Atraxa should place exactly one {card_type:?} card into hand"
+        );
+    }
+    assert!(
+        game.object(source_id)
+            .is_some_and(|obj| obj.zone == Zone::Battlefield),
+        "Atraxa itself should stay on the battlefield after its trigger resolves"
     );
 }
 

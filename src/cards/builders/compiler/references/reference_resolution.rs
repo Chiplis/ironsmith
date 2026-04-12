@@ -384,6 +384,10 @@ fn advance_reference_frame_for_effect(
             player,
             ..
         }
+        | EffectAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary {
+            player,
+            ..
+        }
         | EffectAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary {
             player,
             ..
