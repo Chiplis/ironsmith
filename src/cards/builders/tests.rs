@@ -19569,12 +19569,10 @@ fn parse_split_the_spoils_divvy_uses_splitter_then_opponent_choice() {
         )
         .expect("Split the Spoils should parse");
 
-    let rendered = compiled_lines(&def).join(" ");
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        rendered.contains(
-            "Exile up to five target permanent cards from your graveyard and separate them into two piles. An opponent chooses one of those piles. Put that pile into your hand and the other into your graveyard."
-        ),
-        "expected Split the Spoils to render oracle-like pile-choice wording, got {rendered}"
+        rendered.contains("divvy_pile") && rendered.contains("unless an opponent"),
+        "expected Split the Spoils raw render to preserve the divvy branch structure, got {rendered}"
     );
 
     let debug = format!("{:#?}", def.spell_effect);
@@ -19590,6 +19588,12 @@ fn parse_split_the_spoils_divvy_uses_splitter_then_opponent_choice() {
     assert!(
         debug.contains("player: Opponent"),
         "expected the opponent to own the final pile-selection branch, got {debug}"
+    );
+
+    let canonical = oracle_like_lines(&def).join(" ");
+    assert_eq!(
+        canonical,
+        "Exile up to five target permanent cards from your graveyard and separate them into two piles. An opponent chooses one of those piles. Put that pile into your hand and the other into your graveyard."
     );
 }
 

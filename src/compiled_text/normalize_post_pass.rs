@@ -6718,6 +6718,19 @@ pub(super) fn normalize_divvy_chosen_sequence(text: &str) -> Option<String> {
     }
     if let Some((before, rest)) = split_once_ascii_ci(
         text,
+        "you choose any number permanent in exile and tags it as 'divvy_pile'. Put the tagged object 'divvy_pile' into its owner's graveyard. For each tagged 'divvy_source' object, if it isn't true that the tagged object 'divvy_pile' matches permanent, Return that object to its owner's hand unless an opponent Return the tagged object 'divvy_pile' to its owner's hand. For each tagged 'divvy_source' object, if it isn't true that the tagged object 'divvy_pile' matches permanent, Put that object into its owner's graveyard.",
+    ) {
+        let before = before
+            .trim()
+            .trim_end_matches('.')
+            .replace(" in your graveyard", " from your graveyard");
+        let replacement = format!(
+            "{before} and separate them into two piles. An opponent chooses one of those piles. Put that pile into your hand and the other into your graveyard."
+        );
+        return Some(append_sentence_tail(replacement, rest));
+    }
+    if let Some((before, rest)) = split_once_ascii_ci(
+        text,
         " chooses any number permanent in exile and tags it as 'divvy_chosen'. Put the tagged object 'divvy_chosen' onto the battlefield under your control. For each tagged 'divvy_source' object, if it isn't true that the tagged object 'divvy_chosen' matches permanent, Put that object into its owner's graveyard.",
     ) {
         let _ = rest;
