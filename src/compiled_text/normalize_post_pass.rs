@@ -63,6 +63,38 @@ fn normalize_triggered_kicked_mass_bounce_surface(text: &str) -> Option<String> 
     ))
 }
 
+fn normalize_reveal_until_put_hand_exile_rest_surface(text: &str) -> Option<String> {
+    let lower = text.to_ascii_lowercase();
+    let reveal_marker = "you reveal cards from the top of your library until you reveal ";
+    let tail_marker = ", put that card into your hand, and exile all other cards revealed this way";
+    let reveal_idx = lower.find(reveal_marker)?;
+    let stop_start = reveal_idx + reveal_marker.len();
+    let tail_rel_idx = lower[stop_start..].find(tail_marker)?;
+    let stop_end = stop_start + tail_rel_idx;
+    let stop_text = text[stop_start..stop_end].trim();
+    if stop_text.is_empty() {
+        return None;
+    }
+
+    let before = &text[..reveal_idx];
+    let after = &text[stop_end + tail_marker.len()..];
+    let mut rewritten = format!(
+        "{before}Reveal cards from the top of your library until you reveal {stop_text}. Put that card into your hand and exile all other cards revealed this way."
+    );
+    let trailing = after.trim();
+    if let Some(rest) = trailing.strip_prefix('.') {
+        let rest = rest.trim();
+        if !rest.is_empty() {
+            rewritten.push(' ');
+            rewritten.push_str(rest);
+        }
+    } else if !trailing.is_empty() {
+        rewritten.push(' ');
+        rewritten.push_str(trailing);
+    }
+    Some(rewritten)
+}
+
 fn normalize_dynamic_token_card_pt_surface(oracle_lower: &str, text: &str) -> String {
     let reference_kind = if oracle_lower.contains("its power is equal to that card's power")
         && oracle_lower.contains("its toughness is equal to that card's toughness")
@@ -2405,6 +2437,9 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
         normalized = rewritten;
     }
     if let Some(rewritten) = normalize_sentence_helper_random_hand_reveal_clause(&normalized) {
+        normalized = rewritten;
+    }
+    if let Some(rewritten) = normalize_reveal_until_put_hand_exile_rest_surface(&normalized) {
         normalized = rewritten;
     }
     loop {

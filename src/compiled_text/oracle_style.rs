@@ -5894,6 +5894,17 @@ mod tests {
     }
 
     #[test]
+    fn post_pass_normalizes_reveal_until_put_hand_exile_rest_clause() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "{1}{W}, Sacrifice this creature: you reveal cards from the top of your library until you reveal a white card, put that card into your hand, and exile all other cards revealed this way.",
+        );
+        assert_eq!(
+            normalized,
+            "{1}{W}, Sacrifice this creature: Reveal cards from the top of your library until you reveal a white card. Put that card into your hand and exile all other cards revealed this way."
+        );
+    }
+
+    #[test]
     fn post_pass_normalizes_search_reveal_battlefield_or_hand_clause() {
         let normalized = normalize_compiled_post_pass_effect(
             "When this creature enters, you searches for up to one basic Plains in a library and tags it as 'searched'. Reveal it. If an opponent controls more lands than you, Put the tagged object 'searched' onto the battlefield tapped. If that doesn't happen, Return the tagged object 'searched' to its owner's hand. Shuffle your library.",

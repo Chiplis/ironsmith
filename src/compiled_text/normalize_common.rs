@@ -4420,7 +4420,18 @@ pub(super) fn describe_card_count(value: &Value) -> String {
 
 pub(super) fn describe_discard_count(value: &Value, filter: Option<&ObjectFilter>) -> String {
     let Some(filter) = filter else {
-        return describe_card_count(value);
+        return match value {
+            Value::BasicLandTypesAmong(filter) => {
+                format!(
+                    "a card for each basic land type among {}",
+                    describe_basic_land_type_scope(filter)
+                )
+            }
+            Value::ColorsAmong(filter) => {
+                format!("a card for each {}", describe_colors_among(filter))
+            }
+            _ => describe_card_count(value),
+        };
     };
 
     if filter.source {
@@ -5424,6 +5435,12 @@ pub(super) fn describe_search_selection_with_cards(selection: &str) -> String {
     }
     if let Some(tail) = selection.strip_prefix("permanent ") {
         return format!("a card {tail}");
+    }
+    if let Some(head) = selection.strip_suffix(" permanent card") {
+        return format!("{} card", with_indefinite_article(head.trim()));
+    }
+    if let Some(head) = selection.strip_suffix(" permanent") {
+        return format!("{} card", with_indefinite_article(head.trim()));
     }
     if let Some(tail) = selection.strip_prefix("card ") {
         return format!("a card {tail}");

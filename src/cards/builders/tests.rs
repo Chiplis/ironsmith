@@ -1674,9 +1674,7 @@ fn parse_voices_from_the_void_domain_discard_counts_basic_land_types() {
 
     let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        rendered.contains("target player discards")
-            && rendered.contains("basic land type")
-            && rendered.contains("among lands you control"),
+        rendered.contains("target player discards a card for each basic land type among lands you control"),
         "expected Voices from the Void wording to keep the domain discard clause, got {rendered}"
     );
 }
@@ -23939,15 +23937,14 @@ fn parse_sacred_guide_uses_consult_white_card_lowering() {
         "expected Sacred Guide to avoid the generic reveal-top fallback, got {abilities_debug}"
     );
 
-    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let rendered = crate::compiled_text::oracle_like_lines(&def).join(" ");
     assert!(
-        rendered.contains("reveal cards from the top of your library until you reveal a white")
-            && rendered.contains("hand")
-            && rendered.contains("exile"),
+        rendered
+            == "{1}{W}, Sacrifice this creature: Reveal cards from the top of your library until you reveal a white card. Put that card into your hand and exile all other cards revealed this way.",
         "expected Sacred Guide compiled text to preserve the consult-and-exile wording, got {rendered}"
     );
     assert!(
-        !rendered.contains("another permanents"),
+        !rendered.to_ascii_lowercase().contains("another permanents"),
         "expected Sacred Guide compiled text to avoid the generic reveal fallback wording, got {rendered}"
     );
 }
