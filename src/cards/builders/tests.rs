@@ -25012,6 +25012,35 @@ fn parse_lulu_loyal_hollyphant_keeps_revolt_gate_and_untap_followup() {
 }
 
 #[test]
+fn parse_sarevok_deathbringer_keeps_global_ltb_gate_and_player_loss() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Sarevok, Deathbringer")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 4))
+        .parse_text(
+            "At the beginning of each player's end step, if no permanents left the battlefield this turn, that player loses X life, where X is Sarevok's power.\nChoose a Background (You can have a Background as a second commander.)",
+        )
+        .expect("Sarevok, Deathbringer should parse");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("BeginningOfEndStepTrigger { player: Any }")
+            && debug.contains("intervening_if: Some(Not(PermanentLeftBattlefieldThisTurn))")
+            && debug.contains("LoseLifeEffect")
+            && debug.contains("amount: SourcePower"),
+        "expected Sarevok to keep the global leave-the-battlefield gate and life-loss effect, got {debug}"
+    );
+
+    let rendered = oracle_like_lines(&def).join(" ");
+    assert!(
+        rendered.contains("At the beginning of each player's end step")
+            && rendered.contains("if no permanents left the battlefield this turn")
+            && rendered.contains("that player loses")
+            && rendered.contains("this creature's power"),
+        "expected Sarevok oracle-like rendering to preserve the gate and loss text, got {rendered}"
+    );
+}
+
+#[test]
 fn render_vanguard_seraph_preserves_first_time_trigger_surface() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Vanguard Seraph")
         .card_types(vec![CardType::Creature])

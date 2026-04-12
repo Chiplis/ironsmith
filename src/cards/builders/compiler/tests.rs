@@ -9049,6 +9049,19 @@ fn rewrite_grammar_permanent_you_controlled_left_battlefield_predicate_parses() 
 }
 
 #[test]
+fn rewrite_grammar_no_permanents_left_battlefield_this_turn_predicate_parses() {
+    let tokens = lex_line("no permanents left the battlefield this turn", 0)
+        .expect("rewrite lexer should classify the global no-permanents-left predicate");
+
+    assert_eq!(
+        super::parse_predicate_lexed(&tokens).expect("predicate should parse"),
+        crate::cards::builders::PredicateAst::Not(Box::new(
+            crate::cards::builders::PredicateAst::PermanentLeftBattlefieldThisTurn,
+        ))
+    );
+}
+
+#[test]
 fn rewrite_parse_subject_player_with_most_cards_in_hand() {
     let tokens = lex_line("the player who has the most cards in hand", 0)
         .expect("rewrite lexer should classify most-cards subject");
