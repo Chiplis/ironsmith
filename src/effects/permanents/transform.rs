@@ -312,6 +312,34 @@ mod tests {
         front
     }
 
+    fn register_harvest_hand_pair(front_id: CardId, back_id: CardId) -> CardDefinition {
+        let mut front = CardDefinitionBuilder::new(front_id, "Harvest Hand")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+            .card_types(vec![CardType::Artifact, CardType::Creature])
+            .subtypes(vec![Subtype::Scarecrow])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .parse_text(
+                "When this creature dies, return it to the battlefield transformed under your control.",
+            )
+            .expect("front face should parse");
+        front.card.other_face = Some(back_id);
+        front.card.other_face_name = Some("Scrounged Scythe".to_string());
+        front.card.linked_face_layout = LinkedFaceLayout::TransformLike;
+
+        let mut back = CardDefinitionBuilder::new(back_id, "Scrounged Scythe")
+            .card_types(vec![CardType::Artifact])
+            .subtypes(vec![Subtype::Equipment])
+            .parse_text("Equipped creature gets +1/+1.\nEquip {2}")
+            .expect("back face should parse");
+        back.card.other_face = Some(front_id);
+        back.card.other_face_name = Some("Harvest Hand".to_string());
+        back.card.linked_face_layout = LinkedFaceLayout::TransformLike;
+
+        crate::cards::register_runtime_custom_card(front.clone());
+        crate::cards::register_runtime_custom_card(back);
+        front
+    }
+
     #[test]
     fn transform_swaps_faces_and_refreshes_timestamp() {
         let _guard = runtime_custom_registry_test_guard();
@@ -461,6 +489,60 @@ mod tests {
         assert!(
             game.is_face_down(foothold_id),
             "returned permanent should transform into the Foothold face"
+        );
+    }
+
+    #[test]
+    fn harvest_hand_returns_transformed_when_it_dies() {
+        let _guard = runtime_custom_registry_test_guard();
+        crate::cards::clear_runtime_custom_cards();
+
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let front = register_harvest_hand_pair(CardId::from_raw(79_202), CardId::from_raw(79_203));
+        let source = game.create_object_from_definition(&front, alice, Zone::Battlefield);
+
+        game.mark_damage(source, 2);
+
+        let mut trigger_queue = TriggerQueue::new();
+        crate::check_and_apply_sbas(&mut game, &mut trigger_queue)
+            .expect("Harvest Hand should die and queue its trigger");
+        assert!(
+            !trigger_queue.is_empty(),
+            "Harvest Hand's dies trigger should be queued after lethal damage"
+        );
+
+        crate::put_triggers_on_stack(&mut game, &mut trigger_queue)
+            .expect("should put Harvest Hand's dies trigger on the stack");
+        while !game.stack_is_empty() {
+            crate::resolve_stack_entry(&mut game).expect("resolve Harvest Hand dies trigger");
+        }
+
+        assert!(
+            game.player(alice)
+                .expect("Alice should exist")
+                .graveyard
+                .is_empty(),
+            "Harvest Hand should not stay in the graveyard after its trigger resolves"
+        );
+        let scythe_id = game
+            .battlefield
+            .iter()
+            .copied()
+            .find(|&id| {
+                game.object(id)
+                    .is_some_and(|obj| obj.name == "Scrounged Scythe")
+            })
+            .expect("Scrounged Scythe should return to the battlefield");
+        assert!(
+            game.is_face_down(scythe_id),
+            "returned Harvest Hand should be on its back face"
+        );
+        assert!(
+            !game.battlefield.iter().any(|&id| game
+                .object(id)
+                .is_some_and(|obj| obj.name == "Harvest Hand")),
+            "front face should no longer be on the battlefield after transforming"
         );
     }
 

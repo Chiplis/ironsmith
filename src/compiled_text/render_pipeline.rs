@@ -753,6 +753,30 @@ pub(super) fn normalize_rendered_line_for_card(def: &CardDefinition, line: &str)
                     ),
                 );
         }
+        if oracle_lower.contains("return it to the battlefield transformed under your control") {
+            phrased = phrased
+                .replace(
+                    "put that card onto the battlefield under your control. transform it",
+                    "return it to the battlefield transformed under your control",
+                )
+                .replace(
+                    "Put that card onto the battlefield under your control. Transform it",
+                    "Return it to the battlefield transformed under your control",
+                );
+        }
+        if oracle_lower
+            .contains("return it to the battlefield transformed under its owner's control")
+        {
+            phrased = phrased
+                .replace(
+                    "put that card onto the battlefield under its owner's control. transform it",
+                    "return it to the battlefield transformed under its owner's control",
+                )
+                .replace(
+                    "Put that card onto the battlefield under its owner's control. Transform it",
+                    "Return it to the battlefield transformed under its owner's control",
+                );
+        }
         if has_hornbeetle_counter_phrase {
             phrased = phrased
                 .replace(

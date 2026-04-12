@@ -12427,6 +12427,26 @@ fn parse_return_transformed_clause_uses_shared_return_and_transform() {
 }
 
 #[test]
+fn parse_return_transformed_clause_renders_oracle_style_wording() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Harvest Hand Variant")
+        .parse_text(
+            "When this creature dies, return it to the battlefield transformed under your control.",
+        )
+        .expect("transformed return should keep oracle-style wording");
+    let rendered = compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "When this creature dies, return it to the battlefield transformed under your control."
+        ),
+        "expected oracle-style transformed return wording, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("Put that card onto the battlefield under your control. Transform it."),
+        "expected transformed return wording to collapse the internal two-step render, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_return_converted_clause_uses_shared_return_and_convert() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Converted Return Variant")
         .parse_text(
