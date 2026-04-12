@@ -23842,6 +23842,152 @@ fn parse_mind_funeral_tracks_passive_consult_count_and_graveyard_followup() {
 }
 
 #[test]
+fn parse_sacred_guide_uses_consult_white_card_lowering() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Sacred Guide")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::White]]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Cleric])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .parse_text(
+            "{1}{W}, Sacrifice this creature: Reveal cards from the top of your library until you reveal a white card. Put that card into your hand and exile all other cards revealed this way.",
+        )
+        .expect("Sacred Guide should parse");
+
+    let abilities_debug = format!("{:?}", def.abilities);
+    assert!(
+        abilities_debug.contains("ConsultTopOfLibraryEffect")
+            && abilities_debug.contains("MoveToZoneEffect")
+            && abilities_debug.contains("ExileEffect")
+            && abilities_debug.contains("SacrificeTargetEffect"),
+        "expected Sacred Guide to lower to consult, hand move, exile remainder, and sacrifice cost, got {abilities_debug}"
+    );
+    assert!(
+        !abilities_debug.contains("RevealTopEffect"),
+        "expected Sacred Guide to avoid the generic reveal-top fallback, got {abilities_debug}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("until you reveal a white card")
+            && rendered.contains("put that card into your hand")
+            && rendered.contains("exile all other cards revealed this way"),
+        "expected Sacred Guide compiled text to preserve the consult-and-exile wording, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("put it into its owner's hand")
+            && !rendered.contains("another permanents"),
+        "expected Sacred Guide compiled text to avoid the generic reveal fallback wording, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_sacred_guide_reveals_until_white_card_and_exiles_others() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Sacred Guide")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::White]]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Cleric])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .parse_text(
+            "{1}{W}, Sacrifice this creature: Reveal cards from the top of your library until you reveal a white card. Put that card into your hand and exile all other cards revealed this way.",
+        )
+        .expect("Sacred Guide should parse");
+
+    let ability = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Sacred Guide should have an activated ability");
+
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let guide_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    game.create_object_from_card(
+        &crate::card::CardBuilder::new(CardId::from_raw(2), "Bottom Card")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        alice,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &crate::card::CardBuilder::new(CardId::from_raw(3), "White Hit")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::White]]))
+            .card_types(vec![CardType::Creature])
+            .build(),
+        alice,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &crate::card::CardBuilder::new(CardId::from_raw(4), "Blue Miss")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+            .card_types(vec![CardType::Creature])
+            .build(),
+        alice,
+        Zone::Library,
+    );
+
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::executor::ExecutionContext::new(guide_id, alice, &mut dm);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        guide_id,
+        &ability.effects,
+        None,
+        &[],
+    )
+    .expect("Sacred Guide effect should resolve");
+
+    let hand_names: Vec<_> = game
+        .player(alice)
+        .expect("alice exists")
+        .hand
+        .iter()
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .collect();
+    assert!(
+        hand_names.iter().any(|name| name == "White Hit"),
+        "Sacred Guide should put the first white card into hand, got {hand_names:?}"
+    );
+    assert!(
+        !hand_names.iter().any(|name| name == "Blue Miss"),
+        "Sacred Guide should not put nonmatching cards into hand, got {hand_names:?}"
+    );
+
+    let exile_names: Vec<_> = game
+        .exile
+        .iter()
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .collect();
+    assert!(
+        exile_names.iter().any(|name| name == "Blue Miss"),
+        "Sacred Guide should exile the revealed nonwhite card, got {exile_names:?}"
+    );
+    assert!(
+        !exile_names.iter().any(|name| name == "White Hit"),
+        "Sacred Guide should keep the matching white card out of exile, got {exile_names:?}"
+    );
+
+    let library_names: Vec<_> = game
+        .player(alice)
+        .expect("alice exists")
+        .library
+        .iter()
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .collect();
+    assert_eq!(
+        library_names,
+        vec!["Bottom Card".to_string()],
+        "Sacred Guide should stop at the first white card and leave the unseen library cards alone"
+    );
+}
+
+#[test]
 fn parse_collision_of_realms_uses_consult_and_bottom_remainder() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Collision of Realms")
         .card_types(vec![CardType::Sorcery])

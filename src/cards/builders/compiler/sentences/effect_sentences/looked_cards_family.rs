@@ -465,7 +465,7 @@ pub(crate) fn parse_looked_card_reveal_filter(tokens: &[OwnedLexToken]) -> Optio
                         TextSpan::synthetic(),
                     ));
                 }
-                let parsed = super::super::object_filters::parse_object_filter(&segment, false)
+                let parsed = parse_object_filter_lexed(&segment, false)
                     .ok()
                     .filter(|filter| *filter != ObjectFilter::default())
                     .or_else(|| parse_named_card_filter_segment(&segment));
@@ -486,9 +486,8 @@ pub(crate) fn parse_looked_card_reveal_filter(tokens: &[OwnedLexToken]) -> Optio
         }
     }
 
-    let mut filter = parse_search_library_disjunction_filter(&filter_tokens).or_else(|| {
-        super::super::object_filters::parse_object_filter(&filter_tokens, false).ok()
-    })?;
+    let mut filter = parse_search_library_disjunction_filter(&filter_tokens)
+        .or_else(|| parse_object_filter_lexed(&filter_tokens, false).ok())?;
     if same_name_suffix_len.is_some() {
         filter = filter.match_tagged(
             TagKey::from(CHOSEN_NAME_TAG),

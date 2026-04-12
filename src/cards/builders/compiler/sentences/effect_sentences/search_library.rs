@@ -179,7 +179,7 @@ pub(crate) fn parse_search_library_disjunction_filter(
         if trimmed.is_empty() {
             return None;
         }
-        let Ok(filter) = parse_object_filter(&trimmed, false) else {
+        let Ok(filter) = parse_object_filter_lexed(&trimmed, false) else {
             return None;
         };
         branches.push(filter);
