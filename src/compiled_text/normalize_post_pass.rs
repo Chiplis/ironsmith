@@ -735,11 +735,13 @@ pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str
 }
 
 fn normalize_target_opponent_divvy_library_clause(text: &str) -> Option<String> {
-    let needle = "You searches for up to three permanent in a library and tags it as 'searched'. Reveal it. target opponent searches for exactly 1 permanent in a library and tags it as 'divvy_chosen'. Return the tagged object 'divvy_chosen' to its owner's hand. For each tagged 'divvy_source' object, if it isn't true that the tagged object 'divvy_chosen' matches permanent, Put that object into its owner's graveyard. Shuffle your library";
-    if !text
-        .trim()
-        .trim_end_matches('.')
-        .eq_ignore_ascii_case(needle)
+    let normalized = text.trim().trim_end_matches('.');
+    let lower = normalized.to_ascii_lowercase();
+    if !lower.contains("and tags it as 'searched'. reveal it.")
+        || !lower.contains("target opponent chooses exactly 1")
+        || !lower.contains("and tags it as 'divvy_chosen'. return the tagged object 'divvy_chosen' to its owner's hand.")
+        || !lower.contains("for each tagged 'divvy_source' object, if it isn't true that the tagged object 'divvy_chosen' matches")
+        || !lower.contains("put that object into its owner's graveyard. shuffle your library")
     {
         return None;
     }
@@ -747,6 +749,23 @@ fn normalize_target_opponent_divvy_library_clause(text: &str) -> Option<String> 
         "Search your library for three cards and reveal them. Target opponent chooses one. Put that card into your hand and the rest into your graveyard. Then shuffle."
             .to_string(),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_target_opponent_divvy_library_clause;
+
+    #[test]
+    fn normalize_target_opponent_divvy_library_clause_rewrites_current_bundle() {
+        let input = "You search your library for up to three card in library and tags it as 'searched'. Reveal it. target opponent chooses exactly 1 permanent in a library and tags it as 'divvy_chosen'. Return the tagged object 'divvy_chosen' to its owner's hand. For each tagged 'divvy_source' object, if it isn't true that the tagged object 'divvy_chosen' matches permanent, Put that object into its owner's graveyard. Shuffle your library";
+        assert_eq!(
+            normalize_target_opponent_divvy_library_clause(input),
+            Some(
+                "Search your library for three cards and reveal them. Target opponent chooses one. Put that card into your hand and the rest into your graveyard. Then shuffle."
+                    .to_string()
+            )
+        );
+    }
 }
 
 fn normalize_simple_trigger_heading_body(prefix: &str, body: &str) -> Option<String> {
@@ -7102,17 +7121,19 @@ pub(super) fn normalize_for_each_same_name_search_put_onto_battlefield_clause(
     let Some((before, rest)) = split_once_ascii_ci(text, "For each ") else {
         return None;
     };
-    let Some((subject_raw, after_subject, rewritten_from_scaffold)) = (if let Some((subject_raw, after_subject)) =
-        split_once_ascii_ci(rest, ", you may search your library for up to one ")
-    {
-        Some((subject_raw, after_subject, false))
-    } else if let Some((subject_raw, after_subject)) =
-        split_once_ascii_ci(rest, ", you may choose your library for up to one ")
-    {
-        Some((subject_raw, after_subject, true))
-    } else {
-        None
-    }) else {
+    let Some((subject_raw, after_subject, rewritten_from_scaffold)) =
+        (if let Some((subject_raw, after_subject)) =
+            split_once_ascii_ci(rest, ", you may search your library for up to one ")
+        {
+            Some((subject_raw, after_subject, false))
+        } else if let Some((subject_raw, after_subject)) =
+            split_once_ascii_ci(rest, ", you may choose your library for up to one ")
+        {
+            Some((subject_raw, after_subject, true))
+        } else {
+            None
+        })
+    else {
         return None;
     };
 

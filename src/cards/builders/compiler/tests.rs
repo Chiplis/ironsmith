@@ -4129,18 +4129,12 @@ fn rewrite_intuition_search_stays_card_based_in_compiled_text() {
 
     let rendered = crate::compiled_text::compiled_lines(&def)
         .join(" ")
-        .to_ascii_lowercase();
-    let has_card_phrase =
-        rendered.contains("card in a library") || rendered.contains("cards in a library");
+        .trim()
+        .to_string();
     assert!(
-        rendered.contains("search your library for up to three")
-            && rendered.contains("target opponent chooses")
-            && has_card_phrase,
-        "expected Intuition to stay card-based in compiled text, got {rendered}"
-    );
-    assert!(
-        !rendered.contains("permanent in a library"),
-        "expected Intuition search targets to stop describing permanents, got {rendered}"
+        rendered
+            == "Search your library for three cards and reveal them. Target opponent chooses one. Put that card into your hand and the rest into your graveyard. Then shuffle.",
+        "expected Intuition to normalize to the oracle text, got {rendered}"
     );
 }
 
