@@ -538,12 +538,9 @@ pub(super) fn matches_escape(
 }
 
 pub(super) fn matches_morph(
-    line: &PreprocessedLine,
+    _line: &PreprocessedLine,
     tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
-    if is_morph_family_dash_keyword_line(&line.tokens) {
-        return Ok(false);
-    }
     Ok(parse_morph_keyword_line_lexed(tokens)?.is_some())
 }
 

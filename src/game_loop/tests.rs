@@ -2651,7 +2651,7 @@ fn test_turn_face_up_action_puts_turned_face_up_trigger_on_stack() {
     if let Some(obj) = game.object_mut(creature_id) {
         obj.abilities
             .push(Ability::static_ability(StaticAbility::morph(
-                ManaCost::from_pips(vec![vec![ManaSymbol::Green]]),
+                crate::cost::TotalCost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::Green]])),
             )));
         obj.abilities.push(Ability::triggered(
             Trigger::this_is_turned_face_up(),
@@ -11051,7 +11051,7 @@ fn test_face_down_cast_matches_panoptic_filter_and_enters_battlefield_face_down(
         .expect("morph card should exist")
         .abilities
         .push(Ability::static_ability(StaticAbility::morph(
-            ManaCost::from_pips(vec![vec![ManaSymbol::Green]]),
+            crate::cost::TotalCost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::Green]])),
         )));
 
     let stack_id = super::priority_mana::propose_spell_cast(

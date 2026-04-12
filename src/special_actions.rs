@@ -61,7 +61,7 @@ fn turn_face_up_specs(game: &GameState, object: &crate::object::Object) -> Vec<T
             } else {
                 TurnFaceUpMethod::TurnFaceUpAbility
             },
-            cost: crate::cost::TotalCost::mana(cost.clone()),
+            cost: cost.clone(),
             description: if static_ability.is_megamorph() {
                 TurnFaceUpMethod::MegamorphAbility.description()
             } else {
@@ -1933,7 +1933,7 @@ mod tests {
             .expect("morph permanent should exist")
             .abilities
             .push(Ability::static_ability(StaticAbility::morph(
-                ManaCost::from_symbols(vec![ManaSymbol::Black]),
+                crate::cost::TotalCost::mana(ManaCost::from_symbols(vec![ManaSymbol::Black])),
             )));
         game.set_face_down(morph_id);
 
@@ -2058,10 +2058,9 @@ mod tests {
             .expect("manifested permanent should exist")
             .abilities
             .push(crate::ability::Ability::static_ability(
-                crate::static_abilities::StaticAbility::megamorph(ManaCost::from_symbols(vec![
-                    ManaSymbol::Generic(3),
-                    ManaSymbol::Green,
-                ])),
+                crate::static_abilities::StaticAbility::megamorph(
+                    ManaCost::from_symbols(vec![ManaSymbol::Generic(3), ManaSymbol::Green]).into(),
+                ),
             ));
         game.object_mut(mana_cost_id)
             .expect("manifested permanent should exist")
@@ -2074,10 +2073,9 @@ mod tests {
             .expect("manifested permanent should exist")
             .abilities
             .push(crate::ability::Ability::static_ability(
-                crate::static_abilities::StaticAbility::megamorph(ManaCost::from_symbols(vec![
-                    ManaSymbol::Generic(3),
-                    ManaSymbol::Green,
-                ])),
+                crate::static_abilities::StaticAbility::megamorph(
+                    ManaCost::from_symbols(vec![ManaSymbol::Generic(3), ManaSymbol::Green]).into(),
+                ),
             ));
         game.object_mut(megamorph_id)
             .expect("manifested permanent should exist")
@@ -2136,6 +2134,53 @@ mod tests {
             game.counter_count(megamorph_id, crate::object::CounterType::PlusOnePlusOne),
             1,
             "turning face up for megamorph should add a +1/+1 counter"
+        );
+    }
+
+    #[test]
+    fn turn_face_up_can_pay_life_morph_cost() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = None;
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+
+        let morph_card = CardBuilder::new(CardId::new(), "Morph Life Cutthroat")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(3, 4))
+            .build();
+        let morph_id = game.create_object_from_card(&morph_card, alice, Zone::Battlefield);
+        game.object_mut(morph_id)
+            .expect("morph permanent should exist")
+            .abilities
+            .push(Ability::static_ability(StaticAbility::morph(
+                crate::cost::TotalCost::from_cost(crate::costs::Cost::life(5)),
+            )));
+        game.set_face_down(morph_id);
+
+        assert!(
+            can_turn_face_up(&game, alice, morph_id).is_ok(),
+            "face-down creature with a life-based morph cost should be turnable face up"
+        );
+
+        let life_before = game.player(alice).expect("alice exists").life;
+        let mut dm = SelectFirstDecisionMaker;
+        perform_turn_face_up(
+            &mut game,
+            alice,
+            morph_id,
+            TurnFaceUpMethod::TurnFaceUpAbility,
+            &mut dm,
+        )
+        .expect("turning face up for a life-based morph cost should succeed");
+
+        assert!(!game.is_face_down(morph_id));
+        assert_eq!(
+            game.player(alice).expect("alice exists").life,
+            life_before - 5,
+            "turning face up for a life-based morph cost should pay the stated life"
         );
     }
 
