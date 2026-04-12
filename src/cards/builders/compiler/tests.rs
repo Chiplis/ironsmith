@@ -7227,6 +7227,32 @@ fn rewrite_lexed_effect_sequence_parses_divvy_choose_one_of_them_bundle() {
 }
 
 #[test]
+fn rewrite_ecological_appreciation_multi_zone_search_keeps_the_divvy_bundle_shape() {
+    let text = "Mana cost: {X}{2}{G}\nType: Sorcery\nSearch your library and graveyard for up to four creature cards with different names that each have mana value X or less and reveal them. An opponent chooses two of those cards. Shuffle the chosen cards into your library and put the rest onto the battlefield. Exile Ecological Appreciation.";
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Ecological Appreciation")
+        .parse_text(text)
+        .expect("Ecological Appreciation should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("library and graveyard")
+            && rendered.contains("reveal")
+            && rendered.contains("shuffle"),
+        "expected the compiled search line to preserve the multi-zone reveal/shuffle shape, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        debug.contains("ChooseObjectsAcrossZones"),
+        "expected the search clause to lower through the multi-zone search chooser, got {debug}"
+    );
+    assert!(
+        debug.contains("RevealTaggedEffect") && debug.contains("ShuffleLibraryEffect"),
+        "expected the search clause to keep the reveal and shuffle follow-ups, got {debug}"
+    );
+}
+
+#[test]
 fn rewrite_lexed_effect_sequence_parses_consult_hand_bottom_family() {
     let text = "Reveal cards from the top of your library until you reveal an artifact card. Put that card into your hand and the rest on the bottom of your library in a random order.";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify consult-hand-bottom text");

@@ -822,30 +822,30 @@ pub(crate) fn derive_search_library_subject_routing_lexed(
         && for_pos > 1
     {
         let zone_words = &search_body_words[1..for_pos];
-        let has_library = zone_words
-            .iter()
-            .any(|word| *word == "library" || *word == "libraries");
-        if !has_library {
-            return None;
-        }
-
-        let has_graveyard = zone_words
-            .iter()
-            .any(|word| *word == "graveyard" || *word == "graveyards");
-        let has_hand = zone_words
-            .iter()
-            .any(|word| *word == "hand" || *word == "hands");
         let mut zones = Vec::new();
-        if has_graveyard {
-            zones.push(Zone::Graveyard);
+        let mut saw_library = false;
+        let mut saw_graveyard = false;
+        let mut saw_hand = false;
+        for word in zone_words {
+            match *word {
+                "graveyard" | "graveyards" if !saw_graveyard => {
+                    zones.push(Zone::Graveyard);
+                    saw_graveyard = true;
+                }
+                "hand" | "hands" if !saw_hand => {
+                    zones.push(Zone::Hand);
+                    saw_hand = true;
+                }
+                "library" | "libraries" if !saw_library => {
+                    zones.push(Zone::Library);
+                    saw_library = true;
+                }
+                _ => {}
+            }
         }
-        if has_hand {
-            zones.push(Zone::Hand);
-        }
-        if zones.is_empty() {
+        if !saw_library || zones.is_empty() {
             return None;
         }
-        zones.push(Zone::Library);
         search_zones_override = Some(zones);
     } else {
         return None;
