@@ -4119,6 +4119,32 @@ fn rewrite_search_library_head_splitter_tracks_direct_may_and_rejects_early_may(
 }
 
 #[test]
+fn rewrite_intuition_search_stays_card_based_in_compiled_text() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Intuition Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Search your library for three cards and reveal them. Target opponent chooses one. Put that card into your hand and the rest into your graveyard. Then shuffle.",
+        )
+        .expect("intuition-style divvy spell should parse");
+
+    let rendered = crate::compiled_text::compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    let has_card_phrase =
+        rendered.contains("card in a library") || rendered.contains("cards in a library");
+    assert!(
+        rendered.contains("search your library for up to three")
+            && rendered.contains("target opponent chooses")
+            && has_card_phrase,
+        "expected Intuition to stay card-based in compiled text, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("permanent in a library"),
+        "expected Intuition search targets to stop describing permanents, got {rendered}"
+    );
+}
+
+#[test]
 fn rewrite_search_library_clause_marker_scan_tracks_destination_boundaries() {
     let reveal_put_shuffle = lex_line(
         "Search your library for a creature card, reveal it, put it into your hand, then shuffle.",

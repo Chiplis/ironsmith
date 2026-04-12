@@ -1073,6 +1073,13 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     if let Some(mana_constraint) = mana_constraint {
         apply_search_library_mana_constraint(&mut filter, mana_constraint);
     }
+    let search_zones_are_library_only = match search_zones_override.as_ref() {
+        None => true,
+        Some(zones) => zones.len() == 1 && zones[0] == Zone::Library,
+    };
+    if search_zones_are_library_only {
+        filter.zone = Some(Zone::Library);
+    }
 
     let discard_before_shuffle_followup =
         find_search_library_discard_before_shuffle_followup_lexed(search_tokens, put_idx);
