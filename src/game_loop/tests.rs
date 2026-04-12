@@ -16455,6 +16455,65 @@ fn cultivator_colossus_etb_only_asks_may_once_per_land_put() {
     );
 }
 
+#[test]
+fn voices_from_the_void_discards_one_card_per_basic_land_type() {
+    use crate::cards::definitions::{basic_forest, basic_island, basic_swamp};
+    use crate::game_loop::resolve_stack_entry_with_dm_and_triggers;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let voices = CardDefinitionBuilder::new(CardId::new(), "Voices from the Void")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Domain — Target player discards a card for each basic land type among lands you control.",
+        )
+        .expect("Voices from the Void should parse");
+    let spell_id = game.create_object_from_definition(&voices, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(spell_id, alice).with_targets(vec![Target::Player(bob)]));
+
+    game.create_object_from_definition(&basic_forest(), alice, Zone::Battlefield);
+    game.create_object_from_definition(&basic_island(), alice, Zone::Battlefield);
+    game.create_object_from_definition(&basic_swamp(), alice, Zone::Battlefield);
+
+    for index in 0..4 {
+        let filler = CardBuilder::new(
+            CardId::from_raw(93_000 + index as u32),
+            format!("Voices Filler {index}"),
+        )
+        .card_types(vec![CardType::Artifact])
+        .build();
+        game.create_object_from_card(&filler, bob, Zone::Hand);
+    }
+
+    let hand_before = game.player(bob).expect("bob exists").hand.len();
+    let mut trigger_queue = TriggerQueue::new();
+    let mut dm = SelectFirstDecisionMaker;
+
+    resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+        .expect("Voices from the Void should resolve");
+
+    assert_eq!(
+        game.player(bob).expect("bob exists").hand.len(),
+        hand_before - 3,
+        "Voices from the Void should make Bob discard once per basic land type Alice controls"
+    );
+    assert_eq!(
+        game.player(bob).expect("bob exists").graveyard.len(),
+        3,
+        "the discard count should match the three basic land types on Alice's battlefield"
+    );
+}
+
 // ============================================================================
 // Saga Integration Tests
 // ============================================================================

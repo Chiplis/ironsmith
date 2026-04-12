@@ -64,6 +64,81 @@ fn contains_words_sequence(words: &[&str], pattern: &[&str]) -> bool {
     contains_word_sequence(words, pattern)
 }
 
+pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)> {
+    let mut idx = if words_have_prefix(words, &["for", "each"]) {
+        2
+    } else if matches!(words.first().copied(), Some("each")) {
+        1
+    } else {
+        return None;
+    };
+
+    if matches!(words.get(idx).copied(), Some("of")) {
+        idx += 1;
+    }
+    if idx >= words.len() {
+        return None;
+    }
+
+    let mut other = false;
+    if matches!(words.get(idx).copied(), Some("other" | "another")) {
+        other = true;
+        idx += 1;
+    }
+    if idx >= words.len() {
+        return None;
+    }
+
+    let parse_scope_filter = |scope_start: usize| -> Option<(ObjectFilter, usize)> {
+        let mut scope_end = scope_start;
+        while scope_end < words.len() && !matches!(words[scope_end], "plus" | "minus") {
+            scope_end += 1;
+        }
+        if scope_end == scope_start {
+            return None;
+        }
+        let scope_tokens = words[scope_start..scope_end]
+            .iter()
+            .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+            .collect::<Vec<_>>();
+        let filter = parse_object_filter(&scope_tokens, false).ok()?;
+        Some((filter, scope_end))
+    };
+
+    if words_have_prefix(&words[idx..], &["basic", "land", "type", "among"])
+        || words_have_prefix(&words[idx..], &["basic", "land", "types", "among"])
+    {
+        let mut scope_start = idx + 4;
+        if matches!(words.get(scope_start).copied(), Some("the")) {
+            scope_start += 1;
+        }
+        let (filter, used) = parse_scope_filter(scope_start)?;
+        return Some((Value::BasicLandTypesAmong(filter), used));
+    }
+
+    if words_have_prefix(&words[idx..], &["color", "among"])
+        || words_have_prefix(&words[idx..], &["colors", "among"])
+    {
+        let mut scope_start = idx + 2;
+        if matches!(words.get(scope_start).copied(), Some("the")) {
+            scope_start += 1;
+        }
+        let (filter, used) = parse_scope_filter(scope_start)?;
+        return Some((Value::ColorsAmong(filter), used));
+    }
+
+    let mut filter_end = idx;
+    while filter_end < words.len() && !matches!(words[filter_end], "plus" | "minus") {
+        filter_end += 1;
+    }
+    let filter_tokens = words[idx..filter_end]
+        .iter()
+        .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+        .collect::<Vec<_>>();
+    let filter = parse_object_filter(&filter_tokens, other).ok()?;
+    Some((Value::Count(filter), filter_end))
+}
+
 pub(crate) fn is_article(word: &str) -> bool {
     matches!(word, "a" | "an" | "the")
 }
@@ -1192,6 +1267,10 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
             | Some(["thiss", "creatures", "mana", "value"])
     ) {
         return Some((Value::ManaValueOf(Box::new(ChooseSpec::Source)), 4));
+    }
+
+    if let Some(result) = parse_for_each_count_value_words(words) {
+        return Some(result);
     }
 
     let matching_prefix_len = |patterns: &[&[&str]]| {
