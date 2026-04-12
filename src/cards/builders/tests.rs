@@ -19431,6 +19431,29 @@ fn parse_oracle_death_or_glory_divvy_surface_regression() {
 }
 
 #[test]
+fn parse_oracle_ecological_appreciation_divvy_surface_regression() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Ecological Appreciation")
+        .parse_text(
+            "Mana cost: {X}{2}{G}\nType: Sorcery\nSearch your library and graveyard for up to four creature cards with different names that each have mana value X or less and reveal them. An opponent chooses two of those cards. Shuffle the chosen cards into your library and put the rest onto the battlefield. Exile Ecological Appreciation.",
+        )
+        .expect("Ecological Appreciation should parse");
+    let rendered = compiled_lines(&def).join(" ");
+
+    assert!(
+        rendered.contains(
+            "Search your library and graveyard for up to four creature cards with different names that each have mana value X or less and reveal them. An opponent chooses two of those cards. Shuffle the chosen cards into your library and put the rest onto the battlefield. Exile Ecological Appreciation."
+        ),
+        "expected Ecological Appreciation to render oracle-like two-pile search wording, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("divvy_chosen") && debug.contains("divvy_source"),
+        "expected Ecological Appreciation to preserve the underlying tagged divvy bundle, got {debug}"
+    );
+}
+
+#[test]
 fn render_make_an_example_preserves_choose_then_sacrifice_surface() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Make an Example")
         .mana_cost(ManaCost::from_pips(vec![

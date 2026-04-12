@@ -6675,12 +6675,22 @@ pub(super) fn normalize_divvy_chosen_sequence(text: &str) -> Option<String> {
     }
     if let Some((before, rest)) = split_once_ascii_ci(
         text,
-        "choose your library and graveyard for up to 4 creature with mana value x or less and tags it as 'searched'. reveal it. an opponent chooses exactly 2 permanent in a library and tags it as 'divvy_chosen'. put the tagged object 'divvy_chosen' on the bottom of its owner's library. shuffle your library. for each tagged 'divvy_source' object, if it isn't true that the tagged object 'divvy_chosen' matches permanent, put that object onto the battlefield under your control. exile ",
+        "search your library and graveyard for up to 4 creature with mana value x or less and tags it as 'searched'. reveal it. an opponent chooses exactly 2 permanent in a library and tags it as 'divvy_chosen'. ",
     ) {
-        let source = rest.trim().trim_end_matches('.');
-        return Some(format!(
-            "{before}Search your library and graveyard for up to four creature cards with different names that each have mana value X or less and reveal them. An opponent chooses two of those cards. Shuffle the chosen cards into your library and put the rest onto the battlefield. Exile {source}."
-        ));
+        let tails = [
+            "put the tagged object 'divvy_chosen' on the bottom of its owner's library. shuffle your library. for each tagged 'divvy_source' object, if it isn't true that the tagged object 'divvy_chosen' matches permanent, put that object onto the battlefield under your control. exile ",
+            "put the tagged object 'divvy_chosen' on the bottom of its owner's library. shuffle your library. for each tagged 'divvy_source' object, if it isn't true that the tagged object 'divvy_chosen' matches permanent, put that object onto the battlefield. exile ",
+            "for each tagged 'divvy_source' object, if it isn't true that the tagged object 'divvy_chosen' matches permanent, put that object onto the battlefield under your control. for each tagged 'divvy_chosen' object, put that object on the bottom of its owner's library. shuffle your library. exile ",
+            "for each tagged 'divvy_source' object, if it isn't true that the tagged object 'divvy_chosen' matches permanent, put that object onto the battlefield. for each tagged 'divvy_chosen' object, put that object on the bottom of its owner's library. shuffle your library. exile ",
+        ];
+        for tail in tails {
+            if let Some(source) = strip_prefix_ascii_ci(rest, tail) {
+                let source = source.trim().trim_end_matches('.');
+                return Some(format!(
+                    "{before}Search your library and graveyard for up to four creature cards with different names that each have mana value X or less and reveal them. An opponent chooses two of those cards. Shuffle the chosen cards into your library and put the rest onto the battlefield. Exile {source}."
+                ));
+            }
+        }
     }
     if let Some((before, rest)) = split_once_ascii_ci(
         text,

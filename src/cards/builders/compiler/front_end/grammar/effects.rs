@@ -27,8 +27,7 @@ use super::super::search_library_support::{
     is_same_name_that_reference_words, normalize_search_library_filter,
     parse_restriction_duration_lexed, parse_search_library_disjunction_filter,
     split_search_library_count_value_clause_lexed, split_search_same_name_reference_filter,
-    word_slice_mentions_nth_from_top,
-    word_slice_starts_with_any, zone_slice_contains,
+    word_slice_mentions_nth_from_top, word_slice_starts_with_any, zone_slice_contains,
 };
 use super::super::token_primitives::{
     contains_window as word_slice_contains_sequence, find_any_str_index as word_slice_find_any,
@@ -1026,14 +1025,13 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     }
 
     let raw_filter_tokens = trim_commas(&search_tokens[filter_start..filter_end]);
-    let (filter_tokens, count_value) =
-        if let Some((base_filter_tokens, count_value)) =
-            split_search_library_count_value_clause_lexed(&raw_filter_tokens)?
-        {
-            (base_filter_tokens, Some(count_value))
-        } else {
-            (raw_filter_tokens.clone(), None)
-        };
+    let (filter_tokens, count_value) = if let Some((base_filter_tokens, count_value)) =
+        split_search_library_count_value_clause_lexed(&raw_filter_tokens)?
+    {
+        (base_filter_tokens, Some(count_value))
+    } else {
+        (raw_filter_tokens.clone(), None)
+    };
     let (filter_tokens, mana_constraint) = if let Some((base_filter_tokens, mana_constraint)) =
         extract_search_library_mana_constraint(&filter_tokens)
     {
@@ -1398,11 +1396,11 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
             SearchLibrarySameNameReference::Choose { filter, tag } => {
                 effects.insert(
                     0,
-            EffectAst::ChooseObjects {
-                filter,
-                count: ChoiceCount::exactly(1),
-                count_value: None,
-                player,
+                    EffectAst::ChooseObjects {
+                        filter,
+                        count: ChoiceCount::exactly(1),
+                        count_value: None,
+                        player,
                         tag,
                     },
                 );

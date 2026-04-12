@@ -626,6 +626,21 @@ impl CardStatusDb {
         Ok(hash)
     }
 
+    pub fn latest_strict_compiled_scores(&self) -> Result<BTreeMap<String, f32>, Box<dyn Error>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT card_name, similarity_score
+             FROM latest_card_compilation
+             WHERE parse_status = ?1
+             ORDER BY card_name ASC",
+        )?;
+        let scores = stmt
+            .query_map([ParseStatus::StrictCompiled.as_str()], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, f32>(1)?))
+            })?
+            .collect::<Result<BTreeMap<String, f32>, _>>()?;
+        Ok(scores)
+    }
+
     pub fn replace_tag_rows(
         &mut self,
         rows: &[TagImportRow],

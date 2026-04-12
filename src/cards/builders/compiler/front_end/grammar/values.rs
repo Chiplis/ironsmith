@@ -16,8 +16,8 @@ use crate::types::{CardType, Subtype, Supertype};
 
 use super::super::activation_and_restrictions::activated_line_core::find_word_sequence_start;
 use super::super::lexer::{LexStream, OwnedLexToken, TokenKind, lex_line, parser_token_word_refs};
-use super::super::token_primitives::{find_index, slice_contains, slice_starts_with};
 use super::super::object_filters::parse_object_filter_lexed;
+use super::super::token_primitives::{find_index, slice_contains, slice_starts_with};
 #[cfg(test)]
 use super::super::util::parse_subtype_word;
 use super::super::util::{
@@ -164,8 +164,10 @@ pub(crate) fn parse_players_who_control_more_than_you_value_lexed(
     }
     idx += 1;
 
-    let Some(than_offset) =
-        crate::cards::builders::compiler::token_primitives::find_window_index(&words[idx..], &["than"]) else {
+    let Some(than_offset) = crate::cards::builders::compiler::token_primitives::find_window_index(
+        &words[idx..],
+        &["than"],
+    ) else {
         return None;
     };
     let than_idx = idx + than_offset;
