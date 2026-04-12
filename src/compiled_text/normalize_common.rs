@@ -8334,6 +8334,8 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             } = inner.as_ref()
             {
                 "no mana was spent to cast the target spell".to_string()
+            } else if let Condition::PermanentLeftBattlefieldThisTurn = inner.as_ref() {
+                "no permanents left the battlefield this turn".to_string()
             } else if let Condition::CardsInHandOrMore(1) = inner.as_ref() {
                 "you have no cards in hand".to_string()
             } else if let Condition::PlayerControls { player, filter } = inner.as_ref() {
