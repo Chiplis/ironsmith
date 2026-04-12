@@ -951,6 +951,19 @@ mod tests {
     }
 
     #[test]
+    fn morph_life_keyword_line_with_reminder_parses_as_keyword() -> Result<(), CardTextError> {
+        let line = single_preprocessed_line(
+            "Morph—Pay 5 life. (You may cast this card face down as a 2/2 creature for {3}. Turn it face up any time for its morph cost.)",
+        );
+
+        let parsed = parse_keyword_line_cst(&line)?
+            .expect("expected Zombie Cutthroat line to parse as keyword");
+
+        assert_eq!(parsed.kind, KeywordLineKindCst::Morph);
+        Ok(())
+    }
+
+    #[test]
     fn ward_and_echo_static_prefixes_are_token_classified() {
         let ward = lex_line("Ward — Pay 3 life.", 0)
             .expect("rewrite lexer should classify ward static prefix");

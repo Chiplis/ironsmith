@@ -12141,7 +12141,9 @@ fn parse_zombie_cutthroat_morph_life_cost_stays_static() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Zombie Cutthroat")
         .card_types(vec![CardType::Creature])
         .power_toughness(PowerToughness::fixed(3, 4))
-        .parse_text("Morph—Pay 5 life.")
+        .parse_text(
+            "Morph—Pay 5 life. (You may cast this card face down as a 2/2 creature for {3}. Turn it face up any time for its morph cost.)",
+        )
         .expect("Zombie Cutthroat morph cost should parse");
 
     let ids: Vec<_> = def

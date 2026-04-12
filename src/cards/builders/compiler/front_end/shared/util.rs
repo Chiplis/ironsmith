@@ -3384,7 +3384,33 @@ pub(crate) fn parse_morph_keyword_line(
         _ => return Ok(None),
     };
 
-    let cost_tokens = tokens.get(1..).unwrap_or_default();
+    let tail = tokens.get(1..).unwrap_or_default();
+    if tail.is_empty() {
+        let mechanic = if is_megamorph { "megamorph" } else { "morph" };
+        return Err(CardTextError::ParseError(format!(
+            "{mechanic} keyword missing cost"
+        )));
+    }
+
+    let reminder_start = find_window_by(tail, 3, |window| {
+        window[0].is_word("you") && window[1].is_word("may") && window[2].is_word("cast")
+    })
+    .or_else(|| {
+        find_window_by(tail, 4, |window| {
+            window[0].is_word("turn")
+                && window[1].is_word("it")
+                && window[2].is_word("face")
+                && window[3].is_word("up")
+        })
+    })
+    .unwrap_or(tail.len());
+    let sentence_end = tail
+        .iter()
+        .enumerate()
+        .find_map(|(idx, token)| token.is_period().then_some(idx))
+        .unwrap_or(tail.len());
+    let end = reminder_start.min(sentence_end);
+    let cost_tokens = trim_commas(&tail[..end]);
     if cost_tokens.is_empty() {
         let mechanic = if is_megamorph { "megamorph" } else { "morph" };
         return Err(CardTextError::ParseError(format!(
