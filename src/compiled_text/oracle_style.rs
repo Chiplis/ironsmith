@@ -5242,7 +5242,7 @@ mod tests {
         );
         assert_eq!(
             normalized,
-            "At the beginning of each end step, if no permanents left the battlefield this turn, that player loses life equal to this creature's power."
+            "At the beginning of each player's end step, if no permanents left the battlefield this turn, that player loses X life, where X is this creature's power."
         );
     }
 

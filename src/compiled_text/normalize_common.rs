@@ -4235,6 +4235,21 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             "that player sacrifices an untapped land of their choice.",
         )
         ;
+    if normalized.starts_with("At the beginning of each end step, if ")
+        && normalized.contains(", that player ")
+    {
+        normalized = normalized.replacen(
+            "At the beginning of each end step, if ",
+            "At the beginning of each player's end step, if ",
+            1,
+        );
+    }
+    if normalized.contains("that player loses life equal to this creature's power") {
+        normalized = normalized.replace(
+            "that player loses life equal to this creature's power",
+            "that player loses X life, where X is this creature's power",
+        );
+    }
     if normalized.contains("you may ")
         && normalized.contains(" unless you ")
         && !normalized.contains(" unless you pay ")
