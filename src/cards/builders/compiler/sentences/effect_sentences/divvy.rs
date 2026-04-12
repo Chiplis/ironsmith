@@ -590,29 +590,59 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                 filter: ObjectFilter::tagged(TagKey::from("divvy_source")),
                 count: ChoiceCount::any_number(),
                 count_value: None,
-                player: PlayerAst::Opponent,
-                tag: TagKey::from("divvy_chosen"),
+                player: PlayerAst::You,
+                tag: TagKey::from("divvy_pile"),
                 zones: vec![Zone::Exile],
                 search_mode: None,
             },
-            EffectAst::ReturnToHand {
-                target: TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
-                random: false,
-            },
-            EffectAst::ForEachTagged {
-                tag: TagKey::from("divvy_source"),
-                effects: vec![EffectAst::Conditional {
-                    predicate: membership_predicate_for_iterated_object("divvy_chosen"),
-                    if_true: Vec::new(),
-                    if_false: vec![EffectAst::MoveToZone {
-                        target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
+            EffectAst::UnlessAction {
+                player: PlayerAst::Opponent,
+                effects: vec![
+                    EffectAst::MoveToZone {
+                        target: TargetAst::Tagged(TagKey::from("divvy_pile"), None),
                         zone: Zone::Graveyard,
                         to_top: false,
                         battlefield_controller: ReturnControllerAst::Preserve,
                         battlefield_tapped: false,
                         attached_to: None,
-                    }],
-                }],
+                    },
+                    EffectAst::ForEachTagged {
+                        tag: TagKey::from("divvy_source"),
+                        effects: vec![EffectAst::Conditional {
+                            predicate: membership_predicate_for_iterated_object("divvy_pile"),
+                            if_true: Vec::new(),
+                            if_false: vec![EffectAst::MoveToZone {
+                                target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                                zone: Zone::Hand,
+                                to_top: false,
+                                battlefield_controller: ReturnControllerAst::Preserve,
+                                battlefield_tapped: false,
+                                attached_to: None,
+                            }],
+                        }],
+                    },
+                ],
+                alternative: vec![
+                    EffectAst::ReturnToHand {
+                        target: TargetAst::Tagged(TagKey::from("divvy_pile"), None),
+                        random: false,
+                    },
+                    EffectAst::ForEachTagged {
+                        tag: TagKey::from("divvy_source"),
+                        effects: vec![EffectAst::Conditional {
+                            predicate: membership_predicate_for_iterated_object("divvy_pile"),
+                            if_true: Vec::new(),
+                            if_false: vec![EffectAst::MoveToZone {
+                                target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                                zone: Zone::Graveyard,
+                                to_top: false,
+                                battlefield_controller: ReturnControllerAst::Preserve,
+                                battlefield_tapped: false,
+                                attached_to: None,
+                            }],
+                        }],
+                    },
+                ],
             },
         ]);
         return Ok(Some(effects));

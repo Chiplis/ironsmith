@@ -19523,6 +19523,43 @@ fn parse_oracle_ecological_appreciation_divvy_surface_regression() {
 }
 
 #[test]
+fn parse_split_the_spoils_divvy_uses_splitter_then_opponent_choice() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Split the Spoils")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Exile up to five target permanent cards from your graveyard and separate them into two piles. An opponent chooses one of those piles. Put that pile into your hand and the other into your graveyard.",
+        )
+        .expect("Split the Spoils should parse");
+
+    let rendered = compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "Exile up to five target permanent cards from your graveyard and separate them into two piles. An opponent chooses one of those piles. Put that pile into your hand and the other into your graveyard."
+        ),
+        "expected Split the Spoils to render oracle-like pile-choice wording, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        debug.contains("UnlessActionEffect"),
+        "expected Split the Spoils to preserve opponent pile choice as a branch, got {debug}"
+    );
+    assert!(
+        debug.contains("chooser: You")
+            && debug.contains("tag: TagKey(\n                                \"divvy_pile\""),
+        "expected caster-owned pile split tagging, got {debug}"
+    );
+    assert!(
+        debug.contains("player: Opponent"),
+        "expected the opponent to own the final pile-selection branch, got {debug}"
+    );
+}
+
+#[test]
 fn render_make_an_example_preserves_choose_then_sacrifice_surface() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Make an Example")
         .mana_cost(ManaCost::from_pips(vec![
