@@ -11,11 +11,15 @@ fn contains_word_window(words: &[&str], pattern: &[&str]) -> bool {
 }
 
 fn contains_any_word_window(words: &[&str], patterns: &[&[&str]]) -> bool {
-    patterns.iter().any(|pattern| contains_word_window(words, pattern))
+    patterns
+        .iter()
+        .any(|pattern| contains_word_window(words, pattern))
 }
 
 fn slice_contains_any(words: &[&str], expected: &[&str]) -> bool {
-    expected.iter().any(|word| words.iter().any(|candidate| candidate == word))
+    expected
+        .iter()
+        .any(|word| words.iter().any(|candidate| candidate == word))
 }
 
 pub(crate) fn is_enters_as_copy_clause_lexed(tokens: &[OwnedLexToken]) -> bool {
@@ -61,7 +65,10 @@ pub(crate) fn looks_like_supported_negated_untap_clause_lexed(tokens: &[OwnedLex
     );
     let has_controllers_untap_step = contains_any_word_window(
         words.as_slice(),
-        &[&["controllers", "untap", "step"], &["controllers", "untap", "steps"]],
+        &[
+            &["controllers", "untap", "step"],
+            &["controllers", "untap", "steps"],
+        ],
     );
     let has_tapped_duration = contains_word_window(words.as_slice(), &["for", "as", "long", "as"])
         && word_slice_contains(words.as_slice(), "remains")
@@ -125,19 +132,16 @@ pub(crate) fn has_would_enter_instead_replacement_clause_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {
     primitives::contains_word(tokens, "would")
-        && (primitives::contains_word(tokens, "enter") || primitives::contains_word(tokens, "enters"))
+        && (primitives::contains_word(tokens, "enter")
+            || primitives::contains_word(tokens, "enters"))
         && primitives::contains_word(tokens, "instead")
 }
 
-pub(crate) fn has_different_mana_value_constraint_sentence_lexed(
-    tokens: &[OwnedLexToken],
-) -> bool {
+pub(crate) fn has_different_mana_value_constraint_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
     primitives::words_find_phrase(tokens, &["different", "mana", "value"]).is_some()
 }
 
-pub(crate) fn has_most_common_color_constraint_sentence_lexed(
-    tokens: &[OwnedLexToken],
-) -> bool {
+pub(crate) fn has_most_common_color_constraint_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
     primitives::words_find_phrase(tokens, &["most", "common", "color", "among", "all"]).is_some()
         && primitives::contains_word(tokens, "permanents")
 }
@@ -170,9 +174,7 @@ pub(crate) fn has_put_into_graveyards_from_battlefield_this_turn_sentence_lexed(
     .is_some()
 }
 
-pub(crate) fn has_phase_out_until_leaves_clause_sentence_lexed(
-    tokens: &[OwnedLexToken],
-) -> bool {
+pub(crate) fn has_phase_out_until_leaves_clause_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
     (primitives::contains_word(tokens, "phase")
         || primitives::contains_word(tokens, "phases")
         || primitives::contains_word(tokens, "phased"))
@@ -183,7 +185,8 @@ pub(crate) fn has_phase_out_until_leaves_clause_sentence_lexed(
 pub(crate) fn has_same_name_as_another_in_hand_clause_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {
-    primitives::words_find_phrase(tokens, &["same", "name", "as", "another", "card", "in"]).is_some()
+    primitives::words_find_phrase(tokens, &["same", "name", "as", "another", "card", "in"])
+        .is_some()
         && primitives::contains_word(tokens, "hand")
 }
 
@@ -206,7 +209,8 @@ pub(crate) fn has_sacrifice_any_number_then_draw_that_many_clause_sentence_lexed
     words: &[&str],
     tokens: &[OwnedLexToken],
 ) -> bool {
-    (primitives::contains_word(tokens, "sacrifice") || primitives::contains_word(tokens, "sacrifices"))
+    (primitives::contains_word(tokens, "sacrifice")
+        || primitives::contains_word(tokens, "sacrifices"))
         && contains_word_window(words, &["any", "number", "of"])
         && (primitives::contains_word(tokens, "draw") || primitives::contains_word(tokens, "draws"))
         && contains_word_window(words, &["that", "many"])
@@ -236,9 +240,7 @@ pub(crate) fn has_chosen_at_random_clause_sentence_lexed(words: &[&str]) -> bool
     contains_word_window(words, &["chosen", "at", "random"])
 }
 
-pub(crate) fn has_defending_players_choice_clause_sentence_lexed(
-    tokens: &[OwnedLexToken],
-) -> bool {
+pub(crate) fn has_defending_players_choice_clause_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
     primitives::words_find_phrase(tokens, &["defending", "player's", "choice"]).is_some()
         || primitives::words_find_phrase(tokens, &["defending", "player", "choice"]).is_some()
         || primitives::words_find_phrase(tokens, &["player's", "choice", "target"]).is_some()
@@ -266,7 +268,10 @@ pub(crate) fn has_spent_to_cast_clause_sentence_lexed(words: &[&str]) -> bool {
     contains_word_window(words, &["spent", "to", "cast"])
 }
 
-pub(crate) fn has_face_down_clause_sentence_lexed(words: &[&str], tokens: &[OwnedLexToken]) -> bool {
+pub(crate) fn has_face_down_clause_sentence_lexed(
+    words: &[&str],
+    tokens: &[OwnedLexToken],
+) -> bool {
     let has_face_down = contains_word_window(words, &["face", "down"])
         || words
             .iter()
@@ -275,7 +280,8 @@ pub(crate) fn has_face_down_clause_sentence_lexed(words: &[&str], tokens: &[Owne
         return false;
     }
 
-    let simple_exile_face_down = primitives::words_match_any_prefix(tokens, EXILE_PREFIXES).is_some()
+    let simple_exile_face_down = primitives::words_match_any_prefix(tokens, EXILE_PREFIXES)
+        .is_some()
         && !primitives::contains_word(tokens, "then")
         && !primitives::contains_word(tokens, "manifest")
         && !primitives::contains_word(tokens, "pile");
@@ -288,7 +294,8 @@ pub(crate) fn has_copy_spell_legendary_exception_clause_sentence_lexed(
     primitives::contains_word(tokens, "copy")
         && primitives::contains_word(tokens, "spell")
         && primitives::contains_word(tokens, "legendary")
-        && (primitives::contains_word(tokens, "except") || primitives::contains_word(tokens, "isnt"))
+        && (primitives::contains_word(tokens, "except")
+            || primitives::contains_word(tokens, "isnt"))
 }
 
 pub(crate) fn has_return_each_creature_that_isnt_list_clause_sentence_lexed(

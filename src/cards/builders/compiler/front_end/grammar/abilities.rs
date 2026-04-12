@@ -18,7 +18,7 @@ use super::super::lexer::{
 use super::super::token_primitives::{slice_contains, slice_starts_with, str_strip_suffix};
 use super::primitives;
 use crate::cards::builders::compiler::util::{
-    parse_card_type, parse_counter_type_word, parse_counter_type_from_tokens, parse_number_word_u32,
+    parse_card_type, parse_counter_type_from_tokens, parse_counter_type_word, parse_number_word_u32,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -133,8 +133,10 @@ fn parse_each_other_players_untap_step_suffix<'a>(
 pub(crate) fn split_untap_each_other_players_untap_step_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<UntapEachOtherPlayersUntapStepSpec<'_>> {
-    let ((_, untap_all), remainder) =
-        primitives::parse_prefix(tokens, (primitives::kw("untap"), opt(primitives::kw("all"))))?;
+    let ((_, untap_all), remainder) = primitives::parse_prefix(
+        tokens,
+        (primitives::kw("untap"), opt(primitives::kw("all"))),
+    )?;
     let (subject_tokens, ()) = primitives::split_lexed_once_before_suffix(remainder, 1, || {
         parse_each_other_players_untap_step_suffix
     })?;
@@ -440,9 +442,7 @@ pub(crate) fn is_activate_only_once_each_turn_line_lexed(tokens: &[OwnedLexToken
         .is_some_and(|(_, remainder)| remainder.is_empty())
 }
 
-pub(crate) fn is_doesnt_untap_during_your_untap_step_line_lexed(
-    tokens: &[OwnedLexToken],
-) -> bool {
+pub(crate) fn is_doesnt_untap_during_your_untap_step_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     let Some((_, head_tokens)) = primitives::strip_lexed_suffix_phrases(
         tokens,
         &[&["untap", "during", "your", "untap", "step"]],
@@ -477,15 +477,16 @@ pub(crate) fn is_ward_or_echo_static_prefix_line_lexed(tokens: &[OwnedLexToken])
 }
 
 pub(crate) fn is_land_reveal_enters_static_line_lexed(tokens: &[OwnedLexToken]) -> bool {
-    primitives::parse_prefix(tokens, primitives::phrase(&["as", "this", "land", "enters"]))
-        .is_some()
+    primitives::parse_prefix(
+        tokens,
+        primitives::phrase(&["as", "this", "land", "enters"]),
+    )
+    .is_some()
         && primitives::contains_phrase(tokens, &["you", "may", "reveal"])
         && primitives::contains_phrase(tokens, &["from", "your", "hand"])
 }
 
-pub(crate) fn is_land_reveal_enters_tapped_followup_line_lexed(
-    tokens: &[OwnedLexToken],
-) -> bool {
+pub(crate) fn is_land_reveal_enters_tapped_followup_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(tokens, |input: &mut LexStream<'_>| {
         (
             primitives::phrase(&["if", "you"]),
@@ -550,7 +551,9 @@ const THIS_ABILITY_TRIGGERS_ONLY_PREFIXES: &[&[&str]] = &[
     &["do", "this", "only"],
 ];
 
-pub(crate) fn parse_activate_only_timing_lexed(tokens: &[OwnedLexToken]) -> Option<ActivationTiming> {
+pub(crate) fn parse_activate_only_timing_lexed(
+    tokens: &[OwnedLexToken],
+) -> Option<ActivationTiming> {
     if primitives::words_match_any_prefix(tokens, ACTIVATE_ONLY_SORCERY_PREFIXES).is_some() {
         return Some(ActivationTiming::SorcerySpeed);
     }
@@ -564,8 +567,7 @@ pub(crate) fn parse_activate_only_timing_lexed(tokens: &[OwnedLexToken]) -> Opti
     {
         return Some(ActivationTiming::DuringCombat);
     }
-    if primitives::words_match_any_prefix(tokens, ACTIVATE_ONLY_DURING_YOUR_TURN_PREFIXES)
-        .is_some()
+    if primitives::words_match_any_prefix(tokens, ACTIVATE_ONLY_DURING_YOUR_TURN_PREFIXES).is_some()
         || primitives::words_find_phrase(tokens, &["during", "your", "turn"]).is_some()
     {
         return Some(ActivationTiming::DuringYourTurn);
@@ -751,9 +753,9 @@ pub(crate) fn parse_mana_spend_bonus_sentence_lexed(
     };
 
     let counter_type = parse_counter_type_from_tokens(&after_with[used..])?;
-    let counter_idx = after_with.iter().position(|token| {
-        token.is_word("counter") || token.is_word("counters")
-    })?;
+    let counter_idx = after_with
+        .iter()
+        .position(|token| token.is_word("counter") || token.is_word("counters"))?;
     let tail_tokens = trim_lexed_commas(&after_with[counter_idx + 1..]);
     let mut tail: &[OwnedLexToken] = &tail_tokens;
     if tail.first().is_some_and(|token| token.is_word("on")) {
@@ -984,7 +986,10 @@ pub(crate) fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Opti
         }
         return None;
     }
-    if let Some(count) = control_tail.first().and_then(|word| parse_number_word_u32(word)) {
+    if let Some(count) = control_tail
+        .first()
+        .and_then(|word| parse_number_word_u32(word))
+    {
         let tail = &control_tail[1..];
         if tail == ["or", "more", "artifact"] || tail == ["or", "more", "artifacts"] {
             let mut filter = ObjectFilter::artifact();

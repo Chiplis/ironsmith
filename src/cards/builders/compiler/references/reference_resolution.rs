@@ -410,6 +410,7 @@ fn advance_reference_frame_for_effect(
         EffectAst::ControlPlayer { player, .. } => {
             frame.last_player_filter = Some(player.clone());
         }
+        EffectAst::ControlCombatChoicesThisTurn { .. } => {}
         EffectAst::LookAtHand { target }
         | EffectAst::TargetOnly { target }
         | EffectAst::Counter { target }
@@ -860,6 +861,12 @@ fn advance_reference_frame_for_effect(
             nested.last_effect_id = None;
             nested.last_object_tag = Some(IT_TAG.to_string());
             advance_reference_frames(&effects, id_gen, &mut nested)?;
+            if saved.last_object_tag != nested.last_object_tag {
+                frame.last_object_tag = nested.last_object_tag;
+            }
+            if saved.last_player_filter != nested.last_player_filter {
+                frame.last_player_filter = nested.last_player_filter;
+            }
         }
         EffectAst::ForEachTagged { tag, effects } => {
             let tagged_object = if tag.as_str() == IT_TAG {
@@ -1733,6 +1740,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
         | EffectAst::ForEachPlayersFiltered { filter: player, .. } => {
             bind_unresolved_it_in_player_filter(player, seed_tag)
         }
+        EffectAst::ControlCombatChoicesThisTurn { .. } => 0,
         EffectAst::DelayedWhenLastObjectDiesThisTurn { filter, .. } => {
             if let Some(filter) = filter.as_mut() {
                 bind_unresolved_it_in_filter(filter, seed_tag)

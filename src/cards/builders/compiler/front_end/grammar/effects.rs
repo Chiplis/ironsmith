@@ -422,7 +422,8 @@ const FOR_EACH_PLAYER_PREFIXES: &[&[&str]] = &[
 pub(crate) fn split_choose_new_targets_clause_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<ChooseNewTargetsClauseSplit<'_>> {
-    let (_, mut tail_tokens) = primitives::strip_lexed_prefix_phrases(tokens, CHOOSE_NEW_TARGET_PREFIXES)?;
+    let (_, mut tail_tokens) =
+        primitives::strip_lexed_prefix_phrases(tokens, CHOOSE_NEW_TARGET_PREFIXES)?;
     if tail_tokens.is_empty() {
         return None;
     }
@@ -443,9 +444,10 @@ pub(crate) fn split_choose_new_targets_clause_lexed(
         });
     }
 
-    if let Some((prefix, rest)) =
-        primitives::strip_lexed_prefix_phrases(tail_tokens, &[&["any", "number", "of"], &["target"]])
-    {
+    if let Some((prefix, rest)) = primitives::strip_lexed_prefix_phrases(
+        tail_tokens,
+        &[&["any", "number", "of"], &["target"]],
+    ) {
         return Some(ChooseNewTargetsClauseSplit {
             target_tokens: rest,
             count: (prefix.len() == 3).then_some(ChoiceCount::any_number()),
@@ -501,10 +503,13 @@ pub(crate) fn split_change_target_clause_lexed(
 }
 
 pub(crate) fn negated_action_word_index(words: &[&str]) -> Option<(usize, usize)> {
-    if let Some(idx) = word_slice_find(words, "doesnt").or_else(|| word_slice_find(words, "didnt")) {
+    if let Some(idx) = word_slice_find(words, "doesnt").or_else(|| word_slice_find(words, "didnt"))
+    {
         return Some((idx, 1));
     }
-    if let Some(idx) = word_slice_find(words, "doesn't").or_else(|| word_slice_find(words, "didn't")) {
+    if let Some(idx) =
+        word_slice_find(words, "doesn't").or_else(|| word_slice_find(words, "didn't"))
+    {
         return Some((idx, 1));
     }
     if let Some(idx) = word_slice_find_sequence(words, &["do", "not"]) {
@@ -524,7 +529,9 @@ fn split_for_each_doesnt_clause_lexed<'a>(
     if token_word_refs(clause_tokens).first().copied() == Some("then") {
         clause_tokens = &clause_tokens[1..];
     }
-    let start = primitives::words_match_any_prefix(clause_tokens, prefixes)?.0.len();
+    let start = primitives::words_match_any_prefix(clause_tokens, prefixes)?
+        .0
+        .len();
     let inner_tokens = trim_lexed_commas(&clause_tokens[start..]);
     let inner_words = token_word_refs(inner_tokens);
     if inner_words.first().copied() != Some("who") {
@@ -955,6 +962,8 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     let mut leading_effects = subject_prelude.leading_effects;
     let wrap_each_target_player =
         search_library_subject_wraps_each_target_player_lexed(subject_tokens);
+    let iterated_subject_filter =
+        parse_search_library_iterated_object_subject_lexed(subject_tokens)?;
     let chooser = match parse_subject(subject_tokens) {
         SubjectAst::Player(player) => player,
         _ => PlayerAst::Implicit,
@@ -1030,6 +1039,11 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     )?;
     let filter_tokens = same_name_split.filter_tokens;
     let same_name_reference = same_name_split.same_name_reference;
+    let same_name_reference_requires_setup = matches!(
+        same_name_reference,
+        Some(SearchLibrarySameNameReference::Target(_))
+            | Some(SearchLibrarySameNameReference::Choose { .. })
+    );
 
     let named_filters = if count_used == 0 {
         split_search_named_item_filters_lexed(&filter_tokens, &words_all)?
@@ -1074,7 +1088,82 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     let face_down_exile = effect_routing.face_down_exile;
     let shuffle = effect_routing.shuffle;
     let split_battlefield_and_hand = effect_routing.split_battlefield_and_hand;
-    let mut effects = if let Some(named_filters) = named_filters {
+    let mut handled_direct_may_in_iterated_search = false;
+    let mut effects = if let Some(iterated_filter) = iterated_subject_filter.clone()
+        && has_explicit_destination
+        && named_filters.is_none()
+        && !split_battlefield_and_hand
+        && !(destination == Zone::Exile && face_down_exile)
+    {
+        let searched_tag: TagKey = "searched".into();
+        let search_zones = search_zones_override.unwrap_or_else(|| vec![Zone::Library]);
+        let battlefield_tapped =
+            destination == Zone::Battlefield && effect_routing.has_tapped_modifier;
+        let shuffle_player = if search_zones == vec![Zone::Library] {
+            player
+        } else {
+            PlayerAst::That
+        };
+
+        let mut per_object_effects = vec![EffectAst::ChooseObjectsAcrossZones {
+            filter,
+            count,
+            player: chooser,
+            tag: searched_tag.clone(),
+            zones: search_zones.clone(),
+            search_mode: Some(search_mode),
+        }];
+        if sentence_has_direct_may {
+            handled_direct_may_in_iterated_search = true;
+            per_object_effects = vec![if matches!(chooser, PlayerAst::You | PlayerAst::Implicit) {
+                EffectAst::May {
+                    effects: per_object_effects,
+                }
+            } else {
+                EffectAst::MayByPlayer {
+                    player: chooser,
+                    effects: per_object_effects,
+                }
+            }];
+        }
+
+        let mut sequence = vec![EffectAst::ForEachObject {
+            filter: iterated_filter,
+            effects: per_object_effects,
+        }];
+        if reveal {
+            sequence.push(EffectAst::RevealTagged {
+                tag: searched_tag.clone(),
+            });
+        }
+        if shuffle
+            && destination == Zone::Library
+            && zone_slice_contains(&search_zones, Zone::Library)
+        {
+            sequence.push(EffectAst::ShuffleLibrary {
+                player: shuffle_player,
+            });
+        }
+        sequence.push(EffectAst::ForEachTagged {
+            tag: searched_tag.clone(),
+            effects: vec![EffectAst::MoveToZone {
+                target: TargetAst::Tagged(searched_tag, span_from_tokens(tokens)),
+                zone: destination,
+                to_top: matches!(destination, Zone::Library),
+                battlefield_controller: ReturnControllerAst::Preserve,
+                battlefield_tapped,
+                attached_to: None,
+            }],
+        });
+        if shuffle
+            && !(destination == Zone::Library && zone_slice_contains(&search_zones, Zone::Library))
+        {
+            sequence.push(EffectAst::ShuffleLibrary {
+                player: shuffle_player,
+            });
+        }
+        sequence
+    } else if let Some(named_filters) = named_filters {
         let searched_tag: TagKey = "searched_named".into();
         let zones = search_zones_override.unwrap_or_else(|| vec![Zone::Library]);
         let mut sequence = Vec::new();
@@ -1300,7 +1389,7 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
         }
     }
 
-    if sentence_has_direct_may {
+    if sentence_has_direct_may && !handled_direct_may_in_iterated_search {
         effects = vec![if matches!(chooser, PlayerAst::You | PlayerAst::Implicit) {
             EffectAst::May { effects }
         } else {
@@ -1308,6 +1397,16 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
                 player: chooser,
                 effects,
             }
+        }];
+    }
+
+    if let Some(iterated_filter) = iterated_subject_filter
+        && !has_explicit_destination
+        && !same_name_reference_requires_setup
+    {
+        effects = vec![EffectAst::ForEachObject {
+            filter: iterated_filter,
+            effects,
         }];
     }
 

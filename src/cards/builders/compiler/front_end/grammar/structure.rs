@@ -719,9 +719,9 @@ pub(crate) fn split_lexed_sentences<'a>(tokens: &'a [OwnedLexToken]) -> Vec<&'a 
 fn looks_like_trigger_objectish_word(word: &str) -> bool {
     parse_card_type(word).is_some()
         || parse_subtype_flexible(word).is_some()
-        || word
-            .strip_suffix('s')
-            .is_some_and(|stem| parse_card_type(stem).is_some() || parse_subtype_flexible(stem).is_some())
+        || word.strip_suffix('s').is_some_and(|stem| {
+            parse_card_type(stem).is_some() || parse_subtype_flexible(stem).is_some()
+        })
 }
 
 fn looks_like_trigger_object_list_tail_lexed(tokens: &[OwnedLexToken]) -> bool {
@@ -903,7 +903,8 @@ pub(crate) fn find_trigger_effect_list_tail_split_lexed(
                         return None;
                     }
 
-                    let next_is_list_item = if looks_like_trigger_color_list_tail_lexed(tail_tokens) {
+                    let next_is_list_item = if looks_like_trigger_color_list_tail_lexed(tail_tokens)
+                    {
                         parse_color(next_word).is_some()
                     } else {
                         looks_like_trigger_objectish_word(next_word)

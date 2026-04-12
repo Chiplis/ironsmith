@@ -14,14 +14,14 @@ use super::grammar::primitives::{
     TokenWordView, split_lexed_slices_on_and, split_lexed_slices_on_commas_or_semicolons,
 };
 use super::grammar::structure::{
-    find_trigger_effect_list_tail_split_lexed, rewrite_attached_controller_trigger_effect_tokens_lexed,
+    find_trigger_effect_list_tail_split_lexed,
+    rewrite_attached_controller_trigger_effect_tokens_lexed,
     split_first_time_each_turn_trigger_suffix_lexed, split_state_triggered_clause_lexed,
     split_triggered_conditional_clause_lexed,
 };
 use super::lexer::{OwnedLexToken, TokenKind, split_lexed_sentences};
 use super::util::{
-    parse_card_type, parse_color, parse_flashback_keyword_line, parse_subtype_flexible,
-    trim_commas,
+    parse_card_type, parse_color, parse_flashback_keyword_line, parse_subtype_flexible, trim_commas,
 };
 
 fn word_slice_starts_with(words: &[&str], expected: &[&str]) -> bool {

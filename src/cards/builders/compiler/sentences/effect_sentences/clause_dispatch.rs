@@ -408,7 +408,9 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
                     )
                     .is_some()
                     {
-                        parse_get_for_each_count_value(&tail_after_modifier[4..]).ok().flatten()
+                        parse_get_for_each_count_value(&tail_after_modifier[4..])
+                            .ok()
+                            .flatten()
                     } else {
                         None
                     }

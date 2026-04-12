@@ -725,10 +725,7 @@ fn parse_static_ability_ast_line_early_lexed(
             format!("Untap {subject_text} during each other player's untap step")
         };
         return Ok(Some(vec![
-            StaticAbility::untap_during_each_other_players_untap_step(
-                filter, display,
-            )
-            .into(),
+            StaticAbility::untap_during_each_other_players_untap_step(filter, display).into(),
         ]));
     }
 

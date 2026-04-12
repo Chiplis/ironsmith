@@ -425,9 +425,13 @@ pub(crate) fn parse_get(
         && let Ok((power_per, toughness_per)) = parse_pt_modifier(mod_token)
     {
         let tail_tokens = tokens.get(modifier_start + 1..).unwrap_or_default();
-        if let Some(effect) =
-            parse_pump_for_each_tail(tail_tokens, subject, power_per, toughness_per, &clause_words)?
-        {
+        if let Some(effect) = parse_pump_for_each_tail(
+            tail_tokens,
+            subject,
+            power_per,
+            toughness_per,
+            &clause_words,
+        )? {
             return Ok(effect);
         }
     }

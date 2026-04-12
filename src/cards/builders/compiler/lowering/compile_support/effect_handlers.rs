@@ -314,6 +314,13 @@ pub(super) fn try_compile_timing_and_control_effect(
             let effect = Effect::control_player(player.clone(), start, duration);
             (vec![effect], choices)
         }
+        EffectAst::ControlCombatChoicesThisTurn {
+            attackers,
+            blockers,
+        } => {
+            let effect = Effect::control_combat_choices_this_turn(*attackers, *blockers);
+            (vec![effect], Vec::new())
+        }
         EffectAst::ExtraTurnAfterTurn { player, anchor } => {
             let (player_filter, choices) =
                 resolve_effect_player_filter(*player, ctx, true, true, true)?;

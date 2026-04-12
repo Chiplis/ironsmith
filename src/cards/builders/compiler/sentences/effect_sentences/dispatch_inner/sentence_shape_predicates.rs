@@ -381,6 +381,11 @@ pub(crate) fn parse_effect_sentence_lexed(
     if let Some(meld_effect) = parse_exile_then_meld_sentence(tokens)? {
         return Ok(vec![meld_effect]);
     }
+    if let Some(effect) =
+        crate::cards::builders::compiler::sentences::effect_sentences::special_sentence_family::parse_control_combat_choices_sentence(tokens)?
+    {
+        return Ok(vec![effect]);
+    }
     if let Some(effect) = parse_if_damage_would_be_dealt_put_counters_sentence(tokens)? {
         return Ok(vec![effect]);
     }

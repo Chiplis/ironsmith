@@ -853,7 +853,12 @@ fn mind_funeral_mills_until_four_lands_and_moves_every_revealed_card_to_graveyar
         .expect("bob exists")
         .graveyard
         .iter()
-        .map(|id| game.object(*id).expect("graveyard object exists").name.clone())
+        .map(|id| {
+            game.object(*id)
+                .expect("graveyard object exists")
+                .name
+                .clone()
+        })
         .collect::<Vec<_>>();
     graveyard_names.sort();
     assert_eq!(
@@ -875,7 +880,11 @@ fn mind_funeral_mills_until_four_lands_and_moves_every_revealed_card_to_graveyar
             .expect("bob exists")
             .library
             .iter()
-            .map(|id| game.object(*id).expect("library object exists").name.clone())
+            .map(|id| game
+                .object(*id)
+                .expect("library object exists")
+                .name
+                .clone())
             .collect::<Vec<_>>(),
         vec!["Bottom Archive".to_string()],
         "Mind Funeral should stop after the fourth land card is revealed"
@@ -10235,10 +10244,26 @@ fn test_gargoyle_sentinel_gains_flying_only_for_itself_until_end_of_turn() {
 #[test]
 fn test_sacellum_godspeaker_reveals_hand_creatures_and_adds_green_mana() {
     use crate::PriorityResponse;
-    use crate::decision::compute_legal_actions;
+    use crate::decision::{DecisionMaker, compute_legal_actions};
     use crate::game_loop::{
         PriorityLoopState, apply_priority_response_with_dm, resolve_stack_entry,
     };
+
+    struct ChooseAllLegalObjectsDm;
+
+    impl DecisionMaker for ChooseAllLegalObjectsDm {
+        fn decide_objects(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            ctx.candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .map(|candidate| candidate.id)
+                .collect()
+        }
+    }
 
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
@@ -10305,7 +10330,7 @@ fn test_sacellum_godspeaker_reveals_hand_creatures_and_adds_green_mana() {
     let hand_before = game.player(alice).expect("alice exists").hand.len();
     let mut trigger_queue = TriggerQueue::new();
     let mut state = PriorityLoopState::new(game.players_in_game());
-    let mut dm = SelectFirstDecisionMaker;
+    let mut dm = ChooseAllLegalObjectsDm;
     apply_priority_response_with_dm(
         &mut game,
         &mut trigger_queue,
@@ -10330,7 +10355,8 @@ fn test_sacellum_godspeaker_reveals_hand_creatures_and_adds_green_mana() {
         "Sacellum Godspeaker's activated ability should be on the stack"
     );
 
-    resolve_stack_entry(&mut game).expect("Sacellum Godspeaker ability should resolve");
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Sacellum Godspeaker ability should resolve");
 
     assert_eq!(
         game.player(alice).expect("alice exists").mana_pool.green,
@@ -15441,9 +15467,7 @@ fn test_evolving_door_finds_two_color_creature_and_respects_may_cast_decline() {
             vec![ManaSymbol::Green],
             vec![ManaSymbol::Blue],
         ]))
-        .color_indicator(
-            crate::color::ColorSet::GREEN.union(crate::color::ColorSet::BLUE),
-        )
+        .color_indicator(crate::color::ColorSet::GREEN.union(crate::color::ColorSet::BLUE))
         .power_toughness(PowerToughness::fixed(3, 3))
         .build();
     let _two_color_id = game.create_object_from_card(&two_color_prize, alice, Zone::Library);
@@ -15493,7 +15517,12 @@ fn test_evolving_door_finds_two_color_creature_and_respects_may_cast_decline() {
             let sacrifice_cost_index = cost_ctx
                 .options
                 .iter()
-                .find(|option| option.description.to_ascii_lowercase().contains("sacrifice"))
+                .find(|option| {
+                    option
+                        .description
+                        .to_ascii_lowercase()
+                        .contains("sacrifice")
+                })
                 .map(|option| option.index)
                 .expect("expected a sacrifice cost option for Evolving Door");
 
@@ -16746,7 +16775,10 @@ fn atraxa_grand_unifier_puts_one_card_per_type_into_hand_and_bottoms_the_rest() 
         "Atraxa should put one card of each standard card type into hand"
     );
     assert!(
-        game.player(alice).expect("alice exists").graveyard.is_empty(),
+        game.player(alice)
+            .expect("alice exists")
+            .graveyard
+            .is_empty(),
         "Atraxa should put the unrevealed remainder on the library bottom, not into the graveyard"
     );
     assert_eq!(
@@ -16769,7 +16801,9 @@ fn atraxa_grand_unifier_puts_one_card_per_type_into_hand_and_bottoms_the_rest() 
                 .expect("alice exists")
                 .hand
                 .iter()
-                .filter(|&&id| game.object(id).is_some_and(|obj| obj.has_card_type(card_type)))
+                .filter(|&&id| game
+                    .object(id)
+                    .is_some_and(|obj| obj.has_card_type(card_type)))
                 .count(),
             1,
             "Atraxa should place exactly one {card_type:?} card into hand"

@@ -3584,7 +3584,8 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     }
     if let Some((prefix, rest)) = normalized.split_once(": ") {
         let rest_lower = rest.to_ascii_lowercase();
-        if rest_lower == "you can't be targeted until your next turn. prevent all damage that would be dealt to you until your next turn"
+        if rest_lower
+            == "you can't be targeted until your next turn. prevent all damage that would be dealt to you until your next turn"
             || rest_lower
                 == "you can't be targeted until your next turn. prevent all damage that would be dealt to you until your next turn."
         {
@@ -4684,7 +4685,10 @@ fn describe_commander_zone_union_subject(filter: &ObjectFilter) -> Option<String
 
     let subject = if let Some(owner) = common.owner.as_ref() {
         let owner_text = describe_player_filter(owner);
-        format!("commanders {owner_text} {}", player_verb(&owner_text, "own", "owns"))
+        format!(
+            "commanders {owner_text} {}",
+            player_verb(&owner_text, "own", "owns")
+        )
     } else {
         "commanders".to_string()
     };

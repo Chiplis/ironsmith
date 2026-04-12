@@ -4237,7 +4237,10 @@ impl ObjectFilter {
             ));
         }
         if let Some(ref color_count) = self.color_count {
-            parts.push(format!("with color count {}", describe_comparison(color_count)));
+            parts.push(format!(
+                "with color count {}",
+                describe_comparison(color_count)
+            ));
         }
         if let Some(mana_value_parity) = self.mana_value_parity {
             parts.push(mana_value_parity.describe_axis("mana value"));
@@ -5076,7 +5079,9 @@ fn describe_comparison(cmp: &Comparison) -> String {
             Value::CountScaled(filter, factor) => {
                 format!("{factor} times the number of {}", filter.description())
             }
-            Value::ColorsAmong(filter) => format!("the number of colors among {}", filter.description()),
+            Value::ColorsAmong(filter) => {
+                format!("the number of colors among {}", filter.description())
+            }
             Value::CountersOnSource(counter_type) => {
                 format!(
                     "the number of {} counters on this",

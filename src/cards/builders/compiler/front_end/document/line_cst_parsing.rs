@@ -34,7 +34,8 @@ pub(super) fn parse_triggered_line_cst(
         return Err(err);
     }
 
-    if let Some(nested_trigger_tokens) = split_nested_combat_whenever_clause_lexed(tokens_without_cap)
+    if let Some(nested_trigger_tokens) =
+        split_nested_combat_whenever_clause_lexed(tokens_without_cap)
     {
         let nested_line = rewrite_line_tokens(line, nested_trigger_tokens);
         if let Ok(parsed) = parse_triggered_line_cst(&nested_line) {

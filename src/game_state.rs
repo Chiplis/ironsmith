@@ -1122,6 +1122,16 @@ pub enum PlayerControlDuration {
     Forever,
 }
 
+/// An effect that lets a player choose attackers and/or blockers this turn.
+#[derive(Debug, Clone)]
+pub struct CombatChoiceControlEffect {
+    pub controller: PlayerId,
+    pub choose_attackers: bool,
+    pub choose_blockers: bool,
+    pub expires_on_turn: u32,
+    pub timestamp: u64,
+}
+
 /// An effect that causes one player to control another player's decisions.
 #[derive(Debug, Clone)]
 pub struct PlayerControlEffect {
@@ -1489,6 +1499,12 @@ pub struct GameState {
     /// Timestamp counter for player-control effects.
     pub player_control_timestamp: u64,
 
+    /// Temporary effects that redirect attacker/blocker choices this turn.
+    pub combat_choice_control_effects: Vec<CombatChoiceControlEffect>,
+
+    /// Timestamp counter for combat-choice control effects.
+    pub combat_choice_control_timestamp: u64,
+
     /// Unified owner for per-turn event and action history.
     pub turn_history: TurnHistory,
 
@@ -1725,6 +1741,8 @@ impl GameState {
             skip_next_combat_phases: HashSet::new(),
             player_control_effects: Vec::new(),
             player_control_timestamp: 0,
+            combat_choice_control_effects: Vec::new(),
+            combat_choice_control_timestamp: 0,
             spells_cast_last_turn_total: 0,
             saddled_until_end_of_turn: HashSet::new(),
             soulbond_pairs: HashMap::new(),
@@ -5232,6 +5250,58 @@ impl GameState {
             }
             true
         });
+    }
+
+    /// Add a combat-choice control effect that lasts until end of turn.
+    pub fn add_combat_choice_control(
+        &mut self,
+        controller: PlayerId,
+        choose_attackers: bool,
+        choose_blockers: bool,
+    ) {
+        self.combat_choice_control_timestamp =
+            self.combat_choice_control_timestamp.saturating_add(1);
+        self.combat_choice_control_effects
+            .push(CombatChoiceControlEffect {
+                controller,
+                choose_attackers,
+                choose_blockers,
+                expires_on_turn: self.turn.turn_number,
+                timestamp: self.combat_choice_control_timestamp,
+            });
+    }
+
+    fn combat_choice_controller_for(&self, choose_attackers: bool) -> Option<PlayerId> {
+        let mut best: Option<&CombatChoiceControlEffect> = None;
+        for effect in &self.combat_choice_control_effects {
+            if effect.expires_on_turn != self.turn.turn_number {
+                continue;
+            }
+            if choose_attackers && !effect.choose_attackers {
+                continue;
+            }
+            if !choose_attackers && !effect.choose_blockers {
+                continue;
+            }
+            if best.is_none_or(|current| effect.timestamp > current.timestamp) {
+                best = Some(effect);
+            }
+        }
+        best.map(|effect| effect.controller)
+    }
+
+    pub fn combat_choice_controller_for_attackers(&self) -> Option<PlayerId> {
+        self.combat_choice_controller_for(true)
+    }
+
+    pub fn combat_choice_controller_for_blockers(&self) -> Option<PlayerId> {
+        self.combat_choice_controller_for(false)
+    }
+
+    pub fn cleanup_combat_choice_control_end_of_turn(&mut self) {
+        let current_turn = self.turn.turn_number;
+        self.combat_choice_control_effects
+            .retain(|effect| effect.expires_on_turn != current_turn);
     }
 
     fn clear_player_control_from_source(&mut self, stable_id: StableId) {

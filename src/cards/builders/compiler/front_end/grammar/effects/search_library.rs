@@ -392,12 +392,11 @@ fn strip_search_library_color_count_phrase_lexed(
             let colors_expr = crate::effect::Value::ColorsAmong(
                 crate::target::ObjectFilter::tagged(crate::cards::builders::IT_TAG),
             );
-            let comparison = crate::filter::Comparison::EqualExpr(Box::new(
-                crate::effect::Value::Add(
+            let comparison =
+                crate::filter::Comparison::EqualExpr(Box::new(crate::effect::Value::Add(
                     Box::new(colors_expr),
                     Box::new(crate::effect::Value::Fixed(count as i32)),
-                ),
-            ));
+                )));
             return Some((stripped, comparison));
         }
     }
@@ -1257,6 +1256,58 @@ pub(crate) fn search_library_subject_wraps_each_target_player_lexed(
         token_word_refs(subject_tokens).as_slice(),
         ["each", "of", "them"]
     )
+}
+
+pub(crate) fn parse_search_library_iterated_object_subject_lexed(
+    subject_tokens: &[OwnedLexToken],
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    const PLAYER_OR_OPPONENT_PREFIXES: &[&[&str]] = &[
+        &["player"],
+        &["players"],
+        &["opponent"],
+        &["opponents"],
+        &["target", "player"],
+        &["target", "players"],
+        &["target", "opponent"],
+        &["target", "opponents"],
+    ];
+
+    if subject_tokens.is_empty() {
+        return Ok(None);
+    }
+    if matches!(
+        token_word_refs(subject_tokens).as_slice(),
+        ["each", "of", "them"]
+    ) {
+        return Ok(None);
+    }
+
+    let mut filter_tokens =
+        if let Some(rest) = primitives::words_match_prefix(subject_tokens, &["for", "each"]) {
+            rest
+        } else if let Some(rest) = primitives::words_match_prefix(subject_tokens, &["each"]) {
+            rest
+        } else {
+            return Ok(None);
+        };
+
+    if filter_tokens
+        .first()
+        .is_some_and(|token| token.is_word("of"))
+    {
+        filter_tokens = &filter_tokens[1..];
+    }
+
+    let filter_tokens = trim_commas(filter_tokens);
+    if filter_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    if primitives::words_match_any_prefix(&filter_tokens, PLAYER_OR_OPPONENT_PREFIXES).is_some() {
+        return Ok(None);
+    }
+
+    Ok(Some(parse_object_filter_lexed(&filter_tokens, false)?))
 }
 
 pub(crate) fn search_library_starts_with_search_verb_lexed(

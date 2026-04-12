@@ -608,6 +608,7 @@ pub fn execute_cleanup_step(game: &mut GameState) {
     // (Handled by continuous effect manager)
     game.continuous_effects.cleanup_end_of_turn();
     game.cleanup_player_control_end_of_turn();
+    game.cleanup_combat_choice_control_end_of_turn();
 
     // Normally no priority during cleanup, but if triggers/SBAs happen, there's a new cleanup
     game.turn.priority_player = None;

@@ -195,7 +195,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::RegisterZoneReplacement { .. } => {}
         EffectAst::ExileInsteadOfGraveyardThisTurn { .. } => {}
         EffectAst::GainControl { .. } => {}
-        EffectAst::ControlPlayer { .. } => {}
+        EffectAst::ControlPlayer { .. } | EffectAst::ControlCombatChoicesThisTurn { .. } => {}
         EffectAst::ExtraTurnAfterTurn { .. } => {}
         EffectAst::DelayedUntilNextEndStep { .. } => {}
         EffectAst::DelayedUntilNextUpkeep { .. } => {}

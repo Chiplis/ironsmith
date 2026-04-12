@@ -841,6 +841,10 @@ pub(crate) enum EffectAst {
         player: PlayerFilter,
         duration: ControlDurationAst,
     },
+    ControlCombatChoicesThisTurn {
+        attackers: bool,
+        blockers: bool,
+    },
     ExtraTurnAfterTurn {
         player: PlayerAst,
         anchor: ExtraTurnAnchorAst,

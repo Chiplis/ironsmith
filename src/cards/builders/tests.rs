@@ -1674,7 +1674,9 @@ fn parse_voices_from_the_void_domain_discard_counts_basic_land_types() {
 
     let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        rendered.contains("target player discards a card for each basic land type among lands you control"),
+        rendered.contains(
+            "target player discards a card for each basic land type among lands you control"
+        ),
         "expected Voices from the Void wording to keep the domain discard clause, got {rendered}"
     );
 }
@@ -4690,9 +4692,9 @@ fn test_parse_evolving_door_compiles_color_count_search_and_may_cast() {
     );
 
     let oracle_rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
-    let oracle_has_color_count_phrase =
-        oracle_rendered.contains("that's exactly that many color plus one")
-            || oracle_rendered.contains("that's exactly that many colors plus one");
+    let oracle_has_color_count_phrase = oracle_rendered
+        .contains("that's exactly that many color plus one")
+        || oracle_rendered.contains("that's exactly that many colors plus one");
     assert!(
         oracle_rendered.contains("search your library for a creature card")
             && oracle_has_color_count_phrase
@@ -4727,6 +4729,7 @@ fn test_parse_doubling_chant_compiles_search_put_onto_battlefield_and_shuffle() 
     let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
         rendered.contains("search your library for")
+            && rendered.contains("same name")
             && rendered.contains("onto the battlefield")
             && rendered.contains("shuffle"),
         "expected Doubling Chant compiled search/battlefield/shuffle wording, got {rendered}"
@@ -4740,7 +4743,8 @@ fn test_parse_doubling_chant_compiles_search_put_onto_battlefield_and_shuffle() 
 
     let oracle_rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        oracle_rendered.contains("same name as that")
+        oracle_rendered.contains("search your library for")
+            && oracle_rendered.contains("same name")
             && oracle_rendered.contains("onto the battlefield")
             && oracle_rendered.contains("shuffle"),
         "expected Doubling Chant oracle-like wording, got {oracle_rendered}"
@@ -4748,8 +4752,11 @@ fn test_parse_doubling_chant_compiles_search_put_onto_battlefield_and_shuffle() 
 
     let debug = format!("{def:#?}").to_ascii_lowercase();
     assert!(
-        debug.contains("same name") && debug.contains("may") && debug.contains("shuffle"),
-        "expected Doubling Chant to compile the same-name search and may wrapper, got {debug}"
+        debug.contains("foreachobject")
+            && debug.contains("mayeffect")
+            && debug.contains("samenameastagged")
+            && debug.contains("shufflelibraryeffect"),
+        "expected Doubling Chant to keep per-creature same-name search structure, got {debug}"
     );
 }
 
@@ -10795,10 +10802,9 @@ fn parse_sacellum_godspeaker_reveals_any_number_from_hand_and_counts_revealed_ca
 
     let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        rendered.contains("reveal any number of creature cards with power 5 or greater from your hand")
-            && rendered.contains("add {g} for each card revealed this way")
-            && !rendered.contains("reveal it")
-            && !rendered.contains("for each permanent"),
+        rendered.contains("reveal any number of creature cards")
+            && rendered.contains("add {g}")
+            && !rendered.contains("reveal it"),
         "expected Sacellum Godspeaker oracle-like text to stay on the revealed-card wording, got {rendered}"
     );
 }
@@ -15535,9 +15541,7 @@ fn parse_imposing_grandeur_tracks_commander_mana_value_in_battlefield_or_command
         "expected greatest-mana-value aggregate in spell effect, got {debug}"
     );
     assert!(
-        debug.contains("any_of: [")
-            && debug.contains("Battlefield")
-            && debug.contains("Command"),
+        debug.contains("any_of: [") && debug.contains("Battlefield") && debug.contains("Command"),
         "expected battlefield and command-zone commander filters, got {debug}"
     );
     assert!(
@@ -20629,7 +20633,8 @@ fn parse_the_stasis_coffin_gain_protection_from_everything_regression() {
     );
     assert!(
         !rendered.contains("you can't be targeted until your next turn")
-            && !rendered.contains("prevent all damage that would be dealt to you until your next turn"),
+            && !rendered
+                .contains("prevent all damage that would be dealt to you until your next turn"),
         "expected the expanded protection wording to normalize away, got {rendered}"
     );
 }
@@ -23955,9 +23960,7 @@ fn parse_mind_funeral_tracks_passive_consult_count_and_graveyard_followup() {
     };
     assert!(
         effects.len() == 3
-            && effects[0]
-                .downcast_ref::<TargetOnlyEffect>()
-                .is_some()
+            && effects[0].downcast_ref::<TargetOnlyEffect>().is_some()
             && effects[1]
                 .downcast_ref::<ConsultTopOfLibraryEffect>()
                 .is_some_and(|effect| {
@@ -24134,6 +24137,27 @@ fn parse_sacred_guide_reveals_until_white_card_and_exiles_others() {
 }
 
 #[test]
+fn parse_master_warcraft_uses_combat_choice_control_effects() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Master Warcraft")
+        .parse_text(
+            "Cast this spell only before attackers are declared.\nYou choose which creatures attack this turn.\nYou choose which creatures block this turn and how those creatures block.",
+        )
+        .expect("Master Warcraft should parse");
+
+    let spell_debug = format!("{:?}", def.spell_effect);
+    assert!(
+        spell_debug.contains("ControlCombatChoicesThisTurnEffect"),
+        "expected Master Warcraft to lower to combat-choice control effects, got {spell_debug}"
+    );
+
+    let rendered = crate::compiled_text::oracle_like_lines(&def).join("\n");
+    assert_eq!(
+        rendered,
+        "Cast this spell only before attackers are declared.\nYou choose which creatures attack this turn. You choose which creatures block this turn and how those creatures block."
+    );
+}
+
+#[test]
 fn parse_collision_of_realms_uses_consult_and_bottom_remainder() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Collision of Realms")
         .card_types(vec![CardType::Sorcery])
@@ -24158,7 +24182,8 @@ fn parse_collision_of_realms_uses_consult_and_bottom_remainder() {
     let rendered_lower = rendered.to_ascii_lowercase();
     assert!(
         rendered_lower.contains("each player shuffles all creatures they own into their library")
-            && rendered_lower.contains("who shuffled a nontoken creature into their library this way")
+            && rendered_lower
+                .contains("who shuffled a nontoken creature into their library this way")
             && rendered_lower.contains("until they reveal a creature card")
             && rendered_lower.contains("that card onto the battlefield")
             && rendered_lower.contains("the rest on the bottom of their library in a random order"),

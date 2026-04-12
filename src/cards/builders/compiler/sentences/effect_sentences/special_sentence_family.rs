@@ -93,6 +93,50 @@ pub(crate) fn parse_if_damage_would_be_dealt_put_counters_sentence(
     }))
 }
 
+pub(crate) fn parse_control_combat_choices_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let words = crate::cards::builders::compiler::token_word_refs(tokens);
+    if words.as_slice()
+        == [
+            "you",
+            "choose",
+            "which",
+            "creatures",
+            "attack",
+            "this",
+            "turn",
+        ]
+    {
+        return Ok(Some(EffectAst::ControlCombatChoicesThisTurn {
+            attackers: true,
+            blockers: false,
+        }));
+    }
+    if words.as_slice()
+        == [
+            "you",
+            "choose",
+            "which",
+            "creatures",
+            "block",
+            "this",
+            "turn",
+            "and",
+            "how",
+            "those",
+            "creatures",
+            "block",
+        ]
+    {
+        return Ok(Some(EffectAst::ControlCombatChoicesThisTurn {
+            attackers: false,
+            blockers: true,
+        }));
+    }
+    Ok(None)
+}
+
 pub(crate) fn parse_scaled_target_power_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {

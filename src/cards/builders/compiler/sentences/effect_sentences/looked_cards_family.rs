@@ -14,8 +14,7 @@ use super::search_library::{
 use crate::cards::builders::IT_TAG;
 use crate::cards::builders::compiler::grammar::primitives::TokenWordView;
 use crate::cards::builders::{
-    CardTextError, EffectAst, ObjectFilter, PlayerAst, TagKey, TextSpan,
-    parse_object_filter_lexed,
+    CardTextError, EffectAst, ObjectFilter, PlayerAst, TagKey, TextSpan, parse_object_filter_lexed,
 };
 use crate::target::TaggedOpbjectRelation;
 use crate::zone::Zone;

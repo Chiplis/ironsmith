@@ -24,10 +24,8 @@ use super::cst::{
 };
 use super::cst_lowering::lower_non_metadata_rewrite_line_cst;
 use super::grammar::abilities::{
-    is_activate_only_once_each_turn_line_lexed,
-    is_doesnt_untap_during_your_untap_step_line_lexed,
-    is_land_reveal_enters_static_line_lexed,
-    is_land_reveal_enters_tapped_followup_line_lexed,
+    is_activate_only_once_each_turn_line_lexed, is_doesnt_untap_during_your_untap_step_line_lexed,
+    is_land_reveal_enters_static_line_lexed, is_land_reveal_enters_tapped_followup_line_lexed,
     is_opening_hand_begin_game_static_line_lexed, is_ward_or_echo_static_prefix_line_lexed,
     split_nested_combat_whenever_clause_lexed,
 };
@@ -807,13 +805,12 @@ mod tests {
     };
     use super::{
         PreprocessedItem, TriggeredSplitProbe, classify_unsupported_line_reason,
-        diagnose_known_unsupported_rewrite_line,
-        is_doesnt_untap_during_your_untap_step_line_lexed, is_if_you_do_exile_followup_tokens,
-        is_land_reveal_enters_static_line_lexed,
+        diagnose_known_unsupported_rewrite_line, is_doesnt_untap_during_your_untap_step_line_lexed,
+        is_if_you_do_exile_followup_tokens, is_land_reveal_enters_static_line_lexed,
         is_land_reveal_enters_tapped_followup_line_lexed,
         is_opening_hand_begin_game_static_line_lexed, is_ward_or_echo_static_prefix_line_lexed,
-        lex_line, looks_like_statement_line,
-        looks_like_statement_line_lexed, looks_like_static_line, looks_like_static_line_lexed,
+        lex_line, looks_like_statement_line, looks_like_statement_line_lexed,
+        looks_like_static_line, looks_like_static_line_lexed,
         normalize_statement_parse_groups_lexed,
         normalize_trailing_keyword_activation_sentence_lexed,
         parse_colon_nonactivation_statement_fallback, parse_keyword_line_cst, parse_level_item_cst,
@@ -1644,7 +1641,9 @@ mod tests {
     fn untap_shape_probes_recognize_expected_token_patterns() {
         let your_step = lex_line("Lands you control don't untap during your untap step.", 0)
             .expect("rewrite lexer should classify your-untap-step probe");
-        assert!(is_doesnt_untap_during_your_untap_step_line_lexed(&your_step));
+        assert!(is_doesnt_untap_during_your_untap_step_line_lexed(
+            &your_step
+        ));
 
         let your_step_do_not = lex_line(
             "Artifacts you control do not untap during your untap step.",

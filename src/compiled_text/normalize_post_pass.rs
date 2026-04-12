@@ -2444,7 +2444,10 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
     }
     loop {
         let mut changed = false;
-        if let Some(rewritten) = normalize_sentence_helper_top_cards_for_each_card_type_revealed_cards_to_hand_sequence(&normalized)
+        if let Some(rewritten) =
+            normalize_sentence_helper_top_cards_for_each_card_type_revealed_cards_to_hand_sequence(
+                &normalized,
+            )
             && rewritten != normalized
         {
             normalized = rewritten;
@@ -3086,6 +3089,11 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
         return rewritten;
     }
     if let Some(rewritten) = normalize_search_may_put_onto_battlefield_clause(&normalized) {
+        return rewritten;
+    }
+    if let Some(rewritten) =
+        normalize_for_each_same_name_search_put_onto_battlefield_clause(&normalized)
+    {
         return rewritten;
     }
     if let Some(rewritten) = normalize_search_reveal_into_hand_clause(&normalized) {
@@ -6208,6 +6216,26 @@ pub(super) fn normalize_sentence_helper_reveal_from_hand_clause(text: &str) -> O
                 ". Target creature gets -X/-X until end of turn, where X is the number of cards revealed this way{tail}"
             )
         } else if let Some(tail) =
+            strip_prefix_ascii_ci(after.trim_start(), ". add {g} for each permanent")
+        {
+            format!(". Add {{G}} for each card revealed this way{tail}")
+        } else if let Some(tail) =
+            strip_prefix_ascii_ci(after.trim_start(), ". add {u} for each permanent")
+        {
+            format!(". Add {{U}} for each card revealed this way{tail}")
+        } else if let Some(tail) =
+            strip_prefix_ascii_ci(after.trim_start(), ". add {r} for each permanent")
+        {
+            format!(". Add {{R}} for each card revealed this way{tail}")
+        } else if let Some(tail) =
+            strip_prefix_ascii_ci(after.trim_start(), ". add {b} for each permanent")
+        {
+            format!(". Add {{B}} for each card revealed this way{tail}")
+        } else if let Some(tail) =
+            strip_prefix_ascii_ci(after.trim_start(), ". add {w} for each permanent")
+        {
+            format!(". Add {{W}} for each card revealed this way{tail}")
+        } else if let Some(tail) =
             strip_prefix_ascii_ci(after.trim_start(), ". you gain 2 life for each permanent")
         {
             format!(". You gain 2 life for each card revealed this way{tail}")
@@ -7038,6 +7066,68 @@ pub(super) fn normalize_search_reveal_battlefield_or_hand_clause(text: &str) -> 
     None
 }
 
+fn for_each_subject_reference_phrase(subject: &str) -> &'static str {
+    let lower = subject.to_ascii_lowercase();
+    if lower.contains("creature") {
+        "that creature"
+    } else if lower.contains("permanent") {
+        "that permanent"
+    } else if lower.contains("artifact") {
+        "that artifact"
+    } else if lower.contains("enchantment") {
+        "that enchantment"
+    } else if lower.contains("land") {
+        "that land"
+    } else if lower.contains("spell") {
+        "that spell"
+    } else if lower.contains("card") {
+        "that card"
+    } else {
+        "that object"
+    }
+}
+
+pub(super) fn normalize_for_each_same_name_search_put_onto_battlefield_clause(
+    text: &str,
+) -> Option<String> {
+    let Some((before, rest)) = split_once_ascii_ci(text, "For each ") else {
+        return None;
+    };
+    let Some((subject_raw, after_subject)) =
+        split_once_ascii_ci(rest, ", you may search your library for up to one ")
+    else {
+        return None;
+    };
+
+    let battlefield_suffix = if let Some((descriptor_raw, tail)) = split_once_ascii_ci(
+        after_subject,
+        " with the same name as that object, put it onto the battlefield, then shuffle",
+    ) {
+        Some((descriptor_raw, "onto the battlefield", tail))
+    } else if let Some((descriptor_raw, tail)) = split_once_ascii_ci(
+        after_subject,
+        " with the same name as that object, put it onto the battlefield tapped, then shuffle",
+    ) {
+        Some((descriptor_raw, "onto the battlefield tapped", tail))
+    } else {
+        None
+    }?;
+
+    let (descriptor_raw, destination, tail) = battlefield_suffix;
+    let subject_text = subject_raw.trim();
+    let descriptor = strip_leading_article(descriptor_raw.trim());
+    let selection = if descriptor.ends_with("card") {
+        with_indefinite_article(descriptor)
+    } else {
+        format!("a {descriptor} card")
+    };
+    let reference = for_each_subject_reference_phrase(subject_text);
+    let rewritten = format!(
+        "For each {subject_text}, you may search your library for {selection} with the same name as {reference}. Put those cards {destination}, then shuffle"
+    );
+    Some(apply_replacement_with_case(before, &rewritten, tail))
+}
+
 pub(super) fn normalize_search_color_count_exile_cast_clause(text: &str) -> Option<String> {
     let patterns = [
         "you searches for up to one ",
@@ -7053,8 +7143,7 @@ pub(super) fn normalize_search_color_count_exile_cast_clause(text: &str) -> Opti
         ) else {
             continue;
         };
-        let Some((subject_raw, color_count_raw)) =
-            split_search_color_count_subject(descriptor_raw)
+        let Some((subject_raw, color_count_raw)) = split_search_color_count_subject(descriptor_raw)
         else {
             continue;
         };

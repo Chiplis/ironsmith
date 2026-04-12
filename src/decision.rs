@@ -5958,6 +5958,12 @@ impl DecisionMaker for DecisionRouter {
         game: &GameState,
         ctx: &crate::decisions::context::AttackersContext,
     ) -> Vec<crate::decisions::spec::AttackerDeclaration> {
+        if let Some(controller) = game.combat_choice_controller_for_attackers() {
+            if let Some(dm) = self.per_player.get_mut(&controller) {
+                return dm.decide_attackers(game, ctx);
+            }
+            return self.default.decide_attackers(game, ctx);
+        }
         self.dm_for(game, ctx.player).decide_attackers(game, ctx)
     }
 
@@ -5966,6 +5972,12 @@ impl DecisionMaker for DecisionRouter {
         game: &GameState,
         ctx: &crate::decisions::context::BlockersContext,
     ) -> Vec<crate::decisions::spec::BlockerDeclaration> {
+        if let Some(controller) = game.combat_choice_controller_for_blockers() {
+            if let Some(dm) = self.per_player.get_mut(&controller) {
+                return dm.decide_blockers(game, ctx);
+            }
+            return self.default.decide_blockers(game, ctx);
+        }
         self.dm_for(game, ctx.player).decide_blockers(game, ctx)
     }
 

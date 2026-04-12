@@ -25,6 +25,7 @@ pub(super) fn normalize_sentence_surface_style(line: &str) -> String {
     normalized = normalized.replace('\u{00a0}', " ");
     normalized = normalized.split_whitespace().collect::<Vec<_>>().join(" ");
     normalized = normalize_ward_cost_surface(&normalized);
+    normalized = normalized.replace(" greaters", " greater");
     if let Some(rewritten) = normalize_search_discard_then_shuffle_surface(&normalized) {
         return rewritten;
     }

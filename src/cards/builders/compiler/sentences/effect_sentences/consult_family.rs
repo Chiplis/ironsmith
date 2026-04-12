@@ -128,52 +128,51 @@ pub(crate) fn parse_consult_traversal_sentence(
     }
 
     let until_tokens = trim_commas(&consult_tokens[until_idx + 1..]);
-    let (stop_rule, filter) =
-        if let Some((stop_rule, filter)) =
-            parse_passive_consult_stop_rule_and_filter(&until_tokens, mode)?
-        {
-            (stop_rule, filter)
-        } else {
-            let Some(match_verb_idx) = find_index(&until_tokens, |token: &OwnedLexToken| {
-                token.is_word("reveal")
-                    || token.is_word("reveals")
-                    || token.is_word("exile")
-                    || token.is_word("exiles")
-            }) else {
-                return Ok(None);
-            };
-            if match_verb_idx == 0 || match_verb_idx + 1 >= until_tokens.len() {
-                return Ok(None);
-            }
-
-            let mut filter_tokens = trim_commas(&until_tokens[match_verb_idx + 1..]).to_vec();
-            if filter_tokens.is_empty() {
-                return Ok(None);
-            }
-
-            let stop_rule = if let Some((count, used)) = parse_number(&filter_tokens) {
-                let remaining = trim_commas(&filter_tokens[used..]).to_vec();
-                if remaining.is_empty() {
-                    return Ok(None);
-                }
-                filter_tokens = remaining;
-                LibraryConsultStopRuleAst::MatchCount(Value::Fixed(count as i32))
-            } else {
-                LibraryConsultStopRuleAst::FirstMatch
-            };
-
-            let mut filter = if let Some(filter) = parse_looked_card_reveal_filter(&filter_tokens) {
-                filter
-            } else {
-                match super::super::object_filters::parse_object_filter(&filter_tokens, false) {
-                    Ok(filter) => filter,
-                    Err(_) => return Ok(None),
-                }
-            };
-            normalize_search_library_filter(&mut filter);
-            filter.zone = None;
-            (stop_rule, filter)
+    let (stop_rule, filter) = if let Some((stop_rule, filter)) =
+        parse_passive_consult_stop_rule_and_filter(&until_tokens, mode)?
+    {
+        (stop_rule, filter)
+    } else {
+        let Some(match_verb_idx) = find_index(&until_tokens, |token: &OwnedLexToken| {
+            token.is_word("reveal")
+                || token.is_word("reveals")
+                || token.is_word("exile")
+                || token.is_word("exiles")
+        }) else {
+            return Ok(None);
         };
+        if match_verb_idx == 0 || match_verb_idx + 1 >= until_tokens.len() {
+            return Ok(None);
+        }
+
+        let mut filter_tokens = trim_commas(&until_tokens[match_verb_idx + 1..]).to_vec();
+        if filter_tokens.is_empty() {
+            return Ok(None);
+        }
+
+        let stop_rule = if let Some((count, used)) = parse_number(&filter_tokens) {
+            let remaining = trim_commas(&filter_tokens[used..]).to_vec();
+            if remaining.is_empty() {
+                return Ok(None);
+            }
+            filter_tokens = remaining;
+            LibraryConsultStopRuleAst::MatchCount(Value::Fixed(count as i32))
+        } else {
+            LibraryConsultStopRuleAst::FirstMatch
+        };
+
+        let mut filter = if let Some(filter) = parse_looked_card_reveal_filter(&filter_tokens) {
+            filter
+        } else {
+            match super::super::object_filters::parse_object_filter(&filter_tokens, false) {
+                Ok(filter) => filter,
+                Err(_) => return Ok(None),
+            }
+        };
+        normalize_search_library_filter(&mut filter);
+        filter.zone = None;
+        (stop_rule, filter)
+    };
 
     let all_tag = helper_tag_for_tokens(
         tokens,

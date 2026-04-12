@@ -132,7 +132,9 @@ pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value,
         filter_end += 1;
     }
 
-    let this_way_start = word_refs_find_sequence(&words[idx..filter_end], &["this", "way"])
+    let this_way_start = words[idx..filter_end]
+        .windows(2)
+        .position(|window| window == ["this", "way"])
         .map(|relative_idx| idx + relative_idx);
     if let Some(this_way_start) = this_way_start {
         for candidate_end in (idx + 1..this_way_start).rev() {
@@ -142,10 +144,12 @@ pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value,
                 .collect::<Vec<_>>();
             if let Ok(filter) = parse_object_filter(&candidate_tokens, other) {
                 return Some((
-                    Value::Count(filter.match_tagged(
-                        TagKey::from(IT_TAG),
-                        TaggedOpbjectRelation::IsTaggedObject,
-                    )),
+                    Value::Count(
+                        filter.match_tagged(
+                            TagKey::from(IT_TAG),
+                            TaggedOpbjectRelation::IsTaggedObject,
+                        ),
+                    ),
                     filter_end,
                 ));
             }
@@ -1818,7 +1822,10 @@ mod tests {
     #[test]
     fn parse_subject_recognizes_a_player_of_your_choice() {
         let tokens = lex_line("A player of your choice adds {C}.", 0).unwrap();
-        assert_eq!(parse_subject(&tokens), SubjectAst::Player(PlayerAst::Chosen));
+        assert_eq!(
+            parse_subject(&tokens),
+            SubjectAst::Player(PlayerAst::Chosen)
+        );
     }
 
     #[test]

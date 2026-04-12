@@ -2623,7 +2623,7 @@ pub(super) fn pluralize_word(word: &str) -> String {
         return format!("{prefix} {}", pluralize_word(last));
     }
     let lower = word.to_ascii_lowercase();
-    if lower == "less" {
+    if matches!(lower.as_str(), "less" | "greater") {
         return word.to_string();
     }
     if lower == "plains" || lower == "urzas" {
@@ -3459,8 +3459,8 @@ fn describe_for_players_collision_of_realms(
         return None;
     }
 
-    let tagged_all = for_players.effects[0]
-        .downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
+    let tagged_all =
+        for_players.effects[0].downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
     if tagged_all.tag.as_str() != "collision_all_shuffled"
         || tagged_all.zone != Some(Zone::Battlefield)
         || !tagged_all.additional_zones.is_empty()
@@ -3475,8 +3475,8 @@ fn describe_for_players_collision_of_realms(
         return None;
     }
 
-    let tagged = for_players.effects[1]
-        .downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
+    let tagged =
+        for_players.effects[1].downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
     if tagged.tag.as_str() != "collision_nontoken_shuffled"
         || tagged.zone != Some(Zone::Battlefield)
         || !tagged.additional_zones.is_empty()
@@ -3503,14 +3503,12 @@ fn describe_for_players_collision_of_realms(
         return None;
     }
 
-    let shuffle = for_players.effects[3]
-        .downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
+    let shuffle = for_players.effects[3].downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
     if !is_collision_player(&shuffle.player) {
         return None;
     }
 
-    let conditional = for_players.effects[4]
-        .downcast_ref::<crate::effects::ConditionalEffect>()?;
+    let conditional = for_players.effects[4].downcast_ref::<crate::effects::ConditionalEffect>()?;
     let crate::effect::Condition::PlayerTaggedObjectMatches {
         player,
         tag,
@@ -3528,8 +3526,8 @@ fn describe_for_players_collision_of_realms(
         return None;
     }
 
-    let consult = conditional.if_true[0]
-        .downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>()?;
+    let consult =
+        conditional.if_true[0].downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>()?;
     if !is_collision_player(&consult.player)
         || consult.mode != crate::effects::consult_helpers::LibraryConsultMode::Reveal
         || consult.stop_rule != crate::effects::ConsultTopOfLibraryStopRule::FirstMatch
@@ -3558,7 +3556,10 @@ fn describe_for_players_collision_of_realms(
         .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
     if !is_collision_player(&rest.player)
         || rest.tag.as_str() != "collision_revealed"
-        || rest.keep_tagged.as_ref().is_none_or(|tag| tag.as_str() != "collision_matched")
+        || rest
+            .keep_tagged
+            .as_ref()
+            .is_none_or(|tag| tag.as_str() != "collision_matched")
         || rest.order != crate::effects::consult_helpers::LibraryBottomOrder::Random
     {
         return None;
@@ -5093,7 +5094,9 @@ pub(super) fn describe_may_search_library_and_or_nonlibrary(
 pub(super) fn describe_may_search_then_put_onto_battlefield(
     may: &crate::effects::MayEffect,
 ) -> Option<String> {
-    fn downcast_move_to_zone<'a>(effect: &'a Effect) -> Option<&'a crate::effects::MoveToZoneEffect> {
+    fn downcast_move_to_zone<'a>(
+        effect: &'a Effect,
+    ) -> Option<&'a crate::effects::MoveToZoneEffect> {
         if let Some(move_to_zone) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>() {
             return Some(move_to_zone);
         }
@@ -6142,8 +6145,13 @@ fn describe_search_color_count_selection(
     };
     if !matches!(
         (left.as_ref(), right.as_ref()),
-        (crate::effect::Value::ColorsAmong(_), crate::effect::Value::Fixed(1))
-            | (crate::effect::Value::Fixed(1), crate::effect::Value::ColorsAmong(_))
+        (
+            crate::effect::Value::ColorsAmong(_),
+            crate::effect::Value::Fixed(1)
+        ) | (
+            crate::effect::Value::Fixed(1),
+            crate::effect::Value::ColorsAmong(_)
+        )
     ) {
         return None;
     }
@@ -6194,7 +6202,8 @@ pub(super) fn describe_search_choose_then_exile_and_cast(
         return None;
     }
 
-    let move_to_zone = unwrap_effect(move_effect).downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let move_to_zone =
+        unwrap_effect(move_effect).downcast_ref::<crate::effects::MoveToZoneEffect>()?;
     if move_to_zone.zone != Zone::Exile
         || !matches!(
             &move_to_zone.target,
@@ -10330,6 +10339,19 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             "Control {} during their next turn",
             describe_player_filter(&control_player.player)
         );
+    }
+    if let Some(control_combat) =
+        effect.downcast_ref::<crate::effects::ControlCombatChoicesThisTurnEffect>()
+    {
+        return match (control_combat.attackers, control_combat.blockers) {
+            (true, false) => "You choose which creatures attack this turn".to_string(),
+            (false, true) => {
+                "You choose which creatures block this turn and how those creatures block"
+                    .to_string()
+            }
+            (true, true) => "You choose which creatures attack and block this turn".to_string(),
+            (false, false) => "You choose combat this turn".to_string(),
+        };
     }
     if let Some((count, color_filter)) = effect.0.exile_from_hand_cost_info() {
         return capitalize_first(&describe_exile_from_hand_as_cost_phrase(
