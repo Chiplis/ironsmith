@@ -17,8 +17,8 @@ use super::super::token_primitives::{
     slice_contains_str as word_slice_contains, slice_starts_with as word_slice_starts_with,
 };
 use super::super::util::{
-    contains_until_end_of_turn, is_until_end_of_turn, parse_number,
-    parse_target_count_range_prefix, parse_target_phrase, parse_value,
+    contains_until_end_of_turn, is_until_end_of_turn, parse_for_each_count_value_words,
+    parse_number, parse_target_count_range_prefix, parse_target_phrase, parse_value,
     replace_unbound_x_with_value, starts_with_until_end_of_turn, token_index_for_word_index,
     trim_commas, value_contains_unbound_x,
 };
@@ -382,78 +382,16 @@ pub(crate) fn parse_has_base_power_toughness_clause(
 pub(crate) fn parse_get_for_each_count_value(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Value>, CardTextError> {
-    let for_each_idx =
-        grammar::find_prefix(tokens, || grammar::phrase(&["for", "each"])).map(|(idx, _, _)| idx);
-
-    let Some(idx) = for_each_idx else {
+    let words = token_words(tokens);
+    if !matches!(words.as_slice(), ["for", "each", ..] | ["each", ..]) {
         return Ok(None);
+    }
+    let Some((value, _used_words)) = parse_for_each_count_value_words(&words) else {
+        return Err(CardTextError::ParseError(
+            "missing filter after 'for each' in gets clause".to_string(),
+        ));
     };
-
-    let mut filter_tokens = &tokens[idx + 2..];
-    if filter_tokens.is_empty() {
-        return Err(CardTextError::ParseError(
-            "missing filter after 'for each' in gets clause".to_string(),
-        ));
-    }
-
-    let mut other = false;
-    if filter_tokens
-        .first()
-        .is_some_and(|token| token.is_word("other") || token.is_word("another"))
-    {
-        other = true;
-        filter_tokens = &filter_tokens[1..];
-    }
-
-    if filter_tokens.is_empty() {
-        return Err(CardTextError::ParseError(
-            "missing filter after 'for each' in gets clause".to_string(),
-        ));
-    }
-
-    if let Some(scope_rest) =
-        grammar::words_match_prefix(filter_tokens, &["basic", "land", "type", "among"]).or_else(
-            || grammar::words_match_prefix(filter_tokens, &["basic", "land", "types", "among"]),
-        )
-    {
-        let mut scope_tokens = scope_rest;
-        if scope_tokens
-            .first()
-            .is_some_and(|token| token.is_word("the"))
-        {
-            scope_tokens = &scope_tokens[1..];
-        }
-        if scope_tokens.is_empty() {
-            return Err(CardTextError::ParseError(
-                "missing scope after 'basic land type among' in gets clause".to_string(),
-            ));
-        }
-        let filter = parse_object_filter(scope_tokens, false)?;
-        return Ok(Some(Value::BasicLandTypesAmong(filter)));
-    }
-    if let Some(scope_rest) = grammar::words_match_prefix(filter_tokens, &["color", "among"])
-        .or_else(|| grammar::words_match_prefix(filter_tokens, &["colors", "among"]))
-    {
-        let mut scope_tokens = scope_rest;
-        if scope_tokens
-            .first()
-            .is_some_and(|token| token.is_word("the"))
-        {
-            scope_tokens = &scope_tokens[1..];
-        }
-        if scope_tokens.is_empty() {
-            return Err(CardTextError::ParseError(
-                "missing scope after 'color among' in gets clause".to_string(),
-            ));
-        }
-        let filter = parse_object_filter(scope_tokens, false)?;
-        return Ok(Some(Value::ColorsAmong(filter)));
-    }
-
-    Ok(Some(Value::Count(parse_object_filter(
-        filter_tokens,
-        other,
-    )?)))
+    Ok(Some(value))
 }
 
 pub(crate) fn parse_get_modifier_values_with_tail(

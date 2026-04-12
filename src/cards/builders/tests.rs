@@ -1654,6 +1654,34 @@ fn test_parse_basic_land_type_count_conditionals_for_you_control_tail() {
 }
 
 #[test]
+fn parse_voices_from_the_void_domain_discard_counts_basic_land_types() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(3), "Voices from the Void")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Domain — Target player discards a card for each basic land type among lands you control.",
+        )
+        .expect("Voices from the Void should parse");
+
+    let raw = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        raw.contains("discardeffect") && raw.contains("basiclandtypesamong"),
+        "expected Voices from the Void to compile into a domain discard count, got {raw}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("target player discards")
+            && rendered.contains("basic land type")
+            && rendered.contains("among lands you control"),
+        "expected Voices from the Void wording to keep the domain discard clause, got {rendered}"
+    );
+}
+
+#[test]
 fn test_parse_portcullis_exile_until_leaves_battlefield() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Portcullis")
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
