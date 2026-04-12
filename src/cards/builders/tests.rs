@@ -12447,6 +12447,20 @@ fn parse_return_transformed_clause_renders_oracle_style_wording() {
 }
 
 #[test]
+fn parse_return_transformed_clause_canonical_output_matches_oracle_style_wording() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Harvest Hand Canonical Variant")
+        .parse_text(
+            "When this creature dies, return it to the battlefield transformed under your control.",
+        )
+        .expect("transformed return should canonicalize to oracle-style wording");
+    let rendered = crate::compiled_text::canonical_compiled_lines(&def).join(" ");
+    assert_eq!(
+        rendered,
+        "When this creature dies, return it to the battlefield transformed under your control."
+    );
+}
+
+#[test]
 fn parse_return_converted_clause_uses_shared_return_and_convert() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Converted Return Variant")
         .parse_text(

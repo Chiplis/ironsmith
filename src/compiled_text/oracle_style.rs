@@ -1908,7 +1908,6 @@ pub(super) fn normalize_granted_beginning_trigger_clause(text: &str) -> Option<S
 
 /// Render the canonical normalized compiled-text surface used for storage and exports.
 pub fn canonical_compiled_lines(def: &CardDefinition) -> Vec<String> {
-    let _ = def;
     let base_lines = compiled_lines(def);
     let normalized = base_lines
         .iter()
@@ -1932,8 +1931,52 @@ pub fn canonical_compiled_lines(def: &CardDefinition) -> Vec<String> {
         .collect::<Vec<_>>();
     canonical = reconcile_intrinsic_lines_with_oracle(def, canonical);
     canonical = reconcile_named_token_shorthand_with_oracle(def, canonical);
+    canonical = reconcile_transform_return_wording_with_oracle(def, canonical);
     canonical.dedup();
     canonical
+}
+
+fn reconcile_transform_return_wording_with_oracle(
+    def: &CardDefinition,
+    lines: Vec<String>,
+) -> Vec<String> {
+    let oracle_lower = def.card.oracle_text.to_ascii_lowercase();
+    let rewrite_you =
+        oracle_lower.contains("return it to the battlefield transformed under your control");
+    let rewrite_owner =
+        oracle_lower.contains("return it to the battlefield transformed under its owner's control");
+    if !rewrite_you && !rewrite_owner {
+        return lines;
+    }
+
+    lines.into_iter()
+        .map(|line| {
+            let mut rewritten = line;
+            if rewrite_you {
+                rewritten = rewritten
+                    .replace(
+                        "put that card onto the battlefield under your control. Transform it.",
+                        "return it to the battlefield transformed under your control.",
+                    )
+                    .replace(
+                        "put that card onto the battlefield under your control. transform it.",
+                        "return it to the battlefield transformed under your control.",
+                    );
+            }
+            if rewrite_owner {
+                rewritten = rewritten
+                    .replace(
+                        "put that card onto the battlefield under its owner's control. Transform it.",
+                        "return it to the battlefield transformed under its owner's control.",
+                    )
+                    .replace(
+                        "put that card onto the battlefield under its owner's control. transform it.",
+                        "return it to the battlefield transformed under its owner's control.",
+                    );
+            }
+            rewritten
+        })
+        .collect()
 }
 
 fn reconcile_intrinsic_lines_with_oracle(def: &CardDefinition, lines: Vec<String>) -> Vec<String> {
