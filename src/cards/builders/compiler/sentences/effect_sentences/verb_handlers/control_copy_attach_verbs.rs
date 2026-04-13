@@ -5,6 +5,7 @@ pub(crate) fn parse_lose_life(
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
 
     let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+
     if clause_words.len() == 2
         && clause_words[1] == "life"
         && let Some((amount, _)) = parse_number(tokens)
@@ -342,6 +343,37 @@ pub(crate) fn parse_put_into_hand(
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
 
     let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+
+    fn parse_counted_those_cards_target(tokens: &[OwnedLexToken]) -> Option<u32> {
+        let tokens = trim_commas(tokens);
+        let words = crate::cards::builders::compiler::token_word_refs(&tokens);
+        if words.first().copied() != Some("put") {
+            return None;
+        }
+
+        let count_tokens = &tokens[1..];
+        let (count, used) = parse_number(count_tokens).ok()?;
+        let mut idx = used;
+        if count_tokens.get(idx).is_some_and(|token| token.is_word("of")) {
+            idx += 1;
+        }
+        if !count_tokens.get(idx).is_some_and(|token| token.is_word("those")) {
+            return None;
+        }
+        idx += 1;
+        if !count_tokens
+            .get(idx)
+            .is_some_and(|token| token.is_word("card") || token.is_word("cards"))
+        {
+            return None;
+        }
+        idx += 1;
+
+        if idx != count_tokens.len() {
+            return None;
+        }
+        Some(count as u32)
+    }
 
     // "Put them/it back in any order." (typically after looking at the top cards of a library).
     if grammar::contains_word(tokens, "back")
@@ -756,6 +788,27 @@ pub(crate) fn parse_put_into_hand(
             }
 
             if zone == Zone::Hand {
+                if let Some(count) = parse_counted_those_cards_target(&target_tokens)
+                    && grammar::contains_word(destination_tokens, "rest")
+                    && grammar::contains_word(destination_tokens, "graveyard")
+                    && clause_words.iter().any(|w| *w == "and" || *w == "then")
+                {
+                    let dest_player = if grammar::contains_word(tokens, "your") {
+                        PlayerAst::You
+                    } else if grammar::contains_word(tokens, "their")
+                        || grammar::words_match_any_prefix(tokens, THAT_PLAYER_PREFIXES).is_some()
+                    {
+                        PlayerAst::That
+                    } else {
+                        player
+                    };
+
+                    return Ok(EffectAst::PutSomeIntoHandRestIntoGraveyard {
+                        player: dest_player,
+                        count,
+                    });
+                }
+
                 if matches!(
                     target_words.as_slice(),
                     ["it"] | ["them"] | ["that", "card"] | ["those", "card"] | ["those", "cards"]
