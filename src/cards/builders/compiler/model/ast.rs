@@ -441,6 +441,11 @@ pub(crate) enum PredicateAst {
         counter_type: CounterType,
         count: u32,
     },
+    SourceHasAttachmentsMatching {
+        filter: ObjectFilter,
+        comparison: crate::effect::Comparison,
+        display: String,
+    },
     SourcePowerAtLeast(u32),
     SourceAttackedOrBlockedThisTurn,
     SourceIsInZone(Zone),
