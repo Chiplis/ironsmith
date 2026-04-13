@@ -3805,6 +3805,81 @@ fn test_stack_resolution_keeps_distinct_target_clause_assignments_when_one_targe
 }
 
 #[test]
+fn test_nightcreep_turns_creatures_black_and_lands_into_swamps_until_end_of_turn() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+
+    let nightcreep = CardDefinitionBuilder::new(CardId::new(), "Nightcreep Probe")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Black],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text("Until end of turn, all creatures become black and all lands become Swamps.")
+        .expect("Nightcreep-style text should parse");
+    let spell_id = game.create_object_from_definition(&nightcreep, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(spell_id, alice));
+
+    let land_def = CardDefinitionBuilder::new(CardId::new(), "Nightcreep Land Probe")
+        .card_types(vec![CardType::Land])
+        .parse_text("{T}: Add {C}{C}.")
+        .expect("test land should parse");
+    let land_id = game.create_object_from_definition(&land_def, alice, Zone::Battlefield);
+
+    let green_creature = CardDefinitionBuilder::new(CardId::new(), "Nightcreep Creature Probe")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Green]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let creature_id = game.create_object_from_definition(&green_creature, alice, Zone::Battlefield);
+
+    resolve_stack_entry(&mut game).expect("Nightcreep should resolve");
+
+    let creature_colors = game
+        .current_colors(creature_id)
+        .expect("creature should still have calculated colors");
+    assert_eq!(
+        creature_colors,
+        crate::color::ColorSet::BLACK,
+        "Nightcreep should set creature color to black, got {creature_colors:?}"
+    );
+
+    let land_subtypes = game.calculated_subtypes(land_id);
+    assert!(
+        land_subtypes.contains(&crate::types::Subtype::Swamp),
+        "Nightcreep should make lands Swamps, got {land_subtypes:?}"
+    );
+
+    let land_chars = game
+        .calculated_characteristics(land_id)
+        .expect("land should still have calculated characteristics");
+    let land_mana_symbols: Vec<Vec<ManaSymbol>> = land_chars
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) if activated.is_mana_ability() => {
+                Some(activated.mana_symbols().to_vec())
+            }
+            _ => None,
+        })
+        .collect();
+    assert!(
+        land_mana_symbols.iter().any(|symbols| symbols == &vec![ManaSymbol::Black]),
+        "Nightcreep should give the land black mana, got {land_mana_symbols:?}"
+    );
+    assert!(
+        !land_mana_symbols
+            .iter()
+            .any(|symbols| symbols == &vec![ManaSymbol::Colorless, ManaSymbol::Colorless]),
+        "Nightcreep should replace the land's original colorless mana ability, got {land_mana_symbols:?}"
+    );
+}
+
+#[test]
 fn test_extract_target_specs_exactly_two_targets_uses_single_requirement_with_count_two() {
     use crate::cards::CardDefinitionBuilder;
 

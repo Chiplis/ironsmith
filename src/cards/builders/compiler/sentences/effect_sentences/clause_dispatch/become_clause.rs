@@ -139,7 +139,7 @@ pub(crate) fn parse_become_clause(
     }
 
     if let [word] = become_words
-        && let Some(subtype) = parse_subtype_word(word)
+        && let Some(subtype) = parse_subtype_word_or_plural(word)
         && matches!(
             subtype,
             Subtype::Plains

@@ -11427,6 +11427,23 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_nightcreep_style_land_type_change_uses_basic_land_type_lowering() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Nightcreep Variant")
+            .card_types(vec![CardType::Instant])
+            .parse_text("Until end of turn, all creatures become black and all lands become Swamps.")
+            .expect("Nightcreep-style text should parse");
+
+        let debug = format!("{:?}", def.spell_effect);
+        assert!(
+            debug.contains("SetColors")
+                && debug.contains("BecomeBasicLandTypeChoiceEffect")
+                && debug.contains("fixed_subtype: Some(Swamp)")
+                && !debug.contains("AddSubtypes"),
+            "expected Nightcreep-style spell lowering to set colors and use fixed basic land type, got {debug}"
+        );
+    }
+
+    #[test]
     fn parse_lands_are_pt_creatures_still_lands_static_line() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Living Plane Variant")
             .parse_text("All lands are 1/1 creatures that are still lands.")
