@@ -10360,6 +10360,97 @@ fn parse_damage_to_that_creatures_controller_targets_player() {
 }
 
 #[test]
+fn parse_dingus_egg_keeps_the_source_and_controller_linked() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Dingus Egg")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "Whenever a land is put into a graveyard from the battlefield, this artifact deals 2 damage to that land's controller.",
+        )
+        .expect("Dingus Egg should parse");
+
+    assert_eq!(def.abilities.len(), 1);
+    let ability = &def.abilities[0];
+    let AbilityKind::Triggered(triggered) = &ability.kind else {
+        panic!("expected triggered ability");
+    };
+
+    let effects_debug = format!("{:#?}", triggered.effects);
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("whenever a land is put into a graveyard from the battlefield")
+            && (rendered.contains("deal 2 damage to that object's controller")
+                || rendered.contains("deal 2 damage to that land's controller")
+                || rendered.contains("deals 2 damage to that object's controller")
+                || rendered.contains("deals 2 damage to that land's controller")),
+        "expected Dingus Egg to keep the damage clause attached, got {rendered}"
+    );
+    assert!(
+        effects_debug.contains("DealDamageEffect") || effects_debug.contains("DealDamage"),
+        "expected Dingus Egg to lower into a damage effect, got {effects_debug}"
+    );
+}
+
+#[test]
+fn dingus_egg_deals_damage_to_the_land_controller_on_graveyard_entry() {
+    let dingus_egg = CardDefinitionBuilder::new(CardId::new(), "Dingus Egg")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "Whenever a land is put into a graveyard from the battlefield, this artifact deals 2 damage to that land's controller.",
+        )
+        .expect("Dingus Egg should parse");
+    let land = CardDefinitionBuilder::new(CardId::new(), "Test Land")
+        .card_types(vec![CardType::Land])
+        .build();
+
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let egg_id =
+        game.create_object_from_definition(&dingus_egg, alice, crate::zone::Zone::Battlefield);
+    let land_id = game.create_object_from_definition(&land, bob, crate::zone::Zone::Battlefield);
+    let snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(land_id).expect("land should exist"),
+        &game,
+    );
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::ZoneChangeEvent::with_cause(
+            land_id,
+            crate::zone::Zone::Battlefield,
+            crate::zone::Zone::Graveyard,
+            crate::events::cause::EventCause::effect(),
+            Some(snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    let triggered = crate::triggers::check_triggers(&game, &event);
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    for entry in triggered.into_iter().filter(|entry| entry.source == egg_id) {
+        trigger_queue.add(entry);
+    }
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "expected Dingus Egg to trigger once when a land dies"
+    );
+
+    crate::game_loop::put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Dingus Egg trigger should go on the stack");
+    crate::game_loop::resolve_stack_entry(&mut game)
+        .expect("Dingus Egg trigger should resolve");
+
+    assert_eq!(
+        game.life_total(bob),
+        18,
+        "the land's controller should take 2 damage"
+    );
+}
+
+#[test]
 fn burn_the_accursed_regression_uses_oracle_like_damage_and_die_replacement_text() {
     let def = parse_oracle_card_definition("Burn the Accursed");
     let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();

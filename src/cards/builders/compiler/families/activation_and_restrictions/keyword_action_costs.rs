@@ -1165,12 +1165,25 @@ pub(crate) fn maybe_strip_leading_damage_subject_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<&[OwnedLexToken]> {
     let words = crate::cards::builders::compiler::token_word_refs(tokens);
-    if matches!(
-        words.get(..2),
-        Some(["it", "deals"]) | Some(["this", "deals"])
-    ) && !tokens.is_empty()
+    if tokens.len() < 2 {
+        return None;
+    }
+
+    if words.first().copied() == Some("it")
+        && matches!(words.get(1).copied(), Some("deal" | "deals"))
     {
         return Some(&tokens[1..]);
+    }
+
+    for subject_len in 1..tokens.len() {
+        if !matches!(words.get(subject_len).copied(), Some("deal" | "deals")) {
+            continue;
+        }
+        if crate::cards::builders::compiler::front_end::shared::util::is_source_reference_words(
+            &words[..subject_len],
+        ) {
+            return Some(&tokens[subject_len..]);
+        }
     }
     None
 }
