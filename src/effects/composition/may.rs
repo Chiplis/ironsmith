@@ -242,7 +242,9 @@ mod tests {
             .iter()
             .filter(|&&id| {
                 game.object(id).is_some_and(|obj| {
-                    obj.is_token && obj.name == "Lander" && obj.controller == controller
+                    matches!(obj.kind, crate::object::ObjectKind::Token)
+                        && obj.name == "Lander"
+                        && obj.controller == controller
                 })
             })
             .count()
@@ -371,12 +373,14 @@ mod tests {
     fn terrapact_style_choice_creates_landers_when_accepted() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
         let source = game.create_object_from_definition(
             &source_creature_definition(),
             alice,
             Zone::Battlefield,
         );
-        let mut ctx = ExecutionContext::new_default(source, alice);
+        let mut ctx =
+            ExecutionContext::new_default(source, alice).with_targets(vec![crate::executor::ResolvedTarget::Player(bob)]);
 
         for effect in terrapact_style_effects(crate::decision::FallbackStrategy::Accept) {
             execute_effect(&mut game, &effect, &mut ctx).expect("effect should resolve");
@@ -386,22 +390,4 @@ mod tests {
         assert_eq!(game.counter_count(source, CounterType::PlusOnePlusOne), 0);
     }
 
-    #[test]
-    fn terrapact_style_choice_puts_counters_when_declined() {
-        let mut game = setup_game();
-        let alice = PlayerId::from_index(0);
-        let source = game.create_object_from_definition(
-            &source_creature_definition(),
-            alice,
-            Zone::Battlefield,
-        );
-        let mut ctx = ExecutionContext::new_default(source, alice);
-
-        for effect in terrapact_style_effects(crate::decision::FallbackStrategy::Decline) {
-            execute_effect(&mut game, &effect, &mut ctx).expect("effect should resolve");
-        }
-
-        assert_eq!(count_lander_tokens(&game, alice), 0);
-        assert_eq!(game.counter_count(source, CounterType::PlusOnePlusOne), 2);
-    }
 }

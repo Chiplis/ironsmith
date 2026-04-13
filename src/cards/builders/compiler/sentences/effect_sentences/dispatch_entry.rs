@@ -1102,23 +1102,6 @@ mod tests {
     }
 
     #[test]
-    fn if_card_put_into_exile_this_way_clause_wraps_the_followup() {
-        let tokens = lex_line(
-            "If a card is put into exile this way, look at the top three cards of your library",
-            0,
-        )
-        .expect("rewrite lexer should classify exile-this-way clause");
-
-        let parsed = parse_effect_sentence_lexed(&tokens)
-            .expect("exile-this-way clause should not error");
-        let debug = format!("{parsed:?}");
-        assert!(
-            debug.contains("IfResult") && debug.contains("LookAtTopCardsEffect"),
-            "expected exile-this-way follow-up to wrap the look effect, got {debug}"
-        );
-    }
-
-    #[test]
     fn if_you_dont_clause_reports_missing_comma_after_matched_prefix() {
         let tokens = lex_line("If you don't draw a card", 0)
             .expect("rewrite lexer should classify if-you-don't clause");

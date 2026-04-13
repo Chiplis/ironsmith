@@ -5795,7 +5795,12 @@ fn describe_with_id_if_clause(
         let pronoun = match may.decider.as_ref() {
             None => "you",
             Some(crate::filter::PlayerFilter::You) => "you",
-            Some(_) => "they",
+            Some(crate::filter::PlayerFilter::Target(inner))
+                if matches!(inner.as_ref(), crate::filter::PlayerFilter::Opponent) =>
+            {
+                "they"
+            }
+            _ => "",
         };
         match if_effect.predicate {
             EffectPredicate::DidNotHappen => {

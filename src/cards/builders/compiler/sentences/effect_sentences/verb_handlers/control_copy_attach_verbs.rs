@@ -352,18 +352,24 @@ pub(crate) fn parse_put_into_hand(
         }
 
         let count_tokens = &tokens[1..];
-        let (count, used) = parse_number(count_tokens).ok()?;
+        let (count, used) = parse_number(count_tokens)?;
         let mut idx = used;
-        if count_tokens.get(idx).is_some_and(|token| token.is_word("of")) {
+        if count_tokens
+            .get(idx)
+            .is_some_and(|token: &OwnedLexToken| token.is_word("of"))
+        {
             idx += 1;
         }
-        if !count_tokens.get(idx).is_some_and(|token| token.is_word("those")) {
+        if !count_tokens
+            .get(idx)
+            .is_some_and(|token: &OwnedLexToken| token.is_word("those"))
+        {
             return None;
         }
         idx += 1;
         if !count_tokens
             .get(idx)
-            .is_some_and(|token| token.is_word("card") || token.is_word("cards"))
+            .is_some_and(|token: &OwnedLexToken| token.is_word("card") || token.is_word("cards"))
         {
             return None;
         }
