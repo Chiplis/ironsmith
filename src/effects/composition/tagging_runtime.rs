@@ -14,7 +14,13 @@ use std::collections::HashSet;
 #[derive(Debug, Clone, Default)]
 pub(crate) struct TaggedRuntimeState {
     pre_snapshot: Option<ObjectSnapshot>,
-    stable_id_fallback: Option<Vec<StableId>>,
+    stable_id_fallback: Option<StableIdFallback>,
+}
+
+#[derive(Debug, Clone)]
+struct StableIdFallback {
+    stable_ids: Vec<StableId>,
+    zone: Zone,
 }
 
 /// Capture snapshots of all object targets currently present in context.
@@ -96,13 +102,37 @@ pub(crate) fn apply_tagged_runtime_state(
     state: TaggedRuntimeState,
 ) {
     // Primary post-map path: if the effect returned object IDs, tag those.
-    let output_ids = outcome.output_objects();
+    let output_ids = outcome_object_candidates(outcome);
     if !output_ids.is_empty() {
+        let expected_zone = state.stable_id_fallback.as_ref().map(|fallback| fallback.zone);
         let snapshots = output_ids
             .iter()
             .filter_map(|id| {
-                game.object(*id)
-                    .map(|obj| ObjectSnapshot::from_object(obj, game))
+                game.object(*id).and_then(|obj| {
+                    expected_zone
+                        .map_or(true, |zone| obj.zone == zone)
+                        .then(|| ObjectSnapshot::from_object(obj, game))
+                })
+            })
+            .collect::<Vec<_>>();
+        if !snapshots.is_empty() {
+            ctx.set_tagged_objects(tag, snapshots);
+            return;
+        }
+    }
+
+    // Zone-change fallback: remap stable IDs to the objects' current zone after
+    // the effect resolves. This keeps tagged follow-up effects pointed at the
+    // new object ids created by rule 400.7 zone changes.
+    if let Some(fallback) = state.stable_id_fallback {
+        let snapshots = fallback
+            .stable_ids
+            .into_iter()
+            .filter_map(|stable_id| game.find_object_by_stable_id(stable_id))
+            .filter_map(|id| {
+                game.object(id).and_then(|obj| {
+                    (obj.zone == fallback.zone).then(|| ObjectSnapshot::from_object(obj, game))
+                })
             })
             .collect::<Vec<_>>();
         if !snapshots.is_empty() {
@@ -114,43 +144,58 @@ pub(crate) fn apply_tagged_runtime_state(
     // Generic fallback: preserve the pre-effect target snapshot.
     if let Some(snapshot) = state.pre_snapshot {
         ctx.tag_object(tag, snapshot);
-        return;
     }
+}
 
-    // Effect-specific fallback: remap stable IDs to current battlefield objects.
-    if let Some(stable_ids) = state.stable_id_fallback {
-        let snapshots = stable_ids
-            .into_iter()
-            .filter_map(|stable_id| game.find_object_by_stable_id(stable_id))
-            .filter_map(|id| {
-                game.object(id).and_then(|obj| {
-                    (obj.zone == Zone::Battlefield).then(|| ObjectSnapshot::from_object(obj, game))
-                })
-            })
-            .collect::<Vec<_>>();
-        if !snapshots.is_empty() {
-            ctx.set_tagged_objects(tag, snapshots);
-        }
+fn outcome_object_candidates(outcome: &EffectOutcome) -> Vec<crate::ids::ObjectId> {
+    let mut ids = Vec::new();
+    if let Some(objects) = outcome.objects() {
+        ids.extend(objects.iter().copied());
     }
+    if let Some(affected) = outcome.affected_objects() {
+        ids.extend(affected.iter().copied());
+    }
+    if ids.is_empty()
+        && let Some(chosen) = outcome.chosen_objects()
+    {
+        ids.extend(chosen.iter().copied());
+    }
+    let mut seen = HashSet::new();
+    ids.retain(|id| seen.insert(*id));
+    ids
 }
 
 fn capture_stable_id_fallback(
     game: &GameState,
     effect: &Effect,
     ctx: &ExecutionContext,
-) -> Option<Vec<StableId>> {
-    // Effect-specific adapter for return-all zone changes that don't always
-    // return object IDs in the outcome.
-    effect
-        .downcast_ref::<crate::effects::ReturnAllToBattlefieldEffect>()
-        .and_then(|return_all| {
-            let spec = crate::target::ChooseSpec::all(return_all.filter.clone());
-            resolve_objects_from_spec(game, &spec, ctx).ok().map(|ids| {
-                ids.into_iter()
-                    .filter_map(|id| game.object(id).map(|obj| obj.stable_id))
-                    .collect::<Vec<_>>()
-            })
+) -> Option<StableIdFallback> {
+    let capture = |spec: &crate::target::ChooseSpec, zone: Zone| {
+        resolve_objects_from_spec(game, spec, ctx).ok().map(|ids| StableIdFallback {
+            stable_ids: ids
+                .into_iter()
+                .filter_map(|id| game.object(id).map(|obj| obj.stable_id))
+                .collect::<Vec<_>>(),
+            zone,
         })
+    };
+
+    if let Some(exile) = effect.downcast_ref::<crate::effects::ExileEffect>() {
+        return capture(&exile.spec, Zone::Exile);
+    }
+    if let Some(move_to_zone) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>() {
+        return capture(&move_to_zone.target, move_to_zone.zone);
+    }
+    if let Some(return_to_hand) = effect.downcast_ref::<crate::effects::ReturnToHandEffect>() {
+        return capture(&return_to_hand.spec, Zone::Hand);
+    }
+    if let Some(return_all) = effect.downcast_ref::<crate::effects::ReturnAllToBattlefieldEffect>()
+    {
+        let spec = crate::target::ChooseSpec::all(return_all.filter.clone());
+        return capture(&spec, Zone::Battlefield);
+    }
+
+    None
 }
 
 fn capture_effect_target_snapshot(
@@ -267,5 +312,31 @@ mod tests {
 
         let tagged = ctx.get_tagged("tagged").expect("tagged object");
         assert_eq!(tagged.object_id, creature);
+    }
+
+    #[test]
+    fn test_apply_tagged_runtime_state_ignores_objects_outside_expected_zone() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let creature = create_creature(&mut game, alice);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![ResolvedTarget::Object(creature)]);
+
+        let runtime = capture_tagged_runtime_state(
+            &game,
+            &Effect::new(crate::effects::ExileEffect::specific(creature)),
+            &ctx,
+        );
+        let exile_id = game
+            .move_object(creature, Zone::Hand, crate::events::cause::EventCause::effect())
+            .expect("creature should move");
+        let outcome = EffectOutcome::replaced().with_affected_objects(vec![exile_id]);
+
+        apply_tagged_runtime_state(&game, &mut ctx, TagKey::new("tagged"), &outcome, runtime);
+
+        let tagged = ctx.get_tagged("tagged").expect("tagged object");
+        assert_eq!(tagged.zone, Zone::Battlefield);
+        assert_eq!(tagged.stable_id, game.object(exile_id).unwrap().stable_id);
     }
 }

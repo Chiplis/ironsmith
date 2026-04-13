@@ -2,7 +2,7 @@
 
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::resolve_objects_for_effect;
+use crate::effects::helpers::{resolve_objects_for_effect, resolve_tagged_object_id};
 use crate::event_processor::{EventOutcome, process_zone_change_with_additional_effects};
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
@@ -12,6 +12,7 @@ use crate::zone::Zone;
 use super::{
     BattlefieldEntryOptions, BattlefieldEntryOutcome, finalize_zone_change_move,
     maybe_prompt_for_split_result_order, move_to_battlefield_with_options,
+    take_recorded_zone_change,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -114,9 +115,7 @@ impl EffectExecutor for MoveToZoneEffect {
             if let Some(tagged) = ctx.get_tagged_all(tag) {
                 for (idx, snapshot) in tagged.iter().enumerate() {
                     if idx < object_ids.len() && game.object(object_ids[idx]).is_none() {
-                        if let Some(resolved) =
-                            crate::effects::helpers::resolve_tagged_object_id(game, snapshot)
-                        {
+                        if let Some(resolved) = resolve_tagged_object_id(game, snapshot) {
                             object_ids[idx] = resolved;
                         }
                     }
@@ -128,6 +127,7 @@ impl EffectExecutor for MoveToZoneEffect {
         }
 
         let mut moved_ids = Vec::new();
+        let mut affected_ids = Vec::new();
         let mut any_prevented = false;
         let mut any_replaced = false;
 
@@ -135,6 +135,7 @@ impl EffectExecutor for MoveToZoneEffect {
             let Some(obj) = game.object(object_id) else {
                 continue;
             };
+            let stable_id = obj.stable_id;
             let from_zone = obj.zone;
             let additional_effects = ctx.additional_replacement_effects_snapshot();
 
@@ -211,6 +212,7 @@ impl EffectExecutor for MoveToZoneEffect {
                                 result.new_object_ids.clone(),
                             );
                         }
+                        affected_ids.extend(result.new_object_ids.iter().copied());
                         moved_ids.extend(result.new_object_ids.iter().copied());
                         continue;
                     }
@@ -219,19 +221,24 @@ impl EffectExecutor for MoveToZoneEffect {
                 }
                 EventOutcome::Replaced => {
                     any_replaced = true;
+                    if let Some(result) = take_recorded_zone_change(game, object_id) {
+                        affected_ids.extend(result.new_object_ids);
+                    } else if let Some(result_id) = game.find_object_by_stable_id(stable_id) {
+                        affected_ids.push(result_id);
+                    }
                 }
                 EventOutcome::NotApplicable => continue,
             }
         }
 
         if !moved_ids.is_empty() {
-            return Ok(EffectOutcome::with_objects(moved_ids));
+            return Ok(EffectOutcome::with_objects(moved_ids).with_affected_objects(affected_ids));
         }
         if any_prevented {
             return Ok(EffectOutcome::prevented());
         }
         if any_replaced {
-            return Ok(EffectOutcome::replaced());
+            return Ok(EffectOutcome::replaced().with_affected_objects(affected_ids));
         }
         Ok(EffectOutcome::target_invalid())
     }
@@ -242,5 +249,69 @@ impl EffectExecutor for MoveToZoneEffect {
 
     fn target_description(&self) -> &'static str {
         "target to move"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::card::CardBuilder;
+    use crate::effect::Effect;
+    use crate::events::zones::matchers::WouldGoToGraveyardMatcher;
+    use crate::executor::ExecutionContext;
+    use crate::ids::{CardId, PlayerId};
+    use crate::mana::{ManaCost, ManaSymbol};
+    use crate::object::Object;
+    use crate::replacement::{ReplacementAction, ReplacementEffect};
+    use crate::types::CardType;
+
+    fn setup_game() -> GameState {
+        crate::tests::test_helpers::setup_two_player_game()
+    }
+
+    fn create_creature(game: &mut GameState, owner: PlayerId) -> crate::ids::ObjectId {
+        let id = game.new_object_id();
+        let card = CardBuilder::new(CardId::from_raw(id.0 as u32), "Move Probe")
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(1)],
+                vec![ManaSymbol::Green],
+            ]))
+            .card_types(vec![CardType::Creature])
+            .build();
+        game.add_object(Object::from_card(id, &card, owner, Zone::Battlefield));
+        id
+    }
+
+    #[test]
+    fn replaced_move_preserves_redirected_object_ids_in_outcome() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let creature = create_creature(&mut game, alice);
+
+        game.replacement_effects
+            .add_resolution_effect(ReplacementEffect::with_matcher(
+                source,
+                alice,
+                WouldGoToGraveyardMatcher::new(crate::target::ObjectFilter::specific(creature)),
+                ReplacementAction::Instead(vec![Effect::new(MoveToZoneEffect::to_exile(
+                    ChooseSpec::SpecificObject(creature),
+                ))]),
+            ));
+
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let effect = MoveToZoneEffect::to_graveyard(ChooseSpec::SpecificObject(creature));
+        let outcome = effect.execute(&mut game, &mut ctx).unwrap();
+
+        assert_eq!(outcome.status, crate::effect::OutcomeStatus::Replaced);
+        let affected = outcome
+            .affected_objects()
+            .expect("redirected object ids should be preserved");
+        assert_eq!(affected.len(), 1);
+        assert!(
+            game.object(affected[0])
+                .is_some_and(|obj| obj.zone == Zone::Exile && obj.name == "Move Probe")
+        );
+        assert!(game.players[0].graveyard.is_empty());
     }
 }

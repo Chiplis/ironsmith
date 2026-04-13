@@ -3061,6 +3061,8 @@ pub(crate) fn preserve_keyword_prefix_for_parse(prefix: &str) -> bool {
             | "flashback"
             | "boast"
             | "modular"
+            | "morph"
+            | "megamorph"
             | "replicate"
             | "reinforce"
             | "renew"
@@ -3418,11 +3420,11 @@ pub(crate) fn parse_morph_keyword_line(
         )));
     }
 
-    let cost = parse_activation_cost(cost_tokens).map_err(|_| {
+    let cost = parse_activation_cost(&cost_tokens).map_err(|_| {
         let mechanic = if is_megamorph { "megamorph" } else { "morph" };
         CardTextError::ParseError(format!(
             "unsupported {mechanic} cost clause (line: '{}')",
-            render_token_slice(cost_tokens).trim()
+            render_token_slice(&cost_tokens).trim()
         ))
     })?;
     if cost.is_free() {

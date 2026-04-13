@@ -547,6 +547,15 @@ impl EffectOutcome {
         self
     }
 
+    /// Record object ids materially affected by the effect.
+    pub fn with_affected_objects(self, objects: Vec<ObjectId>) -> Self {
+        if objects.is_empty() {
+            self
+        } else {
+            self.with_execution_fact(ExecutionFact::AffectedObjects(objects))
+        }
+    }
+
     pub fn set_status(&mut self, status: OutcomeStatus) {
         self.status = status;
     }

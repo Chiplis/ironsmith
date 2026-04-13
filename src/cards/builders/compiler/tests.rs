@@ -7231,7 +7231,7 @@ fn rewrite_lexed_effect_sequence_parses_divvy_pile_choice_bundle() {
     let debug = format!("{parsed:#?}");
 
     assert!(debug.contains("divvy_source"), "{debug}");
-    assert!(debug.contains("divvy_chosen"), "{debug}");
+    assert!(debug.contains("divvy_pile"), "{debug}");
     assert!(debug.contains("ChooseObjectsAcrossZones"), "{debug}");
     assert!(debug.contains("ReturnToHand"), "{debug}");
     assert!(debug.contains("zone: Graveyard"), "{debug}");

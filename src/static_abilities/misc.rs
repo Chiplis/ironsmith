@@ -30,7 +30,6 @@ use crate::events::zones::{EnterBattlefieldEvent, ZoneChangeEvent};
 use crate::game_state::GameState;
 use crate::grant::GrantSpec;
 use crate::ids::{ObjectId, PlayerId};
-use crate::mana::ManaCost;
 use crate::object::CounterType;
 use crate::replacement::{
     RedirectTarget, RedirectWhich, ReplacementAction, ReplacementEffect, ZoneReplacementSpec,
@@ -3122,6 +3121,7 @@ mod tests {
     use crate::events::zones::ZoneChangeEvent;
     use crate::game_event::DamageTarget;
     use crate::ids::{CardId, PlayerId};
+    use crate::mana::ManaCost;
     use crate::rules::state_based::apply_state_based_actions_with;
     use crate::types::{CardType, Subtype};
     use crate::zone::Zone;

@@ -61,6 +61,22 @@ pub(crate) fn finalize_zone_change_move(
     }
 }
 
+pub(crate) fn take_recorded_zone_change(
+    game: &mut GameState,
+    object_id: ObjectId,
+) -> Option<AppliedZoneChange> {
+    let new_object_ids = game.take_zone_change_results(object_id);
+    let final_zone = new_object_ids
+        .first()
+        .and_then(|id| game.object(*id))
+        .map(|obj| obj.zone)?;
+    Some(AppliedZoneChange {
+        final_zone,
+        new_object_id: new_object_ids.first().copied(),
+        new_object_ids,
+    })
+}
+
 fn normalize_order_response(response: Vec<ObjectId>, original: &[ObjectId]) -> Vec<ObjectId> {
     let mut remaining = original.to_vec();
     let mut out = Vec::with_capacity(original.len());

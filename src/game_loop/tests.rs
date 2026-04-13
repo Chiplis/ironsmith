@@ -10286,7 +10286,7 @@ fn test_split_the_spoils_opponent_can_take_the_split_pile_into_hand() {
         fn decide_boolean(
             &mut self,
             _game: &GameState,
-            _ctx: &crate::decisions::context::BooleanChoiceContext,
+            _ctx: &crate::decisions::context::BooleanContext,
         ) -> bool {
             self.choose_split_pile
         }
@@ -10416,7 +10416,7 @@ fn test_split_the_spoils_opponent_can_take_the_other_pile_into_hand() {
         fn decide_boolean(
             &mut self,
             _game: &GameState,
-            _ctx: &crate::decisions::context::BooleanChoiceContext,
+            _ctx: &crate::decisions::context::BooleanContext,
         ) -> bool {
             self.choose_split_pile
         }

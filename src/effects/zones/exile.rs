@@ -13,7 +13,7 @@ use crate::game_state::GameState;
 use crate::target::{ChooseSpec, ObjectFilter};
 use crate::zone::Zone;
 
-use super::apply_zone_change_with_additional_effects;
+use super::{apply_zone_change_with_additional_effects, take_recorded_zone_change};
 
 /// Effect that exiles permanents.
 ///
@@ -252,19 +252,32 @@ impl EffectExecutor for ExileEffect {
             if count.min == 0 {
                 // "any number" effects - 0 targets is valid
                 let mut exiled_count = 0;
+                let mut affected_ids = Vec::new();
                 for target in ctx.targets.clone() {
-                    if let ResolvedTarget::Object(object_id) = target
-                        && Self::exile_object(game, ctx, object_id, self.face_down)?.is_none()
-                    {
-                        exiled_count += 1;
+                    if let ResolvedTarget::Object(object_id) = target {
+                        match Self::exile_object(game, ctx, object_id, self.face_down)? {
+                            None => {
+                                exiled_count += 1;
+                                if let Some(result) = take_recorded_zone_change(game, object_id) {
+                                    affected_ids.extend(result.new_object_ids);
+                                }
+                            }
+                            Some(OutcomeStatus::Replaced) => {
+                                if let Some(result) = take_recorded_zone_change(game, object_id) {
+                                    affected_ids.extend(result.new_object_ids);
+                                }
+                            }
+                            Some(_) => {}
+                        }
                     }
                 }
-                return Ok(EffectOutcome::count(exiled_count));
+                return Ok(EffectOutcome::count(exiled_count).with_affected_objects(affected_ids));
             }
         }
 
         // For all/non-targeted effects and special specs (Tagged, Source, etc.),
         // count successful moves to exile.
+        let mut affected_ids = Vec::new();
         let apply_result = match apply_to_selected_objects(
             game,
             ctx,
@@ -286,6 +299,7 @@ impl EffectExecutor for ExileEffect {
                 ) {
                     EventOutcome::Proceed(result) => {
                         if !result.new_object_ids.is_empty() {
+                            affected_ids.extend(result.new_object_ids.iter().copied());
                             for &new_id in &result.new_object_ids {
                                 if self.face_down && result.final_zone == Zone::Exile {
                                     game.set_face_down(new_id);
@@ -306,9 +320,13 @@ impl EffectExecutor for ExileEffect {
                             Ok(false)
                         }
                     }
-                    EventOutcome::Prevented
-                    | EventOutcome::Replaced
-                    | EventOutcome::NotApplicable => Ok(false),
+                    EventOutcome::Prevented | EventOutcome::NotApplicable => Ok(false),
+                    EventOutcome::Replaced => {
+                        if let Some(result) = take_recorded_zone_change(game, object_id) {
+                            affected_ids.extend(result.new_object_ids);
+                        }
+                        Ok(false)
+                    }
                 }
             },
         ) {
@@ -316,7 +334,7 @@ impl EffectExecutor for ExileEffect {
             Err(_) => return Ok(EffectOutcome::target_invalid()),
         };
 
-        Ok(apply_result.outcome)
+        Ok(apply_result.outcome.with_affected_objects(affected_ids))
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

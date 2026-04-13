@@ -5,6 +5,9 @@ use std::path::Path;
 use std::process::Command;
 use std::thread;
 
+use ironsmith_tools::{
+    CardPayload, CardStatusDb, build_parse_input, compile_snapshot_from_payload,
+};
 use rusqlite::Connection;
 use serde_json::Value;
 use tempfile::tempdir;
@@ -89,6 +92,23 @@ fn query_count(db_path: &Path, sql: &str) -> i64 {
     let conn = Connection::open(db_path).expect("open sqlite db");
     conn.query_row(sql, [], |row| row.get(0))
         .expect("query count")
+}
+
+fn make_payload(name: &str, oracle_text: &str, mana_cost: &str, type_line: &str) -> CardPayload {
+    let metadata_lines = vec![
+        format!("Mana cost: {mana_cost}"),
+        format!("Type: {type_line}"),
+    ];
+    CardPayload {
+        name: name.to_string(),
+        parse_name: None,
+        oracle_text: oracle_text.to_string(),
+        raw_oracle_text: oracle_text.to_string(),
+        parse_input: build_parse_input(&metadata_lines, oracle_text),
+        metadata_lines,
+        other_face_name: None,
+        linked_face_layout: None,
+    }
 }
 
 fn sync_registry_db(cards_path: &Path, db_path: &Path) {
@@ -551,6 +571,67 @@ fn sync_card_status_db_supports_tag_filtered_recompile_without_pruning() {
     assert_eq!(
         abrade_oracle,
         "Choose one — Abrade deals 3 damage to target creature; or destroy target artifact."
+    );
+}
+
+#[test]
+fn sync_card_status_db_reports_strict_compiled_score_summary() {
+    let dir = tempdir().expect("tempdir");
+    let cards_path = dir.path().join("cards.json");
+    let db_path = dir.path().join("engine-status.sqlite3");
+    write_cards_json(&cards_path);
+
+    let lightning = make_payload(
+        "Lightning Bolt",
+        "Lightning Bolt deals 3 damage to any target.",
+        "{R}",
+        "Instant",
+    );
+    let counterspell = make_payload("Counterspell", "Counter target spell.", "{U}{U}", "Instant");
+
+    let db = CardStatusDb::open(&db_path).expect("open sqlite db");
+
+    let mut lightning_snapshot = compile_snapshot_from_payload(&lightning);
+    lightning_snapshot.similarity_score = 0.4;
+    lightning_snapshot.content_hash = "lightning-bolt-seeded-score".to_string();
+    db.insert_snapshot_if_changed(&lightning_snapshot)
+        .expect("seed lightning snapshot");
+
+    let mut counterspell_snapshot = compile_snapshot_from_payload(&counterspell);
+    counterspell_snapshot.similarity_score = 1.2;
+    counterspell_snapshot.content_hash = "counterspell-seeded-score".to_string();
+    db.insert_snapshot_if_changed(&counterspell_snapshot)
+        .expect("seed counterspell snapshot");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_sync_card_status_db"))
+        .arg("--cards")
+        .arg(&cards_path)
+        .arg("--db-path")
+        .arg(&db_path)
+        .output()
+        .expect("run sync_card_status_db");
+    assert!(
+        output.status.success(),
+        "sync_card_status_db should succeed"
+    );
+
+    let stdout =
+        String::from_utf8(output.stdout).expect("sync_card_status_db stdout should be utf8");
+    assert!(
+        stdout.contains("- Strict-compiled semantic score avg before: 0.8000 across 2 cards"),
+        "expected strict-compiled before average in output, got {stdout}"
+    );
+    assert!(
+        stdout.contains("- Strict-compiled semantic score avg after: 1.0000 across 2 cards"),
+        "expected strict-compiled after average in output, got {stdout}"
+    );
+    assert!(
+        stdout.contains("- Cards with increased strict-compiled score: 1 (avg +0.6000)"),
+        "expected increased-score summary in output, got {stdout}"
+    );
+    assert!(
+        stdout.contains("- Cards with decreased strict-compiled score: 1 (avg -0.2000)"),
+        "expected decreased-score summary in output, got {stdout}"
     );
 }
 

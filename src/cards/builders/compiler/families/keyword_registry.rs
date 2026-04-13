@@ -586,15 +586,6 @@ pub(super) fn matches_exert_attack(
     Ok(is_exert_attack_keyword_line(tokens))
 }
 
-fn is_morph_family_dash_keyword_line(tokens: &[OwnedLexToken]) -> bool {
-    tokens
-        .first()
-        .is_some_and(|token| token.is_word("morph") || token.is_word("megamorph"))
-        && tokens
-            .get(1)
-            .is_some_and(|token| token.kind == TokenKind::EmDash)
-}
-
 fn is_exert_attack_keyword_line(tokens: &[OwnedLexToken]) -> bool {
     token_words_have_any_prefix(
         tokens,

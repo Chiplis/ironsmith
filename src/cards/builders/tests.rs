@@ -19573,8 +19573,9 @@ fn parse_split_the_spoils_divvy_uses_splitter_then_opponent_choice() {
 
     let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        rendered.contains("divvy_pile") && rendered.contains("unless an opponent"),
-        "expected Split the Spoils raw render to preserve the divvy branch structure, got {rendered}"
+        rendered.contains("an opponent chooses one of those piles")
+            && rendered.contains("put that pile into your hand and the other into your graveyard"),
+        "expected Split the Spoils to keep its oracle-like pile-choice wording, got {rendered}"
     );
 
     let debug = format!("{:#?}", def.spell_effect);

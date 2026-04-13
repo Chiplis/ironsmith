@@ -3,6 +3,7 @@
 use crate::effect::{ChoiceCount, EffectOutcome, OutcomeStatus};
 use crate::effects::helpers::{
     ObjectApplyResultPolicy, apply_single_target_object_from_spec, apply_to_selected_objects,
+    resolve_tagged_object_id,
 };
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::event_processor::EventOutcome;
@@ -11,7 +12,7 @@ use crate::game_state::GameState;
 use crate::target::{ChooseSpec, ObjectFilter};
 use crate::zone::Zone;
 
-use super::apply_zone_change_with_additional_effects;
+use super::{apply_zone_change_with_additional_effects, take_recorded_zone_change};
 
 /// Effect that returns permanents to their owners' hands.
 ///
@@ -133,8 +134,53 @@ impl EffectExecutor for ReturnToHandEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        let resolve_tagged_targets = |game: &GameState,
+                                      ctx: &ExecutionContext,
+                                      spec: &ChooseSpec|
+         -> Result<Vec<crate::ids::ObjectId>, ExecutionError> {
+            let mut object_ids = crate::effects::helpers::resolve_objects_from_spec(game, spec, ctx)?;
+            if let ChooseSpec::Tagged(tag) = spec.base()
+                && let Some(tagged) = ctx.get_tagged_all(tag)
+            {
+                for (idx, snapshot) in tagged.iter().enumerate() {
+                    if idx < object_ids.len() && game.object(object_ids[idx]).is_none() {
+                        if let Some(resolved) = resolve_tagged_object_id(game, snapshot) {
+                            object_ids[idx] = resolved;
+                        }
+                    }
+                }
+            }
+            Ok(object_ids)
+        };
+
         // Handle targeted effects with special single-target behavior
         if self.spec.is_target() && self.spec.is_single() {
+            if matches!(self.spec.base(), ChooseSpec::Tagged(_)) {
+                let target_id = resolve_tagged_targets(game, ctx, &self.spec)?
+                    .into_iter()
+                    .next()
+                    .ok_or(ExecutionError::InvalidTarget)?;
+                let stable_id = game.object(target_id).map(|obj| obj.stable_id);
+                let status = Self::return_object(game, ctx, target_id)?;
+                let affected_ids = take_recorded_zone_change(game, target_id)
+                    .map(|result| result.new_object_ids)
+                    .or_else(|| match status {
+                        None | Some(OutcomeStatus::Replaced) => stable_id
+                            .and_then(|stable_id| game.find_object_by_stable_id(stable_id))
+                            .map(|object_id| vec![object_id]),
+                        _ => None,
+                    })
+                    .unwrap_or_default();
+                return match status {
+                    None => Ok(EffectOutcome::resolved().with_affected_objects(affected_ids)),
+                    Some(OutcomeStatus::Prevented) => Ok(EffectOutcome::prevented()),
+                    Some(OutcomeStatus::Replaced) => {
+                        Ok(EffectOutcome::replaced().with_affected_objects(affected_ids))
+                    }
+                    Some(OutcomeStatus::TargetInvalid) => Ok(EffectOutcome::target_invalid()),
+                    Some(_) => Ok(EffectOutcome::resolved().with_affected_objects(affected_ids)),
+                };
+            }
             return apply_single_target_object_from_spec(
                 game,
                 ctx,
@@ -144,17 +190,24 @@ impl EffectExecutor for ReturnToHandEffect {
         }
 
         // For all/multi-target effects, count successful moves to hand.
-        let apply_result = match apply_to_selected_objects(
-            game,
-            ctx,
-            &self.spec,
-            ObjectApplyResultPolicy::CountApplied,
-            |game, ctx, object_id| {
+        let apply_result = if matches!(self.spec.base(), ChooseSpec::Tagged(_)) {
+            let object_ids = match resolve_tagged_targets(game, ctx, &self.spec) {
+                Ok(ids) => ids,
+                Err(_) => return Ok(EffectOutcome::target_invalid()),
+            };
+            if object_ids.is_empty() {
+                return Ok(EffectOutcome::target_invalid());
+            }
+
+            let selected_count = object_ids.len();
+            let mut applied_count = 0usize;
+            let mut affected_ids = Vec::new();
+            for object_id in object_ids {
                 let Some(from_zone) = game.object(object_id).map(|obj| obj.zone) else {
-                    return Ok(false);
+                    continue;
                 };
                 let additional_effects = ctx.additional_replacement_effects_snapshot();
-                match apply_zone_change_with_additional_effects(
+                if let EventOutcome::Proceed(result) = apply_zone_change_with_additional_effects(
                     game,
                     object_id,
                     from_zone,
@@ -163,15 +216,62 @@ impl EffectExecutor for ReturnToHandEffect {
                     &mut ctx.decision_maker,
                     &additional_effects,
                 ) {
-                    EventOutcome::Proceed(result) => Ok(result.new_object_id.is_some()),
-                    EventOutcome::Prevented
-                    | EventOutcome::Replaced
-                    | EventOutcome::NotApplicable => Ok(false),
+                    if result.new_object_id.is_some() {
+                        affected_ids.extend(result.new_object_ids.iter().copied());
+                        applied_count += 1;
+                    }
+                } else if let Some(result) = take_recorded_zone_change(game, object_id) {
+                    affected_ids.extend(result.new_object_ids);
                 }
-            },
-        ) {
-            Ok(result) => result,
-            Err(_) => return Ok(EffectOutcome::target_invalid()),
+            }
+
+            crate::effects::helpers::ObjectApplyResult {
+                selected_count,
+                applied_count,
+                outcome: EffectOutcome::count(applied_count as i32)
+                    .with_affected_objects(affected_ids),
+            }
+        } else {
+            let mut affected_ids = Vec::new();
+            match apply_to_selected_objects(
+                game,
+                ctx,
+                &self.spec,
+                ObjectApplyResultPolicy::CountApplied,
+                |game, ctx, object_id| {
+                    let Some(from_zone) = game.object(object_id).map(|obj| obj.zone) else {
+                        return Ok(false);
+                    };
+                    let additional_effects = ctx.additional_replacement_effects_snapshot();
+                    match apply_zone_change_with_additional_effects(
+                        game,
+                        object_id,
+                        from_zone,
+                        Zone::Hand,
+                        ctx.cause.clone(),
+                        &mut ctx.decision_maker,
+                        &additional_effects,
+                    ) {
+                        EventOutcome::Proceed(result) => {
+                            affected_ids.extend(result.new_object_ids.iter().copied());
+                            Ok(result.new_object_id.is_some())
+                        }
+                        EventOutcome::Prevented | EventOutcome::NotApplicable => Ok(false),
+                        EventOutcome::Replaced => {
+                            if let Some(result) = take_recorded_zone_change(game, object_id) {
+                                affected_ids.extend(result.new_object_ids);
+                            }
+                            Ok(false)
+                        }
+                    }
+                },
+            ) {
+                Ok(result) => crate::effects::helpers::ObjectApplyResult {
+                    outcome: result.outcome.with_affected_objects(affected_ids),
+                    ..result
+                },
+                Err(_) => return Ok(EffectOutcome::target_invalid()),
+            }
         };
 
         Ok(apply_result.outcome)
@@ -261,9 +361,14 @@ mod tests {
     use crate::card::CardBuilder;
     use crate::decision::DecisionMaker;
     use crate::decisions::context::SelectObjectsContext;
+    use crate::effect::Effect;
     use crate::executor::ExecutionContext;
+    use crate::events::zones::matchers::WouldGoToHandMatcher;
     use crate::game_state::GameState;
     use crate::ids::{CardId, ObjectId, PlayerId};
+    use crate::replacement::{ReplacementAction, ReplacementEffect};
+    use crate::snapshot::ObjectSnapshot;
+    use crate::tag::TagKey;
     use crate::types::CardType;
 
     struct SelectIdsDecisionMaker {
@@ -323,5 +428,100 @@ mod tests {
         assert!(bounced_card_in_hand);
         assert!(!game.battlefield.contains(&growth_chamber));
         assert!(game.battlefield.contains(&forest));
+    }
+
+    #[test]
+    fn tagged_return_to_hand_follows_stable_id_after_zone_change() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = game.players[0].id;
+        let source = game.new_object_id();
+
+        let card = CardBuilder::new(CardId::from_raw(9901), "Tagged Return Probe")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let original_id = game.create_object_from_card(&card, alice, Zone::Exile);
+        let tagged_snapshot = game
+            .object(original_id)
+            .map(|obj| ObjectSnapshot::from_object(obj, &game))
+            .expect("exiled object should exist");
+        let stable_id = tagged_snapshot.stable_id;
+
+        let move_to_graveyard =
+            crate::effects::MoveToZoneEffect::to_graveyard(ChooseSpec::SpecificObject(original_id));
+        let mut move_ctx = ExecutionContext::new_default(source, alice);
+        move_to_graveyard
+            .execute(&mut game, &mut move_ctx)
+            .expect("move to graveyard should resolve");
+
+        let current_id = game
+            .find_object_by_stable_id(stable_id)
+            .expect("stable id should still resolve");
+        assert_ne!(current_id, original_id);
+
+        let mut ctx = ExecutionContext::new_default(source, alice).with_tagged_objects(
+            std::collections::HashMap::from([(TagKey::from("chosen"), vec![tagged_snapshot])]),
+        );
+        let effect = ReturnToHandEffect::with_spec(ChooseSpec::Tagged(TagKey::from("chosen")));
+        let outcome = effect
+            .execute(&mut game, &mut ctx)
+            .expect("return to hand should resolve");
+
+        assert_eq!(outcome.value, crate::effect::OutcomeValue::Count(1));
+        assert!(
+            game.player(alice)
+                .expect("alice exists")
+                .hand
+                .iter()
+                .any(|&id| game.object(id).is_some_and(|obj| obj.name == "Tagged Return Probe")),
+            "the tagged card should return using the current object id"
+        );
+    }
+
+    #[test]
+    fn tagged_follow_up_does_not_retarget_replacement_redirected_object() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = game.players[0].id;
+        let source = game.new_object_id();
+        let creature = add_land(&mut game, 9902, "Redirected Bounce Probe", alice);
+
+        game.replacement_effects
+            .add_resolution_effect(ReplacementEffect::with_matcher(
+                source,
+                alice,
+                WouldGoToHandMatcher::you(),
+                ReplacementAction::Instead(vec![Effect::new(
+                    crate::effects::MoveToZoneEffect::to_exile(ChooseSpec::SpecificObject(
+                        creature,
+                    )),
+                )]),
+            ));
+
+        let tagged_bounce = crate::effects::TaggedEffect::new(
+            "bounced",
+            Effect::new(ReturnToHandEffect::with_spec(ChooseSpec::SpecificObject(creature))),
+        );
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let bounce_outcome = tagged_bounce.execute(&mut game, &mut ctx).unwrap();
+        assert_eq!(bounce_outcome.status, OutcomeStatus::Succeeded);
+        assert!(game.players[0].hand.is_empty());
+        assert_eq!(game.exile.len(), 1);
+        assert!(
+            ctx.get_tagged("bounced").is_none(),
+            "replacement mismatch should not leave behind a live tagged object"
+        );
+
+        let follow_up = crate::effects::MoveToZoneEffect::to_graveyard(ChooseSpec::Tagged(
+            TagKey::from("bounced"),
+        ));
+        let follow_up_outcome = follow_up.execute(&mut game, &mut ctx).unwrap();
+
+        assert_eq!(follow_up_outcome.status, OutcomeStatus::TargetInvalid);
+        assert!(game.players[0].hand.is_empty());
+        assert!(game.players[0].graveyard.is_empty());
+        assert_eq!(game.exile.len(), 1);
+        assert!(
+            game.object(game.exile[0])
+                .is_some_and(|obj| obj.zone == Zone::Exile && obj.name == "Redirected Bounce Probe")
+        );
     }
 }

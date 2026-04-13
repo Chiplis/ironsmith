@@ -796,6 +796,7 @@ fn looks_like_numeric_result_prefix_text(text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use crate::cards::builders::{CardDefinitionBuilder, CardTextError};
+    use crate::cards::builders::document_parser::KeywordLineKindCst;
     use crate::ids::CardId;
     use crate::types::CardType;
 
@@ -960,6 +961,27 @@ mod tests {
             .expect("expected Zombie Cutthroat line to parse as keyword");
 
         assert_eq!(parsed.kind, KeywordLineKindCst::Morph);
+        Ok(())
+    }
+
+    #[test]
+    fn parse_document_cst_keeps_morph_dash_keyword_out_of_labeled_line_fallback()
+    -> Result<(), CardTextError> {
+        let preprocessed = preprocess_document(
+            CardDefinitionBuilder::new(CardId::new(), "Zombie Cutthroat")
+                .card_types(vec![CardType::Creature]),
+            "Morph—Pay 5 life. (You may cast this card face down as a 2/2 creature for {3}. Turn it face up any time for its morph cost.)",
+        )?;
+        let cst = super::parse_document_cst(&preprocessed, false)?;
+
+        match cst.lines.as_slice() {
+            [super::RewriteLineCst::Keyword(keyword)] => {
+                assert_eq!(keyword.kind, KeywordLineKindCst::Morph);
+                assert_eq!(render_token_slice(&keyword.parse_tokens), "morph pay 5 life.");
+            }
+            other => panic!("expected one morph keyword line, got {other:?}"),
+        }
+
         Ok(())
     }
 

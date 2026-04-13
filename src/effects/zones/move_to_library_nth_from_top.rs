@@ -9,7 +9,10 @@ use crate::game_state::GameState;
 use crate::target::ChooseSpec;
 use crate::zone::Zone;
 
-use super::{apply_zone_change_with_additional_effects, maybe_prompt_for_split_result_order};
+use super::{
+    apply_zone_change_with_additional_effects, maybe_prompt_for_split_result_order,
+    take_recorded_zone_change,
+};
 
 /// "Put target [object] into its owner's library Nth from the top."
 #[derive(Debug, Clone, PartialEq)]
@@ -39,6 +42,7 @@ impl EffectExecutor for MoveToLibraryNthFromTopEffect {
         let position = raw_position.max(1) as usize;
 
         let mut moved_ids = Vec::new();
+        let mut affected_ids = Vec::new();
         let mut any_replaced = false;
 
         for object_id in object_ids {
@@ -95,21 +99,25 @@ impl EffectExecutor for MoveToLibraryNthFromTopEffect {
                                 );
                             }
                         }
+                        affected_ids.extend(result.new_object_ids.iter().copied());
                         moved_ids.extend(result.new_object_ids.iter().copied());
                     }
                 }
                 EventOutcome::Replaced => {
                     any_replaced = true;
+                    if let Some(result) = take_recorded_zone_change(game, object_id) {
+                        affected_ids.extend(result.new_object_ids);
+                    }
                 }
                 EventOutcome::NotApplicable => {}
             }
         }
 
         if !moved_ids.is_empty() {
-            return Ok(EffectOutcome::with_objects(moved_ids));
+            return Ok(EffectOutcome::with_objects(moved_ids).with_affected_objects(affected_ids));
         }
         if any_replaced {
-            return Ok(EffectOutcome::replaced());
+            return Ok(EffectOutcome::replaced().with_affected_objects(affected_ids));
         }
         Ok(EffectOutcome::target_invalid())
     }
