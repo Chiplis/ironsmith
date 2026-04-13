@@ -2397,7 +2397,7 @@ fn test_parse_copy_this_spell_for_each_creature_sacrificed_this_way() {
 fn test_plumb_style_additional_cost_trigger_copies_for_each_payment() {
     use crate::ability::AbilityKind;
     use crate::cost::OptionalCostsPaid;
-    use crate::executor::{ExecutionContext, execute_effect};
+    use crate::executor::{execute_effect, ExecutionContext};
     use crate::game_state::StackEntry;
     use crate::object::ObjectKind;
     use crate::tests::test_helpers::setup_two_player_game;
@@ -3951,7 +3951,7 @@ fn test_parse_squad_keyword_line_compiles_to_optional_cost_and_etb_copy_trigger(
 fn test_squad_trigger_creates_token_copies_equal_to_times_paid() {
     use crate::ability::AbilityKind;
     use crate::cost::OptionalCostsPaid;
-    use crate::executor::{ExecutionContext, execute_effect};
+    use crate::executor::{execute_effect, ExecutionContext};
     use crate::object::ObjectKind;
     use crate::tests::test_helpers::setup_two_player_game;
     use crate::zone::Zone;
@@ -4092,7 +4092,7 @@ fn test_parse_conspire_keyword_line_compiles_to_optional_cost() {
 fn test_offspring_trigger_creates_one_one_copy_when_paid() {
     use crate::ability::AbilityKind;
     use crate::cost::OptionalCostsPaid;
-    use crate::executor::{ExecutionContext, execute_effect};
+    use crate::executor::{execute_effect, ExecutionContext};
     use crate::object::ObjectKind;
     use crate::tests::test_helpers::setup_two_player_game;
     use crate::zone::Zone;
@@ -4184,7 +4184,7 @@ fn test_parse_scavenge_keyword_line_compiles_to_graveyard_activated_ability() {
 #[test]
 fn test_scavenge_uses_source_snapshot_power_after_source_is_exiled() {
     use crate::ability::AbilityKind;
-    use crate::executor::{ExecutionContext, ResolvedTarget, execute_effect};
+    use crate::executor::{execute_effect, ExecutionContext, ResolvedTarget};
     use crate::snapshot::ObjectSnapshot;
     use crate::zone::Zone;
 
@@ -4295,7 +4295,7 @@ fn test_parse_mobilize_keyword_line_compiles_to_attack_trigger() {
 fn test_mobilize_trigger_creates_attacking_warriors() {
     use crate::ability::AbilityKind;
     use crate::combat_state::{AttackTarget, AttackerInfo, CombatState};
-    use crate::executor::{ExecutionContext, execute_effect};
+    use crate::executor::{execute_effect, ExecutionContext};
     use crate::zone::Zone;
 
     let mut game = crate::tests::test_helpers::setup_two_player_game();
@@ -6185,8 +6185,8 @@ fn parse_enters_with_counter_if_youve_cast_two_or_more_spells_this_turn_line() {
 }
 
 #[test]
-fn parse_enters_with_counter_equal_to_greatest_number_of_cards_an_opponent_has_drawn_this_turn_line()
- {
+fn parse_enters_with_counter_equal_to_greatest_number_of_cards_an_opponent_has_drawn_this_turn_line(
+) {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Thought Sponge Variant")
         .card_types(vec![CardType::Creature])
         .parse_text(
@@ -10453,8 +10453,7 @@ fn dingus_egg_deals_damage_to_the_land_controller_on_graveyard_entry() {
 
     crate::game_loop::put_triggers_on_stack(&mut game, &mut trigger_queue)
         .expect("Dingus Egg trigger should go on the stack");
-    crate::game_loop::resolve_stack_entry(&mut game)
-        .expect("Dingus Egg trigger should resolve");
+    crate::game_loop::resolve_stack_entry(&mut game).expect("Dingus Egg trigger should resolve");
 
     assert_eq!(
         game.life_total(bob),
@@ -10851,11 +10850,10 @@ fn parse_reveal_card_this_way_trigger_clause() {
         AbilityKind::Static(static_ability)
             if static_ability.id() == StaticAbilityId::RevealFirstCardYouDrawEachTurn
     )));
-    assert!(
-        def.abilities
-            .iter()
-            .any(|ability| matches!(&ability.kind, AbilityKind::Triggered(_)))
-    );
+    assert!(def
+        .abilities
+        .iter()
+        .any(|ability| matches!(&ability.kind, AbilityKind::Triggered(_))));
 }
 
 #[test]
@@ -10872,11 +10870,10 @@ fn parse_optional_reveal_first_draw_trigger_clause() {
         AbilityKind::Static(static_ability)
             if static_ability.id() == StaticAbilityId::RevealFirstCardYouDrawEachTurn
     )));
-    assert!(
-        def.abilities
-            .iter()
-            .any(|ability| matches!(&ability.kind, AbilityKind::Triggered(_)))
-    );
+    assert!(def
+        .abilities
+        .iter()
+        .any(|ability| matches!(&ability.kind, AbilityKind::Triggered(_))));
 }
 
 #[test]
@@ -12763,7 +12760,7 @@ fn parse_shape_anew_targets_controller_and_consults_until_artifact() {
 
 #[test]
 fn shape_anew_sacrifices_target_and_uses_that_controller_library() {
-    use crate::executor::{ExecutionContext, ResolvedTarget, execute_effect};
+    use crate::executor::{execute_effect, ExecutionContext, ResolvedTarget};
 
     fn artifact(name: &str) -> crate::cards::CardDefinition {
         CardDefinitionBuilder::new(CardId::new(), name)
@@ -21739,7 +21736,7 @@ fn parse_oracle_over_the_top_dynamic_reveal_and_distribution_regression() {
 #[test]
 fn over_the_top_moves_nonpermanents_to_their_owners_graveyards_at_runtime() {
     use crate::card::CardBuilder;
-    use crate::executor::{ExecutionContext, execute_effect};
+    use crate::executor::{execute_effect, ExecutionContext};
     use crate::zone::Zone;
 
     let def = parse_oracle_card_definition("Over the Top");
@@ -23860,6 +23857,58 @@ fn parse_oracle_winding_way_card_type_choice_regression() {
             && debug.contains("LookAtTopCardsEffect")
             && debug.contains("zone: Graveyard"),
         "expected chosen-card-type looked-card lowering, got {debug}"
+    );
+}
+
+#[test]
+fn parse_oracle_selective_adaptation_keeps_keyword_bundle_separate() {
+    let def = parse_oracle_card_definition("Selective Adaptation");
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("reveal the top seven cards of your library"),
+        "expected the top-seven reveal to survive, got {rendered}"
+    );
+    for keyword in [
+        "flying",
+        "first strike",
+        "double strike",
+        "deathtouch",
+        "haste",
+        "hexproof",
+        "indestructible",
+        "lifelink",
+        "menace",
+        "reach",
+        "trample",
+        "vigilance",
+    ] {
+        assert!(
+            rendered.contains(keyword),
+            "expected Selective Adaptation to keep keyword choice '{keyword}', got {rendered}"
+        );
+    }
+    assert!(
+        !rendered.contains("with flying with first strike")
+            && !rendered.contains("return that another permanent to its owner's hand"),
+        "expected Selective Adaptation not to collapse into the generic reveal-top path, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_reveal_top_put_all_matching_into_hand_rest_graveyard_still_handles_simple_filters() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Simple Reveal Split Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Reveal the top five cards of your library. Put all creature cards revealed this way into your hand and the rest into your graveyard.",
+        )
+        .expect("simple reveal-top split should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("reveal the top five cards of your library")
+            && rendered.contains("put all creature cards revealed this way into your hand and the rest into your graveyard"),
+        "expected simple reveal-top split to stay intact, got {rendered}"
     );
 }
 

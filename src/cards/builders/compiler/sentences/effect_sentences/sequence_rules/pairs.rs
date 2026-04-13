@@ -23,6 +23,24 @@ use crate::effect::Value;
 use crate::target::{ChooseSpec, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::zone::Zone;
 
+fn looks_like_keyword_bundle_choice_filter(tokens: &[OwnedLexToken]) -> bool {
+    let tokens = trim_commas(tokens);
+    let words = TokenWordView::new(&tokens).word_refs();
+    let mut card_choice_segments = 0usize;
+    for idx in 0..words.len().saturating_sub(2) {
+        if is_article(words[idx])
+            && matches!(words[idx + 1], "card" | "cards")
+            && words[idx + 2] == "with"
+        {
+            card_choice_segments += 1;
+            if card_choice_segments >= 2 {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 fn parse_may_put_filtered_card_from_among_into_hand(
     tokens: &[OwnedLexToken],
     default_player: PlayerAst,
@@ -49,6 +67,9 @@ fn parse_may_put_filtered_card_from_among_into_hand(
     let filter_end = action_words
         .token_index_for_word_index(from_among_word_idx)
         .unwrap_or(action_tokens.len());
+    if looks_like_keyword_bundle_choice_filter(&action_tokens[..filter_end]) {
+        return Ok(None);
+    }
     let mut filter =
         if let Some(filter) = parse_looked_card_choice_filter(&action_tokens[..filter_end]) {
             filter
@@ -383,6 +404,9 @@ pub(crate) fn parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard(
         .unwrap_or(second_tokens.len());
     let filter_tokens = trim_commas(&second_tokens[filter_start..filter_end]);
     if filter_tokens.is_empty() {
+        return Ok(None);
+    }
+    if looks_like_keyword_bundle_choice_filter(&filter_tokens) {
         return Ok(None);
     }
     let mut filter = if let Some(filter) = parse_looked_card_reveal_filter(&filter_tokens) {
