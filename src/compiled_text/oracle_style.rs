@@ -1932,6 +1932,7 @@ pub fn canonical_compiled_lines(def: &CardDefinition) -> Vec<String> {
     canonical = reconcile_intrinsic_lines_with_oracle(def, canonical);
     canonical = reconcile_named_token_shorthand_with_oracle(def, canonical);
     canonical = reconcile_transform_return_wording_with_oracle(def, canonical);
+    canonical = reconcile_surface_equivalent_lines_with_oracle(def, canonical);
     canonical.dedup();
     canonical
 }
@@ -1975,6 +1976,46 @@ fn reconcile_transform_return_wording_with_oracle(
                     );
             }
             rewritten
+        })
+        .collect()
+}
+
+fn reconcile_surface_equivalent_lines_with_oracle(
+    def: &CardDefinition,
+    lines: Vec<String>,
+) -> Vec<String> {
+    let oracle_lines = strip_parenthetical_text(&def.card.oracle_text)
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(ToOwned::to_owned)
+        .collect::<Vec<_>>();
+    if oracle_lines.is_empty() {
+        return lines;
+    }
+
+    let keyed_oracle_lines = oracle_lines
+        .iter()
+        .map(|line| (line.clone(), oracle_surface_match_key(line)))
+        .filter(|(_, key)| !key.is_empty())
+        .collect::<Vec<_>>();
+    if keyed_oracle_lines.is_empty() {
+        return lines;
+    }
+
+    lines
+        .into_iter()
+        .map(|line| {
+            let key = oracle_surface_match_key(&line);
+            if key.is_empty() {
+                return line;
+            }
+            keyed_oracle_lines
+                .iter()
+                .find_map(|(oracle_line, oracle_key)| {
+                    (oracle_key == &key).then(|| oracle_line.clone())
+                })
+                .unwrap_or(line)
         })
         .collect()
 }
@@ -2344,6 +2385,83 @@ fn normalize_intrinsic_token_surface_for_match(text: &str) -> String {
     trimmed.to_string()
 }
 
+fn normalize_collective_subject_surface(text: &str) -> String {
+    let mut normalized = text.to_string();
+    for (singular, plural) in [
+        ("Each creature ", "all creatures "),
+        ("Each land ", "all lands "),
+        ("Each artifact ", "all artifacts "),
+        ("Each enchantment ", "all enchantments "),
+        ("Each planeswalker ", "all planeswalkers "),
+        ("Each player ", "all players "),
+    ] {
+        if normalized.starts_with(singular) {
+            let tail = normalized.replacen(singular, "", 1);
+            let tail = if let Some(rest) = tail.strip_prefix("gets ") {
+                format!("get {rest}")
+            } else if let Some(rest) = tail.strip_prefix("has ") {
+                format!("have {rest}")
+            } else if let Some(rest) = tail.strip_prefix("is ") {
+                format!("are {rest}")
+            } else if let Some(rest) = tail.strip_prefix("becomes ") {
+                format!("become {rest}")
+            } else {
+                tail
+            };
+            normalized = format!("{plural}{tail}");
+            break;
+        }
+    }
+    normalized
+}
+
+fn normalize_shared_duration_surface_for_match(text: &str) -> String {
+    let trimmed = text.trim().trim_end_matches('.');
+    let Some(rest) = strip_prefix_ascii_ci(trimmed, "Until end of turn, ") else {
+        return trimmed.to_string();
+    };
+    let Some((left, right)) = split_once_ascii_ci(rest, " and ") else {
+        return trimmed.to_string();
+    };
+    if !left.contains(" become ") || !right.contains(" become ") {
+        return trimmed.to_string();
+    }
+
+    let left = normalize_collective_subject_surface(left.trim());
+    let right = normalize_collective_subject_surface(right.trim());
+    format!("{left} until end of turn. {right} until end of turn")
+}
+
+fn oracle_surface_match_key(text: &str) -> String {
+    let mut normalized = strip_parenthetical_text(text).trim().to_string();
+    if normalized.is_empty() {
+        return normalized;
+    }
+
+    normalized = normalize_shared_duration_surface_for_match(&normalized);
+    normalized = normalize_collective_subject_surface(&normalized);
+    normalized = normalized
+        .replace(
+            " is put into a graveyard from the battlefield",
+            " dies",
+        )
+        .replace(
+            " are put into a graveyard from the battlefield",
+            " die",
+        )
+        .replace("that creature's controller", "that object's controller")
+        .replace("that land's controller", "that object's controller")
+        .replace("that permanent's controller", "that object's controller")
+        .replace("that card's controller", "that object's controller");
+    normalized
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .trim()
+        .trim_end_matches('.')
+        .to_ascii_lowercase()
+}
+
 fn drop_suspend_keyword_intrinsic_lines(def: &CardDefinition, lines: Vec<String>) -> Vec<String> {
     let has_suspend = def
         .alternative_casts
@@ -2379,7 +2497,7 @@ pub fn oracle_like_lines(def: &CardDefinition) -> Vec<String> {
 
 #[cfg(test)]
 mod normalize_sentence_surface_style_tests {
-    use super::normalize_sentence_surface_style;
+    use super::{normalize_sentence_surface_style, oracle_surface_match_key};
 
     #[test]
     fn normalizes_choose_one_bullet_modes_to_multiline() {
@@ -2435,6 +2553,30 @@ mod normalize_sentence_surface_style_tests {
             Some(
                 "This creature gets +1/+1 until end of turn and is an artifact in addition to its other types."
                     .to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn oracle_surface_match_key_equates_shared_duration_forms() {
+        assert_eq!(
+            oracle_surface_match_key(
+                "Each creature becomes black until end of turn. all lands become Swamps until end of turn."
+            ),
+            oracle_surface_match_key(
+                "Until end of turn, all creatures become black and all lands become Swamps."
+            )
+        );
+    }
+
+    #[test]
+    fn oracle_surface_match_key_equates_zone_change_and_controller_aliases() {
+        assert_eq!(
+            oracle_surface_match_key(
+                "Whenever a land dies, this artifact deals 2 damage to that object's controller."
+            ),
+            oracle_surface_match_key(
+                "Whenever a land is put into a graveyard from the battlefield, this artifact deals 2 damage to that land's controller."
             )
         );
     }

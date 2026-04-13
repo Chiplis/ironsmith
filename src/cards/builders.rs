@@ -11434,12 +11434,21 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .expect("Nightcreep-style text should parse");
 
         let debug = format!("{:?}", def.spell_effect);
+        let rendered = crate::compiled_text::canonical_compiled_lines(&def)
+            .join(" ")
+            .to_ascii_lowercase();
         assert!(
             debug.contains("SetColors")
                 && debug.contains("BecomeBasicLandTypeChoiceEffect")
                 && debug.contains("fixed_subtype: Some(Swamp)")
+                && debug.contains("until: EndOfTurn")
                 && !debug.contains("AddSubtypes"),
             "expected Nightcreep-style spell lowering to set colors and use fixed basic land type, got {debug}"
+        );
+        assert!(
+            rendered
+                == "until end of turn, all creatures become black and all lands become swamps.",
+            "expected Nightcreep-style render to normalize back to oracle-style wording, got {rendered}"
         );
     }
 

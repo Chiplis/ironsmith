@@ -1,5 +1,67 @@
 use super::*;
 
+fn parse_attachment_quantity_prefix(
+    tokens: &[OwnedLexToken],
+) -> Result<(crate::effect::Comparison, usize), CardTextError> {
+    if tokens.is_empty() {
+        return Err(CardTextError::ParseError(
+            "missing quantity in attachment-count predicate".to_string(),
+        ));
+    }
+
+    if tokens[0].is_word("no") {
+        return Ok((crate::effect::Comparison::LessThanOrEqual(0), 1));
+    }
+
+    if tokens[0].is_word("exactly") {
+        let (value, used) = parse_number(tokens.get(1..).unwrap_or_default()).ok_or_else(|| {
+            CardTextError::ParseError("missing quantity in attachment-count predicate".to_string())
+        })?;
+        return Ok((crate::effect::Comparison::Equal(value as i32), used + 1));
+    }
+
+    if (tokens[0].is_word("fewer") || tokens[0].is_word("less"))
+        && tokens.get(1).is_some_and(|token| token.is_word("than"))
+    {
+        let (value, used) = parse_number(tokens.get(2..).unwrap_or_default()).ok_or_else(|| {
+            CardTextError::ParseError("missing quantity in attachment-count predicate".to_string())
+        })?;
+        return Ok((crate::effect::Comparison::LessThan(value as i32), used + 2));
+    }
+
+    if (tokens[0].is_word("more") || tokens[0].is_word("greater"))
+        && tokens.get(1).is_some_and(|token| token.is_word("than"))
+    {
+        let (value, used) = parse_number(tokens.get(2..).unwrap_or_default()).ok_or_else(|| {
+            CardTextError::ParseError("missing quantity in attachment-count predicate".to_string())
+        })?;
+        return Ok((crate::effect::Comparison::GreaterThan(value as i32), used + 2));
+    }
+
+    if let Some((value, used)) = parse_number(tokens) {
+        let value = value as i32;
+        if tokens.get(used).is_some_and(|token| token.is_word("or"))
+            && tokens
+                .get(used + 1)
+                .is_some_and(|token| token.is_word("more") || token.is_word("greater"))
+        {
+            return Ok((crate::effect::Comparison::GreaterThanOrEqual(value), used + 2));
+        }
+        if tokens.get(used).is_some_and(|token| token.is_word("or"))
+            && tokens
+                .get(used + 1)
+                .is_some_and(|token| token.is_word("less") || token.is_word("fewer"))
+        {
+            return Ok((crate::effect::Comparison::LessThanOrEqual(value), used + 2));
+        }
+        return Ok((crate::effect::Comparison::Equal(value), used));
+    }
+
+    Err(CardTextError::ParseError(
+        "missing quantity in attachment-count predicate".to_string(),
+    ))
+}
+
 pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTextError> {
     let raw_words_view = GrammarFilterNormalizedWords::new(tokens);
     let raw_words = raw_words_view.to_word_refs();
@@ -228,20 +290,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
 
     if let Some(is_idx) = find_index(&filtered, |word| matches!(*word, "is" | "are")) {
         let subject_words = &filtered[..is_idx];
-        let is_source_subject = matches!(
-            subject_words,
-            ["this"]
-                | ["this", "artifact"]
-                | ["this", "battle"]
-                | ["this", "card"]
-                | ["this", "creature"]
-                | ["this", "enchantment"]
-                | ["this", "land"]
-                | ["this", "permanent"]
-                | ["this", "planeswalker"]
-                | ["it"]
-                | ["its"]
-        );
+        let is_source_subject =
+            is_source_reference_words(subject_words) || matches!(subject_words, ["it"] | ["its"]);
         if is_source_subject
             && filtered.get(is_idx + 1) == Some(&"enchanted")
             && filtered.get(is_idx + 2) == Some(&"by")
@@ -250,11 +300,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
                 .iter()
                 .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
                 .collect::<Vec<_>>();
-            let (comparison, used) =
-                crate::cards::builders::compiler::families::keyword_static::anthem_grant_lines::parse_static_quantity_prefix(
-                    &attachment_tokens,
-                    false,
-                )?;
+            let (comparison, used) = parse_attachment_quantity_prefix(&attachment_tokens)?;
             let filter_tokens = &attachment_tokens[used..];
             if !filter_tokens.is_empty() {
                 let filter = parse_object_filter(filter_tokens, false).or_else(|_| {

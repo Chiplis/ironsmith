@@ -10175,21 +10175,30 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(become_basic) =
         effect.downcast_ref::<crate::effects::BecomeBasicLandTypeChoiceEffect>()
     {
+        let target = match &become_basic.target {
+            ChooseSpec::Object(filter) => describe_choose_spec(&ChooseSpec::All(filter.clone())),
+            other => describe_choose_spec(other),
+        };
         if let Some(subtype) = become_basic.fixed_subtype {
-            let article = match subtype {
-                crate::types::Subtype::Island => "an",
-                _ => "a",
+            let plural_subject = target.starts_with("all ") || target.starts_with("those ");
+            let subtype_text = if plural_subject {
+                pluralize_noun_phrase(&subtype.to_string())
+            } else {
+                let article = match subtype {
+                    crate::types::Subtype::Island => "an",
+                    _ => "a",
+                };
+                format!("{article} {subtype}")
             };
-            let target = describe_choose_spec(&become_basic.target);
+            let verb = if plural_subject { "become" } else { "becomes" };
             if become_basic.until == Until::EndOfTurn {
-                return format!("{target} becomes {article} {subtype} until end of turn");
+                return format!("{target} {verb} {subtype_text} until end of turn");
             }
             return format!(
-                "{target} becomes {article} {subtype} {}",
-                describe_until(&become_basic.until)
+                "{target} {verb} {subtype_text} {}",
+                describe_until(&become_basic.until),
             );
         }
-        let target = describe_choose_spec(&become_basic.target);
         if become_basic.until == Until::EndOfTurn {
             return format!(
                 "{} becomes the basic land type of your choice until end of turn",

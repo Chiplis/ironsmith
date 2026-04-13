@@ -1190,6 +1190,90 @@ pub(crate) fn parse_trigger_clause_lexed(
     }
 
     for tail in [
+        ["is", "put", "into", "graveyard", "from", "battlefield"].as_slice(),
+        [
+            "is",
+            "put",
+            "into",
+            "graveyard",
+            "from",
+            "the",
+            "battlefield",
+        ]
+        .as_slice(),
+        ["is", "put", "into", "a", "graveyard", "from", "battlefield"].as_slice(),
+        [
+            "is",
+            "put",
+            "into",
+            "a",
+            "graveyard",
+            "from",
+            "the",
+            "battlefield",
+        ]
+        .as_slice(),
+        ["are", "put", "into", "graveyard", "from", "battlefield"].as_slice(),
+        [
+            "are",
+            "put",
+            "into",
+            "graveyard",
+            "from",
+            "the",
+            "battlefield",
+        ]
+        .as_slice(),
+        ["are", "put", "into", "a", "graveyard", "from", "battlefield"].as_slice(),
+        [
+            "are",
+            "put",
+            "into",
+            "a",
+            "graveyard",
+            "from",
+            "the",
+            "battlefield",
+        ]
+        .as_slice(),
+    ] {
+        if slice_ends_with(&words, tail) {
+            let subject_word_len = words.len().saturating_sub(tail.len());
+            let subject_tokens = ActivationRestrictionCompatWords::new(tokens)
+                .token_index_for_word_index(subject_word_len)
+                .map(|idx| &tokens[..idx])
+                .unwrap_or_default();
+            let subject_view = ActivationRestrictionCompatWords::new(subject_tokens);
+            let subject_words = subject_view.to_word_refs();
+            if is_source_reference_words(&subject_words) {
+                return Ok(TriggerSpec::PutIntoGraveyardFromZone {
+                    filter: ObjectFilter::source(),
+                    from: Zone::Battlefield,
+                });
+            }
+            let mut filter = parse_object_filter_lexed(subject_tokens, false).map_err(|_| {
+                CardTextError::ParseError(format!(
+                    "unsupported filter in put-into-a-graveyard-from-battlefield trigger clause (clause: '{}')",
+                    words.join(" ")
+                ))
+            })?;
+            filter.zone = None;
+            filter.controller = None;
+            filter.owner = None;
+            if subject_words
+                .iter()
+                .any(|word| matches!(*word, "card" | "cards"))
+            {
+                filter.nontoken = true;
+            }
+            return Ok(TriggerSpec::PutIntoGraveyardFromZone {
+                filter,
+                from: Zone::Battlefield,
+            });
+        }
+    }
+
+    for tail in [
         [
             "is",
             "put",

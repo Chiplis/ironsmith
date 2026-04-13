@@ -10376,9 +10376,12 @@ fn parse_dingus_egg_keeps_the_source_and_controller_linked() {
     };
 
     let effects_debug = format!("{:#?}", triggered.effects);
+    let trigger_debug = format!("{:#?}", triggered.trigger);
     let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let canonical = crate::compiled_text::canonical_compiled_lines(&def).join(" ");
     assert!(
-        rendered.contains("whenever a land is put into a graveyard from the battlefield")
+        (rendered.contains("whenever a land is put into a graveyard from the battlefield")
+            || rendered.contains("whenever a land dies"))
             && (rendered.contains("deal 2 damage to that object's controller")
                 || rendered.contains("deal 2 damage to that land's controller")
                 || rendered.contains("deals 2 damage to that object's controller")
@@ -10386,8 +10389,18 @@ fn parse_dingus_egg_keeps_the_source_and_controller_linked() {
         "expected Dingus Egg to keep the damage clause attached, got {rendered}"
     );
     assert!(
+        trigger_debug.contains("ZoneChangeTrigger")
+            || trigger_debug.contains("PutIntoGraveyardFromZone")
+            || trigger_debug.contains("to: Graveyard"),
+        "expected Dingus Egg to lower into a battlefield-to-graveyard trigger, got {trigger_debug}"
+    );
+    assert!(
         effects_debug.contains("DealDamageEffect") || effects_debug.contains("DealDamage"),
         "expected Dingus Egg to lower into a damage effect, got {effects_debug}"
+    );
+    assert_eq!(
+        canonical,
+        "Whenever a land is put into a graveyard from the battlefield, this artifact deals 2 damage to that land's controller."
     );
 }
 
@@ -18430,7 +18443,7 @@ fn metalcraft_keyword_grant_keeps_label_in_oracle_like_text() {
     assert_eq!(
         lines,
         vec![
-            "Metalcraft — This creature has Double strike as long as you control three or more artifacts."
+            "Metalcraft — This creature has double strike as long as you control three or more artifacts."
                 .to_string()
         ],
         "expected metalcraft label to survive oracle-like normalization, got {lines:?}"
@@ -25253,7 +25266,9 @@ fn parse_kitsune_mystic_keeps_two_aura_intervening_if_gate() {
     let rendered = oracle_like_lines(&def).join(" ");
     assert!(
         rendered.contains("At the beginning of each end step")
-            && rendered.contains("if this creature is enchanted by two or more Auras")
+            && rendered
+                .to_ascii_lowercase()
+                .contains("if this creature is enchanted by two or more auras")
             && rendered.contains("flip it"),
         "expected Kitsune Mystic rendering to preserve the two-Aura gate, got {rendered}"
     );

@@ -640,7 +640,8 @@ pub(crate) fn parse_effect_chain_inner_lexed(
     segments = expand_segments_with_comma_action_clauses_lexed(segments);
     segments = expand_segments_with_multi_create_clauses_lexed(segments);
     let mut carried_context: Option<CarryContext> = None;
-    let mut carried_duration: Option<Until> = None;
+    let leading_duration = leading_duration_for_followup_carry(tokens);
+    let mut carried_duration: Option<Until> = leading_duration.clone();
     let mut previous_segment: Option<Vec<OwnedLexToken>> = None;
     for segment in segments {
         let mut segment = segment;
@@ -653,6 +654,7 @@ pub(crate) fn parse_effect_chain_inner_lexed(
         let carry_gain_duration = find_verb_lexed(&segment).is_some_and(|(verb, verb_idx)| {
             verb_idx == 0 && matches!(verb, Verb::Gain | Verb::Lose)
         });
+        let carry_leading_duration = leading_duration.is_some();
         let segment_effects =
             if let Some(effects) = parse_sentence_return_with_counters_on_it_lexed(&segment)? {
                 Some(effects)
@@ -679,8 +681,10 @@ pub(crate) fn parse_effect_chain_inner_lexed(
                 if let Some(context) = carried_context {
                     maybe_apply_carried_player_with_clause_lexed(&mut effect, context, &segment);
                 }
-                if carry_gain_duration && let Some(duration) = &carried_duration {
-                    apply_carried_gain_duration(&mut effect, duration);
+                if (carry_gain_duration || carry_leading_duration)
+                    && let Some(duration) = &carried_duration
+                {
+                    apply_carried_effect_duration(&mut effect, duration);
                 }
                 if let Some(context) = explicit_player_for_carry(&effect) {
                     carried_context = Some(context);
@@ -697,8 +701,10 @@ pub(crate) fn parse_effect_chain_inner_lexed(
                 if let Some(context) = carried_context {
                     maybe_apply_carried_player_with_clause_lexed(&mut effect, context, &segment);
                 }
-                if carry_gain_duration && let Some(duration) = &carried_duration {
-                    apply_carried_gain_duration(&mut effect, duration);
+                if (carry_gain_duration || carry_leading_duration)
+                    && let Some(duration) = &carried_duration
+                {
+                    apply_carried_effect_duration(&mut effect, duration);
                 }
                 if let Some(context) = explicit_player_for_carry(&effect) {
                     carried_context = Some(context);
@@ -715,8 +721,10 @@ pub(crate) fn parse_effect_chain_inner_lexed(
                 if let Some(context) = carried_context {
                     maybe_apply_carried_player_with_clause_lexed(&mut effect, context, &segment);
                 }
-                if carry_gain_duration && let Some(duration) = &carried_duration {
-                    apply_carried_gain_duration(&mut effect, duration);
+                if (carry_gain_duration || carry_leading_duration)
+                    && let Some(duration) = &carried_duration
+                {
+                    apply_carried_effect_duration(&mut effect, duration);
                 }
                 if let Some(context) = explicit_player_for_carry(&effect) {
                     carried_context = Some(context);
@@ -737,8 +745,10 @@ pub(crate) fn parse_effect_chain_inner_lexed(
         if let Some(context) = carried_context {
             maybe_apply_carried_player_with_clause_lexed(&mut effect, context, &segment);
         }
-        if carry_gain_duration && let Some(duration) = &carried_duration {
-            apply_carried_gain_duration(&mut effect, duration);
+        if (carry_gain_duration || carry_leading_duration)
+            && let Some(duration) = &carried_duration
+        {
+            apply_carried_effect_duration(&mut effect, duration);
         }
         if let Some(context) = explicit_player_for_carry(&effect) {
             carried_context = Some(context);
@@ -755,6 +765,20 @@ pub(crate) fn parse_effect_chain_inner_lexed(
     collapse_token_copy_next_end_step_sacrifice_followup_lexed(&mut effects, tokens);
     collapse_token_copy_end_of_combat_exile_followup_lexed(&mut effects, tokens);
     Ok(effects)
+}
+
+fn leading_duration_for_followup_carry(tokens: &[OwnedLexToken]) -> Option<Until> {
+    let words = token_word_refs(tokens);
+    if crate::cards::builders::compiler::util::starts_with_until_end_of_turn(&words) {
+        return Some(Until::EndOfTurn);
+    }
+    if grammar::words_match_any_prefix(tokens, UNTIL_YOUR_NEXT_TURN_PREFIXES).is_some() {
+        return Some(Until::YourNextTurn);
+    }
+    if grammar::words_match_any_prefix(tokens, UNTIL_YOUR_NEXT_UNTAP_PREFIXES).is_some() {
+        return Some(Until::ControllersNextUntapStep);
+    }
+    None
 }
 
 fn effect_duration_for_gain_followup_carry(effect: &EffectAst) -> Option<Until> {
@@ -790,9 +814,17 @@ fn effect_duration_for_gain_followup_carry(effect: &EffectAst) -> Option<Until> 
     }
 }
 
-fn apply_carried_gain_duration(effect: &mut EffectAst, duration: &Until) {
+fn apply_carried_effect_duration(effect: &mut EffectAst, duration: &Until) {
     match effect {
-        EffectAst::GrantAbilitiesToTarget {
+        EffectAst::Pump {
+            duration: effect_duration,
+            ..
+        }
+        | EffectAst::PumpAll {
+            duration: effect_duration,
+            ..
+        }
+        | EffectAst::GrantAbilitiesToTarget {
             duration: effect_duration,
             ..
         }
@@ -809,6 +841,62 @@ fn apply_carried_gain_duration(effect: &mut EffectAst, duration: &Until) {
             ..
         }
         | EffectAst::RemoveAbilitiesAll {
+            duration: effect_duration,
+            ..
+        }
+        | EffectAst::AddCardTypes {
+            duration: effect_duration,
+            ..
+        }
+        | EffectAst::RemoveCardTypes {
+            duration: effect_duration,
+            ..
+        }
+        | EffectAst::AddSubtypes {
+            duration: effect_duration,
+            ..
+        }
+        | EffectAst::SetBasePowerToughness {
+            duration: effect_duration,
+            ..
+        }
+        | EffectAst::SetBasePower {
+            duration: effect_duration,
+            ..
+        }
+        | EffectAst::SetColors {
+            duration: effect_duration,
+            ..
+        }
+        | EffectAst::MakeColorless {
+            duration: effect_duration,
+            ..
+        }
+        | EffectAst::GainControl {
+            duration: effect_duration,
+            ..
+        }
+        | EffectAst::BecomeBasicLandType {
+            duration: effect_duration,
+            ..
+        }
+        | EffectAst::BecomeBasicLandTypeChoice {
+            duration: effect_duration,
+            ..
+        }
+        | EffectAst::BecomeColorChoice {
+            duration: effect_duration,
+            ..
+        }
+        | EffectAst::BecomeCreatureTypeChoice {
+            duration: effect_duration,
+            ..
+        }
+        | EffectAst::BecomeCopy {
+            duration: effect_duration,
+            ..
+        }
+        | EffectAst::BecomeBasePtCreature {
             duration: effect_duration,
             ..
         } if matches!(effect_duration, Until::Forever) => {
