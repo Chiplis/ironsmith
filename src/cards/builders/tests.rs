@@ -24497,6 +24497,17 @@ fn parse_sacred_guide_reveals_until_white_card_and_exiles_others() {
 }
 
 #[test]
+fn corpse_appraiser_compiled_text_keeps_the_graveyard_remainder() {
+    let def = parse_oracle_card_definition("Corpse Appraiser");
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("look at the top three cards of your library")
+            && rendered.contains("and the rest into your graveyard"),
+        "Corpse Appraiser should keep the graveyard remainder in compiled text, got {rendered}"
+    );
+}
+
+#[test]
 fn corpse_appraiser_etb_exiles_the_graveyard_target_and_loots() {
     let def = parse_oracle_card_definition("Corpse Appraiser");
 
