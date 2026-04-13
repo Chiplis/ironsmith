@@ -11602,6 +11602,67 @@ fn test_curse_aura_attaches_to_player_and_triggers_on_enchanted_players_upkeep()
 }
 
 #[test]
+fn test_kitsune_mystic_requires_two_attached_auras_for_end_step_trigger() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::Ending;
+    game.turn.step = Some(crate::game_state::Step::End);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let kitsune_def = CardDefinitionBuilder::new(CardId::new(), "Kitsune Mystic Runtime Variant")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 3))
+        .parse_text(
+            "At the beginning of the end step, if this creature is enchanted by two or more Auras, flip it.",
+        )
+        .expect("Kitsune Mystic text should parse");
+    let kitsune_id = game.create_object_from_definition(&kitsune_def, alice, Zone::Battlefield);
+
+    let aura_def = CardDefinitionBuilder::new(CardId::new(), "Runtime Aura Variant")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![crate::types::Subtype::Aura])
+        .build();
+
+    let first_aura_id = game.create_object_from_definition(&aura_def, alice, Zone::Battlefield);
+    if let Some(aura) = game.object_mut(first_aura_id) {
+        aura.attached_to = Some(crate::object::AttachmentTarget::Object(kitsune_id));
+    }
+    if let Some(kitsune) = game.object_mut(kitsune_id) {
+        kitsune.attachments.push(first_aura_id);
+    }
+
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        0,
+        "Kitsune Mystic should not trigger with only one attached Aura"
+    );
+
+    let second_aura_id = game.create_object_from_definition(&aura_def, alice, Zone::Battlefield);
+    if let Some(aura) = game.object_mut(second_aura_id) {
+        aura.attached_to = Some(crate::object::AttachmentTarget::Object(kitsune_id));
+    }
+    if let Some(kitsune) = game.object_mut(kitsune_id) {
+        kitsune.attachments.push(second_aura_id);
+    }
+
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Kitsune Mystic should trigger once two attached Auras are present"
+    );
+    assert_eq!(
+        trigger_queue.entries[0].source_name.as_str(),
+        "Kitsune Mystic Runtime Variant",
+        "the end-step trigger should come from Kitsune Mystic"
+    );
+}
+
+#[test]
 fn test_illegal_equipment_becomes_unattached_instead_of_dying() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);

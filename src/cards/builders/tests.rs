@@ -25139,6 +25139,36 @@ fn parse_sarevok_deathbringer_keeps_global_ltb_gate_and_player_loss() {
 }
 
 #[test]
+fn parse_kitsune_mystic_keeps_two_aura_intervening_if_gate() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Kitsune Mystic")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 3))
+        .parse_text(
+            "At the beginning of the end step, if this creature is enchanted by two or more Auras, flip it.",
+        )
+        .expect("Kitsune Mystic should parse");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("BeginningOfEndStepTrigger { player: Any }")
+            && debug.contains("intervening_if: Some(CountComparison")
+            && debug.contains("AttachedToSource")
+            && debug.contains("Aura")
+            && debug.contains("GreaterThanOrEqual(2)")
+            && debug.contains("FlipEffect"),
+        "expected Kitsune Mystic to keep the two-Aura gate and flip effect, got {debug}"
+    );
+
+    let rendered = oracle_like_lines(&def).join(" ");
+    assert!(
+        rendered.contains("At the beginning of each end step")
+            && rendered.contains("if this creature is enchanted by two or more Auras")
+            && rendered.contains("flip it"),
+        "expected Kitsune Mystic rendering to preserve the two-Aura gate, got {rendered}"
+    );
+}
+
+#[test]
 fn render_vanguard_seraph_preserves_first_time_trigger_surface() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Vanguard Seraph")
         .card_types(vec![CardType::Creature])

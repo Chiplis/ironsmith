@@ -226,6 +226,59 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(PredicateAst::SourceIsSaddled);
     }
 
+    if let Some(is_idx) = find_index(&filtered, |word| matches!(*word, "is" | "are")) {
+        let subject_words = &filtered[..is_idx];
+        let is_source_subject = matches!(
+            subject_words,
+            ["this"]
+                | ["this", "artifact"]
+                | ["this", "battle"]
+                | ["this", "card"]
+                | ["this", "creature"]
+                | ["this", "enchantment"]
+                | ["this", "land"]
+                | ["this", "permanent"]
+                | ["this", "planeswalker"]
+                | ["it"]
+                | ["its"]
+        );
+        if is_source_subject
+            && filtered.get(is_idx + 1) == Some(&"enchanted")
+            && filtered.get(is_idx + 2) == Some(&"by")
+        {
+            let attachment_tokens = filtered[is_idx + 3..]
+                .iter()
+                .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+                .collect::<Vec<_>>();
+            let (comparison, used) =
+                crate::cards::builders::compiler::families::keyword_static::anthem_grant_lines::parse_static_quantity_prefix(
+                    &attachment_tokens,
+                    false,
+                )?;
+            let filter_tokens = &attachment_tokens[used..];
+            if !filter_tokens.is_empty() {
+                let filter = parse_object_filter(filter_tokens, false).or_else(|_| {
+                    match crate::cards::builders::compiler::token_word_refs(filter_tokens)
+                        .as_slice()
+                    {
+                        ["aura"] | ["auras"] => {
+                            Ok(ObjectFilter::default().with_subtype(Subtype::Aura))
+                        }
+                        _ => Err(CardTextError::ParseError(format!(
+                            "unsupported attachment-count predicate tail (predicate: '{}')",
+                            filtered.join(" ")
+                        ))),
+                    }
+                })?;
+                return Ok(PredicateAst::SourceHasAttachmentsMatching {
+                    filter,
+                    comparison,
+                    display: filtered.join(" "),
+                });
+            }
+        }
+    }
+
     if slice_starts_with(&filtered, &["there", "are", "no"])
         && slice_contains(&filtered, &"counters")
         && contains_any_filter_phrase(&filtered, &[&["on", "this"]])

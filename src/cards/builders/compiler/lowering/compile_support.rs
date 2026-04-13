@@ -468,6 +468,17 @@ pub(crate) fn compile_condition_from_predicate_ast(
             counter_type: *counter_type,
             count: *count,
         },
+        PredicateAst::SourceHasAttachmentsMatching {
+            filter,
+            comparison,
+            display,
+        } => Condition::CountComparison {
+            count: crate::static_abilities::AnthemCountExpression::AttachedToSource(
+                filter.clone(),
+            ),
+            comparison: *comparison,
+            display: Some(display.clone()),
+        },
         PredicateAst::SourcePowerAtLeast(count) => Condition::SourcePowerAtLeast(*count),
         PredicateAst::SourceAttackedOrBlockedThisTurn => Condition::SourceAttackedOrBlockedThisTurn,
         PredicateAst::SourceIsInZone(zone) => Condition::SourceIsInZone(*zone),
