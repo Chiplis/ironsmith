@@ -5792,17 +5792,26 @@ fn describe_with_id_if_clause(
             .as_ref()
             .map(describe_player_filter)
             .unwrap_or_else(|| "you".to_string());
+        let pronoun = match may.decider.as_ref() {
+            None => "you",
+            Some(crate::filter::PlayerFilter::You) => "you",
+            Some(_) => "they",
+        };
         match if_effect.predicate {
             EffectPredicate::DidNotHappen => {
-                if who == "you" {
+                if pronoun == "you" {
                     "If you don't".to_string()
+                } else if pronoun == "they" {
+                    "If they don't".to_string()
                 } else {
                     format!("If {who} doesn't")
                 }
             }
             _ => {
-                if who == "you" {
+                if pronoun == "you" {
                     "If you do".to_string()
+                } else if pronoun == "they" {
+                    "If they do".to_string()
                 } else {
                     format!("If {who} does")
                 }
@@ -5862,9 +5871,13 @@ fn describe_with_id_if_clause(
     };
 
     if else_text.is_empty() {
-        Some(format!("{condition}, {then_text}"))
+        Some(format!("{condition}, {}", lowercase_first(&then_text)))
     } else {
-        Some(format!("{condition}, {then_text}. Otherwise, {else_text}"))
+        Some(format!(
+            "{condition}, {}. Otherwise, {}",
+            lowercase_first(&then_text),
+            lowercase_first(&else_text)
+        ))
     }
 }
 

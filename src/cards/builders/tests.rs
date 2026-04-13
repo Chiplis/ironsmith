@@ -12491,8 +12491,8 @@ fn parse_terrapact_intimidator_preserves_have_you_create_branch() {
         "expected have-you create wording, got {joined}"
     );
     assert!(
-        joined.contains("put two +1/+1 counters on this creature"),
-        "expected decline branch counters, got {joined}"
+        joined.contains("if they don't, put two +1/+1 counters on this creature"),
+        "expected pronoun-based decline branch, got {joined}"
     );
 }
 
