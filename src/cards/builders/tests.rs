@@ -12470,6 +12470,33 @@ fn parse_trigger_target_opponent_creates_treasure_tokens() {
 }
 
 #[test]
+fn parse_terrapact_intimidator_preserves_have_you_create_branch() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Terrapact Intimidator")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Kavu, Subtype::Scout])
+        .power_toughness(PowerToughness::fixed(2, 1))
+        .parse_text(
+            "When this creature enters, target opponent may have you create two Lander tokens. If they don't, put two +1/+1 counters on this creature.",
+        )
+        .expect("Terrapact Intimidator text should parse");
+
+    assert_eq!(def.abilities.len(), 1);
+    let joined = compiled_lines(&def).join(" ").to_lowercase();
+    assert!(
+        joined.contains("target opponent may have you create two lander tokens"),
+        "expected have-you create wording, got {joined}"
+    );
+    assert!(
+        joined.contains("put two +1/+1 counters on this creature"),
+        "expected decline branch counters, got {joined}"
+    );
+}
+
+#[test]
 fn parse_trigger_target_opponent_may_draw_card() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Target Opponent May Draw Variant")
         .parse_text("At the beginning of your end step, target opponent may draw a card.")

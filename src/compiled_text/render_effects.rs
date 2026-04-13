@@ -5491,6 +5491,31 @@ pub(super) fn describe_may_choose_reveal_and_move_to_hand(
     ))
 }
 
+pub(super) fn describe_may_have_you_create_tokens(
+    may: &crate::effects::MayEffect,
+) -> Option<String> {
+    if may.effects.len() != 1 {
+        return None;
+    }
+    let create_token = may.effects[0]
+        .downcast_ref::<crate::effects::CreateTokenEffect>()?;
+    if !matches!(create_token.controller, PlayerFilter::You) {
+        return None;
+    }
+    let decider = may.decider.as_ref()?;
+    let who = describe_player_filter(decider);
+    if who == "you" {
+        return None;
+    }
+
+    let inner = describe_effect_list(&may.effects);
+    let Some(rest) = inner.strip_prefix("Create ") else {
+        return None;
+    };
+
+    Some(format!("{who} may have you create {rest}"))
+}
+
 pub(super) fn describe_may_enlist(may: &crate::effects::MayEffect) -> Option<String> {
     fn unwrap_effect(effect: &Effect) -> &Effect {
         if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
@@ -9476,6 +9501,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     }
     if let Some(may) = effect.downcast_ref::<crate::effects::MayEffect>() {
         if let Some(compact) = describe_may_enlist(may) {
+            return compact;
+        }
+        if let Some(compact) = describe_may_have_you_create_tokens(may) {
             return compact;
         }
         if let Some(compact) = describe_may_search_then_put_onto_battlefield(may) {

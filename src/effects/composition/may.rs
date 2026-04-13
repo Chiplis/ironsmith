@@ -195,12 +195,57 @@ impl MayEffect {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::card::PowerToughness;
+    use crate::cards::tokens::lander_token_definition;
     use crate::effect::{Condition, ExecutionFact};
-    use crate::ids::PlayerId;
+    use crate::effect::{EffectId, EffectPredicate};
+    use crate::executor::{ExecutionContext, execute_effect};
+    use crate::ids::{CardId, PlayerId};
+    use crate::object::CounterType;
     use crate::target::{ChooseSpec, PlayerFilter};
+    use crate::types::CardType;
+    use crate::zone::Zone;
 
     fn setup_game() -> GameState {
         crate::tests::test_helpers::setup_two_player_game()
+    }
+
+    fn source_creature_definition() -> crate::cards::CardDefinition {
+        crate::cards::CardDefinitionBuilder::new(CardId::new(), "Terrapact Source")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build()
+    }
+
+    fn terrapact_style_effects(fallback: crate::decision::FallbackStrategy) -> Vec<Effect> {
+        vec![
+            Effect::with_id(
+                0,
+                Effect::new(
+                    MayEffect::new_for_player(
+                        vec![Effect::create_tokens(lander_token_definition(), 2)],
+                        PlayerFilter::target_opponent(),
+                    )
+                    .with_fallback(fallback),
+                ),
+            ),
+            Effect::if_then(
+                EffectId(0),
+                EffectPredicate::DidNotHappen,
+                vec![Effect::put_counters_on_source(CounterType::PlusOnePlusOne, 2)],
+            ),
+        ]
+    }
+
+    fn count_lander_tokens(game: &GameState, controller: PlayerId) -> usize {
+        game.battlefield
+            .iter()
+            .filter(|&&id| {
+                game.object(id).is_some_and(|obj| {
+                    obj.is_token && obj.name == "Lander" && obj.controller == controller
+                })
+            })
+            .count()
     }
 
     #[test]
@@ -320,5 +365,43 @@ mod tests {
             .expect("effect should execute");
 
         assert!(result.execution_facts().contains(&ExecutionFact::Accepted));
+    }
+
+    #[test]
+    fn terrapact_style_choice_creates_landers_when_accepted() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.create_object_from_definition(
+            &source_creature_definition(),
+            alice,
+            Zone::Battlefield,
+        );
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        for effect in terrapact_style_effects(crate::decision::FallbackStrategy::Accept) {
+            execute_effect(&mut game, &effect, &mut ctx).expect("effect should resolve");
+        }
+
+        assert_eq!(count_lander_tokens(&game, alice), 2);
+        assert_eq!(game.counter_count(source, CounterType::PlusOnePlusOne), 0);
+    }
+
+    #[test]
+    fn terrapact_style_choice_puts_counters_when_declined() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.create_object_from_definition(
+            &source_creature_definition(),
+            alice,
+            Zone::Battlefield,
+        );
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        for effect in terrapact_style_effects(crate::decision::FallbackStrategy::Decline) {
+            execute_effect(&mut game, &effect, &mut ctx).expect("effect should resolve");
+        }
+
+        assert_eq!(count_lander_tokens(&game, alice), 0);
+        assert_eq!(game.counter_count(source, CounterType::PlusOnePlusOne), 2);
     }
 }
