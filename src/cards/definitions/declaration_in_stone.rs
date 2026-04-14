@@ -86,17 +86,18 @@ mod tests {
         );
 
         let rendered = crate::compiled_text::oracle_like_lines(&declaration_in_stone()).join(" ");
-        assert!(
-            rendered
-                .contains("That player investigates for each nontoken creature exiled this way"),
-            "expected oracle-like investigate follow-up wording, got {rendered}"
+        assert_eq!(
+            rendered,
+            "Exile target creature and all other creatures its controller controls with the same name as that creature. That player investigates for each nontoken creature exiled this way.",
+            "expected oracle-like wording for Declaration in Stone"
         );
 
         let compiled = crate::compiled_text::compiled_lines(&declaration_in_stone()).join(" ");
         assert!(
-            compiled
-                .contains("that player investigates for each nontoken creature exiled this way"),
-            "expected compiled investigate follow-up wording without extra card noun, got {compiled}"
+            compiled.contains(
+                "Exile target creature and all other creatures its controller controls with the same name as that creature. That player investigates for each nontoken creature exiled this way"
+            ),
+            "expected compiled same-name exile merge and capitalized follow-up, got {compiled}"
         );
     }
 

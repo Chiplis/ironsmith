@@ -2441,14 +2441,8 @@ fn oracle_surface_match_key(text: &str) -> String {
     normalized = normalize_shared_duration_surface_for_match(&normalized);
     normalized = normalize_collective_subject_surface(&normalized);
     normalized = normalized
-        .replace(
-            " is put into a graveyard from the battlefield",
-            " dies",
-        )
-        .replace(
-            " are put into a graveyard from the battlefield",
-            " die",
-        )
+        .replace(" is put into a graveyard from the battlefield", " dies")
+        .replace(" are put into a graveyard from the battlefield", " die")
         .replace("that creature's controller", "that object's controller")
         .replace("that land's controller", "that object's controller")
         .replace("that permanent's controller", "that object's controller")
@@ -3091,6 +3085,17 @@ mod tests {
         assert_eq!(
             normalized,
             "Target creature and all other creatures with the same name as that creature get -3/-3 until end of turn"
+        );
+    }
+
+    #[test]
+    fn normalizes_same_name_exile_split_sentence_with_followup() {
+        let normalized = normalize_common_semantic_phrasing(
+            "Exile target creature. Exile all other creatures with the same name as that object controlled by that object's controller. that player investigates for each nontoken creature exiled this way.",
+        );
+        assert_eq!(
+            normalized,
+            "Exile target creature and all other creatures its controller controls with the same name as that creature. That player investigates for each nontoken creature exiled this way"
         );
     }
 

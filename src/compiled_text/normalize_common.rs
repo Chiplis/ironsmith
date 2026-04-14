@@ -3920,6 +3920,45 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             "Target creature and all other creatures with the same name as that creature get {first_buff} until end of turn"
         );
     }
+    if let Some((first, rest)) = split_once_ascii_ci(&normalized, ". ")
+        && let Some(target_desc) = strip_prefix_ascii_ci(first.trim(), "Exile target ")
+    {
+        let target_desc = target_desc.trim().trim_end_matches('.');
+        let other_desc = pluralize_noun_phrase(target_desc);
+        let expected_second = format!(
+            "Exile all other {other_desc} with the same name as that object controlled by that object's controller"
+        );
+        if let Some((second, tail)) = split_once_ascii_ci(rest, ". ")
+            && second.trim().eq_ignore_ascii_case(&expected_second)
+        {
+            let reference = if target_desc.eq_ignore_ascii_case("creature")
+                || target_desc.to_ascii_lowercase().ends_with(" creature")
+            {
+                "that creature"
+            } else {
+                "that object"
+            };
+            let merged = format!(
+                "Exile target {target_desc} and all other {other_desc} its controller controls with the same name as {reference}"
+            );
+            return format!(
+                "{merged}. {}",
+                capitalize_first(tail.trim().trim_end_matches('.'))
+            );
+        }
+        if rest.trim().eq_ignore_ascii_case(&expected_second) {
+            let reference = if target_desc.eq_ignore_ascii_case("creature")
+                || target_desc.to_ascii_lowercase().ends_with(" creature")
+            {
+                "that creature"
+            } else {
+                "that object"
+            };
+            return format!(
+                "Exile target {target_desc} and all other {other_desc} its controller controls with the same name as {reference}"
+            );
+        }
+    }
     if let Some(rest) =
         normalized.strip_prefix("Destroy target black or red attacking or blocking creature")
     {
