@@ -524,4 +524,115 @@ mod tests {
                 .is_some_and(|obj| obj.zone == Zone::Exile && obj.name == "Redirected Bounce Probe")
         );
     }
+
+    /// Selective Snare scenario: targeted return-to-hand of X creatures that
+    /// match a chosen creature type. Two of three creatures on the battlefield
+    /// share the chosen type; a third does not. With X=2, only the two matching
+    /// creatures should be targeted and returned.
+    #[test]
+    fn targeted_return_to_hand_with_x_count_and_creature_type_filter() {
+        use crate::effects::ChooseCreatureTypeEffect;
+        use crate::types::Subtype;
+
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = game.players[0].id;
+        let source = game.new_object_id();
+
+        // Create two Goblins and one Elf on the battlefield.
+        let goblin1 = {
+            let card = CardBuilder::new(CardId::from_raw(701), "Goblin Raider")
+                .card_types(vec![CardType::Creature])
+                .subtypes(vec![Subtype::Goblin])
+                .build();
+            game.create_object_from_card(&card, alice, Zone::Battlefield)
+        };
+        let goblin2 = {
+            let card = CardBuilder::new(CardId::from_raw(702), "Goblin Piker")
+                .card_types(vec![CardType::Creature])
+                .subtypes(vec![Subtype::Goblin])
+                .build();
+            game.create_object_from_card(&card, alice, Zone::Battlefield)
+        };
+        let elf = {
+            let card = CardBuilder::new(CardId::from_raw(703), "Llanowar Elves")
+                .card_types(vec![CardType::Creature])
+                .subtypes(vec![Subtype::Elf])
+                .build();
+            game.create_object_from_card(&card, alice, Zone::Battlefield)
+        };
+        assert_eq!(game.battlefield.len(), 3);
+
+        // Step 1: Choose creature type "Goblin".
+        struct ChooseGoblinDm;
+        impl DecisionMaker for ChooseGoblinDm {
+            fn decide_options(
+                &mut self,
+                _game: &GameState,
+                ctx: &crate::decisions::context::SelectOptionsContext,
+            ) -> Vec<usize> {
+                ctx.options
+                    .iter()
+                    .find(|opt| opt.description.eq_ignore_ascii_case("goblin"))
+                    .map(|opt| vec![opt.index])
+                    .unwrap_or_else(|| vec![0])
+            }
+        }
+        let mut dm = ChooseGoblinDm;
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+        ChooseCreatureTypeEffect::new(crate::target::PlayerFilter::You, vec![])
+            .execute(&mut game, &mut ctx)
+            .expect("choose creature type should succeed");
+        assert_eq!(
+            game.chosen_creature_type(source),
+            Some(Subtype::Goblin),
+            "creature type should be set to Goblin"
+        );
+
+        // Step 2: Return the two Goblins (X=2) with a targeted spec.
+        let filter = ObjectFilter::creature().of_chosen_creature_type();
+        let effect = ReturnToHandEffect::targets(
+            ChooseSpec::target(ChooseSpec::Object(filter)),
+            ChoiceCount::exactly(2),
+        );
+
+        // The decision maker selects the two goblins.
+        let mut dm = SelectIdsDecisionMaker {
+            chosen: vec![goblin1, goblin2],
+        };
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+        let outcome = effect
+            .execute(&mut game, &mut ctx)
+            .expect("targeted return should resolve");
+
+        // Both goblins should be returned to hand.
+        assert_eq!(
+            outcome.value,
+            crate::effect::OutcomeValue::Count(2),
+            "both targeted goblins should be returned"
+        );
+        assert!(
+            !game.battlefield.contains(&goblin1),
+            "goblin1 should no longer be on the battlefield"
+        );
+        assert!(
+            !game.battlefield.contains(&goblin2),
+            "goblin2 should no longer be on the battlefield"
+        );
+        // The elf should still be on the battlefield.
+        assert!(
+            game.battlefield.contains(&elf),
+            "elf should remain on the battlefield — it is not of the chosen type"
+        );
+        // Two cards should be in hand.
+        let hand_names: Vec<&str> = game.players[0]
+            .hand
+            .iter()
+            .filter_map(|&id| game.object(id).map(|obj| obj.name.as_str()))
+            .collect();
+        assert!(
+            hand_names.contains(&"Goblin Raider") && hand_names.contains(&"Goblin Piker"),
+            "both goblins should be in Alice's hand, got {:?}",
+            hand_names
+        );
+    }
 }

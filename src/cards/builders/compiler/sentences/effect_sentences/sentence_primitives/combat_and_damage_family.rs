@@ -292,6 +292,12 @@ pub(crate) fn parse_sentence_return_targets_of_creature_type_of_choice(
             (filter, false)
         };
 
+    // Check whether the target tokens (before the creature-type choice phrase)
+    // mention "target". If so, we need to parse a proper TargetAst (which
+    // captures targeting semantics and count such as X) rather than using a
+    // mass-return-all filter.
+    let has_target = grammar::contains_word(&target_tokens, "target");
+
     let mut effects = Vec::new();
     if needs_inline_choice_effect {
         effects.push(EffectAst::ChooseCreatureType {
@@ -299,7 +305,62 @@ pub(crate) fn parse_sentence_return_targets_of_creature_type_of_choice(
             excluded_subtypes: vec![],
         });
     }
-    effects.push(EffectAst::ReturnAllToHand { filter });
+
+    if has_target {
+        // Rebuild the base tokens (stripping the creature-type-of-choice phrase)
+        // so that parse_target_phrase can extract count + "target" + filter.
+        let base_target_tokens = {
+            if let Some((choice_idx, consumed)) = inline_creature_choice {
+                let mut tmp = target_tokens[..choice_idx].to_vec();
+                tmp.extend_from_slice(&target_tokens[choice_idx + consumed..]);
+                trim_commas(&tmp).to_vec()
+            } else {
+                let (choice_idx, consumed) = referenced_type_choice.unwrap();
+                let mut start_idx = choice_idx;
+                if choice_idx >= 2
+                    && target_tokens[choice_idx - 2].is_word("that")
+                    && (target_tokens[choice_idx - 1].is_word("arent")
+                        || target_tokens[choice_idx - 1].is_word("aren't")
+                        || target_tokens[choice_idx - 1].is_word("are"))
+                {
+                    start_idx = choice_idx - 2;
+                } else if choice_idx >= 3
+                    && target_tokens[choice_idx - 3].is_word("that")
+                    && target_tokens[choice_idx - 2].is_word("are")
+                    && target_tokens[choice_idx - 1].is_word("not")
+                {
+                    start_idx = choice_idx - 3;
+                }
+                let mut tmp = target_tokens[..start_idx].to_vec();
+                tmp.extend_from_slice(&target_tokens[choice_idx + consumed..]);
+                trim_commas(&tmp).to_vec()
+            }
+        };
+        let mut target = parse_target_phrase(&base_target_tokens)?;
+        // Recursively patch `chosen_creature_type` / `excluded_chosen_creature_type`
+        // on the ObjectFilter buried inside the TargetAst (may be wrapped in WithCount).
+        fn patch_chosen_type(t: &mut TargetAst, chosen: bool, excluded: bool) {
+            match t {
+                TargetAst::Object(ref mut f, _, _) => {
+                    f.chosen_creature_type |= chosen;
+                    f.excluded_chosen_creature_type |= excluded;
+                }
+                TargetAst::WithCount(inner, _) => patch_chosen_type(inner, chosen, excluded),
+                _ => {}
+            }
+        }
+        patch_chosen_type(
+            &mut target,
+            filter.chosen_creature_type,
+            filter.excluded_chosen_creature_type,
+        );
+        effects.push(EffectAst::ReturnToHand {
+            target,
+            random: false,
+        });
+    } else {
+        effects.push(EffectAst::ReturnAllToHand { filter });
+    }
 
     Ok(Some(effects))
 }

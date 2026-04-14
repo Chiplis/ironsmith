@@ -63,6 +63,38 @@ fn normalize_triggered_kicked_mass_bounce_surface(text: &str) -> Option<String> 
     ))
 }
 
+/// Merge "You choose a creature type. {verb} ... of the chosen type ..." into
+/// the single-sentence oracle form "{Verb} ... of the creature type of your choice ...".
+///
+/// This is a reusable surface normalisation that collapses the two-sentence
+/// rendering (ChooseCreatureType effect followed by an effect referencing
+/// "of the chosen type") into one sentence that mirrors the oracle phrasing.
+fn normalize_choose_creature_type_then_chosen_type_clause(text: &str) -> Option<String> {
+    // Look for the "You choose a creature type." prefix (case-insensitive).
+    let choose_prefixes: [&str; 2] = [
+        "You choose a creature type. ",
+        "you choose a creature type. ",
+    ];
+    let rest = choose_prefixes
+        .iter()
+        .find_map(|prefix| strip_prefix_ascii_ci(text, prefix))?;
+
+    // The remainder must mention "of the chosen type" so we can substitute.
+    let (before_chosen, after_chosen) = split_once_ascii_ci(rest, " of the chosen type")?;
+
+    // Rebuild with the inline oracle phrasing.
+    let mut merged = format!(
+        "{} of the creature type of your choice{}",
+        capitalize_first(before_chosen.trim()),
+        after_chosen
+    );
+    // Ensure trailing period.
+    if !merged.ends_with('.') {
+        merged.push('.');
+    }
+    Some(merged)
+}
+
 fn normalize_keyword_bundle_pump_surface(oracle_lower: &str, text: &str) -> Option<String> {
     if !oracle_lower.contains("gets +1/+1 if it has flying")
         || !oracle_lower.contains("and so on for double strike")
@@ -819,7 +851,38 @@ fn normalize_target_opponent_divvy_library_clause(text: &str) -> Option<String> 
 
 #[cfg(test)]
 mod tests {
+    use super::normalize_choose_creature_type_then_chosen_type_clause;
     use super::normalize_target_opponent_divvy_library_clause;
+
+    #[test]
+    fn normalize_choose_creature_type_then_return_x_target_of_chosen_type() {
+        let input = "You choose a creature type. Return X target creatures of the chosen type to their owners' hands.";
+        let result = normalize_choose_creature_type_then_chosen_type_clause(input);
+        assert_eq!(
+            result,
+            Some(
+                "Return X target creatures of the creature type of your choice to their owners' hands."
+                    .to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn normalize_choose_creature_type_then_destroy_all_of_chosen_type() {
+        let input = "You choose a creature type. Destroy all creatures of the chosen type.";
+        let result = normalize_choose_creature_type_then_chosen_type_clause(input);
+        assert_eq!(
+            result,
+            Some("Destroy all creatures of the creature type of your choice.".to_string())
+        );
+    }
+
+    #[test]
+    fn normalize_choose_creature_type_no_match_without_chosen_type_reference() {
+        let input = "You choose a creature type. Draw a card.";
+        let result = normalize_choose_creature_type_then_chosen_type_clause(input);
+        assert_eq!(result, None);
+    }
 
     #[test]
     fn normalize_target_opponent_divvy_library_clause_rewrites_current_bundle() {
@@ -2544,6 +2607,9 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
         return format!("{} and can't be blocked this turn.", prefix.trim_end());
     }
     normalized = normalize_conditional_target_player_pronouns(&normalized);
+    if let Some(rewritten) = normalize_choose_creature_type_then_chosen_type_clause(&normalized) {
+        normalized = rewritten;
+    }
     if let Some(rewritten) = normalize_sentence_helper_random_hand_reveal_damage_clause(&normalized)
     {
         normalized = rewritten;

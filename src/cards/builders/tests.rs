@@ -25778,3 +25778,62 @@ fn render_stunted_growth_keeps_random_hand_reveal_and_top_of_library_link() {
         "expected the Stunted Growth compile surface to stay oracle-like, got {rendered}"
     );
 }
+
+#[test]
+fn parse_return_x_target_creatures_of_creature_type_of_choice_targets_not_all() {
+    // Selective Snare pattern: "Return X target creatures of the creature type
+    // of your choice to their owner's hand."
+    // The parser must produce a targeted ReturnToHand with an X-count spec,
+    // not a mass ReturnAllToHand.
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Selective Snare")
+        .mana_cost("{X}{U}")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Return X target creatures of the creature type of your choice to their owner's hand.",
+        )
+        .expect("Selective Snare text should parse");
+
+    let spell_debug = format!("{:#?}", def.spell_effect).to_ascii_lowercase();
+
+    // Must have a ChooseCreatureType effect up front.
+    assert!(
+        spell_debug.contains("choosecreaturetypeeffect"),
+        "expected a ChooseCreatureTypeEffect for creature-type selection, got {spell_debug}"
+    );
+
+    // Must use targeted return-to-hand, not a mass return-all.
+    assert!(
+        spell_debug.contains("returntohandeffect"),
+        "expected ReturnToHandEffect (targeted), got {spell_debug}"
+    );
+
+    // Must be a target spec, not an All spec.
+    assert!(
+        spell_debug.contains("target("),
+        "expected Target(...) spec for targeting X creatures, got {spell_debug}"
+    );
+    assert!(
+        !spell_debug.contains("all("),
+        "must NOT use All(...) spec — the card targets X creatures, not all, got {spell_debug}"
+    );
+
+    // Must constrain targets to the chosen creature type.
+    assert!(
+        spell_debug.contains("chosen_creature_type: true"),
+        "expected chosen_creature_type constraint on the target filter, got {spell_debug}"
+    );
+
+    // The count must be dynamic X (from the mana cost).
+    assert!(
+        spell_debug.contains("dynamic_x: true"),
+        "expected dynamic X target count, got {spell_debug}"
+    );
+
+    // Verify the compiled text surface mentions the right oracle phrasing.
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("creature type")
+            && (rendered.contains("x target") || rendered.contains("of your choice")),
+        "expected rendered text to mention X targeting and creature type, got {rendered}"
+    );
+}
