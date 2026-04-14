@@ -20101,9 +20101,9 @@ fn parse_choose_creature_type_then_each_creature_becomes_that_type() {
 
     let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        rendered.contains("each creature becomes the creature type of your choice")
-            && rendered.contains("other than wall"),
-        "expected all-creatures creature-type choice text, got {rendered}"
+        rendered
+            == "spell effects: choose a creature type other than wall. each creature becomes that type until end of turn.",
+        "expected oracle-shaped creature-type choice text, got {rendered}"
     );
 }
 

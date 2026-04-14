@@ -2566,12 +2566,8 @@ mod tests {
         let rendered = describe_effect(&effect);
         let lower = rendered.to_ascii_lowercase();
         assert!(
-            lower.starts_with("each creature becomes the creature type of your choice"),
+            lower == "choose a creature type other than wall. each creature becomes that type until end of turn",
             "expected plural creature-type choice wording, got {rendered}"
-        );
-        assert!(
-            lower.contains("other than wall"),
-            "expected wall exclusion to stay in the rendered text, got {rendered}"
         );
     }
 }
@@ -11151,28 +11147,25 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(become_type) =
         effect.downcast_ref::<crate::effects::BecomeCreatureTypeChoiceEffect>()
     {
-        let target = describe_each_object_subject(&become_type.target)
+        let choice_text = if become_type.excluded_subtypes.is_empty() {
+            "Choose a creature type".to_string()
+        } else {
+            let excluded = become_type
+                .excluded_subtypes
+                .iter()
+                .map(|subtype| subtype.to_string().to_ascii_lowercase())
+                .collect::<Vec<_>>();
+            format!(
+                "Choose a creature type other than {}",
+                join_with_or(&excluded)
+            )
+        };
+        let subject_text = describe_each_object_subject(&become_type.target)
             .unwrap_or_else(|| describe_choose_spec(&become_type.target));
         if become_type.excluded_subtypes.is_empty() {
-            return format!(
-                "{} becomes the creature type of {} choice {}",
-                target,
-                describe_possessive_player_filter(&become_type.chooser),
-                describe_until(&become_type.until)
-            );
+            return format!("{choice_text}. {subject_text} becomes that type {}", describe_until(&become_type.until));
         }
-        let excluded = become_type
-            .excluded_subtypes
-            .iter()
-            .map(|subtype| subtype.to_string().to_ascii_lowercase())
-            .collect::<Vec<_>>();
-        return format!(
-            "{} becomes the creature type of {} choice (other than {}) {}",
-            target,
-            describe_possessive_player_filter(&become_type.chooser),
-            join_with_or(&excluded),
-            describe_until(&become_type.until)
-        );
+        return format!("{choice_text}. {subject_text} becomes that type {}", describe_until(&become_type.until));
     }
     if effect
         .downcast_ref::<crate::effects::BecomeSaddledUntilEotEffect>()
