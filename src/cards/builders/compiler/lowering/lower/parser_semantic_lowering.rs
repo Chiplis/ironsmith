@@ -513,6 +513,26 @@ pub(crate) fn lower_special_rewrite_triggered_chunk(
     Ok(None)
 }
 
+/// Recognizes "you may pay {COST} rather than pay the equip cost of the first
+/// equip ability you activate each turn." and the variant "during each of your turns."
+fn is_first_equip_cost_alternative_lowering_line(text: &str) -> bool {
+    let s = text.trim_end_matches('.');
+    s.starts_with("you may pay ")
+        && s.contains(" rather than pay the equip cost of the first equip ability you activate")
+        && (s.ends_with("each turn") || s.ends_with("during each of your turns"))
+}
+
+/// Build the display text for the first-equip-cost alternative static ability.
+/// Capitalises the leading "you" and strips the trailing period.
+fn capitalize_first_equip_cost_alternative_display(normalized: &str) -> String {
+    let s = normalized.trim_end_matches('.');
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
+        None => String::new(),
+    }
+}
+
 pub(crate) fn lower_rewrite_static_to_chunk(
     info: LineInfo,
     text: &str,
@@ -571,6 +591,15 @@ fn lower_rewrite_static_to_chunk_impl(
     {
         return wrap_chosen_option_static_chunk(
             LineAst::StaticAbility(StaticAbility::boast_twice_each_turn().into()),
+            chosen_option_label,
+        );
+    }
+    if is_first_equip_cost_alternative_lowering_line(&line.text) {
+        let display = capitalize_first_equip_cost_alternative_display(&line.text);
+        return wrap_chosen_option_static_chunk(
+            LineAst::StaticAbility(
+                StaticAbility::first_equip_cost_alternative(display).into(),
+            ),
             chosen_option_label,
         );
     }

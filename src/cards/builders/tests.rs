@@ -25945,6 +25945,56 @@ fn bruenor_battlehammer_anthem_parses_attached_to_affected_not_source() {
 }
 
 #[test]
+fn bruenor_battlehammer_equip_cost_alternative_parses_as_static() {
+    // Verify that "You may pay {0} rather than pay the equip cost of the first
+    // equip ability you activate each turn." parses as a static ability, not a
+    // spell effect that drops the "rather than pay ..." clause.
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Bruenor Battlehammer")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Dwarf, Subtype::Warrior])
+        .power_toughness(PowerToughness::fixed(5, 3))
+        .parse_text(
+            "You may pay {0} rather than pay the equip cost of the first equip ability you activate each turn.",
+        )
+        .expect("Bruenor equip cost alternative text should parse");
+
+    let abilities_debug = format!("{:?}", def.abilities);
+    assert!(
+        abilities_debug.contains("FirstEquipCostAlternative"),
+        "expected FirstEquipCostAlternative static ability, got {abilities_debug}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("rather than pay the equip cost"),
+        "expected compiled text to preserve 'rather than pay the equip cost', got {rendered}"
+    );
+}
+
+#[test]
+fn first_equip_cost_alternative_parses_for_during_each_of_your_turns_variant() {
+    // Forge Anew variant: "during each of your turns" instead of "each turn"
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Forge Anew")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "You may pay {0} rather than pay the equip cost of the first equip ability you activate during each of your turns.",
+        )
+        .expect("Forge Anew equip cost alternative text should parse");
+
+    let abilities_debug = format!("{:?}", def.abilities);
+    assert!(
+        abilities_debug.contains("FirstEquipCostAlternative"),
+        "expected FirstEquipCostAlternative static ability for Forge Anew variant, got {abilities_debug}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("during each of your turns"),
+        "expected compiled text to preserve 'during each of your turns', got {rendered}"
+    );
+}
+
+#[test]
 fn chandras_outburst_compiled_text_conditional_shuffle() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Chandra's Outburst")
         .card_types(vec![CardType::Sorcery])

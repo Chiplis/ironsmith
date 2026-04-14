@@ -161,6 +161,7 @@ pub enum StaticAbilityId {
     ChooseLandTypeAsEnters,
     ChooseNamedOptionAsEnters,
     BoastTwiceEachTurn,
+    FirstEquipCostAlternative,
     VoteAdditionalTimeWhileVoting,
     VoteAdditionalVoteWhileVoting,
     EnchantedLandIsChosenType,
@@ -396,6 +397,7 @@ impl StaticAbilityId {
             | ChooseLandTypeAsEnters
             | ChooseNamedOptionAsEnters
             | BoastTwiceEachTurn
+            | FirstEquipCostAlternative
             | VoteAdditionalTimeWhileVoting
             | VoteAdditionalVoteWhileVoting
             | EnchantedLandIsChosenType

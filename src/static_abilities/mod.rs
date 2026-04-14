@@ -1788,6 +1788,10 @@ impl StaticAbility {
         Self::new(BoastTwiceEachTurn)
     }
 
+    pub fn first_equip_cost_alternative(display_text: impl Into<String>) -> Self {
+        Self::new(FirstEquipCostAlternative::new(display_text))
+    }
+
     pub fn vote_additional_time_while_voting() -> Self {
         Self::new(VoteAdditionalTimeWhileVoting)
     }

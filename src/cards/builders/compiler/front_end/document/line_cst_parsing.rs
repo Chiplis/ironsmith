@@ -206,7 +206,8 @@ pub(super) fn parse_static_line_cst(
             | "creatures you control can boast twice during each of your turns rather than once."
             | "while voting, you may vote an additional time."
             | "while voting, you get an additional vote."
-    ) {
+    ) || is_first_equip_cost_alternative_line(normalized)
+    {
         return Ok(Some(make_static(None)));
     }
 
@@ -263,6 +264,15 @@ pub(super) fn parse_static_line_cst(
     }
 
     Ok(None)
+}
+
+/// Recognizes "you may pay {COST} rather than pay the equip cost of the first
+/// equip ability you activate each turn." and the variant "during each of your turns."
+fn is_first_equip_cost_alternative_line(normalized: &str) -> bool {
+    let s = normalized.trim_end_matches('.');
+    s.starts_with("you may pay ")
+        && s.contains(" rather than pay the equip cost of the first equip ability you activate")
+        && (s.ends_with("each turn") || s.ends_with("during each of your turns"))
 }
 
 fn parse_split_static_item_count(tokens: &[OwnedLexToken]) -> Result<Option<usize>, CardTextError> {

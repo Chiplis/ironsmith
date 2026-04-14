@@ -223,6 +223,31 @@ impl StaticAbilityKind for BoastTwiceEachTurn {
     }
 }
 
+/// "You may pay {0} rather than pay the equip cost of the first equip ability
+/// you activate each turn." (Bruenor Battlehammer, Forge Anew, etc.)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FirstEquipCostAlternative {
+    pub display_text: String,
+}
+
+impl FirstEquipCostAlternative {
+    pub fn new(display_text: impl Into<String>) -> Self {
+        Self {
+            display_text: display_text.into(),
+        }
+    }
+}
+
+impl StaticAbilityKind for FirstEquipCostAlternative {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::FirstEquipCostAlternative
+    }
+
+    fn display(&self) -> String {
+        self.display_text.clone()
+    }
+}
+
 /// "While voting, you may vote an additional time."
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct VoteAdditionalTimeWhileVoting;
