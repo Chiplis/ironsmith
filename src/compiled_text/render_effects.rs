@@ -6159,13 +6159,22 @@ pub(super) fn describe_search_origin_zones(
 
     let owner = choose.filter.owner.as_ref().unwrap_or(&choose.chooser);
     let owner_text = describe_possessive_player_filter(owner);
+    let has_zone = |z: Zone| zones.contains(&z);
     let zone_text = match zones.as_slice() {
         [Zone::Library] => format!("{owner_text} library"),
-        [Zone::Graveyard, Zone::Hand, Zone::Library] => {
+        _ if zones.len() == 3
+            && has_zone(Zone::Graveyard)
+            && has_zone(Zone::Hand)
+            && has_zone(Zone::Library) =>
+        {
             format!("{owner_text} graveyard, hand, and library")
         }
-        [Zone::Hand, Zone::Library] => format!("{owner_text} hand and library"),
-        [Zone::Graveyard, Zone::Library] => format!("{owner_text} library and/or graveyard"),
+        _ if zones.len() == 2 && has_zone(Zone::Hand) && has_zone(Zone::Library) => {
+            format!("{owner_text} hand and library")
+        }
+        _ if zones.len() == 2 && has_zone(Zone::Graveyard) && has_zone(Zone::Library) => {
+            format!("{owner_text} library and/or graveyard")
+        }
         [Zone::Graveyard] => format!("{owner_text} graveyard"),
         [Zone::Hand] => format!("{owner_text} hand"),
         other => {
@@ -6294,6 +6303,13 @@ pub(super) fn describe_search_choose_for_each(
     // object description makes oracle-like text noisier without adding information.
     if searched_library && implied_filter.zone == Some(Zone::Library) {
         implied_filter.zone = None;
+    }
+    // When the filter zone is None (e.g. multi-zone searches that span library +
+    // graveyard), the default description noun falls back to "permanent" which is
+    // incorrect for a search context.  Setting the zone to Library ensures
+    // ObjectFilter::description() produces "card" as the base noun instead.
+    if implied_filter.zone.is_none() && searched_library {
+        implied_filter.zone = Some(Zone::Library);
     }
     let implied_filter_text = if implied_filter == ObjectFilter::default() {
         "card".to_string()
@@ -6543,6 +6559,11 @@ fn describe_search_choose_then_move(
     if searched_library && display_filter.zone == Some(Zone::Library) {
         display_filter.zone = None;
     }
+    // For multi-zone searches the filter zone is None, causing the description
+    // to default to "permanent".  Set it to Library so the noun is "card".
+    if display_filter.zone.is_none() && searched_library {
+        display_filter.zone = Some(Zone::Library);
+    }
     let raw_filter_text = if display_filter == ObjectFilter::default() {
         "card".to_string()
     } else {
@@ -6637,6 +6658,11 @@ fn describe_search_choose_then_exile(
     if searched_library && display_filter.zone == Some(Zone::Library) {
         display_filter.zone = None;
     }
+    // For multi-zone searches the filter zone is None, causing the description
+    // to default to "permanent".  Set it to Library so the noun is "card".
+    if display_filter.zone.is_none() && searched_library {
+        display_filter.zone = Some(Zone::Library);
+    }
     let raw_filter_text = if display_filter == ObjectFilter::default() {
         "card".to_string()
     } else {
@@ -6705,6 +6731,11 @@ fn describe_search_choose_then_return_to_hand(
     display_filter.owner = None;
     if searched_library && display_filter.zone == Some(Zone::Library) {
         display_filter.zone = None;
+    }
+    // For multi-zone searches the filter zone is None, causing the description
+    // to default to "permanent".  Set it to Library so the noun is "card".
+    if display_filter.zone.is_none() && searched_library {
+        display_filter.zone = Some(Zone::Library);
     }
     let filter_desc = if display_filter == ObjectFilter::default() {
         "card".to_string()

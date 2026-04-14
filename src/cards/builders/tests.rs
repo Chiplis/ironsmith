@@ -25837,3 +25837,145 @@ fn parse_return_x_target_creatures_of_creature_type_of_choice_targets_not_all() 
         "expected rendered text to mention X targeting and creature type, got {rendered}"
     );
 }
+
+// ── Chandra's Outburst tests ──────────────────────────────────────────
+
+#[test]
+fn chandras_outburst_compiled_text_uses_card_not_permanent() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Chandra's Outburst")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Chandra's Outburst deals 4 damage to target player or planeswalker.\nSearch your library and/or graveyard for a card named Chandra, Bold Pyromancer, reveal it, and put it into your hand. If you search your library this way, shuffle.",
+        )
+        .expect("Chandra's Outburst should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    // The compiled text must say "card" (not "permanent") for the search target.
+    assert!(
+        rendered.contains("card named"),
+        "multi-zone search filter should produce 'card' not 'permanent', got {rendered}"
+    );
+    assert!(
+        !rendered.contains("permanent named"),
+        "multi-zone search filter must not say 'permanent named', got {rendered}"
+    );
+}
+
+#[test]
+fn chandras_outburst_compiled_text_conditional_shuffle() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Chandra's Outburst")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Chandra's Outburst deals 4 damage to target player or planeswalker.\nSearch your library and/or graveyard for a card named Chandra, Bold Pyromancer, reveal it, and put it into your hand. If you search your library this way, shuffle.",
+        )
+        .expect("Chandra's Outburst should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    // The shuffle must be conditional ("if you search your library this way, shuffle"),
+    // not unconditional.
+    assert!(
+        rendered.contains("if you search your library this way, shuffle"),
+        "multi-zone search should produce a conditional shuffle clause, got {rendered}"
+    );
+    // Must not contain "shuffle target player's library" or similar unconditional form.
+    assert!(
+        !rendered.contains("shuffle target"),
+        "shuffle should not reference 'target player', got {rendered}"
+    );
+}
+
+#[test]
+fn chandras_outburst_compiled_text_no_internal_tags() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Chandra's Outburst")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Chandra's Outburst deals 4 damage to target player or planeswalker.\nSearch your library and/or graveyard for a card named Chandra, Bold Pyromancer, reveal it, and put it into your hand. If you search your library this way, shuffle.",
+        )
+        .expect("Chandra's Outburst should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    // Internal tag names like "searched_multi_zone" must not leak into the compiled text.
+    assert!(
+        !rendered.contains("searched_multi_zone"),
+        "internal tag name should not appear in compiled text, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("for each tagged"),
+        "generic 'for each tagged' rendering should not appear, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("tags it"),
+        "internal tagging description should not appear, got {rendered}"
+    );
+}
+
+#[test]
+fn chandras_outburst_compiled_text_has_4_damage() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Chandra's Outburst")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Chandra's Outburst deals 4 damage to target player or planeswalker.\nSearch your library and/or graveyard for a card named Chandra, Bold Pyromancer, reveal it, and put it into your hand. If you search your library this way, shuffle.",
+        )
+        .expect("Chandra's Outburst should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    // The damage clause must reference 4 damage to a target player or planeswalker.
+    assert!(
+        rendered.contains("4 damage") && rendered.contains("target player or planeswalker"),
+        "expected 4-damage-to-target clause, got {rendered}"
+    );
+}
+
+#[test]
+fn chandras_outburst_compiled_text_reveal_and_hand() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Chandra's Outburst")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Chandra's Outburst deals 4 damage to target player or planeswalker.\nSearch your library and/or graveyard for a card named Chandra, Bold Pyromancer, reveal it, and put it into your hand. If you search your library this way, shuffle.",
+        )
+        .expect("Chandra's Outburst should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    // The compiled text must mention revealing and putting into hand.
+    assert!(
+        rendered.contains("reveal it"),
+        "expected 'reveal it' clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("your hand"),
+        "expected 'your hand' destination clause, got {rendered}"
+    );
+}
+
+/// Generic multi-zone search: any "search your library and/or graveyard for a <type>
+/// card named ..." must produce "card named" (not "permanent named") in the compiled
+/// text, regardless of the specific card name.
+#[test]
+fn multi_zone_search_named_card_uses_card_noun() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Multi Zone Test")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Search your library and/or graveyard for a card named Example Card, reveal it, and put it into your hand. If you search your library this way, shuffle.",
+        )
+        .expect("multi-zone named search should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("card named"),
+        "multi-zone named-card search should say 'card named', got {rendered}"
+    );
+    assert!(
+        !rendered.contains("permanent named"),
+        "multi-zone named-card search must not say 'permanent named', got {rendered}"
+    );
+    assert!(
+        rendered.contains("if you search your library this way, shuffle"),
+        "multi-zone search should produce conditional shuffle, got {rendered}"
+    );
+}

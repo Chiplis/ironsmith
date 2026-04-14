@@ -1113,11 +1113,9 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
         let search_zones = search_zones_override.unwrap_or_else(|| vec![Zone::Library]);
         let battlefield_tapped =
             destination == Zone::Battlefield && effect_routing.has_tapped_modifier;
-        let shuffle_player = if search_zones == vec![Zone::Library] {
-            player
-        } else {
-            PlayerAst::That
-        };
+        // Always use the search subject `player` so the shuffle references
+        // the searcher, not the last-referenced player from a preceding effect.
+        let shuffle_player = player;
 
         let mut per_object_effects = vec![EffectAst::ChooseObjectsAcrossZones {
             filter,
@@ -1241,7 +1239,10 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
         let chosen_tag: TagKey = "searched_multi_zone".into();
         let battlefield_tapped =
             destination == Zone::Battlefield && effect_routing.has_tapped_modifier;
-        let shuffle_player = PlayerAst::That;
+        // Use the search subject `player` (e.g. Implicit/You) rather than
+        // PlayerAst::That, which would resolve to the last referenced player
+        // in a preceding effect (e.g. "target player" from a damage clause).
+        let shuffle_player = player;
         let mut sequence = vec![EffectAst::ChooseObjectsAcrossZones {
             filter,
             count,
