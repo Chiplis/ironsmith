@@ -2516,6 +2516,24 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
     if let Some(rewritten) = normalize_counter_artifact_source_destroy_surface(&normalized) {
         normalized = rewritten;
     }
+    // Collapse the self-referential shroud + unblockable wording into one oracle-style clause.
+    if let Some(prefix) = strip_suffix_ascii_ci(
+        &normalized,
+        ". Choose it. target permanent can't be blocked this turn.",
+    )
+    .or_else(|| {
+        strip_suffix_ascii_ci(
+            &normalized,
+            ". Choose it. target permanent can't be blocked until end of turn.",
+        )
+    }) {
+        if prefix
+            .to_ascii_lowercase()
+            .contains("gains shroud until end of turn")
+        {
+            return format!("{} and can't be blocked this turn.", prefix.trim_end());
+        }
+    }
     normalized = normalize_conditional_target_player_pronouns(&normalized);
     if let Some(rewritten) = normalize_sentence_helper_random_hand_reveal_damage_clause(&normalized)
     {
