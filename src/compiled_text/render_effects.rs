@@ -6,6 +6,15 @@ pub fn compile_effect_list(effects: &[Effect]) -> String {
     describe_effect_list(effects)
 }
 
+fn describe_each_object_subject(target: &ChooseSpec) -> Option<String> {
+    match target {
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
+            Some(format!("Each {}", filter.description()))
+        }
+        _ => None,
+    }
+}
+
 fn prevention_put_counters_follow_up(
     follow_up_effects: &[Effect],
 ) -> Option<&crate::effects::PutCountersEffect> {
@@ -2543,6 +2552,26 @@ mod tests {
         assert_eq!(
             compact,
             "target player chooses three cards from their hand, then puts them on top of their library"
+        );
+    }
+
+    #[test]
+    fn describe_become_creature_type_choice_uses_each_for_all_creatures() {
+        let effect = Effect::new(crate::effects::BecomeCreatureTypeChoiceEffect::new(
+            ChooseSpec::Object(ObjectFilter::creature()),
+            Until::EndOfTurn,
+            vec![Subtype::Wall],
+        ));
+
+        let rendered = describe_effect(&effect);
+        let lower = rendered.to_ascii_lowercase();
+        assert!(
+            lower.starts_with("each creature becomes the creature type of your choice"),
+            "expected plural creature-type choice wording, got {rendered}"
+        );
+        assert!(
+            lower.contains("other than wall"),
+            "expected wall exclusion to stay in the rendered text, got {rendered}"
         );
     }
 }
@@ -11122,10 +11151,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(become_type) =
         effect.downcast_ref::<crate::effects::BecomeCreatureTypeChoiceEffect>()
     {
+        let target = describe_each_object_subject(&become_type.target)
+            .unwrap_or_else(|| describe_choose_spec(&become_type.target));
         if become_type.excluded_subtypes.is_empty() {
             return format!(
                 "{} becomes the creature type of {} choice {}",
-                describe_choose_spec(&become_type.target),
+                target,
                 describe_possessive_player_filter(&become_type.chooser),
                 describe_until(&become_type.until)
             );
@@ -11137,7 +11168,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             .collect::<Vec<_>>();
         return format!(
             "{} becomes the creature type of {} choice (other than {}) {}",
-            describe_choose_spec(&become_type.target),
+            target,
             describe_possessive_player_filter(&become_type.chooser),
             join_with_or(&excluded),
             describe_until(&become_type.until)
