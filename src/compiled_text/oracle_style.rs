@@ -6152,6 +6152,17 @@ mod tests {
     }
 
     #[test]
+    fn post_pass_normalizes_reveal_until_put_hand_graveyard_rest_clause() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "{G}, {T}: you reveal cards from the top of your library until you reveal a basic land card, put that card into your hand, and put all other cards revealed this way into your graveyard.",
+        );
+        assert_eq!(
+            normalized,
+            "{G}, {T}: Reveal cards from the top of your library until you reveal a basic land card. Put that card into your hand and all other cards revealed this way into your graveyard."
+        );
+    }
+
+    #[test]
     fn post_pass_normalizes_search_reveal_battlefield_or_hand_clause() {
         let normalized = normalize_compiled_post_pass_effect(
             "When this creature enters, you searches for up to one basic Plains in a library and tags it as 'searched'. Reveal it. If an opponent controls more lands than you, Put the tagged object 'searched' onto the battlefield tapped. If that doesn't happen, Return the tagged object 'searched' to its owner's hand. Shuffle your library.",

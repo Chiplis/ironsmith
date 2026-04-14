@@ -418,6 +418,14 @@ const REGISTERED_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         predicate: first_word_target_exile_look_or_reveal,
         parser: pairs::parse_consult_match_into_hand_exile_others,
     },
+    SequenceRuleDef {
+        name: "consult-match-into-hand-others-graveyard",
+        feature_tag: Some("consult-hand-graveyard-others"),
+        priority: 227,
+        consumed_sentences: 2,
+        predicate: first_word_target_exile_look_or_reveal,
+        parser: pairs::parse_consult_match_into_hand_others_graveyard,
+    },
 ];
 
 pub(crate) fn try_parse_registered_sequence_rule(

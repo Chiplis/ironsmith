@@ -669,3 +669,80 @@ pub(super) fn parse_consult_match_into_hand_exile_others(
     });
     Ok(Some(effects))
 }
+
+/// Parses the two-sentence pattern:
+///   S1: "Reveal cards from the top of your library until you reveal a <filter> card."
+///   S2: "Put that card into your hand and all other cards revealed this way into your graveyard."
+///
+/// This covers cards like Hermit Druid and similar "reveal until, match to hand, rest to graveyard"
+/// patterns.
+pub(super) fn parse_consult_match_into_hand_others_graveyard(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first = sentences[sentence_idx].lowered();
+    let second = sentences[sentence_idx + 1].lowered();
+    let Some(parts) = parse_consult_traversal_sentence(first)? else {
+        return Ok(None);
+    };
+    if !matches!(
+        parts.effects.last(),
+        Some(EffectAst::ConsultTopOfLibrary {
+            mode: crate::cards::builders::LibraryConsultModeAst::Reveal,
+            ..
+        })
+    ) {
+        return Ok(None);
+    }
+
+    let second_tokens = trim_commas(second);
+    let moves_to_hand = crate::cards::builders::compiler::grammar::primitives::words_match_prefix(
+        &second_tokens,
+        &["put", "that", "card", "into", "your", "hand"],
+    )
+    .is_some()
+        || crate::cards::builders::compiler::grammar::primitives::words_match_prefix(
+            &second_tokens,
+            &["put", "it", "into", "your", "hand"],
+        )
+        .is_some();
+    let second_words = crate::cards::builders::compiler::token_word_refs(&second_tokens);
+    let others_to_graveyard = (contains_word_sequence(&second_words, &["other", "cards"])
+        || contains_word_sequence(&second_words, &["all", "other"]))
+        && slice_contains(&second_words, &"graveyard");
+    if !moves_to_hand || !others_to_graveyard {
+        return Ok(None);
+    }
+
+    let mut effects = parts.effects;
+    effects.push(EffectAst::MoveToZone {
+        target: TargetAst::Tagged(parts.match_tag.clone(), None),
+        zone: Zone::Hand,
+        to_top: false,
+        battlefield_controller: crate::cards::builders::ReturnControllerAst::Preserve,
+        battlefield_tapped: false,
+        attached_to: None,
+    });
+    effects.push(EffectAst::ForEachTagged {
+        tag: parts.all_tag,
+        effects: vec![EffectAst::Conditional {
+            predicate: PredicateAst::TaggedMatches(
+                crate::cards::builders::TagKey::from(crate::cards::builders::IT_TAG),
+                ObjectFilter::tagged(parts.match_tag),
+            ),
+            if_true: Vec::new(),
+            if_false: vec![EffectAst::MoveToZone {
+                target: TargetAst::Tagged(
+                    crate::cards::builders::TagKey::from(crate::cards::builders::IT_TAG),
+                    None,
+                ),
+                zone: Zone::Graveyard,
+                to_top: false,
+                battlefield_controller: crate::cards::builders::ReturnControllerAst::Preserve,
+                battlefield_tapped: false,
+                attached_to: None,
+            }],
+        }],
+    });
+    Ok(Some(effects))
+}

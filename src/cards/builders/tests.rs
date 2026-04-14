@@ -25859,6 +25859,45 @@ fn chandras_outburst_compiled_text_uses_card_not_permanent() {
     assert!(
         !rendered.contains("permanent named"),
         "multi-zone search filter must not say 'permanent named', got {rendered}"
+// ---------------------------------------------------------------------------
+// Hermit Druid tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn parse_hermit_druid_uses_consult_basic_land_lowering() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Hermit Druid")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Druid])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .parse_text(
+            "{G}, {T}: Reveal cards from the top of your library until you reveal a basic land card. Put that card into your hand and all other cards revealed this way into your graveyard.",
+        )
+        .expect("Hermit Druid should parse");
+
+    let abilities_debug = format!("{:?}", def.abilities);
+    assert!(
+        abilities_debug.contains("ConsultTopOfLibraryEffect"),
+        "expected Hermit Druid to lower to consult effect, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("MoveToZoneEffect"),
+        "expected Hermit Druid to lower to a move-to-zone effect, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("zone: Hand"),
+        "expected Hermit Druid to move the matched card to hand, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("zone: Graveyard"),
+        "expected Hermit Druid to move non-matching cards to graveyard, got {abilities_debug}"
+    );
+    assert!(
+        !abilities_debug.contains("RevealTopEffect"),
+        "expected Hermit Druid to avoid the generic reveal-top fallback, got {abilities_debug}"
     );
 }
 
@@ -25883,6 +25922,25 @@ fn chandras_outburst_compiled_text_conditional_shuffle() {
     assert!(
         !rendered.contains("shuffle target"),
         "shuffle should not reference 'target player', got {rendered}"
+fn parse_hermit_druid_compiled_text_matches_oracle() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Hermit Druid")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Druid])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .parse_text(
+            "{G}, {T}: Reveal cards from the top of your library until you reveal a basic land card. Put that card into your hand and all other cards revealed this way into your graveyard.",
+        )
+        .expect("Hermit Druid should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ");
+    assert_eq!(
+        rendered,
+        "{G}, {T}: Reveal cards from the top of your library until you reveal a basic land card. Put that card into your hand and all other cards revealed this way into your graveyard.",
+        "expected Hermit Druid compiled text to match oracle wording, got {rendered}"
     );
 }
 
@@ -25909,6 +25967,123 @@ fn chandras_outburst_compiled_text_no_internal_tags() {
     assert!(
         !rendered.contains("tags it"),
         "internal tagging description should not appear, got {rendered}"
+fn parse_hermit_druid_reveals_until_basic_land_and_graveyards_others() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Hermit Druid")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Druid])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .parse_text(
+            "{G}, {T}: Reveal cards from the top of your library until you reveal a basic land card. Put that card into your hand and all other cards revealed this way into your graveyard.",
+        )
+        .expect("Hermit Druid should parse");
+
+    let ability = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Hermit Druid should have an activated ability");
+
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let druid_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    // Library from bottom to top: Unseen Bottom -> Basic Forest -> Nonland Filler
+    // Top of library is last pushed, so push order: bottom first.
+    game.create_object_from_card(
+        &crate::card::CardBuilder::new(CardId::from_raw(10), "Unseen Bottom")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        alice,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &crate::card::CardBuilder::new(CardId::from_raw(11), "Basic Forest")
+            .supertypes(vec![Supertype::Basic])
+            .card_types(vec![CardType::Land])
+            .subtypes(vec![Subtype::Forest])
+            .build(),
+        alice,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &crate::card::CardBuilder::new(CardId::from_raw(12), "Nonland Filler")
+            .card_types(vec![CardType::Creature])
+            .build(),
+        alice,
+        Zone::Library,
+    );
+
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::executor::ExecutionContext::new(druid_id, alice, &mut dm);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        druid_id,
+        &ability.effects,
+        None,
+        &[],
+    )
+    .expect("Hermit Druid effect should resolve");
+
+    // The basic land should be in hand.
+    let hand_names: Vec<_> = game
+        .player(alice)
+        .expect("alice exists")
+        .hand
+        .iter()
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .collect();
+    assert!(
+        hand_names.iter().any(|name| name == "Basic Forest"),
+        "Hermit Druid should put the first basic land into hand, got {hand_names:?}"
+    );
+    assert!(
+        !hand_names.iter().any(|name| name == "Nonland Filler"),
+        "Hermit Druid should not put non-land cards into hand, got {hand_names:?}"
+    );
+
+    // The non-land filler should be in graveyard.
+    let graveyard_names: Vec<_> = game
+        .player(alice)
+        .expect("alice exists")
+        .graveyard
+        .iter()
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .collect();
+    assert!(
+        graveyard_names
+            .iter()
+            .any(|name| name == "Nonland Filler"),
+        "Hermit Druid should put revealed non-matching cards into graveyard, got {graveyard_names:?}"
+    );
+    assert!(
+        !graveyard_names
+            .iter()
+            .any(|name| name == "Basic Forest"),
+        "Hermit Druid should keep the matching basic land out of graveyard, got {graveyard_names:?}"
+    );
+
+    // The unseen bottom card should remain in library (not revealed).
+    let library_names: Vec<_> = game
+        .player(alice)
+        .expect("alice exists")
+        .library
+        .iter()
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .collect();
+    assert_eq!(
+        library_names,
+        vec!["Unseen Bottom".to_string()],
+        "Hermit Druid should stop revealing at the first basic land, leaving unseen cards alone"
     );
 }
 
@@ -25927,6 +26102,100 @@ fn chandras_outburst_compiled_text_has_4_damage() {
     assert!(
         rendered.contains("4 damage") && rendered.contains("target player or planeswalker"),
         "expected 4-damage-to-target clause, got {rendered}"
+fn parse_hermit_druid_basic_land_on_top_goes_straight_to_hand() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Hermit Druid")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Druid])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .parse_text(
+            "{G}, {T}: Reveal cards from the top of your library until you reveal a basic land card. Put that card into your hand and all other cards revealed this way into your graveyard.",
+        )
+        .expect("Hermit Druid should parse");
+
+    let ability = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Hermit Druid should have an activated ability");
+
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let druid_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    // Library: just a basic land on top.
+    game.create_object_from_card(
+        &crate::card::CardBuilder::new(CardId::from_raw(20), "Another Card")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        alice,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &crate::card::CardBuilder::new(CardId::from_raw(21), "Island")
+            .supertypes(vec![Supertype::Basic])
+            .card_types(vec![CardType::Land])
+            .subtypes(vec![Subtype::Island])
+            .build(),
+        alice,
+        Zone::Library,
+    );
+
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::executor::ExecutionContext::new(druid_id, alice, &mut dm);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        druid_id,
+        &ability.effects,
+        None,
+        &[],
+    )
+    .expect("Hermit Druid effect should resolve");
+
+    let hand_names: Vec<_> = game
+        .player(alice)
+        .expect("alice exists")
+        .hand
+        .iter()
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .collect();
+    assert!(
+        hand_names.iter().any(|name| name == "Island"),
+        "When basic land is on top, Hermit Druid should put it directly into hand, got {hand_names:?}"
+    );
+
+    let graveyard_names: Vec<_> = game
+        .player(alice)
+        .expect("alice exists")
+        .graveyard
+        .iter()
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .collect();
+    assert!(
+        graveyard_names.is_empty(),
+        "When basic land is on top, nothing else should go to graveyard, got {graveyard_names:?}"
+    );
+
+    let library_names: Vec<_> = game
+        .player(alice)
+        .expect("alice exists")
+        .library
+        .iter()
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .collect();
+    assert_eq!(
+        library_names,
+        vec!["Another Card".to_string()],
+        "Cards below the top basic land should remain in library"
     );
 }
 
@@ -25977,5 +26246,89 @@ fn multi_zone_search_named_card_uses_card_noun() {
     assert!(
         rendered.contains("if you search your library this way, shuffle"),
         "multi-zone search should produce conditional shuffle, got {rendered}"
+fn parse_hermit_druid_no_basic_land_mills_entire_library() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Hermit Druid")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Druid])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .parse_text(
+            "{G}, {T}: Reveal cards from the top of your library until you reveal a basic land card. Put that card into your hand and all other cards revealed this way into your graveyard.",
+        )
+        .expect("Hermit Druid should parse");
+
+    let ability = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Hermit Druid should have an activated ability");
+
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let druid_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    // Library has no basic lands at all - only nonland cards.
+    for idx in 0..4 {
+        game.create_object_from_card(
+            &crate::card::CardBuilder::new(CardId::from_raw(30 + idx), format!("Spell {idx}"))
+                .card_types(vec![CardType::Instant])
+                .build(),
+            alice,
+            Zone::Library,
+        );
+    }
+
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::executor::ExecutionContext::new(druid_id, alice, &mut dm);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        druid_id,
+        &ability.effects,
+        None,
+        &[],
+    )
+    .expect("Hermit Druid effect should resolve even with no basic lands");
+
+    let hand_names: Vec<_> = game
+        .player(alice)
+        .expect("alice exists")
+        .hand
+        .iter()
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .collect();
+    assert!(
+        hand_names.is_empty(),
+        "With no basic lands, nothing should end up in hand, got {hand_names:?}"
+    );
+
+    let graveyard_names: Vec<_> = game
+        .player(alice)
+        .expect("alice exists")
+        .graveyard
+        .iter()
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .collect();
+    assert_eq!(
+        graveyard_names.len(),
+        4,
+        "With no basic lands, all library cards should go to graveyard, got {graveyard_names:?}"
+    );
+
+    let library = &game
+        .player(alice)
+        .expect("alice exists")
+        .library;
+    assert!(
+        library.is_empty(),
+        "With no basic lands, the entire library should be empty after Hermit Druid resolves"
     );
 }
