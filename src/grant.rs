@@ -36,6 +36,7 @@
 use crate::alternative_cast::AlternativeCastingMethod;
 use crate::cost::TotalCost;
 use crate::costs::Cost;
+use crate::mana::ManaCost;
 use crate::object::Object;
 use crate::static_abilities::StaticAbility;
 use crate::target::{ObjectFilter, PlayerFilter};
@@ -252,6 +253,22 @@ impl GrantSpec {
         )
     }
 
+    /// Create a grant spec for casting matching spells from hand for a fixed alternative mana cost.
+    pub fn cast_from_hand_for_alternative_mana_cost_matching(
+        filter: ObjectFilter,
+        mana_cost: ManaCost,
+    ) -> Self {
+        Self::new(
+            Grantable::AlternativeCast(AlternativeCastingMethod::alternative_cost(
+                "Alternative cost",
+                Some(mana_cost),
+                Vec::new(),
+            )),
+            filter,
+            Zone::Hand,
+        )
+    }
+
     /// Create a grant spec for escape to nonland cards in graveyard.
     pub fn escape_to_nonland(exile_count: u32) -> Self {
         Self {
@@ -420,6 +437,19 @@ impl GrantSpec {
         {
             return format!(
                 "{may_prefix} cast spells from your hand without paying their mana costs"
+            );
+        }
+        if let Grantable::AlternativeCast(method @ AlternativeCastingMethod::Composed { .. }) =
+            &self.grantable
+            && self.zone == Zone::Hand
+            && method.cast_from_zone() == Zone::Hand
+            && method.non_mana_costs().is_empty()
+            && let Some(mana_cost) = method.mana_cost()
+        {
+            return format!(
+                "{may_prefix} pay {} rather than pay the mana cost for {} you cast",
+                mana_cost.to_oracle(),
+                castable_filter_description(&self.filter)
             );
         }
         if let Grantable::DerivedAlternativeCast(DerivedAlternativeCast::EscapeFromCardManaCost {

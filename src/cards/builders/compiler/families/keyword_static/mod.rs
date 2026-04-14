@@ -74,10 +74,10 @@ use super::token_primitives::{
     str_strip_prefix, str_strip_suffix,
 };
 use super::util::{
-    is_source_reference_words, mana_pips_from_token, parse_alternative_cast_words, parse_card_type,
-    parse_color, parse_counter_type_from_tokens, parse_counter_type_word,
-    parse_flashback_keyword_line, parse_subtype_flexible, parse_value, parse_zone_word,
-    preserve_keyword_prefix_for_parse, trim_commas, words,
+    is_source_reference_words, leading_mana_cost_from_tokens, mana_pips_from_token,
+    parse_alternative_cast_words, parse_card_type, parse_color, parse_counter_type_from_tokens,
+    parse_counter_type_word, parse_flashback_keyword_line, parse_subtype_flexible, parse_value,
+    parse_zone_word, preserve_keyword_prefix_for_parse, trim_commas, words,
 };
 use super::value_helpers::parse_commander_cast_count_player;
 #[allow(unused_imports)]
@@ -289,6 +289,10 @@ fn static_ability_rule_head_hints(rule_id: &'static str) -> Vec<StaticAbilityLin
             StaticAbilityLineHeadHint::Pair("untap", "all"),
         ],
         "parse_you_may_static_grant_line" => vec![
+            StaticAbilityLineHeadHint::Single("you"),
+            StaticAbilityLineHeadHint::Pair("you", "may"),
+        ],
+        "parse_fixed_mana_cost_instead_of_mana_cost_grant_line" => vec![
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Pair("you", "may"),
         ],
@@ -598,6 +602,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_flying_restriction_line),
         single_static_ability_ast_rule!(parse_can_block_only_flying_line),
         single_static_ability_ast_rule!(parse_assign_damage_as_unblocked_line),
+        single_static_ability_ast_rule!(parse_fixed_mana_cost_instead_of_mana_cost_grant_line),
         single_static_ability_ast_rule!(parse_mana_value_instead_of_mana_cost_grant_line),
         single_static_ability_ast_rule!(parse_enter_as_copy_as_enters_line),
         single_static_ability_ast_rule!(parse_you_may_static_grant_line),
@@ -5338,6 +5343,55 @@ pub(crate) fn parse_mana_value_instead_of_mana_cost_grant_line(
         filter,
         Zone::Hand,
     ))))
+}
+
+pub(crate) fn parse_fixed_mana_cost_instead_of_mana_cost_grant_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let tokens = if tokens
+        .last()
+        .is_some_and(|token| token.kind == TokenKind::Period)
+    {
+        &tokens[..tokens.len() - 1]
+    } else {
+        tokens
+    };
+    let words = super::lexer::parser_token_word_refs(tokens);
+    if !slice_starts_with(words.as_slice(), &["you", "may", "pay"])
+        || slice_contains(&words, &"where")
+    {
+        return Ok(None);
+    }
+
+    let Some((mana_cost, consumed)) =
+        leading_mana_cost_from_tokens(tokens.get(3..).unwrap_or_default())
+    else {
+        return Ok(None);
+    };
+
+    let tail_tokens = tokens.get(3 + consumed..).unwrap_or_default();
+    let tail_words = super::lexer::parser_token_word_refs(tail_tokens);
+    if !slice_starts_with(
+        tail_words.as_slice(),
+        &["rather", "than", "pay", "the", "mana", "cost", "for"],
+    ) {
+        return Ok(None);
+    }
+
+    let subject_tokens = trim_lexed_commas(tail_tokens.get(7..).unwrap_or_default());
+    let subject_words = crate::cards::builders::compiler::token_word_refs(subject_tokens);
+    if subject_tokens.is_empty()
+        || !slice_contains(&subject_words, &"spell") && !slice_contains(&subject_words, &"spells")
+    {
+        return Ok(None);
+    }
+
+    let filter = parse_spell_filter_with_grammar_entrypoint_lexed(subject_tokens);
+    Ok(Some(StaticAbility::grants(
+        crate::grant::GrantSpec::cast_from_hand_for_alternative_mana_cost_matching(
+            filter, mana_cost,
+        ),
+    )))
 }
 
 pub(crate) fn parse_grant_flash_to_noncreature_spells_line(

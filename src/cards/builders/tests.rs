@@ -2412,7 +2412,7 @@ fn test_parse_copy_this_spell_for_each_creature_sacrificed_this_way() {
 fn test_plumb_style_additional_cost_trigger_copies_for_each_payment() {
     use crate::ability::AbilityKind;
     use crate::cost::OptionalCostsPaid;
-    use crate::executor::{execute_effect, ExecutionContext};
+    use crate::executor::{ExecutionContext, execute_effect};
     use crate::game_state::StackEntry;
     use crate::object::ObjectKind;
     use crate::tests::test_helpers::setup_two_player_game;
@@ -3966,7 +3966,7 @@ fn test_parse_squad_keyword_line_compiles_to_optional_cost_and_etb_copy_trigger(
 fn test_squad_trigger_creates_token_copies_equal_to_times_paid() {
     use crate::ability::AbilityKind;
     use crate::cost::OptionalCostsPaid;
-    use crate::executor::{execute_effect, ExecutionContext};
+    use crate::executor::{ExecutionContext, execute_effect};
     use crate::object::ObjectKind;
     use crate::tests::test_helpers::setup_two_player_game;
     use crate::zone::Zone;
@@ -4107,7 +4107,7 @@ fn test_parse_conspire_keyword_line_compiles_to_optional_cost() {
 fn test_offspring_trigger_creates_one_one_copy_when_paid() {
     use crate::ability::AbilityKind;
     use crate::cost::OptionalCostsPaid;
-    use crate::executor::{execute_effect, ExecutionContext};
+    use crate::executor::{ExecutionContext, execute_effect};
     use crate::object::ObjectKind;
     use crate::tests::test_helpers::setup_two_player_game;
     use crate::zone::Zone;
@@ -4199,7 +4199,7 @@ fn test_parse_scavenge_keyword_line_compiles_to_graveyard_activated_ability() {
 #[test]
 fn test_scavenge_uses_source_snapshot_power_after_source_is_exiled() {
     use crate::ability::AbilityKind;
-    use crate::executor::{execute_effect, ExecutionContext, ResolvedTarget};
+    use crate::executor::{ExecutionContext, ResolvedTarget, execute_effect};
     use crate::snapshot::ObjectSnapshot;
     use crate::zone::Zone;
 
@@ -4310,7 +4310,7 @@ fn test_parse_mobilize_keyword_line_compiles_to_attack_trigger() {
 fn test_mobilize_trigger_creates_attacking_warriors() {
     use crate::ability::AbilityKind;
     use crate::combat_state::{AttackTarget, AttackerInfo, CombatState};
-    use crate::executor::{execute_effect, ExecutionContext};
+    use crate::executor::{ExecutionContext, execute_effect};
     use crate::zone::Zone;
 
     let mut game = crate::tests::test_helpers::setup_two_player_game();
@@ -6200,8 +6200,8 @@ fn parse_enters_with_counter_if_youve_cast_two_or_more_spells_this_turn_line() {
 }
 
 #[test]
-fn parse_enters_with_counter_equal_to_greatest_number_of_cards_an_opponent_has_drawn_this_turn_line(
-) {
+fn parse_enters_with_counter_equal_to_greatest_number_of_cards_an_opponent_has_drawn_this_turn_line()
+ {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Thought Sponge Variant")
         .card_types(vec![CardType::Creature])
         .parse_text(
@@ -10850,10 +10850,11 @@ fn parse_reveal_card_this_way_trigger_clause() {
         AbilityKind::Static(static_ability)
             if static_ability.id() == StaticAbilityId::RevealFirstCardYouDrawEachTurn
     )));
-    assert!(def
-        .abilities
-        .iter()
-        .any(|ability| matches!(&ability.kind, AbilityKind::Triggered(_))));
+    assert!(
+        def.abilities
+            .iter()
+            .any(|ability| matches!(&ability.kind, AbilityKind::Triggered(_)))
+    );
 }
 
 #[test]
@@ -10870,10 +10871,11 @@ fn parse_optional_reveal_first_draw_trigger_clause() {
         AbilityKind::Static(static_ability)
             if static_ability.id() == StaticAbilityId::RevealFirstCardYouDrawEachTurn
     )));
-    assert!(def
-        .abilities
-        .iter()
-        .any(|ability| matches!(&ability.kind, AbilityKind::Triggered(_))));
+    assert!(
+        def.abilities
+            .iter()
+            .any(|ability| matches!(&ability.kind, AbilityKind::Triggered(_)))
+    );
 }
 
 #[test]
@@ -11317,6 +11319,57 @@ fn parse_kentaro_static_mana_value_permission() {
     assert!(
         has_mana_value_grant,
         "expected a Samurai hand grant that uses mana value as an alternative cost"
+    );
+}
+
+#[test]
+fn parse_rooftop_storm_static_free_zombie_permission() {
+    let tokens = tokenize_line(
+        "You may pay {0} rather than pay the mana cost for Zombie creature spells you cast.",
+        0,
+    );
+    let parsed = crate::cards::builders::compiler::parse_static_ability_ast_line_lexed(&tokens)
+        .expect("Rooftop Storm static line should not error");
+    assert!(
+        parsed.is_some(),
+        "Rooftop Storm static line should parse as a static ability"
+    );
+
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Rooftop Storm")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "You may pay {0} rather than pay the mana cost for Zombie creature spells you cast.",
+        )
+        .expect("Rooftop Storm static permission should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains(
+            "you may pay {0} rather than pay the mana cost for zombie creature spells you cast"
+        ),
+        "expected Rooftop Storm wording in compiled output, got {rendered}"
+    );
+
+    let has_zombie_grant = def.abilities.iter().any(|ability| {
+        let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+            return false;
+        };
+        let Some(spec) = static_ability.grant_spec() else {
+            return false;
+        };
+        matches!(
+            spec.grantable,
+            crate::grant::Grantable::AlternativeCast(
+                crate::alternative_cast::AlternativeCastingMethod::Composed { .. }
+            )
+        ) && spec.zone == Zone::Hand
+            && spec.filter.card_types.contains(&CardType::Creature)
+            && spec.filter.subtypes.contains(&Subtype::Zombie)
+    });
+
+    assert!(
+        has_zombie_grant,
+        "expected a Zombie creature hand grant that uses a fixed alternative mana cost"
     );
 }
 
@@ -12760,7 +12813,7 @@ fn parse_shape_anew_targets_controller_and_consults_until_artifact() {
 
 #[test]
 fn shape_anew_sacrifices_target_and_uses_that_controller_library() {
-    use crate::executor::{execute_effect, ExecutionContext, ResolvedTarget};
+    use crate::executor::{ExecutionContext, ResolvedTarget, execute_effect};
 
     fn artifact(name: &str) -> crate::cards::CardDefinition {
         CardDefinitionBuilder::new(CardId::new(), name)
@@ -18379,8 +18432,7 @@ fn parse_cephalid_inkshrouder_keeps_self_buff_and_unblockable_clause_together() 
             assert!(
                 filter.source
                     || filter.tagged_constraints.iter().any(|constraint| {
-                        constraint.relation
-                            == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                        constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
                     }),
                 "expected Cephalid Inkshrouder's unblockable restriction to stay bound to itself, got {filter:?}"
             );
@@ -18432,11 +18484,9 @@ fn parse_break_through_the_line_keeps_targeted_unblockable_clause_tied_to_target
             );
             assert!(
                 (filter.card_types == vec![CardType::Creature]
-                    && filter.power
-                        == Some(crate::filter::Comparison::LessThanOrEqual(2)))
+                    && filter.power == Some(crate::filter::Comparison::LessThanOrEqual(2)))
                     || filter.tagged_constraints.iter().any(|constraint| {
-                        constraint.relation
-                            == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                        constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
                     }),
                 "expected Break Through the Line's unblockable restriction to keep the original target binding, got {filter:?}"
             );
@@ -21852,7 +21902,7 @@ fn parse_oracle_over_the_top_dynamic_reveal_and_distribution_regression() {
 #[test]
 fn over_the_top_moves_nonpermanents_to_their_owners_graveyards_at_runtime() {
     use crate::card::CardBuilder;
-    use crate::executor::{execute_effect, ExecutionContext};
+    use crate::executor::{ExecutionContext, execute_effect};
     use crate::zone::Zone;
 
     let def = parse_oracle_card_definition("Over the Top");
@@ -23965,7 +24015,8 @@ fn parse_oracle_selective_adaptation_keyword_bundle_regression() {
         "expected Selective Adaptation to stop misparsing as a bounce effect, got {rendered}"
     );
     assert!(
-        rendered_lower.contains("choose from among them a card with flying, a card with first strike"),
+        rendered_lower
+            .contains("choose from among them a card with flying, a card with first strike"),
         "expected Selective Adaptation to preserve its keyword-choice bundle, got {rendered}"
     );
 
@@ -24558,7 +24609,8 @@ fn parse_corpse_appraiser_keeps_the_exile_then_loot_sequence() {
         rendered.contains("exile up to one target creature card")
             && rendered.contains("if a card is put into exile this way")
             && rendered.contains("look at the top three cards of your library")
-            && rendered.contains("put one of those cards into your hand and the rest into your graveyard")
+            && rendered
+                .contains("put one of those cards into your hand and the rest into your graveyard")
             && !rendered.contains("put it into its owner's hand"),
         "expected Corpse Appraiser compiled text to preserve the looked-card split, got {rendered}"
     );
@@ -25921,9 +25973,7 @@ fn bruenor_battlehammer_anthem_parses_attached_to_affected_not_source() {
         .card_types(vec![CardType::Creature])
         .subtypes(vec![Subtype::Dwarf, Subtype::Warrior])
         .power_toughness(PowerToughness::fixed(5, 3))
-        .parse_text(
-            "Each creature you control gets +2/+0 for each Equipment attached to it.",
-        )
+        .parse_text("Each creature you control gets +2/+0 for each Equipment attached to it.")
         .expect("Bruenor anthem text should parse");
 
     let abilities_debug = format!("{:?}", def.abilities);
@@ -25939,7 +25989,8 @@ fn bruenor_battlehammer_anthem_parses_attached_to_affected_not_source() {
     let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
         rendered.contains("creature you control gets +2/+0 for each equipment attached to it")
-            || rendered.contains("creatures you control get +2/+0 for each equipment attached to it"),
+            || rendered
+                .contains("creatures you control get +2/+0 for each equipment attached to it"),
         "expected Bruenor anthem to render oracle-like, got {rendered}"
     );
 }
@@ -26036,7 +26087,9 @@ fn parse_hermit_druid_compiled_text_matches_oracle() {
     let rendered = oracle_like_lines(&def).join(" ");
     let lower = rendered.to_ascii_lowercase();
     assert!(
-        lower.contains("reveal cards from the top of your library until you reveal a basic land card"),
+        lower.contains(
+            "reveal cards from the top of your library until you reveal a basic land card"
+        ),
         "expected Hermit Druid compiled text to contain reveal-until clause, got {rendered}"
     );
     assert!(
@@ -26165,15 +26218,11 @@ fn parse_hermit_druid_reveals_until_basic_land_and_graveyards_others() {
         .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
         .collect();
     assert!(
-        graveyard_names
-            .iter()
-            .any(|name| name == "Nonland Filler"),
+        graveyard_names.iter().any(|name| name == "Nonland Filler"),
         "Hermit Druid should put revealed non-matching cards into graveyard, got {graveyard_names:?}"
     );
     assert!(
-        !graveyard_names
-            .iter()
-            .any(|name| name == "Basic Forest"),
+        !graveyard_names.iter().any(|name| name == "Basic Forest"),
         "Hermit Druid should keep the matching basic land out of graveyard, got {graveyard_names:?}"
     );
 
@@ -26436,10 +26485,7 @@ fn parse_hermit_druid_no_basic_land_mills_entire_library() {
         "With no basic lands, all library cards should go to graveyard, got {graveyard_names:?}"
     );
 
-    let library = &game
-        .player(alice)
-        .expect("alice exists")
-        .library;
+    let library = &game.player(alice).expect("alice exists").library;
     assert!(
         library.is_empty(),
         "With no basic lands, the entire library should be empty after Hermit Druid resolves"
@@ -26453,9 +26499,7 @@ fn bruenor_source_only_anthem_keeps_attached_to_source() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Self-Equip Creature")
         .card_types(vec![CardType::Creature])
         .power_toughness(PowerToughness::fixed(1, 1))
-        .parse_text(
-            "This creature gets +2/+0 for each Equipment attached to it.",
-        )
+        .parse_text("This creature gets +2/+0 for each Equipment attached to it.")
         .expect("source-only anthem text should parse");
 
     let abilities_debug = format!("{:?}", def.abilities);
@@ -26488,22 +26532,19 @@ fn union_of_the_third_path_compiles_with_draw_then_gain_life() {
             vec![ManaSymbol::White],
         ]))
         .card_types(vec![CardType::Instant])
-        .oracle_text(
-            "Draw a card, then you gain life equal to the number of cards in your hand.",
-        )
-        .parse_text(
-            "Draw a card, then you gain life equal to the number of cards in your hand.",
-        )
+        .oracle_text("Draw a card, then you gain life equal to the number of cards in your hand.")
+        .parse_text("Draw a card, then you gain life equal to the number of cards in your hand.")
         .expect("Union of the Third Path text should parse");
 
     // Verify the spell effect has both DrawCards and GainLife effects.
-    let spell = def
-        .spell_effect
-        .as_ref()
-        .expect("should have spell effect");
+    let spell = def.spell_effect.as_ref().expect("should have spell effect");
     assert!(!spell.is_empty(), "spell should have at least one segment");
     let effects = &spell.segments[0].default_effects;
-    assert_eq!(effects.len(), 2, "should have exactly 2 effects (draw + gain life)");
+    assert_eq!(
+        effects.len(),
+        2,
+        "should have exactly 2 effects (draw + gain life)"
+    );
 
     let draw = effects[0]
         .downcast_ref::<crate::effects::DrawCardsEffect>()
@@ -26513,11 +26554,7 @@ fn union_of_the_third_path_compiles_with_draw_then_gain_life() {
         crate::effect::Value::Fixed(1),
         "draw count should be 1"
     );
-    assert_eq!(
-        draw.player,
-        PlayerFilter::You,
-        "draw player should be You"
-    );
+    assert_eq!(draw.player, PlayerFilter::You, "draw player should be You");
 
     let gain = effects[1]
         .downcast_ref::<GainLifeEffect>()
@@ -26543,12 +26580,8 @@ fn union_of_the_third_path_canonical_text_uses_then_and_equal_to() {
             vec![ManaSymbol::White],
         ]))
         .card_types(vec![CardType::Instant])
-        .oracle_text(
-            "Draw a card, then you gain life equal to the number of cards in your hand.",
-        )
-        .parse_text(
-            "Draw a card, then you gain life equal to the number of cards in your hand.",
-        )
+        .oracle_text("Draw a card, then you gain life equal to the number of cards in your hand.")
+        .parse_text("Draw a card, then you gain life equal to the number of cards in your hand.")
         .expect("Union of the Third Path text should parse");
 
     let canonical = crate::compiled_text::canonical_compiled_lines(&def).join("\n");
@@ -26591,10 +26624,8 @@ fn union_of_the_third_path_gains_life_equal_to_hand_size_after_draw() {
 
     let spell_effect = def.spell_effect.as_ref().expect("should have spell effect");
 
-    let mut game = crate::game_state::GameState::new(
-        vec!["Alice".to_string(), "Bob".to_string()],
-        20,
-    );
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
     let union_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
 
@@ -26634,7 +26665,10 @@ fn union_of_the_third_path_gains_life_equal_to_hand_size_after_draw() {
 
     // After drawing 1 card, hand should be 4.
     let hand_size = game.player(alice).unwrap().hand.len();
-    assert_eq!(hand_size, 4, "Alice should have 4 cards in hand (3 + 1 drawn)");
+    assert_eq!(
+        hand_size, 4,
+        "Alice should have 4 cards in hand (3 + 1 drawn)"
+    );
 
     // Life should be 20 + 4 (hand size after draw) = 24.
     let life = game.life_total(alice);
