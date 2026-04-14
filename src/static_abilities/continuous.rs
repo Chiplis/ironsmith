@@ -503,6 +503,12 @@ pub enum AnthemCountExpression {
     MatchingFilter(ObjectFilter),
     /// Count attachments on the source that match a filter.
     AttachedToSource(ObjectFilter),
+    /// Count attachments on each affected creature that match a filter.
+    ///
+    /// Used for anthems like "Each creature you control gets +2/+0 for each
+    /// Equipment attached to it" where "it" refers to the creature being
+    /// affected, not the source of the anthem.
+    AttachedToAffected(ObjectFilter),
     /// Count counters of a specific kind on the source.
     CountersOnSource(CounterType),
     /// Count distinct basic land types among matching lands.
@@ -529,6 +535,18 @@ impl AnthemValue {
         } else {
             Self::PerCount { multiplier, count }
         }
+    }
+
+    /// Returns true if this value depends on properties of the affected
+    /// creature (e.g. counting Equipment attached to the affected creature).
+    fn uses_affected_object(&self) -> bool {
+        matches!(
+            self,
+            Self::PerCount {
+                count: AnthemCountExpression::AttachedToAffected(_),
+                ..
+            }
+        )
     }
 
     fn evaluate(&self, game: &GameState, source: ObjectId, controller: PlayerId) -> i32 {
@@ -570,6 +588,12 @@ fn describe_anthem_count_expression(expr: &AnthemCountExpression) -> String {
                 strip_article(filter.description())
             )
         }
+        AnthemCountExpression::AttachedToAffected(filter) => {
+            format!(
+                "{} attached to it",
+                strip_article(filter.description())
+            )
+        }
         AnthemCountExpression::CountersOnSource(counter_type) => {
             format!("{} counter on this permanent", counter_type.description())
         }
@@ -600,6 +624,12 @@ fn describe_anthem_for_each_count_expression(expr: &AnthemCountExpression) -> Op
     match expr {
         AnthemCountExpression::MatchingFilter(filter) if filter.zone == Some(Zone::Battlefield) => {
             Some(strip_article(filter.description()))
+        }
+        AnthemCountExpression::AttachedToAffected(filter) => {
+            Some(format!(
+                "{} attached to it",
+                strip_article(filter.description())
+            ))
         }
         AnthemCountExpression::BasicLandTypesAmong(_) => {
             Some("basic land type among lands you control".to_string())
@@ -875,7 +905,8 @@ pub(crate) fn resolve_anthem_count_expression(
             .filter_map(|id| game.object(id))
             .filter(|obj| filter.matches_non_recursive(obj, &filter_ctx, game))
             .count() as i32,
-        AnthemCountExpression::AttachedToSource(filter) => game
+        AnthemCountExpression::AttachedToSource(filter)
+        | AnthemCountExpression::AttachedToAffected(filter) => game
             .object(source)
             .map(|source_obj| {
                 source_obj
@@ -1216,6 +1247,41 @@ impl StaticAbilityKind for Anthem {
         controller: PlayerId,
         game: &GameState,
     ) -> Vec<ContinuousEffect> {
+        // When the anthem value depends on properties of the affected creature
+        // (e.g. "for each Equipment attached to it" where "it" is each creature
+        // the anthem affects), we must enumerate affected creatures individually
+        // and evaluate the count per-creature.
+        let uses_affected =
+            self.power.uses_affected_object() || self.toughness.uses_affected_object();
+
+        if uses_affected && !self.source_only {
+            let filter_ctx = game.filter_context_for(controller, Some(source));
+            let mut effects = Vec::new();
+            for &obj_id in &game.battlefield {
+                let Some(obj) = game.object(obj_id) else {
+                    continue;
+                };
+                if !self.filter.matches_non_recursive(obj, &filter_ctx, game) {
+                    continue;
+                }
+                // Evaluate the anthem values using the affected creature's id
+                // so AttachedToAffected counts attachments on *that* creature.
+                let power = self.power.evaluate(game, obj_id, controller);
+                let toughness = self.toughness.evaluate(game, obj_id, controller);
+                effects.push(effect_with_optional_static_condition(
+                    ContinuousEffect::new(
+                        source,
+                        controller,
+                        EffectTarget::Specific(obj_id),
+                        Modification::ModifyPowerToughness { power, toughness },
+                    )
+                    .with_source_type(EffectSourceType::StaticAbility),
+                    &self.condition,
+                ));
+            }
+            return effects;
+        }
+
         let power = self.power.evaluate(game, source, controller);
         let toughness = self.toughness.evaluate(game, source, controller);
         let target = if self.source_only {
@@ -3859,5 +3925,247 @@ mod tests {
             effects[0].modification,
             Modification::AddAllSubtypesOfFamily(SubtypeFamily::Creature)
         ));
+    }
+
+    // ---------------------------------------------------------------
+    // Bruenor Battlehammer: "Each creature you control gets +2/+0
+    // for each Equipment attached to it."
+    // ---------------------------------------------------------------
+
+    /// Helper: attach an equipment object to a creature in the game state.
+    fn attach_equipment(game: &mut GameState, equipment_id: ObjectId, creature_id: ObjectId) {
+        if let Some(equipment) = game.object_mut(equipment_id) {
+            equipment.attached_to = Some(AttachmentTarget::Object(creature_id));
+        }
+        if let Some(creature) = game.object_mut(creature_id) {
+            creature.attachments.push(equipment_id);
+        }
+    }
+
+    #[test]
+    fn bruenor_anthem_parses_with_attached_to_affected_and_renders_correctly() {
+        // Structure / text test: verify the anthem is parsed with the
+        // AttachedToAffected count expression and rendered as oracle text.
+        let def = CardDefinitionBuilder::new(CardId::new(), "Bruenor Anthem Test")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Dwarf, Subtype::Warrior])
+            .power_toughness(PowerToughness::fixed(5, 3))
+            .parse_text(
+                "Each creature you control gets +2/+0 for each Equipment attached to it.",
+            )
+            .expect("Bruenor anthem text should parse");
+
+        let abilities_debug = format!("{:?}", def.abilities);
+        assert!(
+            abilities_debug.contains("AttachedToAffected"),
+            "expected anthem to use AttachedToAffected count expression, got {abilities_debug}"
+        );
+        assert!(
+            !abilities_debug.contains("AttachedToSource"),
+            "AttachedToSource should have been promoted to AttachedToAffected, got {abilities_debug}"
+        );
+
+        let lines = crate::compiled_text::oracle_like_lines(&def);
+        let joined = lines.join(" ").to_ascii_lowercase();
+        assert!(
+            joined.contains("creatures you control get +2/+0 for each equipment attached to it"),
+            "expected oracle-like anthem wording with 'attached to it', got {joined}"
+        );
+    }
+
+    #[test]
+    fn bruenor_anthem_generates_per_creature_effects_based_on_equipment_count() {
+        // Scenario test: two creatures with different numbers of Equipment
+        // should receive different power bonuses.
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        // Create the source permanent (Bruenor).
+        let bruenor_card = CardBuilder::new(CardId::new(), "Bruenor Battlehammer")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(5, 3))
+            .build();
+        let bruenor_id = game.create_object_from_card(&bruenor_card, alice, Zone::Battlefield);
+
+        // Create creature A (will have 2 equipment).
+        let creature_a_card = CardBuilder::new(CardId::new(), "Warrior A")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        let creature_a = game.create_object_from_card(&creature_a_card, alice, Zone::Battlefield);
+
+        // Create creature B (will have 0 equipment).
+        let creature_b_card = CardBuilder::new(CardId::new(), "Warrior B")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let creature_b = game.create_object_from_card(&creature_b_card, alice, Zone::Battlefield);
+
+        // Create two Equipment and attach both to creature A.
+        let equipment_card = CardBuilder::new(CardId::new(), "Sword")
+            .card_types(vec![CardType::Artifact])
+            .subtypes(vec![Subtype::Equipment])
+            .build();
+        let eq1 = game.create_object_from_card(&equipment_card, alice, Zone::Battlefield);
+        let eq2 = game.create_object_from_card(&equipment_card, alice, Zone::Battlefield);
+        attach_equipment(&mut game, eq1, creature_a);
+        attach_equipment(&mut game, eq2, creature_a);
+
+        // Build the anthem: "Each creature you control gets +2/+0 for each
+        // Equipment attached to it".
+        let equipment_filter = ObjectFilter::default().with_subtype(Subtype::Equipment);
+        let anthem = Anthem::creatures_you_control(0, 0).with_values(
+            AnthemValue::scaled(2, AnthemCountExpression::AttachedToAffected(equipment_filter)),
+            AnthemValue::Fixed(0),
+        );
+
+        let effects = anthem.generate_effects(bruenor_id, alice, &game);
+
+        // Should produce one effect per creature (A, B, and Bruenor itself = 3).
+        assert_eq!(
+            effects.len(),
+            3,
+            "expected one effect per creature on the battlefield, got {}",
+            effects.len()
+        );
+
+        // Find effects for creature A (2 equipment -> +4/+0) and creature B (0 equipment -> +0/+0).
+        let effect_for = |target_id: ObjectId| -> Option<&ContinuousEffect> {
+            effects.iter().find(|e| {
+                matches!(e.applies_to, EffectTarget::Specific(id) if id == target_id)
+            })
+        };
+
+        let a_effect = effect_for(creature_a).expect("creature A should have an effect");
+        assert!(
+            matches!(
+                a_effect.modification,
+                Modification::ModifyPowerToughness {
+                    power: 4,
+                    toughness: 0,
+                }
+            ),
+            "creature A with 2 Equipment should get +4/+0, got {:?}",
+            a_effect.modification,
+        );
+
+        let b_effect = effect_for(creature_b).expect("creature B should have an effect");
+        assert!(
+            matches!(
+                b_effect.modification,
+                Modification::ModifyPowerToughness {
+                    power: 0,
+                    toughness: 0,
+                }
+            ),
+            "creature B with 0 Equipment should get +0/+0, got {:?}",
+            b_effect.modification,
+        );
+    }
+
+    #[test]
+    fn bruenor_anthem_calculated_power_reflects_per_creature_equipment() {
+        // End-to-end behavioral test: verify that calculated_power returns
+        // the correct values after static abilities are applied.
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let equipment_filter = ObjectFilter::default().with_subtype(Subtype::Equipment);
+        let anthem = Anthem::creatures_you_control(0, 0).with_values(
+            AnthemValue::scaled(2, AnthemCountExpression::AttachedToAffected(equipment_filter)),
+            AnthemValue::Fixed(0),
+        );
+
+        // Create Bruenor (the source of the anthem) with the static ability.
+        let bruenor_def = CardDefinitionBuilder::new(CardId::new(), "Bruenor Battlehammer")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(5, 3))
+            .with_ability(
+                crate::ability::Ability::static_ability(StaticAbility::new(anthem))
+            )
+            .build();
+        let bruenor_id = game.create_object_from_definition(&bruenor_def, alice, Zone::Battlefield);
+
+        // Create a 1/1 creature.
+        let soldier_card = CardBuilder::new(CardId::new(), "Soldier")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        let soldier_id = game.create_object_from_card(&soldier_card, alice, Zone::Battlefield);
+
+        // Without equipment, both should have base power.
+        assert_eq!(
+            game.calculated_power(bruenor_id),
+            Some(5),
+            "Bruenor with 0 Equipment should have base power 5"
+        );
+        assert_eq!(
+            game.calculated_power(soldier_id),
+            Some(1),
+            "Soldier with 0 Equipment should have base power 1"
+        );
+
+        // Attach one Equipment to the soldier.
+        let eq_card = CardBuilder::new(CardId::new(), "Longsword")
+            .card_types(vec![CardType::Artifact])
+            .subtypes(vec![Subtype::Equipment])
+            .build();
+        let eq_id = game.create_object_from_card(&eq_card, alice, Zone::Battlefield);
+        attach_equipment(&mut game, eq_id, soldier_id);
+
+        assert_eq!(
+            game.calculated_power(soldier_id),
+            Some(3),
+            "Soldier with 1 Equipment should have power 1 + 2 = 3"
+        );
+        assert_eq!(
+            game.calculated_power(bruenor_id),
+            Some(5),
+            "Bruenor with 0 Equipment should still have base power 5"
+        );
+
+        // Attach a second Equipment to the soldier.
+        let eq2_id = game.create_object_from_card(&eq_card, alice, Zone::Battlefield);
+        attach_equipment(&mut game, eq2_id, soldier_id);
+
+        assert_eq!(
+            game.calculated_power(soldier_id),
+            Some(5),
+            "Soldier with 2 Equipment should have power 1 + 4 = 5"
+        );
+
+        // Attach one Equipment to Bruenor.
+        let eq3_id = game.create_object_from_card(&eq_card, alice, Zone::Battlefield);
+        attach_equipment(&mut game, eq3_id, bruenor_id);
+
+        assert_eq!(
+            game.calculated_power(bruenor_id),
+            Some(7),
+            "Bruenor with 1 Equipment should have power 5 + 2 = 7"
+        );
+        // Soldier should be unaffected by Bruenor's own Equipment.
+        assert_eq!(
+            game.calculated_power(soldier_id),
+            Some(5),
+            "Soldier with 2 Equipment should still have power 1 + 4 = 5"
+        );
+    }
+
+    #[test]
+    fn bruenor_anthem_display_shows_for_each_equipment_attached_to_it() {
+        let equipment_filter = ObjectFilter::default().with_subtype(Subtype::Equipment);
+        let anthem = Anthem::creatures_you_control(0, 0).with_values(
+            AnthemValue::scaled(2, AnthemCountExpression::AttachedToAffected(equipment_filter)),
+            AnthemValue::Fixed(0),
+        );
+        let display = anthem.display();
+        assert!(
+            display.to_ascii_lowercase().contains("for each equipment attached to it"),
+            "expected display to mention 'for each Equipment attached to it', got {display}"
+        );
+        assert!(
+            display.to_ascii_lowercase().contains("+2/+0"),
+            "expected display to show +2/+0 modifier, got {display}"
+        );
     }
 }

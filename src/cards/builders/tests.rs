@@ -25778,3 +25778,62 @@ fn render_stunted_growth_keeps_random_hand_reveal_and_top_of_library_link() {
         "expected the Stunted Growth compile surface to stay oracle-like, got {rendered}"
     );
 }
+
+#[test]
+fn bruenor_battlehammer_anthem_parses_attached_to_affected_not_source() {
+    // Verify that "Each creature you control gets +2/+0 for each Equipment
+    // attached to it." parses with AttachedToAffected (not AttachedToSource),
+    // since "it" refers to the affected creature, not Bruenor.
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Bruenor Battlehammer")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Dwarf, Subtype::Warrior])
+        .power_toughness(PowerToughness::fixed(5, 3))
+        .parse_text(
+            "Each creature you control gets +2/+0 for each Equipment attached to it.",
+        )
+        .expect("Bruenor anthem text should parse");
+
+    let abilities_debug = format!("{:?}", def.abilities);
+    assert!(
+        abilities_debug.contains("AttachedToAffected"),
+        "expected AttachedToAffected in anthem, got {abilities_debug}"
+    );
+    assert!(
+        !abilities_debug.contains("AttachedToSource"),
+        "should not contain AttachedToSource for multi-creature anthem, got {abilities_debug}"
+    );
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("creatures you control get +2/+0 for each equipment attached to it"),
+        "expected Bruenor anthem to render oracle-like, got {rendered}"
+    );
+}
+
+#[test]
+fn bruenor_source_only_anthem_keeps_attached_to_source() {
+    // Verify that a source-only anthem like "This creature gets +2/+0 for
+    // each Equipment attached to it" still uses AttachedToSource.
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Self-Equip Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .parse_text(
+            "This creature gets +2/+0 for each Equipment attached to it.",
+        )
+        .expect("source-only anthem text should parse");
+
+    let abilities_debug = format!("{:?}", def.abilities);
+    assert!(
+        abilities_debug.contains("AttachedToSource"),
+        "source-only anthem should keep AttachedToSource, got {abilities_debug}"
+    );
+    assert!(
+        !abilities_debug.contains("AttachedToAffected"),
+        "source-only anthem should not use AttachedToAffected, got {abilities_debug}"
+    );
+}
