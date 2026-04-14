@@ -2,7 +2,7 @@ use crate::cards::builders::{
     CardTextError, EffectAst, IT_TAG, IdGenContext, PlayerAst, TargetAst, TriggerSpec,
 };
 use crate::effect::{EffectId, EventValueSpec};
-use crate::filter::Comparison;
+use crate::filter::{Comparison, TaggedOpbjectRelation};
 use crate::target::ChooseSpec;
 use crate::target::ObjectRef;
 use crate::{ObjectFilter, PlayerFilter, Value};
