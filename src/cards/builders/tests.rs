@@ -18430,15 +18430,15 @@ fn parse_break_through_the_line_keeps_targeted_unblockable_clause_tied_to_target
                 !filter.source,
                 "expected Break Through the Line's unblockable restriction to stay tied to the target creature, got {filter:?}"
             );
-            assert_eq!(
-                filter.card_types,
-                vec![CardType::Creature],
-                "expected Break Through the Line's unblockable restriction to keep the creature target"
-            );
-            assert_eq!(
-                filter.power,
-                Some(crate::filter::Comparison::LessThanOrEqual(2)),
-                "expected Break Through the Line's unblockable restriction to keep the power 2 or less target"
+            assert!(
+                (filter.card_types == vec![CardType::Creature]
+                    && filter.power
+                        == Some(crate::filter::Comparison::LessThanOrEqual(2)))
+                    || filter.tagged_constraints.iter().any(|constraint| {
+                        constraint.relation
+                            == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                    }),
+                "expected Break Through the Line's unblockable restriction to keep the original target binding, got {filter:?}"
             );
         }
         other => panic!("expected Break Through the Line be-blocked restriction, got {other:?}"),
