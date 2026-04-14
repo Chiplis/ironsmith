@@ -577,17 +577,23 @@ pub(super) fn try_compile_player_resource_and_choice_effect(
             mana,
             life,
             additional_generic,
+            x_value,
         } => {
             let additional_generic = additional_generic
                 .as_ref()
                 .map(|value| resolve_value_it_tag(value, &current_reference_env(ctx)))
                 .transpose()?;
+            let x_value = x_value
+                .as_ref()
+                .map(|value| resolve_value_it_tag(value, &current_reference_env(ctx)))
+                .transpose()?;
             compile_tagged_effect_for_target(target, ctx, "countered", |spec| {
-                Effect::counter_unless_pays_with_life_and_additional(
+                Effect::counter_unless_pays_with_life_and_additional_and_x(
                     spec,
                     mana.clone(),
                     life.clone(),
                     additional_generic.clone(),
+                    x_value.clone(),
                 )
             })?
         }

@@ -1379,6 +1379,15 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         {
             descriptor_words.remove(0);
         }
+        if matches!(
+            descriptor_words.as_slice(),
+            ["shares", "a", "card", "type", "with", "that", "spell"]
+                | ["shares", "card", "type", "with", "that", "spell"]
+        ) {
+            return Ok(PredicateAst::ItMatches(
+                ObjectFilter::default().shares_card_type_with_tagged("triggering"),
+            ));
+        }
         if slice_starts_with(&descriptor_words, &["not", "token"]) {
             descriptor_words.drain(0..2);
             descriptor_words.insert(0, "nontoken");

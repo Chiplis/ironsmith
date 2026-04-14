@@ -213,6 +213,21 @@ fn starts_with_nonverb_effect_head(words: &[&str]) -> bool {
     })
 }
 
+fn starts_with_player_may_clause_lexed(words: &[&str]) -> bool {
+    matches!(
+        words,
+        ["you", "may", ..]
+            | ["they", "may", ..]
+            | ["the", "player" | "players", "may", ..]
+            | ["that", "player" | "players", "may", ..]
+            | ["that", "opponent" | "opponents", "may", ..]
+            | ["target", "player" | "players", "may", ..]
+            | ["target", "opponent" | "opponents", "may", ..]
+            | ["defending", "player", "may", ..]
+            | ["attacking", "player", "may", ..]
+    )
+}
+
 pub(crate) fn is_token_creation_context(tokens: &[OwnedLexToken]) -> bool {
     tokens.first().is_some_and(|t| t.is_word("create"))
         && (grammar::contains_word(tokens, "token") || grammar::contains_word(tokens, "tokens"))
@@ -692,11 +707,17 @@ pub(crate) fn has_effect_head_without_verb_lexed(tokens: &[OwnedLexToken]) -> bo
 }
 
 pub(crate) fn segment_has_effect_head_lexed(tokens: &[OwnedLexToken]) -> bool {
-    find_verb_lexed(tokens).is_some() || has_effect_head_without_verb_lexed(tokens)
+    let words = token_word_refs(tokens);
+    find_verb_lexed(tokens).is_some()
+        || has_effect_head_without_verb_lexed(tokens)
+        || starts_with_player_may_clause_lexed(&words)
 }
 
 pub(crate) fn segment_has_effect_head(tokens: &[OwnedLexToken]) -> bool {
-    find_verb(tokens).is_some() || has_effect_head_without_verb(tokens)
+    let words = token_word_refs(tokens);
+    find_verb(tokens).is_some()
+        || has_effect_head_without_verb(tokens)
+        || starts_with_player_may_clause_lexed(&words)
 }
 
 pub(crate) fn split_segments_on_comma_then(

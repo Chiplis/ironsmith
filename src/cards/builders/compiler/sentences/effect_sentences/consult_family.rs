@@ -848,6 +848,7 @@ pub(crate) fn consult_cast_effects(
                 vec![EffectAst::May {
                     effects: vec![EffectAst::CastTagged {
                         tag: match_tag.clone(),
+                        player: clause.caster,
                         allow_land: false,
                         as_copy: false,
                         without_paying_mana_cost,

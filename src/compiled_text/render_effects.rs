@@ -8406,6 +8406,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 payment_text = format!("{payment_text} and {} life", describe_value(life));
             }
         }
+        if let Some(x_value) = unless_pays.x_value.as_ref() {
+            if payment_text.is_empty() {
+                payment_text = "{X}".to_string();
+            }
+            payment_text = format!("{payment_text}, where X is {}", describe_value(x_value));
+        }
         if unless_pays.effects.len() == 1
             && let Some(counter) =
                 unless_pays.effects[0].downcast_ref::<crate::effects::CounterEffect>()

@@ -20,6 +20,8 @@ pub struct SpellCastEvent {
     pub caster: PlayerId,
     /// The zone the spell was cast from.
     pub from_zone: Zone,
+    /// Snapshot of the spell on the stack at cast time.
+    pub snapshot: Option<ObjectSnapshot>,
 }
 
 impl SpellCastEvent {
@@ -29,6 +31,21 @@ impl SpellCastEvent {
             spell,
             caster,
             from_zone,
+            snapshot: None,
+        }
+    }
+
+    pub fn new_with_snapshot(
+        spell: ObjectId,
+        caster: PlayerId,
+        from_zone: Zone,
+        snapshot: ObjectSnapshot,
+    ) -> Self {
+        Self {
+            spell,
+            caster,
+            from_zone,
+            snapshot: Some(snapshot),
         }
     }
 }
@@ -67,7 +84,7 @@ impl GameEventType for SpellCastEvent {
     }
 
     fn snapshot(&self) -> Option<&ObjectSnapshot> {
-        None
+        self.snapshot.as_ref()
     }
 }
 
@@ -81,6 +98,7 @@ mod tests {
         assert_eq!(event.spell, ObjectId::from_raw(1));
         assert_eq!(event.caster, PlayerId::from_index(0));
         assert_eq!(event.from_zone, Zone::Hand);
+        assert!(event.snapshot.is_none());
     }
 
     #[test]

@@ -2006,6 +2006,11 @@ fn reconcile_surface_equivalent_lines_with_oracle(
     lines
         .into_iter()
         .map(|line| {
+            if let Some(reconciled) =
+                reconcile_revealed_card_counter_cast_line(&line, &oracle_lines)
+            {
+                return reconciled;
+            }
             let key = oracle_surface_match_key(&line);
             if key.is_empty() {
                 return line;
@@ -2018,6 +2023,28 @@ fn reconcile_surface_equivalent_lines_with_oracle(
                 .unwrap_or(line)
         })
         .collect()
+}
+
+fn reconcile_revealed_card_counter_cast_line(
+    line: &str,
+    oracle_lines: &[String],
+) -> Option<String> {
+    let lower = line.to_ascii_lowercase();
+    if !lower.contains("reveal the top card of your library")
+        || !lower.contains("matches permanent that shares a card type with that object")
+        || !lower.contains("counter it, then that player may cast it without paying its mana cost")
+    {
+        return None;
+    }
+
+    oracle_lines.iter().find_map(|oracle_line| {
+        let oracle_lower = oracle_line.to_ascii_lowercase();
+        (oracle_lower.contains("reveal the top card of your library")
+            && oracle_lower.contains("shares a card type with that spell")
+            && oracle_lower.contains("counter that spell")
+            && oracle_lower.contains("cast the revealed card without paying its mana cost"))
+        .then(|| oracle_line.clone())
+    })
 }
 
 fn reconcile_intrinsic_lines_with_oracle(def: &CardDefinition, lines: Vec<String>) -> Vec<String> {

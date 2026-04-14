@@ -125,6 +125,7 @@ pub(super) fn try_compile_visibility_and_card_selection_effect(
                 resolve_effect_player_filter(*player, ctx, true, true, true)?;
             let tag = ctx.next_tag("revealed");
             ctx.last_object_tag = Some(tag.clone());
+            ctx.last_revealed_tag = Some(tag.clone());
             let effect = Effect::reveal_top(player_filter, tag);
             (vec![effect], choices)
         }
@@ -530,7 +531,7 @@ pub(super) fn try_compile_visibility_and_card_selection_effect(
                 crate::effects::ChooseObjectsEffect::new(
                     choose_filter,
                     ChoiceCount::up_to(1),
-                    chooser,
+                    chooser.clone(),
                     chosen_tag_key.clone(),
                 )
                 .in_zone(Zone::Library),

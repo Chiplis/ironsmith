@@ -121,7 +121,13 @@ pub(super) fn try_compile_timing_and_control_effect(
         } => {
             let player_filter =
                 resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
-            let resolved_tag = if tag.as_str() == IT_TAG {
+            let resolved_tag = if tag.as_str() == "__last_revealed__" {
+                TagKey::from(ctx.last_revealed_tag.clone().ok_or_else(|| {
+                    CardTextError::ParseError(
+                        "unable to resolve last revealed card without prior reveal".to_string(),
+                    )
+                })?)
+            } else if tag.as_str() == IT_TAG {
                 TagKey::from(ctx.last_object_tag.clone().ok_or_else(|| {
                     CardTextError::ParseError(
                         "unable to resolve 'it' without prior reference".to_string(),
@@ -201,12 +207,19 @@ pub(super) fn try_compile_timing_and_control_effect(
         }
         EffectAst::CastTagged {
             tag,
+            player,
             allow_land,
             as_copy,
             without_paying_mana_cost,
             cost_reduction,
         } => {
-            let resolved_tag = if tag.as_str() == IT_TAG {
+            let resolved_tag = if tag.as_str() == "__last_revealed__" {
+                TagKey::from(ctx.last_revealed_tag.clone().ok_or_else(|| {
+                    CardTextError::ParseError(
+                        "unable to resolve last revealed card without prior reveal".to_string(),
+                    )
+                })?)
+            } else if tag.as_str() == IT_TAG {
                 TagKey::from(ctx.last_object_tag.clone().ok_or_else(|| {
                     CardTextError::ParseError(
                         "unable to resolve 'it' without prior reference".to_string(),
@@ -215,8 +228,11 @@ pub(super) fn try_compile_timing_and_control_effect(
             } else {
                 tag.clone()
             };
+            let player_filter =
+                resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
             let effect = Effect::cast_tagged(
                 resolved_tag,
+                player_filter,
                 *allow_land,
                 *as_copy,
                 *without_paying_mana_cost,

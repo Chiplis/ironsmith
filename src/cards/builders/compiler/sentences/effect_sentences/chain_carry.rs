@@ -12,8 +12,8 @@ use super::super::grammar::structure::{
 };
 use super::super::lexer::{OwnedLexToken, TokenKind, token_word_refs, trim_lexed_commas};
 use super::super::permission_helpers::{
-    parse_additional_land_plays_clause_lexed, parse_permission_clause_spec_lexed,
-    parse_unsupported_play_cast_permission_clause_lexed,
+    PermissionClauseSpec, PermissionLifetime, parse_additional_land_plays_clause_lexed,
+    parse_permission_clause_spec_lexed, parse_unsupported_play_cast_permission_clause_lexed,
 };
 use super::super::rule_engine::{LexClauseView, LexRuleDef, LexRuleIndex};
 use super::super::token_primitives::{
@@ -331,6 +331,16 @@ pub(crate) fn looks_like_multi_create_chain_lexed(tokens: &[OwnedLexToken]) -> b
 pub(crate) fn parse_effect_chain_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    fn immediate_tagged_permission_spec(tokens: &[OwnedLexToken]) -> Result<bool, CardTextError> {
+        Ok(matches!(
+            parse_permission_clause_spec_lexed(tokens)?,
+            Some(PermissionClauseSpec::Tagged {
+                lifetime: PermissionLifetime::Immediate,
+                ..
+            })
+        ))
+    }
+
     if let Some(effects) = parse_exile_library_then_shuffle_graveyard_chain_lexed(tokens)? {
         return Ok(effects);
     }
@@ -379,6 +389,9 @@ pub(crate) fn parse_effect_chain_lexed(
             bind_implicit_player_context(effect, player);
         }
         if leading_may_is_permission_clause_lexed(&stripped)? {
+            if immediate_tagged_permission_spec(&stripped)? {
+                return Ok(vec![EffectAst::MayByPlayer { player, effects }]);
+            }
             return Ok(effects);
         }
         return Ok(vec![EffectAst::MayByPlayer { player, effects }]);
@@ -389,10 +402,13 @@ pub(crate) fn parse_effect_chain_lexed(
         && !starts_with_each_player
     {
         let stripped = remove_first_word_lexed(tokens, "may");
-        if leading_may_is_permission_clause_lexed(&stripped)? {
-            return parse_effect_chain_lexed(&stripped);
-        }
         let effects = parse_effect_chain_lexed(&stripped)?;
+        if leading_may_is_permission_clause_lexed(&stripped)? {
+            if immediate_tagged_permission_spec(&stripped)? {
+                return Ok(vec![EffectAst::May { effects }]);
+            }
+            return Ok(effects);
+        }
         return Ok(vec![EffectAst::May { effects }]);
     }
 
@@ -441,29 +457,16 @@ fn is_comparison_or_delimiter_lexed(tokens: &[OwnedLexToken], idx: usize) -> boo
     previous_word == Some("than") && next_word == Some("equal")
 }
 
-fn split_on_or_lexed(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> {
-    let mut segments = Vec::new();
-    let mut start = 0usize;
-
-    for (idx, token) in tokens.iter().enumerate() {
-        let is_separator = token.kind == TokenKind::Comma
-            || (token.is_word("or") && !is_comparison_or_delimiter_lexed(tokens, idx));
-        if !is_separator {
-            continue;
-        }
-        let current = trim_lexed_commas(&tokens[start..idx]);
-        if !current.is_empty() {
-            segments.push(current);
-        }
-        start = idx + 1;
-    }
-
-    let tail = trim_lexed_commas(&tokens[start..]);
-    if !tail.is_empty() {
-        segments.push(tail);
-    }
-
-    segments
+fn action_separator_indices_lexed(tokens: &[OwnedLexToken]) -> Vec<usize> {
+    tokens
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, token)| {
+            let is_separator = token.kind == TokenKind::Comma
+                || (token.is_word("or") && !is_comparison_or_delimiter_lexed(tokens, idx));
+            is_separator.then_some(idx)
+        })
+        .collect()
 }
 
 fn normalize_or_action_option_lexed(mut option: &[OwnedLexToken]) -> &[OwnedLexToken] {
@@ -487,53 +490,54 @@ pub(crate) fn parse_or_action_clause_lexed(
         return Ok(None);
     }
 
-    let mut option_tokens = split_on_or_lexed(tokens);
-    if option_tokens.len() != 2 {
-        return Ok(None);
+    for separator_idx in action_separator_indices_lexed(tokens) {
+        let first = normalize_or_action_option_lexed(&tokens[..separator_idx]);
+        let second = normalize_or_action_option_lexed(&tokens[separator_idx + 1..]);
+        if first.is_empty() || second.is_empty() {
+            continue;
+        }
+
+        let first_words = crate::cards::builders::compiler::token_word_refs(first);
+        let second_words = crate::cards::builders::compiler::token_word_refs(second);
+        if word_is(first_words.first().copied(), "tap")
+            && word_is(second_words.first().copied(), "untap")
+            && first_words.get(1).is_some_and(|word| {
+                word.eq_ignore_ascii_case("all") || word.eq_ignore_ascii_case("each")
+            })
+            && second_words.get(1).is_some_and(|word| {
+                word.eq_ignore_ascii_case("all") || word.eq_ignore_ascii_case("each")
+            })
+        {
+            continue;
+        }
+
+        let first_starts_effect =
+            find_verb_lexed(first).is_some_and(|(_, verb_idx)| verb_idx == 0)
+                || has_effect_head_without_verb_lexed(first);
+        let second_starts_effect =
+            find_verb_lexed(second).is_some_and(|(_, verb_idx)| verb_idx == 0)
+                || has_effect_head_without_verb_lexed(second);
+        if !first_starts_effect || !second_starts_effect {
+            continue;
+        }
+
+        let first_effects = match parse_effect_chain_with_sentence_primitives_lexed(first) {
+            Ok(effects) if !effects.is_empty() => effects,
+            _ => continue,
+        };
+        let second_effects = match parse_effect_chain_with_sentence_primitives_lexed(second) {
+            Ok(effects) if !effects.is_empty() => effects,
+            _ => continue,
+        };
+
+        return Ok(Some(EffectAst::UnlessAction {
+            effects: first_effects,
+            alternative: second_effects,
+            player: PlayerAst::Implicit,
+        }));
     }
 
-    let first = normalize_or_action_option_lexed(option_tokens.remove(0));
-    let second = normalize_or_action_option_lexed(option_tokens.remove(0));
-    if first.is_empty() || second.is_empty() {
-        return Ok(None);
-    }
-
-    let first_words = crate::cards::builders::compiler::token_word_refs(first);
-    let second_words = crate::cards::builders::compiler::token_word_refs(second);
-    if word_is(first_words.first().copied(), "tap")
-        && word_is(second_words.first().copied(), "untap")
-        && first_words.get(1).is_some_and(|word| {
-            word.eq_ignore_ascii_case("all") || word.eq_ignore_ascii_case("each")
-        })
-        && second_words.get(1).is_some_and(|word| {
-            word.eq_ignore_ascii_case("all") || word.eq_ignore_ascii_case("each")
-        })
-    {
-        return Ok(None);
-    }
-
-    let first_starts_effect = find_verb_lexed(first).is_some_and(|(_, verb_idx)| verb_idx == 0)
-        || has_effect_head_without_verb_lexed(first);
-    let second_starts_effect = find_verb_lexed(second).is_some_and(|(_, verb_idx)| verb_idx == 0)
-        || has_effect_head_without_verb_lexed(second);
-    if !first_starts_effect || !second_starts_effect {
-        return Ok(None);
-    }
-
-    let first_effects = match parse_effect_chain_with_sentence_primitives_lexed(first) {
-        Ok(effects) if !effects.is_empty() => effects,
-        _ => return Ok(None),
-    };
-    let second_effects = match parse_effect_chain_with_sentence_primitives_lexed(second) {
-        Ok(effects) if !effects.is_empty() => effects,
-        _ => return Ok(None),
-    };
-
-    Ok(Some(EffectAst::UnlessAction {
-        effects: first_effects,
-        alternative: second_effects,
-        player: PlayerAst::Implicit,
-    }))
+    Ok(None)
 }
 
 #[cfg(test)]
@@ -672,6 +676,37 @@ mod tests {
                 .iter()
                 .any(|effect| matches!(effect, EffectAst::ShuffleGraveyardIntoLibrary { .. })),
             "expected a graveyard shuffle effect in the parsed chain: {debug}"
+        );
+    }
+
+    #[test]
+    fn or_action_clause_preserves_secondary_or_inside_sacrifice_filter() {
+        let tokens = lex_line(
+            "Discard two cards or sacrifice a creature or planeswalker of your choice",
+            0,
+        )
+        .expect("or-action text should lex");
+
+        let parsed = super::parse_or_action_clause_lexed(&tokens)
+            .expect("or-action parse should succeed")
+            .expect("or-action clause should be recognized");
+
+        let debug = format!("{parsed:?}");
+        assert!(
+            debug.contains("UnlessAction"),
+            "expected or-action lowering to use unless-action AST, got {debug}"
+        );
+        assert!(
+            debug.contains("Discard"),
+            "expected discard branch in or-action AST, got {debug}"
+        );
+        assert!(
+            debug.contains("Sacrifice"),
+            "expected sacrifice branch in or-action AST, got {debug}"
+        );
+        assert!(
+            debug.contains("Planeswalker"),
+            "expected sacrifice filter to keep planeswalker branch, got {debug}"
         );
     }
 }
@@ -2028,6 +2063,22 @@ pub(crate) fn bind_implicit_player_context(effect: &mut EffectAst, player: Playe
             player: effect_player,
             ..
         }
+        | EffectAst::GrantPlayTaggedUntilEndOfTurn {
+            player: effect_player,
+            ..
+        }
+        | EffectAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn {
+            player: effect_player,
+            ..
+        }
+        | EffectAst::GrantPlayTaggedUntilYourNextTurn {
+            player: effect_player,
+            ..
+        }
+        | EffectAst::CastTagged {
+            player: effect_player,
+            ..
+        }
         | EffectAst::GrantBySpec {
             player: effect_player,
             ..
@@ -2126,6 +2177,7 @@ fn parse_leading_player_may_words(words: &[&str]) -> Option<PlayerAst> {
                         .value(PlayerAst::TargetOpponent),
                     (word_eq("target"), player_word(), word_eq("may")).value(PlayerAst::Target),
                     (word_eq("that"), player_word(), word_eq("may")).value(PlayerAst::That),
+                    (word_eq("that"), opponent_word(), word_eq("may")).value(PlayerAst::That),
                     (word_eq("they"), word_eq("may")).value(PlayerAst::That),
                     (
                         word_eq("that"),

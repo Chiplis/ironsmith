@@ -1,6 +1,9 @@
 use super::*;
+use crate::cards::builders::compiler::sentences::effect_sentences::lex_chain_helpers::{
+    find_verb_lexed, has_effect_head_without_verb_lexed,
+};
 
-fn trim_trailing_discard_alternative_action(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+fn trim_trailing_discard_alternative_action(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     for (idx, token) in tokens.iter().enumerate() {
         if !token.is_word("or") {
             continue;
@@ -11,9 +14,9 @@ fn trim_trailing_discard_alternative_action(tokens: &[OwnedLexToken]) -> &[Owned
             continue;
         }
 
-        let starts_new_action = find_verb_lexed(alternative_tokens)
+        let starts_new_action = find_verb_lexed(&alternative_tokens)
             .is_some_and(|(_, verb_idx)| verb_idx == 0)
-            || has_effect_head_without_verb_lexed(alternative_tokens);
+            || has_effect_head_without_verb_lexed(&alternative_tokens);
         if starts_new_action {
             return trim_commas(&tokens[..idx]);
         }
@@ -279,13 +282,14 @@ pub(crate) fn parse_discard(
         discard_filter = Some(filter);
     }
 
-    let trailing_tokens = if card_word_idx + 1 < rest_words.len() {
+    let trailing_tokens_storage = if card_word_idx + 1 < rest_words.len() {
         let trailing_token_idx =
             token_index_for_word_index(rest, card_word_idx + 1).unwrap_or(rest.len());
         trim_trailing_discard_alternative_action(&rest[trailing_token_idx..])
     } else {
-        &[]
+        Vec::new()
     };
+    let trailing_tokens = trailing_tokens_storage.as_slice();
     if let Some(dynamic_count) = parse_get_for_each_count_value(trailing_tokens)? {
         count = dynamic_count;
         return Ok(EffectAst::Discard {

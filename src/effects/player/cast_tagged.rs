@@ -14,6 +14,7 @@ use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::{GameState, StackEntry};
 use crate::mana::ManaCost;
 use crate::tag::TagKey;
+use crate::target::PlayerFilter;
 use crate::zone::Zone;
 
 use super::runtime_helpers::{queue_effect_driven_land_play, with_spell_cast_event};
@@ -22,6 +23,7 @@ use super::runtime_helpers::{queue_effect_driven_land_play, with_spell_cast_even
 #[derive(Debug, Clone, PartialEq)]
 pub struct CastTaggedEffect {
     pub tag: TagKey,
+    pub player: PlayerFilter,
     pub allow_land: bool,
     pub as_copy: bool,
     pub without_paying_mana_cost: bool,
@@ -30,9 +32,10 @@ pub struct CastTaggedEffect {
 
 impl CastTaggedEffect {
     /// Create a new cast-tagged effect.
-    pub fn new(tag: impl Into<TagKey>) -> Self {
+    pub fn new(tag: impl Into<TagKey>, player: PlayerFilter) -> Self {
         Self {
             tag: tag.into(),
+            player,
             allow_land: false,
             as_copy: false,
             without_paying_mana_cost: false,
@@ -73,6 +76,7 @@ impl EffectExecutor for CastTaggedEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         use crate::alternative_cast::CastingMethod;
         use crate::cost::OptionalCostsPaid;
+        use crate::effects::helpers::resolve_player_filter;
 
         let Some(snapshot) = ctx.get_tagged(self.tag.as_str()) else {
             return Ok(EffectOutcome::target_invalid());
@@ -103,8 +107,9 @@ impl EffectExecutor for CastTaggedEffect {
             .as_ref()
             .and_then(|cost| if cost.has_x() { Some(0u32) } else { None });
 
+        let caster = resolve_player_filter(game, &self.player, ctx)?;
+
         if self.as_copy {
-            let caster = ctx.controller;
             let copy_id = game.new_object_id();
 
             let source_obj = match game.object(object_id) {
@@ -184,17 +189,16 @@ impl EffectExecutor for CastTaggedEffect {
                 game,
                 ctx,
                 object_id,
-                BattlefieldEntryOptions::specific(ctx.controller, false),
+                BattlefieldEntryOptions::specific(caster, false),
             ) {
                 BattlefieldEntryOutcome::Moved(new_id) => {
-                    queue_effect_driven_land_play(game, ctx, new_id, ctx.controller, from_zone);
+                    queue_effect_driven_land_play(game, ctx, new_id, caster, from_zone);
                     Ok(EffectOutcome::with_objects(vec![new_id]))
                 }
                 BattlefieldEntryOutcome::Prevented => Ok(EffectOutcome::impossible()),
             };
         }
 
-        let caster = ctx.controller;
         if !self.without_paying_mana_cost
             && let Some(cost) = mana_cost.as_ref()
         {
@@ -274,6 +278,7 @@ mod tests {
     use super::*;
     use crate::card::CardBuilder;
     use crate::decision::SelectFirstDecisionMaker;
+    use crate::events::traits::GameEventType;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::snapshot::ObjectSnapshot;
@@ -301,7 +306,7 @@ mod tests {
         let mut dm = SelectFirstDecisionMaker;
         let mut ctx = ExecutionContext::new(source, alice, &mut dm).with_tagged_objects(tags);
 
-        let outcome = CastTaggedEffect::new("it")
+        let outcome = CastTaggedEffect::new("it", PlayerFilter::You)
             .without_paying_mana_cost()
             .execute(&mut game, &mut ctx)
             .expect("cast tagged should resolve");
@@ -326,6 +331,51 @@ mod tests {
     }
 
     #[test]
+    fn swindlers_scheme_style_cast_tagged_uses_the_triggering_opponent_as_caster() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let card = CardBuilder::new(CardId::new(), "Revealed Spell")
+            .card_types(vec![CardType::Sorcery])
+            .build();
+        let exiled_id = game.create_object_from_card(&card, alice, Zone::Exile);
+        let snapshot =
+            ObjectSnapshot::from_object(game.object(exiled_id).expect("tagged card"), &game);
+        let mut tags = std::collections::HashMap::new();
+        tags.insert(TagKey::from("revealed_0"), vec![snapshot]);
+
+        let source = game.new_object_id();
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm).with_tagged_objects(tags);
+
+        let outcome = CastTaggedEffect::new("revealed_0", PlayerFilter::Specific(bob))
+            .without_paying_mana_cost()
+            .execute(&mut game, &mut ctx)
+            .expect("cast tagged should resolve");
+
+        let crate::effect::OutcomeValue::Objects(ids) = outcome.value else {
+            panic!("expected cast tagged to create a stack object");
+        };
+        let cast_id = ids[0];
+        let stack_entry = game
+            .stack
+            .iter()
+            .find(|entry| entry.object_id == cast_id)
+            .expect("cast spell should be on the stack");
+        assert_eq!(stack_entry.controller, bob);
+        let spell_cast = outcome
+            .events
+            .iter()
+            .find_map(|event| event.downcast::<crate::events::spells::SpellCastEvent>())
+            .expect("cast tagged should emit a spell-cast event");
+        assert_eq!(spell_cast.caster, bob);
+        assert!(
+            spell_cast.snapshot().is_some(),
+            "spell-cast event should preserve the triggering spell snapshot"
+        );
+    }
+
+    #[test]
     fn cast_tagged_land_emits_land_play_and_etb_events() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
@@ -342,7 +392,7 @@ mod tests {
         let mut dm = SelectFirstDecisionMaker;
         let mut ctx = ExecutionContext::new(source, alice, &mut dm).with_tagged_objects(tags);
 
-        let outcome = CastTaggedEffect::new("it")
+        let outcome = CastTaggedEffect::new("it", PlayerFilter::You)
             .allow_land()
             .execute(&mut game, &mut ctx)
             .expect("play tagged land should resolve");
@@ -391,7 +441,7 @@ mod tests {
         let mut dm = SelectFirstDecisionMaker;
         let mut ctx = ExecutionContext::new(source, alice, &mut dm).with_tagged_objects(tags);
 
-        let outcome = CastTaggedEffect::new("it")
+        let outcome = CastTaggedEffect::new("it", PlayerFilter::You)
             .execute(&mut game, &mut ctx)
             .expect("cast tagged should resolve");
 
@@ -426,7 +476,7 @@ mod tests {
         let mut dm = SelectFirstDecisionMaker;
         let mut ctx = ExecutionContext::new(source, alice, &mut dm).with_tagged_objects(tags);
 
-        let outcome = CastTaggedEffect::new("it")
+        let outcome = CastTaggedEffect::new("it", PlayerFilter::You)
             .as_copy()
             .cost_reduction(ManaCost::from_symbols(vec![ManaSymbol::Generic(2)]))
             .execute(&mut game, &mut ctx)

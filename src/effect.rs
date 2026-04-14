@@ -2872,7 +2872,7 @@ impl Effect {
         mana: Vec<ManaSymbol>,
         life: Option<Value>,
     ) -> Self {
-        Self::counter_unless_pays_with_life_and_additional(target, mana, life, None)
+        Self::counter_unless_pays_with_life_and_additional_and_x(target, mana, life, None, None)
     }
 
     /// Create a "counter unless pays [mana] and optional dynamic additional generic mana" effect.
@@ -2882,17 +2882,36 @@ impl Effect {
         life: Option<Value>,
         additional_generic: Option<Value>,
     ) -> Self {
+        Self::counter_unless_pays_with_life_and_additional_and_x(
+            target,
+            mana,
+            life,
+            additional_generic,
+            None,
+        )
+    }
+
+    /// Create a "counter unless pays [mana]" effect with optional life, dynamic additional
+    /// generic mana, and a bound X value.
+    pub fn counter_unless_pays_with_life_and_additional_and_x(
+        target: ChooseSpec,
+        mana: Vec<ManaSymbol>,
+        life: Option<Value>,
+        additional_generic: Option<Value>,
+        x_value: Option<Value>,
+    ) -> Self {
         let player = match target.base() {
             ChooseSpec::SpecificObject(id) => PlayerFilter::ControllerOf(ObjectRef::Specific(*id)),
             ChooseSpec::Tagged(tag) => PlayerFilter::ControllerOf(ObjectRef::Tagged(tag.clone())),
             _ => PlayerFilter::ControllerOf(ObjectRef::Target),
         };
-        Self::unless_pays_with_life_and_additional(
+        Self::unless_pays_with_life_and_additional_and_x(
             vec![Self::counter(target)],
             player,
             mana,
             life,
             additional_generic,
+            x_value,
         )
     }
 
@@ -3740,13 +3759,34 @@ impl Effect {
         life: Option<Value>,
         additional_generic: Option<Value>,
     ) -> Self {
-        Self::unless_pays_with_life_additional_and_multiplier(
+        Self::unless_pays_with_life_and_additional_and_x(
             effects,
             player,
             mana,
             life,
             additional_generic,
             None,
+        )
+    }
+
+    /// "X unless you/they pay [mana] and optional life/additional/X binding" -
+    /// execute effects unless paid.
+    pub fn unless_pays_with_life_and_additional_and_x(
+        effects: Vec<Effect>,
+        player: PlayerFilter,
+        mana: Vec<ManaSymbol>,
+        life: Option<Value>,
+        additional_generic: Option<Value>,
+        x_value: Option<Value>,
+    ) -> Self {
+        Self::unless_pays_with_life_additional_and_multiplier_and_x(
+            effects,
+            player,
+            mana,
+            life,
+            additional_generic,
+            None,
+            x_value,
         )
     }
 
@@ -3760,15 +3800,38 @@ impl Effect {
         additional_generic: Option<Value>,
         mana_multiplier: Option<Value>,
     ) -> Self {
+        Self::unless_pays_with_life_additional_and_multiplier_and_x(
+            effects,
+            player,
+            mana,
+            life,
+            additional_generic,
+            mana_multiplier,
+            None,
+        )
+    }
+
+    /// "X unless you/they pay [mana] and optional life/additional/multiplier/X binding" -
+    /// execute effects unless paid.
+    pub fn unless_pays_with_life_additional_and_multiplier_and_x(
+        effects: Vec<Effect>,
+        player: PlayerFilter,
+        mana: Vec<ManaSymbol>,
+        life: Option<Value>,
+        additional_generic: Option<Value>,
+        mana_multiplier: Option<Value>,
+        x_value: Option<Value>,
+    ) -> Self {
         use crate::effects::UnlessPaysEffect;
         Self::new(
-            UnlessPaysEffect::new_with_life_and_additional_and_multiplier(
+            UnlessPaysEffect::new_with_life_and_additional_and_multiplier_and_x(
                 effects,
                 player,
                 mana,
                 life,
                 additional_generic,
                 mana_multiplier,
+                x_value,
             ),
         )
     }
@@ -4583,13 +4646,14 @@ impl Effect {
     /// effect tagged the card to be cast.
     pub fn cast_tagged(
         tag: impl Into<crate::tag::TagKey>,
+        player: PlayerFilter,
         allow_land: bool,
         as_copy: bool,
         without_paying_mana_cost: bool,
         cost_reduction: Option<crate::mana::ManaCost>,
     ) -> Self {
         use crate::effects::CastTaggedEffect;
-        let effect = CastTaggedEffect::new(tag);
+        let effect = CastTaggedEffect::new(tag, player);
         let effect = if allow_land {
             effect.allow_land()
         } else {

@@ -19,7 +19,13 @@ pub(super) fn register_effect_driven_spell_cast(
     if from_zone == Zone::Command {
         game.record_commander_cast_from_command_zone(new_id);
     }
-    TriggerEvent::new_with_provenance(SpellCastEvent::new(new_id, caster, from_zone), provenance)
+    let event = if let Some(obj) = game.object(new_id) {
+        let snapshot = crate::snapshot::ObjectSnapshot::from_object(obj, game);
+        SpellCastEvent::new_with_snapshot(new_id, caster, from_zone, snapshot)
+    } else {
+        SpellCastEvent::new(new_id, caster, from_zone)
+    };
+    TriggerEvent::new_with_provenance(event, provenance)
 }
 
 pub(super) fn queue_effect_driven_land_play(

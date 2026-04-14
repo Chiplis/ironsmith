@@ -2620,7 +2620,7 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
         ["that", "spell"] | ["those", "spells"]
     ) {
         return Ok(wrap_target_count(
-            TargetAst::Tagged(TagKey::from(IT_TAG), span),
+            TargetAst::Tagged(TagKey::from("triggering"), span),
             target_count,
         ));
     }

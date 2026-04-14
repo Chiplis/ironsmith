@@ -2588,6 +2588,47 @@ pub(super) fn normalize_conditional_target_player_pronoun(text: &str, phrase: &s
     rewritten
 }
 
+fn normalize_repeated_target_player_unless_pronoun(text: &str, phrase: &str) -> String {
+    let lower = text.to_ascii_lowercase();
+    let leading = format!("{phrase} ");
+    let marker = format!(" unless {phrase} ");
+    if !lower.starts_with(&leading) {
+        return text.to_string();
+    }
+    let Some(pos) = lower.find(&marker) else {
+        return text.to_string();
+    };
+
+    let start = pos + " unless ".len();
+    let end = start + phrase.len();
+    let mut rewritten = String::with_capacity(text.len());
+    rewritten.push_str(&text[..start]);
+    rewritten.push_str("that player");
+    rewritten.push_str(&text[end..]);
+    rewritten
+}
+
+fn normalize_repeated_target_player_unless_process_once(text: &str) -> Option<String> {
+    if text.contains('•') || text.contains('\n') {
+        return None;
+    }
+
+    let trimmed = text.trim();
+    let without_period = trimmed.strip_suffix('.').unwrap_or(trimmed);
+    let (first, second) = without_period.split_once(". ")?;
+    if !first.eq_ignore_ascii_case(second) {
+        return None;
+    }
+
+    if !first.to_ascii_lowercase().contains(" unless ") {
+        return None;
+    }
+
+    let first = normalize_repeated_target_player_unless_pronoun(first, "target opponent");
+    let first = normalize_repeated_target_player_unless_pronoun(&first, "target player");
+    Some(format!("{first}. Repeat this process once."))
+}
+
 pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
     let mut normalized = text.trim().to_string();
     if normalized.is_empty() {
@@ -2606,6 +2647,9 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
         "creatures you control get +X/+X until end of turn, then creatures you control gain haste until end of turn",
         "creatures you control get +X/+X and gain haste until end of turn",
     );
+    if let Some(rewritten) = normalize_repeated_target_player_unless_process_once(&normalized) {
+        normalized = rewritten;
+    }
     if let Some(rewritten) = replace_once_ascii_ci(
         &normalized,
         "Exile all card from an opponent's graveyard",

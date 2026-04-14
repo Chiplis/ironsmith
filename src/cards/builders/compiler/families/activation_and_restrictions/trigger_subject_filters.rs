@@ -917,6 +917,13 @@ pub(crate) fn parse_spell_activity_trigger(
 
     let parse_filter =
         |filter_tokens: &[OwnedLexToken]| -> Result<Option<ObjectFilter>, CardTextError> {
+            let filter_tokens = if let Some(idx) =
+                find_index(filter_tokens, |token| token.is_comma() || token.is_period())
+            {
+                &filter_tokens[..idx]
+            } else {
+                filter_tokens
+            };
             let filter_tokens = if let Some(idx) = find_index(filter_tokens, |token| {
                 token.is_word("during") || token.is_word("other")
             }) {
@@ -949,6 +956,8 @@ pub(crate) fn parse_spell_activity_trigger(
                         Some(Zone::Graveyard)
                     } else if slice_contains(&filter_words, &"exile") {
                         Some(Zone::Exile)
+                    } else if slice_contains(&filter_words, &"hand") {
+                        Some(Zone::Hand)
                     } else {
                         None
                     }?;
@@ -1127,6 +1136,7 @@ pub(crate) enum MayCastItVerb {
 }
 
 pub(crate) struct MayCastTaggedSpec {
+    pub(crate) tag: TagKey,
     pub(crate) verb: MayCastItVerb,
     pub(crate) as_copy: bool,
     pub(crate) without_paying_mana_cost: bool,
@@ -1164,15 +1174,19 @@ pub(crate) fn parse_may_cast_it_sentence(tokens: &[OwnedLexToken]) -> Option<May
     };
 
     let rest = &clause_words[3..];
-    let (as_copy, consumed) = if slice_starts_with(&rest, &["it"]) {
-        (false, 1usize)
+    let (tag, as_copy, consumed) = if slice_starts_with(&rest, &["it"]) {
+        (TagKey::from(IT_TAG), false, 1usize)
     } else if slice_starts_with(&rest, &["the", "exiled", "card"]) {
-        (false, 3usize)
+        (TagKey::from(IT_TAG), false, 3usize)
+    } else if slice_starts_with(&rest, &["the", "revealed", "card"])
+        || slice_starts_with(&rest, &["that", "revealed", "card"])
+    {
+        (TagKey::from("__last_revealed__"), false, 3usize)
     } else if slice_starts_with(&rest, &["the", "copy"])
         || slice_starts_with(&rest, &["that", "copy"])
         || slice_starts_with(&rest, &["a", "copy"])
     {
-        (true, 2usize)
+        (TagKey::from(IT_TAG), true, 2usize)
     } else {
         return None;
     };
@@ -1180,6 +1194,7 @@ pub(crate) fn parse_may_cast_it_sentence(tokens: &[OwnedLexToken]) -> Option<May
     let tail = &rest[consumed..];
     if tail.is_empty() {
         return Some(MayCastTaggedSpec {
+            tag,
             verb,
             as_copy,
             without_paying_mana_cost: false,
@@ -1189,6 +1204,7 @@ pub(crate) fn parse_may_cast_it_sentence(tokens: &[OwnedLexToken]) -> Option<May
     }
     if tail == ["without", "paying", "its", "mana", "cost"] {
         return Some(MayCastTaggedSpec {
+            tag,
             verb,
             as_copy,
             without_paying_mana_cost: true,
@@ -1216,6 +1232,7 @@ pub(crate) fn parse_may_cast_it_sentence(tokens: &[OwnedLexToken]) -> Option<May
             _ => return None,
         };
         return Some(MayCastTaggedSpec {
+            tag,
             verb,
             as_copy,
             without_paying_mana_cost: true,
@@ -1264,7 +1281,8 @@ pub(crate) fn parse_copy_reference_cost_reduction_sentence(
 
 pub(crate) fn build_may_cast_tagged_effect(spec: &MayCastTaggedSpec) -> EffectAst {
     let cast = EffectAst::CastTagged {
-        tag: TagKey::from(IT_TAG),
+        tag: spec.tag.clone(),
+        player: PlayerAst::Implicit,
         allow_land: matches!(spec.verb, MayCastItVerb::Play),
         as_copy: spec.as_copy,
         without_paying_mana_cost: spec.without_paying_mana_cost,

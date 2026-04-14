@@ -527,6 +527,7 @@ pub(crate) enum EffectAst {
         mana: Vec<ManaSymbol>,
         life: Option<Value>,
         additional_generic: Option<Value>,
+        x_value: Option<Value>,
     },
     UnlessPays {
         effects: Vec<EffectAst>,
@@ -825,6 +826,7 @@ pub(crate) enum EffectAst {
     },
     CastTagged {
         tag: TagKey,
+        player: PlayerAst,
         allow_land: bool,
         as_copy: bool,
         without_paying_mana_cost: bool,

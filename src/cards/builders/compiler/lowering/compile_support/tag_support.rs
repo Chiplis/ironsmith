@@ -549,11 +549,15 @@ pub(crate) fn effect_references_event_derived_amount(effect: &EffectAst) -> bool
         EffectAst::CounterUnlessPays {
             life,
             additional_generic,
+            x_value,
             ..
         } => {
             life.as_ref()
                 .is_some_and(value_references_event_derived_amount)
                 || additional_generic
+                    .as_ref()
+                    .is_some_and(value_references_event_derived_amount)
+                || x_value
                     .as_ref()
                     .is_some_and(value_references_event_derived_amount)
         }
@@ -737,11 +741,15 @@ pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
         EffectAst::CounterUnlessPays {
             life,
             additional_generic,
+            x_value,
             ..
         } => {
             life.as_ref()
                 .is_some_and(|value| value_references_tag(value, IT_TAG))
                 || additional_generic
+                    .as_ref()
+                    .is_some_and(|value| value_references_tag(value, IT_TAG))
+                || x_value
                     .as_ref()
                     .is_some_and(|value| value_references_tag(value, IT_TAG))
         }

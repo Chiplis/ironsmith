@@ -1094,10 +1094,23 @@ pub(super) fn finalize_pending_spell_cast(
         &mut *decision_maker,
     )?;
 
-    let event = TriggerEvent::new_with_provenance(
-        SpellCastEvent::new(result.new_id, result.caster, result.from_zone),
-        spell_cast_provenance,
-    );
+    let event = if let Some(obj) = game.object(result.new_id) {
+        let snapshot = crate::snapshot::ObjectSnapshot::from_object(obj, game);
+        TriggerEvent::new_with_provenance(
+            SpellCastEvent::new_with_snapshot(
+                result.new_id,
+                result.caster,
+                result.from_zone,
+                snapshot,
+            ),
+            spell_cast_provenance,
+        )
+    } else {
+        TriggerEvent::new_with_provenance(
+            SpellCastEvent::new(result.new_id, result.caster, result.from_zone),
+            spell_cast_provenance,
+        )
+    };
     queue_triggers_from_event(game, trigger_queue, event, false);
 
     state.clear_checkpoint();

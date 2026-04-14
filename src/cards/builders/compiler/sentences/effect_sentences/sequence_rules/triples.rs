@@ -216,6 +216,7 @@ pub(super) fn parse_search_face_down_exile_conditional_cast_else_hand(
             EffectAst::May {
                 effects: vec![EffectAst::CastTagged {
                     tag: searched_tag.clone(),
+                    player: PlayerAst::Implicit,
                     allow_land: false,
                     as_copy: false,
                     without_paying_mana_cost: true,

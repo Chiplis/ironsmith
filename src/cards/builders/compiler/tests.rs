@@ -3007,6 +3007,7 @@ fn rewrite_lexed_value_and_permission_helpers_match_existing_semantics() {
             as_copy: false,
             without_paying_mana_cost: false,
             lifetime: super::PermissionLifetime::ThisTurn,
+            ..
         }))
     ));
 }
@@ -3428,6 +3429,7 @@ fn rewrite_lexed_permission_helpers_cover_until_next_turn_tagged_play() {
             as_copy: false,
             without_paying_mana_cost: false,
             lifetime: super::PermissionLifetime::UntilYourNextTurn,
+            ..
         }))
     ));
 }
@@ -4554,6 +4556,21 @@ fn rewrite_search_library_helper_parsers_track_mana_and_same_name_suffixes() {
             .expect("same-name helper should split reference suffix");
     assert_eq!(token_word_refs(&base_filter), vec!["creature", "card"]);
     assert_eq!(token_word_refs(&reference_tokens), vec!["that", "card"]);
+}
+
+#[test]
+fn rewrite_object_filter_parser_handles_same_name_as_the_spell_reference() {
+    let tokens = lex_line("cards in all graveyards with the same name as the spell", 0)
+        .expect("rewrite lexer should classify same-name spell filter text");
+
+    let filter = super::parse_object_filter_lexed(&tokens, false)
+        .expect("object filter parser should bind same-name spell references");
+    let debug = format!("{filter:?}");
+
+    assert!(
+        debug.contains("zone: Some(Graveyard)") && debug.contains("SameNameAsTagged"),
+        "expected graveyard same-name tagged filter, got {debug}"
+    );
 }
 
 #[test]
@@ -6752,6 +6769,26 @@ fn rewrite_lexed_triggered_line_supports_leave_battlefield_sacrifice_all_non_ogr
         ),
         "{parsed:?}"
     );
+}
+
+#[test]
+fn rewrite_lexed_swindlers_scheme_trigger_keeps_opponent_hand_reveal_and_followup_cast() {
+    let text = "Whenever an opponent casts a spell from their hand, you may reveal the top card of your library. If it shares a card type with that spell, counter that spell and that opponent may cast the revealed card without paying its mana cost.";
+    let tokens = lex_line(text, 0).expect("rewrite lexer should classify Swindler's Scheme");
+
+    let parsed = super::clause_support::parse_triggered_line_lexed(&tokens)
+        .expect("Swindler's Scheme trigger line should parse");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("SpellCast"), "{debug}");
+    assert!(debug.contains("caster: Opponent"), "{debug}");
+    assert!(debug.contains("from_not_hand: false"), "{debug}");
+    assert!(debug.contains("RevealTop"), "{debug}");
+    assert!(debug.contains("Conditional"), "{debug}");
+    assert!(debug.contains("SharesCardType"), "{debug}");
+    assert!(debug.contains("Counter"), "{debug}");
+    assert!(debug.contains("MayByPlayer"), "{debug}");
+    assert!(debug.contains("player: That"), "{debug}");
 }
 
 #[test]

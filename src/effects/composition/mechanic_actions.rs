@@ -920,7 +920,7 @@ impl EffectExecutor for CastEncodedCardCopyEffect {
         let snapshot = ObjectSnapshot::from_object(&encoded_obj, game);
         let prior = ctx.clear_object_tag("cipher_encoded");
         ctx.set_tagged_objects("cipher_encoded", vec![snapshot]);
-        let result = CastTaggedEffect::new("cipher_encoded")
+        let result = CastTaggedEffect::new("cipher_encoded", crate::target::PlayerFilter::You)
             .as_copy()
             .without_paying_mana_cost()
             .execute(game, ctx);

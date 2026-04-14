@@ -40,6 +40,8 @@ pub struct UnlessPaysEffect {
     pub life: Option<Value>,
     /// Optional dynamic additional generic mana payment.
     pub additional_generic: Option<Value>,
+    /// Optional bound value for an X mana symbol in the payment cost.
+    pub x_value: Option<Value>,
     /// Optional multiplier for the mana symbol sequence.
     pub mana_multiplier: Option<Value>,
 }
@@ -47,7 +49,9 @@ pub struct UnlessPaysEffect {
 impl UnlessPaysEffect {
     /// Create a new "unless pays" effect.
     pub fn new(effects: Vec<Effect>, player: PlayerFilter, mana: Vec<ManaSymbol>) -> Self {
-        Self::new_with_life_and_additional_and_multiplier(effects, player, mana, None, None, None)
+        Self::new_with_life_and_additional_and_multiplier_and_x(
+            effects, player, mana, None, None, None, None,
+        )
     }
 
     /// Create a new "unless pays" effect with optional life payment.
@@ -57,7 +61,9 @@ impl UnlessPaysEffect {
         mana: Vec<ManaSymbol>,
         life: Option<Value>,
     ) -> Self {
-        Self::new_with_life_and_additional_and_multiplier(effects, player, mana, life, None, None)
+        Self::new_with_life_and_additional_and_multiplier_and_x(
+            effects, player, mana, life, None, None, None,
+        )
     }
 
     /// Create a new "unless pays" effect with optional life and dynamic generic payment.
@@ -68,12 +74,13 @@ impl UnlessPaysEffect {
         life: Option<Value>,
         additional_generic: Option<Value>,
     ) -> Self {
-        Self::new_with_life_and_additional_and_multiplier(
+        Self::new_with_life_and_additional_and_multiplier_and_x(
             effects,
             player,
             mana,
             life,
             additional_generic,
+            None,
             None,
         )
     }
@@ -88,12 +95,35 @@ impl UnlessPaysEffect {
         additional_generic: Option<Value>,
         mana_multiplier: Option<Value>,
     ) -> Self {
+        Self::new_with_life_and_additional_and_multiplier_and_x(
+            effects,
+            player,
+            mana,
+            life,
+            additional_generic,
+            mana_multiplier,
+            None,
+        )
+    }
+
+    /// Create a new "unless pays" effect with optional life, additional generic mana,
+    /// mana multiplier, and a bound X value.
+    pub fn new_with_life_and_additional_and_multiplier_and_x(
+        effects: Vec<Effect>,
+        player: PlayerFilter,
+        mana: Vec<ManaSymbol>,
+        life: Option<Value>,
+        additional_generic: Option<Value>,
+        mana_multiplier: Option<Value>,
+        x_value: Option<Value>,
+    ) -> Self {
         Self {
             effects,
             player,
             mana,
             life,
             additional_generic,
+            x_value,
             mana_multiplier,
         }
     }
@@ -147,6 +177,12 @@ impl EffectExecutor for UnlessPaysEffect {
             .map(|value| resolve_value(game, value, ctx).map(|n| n.max(0) as u32))
             .transpose()?
             .unwrap_or(0);
+        let x_value = self
+            .x_value
+            .as_ref()
+            .map(|value| resolve_value(game, value, ctx).map(|n| n.max(0) as u32))
+            .transpose()?
+            .unwrap_or(0);
         let mana_multiplier = self
             .mana_multiplier
             .as_ref()
@@ -189,7 +225,7 @@ impl EffectExecutor for UnlessPaysEffect {
                     paying_player,
                     Some(ctx.source),
                     &adjusted_cost,
-                    0,
+                    x_value,
                     crate::costs::PaymentReason::Effect,
                 )
             };
@@ -232,7 +268,7 @@ impl EffectExecutor for UnlessPaysEffect {
                     paying_player,
                     Some(ctx.source),
                     &adjusted_cost,
-                    0,
+                    x_value,
                     crate::costs::PaymentReason::Effect,
                 ) {
                     let mut outcome = EffectOutcome::declined();

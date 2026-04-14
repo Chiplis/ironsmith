@@ -35,6 +35,7 @@ pub(crate) enum PermissionLifetime {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum PermissionClauseSpec {
     Tagged {
+        tag: TagKey,
         player: PlayerAst,
         allow_land: bool,
         as_copy: bool,
@@ -52,6 +53,12 @@ pub(crate) enum PermissionClauseSpec {
 struct PermissionLead {
     player: PlayerAst,
     allow_land: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TaggedPermissionTarget {
+    tag: TagKey,
+    as_copy: bool,
 }
 
 fn parse_permission_lead_inner<'a>(
@@ -88,29 +95,99 @@ fn parse_permission_lead_inner<'a>(
 
 fn parse_tagged_cast_or_play_target_inner<'a>(
     input: &mut LexStream<'a>,
-) -> Result<bool, ErrMode<ContextError>> {
+) -> Result<TaggedPermissionTarget, ErrMode<ContextError>> {
     alt((
         alt((
-            grammar::phrase(&["spells", "from", "among", "those", "cards"]).value(false),
-            grammar::phrase(&["spells", "from", "among", "them"]).value(false),
-            grammar::phrase(&["one", "of", "those", "cards"]).value(false),
-            grammar::phrase(&["one", "of", "those", "card"]).value(false),
-            grammar::phrase(&["one", "of", "them"]).value(false),
-            grammar::phrase(&["it"]).value(false),
-            grammar::phrase(&["them"]).value(false),
-            grammar::phrase(&["that", "card"]).value(false),
-            grammar::phrase(&["those", "cards"]).value(false),
+            grammar::phrase(&["spells", "from", "among", "those", "cards"]).value(
+                TaggedPermissionTarget {
+                    tag: TagKey::from(IT_TAG),
+                    as_copy: false,
+                },
+            ),
+            grammar::phrase(&["spells", "from", "among", "them"]).value(
+                TaggedPermissionTarget {
+                    tag: TagKey::from(IT_TAG),
+                    as_copy: false,
+                },
+            ),
+            grammar::phrase(&["one", "of", "those", "cards"]).value(TaggedPermissionTarget {
+                tag: TagKey::from(IT_TAG),
+                as_copy: false,
+            }),
+            grammar::phrase(&["one", "of", "those", "card"]).value(TaggedPermissionTarget {
+                tag: TagKey::from(IT_TAG),
+                as_copy: false,
+            }),
+            grammar::phrase(&["one", "of", "them"]).value(TaggedPermissionTarget {
+                tag: TagKey::from(IT_TAG),
+                as_copy: false,
+            }),
+            grammar::phrase(&["it"]).value(TaggedPermissionTarget {
+                tag: TagKey::from(IT_TAG),
+                as_copy: false,
+            }),
+            grammar::phrase(&["them"]).value(TaggedPermissionTarget {
+                tag: TagKey::from(IT_TAG),
+                as_copy: false,
+            }),
+            grammar::phrase(&["that", "card"]).value(TaggedPermissionTarget {
+                tag: TagKey::from(IT_TAG),
+                as_copy: false,
+            }),
+            grammar::phrase(&["those", "cards"]).value(TaggedPermissionTarget {
+                tag: TagKey::from(IT_TAG),
+                as_copy: false,
+            }),
         )),
         alt((
-            grammar::phrase(&["that", "spell"]).value(false),
-            grammar::phrase(&["those", "spells"]).value(false),
-            grammar::phrase(&["that", "exiled", "card"]).value(false),
-            grammar::phrase(&["the", "exiled", "card"]).value(false),
-            grammar::phrase(&["the", "card"]).value(false),
-            grammar::phrase(&["the", "cards"]).value(false),
-            grammar::phrase(&["the", "copy"]).value(true),
-            grammar::phrase(&["that", "copy"]).value(true),
-            grammar::phrase(&["a", "copy"]).value(true),
+            grammar::phrase(&["that", "spell"]).value(TaggedPermissionTarget {
+                tag: TagKey::from(IT_TAG),
+                as_copy: false,
+            }),
+            grammar::phrase(&["those", "spells"]).value(TaggedPermissionTarget {
+                tag: TagKey::from(IT_TAG),
+                as_copy: false,
+            }),
+            alt((
+                grammar::phrase(&["that", "exiled", "card"]).value(TaggedPermissionTarget {
+                    tag: TagKey::from(IT_TAG),
+                    as_copy: false,
+                }),
+                grammar::phrase(&["the", "exiled", "card"]).value(TaggedPermissionTarget {
+                    tag: TagKey::from(IT_TAG),
+                    as_copy: false,
+                }),
+                grammar::phrase(&["that", "revealed", "card"]).value(TaggedPermissionTarget {
+                    tag: TagKey::from("__last_revealed__"),
+                    as_copy: false,
+                }),
+                grammar::phrase(&["the", "revealed", "card"]).value(TaggedPermissionTarget {
+                    tag: TagKey::from("__last_revealed__"),
+                    as_copy: false,
+                }),
+                grammar::phrase(&["the", "card"]).value(TaggedPermissionTarget {
+                    tag: TagKey::from(IT_TAG),
+                    as_copy: false,
+                }),
+                grammar::phrase(&["the", "cards"]).value(TaggedPermissionTarget {
+                    tag: TagKey::from(IT_TAG),
+                    as_copy: false,
+                }),
+            )),
+            alt((
+                grammar::phrase(&["the", "copy"]).value(TaggedPermissionTarget {
+                    tag: TagKey::from(IT_TAG),
+                    as_copy: true,
+                }),
+                grammar::phrase(&["that", "copy"]).value(TaggedPermissionTarget {
+                    tag: TagKey::from(IT_TAG),
+                    as_copy: true,
+                }),
+                grammar::phrase(&["a", "copy"]).value(TaggedPermissionTarget {
+                    tag: TagKey::from(IT_TAG),
+                    as_copy: true,
+                }),
+            )),
         )),
     ))
     .parse_next(input)
@@ -305,7 +382,7 @@ fn parse_permission_lead_tokens<'a>(
 
 fn parse_tagged_cast_or_play_target_tokens<'a>(
     tokens: &'a [OwnedLexToken],
-) -> Option<(bool, &'a [OwnedLexToken])> {
+) -> Option<(TaggedPermissionTarget, &'a [OwnedLexToken])> {
     parse_lexed_prefix(tokens, parse_tagged_cast_or_play_target_inner)
 }
 
@@ -445,7 +522,7 @@ pub(crate) fn parse_permission_clause_spec_lexed(
     let player = lead.player;
     let allow_land = lead.allow_land;
 
-    if let Some((as_copy, tagged_tail_tokens)) =
+    if let Some((target_ref, tagged_tail_tokens)) =
         parse_tagged_cast_or_play_target_tokens(rest_tokens)
     {
         let target_len = rest_tokens.len() - tagged_tail_tokens.len();
@@ -486,7 +563,7 @@ pub(crate) fn parse_permission_clause_spec_lexed(
             PermissionLifetime::ThisTurn
                 | PermissionLifetime::UntilEndOfTurn
                 | PermissionLifetime::UntilYourNextTurn
-        ) && as_copy
+        ) && target_ref.as_copy
         {
             let label = match lifetime {
                 PermissionLifetime::UntilYourNextTurn => "until-next-turn",
@@ -520,9 +597,10 @@ pub(crate) fn parse_permission_clause_spec_lexed(
         }
 
         return Ok(Some(PermissionClauseSpec::Tagged {
+            tag: target_ref.tag,
             player,
             allow_land,
-            as_copy,
+            as_copy: target_ref.as_copy,
             without_paying_mana_cost,
             lifetime,
         }));
@@ -684,13 +762,14 @@ pub(crate) fn parse_until_end_of_turn_may_play_tagged_clause(
 ) -> Result<Option<EffectAst>, CardTextError> {
     match parse_permission_clause_spec(tokens)? {
         Some(PermissionClauseSpec::Tagged {
+            tag,
             player,
             allow_land,
             as_copy: false,
             without_paying_mana_cost,
             lifetime: PermissionLifetime::UntilEndOfTurn,
         }) if player == PlayerAst::You => Ok(Some(EffectAst::GrantPlayTaggedUntilEndOfTurn {
-            tag: TagKey::from(IT_TAG),
+            tag,
             player,
             allow_land,
             without_paying_mana_cost,
@@ -705,6 +784,7 @@ pub(crate) fn parse_until_your_next_turn_may_play_tagged_clause(
 ) -> Result<Option<EffectAst>, CardTextError> {
     match parse_permission_clause_spec(tokens)? {
         Some(PermissionClauseSpec::Tagged {
+            tag,
             player,
             allow_land: true,
             as_copy: false,
@@ -712,7 +792,7 @@ pub(crate) fn parse_until_your_next_turn_may_play_tagged_clause(
             lifetime: PermissionLifetime::UntilYourNextTurn,
         }) if matches!(player, PlayerAst::You | PlayerAst::Implicit) => {
             Ok(Some(EffectAst::GrantPlayTaggedUntilYourNextTurn {
-                tag: TagKey::from(IT_TAG),
+                tag,
                 player: PlayerAst::You,
                 allow_land: true,
             }))
@@ -806,7 +886,7 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
         .filter(|(lead, _)| lead.player == PlayerAst::Implicit)
         .and_then(|(lead, rest_tokens)| {
             parse_tagged_cast_or_play_target_tokens(rest_tokens).and_then(
-                |(as_copy, tail_tokens)| {
+                |(target_ref, tail_tokens)| {
                     let (lifetime, without_paying_mana_cost, condition_tokens) = if let Some(rest) =
                         strip_prefix_phrase(
                             tail_tokens,
@@ -827,15 +907,16 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
                             |(operator, right)| {
                                 let inner = if lifetime == PermissionLifetime::Immediate {
                                     EffectAst::CastTagged {
-                                        tag: TagKey::from(IT_TAG),
+                                        tag: target_ref.tag.clone(),
+                                        player: lead.player,
                                         allow_land: lead.allow_land,
-                                        as_copy,
+                                        as_copy: target_ref.as_copy,
                                         without_paying_mana_cost,
                                         cost_reduction: None,
                                     }
                                 } else {
                                     EffectAst::GrantPlayTaggedUntilEndOfTurn {
-                                        tag: TagKey::from(IT_TAG),
+                                        tag: target_ref.tag.clone(),
                                         player: PlayerAst::Implicit,
                                         allow_land: lead.allow_land,
                                         without_paying_mana_cost,
@@ -845,7 +926,9 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
                                 EffectAst::Conditional {
                                     predicate: PredicateAst::ValueComparison {
                                         left: Value::ManaValueOf(Box::new(
-                                            crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG)),
+                                            crate::target::ChooseSpec::Tagged(
+                                                target_ref.tag.clone(),
+                                            ),
                                         )),
                                         operator,
                                         right,
@@ -862,21 +945,32 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
 
     match parse_permission_clause_spec(&trimmed)? {
         Some(PermissionClauseSpec::Tagged {
+            tag,
             player,
             allow_land,
             as_copy,
             without_paying_mana_cost,
             lifetime: PermissionLifetime::Immediate,
-        }) if player == PlayerAst::Implicit || player == PlayerAst::You => {
-            Ok(Some(EffectAst::CastTagged {
-                tag: TagKey::from(IT_TAG),
+        }) => {
+            let cast = EffectAst::CastTagged {
+                tag,
+                player,
                 allow_land,
                 as_copy,
                 without_paying_mana_cost,
                 cost_reduction: None,
-            }))
+            };
+            if matches!(player, PlayerAst::Implicit | PlayerAst::You) {
+                Ok(Some(cast))
+            } else {
+                Ok(Some(EffectAst::MayByPlayer {
+                    player,
+                    effects: vec![cast],
+                }))
+            }
         }
         Some(PermissionClauseSpec::Tagged {
+            tag,
             player,
             allow_land,
             as_copy: false,
@@ -884,7 +978,7 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
             lifetime: PermissionLifetime::ThisTurn | PermissionLifetime::UntilEndOfTurn,
         }) if player == PlayerAst::Implicit || player == PlayerAst::You => {
             Ok(Some(EffectAst::GrantPlayTaggedUntilEndOfTurn {
-                tag: TagKey::from(IT_TAG),
+                tag,
                 player: PlayerAst::Implicit,
                 allow_land,
                 without_paying_mana_cost,

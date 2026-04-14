@@ -595,6 +595,7 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
 
         let mut life = None;
         let mut additional_generic = None;
+        let mut x_value = None;
         if mana.is_empty() {
             let payment_tokens = trim_commas(&unless_tokens[pays_idx + 1..]);
             let payment_words = crate::cards::builders::compiler::token_word_refs(&payment_tokens);
@@ -615,7 +616,8 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
 
         if let Some(trailing_idx) = trailing_start {
             let trailing_tokens = trim_commas(&unless_tokens[trailing_idx..]);
-            let trailing_words = crate::cards::builders::compiler::token_word_refs(&trailing_tokens);
+            let trailing_words =
+                crate::cards::builders::compiler::token_word_refs(&trailing_tokens);
             if trailing_tokens
                 .first()
                 .is_some_and(|token| token.is_word("and"))
@@ -639,6 +641,48 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
                 parse_counter_unless_additional_generic_value(&trailing_tokens)?
             {
                 additional_generic = Some(value);
+            } else if grammar::words_match_any_prefix(
+                &trailing_tokens,
+                &[&["where", "x", "is"], &["where", "x", "equals"]],
+            )
+            .is_some()
+                && trailing_words
+                    .iter()
+                    .any(|word| matches!(*word, "graveyard" | "graveyards"))
+                && (crate::cards::builders::compiler::token_primitives::contains_window(
+                    &trailing_words,
+                    &["same", "name", "as", "the", "spell"],
+                ) || crate::cards::builders::compiler::token_primitives::contains_window(
+                    &trailing_words,
+                    &["same", "name", "as", "that", "spell"],
+                ))
+            {
+                if mana.as_slice() == [ManaSymbol::X] {
+                    x_value = Some(Value::Count(
+                        ObjectFilter::default()
+                            .in_zone(Zone::Graveyard)
+                            .match_tagged(
+                                TagKey::from("triggering"),
+                                crate::filter::TaggedOpbjectRelation::SameNameAsTagged,
+                            ),
+                    ));
+                } else {
+                    return Err(CardTextError::ParseError(format!(
+                        "unsupported trailing counter-unless payment clause (clause: '{}', trailing: '{}')",
+                        crate::cards::builders::compiler::token_word_refs(tokens).join(" "),
+                        trailing_words.join(" ")
+                    )));
+                }
+            } else if let Some(value) = parse_where_x_value_clause(&trailing_tokens) {
+                if mana.as_slice() == [ManaSymbol::X] {
+                    x_value = Some(value);
+                } else {
+                    return Err(CardTextError::ParseError(format!(
+                        "unsupported trailing counter-unless payment clause (clause: '{}', trailing: '{}')",
+                        crate::cards::builders::compiler::token_word_refs(tokens).join(" "),
+                        trailing_words.join(" ")
+                    )));
+                }
             } else if grammar::words_match_any_prefix(&trailing_tokens, FOR_EACH_PREFIXES).is_some()
             {
                 if let Some(dynamic) = parse_dynamic_cost_modifier_value(&trailing_tokens)? {
@@ -669,7 +713,7 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
             }
         }
 
-        if mana.is_empty() && life.is_none() && additional_generic.is_none() {
+        if mana.is_empty() && life.is_none() && additional_generic.is_none() && x_value.is_none() {
             return Err(CardTextError::ParseError(format!(
                 "missing mana cost (clause: '{}')",
                 crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
@@ -681,10 +725,10 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
             mana,
             life,
             additional_generic,
+            x_value,
         });
     }
 
     let target = parse_counter_target_phrase(tokens)?;
     Ok(EffectAst::Counter { target })
 }
-

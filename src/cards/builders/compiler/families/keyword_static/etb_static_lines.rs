@@ -761,6 +761,53 @@ pub(crate) fn parse_where_x_value_clause(tokens: &[OwnedLexToken]) -> Option<Val
         return Some(Value::Count(filter));
     }
 
+    if matches!(
+        words.get(3..),
+        Some(
+            [
+                "the",
+                "number",
+                "of",
+                "cards",
+                "in",
+                "all",
+                "graveyards",
+                "with",
+                "the",
+                "same",
+                "name",
+                "as",
+                "the",
+                "spell",
+            ]
+                | [
+                    "the",
+                    "number",
+                    "of",
+                    "cards",
+                    "in",
+                    "all",
+                    "graveyards",
+                    "with",
+                    "the",
+                    "same",
+                    "name",
+                    "as",
+                    "that",
+                    "spell",
+                ]
+        )
+    ) {
+        return Some(Value::Count(
+            ObjectFilter::default()
+                .in_zone(Zone::Graveyard)
+                .match_tagged(
+                    TagKey::from("triggering"),
+                    crate::filter::TaggedOpbjectRelation::SameNameAsTagged,
+                ),
+        ));
+    }
+
     // where X is N plus the number of <objects>
     if let Some(value) = parse_where_x_is_fixed_plus_number_of_filter_value(tokens) {
         return Some(value);
@@ -1231,7 +1278,7 @@ pub(crate) fn parse_where_x_is_aggregate_filter_value(tokens: &[OwnedLexToken]) 
             if trimmed.is_empty() {
                 return None;
             }
-            branches.push(parse_object_filter(&trimmed, false).ok()?);
+            branches.push(parse_object_filter_lexed(&trimmed, false).ok()?);
         }
         if branches.len() < 2 {
             return None;
@@ -1242,7 +1289,7 @@ pub(crate) fn parse_where_x_is_aggregate_filter_value(tokens: &[OwnedLexToken]) 
     } else {
         None
     })
-    .or_else(|| parse_object_filter(filter_tokens, false).ok())?;
+    .or_else(|| parse_object_filter_lexed(filter_tokens, false).ok())?;
 
     if filter_words.iter().any(|word| *word == "sacrificed") {
         if matches!(filter.zone, Some(Zone::Battlefield)) {
@@ -1385,7 +1432,7 @@ pub(crate) fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) 
         {
             scope_tokens = &scope_tokens[1..];
         }
-        let scope_filter = parse_object_filter(scope_tokens, false).ok()?;
+        let scope_filter = parse_object_filter_lexed(scope_tokens, false).ok()?;
         return Some(Value::BasicLandTypesAmong(scope_filter));
     }
     if etb_word_slice_starts_with(&filter_words, &["color", "among"])
@@ -1398,7 +1445,7 @@ pub(crate) fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) 
         {
             scope_tokens = &scope_tokens[1..];
         }
-        let scope_filter = parse_object_filter(scope_tokens, false).ok()?;
+        let scope_filter = parse_object_filter_lexed(scope_tokens, false).ok()?;
         return Some(Value::ColorsAmong(scope_filter));
     }
     if (etb_word_slice_starts_with(&filter_words, &["card", "type", "among", "cards"])
@@ -1416,7 +1463,7 @@ pub(crate) fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) 
         };
         return Some(Value::CardTypesInGraveyard(player));
     }
-    let filter = parse_object_filter(filter_tokens, false).ok()?;
+    let filter = parse_object_filter_lexed(filter_tokens, false).ok()?;
     Some(Value::Count(filter))
 }
 

@@ -1350,12 +1350,16 @@ fn resolve_effect_result_values_in_fields(
         EffectAst::CounterUnlessPays {
             life,
             additional_generic,
+            x_value,
             ..
         } => {
             if let Some(value) = life.as_mut() {
                 resolve_effect_result_value(value, state)?;
             }
             if let Some(value) = additional_generic.as_mut() {
+                resolve_effect_result_value(value, state)?;
+            }
+            if let Some(value) = x_value.as_mut() {
                 resolve_effect_result_value(value, state)?;
             }
         }

@@ -41,6 +41,7 @@ pub(crate) struct IdGenContext {
 pub(crate) struct LoweringFrame {
     pub(crate) last_effect_id: Option<EffectId>,
     pub(crate) last_object_tag: Option<String>,
+    pub(crate) last_revealed_tag: Option<String>,
     pub(crate) last_player_filter: Option<PlayerFilter>,
     pub(crate) recent_player_choice_tags: Vec<String>,
     pub(crate) iterated_player: bool,

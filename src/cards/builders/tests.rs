@@ -2847,6 +2847,34 @@ fn test_parse_trigger_you_put_one_or_more_minus_one_counters_on_a_creature() {
 }
 
 #[test]
+fn parse_swindlers_scheme_keeps_counter_target_on_triggering_spell_after_reveal() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Swindler's Scheme")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text("Whenever an opponent casts a spell from their hand, you may reveal the top card of your library. If it shares a card type with that spell, counter that spell and that opponent may cast the revealed card without paying its mana cost.")
+        .expect("parse Swindler's Scheme variant");
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("TagTriggeringObjectEffect"),
+        "expected trigger tagging in compiled ability, got {debug}"
+    );
+    assert!(
+        debug.contains("CounterEffect {\n                                                    target: Tagged(\n                                                        TagKey(\n                                                            \"triggering\""),
+        "expected counter target to stay bound to the triggering spell, got {debug}"
+    );
+    assert!(
+        debug.contains("CastTaggedEffect") && debug.contains("__sentence_helper_revealed_l0_s0_e0"),
+        "expected revealed card follow-up cast to stay bound to the revealed card, got {debug}"
+    );
+
+    let rendered = oracle_like_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Whenever an opponent casts a spell from their hand, you may reveal the top card of your library. If it shares a card type with that spell, counter that spell and that opponent may cast the revealed card without paying its mana cost."),
+        "expected oracle-like compiled text to preserve Swindler's Scheme wording, got {rendered}"
+    );
+}
+
+#[test]
 fn test_parse_nest_of_scarabs_style_trigger_and_token_amount() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Nest of Scarabs Variant")
         .card_types(vec![CardType::Enchantment])
@@ -16364,6 +16392,39 @@ fn parse_counter_unless_where_x_fails_strictly() {
 }
 
 #[test]
+fn parse_cephalid_shrine_binds_same_name_graveyard_where_x_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Cephalid Shrine")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Whenever a player casts a spell, counter that spell unless that player pays {X}, where X is the number of cards in all graveyards with the same name as the spell.",
+        )
+        .expect("Cephalid Shrine should bind its where-X payment clause");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("counter it unless that object's controller pays {x}, where x is the number of cards in all graveyards with the same name as that object")
+            || rendered.contains("counter it unless that object's controller pays {x}, where x is the number of cards with the same name as that object in all graveyards")
+            || rendered.contains("counter that spell unless that player pays {x}, where x is the number of cards in all graveyards with the same name as the spell"),
+        "expected Cephalid Shrine to preserve the bound X same-name graveyard clause, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("plus an additional"),
+        "Cephalid Shrine should bind X directly, not as an additive payment clause, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.abilities).to_ascii_lowercase();
+    assert!(
+        debug.contains("spellcasttrigger")
+            && debug.contains("unlesspayseffect")
+            && debug.contains("x_value: some(count(")
+            && debug.contains("samenameastagged")
+            && debug.contains("graveyard")
+            && !debug.contains("additional_generic: some"),
+        "expected Cephalid Shrine lowering to keep a same-name graveyard count in x_value, got {debug}"
+    );
+}
+
+#[test]
 fn parse_gain_x_plus_life_with_where_clause_binds_x_value() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "An-Havva Inn Variant")
         .card_types(vec![CardType::Sorcery])
@@ -21117,8 +21178,9 @@ fn parse_oracle_quandrix_apprentice_uses_looked_land_choice_and_bottom_remainder
         "expected Quandrix Apprentice compiled text to avoid leaking helper tags, got {rendered}"
     );
     assert!(
-        !abilities_debug.contains("RevealTaggedEffect")
-            && !abilities_debug.contains("RevealCardsEffect"),
+        abilities_debug.contains("LookAtTopCardsEffect")
+            && !abilities_debug.contains("RevealTopEffect")
+            && !abilities_debug.contains("ForEachObject"),
         "expected Quandrix Apprentice to keep looked-card lowering instead of reveal fallback helpers, got {abilities_debug}"
     );
 }
@@ -22552,11 +22614,15 @@ fn parse_oracle_remorseless_punishment_keeps_discard_or_sacrifice_unless_choice(
     );
 
     let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
-    let expected = "target opponent loses 5 life unless target opponent discards two cards or sacrifices a creature or planeswalker of their choice";
-    assert_eq!(
-        rendered.matches(expected).count(),
-        2,
-        "expected both repeated Remorseless Punishment branches to keep the discard-or-sacrifice choice, got {rendered}"
+    assert!(
+        rendered.contains(
+            "target opponent loses 5 life unless that player discards two cards or sacrifices a creature or planeswalker of their choice"
+        ),
+        "expected Remorseless Punishment to preserve the discard-or-sacrifice choice with oracle-like pronouns, got {rendered}"
+    );
+    assert!(
+        rendered.contains("repeat this process once"),
+        "expected Remorseless Punishment to collapse the repeated clause into 'Repeat this process once', got {rendered}"
     );
     assert!(
         !rendered.contains("discards two creature or planeswalker cards"),

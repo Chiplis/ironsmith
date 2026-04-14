@@ -23,6 +23,7 @@ use super::super::lexer::{LexStream, OwnedLexToken, TokenKind, split_lexed_sente
 use super::super::object_filters::{
     is_comparison_or_delimiter, parse_object_filter, parse_object_filter_lexed,
 };
+use crate::mana::ManaSymbol;
 use super::super::permission_helpers::{
     parse_until_end_of_turn_may_play_tagged_clause,
     parse_until_your_next_turn_may_play_tagged_clause,
@@ -1448,8 +1449,10 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             }
         }
         EffectAst::CounterUnlessPays {
+            mana,
             life,
             additional_generic,
+            x_value,
             ..
         } => {
             if let Some(life) = life.as_mut() {
@@ -1457,6 +1460,11 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             }
             if let Some(generic) = additional_generic.as_mut() {
                 replace_value(generic, replacement, clause)?;
+            }
+            if mana.iter().any(|symbol| matches!(symbol, ManaSymbol::X)) && x_value.is_none() {
+                *x_value = Some(replacement.clone());
+            } else if let Some(bound_x) = x_value.as_mut() {
+                replace_value(bound_x, replacement, clause)?;
             }
         }
         EffectAst::PumpForEach { count, .. } => {

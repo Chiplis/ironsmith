@@ -3885,6 +3885,7 @@ mod parse_compile_tests {
             mana: vec![],
             life: None,
             additional_generic: None,
+            x_value: None,
         };
 
         collect_tag_spans_from_effect(&effect, &mut annotations, &ctx);
