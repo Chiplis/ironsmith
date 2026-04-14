@@ -501,10 +501,10 @@ pub(super) fn try_compile_visibility_and_card_selection_effect(
             player,
             filter,
             reveal,
+            order,
             if_not_chosen,
         } => {
-            use crate::effect::Condition;
-            use crate::target::{ObjectFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
+            use crate::target::{TaggedObjectConstraint, TaggedOpbjectRelation};
 
             let looked_tag = ctx.last_object_tag.clone().ok_or_else(|| {
                 CardTextError::ParseError(
@@ -558,25 +558,19 @@ pub(super) fn try_compile_visibility_and_card_selection_effect(
                 ),
             ));
 
-            let mut membership_filter = ObjectFilter::default();
-            membership_filter
-                .tagged_constraints
-                .push(TaggedObjectConstraint {
-                    tag: TagKey::from("__it__"),
-                    relation: TaggedOpbjectRelation::SameStableId,
-                });
-            let in_chosen = Condition::TaggedObjectMatches(chosen_tag_key, membership_filter);
-            compiled.push(Effect::for_each_tagged(
-                looked_tag,
-                vec![Effect::conditional(
-                    in_chosen,
-                    Vec::new(),
-                    vec![Effect::move_to_zone(
-                        ChooseSpec::Iterated,
-                        Zone::Library,
-                        false,
-                    )],
-                )],
+            let resolved_order = match order {
+                crate::cards::builders::LibraryBottomOrderAst::Random => {
+                    crate::effects::consult_helpers::LibraryBottomOrder::Random
+                }
+                crate::cards::builders::LibraryBottomOrderAst::ChooserChooses => {
+                    crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses
+                }
+            };
+            compiled.push(Effect::put_tagged_remainder_on_library_bottom(
+                TagKey::from(looked_tag.as_str()),
+                Some(chosen_tag_key.clone()),
+                resolved_order,
+                chooser.clone(),
             ));
 
             if !if_not_chosen.is_empty() {

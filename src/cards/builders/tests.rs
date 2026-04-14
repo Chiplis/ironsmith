@@ -21075,6 +21075,43 @@ fn parse_put_the_rest_on_bottom_with_previous_put_into_hand() {
 }
 
 #[test]
+fn parse_oracle_quandrix_apprentice_uses_looked_land_choice_and_bottom_remainder() {
+    let def = parse_oracle_card_definition("Quandrix Apprentice");
+    let rendered = oracle_like_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        rendered_lower.contains("whenever you cast or copy an instant or sorcery spell"),
+        "expected magecraft trigger wording to stay intact, got {rendered}"
+    );
+    assert!(
+        rendered_lower
+            .contains("you may reveal a land card from among them and put it into your hand"),
+        "expected looked-card land choice wording, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains("put the rest on the bottom of your library in any order"),
+        "expected looked-card remainder ordering to stay intact, got {rendered}"
+    );
+
+    let abilities_debug = format!("{:#?}", def.abilities);
+    assert!(
+        abilities_debug.contains("SpellCastTrigger")
+            && abilities_debug.contains("SpellCopiedTrigger"),
+        "expected both magecraft trigger branches, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("ChooseObjectsEffect")
+            && abilities_debug.contains("PutTaggedRemainderOnLibraryBottomEffect"),
+        "expected filtered looked-card choice plus explicit library-bottom remainder handling, got {abilities_debug}"
+    );
+    assert!(
+        !abilities_debug.contains("__sentence_helper_revealed"),
+        "expected Quandrix Apprentice to avoid leaking the old generic reveal helper tag, got {abilities_debug}"
+    );
+}
+
+#[test]
 fn parse_when_this_creature_becomes_blocked_may_untap_and_remove_from_combat() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Gustcloak Variant")
         .card_types(vec![CardType::Creature])
