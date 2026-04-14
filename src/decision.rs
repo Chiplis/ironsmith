@@ -11511,6 +11511,111 @@ mod tests {
     }
 
     #[test]
+    fn test_compute_legal_actions_includes_rooftop_storm_free_cast_only_for_zombies() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = None;
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+
+        let rooftop_storm = CardDefinitionBuilder::new(CardId::from_raw(1450), "Rooftop Storm")
+            .card_types(vec![CardType::Enchantment])
+            .parse_text(
+                "You may pay {0} rather than pay the mana cost for Zombie creature spells you cast.",
+            )
+            .expect("Rooftop Storm text should parse");
+        game.create_object_from_definition(&rooftop_storm, alice, Zone::Battlefield);
+
+        let zombie = CardBuilder::new(CardId::from_raw(1451), "Zombie Probe")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Zombie])
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(3)],
+                vec![ManaSymbol::Black],
+            ]))
+            .power_toughness(PowerToughness::fixed(3, 3))
+            .build();
+        let zombie_id = game.create_object_from_card(&zombie, alice, Zone::Hand);
+
+        let non_zombie = CardBuilder::new(CardId::from_raw(1452), "Human Probe")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Human])
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(3)],
+                vec![ManaSymbol::Black],
+            ]))
+            .power_toughness(PowerToughness::fixed(3, 3))
+            .build();
+        let non_zombie_id = game.create_object_from_card(&non_zombie, alice, Zone::Hand);
+
+        let granted = game.grant_registry.granted_alternative_casts_for_card(
+            &game,
+            zombie_id,
+            Zone::Hand,
+            alice,
+        );
+        assert_eq!(
+            granted.len(),
+            1,
+            "Rooftop Storm should grant one hand alternative cost to Zombies"
+        );
+        assert_eq!(
+            granted[0]
+                .method
+                .mana_cost()
+                .expect("Rooftop Storm grant should have a mana cost")
+                .generic_mana_total(),
+            0,
+            "Rooftop Storm should turn Zombie creature spells into zero-mana alternative casts"
+        );
+
+        let actions = compute_legal_actions(&game, alice);
+        assert!(
+            !actions.iter().any(|action| matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id,
+                    from_zone: Zone::Hand,
+                    casting_method: CastingMethod::Normal,
+                } if *spell_id == zombie_id || *spell_id == non_zombie_id
+            )),
+            "without mana, neither creature should be normally castable"
+        );
+        assert!(
+            actions.iter().any(|action| matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id,
+                    from_zone: Zone::Hand,
+                    casting_method: CastingMethod::PlayFrom {
+                        zone: Zone::Hand,
+                        use_alternative: Some(_),
+                        ..
+                    },
+                } if *spell_id == zombie_id
+            )),
+            "Rooftop Storm should surface a free hand cast action for Zombie creature spells"
+        );
+        assert!(
+            !actions.iter().any(|action| matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id,
+                    from_zone: Zone::Hand,
+                    casting_method: CastingMethod::PlayFrom {
+                        zone: Zone::Hand,
+                        use_alternative: Some(_),
+                        ..
+                    },
+                } if *spell_id == non_zombie_id
+            )),
+            "Rooftop Storm should not grant a free cast to non-Zombie creature spells"
+        );
+    }
+
+    #[test]
     fn test_can_cast_spell_with_non_targeted_prevent_all_damage_without_creatures() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);

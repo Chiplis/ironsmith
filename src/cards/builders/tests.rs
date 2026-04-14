@@ -11323,6 +11323,57 @@ fn parse_kentaro_static_mana_value_permission() {
 }
 
 #[test]
+fn parse_rooftop_storm_static_free_zombie_permission() {
+    let tokens = tokenize_line(
+        "You may pay {0} rather than pay the mana cost for Zombie creature spells you cast.",
+        0,
+    );
+    let parsed = crate::cards::builders::compiler::parse_static_ability_ast_line_lexed(&tokens)
+        .expect("Rooftop Storm static line should not error");
+    assert!(
+        parsed.is_some(),
+        "Rooftop Storm static line should parse as a static ability"
+    );
+
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Rooftop Storm")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "You may pay {0} rather than pay the mana cost for Zombie creature spells you cast.",
+        )
+        .expect("Rooftop Storm static permission should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains(
+            "you may pay {0} rather than pay the mana cost for zombie creature spells you cast"
+        ),
+        "expected Rooftop Storm wording in compiled output, got {rendered}"
+    );
+
+    let has_zombie_grant = def.abilities.iter().any(|ability| {
+        let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+            return false;
+        };
+        let Some(spec) = static_ability.grant_spec() else {
+            return false;
+        };
+        matches!(
+            spec.grantable,
+            crate::grant::Grantable::AlternativeCast(
+                crate::alternative_cast::AlternativeCastingMethod::Composed { .. }
+            )
+        ) && spec.zone == Zone::Hand
+            && spec.filter.card_types.contains(&CardType::Creature)
+            && spec.filter.subtypes.contains(&Subtype::Zombie)
+    });
+
+    assert!(
+        has_zombie_grant,
+        "expected a Zombie creature hand grant that uses a fixed alternative mana cost"
+    );
+}
+
+#[test]
 fn parse_put_land_card_from_hand_onto_battlefield_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Scout Variant")
         .card_types(vec![CardType::Creature])
