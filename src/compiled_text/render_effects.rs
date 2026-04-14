@@ -1828,6 +1828,18 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             idx += 2;
             continue;
         }
+        // Draw N cards, then you gain life equal to the number of [filter].
+        if idx + 1 < filtered.len()
+            && let Some(draw) = filtered[idx].downcast_ref::<crate::effects::DrawCardsEffect>()
+            && let Some(gain) = filtered[idx + 1].downcast_ref::<crate::effects::GainLifeEffect>()
+            && matches!(draw.player, PlayerFilter::You)
+            && matches!(gain.player, ChooseSpec::Player(PlayerFilter::You))
+            && let Some(compact) = describe_draw_then_gain_life(draw, gain)
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
         if idx + 1 < filtered.len()
             && let Some(mill) = filtered[idx].downcast_ref::<crate::effects::MillEffect>()
             && let Some(may) = filtered[idx + 1].downcast_ref::<crate::effects::MayEffect>()
@@ -5231,6 +5243,38 @@ pub(super) fn describe_draw_then_discard(
         text.push_str(" at random");
     }
     Some(text)
+}
+
+/// Render a Draw + GainLife pair as "Draw a card, then you gain life equal to
+/// the number of [filter]" when the gain amount is `Value::Count`.  This
+/// matches the oracle phrasing used by Union of the Third Path and similar
+/// cards where the life gain scales with a zone-based count.
+///
+/// Only fires for `Value::Count` amounts so that fixed-amount cards like
+/// "Draw a card. You gain 3 life." keep their existing separate-sentence
+/// rendering (which downstream normalisation already merges with "and").
+pub(super) fn describe_draw_then_gain_life(
+    draw: &crate::effects::DrawCardsEffect,
+    gain: &crate::effects::GainLifeEffect,
+) -> Option<String> {
+    // Only combine when the drawing player is "you".
+    if !matches!(draw.player, PlayerFilter::You) {
+        return None;
+    }
+    // Only combine when the gaining player is "you".
+    if !matches!(gain.player, ChooseSpec::Player(PlayerFilter::You)) {
+        return None;
+    }
+    // Only combine when the gain amount is a dynamic count—oracle
+    // cards with fixed gain amounts use "and" rather than "then".
+    let Value::Count(filter) = &gain.amount else {
+        return None;
+    };
+    let draw_clause = format!("Draw {}", describe_card_count(&draw.count));
+    let filter_text = pluralize_noun_phrase(&describe_for_each_count_filter(filter));
+    Some(format!(
+        "{draw_clause}, then you gain life equal to the number of {filter_text}"
+    ))
 }
 
 pub(super) fn describe_mill_then_may_return(
