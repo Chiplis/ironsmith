@@ -26381,5 +26381,167 @@ fn bruenor_source_only_anthem_keeps_attached_to_source() {
     assert!(
         !abilities_debug.contains("AttachedToAffected"),
         "source-only anthem should not use AttachedToAffected, got {abilities_debug}"
+// ====================================================================
+// Union of the Third Path tests
+// ====================================================================
+
+/// Union of the Third Path — {2}{W} Instant
+/// Oracle: "Draw a card, then you gain life equal to the number of cards in your hand."
+///
+/// Structure test: verify that the card compiles with the correct effects
+/// (DrawCardsEffect followed by GainLifeEffect) and that the compiled text
+/// uses the oracle-style "Draw a card, then you gain life equal to the number of
+/// cards in your hand" phrasing.
+#[test]
+fn union_of_the_third_path_compiles_with_draw_then_gain_life() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Union of the Third Path")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .oracle_text(
+            "Draw a card, then you gain life equal to the number of cards in your hand.",
+        )
+        .parse_text(
+            "Draw a card, then you gain life equal to the number of cards in your hand.",
+        )
+        .expect("Union of the Third Path text should parse");
+
+    // Verify the spell effect has both DrawCards and GainLife effects.
+    let spell = def
+        .spell_effect
+        .as_ref()
+        .expect("should have spell effect");
+    assert!(!spell.is_empty(), "spell should have at least one segment");
+    let effects = &spell.segments[0].default_effects;
+    assert_eq!(effects.len(), 2, "should have exactly 2 effects (draw + gain life)");
+
+    let draw = effects[0]
+        .downcast_ref::<crate::effects::DrawCardsEffect>()
+        .expect("first effect should be DrawCardsEffect");
+    assert_eq!(
+        draw.count,
+        crate::effect::Value::Fixed(1),
+        "draw count should be 1"
+    );
+    assert_eq!(
+        draw.player,
+        PlayerFilter::You,
+        "draw player should be You"
+    );
+
+    let gain = effects[1]
+        .downcast_ref::<GainLifeEffect>()
+        .expect("second effect should be GainLifeEffect");
+    assert!(
+        matches!(gain.amount, crate::effect::Value::Count(_)),
+        "gain amount should be Count (cards in hand), got {:?}",
+        gain.amount
+    );
+    assert!(
+        matches!(gain.player, ChooseSpec::Player(PlayerFilter::You)),
+        "gain player should be You"
+    );
+}
+
+/// Verify the canonical compiled text matches the oracle phrasing:
+/// "Draw a card, then you gain life equal to the number of cards in your hand."
+#[test]
+fn union_of_the_third_path_canonical_text_uses_then_and_equal_to() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Union of the Third Path")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .oracle_text(
+            "Draw a card, then you gain life equal to the number of cards in your hand.",
+        )
+        .parse_text(
+            "Draw a card, then you gain life equal to the number of cards in your hand.",
+        )
+        .expect("Union of the Third Path text should parse");
+
+    let canonical = crate::compiled_text::canonical_compiled_lines(&def).join("\n");
+    let canonical_lower = canonical.to_ascii_lowercase();
+
+    // The canonical text must use ", then" (not ". " or " and ") between draw and gain.
+    assert!(
+        canonical_lower.contains("draw a card, then you gain"),
+        "canonical text should use ', then' connector, got: {canonical}"
+    );
+
+    // The canonical text must use "life equal to the number of" (not "1 life for each").
+    assert!(
+        canonical_lower.contains("life equal to the number of"),
+        "canonical text should use 'life equal to the number of' phrasing, got: {canonical}"
+    );
+
+    // It must mention "cards in your hand".
+    assert!(
+        canonical_lower.contains("cards in your hand"),
+        "canonical text should mention 'cards in your hand', got: {canonical}"
+    );
+}
+
+/// Scenario test: cast Union of the Third Path with a known hand size
+/// and verify the life gained equals the hand size AFTER drawing.
+///
+/// Setup: Alice starts with Union of the Third Path + 2 other cards in hand = 3 cards.
+/// After casting Union (spending it from hand, hand goes to 2), then drawing 1 card
+/// (hand goes to 3), she should gain 3 life.
+/// Starting life is 20, so final life should be 23.
+#[test]
+fn union_of_the_third_path_gains_life_equal_to_hand_size_after_draw() {
+    use crate::ids::PlayerId;
+    use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
+
+    let game = run_replay_test(
+        vec![
+            "1", // Cast Union of the Third Path
+            "0", // Tap Plains for mana
+            "0", // Tap second Plains for mana
+            "0", // Tap third Plains for mana (auto-passes handle resolution)
+        ],
+        ReplayTestConfig::new()
+            .p1_hand(vec![
+                "Union of the Third Path",
+                "Plains",
+                "Plains",
+            ])
+            .p1_battlefield(vec!["Plains", "Plains", "Plains"])
+            .p1_deck(vec!["Forest", "Mountain", "Island"]),
+    );
+
+    let alice = PlayerId::from_index(0);
+
+    // Union of the Third Path should be in graveyard after resolving.
+    let alice_player = game.player(alice).unwrap();
+    let union_in_gy = alice_player.graveyard.iter().any(|&id| {
+        game.object(id)
+            .map(|o| o.name == "Union of the Third Path")
+            .unwrap_or(false)
+    });
+    assert!(
+        union_in_gy,
+        "Union of the Third Path should be in graveyard after resolving"
+    );
+
+    // Alice started with 3 cards in hand. She cast Union (hand -> 2 cards).
+    // Union draws 1 card (hand -> 3 cards), then gains life equal to hand size (3).
+    // Starting life 20 + 3 = 23.
+    let life = game.life_total(alice);
+    assert_eq!(
+        life, 23,
+        "Alice should have 23 life (20 starting + 3 from Union). \
+         Hand after draw should be 3 cards. Got life = {life}"
+    );
+
+    // Verify hand size is 3 (2 original cards left + 1 drawn).
+    assert_eq!(
+        alice_player.hand.len(),
+        3,
+        "Alice should have 3 cards in hand (started with 3, cast 1, drew 1)"
     );
 }

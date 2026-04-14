@@ -3005,6 +3005,20 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
     {
         return format!("{left} and {}", normalize_you_verb_phrase(right));
     }
+    // "You draw a card. You gain 1 life for each X" → "Draw a card, then you gain 1 life for each X"
+    // Matches the ", then" oracle phrasing used by cards like Union of the Third Path.
+    if let Some((left, right)) = normalized.split_once(". ")
+        && let Some(draw_rest) = strip_prefix_ascii_ci(left.trim(), "You draw ")
+        && right.to_ascii_lowercase().starts_with("you gain ")
+        && (right.to_ascii_lowercase().contains(" life for each ")
+            || right.to_ascii_lowercase().contains(" life equal to "))
+    {
+        return format!(
+            "Draw {}, then {}",
+            draw_rest.trim(),
+            lowercase_first(right.trim().trim_end_matches('.'))
+        );
+    }
     if let Some((prefix, rest)) = split_once_ascii_ci(&normalized, ", you draw ")
         && let Some((draw_tail, rest)) = split_once_ascii_ci(rest, " cards and you gain ")
         && let Some((gain_tail, create_tail)) = split_once_ascii_ci(rest, " life. Create ")

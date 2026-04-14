@@ -3808,6 +3808,28 @@ mod tests {
     }
 
     #[test]
+    fn post_pass_rewrites_you_draw_then_gain_life_for_each() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "You draw a card. You gain 1 life for each card in your hand.",
+        );
+        assert_eq!(
+            normalized,
+            "Draw a card, then you gain 1 life for each card in your hand."
+        );
+    }
+
+    #[test]
+    fn post_pass_rewrites_you_draw_then_gain_life_equal_to() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "You draw a card. You gain life equal to the number of cards in your hand.",
+        );
+        assert_eq!(
+            normalized,
+            "Draw a card, then you gain life equal to the number of cards in your hand."
+        );
+    }
+
+    #[test]
     fn post_pass_merges_discard_then_draw_chain_after_cost_colon() {
         let normalized = normalize_compiled_post_pass_effect(
             "{U}, Sacrifice a creature you control: you discard a card. Draw a card.",
