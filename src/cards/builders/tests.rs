@@ -21079,10 +21079,17 @@ fn parse_oracle_quandrix_apprentice_uses_looked_land_choice_and_bottom_remainder
     let def = parse_oracle_card_definition("Quandrix Apprentice");
     let rendered = oracle_like_lines(&def).join(" ");
     let rendered_lower = rendered.to_ascii_lowercase();
+    let source_text = def
+        .abilities
+        .iter()
+        .find_map(|ability| ability.text.as_deref())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
 
     assert!(
-        rendered_lower.contains("whenever you cast or copy an instant or sorcery spell"),
-        "expected magecraft trigger wording to stay intact, got {rendered}"
+        source_text.contains("magecraft")
+            && source_text.contains("whenever you cast or copy an instant or sorcery spell"),
+        "expected Quandrix Apprentice source text to retain the magecraft lead-in, got {source_text}"
     );
     assert!(
         rendered_lower

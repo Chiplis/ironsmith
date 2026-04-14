@@ -24,6 +24,34 @@ fn setup_game() -> GameState {
     crate::tests::test_helpers::setup_two_player_game()
 }
 
+fn resolve_triggered_ability_from_spell_cast(
+    game: &mut GameState,
+    triggered: &crate::ability::TriggeredAbility,
+    source_id: ObjectId,
+    controller: PlayerId,
+    decision_maker: &mut dyn DecisionMaker,
+) {
+    let spell_id = game.create_object_from_card(
+        &CardBuilder::new(CardId::new(), "Magecraft Probe Spell")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+            .card_types(vec![CardType::Instant])
+            .build(),
+        controller,
+        Zone::Stack,
+    );
+    let event = TriggerEvent::new_with_provenance(
+        SpellCastEvent::new(spell_id, controller, Zone::Hand),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut ctx = crate::executor::ExecutionContext::new(source_id, controller, decision_maker)
+        .with_triggering_event(event);
+
+    for effect in &triggered.effects {
+        crate::executor::execute_effect(game, effect, &mut ctx)
+            .expect("Quandrix Apprentice trigger should resolve");
+    }
+}
+
 struct DeclineOptionalTriggerTargetsDecisionMaker {
     seen_min_targets: Option<usize>,
     seen_max_targets: Option<Option<usize>>,
@@ -18346,8 +18374,6 @@ fn atraxa_grand_unifier_puts_one_card_per_type_into_hand_and_bottoms_the_rest() 
 
 #[test]
 fn quandrix_apprentice_magecraft_puts_only_a_looked_land_into_hand() {
-    use crate::executor::{ExecutionContext, execute_effect};
-
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
     let def = CardDefinitionBuilder::new(CardId::from_raw(91_100), "Quandrix Apprentice")
@@ -18400,11 +18426,7 @@ fn quandrix_apprentice_magecraft_puts_only_a_looked_land_into_hand() {
     );
 
     let mut dm = SelectFirstDecisionMaker;
-    let mut ctx = ExecutionContext::new(source_id, alice, &mut dm);
-    for effect in &triggered.effects {
-        execute_effect(&mut game, effect, &mut ctx)
-            .expect("Quandrix Apprentice trigger should resolve");
-    }
+    resolve_triggered_ability_from_spell_cast(&mut game, triggered, source_id, alice, &mut dm);
 
     let hand_names: Vec<_> = game
         .player(alice)
@@ -18448,8 +18470,6 @@ fn quandrix_apprentice_magecraft_puts_only_a_looked_land_into_hand() {
 
 #[test]
 fn quandrix_apprentice_magecraft_can_decline_the_land_pick() {
-    use crate::executor::{ExecutionContext, execute_effect};
-
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
     let def = CardDefinitionBuilder::new(CardId::from_raw(91_110), "Quandrix Apprentice")
@@ -18494,11 +18514,7 @@ fn quandrix_apprentice_magecraft_can_decline_the_land_pick() {
     );
 
     let mut dm = AutoPassDecisionMaker;
-    let mut ctx = ExecutionContext::new(source_id, alice, &mut dm);
-    for effect in &triggered.effects {
-        execute_effect(&mut game, effect, &mut ctx)
-            .expect("Quandrix Apprentice trigger should resolve");
-    }
+    resolve_triggered_ability_from_spell_cast(&mut game, triggered, source_id, alice, &mut dm);
 
     assert!(
         game.player(alice).expect("alice exists").hand.is_empty(),
