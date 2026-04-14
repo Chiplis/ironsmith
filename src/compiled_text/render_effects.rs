@@ -8436,6 +8436,28 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 describe_value(&lose_life.amount)
             );
         }
+        if unless_action.alternative.len() == 1
+            && let Some(or_choice) =
+                unless_action.alternative[0].downcast_ref::<crate::effects::UnlessActionEffect>()
+            && or_choice.player == unless_action.player
+        {
+            let player = describe_player_filter(&unless_action.player);
+            let strip_player_prefix = |text: String| {
+                if text == player {
+                    return text;
+                }
+                let prefix = format!("{player} ");
+                text.strip_prefix(&prefix)
+                    .map(str::to_string)
+                    .unwrap_or(text)
+            };
+            let first_choice = strip_player_prefix(describe_effect_list(&or_choice.effects));
+            let second_choice = strip_player_prefix(describe_effect_list(&or_choice.alternative));
+            return format!(
+                "{} unless {} {} or {}",
+                inner_text, player, first_choice, second_choice
+            );
+        }
         let alt_text = describe_effect_list(&unless_action.alternative);
         let player = describe_player_filter(&unless_action.player);
         let unless_clause = if alt_text == player || alt_text.starts_with(&format!("{player} ")) {

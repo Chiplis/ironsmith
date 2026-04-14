@@ -22485,6 +22485,37 @@ fn raw_render_regression_demonic_pact_keeps_modal_bullets() {
 }
 
 #[test]
+fn parse_oracle_remorseless_punishment_keeps_discard_or_sacrifice_unless_choice() {
+    let def = parse_oracle_card_definition("Remorseless Punishment");
+    let spell_debug = format!("{:?}", def.spell_effect.as_ref().expect("spell effects"));
+
+    assert!(
+        spell_debug.contains("UnlessActionEffect"),
+        "expected Remorseless Punishment to keep unless-action lowering, got {spell_debug}"
+    );
+    assert!(
+        spell_debug.contains("DiscardEffect"),
+        "expected Remorseless Punishment to keep the discard branch, got {spell_debug}"
+    );
+    assert!(
+        spell_debug.contains("SacrificeEffect"),
+        "expected Remorseless Punishment to keep the sacrifice branch, got {spell_debug}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let expected = "target opponent loses 5 life unless target opponent discards two cards or sacrifices a creature or planeswalker of their choice";
+    assert_eq!(
+        rendered.matches(expected).count(),
+        2,
+        "expected both repeated Remorseless Punishment branches to keep the discard-or-sacrifice choice, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("discards two creature or planeswalker cards"),
+        "expected Remorseless Punishment not to collapse the sacrifice branch into a discard filter, got {rendered}"
+    );
+}
+
+#[test]
 fn oracle_like_lines_normalize_remaining_tag_scaffolding_regressions() {
     let argivian = oracle_like_lines(&parse_oracle_card_definition("Argivian Cavalier")).join("\n");
     assert!(

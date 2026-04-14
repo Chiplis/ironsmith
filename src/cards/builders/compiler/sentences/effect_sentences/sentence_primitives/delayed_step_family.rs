@@ -11,6 +11,39 @@ pub(super) fn wrap_delayed_next_step_unless_pays(
     }
 }
 
+fn bind_unless_player_context(effect: &mut EffectAst, player: PlayerAst) {
+    match effect {
+        EffectAst::UnlessPays {
+            player: unless_player,
+            effects,
+            ..
+        } => {
+            if matches!(*unless_player, PlayerAst::Implicit) {
+                *unless_player = player;
+            }
+            for nested in effects {
+                bind_unless_player_context(nested, player);
+            }
+        }
+        EffectAst::UnlessAction {
+            player: unless_player,
+            effects,
+            alternative,
+        } => {
+            if matches!(*unless_player, PlayerAst::Implicit) {
+                *unless_player = player;
+            }
+            for nested in effects {
+                bind_unless_player_context(nested, player);
+            }
+            for nested in alternative {
+                bind_unless_player_context(nested, player);
+            }
+        }
+        _ => bind_implicit_player_context(effect, player),
+    }
+}
+
 pub(crate) fn parse_sentence_delayed_next_step_unless_pays(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -443,7 +476,7 @@ pub(crate) fn try_build_unless(
     if let Ok(mut alternative) = parse_effect_chain(after_unless) {
         if !alternative.is_empty() {
             for effect in &mut alternative {
-                bind_implicit_player_context(effect, player);
+                bind_unless_player_context(effect, player);
             }
             return Ok(Some(EffectAst::UnlessAction {
                 effects,
@@ -456,7 +489,7 @@ pub(crate) fn try_build_unless(
     if let Ok(mut alternative) = parse_effect_sentence_lexed(after_unless) {
         if !alternative.is_empty() {
             for effect in &mut alternative {
-                bind_implicit_player_context(effect, player);
+                bind_unless_player_context(effect, player);
             }
             return Ok(Some(EffectAst::UnlessAction {
                 effects,
@@ -469,7 +502,7 @@ pub(crate) fn try_build_unless(
     if let Ok(mut alternative) = parse_effect_chain(action_tokens) {
         if !alternative.is_empty() {
             for effect in &mut alternative {
-                bind_implicit_player_context(effect, player);
+                bind_unless_player_context(effect, player);
             }
             return Ok(Some(EffectAst::UnlessAction {
                 effects,
@@ -482,7 +515,7 @@ pub(crate) fn try_build_unless(
     if let Ok(mut alternative) = parse_effect_sentence_lexed(action_tokens) {
         if !alternative.is_empty() {
             for effect in &mut alternative {
-                bind_implicit_player_context(effect, player);
+                bind_unless_player_context(effect, player);
             }
             return Ok(Some(EffectAst::UnlessAction {
                 effects,
@@ -495,7 +528,7 @@ pub(crate) fn try_build_unless(
     if let Ok(mut alternative) = parse_effect_clause(action_tokens).map(|effect| vec![effect]) {
         if !alternative.is_empty() {
             for effect in &mut alternative {
-                bind_implicit_player_context(effect, player);
+                bind_unless_player_context(effect, player);
             }
             return Ok(Some(EffectAst::UnlessAction {
                 effects,
@@ -510,7 +543,7 @@ pub(crate) fn try_build_unless(
             .map(|effect| vec![effect])
     {
         for effect in &mut alternative {
-            bind_implicit_player_context(effect, player);
+            bind_unless_player_context(effect, player);
         }
         return Ok(Some(EffectAst::UnlessAction {
             effects,

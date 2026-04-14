@@ -1,5 +1,27 @@
 use super::*;
 
+fn trim_trailing_discard_alternative_action(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+    for (idx, token) in tokens.iter().enumerate() {
+        if !token.is_word("or") {
+            continue;
+        }
+
+        let alternative_tokens = trim_commas(&tokens[idx + 1..]);
+        if alternative_tokens.is_empty() {
+            continue;
+        }
+
+        let starts_new_action = find_verb_lexed(alternative_tokens)
+            .is_some_and(|(_, verb_idx)| verb_idx == 0)
+            || has_effect_head_without_verb_lexed(alternative_tokens);
+        if starts_new_action {
+            return trim_commas(&tokens[..idx]);
+        }
+    }
+
+    trim_commas(tokens)
+}
+
 pub(crate) fn parse_sacrifice(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
@@ -260,7 +282,7 @@ pub(crate) fn parse_discard(
     let trailing_tokens = if card_word_idx + 1 < rest_words.len() {
         let trailing_token_idx =
             token_index_for_word_index(rest, card_word_idx + 1).unwrap_or(rest.len());
-        &rest[trailing_token_idx..]
+        trim_trailing_discard_alternative_action(&rest[trailing_token_idx..])
     } else {
         &[]
     };
