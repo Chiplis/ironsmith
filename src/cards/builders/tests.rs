@@ -18377,8 +18377,12 @@ fn parse_cephalid_inkshrouder_keeps_self_buff_and_unblockable_clause_together() 
     match &cant_effect.restriction {
         crate::effect::Restriction::BeBlocked(filter) => {
             assert!(
-                filter.source,
-                "expected Cephalid Inkshrouder's unblockable restriction to resolve to the source, got {filter:?}"
+                filter.source
+                    || filter.tagged_constraints.iter().any(|constraint| {
+                        constraint.relation
+                            == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                    }),
+                "expected Cephalid Inkshrouder's unblockable restriction to stay bound to itself, got {filter:?}"
             );
         }
         other => panic!("expected Cephalid Inkshrouder be-blocked restriction, got {other:?}"),

@@ -142,6 +142,7 @@ mod tests {
     use crate::snapshot::ObjectSnapshot;
     use crate::target::{ObjectFilter, PlayerFilter};
     use crate::types::CardType;
+    use crate::PowerToughness;
     use crate::zone::Zone;
 
     #[test]

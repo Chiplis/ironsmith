@@ -4304,6 +4304,17 @@ mod tests {
     }
 
     #[test]
+    fn post_pass_normalizes_self_choose_it_unblockable_clause() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "Discard a card: this creature gains Shroud until end of turn. Choose it. this creature can't be blocked this turn.",
+        );
+        assert_eq!(
+            normalized,
+            "Discard a card: this creature gains Shroud until end of turn and can't be blocked this turn."
+        );
+    }
+
+    #[test]
     fn post_pass_normalizes_each_player_sacrifice_choice_clause() {
         let normalized = normalize_compiled_post_pass_effect(
             "When this creature enters, for each player, that player sacrifices two creatures that player controls.",

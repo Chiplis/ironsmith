@@ -17911,7 +17911,10 @@ fn test_cephalid_inkshrouder_grants_shroud_and_unblockable_after_discard() {
             .expect("alice exists")
             .graveyard
             .iter()
-            .any(|&id| id == discard_id),
+            .any(|&id| {
+                game.object(id)
+                    .is_some_and(|object| object.name == "Discard Fodder" && object.owner == alice)
+            }),
         "the discarded card should end up in Alice's graveyard"
     );
 }

@@ -2525,17 +2525,16 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
     if let Some(rewritten) = normalize_counter_artifact_source_destroy_surface(&normalized) {
         normalized = rewritten;
     }
-    // Collapse the self-referential shroud + unblockable wording into one oracle-style clause.
-    if let Some(prefix) = strip_suffix_ascii_ci(
-        &normalized,
+    // Collapse self-referential "Choose it" unblockable scaffolding into one oracle-style clause.
+    if let Some(prefix) = [
         ". Choose it. target permanent can't be blocked this turn.",
-    )
-    .or_else(|| {
-        strip_suffix_ascii_ci(
-            &normalized,
-            ". Choose it. target permanent can't be blocked until end of turn.",
-        )
-    }) {
+        ". Choose it. target permanent can't be blocked until end of turn.",
+        ". Choose it. this creature can't be blocked this turn.",
+        ". Choose it. this creature can't be blocked until end of turn.",
+    ]
+    .iter()
+    .find_map(|suffix| strip_suffix_ascii_ci(&normalized, suffix))
+    {
         if prefix
             .to_ascii_lowercase()
             .contains("gains shroud until end of turn")
