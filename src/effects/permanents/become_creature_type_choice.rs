@@ -3,8 +3,8 @@
 use crate::continuous::Modification;
 use crate::decisions::context::{SelectOptionsContext, SelectableOption};
 use crate::effect::{EffectOutcome, Until};
-use crate::effects::{ApplyContinuousEffect, EffectExecutor};
 use crate::effects::helpers::resolve_player_filter;
+use crate::effects::{ApplyContinuousEffect, EffectExecutor};
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::{ChooseSpec, PlayerFilter};
@@ -345,10 +345,8 @@ mod tests {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
         let alice = PlayerId::from_index(0);
 
-        let first =
-            game.create_object_from_definition(&grizzly_bears(), alice, Zone::Battlefield);
-        let second =
-            game.create_object_from_definition(&grizzly_bears(), alice, Zone::Battlefield);
+        let first = game.create_object_from_definition(&grizzly_bears(), alice, Zone::Battlefield);
+        let second = game.create_object_from_definition(&grizzly_bears(), alice, Zone::Battlefield);
 
         let source = game.new_object_id();
         let mut dm = ChooseZombieDm;

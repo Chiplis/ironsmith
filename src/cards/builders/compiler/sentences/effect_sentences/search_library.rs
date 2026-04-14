@@ -906,8 +906,7 @@ pub(crate) fn parse_for_each_exiled_this_way_sentence(
         return Ok(None);
     }
     let words_all = token_words(tokens);
-    let refers_to_exiled =
-        grammar::words_find_phrase(tokens, &["exiled", "this", "way"]).is_some();
+    let refers_to_exiled = grammar::words_find_phrase(tokens, &["exiled", "this", "way"]).is_some();
     if !refers_to_exiled {
         return Ok(None);
     }
@@ -958,11 +957,11 @@ pub(crate) fn parse_for_each_exiled_this_way_sentence(
 
     let (_before, after_comma) = grammar::split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
         .ok_or_else(|| {
-            CardTextError::ParseError(format!(
-                "missing comma after 'for each ... exiled this way' clause (clause: '{}')",
-                words_all.join(" ")
-            ))
-        })?;
+        CardTextError::ParseError(format!(
+            "missing comma after 'for each ... exiled this way' clause (clause: '{}')",
+            words_all.join(" ")
+        ))
+    })?;
     let effect_tokens = trim_commas(after_comma);
     if effect_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(

@@ -286,15 +286,16 @@ pub(crate) fn parse_top_cards_put_counted_into_hand_rest_graveyard_chain_lexed(
     }
     idx += 1;
 
-    if tail_refs.get(idx).copied() == Some("your")
-        || tail_refs.get(idx).copied() == Some("their")
-    {
+    if tail_refs.get(idx).copied() == Some("your") || tail_refs.get(idx).copied() == Some("their") {
         idx += 1;
     } else if tail_refs.get(idx..idx + 2) == Some(&["that", "player"]) {
         idx += 2;
     }
 
-    if !matches!(tail_refs.get(idx).copied(), Some("graveyard" | "graveyards")) {
+    if !matches!(
+        tail_refs.get(idx).copied(),
+        Some("graveyard" | "graveyards")
+    ) {
         return None;
     }
     idx += 1;

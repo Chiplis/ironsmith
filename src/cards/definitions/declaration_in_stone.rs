@@ -64,7 +64,7 @@ mod tests {
                     .nontoken()
                     .in_zone(Zone::Exile)
                     .match_tagged(
-                        crate::cards::builders::TagKey::from("__sentence_helper_exiled_l0_s0_e0"),
+                        crate::TagKey::from("__sentence_helper_exiled_l0_s0_e0"),
                         TaggedOpbjectRelation::IsTaggedObject,
                     )
             ),
@@ -72,9 +72,9 @@ mod tests {
         );
         assert_eq!(
             investigate.player,
-            PlayerFilter::AliasedControllerOf(ObjectRef::tagged(
-                crate::cards::builders::TagKey::from("__sentence_helper_exiled_l0_s0_e0")
-            )),
+            PlayerFilter::AliasedControllerOf(ObjectRef::tagged(crate::TagKey::from(
+                "__sentence_helper_exiled_l0_s0_e0"
+            ))),
             "investigate should be performed by the exiled creature's controller"
         );
 

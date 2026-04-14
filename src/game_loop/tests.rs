@@ -3868,7 +3868,9 @@ fn test_nightcreep_turns_creatures_black_and_lands_into_swamps_until_end_of_turn
         })
         .collect();
     assert!(
-        land_mana_symbols.iter().any(|symbols| symbols == &vec![ManaSymbol::Black]),
+        land_mana_symbols
+            .iter()
+            .any(|symbols| symbols == &vec![ManaSymbol::Black]),
         "Nightcreep should give the land black mana, got {land_mana_symbols:?}"
     );
     assert!(
@@ -3923,6 +3925,48 @@ fn test_extract_target_specs_exactly_two_targets_uses_single_requirement_with_co
                 .contains(&Target::Object(creature_b)),
         "expected both creatures to be legal targets, got {:?}",
         requirements
+    );
+}
+
+#[test]
+fn test_beast_within_target_requirements_include_enchantments() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Beast Within")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Destroy target permanent. Its controller creates a 3/3 green Beast creature token.",
+        )
+        .expect("Beast Within oracle text should compile");
+    let effects = def.spell_effect.expect("expected spell effects");
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let creature_id = create_creature(&mut game, "Target Creature", bob, 2, 2);
+    let enchantment = CardBuilder::new(CardId::from_raw(5_003), "Target Enchantment")
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let enchantment_id = game.create_object_from_card(&enchantment, bob, Zone::Battlefield);
+
+    let requirements = extract_target_requirements(&game, &effects, alice, None);
+    assert_eq!(
+        requirements.len(),
+        1,
+        "Beast Within should have exactly one target requirement, got {:?}",
+        requirements
+    );
+    assert!(
+        requirements[0]
+            .legal_targets
+            .contains(&Target::Object(creature_id)),
+        "Beast Within should be able to target creatures"
+    );
+    assert!(
+        requirements[0]
+            .legal_targets
+            .contains(&Target::Object(enchantment_id)),
+        "Beast Within should be able to target enchantments, got {:?}",
+        requirements[0].legal_targets
     );
 }
 
@@ -17852,14 +17896,14 @@ fn test_the_stasis_coffin_activation_grants_protection_and_exiles_itself() {
 
 #[test]
 fn test_cephalid_inkshrouder_grants_shroud_and_unblockable_after_discard() {
+    use crate::PriorityResponse;
     use crate::cards::builders::CardDefinitionBuilder;
     use crate::decision::compute_legal_actions;
     use crate::game_loop::{
-        apply_priority_response_with_dm, resolve_stack_entry_with_dm_and_triggers,
-        PriorityLoopState,
+        PriorityLoopState, apply_priority_response_with_dm,
+        resolve_stack_entry_with_dm_and_triggers,
     };
     use crate::ids::CardId;
-    use crate::PriorityResponse;
 
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);

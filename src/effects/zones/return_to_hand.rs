@@ -138,7 +138,8 @@ impl EffectExecutor for ReturnToHandEffect {
                                       ctx: &ExecutionContext,
                                       spec: &ChooseSpec|
          -> Result<Vec<crate::ids::ObjectId>, ExecutionError> {
-            let mut object_ids = crate::effects::helpers::resolve_objects_from_spec(game, spec, ctx)?;
+            let mut object_ids =
+                crate::effects::helpers::resolve_objects_from_spec(game, spec, ctx)?;
             if let ChooseSpec::Tagged(tag) = spec.base()
                 && let Some(tagged) = ctx.get_tagged_all(tag)
             {
@@ -362,8 +363,8 @@ mod tests {
     use crate::decision::DecisionMaker;
     use crate::decisions::context::SelectObjectsContext;
     use crate::effect::Effect;
-    use crate::executor::ExecutionContext;
     use crate::events::zones::matchers::WouldGoToHandMatcher;
+    use crate::executor::ExecutionContext;
     use crate::game_state::GameState;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::replacement::{ReplacementAction, ReplacementEffect};
@@ -472,7 +473,9 @@ mod tests {
                 .expect("alice exists")
                 .hand
                 .iter()
-                .any(|&id| game.object(id).is_some_and(|obj| obj.name == "Tagged Return Probe")),
+                .any(|&id| game
+                    .object(id)
+                    .is_some_and(|obj| obj.name == "Tagged Return Probe")),
             "the tagged card should return using the current object id"
         );
     }
@@ -498,7 +501,9 @@ mod tests {
 
         let tagged_bounce = crate::effects::TaggedEffect::new(
             "bounced",
-            Effect::new(ReturnToHandEffect::with_spec(ChooseSpec::SpecificObject(creature))),
+            Effect::new(ReturnToHandEffect::with_spec(ChooseSpec::SpecificObject(
+                creature,
+            ))),
         );
         let mut ctx = ExecutionContext::new_default(source, alice);
         let bounce_outcome = tagged_bounce.execute(&mut game, &mut ctx).unwrap();

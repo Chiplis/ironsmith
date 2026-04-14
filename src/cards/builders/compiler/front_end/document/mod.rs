@@ -795,8 +795,8 @@ fn looks_like_numeric_result_prefix_text(text: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use crate::cards::builders::{CardDefinitionBuilder, CardTextError};
     use crate::cards::builders::document_parser::KeywordLineKindCst;
+    use crate::cards::builders::{CardDefinitionBuilder, CardTextError};
     use crate::ids::CardId;
     use crate::types::CardType;
 
@@ -977,7 +977,10 @@ mod tests {
         match cst.lines.as_slice() {
             [super::RewriteLineCst::Keyword(keyword)] => {
                 assert_eq!(keyword.kind, KeywordLineKindCst::Morph);
-                assert_eq!(render_token_slice(&keyword.parse_tokens), "morph pay 5 life.");
+                assert_eq!(
+                    render_token_slice(&keyword.parse_tokens),
+                    "morph pay 5 life."
+                );
             }
             other => panic!("expected one morph keyword line, got {other:?}"),
         }

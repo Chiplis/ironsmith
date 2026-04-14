@@ -35,7 +35,10 @@ fn parse_attachment_quantity_prefix(
         let (value, used) = parse_number(tokens.get(2..).unwrap_or_default()).ok_or_else(|| {
             CardTextError::ParseError("missing quantity in attachment-count predicate".to_string())
         })?;
-        return Ok((crate::effect::Comparison::GreaterThan(value as i32), used + 2));
+        return Ok((
+            crate::effect::Comparison::GreaterThan(value as i32),
+            used + 2,
+        ));
     }
 
     if let Some((value, used)) = parse_number(tokens) {
@@ -45,7 +48,10 @@ fn parse_attachment_quantity_prefix(
                 .get(used + 1)
                 .is_some_and(|token| token.is_word("more") || token.is_word("greater"))
         {
-            return Ok((crate::effect::Comparison::GreaterThanOrEqual(value), used + 2));
+            return Ok((
+                crate::effect::Comparison::GreaterThanOrEqual(value),
+                used + 2,
+            ));
         }
         if tokens.get(used).is_some_and(|token| token.is_word("or"))
             && tokens

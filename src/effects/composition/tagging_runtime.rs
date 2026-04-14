@@ -104,7 +104,10 @@ pub(crate) fn apply_tagged_runtime_state(
     // Primary post-map path: if the effect returned object IDs, tag those.
     let output_ids = outcome_object_candidates(outcome);
     if !output_ids.is_empty() {
-        let expected_zone = state.stable_id_fallback.as_ref().map(|fallback| fallback.zone);
+        let expected_zone = state
+            .stable_id_fallback
+            .as_ref()
+            .map(|fallback| fallback.zone);
         let snapshots = output_ids
             .iter()
             .filter_map(|id| {
@@ -171,13 +174,15 @@ fn capture_stable_id_fallback(
     ctx: &ExecutionContext,
 ) -> Option<StableIdFallback> {
     let capture = |spec: &crate::target::ChooseSpec, zone: Zone| {
-        resolve_objects_from_spec(game, spec, ctx).ok().map(|ids| StableIdFallback {
-            stable_ids: ids
-                .into_iter()
-                .filter_map(|id| game.object(id).map(|obj| obj.stable_id))
-                .collect::<Vec<_>>(),
-            zone,
-        })
+        resolve_objects_from_spec(game, spec, ctx)
+            .ok()
+            .map(|ids| StableIdFallback {
+                stable_ids: ids
+                    .into_iter()
+                    .filter_map(|id| game.object(id).map(|obj| obj.stable_id))
+                    .collect::<Vec<_>>(),
+                zone,
+            })
     };
 
     if let Some(exile) = effect.downcast_ref::<crate::effects::ExileEffect>() {
@@ -329,7 +334,11 @@ mod tests {
             &ctx,
         );
         let exile_id = game
-            .move_object(creature, Zone::Hand, crate::events::cause::EventCause::effect())
+            .move_object(
+                creature,
+                Zone::Hand,
+                crate::events::cause::EventCause::effect(),
+            )
             .expect("creature should move");
         let outcome = EffectOutcome::replaced().with_affected_objects(vec![exile_id]);
 

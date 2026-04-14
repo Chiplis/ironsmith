@@ -9218,8 +9218,16 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
         assert_eq!(
             investigate.count,
-            Value::EffectValue(EffectId(0)),
-            "investigate count should follow the previous exile effect's amount"
+            Value::Count(
+                crate::target::ObjectFilter::creature()
+                    .nontoken()
+                    .in_zone(crate::zone::Zone::Exile)
+                    .match_tagged(
+                        crate::TagKey::from("__sentence_helper_exiled_l0_s0_e0"),
+                        crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+                    )
+            ),
+            "investigate count should follow the tagged nontoken creatures exiled by the prior effect"
         );
     }
 
@@ -11430,7 +11438,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     fn parse_nightcreep_style_land_type_change_uses_basic_land_type_lowering() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Nightcreep Variant")
             .card_types(vec![CardType::Instant])
-            .parse_text("Until end of turn, all creatures become black and all lands become Swamps.")
+            .parse_text(
+                "Until end of turn, all creatures become black and all lands become Swamps.",
+            )
             .expect("Nightcreep-style text should parse");
 
         let debug = format!("{:?}", def.spell_effect);

@@ -597,9 +597,7 @@ fn lower_rewrite_static_to_chunk_impl(
     if is_first_equip_cost_alternative_lowering_line(&line.text) {
         let display = capitalize_first_equip_cost_alternative_display(&line.text);
         return wrap_chosen_option_static_chunk(
-            LineAst::StaticAbility(
-                StaticAbility::first_equip_cost_alternative(display).into(),
-            ),
+            LineAst::StaticAbility(StaticAbility::first_equip_cost_alternative(display).into()),
             chosen_option_label,
         );
     }

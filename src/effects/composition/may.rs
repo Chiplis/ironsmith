@@ -232,7 +232,10 @@ mod tests {
             Effect::if_then(
                 EffectId(0),
                 EffectPredicate::DidNotHappen,
-                vec![Effect::put_counters_on_source(CounterType::PlusOnePlusOne, 2)],
+                vec![Effect::put_counters_on_source(
+                    CounterType::PlusOnePlusOne,
+                    2,
+                )],
             ),
         ]
     }
@@ -379,8 +382,8 @@ mod tests {
             alice,
             Zone::Battlefield,
         );
-        let mut ctx =
-            ExecutionContext::new_default(source, alice).with_targets(vec![crate::executor::ResolvedTarget::Player(bob)]);
+        let mut ctx = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![crate::executor::ResolvedTarget::Player(bob)]);
 
         for effect in terrapact_style_effects(crate::decision::FallbackStrategy::Accept) {
             execute_effect(&mut game, &effect, &mut ctx).expect("effect should resolve");
@@ -389,5 +392,4 @@ mod tests {
         assert_eq!(count_lander_tokens(&game, alice), 2);
         assert_eq!(game.counter_count(source, CounterType::PlusOnePlusOne), 0);
     }
-
 }

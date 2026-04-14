@@ -28,7 +28,10 @@ fn collapse_tagged_filter_to_specific_objects(
         .iter()
         .filter_map(|constraint| ctx.get_tagged_all(&constraint.tag))
         .flat_map(|snapshots| snapshots.iter())
-        .filter_map(|snapshot| seen.insert(snapshot.object_id).then_some(snapshot.object_id))
+        .filter_map(|snapshot| {
+            seen.insert(snapshot.object_id)
+                .then_some(snapshot.object_id)
+        })
         .collect::<Vec<_>>();
 
     if object_ids.is_empty() {
@@ -49,10 +52,7 @@ fn collapse_tagged_filter_to_specific_objects(
         [] => filter.clone(),
         [object_id] => ObjectFilter::specific(*object_id),
         _ => ObjectFilter {
-            any_of: object_ids
-                .into_iter()
-                .map(ObjectFilter::specific)
-                .collect(),
+            any_of: object_ids.into_iter().map(ObjectFilter::specific).collect(),
             ..Default::default()
         },
     }
@@ -147,6 +147,7 @@ impl EffectExecutor for CantEffect {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::PowerToughness;
     use crate::card::CardBuilder;
     use crate::effects::RegenerateEffect;
     use crate::executor::ExecutionContext;
@@ -156,7 +157,6 @@ mod tests {
     use crate::snapshot::ObjectSnapshot;
     use crate::target::{ObjectFilter, PlayerFilter};
     use crate::types::CardType;
-    use crate::PowerToughness;
     use crate::zone::Zone;
 
     #[test]
@@ -287,11 +287,9 @@ mod tests {
         ctx.tag_object("granted_0", creature_snapshot.clone());
         ctx.tag_object("__it__", creature_snapshot);
 
-        CantEffect::until_end_of_turn(Restriction::be_blocked(ObjectFilter::tagged(
-            "targeted_0",
-        )))
-        .execute(&mut game, &mut ctx)
-        .expect("execute be blocked cant effect with drifted runtime tag alias");
+        CantEffect::until_end_of_turn(Restriction::be_blocked(ObjectFilter::tagged("targeted_0")))
+            .execute(&mut game, &mut ctx)
+            .expect("execute be blocked cant effect with drifted runtime tag alias");
 
         assert!(
             !game.can_be_blocked(creature_id),

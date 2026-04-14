@@ -957,8 +957,10 @@ impl<'a> DerivedGameView<'a> {
             return Some(vec![id]);
         }
 
-        let uses_creature_subset = filter.card_types.contains(&CardType::Creature)
-            || filter.all_card_types.contains(&CardType::Creature);
+        let uses_creature_subset = filter.all_card_types.contains(&CardType::Creature)
+            || (!filter.type_or_subtype_union
+                && filter.card_types.len() == 1
+                && filter.card_types[0] == CardType::Creature);
         let uses_noncreature_subset =
             !uses_creature_subset && filter.excluded_card_types.contains(&CardType::Creature);
 
@@ -1068,7 +1070,10 @@ impl<'a> DerivedGameView<'a> {
         let ids: Vec<_> = self
             .candidate_ids_for_zone(Some(Zone::Battlefield))
             .into_iter()
-            .filter(|id| self.current_controller(*id).is_some_and(|controller| controller != player))
+            .filter(|id| {
+                self.current_controller(*id)
+                    .is_some_and(|controller| controller != player)
+            })
             .collect();
         self.battlefield_opponents
             .borrow_mut()
@@ -1084,7 +1089,10 @@ impl<'a> DerivedGameView<'a> {
         let ids: Vec<_> = self
             .battlefield_creature_candidates()
             .into_iter()
-            .filter(|id| self.current_controller(*id).is_some_and(|controller| controller != player))
+            .filter(|id| {
+                self.current_controller(*id)
+                    .is_some_and(|controller| controller != player)
+            })
             .collect();
         self.battlefield_opponent_creatures
             .borrow_mut()
@@ -1161,11 +1169,13 @@ fn materialize_derived_alternative_cast(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::card::CardBuilder;
     use crate::continuous::{ContinuousEffect, Modification, TextBoxOverlay};
     use crate::effect::Effect;
     use crate::effect::Until;
-    use crate::ids::{ObjectId, PlayerId};
+    use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::target::{ChooseSpec, ObjectFilter};
+    use crate::types::{CardType, Subtype};
     use crate::zone::Zone;
 
     #[test]
@@ -1243,6 +1253,75 @@ mod tests {
     }
 
     #[test]
+    fn battlefield_permanent_candidates_include_noncreatures() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let creature_id = game.create_object_from_definition(
+            &crate::cards::definitions::grizzly_bears(),
+            bob,
+            Zone::Battlefield,
+        );
+        let enchantment = CardBuilder::new(CardId::from_raw(90_001), "Audit Enchantment")
+            .card_types(vec![CardType::Enchantment])
+            .build();
+        let enchantment_id = game.create_object_from_card(&enchantment, bob, Zone::Battlefield);
+
+        let view = DerivedGameView::new(&game);
+        let filter = ObjectFilter::permanent();
+        let filter_ctx = game.filter_context_for(alice, None);
+
+        let ids = view.candidate_ids_for_filter_with_context(&filter, &filter_ctx);
+        assert!(
+            ids.contains(&creature_id) && ids.contains(&enchantment_id),
+            "permanent candidate narrowing should keep both creature and enchantment permanents"
+        );
+    }
+
+    #[test]
+    fn battlefield_union_candidates_do_not_assume_creature_only() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let creature_id = game.create_object_from_definition(
+            &crate::cards::definitions::grizzly_bears(),
+            bob,
+            Zone::Battlefield,
+        );
+        let aura = CardBuilder::new(CardId::from_raw(90_002), "Audit Aura")
+            .card_types(vec![CardType::Enchantment])
+            .subtypes(vec![Subtype::Aura])
+            .build();
+        let aura_id = game.create_object_from_card(&aura, bob, Zone::Battlefield);
+        let artifact = CardBuilder::new(CardId::from_raw(90_003), "Audit Relic")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let artifact_id = game.create_object_from_card(&artifact, bob, Zone::Battlefield);
+
+        let view = DerivedGameView::new(&game);
+        let filter = ObjectFilter {
+            zone: Some(Zone::Battlefield),
+            card_types: vec![CardType::Creature],
+            subtypes: vec![Subtype::Aura],
+            type_or_subtype_union: true,
+            ..Default::default()
+        };
+        let filter_ctx = game.filter_context_for(alice, None);
+
+        let ids = view.candidate_ids_for_filter_with_context(&filter, &filter_ctx);
+        assert!(
+            ids.contains(&creature_id) && ids.contains(&aura_id),
+            "creature-or-Aura union should include both creature and Aura permanents"
+        );
+        assert!(
+            ids.contains(&artifact_id),
+            "candidate enumeration may stay broad, but it must not drop valid Aura matches"
+        );
+    }
+
+    #[test]
     fn simple_mana_analysis_respects_continuous_control_changes() {
         let mut game = crate::tests::test_helpers::setup_two_player_game();
         let alice = PlayerId::from_index(0);
@@ -1284,7 +1363,9 @@ mod tests {
         );
 
         let effects = vec![Effect::destroy(ChooseSpec::target(ChooseSpec::Object(
-            ObjectFilter::creature().you_control().in_zone(Zone::Battlefield),
+            ObjectFilter::creature()
+                .you_control()
+                .in_zone(Zone::Battlefield),
         )))];
         let view = DerivedGameView::new(&game);
 

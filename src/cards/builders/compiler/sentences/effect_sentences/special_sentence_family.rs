@@ -159,7 +159,8 @@ fn parse_keyword_bundle_static_ability(words: &[&str]) -> Option<(StaticAbilityI
     ];
 
     KEYWORD_PHRASES.iter().find_map(|(phrase, ability_id)| {
-        words.starts_with(phrase)
+        words
+            .starts_with(phrase)
             .then_some((*ability_id, phrase.len()))
     })
 }
@@ -185,7 +186,11 @@ fn parse_keyword_bundle_pump_clause(
             words.join(" ")
         )));
     };
-    Ok(Some(((power, toughness), ability_id, ability_start + consumed)))
+    Ok(Some((
+        (power, toughness),
+        ability_id,
+        ability_start + consumed,
+    )))
 }
 
 pub(crate) fn parse_keyword_bundle_pump_sentence(
@@ -197,8 +202,7 @@ pub(crate) fn parse_keyword_bundle_pump_sentence(
         return Ok(None);
     }
 
-    let (subject_start_word_idx, duration) = if words.starts_with(&["until", "end", "of", "turn"])
-    {
+    let (subject_start_word_idx, duration) = if words.starts_with(&["until", "end", "of", "turn"]) {
         (4usize, Until::EndOfTurn)
     } else if words.starts_with(&["until", "your", "next", "turn"]) {
         (4usize, Until::YourNextTurn)
@@ -220,7 +224,8 @@ pub(crate) fn parse_keyword_bundle_pump_sentence(
 
     let subject_start_token_idx =
         token_index_for_word_index(tokens, subject_start_word_idx).unwrap_or(tokens.len());
-    let subject_end_token_idx = token_index_for_word_index(tokens, get_word_idx).unwrap_or(tokens.len());
+    let subject_end_token_idx =
+        token_index_for_word_index(tokens, get_word_idx).unwrap_or(tokens.len());
     if subject_start_token_idx >= subject_end_token_idx {
         return Ok(None);
     }

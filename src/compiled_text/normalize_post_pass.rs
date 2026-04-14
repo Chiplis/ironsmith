@@ -121,10 +121,7 @@ fn normalize_keyword_bundle_pump_surface(oracle_lower: &str, text: &str) -> Opti
     )
 }
 
-fn normalize_single_card_exile_condition_surface(
-    oracle_lower: &str,
-    text: &str,
-) -> Option<String> {
+fn normalize_single_card_exile_condition_surface(oracle_lower: &str, text: &str) -> Option<String> {
     if !oracle_lower.contains("if a card is put into exile this way") {
         return None;
     }
@@ -172,8 +169,7 @@ fn normalize_reveal_until_put_hand_exile_rest_surface(text: &str) -> Option<Stri
 fn normalize_reveal_until_put_hand_graveyard_rest_surface(text: &str) -> Option<String> {
     let lower = text.to_ascii_lowercase();
     let reveal_marker = "you reveal cards from the top of your library until you reveal ";
-    let tail_marker =
-        ", put that card into your hand, and put all other cards revealed this way into your graveyard";
+    let tail_marker = ", put that card into your hand, and put all other cards revealed this way into your graveyard";
     let reveal_idx = lower.find(reveal_marker)?;
     let stop_start = reveal_idx + reveal_marker.len();
     let tail_rel_idx = lower[stop_start..].find(tail_marker)?;
@@ -329,7 +325,8 @@ pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str
         if let Some(rewritten) = normalize_triggered_kicked_mass_bounce_surface(&normalized_body) {
             normalized_body = rewritten;
         }
-        if let Some(rewritten) = normalize_keyword_bundle_pump_surface(&oracle_lower, &normalized_body)
+        if let Some(rewritten) =
+            normalize_keyword_bundle_pump_surface(&oracle_lower, &normalized_body)
         {
             normalized_body = rewritten;
         }
@@ -1855,8 +1852,12 @@ pub(super) fn normalize_known_low_tail_phrase(text: &str) -> String {
                     .or_else(|| strip_suffix_ascii_ci(tail, " attached tos that object"))
             })
     {
-        let attached_filter = if attached_filter.trim().eq_ignore_ascii_case("Aura or Equipment")
-            || attached_filter.trim().eq_ignore_ascii_case("Auras or Equipment")
+        let attached_filter = if attached_filter
+            .trim()
+            .eq_ignore_ascii_case("Aura or Equipment")
+            || attached_filter
+                .trim()
+                .eq_ignore_ascii_case("Auras or Equipment")
         {
             "Auras and Equipment"
         } else {
@@ -6100,10 +6101,12 @@ pub(super) fn normalize_sentence_helper_top_cards_choose_keyword_bundle_sequence
             head.to_string()
         };
         (normalized_head, rest.to_string())
-    } else if let Some((head, rest)) =
-        split_once_ascii_ci(trimmed, ". you choose up to one other ")
+    } else if let Some((head, rest)) = split_once_ascii_ci(trimmed, ". you choose up to one other ")
     {
-        (head.to_string(), format!("you choose up to one other {rest}"))
+        (
+            head.to_string(),
+            format!("you choose up to one other {rest}"),
+        )
     } else {
         return None;
     };
@@ -6156,10 +6159,8 @@ pub(super) fn normalize_sentence_helper_top_cards_choose_keyword_bundle_sequence
     if !battlefield_tag.starts_with("__sentence_helper_battlefield_") {
         return None;
     }
-    let remaining = strip_prefix_ascii_ci(
-        remaining,
-        "Put it onto the battlefield. For each tagged '",
-    )?;
+    let remaining =
+        strip_prefix_ascii_ci(remaining, "Put it onto the battlefield. For each tagged '")?;
     let remaining = strip_prefix_ascii_ci(remaining, chosen_tag)?;
     let remaining = strip_prefix_ascii_ci(
         remaining,

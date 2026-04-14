@@ -1224,7 +1224,16 @@ pub(crate) fn parse_trigger_clause_lexed(
             "battlefield",
         ]
         .as_slice(),
-        ["are", "put", "into", "a", "graveyard", "from", "battlefield"].as_slice(),
+        [
+            "are",
+            "put",
+            "into",
+            "a",
+            "graveyard",
+            "from",
+            "battlefield",
+        ]
+        .as_slice(),
         [
             "are",
             "put",

@@ -589,10 +589,7 @@ fn describe_anthem_count_expression(expr: &AnthemCountExpression) -> String {
             )
         }
         AnthemCountExpression::AttachedToAffected(filter) => {
-            format!(
-                "{} attached to it",
-                strip_article(filter.description())
-            )
+            format!("{} attached to it", strip_article(filter.description()))
         }
         AnthemCountExpression::CountersOnSource(counter_type) => {
             format!("{} counter on this permanent", counter_type.description())
@@ -625,12 +622,10 @@ fn describe_anthem_for_each_count_expression(expr: &AnthemCountExpression) -> Op
         AnthemCountExpression::MatchingFilter(filter) if filter.zone == Some(Zone::Battlefield) => {
             Some(strip_article(filter.description()))
         }
-        AnthemCountExpression::AttachedToAffected(filter) => {
-            Some(format!(
-                "{} attached to it",
-                strip_article(filter.description())
-            ))
-        }
+        AnthemCountExpression::AttachedToAffected(filter) => Some(format!(
+            "{} attached to it",
+            strip_article(filter.description())
+        )),
         AnthemCountExpression::BasicLandTypesAmong(_) => {
             Some("basic land type among lands you control".to_string())
         }
@@ -3950,9 +3945,7 @@ mod tests {
             .card_types(vec![CardType::Creature])
             .subtypes(vec![Subtype::Dwarf, Subtype::Warrior])
             .power_toughness(PowerToughness::fixed(5, 3))
-            .parse_text(
-                "Each creature you control gets +2/+0 for each Equipment attached to it.",
-            )
+            .parse_text("Each creature you control gets +2/+0 for each Equipment attached to it.")
             .expect("Bruenor anthem text should parse");
 
         let abilities_debug = format!("{:?}", def.abilities);
@@ -3969,7 +3962,8 @@ mod tests {
         let joined = lines.join(" ").to_ascii_lowercase();
         assert!(
             joined.contains("creature you control gets +2/+0 for each equipment attached to it")
-                || joined.contains("creatures you control get +2/+0 for each equipment attached to it"),
+                || joined
+                    .contains("creatures you control get +2/+0 for each equipment attached to it"),
             "expected oracle-like anthem wording with 'attached to it', got {joined}"
         );
     }
@@ -4016,7 +4010,10 @@ mod tests {
         // Equipment attached to it".
         let equipment_filter = ObjectFilter::default().with_subtype(Subtype::Equipment);
         let anthem = Anthem::creatures_you_control(0, 0).with_values(
-            AnthemValue::scaled(2, AnthemCountExpression::AttachedToAffected(equipment_filter)),
+            AnthemValue::scaled(
+                2,
+                AnthemCountExpression::AttachedToAffected(equipment_filter),
+            ),
             AnthemValue::Fixed(0),
         );
 
@@ -4032,9 +4029,9 @@ mod tests {
 
         // Find effects for creature A (2 equipment -> +4/+0) and creature B (0 equipment -> +0/+0).
         let effect_for = |target_id: ObjectId| -> Option<&ContinuousEffect> {
-            effects.iter().find(|e| {
-                matches!(e.applies_to, EffectTarget::Specific(id) if id == target_id)
-            })
+            effects
+                .iter()
+                .find(|e| matches!(e.applies_to, EffectTarget::Specific(id) if id == target_id))
         };
 
         let a_effect = effect_for(creature_a).expect("creature A should have an effect");
@@ -4073,7 +4070,10 @@ mod tests {
 
         let equipment_filter = ObjectFilter::default().with_subtype(Subtype::Equipment);
         let anthem = Anthem::creatures_you_control(0, 0).with_values(
-            AnthemValue::scaled(2, AnthemCountExpression::AttachedToAffected(equipment_filter)),
+            AnthemValue::scaled(
+                2,
+                AnthemCountExpression::AttachedToAffected(equipment_filter),
+            ),
             AnthemValue::Fixed(0),
         );
 
@@ -4081,9 +4081,9 @@ mod tests {
         let bruenor_def = CardDefinitionBuilder::new(CardId::new(), "Bruenor Battlehammer")
             .card_types(vec![CardType::Creature])
             .power_toughness(PowerToughness::fixed(5, 3))
-            .with_ability(
-                crate::ability::Ability::static_ability(StaticAbility::new(anthem))
-            )
+            .with_ability(crate::ability::Ability::static_ability(StaticAbility::new(
+                anthem,
+            )))
             .build();
         let bruenor_id = game.create_object_from_definition(&bruenor_def, alice, Zone::Battlefield);
 
@@ -4156,12 +4156,17 @@ mod tests {
     fn bruenor_anthem_display_shows_for_each_equipment_attached_to_it() {
         let equipment_filter = ObjectFilter::default().with_subtype(Subtype::Equipment);
         let anthem = Anthem::creatures_you_control(0, 0).with_values(
-            AnthemValue::scaled(2, AnthemCountExpression::AttachedToAffected(equipment_filter)),
+            AnthemValue::scaled(
+                2,
+                AnthemCountExpression::AttachedToAffected(equipment_filter),
+            ),
             AnthemValue::Fixed(0),
         );
         let display = anthem.display();
         assert!(
-            display.to_ascii_lowercase().contains("for each equipment attached to it"),
+            display
+                .to_ascii_lowercase()
+                .contains("for each equipment attached to it"),
             "expected display to mention 'for each Equipment attached to it', got {display}"
         );
         assert!(

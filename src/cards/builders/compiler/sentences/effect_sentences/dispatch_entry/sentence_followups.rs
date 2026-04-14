@@ -452,7 +452,9 @@ fn pre_rule_otherwise_followup(
 fn is_if_card_put_into_exile_this_way_sentence(tokens: &[OwnedLexToken]) -> bool {
     let has_expected_prefix = grammar::words_match_prefix(
         tokens,
-        &["if", "a", "card", "is", "put", "into", "exile", "this", "way"],
+        &[
+            "if", "a", "card", "is", "put", "into", "exile", "this", "way",
+        ],
     )
     .is_some()
         || grammar::words_match_prefix(
@@ -462,7 +464,9 @@ fn is_if_card_put_into_exile_this_way_sentence(tokens: &[OwnedLexToken]) -> bool
         .is_some()
         || grammar::words_match_prefix(
             tokens,
-            &["if", "a", "card", "was", "put", "into", "exile", "this", "way"],
+            &[
+                "if", "a", "card", "was", "put", "into", "exile", "this", "way",
+            ],
         )
         .is_some()
         || grammar::words_match_prefix(
@@ -484,10 +488,9 @@ fn pre_rule_exile_this_way_followup(
         return Ok(None);
     }
 
-    let Some((_before, after)) = grammar::split_lexed_once_on_delimiter(
-        sentence_tokens,
-        TokenKind::Comma,
-    ) else {
+    let Some((_before, after)) =
+        grammar::split_lexed_once_on_delimiter(sentence_tokens, TokenKind::Comma)
+    else {
         return Err(CardTextError::ParseError(format!(
             "missing comma after if-card-put-into-exile-this-way clause (clause: '{}')",
             crate::cards::builders::compiler::token_word_refs(sentence_tokens).join(" ")
