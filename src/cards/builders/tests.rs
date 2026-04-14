@@ -18360,6 +18360,29 @@ fn parse_cephalid_inkshrouder_keeps_self_buff_and_unblockable_clause_together() 
         abilities_debug.contains("shroud") && abilities_debug.contains("beblocked"),
         "expected shroud and unblockable effects in the compiled definition, got {abilities_debug}"
     );
+
+    let cant_effect = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            crate::ability::AbilityKind::Activated(activated) => activated
+                .effects
+                .segments
+                .iter()
+                .flat_map(|segment| segment.default_effects.iter())
+                .find_map(|effect| effect.downcast_ref::<crate::effects::CantEffect>()),
+            _ => None,
+        })
+        .expect("expected Cephalid Inkshrouder to compile a cant effect");
+    match &cant_effect.restriction {
+        crate::effect::Restriction::BeBlocked(filter) => {
+            assert!(
+                filter.source,
+                "expected Cephalid Inkshrouder's unblockable restriction to resolve to the source, got {filter:?}"
+            );
+        }
+        other => panic!("expected Cephalid Inkshrouder be-blocked restriction, got {other:?}"),
+    }
 }
 
 #[test]
