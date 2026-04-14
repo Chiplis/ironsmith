@@ -18390,6 +18390,61 @@ fn parse_cephalid_inkshrouder_keeps_self_buff_and_unblockable_clause_together() 
 }
 
 #[test]
+fn parse_break_through_the_line_keeps_targeted_unblockable_clause_tied_to_target() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Break Through the Line")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "{R}: Target creature with power 2 or less gains haste until end of turn and can't be blocked this turn.",
+        )
+        .expect("Break Through the Line text should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("power 2 or less")
+            && rendered.contains("can't be blocked this turn")
+            && !rendered.contains("this enchantment can't be blocked"),
+        "expected Break Through the Line to keep the targeted unblockable clause off the enchantment source, got {rendered}"
+    );
+
+    let cant_effect = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => activated
+                .effects
+                .segments
+                .iter()
+                .flat_map(|segment| segment.default_effects.iter())
+                .find_map(|effect| effect.downcast_ref::<crate::effects::CantEffect>()),
+            _ => None,
+        })
+        .expect("expected Break Through the Line to compile a cant effect");
+    match &cant_effect.restriction {
+        crate::effect::Restriction::BeBlocked(filter) => {
+            assert!(
+                !filter.source,
+                "expected Break Through the Line's unblockable restriction to stay tied to the target creature, got {filter:?}"
+            );
+            assert_eq!(
+                filter.card_types,
+                vec![CardType::Creature],
+                "expected Break Through the Line's unblockable restriction to keep the creature target"
+            );
+            assert_eq!(
+                filter.power,
+                Some(crate::filter::Comparison::LessThanOrEqual(2)),
+                "expected Break Through the Line's unblockable restriction to keep the power 2 or less target"
+            );
+        }
+        other => panic!("expected Break Through the Line be-blocked restriction, got {other:?}"),
+    }
+}
+
+#[test]
 fn slippery_scoundrel_keeps_hexproof_and_unblockable_under_citys_blessing() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Slippery Scoundrel Variant")
         .card_types(vec![CardType::Creature])

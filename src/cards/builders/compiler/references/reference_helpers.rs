@@ -419,17 +419,7 @@ pub(crate) fn resolve_restriction_it_tag(
         }
         Restriction::Untap(filter) => Restriction::untap(resolve_it_tag(filter, refs)?),
         Restriction::BeBlocked(filter) => {
-            let resolved = resolve_it_tag(filter, refs)?;
-            if object_filter_as_tagged_reference(&resolved)
-                .is_some_and(|tag| {
-                    refs.known_last_object_tag()
-                        .is_some_and(|last_tag| last_tag.as_str() == tag.as_str())
-                })
-            {
-                Restriction::be_blocked(crate::filter::ObjectFilter::source())
-            } else {
-                Restriction::be_blocked(resolved)
-            }
+            Restriction::be_blocked(resolve_it_tag(filter, refs)?)
         }
         Restriction::BeDestroyed(filter) => {
             Restriction::be_destroyed(resolve_it_tag(filter, refs)?)
