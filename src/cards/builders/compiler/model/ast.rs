@@ -940,6 +940,7 @@ pub(crate) enum EffectAst {
         player: PlayerAst,
         filter: ObjectFilter,
         reveal: bool,
+        order: LibraryBottomOrderAst,
         if_not_chosen: Vec<EffectAst>,
     },
     ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary {

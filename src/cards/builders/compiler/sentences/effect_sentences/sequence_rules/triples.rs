@@ -955,7 +955,9 @@ pub(super) fn parse_look_at_top_reveal_match_put_rest_bottom(
 
     let after_from_words = &reveal_word_refs[from_among_word_idx + from_among_len..];
     let puts_into_hand = (slice_starts_with(after_from_words, &["and", "put", "it", "into"])
-        || slice_starts_with(after_from_words, &["put", "it", "into"]))
+        || slice_starts_with(after_from_words, &["put", "it", "into"])
+        || slice_starts_with(after_from_words, &["and", "put", "that", "card", "into"])
+        || slice_starts_with(after_from_words, &["put", "that", "card", "into"]))
         && slice_contains(after_from_words, &"hand");
     if !puts_into_hand {
         return Ok(None);
@@ -969,6 +971,10 @@ pub(super) fn parse_look_at_top_reveal_match_put_rest_bottom(
     if !puts_rest_bottom {
         return Ok(None);
     }
+    let Some(order) = effect_sentences::parse_consult_remainder_order(&third_words.word_refs())
+    else {
+        return Ok(None);
+    };
 
     let mut effects = vec![EffectAst::LookAtTopCards {
         player: *player,
@@ -980,6 +986,7 @@ pub(super) fn parse_look_at_top_reveal_match_put_rest_bottom(
             player: chooser,
             filter,
             reveal: true,
+            order,
             if_not_chosen: Vec::new(),
         },
     );

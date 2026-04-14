@@ -18344,6 +18344,194 @@ fn atraxa_grand_unifier_puts_one_card_per_type_into_hand_and_bottoms_the_rest() 
     );
 }
 
+#[test]
+fn quandrix_apprentice_magecraft_puts_only_a_looked_land_into_hand() {
+    use crate::executor::{ExecutionContext, execute_effect};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let def = CardDefinitionBuilder::new(CardId::from_raw(91_100), "Quandrix Apprentice")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Green], vec![ManaSymbol::Blue]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text(
+            "Magecraft — Whenever you cast or copy an instant or sorcery spell, look at the top three cards of your library. You may reveal a land card from among them and put that card into your hand. Put the rest on the bottom of your library in any order.",
+        )
+        .expect("Quandrix Apprentice should parse");
+
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Quandrix Apprentice should have a triggered ability");
+
+    let source_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.create_object_from_card(
+        &CardBuilder::new(CardId::from_raw(91_101), "Library Bottom Sentinel")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        alice,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &CardBuilder::new(CardId::from_raw(91_102), "Looked Instant")
+            .card_types(vec![CardType::Instant])
+            .build(),
+        alice,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &CardBuilder::new(CardId::from_raw(91_103), "Quandrix Campus")
+            .card_types(vec![CardType::Land])
+            .build(),
+        alice,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &CardBuilder::new(CardId::from_raw(91_104), "Looked Creature")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build(),
+        alice,
+        Zone::Library,
+    );
+
+    let mut dm = SelectFirstDecisionMaker;
+    let mut ctx = ExecutionContext::new(source_id, alice, &mut dm);
+    for effect in &triggered.effects {
+        execute_effect(&mut game, effect, &mut ctx)
+            .expect("Quandrix Apprentice trigger should resolve");
+    }
+
+    let hand_names: Vec<_> = game
+        .player(alice)
+        .expect("alice exists")
+        .hand
+        .iter()
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .collect();
+    assert_eq!(
+        hand_names,
+        vec!["Quandrix Campus".to_string()],
+        "Quandrix Apprentice should put only the looked land into hand"
+    );
+
+    let library_names: Vec<_> = game
+        .player(alice)
+        .expect("alice exists")
+        .library
+        .iter()
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .collect();
+    assert_eq!(
+        library_names.len(),
+        3,
+        "Quandrix Apprentice should leave the unchosen cards in the library"
+    );
+    assert!(
+        library_names.contains(&"Library Bottom Sentinel".to_string())
+            && library_names.contains(&"Looked Instant".to_string())
+            && library_names.contains(&"Looked Creature".to_string()),
+        "Quandrix Apprentice should keep the nonland looked cards plus the unseen card in the library, got {library_names:?}"
+    );
+    assert!(
+        game.player(alice)
+            .expect("alice exists")
+            .graveyard
+            .is_empty(),
+        "Quandrix Apprentice should bottom the other looked cards instead of milling them"
+    );
+}
+
+#[test]
+fn quandrix_apprentice_magecraft_can_decline_the_land_pick() {
+    use crate::executor::{ExecutionContext, execute_effect};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let def = CardDefinitionBuilder::new(CardId::from_raw(91_110), "Quandrix Apprentice")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Green], vec![ManaSymbol::Blue]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text(
+            "Magecraft — Whenever you cast or copy an instant or sorcery spell, look at the top three cards of your library. You may reveal a land card from among them and put that card into your hand. Put the rest on the bottom of your library in any order.",
+        )
+        .expect("Quandrix Apprentice should parse");
+
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Quandrix Apprentice should have a triggered ability");
+
+    let source_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.create_object_from_card(
+        &CardBuilder::new(CardId::from_raw(91_111), "Looked Land")
+            .card_types(vec![CardType::Land])
+            .build(),
+        alice,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &CardBuilder::new(CardId::from_raw(91_112), "Looked Instant")
+            .card_types(vec![CardType::Instant])
+            .build(),
+        alice,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &CardBuilder::new(CardId::from_raw(91_113), "Looked Artifact")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        alice,
+        Zone::Library,
+    );
+
+    let mut dm = AutoPassDecisionMaker;
+    let mut ctx = ExecutionContext::new(source_id, alice, &mut dm);
+    for effect in &triggered.effects {
+        execute_effect(&mut game, effect, &mut ctx)
+            .expect("Quandrix Apprentice trigger should resolve");
+    }
+
+    assert!(
+        game.player(alice).expect("alice exists").hand.is_empty(),
+        "declining Quandrix Apprentice should leave all looked cards out of hand"
+    );
+
+    let library_names: Vec<_> = game
+        .player(alice)
+        .expect("alice exists")
+        .library
+        .iter()
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .collect();
+    assert_eq!(
+        library_names.len(),
+        3,
+        "declining Quandrix Apprentice should keep all three looked cards in the library"
+    );
+    assert!(
+        library_names.contains(&"Looked Land".to_string())
+            && library_names.contains(&"Looked Instant".to_string())
+            && library_names.contains(&"Looked Artifact".to_string()),
+        "declining Quandrix Apprentice should keep every looked card in the library, got {library_names:?}"
+    );
+    assert!(
+        game.player(alice)
+            .expect("alice exists")
+            .graveyard
+            .is_empty(),
+        "declining Quandrix Apprentice should still bottom the looked cards instead of milling them"
+    );
+}
+
 // ============================================================================
 // Saga Integration Tests
 // ============================================================================

@@ -1852,8 +1852,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
                 filtered[idx + 2].downcast_ref::<crate::effects::ForEachTaggedEffect>()
             && let Some((Some(move_to_hand_with_id), move_to_hand)) =
                 for_each_tagged_for_compaction(filtered[idx + 3])
-            && let Some(rest) =
-                filtered[idx + 4].downcast_ref::<crate::effects::ForEachTaggedEffect>()
+            && let Some(rest) = filtered[idx + 4]
+                .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>(
+            )
             && let Some(if_effect) = filtered[idx + 5].downcast_ref::<crate::effects::IfEffect>()
             && let Some(compact) =
                 describe_look_at_top_then_reveal_put_into_hand_rest_bottom_then_if_not_into_hand(
@@ -1878,8 +1879,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             && let Some(reveal) =
                 filtered[idx + 2].downcast_ref::<crate::effects::ForEachTaggedEffect>()
             && let Some((_, move_to_hand)) = for_each_tagged_for_compaction(filtered[idx + 3])
-            && let Some(rest) =
-                filtered[idx + 4].downcast_ref::<crate::effects::ForEachTaggedEffect>()
+            && let Some(rest) = filtered[idx + 4]
+                .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>(
+            )
             && let Some(compact) = describe_look_at_top_then_reveal_put_into_hand_rest_bottom(
                 look_at_top,
                 choose,
@@ -5094,7 +5096,7 @@ pub(super) fn describe_look_at_top_then_reveal_put_into_hand_rest_bottom(
     choose: &crate::effects::ChooseObjectsEffect,
     reveal: Option<&crate::effects::ForEachTaggedEffect>,
     move_to_hand: &crate::effects::ForEachTaggedEffect,
-    rest: &crate::effects::ForEachTaggedEffect,
+    rest: &crate::effects::PutTaggedRemainderOnLibraryBottomEffect,
 ) -> Option<String> {
     if let Some(reveal) = reveal
         && !for_each_reveals_tag(reveal, choose.tag.as_str())
@@ -5102,11 +5104,11 @@ pub(super) fn describe_look_at_top_then_reveal_put_into_hand_rest_bottom(
         return None;
     }
     if !for_each_moves_tag_to_hand(move_to_hand, choose.tag.as_str())
-        || !for_each_moves_unselected_to_library_bottom(
-            rest,
-            look_at_top.tag.as_str(),
-            choose.tag.as_str(),
-        )
+        || rest.tag.as_str() != look_at_top.tag.as_str()
+        || rest
+            .keep_tagged
+            .as_ref()
+            .is_none_or(|tag| tag.as_str() != choose.tag.as_str())
     {
         return None;
     }
@@ -5123,9 +5125,17 @@ pub(super) fn describe_look_at_top_then_reveal_put_into_hand_rest_bottom(
             capitalize_first(&describe_player_filter(&choose.chooser))
         )
     };
+    let order_text = match rest.order {
+        crate::effects::consult_helpers::LibraryBottomOrder::Random => {
+            " in a random order".to_string()
+        }
+        crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses => {
+            " in any order".to_string()
+        }
+    };
 
     Some(format!(
-        "Look at the top {count_text} {noun} of {owner} library. {may_prefix} reveal {chosen} from among them and put it into {hand} hand. Put the rest on the bottom of {owner} library"
+        "Look at the top {count_text} {noun} of {owner} library. {may_prefix} reveal {chosen} from among them and put it into {hand} hand. Put the rest on the bottom of {owner} library{order_text}"
     ))
 }
 
@@ -5242,7 +5252,7 @@ pub(super) fn describe_look_at_top_then_reveal_put_into_hand_rest_bottom_then_if
     reveal: &crate::effects::ForEachTaggedEffect,
     move_to_hand_with_id: &crate::effects::WithIdEffect,
     move_to_hand: &crate::effects::ForEachTaggedEffect,
-    rest: &crate::effects::ForEachTaggedEffect,
+    rest: &crate::effects::PutTaggedRemainderOnLibraryBottomEffect,
     if_effect: &crate::effects::IfEffect,
 ) -> Option<String> {
     let base = describe_look_at_top_then_reveal_put_into_hand_rest_bottom(
