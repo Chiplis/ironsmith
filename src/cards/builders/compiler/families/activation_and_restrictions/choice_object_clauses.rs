@@ -928,7 +928,7 @@ pub(crate) fn parse_choose_creature_type_then_become_type(
                 second_words.join(" ")
             ))
         })?;
-        TargetAst::Object(filter, span_from_tokens(&subject_tokens), None)
+        TargetAst::Object(filter, None, None)
     } else {
         parse_target_phrase(&subject_tokens)?
     };

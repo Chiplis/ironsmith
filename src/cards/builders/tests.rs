@@ -20045,9 +20045,9 @@ fn parse_choose_creature_type_then_each_creature_becomes_that_type() {
 
     let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        rendered.contains("becomecreaturetypechoiceeffect")
-            || rendered.contains("creature type of your choice"),
-        "expected become-creature-type-choice effect in sorcery text, got {rendered}"
+        rendered.contains("each creature becomes the creature type of your choice")
+            && rendered.contains("other than wall"),
+        "expected all-creatures creature-type choice text, got {rendered}"
     );
 }
 

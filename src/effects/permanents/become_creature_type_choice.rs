@@ -3,7 +3,7 @@
 use crate::continuous::Modification;
 use crate::decisions::context::{SelectOptionsContext, SelectableOption};
 use crate::effect::{EffectOutcome, Until};
-use crate::effects::EffectExecutor;
+use crate::effects::{ApplyContinuousEffect, EffectExecutor};
 use crate::effects::helpers::resolve_player_filter;
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
@@ -276,12 +276,13 @@ impl EffectExecutor for BecomeCreatureTypeChoiceEffect {
             return Ok(EffectOutcome::count(0));
         };
 
-        let mut apply = crate::effects::ApplyContinuousEffect::with_spec(
+        let apply = ApplyContinuousEffect::with_spec(
             self.target.clone(),
             Modification::RemoveAllSubtypesOfFamily(SubtypeFamily::Creature),
             self.until.clone(),
-        );
-        apply = apply.with_additional_modification(Modification::AddSubtypes(vec![chosen_subtype]));
+        )
+        .with_additional_modification(Modification::AddSubtypes(vec![chosen_subtype]))
+        .require_creature_target();
         apply.execute(game, ctx)
     }
 }
@@ -292,6 +293,7 @@ mod tests {
     use crate::cards::definitions::grizzly_bears;
     use crate::decision::DecisionMaker;
     use crate::ids::PlayerId;
+    use crate::target::ObjectFilter;
     use crate::zone::Zone;
 
     struct ChooseZombieDm;
@@ -336,5 +338,41 @@ mod tests {
             !subtypes.contains(&Subtype::Bear),
             "expected original Bear subtype to be replaced, got {subtypes:?}"
         );
+    }
+
+    #[test]
+    fn become_creature_type_choice_applies_to_all_creatures() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let first =
+            game.create_object_from_definition(&grizzly_bears(), alice, Zone::Battlefield);
+        let second =
+            game.create_object_from_definition(&grizzly_bears(), alice, Zone::Battlefield);
+
+        let source = game.new_object_id();
+        let mut dm = ChooseZombieDm;
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+        let effect = BecomeCreatureTypeChoiceEffect::new(
+            ChooseSpec::All(ObjectFilter::creature()),
+            Until::EndOfTurn,
+            vec![],
+        );
+
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("become-creature-type-choice should apply to all creatures");
+
+        for creature in [first, second] {
+            let subtypes = game.calculated_subtypes(creature);
+            assert!(
+                subtypes.contains(&Subtype::Zombie),
+                "expected target creature to have Zombie subtype, got {subtypes:?}"
+            );
+            assert!(
+                !subtypes.contains(&Subtype::Bear),
+                "expected original Bear subtype to be replaced, got {subtypes:?}"
+            );
+        }
     }
 }
