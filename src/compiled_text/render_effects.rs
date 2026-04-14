@@ -672,14 +672,30 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             };
             let conditional =
                 conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
-            if !matches!(
-                &conditional.condition,
+            // Accept two equivalent conditional formats:
+            // Format 1: TaggedObjectMatches(match_tag, filter_with_it_constraint)
+            // Format 2: TaggedObjectMatches(__it__, filter_with_match_tag_constraint)
+            let condition_ok = match &conditional.condition {
                 crate::ConditionExpr::TaggedObjectMatches(tag, filter)
                     if tag == &consult.match_tag
                         && *filter
                             == ObjectFilter::default()
-                                .same_stable_id_as_tagged(crate::tag::TagKey::from("__it__"))
-            ) {
+                                .same_stable_id_as_tagged(crate::tag::TagKey::from("__it__")) =>
+                {
+                    true
+                }
+                crate::ConditionExpr::TaggedObjectMatches(tag, filter)
+                    if tag.as_str() == "__it__"
+                        && filter
+                            .tagged_constraints
+                            .iter()
+                            .any(|c| c.tag == consult.match_tag) =>
+                {
+                    true
+                }
+                _ => false,
+            };
+            if !condition_ok {
                 return None;
             }
             if !conditional.if_true.is_empty() || conditional.if_false.len() != 1 {
@@ -766,14 +782,30 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             };
             let conditional =
                 conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
-            if !matches!(
-                &conditional.condition,
+            // Accept two equivalent conditional formats:
+            // Format 1: TaggedObjectMatches(match_tag, filter_with_it_constraint)
+            // Format 2: TaggedObjectMatches(__it__, filter_with_match_tag_constraint)
+            let condition_ok = match &conditional.condition {
                 crate::ConditionExpr::TaggedObjectMatches(tag, filter)
                     if tag == &consult.match_tag
                         && *filter
                             == ObjectFilter::default()
-                                .same_stable_id_as_tagged(crate::tag::TagKey::from("__it__"))
-            ) {
+                                .same_stable_id_as_tagged(crate::tag::TagKey::from("__it__")) =>
+                {
+                    true
+                }
+                crate::ConditionExpr::TaggedObjectMatches(tag, filter)
+                    if tag.as_str() == "__it__"
+                        && filter
+                            .tagged_constraints
+                            .iter()
+                            .any(|c| c.tag == consult.match_tag) =>
+                {
+                    true
+                }
+                _ => false,
+            };
+            if !condition_ok {
                 return None;
             }
             if !conditional.if_true.is_empty() || conditional.if_false.len() != 1 {
