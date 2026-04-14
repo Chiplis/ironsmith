@@ -25967,6 +25967,12 @@ fn parse_abundant_harvest_compiled_text_mentions_land_or_nonland_choice() {
             && rendered.contains("bottom of your library in a random order"),
         "expected Abundant Harvest compiled text to preserve the consult and bottoming clauses, got {rendered}"
     );
+    assert!(
+        rendered.contains("put that card into your hand")
+            && !rendered.contains("return it to its owner's hand")
+            && !rendered.contains("remaining tagged cards"),
+        "expected Abundant Harvest compiled text to use consult hand wording without internal fallback phrasing, got {rendered}"
+    );
 }
 
 #[test]

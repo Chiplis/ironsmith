@@ -2071,6 +2071,22 @@ pub(super) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> 
         return None;
     }
 
+    let compact = describe_effect_list(effects);
+    let compact_trimmed = compact.trim();
+    if !compact_trimmed.is_empty()
+        && !compact_trimmed.contains(". ")
+        && !compact_trimmed.contains(": ")
+        && !compact_trimmed.starts_with("If ")
+        && !compact_trimmed.starts_with("When ")
+        && !compact_trimmed.starts_with("Whenever ")
+        && !compact_trimmed.starts_with("At ")
+        && !compact_trimmed.starts_with("Choose ")
+    {
+        return Some(cleanup_decompiled_text(&lowercase_first(
+            compact_trimmed.trim_end_matches('.'),
+        )));
+    }
+
     let mut parts = Vec::with_capacity(effects.len());
     for effect in effects {
         let rendered = describe_effect(effect);
