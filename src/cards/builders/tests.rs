@@ -18404,10 +18404,11 @@ fn parse_break_through_the_line_keeps_targeted_unblockable_clause_tied_to_target
 
     let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        rendered.contains("power 2 or less")
-            && rendered.contains("can't be blocked this turn")
-            && !rendered.contains("this enchantment can't be blocked"),
-        "expected Break Through the Line to keep the targeted unblockable clause off the enchantment source, got {rendered}"
+        rendered.contains("target creature with power 2 or less gains haste until end of turn")
+            && rendered.contains("and can't be blocked this turn")
+            && !rendered.contains("choose it")
+            && !rendered.contains("target permanent"),
+        "expected Break Through the Line to render as a single targeted clause, got {rendered}"
     );
 
     let cant_effect = def

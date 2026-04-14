@@ -2541,6 +2541,7 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
         {
             return format!("{} and can't be blocked this turn.", prefix.trim_end());
         }
+        return format!("{} and can't be blocked this turn.", prefix.trim_end());
     }
     normalized = normalize_conditional_target_player_pronouns(&normalized);
     if let Some(rewritten) = normalize_sentence_helper_random_hand_reveal_damage_clause(&normalized)

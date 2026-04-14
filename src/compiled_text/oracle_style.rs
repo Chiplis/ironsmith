@@ -5525,6 +5525,17 @@ mod tests {
     }
 
     #[test]
+    fn post_pass_compacts_choose_it_unblockable_tail_without_shroud() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "Target creature with power 2 or less gains Haste until end of turn. Choose it. target permanent can't be blocked this turn.",
+        );
+        assert_eq!(
+            normalized,
+            "Target creature with power 2 or less gains Haste until end of turn and can't be blocked this turn."
+        );
+    }
+
+    #[test]
     fn post_pass_keeps_it_tag_when_later_tag_reference_remains() {
         let text = "{T}, Sacrifice this creature: you choose exactly 1 card with a void counter on it in an opponent's exile and tags it as '__it__'. you may play that card until end of turn. you may cast tagged '__it__' and mana of any type can be spent to cast that spell.";
         let normalized = normalize_compiled_post_pass_effect(text);
