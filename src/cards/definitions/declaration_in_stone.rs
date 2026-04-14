@@ -72,10 +72,17 @@ mod tests {
         );
         assert_eq!(
             investigate.player,
-            PlayerFilter::ControllerOf(ObjectRef::tagged(crate::cards::builders::TagKey::from(
-                "__sentence_helper_exiled_l0_s0_e0"
-            ))),
+            PlayerFilter::AliasedControllerOf(ObjectRef::tagged(
+                crate::cards::builders::TagKey::from("__sentence_helper_exiled_l0_s0_e0")
+            )),
             "investigate should be performed by the exiled creature's controller"
+        );
+
+        let rendered = crate::compiled_text::oracle_like_lines(&declaration_in_stone()).join(" ");
+        assert!(
+            rendered
+                .contains("That player investigates for each nontoken creature exiled this way"),
+            "expected oracle-like investigate follow-up wording, got {rendered}"
         );
     }
 
