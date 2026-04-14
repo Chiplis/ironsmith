@@ -3708,17 +3708,29 @@ pub(super) fn describe_tagged_this_way_action(filter: &ObjectFilter) -> Option<&
         if tag == "__it__" && filter.zone == Some(Zone::Exile) {
             return Some("exiled");
         }
-        if tag.starts_with("exiled_") {
+        if tag.starts_with("exiled_")
+            || crate::cards::builders::is_sentence_helper_tag(tag, "exiled")
+        {
             Some("exiled")
-        } else if tag.starts_with("revealed_") {
+        } else if tag.starts_with("revealed_")
+            || crate::cards::builders::is_sentence_helper_tag(tag, "revealed")
+        {
             Some("revealed")
-        } else if tag.starts_with("destroyed_") {
+        } else if tag.starts_with("destroyed_")
+            || crate::cards::builders::is_sentence_helper_tag(tag, "destroyed")
+        {
             Some("destroyed")
-        } else if tag.starts_with("sacrificed_") {
+        } else if tag.starts_with("sacrificed_")
+            || crate::cards::builders::is_sentence_helper_tag(tag, "sacrificed")
+        {
             Some("sacrificed")
-        } else if tag.starts_with("discarded_") {
+        } else if tag.starts_with("discarded_")
+            || crate::cards::builders::is_sentence_helper_tag(tag, "discarded")
+        {
             Some("discarded")
-        } else if tag.starts_with("milled_") {
+        } else if tag.starts_with("milled_")
+            || crate::cards::builders::is_sentence_helper_tag(tag, "milled")
+        {
             Some("milled")
         } else {
             None

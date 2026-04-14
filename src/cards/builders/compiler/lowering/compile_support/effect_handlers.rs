@@ -719,10 +719,16 @@ pub(super) fn try_compile_destroy_and_exile_effect(
             let mut effect = Effect::new(
                 crate::effects::ExileEffect::all(resolved_filter).with_face_down(*face_down),
             );
-            if ctx.auto_tag_object_targets && !keep_last_object_tag {
-                let tag = ctx.next_tag("exiled");
-                effect = effect.tag(tag.clone());
-                ctx.last_object_tag = Some(tag);
+            if ctx.auto_tag_object_targets {
+                if keep_last_object_tag {
+                    if let Some(tag) = ctx.last_object_tag.clone() {
+                        effect = effect.tag(tag);
+                    }
+                } else {
+                    let tag = ctx.next_tag("exiled");
+                    effect = effect.tag(tag.clone());
+                    ctx.last_object_tag = Some(tag);
+                }
             }
             prelude.push(effect);
             (prelude, choices)

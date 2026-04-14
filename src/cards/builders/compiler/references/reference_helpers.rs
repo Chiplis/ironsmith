@@ -107,7 +107,7 @@ pub(crate) fn infer_player_filter_from_object_filter(
             constraint.relation,
             TaggedOpbjectRelation::SameControllerAsTagged
         ) {
-            return Some(PlayerFilter::ControllerOf(ObjectRef::tagged(
+            return Some(PlayerFilter::AliasedControllerOf(ObjectRef::tagged(
                 constraint.tag.clone(),
             )));
         }
@@ -418,9 +418,7 @@ pub(crate) fn resolve_restriction_it_tag(
             )
         }
         Restriction::Untap(filter) => Restriction::untap(resolve_it_tag(filter, refs)?),
-        Restriction::BeBlocked(filter) => {
-            Restriction::be_blocked(resolve_it_tag(filter, refs)?)
-        }
+        Restriction::BeBlocked(filter) => Restriction::be_blocked(resolve_it_tag(filter, refs)?),
         Restriction::BeDestroyed(filter) => {
             Restriction::be_destroyed(resolve_it_tag(filter, refs)?)
         }

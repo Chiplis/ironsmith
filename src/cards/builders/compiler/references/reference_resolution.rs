@@ -775,7 +775,10 @@ fn advance_reference_frame_for_effect(
             track_player_from_object_filter(filter, frame);
         }
         EffectAst::ExileAll { filter, .. } => {
-            if frame.auto_tag_object_targets {
+            let keep_last_object_tag = filter.tagged_constraints.iter().any(|constraint| {
+                matches!(constraint.relation, TaggedOpbjectRelation::SameNameAsTagged)
+            });
+            if frame.auto_tag_object_targets && !keep_last_object_tag {
                 frame.last_object_tag = Some(next_reference_tag(id_gen, "exiled"));
             }
             track_player_from_object_filter(filter, frame);
