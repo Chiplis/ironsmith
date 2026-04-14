@@ -67,6 +67,7 @@ pub(crate) struct DerivedGameView<'a> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct SpellTargetLegalityKey {
+    caster: PlayerId,
     source_id: Option<ObjectId>,
     effects_ptr: usize,
     effects_len: usize,
@@ -158,6 +159,7 @@ impl BattlefieldCharacteristicScope {
 }
 
 fn battlefield_characteristic_scope(
+    game: &GameState,
     effects: &[ContinuousEffect],
 ) -> BattlefieldCharacteristicScope {
     let mut specific_ids = Vec::new();
@@ -188,9 +190,22 @@ fn battlefield_characteristic_scope(
         }
 
         match &effect.applies_to {
-            EffectTarget::Specific(id) | EffectTarget::AttachedTo(id) => {
+            EffectTarget::Specific(id) => {
                 if !specific_ids.contains(id) {
                     specific_ids.push(*id);
+                }
+            }
+            EffectTarget::AttachedTo(id) => {
+                if !specific_ids.contains(id) {
+                    specific_ids.push(*id);
+                }
+                if let Some(attached_to) = game
+                    .object(*id)
+                    .and_then(|object| object.attached_to)
+                    .and_then(|target| target.object_id())
+                    && !specific_ids.contains(&attached_to)
+                {
+                    specific_ids.push(attached_to);
                 }
             }
             EffectTarget::Source => {
@@ -228,7 +243,7 @@ impl<'a> DerivedGameView<'a> {
         let all_effects = game.cached_continuous_effects_snapshot();
         Self {
             game,
-            battlefield_characteristic_scope: battlefield_characteristic_scope(&all_effects),
+            battlefield_characteristic_scope: battlefield_characteristic_scope(game, &all_effects),
             all_effects,
             use_game_characteristics_cache: true,
             characteristics: RefCell::new(HashMap::new()),
@@ -261,7 +276,7 @@ impl<'a> DerivedGameView<'a> {
     pub(crate) fn from_effects(game: &'a GameState, all_effects: Vec<ContinuousEffect>) -> Self {
         Self {
             game,
-            battlefield_characteristic_scope: battlefield_characteristic_scope(&all_effects),
+            battlefield_characteristic_scope: battlefield_characteristic_scope(game, &all_effects),
             all_effects,
             use_game_characteristics_cache: false,
             characteristics: RefCell::new(HashMap::new()),
@@ -594,7 +609,9 @@ impl<'a> DerivedGameView<'a> {
             let Some(perm) = self.game.object(perm_id) else {
                 continue;
             };
-            if perm.controller != player || !self.game.can_activate_abilities_of(perm_id) {
+            if self.current_controller(perm_id) != Some(player)
+                || !self.game.can_activate_abilities_of(perm_id)
+            {
                 continue;
             }
 
@@ -870,6 +887,7 @@ impl<'a> DerivedGameView<'a> {
         chosen_modes: Option<&[usize]>,
     ) -> bool {
         let key = SpellTargetLegalityKey {
+            caster,
             source_id,
             effects_ptr: effects.as_ptr() as usize,
             effects_len: effects.len(),
@@ -1050,11 +1068,7 @@ impl<'a> DerivedGameView<'a> {
         let ids: Vec<_> = self
             .candidate_ids_for_zone(Some(Zone::Battlefield))
             .into_iter()
-            .filter(|id| {
-                self.game
-                    .object(*id)
-                    .is_some_and(|object| object.controller != player)
-            })
+            .filter(|id| self.current_controller(*id).is_some_and(|controller| controller != player))
             .collect();
         self.battlefield_opponents
             .borrow_mut()
@@ -1070,11 +1084,7 @@ impl<'a> DerivedGameView<'a> {
         let ids: Vec<_> = self
             .battlefield_creature_candidates()
             .into_iter()
-            .filter(|id| {
-                self.game
-                    .object(*id)
-                    .is_some_and(|object| object.controller != player)
-            })
+            .filter(|id| self.current_controller(*id).is_some_and(|controller| controller != player))
             .collect();
         self.battlefield_opponent_creatures
             .borrow_mut()
@@ -1090,11 +1100,21 @@ impl<'a> DerivedGameView<'a> {
         candidates
             .into_iter()
             .filter(|id| {
-                self.game
-                    .object(*id)
-                    .is_some_and(|object| controllers.contains(&object.controller))
+                self.current_controller(*id)
+                    .is_some_and(|controller| controllers.contains(&controller))
             })
             .collect()
+    }
+
+    fn current_controller(&self, object_id: ObjectId) -> Option<PlayerId> {
+        let object = self.game.object(object_id)?;
+        if !self.requires_battlefield_characteristic_calculation(object_id) {
+            return Some(object.controller);
+        }
+
+        self.calculated_characteristics(object_id)
+            .map(|chars| chars.controller)
+            .or(Some(object.controller))
     }
 
     pub(crate) fn requires_battlefield_characteristic_calculation(
@@ -1142,11 +1162,15 @@ fn materialize_derived_alternative_cast(
 mod tests {
     use super::*;
     use crate::continuous::{ContinuousEffect, Modification, TextBoxOverlay};
+    use crate::effect::Effect;
     use crate::effect::Until;
     use crate::ids::{ObjectId, PlayerId};
+    use crate::target::{ChooseSpec, ObjectFilter};
+    use crate::zone::Zone;
 
     #[test]
     fn battlefield_characteristic_scope_uses_locked_targets_for_resolution_effects() {
+        let game = crate::tests::test_helpers::setup_two_player_game();
         let effects = vec![
             ContinuousEffect::from_resolution(
                 ObjectId::from_raw(10),
@@ -1158,13 +1182,14 @@ mod tests {
         ];
 
         assert_eq!(
-            battlefield_characteristic_scope(&effects),
+            battlefield_characteristic_scope(&game, &effects),
             BattlefieldCharacteristicScope::Specific(vec![ObjectId::from_raw(2)]),
         );
     }
 
     #[test]
     fn battlefield_characteristic_scope_falls_back_to_all_battlefield_for_filter_effects() {
+        let game = crate::tests::test_helpers::setup_two_player_game();
         let effects = vec![ContinuousEffect::new(
             ObjectId::from_raw(10),
             PlayerId::from_index(0),
@@ -1175,8 +1200,101 @@ mod tests {
         )];
 
         assert_eq!(
-            battlefield_characteristic_scope(&effects),
+            battlefield_characteristic_scope(&game, &effects),
             BattlefieldCharacteristicScope::AllBattlefield,
+        );
+    }
+
+    #[test]
+    fn battlefield_controlled_candidates_respect_continuous_control_changes() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let stolen_creature = game.create_object_from_definition(
+            &crate::cards::definitions::grizzly_bears(),
+            bob,
+            Zone::Battlefield,
+        );
+        let _alice_creature = game.create_object_from_definition(
+            &crate::cards::definitions::llanowar_elves(),
+            alice,
+            Zone::Battlefield,
+        );
+
+        let control_effect = ContinuousEffect::new(
+            ObjectId::from_raw(9000),
+            alice,
+            EffectTarget::Specific(stolen_creature),
+            Modification::ChangeController(alice),
+        )
+        .until(Until::EndOfTurn);
+        let view = DerivedGameView::from_effects(&game, vec![control_effect]);
+        let filter = ObjectFilter::creature()
+            .you_control()
+            .in_zone(Zone::Battlefield);
+        let filter_ctx = game.filter_context_for(alice, None);
+
+        let ids = view.candidate_ids_for_filter_with_context(&filter, &filter_ctx);
+        assert!(
+            ids.contains(&stolen_creature),
+            "narrowed battlefield candidates should include continuously stolen creatures"
+        );
+    }
+
+    #[test]
+    fn simple_mana_analysis_respects_continuous_control_changes() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        game.turn.phase = crate::game_state::Phase::FirstMain;
+        game.turn.step = None;
+
+        let stolen_mountain = game.create_object_from_definition(
+            &crate::cards::definitions::basic_mountain(),
+            bob,
+            Zone::Battlefield,
+        );
+
+        let control_effect = ContinuousEffect::new(
+            ObjectId::from_raw(9001),
+            alice,
+            EffectTarget::Specific(stolen_mountain),
+            Modification::ChangeController(alice),
+        )
+        .until(Until::EndOfTurn);
+        let view = DerivedGameView::from_effects(&game, vec![control_effect]);
+        let potential = crate::decision::compute_potential_mana_with_view(&game, alice, &view);
+
+        assert_eq!(
+            potential.red, 1,
+            "stolen untapped Mountains should contribute to potential mana"
+        );
+    }
+
+    #[test]
+    fn spell_target_legality_cache_key_includes_caster() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        game.create_object_from_definition(
+            &crate::cards::definitions::grizzly_bears(),
+            alice,
+            Zone::Battlefield,
+        );
+
+        let effects = vec![Effect::destroy(ChooseSpec::target(ChooseSpec::Object(
+            ObjectFilter::creature().you_control().in_zone(Zone::Battlefield),
+        )))];
+        let view = DerivedGameView::new(&game);
+
+        assert!(
+            view.spell_has_legal_targets(&effects, alice, None, None),
+            "Alice should have a legal 'you control' target"
+        );
+        assert!(
+            !view.spell_has_legal_targets(&effects, bob, None, None),
+            "Bob should not reuse Alice's cached targeting answer"
         );
     }
 }

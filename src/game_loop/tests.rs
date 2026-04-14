@@ -6709,6 +6709,70 @@ fn test_combat_damage_with_triggers() {
 }
 
 #[test]
+fn test_quintessential_katana_granted_combat_damage_trigger_stacks_and_resolves() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let katana = CardDefinitionBuilder::new(CardId::new(), "Quintessential Katana")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![crate::types::Subtype::Equipment])
+        .parse_text(
+            "Equipped creature gets +1/+1 and has \"Whenever this creature deals combat damage, untap it and you gain 2 life.\"\nWhenever a Ninja you control enters, you may attach this Equipment to it.\nEquip {2}",
+        )
+        .expect("Quintessential Katana should parse");
+
+    let attacker_id = create_creature(&mut game, "Ninja Trainee", alice, 2, 2);
+    let katana_id = game.create_object_from_definition(&katana, alice, Zone::Battlefield);
+
+    if let Some(equipment) = game.object_mut(katana_id) {
+        equipment.attached_to = Some(crate::object::AttachmentTarget::Object(attacker_id));
+    }
+    if let Some(attacker) = game.object_mut(attacker_id) {
+        attacker.attachments.push(katana_id);
+    }
+
+    game.tap(attacker_id);
+    let life_before = game.player(alice).expect("alice exists").life;
+
+    let damage_event = TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            attacker_id,
+            crate::game_event::DamageTarget::Player(bob),
+            3,
+            true,
+            crate::events::cause::EventCause::combat_damage(attacker_id),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    let mut trigger_queue = TriggerQueue::new();
+    for trigger in check_triggers(&game, &damage_event) {
+        trigger_queue.add(trigger);
+    }
+
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "equipped creature should receive Katana's granted combat-damage trigger"
+    );
+
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Katana trigger should go on the stack");
+    resolve_stack_entry(&mut game).expect("Katana trigger should resolve");
+
+    assert!(
+        !game.is_tapped(attacker_id),
+        "Katana trigger should untap the equipped creature"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").life,
+        life_before + 2,
+        "Katana trigger should gain 2 life for the equipped creature's controller"
+    );
+}
+
+#[test]
 fn test_ragavan_trigger_exiles_top_card_of_damaged_players_library() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
