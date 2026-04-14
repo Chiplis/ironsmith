@@ -6191,7 +6191,18 @@ mod tests {
         );
         assert_eq!(
             normalized,
-            "Destroy all Aura or Equipment attached to target creature."
+            "Destroy all Auras and Equipment attached to target creature."
+        );
+    }
+
+    #[test]
+    fn known_low_tail_rewrites_choose_target_then_destroy_attached_typo_variant() {
+        let normalized = normalize_known_low_tail_phrase(
+            "Choose target creature. Destroy all Auras or Equipment attached tos that object.",
+        );
+        assert_eq!(
+            normalized,
+            "Destroy all Auras and Equipment attached to target creature."
         );
     }
 

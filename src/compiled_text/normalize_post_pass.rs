@@ -1747,15 +1747,24 @@ pub(super) fn normalize_known_low_tail_phrase(text: &str) -> String {
     if let Some((choose_clause, destroy_clause)) = split_once_ascii_ci(trimmed, ". ")
         && let Some(attached_filter) = strip_prefix_ascii_ci(destroy_clause.trim(), "Destroy all ")
             .and_then(|tail| {
-                strip_suffix_ascii_ci(tail.trim_end_matches('.'), " attached to that object")
+                let tail = tail.trim_end_matches('.');
+                strip_suffix_ascii_ci(tail, " attached to that object")
+                    .or_else(|| strip_suffix_ascii_ci(tail, " attached tos that object"))
             })
     {
+        let attached_filter = if attached_filter.trim().eq_ignore_ascii_case("Aura or Equipment")
+            || attached_filter.trim().eq_ignore_ascii_case("Auras or Equipment")
+        {
+            "Auras and Equipment"
+        } else {
+            attached_filter.trim()
+        };
         if let Some(target_phrase) = strip_prefix_ascii_ci(choose_clause.trim(), "Choose ")
             && target_phrase.to_ascii_lowercase().starts_with("target ")
         {
             return format!(
                 "Destroy all {} attached to {}.",
-                attached_filter.trim(),
+                attached_filter,
                 target_phrase.trim()
             );
         }
@@ -1771,7 +1780,7 @@ pub(super) fn normalize_known_low_tail_phrase(text: &str) -> String {
             {
                 return format!(
                     "{prefix}, destroy all {} attached to {}.",
-                    attached_filter.trim(),
+                    attached_filter,
                     target_phrase.trim()
                 );
             }

@@ -11778,6 +11778,108 @@ fn test_illegal_equipment_becomes_unattached_instead_of_dying() {
 }
 
 #[test]
+fn test_strip_bare_destroys_attached_auras_and_equipment_only() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::White, 1);
+
+    let strip_bare_def = CardDefinitionBuilder::new(CardId::new(), "Strip Bare Runtime Variant")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::White]]))
+        .card_types(vec![CardType::Instant])
+        .parse_text("Destroy all Auras and Equipment attached to target creature.")
+        .expect("Strip Bare should parse");
+    let strip_bare_id = game.create_object_from_definition(&strip_bare_def, alice, Zone::Hand);
+
+    let target_id = create_creature(&mut game, "Strip Bare Target", bob, 2, 2);
+
+    let aura_def = CardDefinitionBuilder::new(CardId::new(), "Strip Bare Aura")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![crate::types::Subtype::Aura])
+        .parse_text("Enchant creature")
+        .expect("aura should parse");
+    let aura_id = game.create_object_from_definition(&aura_def, alice, Zone::Battlefield);
+    assert!(
+        crate::effects::permanents::attach_battlefield_object_to_target(
+            &mut game,
+            aura_id,
+            crate::object::AttachmentTarget::Object(target_id),
+        ),
+        "aura should attach to the target creature"
+    );
+
+    let equipment_def = CardBuilder::new(CardId::new(), "Strip Bare Equipment")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![crate::types::Subtype::Equipment])
+        .build();
+    let equipment_id = game.create_object_from_card(&equipment_def, alice, Zone::Battlefield);
+    assert!(
+        crate::effects::permanents::attach_battlefield_object_to_target(
+            &mut game,
+            equipment_id,
+            crate::object::AttachmentTarget::Object(target_id),
+        ),
+        "equipment should attach to the target creature"
+    );
+
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let cast_response = PriorityResponse::PriorityAction(LegalAction::CastSpell {
+        spell_id: strip_bare_id,
+        from_zone: Zone::Hand,
+        casting_method: CastingMethod::Normal,
+    });
+    let progress =
+        apply_priority_response(&mut game, &mut trigger_queue, &mut state, &cast_response)
+            .expect("Strip Bare cast should start successfully");
+    assert!(
+        matches!(
+            progress,
+            GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Targets(_))
+        ),
+        "Strip Bare should ask for a target creature"
+    );
+
+    let target_response = PriorityResponse::Targets(vec![Target::Object(target_id)]);
+    apply_priority_response(&mut game, &mut trigger_queue, &mut state, &target_response)
+        .expect("choosing the target creature should complete Strip Bare");
+
+    assert_eq!(game.stack.len(), 1, "Strip Bare should be on the stack");
+    resolve_stack_entry(&mut game).expect("Strip Bare should resolve");
+
+    assert_eq!(
+        game.object(target_id).map(|object| object.zone),
+        Some(Zone::Battlefield),
+        "the target creature should survive Strip Bare"
+    );
+    assert_eq!(
+        game.object(aura_id).map(|object| object.zone),
+        Some(Zone::Graveyard),
+        "the attached Aura should be destroyed"
+    );
+    assert_eq!(
+        game.object(equipment_id).map(|object| object.zone),
+        Some(Zone::Graveyard),
+        "the attached Equipment should be destroyed"
+    );
+    assert!(
+        game.object(target_id)
+            .expect("target creature should exist")
+            .attachments
+            .is_empty(),
+        "Strip Bare should clear all attachments from the target creature"
+    );
+}
+
+#[test]
 fn test_disturb_cast_uses_back_face_characteristics_on_stack() {
     use crate::cards::basic_forest;
     use crate::mana::{ManaCost, ManaSymbol};

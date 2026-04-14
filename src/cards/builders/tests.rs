@@ -1148,6 +1148,21 @@ fn test_parse_enchanted_creature_cant_activate_abilities() {
 }
 
 #[test]
+fn test_strip_bare_normalizes_destroy_attached_auras_and_equipment() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Strip Bare")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::White]]))
+        .card_types(vec![CardType::Instant])
+        .parse_text("Destroy all Auras and Equipment attached to target creature.")
+        .expect("Strip Bare text should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("destroy all auras and equipment attached to target creature"),
+        "expected Strip Bare's attached-permanent text to normalize cleanly, got {rendered}"
+    );
+}
+
+#[test]
 fn test_parse_deadlock_trap_its_activated_abilities_cant_be_activated_this_turn() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Deadlock Trap Test")
         .card_types(vec![CardType::Artifact])
