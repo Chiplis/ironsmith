@@ -1,29 +1,138 @@
 use super::super::dispatch_entry::{
     ConsultCastCost, consult_cast_effects, consult_stop_rule_is_single_match,
-    parse_bargained_face_down_cast_mana_value_gate, parse_consult_bottom_remainder_clause,
-    parse_consult_cast_clause, parse_consult_traversal_sentence,
-    find_from_among_looked_cards_phrase,
-    parse_if_declined_put_match_into_hand, parse_if_no_card_into_hand_this_way_sentence,
-    parse_if_you_dont_sentence, parse_top_cards_view_sentence,
+    find_from_among_looked_cards_phrase, parse_bargained_face_down_cast_mana_value_gate,
+    parse_consult_bottom_remainder_clause, parse_consult_cast_clause,
+    parse_consult_traversal_sentence, parse_if_declined_put_match_into_hand,
+    parse_if_no_card_into_hand_this_way_sentence, parse_if_you_dont_sentence,
+    parse_top_cards_view_sentence,
 };
 use crate::cards::builders::compiler::activation_and_restrictions::activated_line_core::find_word_sequence_start;
 use crate::cards::builders::compiler::effect_sentences;
-use crate::cards::builders::compiler::front_end::lexer::OwnedLexToken;
 use crate::cards::builders::compiler::effect_sentences::SentenceInput;
+use crate::cards::builders::compiler::front_end::lexer::OwnedLexToken;
 use crate::cards::builders::compiler::lexer::TokenWordView;
 use crate::cards::builders::compiler::token_primitives::{
     parse_leading_may_action_lexed, slice_contains, slice_ends_with, slice_starts_with,
 };
-use crate::cards::builders::compiler::util::{helper_tag_for_tokens, is_article};
 use crate::cards::builders::compiler::util::trim_commas;
+use crate::cards::builders::compiler::util::{helper_tag_for_tokens, is_article};
 use crate::cards::builders::{
-    CardTextError, EffectAst, IfResultPredicate, ObjectFilter, PredicateAst, TagKey, TargetAst,
-    TextSpan,
+    CardTextError, EffectAst, IfResultPredicate, LibraryConsultModeAst, LibraryConsultStopRuleAst,
+    ObjectFilter, PlayerAst, PredicateAst, TagKey, TargetAst, TextSpan,
 };
 use crate::effect::{ChoiceCount, Value};
 use crate::target::ChooseSpec;
 use crate::target::{TaggedObjectConstraint, TaggedOpbjectRelation};
+use crate::types::CardType;
 use crate::zone::Zone;
+
+fn abundant_harvest_choice_sentence(words: &[&str]) -> bool {
+    matches!(words, ["choose", "land", "or", "nonland"])
+}
+
+fn abundant_harvest_reveal_sentence(words: &[&str]) -> bool {
+    slice_starts_with(
+        words,
+        &[
+            "reveal", "cards", "from", "the", "top", "of", "your", "library",
+        ],
+    ) && words.ends_with(&["a", "card", "of", "the", "chosen", "kind"])
+}
+
+fn abundant_harvest_branch_effects(
+    tokens: &[OwnedLexToken],
+    filter: ObjectFilter,
+    order: crate::cards::builders::LibraryBottomOrderAst,
+) -> Vec<EffectAst> {
+    let all_tag = helper_tag_for_tokens(tokens, "revealed");
+    let match_tag = helper_tag_for_tokens(tokens, "chosen");
+    vec![
+        EffectAst::ConsultTopOfLibrary {
+            player: PlayerAst::You,
+            mode: LibraryConsultModeAst::Reveal,
+            filter,
+            stop_rule: LibraryConsultStopRuleAst::FirstMatch,
+            all_tag: all_tag.clone(),
+            match_tag: match_tag.clone(),
+        },
+        EffectAst::MoveToZone {
+            target: TargetAst::Tagged(match_tag.clone(), None),
+            zone: Zone::Hand,
+            to_top: false,
+            battlefield_controller: crate::cards::builders::ReturnControllerAst::Preserve,
+            battlefield_tapped: false,
+            attached_to: None,
+        },
+        EffectAst::PutTaggedRemainderOnBottomOfLibrary {
+            tag: all_tag,
+            keep_tagged: Some(match_tag),
+            order,
+            player: PlayerAst::You,
+        },
+    ]
+}
+
+pub(super) fn parse_choose_land_or_nonland_then_consult_to_hand_bottom(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first = trim_commas(sentences[sentence_idx].lowered());
+    let second = trim_commas(sentences[sentence_idx + 1].lowered());
+    let third = trim_commas(sentences[sentence_idx + 2].lowered());
+
+    let first_words = crate::cards::builders::compiler::token_word_refs(&first);
+    if !abundant_harvest_choice_sentence(&first_words) {
+        return Ok(None);
+    }
+
+    let second_words = crate::cards::builders::compiler::token_word_refs(&second);
+    if !abundant_harvest_reveal_sentence(&second_words) {
+        return Ok(None);
+    }
+
+    let third_words = crate::cards::builders::compiler::token_word_refs(&third);
+    let moves_to_hand =
+        slice_starts_with(
+            &third_words,
+            &["put", "that", "card", "into", "your", "hand"],
+        ) || slice_starts_with(&third_words, &["put", "it", "into", "your", "hand"]);
+    if !moves_to_hand || !slice_contains(&third_words, &"rest") {
+        return Ok(None);
+    }
+    let Some(order) = super::super::dispatch_entry::parse_consult_remainder_order(&third_words)
+    else {
+        return Ok(None);
+    };
+
+    let land_filter = ObjectFilter {
+        card_types: vec![CardType::Land],
+        ..Default::default()
+    };
+    let nonland_filter = ObjectFilter {
+        excluded_card_types: vec![CardType::Land],
+        ..Default::default()
+    };
+
+    Ok(Some(vec![
+        EffectAst::ChooseNamedOption {
+            player: PlayerAst::You,
+            options: vec!["land".to_string(), "nonland".to_string()],
+        },
+        EffectAst::Conditional {
+            predicate: PredicateAst::SourceChosenOption("land".to_string()),
+            if_true: abundant_harvest_branch_effects(
+                sentences[sentence_idx + 1].lowered(),
+                land_filter,
+                order,
+            ),
+            if_false: abundant_harvest_branch_effects(
+                sentences[sentence_idx + 1].lowered(),
+                nonland_filter,
+                order,
+            ),
+        },
+    ]))
+}
 
 pub(super) fn parse_mill_then_may_put_from_among_into_hand_then_if_you_dont(
     sentences: &[SentenceInput],
@@ -427,16 +536,22 @@ fn parse_choose_from_looked_cards_for_each_filter(
     Ok(Some(filters))
 }
 
-fn is_one_chosen_to_battlefield_others_to_hand_rest_to_graveyard(
-    tokens: &[OwnedLexToken],
-) -> bool {
+fn is_one_chosen_to_battlefield_others_to_hand_rest_to_graveyard(tokens: &[OwnedLexToken]) -> bool {
     let trimmed = trim_commas(tokens);
     let words = TokenWordView::new(&trimmed);
     let word_refs = words.word_refs();
     if !slice_starts_with(
         &word_refs,
         &[
-            "put", "one", "of", "the", "chosen", "cards", "onto", "the", "battlefield",
+            "put",
+            "one",
+            "of",
+            "the",
+            "chosen",
+            "cards",
+            "onto",
+            "the",
+            "battlefield",
         ],
     ) {
         return false;
@@ -472,7 +587,8 @@ pub(super) fn parse_top_cards_choose_for_each_filter_one_battlefield_others_hand
 
     let looked_tag = helper_tag_for_tokens(sentences[sentence_idx].lowered(), "revealed");
     let chosen_tag = helper_tag_for_tokens(sentences[sentence_idx + 1].lowered(), "chosen");
-    let battlefield_tag = helper_tag_for_tokens(sentences[sentence_idx + 2].lowered(), "battlefield");
+    let battlefield_tag =
+        helper_tag_for_tokens(sentences[sentence_idx + 2].lowered(), "battlefield");
 
     let mut effects = vec![EffectAst::LookAtTopCards {
         player,

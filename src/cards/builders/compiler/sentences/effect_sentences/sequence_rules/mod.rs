@@ -194,6 +194,14 @@ const REGISTERED_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         parser: quads::parse_look_at_top_reveal_match_put_rest_bottom_then_if_not_into_hand,
     },
     SequenceRuleDef {
+        name: "choose-land-or-nonland-consult-hand-bottom",
+        feature_tag: Some("consult-choice-kind"),
+        priority: 341,
+        consumed_sentences: 3,
+        predicate: first_word_choose,
+        parser: triples::parse_choose_land_or_nonland_then_consult_to_hand_bottom,
+    },
+    SequenceRuleDef {
         name: "mill-then-put-from-among-into-hand-then-if-you-dont",
         feature_tag: Some("mill-followup-choice"),
         priority: 340,

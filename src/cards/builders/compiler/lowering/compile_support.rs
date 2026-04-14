@@ -169,6 +169,7 @@ pub(crate) fn compile_condition_from_predicate_ast(
                 Condition::TargetIsSoulbondPaired
             }
         }
+        PredicateAst::SourceChosenOption(option) => Condition::SourceChosenOption(option.clone()),
         PredicateAst::ItMatches(filter) => {
             let mut resolved = filter.clone();
             resolved.zone = None;
@@ -473,9 +474,7 @@ pub(crate) fn compile_condition_from_predicate_ast(
             comparison,
             display,
         } => Condition::CountComparison {
-            count: crate::static_abilities::AnthemCountExpression::AttachedToSource(
-                filter.clone(),
-            ),
+            count: crate::static_abilities::AnthemCountExpression::AttachedToSource(filter.clone()),
             comparison: *comparison,
             display: Some(display.clone()),
         },

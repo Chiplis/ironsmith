@@ -7289,6 +7289,23 @@ fn rewrite_ecological_appreciation_multi_zone_search_keeps_the_divvy_bundle_shap
 }
 
 #[test]
+fn rewrite_lexed_effect_sequence_parses_choose_land_or_nonland_consult_family() {
+    let text = "Choose land or nonland. Reveal cards from the top of your library until you reveal a card of the chosen kind. Put that card into your hand and the rest on the bottom of your library in a random order.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify Abundant Harvest text");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed).expect("sequence");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("ChooseNamedOption"), "{debug}");
+    assert!(debug.contains("SourceChosenOption(\"land\")"), "{debug}");
+    assert!(debug.contains("ConsultTopOfLibrary"), "{debug}");
+    assert!(
+        debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+        "{debug}"
+    );
+}
+
+#[test]
 fn rewrite_lexed_effect_sequence_parses_consult_hand_bottom_family() {
     let text = "Reveal cards from the top of your library until you reveal an artifact card. Put that card into your hand and the rest on the bottom of your library in a random order.";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify consult-hand-bottom text");

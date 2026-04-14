@@ -298,6 +298,7 @@ pub(crate) enum TriggerSpec {
 pub(crate) enum PredicateAst {
     ItIsLandCard,
     ItIsSoulbondPaired,
+    SourceChosenOption(String),
     ItMatches(ObjectFilter),
     TaggedMatches(TagKey, ObjectFilter),
     EnchantedPermanentAttackedThisTurn,
