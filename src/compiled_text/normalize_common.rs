@@ -4752,6 +4752,13 @@ pub(super) fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
             } else if let Some((head, tail)) = subject.split_once(" in exile ") {
                 subject = format!("{} {}", head.trim(), tail.trim());
             }
+            if should_drop_card_noun_for_tagged_exiled_objects(filter) {
+                if let Some(head) = subject.strip_suffix(" cards") {
+                    subject = head.trim().to_string();
+                } else if let Some(head) = subject.strip_suffix(" card") {
+                    subject = head.trim().to_string();
+                }
+            }
         } else if action == "revealed" {
             if let Some(head) = subject.strip_suffix(" permanent") {
                 subject = format!("{} card", head.trim());
@@ -4820,6 +4827,27 @@ pub(super) fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
     }
 
     subject
+}
+
+fn should_drop_card_noun_for_tagged_exiled_objects(filter: &ObjectFilter) -> bool {
+    filter.zone == Some(Zone::Exile)
+        && filter.owner.is_none()
+        && filter
+            .tagged_constraints
+            .iter()
+            .any(|constraint| constraint.relation == TaggedOpbjectRelation::IsTaggedObject)
+        && !filter.card_types.is_empty()
+        && filter.card_types.iter().all(|card_type| {
+            matches!(
+                card_type,
+                CardType::Artifact
+                    | CardType::Battle
+                    | CardType::Creature
+                    | CardType::Enchantment
+                    | CardType::Land
+                    | CardType::Planeswalker
+            )
+        })
 }
 
 pub(super) fn describe_for_each_spells_cast_this_turn(

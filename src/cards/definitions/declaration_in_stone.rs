@@ -91,6 +91,13 @@ mod tests {
                 .contains("That player investigates for each nontoken creature exiled this way"),
             "expected oracle-like investigate follow-up wording, got {rendered}"
         );
+
+        let compiled = crate::compiled_text::compiled_lines(&declaration_in_stone()).join(" ");
+        assert!(
+            compiled
+                .contains("that player investigates for each nontoken creature exiled this way"),
+            "expected compiled investigate follow-up wording without extra card noun, got {compiled}"
+        );
     }
 
     #[test]
