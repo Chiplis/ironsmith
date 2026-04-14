@@ -24,8 +24,8 @@ use super::compile_support::{
 use super::effect_ast_traversal::for_each_nested_effects_mut;
 use super::effect_ast_traversal::try_for_each_nested_effects_mut;
 use super::reference_helpers::{
-    choose_spec_targets_object, infer_player_filter_from_object_filter, resolve_it_tag,
-    resolve_non_target_player_filter, resolve_target_spec_with_choices,
+    choose_spec_targets_object, infer_player_filter_from_object_filter, is_you_player_filter,
+    resolve_it_tag, resolve_non_target_player_filter, resolve_target_spec_with_choices,
 };
 use super::reference_model::{
     AnnotatedEffect, AnnotatedEffectSequence, RefState, ReferenceEnv, ReferenceFrame,
@@ -153,7 +153,14 @@ fn track_effect_player(
         }
         _ => resolve_non_target_player_filter(player, &refs)?,
     };
-    frame.last_player_filter = Some(filter);
+    let preserve_existing_non_you = matches!(player, PlayerAst::You)
+        && frame
+            .last_player_filter
+            .as_ref()
+            .is_some_and(|existing| !is_you_player_filter(existing));
+    if !preserve_existing_non_you {
+        frame.last_player_filter = Some(filter);
+    }
     Ok(())
 }
 

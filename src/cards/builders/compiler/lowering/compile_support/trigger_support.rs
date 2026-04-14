@@ -101,6 +101,9 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             player,
             during_turn,
         } => Trigger::player_draws_card_not_during_turn(player, during_turn),
+        TriggerSpec::PlayerDrawsCardExceptFirstInDrawStep(player) => {
+            Trigger::player_draws_card_except_first_in_draw_step(player)
+        }
         TriggerSpec::PlayerDrawsNthCardEachTurn {
             player,
             card_number,
@@ -298,6 +301,7 @@ fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
         | TriggerSpec::PlayerLosesLifeDuringTurn { .. }
         | TriggerSpec::PlayerDrawsCard(_)
         | TriggerSpec::PlayerDrawsCardNotDuringTurn { .. }
+        | TriggerSpec::PlayerDrawsCardExceptFirstInDrawStep(_)
         | TriggerSpec::PlayerDrawsNthCardEachTurn { .. }
         | TriggerSpec::PlayerDiscardsCard { .. }
         | TriggerSpec::PlayerRevealsCard { .. }
@@ -347,6 +351,7 @@ pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<Pl
         TriggerSpec::PlayerLosesLifeDuringTurn { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerDrawsCard(_) => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerDrawsCardNotDuringTurn { .. } => Some(PlayerFilter::IteratedPlayer),
+        TriggerSpec::PlayerDrawsCardExceptFirstInDrawStep(_) => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerDrawsNthCardEachTurn { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerDiscardsCard { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerRevealsCard { .. } => Some(PlayerFilter::IteratedPlayer),

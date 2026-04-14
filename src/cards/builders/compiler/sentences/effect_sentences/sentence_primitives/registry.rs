@@ -240,17 +240,17 @@ pub(crate) fn parse_you_and_target_player_each_draw_sentence(
     if clause_words.len() < 6 {
         return Ok(None);
     }
-    if grammar::words_match_prefix(tokens, &["you", "and", "target"]).is_none() {
+    if grammar::words_match_prefix(tokens, &["you", "and"]).is_none() {
         return Ok(None);
     }
 
-    let target_player = match clause_words.get(3).copied() {
-        Some("opponent" | "opponents") => PlayerAst::TargetOpponent,
-        Some("player" | "players") => PlayerAst::Target,
-        _ => return Ok(None),
-    };
-
-    let mut idx = 4usize;
+    let (target_player, mut idx) =
+        match (clause_words.get(2).copied(), clause_words.get(3).copied()) {
+            (Some("target"), Some("opponent" | "opponents")) => (PlayerAst::TargetOpponent, 4usize),
+            (Some("target"), Some("player" | "players")) => (PlayerAst::Target, 4usize),
+            (Some("that"), Some("player" | "players")) => (PlayerAst::That, 4usize),
+            _ => return Ok(None),
+        };
 
     if clause_words.get(idx) == Some(&"each") {
         idx += 1;
@@ -332,6 +332,37 @@ pub(crate) fn parse_sentence_you_and_target_player_each_draw(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     parse_you_and_target_player_each_draw_sentence(tokens)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cards::builders::compiler::lexer::lex_line;
+    use crate::effect::EventValueSpec;
+
+    #[test]
+    fn shared_draw_sentence_accepts_that_player() {
+        let tokens = lex_line("You and that player each draw that many cards.", 0)
+            .expect("xyris-style shared draw clause should lex");
+
+        let parsed = parse_you_and_target_player_each_draw_sentence(&tokens)
+            .expect("xyris-style shared draw clause should not error")
+            .expect("xyris-style shared draw clause should parse");
+
+        assert!(matches!(
+            parsed.as_slice(),
+            [
+                EffectAst::Draw {
+                    count: Value::EventValue(EventValueSpec::Amount),
+                    player: PlayerAst::You,
+                },
+                EffectAst::Draw {
+                    count: Value::EventValue(EventValueSpec::Amount),
+                    player: PlayerAst::That,
+                },
+            ]
+        ));
+    }
 }
 
 pub(crate) fn parse_sentence_choose_player_to_effect(

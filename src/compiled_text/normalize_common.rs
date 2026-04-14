@@ -4577,6 +4577,18 @@ pub(super) fn describe_effect_count_backref(value: &Value) -> Option<String> {
                 Some(format!("that many minus {}", -offset))
             }
         }
+        Value::EventValue(EventValueSpec::Amount) => Some("that many".to_string()),
+        Value::EventValueOffset(EventValueSpec::Amount, offset) => {
+            if *offset == 0 {
+                Some("that many".to_string())
+            } else if *offset > 0 {
+                Some(format!("that many plus {}", offset))
+            } else if *offset == -1 {
+                Some("that many minus one".to_string())
+            } else {
+                Some(format!("that many minus {}", -offset))
+            }
+        }
         _ => None,
     }
 }

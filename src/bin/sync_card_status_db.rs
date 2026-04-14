@@ -1,6 +1,7 @@
 use ironsmith_tools::{
     CardPayload, CardStatusDb, compile_snapshot_from_payload, default_db_path, load_canonical_cards,
 };
+use rayon::prelude::*;
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug)]
@@ -93,21 +94,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         None
     };
 
-    let mut inserted = 0usize;
-    let mut processed = 0usize;
-    for payload in &cards {
-        let name = &payload.name;
-        if let Some(filtered_names) = &tag_filtered_names
-            && !filtered_names.contains(name)
-        {
-            continue;
-        }
-        processed += 1;
-        let snapshot = compile_snapshot_from_payload(payload);
-        if db.insert_snapshot_if_changed(&snapshot)? {
-            inserted += 1;
-        }
-    }
+    let filtered_cards = cards
+        .iter()
+        .filter(|payload| {
+            tag_filtered_names
+                .as_ref()
+                .is_none_or(|filtered_names| filtered_names.contains(&payload.name))
+        })
+        .collect::<Vec<_>>();
+
+    let processed = filtered_cards.len();
+    let compiled_snapshots = filtered_cards
+        .par_iter()
+        .map(|payload| compile_snapshot_from_payload(payload))
+        .collect::<Vec<_>>();
+
+    let inserted = db.insert_snapshots_if_changed(&compiled_snapshots)?;
     let pruned = if tag_filtered_names.is_none() {
         Some(db.prune_cards_not_in_names(&canonical_card_names)?)
     } else {

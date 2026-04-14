@@ -181,6 +181,7 @@ pub(crate) enum TriggerSpec {
         player: PlayerFilter,
         during_turn: PlayerFilter,
     },
+    PlayerDrawsCardExceptFirstInDrawStep(PlayerFilter),
     PlayerDrawsNthCardEachTurn {
         player: PlayerFilter,
         card_number: u32,

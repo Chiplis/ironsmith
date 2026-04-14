@@ -71,7 +71,7 @@ use super::lowering_support::{
     rewrite_prepare_effects_with_trigger_context_for_lowering,
 };
 use super::reference_helpers::{
-    choose_spec_targets_object, infer_player_filter_from_object_filter,
+    choose_spec_targets_object, infer_player_filter_from_object_filter, is_you_player_filter,
     object_filter_as_tagged_reference, resolve_attach_object_spec, resolve_it_tag,
     resolve_it_tag_key, resolve_non_target_player_filter, resolve_restriction_it_tag,
     resolve_target_spec_with_choices, resolve_unless_player_filter, resolve_value_it_tag,
@@ -1171,7 +1171,14 @@ pub(crate) fn resolve_effect_player_filter(
     };
 
     if track_last_player_filter && !matches!(player, PlayerAst::Implicit) {
-        ctx.last_player_filter = Some(filter.clone());
+        let preserve_existing_non_you = matches!(player, PlayerAst::You)
+            && ctx
+                .last_player_filter
+                .as_ref()
+                .is_some_and(|existing| !is_you_player_filter(existing));
+        if !preserve_existing_non_you {
+            ctx.last_player_filter = Some(filter.clone());
+        }
     }
     Ok((filter, choices))
 }
@@ -4141,6 +4148,40 @@ mod parse_compile_tests {
         assert!(
             !matches!(grant.filter.cast_by, Some(PlayerFilter::IteratedPlayer)),
             "grant filter should bind caster to the imported targeted player, got {grant:?}"
+        );
+    }
+
+    #[test]
+    fn compile_shared_you_then_that_player_draw_preserves_prior_non_you_binding() {
+        let effects = vec![
+            EffectAst::Draw {
+                count: Value::Fixed(1),
+                player: PlayerAst::You,
+            },
+            EffectAst::Draw {
+                count: Value::Fixed(1),
+                player: PlayerAst::That,
+            },
+        ];
+
+        let frame = LoweringFrame {
+            last_player_filter: Some(PlayerFilter::DamagedPlayer),
+            ..Default::default()
+        };
+        let (compiled, _, _) =
+            compile_effects_with_explicit_frame(&effects, &mut IdGenContext::default(), frame)
+                .expect("shared draw follow-up should compile");
+
+        let draw_effects = compiled
+            .iter()
+            .filter_map(|effect| effect.downcast_ref::<crate::effects::DrawCardsEffect>())
+            .collect::<Vec<_>>();
+        assert_eq!(draw_effects.len(), 2, "expected two draw effects");
+        assert!(matches!(draw_effects[0].player, PlayerFilter::You));
+        assert!(
+            matches!(draw_effects[1].player, PlayerFilter::DamagedPlayer),
+            "second draw should preserve damaged-player binding, got {:?}",
+            draw_effects[1]
         );
     }
 }

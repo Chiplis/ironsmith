@@ -1870,6 +1870,9 @@ pub(crate) fn parse_trigger_clause_lexed(
                     during_turn,
                 });
             }
+            if has_draw_except_first_in_draw_step_pattern(tail) {
+                return Ok(TriggerSpec::PlayerDrawsCardExceptFirstInDrawStep(player));
+            }
             if let Some(card_number) = parse_exact_draw_count_each_turn(tail) {
                 return Ok(TriggerSpec::PlayerDrawsNthCardEachTurn {
                     player,

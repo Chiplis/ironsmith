@@ -1489,6 +1489,10 @@ pub struct GameState {
     /// Players who will skip their next draw step.
     /// Checked and cleared when a player would draw in draw step.
     pub skip_next_draw_step: HashSet<PlayerId>,
+    /// The active player whose draw step is currently being tracked for draw-count-sensitive triggers.
+    pub tracked_draw_step_player: Option<PlayerId>,
+    /// Cards the tracked player has already drawn in the current draw step.
+    pub cards_drawn_this_draw_step: u32,
     /// Players who will skip all combat phases on their next turn.
     /// Checked and cleared when entering combat phase.
     pub skip_next_combat_phases: HashSet<PlayerId>,
@@ -1738,6 +1742,8 @@ impl GameState {
             extra_turns: Vec::new(),
             skip_next_turn: HashSet::new(),
             skip_next_draw_step: HashSet::new(),
+            tracked_draw_step_player: None,
+            cards_drawn_this_draw_step: 0,
             skip_next_combat_phases: HashSet::new(),
             player_control_effects: Vec::new(),
             player_control_timestamp: 0,
@@ -2196,6 +2202,38 @@ impl GameState {
     /// Can the player draw extra cards this turn?
     pub fn can_draw_extra_cards(&self, player: PlayerId) -> bool {
         self.cant_effects.can_draw_extra_cards(player)
+    }
+
+    /// Sync draw-step tracking to the current turn position.
+    pub fn sync_draw_step_tracking(&mut self) {
+        if self.turn.phase == Phase::Beginning && self.turn.step == Some(Step::Draw) {
+            if self.tracked_draw_step_player != Some(self.turn.active_player) {
+                self.tracked_draw_step_player = Some(self.turn.active_player);
+                self.cards_drawn_this_draw_step = 0;
+            }
+        } else {
+            self.tracked_draw_step_player = None;
+            self.cards_drawn_this_draw_step = 0;
+        }
+    }
+
+    /// Returns whether the given player is drawing during their own draw step, plus prior draws in that step.
+    pub fn draw_step_context_for_player(&mut self, player: PlayerId) -> (bool, u32) {
+        self.sync_draw_step_tracking();
+        if self.tracked_draw_step_player == Some(player) {
+            (true, self.cards_drawn_this_draw_step)
+        } else {
+            (false, 0)
+        }
+    }
+
+    /// Records cards drawn in the currently tracked draw step.
+    pub fn record_cards_drawn_in_current_draw_step(&mut self, player: PlayerId, amount: u32) {
+        self.sync_draw_step_tracking();
+        if self.tracked_draw_step_player == Some(player) {
+            self.cards_drawn_this_draw_step =
+                self.cards_drawn_this_draw_step.saturating_add(amount);
+        }
     }
 
     /// Can the creature attack?
@@ -5134,6 +5172,8 @@ impl GameState {
         self.turn.turn_number += 1;
         self.turn.phase = Phase::Beginning;
         self.turn.step = Some(Step::Untap);
+        self.tracked_draw_step_player = None;
+        self.cards_drawn_this_draw_step = 0;
 
         // Clear turn-based tracking
         self.spells_cast_last_turn_total = self.turn_history.clear_for_new_turn();

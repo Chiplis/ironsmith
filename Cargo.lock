@@ -741,6 +741,7 @@ name = "ironsmith-tools"
 version = "0.1.0"
 dependencies = [
  "ironsmith",
+ "rayon",
  "rusqlite",
  "serde",
  "serde_json",

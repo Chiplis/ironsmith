@@ -437,6 +437,8 @@ pub fn execute_draw_step_with(
     use crate::triggers::TriggerEvent;
 
     let active_player = game.turn.active_player;
+    let (is_during_players_draw_step, cards_previously_drawn_this_draw_step) =
+        game.draw_step_context_for_player(active_player);
     if game.skip_next_draw_step.remove(&active_player) {
         game.turn.priority_player = Some(active_player);
         return Vec::new();
@@ -471,8 +473,17 @@ pub fn execute_draw_step_with(
             let draw_event_provenance = game
                 .provenance_graph
                 .alloc_root_event(crate::events::EventKind::CardsDrawn);
-            let event = CardsDrawnEvent::new(active_player, drawn, is_first_draw);
+            let event = CardsDrawnEvent::new_with_step_context(
+                active_player,
+                drawn,
+                is_first_draw,
+                is_during_players_draw_step,
+                cards_previously_drawn_this_draw_step,
+            );
             let event = TriggerEvent::new_with_provenance(event, draw_event_provenance);
+            if let Some(drawn_event) = event.downcast::<CardsDrawnEvent>() {
+                game.record_cards_drawn_in_current_draw_step(active_player, drawn_event.amount());
+            }
             game.stage_turn_history_event(&event);
             draw_events.push(event);
             let cards = draw_events

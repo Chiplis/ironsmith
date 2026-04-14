@@ -1964,6 +1964,17 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             idx += 2;
             continue;
         }
+        if idx + 1 < filtered.len()
+            && let Some(first_draw) =
+                filtered[idx].downcast_ref::<crate::effects::DrawCardsEffect>()
+            && let Some(second_draw) =
+                filtered[idx + 1].downcast_ref::<crate::effects::DrawCardsEffect>()
+            && let Some(compact) = describe_shared_draw(first_draw, second_draw)
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
         // Draw N cards, then you gain life equal to the number of [filter].
         if idx + 1 < filtered.len()
             && let Some(draw) = filtered[idx].downcast_ref::<crate::effects::DrawCardsEffect>()
@@ -5408,6 +5419,35 @@ pub(super) fn describe_draw_then_discard(
         text.push_str(" at random");
     }
     Some(text)
+}
+
+fn shared_draw_partner(filter: &PlayerFilter) -> String {
+    match filter {
+        PlayerFilter::Specific(_)
+        | PlayerFilter::TaggedPlayer(_)
+        | PlayerFilter::Active
+        | PlayerFilter::DamagedPlayer
+        | PlayerFilter::IteratedPlayer => "that player".to_string(),
+        _ => describe_player_filter(filter),
+    }
+}
+
+pub(super) fn describe_shared_draw(
+    first: &crate::effects::DrawCardsEffect,
+    second: &crate::effects::DrawCardsEffect,
+) -> Option<String> {
+    if first.count != second.count || first.player == second.player {
+        return None;
+    }
+    if first.player != PlayerFilter::You {
+        return None;
+    }
+
+    let partner = shared_draw_partner(&second.player);
+    Some(format!(
+        "you and {partner} each draw {}",
+        describe_card_count(&first.count)
+    ))
 }
 
 /// Render a Draw + GainLife pair as "Draw a card, then you gain life equal to

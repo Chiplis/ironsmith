@@ -21,15 +21,32 @@ pub struct CardsDrawnEvent {
     pub cards: Vec<ObjectId>,
     /// Whether this draw action started as the first draw this turn
     pub is_first_this_turn: bool,
+    /// Whether this draw happened during the drawing player's draw step.
+    pub is_during_players_draw_step: bool,
+    /// How many cards that player had already drawn in that draw step before this event.
+    pub cards_previously_drawn_this_draw_step: u32,
 }
 
 impl CardsDrawnEvent {
     /// Create a new cards drawn event.
     pub fn new(player: PlayerId, cards: Vec<ObjectId>, is_first_this_turn: bool) -> Self {
+        Self::new_with_step_context(player, cards, is_first_this_turn, false, 0)
+    }
+
+    /// Create a new cards drawn event with draw-step context.
+    pub fn new_with_step_context(
+        player: PlayerId,
+        cards: Vec<ObjectId>,
+        is_first_this_turn: bool,
+        is_during_players_draw_step: bool,
+        cards_previously_drawn_this_draw_step: u32,
+    ) -> Self {
         Self {
             player,
             cards,
             is_first_this_turn,
+            is_during_players_draw_step,
+            cards_previously_drawn_this_draw_step,
         }
     }
 
@@ -115,6 +132,8 @@ mod tests {
         assert_eq!(event.player, PlayerId::from_index(0));
         assert_eq!(event.cards, cards);
         assert!(!event.is_first_this_turn);
+        assert!(!event.is_during_players_draw_step);
+        assert_eq!(event.cards_previously_drawn_this_draw_step, 0);
         assert_eq!(event.amount(), 2);
     }
 
@@ -125,6 +144,7 @@ mod tests {
         assert_eq!(event.cards.len(), 1);
         assert_eq!(event.first_card(), Some(card));
         assert!(event.is_first_this_turn);
+        assert!(!event.is_during_players_draw_step);
     }
 
     #[test]

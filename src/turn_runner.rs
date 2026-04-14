@@ -683,6 +683,7 @@ impl TurnRunner {
         game: &mut GameState,
     ) -> RunnerProgress<Vec<crate::triggers::TriggerEvent>> {
         let active_player = game.turn.active_player;
+        game.sync_draw_step_tracking();
         if let Some(pending) = self.pending_draw_reveal.take() {
             return self.finish_pending_draw_reveal_choices(game, pending);
         }
@@ -787,6 +788,9 @@ impl TurnRunner {
         use crate::events::other::CardsDrawnEvent;
         use crate::triggers::TriggerEvent;
 
+        let (is_during_players_draw_step, cards_previously_drawn_this_draw_step) =
+            game.draw_step_context_for_player(pending.active_player);
+
         while let Some(candidate) = pending
             .candidates
             .get(pending.next_candidate_index)
@@ -820,9 +824,21 @@ impl TurnRunner {
         }
 
         let event = TriggerEvent::new_with_provenance(
-            CardsDrawnEvent::new(pending.active_player, pending.drawn, pending.is_first_draw),
+            CardsDrawnEvent::new_with_step_context(
+                pending.active_player,
+                pending.drawn,
+                pending.is_first_draw,
+                is_during_players_draw_step,
+                cards_previously_drawn_this_draw_step,
+            ),
             pending.draw_event_provenance,
         );
+        if let Some(drawn_event) = event.downcast::<CardsDrawnEvent>() {
+            game.record_cards_drawn_in_current_draw_step(
+                pending.active_player,
+                drawn_event.amount(),
+            );
+        }
         game.stage_turn_history_event(&event);
         let mut draw_events = vec![event];
         for reveal_event in pending.reveal_events {

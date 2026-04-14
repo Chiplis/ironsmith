@@ -19733,13 +19733,58 @@ fn parse_orcish_bowmasters_draw_exception_clause_compiles_noncustom_draw_trigger
         "expected ETB-or-draw trigger composition, got {abilities_debug}"
     );
     assert!(
-        abilities_debug.contains("PlayerDrawsNthCardEachTurnTrigger")
-            || abilities_debug.contains("draws their second card each turn"),
-        "expected draw-exception clause to compile as typed draw trigger, got {abilities_debug}"
+        abilities_debug.contains("PlayerDrawsCardExceptFirstInDrawStepTrigger")
+            || abilities_debug
+                .contains("except the first one they draw in each of their draw steps"),
+        "expected draw-exception clause to compile as draw-step-aware trigger, got {abilities_debug}"
     );
     assert!(
         abilities_debug.contains("AmassEffect"),
         "expected triggered effect list to include AmassEffect, got {abilities_debug}"
+    );
+}
+
+#[test]
+fn parse_xyris_shared_draw_clause_keeps_both_players() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Xyris Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Flying\nWhenever an opponent draws a card except the first one they draw in each of their draw steps, create a 1/1 green Snake creature token.\nWhenever this creature deals combat damage to a player, you and that player each draw that many cards.",
+        )
+        .expect("xyris-style triggered abilities should parse");
+
+    let abilities_debug = format!("{:#?}", def.abilities);
+    assert!(
+        abilities_debug.contains("PlayerDrawsCardExceptFirstInDrawStepTrigger"),
+        "expected typed extra-draw trigger, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("ThisDealsCombatDamageToPlayerTrigger"),
+        "expected combat-damage trigger, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("DrawCardsEffect")
+            && abilities_debug.contains("player: You")
+            && abilities_debug.contains("player: DamagedPlayer"),
+        "expected combat-damage trigger to draw for you and the damaged player, got {abilities_debug}"
+    );
+}
+
+#[test]
+fn render_xyris_shared_draw_clause_uses_oracle_style_surface() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Xyris Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Flying\nWhenever an opponent draws a card except the first one they draw in each of their draw steps, create a 1/1 green Snake creature token.\nWhenever this creature deals combat damage to a player, you and that player each draw that many cards.",
+        )
+        .expect("xyris-style triggered abilities should render cleanly");
+
+    let rendered = oracle_like_lines(&def).join("\n");
+    assert!(
+        rendered.contains(
+            "Whenever this creature deals combat damage to a player: you and that player each draw that many cards."
+        ),
+        "expected oracle-like shared draw surface, got {rendered}"
     );
 }
 

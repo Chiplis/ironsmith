@@ -208,6 +208,8 @@ impl EffectExecutor for DrawCardsEffect {
 
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
         let count = resolve_value(game, &self.count, ctx)?.max(0) as u32;
+        let (is_during_players_draw_step, cards_previously_drawn_this_draw_step) =
+            game.draw_step_context_for_player(player_id);
 
         // Check if this is the first draw this turn
         let current_draws = game.turn_history.cards_drawn_by_player(player_id);
@@ -243,9 +245,20 @@ impl EffectExecutor for DrawCardsEffect {
                 }
 
                 let event = TriggerEvent::new_with_provenance(
-                    CardsDrawnEvent::new(player_id, drawn, is_first),
+                    CardsDrawnEvent::new_with_step_context(
+                        player_id,
+                        drawn,
+                        is_first,
+                        is_during_players_draw_step,
+                        cards_previously_drawn_this_draw_step,
+                    ),
                     ctx.provenance,
                 );
+                let drawn_count = event
+                    .downcast::<CardsDrawnEvent>()
+                    .map(CardsDrawnEvent::amount)
+                    .unwrap_or(0);
+                game.record_cards_drawn_in_current_draw_step(player_id, drawn_count);
                 let reveal_events = automatic_reveal_events_for_draw(
                     game,
                     player_id,

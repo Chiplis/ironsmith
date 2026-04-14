@@ -598,6 +598,91 @@ impl CardStatusDb {
         Ok(previous_latest_id != Some(compilation_id))
     }
 
+    pub fn insert_snapshots_if_changed(
+        &mut self,
+        snapshots: &[CompilationSnapshot],
+    ) -> Result<usize, Box<dyn Error>> {
+        let tx = self.conn.transaction()?;
+        let mut changed_count = 0usize;
+
+        {
+            let mut select_previous_latest = tx.prepare(
+                "SELECT compilation_id
+                 FROM latest_card_observation
+                 WHERE card_name = ?1",
+            )?;
+            let mut insert_compilation = tx.prepare(
+                "INSERT OR IGNORE INTO card_compilation (
+                    card_name,
+                    oracle_text,
+                    raw_oracle_text,
+                    parse_status,
+                    parse_error,
+                    compiled_text,
+                    compiled_card_definition,
+                    oracle_coverage,
+                    compiled_coverage,
+                    similarity_score,
+                    line_delta,
+                    semantic_mismatch,
+                    has_unimplemented,
+                    content_hash
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+            )?;
+            let mut select_compilation_id = tx.prepare(
+                "SELECT id
+                 FROM card_compilation
+                 WHERE card_name = ?1
+                   AND content_hash = ?2
+                 ORDER BY id DESC
+                 LIMIT 1",
+            )?;
+            let mut upsert_latest = tx.prepare(
+                "INSERT INTO latest_card_observation (card_name, compilation_id, agent_running)
+                 VALUES (?1, ?2, 0)
+                 ON CONFLICT(card_name) DO UPDATE SET
+                     compilation_id = excluded.compilation_id",
+            )?;
+
+            for snapshot in snapshots {
+                let previous_latest_id = select_previous_latest
+                    .query_row([snapshot.card_name.as_str()], |row| row.get::<_, i64>(0))
+                    .optional()?;
+
+                insert_compilation.execute(params![
+                    snapshot.card_name.as_str(),
+                    snapshot.oracle_text.as_str(),
+                    snapshot.raw_oracle_text.as_str(),
+                    snapshot.parse_status.as_str(),
+                    snapshot.parse_error.as_deref(),
+                    snapshot.compiled_text.as_deref(),
+                    snapshot.compiled_card_definition.as_deref(),
+                    snapshot.oracle_coverage,
+                    snapshot.compiled_coverage,
+                    snapshot.similarity_score,
+                    snapshot.line_delta as i64,
+                    snapshot.semantic_mismatch,
+                    snapshot.has_unimplemented,
+                    snapshot.content_hash.as_str(),
+                ])?;
+
+                let compilation_id: i64 = select_compilation_id.query_row(
+                    params![snapshot.card_name.as_str(), snapshot.content_hash.as_str()],
+                    |row| row.get(0),
+                )?;
+
+                upsert_latest.execute(params![snapshot.card_name.as_str(), compilation_id])?;
+
+                if previous_latest_id != Some(compilation_id) {
+                    changed_count += 1;
+                }
+            }
+        }
+
+        tx.commit()?;
+        Ok(changed_count)
+    }
+
     pub fn set_agent_running(&self, card_name: &str, running: bool) -> Result<(), Box<dyn Error>> {
         self.conn.execute(
             "UPDATE latest_card_observation SET agent_running = ?1 WHERE card_name = ?2",
@@ -2107,6 +2192,45 @@ mod tests {
             )
             .expect("latest row");
         assert_eq!(latest, 1.0);
+
+        let latest_hash = db
+            .latest_snapshot_hash("Lightning Bolt")
+            .expect("fetch latest lightning hash");
+        assert_eq!(latest_hash.as_deref(), Some(base.content_hash.as_str()));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn batch_insert_snapshots_if_changed_preserves_latest_and_dedupes_history() {
+        let path = unique_temp_path("batch-insert");
+        let mut db = CardStatusDb::open(&path).expect("open db");
+        let base = compile_snapshot_from_payload(&lightning_bolt_payload());
+        let mut changed = base.clone();
+        changed.similarity_score = 0.5;
+        changed.content_hash = changed.compute_content_hash();
+
+        let changed_count = db
+            .insert_snapshots_if_changed(&[base.clone(), changed, base.clone()])
+            .expect("batch insert snapshots");
+        assert_eq!(changed_count, 3);
+
+        let count: i64 = db
+            .connection()
+            .query_row("SELECT COUNT(*) FROM card_compilation", [], |row| {
+                row.get(0)
+            })
+            .expect("count rows");
+        assert_eq!(count, 2);
+
+        let latest: f32 = db
+            .connection()
+            .query_row(
+                "SELECT similarity_score FROM latest_card_compilation WHERE card_name = ?1",
+                ["Lightning Bolt"],
+                |row| row.get(0),
+            )
+            .expect("latest row");
+        assert_eq!(latest, base.similarity_score);
 
         let latest_hash = db
             .latest_snapshot_hash("Lightning Bolt")
