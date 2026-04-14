@@ -1,46 +1,60 @@
 //! Effects that apply rule restrictions ("can't" effects).
 
+use std::collections::HashSet;
+
 use crate::effect::{EffectOutcome, Restriction, Until};
 use crate::effects::EffectExecutor;
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::ObjectFilter;
 
-fn collapse_source_tagged_filter(
+fn collapse_tagged_filter_to_specific_objects(
     filter: &ObjectFilter,
     ctx: &ExecutionContext,
 ) -> ObjectFilter {
-    if filter.source {
+    if filter.source || filter.tagged_constraints.is_empty() {
         return filter.clone();
     }
 
-    let mut collapsed = filter.clone();
-    if collapsed.tagged_constraints.len() != 1 {
+    if !filter.tagged_constraints.iter().all(|constraint| {
+        constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+    }) {
         return filter.clone();
     }
 
-    let constraint = collapsed.tagged_constraints[0].clone();
-    if constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject {
-        return filter.clone();
+    let mut seen = HashSet::new();
+    let mut object_ids = filter
+        .tagged_constraints
+        .iter()
+        .filter_map(|constraint| ctx.get_tagged_all(&constraint.tag))
+        .flat_map(|snapshots| snapshots.iter())
+        .filter_map(|snapshot| seen.insert(snapshot.object_id).then_some(snapshot.object_id))
+        .collect::<Vec<_>>();
+
+    if object_ids.is_empty() {
+        let mut fallback_seen = HashSet::new();
+        object_ids = ctx
+            .tagged_objects
+            .values()
+            .flat_map(|snapshots| snapshots.iter())
+            .filter_map(|snapshot| {
+                fallback_seen
+                    .insert(snapshot.object_id)
+                    .then_some(snapshot.object_id)
+            })
+            .collect();
     }
 
-    collapsed.tagged_constraints.clear();
-    if collapsed != ObjectFilter::default() {
-        return filter.clone();
-    }
-
-    let source_id = ctx.source;
-    let source_matches_tag = ctx
-        .tagged_objects
-        .get(constraint.tag.as_str())
-        .is_some_and(|snapshots| {
-            snapshots.len() == 1 && snapshots[0].object_id == source_id
-        });
-
-    if source_matches_tag {
-        ObjectFilter::source()
-    } else {
-        filter.clone()
+    match object_ids.as_slice() {
+        [] => filter.clone(),
+        [object_id] => ObjectFilter::specific(*object_id),
+        _ => ObjectFilter {
+            any_of: object_ids
+                .into_iter()
+                .map(ObjectFilter::specific)
+                .collect(),
+            ..Default::default()
+        },
     }
 }
 
@@ -50,7 +64,7 @@ fn normalize_restriction_for_resolution(
 ) -> Restriction {
     match restriction {
         Restriction::BeBlocked(filter) => {
-            Restriction::be_blocked(collapse_source_tagged_filter(filter, ctx))
+            Restriction::be_blocked(collapse_tagged_filter_to_specific_objects(filter, ctx))
         }
         _ => restriction.clone(),
     }
@@ -222,6 +236,66 @@ mod tests {
         assert!(
             !game.can_be_blocked(creature_id),
             "tagged source be-blocked restriction should normalize to the source object"
+        );
+    }
+
+    #[test]
+    fn cant_effect_normalizes_tagged_be_blocked_filter_even_when_source_is_stack_object() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let creature_card = CardBuilder::new(CardId::from_raw(1), "Tagged Octopus")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 1))
+            .build();
+        let creature_id = game.create_object_from_card(&creature_card, alice, Zone::Battlefield);
+        let stack_object_id = game.new_object_id();
+
+        let creature_snapshot = ObjectSnapshot::from_object(
+            game.object(creature_id).expect("tagged creature exists"),
+            &game,
+        );
+        let mut ctx = ExecutionContext::new_default(stack_object_id, alice);
+        ctx.tag_object("carry", creature_snapshot);
+
+        CantEffect::until_end_of_turn(Restriction::be_blocked(ObjectFilter::tagged("carry")))
+            .execute(&mut game, &mut ctx)
+            .expect("execute be blocked cant effect from stack source");
+
+        assert!(
+            !game.can_be_blocked(creature_id),
+            "tagged be-blocked restriction should stay attached to the resolved creature, not the stack object source"
+        );
+    }
+
+    #[test]
+    fn cant_effect_normalizes_tagged_be_blocked_filter_when_runtime_tag_aliases_drift() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let creature_card = CardBuilder::new(CardId::from_raw(1), "Alias Drift Octopus")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 1))
+            .build();
+        let creature_id = game.create_object_from_card(&creature_card, alice, Zone::Battlefield);
+
+        let creature_snapshot = ObjectSnapshot::from_object(
+            game.object(creature_id).expect("tagged creature exists"),
+            &game,
+        );
+        let mut ctx = ExecutionContext::new_default(creature_id, alice);
+        ctx.tag_object("granted_0", creature_snapshot.clone());
+        ctx.tag_object("__it__", creature_snapshot);
+
+        CantEffect::until_end_of_turn(Restriction::be_blocked(ObjectFilter::tagged(
+            "targeted_0",
+        )))
+        .execute(&mut game, &mut ctx)
+        .expect("execute be blocked cant effect with drifted runtime tag alias");
+
+        assert!(
+            !game.can_be_blocked(creature_id),
+            "tagged be-blocked restriction should still resolve when the runtime context only retains equivalent aliases for the same object"
         );
     }
 }
