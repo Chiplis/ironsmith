@@ -1113,7 +1113,7 @@ fn parse_investigate_for_each_count(tokens: &[OwnedLexToken]) -> Result<Value, C
         let mut filter = if filter_tokens.is_empty() {
             ObjectFilter::default()
         } else {
-            parse_object_filter(filter_tokens, false)?
+            parse_object_filter(&filter_tokens, false)?
         };
         filter.zone = Some(Zone::Exile);
         filter
