@@ -11855,19 +11855,29 @@ fn test_strip_bare_destroys_attached_auras_and_equipment_only() {
     assert_eq!(game.stack.len(), 1, "Strip Bare should be on the stack");
     resolve_stack_entry(&mut game).expect("Strip Bare should resolve");
 
+    let alice_graveyard = game
+        .player(alice)
+        .expect("alice should exist")
+        .graveyard
+        .clone();
+
     assert_eq!(
         game.object(target_id).map(|object| object.zone),
         Some(Zone::Battlefield),
         "the target creature should survive Strip Bare"
     );
-    assert_eq!(
-        game.object(aura_id).map(|object| object.zone),
-        Some(Zone::Graveyard),
+    assert!(
+        alice_graveyard
+            .iter()
+            .filter_map(|&id| game.object(id))
+            .any(|object| object.name == "Strip Bare Aura" && object.zone == Zone::Graveyard),
         "the attached Aura should be destroyed"
     );
-    assert_eq!(
-        game.object(equipment_id).map(|object| object.zone),
-        Some(Zone::Graveyard),
+    assert!(
+        alice_graveyard
+            .iter()
+            .filter_map(|&id| game.object(id))
+            .any(|object| object.name == "Strip Bare Equipment" && object.zone == Zone::Graveyard),
         "the attached Equipment should be destroyed"
     );
     assert!(
