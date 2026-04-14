@@ -78,6 +78,13 @@ mod tests {
             "investigate should be performed by the exiled creature's controller"
         );
 
+        let debug = format!("{:?}", effects);
+        assert!(
+            debug.contains("AliasedControllerOf(")
+                && debug.contains("__sentence_helper_exiled_l0_s0_e0"),
+            "expected compiled investigate player to keep aliased controller tag, got {debug}"
+        );
+
         let rendered = crate::compiled_text::oracle_like_lines(&declaration_in_stone()).join(" ");
         assert!(
             rendered

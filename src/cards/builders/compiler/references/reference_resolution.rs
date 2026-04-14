@@ -173,14 +173,17 @@ fn track_player_from_object_filter(filter: &ObjectFilter, frame: &mut ReferenceF
             frame.last_player_filter = Some(PlayerFilter::OwnerOf(ObjectRef::tagged(tag)));
             return;
         }
-        if filter.controller.is_some()
-            || filter.tagged_constraints.iter().any(|constraint| {
-                matches!(
-                    constraint.relation,
-                    crate::filter::TaggedOpbjectRelation::SameControllerAsTagged
-                )
-            })
-        {
+        if filter.tagged_constraints.iter().any(|constraint| {
+            matches!(
+                constraint.relation,
+                crate::filter::TaggedOpbjectRelation::SameControllerAsTagged
+            )
+        }) {
+            frame.last_player_filter =
+                Some(PlayerFilter::AliasedControllerOf(ObjectRef::tagged(tag)));
+            return;
+        }
+        if filter.controller.is_some() {
             frame.last_player_filter = Some(PlayerFilter::ControllerOf(ObjectRef::tagged(tag)));
             return;
         }
@@ -2289,11 +2292,15 @@ mod tests {
 
         assert_eq!(
             annotated.effects[0].out_env.last_player_filter,
-            RefState::Known(PlayerFilter::ControllerOf(ObjectRef::tagged("seeded")))
+            RefState::Known(PlayerFilter::AliasedControllerOf(ObjectRef::tagged(
+                "seeded"
+            )))
         );
         assert_eq!(
             annotated.effects[1].in_env.last_player_filter,
-            RefState::Known(PlayerFilter::ControllerOf(ObjectRef::tagged("seeded")))
+            RefState::Known(PlayerFilter::AliasedControllerOf(ObjectRef::tagged(
+                "seeded"
+            )))
         );
     }
 
