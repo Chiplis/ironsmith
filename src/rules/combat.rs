@@ -101,8 +101,8 @@ pub(crate) fn can_block_with_view(
     let attacker_has = |id: StaticAbilityId| attacker_abilities.iter().any(|a| a.id() == id);
     let blocker_has = |id: StaticAbilityId| blocker_abilities.iter().any(|a| a.id() == id);
 
-    // Unblockable creatures can't be blocked
-    if attacker_has(StaticAbilityId::Unblockable) {
+    // Unblockable creatures and live "can't be blocked" restrictions can't be blocked.
+    if attacker_has(StaticAbilityId::Unblockable) || !game.can_be_blocked(attacker.id) {
         return false;
     }
 
@@ -1066,6 +1066,30 @@ mod tests {
 
         let blocker = make_creature("Blocker", 2, 2);
         assert!(!can_block(&unblockable, &blocker, &game));
+    }
+
+    #[test]
+    fn test_live_cant_be_blocked_restriction() {
+        let mut game = test_game_state();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let mut attacker = make_creature("Attacker", 2, 2);
+        attacker.controller = alice;
+        attacker.owner = alice;
+
+        let mut blocker = make_creature("Blocker", 2, 2);
+        blocker.controller = bob;
+        blocker.owner = bob;
+
+        game.add_object(attacker.clone());
+        game.add_object(blocker.clone());
+        game.add_cant_be_blocked(attacker.id);
+
+        assert!(
+            !can_block(&attacker, &blocker, &game),
+            "blocker should not be able to block when the game marks the attacker as unblockable"
+        );
     }
 
     #[test]
