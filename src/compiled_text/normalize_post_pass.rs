@@ -82,6 +82,13 @@ fn normalize_choose_creature_type_then_chosen_type_clause(text: &str) -> Option<
     // The remainder must mention "of the chosen type" so we can substitute.
     let (before_chosen, after_chosen) = split_once_ascii_ci(rest, " of the chosen type")?;
 
+    // Only merge when the action clause uses targeting (e.g. "X target creatures
+    // of the chosen type").  Mass effects like "all creatures that aren't of the
+    // chosen type" use the two-sentence oracle form, so merging would diverge.
+    if !before_chosen.to_ascii_lowercase().contains("target") {
+        return None;
+    }
+
     // Rebuild with the inline oracle phrasing.
     let mut merged = format!(
         "{} of the creature type of your choice{}",
@@ -901,13 +908,13 @@ mod tests {
     }
 
     #[test]
-    fn normalize_choose_creature_type_then_destroy_all_of_chosen_type() {
+    fn normalize_choose_creature_type_then_destroy_all_of_chosen_type_not_merged() {
+        // Mass effects like "Destroy all creatures of the chosen type" use the
+        // two-sentence oracle form ("Choose a creature type. ... of the chosen type"),
+        // so merging would diverge from oracle. Only targeted patterns merge.
         let input = "You choose a creature type. Destroy all creatures of the chosen type.";
         let result = normalize_choose_creature_type_then_chosen_type_clause(input);
-        assert_eq!(
-            result,
-            Some("Destroy all creatures of the creature type of your choice.".to_string())
-        );
+        assert_eq!(result, None);
     }
 
     #[test]
@@ -3014,8 +3021,8 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
             || right.to_ascii_lowercase().contains(" life equal to "))
     {
         return format!(
-            "Draw {}, then {}",
-            draw_rest.trim(),
+            "Draw {}, then {}.",
+            draw_rest.trim().trim_end_matches('.'),
             lowercase_first(right.trim().trim_end_matches('.'))
         );
     }
@@ -7068,7 +7075,7 @@ pub(super) fn normalize_divvy_chosen_sequence(text: &str) -> Option<String> {
     }
     if let Some((before, rest)) = split_once_ascii_ci(
         text,
-        "search your library and graveyard for up to 4 creature with mana value x or less and tags it as 'searched'. reveal it. an opponent chooses exactly 2 permanent in a library and tags it as 'divvy_chosen'. ",
+        "search your library and/or graveyard for up to 4 creature with mana value x or less and tags it as 'searched'. reveal it. an opponent chooses exactly 2 permanent in a library and tags it as 'divvy_chosen'. ",
     ) {
         let tails = [
             "put the tagged object 'divvy_chosen' on the bottom of its owner's library. shuffle your library. for each tagged 'divvy_source' object, if it isn't true that the tagged object 'divvy_chosen' matches permanent, put that object onto the battlefield under your control. exile ",

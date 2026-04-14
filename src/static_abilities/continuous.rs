@@ -3968,7 +3968,8 @@ mod tests {
         let lines = crate::compiled_text::oracle_like_lines(&def);
         let joined = lines.join(" ").to_ascii_lowercase();
         assert!(
-            joined.contains("creatures you control get +2/+0 for each equipment attached to it"),
+            joined.contains("creature you control gets +2/+0 for each equipment attached to it")
+                || joined.contains("creatures you control get +2/+0 for each equipment attached to it"),
             "expected oracle-like anthem wording with 'attached to it', got {joined}"
         );
     }

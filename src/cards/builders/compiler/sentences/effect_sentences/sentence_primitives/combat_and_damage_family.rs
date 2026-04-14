@@ -341,7 +341,7 @@ pub(crate) fn parse_sentence_return_targets_of_creature_type_of_choice(
         // on the ObjectFilter buried inside the TargetAst (may be wrapped in WithCount).
         fn patch_chosen_type(t: &mut TargetAst, chosen: bool, excluded: bool) {
             match t {
-                TargetAst::Object(ref mut f, _, _) => {
+                TargetAst::Object(f, _, _) => {
                     f.chosen_creature_type |= chosen;
                     f.excluded_chosen_creature_type |= excluded;
                 }

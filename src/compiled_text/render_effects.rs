@@ -6454,17 +6454,20 @@ pub(super) fn describe_search_choose_for_each(
     if searched_library && implied_filter.zone == Some(Zone::Library) {
         implied_filter.zone = None;
     }
-    // When the filter zone is None (e.g. multi-zone searches that span library +
-    // graveyard), the default description noun falls back to "permanent" which is
-    // incorrect for a search context.  Setting the zone to Library ensures
-    // ObjectFilter::description() produces "card" as the base noun instead.
-    if implied_filter.zone.is_none() && searched_library {
-        implied_filter.zone = Some(Zone::Library);
-    }
+    // NOTE: do not set implied_filter.zone to Library here for multi-zone
+    // searches — that would leak "in library" into the description. Instead,
+    // we post-process the noun from "permanent" to "card" below.
     let implied_filter_text = if implied_filter == ObjectFilter::default() {
         "card".to_string()
     } else {
-        implied_filter.description()
+        let desc = implied_filter.description();
+        // For multi-zone searches the zone is None, so the base noun defaults
+        // to "permanent". Replace it with "card" for search contexts.
+        if searched_multiple_zones && implied_filter.zone.is_none() {
+            desc.replacen("permanent", "card", 1)
+        } else {
+            desc
+        }
     };
     let filter_text = if choose.description.trim().is_empty()
         || choose.description.trim().eq_ignore_ascii_case("choose")
@@ -6711,13 +6714,20 @@ fn describe_search_choose_then_move(
     }
     // For multi-zone searches the filter zone is None, causing the description
     // to default to "permanent".  Set it to Library so the noun is "card".
-    if display_filter.zone.is_none() && searched_library {
-        display_filter.zone = Some(Zone::Library);
-    }
+    // NOTE: do not set display_filter.zone to Library here for multi-zone
+    // searches — that would leak "in library" into the description. Instead,
+    // we post-process the noun from "permanent" to "card" below.
+    let searched_multiple_zones =
+        choose_search_zones(choose).is_some_and(|zones| zones.len() > 1);
     let raw_filter_text = if display_filter == ObjectFilter::default() {
         "card".to_string()
     } else {
-        normalize_search_descriptor_for_origin(&display_filter.description(), searched_library)
+        let desc = normalize_search_descriptor_for_origin(&display_filter.description(), searched_library);
+        if searched_multiple_zones && display_filter.zone.is_none() {
+            desc.replacen("permanent", "card", 1)
+        } else {
+            desc
+        }
     };
     let filter_text = describe_search_selection_with_cards(
         &describe_search_selection_from_filter_text(choose, &raw_filter_text),
@@ -6810,13 +6820,20 @@ fn describe_search_choose_then_exile(
     }
     // For multi-zone searches the filter zone is None, causing the description
     // to default to "permanent".  Set it to Library so the noun is "card".
-    if display_filter.zone.is_none() && searched_library {
-        display_filter.zone = Some(Zone::Library);
-    }
+    // NOTE: do not set display_filter.zone to Library here for multi-zone
+    // searches — that would leak "in library" into the description. Instead,
+    // we post-process the noun from "permanent" to "card" below.
+    let searched_multiple_zones =
+        choose_search_zones(choose).is_some_and(|zones| zones.len() > 1);
     let raw_filter_text = if display_filter == ObjectFilter::default() {
         "card".to_string()
     } else {
-        normalize_search_descriptor_for_origin(&display_filter.description(), searched_library)
+        let desc = normalize_search_descriptor_for_origin(&display_filter.description(), searched_library);
+        if searched_multiple_zones && display_filter.zone.is_none() {
+            desc.replacen("permanent", "card", 1)
+        } else {
+            desc
+        }
     };
     let filter_text = describe_search_selection_with_cards(
         &describe_search_selection_from_filter_text(choose, &raw_filter_text),
@@ -6883,14 +6900,18 @@ fn describe_search_choose_then_return_to_hand(
         display_filter.zone = None;
     }
     // For multi-zone searches the filter zone is None, causing the description
-    // to default to "permanent".  Set it to Library so the noun is "card".
-    if display_filter.zone.is_none() && searched_library {
-        display_filter.zone = Some(Zone::Library);
-    }
+    // noun to default to "permanent". Replace with "card" in search contexts.
+    let searched_multiple_zones =
+        choose_search_zones(choose).is_some_and(|zones| zones.len() > 1);
     let filter_desc = if display_filter == ObjectFilter::default() {
         "card".to_string()
     } else {
-        normalize_search_descriptor_for_origin(&display_filter.description(), searched_library)
+        let desc = normalize_search_descriptor_for_origin(&display_filter.description(), searched_library);
+        if searched_multiple_zones && display_filter.zone.is_none() {
+            desc.replacen("permanent", "card", 1)
+        } else {
+            desc
+        }
     };
     let selection = describe_search_selection_with_cards(
         &describe_search_selection_from_filter_text(choose, &filter_desc),

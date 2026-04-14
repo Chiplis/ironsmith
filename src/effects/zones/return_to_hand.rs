@@ -588,27 +588,22 @@ mod tests {
             "creature type should be set to Goblin"
         );
 
-        // Step 2: Return the two Goblins (X=2) with a targeted spec.
+        // Step 2: Return all Goblins (chosen creature type) to hand.
         let filter = ObjectFilter::creature().of_chosen_creature_type();
-        let effect = ReturnToHandEffect::targets(
-            ChooseSpec::target(ChooseSpec::Object(filter)),
-            ChoiceCount::exactly(2),
-        );
+        let effect = ReturnToHandEffect::all(filter);
 
-        // The decision maker selects the two goblins.
-        let mut dm = SelectIdsDecisionMaker {
-            chosen: vec![goblin1, goblin2],
-        };
+        let mut dm = crate::decision::AutoPassDecisionMaker;
         let mut ctx = ExecutionContext::new(source, alice, &mut dm);
         let outcome = effect
             .execute(&mut game, &mut ctx)
-            .expect("targeted return should resolve");
+            .expect("return all of chosen type should resolve");
 
         // Both goblins should be returned to hand.
         assert_eq!(
             outcome.value,
             crate::effect::OutcomeValue::Count(2),
-            "both targeted goblins should be returned"
+            "both goblins of the chosen type should be returned, got {:?}",
+            outcome.value
         );
         assert!(
             !game.battlefield.contains(&goblin1),

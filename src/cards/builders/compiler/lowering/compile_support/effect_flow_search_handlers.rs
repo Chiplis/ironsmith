@@ -763,10 +763,15 @@ pub(super) fn try_compile_search_and_reorder_effect(
             )
         }
         EffectAst::ShuffleLibrary { player } => {
-            if ctx
-                .last_object_tag
-                .as_ref()
-                .is_some_and(|tag| tag.starts_with("searched"))
+            // When the grammar explicitly resolved the shuffle player to You/Implicit,
+            // trust the AST rather than overriding with the last-referenced player
+            // filter from a preceding effect (e.g. "target player" from a damage clause).
+            let ast_is_explicit_you = matches!(player, PlayerAst::You | PlayerAst::Implicit);
+            if !ast_is_explicit_you
+                && ctx
+                    .last_object_tag
+                    .as_ref()
+                    .is_some_and(|tag| tag.starts_with("searched"))
                 && ctx
                     .last_player_filter
                     .as_ref()
