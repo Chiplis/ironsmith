@@ -2388,8 +2388,18 @@ pub(crate) fn parse_anthem_clause(
         }
     };
 
-    let power = resolve_anthem_value(raw_power, scale.as_ref(), scale_fixed_components)?;
-    let toughness = resolve_anthem_value(raw_toughness, scale.as_ref(), scale_fixed_components)?;
+    let mut power = resolve_anthem_value(raw_power, scale.as_ref(), scale_fixed_components)?;
+    let mut toughness = resolve_anthem_value(raw_toughness, scale.as_ref(), scale_fixed_components)?;
+
+    // When the anthem affects multiple creatures (subject is a filter rather
+    // than "this creature"), any "attached to it" count expression refers to
+    // the affected creature, not the anthem source.  Promote
+    // AttachedToSource -> AttachedToAffected so the runtime evaluates the
+    // count per-creature.
+    if matches!(subject, AnthemSubjectAst::Filter(_)) {
+        promote_attached_to_affected(&mut power);
+        promote_attached_to_affected(&mut toughness);
+    }
 
     parser_trace_stack("parse_static:anthem-clause:matched", tokens);
     Ok(ParsedAnthemClause {
@@ -2398,6 +2408,26 @@ pub(crate) fn parse_anthem_clause(
         toughness,
         condition,
     })
+}
+
+/// When an anthem targets a filter of creatures (not just the source),
+/// "attached to it" refers to the affected creature, not the source.
+/// Promote `AttachedToSource` -> `AttachedToAffected` in the anthem value.
+fn promote_attached_to_affected(value: &mut AnthemValue) {
+    if let AnthemValue::PerCount {
+        count: count @ AnthemCountExpression::AttachedToSource(_),
+        ..
+    } = value
+    {
+        // Extract the inner filter and replace with AttachedToAffected.
+        let AnthemCountExpression::AttachedToSource(filter) = std::mem::replace(
+            count,
+            AnthemCountExpression::AttachedToAffected(ObjectFilter::default()),
+        ) else {
+            unreachable!()
+        };
+        *count = AnthemCountExpression::AttachedToAffected(filter);
+    }
 }
 
 pub(crate) fn build_anthem_static_ability(clause: &ParsedAnthemClause) -> StaticAbility {
