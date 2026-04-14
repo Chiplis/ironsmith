@@ -1046,9 +1046,10 @@ pub(super) fn try_compile_attachment_and_setup_effect(
             }
             _ => compile_effect_for_target(target, ctx, |spec| Effect::put_sticker(spec, *action))?,
         },
-        EffectAst::Investigate { count } => {
+        EffectAst::Investigate { count, player } => {
             let count = resolve_value_it_tag(count, &current_reference_env(ctx))?;
-            (vec![Effect::investigate(count)], Vec::new())
+            let player = resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
+            (vec![Effect::investigate_player(count, player)], Vec::new())
         }
         EffectAst::Amass { subtype, amount } => {
             let mut effect = Effect::amass(*subtype, *amount);

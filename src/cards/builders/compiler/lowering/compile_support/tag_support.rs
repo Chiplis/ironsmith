@@ -521,7 +521,7 @@ pub(crate) fn effect_references_event_derived_amount(effect: &EffectAst) -> bool
         | EffectAst::PayEnergy { amount, .. }
         | EffectAst::LookAtTopCards { count: amount, .. }
         | EffectAst::CopySpell { count: amount, .. }
-        | EffectAst::Investigate { count: amount }
+        | EffectAst::Investigate { count: amount, .. }
         | EffectAst::CreateTokenCopy { count: amount, .. }
         | EffectAst::CreateTokenCopyFromSource { count: amount, .. }
         | EffectAst::CreateTokenWithMods { count: amount, .. }

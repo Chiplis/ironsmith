@@ -1105,10 +1105,46 @@ pub(crate) fn normalize_token_name(words: &[&str]) -> String {
     words.join(" ")
 }
 
-pub(crate) fn parse_investigate(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+fn parse_investigate_for_each_count(tokens: &[OwnedLexToken]) -> Result<Value, CardTextError> {
+    let words = token_word_refs(tokens);
+    if let Some(exiled_idx) = find_word_sequence_index(&words, &["exiled", "this", "way"]) {
+        let filter_end = token_index_for_word_index(tokens, exiled_idx).unwrap_or(tokens.len());
+        let filter_tokens = trim_commas(&tokens[..filter_end]);
+        let mut filter = if filter_tokens.is_empty() {
+            ObjectFilter::default()
+        } else {
+            parse_object_filter(filter_tokens, false)?
+        };
+        filter.zone = Some(Zone::Exile);
+        filter
+            .tagged_constraints
+            .push(crate::filter::TaggedObjectConstraint {
+                tag: TagKey::from(IT_TAG),
+                relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+            });
+        return Ok(Value::Count(filter));
+    }
+
+    if grammar::words_find_phrase(tokens, &["this", "way"]).is_some() {
+        return Ok(Value::EventValue(EventValueSpec::Amount));
+    }
+
+    if let Some(dynamic) = parse_create_for_each_dynamic_count(tokens) {
+        return Ok(dynamic);
+    }
+
+    Ok(Value::Count(parse_object_filter(tokens, false)?))
+}
+
+pub(crate) fn parse_investigate(
+    tokens: &[OwnedLexToken],
+    subject: Option<SubjectAst>,
+) -> Result<EffectAst, CardTextError> {
+    let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
     if tokens.is_empty() {
         return Ok(EffectAst::Investigate {
             count: Value::Fixed(1),
+            player,
         });
     }
 
@@ -1123,15 +1159,9 @@ pub(crate) fn parse_investigate(tokens: &[OwnedLexToken]) -> Result<EffectAst, C
             )));
         }
 
-        let count = if grammar::words_find_phrase(filter_tokens, &["this", "way"]).is_some() {
-            Value::EventValue(EventValueSpec::Amount)
-        } else if let Some(dynamic) = parse_create_for_each_dynamic_count(filter_tokens) {
-            dynamic
-        } else {
-            Value::Count(parse_object_filter(filter_tokens, false)?)
-        };
+        let count = parse_investigate_for_each_count(filter_tokens)?;
 
-        return Ok(EffectAst::Investigate { count });
+        return Ok(EffectAst::Investigate { count, player });
     }
 
     let (count, used) = if let Some(first) = tokens.first().and_then(OwnedLexToken::as_word) {
@@ -1164,5 +1194,5 @@ pub(crate) fn parse_investigate(tokens: &[OwnedLexToken]) -> Result<EffectAst, C
         )));
     }
 
-    Ok(EffectAst::Investigate { count })
+    Ok(EffectAst::Investigate { count, player })
 }

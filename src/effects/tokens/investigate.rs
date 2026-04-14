@@ -2,10 +2,11 @@
 
 use crate::cards::tokens::clue_token_definition;
 use crate::effect::{EffectOutcome, Value};
-use crate::effects::helpers::resolve_value;
+use crate::effects::helpers::{resolve_player_filter, resolve_value};
 use crate::effects::{CreateTokenEffect, EffectExecutor};
 use crate::events::{KeywordActionEvent, KeywordActionKind};
 use crate::executor::{ExecutionContext, ExecutionError};
+use crate::filter::PlayerFilter;
 use crate::game_state::GameState;
 use crate::triggers::TriggerEvent;
 
@@ -16,14 +17,22 @@ use crate::triggers::TriggerEvent;
 pub struct InvestigateEffect {
     /// How many times to investigate.
     pub count: Value,
+    /// The player who investigates.
+    pub player: PlayerFilter,
 }
 
 impl InvestigateEffect {
     /// Create a new investigate effect.
-    pub fn new(count: impl Into<Value>) -> Self {
+    pub fn new(count: impl Into<Value>, player: PlayerFilter) -> Self {
         Self {
             count: count.into(),
+            player,
         }
+    }
+
+    /// The controller investigates N times.
+    pub fn you(count: impl Into<Value>) -> Self {
+        Self::new(count, PlayerFilter::You)
     }
 }
 
@@ -33,6 +42,7 @@ impl EffectExecutor for InvestigateEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        let player_id = resolve_player_filter(game, &self.player, ctx)?;
         let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
         if count == 0 {
             return Ok(EffectOutcome::resolved());
@@ -41,15 +51,14 @@ impl EffectExecutor for InvestigateEffect {
         let mut outcomes = Vec::with_capacity(count);
         let mut action_events = Vec::with_capacity(count);
         for _ in 0..count {
-            let effect = CreateTokenEffect::you(clue_token_definition(), 1);
+            let effect = CreateTokenEffect::new(
+                clue_token_definition(),
+                1,
+                PlayerFilter::Specific(player_id),
+            );
             outcomes.push(effect.execute(game, ctx)?);
             action_events.push(TriggerEvent::new_with_provenance(
-                KeywordActionEvent::new(
-                    KeywordActionKind::Investigate,
-                    ctx.controller,
-                    ctx.source,
-                    1,
-                ),
+                KeywordActionEvent::new(KeywordActionKind::Investigate, player_id, ctx.source, 1),
                 ctx.provenance,
             ));
         }
@@ -79,7 +88,7 @@ mod tests {
         let source = game.new_object_id();
         let mut ctx = ExecutionContext::new_default(source, alice);
 
-        let result = InvestigateEffect::new(2)
+        let result = InvestigateEffect::you(2)
             .execute(&mut game, &mut ctx)
             .expect("investigate resolves");
 
@@ -104,7 +113,7 @@ mod tests {
         let source = game.new_object_id();
         let mut ctx = ExecutionContext::new_default(source, alice);
 
-        InvestigateEffect::new(1)
+        InvestigateEffect::you(1)
             .execute(&mut game, &mut ctx)
             .expect("investigate resolves");
 

@@ -1301,6 +1301,7 @@ pub(crate) enum EffectAst {
     },
     Investigate {
         count: Value,
+        player: PlayerAst,
     },
     Amass {
         subtype: Option<Subtype>,

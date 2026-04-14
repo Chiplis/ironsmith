@@ -2935,7 +2935,13 @@ impl Effect {
     /// Create an "investigate N times" effect.
     pub fn investigate(count: impl Into<Value>) -> Self {
         use crate::effects::InvestigateEffect;
-        Self::new(InvestigateEffect::new(count))
+        Self::new(InvestigateEffect::you(count))
+    }
+
+    /// Create an "[player] investigates N times" effect.
+    pub fn investigate_player(count: impl Into<Value>, player: PlayerFilter) -> Self {
+        use crate::effects::InvestigateEffect;
+        Self::new(InvestigateEffect::new(count, player))
     }
 
     /// Create a cipher resolution effect.

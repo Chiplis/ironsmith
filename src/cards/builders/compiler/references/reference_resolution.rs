@@ -1306,7 +1306,7 @@ fn resolve_effect_result_values_in_fields(
         | EffectAst::PayEnergy { amount, .. }
         | EffectAst::LookAtTopCards { count: amount, .. }
         | EffectAst::CopySpell { count: amount, .. }
-        | EffectAst::Investigate { count: amount }
+        | EffectAst::Investigate { count: amount, .. }
         | EffectAst::Populate { count: amount, .. }
         | EffectAst::Proliferate { count: amount }
         | EffectAst::CreateTokenCopy { count: amount, .. }
@@ -1866,7 +1866,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             replacements
         }
         EffectAst::MayMoveToZone { target, .. } => bind_unresolved_it_in_target(target, seed_tag),
-        EffectAst::Investigate { count }
+        EffectAst::Investigate { count, .. }
         | EffectAst::Populate { count, .. }
         | EffectAst::Proliferate { count } => bind_unresolved_it_in_value(count, seed_tag),
         EffectAst::CreateTokenCopy { object, count, .. } => {
@@ -2216,10 +2216,14 @@ mod tests {
         let effects = vec![
             EffectAst::Investigate {
                 count: Value::Fixed(1),
+                player: crate::cards::builders::PlayerAst::Implicit,
             },
             EffectAst::IfResult {
                 predicate: IfResultPredicate::Did,
-                effects: vec![EffectAst::Investigate { count: Value::X }],
+                effects: vec![EffectAst::Investigate {
+                    count: Value::X,
+                    player: crate::cards::builders::PlayerAst::Implicit,
+                }],
             },
         ];
 
@@ -2243,8 +2247,9 @@ mod tests {
                 assert_eq!(*predicate, IfResultPredicate::Did);
                 assert_eq!(effects.len(), 1);
                 match &effects[0] {
-                    EffectAst::Investigate { count } => {
+                    EffectAst::Investigate { count, player } => {
                         assert_eq!(count, &Value::EffectValue(EffectId(0)));
+                        assert_eq!(player, &crate::cards::builders::PlayerAst::Implicit);
                     }
                     other => panic!("expected investigate follow-up, got {other:?}"),
                 }
@@ -2294,6 +2299,7 @@ mod tests {
         let effects = vec![
             EffectAst::Investigate {
                 count: Value::Fixed(1),
+                player: PlayerAst::Implicit,
             },
             EffectAst::Draw {
                 count: Value::EventValue(EventValueSpec::Amount),
@@ -2423,6 +2429,7 @@ mod tests {
         let effects = vec![
             EffectAst::Investigate {
                 count: Value::Fixed(1),
+                player: PlayerAst::Implicit,
             },
             EffectAst::Draw {
                 count: Value::EventValue(EventValueSpec::Amount),
