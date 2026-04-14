@@ -1345,21 +1345,10 @@
   box-shadow: none;
 }
 
-.stack-timeline-item-active::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  border-radius: inherit;
-  background:
-    linear-gradient(90deg, rgba(var(--player-accent-rgb, 130, 210, 255), 0.04), rgba(var(--player-accent-rgb, 130, 210, 255), 0.7), rgba(var(--player-accent-rgb, 130, 210, 255), 0.04)) top center / calc(100% - 18px) 2px no-repeat,
-    linear-gradient(90deg, rgba(var(--player-accent-rgb, 130, 210, 255), 0.04), rgba(var(--player-accent-rgb, 130, 210, 255), 0.7), rgba(var(--player-accent-rgb, 130, 210, 255), 0.04)) bottom center / calc(100% - 18px) 2px no-repeat;
-}
-
-.stack-timeline-item-active .stack-card-title,
-.game-card.stack-card.stack-card-active .stack-card-title,
-.stack-timeline-item-active .stack-entry-title,
-.stack-timeline-item-active .stack-entry-badge {
+.game-card.stack-card .stack-card-title,
+.stack-timeline-entry-surface .stack-entry-title,
+.stack-timeline-entry-surface .stack-entry-badge,
+.game-card.stack-card.stack-card-active .stack-card-title {
   text-shadow:
     0 0 8px rgba(var(--player-accent-rgb, 166, 223, 255), 0.72),
     0 1px 2px rgba(0, 0, 0, 0.9);
@@ -10595,12 +10584,28 @@ textarea,
   flex: 0 0 auto;
 }
 
-.game-card.stack-card,
+.game-card.stack-card {
+  border: 1px solid rgba(196, 167, 112, 0.52) !important;
+  background:
+    linear-gradient(180deg, rgb(118, 95, 67), rgb(51, 39, 27)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 244, 220, 0.16),
+    inset 0 -1px 0 rgba(15, 10, 7, 0.78) !important;
+  color: #eadfc4 !important;
+}
+
 .stack-timeline-entry-surface.stack-timeline-circuit {
   border: 1px solid rgba(128, 107, 78, 0.42) !important;
-  background:
-    linear-gradient(180deg, rgba(82, 70, 58, 0.96), rgba(33, 28, 24, 0.98)) !important;
+  background: transparent !important;
   color: #eadfc4 !important;
+}
+
+.stack-timeline-entry-fill {
+  background:
+    linear-gradient(180deg, rgb(118, 95, 67), rgb(51, 39, 27)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 244, 220, 0.16),
+    inset 0 -1px 0 rgba(15, 10, 7, 0.78) !important;
 }
 
 .game-card.stack-card.stack-card-reorderable {
@@ -10608,17 +10613,24 @@ textarea,
   border-right: 3px solid rgba(196, 167, 112, 0.72) !important;
 }
 
-.game-card.stack-card.stack-card-active,
-.stack-timeline-item-active {
+.game-card.stack-card.stack-card-active {
   background:
-    linear-gradient(180deg, rgba(84, 68, 47, 0.98), rgba(34, 27, 20, 0.98)) !important;
+    linear-gradient(180deg, rgb(118, 95, 67), rgb(51, 39, 27)) !important;
+}
+
+.stack-timeline-item-active {
+  background: transparent !important;
 }
 
 .stack-timeline-entry-ordering .stack-timeline-entry-surface.stack-timeline-circuit,
 .stack-timeline-entry-surface.stack-timeline-circuit.stack-timeline-entry-surface-ordering {
   border-color: rgba(138, 189, 234, 0.58) !important;
+  background: transparent !important;
+}
+
+.stack-timeline-entry-fill-ordering {
   background:
-    linear-gradient(180deg, rgba(18, 45, 72, 0.98), rgba(9, 20, 35, 0.98)) !important;
+    linear-gradient(180deg, rgb(36, 74, 113), rgb(16, 33, 53)) !important;
 }
 
 .stack-timeline-entry-ordering .stack-entry-title,
@@ -10631,15 +10643,9 @@ textarea,
   filter: saturate(1.08) brightness(1.08);
 }
 
-.stack-timeline-item-active::before {
-  background:
-    linear-gradient(90deg, rgba(255, 226, 168, 0.06), rgba(214, 182, 120, 0.8), rgba(255, 226, 168, 0.06)) top center / calc(100% - 18px) 2px no-repeat,
-    linear-gradient(90deg, rgba(255, 226, 168, 0.06), rgba(214, 182, 120, 0.8), rgba(255, 226, 168, 0.06)) bottom center / calc(100% - 18px) 2px no-repeat !important;
-}
-
 .stack-card-body {
   background:
-    linear-gradient(180deg, rgba(49, 42, 36, 0.76), rgba(18, 16, 15, 0.9)) !important;
+    linear-gradient(180deg, rgba(73, 58, 42, 0.68), rgba(24, 18, 14, 0.84)) !important;
 }
 
 .stack-card-reorder-button {

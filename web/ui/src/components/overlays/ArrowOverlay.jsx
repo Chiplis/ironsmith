@@ -7,6 +7,15 @@ const ARROW_DASH_ARRAY = "8 4";
 const STACK_ROUTE_GAP = 6;
 const TARGETING_ARROW_OPACITY = 0.7;
 const PLAYER_TARGET_GAP = 16;
+// Keep persistent stack-target arrows unfiltered. SVG glow filters were causing
+// overlapped stack entries to render markedly darker in some browsers after
+// target submission, when the confirmed arrow remains visible during payment.
+
+function readArrowAnchorGap(el, fallback) {
+  const raw = el?.getAttribute("data-arrow-anchor-gap");
+  const parsed = Number.parseFloat(raw ?? "");
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
 
 function curvedArrowPath(x1, y1, x2, y2) {
   const dx = x2 - x1;
@@ -144,6 +153,12 @@ function pointAfterRect(rect, to, gap = 10) {
   };
 }
 
+function stackToBoardArrowPath(fromRect, toRect, targetGap = 9) {
+  const from = rectBottomAnchor(fromRect, 2);
+  const to = pointBeforeRect(from, toRect, targetGap);
+  return curvedArrowPath(from.x, from.y, to.x, to.y);
+}
+
 export default function ArrowOverlay() {
   const { arrows, dragArrow } = useCombatArrows();
   const [, setTick] = useState(0);
@@ -176,7 +191,7 @@ export default function ArrowOverlay() {
       const sourceIsStackAnchor = fromEl.getAttribute("data-arrow-anchor") === "stack";
       const targetIsStackAnchor = toEl?.getAttribute("data-arrow-anchor") === "stack";
       const targetGap = targetIsStackAnchor
-        ? 14
+        ? readArrowAnchorGap(toEl, 14)
         : targetIsPlayerAnchor
           ? PLAYER_TARGET_GAP
           : 9;
@@ -184,7 +199,8 @@ export default function ArrowOverlay() {
         ? pointBeforeRect(sourceCenter, toRect, targetGap)
         : centerOf(toRect);
       const stackToStack = sourceIsStackAnchor && targetIsStackAnchor;
-      const from = stackToStack
+      const stackToBoard = sourceIsStackAnchor && !targetIsStackAnchor;
+      const from = stackToStack || stackToBoard
         ? rectBottomAnchor(fromRect, 2)
         : (
           sourceIsStackAnchor
@@ -200,6 +216,8 @@ export default function ArrowOverlay() {
         );
       const d = stackToStack
         ? stackedRoutedArrowPath(from, to, fromRect, toRect)
+        : stackToBoard
+          ? stackToBoardArrowPath(fromRect, toRect, targetGap)
         : curvedArrowPath(from.x, from.y, to.x, to.y);
       result.push({ d, color: arrow.color || "#ff3b30", key: arrow.key });
     }
@@ -288,7 +306,7 @@ export default function ArrowOverlay() {
 
   return (
     <svg
-      className="fixed inset-0 w-full h-full z-[90] pointer-events-none"
+      className="fixed inset-0 isolate w-full h-full z-[90] pointer-events-none"
       style={{ overflow: "visible" }}
     >
       <defs>
@@ -335,8 +353,9 @@ export default function ArrowOverlay() {
           d={p.d}
           fill="none"
           stroke={p.color}
+          strokeWidth={2.5}
+          strokeLinecap="round"
           strokeDasharray={ARROW_DASH_ARRAY}
-          filter="url(#arrow-glow)"
           opacity={TARGETING_ARROW_OPACITY}
           markerEnd="url(#arrowhead-confirmed)"
         />

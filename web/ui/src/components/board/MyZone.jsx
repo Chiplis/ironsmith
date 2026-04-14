@@ -504,7 +504,7 @@ export default function MyZone({
       style={{
         gridTemplateRows: mergedMobileHeader
           ? "auto minmax(0,1fr)"
-          : `auto ${MY_ZONE_HEADER_HEIGHT}px minmax(0,1fr)`,
+          : `${MY_ZONE_HEADER_HEIGHT}px minmax(0,1fr)`,
         alignContent: "stretch",
         "--player-accent": playerAccent?.hex || "#d8bf6a",
         "--panel-accent": playerAccent?.hex || "#b98946",
@@ -512,21 +512,13 @@ export default function MyZone({
       }}
       data-my-zone
     >
-      {!mergedMobileHeader ? (
-        <div className="min-h-0 overflow-visible px-1.5 pt-1">
-          <StackTimelineRail
-            selectedObjectId={selectedObjectId}
-            onInspectObject={onInspect}
-          />
-        </div>
-      ) : null}
       <div className="relative min-h-0 overflow-visible">
         <div
           className={cn(
-            "battlefield-panel-header relative z-[1] overflow-visible pr-2",
+            "battlefield-panel-header relative overflow-visible pr-2",
             mergedMobileHeader
-              ? "battlefield-panel-header--merged flex min-h-[44px] items-stretch gap-1.5"
-              : "flex h-full items-center gap-2"
+              ? "z-[1] battlefield-panel-header--merged flex min-h-[44px] items-stretch gap-1.5"
+              : "z-[92] flex h-full items-center gap-2"
           )}
           data-turn-priority={isPriorityPlayer ? "true" : "false"}
         >
@@ -588,7 +580,13 @@ export default function MyZone({
             <div className="my-zone-merged-action-shell relative z-[1] min-w-0 flex-1 self-stretch">
               {embeddedActionBar}
             </div>
-          ) : null}
+          ) : (
+            <StackTimelineRail
+              selectedObjectId={selectedObjectId}
+              onInspectObject={onInspect}
+              className="h-full flex-1 self-stretch pl-2"
+            />
+          )}
         </div>
         {mergedMobileHeader ? (
           <StackTimelineRail

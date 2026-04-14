@@ -206,6 +206,118 @@ fn parse_exile_library_then_shuffle_graveyard_chain_lexed(
     ]))
 }
 
+pub(crate) fn parse_top_cards_put_counted_into_hand_rest_graveyard_chain_lexed(
+    tokens: &[OwnedLexToken],
+) -> Option<Vec<EffectAst>> {
+    let clause_tokens = trim_lexed_commas(tokens);
+    let clause_words = token_word_refs(clause_tokens);
+    let then_word_idx = clause_words.iter().position(|word| *word == "then")?;
+    let clause_word_view = TokenWordView::new(clause_tokens);
+    let then_token_idx = clause_word_view.token_index_for_word_index(then_word_idx)?;
+    let prefix_tokens = trim_lexed_commas(&clause_tokens[..then_token_idx]);
+    let (player, count, reveal_top) = super::parse_top_cards_view_sentence(prefix_tokens)?;
+
+    let tail_start = clause_word_view
+        .token_index_after_words(then_word_idx + 1)
+        .unwrap_or(clause_tokens.len());
+    let tail_tokens = trim_lexed_commas(&clause_tokens[tail_start..]);
+    let tail_word_view = TokenWordView::new(&tail_tokens);
+    if tail_word_view.first() != Some("put") {
+        return None;
+    }
+
+    let count_start = tail_word_view.token_index_for_word_index(1)?;
+    let count_tokens = &tail_tokens[count_start..];
+    let (put_count, used) = parse_number_from_lexed(count_tokens)?;
+    let tail_refs = TokenWordView::new(&count_tokens[used..]).word_refs();
+
+    let mut idx = 0usize;
+    if tail_refs.get(idx).copied() == Some("of") {
+        idx += 1;
+    }
+    match tail_refs.get(idx).copied() {
+        Some("them") => idx += 1,
+        Some("those") => {
+            idx += 1;
+            if matches!(tail_refs.get(idx).copied(), Some("card" | "cards")) {
+                idx += 1;
+            } else {
+                return None;
+            }
+        }
+        _ => return None,
+    }
+
+    if tail_refs.get(idx).copied() != Some("into") {
+        return None;
+    }
+    idx += 1;
+
+    let chooser = if tail_refs.get(idx).copied() == Some("your") {
+        idx += 1;
+        PlayerAst::You
+    } else if tail_refs.get(idx).copied() == Some("their") {
+        idx += 1;
+        PlayerAst::That
+    } else if tail_refs.get(idx..idx + 2) == Some(&["that", "player"]) {
+        idx += 2;
+        PlayerAst::That
+    } else {
+        player
+    };
+
+    if tail_refs.get(idx).copied() != Some("hand") {
+        return None;
+    }
+    idx += 1;
+    if tail_refs.get(idx).copied() != Some("and") {
+        return None;
+    }
+    idx += 1;
+    if tail_refs.get(idx).copied() == Some("the") {
+        idx += 1;
+    }
+    if tail_refs.get(idx).copied() != Some("rest") {
+        return None;
+    }
+    idx += 1;
+    if tail_refs.get(idx).copied() != Some("into") {
+        return None;
+    }
+    idx += 1;
+
+    if tail_refs.get(idx).copied() == Some("your")
+        || tail_refs.get(idx).copied() == Some("their")
+    {
+        idx += 1;
+    } else if tail_refs.get(idx..idx + 2) == Some(&["that", "player"]) {
+        idx += 2;
+    }
+
+    if !matches!(tail_refs.get(idx).copied(), Some("graveyard" | "graveyards")) {
+        return None;
+    }
+    idx += 1;
+    if idx != tail_refs.len() {
+        return None;
+    }
+
+    let looked_tag = crate::cards::builders::TagKey::from(crate::cards::builders::IT_TAG);
+    let mut effects = vec![EffectAst::LookAtTopCards {
+        player,
+        count,
+        tag: looked_tag.clone(),
+    }];
+    if reveal_top {
+        effects.push(EffectAst::RevealTagged { tag: looked_tag });
+    }
+    effects.push(EffectAst::PutSomeIntoHandRestIntoGraveyard {
+        player: chooser,
+        count: put_count as u32,
+    });
+    Some(effects)
+}
+
 pub(crate) fn looks_like_multi_create_chain_lexed(tokens: &[OwnedLexToken]) -> bool {
     matches!(find_verb_lexed(tokens), Some((Verb::Create, _)))
         && token_word_refs(tokens)
@@ -219,6 +331,10 @@ pub(crate) fn parse_effect_chain_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
     if let Some(effects) = parse_exile_library_then_shuffle_graveyard_chain_lexed(tokens)? {
+        return Ok(effects);
+    }
+    if let Some(effects) = parse_top_cards_put_counted_into_hand_rest_graveyard_chain_lexed(tokens)
+    {
         return Ok(effects);
     }
 
@@ -499,6 +615,29 @@ mod tests {
             parse_leading_player_may_lexed(&tokens),
             Some(PlayerAst::ThatPlayerOrTargetController)
         );
+    }
+
+    #[test]
+    fn top_cards_then_put_counted_into_hand_rest_graveyard_chain_parses() {
+        let tokens = lex_line(
+            "Look at the top three cards of your library, then put one of them into your hand and the rest into your graveyard",
+            0,
+        )
+        .expect("looked-cards split clause should lex");
+
+        let effects =
+            parse_effect_chain_lexed(&tokens).expect("looked-cards split clause should parse");
+
+        assert!(matches!(
+            effects.as_slice(),
+            [
+                EffectAst::LookAtTopCards { .. },
+                EffectAst::PutSomeIntoHandRestIntoGraveyard {
+                    player: PlayerAst::You,
+                    count: 1,
+                },
+            ]
+        ));
     }
 
     #[test]

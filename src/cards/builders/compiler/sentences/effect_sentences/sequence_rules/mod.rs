@@ -242,6 +242,14 @@ const REGISTERED_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         parser: triples::parse_top_cards_put_match_into_hand_rest_graveyard,
     },
     SequenceRuleDef {
+        name: "top-cards-choose-for-each-filter-one-battlefield-others-hand-rest-graveyard",
+        feature_tag: Some("looked-cards-filter-bundle"),
+        priority: 335,
+        consumed_sentences: 3,
+        predicate: first_word_look_or_reveal,
+        parser: triples::parse_top_cards_choose_for_each_filter_one_battlefield_others_hand_rest_graveyard,
+    },
+    SequenceRuleDef {
         name: "top-cards-for-each-card-type-put-matching-into-hand-rest-bottom",
         feature_tag: Some("looked-cards-card-type-choice"),
         priority: 334,

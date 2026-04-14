@@ -2,23 +2,27 @@ use super::super::dispatch_entry::{
     ConsultCastCost, consult_cast_effects, consult_stop_rule_is_single_match,
     parse_bargained_face_down_cast_mana_value_gate, parse_consult_bottom_remainder_clause,
     parse_consult_cast_clause, parse_consult_traversal_sentence,
+    find_from_among_looked_cards_phrase,
     parse_if_declined_put_match_into_hand, parse_if_no_card_into_hand_this_way_sentence,
     parse_if_you_dont_sentence, parse_top_cards_view_sentence,
 };
 use crate::cards::builders::compiler::activation_and_restrictions::activated_line_core::find_word_sequence_start;
 use crate::cards::builders::compiler::effect_sentences;
+use crate::cards::builders::compiler::front_end::lexer::OwnedLexToken;
 use crate::cards::builders::compiler::effect_sentences::SentenceInput;
 use crate::cards::builders::compiler::lexer::TokenWordView;
 use crate::cards::builders::compiler::token_primitives::{
     parse_leading_may_action_lexed, slice_contains, slice_ends_with, slice_starts_with,
 };
-use crate::cards::builders::compiler::util::is_article;
+use crate::cards::builders::compiler::util::{helper_tag_for_tokens, is_article};
 use crate::cards::builders::compiler::util::trim_commas;
 use crate::cards::builders::{
     CardTextError, EffectAst, IfResultPredicate, ObjectFilter, PredicateAst, TagKey, TargetAst,
+    TextSpan,
 };
-use crate::effect::Value;
+use crate::effect::{ChoiceCount, Value};
 use crate::target::ChooseSpec;
+use crate::target::{TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::zone::Zone;
 
 pub(super) fn parse_mill_then_may_put_from_among_into_hand_then_if_you_dont(
@@ -306,6 +310,265 @@ pub(super) fn parse_top_cards_put_match_into_hand_rest_graveyard(
         reveal: reveal_chosen,
         if_not_chosen: Vec::new(),
     });
+    Ok(Some(effects))
+}
+
+fn trim_keyword_choice_segment(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+    let mut start = 0usize;
+    let mut end = tokens.len();
+    while start < end
+        && (tokens[start].is_comma() || tokens[start].is_period() || tokens[start].is_word("and"))
+    {
+        start += 1;
+    }
+    while end > start
+        && (tokens[end - 1].is_comma()
+            || tokens[end - 1].is_period()
+            || tokens[end - 1].is_word("and"))
+    {
+        end -= 1;
+    }
+    tokens[start..end].to_vec()
+}
+
+fn split_keyword_choice_segments(tokens: &[OwnedLexToken]) -> Vec<Vec<OwnedLexToken>> {
+    let mut segments = Vec::new();
+    let mut current = Vec::new();
+    for token in tokens {
+        if token.is_comma() {
+            let trimmed = trim_keyword_choice_segment(&current);
+            if !trimmed.is_empty() {
+                segments.push(trimmed);
+            }
+            current.clear();
+            continue;
+        }
+        current.push(token.clone());
+    }
+    let trimmed = trim_keyword_choice_segment(&current);
+    if !trimmed.is_empty() {
+        segments.push(trimmed);
+    }
+    segments
+}
+
+fn parse_keyword_choice_filter(segment: &[OwnedLexToken]) -> Option<ObjectFilter> {
+    let trimmed = trim_keyword_choice_segment(segment);
+    if trimmed.is_empty() {
+        return None;
+    }
+    effect_sentences::parse_looked_card_choice_filter(&trimmed).or_else(|| {
+        let mut expanded = vec![
+            OwnedLexToken::word("a".to_string(), TextSpan::synthetic()),
+            OwnedLexToken::word("card".to_string(), TextSpan::synthetic()),
+            OwnedLexToken::word("with".to_string(), TextSpan::synthetic()),
+        ];
+        expanded.extend(trimmed);
+        effect_sentences::parse_looked_card_choice_filter(&expanded)
+    })
+}
+
+fn parse_choose_from_looked_cards_for_each_filter(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<ObjectFilter>>, CardTextError> {
+    let sentence_tokens = trim_commas(tokens);
+    let words = TokenWordView::new(&sentence_tokens);
+    if !matches!(words.first(), Some("choose")) {
+        return Ok(None);
+    }
+
+    let Some((from_among_word_idx, from_among_len)) = find_from_among_looked_cards_phrase(&words)
+    else {
+        return Ok(None);
+    };
+    if from_among_word_idx != 1 {
+        return Ok(None);
+    }
+
+    let tail_start = words
+        .token_index_after_words(from_among_word_idx + from_among_len)
+        .unwrap_or(sentence_tokens.len());
+    let tail_tokens = trim_commas(&sentence_tokens[tail_start..]);
+    let tail_words = TokenWordView::new(&tail_tokens);
+    let tail_refs = tail_words.word_refs();
+    let Some(and_so_on_idx) = find_word_sequence_start(&tail_refs, &["and", "so", "on", "for"])
+    else {
+        return Ok(None);
+    };
+
+    let prelude_end = tail_words
+        .token_index_for_word_index(and_so_on_idx)
+        .unwrap_or(tail_tokens.len());
+    let suffix_start = tail_words
+        .token_index_after_words(and_so_on_idx + 4)
+        .unwrap_or(tail_tokens.len());
+
+    let mut filters = Vec::new();
+    for segment in split_keyword_choice_segments(&tail_tokens[..prelude_end]) {
+        let Some(filter) = parse_keyword_choice_filter(&segment) else {
+            return Err(CardTextError::ParseError(
+                "unable to parse initial looked-card choice filter".to_string(),
+            ));
+        };
+        filters.push(filter);
+    }
+    for segment in split_keyword_choice_segments(&tail_tokens[suffix_start..]) {
+        let Some(filter) = parse_keyword_choice_filter(&segment) else {
+            return Err(CardTextError::ParseError(
+                "unable to parse repeated looked-card choice filter".to_string(),
+            ));
+        };
+        filters.push(filter);
+    }
+
+    if filters.len() < 3 {
+        return Ok(None);
+    }
+    Ok(Some(filters))
+}
+
+fn is_one_chosen_to_battlefield_others_to_hand_rest_to_graveyard(
+    tokens: &[OwnedLexToken],
+) -> bool {
+    let trimmed = trim_commas(tokens);
+    let words = TokenWordView::new(&trimmed);
+    let word_refs = words.word_refs();
+    if !slice_starts_with(
+        &word_refs,
+        &[
+            "put", "one", "of", "the", "chosen", "cards", "onto", "the", "battlefield",
+        ],
+    ) {
+        return false;
+    }
+    find_word_sequence_start(
+        &word_refs,
+        &["the", "other", "chosen", "cards", "into", "your", "hand"],
+    )
+    .is_some()
+        && find_word_sequence_start(&word_refs, &["the", "rest", "into", "your", "graveyard"])
+            .is_some()
+}
+
+pub(super) fn parse_top_cards_choose_for_each_filter_one_battlefield_others_hand_rest_graveyard(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some((player, count, reveal_top)) =
+        parse_top_cards_view_sentence(sentences[sentence_idx].lowered())
+    else {
+        return Ok(None);
+    };
+    let Some(choice_filters) =
+        parse_choose_from_looked_cards_for_each_filter(sentences[sentence_idx + 1].lowered())?
+    else {
+        return Ok(None);
+    };
+    if !is_one_chosen_to_battlefield_others_to_hand_rest_to_graveyard(
+        sentences[sentence_idx + 2].lowered(),
+    ) {
+        return Ok(None);
+    }
+
+    let looked_tag = helper_tag_for_tokens(sentences[sentence_idx].lowered(), "revealed");
+    let chosen_tag = helper_tag_for_tokens(sentences[sentence_idx + 1].lowered(), "chosen");
+    let battlefield_tag = helper_tag_for_tokens(sentences[sentence_idx + 2].lowered(), "battlefield");
+
+    let mut effects = vec![EffectAst::LookAtTopCards {
+        player,
+        count,
+        tag: looked_tag.clone(),
+    }];
+    if reveal_top {
+        effects.push(EffectAst::RevealTagged {
+            tag: looked_tag.clone(),
+        });
+    }
+
+    for filter in choice_filters {
+        let mut choose_filter = filter;
+        choose_filter.zone = Some(Zone::Library);
+        choose_filter
+            .tagged_constraints
+            .push(TaggedObjectConstraint {
+                tag: looked_tag.clone(),
+                relation: TaggedOpbjectRelation::IsTaggedObject,
+            });
+        choose_filter
+            .tagged_constraints
+            .push(TaggedObjectConstraint {
+                tag: chosen_tag.clone(),
+                relation: TaggedOpbjectRelation::IsNotTaggedObject,
+            });
+        effects.push(EffectAst::ChooseObjects {
+            filter: choose_filter,
+            count: ChoiceCount::up_to(1),
+            count_value: None,
+            player,
+            tag: chosen_tag.clone(),
+        });
+    }
+
+    let mut battlefield_filter = ObjectFilter::default();
+    battlefield_filter.zone = Some(Zone::Library);
+    battlefield_filter
+        .tagged_constraints
+        .push(TaggedObjectConstraint {
+            tag: chosen_tag.clone(),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+    effects.push(EffectAst::ChooseObjects {
+        filter: battlefield_filter,
+        count: ChoiceCount::up_to(1),
+        count_value: None,
+        player,
+        tag: battlefield_tag.clone(),
+    });
+    effects.push(EffectAst::MoveToZone {
+        target: TargetAst::Tagged(battlefield_tag.clone(), None),
+        zone: Zone::Battlefield,
+        to_top: false,
+        battlefield_controller: crate::cards::builders::ReturnControllerAst::Preserve,
+        battlefield_tapped: false,
+        attached_to: None,
+    });
+    effects.push(EffectAst::ForEachTagged {
+        tag: chosen_tag.clone(),
+        effects: vec![EffectAst::Conditional {
+            predicate: PredicateAst::TaggedMatches(
+                TagKey::from(crate::cards::builders::IT_TAG),
+                ObjectFilter::tagged(battlefield_tag.clone()),
+            ),
+            if_true: Vec::new(),
+            if_false: vec![EffectAst::MoveToZone {
+                target: TargetAst::Tagged(TagKey::from(crate::cards::builders::IT_TAG), None),
+                zone: Zone::Hand,
+                to_top: false,
+                battlefield_controller: crate::cards::builders::ReturnControllerAst::Preserve,
+                battlefield_tapped: false,
+                attached_to: None,
+            }],
+        }],
+    });
+    effects.push(EffectAst::ForEachTagged {
+        tag: looked_tag,
+        effects: vec![EffectAst::Conditional {
+            predicate: PredicateAst::TaggedMatches(
+                TagKey::from(crate::cards::builders::IT_TAG),
+                ObjectFilter::tagged(chosen_tag),
+            ),
+            if_true: Vec::new(),
+            if_false: vec![EffectAst::MoveToZone {
+                target: TargetAst::Tagged(TagKey::from(crate::cards::builders::IT_TAG), None),
+                zone: Zone::Graveyard,
+                to_top: false,
+                battlefield_controller: crate::cards::builders::ReturnControllerAst::Preserve,
+                battlefield_tapped: false,
+                attached_to: None,
+            }],
+        }],
+    });
+
     Ok(Some(effects))
 }
 

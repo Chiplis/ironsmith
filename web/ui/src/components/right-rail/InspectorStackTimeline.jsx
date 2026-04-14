@@ -117,6 +117,7 @@ function HorizontalStackEntry({
   showStackAlert = false,
   onClick,
   reorderControls = null,
+  compact = false,
 }) {
   const name = entry?.name || `Object#${entry?.id}`;
   const artUrl = scryfallImageUrl(name, "art_crop");
@@ -124,6 +125,7 @@ function HorizontalStackEntry({
   const subtitle = String(entry?.__subtitle || "").trim();
   const isTriggerOrderingEntry = !!entry?.__trigger_ordering;
   const isSpell = !entry?.ability_kind;
+  const entryMinHeight = compact ? 40 : HORIZONTAL_STACK_ENTRY_MIN_HEIGHT;
   const pt = entry?.power_toughness
     || (entry?.power != null && entry?.toughness != null
       ? `${entry.power}/${entry.toughness}`
@@ -144,9 +146,10 @@ function HorizontalStackEntry({
       )}
       style={{
         width: HORIZONTAL_STACK_ENTRY_WIDTH,
-        minHeight: `${HORIZONTAL_STACK_ENTRY_MIN_HEIGHT}px`,
+        minHeight: `${entryMinHeight}px`,
       }}
       data-arrow-anchor="stack"
+      data-arrow-anchor-gap={compact ? "26" : undefined}
       data-object-id={entry?.id}
     >
       {reorderControls && (
@@ -176,19 +179,27 @@ function HorizontalStackEntry({
       <button
         type="button"
         className={cn(
-          "stack-timeline-entry-surface stack-timeline-circuit relative grid h-full w-full grid-cols-[24px_minmax(0,1fr)] items-start gap-x-1.5 gap-y-0 overflow-hidden border border-[rgba(178,147,96,0.52)] bg-[linear-gradient(180deg,rgba(86,73,58,0.96),rgba(34,29,24,0.98))] px-2 py-[5px] text-left transition-[background,box-shadow,transform] duration-150",
+          "stack-timeline-entry-surface stack-timeline-circuit relative grid h-full w-full items-start gap-x-1.5 gap-y-0 overflow-hidden border border-[rgba(224,191,127,0.78)] px-2 text-left transition-[background,box-shadow,transform] duration-150",
+          compact
+            ? "grid-cols-[20px_minmax(0,1fr)] py-1"
+            : "grid-cols-[24px_minmax(0,1fr)] py-[5px]",
           reorderControls && "pl-8 pr-8",
           isTriggerOrderingEntry && "stack-timeline-entry-surface-ordering",
-          !isActive && "hover:shadow-none",
-          isActive && "stack-timeline-item-active",
-          isActive && "border-[rgba(224,191,127,0.78)] bg-[linear-gradient(180deg,rgba(108,88,59,0.98),rgba(48,38,27,0.98))]"
+          "hover:shadow-none",
+          isActive && "stack-timeline-item-active"
         )}
-        style={{ minHeight: `${HORIZONTAL_STACK_ENTRY_MIN_HEIGHT}px`, ...accentStyle }}
+        style={{ minHeight: `${entryMinHeight}px`, ...accentStyle }}
         onClick={() => onClick?.(stackInspectObjectId(entry), {
           source: "stack",
           stackEntry: entry,
         })}
       >
+        <div
+          className={cn(
+            "stack-timeline-entry-fill absolute inset-0 z-0",
+            isTriggerOrderingEntry && "stack-timeline-entry-fill-ordering"
+          )}
+        />
         <AnimatedCircuitFrame
           seed={`stack-timeline:${entry?.id}:${entry?.controller}:${name}`}
           path={HORIZONTAL_STACK_CIRCUIT_PATH}
@@ -201,14 +212,19 @@ function HorizontalStackEntry({
         />
         <span
           className="stack-entry-badge pointer-events-none absolute left-2 z-[2] rounded bg-[rgba(54,43,33,0.9)] px-1 py-[1px] text-[8px] font-bold uppercase leading-none tracking-[0.12em] text-[#f0d7a2]"
-          style={{ top: `${HORIZONTAL_STACK_BADGE_TOP}px` }}
+          style={{ top: `${compact ? 22 : HORIZONTAL_STACK_BADGE_TOP}px` }}
         >
           {positionLabel}
         </span>
-        <div className="relative z-[2] h-6 w-6 shrink-0 overflow-hidden rounded-md bg-[rgba(43,34,27,0.96)]">
+        <div
+          className={cn(
+            "relative z-[2] shrink-0 overflow-hidden rounded-md bg-[rgba(43,34,27,0.96)]",
+            compact ? "h-5 w-5" : "h-6 w-6"
+          )}
+        >
           {artUrl && (
             <img
-              className="h-full w-full object-cover opacity-90"
+              className="h-full w-full object-cover opacity-100 saturate-[1.06] brightness-[1.08]"
               src={artUrl}
               alt=""
               loading="lazy"
@@ -216,9 +232,12 @@ function HorizontalStackEntry({
             />
           )}
         </div>
-        <div className="relative z-[2] h-6 min-w-0">
+        <div className={cn("relative z-[2] min-w-0", compact ? "h-5" : "h-6")}>
           <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-1.5">
-            <div className="stack-entry-title min-w-0 truncate pr-1 text-[13px] font-semibold leading-[1.02] text-[#fff0ca]">
+            <div className={cn(
+              "stack-entry-title min-w-0 truncate pr-1 font-semibold leading-[1.02] text-[#fff0ca]",
+              compact ? "text-[12px]" : "text-[13px]"
+            )}>
               {name}
             </div>
             <div className="flex shrink-0 items-start gap-1 pt-[1px]">
@@ -234,7 +253,10 @@ function HorizontalStackEntry({
               )}
             </div>
           </div>
-          <div className="absolute inset-x-0 bottom-0 truncate text-[9px] font-bold uppercase leading-none tracking-[0.12em] text-[#ead9b6]">
+          <div className={cn(
+            "absolute inset-x-0 bottom-0 truncate font-bold uppercase leading-none tracking-[0.12em] text-[#ead9b6]",
+            compact ? "text-[8px]" : "text-[9px]"
+          )}>
             {subtitle || kindLabel}
           </div>
         </div>
@@ -258,6 +280,7 @@ export default function InspectorStackTimeline({
   collapsed = false,
   onToggleCollapsed = null,
   maxBodyHeight = null,
+  compact = false,
 }) {
   const {
     state,
@@ -325,8 +348,19 @@ export default function InspectorStackTimeline({
     .map((entry) => entry.__timeline_key)
     .join("|");
   const isHorizontal = layout === "horizontal";
-  const horizontalEntries = horizontalTimelineEntries;
-  const horizontalPreviewEntries = stackPreview;
+  const horizontalEntries = useMemo(
+    () => horizontalTimelineEntries
+      .map((entry, index) => ({
+        ...entry,
+        __horizontal_source_index: index,
+      }))
+      .reverse(),
+    [horizontalTimelineEntries]
+  );
+  const horizontalPreviewEntries = useMemo(
+    () => [...stackPreview].reverse(),
+    [stackPreview]
+  );
   const handleInspectStackObject = useCallback((objectId, meta) => {
     dismissStackStartAlert();
     onInspectObject?.(objectId, meta);
@@ -374,7 +408,10 @@ export default function InspectorStackTimeline({
 
   useLayoutReflow(bodyRef, timelineSignature, {
     children: ".stack-timeline-entry",
-    disabled: collapsed || timelineEntries.length === 0 || (isHorizontal && triggerOrderingActive),
+    // The horizontal stack rail is absolutely positioned and can retain intermediate
+    // wrapper opacity from FLIP-style reflow animations, which makes the active item
+    // look dim even though its inner surface is fully opaque.
+    disabled: collapsed || timelineEntries.length === 0 || isHorizontal || (isHorizontal && triggerOrderingActive),
     delay: stagger(34),
     duration: 320,
     bounce: 0.12,
@@ -389,18 +426,18 @@ export default function InspectorStackTimeline({
     if (!scroller || !content) return;
 
     let rafId = null;
-    const syncToLeftEdge = () => {
+    const syncToRightEdge = () => {
       if (rafId != null) cancelAnimationFrame(rafId);
       rafId = requestAnimationFrame(() => {
         rafId = null;
-        scroller.scrollLeft = 0;
+        scroller.scrollLeft = Math.max(0, scroller.scrollWidth - scroller.clientWidth);
       });
     };
 
-    syncToLeftEdge();
+    syncToRightEdge();
 
     const observer = typeof ResizeObserver !== "undefined"
-      ? new ResizeObserver(syncToLeftEdge)
+      ? new ResizeObserver(syncToRightEdge)
       : null;
     observer?.observe(scroller);
     observer?.observe(content);
@@ -426,8 +463,13 @@ export default function InspectorStackTimeline({
   if (isHorizontal) {
     return (
       <section
-        className="relative flex items-stretch overflow-hidden rounded-[14px] bg-[linear-gradient(180deg,rgba(6,14,24,0.86),rgba(5,10,18,0.98))] backdrop-blur-[2.2px] shadow-[0_14px_30px_rgba(0,0,0,0.38)]"
-        style={{ minHeight: `${HORIZONTAL_STACK_ENTRY_MIN_HEIGHT + 2}px` }}
+        className={cn(
+          "relative isolate flex w-fit max-w-full items-stretch overflow-hidden",
+          compact
+            ? "rounded-none bg-transparent shadow-none"
+            : "rounded-[14px] bg-[linear-gradient(180deg,rgb(6,14,24),rgb(5,10,18))] shadow-[0_14px_30px_rgba(0,0,0,0.38)]"
+        )}
+        style={{ minHeight: `${compact ? 40 : HORIZONTAL_STACK_ENTRY_MIN_HEIGHT + 2}px` }}
         data-inspector-stack-timeline
       >
         <div
@@ -436,14 +478,15 @@ export default function InspectorStackTimeline({
         >
           <div
             ref={bodyRef}
-            className="flex w-max min-w-full items-stretch justify-start overflow-visible"
+            className="flex w-max min-w-full items-stretch justify-end overflow-visible"
           >
             {horizontalEntries.length > 0
               ? horizontalEntries.map((entry, index) => (
                   <HorizontalStackEntry
                     key={entry.__timeline_key}
                     entry={entry}
-                    positionLabel={positionLabelForIndex(index)}
+                    compact={compact}
+                    positionLabel={positionLabelForIndex(entry.__horizontal_source_index ?? index)}
                     showStackAlert={
                       !entry.__leaving
                       && !entry.__trigger_ordering
@@ -462,10 +505,11 @@ export default function InspectorStackTimeline({
                     onClick={entry.__leaving || entry.__trigger_ordering ? undefined : handleInspectStackObject}
                     reorderControls={entry.__trigger_ordering
                       ? {
-                          canMoveLeft: canAct && index > 0,
-                          canMoveRight: canAct && index < (pendingTriggerEntries.length - 1),
-                          onMoveLeft: () => moveTriggerOrderingItem(index, -1),
-                          onMoveRight: () => moveTriggerOrderingItem(index, 1),
+                          canMoveLeft: canAct && (entry.__horizontal_source_index ?? index) > 0,
+                          canMoveRight: canAct
+                            && (entry.__horizontal_source_index ?? index) < (pendingTriggerEntries.length - 1),
+                          onMoveLeft: () => moveTriggerOrderingItem(entry.__horizontal_source_index ?? index, -1),
+                          onMoveRight: () => moveTriggerOrderingItem(entry.__horizontal_source_index ?? index, 1),
                         }
                       : null}
                   />
@@ -474,7 +518,7 @@ export default function InspectorStackTimeline({
                 <div
                   key={`${name}-${index}`}
                   className={cn(
-                    "stack-timeline-entry relative flex h-full shrink-0 items-center bg-[linear-gradient(180deg,rgba(13,33,52,0.84),rgba(8,18,31,0.96))] px-3 text-[13px] font-semibold text-[#d5e7fd]",
+                    "stack-timeline-entry relative flex h-full shrink-0 items-center bg-[linear-gradient(180deg,rgb(13,33,52),rgb(8,18,31))] px-3 text-[13px] font-semibold text-[#d5e7fd]",
                     index > 0
                       ? "shadow-[inset_1px_0_0_rgba(53,80,108,0.65)]"
                       : ""

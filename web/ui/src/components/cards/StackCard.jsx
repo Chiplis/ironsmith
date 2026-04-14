@@ -171,7 +171,7 @@ export default function StackCard({
           <div className="relative h-7 w-7 shrink-0 overflow-hidden rounded-md bg-[#0b121b]">
             {artUrl && (
               <img
-                className="h-full w-full object-cover opacity-90"
+                className="h-full w-full object-cover opacity-100 saturate-[1.06] brightness-[1.08]"
                 src={artUrl}
                 alt=""
                 loading="lazy"

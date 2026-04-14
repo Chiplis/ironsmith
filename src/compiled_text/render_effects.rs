@@ -4945,27 +4945,49 @@ pub(super) fn describe_look_at_top_then_put_into_hand_rest_graveyard(
         return None;
     }
 
-    let chosen = describe_choose_filter_from_looked_cards(look_at_top, choose)?;
+    let mut base_filter = choose.filter.clone();
+    base_filter.zone = None;
+    base_filter.tagged_constraints.retain(|constraint| {
+        !(matches!(
+            constraint.relation,
+            crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        ) && constraint.tag.as_str() == look_at_top.tag.as_str())
+    });
     let owner = describe_possessive_player_filter(&look_at_top.player);
     let hand = describe_possessive_player_filter(&choose.chooser);
     let (count_text, noun, _) = describe_look_count_and_noun(&look_at_top.count);
-    let may_prefix = if choose.chooser == PlayerFilter::You {
-        "You may".to_string()
-    } else {
-        format!(
-            "{} may",
-            capitalize_first(&describe_player_filter(&choose.chooser))
-        )
-    };
     let opener = if reveal_top.is_some() {
         "Reveal"
     } else {
         "Look at"
     };
-    let choice_clause = if reveal.is_some() {
-        format!("{may_prefix} reveal {chosen} from among them and put it into {hand} hand")
+    let exact_single = choose.count.min == 1 && choose.count.max == Some(1);
+    if base_filter == crate::filter::ObjectFilter::default() && exact_single && reveal.is_none() {
+        return Some(format!(
+            "{opener} the top {count_text} {noun} of {owner} library. Put one of those cards into {hand} hand and the rest into {owner} graveyard"
+        ));
+    }
+    let chosen = if base_filter == crate::filter::ObjectFilter::default() && exact_single {
+        "one of them".to_string()
     } else {
-        format!("{may_prefix} put {chosen} from among them into {hand} hand")
+        describe_choose_filter_from_looked_cards(look_at_top, choose)?
+    };
+    let actor_prefix = if exact_single {
+        String::new()
+    } else if choose.chooser == PlayerFilter::You {
+        "You may ".to_string()
+    } else {
+        format!(
+            "{} may ",
+            capitalize_first(&describe_player_filter(&choose.chooser))
+        )
+    };
+    let choice_clause = if reveal.is_some() {
+        format!("{actor_prefix}reveal {chosen} from among them and put it into {hand} hand")
+    } else if base_filter == crate::filter::ObjectFilter::default() && exact_single {
+        format!("{actor_prefix}put {chosen} into {hand} hand")
+    } else {
+        format!("{actor_prefix}put {chosen} from among them into {hand} hand")
     };
 
     Some(format!(

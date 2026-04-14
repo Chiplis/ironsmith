@@ -389,6 +389,10 @@ pub(crate) fn parse_effect_sentence_lexed(
     if let Some(effect) = parse_if_damage_would_be_dealt_put_counters_sentence(tokens)? {
         return Ok(vec![effect]);
     }
+    if let Some(effects) = super::parse_top_cards_put_counted_into_hand_rest_graveyard_chain_lexed(tokens)
+    {
+        return Ok(effects);
+    }
     if let Some(effects) = parse_cant_effect_sentence_lexed(tokens)? {
         return Ok(effects);
     }

@@ -9405,21 +9405,6 @@ fn parse_granted_activated_ability_to_non_source_compiles_as_grant() {
 }
 
 #[test]
-fn parse_put_into_hand_with_rest_tail_fails_strictly() {
-    let err = CardDefinitionBuilder::new(CardId::new(), "Organ Hoarder Variant")
-            .card_types(vec![CardType::Creature])
-            .parse_text(
-                "When this creature enters, look at the top three cards of your library, then put one of them into your hand and the rest into your graveyard.",
-            )
-            .expect_err("multi-destination put-into-hand clause should fail parse");
-    let message = format!("{err:?}");
-    assert!(
-        message.contains("unsupported multi-destination put clause"),
-        "expected strict multi-destination put parse error, got {message}"
-    );
-}
-
-#[test]
 fn parse_put_target_creature_on_top_of_owner_library() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Griptide Variant")
         .card_types(vec![CardType::Instant])
@@ -23839,6 +23824,89 @@ fn parse_oracle_bounty_of_skemfar_split_reveal_selection_regression() {
 }
 
 #[test]
+fn parse_oracle_selective_adaptation_keyword_bundle_regression() {
+    let def = parse_oracle_card_definition("Selective Adaptation");
+    let rendered = compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        !rendered_lower.contains("another permanent"),
+        "expected Selective Adaptation to stop misparsing as a bounce effect, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains("choose from among them a card with flying, a card with first strike"),
+        "expected Selective Adaptation to preserve its keyword-choice bundle, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.matches("ChooseObjectsEffect").count() >= 13,
+        "expected repeated keyword picks plus battlefield choice, got {debug}"
+    );
+    assert!(
+        debug.contains("zone: Hand")
+            && debug.contains("zone: Graveyard")
+            && debug.contains("zone: Battlefield"),
+        "expected battlefield, hand, and graveyard moves in Selective Adaptation, got {debug}"
+    );
+    assert!(
+        debug.contains("Flying")
+            && debug.contains("FirstStrike")
+            && debug.contains("DoubleStrike")
+            && debug.contains("Vigilance"),
+        "expected keyword-specific filters in Selective Adaptation, got {debug}"
+    );
+}
+
+#[test]
+fn parse_oracle_akroma_vision_of_ixidor_keyword_bundle_regression() {
+    let def = parse_oracle_card_definition("Akroma, Vision of Ixidor");
+    let rendered = compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        rendered_lower.contains("at the beginning of each combat")
+            && rendered_lower.contains("until end of turn"),
+        "expected Akroma trigger timing to remain intact, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains(
+            "until end of turn, each other creature you control gets +1/+1 if it has flying, +1/+1 if it has first strike, and so on for double strike, deathtouch, haste, hexproof, indestructible, lifelink, menace, protection, reach, trample, vigilance, and partner."
+        ),
+        "expected Akroma compiled text to keep the oracle-shaped keyword bundle, got {rendered}"
+    );
+    assert!(
+        !rendered_lower.contains("unsupported"),
+        "expected Akroma to compile without fallback placeholder text, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("BeginningOfCombat")
+            && debug.matches("ApplyContinuousEffect").count() >= 14
+            && debug.matches("ModifyPowerToughness").count() >= 14,
+        "expected Akroma trigger to lower into repeated keyword-based pump effects, got {debug}"
+    );
+    assert!(
+        debug.contains("Flying")
+            && debug.contains("FirstStrike")
+            && debug.contains("DoubleStrike")
+            && debug.contains("Deathtouch")
+            && debug.contains("Haste")
+            && debug.contains("Hexproof")
+            && debug.contains("Indestructible")
+            && debug.contains("Lifelink")
+            && debug.contains("Menace")
+            && debug.contains("Protection")
+            && debug.contains("Reach")
+            && debug.contains("Trample")
+            && debug.contains("Vigilance")
+            && debug.contains("Partner"),
+        "expected Akroma trigger filters for the full keyword bundle, got {debug}"
+    );
+}
+
+#[test]
 fn parse_oracle_winding_way_card_type_choice_regression() {
     let def = parse_oracle_card_definition("Winding Way");
     let rendered = compiled_lines(&def).join(" ");
@@ -24349,19 +24417,55 @@ fn parse_corpse_appraiser_keeps_the_exile_then_loot_sequence() {
         abilities_debug.contains("Exile")
             && (abilities_debug.contains("IfResult") || abilities_debug.contains("IfEffect"))
             && abilities_debug.contains("LookAtTopCardsEffect")
-            && abilities_debug.contains("MoveToZoneEffect")
-            && abilities_debug.contains("zone: Hand"),
-        "expected Corpse Appraiser to keep exile, a conditional follow-up, and the look-plus-hand sequence, got {abilities_debug}"
+            && abilities_debug.contains("zone: Hand")
+            && abilities_debug.contains("zone: Graveyard"),
+        "expected Corpse Appraiser to keep exile plus the hand-and-graveyard looked-card split, got {abilities_debug}"
     );
 
     let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
         rendered.contains("exile up to one target creature card")
-            && (rendered.contains("if a card is put into exile this way")
-                || rendered.contains("if you do"))
+            && rendered.contains("if a card is put into exile this way")
             && rendered.contains("look at the top three cards of your library")
-            && rendered.contains("put it into its owner's hand"),
-        "expected Corpse Appraiser compiled text to preserve the exile-then-loot core sequence, got {rendered}"
+            && rendered.contains("put one of those cards into your hand and the rest into your graveyard")
+            && !rendered.contains("put it into its owner's hand"),
+        "expected Corpse Appraiser compiled text to preserve the looked-card split, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_uchuulon_keeps_if_you_do_exile_followup() {
+    let def = parse_oracle_card_definition("Uchuulon");
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("if you do, create a token that's a copy of this creature")
+            && !rendered.contains("if a card is put into exile this way"),
+        "expected Uchuulon to keep its oracle-style if-you-do exile followup, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_nyla_shirshu_sleuth_keeps_if_you_do_exile_followup() {
+    let def = parse_oracle_card_definition("Nyla, Shirshu Sleuth");
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("if you do, you lose life equal to its mana value")
+            && !rendered.contains("if a card is put into exile this way"),
+        "expected Nyla to keep its oracle-style if-you-do exile followup, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_thief_of_existence_keeps_if_you_do_exile_followup() {
+    let def = parse_oracle_card_definition("Thief of Existence");
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("if you do, this creature gains")
+            && !rendered.contains("if a card is put into exile this way"),
+        "expected Thief of Existence to keep its oracle-style if-you-do exile followup, got {rendered}"
     );
 }
 

@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useGame } from "@/context/GameContext";
 import InspectorStackTimeline from "./InspectorStackTimeline";
 import { cn } from "@/lib/utils";
@@ -15,6 +16,7 @@ export default function StackTimelineRail({
   onInspectObject = null,
   floating = false,
   anchorRef = null,
+  className = "",
 }) {
   const { state } = useGame();
   const decision = state?.decision || null;
@@ -37,6 +39,9 @@ export default function StackTimelineRail({
   const [availableHeight, setAvailableHeight] = useState(
     STACK_DEFAULT_MAX_HEIGHT,
   );
+  const inlineAnchorRef = useRef(null);
+  const [inlineRect, setInlineRect] = useState(null);
+  const shouldShowRail = orderingEntryCount > 0;
 
   useEffect(() => {
     const changed = stackSignature !== previousStackSignatureRef.current;
@@ -106,7 +111,66 @@ export default function StackTimelineRail({
     };
   }, [floating, anchorRef, rawStackEntryCount, state?.players?.length]);
 
-  const shouldShowRail = orderingEntryCount > 0;
+  useLayoutEffect(() => {
+    if (floating) return undefined;
+
+    let rafId = null;
+    const publishRect = () => {
+      const anchor = inlineAnchorRef.current;
+      const rect =
+        shouldShowRail && anchor
+          ? anchor.getBoundingClientRect()
+          : null;
+      const nextRect =
+        rect && rect.width > 0 && rect.height > 0
+          ? {
+              left: Math.round(rect.left),
+              top: Math.round(rect.top),
+              width: Math.round(rect.width),
+              height: Math.round(rect.height),
+            }
+          : null;
+
+      setInlineRect((prev) => {
+        if (
+          prev?.left === nextRect?.left
+          && prev?.top === nextRect?.top
+          && prev?.width === nextRect?.width
+          && prev?.height === nextRect?.height
+        ) {
+          return prev;
+        }
+        return nextRect;
+      });
+    };
+
+    const scheduleRect = () => {
+      if (rafId != null) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        publishRect();
+      });
+    };
+
+    scheduleRect();
+
+    const anchor = inlineAnchorRef.current;
+    const resizeObserver =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(scheduleRect)
+        : null;
+    if (anchor) resizeObserver?.observe(anchor);
+
+    window.addEventListener("resize", scheduleRect);
+    window.addEventListener("scroll", scheduleRect, true);
+    return () => {
+      if (rafId != null) cancelAnimationFrame(rafId);
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", scheduleRect);
+      window.removeEventListener("scroll", scheduleRect, true);
+    };
+  }, [floating, shouldShowRail]);
+
   const collapsedPanelHeight = STACK_MIN_HEIGHT;
   const stackPanelMaxHeight = useMemo(
     () => Math.max(STACK_MIN_HEIGHT, Math.round(availableHeight)),
@@ -165,19 +229,48 @@ export default function StackTimelineRail({
 
   if (!shouldShowRail) return null;
 
-  return (
-    <div className="w-full min-w-0">
-      <InspectorStackTimeline
-        embedded
-        layout="horizontal"
-        title="Stack"
-        decision={decision}
-        canAct={canAct}
-        stackObjects={stackObjects}
-        stackPreview={stackPreview}
-        selectedObjectId={selectedObjectId}
-        onInspectObject={onInspectObject}
-      />
+  const horizontalTimeline = (
+    <div className="flex h-full w-full min-w-0 items-stretch justify-start pointer-events-auto pl-2">
+      <div className="inline-flex h-full items-center justify-start">
+        <InspectorStackTimeline
+          embedded
+          layout="horizontal"
+          compact
+          title="Stack"
+          decision={decision}
+          canAct={canAct}
+          stackObjects={stackObjects}
+          stackPreview={stackPreview}
+          selectedObjectId={selectedObjectId}
+          onInspectObject={onInspectObject}
+        />
+      </div>
     </div>
+  );
+
+  return (
+    <>
+      <div
+        ref={inlineAnchorRef}
+        className={cn("min-w-0 pointer-events-none", className)}
+        aria-hidden="true"
+      />
+      {inlineRect && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              className="pointer-events-none fixed z-[96] flex items-stretch justify-start bg-[linear-gradient(180deg,rgba(56,49,42,0.98),rgba(49,44,39,0.98))]"
+              style={{
+                left: `${inlineRect.left}px`,
+                top: `${inlineRect.top}px`,
+                width: `${inlineRect.width}px`,
+                height: `${inlineRect.height}px`,
+              }}
+            >
+              {horizontalTimeline}
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
   );
 }

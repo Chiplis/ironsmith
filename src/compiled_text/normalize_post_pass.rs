@@ -63,6 +63,41 @@ fn normalize_triggered_kicked_mass_bounce_surface(text: &str) -> Option<String> 
     ))
 }
 
+fn normalize_keyword_bundle_pump_surface(oracle_lower: &str, text: &str) -> Option<String> {
+    if !oracle_lower.contains("gets +1/+1 if it has flying")
+        || !oracle_lower.contains("and so on for double strike")
+        || !oracle_lower.contains("and partner")
+    {
+        return None;
+    }
+
+    let lower = text.trim().to_ascii_lowercase();
+    let expanded = "at the beginning of each combat, each other creature with flying you control gets +1/+1 until end of turn. each other creature with first strike you control gets +1/+1 until end of turn. each other creature with double strike you control gets +1/+1 until end of turn. each other creature with deathtouch you control gets +1/+1 until end of turn. each other creature with haste you control gets +1/+1 until end of turn. each other creature with hexproof you control gets +1/+1 until end of turn. each other creature with indestructible you control gets +1/+1 until end of turn. each other creature with lifelink you control gets +1/+1 until end of turn. each other creature with menace you control gets +1/+1 until end of turn. each other creature you control gets +1/+1 until end of turn. each other creature with reach you control gets +1/+1 until end of turn. each other creature with trample you control gets +1/+1 until end of turn. each other creature with vigilance you control gets +1/+1 until end of turn. each other creature you control gets +1/+1 until end of turn.";
+    if lower != expanded {
+        return None;
+    }
+
+    Some(
+        "At the beginning of each combat, until end of turn, each other creature you control gets +1/+1 if it has flying, +1/+1 if it has first strike, and so on for double strike, deathtouch, haste, hexproof, indestructible, lifelink, menace, protection, reach, trample, vigilance, and partner.".to_string(),
+    )
+}
+
+fn normalize_single_card_exile_condition_surface(
+    oracle_lower: &str,
+    text: &str,
+) -> Option<String> {
+    if !oracle_lower.contains("if a card is put into exile this way") {
+        return None;
+    }
+    let (before, after) = split_once_ascii_ci(text, ". If you do, ")?;
+    if !before.to_ascii_lowercase().contains("exile ") {
+        return None;
+    }
+    Some(format!(
+        "{before}. If a card is put into exile this way, {after}"
+    ))
+}
+
 fn normalize_reveal_until_put_hand_exile_rest_surface(text: &str) -> Option<String> {
     let lower = text.to_ascii_lowercase();
     let reveal_marker = "you reveal cards from the top of your library until you reveal ";
@@ -220,6 +255,15 @@ pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str
             normalized_body = rewritten;
         }
         if let Some(rewritten) = normalize_triggered_kicked_mass_bounce_surface(&normalized_body) {
+            normalized_body = rewritten;
+        }
+        if let Some(rewritten) = normalize_keyword_bundle_pump_surface(&oracle_lower, &normalized_body)
+        {
+            normalized_body = rewritten;
+        }
+        if let Some(rewritten) =
+            normalize_single_card_exile_condition_surface(&oracle_lower, &normalized_body)
+        {
             normalized_body = rewritten;
         }
         if let Some(rewritten) = normalize_choose_background_scaffolding_clause(&normalized_body) {
@@ -2503,6 +2547,13 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
         }
         if let Some(rewritten) =
             normalize_sentence_helper_top_cards_choose_to_hand_sequence(&normalized)
+            && rewritten != normalized
+        {
+            normalized = rewritten;
+            changed = true;
+        }
+        if let Some(rewritten) =
+            normalize_sentence_helper_top_cards_choose_keyword_bundle_sequence(&normalized)
             && rewritten != normalized
         {
             normalized = rewritten;
@@ -5859,6 +5910,140 @@ pub(super) fn normalize_sentence_helper_top_cards_for_each_card_type_to_hand_seq
         spell_filter_prefix.trim(),
         order_suffix
     ))
+}
+
+pub(super) fn normalize_sentence_helper_top_cards_choose_keyword_bundle_sequence(
+    text: &str,
+) -> Option<String> {
+    for marker in [
+        ": Look at the top ",
+        ": Reveal the top ",
+        ". Look at the top ",
+        ". Reveal the top ",
+        ", look at the top ",
+        ", reveal the top ",
+    ] {
+        if let Some((before, rest)) = split_once_ascii_ci(text, marker) {
+            let marker_lower = marker.to_ascii_lowercase();
+            let restored = if marker_lower.contains("look") {
+                format!("Look at the top {rest}")
+            } else {
+                format!("Reveal the top {rest}")
+            };
+            if let Some(rewritten) =
+                normalize_sentence_helper_top_cards_choose_keyword_bundle_sequence(&restored)
+            {
+                if marker.starts_with(", ") {
+                    return Some(format!("{before}, {}", lowercase_first(&rewritten)));
+                }
+                let joiner = marker.get(..2).unwrap_or(": ");
+                return Some(format!("{before}{joiner}{rewritten}"));
+            }
+        }
+    }
+
+    let trimmed = text.trim().trim_end_matches('.');
+    let (head, rest) = if let Some((head, rest)) = split_once_ascii_ci(trimmed, ". Reveal it. ") {
+        let normalized_head = if head.to_ascii_lowercase().starts_with("look at the top ") {
+            format!("Reveal{}", &head["Look at".len()..])
+        } else {
+            head.to_string()
+        };
+        (normalized_head, rest.to_string())
+    } else if let Some((head, rest)) =
+        split_once_ascii_ci(trimmed, ". you choose up to one other ")
+    {
+        (head.to_string(), format!("you choose up to one other {rest}"))
+    } else {
+        return None;
+    };
+
+    let head_lower = head.to_ascii_lowercase();
+    if !head_lower.starts_with("reveal the top ") || !head_lower.ends_with(" cards of your library")
+    {
+        return None;
+    }
+
+    let mut descriptors = Vec::new();
+    let mut remaining = rest.as_str();
+    let mut chosen_tag: Option<&str> = None;
+
+    loop {
+        let Some(after_marker) = strip_prefix_ascii_ci(remaining, "you choose up to one other ")
+        else {
+            break;
+        };
+        let Some((descriptor_raw, after_descriptor)) =
+            split_once_ascii_ci(after_marker, " in library and tags it as '")
+        else {
+            return None;
+        };
+        let (tag, after_tag) = after_descriptor.split_once("'. ")?;
+        if !tag.starts_with("__sentence_helper_chosen_") {
+            return None;
+        }
+        if let Some(existing) = chosen_tag {
+            if existing != tag {
+                return None;
+            }
+        } else {
+            chosen_tag = Some(tag);
+        }
+        descriptors.push(descriptor_raw.trim().to_string());
+        remaining = after_tag;
+    }
+
+    if descriptors.len() < 3 {
+        return None;
+    }
+
+    let chosen_tag = chosen_tag?;
+    let remaining = strip_prefix_ascii_ci(
+        remaining,
+        "you choose up to one card in library and tags it as '",
+    )?;
+    let (battlefield_tag, remaining) = remaining.split_once("'. ")?;
+    if !battlefield_tag.starts_with("__sentence_helper_battlefield_") {
+        return None;
+    }
+    let remaining = strip_prefix_ascii_ci(
+        remaining,
+        "Put it onto the battlefield. For each tagged '",
+    )?;
+    let remaining = strip_prefix_ascii_ci(remaining, chosen_tag)?;
+    let remaining = strip_prefix_ascii_ci(
+        remaining,
+        "' object, if it isn't true that it matches permanent, Return that object to its owner's hand. For each tagged '",
+    )?;
+    let (revealed_tag, suffix) = split_once_ascii_ci(
+        remaining,
+        "' object, if it isn't true that it matches permanent, Put that object into its owner's graveyard",
+    )?;
+    if !revealed_tag.starts_with("__sentence_helper_revealed_") {
+        return None;
+    }
+
+    let first = with_indefinite_article(strip_leading_article(descriptors[0].trim()));
+    let second = with_indefinite_article(strip_leading_article(descriptors[1].trim()));
+    let trailing = descriptors[2..]
+        .iter()
+        .map(|descriptor| {
+            descriptor
+                .trim()
+                .strip_prefix("card with ")
+                .unwrap_or(descriptor.trim())
+                .to_string()
+        })
+        .collect::<Vec<_>>();
+
+    let replacement = format!(
+        "{}. Choose from among them {}, {}, and so on for {}. Put one of the chosen cards onto the battlefield, the other chosen cards into your hand, and the rest into your graveyard.",
+        head.trim().trim_end_matches('.'),
+        first,
+        second,
+        join_with_and(&trailing)
+    );
+    Some(append_sentence_tail(replacement, suffix))
 }
 
 pub(super) fn normalize_sentence_helper_top_cards_for_each_card_type_revealed_cards_to_hand_sequence(

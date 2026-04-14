@@ -1,14 +1,17 @@
 use super::super::grammar::primitives as grammar;
+use super::super::keyword_static::parse_pt_modifier_values;
 use super::super::lexer::{OwnedLexToken, TokenWordView};
 use super::super::rule_engine::{LexClauseView, LexRuleDef, LexRuleIndex, RULE_SHAPE_STARTS_IF};
 use super::super::util::trim_commas;
 use super::sentence_helpers::target_ast_to_object_filter;
 use super::{parse_object_filter, parse_target_phrase as parse_target_phrase_lexed};
 use crate::cards::builders::compiler::contains_until_end_of_turn;
+use crate::cards::builders::compiler::token_index_for_word_index;
 use crate::cards::builders::{CardTextError, EffectAst};
 use crate::cards::builders::{IT_TAG, PlayerAst, TagKey, TargetAst, Value};
 use crate::effect::Until;
 use crate::object::CounterType;
+use crate::static_abilities::StaticAbilityId;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::types::CardType;
 
@@ -135,6 +138,164 @@ pub(crate) fn parse_control_combat_choices_sentence(
         }));
     }
     Ok(None)
+}
+
+fn parse_keyword_bundle_static_ability(words: &[&str]) -> Option<(StaticAbilityId, usize)> {
+    const KEYWORD_PHRASES: &[(&[&str], StaticAbilityId)] = &[
+        (&["first", "strike"], StaticAbilityId::FirstStrike),
+        (&["double", "strike"], StaticAbilityId::DoubleStrike),
+        (&["flying"], StaticAbilityId::Flying),
+        (&["deathtouch"], StaticAbilityId::Deathtouch),
+        (&["haste"], StaticAbilityId::Haste),
+        (&["hexproof"], StaticAbilityId::Hexproof),
+        (&["indestructible"], StaticAbilityId::Indestructible),
+        (&["lifelink"], StaticAbilityId::Lifelink),
+        (&["menace"], StaticAbilityId::Menace),
+        (&["protection"], StaticAbilityId::Protection),
+        (&["reach"], StaticAbilityId::Reach),
+        (&["trample"], StaticAbilityId::Trample),
+        (&["vigilance"], StaticAbilityId::Vigilance),
+        (&["partner"], StaticAbilityId::Partner),
+    ];
+
+    KEYWORD_PHRASES.iter().find_map(|(phrase, ability_id)| {
+        words.starts_with(phrase)
+            .then_some((*ability_id, phrase.len()))
+    })
+}
+
+fn parse_keyword_bundle_pump_clause(
+    words: &[&str],
+    start: usize,
+) -> Result<Option<((Value, Value), StaticAbilityId, usize)>, CardTextError> {
+    let Some(modifier) = words.get(start).copied() else {
+        return Ok(None);
+    };
+    let Ok((power, toughness)) = parse_pt_modifier_values(modifier) else {
+        return Ok(None);
+    };
+    let ability_start = start + 4;
+    if words.get(start + 1..ability_start) != Some(&["if", "it", "has"][..]) {
+        return Ok(None);
+    }
+    let Some((ability_id, consumed)) = parse_keyword_bundle_static_ability(&words[ability_start..])
+    else {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported keyword-bundle ability in gets clause: '{}'",
+            words.join(" ")
+        )));
+    };
+    Ok(Some(((power, toughness), ability_id, ability_start + consumed)))
+}
+
+pub(crate) fn parse_keyword_bundle_pump_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let word_storage = TokenWordView::new(tokens);
+    let words = word_storage.word_refs();
+    if words.is_empty() {
+        return Ok(None);
+    }
+
+    let (subject_start_word_idx, duration) = if words.starts_with(&["until", "end", "of", "turn"])
+    {
+        (4usize, Until::EndOfTurn)
+    } else if words.starts_with(&["until", "your", "next", "turn"]) {
+        (4usize, Until::YourNextTurn)
+    } else if words.starts_with(&["until", "end", "of", "combat"]) {
+        (4usize, Until::EndOfCombat)
+    } else {
+        return Ok(None);
+    };
+
+    let Some(get_word_idx) = words
+        .iter()
+        .position(|word| matches!(*word, "get" | "gets"))
+    else {
+        return Ok(None);
+    };
+    if get_word_idx <= subject_start_word_idx {
+        return Ok(None);
+    }
+
+    let subject_start_token_idx =
+        token_index_for_word_index(tokens, subject_start_word_idx).unwrap_or(tokens.len());
+    let subject_end_token_idx = token_index_for_word_index(tokens, get_word_idx).unwrap_or(tokens.len());
+    if subject_start_token_idx >= subject_end_token_idx {
+        return Ok(None);
+    }
+
+    let subject_tokens = trim_commas(&tokens[subject_start_token_idx..subject_end_token_idx]);
+    if subject_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let filter_tokens = if subject_tokens
+        .first()
+        .is_some_and(|token| token.is_word("each") || token.is_word("all"))
+    {
+        &subject_tokens[1..]
+    } else {
+        subject_tokens.as_slice()
+    };
+    if filter_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let base_filter = parse_object_filter(filter_tokens, false)?;
+
+    let Some(((power, toughness), first_ability, mut cursor)) =
+        parse_keyword_bundle_pump_clause(&words, get_word_idx + 1)?
+    else {
+        return Ok(None);
+    };
+
+    let mut ability_ids = vec![first_ability];
+    while let Some(((next_power, next_toughness), next_ability, next_cursor)) =
+        parse_keyword_bundle_pump_clause(&words, cursor)?
+    {
+        if next_power != power || next_toughness != toughness {
+            return Err(CardTextError::ParseError(format!(
+                "keyword-bundle gets clause changes modifier mid-sequence: '{}'",
+                words.join(" ")
+            )));
+        }
+        ability_ids.push(next_ability);
+        cursor = next_cursor;
+    }
+
+    if words.get(cursor..cursor + 4) != Some(&["and", "so", "on", "for"][..]) {
+        return Ok(None);
+    }
+    cursor += 4;
+
+    while cursor < words.len() {
+        if words[cursor] == "and" {
+            cursor += 1;
+            continue;
+        }
+        let Some((ability_id, consumed)) = parse_keyword_bundle_static_ability(&words[cursor..])
+        else {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported trailing keyword-bundle list in gets clause: '{}'",
+                words.join(" ")
+            )));
+        };
+        ability_ids.push(ability_id);
+        cursor += consumed;
+    }
+
+    let effects = ability_ids
+        .into_iter()
+        .map(|ability_id| EffectAst::PumpAll {
+            filter: base_filter.clone().with_static_ability(ability_id),
+            power: power.clone(),
+            toughness: toughness.clone(),
+            duration: duration.clone(),
+        })
+        .collect::<Vec<_>>();
+
+    Ok(Some(effects))
 }
 
 pub(crate) fn parse_scaled_target_power_sentence(
@@ -364,6 +525,12 @@ pub(super) fn parse_scaled_target_power_sentence_rule_lexed(
     parse_scaled_target_power_sentence(view.tokens)
 }
 
+pub(super) fn parse_keyword_bundle_pump_sentence_rule_lexed(
+    view: &LexClauseView<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    parse_keyword_bundle_pump_sentence(view.tokens)
+}
+
 pub(super) fn parse_spell_this_way_pay_life_rule_lexed(
     view: &LexClauseView<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -386,7 +553,7 @@ pub(super) fn parse_spell_this_way_pay_life_rule_lexed(
     Ok(None)
 }
 
-pub(super) const SPECIAL_PRE_DIAGNOSTIC_RULES_LEXED: [LexRuleDef<Vec<EffectAst>>; 4] = [
+pub(super) const SPECIAL_PRE_DIAGNOSTIC_RULES_LEXED: [LexRuleDef<Vec<EffectAst>>; 5] = [
     LexRuleDef {
         id: "redirect-next-damage",
         priority: 100,
@@ -407,6 +574,13 @@ pub(super) const SPECIAL_PRE_DIAGNOSTIC_RULES_LEXED: [LexRuleDef<Vec<EffectAst>>
         heads: &["double", "triple"],
         shape_mask: 0,
         run: parse_scaled_target_power_sentence_rule_lexed,
+    },
+    LexRuleDef {
+        id: "keyword-bundle-pump",
+        priority: 125,
+        heads: &["until"],
+        shape_mask: 0,
+        run: parse_keyword_bundle_pump_sentence_rule_lexed,
     },
     LexRuleDef {
         id: "spell-this-way-pay-life",
