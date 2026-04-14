@@ -17777,6 +17777,136 @@ fn test_the_stasis_coffin_activation_grants_protection_and_exiles_itself() {
 }
 
 #[test]
+fn test_cephalid_inkshrouder_grants_shroud_and_unblockable_after_discard() {
+    use crate::cards::builders::CardDefinitionBuilder;
+    use crate::decision::compute_legal_actions;
+    use crate::game_loop::{
+        apply_priority_response_with_dm, resolve_stack_entry_with_dm_and_triggers,
+        PriorityLoopState,
+    };
+    use crate::ids::CardId;
+    use crate::PriorityResponse;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let inkshrouder = CardDefinitionBuilder::new(CardId::new(), "Cephalid Inkshrouder")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![crate::types::Subtype::Octopus])
+        .power_toughness(PowerToughness::fixed(2, 1))
+        .parse_text("Discard a card: This creature gains shroud until end of turn and can't be blocked this turn.")
+        .expect("Cephalid Inkshrouder text should parse");
+    let inkshrouder_id = game.create_object_from_definition(&inkshrouder, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(inkshrouder_id);
+
+    let discard_fodder = CardBuilder::new(CardId::new(), "Discard Fodder")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let discard_id = game.create_object_from_card(&discard_fodder, alice, Zone::Hand);
+
+    let blocker_id = create_creature(&mut game, "Training Blocker", bob, 2, 2);
+
+    let ability_index = game
+        .object(inkshrouder_id)
+        .expect("Cephalid Inkshrouder should exist")
+        .abilities
+        .iter()
+        .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .expect("Cephalid Inkshrouder should have an activated ability");
+
+    let activate_action = compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::ActivateAbility { source, ability_index: idx }
+                    if *source == inkshrouder_id && *idx == ability_index
+            )
+        })
+        .expect("Cephalid Inkshrouder activation should be legal");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+
+    let progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("Cephalid Inkshrouder activation should start");
+
+    let progress = match progress {
+        crate::decision::GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::SelectObjects(_),
+        ) => apply_priority_response_with_dm(
+            &mut game,
+            &mut trigger_queue,
+            &mut state,
+            &PriorityResponse::CardCostChoice(discard_id),
+            &mut dm,
+        )
+        .expect("discarding a card should finish paying Cephalid Inkshrouder's cost"),
+        other => panic!(
+            "expected Cephalid Inkshrouder to prompt for a discard, got {:?}",
+            other
+        ),
+    };
+
+    assert!(
+        matches!(
+            progress,
+            crate::decision::GameProgress::Continue
+                | crate::decision::GameProgress::NeedsDecisionCtx(
+                    crate::decisions::context::DecisionContext::Priority(_)
+                )
+        ),
+        "expected Cephalid Inkshrouder activation to resolve or return priority, got {:?}",
+        progress
+    );
+
+    resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+        .expect("Cephalid Inkshrouder ability should resolve");
+
+    assert!(
+        game.is_untargetable(inkshrouder_id),
+        "Cephalid Inkshrouder should gain shroud after the discard cost resolves"
+    );
+    assert!(
+        !game.can_be_blocked(inkshrouder_id),
+        "Cephalid Inkshrouder should be unblockable after the discard cost resolves"
+    );
+    assert!(
+        !crate::rules::combat::can_block(
+            game.object(inkshrouder_id).expect("inkshrouder exists"),
+            game.object(blocker_id).expect("blocker exists"),
+            &game,
+        ),
+        "the blocker should not be able to block Cephalid Inkshrouder once the ability resolves"
+    );
+    assert!(
+        game.player(alice)
+            .expect("alice exists")
+            .graveyard
+            .iter()
+            .any(|&id| id == discard_id),
+        "the discarded card should end up in Alice's graveyard"
+    );
+}
+
+#[test]
 fn cultivator_colossus_etb_only_asks_may_once_per_land_put() {
     use crate::cards::definitions::{basic_forest, grizzly_bears};
     use crate::executor::{ExecutionContext, execute_effect};

@@ -18330,6 +18330,39 @@ fn parse_put_counter_sequence_with_and_chain() {
 }
 
 #[test]
+fn parse_cephalid_inkshrouder_keeps_self_buff_and_unblockable_clause_together() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Cephalid Inkshrouder")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Octopus])
+        .power_toughness(PowerToughness::fixed(2, 1))
+        .parse_text("Discard a card: This creature gains shroud until end of turn and can't be blocked this turn.")
+        .expect("Cephalid Inkshrouder text should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("discard a card")
+            && rendered.contains("this creature gains shroud until end of turn")
+            && (rendered.contains("can't be blocked this turn")
+                || rendered.contains("cant be blocked this turn")),
+        "expected Cephalid Inkshrouder to keep both clauses together, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("choose it") && !rendered.contains("target permanent"),
+        "expected no stray target wording in Cephalid Inkshrouder rendering, got {rendered}"
+    );
+
+    let abilities_debug = format!("{:#?}", def.abilities).to_ascii_lowercase();
+    assert!(
+        abilities_debug.contains("shroud") && abilities_debug.contains("beblocked"),
+        "expected shroud and unblockable effects in the compiled definition, got {abilities_debug}"
+    );
+}
+
+#[test]
 fn slippery_scoundrel_keeps_hexproof_and_unblockable_under_citys_blessing() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Slippery Scoundrel Variant")
         .card_types(vec![CardType::Creature])
