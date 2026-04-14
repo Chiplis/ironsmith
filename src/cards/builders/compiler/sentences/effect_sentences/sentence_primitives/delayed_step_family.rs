@@ -471,8 +471,24 @@ pub(crate) fn try_build_unless(
         }
     }
 
-    // Try full-clause parsing first to preserve existing behavior for explicit
-    // player phrasing such as "unless that player ...".
+    // Prefer the action-only slice for explicit-player clauses like
+    // "unless that player discards ... or sacrifices ...". Parsing the full
+    // clause first can flatten the trailing "or" branch into the first action.
+    if let Ok(mut alternative) = parse_effect_chain(action_tokens) {
+        if !alternative.is_empty() {
+            for effect in &mut alternative {
+                bind_unless_player_context(effect, player);
+            }
+            return Ok(Some(EffectAst::UnlessAction {
+                effects,
+                alternative,
+                player,
+            }));
+        }
+    }
+
+    // Fall back to the full clause when the action-only parse needs the
+    // explicit player prefix to succeed.
     if let Ok(mut alternative) = parse_effect_chain(after_unless) {
         if !alternative.is_empty() {
             for effect in &mut alternative {
@@ -487,19 +503,6 @@ pub(crate) fn try_build_unless(
     }
 
     if let Ok(mut alternative) = parse_effect_sentence_lexed(after_unless) {
-        if !alternative.is_empty() {
-            for effect in &mut alternative {
-                bind_unless_player_context(effect, player);
-            }
-            return Ok(Some(EffectAst::UnlessAction {
-                effects,
-                alternative,
-                player,
-            }));
-        }
-    }
-
-    if let Ok(mut alternative) = parse_effect_chain(action_tokens) {
         if !alternative.is_empty() {
             for effect in &mut alternative {
                 bind_unless_player_context(effect, player);
@@ -553,6 +556,42 @@ pub(crate) fn try_build_unless(
     }
 
     Ok(None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cards::builders::compiler::lexer::lex_line;
+
+    #[test]
+    fn try_build_unless_prefers_action_only_parse_for_explicit_player_or_choice() {
+        let tokens = lex_line(
+            "Target opponent loses 5 life unless that player discards two cards or sacrifices a creature or planeswalker of their choice.",
+            0,
+        )
+        .expect("rewrite lexer should classify explicit-player unless choice");
+        let unless_idx = find_token_word(&tokens, "unless").expect("unless token");
+        let effects = parse_effect_chain(&tokens[..unless_idx])
+            .expect("lead effect should parse before unless clause");
+
+        let unless_effect = try_build_unless(effects, &tokens, unless_idx)
+            .expect("unless choice should parse")
+            .expect("unless choice should lower");
+        let debug = format!("{unless_effect:?}");
+
+        assert!(
+            debug.contains("Discard"),
+            "expected explicit-player unless choice to keep the discard branch, got {debug}"
+        );
+        assert!(
+            debug.contains("Sacrifice"),
+            "expected explicit-player unless choice to keep the sacrifice branch, got {debug}"
+        );
+        assert!(
+            debug.contains("TargetOpponent"),
+            "expected explicit-player unless choice to bind the target opponent context, got {debug}"
+        );
+    }
 }
 
 pub(crate) fn parse_sentence_fallback_mechanic_marker(
