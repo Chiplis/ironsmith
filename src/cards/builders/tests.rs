@@ -21113,8 +21113,13 @@ fn parse_oracle_quandrix_apprentice_uses_looked_land_choice_and_bottom_remainder
         "expected filtered looked-card choice plus explicit library-bottom remainder handling, got {abilities_debug}"
     );
     assert!(
-        !abilities_debug.contains("__sentence_helper_revealed"),
-        "expected Quandrix Apprentice to avoid leaking the old generic reveal helper tag, got {abilities_debug}"
+        !rendered.contains("__sentence_helper"),
+        "expected Quandrix Apprentice compiled text to avoid leaking helper tags, got {rendered}"
+    );
+    assert!(
+        !abilities_debug.contains("RevealTaggedEffect")
+            && !abilities_debug.contains("RevealCardsEffect"),
+        "expected Quandrix Apprentice to keep looked-card lowering instead of reveal fallback helpers, got {abilities_debug}"
     );
 }
 
