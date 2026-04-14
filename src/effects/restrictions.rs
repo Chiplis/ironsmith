@@ -4,6 +4,57 @@ use crate::effect::{EffectOutcome, Restriction, Until};
 use crate::effects::EffectExecutor;
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
+use crate::target::ObjectFilter;
+
+fn collapse_source_tagged_filter(
+    filter: &ObjectFilter,
+    ctx: &ExecutionContext,
+) -> ObjectFilter {
+    if filter.source {
+        return filter.clone();
+    }
+
+    let mut collapsed = filter.clone();
+    if collapsed.tagged_constraints.len() != 1 {
+        return filter.clone();
+    }
+
+    let constraint = collapsed.tagged_constraints[0].clone();
+    if constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject {
+        return filter.clone();
+    }
+
+    collapsed.tagged_constraints.clear();
+    if collapsed != ObjectFilter::default() {
+        return filter.clone();
+    }
+
+    let source_id = ctx.source;
+    let source_matches_tag = ctx
+        .tagged_objects
+        .get(constraint.tag.as_str())
+        .is_some_and(|snapshots| {
+            snapshots.len() == 1 && snapshots[0].object_id == source_id
+        });
+
+    if source_matches_tag {
+        ObjectFilter::source()
+    } else {
+        filter.clone()
+    }
+}
+
+fn normalize_restriction_for_resolution(
+    restriction: &Restriction,
+    ctx: &ExecutionContext,
+) -> Restriction {
+    match restriction {
+        Restriction::BeBlocked(filter) => {
+            Restriction::be_blocked(collapse_source_tagged_filter(filter, ctx))
+        }
+        _ => restriction.clone(),
+    }
+}
 
 /// Effect that applies a restriction for a duration.
 #[derive(Debug, Clone, PartialEq)]
@@ -31,8 +82,9 @@ impl EffectExecutor for CantEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        let restriction = normalize_restriction_for_resolution(&self.restriction, ctx);
         if matches!(self.duration, Until::ControllersNextUntapStep)
-            && let Restriction::Untap(filter) = &self.restriction
+            && let Restriction::Untap(filter) = &restriction
         {
             let filter_ctx = ctx.filter_context(game);
             let targets: Vec<_> = game
@@ -67,7 +119,7 @@ impl EffectExecutor for CantEffect {
             }
         } else {
             game.add_restriction_effect(
-                self.restriction.clone(),
+                restriction,
                 self.duration.clone(),
                 ctx.source,
                 ctx.controller,
@@ -87,6 +139,7 @@ mod tests {
     use crate::game_state::GameState;
     use crate::ids::CardId;
     use crate::ids::PlayerId;
+    use crate::snapshot::ObjectSnapshot;
     use crate::target::{ObjectFilter, PlayerFilter};
     use crate::types::CardType;
     use crate::zone::Zone;
@@ -140,6 +193,34 @@ mod tests {
             game.replacement_effects
                 .count_one_shot_effects_from_source(creature_id),
             0
+        );
+    }
+
+    #[test]
+    fn cant_effect_normalizes_source_tagged_be_blocked_filter() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let creature_card = CardBuilder::new(CardId::from_raw(1), "Tagged Bear")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let creature_id = game.create_object_from_card(&creature_card, alice, Zone::Battlefield);
+
+        let source_snapshot = ObjectSnapshot::from_object(
+            game.object(creature_id).expect("source creature exists"),
+            &game,
+        );
+        let mut ctx = ExecutionContext::new_default(creature_id, alice);
+        ctx.tag_object("carry", source_snapshot);
+
+        CantEffect::until_end_of_turn(Restriction::be_blocked(ObjectFilter::tagged("carry")))
+            .execute(&mut game, &mut ctx)
+            .expect("execute be blocked cant effect");
+
+        assert!(
+            !game.can_be_blocked(creature_id),
+            "tagged source be-blocked restriction should normalize to the source object"
         );
     }
 }
