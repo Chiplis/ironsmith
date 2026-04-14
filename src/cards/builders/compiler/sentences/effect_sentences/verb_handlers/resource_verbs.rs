@@ -75,7 +75,7 @@ pub(crate) fn parse_effect_with_verb(
         }
         Verb::Sacrifice => parse_sacrifice(tokens, subject, None),
         Verb::Create => parse_create(tokens, subject),
-        Verb::Investigate => parse_investigate(tokens),
+        Verb::Investigate => parse_investigate(tokens, subject),
         Verb::Proliferate => parse_proliferate(tokens),
         Verb::Tap => parse_tap(tokens),
         Verb::Attach => parse_attach(tokens),
@@ -695,4 +695,3 @@ pub(crate) fn parse_detain(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         target: parse_target_phrase(&target_tokens)?,
     })
 }
-

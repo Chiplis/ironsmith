@@ -749,9 +749,7 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             }
         }
 
-        fn render_consult_reveal_put_hand_rest_graveyard(
-            effects: &[&Effect],
-        ) -> Option<String> {
+        fn render_consult_reveal_put_hand_rest_graveyard(effects: &[&Effect]) -> Option<String> {
             if effects.len() != 3 {
                 return None;
             }
@@ -2716,7 +2714,8 @@ mod tests {
         let rendered = describe_effect(&effect);
         let lower = rendered.to_ascii_lowercase();
         assert!(
-            lower == "choose a creature type other than wall. each creature becomes that type until end of turn",
+            lower
+                == "choose a creature type other than wall. each creature becomes that type until end of turn",
             "expected plural creature-type choice wording, got {rendered}"
         );
     }
@@ -5726,8 +5725,7 @@ pub(super) fn describe_may_have_you_create_tokens(
     if may.effects.len() != 1 {
         return None;
     }
-    let create_token = may.effects[0]
-        .downcast_ref::<crate::effects::CreateTokenEffect>()?;
+    let create_token = may.effects[0].downcast_ref::<crate::effects::CreateTokenEffect>()?;
     if !matches!(create_token.controller, PlayerFilter::You) {
         return None;
     }
@@ -6749,12 +6747,12 @@ fn describe_search_choose_then_move(
     // NOTE: do not set display_filter.zone to Library here for multi-zone
     // searches — that would leak "in library" into the description. Instead,
     // we post-process the noun from "permanent" to "card" below.
-    let searched_multiple_zones =
-        choose_search_zones(choose).is_some_and(|zones| zones.len() > 1);
+    let searched_multiple_zones = choose_search_zones(choose).is_some_and(|zones| zones.len() > 1);
     let raw_filter_text = if display_filter == ObjectFilter::default() {
         "card".to_string()
     } else {
-        let desc = normalize_search_descriptor_for_origin(&display_filter.description(), searched_library);
+        let desc =
+            normalize_search_descriptor_for_origin(&display_filter.description(), searched_library);
         if searched_multiple_zones && display_filter.zone.is_none() {
             desc.replacen("permanent", "card", 1)
         } else {
@@ -6855,12 +6853,12 @@ fn describe_search_choose_then_exile(
     // NOTE: do not set display_filter.zone to Library here for multi-zone
     // searches — that would leak "in library" into the description. Instead,
     // we post-process the noun from "permanent" to "card" below.
-    let searched_multiple_zones =
-        choose_search_zones(choose).is_some_and(|zones| zones.len() > 1);
+    let searched_multiple_zones = choose_search_zones(choose).is_some_and(|zones| zones.len() > 1);
     let raw_filter_text = if display_filter == ObjectFilter::default() {
         "card".to_string()
     } else {
-        let desc = normalize_search_descriptor_for_origin(&display_filter.description(), searched_library);
+        let desc =
+            normalize_search_descriptor_for_origin(&display_filter.description(), searched_library);
         if searched_multiple_zones && display_filter.zone.is_none() {
             desc.replacen("permanent", "card", 1)
         } else {
@@ -6933,12 +6931,12 @@ fn describe_search_choose_then_return_to_hand(
     }
     // For multi-zone searches the filter zone is None, causing the description
     // noun to default to "permanent". Replace with "card" in search contexts.
-    let searched_multiple_zones =
-        choose_search_zones(choose).is_some_and(|zones| zones.len() > 1);
+    let searched_multiple_zones = choose_search_zones(choose).is_some_and(|zones| zones.len() > 1);
     let filter_desc = if display_filter == ObjectFilter::default() {
         "card".to_string()
     } else {
-        let desc = normalize_search_descriptor_for_origin(&display_filter.description(), searched_library);
+        let desc =
+            normalize_search_descriptor_for_origin(&display_filter.description(), searched_library);
         if searched_multiple_zones && display_filter.zone.is_none() {
             desc.replacen("permanent", "card", 1)
         } else {
@@ -10539,7 +10537,37 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         );
     }
     if let Some(investigate) = effect.downcast_ref::<crate::effects::InvestigateEffect>() {
-        return format!("Investigate {}", describe_value(&investigate.count));
+        let player = describe_player_filter(&investigate.player);
+        return match (&investigate.count, player.as_str()) {
+            (Value::Fixed(1), "you") => "Investigate".to_string(),
+            (Value::Count(filter), "you") => {
+                format!(
+                    "Investigate for each {}",
+                    describe_for_each_count_filter(filter)
+                )
+            }
+            (Value::CountScaled(filter, multiplier), "you") if *multiplier == 1 => {
+                format!(
+                    "Investigate for each {}",
+                    describe_for_each_count_filter(filter)
+                )
+            }
+            (Value::Fixed(1), _) => format!("{player} investigates"),
+            (Value::Fixed(amount), _) => format!("{player} investigates {amount} times"),
+            (Value::Count(filter), _) => format!(
+                "{player} investigates for each {}",
+                describe_for_each_count_filter(filter)
+            ),
+            (Value::CountScaled(filter, multiplier), _) if *multiplier == 1 => format!(
+                "{player} investigates for each {}",
+                describe_for_each_count_filter(filter)
+            ),
+            _ if player == "you" => format!("Investigate {}", describe_value(&investigate.count)),
+            _ => format!(
+                "{player} investigates {}",
+                describe_value(&investigate.count)
+            ),
+        };
     }
     if let Some(amass) = effect.downcast_ref::<crate::effects::AmassEffect>() {
         if let Some(subtype) = amass.subtype {
@@ -11397,9 +11425,15 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         let subject_text = describe_each_object_subject(&become_type.target)
             .unwrap_or_else(|| describe_choose_spec(&become_type.target));
         if become_type.excluded_subtypes.is_empty() {
-            return format!("{choice_text}. {subject_text} becomes that type {}", describe_until(&become_type.until));
+            return format!(
+                "{choice_text}. {subject_text} becomes that type {}",
+                describe_until(&become_type.until)
+            );
         }
-        return format!("{choice_text}. {subject_text} becomes that type {}", describe_until(&become_type.until));
+        return format!(
+            "{choice_text}. {subject_text} becomes that type {}",
+            describe_until(&become_type.until)
+        );
     }
     if effect
         .downcast_ref::<crate::effects::BecomeSaddledUntilEotEffect>()

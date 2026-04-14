@@ -473,9 +473,7 @@ pub(crate) fn compile_condition_from_predicate_ast(
             comparison,
             display,
         } => Condition::CountComparison {
-            count: crate::static_abilities::AnthemCountExpression::AttachedToSource(
-                filter.clone(),
-            ),
+            count: crate::static_abilities::AnthemCountExpression::AttachedToSource(filter.clone()),
             comparison: *comparison,
             display: Some(display.clone()),
         },
@@ -3451,6 +3449,7 @@ mod parse_compile_tests {
         let (effects, choices) = compile_effect(
             &EffectAst::Investigate {
                 count: Value::Fixed(2),
+                player: crate::cards::builders::PlayerAst::Implicit,
             },
             &mut ctx,
         )
@@ -3462,6 +3461,7 @@ mod parse_compile_tests {
             .downcast_ref::<InvestigateEffect>()
             .expect("investigate effect");
         assert_eq!(investigate.count, Value::Fixed(2));
+        assert_eq!(investigate.player, PlayerFilter::You);
     }
 
     #[test]
@@ -3477,6 +3477,7 @@ mod parse_compile_tests {
             .downcast_ref::<InvestigateEffect>()
             .expect("investigate effect");
         assert_eq!(investigate.count, Value::Fixed(2));
+        assert_eq!(investigate.player, PlayerFilter::You);
     }
 
     #[test]
