@@ -65,7 +65,7 @@ impl EffectExecutor for ExileUntilMatchGrantPlayEffect {
             }
         }
 
-        game.grant_registry.grant_to_card(
+        game.effect_store.grant_registry.grant_to_card(
             candidate_id,
             Zone::Exile,
             caster_id,

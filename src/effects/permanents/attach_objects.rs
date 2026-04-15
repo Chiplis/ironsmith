@@ -153,6 +153,7 @@ mod tests {
             AttachmentTarget::Object(creature),
         );
         let original_timestamp = game
+            .effect_store
             .continuous_effects
             .get_attachment_timestamp(equipment)
             .expect("equipment should gain a timestamp when first attached");
@@ -175,7 +176,9 @@ mod tests {
             "illegal reattach should leave the equipment on its original creature"
         );
         assert_eq!(
-            game.continuous_effects.get_attachment_timestamp(equipment),
+            game.effect_store
+                .continuous_effects
+                .get_attachment_timestamp(equipment),
             Some(original_timestamp),
             "illegal attach attempts should not create a new timestamp"
         );
@@ -230,6 +233,7 @@ mod tests {
             )
         );
         let original_timestamp = game
+            .effect_store
             .continuous_effects
             .get_attachment_timestamp(aura)
             .expect("aura should gain a timestamp when first attached");
@@ -247,7 +251,9 @@ mod tests {
 
         assert_eq!(result.count_or_zero(), 0);
         assert_eq!(
-            game.continuous_effects.get_attachment_timestamp(aura),
+            game.effect_store
+                .continuous_effects
+                .get_attachment_timestamp(aura),
             Some(original_timestamp),
             "reattaching to the same object should not create a new timestamp"
         );

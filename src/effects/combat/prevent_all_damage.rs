@@ -134,10 +134,10 @@ mod tests {
         let result = effect.execute(&mut game, &mut ctx).unwrap();
 
         assert_eq!(result.status, crate::effect::OutcomeStatus::Succeeded);
-        assert_eq!(game.prevention_effects.shields().len(), 1);
+        assert_eq!(game.effect_store.prevention_effects.shields().len(), 1);
 
         // Shield should have unlimited prevention
-        let shield = &game.prevention_effects.shields()[0];
+        let shield = &game.effect_store.prevention_effects.shields()[0];
         assert!(shield.amount_remaining.is_none());
     }
 
@@ -152,7 +152,7 @@ mod tests {
         let result = effect.execute(&mut game, &mut ctx).unwrap();
 
         assert_eq!(result.status, crate::effect::OutcomeStatus::Succeeded);
-        assert_eq!(game.prevention_effects.shields().len(), 1);
+        assert_eq!(game.effect_store.prevention_effects.shields().len(), 1);
     }
 
     #[test]

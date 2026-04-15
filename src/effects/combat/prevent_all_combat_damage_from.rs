@@ -102,7 +102,7 @@ mod tests {
             .execute(&mut game, &mut ctx)
             .expect("prevent-all-from effect should resolve");
 
-        let shields = game.prevention_effects.shields();
+        let shields = game.effect_store.prevention_effects.shields();
         assert_eq!(shields.len(), 1);
         assert!(shields[0].damage_filter.combat_only);
         assert_eq!(

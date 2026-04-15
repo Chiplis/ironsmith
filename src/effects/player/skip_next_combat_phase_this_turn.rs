@@ -39,7 +39,7 @@ impl EffectExecutor for SkipNextCombatPhaseThisTurnEffect {
         // for them this turn in the current turn model.
         let before_combat = matches!(game.turn.phase, Phase::Beginning | Phase::FirstMain);
         if player_id == game.turn.active_player && before_combat {
-            game.skip_next_combat_phases.insert(player_id);
+            game.turn_store.skip_next_combat_phases.insert(player_id);
         }
         Ok(EffectOutcome::resolved())
     }
@@ -67,7 +67,7 @@ mod tests {
         let result = effect.execute(&mut game, &mut ctx).unwrap();
 
         assert_eq!(result.status, crate::effect::OutcomeStatus::Succeeded);
-        assert!(game.skip_next_combat_phases.contains(&alice));
+        assert!(game.turn_store.skip_next_combat_phases.contains(&alice));
     }
 
     #[test]
@@ -84,6 +84,6 @@ mod tests {
         let result = effect.execute(&mut game, &mut ctx).unwrap();
 
         assert_eq!(result.status, crate::effect::OutcomeStatus::Succeeded);
-        assert!(!game.skip_next_combat_phases.contains(&bob));
+        assert!(!game.turn_store.skip_next_combat_phases.contains(&bob));
     }
 }

@@ -229,13 +229,14 @@ mod tests {
         let source = game.new_object_id();
         let creature_id = create_creature_in_graveyard(&mut game, "Reassembling Skeleton", alice);
 
-        game.replacement_effects
-            .add_resolution_effect(ReplacementEffect::with_matcher(
+        game.effect_store.replacement_effects.add_resolution_effect(
+            ReplacementEffect::with_matcher(
                 source,
                 alice,
                 WouldGoToHandMatcher::you(),
                 ReplacementAction::ChangeDestination(Zone::Exile),
-            ));
+            ),
+        );
 
         let mut ctx = ExecutionContext::new_default(source, alice);
         let effect =

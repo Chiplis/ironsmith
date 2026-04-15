@@ -687,7 +687,7 @@ impl TurnRunner {
         if let Some(pending) = self.pending_draw_reveal.take() {
             return self.finish_pending_draw_reveal_choices(game, pending);
         }
-        if game.skip_next_draw_step.remove(&active_player) {
+        if game.turn_store.skip_next_draw_step.remove(&active_player) {
             game.turn.priority_player = Some(active_player);
             return RunnerProgress::Complete(Vec::new());
         }
@@ -696,7 +696,10 @@ impl TurnRunner {
             return RunnerProgress::Complete(Vec::new());
         }
 
-        let current_draws = game.turn_history.cards_drawn_by_player(active_player);
+        let current_draws = game
+            .turn_store
+            .turn_history
+            .cards_drawn_by_player(active_player);
         let is_first_draw = current_draws == 0;
         let can_draw = if !game.can_draw_extra_cards(active_player) {
             current_draws == 0
@@ -1336,7 +1339,7 @@ mod tests {
             game.player(alice).expect("alice should exist").hand.len(),
             0
         );
-        assert_eq!(game.turn_history.cards_drawn_by_player(alice), 0);
+        assert_eq!(game.turn_store.turn_history.cards_drawn_by_player(alice), 0);
     }
 
     #[test]
@@ -1367,6 +1370,6 @@ mod tests {
             game.player(alice).expect("alice should exist").hand.len(),
             1
         );
-        assert_eq!(game.turn_history.cards_drawn_by_player(alice), 1);
+        assert_eq!(game.turn_store.turn_history.cards_drawn_by_player(alice), 1);
     }
 }

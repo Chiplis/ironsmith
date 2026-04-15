@@ -28,11 +28,13 @@ impl EffectExecutor for GrantManaAbilityUntilEotEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let expires_end_of_turn = game.turn.turn_number;
-        game.granted_mana_abilities.push(GrantedManaAbility {
-            controller: ctx.controller,
-            ability: self.ability.clone(),
-            expires_end_of_turn,
-        });
+        game.effect_store
+            .granted_mana_abilities
+            .push(GrantedManaAbility {
+                controller: ctx.controller,
+                ability: self.ability.clone(),
+                expires_end_of_turn,
+            });
         Ok(EffectOutcome::resolved())
     }
 }

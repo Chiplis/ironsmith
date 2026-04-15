@@ -171,7 +171,7 @@ mod tests {
     use super::*;
     use crate::card::CardBuilder;
     use crate::effect::Effect;
-    use crate::executor::execute_effect;
+    use crate::effects::execute_effect;
     use crate::ids::{CardId, PlayerId};
     use crate::tag::TagKey;
     use crate::types::CardType;

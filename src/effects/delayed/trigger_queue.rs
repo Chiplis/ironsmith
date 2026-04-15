@@ -182,7 +182,7 @@ pub(crate) fn queue_delayed_trigger(game: &mut GameState, config: DelayedTrigger
         .map(|(stable_id, name, snapshot)| (Some(stable_id), Some(name), Some(snapshot)))
         .unwrap_or((None, None, None));
 
-    game.delayed_triggers.push(DelayedTrigger {
+    game.effect_store.delayed_triggers.push(DelayedTrigger {
         trigger: config.trigger,
         effects: config.effects,
         one_shot: config.one_shot,
@@ -280,8 +280,8 @@ mod tests {
         );
         queue_delayed_trigger(&mut game, config);
 
-        assert_eq!(game.delayed_triggers.len(), 1);
-        let delayed = &game.delayed_triggers[0];
+        assert_eq!(game.effect_store.delayed_triggers.len(), 1);
+        let delayed = &game.effect_store.delayed_triggers[0];
         assert!(delayed.one_shot);
         assert_eq!(delayed.target_objects, vec![watched]);
         assert_eq!(delayed.controller, alice);
@@ -313,8 +313,8 @@ mod tests {
         .with_ability_source(Some(source));
         queue_delayed_trigger(&mut game, config);
 
-        assert_eq!(game.delayed_triggers.len(), 1);
-        let delayed = &game.delayed_triggers[0];
+        assert_eq!(game.effect_store.delayed_triggers.len(), 1);
+        let delayed = &game.effect_store.delayed_triggers[0];
         assert!(!delayed.one_shot);
         assert_eq!(delayed.not_before_turn, Some(turn + 1));
         assert_eq!(delayed.expires_at_turn, Some(turn));
@@ -344,8 +344,8 @@ mod tests {
         );
 
         assert_eq!(queued, 1);
-        assert_eq!(game.delayed_triggers.len(), 1);
-        let delayed = &game.delayed_triggers[0];
+        assert_eq!(game.effect_store.delayed_triggers.len(), 1);
+        let delayed = &game.effect_store.delayed_triggers[0];
         assert_eq!(delayed.target_objects, vec![watched_a, watched_b]);
     }
 
@@ -370,8 +370,14 @@ mod tests {
         );
 
         assert_eq!(queued, 2);
-        assert_eq!(game.delayed_triggers.len(), 2);
-        assert_eq!(game.delayed_triggers[0].target_objects, vec![watched_a]);
-        assert_eq!(game.delayed_triggers[1].target_objects, vec![watched_b]);
+        assert_eq!(game.effect_store.delayed_triggers.len(), 2);
+        assert_eq!(
+            game.effect_store.delayed_triggers[0].target_objects,
+            vec![watched_a]
+        );
+        assert_eq!(
+            game.effect_store.delayed_triggers[1].target_objects,
+            vec![watched_b]
+        );
     }
 }

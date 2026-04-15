@@ -487,8 +487,8 @@ mod tests {
         let source = game.new_object_id();
         let creature = add_land(&mut game, 9902, "Redirected Bounce Probe", alice);
 
-        game.replacement_effects
-            .add_resolution_effect(ReplacementEffect::with_matcher(
+        game.effect_store.replacement_effects.add_resolution_effect(
+            ReplacementEffect::with_matcher(
                 source,
                 alice,
                 WouldGoToHandMatcher::you(),
@@ -497,7 +497,8 @@ mod tests {
                         creature,
                     )),
                 )]),
-            ));
+            ),
+        );
 
         let tagged_bounce = crate::effects::TaggedEffect::new(
             "bounced",

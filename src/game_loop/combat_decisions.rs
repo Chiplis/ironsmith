@@ -405,7 +405,8 @@ fn apply_prepared_attacker_declarations_with_dm(
     // Clear any existing attackers.
     combat.attackers.clear();
     if !declarations.is_empty() {
-        game.turn_history
+        game.turn_store
+            .turn_history
             .players_attacked_this_turn
             .insert(game.turn.active_player);
     }

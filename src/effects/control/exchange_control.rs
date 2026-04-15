@@ -296,7 +296,10 @@ mod tests {
 
         assert_eq!(result.status, crate::effect::OutcomeStatus::Succeeded);
         // Two continuous effects should be created
-        assert_eq!(game.continuous_effects.effects_sorted().len(), 2);
+        assert_eq!(
+            game.effect_store.continuous_effects.effects_sorted().len(),
+            2
+        );
     }
 
     #[test]
@@ -404,7 +407,10 @@ mod tests {
 
         assert_eq!(result.status, crate::effect::OutcomeStatus::Succeeded);
         assert!(
-            game.continuous_effects.effects_sorted().is_empty(),
+            game.effect_store
+                .continuous_effects
+                .effects_sorted()
+                .is_empty(),
             "same-controller exchange should create no controller-changing effects"
         );
     }
@@ -428,7 +434,10 @@ mod tests {
         let result = effect.execute(&mut game, &mut ctx).unwrap();
 
         assert_eq!(result.status, crate::effect::OutcomeStatus::Succeeded);
-        assert_eq!(game.continuous_effects.effects_sorted().len(), 2);
+        assert_eq!(
+            game.effect_store.continuous_effects.effects_sorted().len(),
+            2
+        );
     }
 
     #[test]
@@ -461,7 +470,10 @@ mod tests {
         let result = effect.execute(&mut game, &mut ctx).unwrap();
 
         assert_eq!(result.status, crate::effect::OutcomeStatus::Succeeded);
-        assert_eq!(game.continuous_effects.effects_sorted().len(), 2);
+        assert_eq!(
+            game.effect_store.continuous_effects.effects_sorted().len(),
+            2
+        );
     }
 
     #[test]
@@ -494,7 +506,10 @@ mod tests {
 
         assert_eq!(result.status, crate::effect::OutcomeStatus::TargetInvalid);
         assert!(
-            game.continuous_effects.effects_sorted().is_empty(),
+            game.effect_store
+                .continuous_effects
+                .effects_sorted()
+                .is_empty(),
             "invalid relative exchange should not create controller-changing effects"
         );
     }

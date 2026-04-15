@@ -222,7 +222,7 @@ mod tests {
         let ctx = ExecutionContext::new_default(guide_id, alice).with_defending_player(bob);
 
         assert_eq!(
-            ctx.defending_player,
+            ctx.combat.defending_player,
             Some(bob),
             "ExecutionContext should have defending player set"
         );

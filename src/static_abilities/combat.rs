@@ -60,7 +60,7 @@ impl StaticAbilityKind for Unblockable {
             _controller,
             Some(source),
         );
-        game.cant_effects.merge(tracker);
+        game.effect_store.cant_effects.merge(tracker);
     }
 }
 
@@ -968,6 +968,7 @@ impl CantAttackUnlessCondition {
                     player.is_in_game()
                         && player.id != controller
                         && game
+                            .turn_store
                             .turn_history
                             .player_was_dealt_damage_this_turn(player.id)
                 }))
@@ -1345,7 +1346,7 @@ impl StaticAbilityKind for CantAttackUnlessCondition {
             controller,
             Some(source),
         );
-        game.cant_effects.merge(tracker);
+        game.effect_store.cant_effects.merge(tracker);
     }
 
     fn can_attack_specific_defender(
@@ -1528,7 +1529,7 @@ impl StaticAbilityKind for CantAttack {
             _controller,
             Some(source),
         );
-        game.cant_effects.merge(tracker);
+        game.effect_store.cant_effects.merge(tracker);
     }
 }
 
@@ -1572,6 +1573,7 @@ impl StaticAbilityKind for CantAttackUnlessControllerCastCreatureSpellThisTurn {
 
     fn apply_restrictions(&self, game: &mut GameState, source: ObjectId, controller: PlayerId) {
         let cast_creature_spell_this_turn = game
+            .turn_store
             .turn_history
             .spell_cast_snapshot_history()
             .iter()
@@ -1592,7 +1594,7 @@ impl StaticAbilityKind for CantAttackUnlessControllerCastCreatureSpellThisTurn {
             controller,
             Some(source),
         );
-        game.cant_effects.merge(tracker);
+        game.effect_store.cant_effects.merge(tracker);
     }
 }
 
@@ -1611,6 +1613,7 @@ impl StaticAbilityKind for CantAttackUnlessControllerCastNonCreatureSpellThisTur
 
     fn apply_restrictions(&self, game: &mut GameState, source: ObjectId, controller: PlayerId) {
         let cast_noncreature_spell_this_turn = game
+            .turn_store
             .turn_history
             .spell_cast_snapshot_history()
             .iter()
@@ -1631,7 +1634,7 @@ impl StaticAbilityKind for CantAttackUnlessControllerCastNonCreatureSpellThisTur
             controller,
             Some(source),
         );
-        game.cant_effects.merge(tracker);
+        game.effect_store.cant_effects.merge(tracker);
     }
 }
 
@@ -1656,7 +1659,7 @@ impl StaticAbilityKind for CantBlock {
             _controller,
             Some(source),
         );
-        game.cant_effects.merge(tracker);
+        game.effect_store.cant_effects.merge(tracker);
     }
 }
 

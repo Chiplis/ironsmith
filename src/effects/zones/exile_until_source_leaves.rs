@@ -195,13 +195,14 @@ mod tests {
         let source = game.new_object_id();
         let creature_id = create_creature_on_battlefield(&mut game, "Elite Vanguard", alice);
 
-        game.replacement_effects
-            .add_resolution_effect(ReplacementEffect::with_matcher(
+        game.effect_store.replacement_effects.add_resolution_effect(
+            ReplacementEffect::with_matcher(
                 source,
                 alice,
                 WouldBeExiledMatcher::new(ObjectFilter::permanent()),
                 ReplacementAction::ChangeDestination(Zone::Hand),
-            ));
+            ),
+        );
 
         let mut ctx = ExecutionContext::new_default(source, alice);
         let effect = ExileUntilEffect::source_leaves(ChooseSpec::SpecificObject(creature_id));

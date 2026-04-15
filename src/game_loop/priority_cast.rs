@@ -114,12 +114,10 @@ pub(super) fn collect_available_casting_methods(
             }
         }
 
-        let granted = game.grant_registry.granted_alternative_casts_for_card(
-            game,
-            spell_id,
-            Zone::Hand,
-            player,
-        );
+        let granted = game
+            .effect_store
+            .grant_registry
+            .granted_alternative_casts_for_card(game, spell_id, Zone::Hand, player);
         let base_alt_idx = spell.alternative_casts.len();
         for (offset, grant) in granted.iter().enumerate() {
             if grant.method.cast_from_zone() != Zone::Hand

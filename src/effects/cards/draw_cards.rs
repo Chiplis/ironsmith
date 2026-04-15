@@ -212,7 +212,10 @@ impl EffectExecutor for DrawCardsEffect {
             game.draw_step_context_for_player(player_id);
 
         // Check if this is the first draw this turn
-        let current_draws = game.turn_history.cards_drawn_by_player(player_id);
+        let current_draws = game
+            .turn_store
+            .turn_history
+            .cards_drawn_by_player(player_id);
         let is_first = current_draws == 0;
 
         // Check for "can't draw extra cards" restriction (e.g., Narset)
@@ -341,17 +344,17 @@ mod tests {
 
         // First draw
         let effect = DrawCardsEffect::you(2);
-        crate::executor::execute_effect(&mut game, &crate::effect::Effect::new(effect), &mut ctx)
+        crate::effects::execute_effect(&mut game, &crate::effect::Effect::new(effect), &mut ctx)
             .unwrap();
 
-        assert_eq!(game.turn_history.cards_drawn_by_player(alice), 2);
+        assert_eq!(game.turn_store.turn_history.cards_drawn_by_player(alice), 2);
 
         // Second draw
         let effect = DrawCardsEffect::you(1);
-        crate::executor::execute_effect(&mut game, &crate::effect::Effect::new(effect), &mut ctx)
+        crate::effects::execute_effect(&mut game, &crate::effect::Effect::new(effect), &mut ctx)
             .unwrap();
 
-        assert_eq!(game.turn_history.cards_drawn_by_player(alice), 3);
+        assert_eq!(game.turn_store.turn_history.cards_drawn_by_player(alice), 3);
     }
 
     #[test]

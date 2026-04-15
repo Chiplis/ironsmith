@@ -169,7 +169,7 @@ impl EffectExecutor for DealDamageEffect {
         // Check if this is targeting IteratedPlayer (used in ForEachOpponent)
         // If so, resolve the target from the context's iterated_player
         if let ChooseSpec::Player(PlayerFilter::IteratedPlayer) = &self.target {
-            if let Some(player_id) = ctx.iterated_player {
+            if let Some(player_id) = ctx.iteration.iterated_player {
                 return Ok(apply_processed_damage_outcome(
                     game,
                     ctx.source,
@@ -185,7 +185,7 @@ impl EffectExecutor for DealDamageEffect {
         }
 
         if let ChooseSpec::Iterated = &self.target {
-            if let Some(object_id) = ctx.iterated_object {
+            if let Some(object_id) = ctx.iteration.iterated_object {
                 if let Some(obj) = game.object(object_id) {
                     let can_be_damaged = obj.has_card_type(CardType::Creature)
                         || obj.has_card_type(CardType::Planeswalker);
@@ -221,7 +221,7 @@ impl EffectExecutor for DealDamageEffect {
                     }
                     None
                 })
-                .or_else(|| ctx.defending_player.map(AttackEventTarget::Player));
+                .or_else(|| ctx.combat.defending_player.map(AttackEventTarget::Player));
 
             let Some(attacked_target) = attacked_target else {
                 return Ok(EffectOutcome::target_invalid());
@@ -401,8 +401,8 @@ mod tests {
         target: crate::ids::ObjectId,
     ) {
         let source = game.new_object_id();
-        game.replacement_effects
-            .add_resolution_effect(ReplacementEffect::with_matcher(
+        game.effect_store.replacement_effects.add_resolution_effect(
+            ReplacementEffect::with_matcher(
                 source,
                 controller,
                 WouldPutCountersMatcher::new(
@@ -411,7 +411,8 @@ mod tests {
                 )
                 .with_cause_filter(CauseFilter::from_effect()),
                 ReplacementAction::Modify(EventModification::Multiply(2)),
-            ));
+            ),
+        );
     }
 
     #[test]

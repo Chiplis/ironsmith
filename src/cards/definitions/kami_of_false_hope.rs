@@ -159,10 +159,10 @@ mod tests {
         let _result = effect.0.execute(&mut game, &mut ctx).unwrap();
 
         // Verify a prevention shield was added
-        assert_eq!(game.prevention_effects.shields().len(), 1);
+        assert_eq!(game.effect_store.prevention_effects.shields().len(), 1);
 
         // Verify the shield prevents combat damage
-        let shield = &game.prevention_effects.shields()[0];
+        let shield = &game.effect_store.prevention_effects.shields()[0];
         assert!(
             shield.damage_filter.combat_only,
             "Shield should only prevent combat damage"
@@ -187,15 +187,18 @@ mod tests {
 
         // Try to apply combat damage to Bob
         use crate::color::ColorSet;
-        let remaining = game.prevention_effects.apply_prevention_to_player(
-            bob,
-            5,                       // 5 combat damage
-            true,                    // is combat
-            ObjectId::from_raw(999), // source
-            &ColorSet::COLORLESS,
-            &vec![CardType::Creature],
-            true, // can be prevented
-        );
+        let remaining = game
+            .effect_store
+            .prevention_effects
+            .apply_prevention_to_player(
+                bob,
+                5,                       // 5 combat damage
+                true,                    // is combat
+                ObjectId::from_raw(999), // source
+                &ColorSet::COLORLESS,
+                &vec![CardType::Creature],
+                true, // can be prevented
+            );
 
         // All combat damage should be prevented
         assert_eq!(remaining, 0, "All combat damage should be prevented");
@@ -215,15 +218,18 @@ mod tests {
 
         // Try to apply noncombat damage to Bob
         use crate::color::ColorSet;
-        let remaining = game.prevention_effects.apply_prevention_to_player(
-            bob,
-            5,                       // 5 noncombat damage
-            false,                   // NOT combat
-            ObjectId::from_raw(999), // source
-            &ColorSet::RED,
-            &vec![CardType::Instant],
-            true, // can be prevented
-        );
+        let remaining = game
+            .effect_store
+            .prevention_effects
+            .apply_prevention_to_player(
+                bob,
+                5,                       // 5 noncombat damage
+                false,                   // NOT combat
+                ObjectId::from_raw(999), // source
+                &ColorSet::RED,
+                &vec![CardType::Instant],
+                true, // can be prevented
+            );
 
         // Noncombat damage should NOT be prevented
         assert_eq!(remaining, 5, "Noncombat damage should NOT be prevented");
@@ -246,16 +252,19 @@ mod tests {
 
         // Try to apply combat damage to the creature
         use crate::color::ColorSet;
-        let remaining = game.prevention_effects.apply_prevention_to_permanent(
-            creature,
-            bob,
-            4,                       // 4 combat damage
-            true,                    // is combat
-            ObjectId::from_raw(999), // source
-            &ColorSet::COLORLESS,
-            &vec![CardType::Creature],
-            true, // can be prevented
-        );
+        let remaining = game
+            .effect_store
+            .prevention_effects
+            .apply_prevention_to_permanent(
+                creature,
+                bob,
+                4,                       // 4 combat damage
+                true,                    // is combat
+                ObjectId::from_raw(999), // source
+                &ColorSet::COLORLESS,
+                &vec![CardType::Creature],
+                true, // can be prevented
+            );
 
         // All combat damage should be prevented
         assert_eq!(

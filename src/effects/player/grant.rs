@@ -90,7 +90,7 @@ impl EffectExecutor for GrantEffect {
         match &self.grantable {
             Grantable::Ability(ability) => {
                 // Grant a static ability
-                game.grant_registry.grant_ability_to_card(
+                game.effect_store.grant_registry.grant_ability_to_card(
                     target_id,
                     zone,
                     owner,
@@ -101,13 +101,15 @@ impl EffectExecutor for GrantEffect {
             }
             Grantable::AlternativeCast(method) => {
                 // Grant an alternative casting method
-                game.grant_registry.grant_alternative_cast_to_card(
-                    target_id,
-                    zone,
-                    owner,
-                    method.clone(),
-                    grant_source,
-                );
+                game.effect_store
+                    .grant_registry
+                    .grant_alternative_cast_to_card(
+                        target_id,
+                        zone,
+                        owner,
+                        method.clone(),
+                        grant_source,
+                    );
                 Ok(EffectOutcome::resolved())
             }
             Grantable::DerivedAlternativeCast(spec) => {
@@ -115,7 +117,7 @@ impl EffectExecutor for GrantEffect {
                     return Ok(EffectOutcome::target_invalid());
                 }
 
-                game.grant_registry.grant_to_card(
+                game.effect_store.grant_registry.grant_to_card(
                     target_id,
                     zone,
                     owner,
@@ -127,7 +129,7 @@ impl EffectExecutor for GrantEffect {
             Grantable::PlayFrom => {
                 // PlayFrom is typically granted via grant_to_filter (Yawgmoth's Will)
                 // rather than targeting individual cards. If used here, just grant it.
-                game.grant_registry.grant_to_card(
+                game.effect_store.grant_registry.grant_to_card(
                     target_id,
                     zone,
                     owner,
@@ -203,9 +205,12 @@ mod tests {
         assert_eq!(result.status, crate::effect::OutcomeStatus::Succeeded);
 
         // Check that flashback was granted
-        let grants =
-            game.grant_registry
-                .get_grants_for_card(&game, instant_id, Zone::Graveyard, alice);
+        let grants = game.effect_store.grant_registry.get_grants_for_card(
+            &game,
+            instant_id,
+            Zone::Graveyard,
+            alice,
+        );
         assert!(!grants.is_empty());
         assert!(matches!(
             &grants[0].grantable,
@@ -214,12 +219,10 @@ mod tests {
             )
         ));
 
-        let granted_casts = game.grant_registry.granted_alternative_casts_for_card(
-            &game,
-            instant_id,
-            Zone::Graveyard,
-            alice,
-        );
+        let granted_casts = game
+            .effect_store
+            .grant_registry
+            .granted_alternative_casts_for_card(&game, instant_id, Zone::Graveyard, alice);
         assert!(matches!(
             granted_casts.first().map(|grant| &grant.method),
             Some(AlternativeCastingMethod::Flashback { .. })
@@ -252,9 +255,12 @@ mod tests {
         assert_eq!(result.status, crate::effect::OutcomeStatus::Succeeded);
 
         // Check that flash was granted
-        let grants = game
-            .grant_registry
-            .get_grants_for_card(&game, creature_id, Zone::Hand, alice);
+        let grants = game.effect_store.grant_registry.get_grants_for_card(
+            &game,
+            creature_id,
+            Zone::Hand,
+            alice,
+        );
         assert!(!grants.is_empty());
         match &grants[0].grantable {
             Grantable::Ability(ability) => assert!(ability.has_flash()),

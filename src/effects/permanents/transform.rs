@@ -357,6 +357,7 @@ mod tests {
         );
         let source = game.create_object_from_definition(&front, alice, Zone::Battlefield);
         let before_ts = game
+            .effect_store
             .continuous_effects
             .get_entry_timestamp(source)
             .expect("battlefield permanent should have an entry timestamp");
@@ -370,6 +371,7 @@ mod tests {
         assert!(game.is_face_down(source));
         assert_eq!(game.transform_count(source), 1);
         let after_ts = game
+            .effect_store
             .continuous_effects
             .get_entry_timestamp(source)
             .expect("transformed permanent should keep an entry timestamp");
@@ -447,7 +449,7 @@ mod tests {
             "Galleon should remain on the battlefield until end of combat"
         );
         assert_eq!(
-            game.delayed_triggers.len(),
+            game.effect_store.delayed_triggers.len(),
             1,
             "attack trigger should schedule one delayed end-of-combat trigger"
         );
@@ -659,6 +661,7 @@ mod tests {
         );
         let source = game.create_object_from_definition(&front, alice, Zone::Battlefield);
         let before_ts = game
+            .effect_store
             .continuous_effects
             .get_entry_timestamp(source)
             .expect("battlefield permanent should have an entry timestamp");
@@ -681,6 +684,7 @@ mod tests {
             "Autobot Racer"
         );
         let after_ts = game
+            .effect_store
             .continuous_effects
             .get_entry_timestamp(source)
             .expect("converted permanent should keep an entry timestamp");
@@ -710,7 +714,7 @@ mod tests {
             "Flying",
         );
         let source = game.create_object_from_definition(&front, alice, Zone::Battlefield);
-        game.cant_effects.cant_transform.insert(source);
+        game.effect_store.cant_effects.cant_transform.insert(source);
 
         let mut ctx = ExecutionContext::new_default(source, alice);
         let outcome = ConvertEffect::source()

@@ -158,10 +158,10 @@ mod tests {
         assert_eq!(result.status, crate::effect::OutcomeStatus::Succeeded);
 
         // Verify a prevention shield was added
-        assert_eq!(game.prevention_effects.shields().len(), 1);
+        assert_eq!(game.effect_store.prevention_effects.shields().len(), 1);
 
         // Verify the shield prevents combat damage
-        let shield = &game.prevention_effects.shields()[0];
+        let shield = &game.effect_store.prevention_effects.shields()[0];
         assert!(
             shield.damage_filter.combat_only,
             "Shield should only prevent combat damage"
@@ -180,15 +180,18 @@ mod tests {
         let _ = effect.0.execute(&mut game, &mut ctx).unwrap();
 
         // Try to apply combat damage
-        let remaining = game.prevention_effects.apply_prevention_to_player(
-            alice,
-            5,
-            true, // is combat
-            ObjectId::from_raw(999),
-            &ColorSet::COLORLESS,
-            &vec![CardType::Creature],
-            true,
-        );
+        let remaining = game
+            .effect_store
+            .prevention_effects
+            .apply_prevention_to_player(
+                alice,
+                5,
+                true, // is combat
+                ObjectId::from_raw(999),
+                &ColorSet::COLORLESS,
+                &vec![CardType::Creature],
+                true,
+            );
 
         assert_eq!(remaining, 0, "Combat damage should be prevented");
     }
@@ -205,15 +208,18 @@ mod tests {
         let _ = effect.0.execute(&mut game, &mut ctx).unwrap();
 
         // Try to apply noncombat damage
-        let remaining = game.prevention_effects.apply_prevention_to_player(
-            alice,
-            5,
-            false, // NOT combat
-            ObjectId::from_raw(999),
-            &ColorSet::RED,
-            &vec![CardType::Instant],
-            true,
-        );
+        let remaining = game
+            .effect_store
+            .prevention_effects
+            .apply_prevention_to_player(
+                alice,
+                5,
+                false, // NOT combat
+                ObjectId::from_raw(999),
+                &ColorSet::RED,
+                &vec![CardType::Instant],
+                true,
+            );
 
         assert_eq!(remaining, 5, "Noncombat damage should NOT be prevented");
     }
@@ -243,7 +249,8 @@ mod tests {
 
         // Creature should have 1 regeneration shield (one-shot replacement effect)
         assert_eq!(
-            game.replacement_effects
+            game.effect_store
+                .replacement_effects
                 .count_one_shot_effects_from_source(creature),
             1
         );

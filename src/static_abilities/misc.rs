@@ -864,6 +864,7 @@ impl ReplacementMatcher for ThisWouldEnterWithBloodthirstMatcher {
                 && player.id != ctx.controller
                 && ctx
                     .game
+                    .turn_store
                     .turn_history
                     .player_was_dealt_damage_this_turn(player.id)
         })
@@ -1159,13 +1160,13 @@ impl StaticAbilityKind for ManaSpendPermissionAbility {
     }
 
     fn apply_restrictions(&self, game: &mut GameState, _source: ObjectId, controller: PlayerId) {
-        game.mana_spend_effects
-            .permissions
-            .push(crate::game_state::ActiveManaSpendPermission {
+        game.effect_store.mana_spend_effects.permissions.push(
+            crate::game_state::ActiveManaSpendPermission {
                 permission: self.permission.clone(),
                 controller,
                 source: crate::game_state::ManaSpendPermissionSource::StaticAbility,
-            });
+            },
+        );
     }
 }
 
@@ -3493,7 +3494,10 @@ mod tests {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
         let source = ObjectId::from_raw(52);
         let alice = PlayerId::from_index(0);
-        game.turn_history.players_attacked_this_turn.insert(alice);
+        game.turn_store
+            .turn_history
+            .players_attacked_this_turn
+            .insert(alice);
 
         let ability = EntersWithCountersIfCondition::new(
             CounterType::PlusOnePlusOne,

@@ -307,7 +307,7 @@ mod tests {
         use crate::cards::definitions::basic_mountain;
         use crate::effect::Effect;
         use crate::effects::EarthbendEffect;
-        use crate::executor::execute_effect;
+        use crate::effects::execute_effect;
 
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);

@@ -19,7 +19,7 @@
 //! Effects can be labeled with `EffectId` using `Effect::with_id`, and later effects
 //! can reference those results using `Effect::if_` with an `EffectPredicate`.
 
-use crate::effects::EffectExecutor;
+use crate::effects::{EffectExecutionCategory, EffectExecutor};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId, StableId};
 use crate::mana::ManaSymbol;
@@ -1855,6 +1855,16 @@ impl Effect {
         controller: PlayerId,
     ) -> Option<Vec<ManaSymbol>> {
         self.0.producible_mana_symbols(game, source, controller)
+    }
+
+    /// Return the primary runtime execution category for this effect.
+    pub fn primary_execution_category(&self) -> EffectExecutionCategory {
+        self.0.primary_execution_category()
+    }
+
+    /// Return all runtime execution categories this effect participates in.
+    pub fn execution_categories(&self) -> Vec<EffectExecutionCategory> {
+        self.0.execution_categories()
     }
 
     /// Tag this effect's target for reference by subsequent effects.

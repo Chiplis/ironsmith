@@ -268,7 +268,7 @@ mod tests {
         let bob = PlayerId::from_index(1);
         game.player_mut(alice).expect("alice exists").life = 10;
         game.player_mut(bob).expect("bob exists").life = 20;
-        game.cant_effects.add_cant_gain_life(alice);
+        game.effect_store.cant_effects.add_cant_gain_life(alice);
 
         let source = game.new_object_id();
         let mut ctx = ExecutionContext::new_default(source, alice)
@@ -289,7 +289,9 @@ mod tests {
         let bob = PlayerId::from_index(1);
         game.player_mut(alice).expect("alice exists").life = 20;
         game.player_mut(bob).expect("bob exists").life = 10;
-        game.cant_effects.add_life_total_cant_change(alice);
+        game.effect_store
+            .cant_effects
+            .add_life_total_cant_change(alice);
 
         let source = game.new_object_id();
         let mut ctx = ExecutionContext::new_default(source, alice)

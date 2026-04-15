@@ -29,13 +29,28 @@
 //! let result = effect.execute(&mut game, &mut ctx)?;
 //! ```
 //!
+//! # Runtime Categories
+//!
+//! The supported runtime extension categories are:
+//! - `Standard`: ordinary resolving effects
+//! - `CostExecutable`: effects that can participate in cost payment
+//! - `DelayedTriggerRegistration`: effects that register delayed trigger state
+//! - `ReplacementRegistration`: effects that register replacement state
+//!
+//! New runtime work should fit one of those categories. When in doubt, prefer
+//! building a reusable `Standard` effect first and only opt into the more
+//! specialized categories when the effect's main job is registration or cost handling.
+//!
 //! # Migration Status
 //!
-//! Effects are being migrated incrementally from the monolithic `execute_effect()`
-//! function in `executor.rs`. During migration:
+//! Effect execution now routes through the runtime harness in this module.
+//! `executor.rs` still owns execution context types and compatibility wrappers,
+//! but new effect work should extend `src/effects/` and call `effects::execute_effect()`.
+//! During migration:
 //! - The `Effect` enum remains unchanged while modular execution lands
-//! - `execute_effect()` delegates to modular implementations via bridges
-//! - New effects can be added directly to this module
+//! - `effects::execute_effect()` provides the shared harness around trait-dispatched effects
+//! - `executor.rs` compatibility wrappers delegate back into this module
+//! - New effects should be added directly to this module tree
 
 pub mod cards;
 pub mod combat;
@@ -54,6 +69,7 @@ pub mod permanents;
 pub mod player;
 pub mod replacement;
 pub mod restrictions;
+mod runtime;
 pub mod stack;
 pub mod tokens;
 pub mod zones;
@@ -62,7 +78,10 @@ pub mod zones;
 pub const PUBLIC_REVEALED_TAG: &str = "__public_revealed";
 
 // Re-export the traits, modal spec, and cost validation error
-pub use executor_trait::{CostExecutableEffect, CostValidationError, EffectExecutor, ModalSpec};
+pub use executor_trait::{
+    CostExecutableEffect, CostValidationError, EffectExecutionCategory, EffectExecutor, ModalSpec,
+};
+pub use runtime::{execute_effect, resolve_value, validate_target};
 
 // Re-export effect implementations
 pub use cards::{

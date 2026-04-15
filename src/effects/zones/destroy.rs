@@ -263,8 +263,8 @@ mod tests {
                 range: 0..2,
             }]);
 
-        crate::executor::execute_effect(&mut game, &destroy, &mut ctx).expect("destroy resolves");
-        crate::executor::execute_effect(&mut game, &create_elephants, &mut ctx)
+        crate::effects::execute_effect(&mut game, &destroy, &mut ctx).expect("destroy resolves");
+        crate::effects::execute_effect(&mut game, &create_elephants, &mut ctx)
             .expect("follow-up resolves");
 
         let alice_elephants = game

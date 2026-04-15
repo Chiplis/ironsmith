@@ -1267,7 +1267,7 @@ mod tests {
             Zone::Hand,
         );
 
-        game.replacement_effects.add_resolution_effect(
+        game.effect_store.replacement_effects.add_resolution_effect(
             crate::replacement::ReplacementEffect::with_matcher(
                 island_id,
                 alice,
@@ -1305,7 +1305,8 @@ mod tests {
                     .iter()
                     .copied()
                     .find(|&id| {
-                        game.replacement_effects
+                        game.effect_store
+                            .replacement_effects
                             .get_effect(id)
                             .is_some_and(|effect| {
                                 matches!(
@@ -1321,7 +1322,8 @@ mod tests {
                     .iter()
                     .copied()
                     .find(|&id| {
-                        game.replacement_effects
+                        game.effect_store
+                            .replacement_effects
                             .get_effect(id)
                             .is_some_and(|effect| {
                                 matches!(

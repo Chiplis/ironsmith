@@ -130,7 +130,7 @@ impl EffectExecutor for ChoosePlayerEffect {
         ctx.set_tagged_players(self.tag.clone(), vec![chosen]);
         if self.remember_as_chosen_player {
             game.set_chosen_player(ctx.source, chosen);
-            ctx.chosen_player = Some(chosen);
+            ctx.combat.chosen_player = Some(chosen);
         }
         if self.tag.as_str() != "__it__" {
             // Mirror the most recent chosen player onto the conventional follow-up

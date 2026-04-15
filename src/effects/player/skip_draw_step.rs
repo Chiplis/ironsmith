@@ -33,7 +33,7 @@ impl EffectExecutor for SkipDrawStepEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
-        game.skip_next_draw_step.insert(player_id);
+        game.turn_store.skip_next_draw_step.insert(player_id);
         Ok(EffectOutcome::resolved())
     }
 }
@@ -58,7 +58,7 @@ mod tests {
         let result = effect.execute(&mut game, &mut ctx).unwrap();
 
         assert_eq!(result.status, crate::effect::OutcomeStatus::Succeeded);
-        assert!(game.skip_next_draw_step.contains(&alice));
+        assert!(game.turn_store.skip_next_draw_step.contains(&alice));
     }
 
     #[test]
@@ -73,7 +73,7 @@ mod tests {
         let result = effect.execute(&mut game, &mut ctx).unwrap();
 
         assert_eq!(result.status, crate::effect::OutcomeStatus::Succeeded);
-        assert!(!game.skip_next_draw_step.contains(&alice));
-        assert!(game.skip_next_draw_step.contains(&bob));
+        assert!(!game.turn_store.skip_next_draw_step.contains(&alice));
+        assert!(game.turn_store.skip_next_draw_step.contains(&bob));
     }
 }

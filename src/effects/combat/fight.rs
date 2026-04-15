@@ -200,8 +200,8 @@ mod tests {
         target: ObjectId,
     ) {
         let source = game.new_object_id();
-        game.replacement_effects
-            .add_resolution_effect(ReplacementEffect::with_matcher(
+        game.effect_store.replacement_effects.add_resolution_effect(
+            ReplacementEffect::with_matcher(
                 source,
                 controller,
                 WouldPutCountersMatcher::new(
@@ -210,7 +210,8 @@ mod tests {
                 )
                 .with_cause_filter(CauseFilter::from_effect()),
                 ReplacementAction::Modify(EventModification::Multiply(2)),
-            ));
+            ),
+        );
     }
 
     #[test]
@@ -338,14 +339,16 @@ mod tests {
         let source = game.new_object_id();
 
         // +2/+0 pump should increase fight damage dealt by Bear.
-        game.continuous_effects.add_effect(ContinuousEffect::pump(
-            source,
-            alice,
-            bear,
-            2,
-            0,
-            Until::EndOfTurn,
-        ));
+        game.effect_store
+            .continuous_effects
+            .add_effect(ContinuousEffect::pump(
+                source,
+                alice,
+                bear,
+                2,
+                0,
+                Until::EndOfTurn,
+            ));
 
         let mut ctx = ExecutionContext::new_default(source, alice).with_targets(vec![
             ResolvedTarget::Object(bear),

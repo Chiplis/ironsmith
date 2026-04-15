@@ -742,6 +742,7 @@ version = "0.1.0"
 dependencies = [
  "ironsmith",
  "rayon",
+ "reqwest",
  "rusqlite",
  "serde",
  "serde_json",

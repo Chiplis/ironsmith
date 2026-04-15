@@ -182,7 +182,10 @@ mod tests {
         let result = effect.execute(&mut game, &mut ctx).unwrap();
 
         assert_eq!(result.status, crate::effect::OutcomeStatus::Succeeded);
-        assert_eq!(game.continuous_effects.effects_sorted().len(), 1);
+        assert_eq!(
+            game.effect_store.continuous_effects.effects_sorted().len(),
+            1
+        );
     }
 
     #[test]
@@ -201,7 +204,10 @@ mod tests {
 
         assert_eq!(result.status, crate::effect::OutcomeStatus::Succeeded);
         // The continuous effect will only apply to creatures matching the filter
-        assert_eq!(game.continuous_effects.effects_sorted().len(), 1);
+        assert_eq!(
+            game.effect_store.continuous_effects.effects_sorted().len(),
+            1
+        );
     }
 
     #[test]
@@ -279,7 +285,7 @@ mod tests {
         assert_eq!(result.status, crate::effect::OutcomeStatus::Succeeded);
 
         // Verify the effect has locked targets
-        let effects = game.continuous_effects.effects_sorted();
+        let effects = game.effect_store.continuous_effects.effects_sorted();
         assert_eq!(effects.len(), 1);
         match &effects[0].source_type {
             EffectSourceType::Resolution { locked_targets } => {
@@ -295,7 +301,7 @@ mod tests {
         let c3 = create_creature(&mut game, "Creature 3", 4, 4, alice);
 
         // The new creature should NOT be in the locked targets
-        let effects = game.continuous_effects.effects_sorted();
+        let effects = game.effect_store.continuous_effects.effects_sorted();
         match &effects[0].source_type {
             EffectSourceType::Resolution { locked_targets } => {
                 assert!(!locked_targets.contains(&c3));

@@ -170,6 +170,7 @@ pub fn advance_phase(game: &mut GameState) -> Result<(), TurnError> {
     if let Some(mut next) = next_phase(current_phase) {
         if matches!(next, Phase::Combat)
             && game
+                .turn_store
                 .skip_next_combat_phases
                 .remove(&game.turn.active_player)
         {
@@ -241,15 +242,16 @@ fn advance_priority_to_next_player(game: &mut GameState) {
     };
 
     let current_index = game
+        .turn_store
         .turn_order
         .iter()
         .position(|&p| p == current)
         .unwrap_or(0);
 
     // Find next player who is still in the game
-    for i in 1..=game.turn_order.len() {
-        let next_index = (current_index + i) % game.turn_order.len();
-        let next_player = game.turn_order[next_index];
+    for i in 1..=game.turn_store.turn_order.len() {
+        let next_index = (current_index + i) % game.turn_store.turn_order.len();
+        let next_player = game.turn_store.turn_order[next_index];
 
         if game.player(next_player).is_some_and(|p| p.is_in_game()) {
             game.turn.priority_player = Some(next_player);
@@ -386,7 +388,7 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
     }
 
     let mut consumed_next_untap_objects = std::collections::HashSet::new();
-    for effect in &mut game.restriction_effects {
+    for effect in &mut game.effect_store.restriction_effects {
         if matches!(effect.duration, Until::ControllersNextUntapStep)
             && effect.controller == active_player
         {
@@ -399,18 +401,20 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
         }
     }
     let current_turn = game.turn.turn_number;
-    game.restriction_effects
+    game.effect_store
+        .restriction_effects
         .retain(|effect| !effect.is_expired(current_turn));
     for object_id in consumed_next_untap_objects {
-        let still_blocked_by_restriction = game.restriction_effects.iter().any(|effect| {
-            effect.is_active(game, current_turn)
-                && matches!(
-                    &effect.restriction,
-                    Restriction::Untap(filter) if filter.specific == Some(object_id)
-                )
-        });
+        let still_blocked_by_restriction =
+            game.effect_store.restriction_effects.iter().any(|effect| {
+                effect.is_active(game, current_turn)
+                    && matches!(
+                        &effect.restriction,
+                        Restriction::Untap(filter) if filter.specific == Some(object_id)
+                    )
+            });
         if !still_blocked_by_restriction {
-            game.cant_effects.cant_untap.remove(&object_id);
+            game.effect_store.cant_effects.cant_untap.remove(&object_id);
         }
     }
 
@@ -439,7 +443,7 @@ pub fn execute_draw_step_with(
     let active_player = game.turn.active_player;
     let (is_during_players_draw_step, cards_previously_drawn_this_draw_step) =
         game.draw_step_context_for_player(active_player);
-    if game.skip_next_draw_step.remove(&active_player) {
+    if game.turn_store.skip_next_draw_step.remove(&active_player) {
         game.turn.priority_player = Some(active_player);
         return Vec::new();
     }
@@ -449,7 +453,10 @@ pub fn execute_draw_step_with(
     }
 
     // Check if player can draw (the draw step draw is the first draw of the turn)
-    let current_draws = game.turn_history.cards_drawn_by_player(active_player);
+    let current_draws = game
+        .turn_store
+        .turn_history
+        .cards_drawn_by_player(active_player);
 
     // Track if this is the first draw of the turn (before drawing)
     let is_first_draw = current_draws == 0;
@@ -600,13 +607,18 @@ pub fn execute_cleanup_step(game: &mut GameState) {
 
     // Clear one-shot replacement effects (like regeneration shields)
     // These only last "until end of turn" per MTG rules
-    game.replacement_effects.clear_one_shot_effects();
-    game.replacement_effects.clear_until_end_of_turn_effects();
+    game.effect_store
+        .replacement_effects
+        .clear_one_shot_effects();
+    game.effect_store
+        .replacement_effects
+        .clear_until_end_of_turn_effects();
 
     // Clean up expired grants (e.g., flashback from Snapcaster Mage)
     let turn_number = game.turn.turn_number;
     let battlefield = game.battlefield.clone();
-    game.grant_registry
+    game.effect_store
+        .grant_registry
         .cleanup_expired(turn_number, &battlefield);
 
     game.cleanup_restrictions_end_of_turn();
@@ -617,7 +629,7 @@ pub fn execute_cleanup_step(game: &mut GameState) {
 
     // End "until end of turn" effects would happen here
     // (Handled by continuous effect manager)
-    game.continuous_effects.cleanup_end_of_turn();
+    game.effect_store.continuous_effects.cleanup_end_of_turn();
     game.cleanup_player_control_end_of_turn();
     game.cleanup_combat_choice_control_end_of_turn();
 
@@ -794,7 +806,9 @@ mod tests {
         );
         game.tap(doesnt_untap_artifact);
         game.tap(cant_untap_artifact);
-        game.cant_effects.add_cant_untap(cant_untap_artifact);
+        game.effect_store
+            .cant_effects
+            .add_cant_untap(cant_untap_artifact);
 
         let mut dm = AlwaysYesDecisionMaker;
         execute_untap_step_with(&mut game, &mut dm);
@@ -864,7 +878,9 @@ mod tests {
         let cant_untap_artifact = create_artifact(&mut game, "Frozen Relic", alice, vec![]);
         game.tap(doesnt_untap_artifact);
         game.tap(cant_untap_artifact);
-        game.cant_effects.add_cant_untap(cant_untap_artifact);
+        game.effect_store
+            .cant_effects
+            .add_cant_untap(cant_untap_artifact);
 
         let mut dm = AlwaysYesDecisionMaker;
         execute_untap_step_with(&mut game, &mut dm);
@@ -947,7 +963,7 @@ mod tests {
                 .is_empty()
         );
         assert_eq!(game.objects_in_zone(Zone::Command).len(), 1);
-        assert_eq!(game.turn_history.cards_drawn_by_player(alice), 0);
+        assert_eq!(game.turn_store.turn_history.cards_drawn_by_player(alice), 0);
     }
 
     #[test]
@@ -973,7 +989,7 @@ mod tests {
             1
         );
         assert!(game.objects_in_zone(Zone::Command).is_empty());
-        assert_eq!(game.turn_history.cards_drawn_by_player(alice), 1);
+        assert_eq!(game.turn_store.turn_history.cards_drawn_by_player(alice), 1);
     }
 
     #[test]
@@ -996,7 +1012,7 @@ mod tests {
             game.player(alice).expect("alice should exist").hand.len(),
             0
         );
-        assert_eq!(game.turn_history.cards_drawn_by_player(alice), 0);
+        assert_eq!(game.turn_store.turn_history.cards_drawn_by_player(alice), 0);
     }
 
     #[test]
@@ -1026,6 +1042,6 @@ mod tests {
             game.player(alice).expect("alice should exist").hand.len(),
             1
         );
-        assert_eq!(game.turn_history.cards_drawn_by_player(alice), 1);
+        assert_eq!(game.turn_store.turn_history.cards_drawn_by_player(alice), 1);
     }
 }

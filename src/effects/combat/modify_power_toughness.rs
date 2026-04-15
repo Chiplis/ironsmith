@@ -175,7 +175,10 @@ mod tests {
         assert_eq!(result.status, crate::effect::OutcomeStatus::Succeeded);
 
         // Should have added a continuous effect
-        assert_eq!(game.continuous_effects.effects_sorted().len(), 1);
+        assert_eq!(
+            game.effect_store.continuous_effects.effects_sorted().len(),
+            1
+        );
     }
 
     #[test]
@@ -194,7 +197,10 @@ mod tests {
         let result = effect.execute(&mut game, &mut ctx).unwrap();
 
         assert_eq!(result.status, crate::effect::OutcomeStatus::Succeeded);
-        assert_eq!(game.continuous_effects.effects_sorted().len(), 1);
+        assert_eq!(
+            game.effect_store.continuous_effects.effects_sorted().len(),
+            1
+        );
     }
 
     #[test]
@@ -210,7 +216,10 @@ mod tests {
         let result = effect.execute(&mut game, &mut ctx).unwrap();
 
         assert_eq!(result.status, crate::effect::OutcomeStatus::Succeeded);
-        assert_eq!(game.continuous_effects.effects_sorted().len(), 1);
+        assert_eq!(
+            game.effect_store.continuous_effects.effects_sorted().len(),
+            1
+        );
     }
 
     #[test]
@@ -295,7 +304,10 @@ mod tests {
         let result = effect.execute(&mut game, &mut ctx).unwrap();
 
         assert_eq!(result.status, crate::effect::OutcomeStatus::Succeeded);
-        assert_eq!(game.continuous_effects.effects_sorted().len(), 1);
+        assert_eq!(
+            game.effect_store.continuous_effects.effects_sorted().len(),
+            1
+        );
     }
 
     #[test]

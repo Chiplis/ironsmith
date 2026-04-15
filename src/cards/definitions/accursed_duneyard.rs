@@ -192,7 +192,8 @@ mod tests {
 
         // Verify the zombie has no regeneration shields initially
         assert_eq!(
-            game.replacement_effects
+            game.effect_store
+                .replacement_effects
                 .count_one_shot_effects_from_source(zombie_id),
             0,
             "Zombie should have no regeneration shields initially"
@@ -210,7 +211,8 @@ mod tests {
 
         // Verify the zombie now has a regeneration shield
         assert_eq!(
-            game.replacement_effects
+            game.effect_store
+                .replacement_effects
                 .count_one_shot_effects_from_source(zombie_id),
             1,
             "Zombie should have 1 regeneration shield after regenerate"
@@ -274,7 +276,8 @@ mod tests {
 
         // Regeneration shield should be used up
         assert_eq!(
-            game.replacement_effects
+            game.effect_store
+                .replacement_effects
                 .count_one_shot_effects_from_source(zombie_id),
             0,
             "Regeneration shield should be consumed"
@@ -308,7 +311,8 @@ mod tests {
 
         // Regeneration shield should be used up
         assert_eq!(
-            game.replacement_effects
+            game.effect_store
+                .replacement_effects
                 .count_one_shot_effects_from_source(zombie_id),
             0,
             "Regeneration shield should be consumed by SBA"
@@ -375,7 +379,8 @@ mod tests {
             "damage should be cleared after deathtouch regeneration"
         );
         assert_eq!(
-            game.replacement_effects
+            game.effect_store
+                .replacement_effects
                 .count_one_shot_effects_from_source(victim_id),
             0,
             "regeneration shield should be consumed by deathtouch SBA"
@@ -502,7 +507,8 @@ mod tests {
 
         // Verify shields are present
         assert_eq!(
-            game.replacement_effects
+            game.effect_store
+                .replacement_effects
                 .count_one_shot_effects_from_source(zombie_id),
             2
         );
@@ -512,7 +518,8 @@ mod tests {
 
         // Shields should be cleared
         assert_eq!(
-            game.replacement_effects
+            game.effect_store
+                .replacement_effects
                 .count_one_shot_effects_from_source(zombie_id),
             0,
             "Regeneration shields should be cleared at end of turn"
@@ -578,7 +585,8 @@ mod tests {
 
         // Artifact should have no regeneration shields
         assert_eq!(
-            game.replacement_effects
+            game.effect_store
+                .replacement_effects
                 .count_one_shot_effects_from_source(artifact_id),
             0,
             "Non-creature should not receive regeneration shield"
@@ -605,7 +613,8 @@ mod tests {
             "Should start as a creature"
         );
         assert_eq!(
-            game.replacement_effects
+            game.effect_store
+                .replacement_effects
                 .count_one_shot_effects_from_source(zombie_id),
             1,
             "Should have a regeneration shield"
@@ -735,7 +744,8 @@ mod tests {
 
         if let Some(spirit_id) = spirit_id {
             assert_eq!(
-                game.replacement_effects
+                game.effect_store
+                    .replacement_effects
                     .count_one_shot_effects_from_source(spirit_id),
                 1,
                 "Selfless Spirit should have 1 regeneration shield after Accursed Duneyard activation"
@@ -859,7 +869,8 @@ mod tests {
             );
             // Regeneration shield should be consumed
             assert_eq!(
-                game.replacement_effects
+                game.effect_store
+                    .replacement_effects
                     .count_one_shot_effects_from_source(spirit_id),
                 0,
                 "Regeneration shield should be consumed after preventing destruction"

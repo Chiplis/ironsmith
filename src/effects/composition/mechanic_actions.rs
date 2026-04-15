@@ -138,7 +138,7 @@ fn explore_snapshot_for_object(
 }
 
 fn players_in_apnap_order(game: &GameState) -> Vec<PlayerId> {
-    if game.turn_order.is_empty() {
+    if game.turn_store.turn_order.is_empty() {
         return game
             .players
             .iter()
@@ -148,14 +148,16 @@ fn players_in_apnap_order(game: &GameState) -> Vec<PlayerId> {
     }
 
     let start = game
+        .turn_store
         .turn_order
         .iter()
         .position(|&player_id| player_id == game.turn.active_player)
         .unwrap_or(0);
 
-    (0..game.turn_order.len())
+    (0..game.turn_store.turn_order.len())
         .filter_map(|offset| {
-            let player_id = game.turn_order[(start + offset) % game.turn_order.len()];
+            let player_id =
+                game.turn_store.turn_order[(start + offset) % game.turn_store.turn_order.len()];
             game.player(player_id)
                 .filter(|player| player.is_in_game())
                 .map(|_| player_id)
@@ -1493,7 +1495,7 @@ mod tests {
         ctx.set_tagged_objects("subject", vec![snapshot.clone()]);
         let effect =
             crate::effect::Effect::explore(ChooseSpec::Tagged("subject".into())).tag("explored");
-        let outcome = crate::executor::execute_effect(&mut game, &effect, &mut ctx)
+        let outcome = crate::effects::execute_effect(&mut game, &effect, &mut ctx)
             .expect("tagged explore should execute");
 
         assert_eq!(game.player(alice).expect("alice").hand.len(), 1);
@@ -1844,8 +1846,11 @@ mod tests {
             .find(|info| info.creature == token_id)
             .expect("populated token should enter attacking");
         assert_eq!(token_attacker.target, AttackTarget::Player(bob));
-        assert_eq!(game.delayed_triggers.len(), 1);
-        assert_eq!(game.delayed_triggers[0].target_objects, vec![token_id]);
+        assert_eq!(game.effect_store.delayed_triggers.len(), 1);
+        assert_eq!(
+            game.effect_store.delayed_triggers[0].target_objects,
+            vec![token_id]
+        );
     }
 
     #[test]

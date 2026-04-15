@@ -696,8 +696,8 @@ mod tests {
         target: ObjectId,
     ) {
         let source = game.new_object_id();
-        game.replacement_effects
-            .add_resolution_effect(ReplacementEffect::with_matcher(
+        game.effect_store.replacement_effects.add_resolution_effect(
+            ReplacementEffect::with_matcher(
                 source,
                 controller,
                 WouldPutCountersMatcher::new(
@@ -706,7 +706,8 @@ mod tests {
                 )
                 .with_cause_filter(CauseFilter::from_effect()),
                 ReplacementAction::Modify(EventModification::Multiply(2)),
-            ));
+            ),
+        );
     }
 
     fn add_fiery_emancipation_like_effect(
@@ -714,13 +715,14 @@ mod tests {
         controller: PlayerId,
         source: ObjectId,
     ) {
-        game.replacement_effects
-            .add_resolution_effect(ReplacementEffect::with_matcher(
+        game.effect_store.replacement_effects.add_resolution_effect(
+            ReplacementEffect::with_matcher(
                 source,
                 controller,
                 DamageFromSourceMatcher::new(ObjectFilter::specific(source)),
                 ReplacementAction::Modify(EventModification::Multiply(3)),
-            ));
+            ),
+        );
     }
 
     #[test]

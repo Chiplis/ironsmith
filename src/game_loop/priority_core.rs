@@ -58,13 +58,14 @@ pub fn advance_priority_with_dm(
     // Check for pending replacement effect choice first
     // This takes priority over normal game flow
     let replacement_started_at = PerfTimer::start();
-    if let Some(pending) = &game.pending_replacement_choice {
+    if let Some(pending) = &game.effect_store.pending_replacement_choice {
         let options: Vec<ReplacementOption> = pending
             .applicable_effects
             .iter()
             .enumerate()
             .filter_map(|(i, id)| {
-                game.replacement_effects
+                game.effect_store
+                    .replacement_effects
                     .get_effect(*id)
                     .map(|e| ReplacementOption {
                         index: i,

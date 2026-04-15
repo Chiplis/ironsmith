@@ -62,7 +62,8 @@ impl DestroyNoRegenerationEffect {
         // We clear both:
         // - trait-based one-shot replacement effects (current regeneration implementation)
         // - legacy shield counters (older implementation)
-        game.replacement_effects
+        game.effect_store
+            .replacement_effects
             .remove_one_shot_effects_from_source(object_id);
         game.clear_regeneration_shields(object_id);
 
@@ -98,7 +99,8 @@ impl EffectExecutor for DestroyNoRegenerationEffect {
             &self.spec,
             ObjectApplyResultPolicy::CountApplied,
             |game, ctx, object_id| {
-                game.replacement_effects
+                game.effect_store
+                    .replacement_effects
                     .remove_one_shot_effects_from_source(object_id);
                 game.clear_regeneration_shields(object_id);
                 let result =
@@ -171,7 +173,8 @@ mod tests {
             .execute(&mut game, &mut regen_ctx)
             .unwrap();
         assert!(
-            game.replacement_effects
+            game.effect_store
+                .replacement_effects
                 .count_one_shot_effects_from_source(creature_id)
                 > 0
         );
@@ -191,7 +194,8 @@ mod tests {
             "expected creature to be destroyed"
         );
         assert_eq!(
-            game.replacement_effects
+            game.effect_store
+                .replacement_effects
                 .count_one_shot_effects_from_source(creature_id),
             0
         );

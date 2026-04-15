@@ -16850,12 +16850,12 @@ fn arcbond_delayed_trigger_deals_damage_to_each_other_creature_and_each_player()
     }
 
     assert_eq!(
-        game.delayed_triggers.len(),
+        game.effect_store.delayed_triggers.len(),
         1,
         "expected one delayed trigger"
     );
     assert_eq!(
-        game.delayed_triggers[0].target_objects,
+        game.effect_store.delayed_triggers[0].target_objects,
         vec![chosen_creature],
         "expected delayed trigger watcher to be the chosen creature"
     );

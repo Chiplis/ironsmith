@@ -51,7 +51,7 @@ impl EffectExecutor for ExtraTurnEffect {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
 
         // Add an extra turn for this player
-        game.extra_turns.push(player_id);
+        game.turn_store.extra_turns.push(player_id);
 
         Ok(EffectOutcome::resolved())
     }
@@ -72,15 +72,15 @@ mod tests {
         let alice = PlayerId::from_index(0);
         let source = game.new_object_id();
 
-        assert!(game.extra_turns.is_empty());
+        assert!(game.turn_store.extra_turns.is_empty());
 
         let mut ctx = ExecutionContext::new_default(source, alice);
         let effect = ExtraTurnEffect::you();
         let result = effect.execute(&mut game, &mut ctx).unwrap();
 
         assert_eq!(result.status, crate::effect::OutcomeStatus::Succeeded);
-        assert_eq!(game.extra_turns.len(), 1);
-        assert_eq!(game.extra_turns[0], alice);
+        assert_eq!(game.turn_store.extra_turns.len(), 1);
+        assert_eq!(game.turn_store.extra_turns[0], alice);
     }
 
     #[test]
@@ -95,8 +95,8 @@ mod tests {
         let result = effect.execute(&mut game, &mut ctx).unwrap();
 
         assert_eq!(result.status, crate::effect::OutcomeStatus::Succeeded);
-        assert_eq!(game.extra_turns.len(), 1);
-        assert_eq!(game.extra_turns[0], bob);
+        assert_eq!(game.turn_store.extra_turns.len(), 1);
+        assert_eq!(game.turn_store.extra_turns[0], bob);
     }
 
     #[test]
@@ -113,7 +113,7 @@ mod tests {
         effect.execute(&mut game, &mut ctx).unwrap();
         effect.execute(&mut game, &mut ctx).unwrap();
 
-        assert_eq!(game.extra_turns.len(), 3);
+        assert_eq!(game.turn_store.extra_turns.len(), 3);
     }
 
     #[test]

@@ -77,7 +77,7 @@ impl EffectExecutor for TaggedEffect {
         let runtime = capture_tagged_runtime_state(game, &self.effect, ctx);
 
         // Execute the inner effect
-        let outcome = crate::executor::execute_effect(game, &self.effect, ctx)?;
+        let outcome = crate::effects::execute_effect(game, &self.effect, ctx)?;
         apply_tagged_runtime_state(game, ctx, self.tag.clone(), &outcome, runtime.clone());
         if self.tag.as_str() != "__it__" {
             apply_tagged_runtime_state(game, ctx, TagKey::from("__it__"), &outcome, runtime);
@@ -178,7 +178,7 @@ impl EffectExecutor for TagAllEffect {
         }
 
         // Execute the inner effect
-        crate::executor::execute_effect(game, &self.effect, ctx)
+        crate::effects::execute_effect(game, &self.effect, ctx)
     }
 
     fn get_target_spec(&self) -> Option<&crate::target::ChooseSpec> {

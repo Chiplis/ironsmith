@@ -762,8 +762,8 @@ mod tests {
             assert!(has_haste, "Token should have haste");
 
             // Should have delayed trigger to exile at end of combat
-            assert_eq!(game.delayed_triggers.len(), 1);
-            let delayed = &game.delayed_triggers[0];
+            assert_eq!(game.effect_store.delayed_triggers.len(), 1);
+            let delayed = &game.effect_store.delayed_triggers[0];
             assert!(delayed.trigger.display().contains("end of combat"));
             assert!(delayed.one_shot);
             assert_eq!(delayed.target_objects, vec![token_id]);
@@ -858,7 +858,7 @@ mod tests {
         let mut dm = ChooseLastOptionDecisionMaker;
         let mut ctx = ExecutionContext::new(source, alice, &mut dm)
             .with_targets(vec![ResolvedTarget::Object(creature_id)]);
-        ctx.iterated_player = Some(charlie);
+        ctx.iteration.iterated_player = Some(charlie);
 
         let effect = CreateTokenCopyEffect::one(ChooseSpec::creature())
             .attacking_player_or_planeswalker_controlled_by(PlayerFilter::IteratedPlayer);
@@ -888,8 +888,8 @@ mod tests {
         use crate::combat_state::{AttackTarget, AttackerInfo, CombatState};
         use crate::decision::DecisionMaker;
         use crate::effect::Effect;
+        use crate::effects::execute_effect;
         use crate::events::phase::EndOfCombatEvent;
-        use crate::executor::execute_effect;
         use crate::triggers::TriggerEvent;
 
         struct AlwaysYesDecisionMaker;
@@ -973,6 +973,7 @@ mod tests {
 
         let token_ids: Vec<_> = token_attackers.iter().map(|(id, _)| *id).collect();
         let cleanup_trigger_count = game
+            .effect_store
             .delayed_triggers
             .iter()
             .filter(|delayed| {

@@ -14,8 +14,8 @@ use crate::tag::TagKey;
 
 /// Effect that applies effects once for each tagged object.
 ///
-/// Sets `ctx.iterated_object` for each iteration, and also sets
-/// `ctx.iterated_player` to that object's controller.
+/// Sets `ctx.iteration.iterated_object` for each iteration, and also sets
+/// `ctx.iteration.iterated_player` to that object's controller.
 ///
 /// # Fields
 ///
@@ -108,7 +108,7 @@ impl EffectExecutor for ForEachTaggedEffect {
 /// This enables patterns like "Destroy all creatures. Their controllers each create a token
 /// for each creature they controlled that was destroyed this way."
 ///
-/// Sets `ctx.iterated_player` to each controller, and provides a count value that can be
+/// Sets `ctx.iteration.iterated_player` to each controller, and provides a count value that can be
 /// used to determine how many objects that controller controlled.
 ///
 /// # Fields
@@ -197,7 +197,7 @@ impl EffectExecutor for ForEachControllerOfTaggedEffect {
 
 /// Effect that applies effects once for each tagged player.
 ///
-/// Sets `ctx.iterated_player` for each iteration, allowing inner effects
+/// Sets `ctx.iteration.iterated_player` for each iteration, allowing inner effects
 /// to reference the current player via `PlayerFilter::IteratedPlayer`.
 ///
 /// # Fields
@@ -350,7 +350,7 @@ mod tests {
 
         // Set an initial iterated_object
         let original = ObjectId::from_raw(999);
-        ctx.iterated_object = Some(original);
+        ctx.iteration.iterated_object = Some(original);
 
         // Tag a creature
         let snap = ObjectSnapshot::from_object(game.object(creature).unwrap(), &game);
@@ -360,7 +360,7 @@ mod tests {
         effect.execute(&mut game, &mut ctx).unwrap();
 
         // Should restore original iterated_object
-        assert_eq!(ctx.iterated_object, Some(original));
+        assert_eq!(ctx.iteration.iterated_object, Some(original));
     }
 
     #[test]
@@ -444,7 +444,7 @@ mod tests {
 
         // Set an initial iterated_player
         let original = PlayerId::from_index(99);
-        ctx.iterated_player = Some(original);
+        ctx.iteration.iterated_player = Some(original);
 
         // Tag a creature
         let snap = ObjectSnapshot::from_object(game.object(creature).unwrap(), &game);
@@ -454,7 +454,7 @@ mod tests {
         effect.execute(&mut game, &mut ctx).unwrap();
 
         // Should restore original iterated_player
-        assert_eq!(ctx.iterated_player, Some(original));
+        assert_eq!(ctx.iteration.iterated_player, Some(original));
     }
 
     #[test]
@@ -521,7 +521,7 @@ mod tests {
 
         // Set an initial iterated_player
         let original = PlayerId::from_index(99);
-        ctx.iterated_player = Some(original);
+        ctx.iteration.iterated_player = Some(original);
 
         // Tag a player
         ctx.tag_player("test", bob);
@@ -530,6 +530,6 @@ mod tests {
         effect.execute(&mut game, &mut ctx).unwrap();
 
         // Should restore original iterated_player
-        assert_eq!(ctx.iterated_player, Some(original));
+        assert_eq!(ctx.iteration.iterated_player, Some(original));
     }
 }

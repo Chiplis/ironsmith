@@ -319,8 +319,13 @@ mod tests {
             game.stage_turn_history_event(event);
         }
         assert!(game.stack.iter().any(|entry| entry.object_id == cast_id));
-        assert_eq!(game.turn_history.spells_cast_by_player(alice), 1);
-        assert!(game.turn_history.spell_cast_order(cast_id).is_some());
+        assert_eq!(game.turn_store.turn_history.spells_cast_by_player(alice), 1);
+        assert!(
+            game.turn_store
+                .turn_history
+                .spell_cast_order(cast_id)
+                .is_some()
+        );
         assert!(
             outcome
                 .events

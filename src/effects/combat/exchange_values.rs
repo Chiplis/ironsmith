@@ -342,7 +342,9 @@ mod tests {
         let alice = PlayerId::from_index(0);
         let source = create_creature(&mut game, "Tree", alice, 0, 13);
         game.player_mut(alice).expect("alice exists").life = 20;
-        game.cant_effects.add_life_total_cant_change(alice);
+        game.effect_store
+            .cant_effects
+            .add_life_total_cant_change(alice);
         let mut ctx = ExecutionContext::new_default(source, alice);
 
         let outcome = ExchangeValuesEffect::new(

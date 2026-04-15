@@ -78,7 +78,7 @@ pub(crate) fn capture_tagged_runtime_state(
         .into_iter()
         .next();
     if pre_snapshot.is_none()
-        && let Some(object_id) = ctx.iterated_object
+        && let Some(object_id) = ctx.iteration.iterated_object
         && let Some(obj) = game.object(object_id)
     {
         pre_snapshot = Some(ObjectSnapshot::from_object(obj, game));

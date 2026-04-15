@@ -139,7 +139,7 @@ impl StaticAbilityKind for Defender {
             _controller,
             Some(source),
         );
-        game.cant_effects.merge(tracker);
+        game.effect_store.cant_effects.merge(tracker);
     }
 }
 
@@ -172,7 +172,7 @@ impl StaticAbilityKind for Indestructible {
             _controller,
             Some(source),
         );
-        game.cant_effects.merge(tracker);
+        game.effect_store.cant_effects.merge(tracker);
     }
 }
 
@@ -205,7 +205,7 @@ impl StaticAbilityKind for Hexproof {
             _controller,
             Some(source),
         );
-        game.cant_effects.merge(tracker);
+        game.effect_store.cant_effects.merge(tracker);
     }
 }
 
@@ -238,7 +238,7 @@ impl StaticAbilityKind for Shroud {
             _controller,
             Some(source),
         );
-        game.cant_effects.merge(tracker);
+        game.effect_store.cant_effects.merge(tracker);
     }
 }
 

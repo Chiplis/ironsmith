@@ -692,6 +692,7 @@ pub fn activated_ability_cost_condition_is_active_for_activation(
     match condition {
         ActivatedAbilityCostCondition::TargetsExactly { count, filter } => {
             let opponents = game
+                .turn_store
                 .turn_order
                 .iter()
                 .copied()
@@ -977,6 +978,7 @@ fn chosen_targets_match(
         return false;
     }
     let opponents = game
+        .turn_store
         .turn_order
         .iter()
         .copied()
@@ -1098,14 +1100,25 @@ pub fn this_spell_cost_condition_is_active_for_cast(
             .players
             .iter()
             .filter(|player| player.is_in_game() && player.id != controller)
-            .any(|player| game.turn_history.spells_cast_by_player(player.id) >= *n),
+            .any(|player| {
+                game.turn_store
+                    .turn_history
+                    .spells_cast_by_player(player.id)
+                    >= *n
+            }),
         ThisSpellCostCondition::OpponentDrewCardsThisTurnOrMore(n) => game
             .players
             .iter()
             .filter(|player| player.is_in_game() && player.id != controller)
-            .any(|player| game.turn_history.cards_drawn_by_player(player.id) >= *n),
+            .any(|player| {
+                game.turn_store
+                    .turn_history
+                    .cards_drawn_by_player(player.id)
+                    >= *n
+            }),
         ThisSpellCostCondition::YouWereDealtDamageByCreaturesThisTurnOrMore(n) => {
-            game.turn_history
+            game.turn_store
+                .turn_history
                 .total_creature_damage_to_player(controller)
                 >= *n
         }
@@ -1123,9 +1136,13 @@ pub fn this_spell_cost_condition_is_active_for_cast(
         }
         ThisSpellCostCondition::YouCastSpellsThisTurnOrMore { count, card_types } => {
             if card_types.is_empty() {
-                game.turn_history.spells_cast_by_player(controller) >= *count
+                game.turn_store
+                    .turn_history
+                    .spells_cast_by_player(controller)
+                    >= *count
             } else {
                 let matching = game
+                    .turn_store
                     .turn_history
                     .spell_cast_snapshot_history()
                     .iter()
@@ -1140,7 +1157,8 @@ pub fn this_spell_cost_condition_is_active_for_cast(
             }
         }
         ThisSpellCostCondition::YouGainedLifeThisTurnOrMore(n) => {
-            game.turn_history
+            game.turn_store
+                .turn_history
                 .total_life_gained_for_players(&[controller])
                 >= *n
         }
@@ -1159,13 +1177,16 @@ pub fn this_spell_cost_condition_is_active_for_cast(
             .is_some_and(|player| player.life < player.starting_life),
         ThisSpellCostCondition::IsNight => game.is_night,
         ThisSpellCostCondition::YouSacrificedArtifactThisTurn => game
+            .turn_store
             .turn_history
             .player_sacrificed_artifact_this_turn(controller),
         ThisSpellCostCondition::YouCommittedCrimeThisTurn => game
+            .turn_store
             .turn_history
             .player_committed_crime_this_turn(controller),
         ThisSpellCostCondition::CreatureLeftBattlefieldUnderYourControlThisTurn => {
-            game.turn_history
+            game.turn_store
+                .turn_history
                 .creatures_left_battlefield_under_controller(controller)
                 > 0
         }
@@ -1219,6 +1240,7 @@ pub fn this_spell_cost_condition_is_active_for_cast(
                 return false;
             };
             let opponents = game
+                .turn_store
                 .turn_order
                 .iter()
                 .copied()
@@ -1238,6 +1260,7 @@ pub fn this_spell_cost_condition_is_active_for_cast(
                 return false;
             };
             let opponents = game
+                .turn_store
                 .turn_order
                 .iter()
                 .copied()
@@ -1253,6 +1276,7 @@ pub fn this_spell_cost_condition_is_active_for_cast(
             })
         }
         ThisSpellCostCondition::NotStartingPlayer => game
+            .turn_store
             .turn_order
             .first()
             .is_some_and(|starting_player| *starting_player != controller),
@@ -1264,6 +1288,7 @@ pub fn this_spell_cost_condition_is_active_for_cast(
                 game.object(*card_id).is_some_and(|object| {
                     game.object_has_card_type(object.id, CardType::Creature)
                         && game
+                            .turn_store
                             .turn_history
                             .object_was_put_into_graveyard_this_turn(object.stable_id)
                 })

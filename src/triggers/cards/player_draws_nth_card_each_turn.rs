@@ -48,7 +48,11 @@ impl TriggerMatcher for PlayerDrawsNthCardEachTurnTrigger {
             return false;
         }
 
-        let total_after = ctx.game.turn_history.cards_drawn_by_player(e.player);
+        let total_after = ctx
+            .game
+            .turn_store
+            .turn_history
+            .cards_drawn_by_player(e.player);
         let drawn_now = e.amount();
         let total_before = total_after.saturating_sub(drawn_now);
 

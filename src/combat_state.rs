@@ -686,7 +686,9 @@ pub fn declare_blockers(
     }
 
     // Enforce "must block specific attacker if able" requirements.
-    for (&blocker_id, required_attackers) in &game.cant_effects.must_block_specific_attackers {
+    for (&blocker_id, required_attackers) in
+        &game.effect_store.cant_effects.must_block_specific_attackers
+    {
         let Some(blocker) = game.object(blocker_id) else {
             continue;
         };

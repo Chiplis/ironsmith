@@ -172,7 +172,7 @@ impl EffectExecutor for DiscoverEffect {
             }
         }
         let keep_tagged = selected_object.as_ref().map(|_| match_tag.clone());
-        crate::executor::execute_effect(
+        crate::effects::execute_effect(
             game,
             &Effect::put_tagged_remainder_on_library_bottom(
                 all_tag,

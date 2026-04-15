@@ -48,7 +48,7 @@ impl EffectExecutor for GrantBySpecEffect {
             },
         };
 
-        game.grant_registry.grant_to_filter(
+        game.effect_store.grant_registry.grant_to_filter(
             self.spec.filter.clone(),
             self.spec.zone,
             player_id,
@@ -101,14 +101,14 @@ mod tests {
         assert_eq!(result.status, crate::effect::OutcomeStatus::Succeeded);
 
         let flash = StaticAbility::flash();
-        assert!(game.grant_registry.card_has_granted_ability(
+        assert!(game.effect_store.grant_registry.card_has_granted_ability(
             &game,
             sorcery_id,
             Zone::Hand,
             alice,
             &flash,
         ));
-        assert!(!game.grant_registry.card_has_granted_ability(
+        assert!(!game.effect_store.grant_registry.card_has_granted_ability(
             &game,
             land_id,
             Zone::Hand,

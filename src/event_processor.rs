@@ -195,7 +195,9 @@ fn consume_one_shot_if_applied(
     result: &TraitApplyResult,
 ) {
     if !matches!(result, TraitApplyResult::Unchanged(_)) {
-        game.replacement_effects.mark_effect_used(effect_id);
+        game.effect_store
+            .replacement_effects
+            .mark_effect_used(effect_id);
     }
 }
 
@@ -687,7 +689,7 @@ fn find_applicable_trait_replacements(
     let mut applicable = Vec::new();
 
     // Check registered replacement effects in the game
-    for effect in game.replacement_effects.effects() {
+    for effect in game.effect_store.replacement_effects.effects() {
         // Skip if already applied (Rule 614.5)
         if state.was_applied(effect.id) {
             continue;
@@ -1766,7 +1768,9 @@ pub fn process_destroy(
             // The effects typically use ChooseSpec::SpecificObject, so they're self-contained.
 
             // Consume one-shot effects (like regeneration shields)
-            game.replacement_effects.mark_effect_used(effect_id);
+            game.effect_store
+                .replacement_effects
+                .mark_effect_used(effect_id);
 
             let effect_source = source.unwrap_or(permanent);
             let mut ctx = ExecutionContext::new(effect_source, controller, dm);
@@ -1860,7 +1864,9 @@ pub fn process_zone_change_with_additional_effects(
             }
         }
         TraitEventResult::Replaced { effects, effect_id } => {
-            game.replacement_effects.mark_effect_used(effect_id);
+            game.effect_store
+                .replacement_effects
+                .mark_effect_used(effect_id);
             let controller = game
                 .object(object)
                 .map(|obj| obj.controller)
@@ -1986,13 +1992,16 @@ fn process_with_dm_and_additional_effects(
                         .iter()
                         .enumerate()
                         .filter_map(|(idx, &id)| {
-                            game.replacement_effects.get_effect(id).map(|e| {
-                                ReplacementOption::new(
-                                    idx,
-                                    e.source,
-                                    replacement_option_description(game, e.source),
-                                )
-                            })
+                            game.effect_store
+                                .replacement_effects
+                                .get_effect(id)
+                                .map(|e| {
+                                    ReplacementOption::new(
+                                        idx,
+                                        e.source,
+                                        replacement_option_description(game, e.source),
+                                    )
+                                })
                         })
                         .collect();
 
@@ -2017,7 +2026,11 @@ fn process_with_dm_and_additional_effects(
                     return TraitEventResult::Proceed(*boxed_event);
                 };
 
-                let Some(chosen_effect) = game.replacement_effects.get_effect(effect_id).cloned()
+                let Some(chosen_effect) = game
+                    .effect_store
+                    .replacement_effects
+                    .get_effect(effect_id)
+                    .cloned()
                 else {
                     // Effect disappeared (e.g., source left battlefield). Continue with event.
                     state.mark_applied(effect_id);
@@ -2074,7 +2087,8 @@ fn find_effect_for_choice(
     additional_effects: &[ReplacementEffect],
     id: ReplacementEffectId,
 ) -> Option<ReplacementEffect> {
-    game.replacement_effects
+    game.effect_store
+        .replacement_effects
         .get_effect(id)
         .cloned()
         .or_else(|| additional_effects.iter().find(|e| e.id == id).cloned())
@@ -2234,6 +2248,7 @@ pub fn process_damage_assignments_with_event_with_source_snapshot(
                 event_provenance,
             );
             let (replacement_source, replacement_controller) = game
+                .effect_store
                 .replacement_effects
                 .get_effect(effect_id)
                 .map(|effect| (effect.source, effect.controller))
@@ -2387,6 +2402,7 @@ fn apply_prevention_for_damage_assignment(
 
     let result = match target {
         DamageTarget::Player(player_id) => game
+            .effect_store
             .prevention_effects
             .apply_prevention_to_player_with_follow_ups(
                 player_id,
@@ -2402,7 +2418,8 @@ fn apply_prevention_for_damage_assignment(
                 .object(object_id)
                 .map(|o| o.controller)
                 .unwrap_or(game.turn.active_player);
-            game.prevention_effects
+            game.effect_store
+                .prevention_effects
                 .apply_prevention_to_permanent_with_follow_ups(
                     object_id,
                     controller,
@@ -2776,7 +2793,9 @@ pub fn process_etb_with_event_and_dm(
             TraitEventResult::Replaced { effects, effect_id } => {
                 use crate::executor::{ExecutionContext, execute_effect};
                 if let Some(controller) = game.object(object).map(|o| o.controller) {
-                    game.replacement_effects.mark_effect_used(effect_id);
+                    game.effect_store
+                        .replacement_effects
+                        .mark_effect_used(effect_id);
                     let mut ctx = ExecutionContext::new(object, controller, dm);
                     for effect in effects {
                         let _ = execute_effect(game, &effect, &mut ctx);
@@ -2844,7 +2863,9 @@ pub fn process_etb_with_event_and_dm(
                     TraitApplyResult::Replaced(effects) => {
                         use crate::executor::{ExecutionContext, execute_effect};
                         if let Some(controller) = game.object(object).map(|o| o.controller) {
-                            game.replacement_effects.mark_effect_used(chosen_id);
+                            game.effect_store
+                                .replacement_effects
+                                .mark_effect_used(chosen_id);
                             let mut ctx = ExecutionContext::new(object, controller, dm);
                             for effect in effects {
                                 let _ = execute_effect(game, &effect, &mut ctx);
@@ -3116,6 +3137,7 @@ pub fn process_event_with_chosen_replacement_trait(
     let event = game.ensure_event_provenance(event);
     // Get the chosen effect
     let Some(effect) = game
+        .effect_store
         .replacement_effects
         .get_effect(chosen_effect_id)
         .cloned()
@@ -3219,7 +3241,7 @@ mod tests {
             Value::EventValue(EventValueSpec::Amount),
             ChooseSpec::AnyTarget,
         ))]);
-        game.prevention_effects.add_shield(shield);
+        game.effect_store.prevention_effects.add_shield(shield);
 
         let processed = process_damage_assignments_with_event(
             &mut game,

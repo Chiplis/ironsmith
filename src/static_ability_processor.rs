@@ -112,7 +112,8 @@ pub fn generate_continuous_effects_from_static_abilities(
     game: &GameState,
 ) -> Vec<ContinuousEffect> {
     let mut effects = Vec::new();
-    let registered_effects: Vec<ContinuousEffect> = game.continuous_effects.effects().to_vec();
+    let registered_effects: Vec<ContinuousEffect> =
+        game.effect_store.continuous_effects.effects().to_vec();
     let text_box_scope = text_box_query_scope(&registered_effects);
     let mut text_box_cache: HashMap<ObjectId, TextBoxOverlay> = HashMap::new();
 
@@ -155,7 +156,11 @@ pub fn generate_continuous_effects_from_static_abilities(
                         static_ability.generate_effects(object_id, controller, game);
                     // Static ability effect timestamps come from the source object's
                     // current-zone entry timestamp (CR 613.7a/613.7d behavior).
-                    if let Some(ts) = game.continuous_effects.get_entry_timestamp(object_id) {
+                    if let Some(ts) = game
+                        .effect_store
+                        .continuous_effects
+                        .get_entry_timestamp(object_id)
+                    {
                         for effect in &mut ability_effects {
                             effect.timestamp = ts;
                             effect.originating_static_ability = Some(static_ability.clone());
@@ -185,6 +190,7 @@ pub fn generate_continuous_effects_from_static_abilities(
 pub fn get_all_continuous_effects(game: &GameState) -> Vec<ContinuousEffect> {
     // Get registered effects (from resolved spells/abilities), cloned
     let mut effects: Vec<ContinuousEffect> = game
+        .effect_store
         .continuous_effects
         .effects_sorted()
         .into_iter()

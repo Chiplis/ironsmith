@@ -63,6 +63,33 @@ pub mod zone;
 #[cfg(test)]
 mod tests;
 
+/// Preferred import surface for gameplay/runtime consumers.
+pub mod engine {
+    /// High-signal engine types and functions for external consumers.
+    pub mod prelude {
+        pub use crate::{
+            CardDefinition, CardRegistry, CombatState, GameState, ManaSymbol, PlayerId,
+            TriggerQueue, Zone, execute_turn_with,
+        };
+    }
+}
+
+/// Preferred import surface for parser/compiler consumers.
+pub mod compiler {
+    /// High-signal compiler and compiled-text types for external consumers.
+    pub mod prelude {
+        pub use crate::cards::builders::{CardTextError, ParseAnnotations, TextSpan};
+        pub use crate::cards::{
+            CardDefinition, CardDefinitionBuilder, CardRegistry,
+            generated_definition_has_unimplemented_content,
+        };
+        pub use crate::compiled_text::{
+            canonical_compiled_lines, compiled_lines, raw_compiled_lines,
+        };
+        pub use crate::ids::CardId;
+    }
+}
+
 pub use ability::{Ability, AbilityKind, ActivatedAbility, TriggeredAbility};
 pub use alternative_cast::{AlternativeCastingMethod, CastingMethod, TrapCondition};
 pub use card::{Card, CardBuilder, PowerToughness, PtValue};

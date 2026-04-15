@@ -230,7 +230,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(game.delayed_triggers.len(), 0);
+        assert_eq!(game.effect_store.delayed_triggers.len(), 0);
     }
 
     #[test]
@@ -251,8 +251,8 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(game.delayed_triggers.len(), 1);
-        let delayed = &game.delayed_triggers[0];
+        assert_eq!(game.effect_store.delayed_triggers.len(), 1);
+        let delayed = &game.effect_store.delayed_triggers[0];
         assert_eq!(
             delayed.trigger.display(),
             Trigger::end_of_combat().display()
@@ -279,22 +279,24 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(game.delayed_triggers.len(), 4);
+        assert_eq!(game.effect_store.delayed_triggers.len(), 4);
         let end_of_combat_display = Trigger::end_of_combat().display();
         let end_step_display = Trigger::beginning_of_end_step(PlayerFilter::Any).display();
         let end_of_combat_count = game
+            .effect_store
             .delayed_triggers
             .iter()
             .filter(|delayed| delayed.trigger.display() == end_of_combat_display)
             .count();
         let end_step_count = game
+            .effect_store
             .delayed_triggers
             .iter()
             .filter(|delayed| delayed.trigger.display() == end_step_display)
             .count();
         assert_eq!(end_of_combat_count, 2);
         assert_eq!(end_step_count, 2);
-        for delayed in &game.delayed_triggers {
+        for delayed in &game.effect_store.delayed_triggers {
             assert!(delayed.one_shot);
             assert_eq!(delayed.target_objects, vec![token_id]);
             assert_eq!(delayed.controller, alice);

@@ -123,7 +123,8 @@ fn test_generate_damage_triggers_emits_life_loss_for_player_damage() {
         1
     );
     assert_eq!(
-        game.turn_history
+        game.turn_store
+            .turn_history
             .total_damage_to_player(PlayerId::from_index(1)),
         3
     );
@@ -263,7 +264,8 @@ fn sarevok_deathbringer_skips_end_step_if_a_permanent_left_battlefield() {
         ),
         crate::provenance::ProvNodeId::default(),
     );
-    game.turn_history
+    game.turn_store
+        .turn_history
         .record_event(&zone_change, Some(departing_snapshot), None);
 
     game.turn.active_player = bob;
@@ -1407,9 +1409,11 @@ fn test_queue_triggers_tracks_noncombat_damage_to_players_this_turn() {
     );
     queue_triggers_from_event(&mut game, &mut trigger_queue, event, false);
 
-    assert_eq!(game.turn_history.total_damage_to_player(bob), 4);
+    assert_eq!(game.turn_store.turn_history.total_damage_to_player(bob), 4);
     assert_eq!(
-        game.turn_history.total_noncombat_damage_to_players(&[bob]),
+        game.turn_store
+            .turn_history
+            .total_noncombat_damage_to_players(&[bob]),
         4
     );
 }
@@ -1426,7 +1430,12 @@ fn test_queue_triggers_tracks_life_gained_this_turn() {
     );
     queue_triggers_from_event(&mut game, &mut trigger_queue, event, false);
 
-    assert_eq!(game.turn_history.total_life_gained_for_players(&[alice]), 5);
+    assert_eq!(
+        game.turn_store
+            .turn_history
+            .total_life_gained_for_players(&[alice]),
+        5
+    );
 }
 
 #[test]
@@ -1441,7 +1450,12 @@ fn test_queue_triggers_tracks_life_lost_this_turn() {
     );
     queue_triggers_from_event(&mut game, &mut trigger_queue, event, false);
 
-    assert_eq!(game.turn_history.total_life_lost_for_players(&[bob]), 3);
+    assert_eq!(
+        game.turn_store
+            .turn_history
+            .total_life_lost_for_players(&[bob]),
+        3
+    );
 }
 
 #[test]
@@ -1957,31 +1971,31 @@ fn test_drain_pending_events_checks_delayed_zone_change_triggers() {
     let stangg_id = create_creature(&mut game, "Stangg", alice, 3, 4);
     let twin_id = create_creature(&mut game, "Stangg Twin", alice, 3, 4);
 
-    game.delayed_triggers.push(crate::triggers::DelayedTrigger {
-        trigger: Trigger::this_leaves_battlefield(),
-        effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::move_to_zone(
-            ChooseSpec::SpecificObject(twin_id),
-            Zone::Exile,
-            true,
-        )]),
-        one_shot: true,
-        x_value: None,
-        not_before_turn: None,
-        expires_at_turn: None,
-        target_objects: vec![stangg_id],
-        ability_source: None,
-        ability_source_stable_id: None,
-        ability_source_name: None,
-        ability_source_snapshot: None,
-        controller: alice,
-        choices: vec![],
-        tagged_objects: std::collections::HashMap::new(),
-    });
+    game.effect_store
+        .delayed_triggers
+        .push(crate::triggers::DelayedTrigger {
+            trigger: Trigger::this_leaves_battlefield(),
+            effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                Effect::move_to_zone(ChooseSpec::SpecificObject(twin_id), Zone::Exile, true),
+            ]),
+            one_shot: true,
+            x_value: None,
+            not_before_turn: None,
+            expires_at_turn: None,
+            target_objects: vec![stangg_id],
+            ability_source: None,
+            ability_source_stable_id: None,
+            ability_source_name: None,
+            ability_source_snapshot: None,
+            controller: alice,
+            choices: vec![],
+            tagged_objects: std::collections::HashMap::new(),
+        });
 
     let moved = game.move_object_by_effect(stangg_id, Zone::Graveyard);
     assert!(moved.is_some(), "expected Stangg to move to graveyard");
     assert!(
-        !game.pending_trigger_events.is_empty(),
+        !game.effect_store.pending_trigger_events.is_empty(),
         "moving Stangg off battlefield should queue a zone-change trigger event"
     );
 
@@ -5470,7 +5484,7 @@ fn test_delayed_tagged_graveyard_return_resolves() {
     while !game.stack_is_empty() {
         resolve_stack_entry(&mut game).expect("resolve dies trigger");
     }
-    assert_eq!(game.delayed_triggers.len(), 1);
+    assert_eq!(game.effect_store.delayed_triggers.len(), 1);
     assert!(
         game.players[0].graveyard.contains(&first_graveyard_id),
         "creature should still be in graveyard before delayed trigger resolves"
@@ -5513,7 +5527,7 @@ fn test_delayed_tagged_graveyard_return_does_not_follow_zone_hops() {
     while !game.stack_is_empty() {
         resolve_stack_entry(&mut game).expect("resolve dies trigger");
     }
-    assert_eq!(game.delayed_triggers.len(), 1);
+    assert_eq!(game.effect_store.delayed_triggers.len(), 1);
 
     let exile_id = game
         .move_object_by_effect(first_graveyard_id, Zone::Exile)
@@ -5608,7 +5622,7 @@ fn assert_pact_upkeep_trigger_survives_fail_to_find(
         "{spell_name} should leave the searched creature in the library when the player fails to find"
     );
     assert_eq!(
-        game.delayed_triggers.len(),
+        game.effect_store.delayed_triggers.len(),
         1,
         "{spell_name} should still schedule the upkeep payment trigger after the spell resolves; spell_effect={spell_debug}; abilities={ability_debug}"
     );
@@ -6929,8 +6943,12 @@ fn test_ragavan_trigger_exiles_top_card_of_damaged_players_library() {
         "ragavan should also create a Treasure token"
     );
     assert!(
-        game.grant_registry
-            .card_can_play_from_zone(&game, exiled_id, Zone::Exile, alice),
+        game.effect_store.grant_registry.card_can_play_from_zone(
+            &game,
+            exiled_id,
+            Zone::Exile,
+            alice
+        ),
         "ragavan should let its controller cast the exiled card until end of turn"
     );
 
@@ -7069,13 +7087,21 @@ fn test_fallen_shinobi_trigger_exiles_top_two_cards_and_grants_play_permission()
         "fallen shinobi should exile the top spell card"
     );
     assert!(
-        game.grant_registry
-            .card_can_play_from_zone(&game, exiled_land_id, Zone::Exile, alice),
+        game.effect_store.grant_registry.card_can_play_from_zone(
+            &game,
+            exiled_land_id,
+            Zone::Exile,
+            alice
+        ),
         "fallen shinobi should let its controller play the exiled land"
     );
     assert!(
-        game.grant_registry
-            .card_can_play_from_zone(&game, exiled_spell_id, Zone::Exile, alice),
+        game.effect_store.grant_registry.card_can_play_from_zone(
+            &game,
+            exiled_spell_id,
+            Zone::Exile,
+            alice
+        ),
         "fallen shinobi should let its controller play the exiled spell"
     );
 
@@ -7103,9 +7129,12 @@ fn test_fallen_shinobi_trigger_exiles_top_two_cards_and_grants_play_permission()
     game.turn.turn_number += 1;
     for card_id in [exiled_land_id, exiled_spell_id] {
         assert!(
-            !game
-                .grant_registry
-                .card_can_play_from_zone(&game, card_id, Zone::Exile, alice),
+            !game.effect_store.grant_registry.card_can_play_from_zone(
+                &game,
+                card_id,
+                Zone::Exile,
+                alice
+            ),
             "fallen shinobi should only grant play permission until end of turn"
         );
     }
@@ -10800,7 +10829,7 @@ fn test_dash_grants_haste_and_returns_to_hand_at_next_end_step() {
         "dashed creature should be able to attack immediately"
     );
     assert_eq!(
-        game.delayed_triggers.len(),
+        game.effect_store.delayed_triggers.len(),
         1,
         "dash should schedule a next end-step return trigger"
     );
@@ -11329,6 +11358,7 @@ fn test_warp_exiles_at_next_end_step_and_grants_play_from_exile() {
         .expect("warped creature should be exiled");
     assert!(
         !game
+            .effect_store
             .grant_registry
             .granted_play_from_for_card(&game, exiled_id, Zone::Exile, alice)
             .is_empty(),
@@ -12812,11 +12842,11 @@ fn test_rebound_exiles_on_resolution_and_schedules_next_upkeep_cast() {
     assert!(in_exile, "rebound spell should be exiled on resolution");
 
     assert_eq!(
-        game.delayed_triggers.len(),
+        game.effect_store.delayed_triggers.len(),
         1,
         "rebound should schedule exactly one next-upkeep cast trigger"
     );
-    let delayed_debug = format!("{:?}", game.delayed_triggers[0].effects);
+    let delayed_debug = format!("{:?}", game.effect_store.delayed_triggers[0].effects);
     assert!(
         delayed_debug.contains("CastSourceEffect"),
         "rebound delayed trigger should cast the exiled source, got {delayed_debug}"
@@ -17740,7 +17770,7 @@ fn test_the_one_ring_prevents_combat_damage_until_your_next_turn() {
     resolve_stack_entry_with(&mut game, &mut dm).expect("The One Ring trigger should resolve");
 
     assert!(
-        game.prevention_effects.shields().iter().any(|shield| {
+        game.effect_store.prevention_effects.shields().iter().any(|shield| {
             matches!(shield.protected, crate::prevention::PreventionTarget::Player(player) if player == alice)
         }),
         "The One Ring should create a prevention shield for its controller"
@@ -17886,7 +17916,7 @@ fn test_the_stasis_coffin_activation_grants_protection_and_exiles_itself() {
         "The Stasis Coffin should make its controller untargetable until their next turn"
     );
     assert!(
-        game.prevention_effects.shields().iter().any(|shield| {
+        game.effect_store.prevention_effects.shields().iter().any(|shield| {
             matches!(shield.protected, crate::prevention::PreventionTarget::Player(player) if player == alice)
         }),
         "The Stasis Coffin should create a prevention shield for its controller"
@@ -19274,7 +19304,10 @@ fn test_hex_parasite_pump_effect() {
     assert!(result.is_ok(), "Pump effect should succeed");
 
     // Verify the continuous effect was added
-    let effects = game.continuous_effects.effects_for_object(parasite_id);
+    let effects = game
+        .effect_store
+        .continuous_effects
+        .effects_for_object(parasite_id);
     assert!(
         !effects.is_empty(),
         "Should have a continuous effect on Hex Parasite"
@@ -19681,7 +19714,7 @@ fn test_valley_floodcaller_grants_flash_to_sorceries() {
 
     // Check that the sorcery has been granted flash
     let flash_ability = crate::static_abilities::StaticAbility::flash();
-    let has_granted_flash = game.grant_registry.card_has_granted_ability(
+    let has_granted_flash = game.effect_store.grant_registry.card_has_granted_ability(
         &game,
         sorcery_id,
         Zone::Hand,
@@ -19715,7 +19748,7 @@ fn test_valley_floodcaller_does_not_grant_flash_to_creatures() {
 
     // Check that the creature has NOT been granted flash
     let flash_ability = crate::static_abilities::StaticAbility::flash();
-    let has_granted_flash = game.grant_registry.card_has_granted_ability(
+    let has_granted_flash = game.effect_store.grant_registry.card_has_granted_ability(
         &game,
         creature_id,
         Zone::Hand,
@@ -19753,7 +19786,7 @@ fn test_valley_floodcaller_flash_grant_removed_when_floodcaller_leaves() {
 
     // Verify sorcery has flash while Floodcaller is on battlefield
     assert!(
-        game.grant_registry.card_has_granted_ability(
+        game.effect_store.grant_registry.card_has_granted_ability(
             &game,
             sorcery_id,
             Zone::Hand,
@@ -19768,7 +19801,7 @@ fn test_valley_floodcaller_flash_grant_removed_when_floodcaller_leaves() {
 
     // Verify sorcery no longer has flash
     assert!(
-        !game.grant_registry.card_has_granted_ability(
+        !game.effect_store.grant_registry.card_has_granted_ability(
             &game,
             sorcery_id,
             Zone::Hand,
@@ -19854,7 +19887,7 @@ fn test_valley_floodcaller_only_grants_to_controller() {
 
     // Alice's sorcery should have flash
     assert!(
-        game.grant_registry.card_has_granted_ability(
+        game.effect_store.grant_registry.card_has_granted_ability(
             &game,
             alice_sorcery_id,
             Zone::Hand,
@@ -19866,7 +19899,7 @@ fn test_valley_floodcaller_only_grants_to_controller() {
 
     // Bob's sorcery should NOT have flash (Alice's Floodcaller doesn't grant to opponents)
     assert!(
-        !game.grant_registry.card_has_granted_ability(
+        !game.effect_store.grant_registry.card_has_granted_ability(
             &game,
             bob_sorcery_id,
             Zone::Hand,
@@ -19954,7 +19987,7 @@ fn test_gift_given_event_queues_opponent_gives_gift_trigger() {
     let effect = Effect::emit_gift_given(PlayerFilter::ChosenPlayer);
     let mut dm = SelectFirstDecisionMaker;
     let mut ctx = ExecutionContext::new(gift_source_id, bob, &mut dm);
-    ctx.chosen_player = Some(alice);
+    ctx.combat.chosen_player = Some(alice);
     let outcome = execute_effect(&mut game, &effect, &mut ctx).expect("gift event should resolve");
 
     let event = outcome

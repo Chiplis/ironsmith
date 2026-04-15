@@ -136,7 +136,7 @@ mod tests {
             }),
             "Galleon should stay on the battlefield until end of combat"
         );
-        assert_eq!(game.delayed_triggers.len(), 1);
+        assert_eq!(game.effect_store.delayed_triggers.len(), 1);
 
         let end_of_combat_event = TriggerEvent::new_with_provenance(
             EndOfCombatEvent::new(),

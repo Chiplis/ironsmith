@@ -377,7 +377,9 @@ mod tests {
 
         // Should have tracked 2 creatures entering
         assert_eq!(
-            game.turn_history.creatures_entered_under_controller(alice),
+            game.turn_store
+                .turn_history
+                .creatures_entered_under_controller(alice),
             2
         );
     }

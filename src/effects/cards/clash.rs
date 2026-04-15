@@ -81,6 +81,7 @@ fn choose_opponent(
         }
         ClashOpponentMode::DefendingPlayer => {
             return ctx
+                .combat
                 .defending_player
                 .filter(|player_id| opponents.contains(player_id));
         }
@@ -134,11 +135,12 @@ fn clashing_players_in_apnap_order(
     controller: PlayerId,
     opponent: PlayerId,
 ) -> Vec<PlayerId> {
-    if game.turn_order.is_empty() {
+    if game.turn_store.turn_order.is_empty() {
         return vec![controller, opponent];
     }
 
     let start = game
+        .turn_store
         .turn_order
         .iter()
         .position(|&player_id| player_id == game.turn.active_player)
@@ -146,8 +148,9 @@ fn clashing_players_in_apnap_order(
 
     let participants = [controller, opponent];
     let mut ordered = Vec::new();
-    for offset in 0..game.turn_order.len() {
-        let player_id = game.turn_order[(start + offset) % game.turn_order.len()];
+    for offset in 0..game.turn_store.turn_order.len() {
+        let player_id =
+            game.turn_store.turn_order[(start + offset) % game.turn_store.turn_order.len()];
         if participants.contains(&player_id) && !ordered.contains(&player_id) {
             ordered.push(player_id);
         }

@@ -124,7 +124,7 @@ impl EffectExecutor for MayEffect {
         let deciding_player = if let Some(decider) = &self.decider {
             resolve_player_filter(game, decider, ctx)?
         } else {
-            ctx.iterated_player.unwrap_or(ctx.controller)
+            ctx.iteration.iterated_player.unwrap_or(ctx.controller)
         };
 
         let should_do = ask_may_choice(

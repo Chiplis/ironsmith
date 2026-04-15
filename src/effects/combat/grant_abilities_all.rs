@@ -138,7 +138,10 @@ mod tests {
         assert_eq!(result.status, crate::effect::OutcomeStatus::Succeeded);
 
         // Should have one continuous effect
-        assert_eq!(game.continuous_effects.effects_sorted().len(), 1);
+        assert_eq!(
+            game.effect_store.continuous_effects.effects_sorted().len(),
+            1
+        );
     }
 
     #[test]
@@ -164,7 +167,10 @@ mod tests {
         assert_eq!(result.status, crate::effect::OutcomeStatus::Succeeded);
 
         // Should have three continuous effects (one per ability)
-        assert_eq!(game.continuous_effects.effects_sorted().len(), 3);
+        assert_eq!(
+            game.effect_store.continuous_effects.effects_sorted().len(),
+            3
+        );
     }
 
     #[test]
@@ -188,7 +194,7 @@ mod tests {
         assert_eq!(result.status, crate::effect::OutcomeStatus::Succeeded);
 
         // Should have one continuous effect
-        let effects = game.continuous_effects.effects_sorted();
+        let effects = game.effect_store.continuous_effects.effects_sorted();
         assert_eq!(effects.len(), 1);
 
         // Effect should filter to controller's creatures only
@@ -214,7 +220,10 @@ mod tests {
         assert_eq!(result.status, crate::effect::OutcomeStatus::Succeeded);
 
         // Should have no continuous effects
-        assert_eq!(game.continuous_effects.effects_sorted().len(), 0);
+        assert_eq!(
+            game.effect_store.continuous_effects.effects_sorted().len(),
+            0
+        );
     }
 
     #[test]

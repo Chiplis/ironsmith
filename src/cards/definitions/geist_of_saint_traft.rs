@@ -203,11 +203,11 @@ mod tests {
         // Verify a delayed trigger was registered for end of combat exile
         // (exile_at_end_of_combat() on the effect creates a delayed trigger)
         assert_eq!(
-            game.delayed_triggers.len(),
+            game.effect_store.delayed_triggers.len(),
             1,
             "Should have 1 delayed trigger for exile at EOC"
         );
-        let delayed = &game.delayed_triggers[0];
+        let delayed = &game.effect_store.delayed_triggers[0];
         assert!(delayed.trigger.display().contains("end of combat"));
         assert!(delayed.one_shot);
     }

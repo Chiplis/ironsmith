@@ -62,17 +62,18 @@ impl GrantPlayTaggedEffect {
     /// multiplayer turn order, queued extra turns, and skipped turns) without
     /// mutating game state.
     fn next_turn_number_for_player(game: &GameState, player: crate::ids::PlayerId) -> u32 {
-        if game.turn_order.is_empty() {
+        if game.turn_store.turn_order.is_empty() {
             return game.turn.turn_number;
         }
 
         let mut simulated_active_player = game.turn.active_player;
         let mut simulated_turn_number = game.turn.turn_number;
-        let mut simulated_extra_turns = game.extra_turns.clone();
-        let mut simulated_skip_next_turn = game.skip_next_turn.clone();
+        let mut simulated_extra_turns = game.turn_store.extra_turns.clone();
+        let mut simulated_skip_next_turn = game.turn_store.skip_next_turn.clone();
 
         // Defensive bound to avoid pathological infinite loops if state is invalid.
         let max_iterations = game
+            .turn_store
             .turn_order
             .len()
             .saturating_mul(16)
@@ -85,21 +86,22 @@ impl GrantPlayTaggedEffect {
                 simulated_extra_turns.remove(0)
             } else {
                 let current_index = game
+                    .turn_store
                     .turn_order
                     .iter()
                     .position(|&p| p == simulated_active_player)
                     .unwrap_or(0);
 
-                let mut next_index = (current_index + 1) % game.turn_order.len();
+                let mut next_index = (current_index + 1) % game.turn_store.turn_order.len();
                 let start_index = next_index;
 
                 loop {
-                    let candidate = game.turn_order[next_index];
+                    let candidate = game.turn_store.turn_order[next_index];
                     let is_in_game = game.player(candidate).is_some_and(|p| p.is_in_game());
 
                     if is_in_game {
                         if simulated_skip_next_turn.remove(&candidate) {
-                            next_index = (next_index + 1) % game.turn_order.len();
+                            next_index = (next_index + 1) % game.turn_store.turn_order.len();
                             if next_index == start_index {
                                 break;
                             }
@@ -108,13 +110,13 @@ impl GrantPlayTaggedEffect {
                         break;
                     }
 
-                    next_index = (next_index + 1) % game.turn_order.len();
+                    next_index = (next_index + 1) % game.turn_store.turn_order.len();
                     if next_index == start_index {
                         break;
                     }
                 }
 
-                game.turn_order[next_index]
+                game.turn_store.turn_order[next_index]
             };
 
             simulated_turn_number = simulated_turn_number.saturating_add(1);
@@ -174,7 +176,7 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                 mana_permission_stable_ids.push(object.stable_id);
             }
 
-            game.grant_registry.grant_to_card(
+            game.effect_store.grant_registry.grant_to_card(
                 object_id,
                 object.zone,
                 player_id,
@@ -188,7 +190,7 @@ impl EffectExecutor for GrantPlayTaggedEffect {
         }
 
         if self.allow_any_color_for_cast && !mana_permission_stable_ids.is_empty() {
-            game.mana_spend_effects.permissions.push(
+            game.effect_store.mana_spend_effects.permissions.push(
                 crate::game_state::ActiveManaSpendPermission {
                     permission:
                         crate::effect::ManaSpendPermission::any_color_for_casting_stable_ids(
@@ -242,12 +244,17 @@ mod tests {
             .expect("effect should resolve");
         assert_eq!(outcome.value, crate::effect::OutcomeValue::Count(1));
         assert!(
-            game.grant_registry
-                .card_can_play_from_zone(&game, exiled_id, Zone::Exile, alice),
+            game.effect_store.grant_registry.card_can_play_from_zone(
+                &game,
+                exiled_id,
+                Zone::Exile,
+                alice
+            ),
             "tagged card should be playable from exile"
         );
 
         let grant = game
+            .effect_store
             .grant_registry
             .grants
             .first()
@@ -299,7 +306,7 @@ mod tests {
         // Grant on Bob's turn with queued extra turn for Alice.
         game.turn.active_player = bob;
         game.turn.turn_number = 20;
-        game.extra_turns = vec![alice];
+        game.turn_store.extra_turns = vec![alice];
         let expires_with_extra =
             GrantPlayTaggedEffect::until_your_next_turn("it", PlayerFilter::You)
                 .expires_end_of_turn(&game, alice);
@@ -309,10 +316,10 @@ mod tests {
         );
 
         // If Alice's next turn is skipped, duration should extend to the following turn she takes.
-        game.extra_turns.clear();
+        game.turn_store.extra_turns.clear();
         game.turn.active_player = bob;
         game.turn.turn_number = 30;
-        game.skip_next_turn = HashSet::from([alice]);
+        game.turn_store.skip_next_turn = HashSet::from([alice]);
         let expires_with_skip =
             GrantPlayTaggedEffect::until_your_next_turn("it", PlayerFilter::You)
                 .expires_end_of_turn(&game, alice);

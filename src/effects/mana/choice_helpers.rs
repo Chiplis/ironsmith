@@ -24,7 +24,7 @@ pub(crate) fn choose_mana_colors(
         return Vec::new();
     }
 
-    let effective_available = match (available_colors, ctx.mana_color_restriction.as_deref()) {
+    let effective_available = match (available_colors, ctx.mana.mana_color_restriction.as_deref()) {
         (Some(effect_colors), Some(ctx_colors)) => Some(
             effect_colors
                 .iter()
@@ -88,8 +88,8 @@ pub(crate) fn credit_mana_symbols_from_context<I>(
         player_id,
         symbols,
         Some(ctx.source),
-        &ctx.mana_usage_restrictions,
-        ctx.mana_source_chosen_creature_type,
+        &ctx.mana.mana_usage_restrictions,
+        ctx.mana.mana_source_chosen_creature_type,
     );
 }
 
@@ -132,8 +132,8 @@ pub(crate) fn credit_repeated_mana_symbol_from_context(
         symbol,
         count,
         Some(ctx.source),
-        &ctx.mana_usage_restrictions,
-        ctx.mana_source_chosen_creature_type,
+        &ctx.mana.mana_usage_restrictions,
+        ctx.mana.mana_source_chosen_creature_type,
     );
 }
 

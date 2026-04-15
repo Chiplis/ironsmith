@@ -528,7 +528,9 @@ pub(super) fn resolve_stack_entry_full(
                     if let Some(target) = attached
                         && game.attach_object_to_target(result.new_id, target)
                     {
-                        game.continuous_effects.record_attachment(result.new_id);
+                        game.effect_store
+                            .continuous_effects
+                            .record_attachment(result.new_id);
                     }
                 }
 
@@ -783,30 +785,32 @@ pub(super) fn resolve_stack_entry_full(
                     && result.final_zone == Zone::Exile
                     && let Some(exiled_id) = result.new_object_id
                 {
-                    game.delayed_triggers.push(crate::triggers::DelayedTrigger {
-                        trigger: crate::triggers::Trigger::beginning_of_upkeep(
-                            crate::target::PlayerFilter::Specific(entry.controller),
-                        ),
-                        effects: crate::resolution::ResolutionProgram::from_effects(vec![
-                            Effect::may_single(Effect::new(
-                                crate::effects::CastSourceEffect::new()
-                                    .without_paying_mana_cost()
-                                    .require_exile(),
-                            )),
-                        ]),
-                        one_shot: true,
-                        x_value: entry.x_value,
-                        not_before_turn: None,
-                        expires_at_turn: None,
-                        target_objects: vec![exiled_id],
-                        ability_source: None,
-                        ability_source_stable_id: None,
-                        ability_source_name: None,
-                        ability_source_snapshot: None,
-                        controller: entry.controller,
-                        choices: vec![],
-                        tagged_objects: std::collections::HashMap::new(),
-                    });
+                    game.effect_store
+                        .delayed_triggers
+                        .push(crate::triggers::DelayedTrigger {
+                            trigger: crate::triggers::Trigger::beginning_of_upkeep(
+                                crate::target::PlayerFilter::Specific(entry.controller),
+                            ),
+                            effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                                Effect::may_single(Effect::new(
+                                    crate::effects::CastSourceEffect::new()
+                                        .without_paying_mana_cost()
+                                        .require_exile(),
+                                )),
+                            ]),
+                            one_shot: true,
+                            x_value: entry.x_value,
+                            not_before_turn: None,
+                            expires_at_turn: None,
+                            target_objects: vec![exiled_id],
+                            ability_source: None,
+                            ability_source_stable_id: None,
+                            ability_source_name: None,
+                            ability_source_snapshot: None,
+                            controller: entry.controller,
+                            choices: vec![],
+                            tagged_objects: std::collections::HashMap::new(),
+                        });
                 }
             } else if should_exile {
                 let _ = crate::effects::zones::apply_zone_change(
@@ -1041,7 +1045,8 @@ mod tests {
             .expect("Blasphemous Act should resolve");
 
         assert_eq!(
-            game.turn_history
+            game.turn_store
+                .turn_history
                 .damage_dealt_by_spell_this_turn(&game.provenance_graph, blasphemous_act_id),
             26,
             "stack-resolved creature damage should be queryable from turn history"
@@ -1092,13 +1097,15 @@ mod tests {
             .expect("Blasphemous Act should resolve");
 
         assert_eq!(
-            game.turn_history
+            game.turn_store
+                .turn_history
                 .damage_dealt_by_spell_this_turn(&game.provenance_graph, blasphemous_act_id),
             39,
             "Blasphemous Act should record the 39 damage dealt to the three Ornithopters"
         );
 
         let history_names = game
+            .turn_store
             .turn_history
             .spell_cast_snapshot_history()
             .into_iter()
@@ -1166,7 +1173,8 @@ mod tests {
             .expect("Blasphemous Act should resolve");
 
         assert_eq!(
-            game.turn_history
+            game.turn_store
+                .turn_history
                 .damage_dealt_by_spell_this_turn(&game.provenance_graph, blasphemous_act_id),
             39,
             "Blasphemous Act should record the 39 damage dealt to the three Ornithopters"

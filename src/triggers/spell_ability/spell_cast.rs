@@ -94,7 +94,11 @@ impl TriggerMatcher for SpellCastTrigger {
             }
         }
 
-        let cast_count = ctx.game.turn_history.spells_cast_by_player(e.caster);
+        let cast_count = ctx
+            .game
+            .turn_store
+            .turn_history
+            .spells_cast_by_player(e.caster);
         if let Some(exact_spells) = self.exact_spells_this_turn {
             if cast_count != exact_spells {
                 return false;

@@ -241,10 +241,12 @@ fn test_blood_moon_turns_off_urborg_dependency_even_if_urborg_is_newer() {
         game.create_object_from_definition(&other_land_def, alice, Zone::Battlefield);
 
     assert!(
-        game.continuous_effects
+        game.effect_store
+            .continuous_effects
             .get_entry_timestamp(blood_moon_id)
             .expect("Blood Moon should have an entry timestamp")
             < game
+                .effect_store
                 .continuous_effects
                 .get_entry_timestamp(urborg_id)
                 .expect("Urborg should have an entry timestamp"),
@@ -852,7 +854,9 @@ fn test_turn_to_frog_then_giant_growth() {
         },
     )
     .until(Until::EndOfTurn);
-    game.continuous_effects.add_effect(turn_to_frog);
+    game.effect_store
+        .continuous_effects
+        .add_effect(turn_to_frog);
 
     // Giant Growth: +3/+3 (Layer 7c: modifying)
     let giant_growth = ContinuousEffect::new(
@@ -865,7 +869,9 @@ fn test_turn_to_frog_then_giant_growth() {
         },
     )
     .until(Until::EndOfTurn);
-    game.continuous_effects.add_effect(giant_growth);
+    game.effect_store
+        .continuous_effects
+        .add_effect(giant_growth);
 
     // Layer 7b applies first: base becomes 1/1
     // Layer 7c applies second: +3/+3
@@ -920,7 +926,9 @@ fn test_giant_growth_then_turn_to_frog() {
         },
     )
     .until(Until::EndOfTurn);
-    game.continuous_effects.add_effect(giant_growth);
+    game.effect_store
+        .continuous_effects
+        .add_effect(giant_growth);
 
     // Turn to Frog second (later timestamp): 1/1 (Layer 7b)
     let turn_to_frog = ContinuousEffect::new(
@@ -934,7 +942,9 @@ fn test_giant_growth_then_turn_to_frog() {
         },
     )
     .until(Until::EndOfTurn);
-    game.continuous_effects.add_effect(turn_to_frog);
+    game.effect_store
+        .continuous_effects
+        .add_effect(turn_to_frog);
 
     // Even though Giant Growth was cast first, layers apply in order:
     // Layer 7b (Turn to Frog): sets to 1/1
@@ -991,7 +1001,7 @@ fn test_clone_copies_base_not_modifications() {
         },
     )
     .until(Until::EndOfTurn);
-    game.continuous_effects.add_effect(pump);
+    game.effect_store.continuous_effects.add_effect(pump);
 
     // The pumped bear should be 5/5
     assert_eq!(
@@ -1018,7 +1028,7 @@ fn test_clone_copies_base_not_modifications() {
             preserve_source_abilities: false,
         },
     );
-    game.continuous_effects.add_effect(copy_effect);
+    game.effect_store.continuous_effects.add_effect(copy_effect);
 
     // Clone should copy the BASE characteristics, not the pumped stats
     // Clone becomes a 2/2 Bear, not a 5/5
@@ -1081,7 +1091,7 @@ fn test_switch_power_toughness_after_pump() {
         },
     )
     .until(Until::EndOfTurn);
-    game.continuous_effects.add_effect(pump);
+    game.effect_store.continuous_effects.add_effect(pump);
 
     // Switch P/T (Layer 7e)
     let switch = ContinuousEffect::new(
@@ -1091,7 +1101,7 @@ fn test_switch_power_toughness_after_pump() {
         Modification::SwitchPowerToughness,
     )
     .until(Until::EndOfTurn);
-    game.continuous_effects.add_effect(switch);
+    game.effect_store.continuous_effects.add_effect(switch);
 
     // Base: 1/4
     // After pump (7c): 3/4
@@ -1152,7 +1162,9 @@ fn test_counters_apply_in_layer_7d() {
         },
     )
     .until(Until::EndOfTurn);
-    game.continuous_effects.add_effect(turn_to_frog);
+    game.effect_store
+        .continuous_effects
+        .add_effect(turn_to_frog);
 
     // Layer 7b: Set to 1/1
     // Layer 7d: +1/+1 counters add +2/+2
@@ -1208,7 +1220,7 @@ fn test_timestamp_ordering_for_setting_effects() {
         },
     )
     .until(Until::EndOfTurn);
-    game.continuous_effects.add_effect(effect1);
+    game.effect_store.continuous_effects.add_effect(effect1);
 
     // Second effect: Set to 1/1 (later timestamp)
     let effect2 = ContinuousEffect::new(
@@ -1222,7 +1234,7 @@ fn test_timestamp_ordering_for_setting_effects() {
         },
     )
     .until(Until::EndOfTurn);
-    game.continuous_effects.add_effect(effect2);
+    game.effect_store.continuous_effects.add_effect(effect2);
 
     // Within the same sublayer, later timestamp wins
     // So creature should be 1/1
@@ -1794,7 +1806,9 @@ fn test_turn_to_frog_vs_leveled_student() {
         },
     )
     .until(Until::EndOfTurn);
-    game.continuous_effects.add_effect(turn_to_frog);
+    game.effect_store
+        .continuous_effects
+        .add_effect(turn_to_frog);
 
     // Level symbol sets P/T in 7b (timestamp when Student entered)
     // Turn to Frog sets P/T in 7b (later timestamp)
@@ -2114,7 +2128,9 @@ fn test_humility_plus_giant_growth_on_student() {
         },
     )
     .until(Until::EndOfTurn);
-    game.continuous_effects.add_effect(giant_growth);
+    game.effect_store
+        .continuous_effects
+        .add_effect(giant_growth);
 
     // Layer 6: Humility removes all abilities (including level symbol)
     // Layer 7b: Humility sets to 1/1 (level's 7b effect doesn't exist anymore)
@@ -3323,13 +3339,17 @@ fn test_same_player_goading_again_does_not_refresh_duration() {
     let second_source = game.create_object_from_definition(&bears_def, bob, Zone::Battlefield);
 
     game.add_goad_effect(creature_id, bob, Until::YourNextTurn, first_source);
-    assert_eq!(game.goad_effects.len(), 1, "first goad should be recorded");
+    assert_eq!(
+        game.effect_store.goad_effects.len(),
+        1,
+        "first goad should be recorded"
+    );
 
     game.next_turn();
     game.add_goad_effect(creature_id, bob, Until::YourNextTurn, second_source);
 
     assert_eq!(
-        game.goad_effects.len(),
+        game.effect_store.goad_effects.len(),
         1,
         "same player goading the same creature again before the effect expires should have no effect"
     );

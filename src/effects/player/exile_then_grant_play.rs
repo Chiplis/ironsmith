@@ -64,7 +64,7 @@ impl EffectExecutor for ExileThenGrantPlayEffect {
         }
 
         for &exiled_id in &result.new_object_ids {
-            game.grant_registry.grant_to_card(
+            game.effect_store.grant_registry.grant_to_card(
                 exiled_id,
                 Zone::Exile,
                 player,

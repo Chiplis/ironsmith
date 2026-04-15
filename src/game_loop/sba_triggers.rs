@@ -81,7 +81,7 @@ pub fn check_and_apply_sbas_with(
     }
 
     let (state_triggers, active_state_triggers) = crate::triggers::check_state_triggers(game);
-    game.active_state_trigger_conditions = active_state_triggers;
+    game.effect_store.active_state_trigger_conditions = active_state_triggers;
     for trigger in state_triggers {
         trigger_queue.add(trigger);
     }
@@ -197,19 +197,21 @@ pub fn put_triggers_on_stack_with_dm(
 }
 
 fn players_in_apnap_order(game: &GameState) -> Vec<PlayerId> {
-    if game.turn_order.is_empty() {
+    if game.turn_store.turn_order.is_empty() {
         return Vec::new();
     }
 
     let start = game
+        .turn_store
         .turn_order
         .iter()
         .position(|&player_id| player_id == game.turn.active_player)
         .unwrap_or(0);
 
-    (0..game.turn_order.len())
+    (0..game.turn_store.turn_order.len())
         .filter_map(|offset| {
-            let player_id = game.turn_order[(start + offset) % game.turn_order.len()];
+            let player_id =
+                game.turn_store.turn_order[(start + offset) % game.turn_store.turn_order.len()];
             game.player(player_id)
                 .filter(|player| player.is_in_game())
                 .map(|_| player_id)
@@ -804,13 +806,21 @@ pub(super) fn triggered_to_stack_entry_with_effects(
         entry.keyword_payment_contributions = obj.keyword_payment_contributions_to_cast.clone();
     }
 
-    if let Some(crewers) = game.turn_history.crewed_this_turn.get(&trigger.source)
+    if let Some(crewers) = game
+        .turn_store
+        .turn_history
+        .crewed_this_turn
+        .get(&trigger.source)
         && !crewers.is_empty()
     {
         entry.crew_contributors = crewers.clone();
     }
 
-    if let Some(saddlers) = game.turn_history.saddled_this_turn.get(&trigger.source)
+    if let Some(saddlers) = game
+        .turn_store
+        .turn_history
+        .saddled_this_turn
+        .get(&trigger.source)
         && !saddlers.is_empty()
     {
         entry.saddle_contributors = saddlers.clone();

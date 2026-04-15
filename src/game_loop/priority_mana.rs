@@ -3402,7 +3402,8 @@ pub(super) fn finalize_spell_cast(
             .with_source(new_id)
             .with_active_player(game.turn.active_player)
             .with_opponents(
-                game.turn_order
+                game.turn_store
+                    .turn_order
                     .iter()
                     .copied()
                     .filter(|player_id| *player_id != caster)
@@ -3410,6 +3411,7 @@ pub(super) fn finalize_spell_cast(
             )
             .with_caster(Some(caster));
         let matching_effects = game
+            .effect_store
             .temporary_spell_cost_reductions
             .iter()
             .enumerate()
@@ -3425,7 +3427,10 @@ pub(super) fn finalize_spell_cast(
             })
             .collect::<Vec<_>>();
         for idx in matching_effects {
-            if let Some(effect) = game.temporary_spell_cost_reductions.get_mut(idx)
+            if let Some(effect) = game
+                .effect_store
+                .temporary_spell_cost_reductions
+                .get_mut(idx)
                 && effect.remaining_uses > 0
             {
                 effect.remaining_uses -= 1;
@@ -3448,6 +3453,7 @@ pub(super) fn finalize_spell_cast(
 
     // Expend: "You expend N as you spend your Nth total mana to cast spells during a turn."
     let prev_mana_spent = game
+        .turn_store
         .turn_history
         .mana_spent_to_cast_spells_this_turn
         .get(&caster)
@@ -3455,7 +3461,8 @@ pub(super) fn finalize_spell_cast(
         .unwrap_or(0);
     if mana_spent_total > 0 {
         let new_mana_spent_total = prev_mana_spent.saturating_add(mana_spent_total);
-        game.turn_history
+        game.turn_store
+            .turn_history
             .mana_spent_to_cast_spells_this_turn
             .insert(caster, new_mana_spent_total);
 
@@ -3680,7 +3687,7 @@ pub(crate) fn apply_decision_context_with_dm<D: DecisionMaker>(
         DecisionContext::SelectOptions(options_ctx) => {
             let result = decision_maker.decide_options(game, options_ctx);
 
-            if game.pending_replacement_choice.is_some() {
+            if game.effect_store.pending_replacement_choice.is_some() {
                 let Some(choice) = result.first().copied() else {
                     return Err(GameLoopError::InvalidState(
                         "replacement effect choice requires one selected option".to_string(),

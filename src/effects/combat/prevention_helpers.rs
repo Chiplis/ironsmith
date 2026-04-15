@@ -54,7 +54,7 @@ pub fn register_prevention_shield(
     let shield = PreventionShield::new(ctx.source, ctx.controller, protected, amount, duration)
         .with_filter(damage_filter)
         .with_follow_up_effects(follow_up_effects);
-    game.prevention_effects.add_shield(shield)
+    game.effect_store.prevention_effects.add_shield(shield)
 }
 
 fn resolve_legacy_prevent_damage_target(
@@ -223,7 +223,7 @@ mod tests {
             Vec::new(),
         );
 
-        let shields = game.prevention_effects.shields();
+        let shields = game.effect_store.prevention_effects.shields();
         assert_eq!(shields.len(), 1);
         assert_eq!(shields[0].id, id);
         assert_eq!(shields[0].amount_remaining, Some(3));

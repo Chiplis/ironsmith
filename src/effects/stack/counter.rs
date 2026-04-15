@@ -140,7 +140,7 @@ mod tests {
     use crate::card::CardBuilder;
     use crate::decision::SelectFirstDecisionMaker;
     use crate::effect::{Effect, OutcomeStatus};
-    use crate::executor::execute_effect;
+    use crate::effects::execute_effect;
     use crate::game_state::StackEntry;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};

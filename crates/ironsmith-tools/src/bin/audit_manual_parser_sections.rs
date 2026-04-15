@@ -2,7 +2,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const PARSER_ROOT: &str = "src/cards/builders/parser";
+mod tooling_paths;
+
+const PARSER_ROOT: &str = "src/cards/builders/compiler";
 
 const PHRASE_HELPER_PATTERNS: &[&str] = &[
     "words_match_prefix(",
@@ -127,7 +129,8 @@ struct ActiveFunction {
 }
 
 fn main() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let repo_root = tooling_paths::repo_root()
+        .unwrap_or_else(|err| panic!("failed to locate repo root: {err}"));
     let parser_root = repo_root.join(PARSER_ROOT);
     let mut files = Vec::new();
     collect_rs_files(&parser_root, &mut files);

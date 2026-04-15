@@ -138,6 +138,7 @@ impl EffectExecutor for SaddleCostEffect {
 
         // Record saddle contributors for "saddled it this turn" references.
         let entry = game
+            .turn_store
             .turn_history
             .saddled_this_turn
             .entry(source)

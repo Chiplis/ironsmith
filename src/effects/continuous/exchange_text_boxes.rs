@@ -33,7 +33,7 @@ impl ExchangeTextBoxesEffect {
         game: &GameState,
         object_id: crate::ids::ObjectId,
     ) -> Result<TextBoxOverlay, ExecutionError> {
-        let effects: Vec<_> = game.continuous_effects.effects().to_vec();
+        let effects: Vec<_> = game.effect_store.continuous_effects.effects().to_vec();
         let chars = text_box_characteristics_with_effects(
             object_id,
             game.objects_map(),
@@ -71,7 +71,7 @@ impl EffectExecutor for ExchangeTextBoxesEffect {
         let first_overlay = Self::current_text_box_overlay(game, first)?;
         let second_overlay = Self::current_text_box_overlay(game, second)?;
 
-        game.continuous_effects.add_effect(
+        game.effect_store.continuous_effects.add_effect(
             crate::continuous::ContinuousEffect::from_resolution(
                 ctx.source,
                 ctx.controller,
@@ -80,7 +80,7 @@ impl EffectExecutor for ExchangeTextBoxesEffect {
             )
             .until(crate::effect::Until::ThisLeavesTheBattlefield),
         );
-        game.continuous_effects.add_effect(
+        game.effect_store.continuous_effects.add_effect(
             crate::continuous::ContinuousEffect::from_resolution(
                 ctx.source,
                 ctx.controller,
@@ -139,7 +139,7 @@ mod tests {
         );
         object.abilities = definition.abilities.clone();
         game.add_object(object);
-        game.continuous_effects.record_entry(object_id);
+        game.effect_store.continuous_effects.record_entry(object_id);
         object_id
     }
 
@@ -162,7 +162,7 @@ mod tests {
             Zone::Battlefield,
         );
         game.add_object(object);
-        game.continuous_effects.record_entry(object_id);
+        game.effect_store.continuous_effects.record_entry(object_id);
         object_id
     }
 

@@ -914,7 +914,12 @@ impl<'a> DerivedGameView<'a> {
             return Rc::clone(cached);
         }
 
-        let grants = Rc::new(self.game.grant_registry.active_grants(self.game));
+        let grants = Rc::new(
+            self.game
+                .effect_store
+                .grant_registry
+                .active_grants(self.game),
+        );
         *self.active_grants.borrow_mut() = Some(Rc::clone(&grants));
         grants
     }

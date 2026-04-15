@@ -123,6 +123,7 @@ impl EffectExecutor for CrewCostEffect {
 
         // Record crew contributors for "crewed it this turn" references.
         let entry = game
+            .turn_store
             .turn_history
             .crewed_this_turn
             .entry(ctx.source)

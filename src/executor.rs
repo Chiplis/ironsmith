@@ -15,7 +15,7 @@ use crate::effects::VoteResult;
 use crate::events::cause::EventCause;
 use crate::game_state::{GameState, TargetAssignment};
 use crate::ids::{ObjectId, PlayerId};
-use crate::provenance::{ProvNodeId, ProvenanceNodeKind};
+use crate::provenance::ProvNodeId;
 use crate::replacement::ReplacementEffect;
 use crate::snapshot::ObjectSnapshot;
 use crate::tag::{SOURCE_EXILED_TAG, TagKey};
@@ -109,6 +109,43 @@ pub fn rebase_target_scope(
     (local_targets, local_assignments)
 }
 
+/// Iteration-specific state carried across nested effect execution.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct IterationContext {
+    /// Current player in a ForEachOpponent/ForEachPlayer iteration.
+    pub iterated_player: Option<PlayerId>,
+    /// Current object in a ForEach iteration.
+    pub iterated_object: Option<ObjectId>,
+}
+
+/// Combat-linked player selections available during execution.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct CombatExecutionContext {
+    /// The defending player for combat triggers.
+    pub defending_player: Option<PlayerId>,
+    /// The attacking player for combat triggers.
+    pub attacking_player: Option<PlayerId>,
+    /// The chosen player linked to this source, if one was captured earlier.
+    pub chosen_player: Option<PlayerId>,
+}
+
+/// Mana-choice restrictions scoped to the current resolution path.
+#[derive(Debug, Clone, Default)]
+pub struct ManaExecutionContext {
+    /// Optional color restriction for mana-choice decisions in this execution.
+    pub mana_color_restriction: Option<Vec<Color>>,
+    /// Optional spending restrictions for mana produced during this execution.
+    pub mana_usage_restrictions: Vec<crate::ability::ManaUsageRestriction>,
+    /// Chosen creature type snapshot for mana produced by the source.
+    pub mana_source_chosen_creature_type: Option<Subtype>,
+}
+
+/// Ephemeral replacement effects scoped to the current resolution path.
+#[derive(Debug, Clone, Default)]
+pub struct ReplacementExecutionContext {
+    pub additional_replacement_effects: Vec<ReplacementEffect>,
+}
+
 /// Context for effect execution.
 pub struct ExecutionContext<'a> {
     /// The source object (spell/ability on stack).
@@ -125,22 +162,16 @@ pub struct ExecutionContext<'a> {
     pub effect_outcomes: HashMap<EffectId, EffectOutcome>,
     /// The most recent vote result(s) available to this resolution path.
     pub vote_results: HashMap<ObjectId, VoteResult>,
-    /// Current player in a ForEachOpponent/ForEachPlayer iteration.
-    pub iterated_player: Option<PlayerId>,
-    /// Current object in a ForEach iteration.
-    pub iterated_object: Option<ObjectId>,
+    /// Iteration-specific state for nested effect execution.
+    pub iteration: IterationContext,
     /// Decision maker for handling player choices (May effects, searches, etc.).
     pub decision_maker: &'a mut dyn DecisionMaker,
     /// Which optional costs were paid (kicker, buyback, etc.).
     pub optional_costs_paid: OptionalCostsPaid,
     /// How the source spell was cast.
     pub casting_method: crate::alternative_cast::CastingMethod,
-    /// The defending player for combat triggers.
-    pub defending_player: Option<PlayerId>,
-    /// The attacking player for combat triggers.
-    pub attacking_player: Option<PlayerId>,
-    /// The chosen player linked to this source, if one was captured earlier.
-    pub chosen_player: Option<PlayerId>,
+    /// Combat-linked player selections and context.
+    pub combat: CombatExecutionContext,
     /// Last known information for target objects (for when they leave the battlefield).
     pub target_snapshots: HashMap<ObjectId, ObjectSnapshot>,
     /// Last known information for the source object.
@@ -180,14 +211,10 @@ pub struct ExecutionContext<'a> {
     pub cause: EventCause,
     /// Provenance parent node for events emitted during this execution.
     pub provenance: ProvNodeId,
-    /// Optional color restriction for mana-choice decisions in this execution.
-    pub mana_color_restriction: Option<Vec<Color>>,
-    /// Optional spending restrictions for mana produced during this execution.
-    pub mana_usage_restrictions: Vec<crate::ability::ManaUsageRestriction>,
-    /// Chosen creature type snapshot for mana produced by the source.
-    pub mana_source_chosen_creature_type: Option<Subtype>,
-    /// Ephemeral replacement effects scoped to the current resolution path.
-    pub additional_replacement_effects: Vec<ReplacementEffect>,
+    /// Mana-choice restrictions scoped to this execution.
+    pub mana: ManaExecutionContext,
+    /// Ephemeral replacement effects scoped to this execution.
+    pub replacement: ReplacementExecutionContext,
 }
 
 impl std::fmt::Debug for ExecutionContext<'_> {
@@ -199,13 +226,11 @@ impl std::fmt::Debug for ExecutionContext<'_> {
             .field("target_assignments", &self.target_assignments)
             .field("x_value", &self.x_value)
             .field("effect_outcomes", &self.effect_outcomes)
-            .field("iterated_player", &self.iterated_player)
-            .field("iterated_object", &self.iterated_object)
+            .field("iteration", &self.iteration)
             .field("decision_maker", &"<&mut dyn DecisionMaker>")
             .field("optional_costs_paid", &self.optional_costs_paid)
             .field("casting_method", &self.casting_method)
-            .field("defending_player", &self.defending_player)
-            .field("chosen_player", &self.chosen_player)
+            .field("combat", &self.combat)
             .field("target_snapshots", &self.target_snapshots)
             .field("source_snapshot", &self.source_snapshot)
             .field(
@@ -220,15 +245,10 @@ impl std::fmt::Debug for ExecutionContext<'_> {
             .field("triggering_event", &self.triggering_event)
             .field("cause", &self.cause)
             .field("provenance", &self.provenance)
-            .field("mana_color_restriction", &self.mana_color_restriction)
-            .field("mana_usage_restrictions", &self.mana_usage_restrictions)
-            .field(
-                "mana_source_chosen_creature_type",
-                &self.mana_source_chosen_creature_type,
-            )
+            .field("mana", &self.mana)
             .field(
                 "additional_replacement_effects",
-                &self.additional_replacement_effects.len(),
+                &self.replacement.additional_replacement_effects.len(),
             )
             .finish()
     }
@@ -249,14 +269,11 @@ impl<'a> ExecutionContext<'a> {
             x_value: None,
             effect_outcomes: HashMap::new(),
             vote_results: HashMap::new(),
-            iterated_player: None,
-            iterated_object: None,
+            iteration: IterationContext::default(),
             decision_maker,
             optional_costs_paid: OptionalCostsPaid::default(),
             casting_method: crate::alternative_cast::CastingMethod::Normal,
-            defending_player: None,
-            attacking_player: None,
-            chosen_player: None,
+            combat: CombatExecutionContext::default(),
             target_snapshots: HashMap::new(),
             source_snapshot: None,
             tagged_objects: HashMap::new(),
@@ -266,10 +283,8 @@ impl<'a> ExecutionContext<'a> {
             chosen_modes: None,
             cause: EventCause::from_effect(source, controller),
             provenance: ProvNodeId::default(),
-            mana_color_restriction: None,
-            mana_usage_restrictions: Vec::new(),
-            mana_source_chosen_creature_type: None,
-            additional_replacement_effects: Vec::new(),
+            mana: ManaExecutionContext::default(),
+            replacement: ReplacementExecutionContext::default(),
         }
     }
 
@@ -294,14 +309,11 @@ impl<'a> ExecutionContext<'a> {
             x_value: None,
             effect_outcomes: HashMap::new(),
             vote_results: HashMap::new(),
-            iterated_player: None,
-            iterated_object: None,
+            iteration: IterationContext::default(),
             decision_maker: dm,
             optional_costs_paid: OptionalCostsPaid::default(),
             casting_method: crate::alternative_cast::CastingMethod::Normal,
-            defending_player: None,
-            attacking_player: None,
-            chosen_player: None,
+            combat: CombatExecutionContext::default(),
             target_snapshots: HashMap::new(),
             source_snapshot: None,
             tagged_objects: HashMap::new(),
@@ -311,10 +323,8 @@ impl<'a> ExecutionContext<'a> {
             chosen_modes: None,
             cause: EventCause::from_effect(source, controller),
             provenance: ProvNodeId::default(),
-            mana_color_restriction: None,
-            mana_usage_restrictions: Vec::new(),
-            mana_source_chosen_creature_type: None,
-            additional_replacement_effects: Vec::new(),
+            mana: ManaExecutionContext::default(),
+            replacement: ReplacementExecutionContext::default(),
         }
     }
 
@@ -329,14 +339,11 @@ impl<'a> ExecutionContext<'a> {
             x_value: self.x_value,
             effect_outcomes: self.effect_outcomes,
             vote_results: self.vote_results,
-            iterated_player: self.iterated_player,
-            iterated_object: self.iterated_object,
+            iteration: self.iteration,
             decision_maker: dm,
             optional_costs_paid: self.optional_costs_paid,
             casting_method: self.casting_method,
-            defending_player: self.defending_player,
-            attacking_player: self.attacking_player,
-            chosen_player: self.chosen_player,
+            combat: self.combat,
             target_snapshots: self.target_snapshots,
             source_snapshot: self.source_snapshot,
             tagged_objects: self.tagged_objects,
@@ -346,19 +353,17 @@ impl<'a> ExecutionContext<'a> {
             chosen_modes: self.chosen_modes,
             cause: self.cause,
             provenance: self.provenance,
-            mana_color_restriction: self.mana_color_restriction,
-            mana_usage_restrictions: self.mana_usage_restrictions,
-            mana_source_chosen_creature_type: self.mana_source_chosen_creature_type,
-            additional_replacement_effects: self.additional_replacement_effects,
+            mana: self.mana,
+            replacement: self.replacement,
         }
     }
 
     pub fn additional_replacement_effects(&self) -> &[ReplacementEffect] {
-        &self.additional_replacement_effects
+        &self.replacement.additional_replacement_effects
     }
 
     pub fn additional_replacement_effects_snapshot(&self) -> Vec<ReplacementEffect> {
-        self.additional_replacement_effects.clone()
+        self.replacement.additional_replacement_effects.clone()
     }
 
     pub fn with_temp_additional_replacement_effects<R>(
@@ -366,16 +371,20 @@ impl<'a> ExecutionContext<'a> {
         effects: Vec<ReplacementEffect>,
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {
-        let original_len = self.additional_replacement_effects.len();
-        self.additional_replacement_effects.extend(effects);
+        let original_len = self.replacement.additional_replacement_effects.len();
+        self.replacement
+            .additional_replacement_effects
+            .extend(effects);
         let result = f(self);
-        self.additional_replacement_effects.truncate(original_len);
+        self.replacement
+            .additional_replacement_effects
+            .truncate(original_len);
         result
     }
 
     /// Restrict mana color choices for effects executed in this context.
     pub fn with_mana_color_restriction(mut self, restriction: Option<Vec<Color>>) -> Self {
-        self.mana_color_restriction = restriction;
+        self.mana.mana_color_restriction = restriction;
         self
     }
 
@@ -384,13 +393,13 @@ impl<'a> ExecutionContext<'a> {
         mut self,
         restrictions: Vec<crate::ability::ManaUsageRestriction>,
     ) -> Self {
-        self.mana_usage_restrictions = restrictions;
+        self.mana.mana_usage_restrictions = restrictions;
         self
     }
 
     /// Snapshot the source's chosen creature type for later mana spending checks.
     pub fn with_mana_source_chosen_creature_type(mut self, subtype: Option<Subtype>) -> Self {
-        self.mana_source_chosen_creature_type = subtype;
+        self.mana.mana_source_chosen_creature_type = subtype;
         self
     }
 
@@ -415,7 +424,7 @@ impl<'a> ExecutionContext<'a> {
 
     /// Set the defending player.
     pub fn with_defending_player(mut self, player: PlayerId) -> Self {
-        self.defending_player = Some(player);
+        self.combat.defending_player = Some(player);
         self
     }
 
@@ -488,9 +497,9 @@ impl<'a> ExecutionContext<'a> {
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {
         let original_iterated_player =
-            std::mem::replace(&mut self.iterated_player, iterated_player);
+            std::mem::replace(&mut self.iteration.iterated_player, iterated_player);
         let result = f(self);
-        self.iterated_player = original_iterated_player;
+        self.iteration.iterated_player = original_iterated_player;
         result
     }
 
@@ -501,9 +510,9 @@ impl<'a> ExecutionContext<'a> {
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {
         let original_iterated_object =
-            std::mem::replace(&mut self.iterated_object, iterated_object);
+            std::mem::replace(&mut self.iteration.iterated_object, iterated_object);
         let result = f(self);
-        self.iterated_object = original_iterated_object;
+        self.iteration.iterated_object = original_iterated_object;
         result
     }
 
@@ -556,7 +565,7 @@ impl<'a> ExecutionContext<'a> {
 
     /// Set the chosen player linked to this source.
     pub fn with_chosen_player(mut self, player: Option<PlayerId>) -> Self {
-        self.chosen_player = player;
+        self.combat.chosen_player = player;
         self
     }
 
@@ -587,8 +596,8 @@ impl<'a> ExecutionContext<'a> {
             self.set_tagged_objects("triggering", snapshots.clone());
             self.set_tagged_objects("it", snapshots);
         }
-        if self.iterated_player.is_none() {
-            self.iterated_player = event.trigger_player();
+        if self.iteration.iterated_player.is_none() {
+            self.iteration.iterated_player = event.trigger_player();
         }
 
         // If the event is vote-related, compute tags from THIS ability controller's perspective.
@@ -829,21 +838,22 @@ impl<'a> ExecutionContext<'a> {
         }
         let mut filter_ctx = game
             .filter_context_for(self.controller, Some(self.source))
-            .with_iterated_player(self.iterated_player)
+            .with_iterated_player(self.iteration.iterated_player)
             .with_x_value(self.x_value)
             .with_chosen_player(
-                self.chosen_player
+                self.combat
+                    .chosen_player
                     .or_else(|| game.chosen_player(self.source)),
             )
             .with_target_players(target_players)
             .with_target_objects(target_objects)
             .with_tagged_objects(&tagged_objects)
             .with_tagged_players(&self.tagged_players);
-        if self.defending_player.is_some() {
-            filter_ctx.defending_player = self.defending_player;
+        if self.combat.defending_player.is_some() {
+            filter_ctx.defending_player = self.combat.defending_player;
         }
-        if self.attacking_player.is_some() {
-            filter_ctx.attacking_player = self.attacking_player;
+        if self.combat.attacking_player.is_some() {
+            filter_ctx.attacking_player = self.combat.attacking_player;
         }
         filter_ctx
     }
@@ -859,7 +869,7 @@ pub fn resolve_value(
     value: &Value,
     ctx: &ExecutionContext,
 ) -> Result<i32, ExecutionError> {
-    crate::effects::helpers::resolve_value(game, value, ctx)
+    crate::effects::resolve_value(game, value, ctx)
 }
 
 // ============================================================================
@@ -873,43 +883,7 @@ pub fn validate_target(
     spec: &ChooseSpec,
     ctx: &ExecutionContext,
 ) -> bool {
-    let filter_ctx = ctx.filter_context(game);
-
-    match (target, spec) {
-        (ResolvedTarget::Object(id), ChooseSpec::Object(filter)) => {
-            if let Some(obj) = game.object(*id) {
-                filter.matches(obj, &filter_ctx, game)
-            } else {
-                false
-            }
-        }
-        (ResolvedTarget::Player(id), ChooseSpec::Player(filter)) => {
-            game.can_target_player_from_source(*id, ctx.source)
-                && filter.matches_player(*id, &filter_ctx)
-        }
-        (ResolvedTarget::Player(id), ChooseSpec::PlayerOrPlaneswalker(filter)) => {
-            game.can_target_player_from_source(*id, ctx.source)
-                && filter.matches_player(*id, &filter_ctx)
-        }
-        (ResolvedTarget::Object(id), ChooseSpec::PlayerOrPlaneswalker(_)) => game
-            .object(*id)
-            .is_some_and(|obj| obj.has_card_type(crate::types::CardType::Planeswalker)),
-        (ResolvedTarget::Object(id), ChooseSpec::AnyTarget) => game.object(*id).is_some(),
-        (ResolvedTarget::Player(id), ChooseSpec::AnyTarget) => {
-            game.player(*id).is_some_and(|p| p.is_in_game())
-                && game.can_target_player_from_source(*id, ctx.source)
-        }
-        (ResolvedTarget::Object(id), ChooseSpec::AnyOtherTarget) => {
-            game.object(*id).is_some_and(|obj| obj.id != ctx.source)
-        }
-        (ResolvedTarget::Player(id), ChooseSpec::AnyOtherTarget) => {
-            game.player(*id).is_some_and(|p| p.is_in_game())
-                && game.can_target_player_from_source(*id, ctx.source)
-        }
-        (ResolvedTarget::Object(id), ChooseSpec::SpecificObject(expected)) => id == expected,
-        (ResolvedTarget::Player(id), ChooseSpec::SpecificPlayer(expected)) => id == expected,
-        _ => false,
-    }
+    crate::effects::validate_target(game, target, spec, ctx)
 }
 
 // ============================================================================
@@ -922,33 +896,7 @@ pub fn execute_effect(
     effect: &Effect,
     ctx: &mut ExecutionContext,
 ) -> Result<EffectOutcome, ExecutionError> {
-    // All effects implement EffectExecutor via the wrapped trait object.
-    let mut outcome = effect.0.execute(game, ctx)?;
-
-    // Attach provenance to all emitted events.
-    if !outcome.events.is_empty() {
-        let execution_node = game.provenance_graph.alloc_child(
-            ctx.provenance,
-            ProvenanceNodeKind::EffectExecution {
-                source: ctx.source,
-                controller: ctx.controller,
-            },
-        );
-        for event in &mut outcome.events {
-            let provenance = event.provenance();
-            if provenance == ProvNodeId::default()
-                || game.provenance_graph.node(provenance).is_none()
-            {
-                let node = game.alloc_child_event_provenance(execution_node, event.kind());
-                event.set_provenance(node);
-            }
-        }
-        for event in &outcome.events {
-            game.stage_turn_history_event(event);
-        }
-    }
-
-    Ok(outcome)
+    crate::effects::execute_effect(game, effect, ctx)
 }
 
 // ============================================================================

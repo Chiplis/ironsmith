@@ -64,8 +64,8 @@ mod tests {
             .execute(&mut game, &mut ctx)
             .expect("grant effect should resolve");
 
-        assert_eq!(game.temporary_spell_ability_grants.len(), 1);
-        let grant = &game.temporary_spell_ability_grants[0];
+        assert_eq!(game.effect_store.temporary_spell_ability_grants.len(), 1);
+        let grant = &game.effect_store.temporary_spell_ability_grants[0];
         assert_eq!(grant.player, alice);
         assert_eq!(
             grant.ability.id(),

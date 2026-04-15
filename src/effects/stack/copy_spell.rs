@@ -86,8 +86,8 @@ impl CopySpellEffect {
         entry.x_value = ctx.x_value;
         entry.casting_method = ctx.casting_method.clone();
         entry.optional_costs_paid = ctx.optional_costs_paid.clone();
-        entry.defending_player = ctx.defending_player;
-        entry.chosen_player = ctx.chosen_player;
+        entry.defending_player = ctx.combat.defending_player;
+        entry.chosen_player = ctx.combat.chosen_player;
         entry.source_snapshot = ctx.source_snapshot.clone();
         entry.triggering_event = ctx.triggering_event.clone();
         entry.chosen_modes = ctx.chosen_modes.clone();

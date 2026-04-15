@@ -1,6 +1,6 @@
 use crate::effect::EffectOutcome;
 use crate::effects::helpers::resolve_objects_for_effect;
-use crate::effects::{EffectExecutor, ReplacementApplyMode};
+use crate::effects::{EffectExecutionCategory, EffectExecutor, ReplacementApplyMode};
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::replacement::{ReplacementAction, ReplacementEffect};
@@ -77,14 +77,19 @@ impl EffectExecutor for RegisterZoneReplacementEffect {
         for replacement in replacements {
             match self.mode {
                 ReplacementApplyMode::OneShot => {
-                    game.replacement_effects.add_one_shot_effect(replacement);
+                    game.effect_store
+                        .replacement_effects
+                        .add_one_shot_effect(replacement);
                 }
                 ReplacementApplyMode::UntilEndOfTurn => {
-                    game.replacement_effects
+                    game.effect_store
+                        .replacement_effects
                         .add_until_end_of_turn_effect(replacement);
                 }
                 ReplacementApplyMode::Resolution => {
-                    game.replacement_effects.add_resolution_effect(replacement);
+                    game.effect_store
+                        .replacement_effects
+                        .add_resolution_effect(replacement);
                 }
             }
         }
@@ -99,6 +104,10 @@ impl EffectExecutor for RegisterZoneReplacementEffect {
 
     fn target_description(&self) -> &'static str {
         "target for replacement"
+    }
+
+    fn primary_execution_category(&self) -> EffectExecutionCategory {
+        EffectExecutionCategory::ReplacementRegistration
     }
 }
 

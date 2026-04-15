@@ -1042,7 +1042,8 @@ mod tests {
         game.add_object(attacker.clone());
         game.add_object(other_attacker.clone());
         game.add_object(blocker.clone());
-        game.cant_effects
+        game.effect_store
+            .cant_effects
             .cant_block_specific_attackers
             .entry(blocker.id)
             .or_default()
@@ -1084,7 +1085,9 @@ mod tests {
 
         game.add_object(attacker.clone());
         game.add_object(blocker.clone());
-        game.cant_effects.add_cant_be_blocked(attacker.id);
+        game.effect_store
+            .cant_effects
+            .add_cant_be_blocked(attacker.id);
 
         assert!(
             !can_block(&attacker, &blocker, &game),

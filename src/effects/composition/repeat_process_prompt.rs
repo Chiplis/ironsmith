@@ -33,7 +33,7 @@ impl EffectExecutor for RepeatProcessPromptEffect {
         let should_continue = ask_may_choice(
             game,
             &mut ctx.decision_maker,
-            ctx.iterated_player.unwrap_or(ctx.controller),
+            ctx.iteration.iterated_player.unwrap_or(ctx.controller),
             ctx.source,
             self.description.clone(),
             self.fallback,

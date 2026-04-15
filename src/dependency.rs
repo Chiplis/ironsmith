@@ -493,9 +493,11 @@ fn evaluate_value(
                 .count() as i32;
             ValueEval::Scalar(count * *multiplier)
         }
-        Value::CreaturesDiedThisTurn => {
-            ValueEval::Scalar(game.turn_history.total_creatures_died_this_turn() as i32)
-        }
+        Value::CreaturesDiedThisTurn => ValueEval::Scalar(
+            game.turn_store
+                .turn_history
+                .total_creatures_died_this_turn() as i32,
+        ),
         Value::CreaturesDiedThisTurnControlledBy(player_filter) => {
             let filter_ctx = crate::filter::FilterContext {
                 you: Some(effect_controller),
@@ -520,7 +522,10 @@ fn evaluate_value(
                 if !player_filter.matches_player(player.id, &filter_ctx) {
                     continue;
                 }
-                total += game.turn_history.creatures_died_under_controller(player.id) as i32;
+                total += game
+                    .turn_store
+                    .turn_history
+                    .creatures_died_under_controller(player.id) as i32;
             }
             ValueEval::Scalar(total)
         }

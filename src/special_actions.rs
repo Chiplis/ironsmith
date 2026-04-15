@@ -433,7 +433,8 @@ fn can_play_land(game: &GameState, player: PlayerId, card_id: ObjectId) -> Resul
     let can_play_from_zone = if object.zone == Zone::Hand {
         true
     } else {
-        game.grant_registry
+        game.effect_store
+            .grant_registry
             .card_can_play_from_zone(game, card_id, object.zone, player)
     };
     if !can_play_from_zone {
@@ -2268,14 +2269,16 @@ mod tests {
         let land_id = game.create_object_from_card(&land, alice, Zone::Graveyard);
 
         let source_id = game.new_object_id();
-        game.grant_registry.grant_to_filter_until_end_of_turn(
-            crate::target::ObjectFilter::default().with_type(CardType::Land),
-            Zone::Graveyard,
-            alice,
-            Grantable::play_from(),
-            source_id,
-            game.turn.turn_number,
-        );
+        game.effect_store
+            .grant_registry
+            .grant_to_filter_until_end_of_turn(
+                crate::target::ObjectFilter::default().with_type(CardType::Land),
+                Zone::Graveyard,
+                alice,
+                Grantable::play_from(),
+                source_id,
+                game.turn.turn_number,
+            );
 
         let action = SpecialAction::PlayLand { card_id: land_id };
         assert!(

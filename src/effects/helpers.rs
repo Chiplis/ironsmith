@@ -418,9 +418,10 @@ pub fn resolve_value(
             }
             Ok(seen.len() as i32)
         }
-        Value::CreaturesDiedThisTurn => {
-            Ok(game.turn_history.total_creatures_died_this_turn() as i32)
-        }
+        Value::CreaturesDiedThisTurn => Ok(game
+            .turn_store
+            .turn_history
+            .total_creatures_died_this_turn() as i32),
         Value::CreaturesDiedThisTurnControlledBy(player_filter) => {
             let filter_ctx = ctx.filter_context(game);
             let mut total = 0i32;
@@ -428,7 +429,10 @@ pub fn resolve_value(
                 if !player_filter.matches_player(player.id, &filter_ctx) {
                     continue;
                 }
-                total += game.turn_history.creatures_died_under_controller(player.id) as i32;
+                total += game
+                    .turn_store
+                    .turn_history
+                    .creatures_died_under_controller(player.id) as i32;
             }
             Ok(total)
         }
@@ -654,14 +658,20 @@ pub fn resolve_value(
         Value::LifeGainedThisTurn(player_spec) => {
             let player_ids =
                 resolve_player_filter_to_list(game, player_spec, &ctx.filter_context(game), ctx)?;
-            let total = game.turn_history.total_life_gained_for_players(&player_ids);
+            let total = game
+                .turn_store
+                .turn_history
+                .total_life_gained_for_players(&player_ids);
             Ok(total as i32)
         }
 
         Value::LifeLostThisTurn(player_spec) => {
             let player_ids =
                 resolve_player_filter_to_list(game, player_spec, &ctx.filter_context(game), ctx)?;
-            let total = game.turn_history.total_life_lost_for_players(&player_ids);
+            let total = game
+                .turn_store
+                .turn_history
+                .total_life_lost_for_players(&player_ids);
             Ok(total as i32)
         }
 
@@ -669,6 +679,7 @@ pub fn resolve_value(
             let player_ids =
                 resolve_player_filter_to_list(game, player_spec, &ctx.filter_context(game), ctx)?;
             let total = game
+                .turn_store
                 .turn_history
                 .total_noncombat_damage_to_players(&player_ids);
             Ok(total as i32)
@@ -700,7 +711,10 @@ pub fn resolve_value(
                     "MaxCardsDrawnThisTurn requires a matching player".to_string(),
                 ));
             }
-            Ok(game.turn_history.max_cards_drawn_for_players(&player_ids) as i32)
+            Ok(game
+                .turn_store
+                .turn_history
+                .max_cards_drawn_for_players(&player_ids) as i32)
         }
 
         Value::CardsInGraveyard(player_spec) => {
@@ -714,13 +728,19 @@ pub fn resolve_value(
         Value::SpellsCastThisTurn(player_spec) => {
             let player_ids =
                 resolve_player_filter_to_list(game, player_spec, &ctx.filter_context(game), ctx)?;
-            Ok(game.turn_history.total_spells_cast_for_players(&player_ids) as i32)
+            Ok(game
+                .turn_store
+                .turn_history
+                .total_spells_cast_for_players(&player_ids) as i32)
         }
 
         Value::SpellsCastBeforeThisTurn(player_spec) => {
             let player_ids =
                 resolve_player_filter_to_list(game, player_spec, &ctx.filter_context(game), ctx)?;
-            let count = game.turn_history.total_spells_cast_for_players(&player_ids) as i32;
+            let count = game
+                .turn_store
+                .turn_history
+                .total_spells_cast_for_players(&player_ids) as i32;
             Ok((count - 1).max(0))
         }
 
@@ -733,7 +753,7 @@ pub fn resolve_value(
                 resolve_player_filter_to_list(game, player, &ctx.filter_context(game), ctx)?;
             let filter_ctx = ctx.filter_context(game);
             let mut count: i32 = 0;
-            for snapshot in game.turn_history.spell_cast_snapshot_history() {
+            for snapshot in game.turn_store.turn_history.spell_cast_snapshot_history() {
                 if *exclude_source && snapshot.object_id == ctx.source {
                     continue;
                 }
@@ -763,6 +783,7 @@ pub fn resolve_value(
                 ))
             })?;
             Ok(game
+                .turn_store
                 .turn_history
                 .damage_dealt_by_spell_this_turn(&game.provenance_graph, snapshot.object_id)
                 as i32)
@@ -1134,7 +1155,7 @@ pub fn resolve_player_from_spec(
                     .ok_or(ExecutionError::ObjectNotFound(planeswalker_id))?;
                 Ok(planeswalker.controller)
             }
-            None => ctx.defending_player.ok_or_else(|| {
+            None => ctx.combat.defending_player.ok_or_else(|| {
                 ExecutionError::UnresolvableValue(
                     "Attacked player/planeswalker not set".to_string(),
                 )
@@ -1168,7 +1189,7 @@ pub fn resolve_player_from_spec(
         ChooseSpec::WithCount(inner, _) => resolve_player_from_spec(game, inner, ctx),
 
         // Iterated player (in ForEach loops)
-        ChooseSpec::Iterated => ctx.iterated_player.ok_or_else(|| {
+        ChooseSpec::Iterated => ctx.iteration.iterated_player.ok_or_else(|| {
             ExecutionError::UnresolvableValue(
                 "Iterated player not set (must be inside ForEach loop)".to_string(),
             )
@@ -1264,7 +1285,7 @@ pub fn resolve_player_filter(
         PlayerFilter::Teammate => Err(ExecutionError::UnresolvableValue(
             "Teammate filter not supported in 2-player games".to_string(),
         )),
-        PlayerFilter::Attacking => ctx.attacking_player.ok_or_else(|| {
+        PlayerFilter::Attacking => ctx.combat.attacking_player.ok_or_else(|| {
             ExecutionError::UnresolvableValue("AttackingPlayer not set".to_string())
         }),
         PlayerFilter::DamagedPlayer => {
@@ -1312,6 +1333,7 @@ pub fn resolve_player_filter(
         }
         PlayerFilter::MostCardsInHand => unique_player_with_most_cards_in_hand(game),
         PlayerFilter::ChosenPlayer => ctx
+            .combat
             .chosen_player
             .or_else(|| game.chosen_player(ctx.source))
             .ok_or_else(|| {
@@ -1342,10 +1364,11 @@ pub fn resolve_player_filter(
             resolve_controller_of(game, ctx, &ObjectRef::Target)
         }
         PlayerFilter::Active => Ok(game.turn.active_player),
-        PlayerFilter::Defending => ctx.defending_player.ok_or_else(|| {
+        PlayerFilter::Defending => ctx.combat.defending_player.ok_or_else(|| {
             ExecutionError::UnresolvableValue("DefendingPlayer not set".to_string())
         }),
         PlayerFilter::IteratedPlayer => ctx
+            .iteration
             .iterated_player
             .or_else(|| {
                 ctx.get_tagged_players("__it__")
@@ -2197,11 +2220,15 @@ pub fn resolve_objects_from_spec(
         }
 
         // Iterated object (ForEach loops)
-        ChooseSpec::Iterated => ctx.iterated_object.map(|id| vec![id]).ok_or_else(|| {
-            ExecutionError::UnresolvableValue(
-                "Iterated object not set (must be inside ForEach loop)".to_string(),
-            )
-        }),
+        ChooseSpec::Iterated => ctx
+            .iteration
+            .iterated_object
+            .map(|id| vec![id])
+            .ok_or_else(|| {
+                ExecutionError::UnresolvableValue(
+                    "Iterated object not set (must be inside ForEach loop)".to_string(),
+                )
+            }),
 
         // Player specs can't be resolved to objects
         ChooseSpec::Player(_)
@@ -2259,7 +2286,7 @@ pub fn resolve_players_from_spec(
                 Ok(vec![planeswalker.controller])
             }
             None => {
-                if let Some(defending) = ctx.defending_player {
+                if let Some(defending) = ctx.combat.defending_player {
                     Ok(vec![defending])
                 } else {
                     Err(ExecutionError::UnresolvableValue(
@@ -2299,11 +2326,15 @@ pub fn resolve_players_from_spec(
         ChooseSpec::SpecificPlayer(id) => Ok(vec![*id]),
 
         // Iterated player (ForEach loops)
-        ChooseSpec::Iterated => ctx.iterated_player.map(|id| vec![id]).ok_or_else(|| {
-            ExecutionError::UnresolvableValue(
-                "Iterated player not set (must be inside ForEach loop)".to_string(),
-            )
-        }),
+        ChooseSpec::Iterated => ctx
+            .iteration
+            .iterated_player
+            .map(|id| vec![id])
+            .ok_or_else(|| {
+                ExecutionError::UnresolvableValue(
+                    "Iterated player not set (must be inside ForEach loop)".to_string(),
+                )
+            }),
 
         // Object specs can't be resolved to players
         ChooseSpec::Object(_)
@@ -2394,7 +2425,8 @@ pub(crate) fn resolve_player_filter_to_list(
             .iter()
             .filter(|player| player.is_in_game())
             .filter(|player| {
-                game.turn_history
+                game.turn_store
+                    .turn_history
                     .spell_cast_snapshot_history()
                     .iter()
                     .any(|snapshot| {
@@ -2404,6 +2436,7 @@ pub(crate) fn resolve_player_filter_to_list(
             .map(|player| player.id)
             .collect()),
         PlayerFilter::ChosenPlayer => ctx
+            .combat
             .chosen_player
             .or_else(|| game.chosen_player(ctx.source))
             .map(|id| vec![id])
@@ -2421,12 +2454,22 @@ pub(crate) fn resolve_player_filter_to_list(
                 ))
             }),
         PlayerFilter::Active => Ok(vec![game.turn.active_player]),
-        PlayerFilter::Defending => ctx.defending_player.map(|id| vec![id]).ok_or_else(|| {
-            ExecutionError::UnresolvableValue("DefendingPlayer not set".to_string())
-        }),
-        PlayerFilter::Attacking => ctx.attacking_player.map(|id| vec![id]).ok_or_else(|| {
-            ExecutionError::UnresolvableValue("AttackingPlayer not set".to_string())
-        }),
+        PlayerFilter::Defending => {
+            ctx.combat
+                .defending_player
+                .map(|id| vec![id])
+                .ok_or_else(|| {
+                    ExecutionError::UnresolvableValue("DefendingPlayer not set".to_string())
+                })
+        }
+        PlayerFilter::Attacking => {
+            ctx.combat
+                .attacking_player
+                .map(|id| vec![id])
+                .ok_or_else(|| {
+                    ExecutionError::UnresolvableValue("AttackingPlayer not set".to_string())
+                })
+        }
         PlayerFilter::DamagedPlayer => {
             let Some(triggering_event) = &ctx.triggering_event else {
                 return Err(ExecutionError::UnresolvableValue(
@@ -2446,6 +2489,7 @@ pub(crate) fn resolve_player_filter_to_list(
             Ok(vec![player_id])
         }
         PlayerFilter::IteratedPlayer => ctx
+            .iteration
             .iterated_player
             .or(_filter_ctx.iterated_player)
             .or_else(|| {
@@ -2728,14 +2772,14 @@ mod tests {
         let value = Value::Count(filter);
 
         let mut ctx = ExecutionContext::new_default(game.new_object_id(), alice);
-        ctx.iterated_player = Some(bob);
+        ctx.iteration.iterated_player = Some(bob);
         assert_eq!(
             resolve_value(&game, &value, &ctx).unwrap(),
             2,
             "should count attackers attacking Bob or his planeswalker"
         );
 
-        ctx.iterated_player = Some(charlie);
+        ctx.iteration.iterated_player = Some(charlie);
         assert_eq!(
             resolve_value(&game, &value, &ctx).unwrap(),
             1,

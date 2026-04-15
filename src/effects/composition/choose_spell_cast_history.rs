@@ -52,7 +52,7 @@ impl EffectExecutor for ChooseSpellCastHistoryEffect {
         let caster_ids =
             resolve_player_filter_to_list(game, &self.cast_by, &ctx.filter_context(game), ctx)?;
         let filter_ctx = ctx.filter_context(game);
-        let history = game.turn_history.spell_cast_snapshot_history();
+        let history = game.turn_store.turn_history.spell_cast_snapshot_history();
         let candidates = history
             .iter()
             .filter(|snapshot| {

@@ -619,13 +619,15 @@ fn choose_player_backdraft_uses_the_selected_sorcerys_damage_history() {
     let small_sorcery_id =
         resolve_spell_definition_with_dm(&mut game, &small_sorcery, bob, &mut auto_dm);
     assert_eq!(
-        game.turn_history
+        game.turn_store
+            .turn_history
             .damage_dealt_by_spell_this_turn(&game.provenance_graph, big_sorcery_id),
         5,
         "the first sorcery's dealt damage should be queryable from turn history"
     );
     assert_eq!(
-        game.turn_history
+        game.turn_store
+            .turn_history
             .damage_dealt_by_spell_this_turn(&game.provenance_graph, small_sorcery_id),
         2,
         "the second sorcery's dealt damage should be queryable from turn history"

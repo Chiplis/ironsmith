@@ -30,6 +30,23 @@ pub struct ModalSpec {
     pub allow_repeated_modes: bool,
 }
 
+/// The supported runtime extension categories for effects.
+///
+/// These categories are intentionally broad. They describe the main execution
+/// shape an effect participates in, which helps contributors choose the right
+/// extension point when adding new runtime behavior.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum EffectExecutionCategory {
+    /// A normal resolving effect that directly mutates game state and/or emits events.
+    Standard,
+    /// An effect that can legally participate in cost payment.
+    CostExecutable,
+    /// An effect whose primary purpose is to register delayed-trigger runtime state.
+    DelayedTriggerRegistration,
+    /// An effect whose primary purpose is to register replacement runtime state.
+    ReplacementRegistration,
+}
+
 /// Trait for executing effects.
 ///
 /// All modular effects implement this trait. Each effect is responsible for:
@@ -87,6 +104,30 @@ pub trait EffectExecutor:
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError>;
+
+    /// The primary runtime category for this effect.
+    ///
+    /// Most effects are `Standard`. Effects whose main job is to register
+    /// delayed triggers or replacement effects should override this.
+    fn primary_execution_category(&self) -> EffectExecutionCategory {
+        EffectExecutionCategory::Standard
+    }
+
+    /// The runtime categories this effect participates in.
+    ///
+    /// By default this reports the primary category plus `CostExecutable` when
+    /// the effect opts into `CostExecutableEffect`. This is intended for
+    /// introspection, contributor guidance, and future tooling around effect
+    /// extension points.
+    fn execution_categories(&self) -> Vec<EffectExecutionCategory> {
+        let mut categories = vec![self.primary_execution_category()];
+        if self.as_cost_executable().is_some()
+            && !categories.contains(&EffectExecutionCategory::CostExecutable)
+        {
+            categories.push(EffectExecutionCategory::CostExecutable);
+        }
+        categories
+    }
 
     /// Clone this effect into a boxed trait object.
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
@@ -305,10 +346,85 @@ mod tests {
         }
     }
 
+    #[derive(Debug, Clone)]
+    struct ReplacementTestEffect;
+
+    impl EffectExecutor for ReplacementTestEffect {
+        fn execute(
+            &self,
+            _game: &mut GameState,
+            _ctx: &mut ExecutionContext,
+        ) -> Result<EffectOutcome, ExecutionError> {
+            Ok(EffectOutcome::resolved())
+        }
+
+        fn primary_execution_category(&self) -> EffectExecutionCategory {
+            EffectExecutionCategory::ReplacementRegistration
+        }
+    }
+
+    #[derive(Debug, Clone)]
+    struct CostTestEffect;
+
+    impl EffectExecutor for CostTestEffect {
+        fn execute(
+            &self,
+            _game: &mut GameState,
+            _ctx: &mut ExecutionContext,
+        ) -> Result<EffectOutcome, ExecutionError> {
+            Ok(EffectOutcome::resolved())
+        }
+
+        fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
+            Some(self)
+        }
+    }
+
+    impl CostExecutableEffect for CostTestEffect {
+        fn can_execute_as_cost(
+            &self,
+            _game: &GameState,
+            _source: ObjectId,
+            _controller: PlayerId,
+        ) -> Result<(), CostValidationError> {
+            Ok(())
+        }
+    }
+
     #[test]
     fn test_effect_executor_trait_is_object_safe() {
         // This test verifies that EffectExecutor can be used as a trait object
         let effect: Box<dyn EffectExecutor> = Box::new(TestEffect);
         assert!(format!("{:?}", effect).contains("TestEffect"));
+    }
+
+    #[test]
+    fn standard_effect_reports_standard_category() {
+        let effect = TestEffect;
+        assert_eq!(
+            effect.execution_categories(),
+            vec![EffectExecutionCategory::Standard]
+        );
+    }
+
+    #[test]
+    fn replacement_effect_reports_replacement_category() {
+        let effect = ReplacementTestEffect;
+        assert_eq!(
+            effect.execution_categories(),
+            vec![EffectExecutionCategory::ReplacementRegistration]
+        );
+    }
+
+    #[test]
+    fn cost_effect_reports_cost_capability() {
+        let effect = CostTestEffect;
+        assert_eq!(
+            effect.execution_categories(),
+            vec![
+                EffectExecutionCategory::Standard,
+                EffectExecutionCategory::CostExecutable,
+            ]
+        );
     }
 }

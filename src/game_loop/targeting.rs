@@ -200,7 +200,8 @@ pub(super) fn queue_ability_activated_event(
             .or_else(|| snapshot.as_ref().map(|snap| snap.is_land()))
             .unwrap_or(false);
         if is_land_source {
-            game.turn_history
+            game.turn_store
+                .turn_history
                 .players_tapped_land_for_mana_this_turn
                 .insert(activator);
         }
@@ -977,6 +978,7 @@ pub fn player_matches_filter_with_combat(
             })
             .unwrap_or(false),
         PlayerFilter::CastCardTypeThisTurn(card_type) => game
+            .turn_store
             .turn_history
             .spell_cast_snapshot_history()
             .iter()

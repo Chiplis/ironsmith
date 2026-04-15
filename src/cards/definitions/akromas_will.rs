@@ -166,7 +166,7 @@ mod tests {
         assert!(result.is_ok());
 
         // Verify continuous effects were created
-        let effects = game.continuous_effects.effects_sorted();
+        let effects = game.effect_store.continuous_effects.effects_sorted();
         assert_eq!(
             effects.len(),
             3,
@@ -238,7 +238,7 @@ mod tests {
         assert!(result.is_ok());
 
         // Verify continuous effects were created
-        let effects = game.continuous_effects.effects_sorted();
+        let effects = game.effect_store.continuous_effects.effects_sorted();
         assert_eq!(
             effects.len(),
             3,
@@ -322,7 +322,7 @@ mod tests {
         execute_effect(&mut game, &mode_2_effect, &mut ctx).unwrap();
 
         // Verify all 6 continuous effects were created
-        let effects = game.continuous_effects.effects_sorted();
+        let effects = game.effect_store.continuous_effects.effects_sorted();
         assert_eq!(
             effects.len(),
             6,
@@ -464,7 +464,7 @@ mod tests {
         execute_effect(&mut game, &mode_2_effect, &mut ctx).unwrap();
 
         // Verify all 6 abilities were granted (3 from each mode)
-        let effects = game.continuous_effects.effects_sorted();
+        let effects = game.effect_store.continuous_effects.effects_sorted();
         assert_eq!(
             effects.len(),
             6,
@@ -590,7 +590,7 @@ mod tests {
 
         // The continuous effects apply to all creatures matching the filter
         // Each ability creates one continuous effect that applies to the filter
-        let effects = game.continuous_effects.effects_sorted();
+        let effects = game.effect_store.continuous_effects.effects_sorted();
         assert_eq!(
             effects.len(),
             3,
@@ -635,7 +635,7 @@ mod tests {
 
         // The filter specifies "you_control", so it should only affect Alice's creatures
         // The continuous effect uses the filter, which is evaluated by the controller
-        let effects = game.continuous_effects.effects_sorted();
+        let effects = game.effect_store.continuous_effects.effects_sorted();
         assert_eq!(effects.len(), 3);
 
         // All effects should have Alice as the controller (used for filter evaluation)
@@ -677,14 +677,17 @@ mod tests {
         execute_effect(&mut game, &mode_1_effect, &mut ctx).unwrap();
 
         // Verify effects exist
-        assert_eq!(game.continuous_effects.effects_sorted().len(), 3);
+        assert_eq!(
+            game.effect_store.continuous_effects.effects_sorted().len(),
+            3
+        );
 
         // Simulate end of turn cleanup
-        game.continuous_effects.cleanup_end_of_turn();
+        game.effect_store.continuous_effects.cleanup_end_of_turn();
 
         // Verify effects are removed
         assert_eq!(
-            game.continuous_effects.effects_sorted().len(),
+            game.effect_store.continuous_effects.effects_sorted().len(),
             0,
             "Continuous effects should be removed at end of turn"
         );
@@ -749,7 +752,7 @@ mod tests {
 
         // Verify 3 continuous effects were created (one for each ability)
         assert_eq!(
-            game.continuous_effects.effects_sorted().len(),
+            game.effect_store.continuous_effects.effects_sorted().len(),
             3,
             "Should have 3 continuous effects"
         );
@@ -815,7 +818,7 @@ mod tests {
 
         // Verify 3 continuous effects were created (one for each ability)
         assert_eq!(
-            game.continuous_effects.effects_sorted().len(),
+            game.effect_store.continuous_effects.effects_sorted().len(),
             3,
             "Should have 3 continuous effects"
         );
@@ -913,7 +916,7 @@ mod tests {
 
         // Verify 6 continuous effects were created (3 from each mode)
         assert_eq!(
-            game.continuous_effects.effects_sorted().len(),
+            game.effect_store.continuous_effects.effects_sorted().len(),
             6,
             "Should have 6 continuous effects when both modes are chosen"
         );

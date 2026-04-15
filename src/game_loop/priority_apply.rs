@@ -1060,6 +1060,7 @@ pub(super) fn apply_replacement_choice_response(
 
     // Take the pending choice
     let pending = game
+        .effect_store
         .pending_replacement_choice
         .take()
         .ok_or_else(|| GameLoopError::InvalidState("No pending replacement choice".to_string()))?;
@@ -1093,10 +1094,13 @@ pub(super) fn apply_replacement_choice_response(
         TraitEventResult::Replaced { effects, effect_id } => {
             // Event was replaced with different effects - execute them
             // Consume one-shot effects
-            game.replacement_effects.mark_effect_used(effect_id);
+            game.effect_store
+                .replacement_effects
+                .mark_effect_used(effect_id);
 
             // Get the source/controller from the chosen replacement effect
             let (source, controller) = game
+                .effect_store
                 .replacement_effects
                 .get_effect(chosen_id)
                 .map(|e| (e.source, e.controller))
@@ -1121,24 +1125,26 @@ pub(super) fn apply_replacement_choice_response(
                 .iter()
                 .enumerate()
                 .filter_map(|(i, id)| {
-                    game.replacement_effects.get_effect(*id).map(|e| {
-                        crate::decision::ReplacementOption {
+                    game.effect_store
+                        .replacement_effects
+                        .get_effect(*id)
+                        .map(|e| crate::decision::ReplacementOption {
                             index: i,
                             source: e.source,
                             description: crate::decisions::specs::replacement_option_description(
                                 game, e.source,
                             ),
-                        }
-                    })
+                        })
                 })
                 .collect();
 
             // Still more choices needed - store and prompt again
-            game.pending_replacement_choice = Some(crate::game_state::PendingReplacementChoice {
-                event: *event,
-                applicable_effects,
-                player,
-            });
+            game.effect_store.pending_replacement_choice =
+                Some(crate::game_state::PendingReplacementChoice {
+                    event: *event,
+                    applicable_effects,
+                    player,
+                });
 
             // Return to prompt for the next choice - convert to SelectOptionsContext
             let selectable_options: Vec<crate::decisions::context::SelectableOption> = options

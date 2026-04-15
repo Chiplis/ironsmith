@@ -1,8 +1,8 @@
 //! Schedule delayed trigger effect implementation.
 
 use crate::effect::EffectOutcome;
-use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
+use crate::effects::{EffectExecutionCategory, EffectExecutor};
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::resolution::ResolutionProgram;
@@ -161,6 +161,10 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
 
         Ok(EffectOutcome::resolved())
     }
+
+    fn primary_execution_category(&self) -> EffectExecutionCategory {
+        EffectExecutionCategory::DelayedTriggerRegistration
+    }
 }
 
 #[cfg(test)]
@@ -220,9 +224,9 @@ mod tests {
             .execute(&mut game, &mut ctx)
             .expect("schedule should resolve");
         assert_eq!(outcome.status, crate::effect::OutcomeStatus::Succeeded);
-        assert_eq!(game.delayed_triggers.len(), 1);
+        assert_eq!(game.effect_store.delayed_triggers.len(), 1);
 
-        let delayed = &game.delayed_triggers[0];
+        let delayed = &game.effect_store.delayed_triggers[0];
         let tagged = delayed
             .tagged_objects
             .get("triggering")
@@ -250,7 +254,7 @@ mod tests {
         effect
             .execute(&mut game, &mut ctx)
             .expect("schedule should resolve");
-        assert_eq!(game.delayed_triggers.len(), 1);
+        assert_eq!(game.effect_store.delayed_triggers.len(), 1);
 
         let same_turn_draw = crate::triggers::TriggerEvent::new_with_provenance(
             crate::events::phase::BeginningOfDrawStepEvent::new(alice),

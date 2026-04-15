@@ -4542,27 +4542,25 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
                 .expect("Dauthi activation effect should resolve");
         }
 
-        let play_from_grants = game.grant_registry.granted_play_from_for_card(
+        let play_from_grants = game.effect_store.grant_registry.granted_play_from_for_card(
             &game,
             exiled_bears_id,
             Zone::Exile,
             alice,
         );
-        let alt_grants = game.grant_registry.granted_alternative_casts_for_card(
-            &game,
-            exiled_bears_id,
-            Zone::Exile,
-            alice,
-        );
+        let alt_grants = game
+            .effect_store
+            .grant_registry
+            .granted_alternative_casts_for_card(&game, exiled_bears_id, Zone::Exile, alice);
         assert!(
             !play_from_grants.is_empty(),
             "expected a play-from-exile grant after Dauthi activation, effects={effects_debug}, grants={:?}",
-            game.grant_registry.grants
+            game.effect_store.grant_registry.grants
         );
         assert!(
             !alt_grants.is_empty(),
             "expected a free-cast alternative after Dauthi activation, effects={effects_debug}, grants={:?}",
-            game.grant_registry.grants
+            game.effect_store.grant_registry.grants
         );
 
         let actions_after = compute_legal_actions(&game, alice);
@@ -6176,7 +6174,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
 
         // Night side: one spell does not transform back.
-        game.spells_cast_last_turn_total = 1;
+        game.turn_store.spells_cast_last_turn_total = 1;
         let mut exec_ctx = ExecutionContext::new_default(source, alice);
         for effect in &triggered.effects {
             execute_effect(&mut game, effect, &mut exec_ctx)
@@ -6194,7 +6192,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
 
         // Night side: two spells last turn transforms back to day side.
-        game.spells_cast_last_turn_total = 2;
+        game.turn_store.spells_cast_last_turn_total = 2;
         let mut exec_ctx = ExecutionContext::new_default(source, alice);
         for effect in &triggered.effects {
             execute_effect(&mut game, effect, &mut exec_ctx)

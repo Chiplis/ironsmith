@@ -190,7 +190,8 @@ mod tests {
             .execute(&mut game, &mut regen_ctx)
             .expect("apply regeneration shield");
         assert!(
-            game.replacement_effects
+            game.effect_store
+                .replacement_effects
                 .count_one_shot_effects_from_source(creature_id)
                 > 0
         );
@@ -205,7 +206,8 @@ mod tests {
 
         assert!(!game.can_be_regenerated(creature_id));
         assert_eq!(
-            game.replacement_effects
+            game.effect_store
+                .replacement_effects
                 .count_one_shot_effects_from_source(creature_id),
             0
         );

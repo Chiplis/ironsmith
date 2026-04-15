@@ -56,7 +56,7 @@ impl EffectExecutor for SkipTurnEffect {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
 
         // Mark the player to skip their next turn
-        game.skip_next_turn.insert(player_id);
+        game.turn_store.skip_next_turn.insert(player_id);
 
         Ok(EffectOutcome::resolved())
     }
@@ -77,14 +77,14 @@ mod tests {
         let alice = PlayerId::from_index(0);
         let source = game.new_object_id();
 
-        assert!(!game.skip_next_turn.contains(&alice));
+        assert!(!game.turn_store.skip_next_turn.contains(&alice));
 
         let mut ctx = ExecutionContext::new_default(source, alice);
         let effect = SkipTurnEffect::you();
         let result = effect.execute(&mut game, &mut ctx).unwrap();
 
         assert_eq!(result.status, crate::effect::OutcomeStatus::Succeeded);
-        assert!(game.skip_next_turn.contains(&alice));
+        assert!(game.turn_store.skip_next_turn.contains(&alice));
     }
 
     #[test]
@@ -99,8 +99,8 @@ mod tests {
         let result = effect.execute(&mut game, &mut ctx).unwrap();
 
         assert_eq!(result.status, crate::effect::OutcomeStatus::Succeeded);
-        assert!(!game.skip_next_turn.contains(&alice));
-        assert!(game.skip_next_turn.contains(&bob));
+        assert!(!game.turn_store.skip_next_turn.contains(&alice));
+        assert!(game.turn_store.skip_next_turn.contains(&bob));
     }
 
     #[test]
@@ -116,8 +116,8 @@ mod tests {
         effect.execute(&mut game, &mut ctx).unwrap();
         effect.execute(&mut game, &mut ctx).unwrap();
 
-        assert!(game.skip_next_turn.contains(&alice));
-        assert_eq!(game.skip_next_turn.len(), 1);
+        assert!(game.turn_store.skip_next_turn.contains(&alice));
+        assert_eq!(game.turn_store.skip_next_turn.len(), 1);
     }
 
     #[test]

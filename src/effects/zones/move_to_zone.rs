@@ -289,15 +289,16 @@ mod tests {
         let source = game.new_object_id();
         let creature = create_creature(&mut game, alice);
 
-        game.replacement_effects
-            .add_resolution_effect(ReplacementEffect::with_matcher(
+        game.effect_store.replacement_effects.add_resolution_effect(
+            ReplacementEffect::with_matcher(
                 source,
                 alice,
                 WouldGoToGraveyardMatcher::new(crate::target::ObjectFilter::specific(creature)),
                 ReplacementAction::Instead(vec![Effect::new(MoveToZoneEffect::to_exile(
                     ChooseSpec::SpecificObject(creature),
                 ))]),
-            ));
+            ),
+        );
 
         let mut ctx = ExecutionContext::new_default(source, alice);
         let effect = MoveToZoneEffect::to_graveyard(ChooseSpec::SpecificObject(creature));

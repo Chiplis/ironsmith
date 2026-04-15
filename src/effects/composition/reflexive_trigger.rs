@@ -169,7 +169,7 @@ impl EffectExecutor for ReflexiveTriggerEffect {
         if let Some(x) = ctx.x_value {
             entry = entry.with_x(x);
         }
-        if let Some(defending_player) = ctx.defending_player {
+        if let Some(defending_player) = ctx.combat.defending_player {
             entry = entry.with_defending_player(defending_player);
         }
         if let Some(source) = game.object(ctx.source) {

@@ -1,5 +1,6 @@
 use std::fs;
-use std::path::PathBuf;
+
+mod tooling_paths;
 
 #[derive(Clone, Copy)]
 struct Budget {
@@ -8,7 +9,8 @@ struct Budget {
 }
 
 fn main() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let repo_root = tooling_paths::repo_root()
+        .unwrap_or_else(|err| panic!("failed to locate repo root: {err}"));
     let budgets = [
         Budget {
             path: "src/cards/builders/compiler/families/activation_and_restrictions/mod.rs",

@@ -297,7 +297,7 @@ mod tests {
         let source = game.new_object_id();
 
         let mut ctx = ExecutionContext::new_default(source, alice);
-        ctx.iterated_object = Some(creature_id);
+        ctx.iteration.iterated_object = Some(creature_id);
 
         let effect = PutOntoBattlefieldEffect::you_control(ChooseSpec::Iterated, true);
         let result = effect.execute(&mut game, &mut ctx).unwrap();

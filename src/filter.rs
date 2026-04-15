@@ -2474,6 +2474,7 @@ impl ObjectFilter {
                 return false;
             }
             let Some(entry_controller) = game
+                .turn_store
                 .turn_history
                 .object_entered_battlefield_controller_this_turn(object.stable_id)
             else {
@@ -2489,6 +2490,7 @@ impl ObjectFilter {
         if self.entered_graveyard_from_battlefield_this_turn
             && (object.zone != Zone::Graveyard
                 || !game
+                    .turn_store
                     .turn_history
                     .object_was_put_into_graveyard_from_battlefield_this_turn(object.stable_id))
         {
@@ -2498,6 +2500,7 @@ impl ObjectFilter {
         if self.entered_graveyard_this_turn
             && (object.zone != Zone::Graveyard
                 || !game
+                    .turn_store
                     .turn_history
                     .object_was_put_into_graveyard_this_turn(object.stable_id))
         {
@@ -2534,7 +2537,12 @@ impl ObjectFilter {
             if object.zone == Zone::Stack {
                 // For stack spells, non-stack zone filters mean
                 // "cast from <zone>" (e.g. "target spell cast from a graveyard").
-                if game.turn_history.spell_cast_order(object.id).is_none() {
+                if game
+                    .turn_store
+                    .turn_history
+                    .spell_cast_order(object.id)
+                    .is_none()
+                {
                     return false;
                 }
                 let Some(entry) = stack_entry else {
@@ -4867,7 +4875,8 @@ fn object_has_alternative_cast_kind(
     let Some(player) = ctx.you else {
         return false;
     };
-    game.grant_registry
+    game.effect_store
+        .grant_registry
         .granted_alternative_casts_for_card(game, object.id, object.zone, player)
         .iter()
         .any(|grant| alternative_cast_matches_kind(&grant.method, kind))

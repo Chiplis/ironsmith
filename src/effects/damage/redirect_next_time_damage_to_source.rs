@@ -135,7 +135,9 @@ impl EffectExecutor for RedirectNextTimeDamageToSourceEffect {
                 which: RedirectWhich::First,
             },
         );
-        game.replacement_effects.add_one_shot_effect(replacement);
+        game.effect_store
+            .replacement_effects
+            .add_one_shot_effect(replacement);
         Ok(EffectOutcome::resolved())
     }
 

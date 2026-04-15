@@ -1,7 +1,7 @@
 //! Apply replacement effect implementation.
 
 use crate::effect::EffectOutcome;
-use crate::effects::EffectExecutor;
+use crate::effects::{EffectExecutionCategory, EffectExecutor};
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::replacement::ReplacementEffect;
@@ -57,19 +57,26 @@ impl EffectExecutor for ApplyReplacementEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         match self.mode {
             ReplacementApplyMode::OneShot => {
-                game.replacement_effects
+                game.effect_store
+                    .replacement_effects
                     .add_one_shot_effect(self.effect.clone());
             }
             ReplacementApplyMode::UntilEndOfTurn => {
-                game.replacement_effects
+                game.effect_store
+                    .replacement_effects
                     .add_until_end_of_turn_effect(self.effect.clone());
             }
             ReplacementApplyMode::Resolution => {
-                game.replacement_effects
+                game.effect_store
+                    .replacement_effects
                     .add_resolution_effect(self.effect.clone());
             }
         }
 
         Ok(EffectOutcome::resolved())
+    }
+
+    fn primary_execution_category(&self) -> EffectExecutionCategory {
+        EffectExecutionCategory::ReplacementRegistration
     }
 }

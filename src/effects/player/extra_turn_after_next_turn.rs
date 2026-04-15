@@ -73,10 +73,10 @@ mod tests {
         let result = effect.execute(&mut game, &mut ctx).unwrap();
         assert_eq!(result.status, crate::effect::OutcomeStatus::Succeeded);
         assert!(
-            game.extra_turns.is_empty(),
+            game.turn_store.extra_turns.is_empty(),
             "the extra turn should not be queued immediately"
         );
-        assert_eq!(game.delayed_triggers.len(), 1);
+        assert_eq!(game.effect_store.delayed_triggers.len(), 1);
 
         game.next_turn();
         assert_eq!(
@@ -84,7 +84,7 @@ mod tests {
             "Bob should take their normal turn"
         );
         assert!(
-            game.extra_turns.is_empty(),
+            game.turn_store.extra_turns.is_empty(),
             "the extra turn should still wait until Bob's end step"
         );
 
@@ -104,7 +104,7 @@ mod tests {
         resolve_stack_entry(&mut game).expect("delayed trigger should resolve");
 
         assert_eq!(
-            game.extra_turns,
+            game.turn_store.extra_turns,
             vec![bob],
             "Bob should receive an extra turn after their current turn"
         );

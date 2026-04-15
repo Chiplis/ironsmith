@@ -15,14 +15,12 @@
 //! The first --hand/--deck is for Alice, the second for Bob.
 //! Players without specified hands/decks get random ones.
 
-use ironsmith::cards::CardDefinitionBuilder;
-use ironsmith::cards::builders::CardTextError;
+use ironsmith::compiler::prelude::{
+    CardDefinition, CardDefinitionBuilder, CardId, CardRegistry, CardTextError,
+};
 use ironsmith::decision::{CliDecisionMaker, DecisionRouter, init_input_manager, read_input};
-use ironsmith::ids::CardId;
-use ironsmith::triggers::TriggerQueue;
-use ironsmith::{
-    CardDefinition, CardRegistry, CombatState, GameState, ManaSymbol, PlayerId, Zone,
-    execute_turn_with,
+use ironsmith::engine::prelude::{
+    CombatState, GameState, ManaSymbol, PlayerId, TriggerQueue, Zone, execute_turn_with,
 };
 use rand::seq::SliceRandom;
 use serde::Deserialize;

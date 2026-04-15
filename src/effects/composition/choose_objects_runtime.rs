@@ -191,7 +191,7 @@ fn same_name_reference_name(
     ctx: &ExecutionContext,
     filter: &ObjectFilter,
 ) -> Option<String> {
-    if let Some(object_id) = ctx.iterated_object {
+    if let Some(object_id) = ctx.iteration.iterated_object {
         if let Some(object) = game.object(object_id) {
             return Some(object.name.clone());
         }
@@ -734,15 +734,15 @@ pub(crate) fn run_choose_objects(
 
     let (base_min, max) = if effect.count.dynamic_x || effect.count_value.is_some() {
         let x = if let Some(count_value) = effect.count_value.as_ref() {
-            let previous_iterated_player = ctx.iterated_player;
+            let previous_iterated_player = ctx.iteration.iterated_player;
             if previous_iterated_player.is_none()
                 && matches!(effect.chooser, PlayerFilter::Target(_))
                 && value_mentions_iterated_player(count_value)
             {
-                ctx.iterated_player = Some(chooser_id);
+                ctx.iteration.iterated_player = Some(chooser_id);
             }
             let resolved = resolve_value(game, count_value, ctx);
-            ctx.iterated_player = previous_iterated_player;
+            ctx.iteration.iterated_player = previous_iterated_player;
             resolved?.max(0) as usize
         } else {
             ctx.x_value

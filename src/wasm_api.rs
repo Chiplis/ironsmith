@@ -35,30 +35,8 @@ use crate::triggers::TriggerQueue;
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-enum BattlefieldLane {
-    Artifacts,
-    Lands,
-    Creatures,
-    Enchantments,
-    Planeswalkers,
-    Battles,
-    Other,
-}
-
-impl BattlefieldLane {
-    fn as_str(self) -> &'static str {
-        match self {
-            BattlefieldLane::Artifacts => "artifacts",
-            BattlefieldLane::Lands => "lands",
-            BattlefieldLane::Creatures => "creatures",
-            BattlefieldLane::Enchantments => "enchantments",
-            BattlefieldLane::Planeswalkers => "planeswalkers",
-            BattlefieldLane::Battles => "battles",
-            BattlefieldLane::Other => "other",
-        }
-    }
-}
+mod ui_snapshot;
+use ui_snapshot::{GameSnapshot, battlefield_transition_snapshots, build_object_details_snapshot};
 
 const DETERMINISTIC_MATCH_SEED_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
 const DETERMINISTIC_MATCH_SEED_PRIME: u64 = 0x0000_0100_0000_01b3;
@@ -129,417 +107,6 @@ fn deterministic_match_seed(
     } else {
         seed
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-struct BattlefieldGroupKey {
-    lane: BattlefieldLane,
-    name: String,
-    tapped: bool,
-    counter_signature: String,
-    power_toughness_signature: String,
-    token: bool,
-    force_single_object: Option<u64>,
-}
-
-fn battlefield_lane_for_object(obj: &crate::object::Object) -> BattlefieldLane {
-    if obj.has_card_type(CardType::Enchantment) {
-        return BattlefieldLane::Enchantments;
-    }
-    if obj.has_card_type(CardType::Creature) {
-        return BattlefieldLane::Creatures;
-    }
-    if obj.has_card_type(CardType::Artifact) {
-        return BattlefieldLane::Artifacts;
-    }
-    if obj.has_card_type(CardType::Land) {
-        return BattlefieldLane::Lands;
-    }
-    if obj.has_card_type(CardType::Planeswalker) {
-        return BattlefieldLane::Planeswalkers;
-    }
-    if obj.has_card_type(CardType::Battle) {
-        return BattlefieldLane::Battles;
-    }
-    BattlefieldLane::Other
-}
-
-fn counter_signature_for_group(obj: &crate::object::Object) -> String {
-    let mut parts: Vec<(String, u32)> = obj
-        .counters
-        .iter()
-        .map(|(counter_type, amount)| (counter_type.description().into_owned(), *amount))
-        .collect();
-    parts.sort_unstable_by(|left, right| left.0.cmp(&right.0));
-    if parts.is_empty() {
-        return "-".to_string();
-    }
-    parts
-        .into_iter()
-        .map(|(kind, amount)| format!("{kind}:{amount}"))
-        .collect::<Vec<_>>()
-        .join("|")
-}
-
-fn power_toughness_signature_for_group(obj: &crate::object::Object) -> String {
-    match (obj.power(), obj.toughness()) {
-        (Some(power), Some(toughness)) => format!("{power}/{toughness}"),
-        _ => "-".to_string(),
-    }
-}
-
-fn counter_snapshots_for_object(obj: &crate::object::Object) -> Vec<CounterSnapshot> {
-    let mut counters: Vec<CounterSnapshot> = obj
-        .counters
-        .iter()
-        .map(|(kind, amount)| CounterSnapshot {
-            kind: kind.description().into_owned(),
-            amount: *amount,
-        })
-        .collect();
-    counters.sort_unstable_by(|left, right| left.kind.cmp(&right.kind));
-    counters
-}
-
-fn protected_object_ids_for_decision(decision: Option<&DecisionContext>) -> HashSet<ObjectId> {
-    let mut ids = HashSet::new();
-    let Some(decision) = decision else {
-        return ids;
-    };
-
-    match decision {
-        // Priority: don't force-ungroup — identical permanents should stay stacked.
-        // The UI picks actions by index, not by specific object ID.
-        DecisionContext::Priority(_) => {}
-        DecisionContext::Targets(targets) => {
-            for requirement in &targets.requirements {
-                for target in &requirement.legal_targets {
-                    if let Target::Object(object_id) = target {
-                        ids.insert(*object_id);
-                    }
-                }
-            }
-        }
-        DecisionContext::SelectObjects(objects) => {
-            for candidate in &objects.candidates {
-                if candidate.legal {
-                    ids.insert(candidate.id);
-                }
-            }
-        }
-        DecisionContext::Attackers(attackers) => {
-            for option in &attackers.attacker_options {
-                ids.insert(option.creature);
-                for target in &option.valid_targets {
-                    if let AttackTarget::Planeswalker(object_id) = target {
-                        ids.insert(*object_id);
-                    }
-                }
-            }
-        }
-        DecisionContext::Blockers(blockers) => {
-            for option in &blockers.blocker_options {
-                ids.insert(option.attacker);
-                for (blocker, _) in &option.valid_blockers {
-                    ids.insert(*blocker);
-                }
-            }
-        }
-        DecisionContext::Modes(_)
-        | DecisionContext::HybridChoice(_)
-        | DecisionContext::TextInput(_)
-        | DecisionContext::SelectOptions(_)
-        | DecisionContext::Boolean(_)
-        | DecisionContext::Number(_)
-        | DecisionContext::Order(_)
-        | DecisionContext::Distribute(_)
-        | DecisionContext::Colors(_)
-        | DecisionContext::Counters(_)
-        | DecisionContext::Partition(_)
-        | DecisionContext::Proliferate(_) => {}
-    }
-
-    ids
-}
-
-fn grouped_battlefield_for_player(
-    game: &GameState,
-    player: PlayerId,
-    protected_ids: &HashSet<ObjectId>,
-) -> (Vec<PermanentSnapshot>, usize) {
-    let mut grouped: HashMap<BattlefieldGroupKey, Vec<&crate::object::Object>> = HashMap::new();
-    let mut total = 0usize;
-
-    for object_id in &game.battlefield {
-        let Some(obj) = game.object(*object_id) else {
-            continue;
-        };
-        if obj.controller != player {
-            continue;
-        }
-        total += 1;
-
-        let force_single = protected_ids.contains(&obj.id).then_some(obj.id.0);
-        let key = BattlefieldGroupKey {
-            lane: battlefield_lane_for_object(obj),
-            name: obj.name.clone(),
-            tapped: game.is_tapped(obj.id),
-            counter_signature: counter_signature_for_group(obj),
-            power_toughness_signature: power_toughness_signature_for_group(obj),
-            token: matches!(obj.kind, crate::object::ObjectKind::Token),
-            force_single_object: force_single,
-        };
-        grouped.entry(key).or_default().push(obj);
-    }
-
-    let mut groups: Vec<(BattlefieldGroupKey, Vec<&crate::object::Object>)> =
-        grouped.into_iter().collect();
-    groups.sort_unstable_by(|(left_key, left_members), (right_key, right_members)| {
-        left_key
-            .lane
-            .cmp(&right_key.lane)
-            .then_with(|| left_key.name.cmp(&right_key.name))
-            .then_with(|| left_key.tapped.cmp(&right_key.tapped))
-            .then_with(|| left_key.token.cmp(&right_key.token))
-            .then_with(|| {
-                left_members
-                    .first()
-                    .map(|obj| obj.id.0)
-                    .cmp(&right_members.first().map(|obj| obj.id.0))
-            })
-    });
-
-    let snapshots = groups
-        .into_iter()
-        .map(|(key, mut members)| {
-            members.sort_unstable_by_key(|obj| obj.id.0);
-            let representative = members.first().copied();
-            let member_ids: Vec<u64> = members.iter().map(|obj| obj.id.0).collect();
-            let member_stable_ids: Vec<u64> = members.iter().map(|obj| obj.stable_id.0.0).collect();
-            let id = representative.map(|obj| obj.id.0).unwrap_or_default();
-            let stable_id = representative
-                .map(|obj| obj.stable_id.0.0)
-                .unwrap_or_default();
-            let name = representative
-                .map(|obj| obj.name.clone())
-                .unwrap_or_else(|| key.name.clone());
-            let power_toughness = representative.and_then(|obj| {
-                let p = game.calculated_power(obj.id).or_else(|| obj.power())?;
-                let t = game
-                    .calculated_toughness(obj.id)
-                    .or_else(|| obj.toughness())?;
-                Some(format!("{p}/{t}"))
-            });
-            let mana_cost =
-                representative.and_then(|obj| obj.mana_cost.as_ref().map(|mc| mc.to_oracle()));
-            let oracle_text = representative
-                .map(|obj| obj.oracle_text.clone())
-                .unwrap_or_default();
-            let counters = representative
-                .map(counter_snapshots_for_object)
-                .unwrap_or_default();
-            PermanentSnapshot {
-                id,
-                stable_id,
-                name,
-                token: key.token,
-                tapped: key.tapped,
-                count: member_ids.len().max(1),
-                member_ids,
-                member_stable_ids,
-                lane: key.lane.as_str().to_string(),
-                mana_cost,
-                oracle_text,
-                power_toughness,
-                counter_signature: key.counter_signature.clone(),
-                counters,
-            }
-        })
-        .collect();
-
-    (snapshots, total)
-}
-
-fn pseudo_hand_glow_kind_for_zone_card(
-    game: &GameState,
-    perspective: PlayerId,
-    object: &crate::object::Object,
-    zone: Zone,
-) -> Option<&'static str> {
-    if object.zone != zone
-        || matches!(
-            zone,
-            Zone::Hand | Zone::Library | Zone::Battlefield | Zone::Stack
-        )
-    {
-        return None;
-    }
-
-    if zone == Zone::Command && object.owner == perspective && game.is_commander(object.id) {
-        return Some("extra");
-    }
-
-    if !game
-        .grant_registry
-        .granted_play_from_for_card(game, object.id, zone, perspective)
-        .is_empty()
-    {
-        return Some("play-from");
-    }
-
-    if !game
-        .grant_registry
-        .granted_alternative_casts_for_card(game, object.id, zone, perspective)
-        .is_empty()
-    {
-        return Some("extra");
-    }
-
-    object
-        .alternative_casts
-        .iter()
-        .any(|method| method.cast_from_zone() == zone)
-        .then_some("extra")
-}
-
-fn build_zone_card_snapshot(
-    game: &GameState,
-    perspective: PlayerId,
-    viewed_cards: Option<&ActiveViewedCards>,
-    object: &crate::object::Object,
-    zone: Zone,
-) -> ZoneCardSnapshot {
-    let visible = object_visible_to_perspective(game, perspective, viewed_cards, object.id);
-    let pseudo_hand_glow_kind = visible
-        .then(|| pseudo_hand_glow_kind_for_zone_card(game, perspective, object, zone))
-        .flatten()
-        .map(str::to_string);
-    let power_toughness = visible
-        .then(|| match (object.power(), object.toughness()) {
-            (Some(power), Some(toughness)) => Some(format!("{power}/{toughness}")),
-            _ => None,
-        })
-        .flatten();
-
-    ZoneCardSnapshot {
-        id: object.id.0,
-        stable_id: object.stable_id.0.0,
-        name: if visible {
-            object.name.clone()
-        } else {
-            hidden_object_label()
-        },
-        mana_cost: visible
-            .then(|| object.mana_cost.as_ref().map(|mc| mc.to_oracle()))
-            .flatten(),
-        power_toughness,
-        loyalty: visible.then(|| object.loyalty()).flatten(),
-        defense: visible.then(|| object.defense()).flatten(),
-        card_types: if visible {
-            object
-                .card_types
-                .iter()
-                .map(|ct| ct.name().to_string())
-                .collect()
-        } else {
-            Vec::new()
-        },
-        show_in_pseudo_hand: visible && pseudo_hand_glow_kind.is_some(),
-        pseudo_hand_glow_kind,
-    }
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct PermanentSnapshot {
-    id: u64,
-    stable_id: u64,
-    name: String,
-    token: bool,
-    tapped: bool,
-    count: usize,
-    member_ids: Vec<u64>,
-    member_stable_ids: Vec<u64>,
-    lane: String,
-    mana_cost: Option<String>,
-    oracle_text: String,
-    power_toughness: Option<String>,
-    counter_signature: String,
-    counters: Vec<CounterSnapshot>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct ManaPoolSnapshot {
-    white: u32,
-    blue: u32,
-    black: u32,
-    red: u32,
-    green: u32,
-    colorless: u32,
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct PlayerSnapshot {
-    id: u8,
-    name: String,
-    life: i32,
-    mana_pool: ManaPoolSnapshot,
-    can_view_hand: bool,
-    hand_size: usize,
-    library_size: usize,
-    graveyard_size: usize,
-    command_size: usize,
-    hand_cards: Vec<HandCardSnapshot>,
-    graveyard_cards: Vec<ZoneCardSnapshot>,
-    exile_cards: Vec<ZoneCardSnapshot>,
-    command_cards: Vec<ZoneCardSnapshot>,
-    library_top: Option<String>,
-    graveyard_top: Option<String>,
-    battlefield: Vec<PermanentSnapshot>,
-    battlefield_total: usize,
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct ViewedCardsSnapshot {
-    viewer: u8,
-    subject: u8,
-    zone: String,
-    visibility: String,
-    cards: Vec<ViewedCardSnapshot>,
-    card_ids: Vec<u64>,
-    source: Option<u64>,
-    description: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct ViewedCardSnapshot {
-    id: u64,
-    name: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct HandCardSnapshot {
-    id: u64,
-    stable_id: u64,
-    name: String,
-    mana_cost: Option<String>,
-    power_toughness: Option<String>,
-    loyalty: Option<u32>,
-    defense: Option<u32>,
-    card_types: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct ZoneCardSnapshot {
-    id: u64,
-    stable_id: u64,
-    name: String,
-    mana_cost: Option<String>,
-    power_toughness: Option<String>,
-    loyalty: Option<u32>,
-    defense: Option<u32>,
-    card_types: Vec<String>,
-    show_in_pseudo_hand: bool,
-    pseudo_hand_glow_kind: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -676,80 +243,6 @@ fn insert_pending_stack_object_snapshots(
     let count = stack_objects.len();
     snapshot.stack_objects.splice(0..0, stack_objects);
     snapshot.stack_size += count;
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct CounterSnapshot {
-    kind: String,
-    amount: u32,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "snake_case")]
-enum BattlefieldTransitionKindSnapshot {
-    Damaged,
-    Destroyed,
-    Sacrificed,
-    Exiled,
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct BattlefieldTransitionSnapshot {
-    stable_id: u64,
-    kind: BattlefieldTransitionKindSnapshot,
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct ObjectDetailsSnapshot {
-    id: u64,
-    stable_id: u64,
-    name: String,
-    kind: String,
-    zone: String,
-    owner: u8,
-    controller: u8,
-    type_line: String,
-    mana_cost: Option<String>,
-    oracle_text: String,
-    power: Option<i32>,
-    toughness: Option<i32>,
-    loyalty: Option<u32>,
-    tapped: bool,
-    counters: Vec<CounterSnapshot>,
-    compiled_text: Vec<String>,
-    abilities: Vec<String>,
-    raw_compilation: String,
-    semantic_score: Option<f32>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct GameSnapshot {
-    snapshot_id: u64,
-    perspective: u8,
-    turn_number: u32,
-    active_player: u8,
-    priority_player: Option<u8>,
-    phase: String,
-    step: Option<String>,
-    stack_size: usize,
-    stack_preview: Vec<String>,
-    stack_objects: Vec<StackObjectSnapshot>,
-    resolving_stack_object: Option<StackObjectSnapshot>,
-    battlefield_size: usize,
-    exile_size: usize,
-    players: Vec<PlayerSnapshot>,
-    battlefield_transitions: Vec<BattlefieldTransitionSnapshot>,
-    viewed_cards: Option<ViewedCardsSnapshot>,
-    decision: Option<DecisionView>,
-    mana_payment: Option<ManaPaymentView>,
-    game_over: Option<GameOverView>,
-    /// True when the current decision chain can be cancelled (user-initiated
-    /// action like casting a spell, NOT triggered ability resolution).
-    cancelable: bool,
-    /// Stable id of the most recent reversible land-for-mana tap in the current
-    /// priority epoch. Only surfaced while the perspective player is back on
-    /// priority and the tap can still be undone.
-    undo_land_stable_id: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Default)]
@@ -1108,263 +601,6 @@ fn stack_entry_ability_text(
         .map(|effects| crate::compiled_text::compile_effect_list(effects))
         .and_then(|text| normalize_stack_display_text(&text))
         .or_else(|| fallback_stack_entry_ability_text(entry, obj))
-}
-
-impl GameSnapshot {
-    fn from_game(
-        game: &GameState,
-        perspective: PlayerId,
-        decision: Option<&DecisionContext>,
-        mana_payment: Option<ManaPaymentView>,
-        game_over: Option<&GameResult>,
-        pending_cast_stack_id: Option<ObjectId>,
-        resolving_stack_object: Option<StackObjectSnapshot>,
-        battlefield_transitions: Vec<BattlefieldTransitionSnapshot>,
-        viewed_cards: Option<&ActiveViewedCards>,
-        cancelable: bool,
-        undo_land_stable_id: Option<u64>,
-        snapshot_id: u64,
-    ) -> Self {
-        let stack_viewed_cards = stack_revealed_view(game);
-        let viewed_cards = viewed_cards.or(stack_viewed_cards.as_ref());
-        let protected_ids = protected_object_ids_for_decision(decision);
-        let players = game
-            .players
-            .iter()
-            .map(|p| {
-                let (battlefield, battlefield_total) =
-                    grouped_battlefield_for_player(game, p.id, &protected_ids);
-                let is_perspective_player = p.id == perspective;
-                let visible_hand_view = viewed_cards.filter(|view| {
-                    view.zone == Zone::Hand
-                        && view.subject == p.id
-                        && (view.public || view.viewer == perspective)
-                });
-                let visible_hand_ids = visible_hand_view
-                    .map(|view| view.cards.iter().copied().collect::<HashSet<_>>());
-                let can_view_hand = is_perspective_player || visible_hand_view.is_some();
-                PlayerSnapshot {
-                    can_view_hand,
-                    hand_cards: if can_view_hand {
-                        p.hand
-                            .iter()
-                            .rev()
-                            .filter(|id| {
-                                is_perspective_player
-                                    || visible_hand_ids
-                                        .as_ref()
-                                        .is_some_and(|visible_ids| visible_ids.contains(id))
-                            })
-                            .filter_map(|id| game.object(*id))
-                            .map(|o| {
-                                let mana_cost = o.mana_cost.as_ref().map(|mc| mc.to_oracle());
-                                let power_toughness = match (o.power(), o.toughness()) {
-                                    (Some(p), Some(t)) => Some(format!("{p}/{t}")),
-                                    _ => None,
-                                };
-                                HandCardSnapshot {
-                                    id: o.id.0,
-                                    stable_id: o.stable_id.0.0,
-                                    name: o.name.clone(),
-                                    mana_cost,
-                                    power_toughness,
-                                    loyalty: o.loyalty(),
-                                    defense: o.defense(),
-                                    card_types: o
-                                        .card_types
-                                        .iter()
-                                        .map(|ct| ct.name().to_string())
-                                        .collect(),
-                                }
-                            })
-                            .collect()
-                    } else {
-                        Vec::new()
-                    },
-                    graveyard_cards: p
-                        .graveyard
-                        .iter()
-                        .rev()
-                        .filter_map(|id| game.object(*id))
-                        .map(|o| {
-                            build_zone_card_snapshot(
-                                game,
-                                perspective,
-                                viewed_cards,
-                                o,
-                                Zone::Graveyard,
-                            )
-                        })
-                        .collect(),
-                    exile_cards: game
-                        .exile
-                        .iter()
-                        .rev()
-                        .filter_map(|id| game.object(*id))
-                        .filter(|o| o.owner == p.id)
-                        .map(|o| {
-                            build_zone_card_snapshot(
-                                game,
-                                perspective,
-                                viewed_cards,
-                                o,
-                                Zone::Exile,
-                            )
-                        })
-                        .collect(),
-                    command_cards: game
-                        .command_zone
-                        .iter()
-                        .rev()
-                        .filter_map(|id| game.object(*id))
-                        .filter(|o| o.owner == p.id)
-                        .map(|o| {
-                            build_zone_card_snapshot(
-                                game,
-                                perspective,
-                                viewed_cards,
-                                o,
-                                Zone::Command,
-                            )
-                        })
-                        .collect(),
-                    library_top: p
-                        .library
-                        .last()
-                        .and_then(|id| game.object(*id))
-                        .map(|o| o.name.clone()),
-                    graveyard_top: p
-                        .graveyard
-                        .last()
-                        .and_then(|id| game.object(*id))
-                        .map(|o| o.name.clone()),
-                    battlefield,
-                    battlefield_total,
-                    id: p.id.0,
-                    name: p.name.clone(),
-                    life: p.life,
-                    mana_pool: ManaPoolSnapshot {
-                        white: p.mana_pool.white,
-                        blue: p.mana_pool.blue,
-                        black: p.mana_pool.black,
-                        red: p.mana_pool.red,
-                        green: p.mana_pool.green,
-                        colorless: p.mana_pool.colorless,
-                    },
-                    hand_size: p.hand.len(),
-                    library_size: p.library.len(),
-                    graveyard_size: p.graveyard.len(),
-                    command_size: game
-                        .command_zone
-                        .iter()
-                        .filter_map(|id| game.object(*id))
-                        .filter(|o| o.owner == p.id)
-                        .count(),
-                }
-            })
-            .collect();
-
-        let mut stack_preview: Vec<String> = game
-            .stack
-            .iter()
-            .rev()
-            .map(|entry| {
-                game.object(entry.object_id)
-                    .map(|obj| obj.name.clone())
-                    .unwrap_or_else(|| format!("Object#{}", entry.object_id.0))
-            })
-            .collect();
-        let mut stack_objects: Vec<StackObjectSnapshot> = game
-            .stack
-            .iter()
-            .rev()
-            .map(|entry| build_stack_object_snapshot(game, perspective, viewed_cards, entry))
-            .collect();
-        let mut stack_size = game.stack.len();
-
-        // During casting (rule 601.2), the card can be moved to stack before finalization.
-        // Surface that pending spell in UI so it doesn't look like it vanished.
-        if let Some(stack_id) = pending_cast_stack_id
-            && !game.stack.iter().any(|entry| entry.object_id == stack_id)
-            && let Some(obj) = game.object(stack_id)
-        {
-            stack_preview.insert(0, obj.name.clone());
-            let pending_effect_text = {
-                let lines = crate::compiled_text::compiled_lines(&obj.to_card_definition());
-                if lines.is_empty() {
-                    None
-                } else {
-                    Some(lines.join("; "))
-                }
-            };
-            stack_objects.insert(
-                0,
-                StackObjectSnapshot {
-                    id: stack_id.0,
-                    inspect_object_id: Some(stack_id.0),
-                    stable_id: Some(obj.stable_id.0.0),
-                    source_stable_id: None,
-                    controller: obj.controller.0,
-                    name: obj.name.clone(),
-                    mana_cost: obj.mana_cost.as_ref().map(|mc| mc.to_oracle()),
-                    effect_text: pending_effect_text,
-                    ability_kind: None,
-                    ability_text: None,
-                    targets: Vec::new(),
-                },
-            );
-            stack_size += 1;
-        }
-        Self {
-            snapshot_id,
-            perspective: perspective.0,
-            turn_number: game.turn.turn_number,
-            active_player: game.turn.active_player.0,
-            priority_player: game.turn.priority_player.map(|p| p.0),
-            phase: game.turn.phase.to_string(),
-            step: game.turn.step.map(|step| step.to_string()),
-            stack_size,
-            stack_preview,
-            stack_objects,
-            resolving_stack_object,
-            battlefield_size: game.battlefield.len(),
-            exile_size: game.exile.len(),
-            players,
-            battlefield_transitions,
-            viewed_cards: viewed_cards
-                .filter(|view| view.public || view.viewer == perspective)
-                .map(|view| ViewedCardsSnapshot {
-                    viewer: view.viewer.0,
-                    subject: view.subject.0,
-                    zone: view.zone.to_string(),
-                    visibility: if view.public {
-                        "public".to_string()
-                    } else {
-                        "private".to_string()
-                    },
-                    cards: view
-                        .cards
-                        .iter()
-                        .map(|id| ViewedCardSnapshot {
-                            id: id.0,
-                            name: game
-                                .object(*id)
-                                .map(|obj| obj.name.clone())
-                                .unwrap_or_else(|| format!("Card #{}", id.0)),
-                        })
-                        .collect(),
-                    card_ids: view.cards.iter().map(|id| id.0).collect(),
-                    source: view.source.map(|id| id.0),
-                    description: view.description.clone(),
-                }),
-            decision: decision
-                .map(|ctx| DecisionView::from_context(game, ctx, perspective, viewed_cards)),
-            mana_payment,
-            game_over: game_over.map(|r| GameOverView::from_result(game, r)),
-            cancelable,
-            undo_land_stable_id,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -3219,28 +2455,8 @@ impl WasmGame {
         self.snapshot_serial = self.snapshot_serial.saturating_add(1);
         let snapshot_id = self.snapshot_serial;
         let transitions_started_at = PerfTimer::start();
-        let battlefield_transitions = self
-            .game
-            .take_ui_battlefield_transitions()
-            .into_iter()
-            .map(|transition| BattlefieldTransitionSnapshot {
-                stable_id: transition.stable_id.0.0,
-                kind: match transition.kind {
-                    crate::game_state::UiBattlefieldTransitionKind::Damaged => {
-                        BattlefieldTransitionKindSnapshot::Damaged
-                    }
-                    crate::game_state::UiBattlefieldTransitionKind::Destroyed => {
-                        BattlefieldTransitionKindSnapshot::Destroyed
-                    }
-                    crate::game_state::UiBattlefieldTransitionKind::Sacrificed => {
-                        BattlefieldTransitionKindSnapshot::Sacrificed
-                    }
-                    crate::game_state::UiBattlefieldTransitionKind::Exiled => {
-                        BattlefieldTransitionKindSnapshot::Exiled
-                    }
-                },
-            })
-            .collect();
+        let battlefield_transitions =
+            battlefield_transition_snapshots(self.game.take_ui_battlefield_transitions());
         let battlefield_transition_ms = transitions_started_at.elapsed_ms();
         let build_started_at = PerfTimer::start();
         let mut snap = GameSnapshot::from_game(
@@ -3363,28 +2579,8 @@ impl WasmGame {
         let undo_land_stable_id = self.visible_undo_land_stable_id(cancelable);
         self.snapshot_serial = self.snapshot_serial.saturating_add(1);
         let snapshot_id = self.snapshot_serial;
-        let battlefield_transitions = self
-            .game
-            .take_ui_battlefield_transitions()
-            .into_iter()
-            .map(|transition| BattlefieldTransitionSnapshot {
-                stable_id: transition.stable_id.0.0,
-                kind: match transition.kind {
-                    crate::game_state::UiBattlefieldTransitionKind::Damaged => {
-                        BattlefieldTransitionKindSnapshot::Damaged
-                    }
-                    crate::game_state::UiBattlefieldTransitionKind::Destroyed => {
-                        BattlefieldTransitionKindSnapshot::Destroyed
-                    }
-                    crate::game_state::UiBattlefieldTransitionKind::Sacrificed => {
-                        BattlefieldTransitionKindSnapshot::Sacrificed
-                    }
-                    crate::game_state::UiBattlefieldTransitionKind::Exiled => {
-                        BattlefieldTransitionKindSnapshot::Exiled
-                    }
-                },
-            })
-            .collect();
+        let battlefield_transitions =
+            battlefield_transition_snapshots(self.game.take_ui_battlefield_transitions());
         let mut snap = GameSnapshot::from_game(
             &self.game,
             self.perspective,
@@ -4456,7 +3652,7 @@ impl WasmGame {
         &self,
         _ctx: &crate::decisions::context::SelectOptionsContext,
     ) -> bool {
-        self.game.pending_replacement_choice.is_some()
+        self.game.effect_store.pending_replacement_choice.is_some()
             || self.priority_state.pending_method_selection.is_some()
             || self.priority_state.pending_mana_ability.is_some()
             || self
@@ -5900,7 +5096,7 @@ impl WasmGame {
     }
 
     fn available_pregame_actions(&self, player: PlayerId) -> Vec<LegalAction> {
-        let starting_player = self.game.turn_order.first().copied();
+        let starting_player = self.game.turn_store.turn_order.first().copied();
         let hand_ids = self.player_hand_ids(player);
         let other_cards_in_hand = hand_ids.len().saturating_sub(1);
         let mut actions = Vec::new();
@@ -5978,6 +5174,7 @@ impl WasmGame {
                     if round_mulliganers.is_empty() {
                         let queue = self
                             .game
+                            .turn_store
                             .turn_order
                             .iter()
                             .copied()
@@ -6026,7 +5223,7 @@ impl WasmGame {
                     current_index,
                     pending_hand_exile,
                 } if pending_hand_exile.is_none()
-                    && *current_index >= self.game.turn_order.len() =>
+                    && *current_index >= self.game.turn_store.turn_order.len() =>
                 {
                     self.pregame = None;
                     continue;
@@ -6104,7 +5301,8 @@ impl WasmGame {
                 current_index,
                 pending_hand_exile,
             } => {
-                let Some(player) = self.game.turn_order.get(*current_index).copied() else {
+                let Some(player) = self.game.turn_store.turn_order.get(*current_index).copied()
+                else {
                     return Ok(None);
                 };
                 if let Some(pending_exile) = pending_hand_exile {
@@ -6132,7 +5330,8 @@ impl WasmGame {
                         ),
                     )
                 } else {
-                    let is_last_player = *current_index + 1 >= self.game.turn_order.len();
+                    let is_last_player =
+                        *current_index + 1 >= self.game.turn_store.turn_order.len();
                     let mut actions = vec![if is_last_player {
                         LegalAction::BeginGame
                     } else {
@@ -6259,7 +5458,7 @@ impl WasmGame {
                                 pending_hand_exile: None,
                             },
                         ..
-                    }) => self.game.turn_order.get(*current_index).copied(),
+                    }) => self.game.turn_store.turn_order.get(*current_index).copied(),
                     _ => None,
                 }
                 .ok_or_else(|| {
@@ -6281,7 +5480,7 @@ impl WasmGame {
                     ));
                 };
                 if spec.require_not_starting_player
-                    && self.game.turn_order.first().copied() == Some(player)
+                    && self.game.turn_store.turn_order.first().copied() == Some(player)
                 {
                     return Err(JsValue::from_str(
                         "the starting player can't use that pregame action",
@@ -6550,7 +5749,7 @@ impl WasmGame {
             let _ = self.game.draw_cards(player_id, opening_hand_size);
         }
         self.pregame = Some(PregameState::new(
-            &self.game.turn_order,
+            &self.game.turn_store.turn_order,
             opening_hand_size,
             self.match_format,
         ));
@@ -7992,7 +7191,7 @@ impl WasmGame {
         &self,
         option_indices: Vec<usize>,
     ) -> Result<PriorityResponse, JsValue> {
-        if self.game.pending_replacement_choice.is_some() {
+        if self.game.effect_store.pending_replacement_choice.is_some() {
             let choice = option_indices.first().copied().ok_or_else(|| {
                 JsValue::from_str("replacement effect choice requires one selected option")
             })?;
@@ -8085,7 +7284,7 @@ impl WasmGame {
             act_stage.as_deref().unwrap_or("none"),
             self.priority_state.pending_mana_ability.is_some(),
             self.priority_state.pending_method_selection.is_some(),
-            self.game.pending_replacement_choice.is_some(),
+            self.game.effect_store.pending_replacement_choice.is_some(),
         )))
     }
 }
@@ -8093,94 +7292,6 @@ impl WasmGame {
 impl Default for WasmGame {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-fn build_object_details_snapshot(game: &GameState, id: ObjectId) -> Option<ObjectDetailsSnapshot> {
-    let obj = game.object(id)?;
-    let current_name = game.current_name(id).unwrap_or_else(|| obj.name.clone());
-    let current_controller = game.current_controller(id).unwrap_or(obj.controller);
-    let current_supertypes = game
-        .current_supertypes(id)
-        .unwrap_or_else(|| obj.supertypes.clone());
-    let current_card_types = game
-        .current_card_types(id)
-        .unwrap_or_else(|| obj.card_types.clone());
-    let current_subtypes = game
-        .current_subtypes(id)
-        .unwrap_or_else(|| obj.subtypes.clone());
-    let current_abilities = game
-        .current_abilities(id)
-        .unwrap_or_else(|| obj.abilities.clone());
-    let (power, toughness) = if obj.zone == Zone::Battlefield {
-        (
-            game.calculated_power(id).or_else(|| obj.power()),
-            game.calculated_toughness(id).or_else(|| obj.toughness()),
-        )
-    } else {
-        (obj.power(), obj.toughness())
-    };
-    let counters = counter_snapshots_for_object(obj);
-    let compiled_text = crate::compiled_text::compiled_lines(&obj.to_card_definition());
-
-    Some(ObjectDetailsSnapshot {
-        id: obj.id.0,
-        stable_id: obj.stable_id.0.0,
-        name: current_name,
-        kind: obj.kind.to_string(),
-        zone: zone_name(obj.zone),
-        owner: obj.owner.0,
-        controller: current_controller.0,
-        type_line: format_type_line_parts(
-            &current_supertypes,
-            &current_card_types,
-            &current_subtypes,
-        ),
-        mana_cost: obj.mana_cost.as_ref().map(|cost| cost.to_oracle()),
-        oracle_text: obj.oracle_text.clone(),
-        power,
-        toughness,
-        loyalty: obj.loyalty(),
-        tapped: game.is_tapped(obj.id),
-        counters,
-        compiled_text,
-        abilities: current_abilities
-            .iter()
-            .filter_map(|ability| ability.text.clone())
-            .collect(),
-        raw_compilation: format!("{:#?}", obj.to_card_definition()),
-        semantic_score: WasmGame::semantic_score_for_name(obj.name.as_str()),
-    })
-}
-
-fn format_type_line_parts(
-    supertypes: &[crate::types::Supertype],
-    card_types: &[crate::types::CardType],
-    subtypes: &[crate::types::Subtype],
-) -> String {
-    let mut left = Vec::new();
-    left.extend(supertypes.iter().map(|value| format!("{value:?}")));
-    left.extend(card_types.iter().map(|value| format!("{value:?}")));
-
-    let mut type_line = left.join(" ");
-    if !subtypes.is_empty() {
-        let subtypes = subtypes
-            .iter()
-            .map(|value| format!("{value:?}"))
-            .collect::<Vec<_>>()
-            .join(" ");
-        if type_line.is_empty() {
-            type_line = subtypes;
-        } else {
-            type_line.push_str(" - ");
-            type_line.push_str(&subtypes);
-        }
-    }
-
-    if type_line.is_empty() {
-        "Object".to_string()
-    } else {
-        type_line
     }
 }
 
@@ -9257,12 +8368,14 @@ fn convert_and_validate_targets(
 
 #[cfg(test)]
 mod tests {
+    use super::ui_snapshot::{
+        BattlefieldLane, battlefield_lane_for_object, grouped_battlefield_for_player,
+    };
     use super::{
         CustomCardFaceInput, CustomCardInput, CustomCardLayoutInput, GameSnapshot,
         MatchFormatInput, MatchSetupInput, PendingReplayAction, PregameState, ReplayOutcome,
         ReplayRoot, TargetChoiceView, TargetInput, WasmGame, action_drag_metadata,
-        battlefield_lane_for_object, build_object_details_snapshot, build_stack_object_snapshot,
-        convert_and_validate_targets, grouped_battlefield_for_player,
+        build_object_details_snapshot, build_stack_object_snapshot, convert_and_validate_targets,
     };
     use crate::ability::Ability;
     use crate::alternative_cast::CastingMethod;
@@ -9427,7 +8540,7 @@ mod tests {
 
     fn start_pregame(wasm: &mut WasmGame, opening_hand_size: usize, format: MatchFormatInput) {
         wasm.pregame = Some(PregameState::new(
-            &wasm.game.turn_order,
+            &wasm.game.turn_store.turn_order,
             opening_hand_size,
             format,
         ));
@@ -9497,7 +8610,7 @@ mod tests {
 
         assert_eq!(
             battlefield_lane_for_object(object),
-            super::BattlefieldLane::Artifacts
+            BattlefieldLane::Artifacts
         );
     }
 
@@ -9516,7 +8629,7 @@ mod tests {
 
         assert_eq!(
             battlefield_lane_for_object(object),
-            super::BattlefieldLane::Creatures
+            BattlefieldLane::Creatures
         );
     }
 
@@ -9542,7 +8655,7 @@ mod tests {
             .expect("enchantment creature should exist");
         assert_eq!(
             battlefield_lane_for_object(enchantment_creature_object),
-            super::BattlefieldLane::Enchantments
+            BattlefieldLane::Enchantments
         );
 
         let (battlefield, _) = grouped_battlefield_for_player(&game, alice, &protected_ids);
@@ -9641,14 +8754,16 @@ mod tests {
         let bears_id = game.create_object_from_definition(&bears_def, alice, Zone::Battlefield);
 
         // Apply +3/+0 until end of turn to the bears.
-        game.continuous_effects.add_effect(ContinuousEffect::pump(
-            bears_id,
-            alice,
-            bears_id,
-            3,
-            0,
-            Until::EndOfTurn,
-        ));
+        game.effect_store
+            .continuous_effects
+            .add_effect(ContinuousEffect::pump(
+                bears_id,
+                alice,
+                bears_id,
+                3,
+                0,
+                Until::EndOfTurn,
+            ));
 
         let details =
             build_object_details_snapshot(&game, bears_id).expect("expected object details");
@@ -10963,7 +10078,7 @@ mod tests {
             .build();
         let exiled_id = game.create_object_from_card(&card, bob, Zone::Exile);
 
-        game.grant_registry.grant_to_card(
+        game.effect_store.grant_registry.grant_to_card(
             exiled_id,
             Zone::Exile,
             alice,
@@ -13494,7 +12609,11 @@ mod tests {
             wasm.game.stack.is_empty(),
             "Blasphemous Act should be resolved before casting Backdraft"
         );
-        let history_after_blasphemous = wasm.game.turn_history.spell_cast_snapshot_history();
+        let history_after_blasphemous = wasm
+            .game
+            .turn_store
+            .turn_history
+            .spell_cast_snapshot_history();
         let blasphemous_snapshots = history_after_blasphemous
             .iter()
             .filter(|snapshot| snapshot.name == "Blasphemous Act")
@@ -13516,6 +12635,7 @@ mod tests {
         let blasphemous_cast_id = blasphemous_snapshots[0].object_id;
         assert_eq!(
             wasm.game
+                .turn_store
                 .turn_history
                 .damage_dealt_by_spell_this_turn(&wasm.game.provenance_graph, blasphemous_cast_id),
             39,

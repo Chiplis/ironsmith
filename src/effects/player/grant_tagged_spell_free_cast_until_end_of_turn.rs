@@ -65,16 +65,18 @@ impl EffectExecutor for GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
                 None,
                 vec![],
             );
-            game.grant_registry.grant_alternative_cast_to_card(
-                object_id,
-                Zone::Exile,
-                player_id,
-                method,
-                GrantSource::Effect {
-                    source_id: ctx.source,
-                    expires_end_of_turn,
-                },
-            );
+            game.effect_store
+                .grant_registry
+                .grant_alternative_cast_to_card(
+                    object_id,
+                    Zone::Exile,
+                    player_id,
+                    method,
+                    GrantSource::Effect {
+                        source_id: ctx.source,
+                        expires_end_of_turn,
+                    },
+                );
             granted += 1;
         }
 

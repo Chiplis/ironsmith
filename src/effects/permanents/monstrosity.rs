@@ -80,7 +80,9 @@ impl EffectExecutor for MonstrosityEffect {
                     && event.object() == Some(source_id)
                     && event.marker == CounterType::PlusOnePlusOne.into()
             }) {
-                game.continuous_effects.record_counter_change(source_id);
+                game.effect_store
+                    .continuous_effects
+                    .record_counter_change(source_id);
             }
         }
         game.set_monstrous(source_id);

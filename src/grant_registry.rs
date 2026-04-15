@@ -678,14 +678,14 @@ mod tests {
         let bob_spell_id = game.create_object_from_card(&bob_spell, bob, Zone::Hand);
 
         let flash = StaticAbility::flash();
-        assert!(game.grant_registry.card_has_granted_ability(
+        assert!(game.effect_store.grant_registry.card_has_granted_ability(
             &game,
             alice_spell_id,
             Zone::Hand,
             alice,
             &flash,
         ));
-        assert!(game.grant_registry.card_has_granted_ability(
+        assert!(game.effect_store.grant_registry.card_has_granted_ability(
             &game,
             bob_spell_id,
             Zone::Hand,

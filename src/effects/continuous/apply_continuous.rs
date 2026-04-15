@@ -399,7 +399,7 @@ impl EffectExecutor for ApplyContinuousEffect {
                 effect = effect.with_condition(condition.clone());
             }
 
-            game.continuous_effects.add_effect(effect);
+            game.effect_store.continuous_effects.add_effect(effect);
         }
 
         game.refresh_continuous_state();
@@ -524,7 +524,7 @@ mod tests {
 
         execute_effect(&mut game, &Effect::new(apply), &mut ctx).unwrap();
 
-        let effects = game.continuous_effects.effects_sorted();
+        let effects = game.effect_store.continuous_effects.effects_sorted();
         assert_eq!(effects.len(), 1);
         match &effects[0].source_type {
             EffectSourceType::Resolution { locked_targets } => {
@@ -543,7 +543,7 @@ mod tests {
 
         let source = create_creature(&mut game, "Source", alice);
         let target = create_creature(&mut game, "Target", alice);
-        game.continuous_effects.add_effect(
+        game.effect_store.continuous_effects.add_effect(
             ContinuousEffect::new(
                 source,
                 alice,
@@ -583,7 +583,7 @@ mod tests {
 
         let source = create_creature(&mut game, "Source", alice);
         let target = create_creature(&mut game, "Target", alice);
-        game.continuous_effects.add_effect(
+        game.effect_store.continuous_effects.add_effect(
             ContinuousEffect::new(
                 source,
                 alice,

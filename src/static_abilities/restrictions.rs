@@ -26,7 +26,7 @@ impl StaticAbilityKind for PlayersCantGainLife {
     fn apply_restrictions(&self, game: &mut GameState, _source: ObjectId, _controller: PlayerId) {
         let mut tracker = CantEffectTracker::default();
         Restriction::gain_life(PlayerFilter::Any).apply(game, &mut tracker, _controller, None);
-        game.cant_effects.merge(tracker);
+        game.effect_store.cant_effects.merge(tracker);
     }
 }
 
@@ -51,7 +51,7 @@ impl StaticAbilityKind for PlayersCantSearch {
             _controller,
             None,
         );
-        game.cant_effects.merge(tracker);
+        game.effect_store.cant_effects.merge(tracker);
     }
 }
 
@@ -71,7 +71,7 @@ impl StaticAbilityKind for DamageCantBePrevented {
     fn apply_restrictions(&self, game: &mut GameState, _source: ObjectId, _controller: PlayerId) {
         let mut tracker = CantEffectTracker::default();
         Restriction::prevent_damage().apply(game, &mut tracker, _controller, None);
-        game.cant_effects.merge(tracker);
+        game.effect_store.cant_effects.merge(tracker);
     }
 }
 
@@ -91,7 +91,7 @@ impl StaticAbilityKind for YouCantLoseGame {
     fn apply_restrictions(&self, game: &mut GameState, _source: ObjectId, controller: PlayerId) {
         let mut tracker = CantEffectTracker::default();
         Restriction::lose_game(PlayerFilter::You).apply(game, &mut tracker, controller, None);
-        game.cant_effects.merge(tracker);
+        game.effect_store.cant_effects.merge(tracker);
     }
 }
 
@@ -111,7 +111,7 @@ impl StaticAbilityKind for OpponentsCantWinGame {
     fn apply_restrictions(&self, game: &mut GameState, _source: ObjectId, controller: PlayerId) {
         let mut tracker = CantEffectTracker::default();
         Restriction::win_game(PlayerFilter::Opponent).apply(game, &mut tracker, controller, None);
-        game.cant_effects.merge(tracker);
+        game.effect_store.cant_effects.merge(tracker);
     }
 }
 
@@ -136,7 +136,7 @@ impl StaticAbilityKind for YourLifeTotalCantChange {
             controller,
             None,
         );
-        game.cant_effects.merge(tracker);
+        game.effect_store.cant_effects.merge(tracker);
     }
 }
 
@@ -161,7 +161,7 @@ impl StaticAbilityKind for PermanentsCantBeSacrificed {
             controller,
             None,
         );
-        game.cant_effects.merge(tracker);
+        game.effect_store.cant_effects.merge(tracker);
     }
 }
 
@@ -196,7 +196,7 @@ impl StaticAbilityKind for OpponentsCantCastSpells {
             controller,
             None,
         );
-        game.cant_effects.merge(tracker);
+        game.effect_store.cant_effects.merge(tracker);
     }
 }
 
@@ -229,7 +229,7 @@ impl StaticAbilityKind for SplitSecond {
             controller,
             None,
         );
-        game.cant_effects.merge(tracker);
+        game.effect_store.cant_effects.merge(tracker);
     }
 }
 
@@ -373,7 +373,7 @@ impl StaticAbilityKind for Unleash {
             ObjectFilter::specific(source).with_counter_type(CounterType::PlusOnePlusOne),
         )
         .apply(game, &mut tracker, controller, Some(source));
-        game.cant_effects.merge(tracker);
+        game.effect_store.cant_effects.merge(tracker);
     }
 }
 
@@ -398,7 +398,7 @@ impl StaticAbilityKind for OpponentsCantDrawExtraCards {
             controller,
             None,
         );
-        game.cant_effects.merge(tracker);
+        game.effect_store.cant_effects.merge(tracker);
     }
 }
 
@@ -423,7 +423,7 @@ impl StaticAbilityKind for CantHaveCountersPlaced {
             _controller,
             Some(source),
         );
-        game.cant_effects.merge(tracker);
+        game.effect_store.cant_effects.merge(tracker);
     }
 }
 
@@ -533,6 +533,6 @@ impl StaticAbilityKind for RuleRestriction {
         let mut tracker = CantEffectTracker::default();
         self.restriction
             .apply(game, &mut tracker, controller, Some(source));
-        game.cant_effects.merge(tracker);
+        game.effect_store.cant_effects.merge(tracker);
     }
 }

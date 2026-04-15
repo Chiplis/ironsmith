@@ -28,7 +28,10 @@ fn source_was_cast(
     {
         return zc.from == Zone::Stack;
     }
-    game.turn_history.spell_cast_order(source).is_some()
+    game.turn_store
+        .turn_history
+        .spell_cast_order(source)
+        .is_some()
 }
 
 fn this_spell_was_cast_from_zone(
@@ -301,40 +304,54 @@ fn evaluate_condition_shared_core(
         Condition::YourFirstTurnsOfTheGameOrFewer(count) => {
             Some(game.turn.active_player == ctx.controller && game.turn.turn_number <= *count)
         }
-        Condition::CreatureDiedThisTurn => {
-            Some(game.turn_history.total_creatures_died_this_turn() > 0)
+        Condition::CreatureDiedThisTurn => Some(
+            game.turn_store
+                .turn_history
+                .total_creatures_died_this_turn()
+                > 0,
+        ),
+        Condition::CreatureDiedThisTurnOrMore(count) => Some(
+            game.turn_store
+                .turn_history
+                .total_creatures_died_this_turn()
+                >= *count,
+        ),
+        Condition::CastSpellThisTurn => {
+            Some(game.turn_store.turn_history.any_spell_was_cast_this_turn())
         }
-        Condition::CreatureDiedThisTurnOrMore(count) => {
-            Some(game.turn_history.total_creatures_died_this_turn() >= *count)
-        }
-        Condition::CastSpellThisTurn => Some(game.turn_history.any_spell_was_cast_this_turn()),
         Condition::AttackedThisTurn => Some(
-            game.turn_history
+            game.turn_store
+                .turn_history
                 .players_attacked_this_turn
                 .contains(&ctx.controller),
         ),
         Condition::OpponentLostLifeThisTurn => {
             let filter_ctx = game.filter_context_for(ctx.controller, ctx.filter_source);
-            Some(
-                filter_ctx
-                    .opponents
-                    .iter()
-                    .any(|opponent| game.turn_history.player_lost_life_this_turn(*opponent)),
-            )
+            Some(filter_ctx.opponents.iter().any(|opponent| {
+                game.turn_store
+                    .turn_history
+                    .player_lost_life_this_turn(*opponent)
+            }))
         }
-        Condition::PermanentLeftBattlefieldThisTurn => {
-            Some(game.turn_history.permanents_left_battlefield_this_turn() > 0)
-        }
+        Condition::PermanentLeftBattlefieldThisTurn => Some(
+            game.turn_store
+                .turn_history
+                .permanents_left_battlefield_this_turn()
+                > 0,
+        ),
         Condition::PermanentLeftBattlefieldUnderYourControlThisTurn => Some(
-            game.turn_history
+            game.turn_store
+                .turn_history
                 .permanents_left_battlefield_under_controller(ctx.controller)
                 > 0,
         ),
         Condition::SourceWasCast => Some(source_was_cast(game, ctx.source, ctx.triggering_event)),
         Condition::ThisSpellWasCastFromZone(_) => None,
-        Condition::NoSpellsWereCastLastTurn => Some(game.spells_cast_last_turn_total == 0),
+        Condition::NoSpellsWereCastLastTurn => {
+            Some(game.turn_store.spells_cast_last_turn_total == 0)
+        }
         Condition::SpellsWereCastLastTurnOrMore(count) => {
-            Some(game.spells_cast_last_turn_total >= *count)
+            Some(game.turn_store.spells_cast_last_turn_total >= *count)
         }
         Condition::YouHaveFullParty => Some(player_has_full_party(game, ctx.controller)),
         Condition::ManaSpentToCastThisSpellAtLeast { amount, symbol } => {
@@ -663,7 +680,7 @@ pub fn evaluate_condition_external(
             };
             let cast_count: u32 = players
                 .iter()
-                .map(|pid| game.turn_history.spells_cast_by_player(*pid))
+                .map(|pid| game.turn_store.turn_history.spells_cast_by_player(*pid))
                 .sum();
             cast_count >= *count
         }
@@ -671,7 +688,8 @@ pub fn evaluate_condition_external(
             let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
                 return false;
             };
-            game.turn_history
+            game.turn_store
+                .turn_history
                 .players_tapped_land_for_mana_this_turn
                 .contains(&player_id)
         }
@@ -679,12 +697,16 @@ pub fn evaluate_condition_external(
             let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
                 return false;
             };
-            game.turn_history
+            game.turn_store
+                .turn_history
                 .total_life_gained_for_players(&[player_id])
                 >= *count
         }
         Condition::CreatureDiedThisTurnOrMore(count) => {
-            game.turn_history.total_creatures_died_this_turn() >= *count
+            game.turn_store
+                .turn_history
+                .total_creatures_died_this_turn()
+                >= *count
         }
         Condition::PlayerHadLandEnterBattlefieldThisTurn { player } => {
             let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
@@ -791,7 +813,8 @@ pub fn evaluate_condition_external(
             let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
                 return false;
             };
-            game.turn_history
+            game.turn_store
+                .turn_history
                 .player_committed_crime_this_turn(player_id)
         }
         Condition::PlayerCompletedDungeon {
@@ -1400,7 +1423,8 @@ fn count_distinct_matching_powers(
 }
 
 fn player_had_land_enter_battlefield_this_turn(game: &GameState, player_id: PlayerId) -> bool {
-    game.turn_history
+    game.turn_store
+        .turn_history
         .player_had_land_enter_battlefield_this_turn(player_id)
 }
 
@@ -1798,7 +1822,8 @@ fn evaluate_condition_simple(
             let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
                 return false;
             };
-            game.turn_history
+            game.turn_store
+                .turn_history
                 .player_committed_crime_this_turn(player_id)
         }
         Condition::PlayerCompletedDungeon {
@@ -1862,7 +1887,7 @@ fn evaluate_condition_simple(
             };
             let cast_count: u32 = players
                 .iter()
-                .map(|pid| game.turn_history.spells_cast_by_player(*pid))
+                .map(|pid| game.turn_store.turn_history.spells_cast_by_player(*pid))
                 .sum();
             cast_count >= *count
         }
@@ -1870,7 +1895,8 @@ fn evaluate_condition_simple(
             let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
                 return false;
             };
-            game.turn_history
+            game.turn_store
+                .turn_history
                 .players_tapped_land_for_mana_this_turn
                 .contains(&player_id)
         }
@@ -1878,12 +1904,16 @@ fn evaluate_condition_simple(
             let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
                 return false;
             };
-            game.turn_history
+            game.turn_store
+                .turn_history
                 .total_life_gained_for_players(&[player_id])
                 >= *count
         }
         Condition::CreatureDiedThisTurnOrMore(count) => {
-            game.turn_history.total_creatures_died_this_turn() >= *count
+            game.turn_store
+                .turn_history
+                .total_creatures_died_this_turn()
+                >= *count
         }
         Condition::PlayerHadLandEnterBattlefieldThisTurn { player } => {
             let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
@@ -2391,6 +2421,7 @@ fn evaluate_condition(
         Condition::PlayerCommittedCrimeThisTurn { player } => {
             let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
             Ok(game
+                .turn_store
                 .turn_history
                 .player_committed_crime_this_turn(player_id))
         }
@@ -2452,13 +2483,14 @@ fn evaluate_condition(
             };
             let cast_count: u32 = player_ids
                 .iter()
-                .map(|pid| game.turn_history.spells_cast_by_player(*pid))
+                .map(|pid| game.turn_store.turn_history.spells_cast_by_player(*pid))
                 .sum();
             Ok(cast_count >= *count)
         }
         Condition::PlayerTappedLandForManaThisTurn { player } => {
             let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
             Ok(game
+                .turn_store
                 .turn_history
                 .players_tapped_land_for_mana_this_turn
                 .contains(&player_id))
@@ -2466,13 +2498,16 @@ fn evaluate_condition(
         Condition::PlayerGainedLifeThisTurnOrMore { player, count } => {
             let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
             Ok(game
+                .turn_store
                 .turn_history
                 .total_life_gained_for_players(&[player_id])
                 >= *count)
         }
-        Condition::CreatureDiedThisTurnOrMore(count) => {
-            Ok(game.turn_history.total_creatures_died_this_turn() >= *count)
-        }
+        Condition::CreatureDiedThisTurnOrMore(count) => Ok(game
+            .turn_store
+            .turn_history
+            .total_creatures_died_this_turn()
+            >= *count),
         Condition::PlayerHadLandEnterBattlefieldThisTurn { player } => {
             let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
             Ok(player_had_land_enter_battlefield_this_turn(game, player_id))
@@ -2505,7 +2540,11 @@ fn evaluate_condition(
         Condition::TargetSpellCastOrderThisTurn(order) => {
             for target in &ctx.targets {
                 if let crate::executor::ResolvedTarget::Object(id) = target {
-                    let actual = game.turn_history.spell_cast_order(*id).unwrap_or(0);
+                    let actual = game
+                        .turn_store
+                        .turn_history
+                        .spell_cast_order(*id)
+                        .unwrap_or(0);
                     return Ok(actual == *order);
                 }
             }
@@ -2751,7 +2790,8 @@ fn evaluate_condition(
                 return Ok(false);
             };
             Ok(tagged.iter().any(|snapshot| {
-                game.turn_history
+                game.turn_store
+                    .turn_history
                     .object_entered_battlefield_controller_this_turn(snapshot.stable_id)
                     .is_some_and(|entry_controller| entry_controller == player_id)
             }))

@@ -511,12 +511,11 @@ pub(crate) fn parse_or_action_clause_lexed(
             continue;
         }
 
-        let first_starts_effect =
-            find_verb_lexed(first).is_some_and(|(_, verb_idx)| verb_idx == 0)
-                || has_effect_head_without_verb_lexed(first);
-        let second_starts_effect =
-            find_verb_lexed(second).is_some_and(|(_, verb_idx)| verb_idx == 0)
-                || has_effect_head_without_verb_lexed(second);
+        let first_starts_effect = find_verb_lexed(first).is_some_and(|(_, verb_idx)| verb_idx == 0)
+            || has_effect_head_without_verb_lexed(first);
+        let second_starts_effect = find_verb_lexed(second)
+            .is_some_and(|(_, verb_idx)| verb_idx == 0)
+            || has_effect_head_without_verb_lexed(second);
         if !first_starts_effect || !second_starts_effect {
             continue;
         }

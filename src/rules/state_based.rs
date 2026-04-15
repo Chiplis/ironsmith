@@ -337,9 +337,14 @@ fn check_role_sbas_with_view(
 
         roles.sort_by_key(|role_id| {
             let timestamp = game
+                .effect_store
                 .continuous_effects
                 .get_attachment_timestamp(*role_id)
-                .or_else(|| game.continuous_effects.get_entry_timestamp(*role_id))
+                .or_else(|| {
+                    game.effect_store
+                        .continuous_effects
+                        .get_entry_timestamp(*role_id)
+                })
                 .unwrap_or(0);
             (timestamp, role_id.0)
         });

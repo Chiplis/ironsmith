@@ -166,12 +166,15 @@ mod tests {
             "unearthed card should be on battlefield"
         );
         assert_eq!(
-            game.delayed_triggers.len(),
+            game.effect_store.delayed_triggers.len(),
             1,
             "unearthed card should have next end-step exile trigger"
         );
         assert_eq!(
-            game.replacement_effects.one_shot_effects_snapshot().len(),
+            game.effect_store
+                .replacement_effects
+                .one_shot_effects_snapshot()
+                .len(),
             1,
             "unearthed card should register one-shot leave-battlefield replacement"
         );

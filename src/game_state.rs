@@ -1,6 +1,6 @@
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
-use std::ops::Range;
+use std::ops::{Deref, DerefMut, Range};
 
 use rand::seq::SliceRandom;
 use rand::{SeedableRng, rngs::StdRng};
@@ -91,6 +91,143 @@ pub enum UiBattlefieldTransitionKind {
 pub struct UiBattlefieldTransition {
     pub stable_id: StableId,
     pub kind: UiBattlefieldTransitionKind,
+}
+
+/// Storage and denormalized zone indexes for live objects in the game.
+#[derive(Debug, Clone, Default)]
+pub struct ObjectStore {
+    objects: HashMap<ObjectId, Object>,
+    /// Fast index: stable id -> current object id.
+    stable_id_index: HashMap<StableId, ObjectId>,
+    /// Game-local cache for linked-face definitions so transform/split/disturb
+    /// resolution doesn't depend on the shared runtime custom-card registry.
+    linked_face_definitions_by_id: HashMap<crate::ids::CardId, crate::cards::CardDefinition>,
+    linked_face_definitions_by_name: HashMap<String, crate::cards::CardDefinition>,
+    /// Zone indexes (denormalized for efficiency).
+    pub battlefield: Vec<ObjectId>,
+    pub command_zone: Vec<ObjectId>,
+    pub exile: Vec<ObjectId>,
+    /// The full set of destination object IDs created by the most recent move
+    /// of a given source object.
+    zone_change_result_objects: HashMap<ObjectId, Vec<ObjectId>>,
+}
+
+impl ObjectStore {
+    fn object(&self, id: ObjectId) -> Option<&Object> {
+        self.objects.get(&id)
+    }
+
+    fn object_mut(&mut self, id: ObjectId) -> Option<&mut Object> {
+        self.objects.get_mut(&id)
+    }
+
+    fn objects_map(&self) -> &HashMap<ObjectId, Object> {
+        &self.objects
+    }
+}
+
+/// Turn-order, skip/extra-turn, and per-turn history state.
+#[derive(Debug, Clone, Default)]
+pub struct TurnStore {
+    pub turn_order: Vec<PlayerId>,
+    /// Extra turns queued up (Time Walk, etc.).
+    /// Players take these turns in order after the current turn ends.
+    pub extra_turns: Vec<PlayerId>,
+    /// Players who will skip their next turn.
+    /// Checked and cleared when a player would start their turn.
+    pub skip_next_turn: HashSet<PlayerId>,
+    /// Players who will skip their next draw step.
+    /// Checked and cleared when a player would draw in draw step.
+    pub skip_next_draw_step: HashSet<PlayerId>,
+    /// The active player whose draw step is currently being tracked for draw-count-sensitive triggers.
+    pub tracked_draw_step_player: Option<PlayerId>,
+    /// Cards the tracked player has already drawn in the current draw step.
+    pub cards_drawn_this_draw_step: u32,
+    /// Players who will skip all combat phases on their next turn.
+    /// Checked and cleared when entering combat phase.
+    pub skip_next_combat_phases: HashSet<PlayerId>,
+    /// Unified owner for per-turn event and action history.
+    pub turn_history: TurnHistory,
+    /// Total number of spells cast during the immediately previous turn.
+    /// Updated when turn advances.
+    pub spells_cast_last_turn_total: u32,
+}
+
+/// Runtime effect managers, queued trigger state, and temporary effect registries.
+#[derive(Debug, Clone)]
+pub struct EffectStore {
+    pub continuous_effects: ContinuousEffectManager,
+    pub replacement_effects: ReplacementEffectManager,
+    pub prevention_effects: PreventionEffectManager,
+    /// Tracker for "can't" effects (Rule 614.17).
+    /// These are checked BEFORE events happen, not as replacements.
+    pub cant_effects: CantEffectTracker,
+    /// Tracker for "spend mana as though it were mana of any color" effects.
+    pub mana_spend_effects: ManaSpendEffectTracker,
+    pub delayed_triggers: Vec<crate::triggers::DelayedTrigger>,
+    pub pending_trigger_events: Vec<crate::triggers::TriggerEvent>,
+    pub active_state_trigger_conditions: HashSet<crate::triggers::ActiveStateTriggerKey>,
+    /// Pending replacement effect choice when multiple effects could apply.
+    /// When set, advance_priority returns a ChooseReplacementEffect decision
+    /// before continuing with normal game flow.
+    pub pending_replacement_choice: Option<PendingReplacementChoice>,
+    /// Registry for tracking granted alternative casts and abilities.
+    pub grant_registry: crate::grant_registry::GrantRegistry,
+    /// Temporary mana abilities granted to players (e.g., Channel), expiring at end of turn.
+    pub granted_mana_abilities: Vec<GrantedManaAbility>,
+    /// Temporary spell-cost reductions waiting for the next matching spell this turn.
+    pub temporary_spell_cost_reductions: Vec<TemporarySpellCostReductionEffectInstance>,
+    /// Temporary spell-ability grants waiting for the next matching spell this turn.
+    pub temporary_spell_ability_grants: Vec<TemporarySpellAbilityGrantEffectInstance>,
+    /// Active restriction effects (spell/ability-based "can't" effects).
+    pub restriction_effects: Vec<RestrictionEffectInstance>,
+    /// Active goad effects (a creature attacks each combat and attacks a player
+    /// other than the goader if able).
+    pub goad_effects: Vec<GoadEffectInstance>,
+}
+
+impl Default for EffectStore {
+    fn default() -> Self {
+        Self {
+            continuous_effects: ContinuousEffectManager::new(),
+            replacement_effects: ReplacementEffectManager::new(),
+            prevention_effects: PreventionEffectManager::new(),
+            cant_effects: CantEffectTracker::new(),
+            mana_spend_effects: ManaSpendEffectTracker::new(),
+            delayed_triggers: Vec::new(),
+            pending_trigger_events: Vec::new(),
+            active_state_trigger_conditions: HashSet::new(),
+            pending_replacement_choice: None,
+            grant_registry: crate::grant_registry::GrantRegistry::new(),
+            granted_mana_abilities: Vec::new(),
+            temporary_spell_cost_reductions: Vec::new(),
+            temporary_spell_ability_grants: Vec::new(),
+            restriction_effects: Vec::new(),
+            goad_effects: Vec::new(),
+        }
+    }
+}
+
+/// Persisted chosen values and modal selections keyed by source object.
+#[derive(Debug, Clone, Default)]
+pub struct ChoiceStore {
+    /// Tracks modal choices that were already selected for an activated ability.
+    /// Key is (source ObjectId, ability index), value is the set of chosen mode indices.
+    pub chosen_modes_by_ability: HashMap<(ObjectId, usize), HashSet<usize>>,
+    /// Chosen colors for permanents ("as this enters, choose a color").
+    pub chosen_colors: HashMap<ObjectId, crate::color::Color>,
+    /// Chosen basic land types for permanents ("as this Aura enters, choose a basic land type").
+    pub chosen_basic_land_types: HashMap<ObjectId, crate::types::Subtype>,
+    /// Chosen land types for permanents ("as this enters, choose a land type").
+    pub chosen_land_types: HashMap<ObjectId, crate::types::Subtype>,
+    /// Chosen creature types for permanents ("as this enters, choose a creature type").
+    pub chosen_creature_types: HashMap<ObjectId, crate::types::Subtype>,
+    /// Chosen card types for spells and abilities that ask a player to choose a card type.
+    pub chosen_card_types: HashMap<ObjectId, crate::types::CardType>,
+    /// Chosen players for permanents ("as this enters, choose a player").
+    pub chosen_players: HashMap<ObjectId, PlayerId>,
+    /// Chosen named options for permanents ("as this enters, choose A or B").
+    pub chosen_named_options: HashMap<ObjectId, String>,
 }
 
 /// Key type for extensible per-turn counters.
@@ -1406,48 +1543,18 @@ impl StackEntry {
 pub struct GameState {
     // Players
     pub players: Vec<Player>,
-    pub turn_order: Vec<PlayerId>,
 
-    // Objects
-    objects: HashMap<ObjectId, Object>,
-    // Fast index: stable id -> current object id.
-    stable_id_index: HashMap<StableId, ObjectId>,
-    /// Game-local cache for linked-face definitions so transform/split/disturb
-    /// resolution doesn't depend on the shared runtime custom-card registry.
-    linked_face_definitions_by_id: HashMap<crate::ids::CardId, crate::cards::CardDefinition>,
-    linked_face_definitions_by_name: HashMap<String, crate::cards::CardDefinition>,
+    // Objects and denormalized zone indexes
+    pub object_store: ObjectStore,
 
     // The stack
     pub stack: Vec<StackEntry>,
 
-    // Zone indexes (denormalized for efficiency)
-    pub battlefield: Vec<ObjectId>,
-    pub command_zone: Vec<ObjectId>,
-    pub exile: Vec<ObjectId>,
-
     // Turn tracking
     pub turn: TurnState,
-
-    // Effect managers
-    pub continuous_effects: ContinuousEffectManager,
-    pub replacement_effects: ReplacementEffectManager,
-    pub prevention_effects: PreventionEffectManager,
-
-    /// Tracker for "can't" effects (Rule 614.17).
-    /// These are checked BEFORE events happen, not as replacements.
-    pub cant_effects: CantEffectTracker,
-    /// Tracker for "spend mana as though it were mana of any color" effects.
-    pub mana_spend_effects: ManaSpendEffectTracker,
-
-    // Delayed triggers waiting to fire
-    pub delayed_triggers: Vec<crate::triggers::DelayedTrigger>,
-
-    /// Pending trigger events generated by effects.
-    /// Effects (like VoteEffect) can push events here, and the game loop
-    /// processes them after effect resolution.
-    pub pending_trigger_events: Vec<crate::triggers::TriggerEvent>,
-    /// State-triggered abilities whose conditions are currently true.
-    pub active_state_trigger_conditions: HashSet<crate::triggers::ActiveStateTriggerKey>,
+    pub turn_store: TurnStore,
+    pub effect_store: EffectStore,
+    pub choice_store: ChoiceStore,
     /// One-shot battlefield transition hints consumed by the UI snapshot layer.
     pub ui_battlefield_transitions: Vec<UiBattlefieldTransition>,
     /// Event provenance graph for this game.
@@ -1467,36 +1574,6 @@ pub struct GameState {
     /// Named dungeons each player has completed this game.
     pub completed_dungeons: HashMap<PlayerId, Vec<String>>,
 
-    /// Tracks modal choices that were already selected for an activated ability.
-    /// Key is (source ObjectId, ability index), value is the set of chosen mode indices.
-    pub chosen_modes_by_ability: HashMap<(ObjectId, usize), HashSet<usize>>,
-
-    /// Pending replacement effect choice when multiple effects could apply.
-    /// When set, advance_priority returns a ChooseReplacementEffect decision
-    /// before continuing with normal game flow.
-    pub pending_replacement_choice: Option<PendingReplacementChoice>,
-
-    /// Registry for tracking granted alternative casts and abilities.
-    pub grant_registry: crate::grant_registry::GrantRegistry,
-
-    /// Extra turns queued up (Time Walk, etc.).
-    /// Players take these turns in order after the current turn ends.
-    pub extra_turns: Vec<PlayerId>,
-
-    /// Players who will skip their next turn.
-    /// Checked and cleared when a player would start their turn.
-    pub skip_next_turn: HashSet<PlayerId>,
-    /// Players who will skip their next draw step.
-    /// Checked and cleared when a player would draw in draw step.
-    pub skip_next_draw_step: HashSet<PlayerId>,
-    /// The active player whose draw step is currently being tracked for draw-count-sensitive triggers.
-    pub tracked_draw_step_player: Option<PlayerId>,
-    /// Cards the tracked player has already drawn in the current draw step.
-    pub cards_drawn_this_draw_step: u32,
-    /// Players who will skip all combat phases on their next turn.
-    /// Checked and cleared when entering combat phase.
-    pub skip_next_combat_phases: HashSet<PlayerId>,
-
     /// Active and pending player-control effects.
     pub player_control_effects: Vec<PlayerControlEffect>,
 
@@ -1508,13 +1585,6 @@ pub struct GameState {
 
     /// Timestamp counter for combat-choice control effects.
     pub combat_choice_control_timestamp: u64,
-
-    /// Unified owner for per-turn event and action history.
-    pub turn_history: TurnHistory,
-
-    /// Total number of spells cast during the immediately previous turn.
-    /// Updated when turn advances.
-    pub spells_cast_last_turn_total: u32,
 
     /// Mounts that are saddled until end of turn.
     ///
@@ -1534,22 +1604,6 @@ pub struct GameState {
     /// Combat-damage-to-player hits already processed in the current trigger batch.
     /// Used for "one or more ... deal combat damage to a player" trigger matching.
     pub combat_damage_player_batch_hits: Vec<(ObjectId, PlayerId)>,
-
-    /// Temporary mana abilities granted to players (e.g., Channel), expiring at end of turn.
-    pub granted_mana_abilities: Vec<GrantedManaAbility>,
-
-    /// Temporary spell-cost reductions waiting for the next matching spell this turn.
-    pub temporary_spell_cost_reductions: Vec<TemporarySpellCostReductionEffectInstance>,
-
-    /// Temporary spell-ability grants waiting for the next matching spell this turn.
-    pub temporary_spell_ability_grants: Vec<TemporarySpellAbilityGrantEffectInstance>,
-
-    /// Active restriction effects (spell/ability-based "can't" effects).
-    pub restriction_effects: Vec<RestrictionEffectInstance>,
-
-    /// Active goad effects (a creature attacks each combat and attacks a player
-    /// other than the goader if able).
-    pub goad_effects: Vec<GoadEffectInstance>,
 
     // =========================================================================
     // Battlefield State Extension Maps
@@ -1571,27 +1625,6 @@ pub struct GameState {
 
     /// Permanents whose damage is not removed during cleanup.
     pub damage_persists: HashSet<ObjectId>,
-
-    /// Chosen colors for permanents ("as this enters, choose a color").
-    pub chosen_colors: HashMap<ObjectId, crate::color::Color>,
-
-    /// Chosen basic land types for permanents ("as this Aura enters, choose a basic land type").
-    pub chosen_basic_land_types: HashMap<ObjectId, crate::types::Subtype>,
-
-    /// Chosen land types for permanents ("as this enters, choose a land type").
-    pub chosen_land_types: HashMap<ObjectId, crate::types::Subtype>,
-
-    /// Chosen creature types for permanents ("as this enters, choose a creature type").
-    pub chosen_creature_types: HashMap<ObjectId, crate::types::Subtype>,
-
-    /// Chosen card types for spells and abilities that ask a player to choose a card type.
-    pub chosen_card_types: HashMap<ObjectId, crate::types::CardType>,
-
-    /// Chosen players for permanents ("as this enters, choose a player").
-    pub chosen_players: HashMap<ObjectId, PlayerId>,
-
-    /// Chosen named options for permanents ("as this enters, choose A or B").
-    pub chosen_named_options: HashMap<ObjectId, String>,
 
     /// Regeneration shields on permanents (expires at end of turn).
     pub regeneration_shields: HashMap<ObjectId, u32>,
@@ -1663,10 +1696,6 @@ pub struct GameState {
     /// melded permanent's stable ID.
     pub melded_permanents: HashMap<StableId, MeldedPermanentState>,
 
-    /// The full set of destination object IDs created by the most recent move
-    /// of a given source object.
-    pub zone_change_result_objects: HashMap<ObjectId, Vec<ObjectId>>,
-
     /// Deterministic match RNG state used for shuffles and other random gameplay effects.
     random_state: Cell<u64>,
 
@@ -1692,6 +1721,20 @@ pub struct GameState {
     calculated_characteristics_cache_revision: Cell<u64>,
 }
 
+impl Deref for GameState {
+    type Target = ObjectStore;
+
+    fn deref(&self) -> &Self::Target {
+        &self.object_store
+    }
+}
+
+impl DerefMut for GameState {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.object_store
+    }
+}
+
 impl GameState {
     /// Creates a new game state with the given players.
     pub fn new(player_names: Vec<String>, starting_life: i32) -> Self {
@@ -1709,24 +1752,16 @@ impl GameState {
 
         Self {
             players,
-            turn_order,
-            objects: HashMap::new(),
-            stable_id_index: HashMap::new(),
-            linked_face_definitions_by_id: HashMap::new(),
-            linked_face_definitions_by_name: HashMap::new(),
+            object_store: ObjectStore::default(),
             stack: Vec::new(),
-            battlefield: Vec::new(),
-            command_zone: Vec::new(),
-            exile: Vec::new(),
             turn: TurnState::new(active_player),
-            continuous_effects: ContinuousEffectManager::new(),
-            replacement_effects: ReplacementEffectManager::new(),
-            prevention_effects: PreventionEffectManager::new(),
-            cant_effects: CantEffectTracker::new(),
-            mana_spend_effects: ManaSpendEffectTracker::new(),
-            delayed_triggers: Vec::new(),
-            pending_trigger_events: Vec::new(),
-            active_state_trigger_conditions: HashSet::new(),
+            turn_store: TurnStore {
+                turn_order,
+                turn_history: TurnHistory::default(),
+                ..TurnStore::default()
+            },
+            effect_store: EffectStore::default(),
+            choice_store: ChoiceStore::default(),
             ui_battlefield_transitions: Vec::new(),
             provenance_graph: ProvenanceGraph::new(),
             combat: None,
@@ -1735,43 +1770,20 @@ impl GameState {
             initiative: None,
             active_dungeons: HashMap::new(),
             completed_dungeons: HashMap::new(),
-            chosen_modes_by_ability: HashMap::new(),
-            turn_history: TurnHistory::default(),
-            pending_replacement_choice: None,
-            grant_registry: crate::grant_registry::GrantRegistry::new(),
-            extra_turns: Vec::new(),
-            skip_next_turn: HashSet::new(),
-            skip_next_draw_step: HashSet::new(),
-            tracked_draw_step_player: None,
-            cards_drawn_this_draw_step: 0,
-            skip_next_combat_phases: HashSet::new(),
             player_control_effects: Vec::new(),
             player_control_timestamp: 0,
             combat_choice_control_effects: Vec::new(),
             combat_choice_control_timestamp: 0,
-            spells_cast_last_turn_total: 0,
             saddled_until_end_of_turn: HashSet::new(),
             soulbond_pairs: HashMap::new(),
             ninjutsu_attack_targets: HashMap::new(),
             combat_damage_player_batch_hits: Vec::new(),
-            granted_mana_abilities: Vec::new(),
-            temporary_spell_cost_reductions: Vec::new(),
-            temporary_spell_ability_grants: Vec::new(),
-            restriction_effects: Vec::new(),
-            goad_effects: Vec::new(),
             // Battlefield state extension maps
             tapped_permanents: HashSet::new(),
             summoning_sick: HashSet::new(),
             damage_marked: HashMap::new(),
             dealt_deathtouch_damage_since_sba: HashSet::new(),
             damage_persists: HashSet::new(),
-            chosen_colors: HashMap::new(),
-            chosen_basic_land_types: HashMap::new(),
-            chosen_land_types: HashMap::new(),
-            chosen_creature_types: HashMap::new(),
-            chosen_card_types: HashMap::new(),
-            chosen_players: HashMap::new(),
-            chosen_named_options: HashMap::new(),
             regeneration_shields: HashMap::new(),
             monstrous: HashSet::new(),
             renowned: HashSet::new(),
@@ -1793,7 +1805,6 @@ impl GameState {
             linked_exile_groups: HashMap::new(),
             next_linked_exile_group_id: 0,
             melded_permanents: HashMap::new(),
-            zone_change_result_objects: HashMap::new(),
             random_state: Cell::new(Self::normalize_random_seed(0)),
             irreversible_random_count: Cell::new(0),
             continuous_state_dirty: Cell::new(true),
@@ -1837,7 +1848,7 @@ impl GameState {
         }
         self.continuous_state_dirty.set(false);
         self.continuous_state_revision
-            .set(self.continuous_effects.revision());
+            .set(self.effect_store.continuous_effects.revision());
         self.continuous_state_turn_number.set(self.turn.turn_number);
         self.continuous_state_active_player
             .set(self.turn.active_player);
@@ -1854,7 +1865,8 @@ impl GameState {
 
     pub(crate) fn continuous_state_is_clean(&self) -> bool {
         !self.continuous_state_dirty.get()
-            && self.continuous_state_revision.get() == self.continuous_effects.revision()
+            && self.continuous_state_revision.get()
+                == self.effect_store.continuous_effects.revision()
             && self.cached_continuous_turn_state_matches_current()
     }
 
@@ -1928,14 +1940,16 @@ impl GameState {
             _ => self.turn.turn_number,
         };
 
-        self.restriction_effects.push(RestrictionEffectInstance {
-            restriction,
-            controller,
-            source,
-            duration,
-            expires_end_of_turn,
-            consumed_next_untap: false,
-        });
+        self.effect_store
+            .restriction_effects
+            .push(RestrictionEffectInstance {
+                restriction,
+                controller,
+                source,
+                duration,
+                expires_end_of_turn,
+                consumed_next_untap: false,
+            });
     }
 
     pub fn add_goad_effect(
@@ -1946,7 +1960,7 @@ impl GameState {
         source: ObjectId,
     ) {
         let current_turn = self.turn.turn_number;
-        if self.goad_effects.iter().any(|effect| {
+        if self.effect_store.goad_effects.iter().any(|effect| {
             effect.creature == creature
                 && effect.goaded_by == goaded_by
                 && effect.is_active(self, current_turn)
@@ -1960,7 +1974,7 @@ impl GameState {
             _ => self.turn.turn_number,
         };
 
-        self.goad_effects.push(GoadEffectInstance {
+        self.effect_store.goad_effects.push(GoadEffectInstance {
             creature,
             goaded_by,
             source,
@@ -1977,15 +1991,16 @@ impl GameState {
         reduction: crate::mana::ManaCost,
         remaining_uses: u32,
     ) {
-        self.temporary_spell_cost_reductions
-            .push(TemporarySpellCostReductionEffectInstance {
+        self.effect_store.temporary_spell_cost_reductions.push(
+            TemporarySpellCostReductionEffectInstance {
                 player,
                 source,
                 filter,
                 reduction,
                 remaining_uses,
                 expires_end_of_turn: self.turn.turn_number,
-            });
+            },
+        );
     }
 
     pub fn add_temporary_spell_ability_grant(
@@ -1996,15 +2011,16 @@ impl GameState {
         ability: crate::static_abilities::StaticAbility,
         remaining_uses: u32,
     ) {
-        self.temporary_spell_ability_grants
-            .push(TemporarySpellAbilityGrantEffectInstance {
+        self.effect_store.temporary_spell_ability_grants.push(
+            TemporarySpellAbilityGrantEffectInstance {
                 player,
                 source,
                 filter,
                 ability,
                 remaining_uses,
                 expires_end_of_turn: self.turn.turn_number,
-            });
+            },
+        );
     }
 
     pub fn temporary_granted_spell_abilities(
@@ -2020,14 +2036,16 @@ impl GameState {
             .with_source(spell_id)
             .with_active_player(self.turn.active_player)
             .with_opponents(
-                self.turn_order
+                self.turn_store
+                    .turn_order
                     .iter()
                     .copied()
                     .filter(|player_id| *player_id != player)
                     .collect(),
             )
             .with_caster(Some(player));
-        self.temporary_spell_ability_grants
+        self.effect_store
+            .temporary_spell_ability_grants
             .iter()
             .filter(|effect| {
                 effect.player == player
@@ -2051,7 +2069,8 @@ impl GameState {
             .with_source(spell_id)
             .with_active_player(self.turn.active_player)
             .with_opponents(
-                self.turn_order
+                self.turn_store
+                    .turn_order
                     .iter()
                     .copied()
                     .filter(|player_id| *player_id != player)
@@ -2059,6 +2078,7 @@ impl GameState {
             )
             .with_caster(Some(player));
         let matching = self
+            .effect_store
             .temporary_spell_ability_grants
             .iter()
             .enumerate()
@@ -2070,7 +2090,10 @@ impl GameState {
             })
             .collect::<Vec<_>>();
         for idx in matching {
-            if let Some(effect) = self.temporary_spell_ability_grants.get_mut(idx)
+            if let Some(effect) = self
+                .effect_store
+                .temporary_spell_ability_grants
+                .get_mut(idx)
                 && effect.remaining_uses > 0
             {
                 effect.remaining_uses -= 1;
@@ -2080,7 +2103,8 @@ impl GameState {
 
     pub fn active_goaders_for(&self, creature: ObjectId) -> HashSet<PlayerId> {
         let current_turn = self.turn.turn_number;
-        self.goad_effects
+        self.effect_store
+            .goad_effects
             .iter()
             .filter(|effect| effect.creature == creature && effect.is_active(self, current_turn))
             .map(|effect| effect.goaded_by)
@@ -2093,7 +2117,7 @@ impl GameState {
 
     pub fn cleanup_restrictions_end_of_turn(&mut self) {
         let current_turn = self.turn.turn_number;
-        self.restriction_effects.retain(|effect| {
+        self.effect_store.restriction_effects.retain(|effect| {
             !matches!(effect.duration, crate::effect::Until::EndOfTurn)
                 || effect.expires_end_of_turn > current_turn
         });
@@ -2101,45 +2125,49 @@ impl GameState {
 
     pub fn cleanup_granted_mana_abilities_end_of_turn(&mut self) {
         let current_turn = self.turn.turn_number;
-        self.granted_mana_abilities
+        self.effect_store
+            .granted_mana_abilities
             .retain(|grant| grant.expires_end_of_turn > current_turn);
     }
 
     pub fn cleanup_mana_spend_permissions_end_of_turn(&mut self) {
-        self.mana_spend_effects
+        self.effect_store
+            .mana_spend_effects
             .cleanup_expired(self.turn.turn_number);
     }
 
     pub fn cleanup_temporary_spell_cost_reductions_end_of_turn(&mut self) {
         let current_turn = self.turn.turn_number;
-        self.temporary_spell_cost_reductions
+        self.effect_store
+            .temporary_spell_cost_reductions
             .retain(|effect| !effect.is_expired(current_turn));
     }
 
     pub fn cleanup_temporary_spell_ability_grants_end_of_turn(&mut self) {
         let current_turn = self.turn.turn_number;
-        self.temporary_spell_ability_grants
+        self.effect_store
+            .temporary_spell_ability_grants
             .retain(|effect| !effect.is_expired(current_turn));
     }
 
     /// Can the player draw any cards?
     pub fn can_draw(&self, player: PlayerId) -> bool {
-        self.cant_effects.can_draw(player)
+        self.effect_store.cant_effects.can_draw(player)
     }
 
     /// Can the player gain life?
     pub fn can_gain_life(&self, player: PlayerId) -> bool {
-        self.cant_effects.can_gain_life(player)
+        self.effect_store.cant_effects.can_gain_life(player)
     }
 
     /// Can the player lose life (not from damage)?
     pub fn can_lose_life(&self, player: PlayerId) -> bool {
-        self.cant_effects.can_lose_life(player)
+        self.effect_store.cant_effects.can_lose_life(player)
     }
 
     /// Can the player's life total change?
     pub fn can_change_life_total(&self, player: PlayerId) -> bool {
-        self.cant_effects.can_change_life_total(player)
+        self.effect_store.cant_effects.can_change_life_total(player)
     }
 
     /// Returns true if a player can currently pay the given amount of life.
@@ -2196,32 +2224,32 @@ impl GameState {
 
     /// Can the player search their library?
     pub fn can_search_library(&self, player: PlayerId) -> bool {
-        self.cant_effects.can_search_library(player)
+        self.effect_store.cant_effects.can_search_library(player)
     }
 
     /// Can the player draw extra cards this turn?
     pub fn can_draw_extra_cards(&self, player: PlayerId) -> bool {
-        self.cant_effects.can_draw_extra_cards(player)
+        self.effect_store.cant_effects.can_draw_extra_cards(player)
     }
 
     /// Sync draw-step tracking to the current turn position.
     pub fn sync_draw_step_tracking(&mut self) {
         if self.turn.phase == Phase::Beginning && self.turn.step == Some(Step::Draw) {
-            if self.tracked_draw_step_player != Some(self.turn.active_player) {
-                self.tracked_draw_step_player = Some(self.turn.active_player);
-                self.cards_drawn_this_draw_step = 0;
+            if self.turn_store.tracked_draw_step_player != Some(self.turn.active_player) {
+                self.turn_store.tracked_draw_step_player = Some(self.turn.active_player);
+                self.turn_store.cards_drawn_this_draw_step = 0;
             }
         } else {
-            self.tracked_draw_step_player = None;
-            self.cards_drawn_this_draw_step = 0;
+            self.turn_store.tracked_draw_step_player = None;
+            self.turn_store.cards_drawn_this_draw_step = 0;
         }
     }
 
     /// Returns whether the given player is drawing during their own draw step, plus prior draws in that step.
     pub fn draw_step_context_for_player(&mut self, player: PlayerId) -> (bool, u32) {
         self.sync_draw_step_tracking();
-        if self.tracked_draw_step_player == Some(player) {
-            (true, self.cards_drawn_this_draw_step)
+        if self.turn_store.tracked_draw_step_player == Some(player) {
+            (true, self.turn_store.cards_drawn_this_draw_step)
         } else {
             (false, 0)
         }
@@ -2230,183 +2258,211 @@ impl GameState {
     /// Records cards drawn in the currently tracked draw step.
     pub fn record_cards_drawn_in_current_draw_step(&mut self, player: PlayerId, amount: u32) {
         self.sync_draw_step_tracking();
-        if self.tracked_draw_step_player == Some(player) {
-            self.cards_drawn_this_draw_step =
-                self.cards_drawn_this_draw_step.saturating_add(amount);
+        if self.turn_store.tracked_draw_step_player == Some(player) {
+            self.turn_store.cards_drawn_this_draw_step = self
+                .turn_store
+                .cards_drawn_this_draw_step
+                .saturating_add(amount);
         }
     }
 
     /// Can the creature attack?
     pub fn can_attack(&self, creature: ObjectId) -> bool {
-        self.cant_effects.can_attack(creature)
+        self.effect_store.cant_effects.can_attack(creature)
     }
 
     /// Can the creature attack as the only attacker?
     pub fn can_attack_alone(&self, creature: ObjectId) -> bool {
-        self.cant_effects.can_attack_alone(creature)
+        self.effect_store.cant_effects.can_attack_alone(creature)
     }
 
     /// Can the creature block?
     pub fn can_block(&self, creature: ObjectId) -> bool {
-        self.cant_effects.can_block(creature)
+        self.effect_store.cant_effects.can_block(creature)
     }
 
     /// Can the creature block a specific attacker?
     pub fn can_block_attacker(&self, blocker: ObjectId, attacker: ObjectId) -> bool {
-        self.cant_effects.can_block_attacker(blocker, attacker)
+        self.effect_store
+            .cant_effects
+            .can_block_attacker(blocker, attacker)
     }
 
     /// Must the creature block a specific attacker this turn if able?
     pub fn must_block_attacker(&self, blocker: ObjectId, attacker: ObjectId) -> bool {
-        self.cant_effects.must_block_attacker(blocker, attacker)
+        self.effect_store
+            .cant_effects
+            .must_block_attacker(blocker, attacker)
     }
 
     /// Get required attackers for a blocker, if any.
     pub fn required_attackers_for_blocker(&self, blocker: ObjectId) -> Option<&HashSet<ObjectId>> {
-        self.cant_effects.required_attackers_for_blocker(blocker)
+        self.effect_store
+            .cant_effects
+            .required_attackers_for_blocker(blocker)
     }
 
     /// Can the creature block as the only blocker?
     pub fn can_block_alone(&self, creature: ObjectId) -> bool {
-        self.cant_effects.can_block_alone(creature)
+        self.effect_store.cant_effects.can_block_alone(creature)
     }
 
     /// Can the permanent untap during untap step?
     pub fn can_untap(&self, permanent: ObjectId) -> bool {
-        self.cant_effects.can_untap(permanent)
+        self.effect_store.cant_effects.can_untap(permanent)
     }
 
     /// Can the permanent untap during the specified player's untap step?
     pub fn can_untap_during_step(&self, permanent: ObjectId, untap_player: PlayerId) -> bool {
         self.object(permanent).is_some_and(|object| {
-            self.cant_effects
-                .can_untap_during_step(permanent, object.controller, untap_player)
+            self.effect_store.cant_effects.can_untap_during_step(
+                permanent,
+                object.controller,
+                untap_player,
+            )
         })
     }
 
     /// Can damage be prevented?
     pub fn can_prevent_damage(&self) -> bool {
-        self.cant_effects.can_prevent_damage()
+        self.effect_store.cant_effects.can_prevent_damage()
     }
 
     /// Can the permanent be destroyed?
     pub fn can_be_destroyed(&self, permanent: ObjectId) -> bool {
-        self.cant_effects.can_be_destroyed(permanent)
+        self.effect_store.cant_effects.can_be_destroyed(permanent)
     }
 
     /// Can the permanent be regenerated?
     pub fn can_be_regenerated(&self, permanent: ObjectId) -> bool {
-        self.cant_effects.can_be_regenerated(permanent)
+        self.effect_store.cant_effects.can_be_regenerated(permanent)
     }
 
     /// Can the permanent be sacrificed?
     pub fn can_be_sacrificed(&self, permanent: ObjectId) -> bool {
-        self.cant_effects.can_be_sacrificed(permanent)
+        self.effect_store.cant_effects.can_be_sacrificed(permanent)
     }
 
     /// Can the creature be blocked?
     pub fn can_be_blocked(&self, creature: ObjectId) -> bool {
-        self.cant_effects.can_be_blocked(creature)
+        self.effect_store.cant_effects.can_be_blocked(creature)
     }
 
     /// Can the player lose the game?
     pub fn can_lose_game(&self, player: PlayerId) -> bool {
-        self.cant_effects.can_lose_game(player)
+        self.effect_store.cant_effects.can_lose_game(player)
     }
 
     /// Can the player win the game?
     pub fn can_win_game(&self, player: PlayerId) -> bool {
-        self.cant_effects.can_win_game(player)
+        self.effect_store.cant_effects.can_win_game(player)
     }
 
     /// Can the player become the monarch?
     pub fn can_become_monarch(&self, player: PlayerId) -> bool {
-        self.cant_effects.can_become_monarch(player)
+        self.effect_store.cant_effects.can_become_monarch(player)
     }
 
     /// Can the player cast spells?
     pub fn can_cast_spells(&self, player: PlayerId) -> bool {
-        self.cant_effects.can_cast_spells(player)
+        self.effect_store.cant_effects.can_cast_spells(player)
     }
 
     /// Can the player activate non-mana abilities?
     pub fn can_activate_non_mana_abilities(&self, player: PlayerId) -> bool {
-        self.cant_effects.can_activate_non_mana_abilities(player)
+        self.effect_store
+            .cant_effects
+            .can_activate_non_mana_abilities(player)
     }
 
     /// Can activated abilities of this permanent be activated (including mana abilities)?
     pub fn can_activate_abilities_of(&self, source: ObjectId) -> bool {
-        self.cant_effects.can_activate_abilities_of(source)
+        self.effect_store
+            .cant_effects
+            .can_activate_abilities_of(source)
     }
 
     /// Can activated abilities with {T} in their costs of this permanent be activated?
     pub fn can_activate_tap_abilities_of(&self, source: ObjectId) -> bool {
-        self.cant_effects.can_activate_tap_abilities_of(source)
+        self.effect_store
+            .cant_effects
+            .can_activate_tap_abilities_of(source)
     }
 
     /// Can non-mana activated abilities of this permanent be activated?
     pub fn can_activate_non_mana_abilities_of(&self, source: ObjectId) -> bool {
-        self.cant_effects.can_activate_non_mana_abilities_of(source)
+        self.effect_store
+            .cant_effects
+            .can_activate_non_mana_abilities_of(source)
     }
 
     /// Can the player cast creature spells?
     pub fn can_cast_creature_spells(&self, player: PlayerId) -> bool {
-        self.cant_effects.can_cast_creature_spells(player)
+        self.effect_store
+            .cant_effects
+            .can_cast_creature_spells(player)
     }
 
     /// Can the player cast another spell this turn?
     pub fn can_cast_additional_spell_this_turn(&self, player: PlayerId) -> bool {
-        self.cant_effects
+        self.effect_store
+            .cant_effects
             .can_cast_additional_spell_this_turn(player)
     }
 
     /// Can the player cast another noncreature spell this turn?
     pub fn can_cast_additional_noncreature_spell_this_turn(&self, player: PlayerId) -> bool {
-        self.cant_effects
+        self.effect_store
+            .cant_effects
             .can_cast_additional_noncreature_spell_this_turn(player)
     }
 
     /// Can the player cast another nonartifact spell this turn?
     pub fn can_cast_additional_nonartifact_spell_this_turn(&self, player: PlayerId) -> bool {
-        self.cant_effects
+        self.effect_store
+            .cant_effects
             .can_cast_additional_nonartifact_spell_this_turn(player)
     }
 
     /// Can the player cast another non-Phyrexian spell this turn?
     pub fn can_cast_additional_nonphyrexian_spell_this_turn(&self, player: PlayerId) -> bool {
-        self.cant_effects
+        self.effect_store
+            .cant_effects
             .can_cast_additional_nonphyrexian_spell_this_turn(player)
     }
 
     /// Can counters be placed on this permanent?
     pub fn can_have_counters_placed(&self, permanent: ObjectId) -> bool {
-        self.cant_effects.can_have_counters_placed(permanent)
+        self.effect_store
+            .cant_effects
+            .can_have_counters_placed(permanent)
     }
 
     /// Is this permanent untargetable (by shroud/hexproof-style effects)?
     pub fn is_untargetable(&self, permanent: ObjectId) -> bool {
-        self.cant_effects.is_untargetable(permanent)
+        self.effect_store.cant_effects.is_untargetable(permanent)
     }
 
     /// Can this player be targeted?
     pub fn can_target_player(&self, player: PlayerId) -> bool {
-        self.cant_effects.can_target_player(player)
+        self.effect_store.cant_effects.can_target_player(player)
     }
 
     /// Can this player be targeted by the specified source object?
     pub fn can_target_player_from_source(&self, player: PlayerId, source_id: ObjectId) -> bool {
-        self.cant_effects
+        self.effect_store
+            .cant_effects
             .can_target_player_from_source(self, player, source_id)
     }
 
     /// Can this spell on the stack be countered?
     pub fn can_be_countered(&self, spell: ObjectId) -> bool {
-        self.cant_effects.can_be_countered(spell)
+        self.effect_store.cant_effects.can_be_countered(spell)
     }
 
     /// Can this permanent transform?
     pub fn can_transform(&self, permanent: ObjectId) -> bool {
-        self.cant_effects.can_transform(permanent)
+        self.effect_store.cant_effects.can_transform(permanent)
     }
 
     /// Adds an object to the game.
@@ -2470,7 +2526,7 @@ impl GameState {
         if zone == Zone::Battlefield {
             // Seed battlefield objects with an entry timestamp so layer timestamp
             // ordering is deterministic (replay setup, fixtures, etc.).
-            self.continuous_effects.record_entry(id);
+            self.effect_store.continuous_effects.record_entry(id);
         }
         id
     }
@@ -2495,7 +2551,7 @@ impl GameState {
         if zone == Zone::Battlefield {
             // Seed battlefield objects with an entry timestamp so static ability
             // effects use proper timestamp order in layers.
-            self.continuous_effects.record_entry(id);
+            self.effect_store.continuous_effects.record_entry(id);
         }
         id
     }
@@ -2758,7 +2814,7 @@ impl GameState {
 
         // Record entry timestamp per Rule 613.7d when entering the battlefield
         if new_zone == Zone::Battlefield {
-            self.continuous_effects.record_entry(new_id);
+            self.effect_store.continuous_effects.record_entry(new_id);
         }
 
         // Queue zone change event for triggers.
@@ -3213,7 +3269,9 @@ impl GameState {
 
             if let Some(target) = chosen_target {
                 if self.attach_object_to_target(new_id, target) {
-                    self.continuous_effects.record_attachment(new_id);
+                    self.effect_store
+                        .continuous_effects
+                        .record_attachment(new_id);
                 }
             } else {
                 // No legal attachment target - put the Aura into the graveyard
@@ -3469,17 +3527,17 @@ impl GameState {
 
     /// Gets a reference to an object by ID.
     pub fn object(&self, id: ObjectId) -> Option<&Object> {
-        self.objects.get(&id)
+        self.object_store.object(id)
     }
 
     /// Gets a mutable reference to an object by ID.
     pub fn object_mut(&mut self, id: ObjectId) -> Option<&mut Object> {
         self.mark_continuous_state_dirty();
-        self.objects.get_mut(&id)
+        self.object_store.object_mut(id)
     }
 
     pub(crate) fn objects_map(&self) -> &HashMap<ObjectId, Object> {
-        &self.objects
+        self.object_store.objects_map()
     }
 
     pub fn attachment_target_exists_on_battlefield(&self, target: AttachmentTarget) -> bool {
@@ -3805,14 +3863,21 @@ impl GameState {
     /// current state.
     pub(crate) fn cached_continuous_effects_snapshot(&self) -> Vec<ContinuousEffect> {
         let mut effects: Vec<ContinuousEffect> = self
+            .effect_store
             .continuous_effects
             .effects_sorted()
             .into_iter()
             .cloned()
             .collect();
-        effects.reserve(self.continuous_effects.static_ability_effects().len());
+        effects.reserve(
+            self.effect_store
+                .continuous_effects
+                .static_ability_effects()
+                .len(),
+        );
         effects.extend(
-            self.continuous_effects
+            self.effect_store
+                .continuous_effects
                 .static_ability_effects()
                 .iter()
                 .cloned(),
@@ -3862,7 +3927,7 @@ impl GameState {
             return;
         }
 
-        let effects_revision = self.continuous_effects.revision();
+        let effects_revision = self.effect_store.continuous_effects.revision();
         if self.calculated_characteristics_cache_revision.get() != effects_revision {
             self.calculated_characteristics_cache.borrow_mut().clear();
             self.calculated_characteristics_cache_revision
@@ -3895,7 +3960,7 @@ impl GameState {
         if let Some(chars) = crate::continuous::in_progress_characteristics(id) {
             return Some(chars);
         }
-        let effects_revision = self.continuous_effects.revision();
+        let effects_revision = self.effect_store.continuous_effects.revision();
         if self.continuous_state_is_clean() {
             if self.calculated_characteristics_cache_revision.get() != effects_revision {
                 self.calculated_characteristics_cache.borrow_mut().clear();
@@ -4185,8 +4250,9 @@ impl GameState {
         use crate::static_abilities::StaticAbility;
 
         // Clear existing tracker
-        self.cant_effects.clear();
-        self.mana_spend_effects
+        self.effect_store.cant_effects.clear();
+        self.effect_store
+            .mana_spend_effects
             .retain_effect_permissions(self.turn.turn_number);
         self.damage_persists.clear();
         for player in &mut self.players {
@@ -4254,20 +4320,20 @@ impl GameState {
         // Apply active restriction effects from spells/abilities.
         let current_turn = self.turn.turn_number;
         let mut active_restrictions = Vec::new();
-        for effect in &self.restriction_effects {
+        for effect in &self.effect_store.restriction_effects {
             if effect.is_active(self, current_turn) {
                 active_restrictions.push(effect.clone());
             }
         }
-        self.restriction_effects = active_restrictions.clone();
+        self.effect_store.restriction_effects = active_restrictions.clone();
 
         let mut active_goad = Vec::new();
-        for effect in &self.goad_effects {
+        for effect in &self.effect_store.goad_effects {
             if effect.is_active(self, current_turn) {
                 active_goad.push(effect.clone());
             }
         }
-        self.goad_effects = active_goad;
+        self.effect_store.goad_effects = active_goad;
 
         let mut restriction_tracker = CantEffectTracker::default();
         for effect in active_restrictions {
@@ -4278,17 +4344,19 @@ impl GameState {
                 Some(effect.source),
             );
         }
-        self.cant_effects.merge(restriction_tracker);
+        self.effect_store.cant_effects.merge(restriction_tracker);
 
         // "Can't be regenerated" restrictions disable both new and existing shields.
         let cant_be_regenerated: Vec<_> = self
+            .effect_store
             .cant_effects
             .cant_be_regenerated
             .iter()
             .copied()
             .collect();
         for object_id in cant_be_regenerated {
-            self.replacement_effects
+            self.effect_store
+                .replacement_effects
                 .remove_one_shot_effects_from_source(object_id);
             self.clear_regeneration_shields(object_id);
         }
@@ -4309,7 +4377,9 @@ impl GameState {
         use crate::static_ability_processor::generate_continuous_effects_from_static_abilities;
 
         let effects = generate_continuous_effects_from_static_abilities(self);
-        self.continuous_effects.set_static_ability_effects(effects);
+        self.effect_store
+            .continuous_effects
+            .set_static_ability_effects(effects);
         self.mark_continuous_state_clean();
     }
 
@@ -4322,12 +4392,16 @@ impl GameState {
         use crate::replacement_ability_processor::generate_replacement_effects_from_abilities;
 
         // Clear existing static ability replacement effects
-        self.replacement_effects.clear_static_ability_effects();
+        self.effect_store
+            .replacement_effects
+            .clear_static_ability_effects();
 
         // Generate and register new ones from current battlefield state
         let effects = generate_replacement_effects_from_abilities(self);
         for effect in effects {
-            self.replacement_effects.add_static_ability_effect(effect);
+            self.effect_store
+                .replacement_effects
+                .add_static_ability_effect(effect);
         }
     }
 
@@ -4361,7 +4435,8 @@ impl GameState {
     ///
     /// If `source` is provided, this also checks for source-specific activation permissions.
     pub fn can_spend_mana_as_any_color(&self, payer: PlayerId, source: Option<ObjectId>) -> bool {
-        self.mana_spend_effects
+        self.effect_store
+            .mana_spend_effects
             .permissions
             .iter()
             .any(|permission| permission.allows(self, payer, source))
@@ -5119,32 +5194,33 @@ impl GameState {
     /// 3. Otherwise, proceed to the next player in turn order
     pub fn next_turn(&mut self) {
         // Check for extra turns first (Time Walk, etc.)
-        let next_player = if !self.extra_turns.is_empty() {
+        let next_player = if !self.turn_store.extra_turns.is_empty() {
             // Take the first extra turn from the queue
-            self.extra_turns.remove(0)
+            self.turn_store.extra_turns.remove(0)
         } else {
             // Find next player in turn order
             let current_index = self
+                .turn_store
                 .turn_order
                 .iter()
                 .position(|&p| p == self.turn.active_player)
                 .unwrap_or(0);
 
-            let mut next_index = (current_index + 1) % self.turn_order.len();
+            let mut next_index = (current_index + 1) % self.turn_store.turn_order.len();
             let start_index = next_index;
 
             // Find next valid player (skip players who left or should skip their turn)
             loop {
-                let candidate = self.turn_order[next_index];
+                let candidate = self.turn_store.turn_order[next_index];
 
                 // Check if player is still in game
                 let is_in_game = self.player(candidate).is_some_and(|p| p.is_in_game());
 
                 if is_in_game {
                     // Check if this player should skip their turn
-                    if self.skip_next_turn.remove(&candidate) {
+                    if self.turn_store.skip_next_turn.remove(&candidate) {
                         // Player skips this turn, continue to next player
-                        next_index = (next_index + 1) % self.turn_order.len();
+                        next_index = (next_index + 1) % self.turn_store.turn_order.len();
                         if next_index == start_index {
                             // Wrapped around - all players are skipping (shouldn't happen)
                             break;
@@ -5156,14 +5232,14 @@ impl GameState {
                 }
 
                 // Player has left, skip to next
-                next_index = (next_index + 1) % self.turn_order.len();
+                next_index = (next_index + 1) % self.turn_store.turn_order.len();
                 if next_index == start_index {
                     // All other players have left
                     break;
                 }
             }
 
-            self.turn_order[next_index]
+            self.turn_store.turn_order[next_index]
         };
 
         // Reset turn state
@@ -5172,11 +5248,12 @@ impl GameState {
         self.turn.turn_number += 1;
         self.turn.phase = Phase::Beginning;
         self.turn.step = Some(Step::Untap);
-        self.tracked_draw_step_player = None;
-        self.cards_drawn_this_draw_step = 0;
+        self.turn_store.tracked_draw_step_player = None;
+        self.turn_store.cards_drawn_this_draw_step = 0;
 
         // Clear turn-based tracking
-        self.spells_cast_last_turn_total = self.turn_history.clear_for_new_turn();
+        self.turn_store.spells_cast_last_turn_total =
+            self.turn_store.turn_history.clear_for_new_turn();
         self.saddled_until_end_of_turn.clear();
         self.ninjutsu_attack_targets.clear();
         self.combat_damage_player_batch_hits.clear();
@@ -5369,19 +5446,24 @@ impl GameState {
     /// Clears the tracking for OncePerTurn activated abilities.
     /// Called at the beginning of each turn.
     pub fn clear_activated_abilities_tracking(&mut self) {
-        self.turn_history.activated_abilities_this_turn.clear();
+        self.turn_store
+            .turn_history
+            .activated_abilities_this_turn
+            .clear();
     }
 
     /// Record that a creature has attacked this turn.
     pub fn mark_creature_attacked_this_turn(&mut self, creature: ObjectId) {
-        self.turn_history
+        self.turn_store
+            .turn_history
             .creatures_attacked_this_turn
             .insert(creature);
     }
 
     /// Check whether a creature has attacked this turn.
     pub fn creature_attacked_this_turn(&self, creature: ObjectId) -> bool {
-        self.turn_history
+        self.turn_store
+            .turn_history
             .creatures_attacked_this_turn
             .contains(&creature)
     }
@@ -5397,10 +5479,11 @@ impl GameState {
             .map(|object| object.stable_id.object_id())
             .unwrap_or(object_id);
 
-        self.turn_history
+        self.turn_store
+            .turn_history
             .event_records
             .iter()
-            .chain(self.turn_history.staged_event_records.iter())
+            .chain(self.turn_store.turn_history.staged_event_records.iter())
             .filter_map(|record| record.event.downcast::<crate::events::KeywordActionEvent>())
             .any(|event| {
                 event.action == action && (event.source == object_id || event.source == stable_id)
@@ -5413,7 +5496,9 @@ impl GameState {
     }
 
     pub fn creature_blocked_this_turn(&self, creature: ObjectId) -> bool {
-        self.turn_history.creature_blocked_this_turn(creature)
+        self.turn_store
+            .turn_history
+            .creature_blocked_this_turn(creature)
     }
 
     /// Record that a specific trigger fired this turn.
@@ -5423,11 +5508,13 @@ impl GameState {
         trigger_id: TriggerIdentity,
     ) {
         *self
+            .turn_store
             .turn_history
             .triggers_fired_this_turn
             .entry((source_object_id, trigger_id))
             .or_insert(0) += 1;
-        self.turn_history
+        self.turn_store
+            .turn_history
             .turn_counters
             .increment_trigger_identity(trigger_id);
     }
@@ -5438,7 +5525,8 @@ impl GameState {
         source_object_id: ObjectId,
         trigger_id: TriggerIdentity,
     ) -> u32 {
-        self.turn_history
+        self.turn_store
+            .turn_history
             .triggers_fired_this_turn
             .get(&(source_object_id, trigger_id))
             .copied()
@@ -5447,14 +5535,16 @@ impl GameState {
 
     /// Record an event kind occurrence this turn.
     pub fn record_trigger_event_kind(&mut self, event_kind: EventKind) {
-        self.turn_history
+        self.turn_store
+            .turn_history
             .turn_counters
             .increment_event_kind(event_kind);
     }
 
     /// Get event kind occurrence count this turn.
     pub fn trigger_event_kind_count_this_turn(&self, event_kind: EventKind) -> u32 {
-        self.turn_history
+        self.turn_store
+            .turn_history
             .turn_counters
             .get(&TurnCounterKey::EventKind(event_kind))
     }
@@ -5476,12 +5566,16 @@ impl GameState {
 
     /// Increment an arbitrary named turn counter.
     pub fn increment_named_turn_counter(&mut self, name: impl Into<String>) {
-        self.turn_history.turn_counters.increment_named(name);
+        self.turn_store
+            .turn_history
+            .turn_counters
+            .increment_named(name);
     }
 
     /// Get an arbitrary named turn counter value.
     pub fn named_turn_counter(&self, name: &str) -> u32 {
-        self.turn_history
+        self.turn_store
+            .turn_history
             .turn_counters
             .get(&TurnCounterKey::Named(name.to_string()))
     }
@@ -5489,17 +5583,20 @@ impl GameState {
     /// Records that an activated ability was used.
     /// Used for OncePerTurn timing restrictions.
     pub fn record_ability_activation(&mut self, source: ObjectId, ability_index: usize) {
-        self.turn_history
+        self.turn_store
+            .turn_history
             .activated_abilities_this_turn
             .insert((source, ability_index));
-        self.turn_history
+        self.turn_store
+            .turn_history
             .turn_counters
             .increment_named(activated_ability_turn_counter_name(source, ability_index));
     }
 
     /// Check if an activated ability has been used this turn.
     pub fn ability_activated_this_turn(&self, source: ObjectId, ability_index: usize) -> bool {
-        self.turn_history
+        self.turn_store
+            .turn_history
             .activated_abilities_this_turn
             .contains(&(source, ability_index))
     }
@@ -5522,9 +5619,12 @@ impl GameState {
         this_turn: bool,
     ) {
         let target_map = if this_turn {
-            &mut self.turn_history.chosen_modes_by_ability_this_turn
+            &mut self
+                .turn_store
+                .turn_history
+                .chosen_modes_by_ability_this_turn
         } else {
-            &mut self.chosen_modes_by_ability
+            &mut self.choice_store.chosen_modes_by_ability
         };
         target_map
             .entry((source, ability_index))
@@ -5541,9 +5641,12 @@ impl GameState {
         this_turn: bool,
     ) -> bool {
         let target_map = if this_turn {
-            &self.turn_history.chosen_modes_by_ability_this_turn
+            &self
+                .turn_store
+                .turn_history
+                .chosen_modes_by_ability_this_turn
         } else {
-            &self.chosen_modes_by_ability
+            &self.choice_store.chosen_modes_by_ability
         };
         target_map
             .get(&(source, ability_index))
@@ -5562,9 +5665,12 @@ impl GameState {
             return false;
         }
         let target_map = if this_turn {
-            &self.turn_history.chosen_modes_by_ability_this_turn
+            &self
+                .turn_store
+                .turn_history
+                .chosen_modes_by_ability_this_turn
         } else {
-            &self.chosen_modes_by_ability
+            &self.choice_store.chosen_modes_by_ability
         };
         let chosen_count = target_map
             .get(&(source, ability_index))
@@ -5613,7 +5719,7 @@ impl GameState {
     pub fn should_skip_first_turn_draw(&self, player_id: PlayerId) -> bool {
         self.turn.turn_number == 1
             && self.turn.active_player == player_id
-            && self.turn_order.first().copied() == Some(player_id)
+            && self.turn_store.turn_order.first().copied() == Some(player_id)
             && !self.is_commander_game()
     }
 
@@ -5929,13 +6035,16 @@ impl GameState {
         creature: ObjectId,
         source: ObjectId,
     ) -> bool {
-        self.turn_history
+        self.turn_store
+            .turn_history
             .creature_was_damaged_by_source_this_turn(creature, source)
     }
 
     /// Returns true if `creature` was dealt damage by any source this turn.
     pub fn creature_was_damaged_this_turn(&self, creature: ObjectId) -> bool {
-        self.turn_history.creature_was_damaged_this_turn(creature)
+        self.turn_store
+            .turn_history
+            .creature_was_damaged_this_turn(creature)
     }
 
     /// Clear damage from an object.
@@ -6061,7 +6170,7 @@ impl GameState {
             .unwrap_or(0)
             .saturating_add(1);
         self.transform_count.insert(id, next);
-        self.continuous_effects.record_entry(id);
+        self.effect_store.continuous_effects.record_entry(id);
     }
 
     /// Check if a permanent is phased out.
@@ -6136,12 +6245,16 @@ impl GameState {
 
     /// Track that a player has taken the foretell special action this turn.
     pub fn record_foretell_action(&mut self, player: PlayerId) {
-        self.turn_history.foretell_actions_this_turn.insert(player);
+        self.turn_store
+            .turn_history
+            .foretell_actions_this_turn
+            .insert(player);
     }
 
     /// Check whether the player has already taken the foretell special action this turn.
     pub fn has_foretold_this_turn(&self, player: PlayerId) -> bool {
-        self.turn_history
+        self.turn_store
+            .turn_history
             .foretell_actions_this_turn
             .contains(&player)
     }
@@ -6193,16 +6306,18 @@ impl GameState {
         self.transform_count.remove(&id);
         self.phased_out.remove(&id);
         self.imprinted_cards.remove(&id);
-        self.chosen_colors.remove(&id);
-        self.chosen_basic_land_types.remove(&id);
-        self.chosen_land_types.remove(&id);
-        self.chosen_creature_types.remove(&id);
-        self.chosen_card_types.remove(&id);
-        self.chosen_players.remove(&id);
-        self.chosen_named_options.remove(&id);
-        self.chosen_modes_by_ability
+        self.choice_store.chosen_colors.remove(&id);
+        self.choice_store.chosen_basic_land_types.remove(&id);
+        self.choice_store.chosen_land_types.remove(&id);
+        self.choice_store.chosen_creature_types.remove(&id);
+        self.choice_store.chosen_card_types.remove(&id);
+        self.choice_store.chosen_players.remove(&id);
+        self.choice_store.chosen_named_options.remove(&id);
+        self.choice_store
+            .chosen_modes_by_ability
             .retain(|(source, _), _| *source != id);
-        self.turn_history
+        self.turn_store
+            .turn_history
             .chosen_modes_by_ability_this_turn
             .retain(|(source, _), _| *source != id);
         // Note: saga_final_chapter_resolved and commanders persist across zone changes
@@ -6290,12 +6405,12 @@ impl GameState {
     /// Record a chosen color for a permanent.
     pub fn set_chosen_color(&mut self, permanent_id: ObjectId, color: crate::color::Color) {
         self.mark_continuous_state_dirty();
-        self.chosen_colors.insert(permanent_id, color);
+        self.choice_store.chosen_colors.insert(permanent_id, color);
     }
 
     /// Get a chosen color for a permanent, if any.
     pub fn chosen_color(&self, permanent_id: ObjectId) -> Option<crate::color::Color> {
-        self.chosen_colors.get(&permanent_id).copied()
+        self.choice_store.chosen_colors.get(&permanent_id).copied()
     }
 
     // === Chosen basic land type helpers ===
@@ -6307,12 +6422,17 @@ impl GameState {
         subtype: crate::types::Subtype,
     ) {
         self.mark_continuous_state_dirty();
-        self.chosen_basic_land_types.insert(permanent_id, subtype);
+        self.choice_store
+            .chosen_basic_land_types
+            .insert(permanent_id, subtype);
     }
 
     /// Get a chosen basic land type for a permanent, if any.
     pub fn chosen_basic_land_type(&self, permanent_id: ObjectId) -> Option<crate::types::Subtype> {
-        self.chosen_basic_land_types.get(&permanent_id).copied()
+        self.choice_store
+            .chosen_basic_land_types
+            .get(&permanent_id)
+            .copied()
     }
 
     // === Chosen land type helpers ===
@@ -6320,12 +6440,17 @@ impl GameState {
     /// Record a chosen land type for a permanent.
     pub fn set_chosen_land_type(&mut self, permanent_id: ObjectId, subtype: crate::types::Subtype) {
         self.mark_continuous_state_dirty();
-        self.chosen_land_types.insert(permanent_id, subtype);
+        self.choice_store
+            .chosen_land_types
+            .insert(permanent_id, subtype);
     }
 
     /// Get a chosen land type for a permanent, if any.
     pub fn chosen_land_type(&self, permanent_id: ObjectId) -> Option<crate::types::Subtype> {
-        self.chosen_land_types.get(&permanent_id).copied()
+        self.choice_store
+            .chosen_land_types
+            .get(&permanent_id)
+            .copied()
     }
 
     // === Chosen creature type helpers ===
@@ -6337,12 +6462,17 @@ impl GameState {
         subtype: crate::types::Subtype,
     ) {
         self.mark_continuous_state_dirty();
-        self.chosen_creature_types.insert(permanent_id, subtype);
+        self.choice_store
+            .chosen_creature_types
+            .insert(permanent_id, subtype);
     }
 
     /// Get a chosen creature type for a permanent, if any.
     pub fn chosen_creature_type(&self, permanent_id: ObjectId) -> Option<crate::types::Subtype> {
-        self.chosen_creature_types.get(&permanent_id).copied()
+        self.choice_store
+            .chosen_creature_types
+            .get(&permanent_id)
+            .copied()
     }
 
     // === Chosen card type helpers ===
@@ -6350,12 +6480,14 @@ impl GameState {
     /// Record a chosen card type for a source object.
     pub fn set_chosen_card_type(&mut self, source_id: ObjectId, card_type: crate::types::CardType) {
         self.mark_continuous_state_dirty();
-        self.chosen_card_types.insert(source_id, card_type);
+        self.choice_store
+            .chosen_card_types
+            .insert(source_id, card_type);
     }
 
     /// Get a chosen card type for a source object, if any.
     pub fn chosen_card_type(&self, source_id: ObjectId) -> Option<crate::types::CardType> {
-        self.chosen_card_types.get(&source_id).copied()
+        self.choice_store.chosen_card_types.get(&source_id).copied()
     }
 
     // === Chosen player helpers ===
@@ -6363,12 +6495,14 @@ impl GameState {
     /// Record a chosen player for a permanent.
     pub fn set_chosen_player(&mut self, permanent_id: ObjectId, player: PlayerId) {
         self.mark_continuous_state_dirty();
-        self.chosen_players.insert(permanent_id, player);
+        self.choice_store
+            .chosen_players
+            .insert(permanent_id, player);
     }
 
     /// Get a chosen player for a permanent, if any.
     pub fn chosen_player(&self, permanent_id: ObjectId) -> Option<PlayerId> {
-        self.chosen_players.get(&permanent_id).copied()
+        self.choice_store.chosen_players.get(&permanent_id).copied()
     }
 
     // === Chosen named option helpers ===
@@ -6376,12 +6510,15 @@ impl GameState {
     /// Record a chosen named option for a permanent.
     pub fn set_chosen_named_option(&mut self, permanent_id: ObjectId, option: String) {
         self.mark_continuous_state_dirty();
-        self.chosen_named_options.insert(permanent_id, option);
+        self.choice_store
+            .chosen_named_options
+            .insert(permanent_id, option);
     }
 
     /// Get a chosen named option for a permanent, if any.
     pub fn chosen_named_option(&self, permanent_id: ObjectId) -> Option<&str> {
-        self.chosen_named_options
+        self.choice_store
+            .chosen_named_options
             .get(&permanent_id)
             .map(String::as_str)
     }
@@ -6542,13 +6679,15 @@ impl GameState {
 
     pub(crate) fn stage_turn_history_event(&mut self, event: &crate::triggers::TriggerEvent) {
         let (object_snapshot, source_snapshot) = self.projected_turn_event_snapshots(event);
-        self.turn_history
+        self.turn_store
+            .turn_history
             .stage_event(event, object_snapshot, source_snapshot);
     }
 
     pub(crate) fn record_turn_history_event(&mut self, event: &crate::triggers::TriggerEvent) {
         let (object_snapshot, source_snapshot) = self.projected_turn_event_snapshots(event);
-        self.turn_history
+        self.turn_store
+            .turn_history
             .record_event(event, object_snapshot, source_snapshot);
     }
 
@@ -6628,14 +6767,16 @@ impl GameState {
             .provenance_graph
             .alloc_child(event.provenance(), ProvenanceNodeKind::TriggerQueued);
         event.set_provenance(queued);
-        self.turn_history.remove_staged_event(initial_provenance);
+        self.turn_store
+            .turn_history
+            .remove_staged_event(initial_provenance);
         self.stage_turn_history_event(&event);
-        self.pending_trigger_events.push(event);
+        self.effect_store.pending_trigger_events.push(event);
     }
 
     /// Take all pending trigger events (empties the queue).
     pub fn take_pending_trigger_events(&mut self) -> Vec<crate::triggers::TriggerEvent> {
-        std::mem::take(&mut self.pending_trigger_events)
+        std::mem::take(&mut self.effect_store.pending_trigger_events)
     }
 
     pub fn record_ui_battlefield_transition(
@@ -6924,7 +7065,8 @@ mod tests {
         let bob_creature = game.create_object_from_card(&creature_card, bob, Zone::Battlefield);
         let alice_artifact = game.create_object_from_card(&artifact_card, alice, Zone::Battlefield);
 
-        game.mana_spend_effects
+        game.effect_store
+            .mana_spend_effects
             .permissions
             .push(ActiveManaSpendPermission {
                 permission: ManaSpendPermission::any_color_for_activation(

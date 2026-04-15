@@ -1138,7 +1138,11 @@ fn collect_state_triggers_for_object(
         }
 
         active.insert(key);
-        if game.active_state_trigger_conditions.contains(&key) {
+        if game
+            .effect_store
+            .active_state_trigger_conditions
+            .contains(&key)
+        {
             continue;
         }
 
@@ -1227,7 +1231,7 @@ pub fn check_delayed_triggers(
     let mut triggered = Vec::new();
     let mut to_remove = Vec::new();
 
-    for (idx, delayed) in game.delayed_triggers.iter().enumerate() {
+    for (idx, delayed) in game.effect_store.delayed_triggers.iter().enumerate() {
         if delayed
             .expires_at_turn
             .is_some_and(|max_turn| game.turn.turn_number > max_turn)
@@ -1340,7 +1344,7 @@ pub fn check_delayed_triggers(
         to_remove.dedup();
         let mut remove_iter = to_remove.into_iter().peekable();
         let mut idx = 0usize;
-        game.delayed_triggers.retain(|_| {
+        game.effect_store.delayed_triggers.retain(|_| {
             let remove = remove_iter.peek().is_some_and(|next| *next == idx);
             if remove {
                 remove_iter.next();
@@ -1465,6 +1469,7 @@ pub fn player_filter_matches_with_context(
             })
             .unwrap_or(false),
         PlayerFilter::CastCardTypeThisTurn(card_type) => game
+            .turn_store
             .turn_history
             .spell_cast_snapshot_history()
             .iter()
