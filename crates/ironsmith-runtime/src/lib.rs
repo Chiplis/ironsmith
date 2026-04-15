@@ -17,7 +17,6 @@ pub mod dungeon;
 pub mod effect;
 mod effect_text_shared;
 pub mod effects;
-pub mod event_processor;
 pub mod events;
 pub mod filter;
 pub mod game_loop;
@@ -99,7 +98,7 @@ pub use cost::{OptionalCost, OptionalCostsPaid, TotalCost};
 pub use effect::Condition as ConditionExpr;
 pub use effect::{ChoiceCount, Effect, Until, Value};
 pub use effects::{DealDamageEffect, EffectExecutor};
-pub use event_processor::{
+pub use events::processing::{
     DestroyResult,
     DrawResult,
     EtbEventResult,

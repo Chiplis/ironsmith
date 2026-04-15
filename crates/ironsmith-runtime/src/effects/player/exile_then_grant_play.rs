@@ -53,7 +53,7 @@ impl EffectExecutor for ExileThenGrantPlayEffect {
             &additional_effects,
         );
 
-        let crate::event_processor::EventOutcome::Proceed(result) = outcome else {
+        let crate::events::processing::EventOutcome::Proceed(result) = outcome else {
             return Ok(EffectOutcome::count(0));
         };
         if result.final_zone != Zone::Exile {

@@ -7,7 +7,7 @@ use crate::effects::delayed::trigger_queue::{
     DelayedTriggerTemplate, DelayedWatcherIdentity, queue_delayed_from_template,
 };
 use crate::effects::helpers::resolve_objects_for_effect;
-use crate::event_processor::EventOutcome;
+use crate::events::processing::EventOutcome;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::tag::{SOURCE_EXILED_TAG, TagKey};

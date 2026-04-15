@@ -1194,12 +1194,12 @@ mod tests {
     }
 
     fn assert_zone_change_destination(
-        result: crate::event_processor::TraitEventResult,
+        result: crate::events::processing::TraitEventResult,
         expected: Zone,
     ) {
         match result {
-            crate::event_processor::TraitEventResult::Proceed(event)
-            | crate::event_processor::TraitEventResult::Modified(event) => {
+            crate::events::processing::TraitEventResult::Proceed(event)
+            | crate::events::processing::TraitEventResult::Modified(event) => {
                 let zone_change =
                     crate::events::downcast_event::<crate::events::ZoneChangeEvent>(event.inner())
                         .expect("replacement result should still be a zone change event");
@@ -1304,7 +1304,7 @@ mod tests {
             ),
         );
 
-        let result = crate::event_processor::process_zone_change_full(
+        let result = crate::events::processing::process_zone_change_full(
             &mut game,
             colossus_id,
             Zone::Hand,
@@ -1313,7 +1313,7 @@ mod tests {
         );
 
         match result {
-            crate::event_processor::ZoneChangeResult::NeedsChoice {
+            crate::events::processing::ZoneChangeResult::NeedsChoice {
                 player,
                 applicable_effects,
                 event,
@@ -1363,7 +1363,7 @@ mod tests {
 
                 let event = (*event).clone();
                 assert_zone_change_destination(
-                    crate::event_processor::process_event_with_chosen_replacement_trait(
+                    crate::events::processing::process_event_with_chosen_replacement_trait(
                         &mut game,
                         event.clone(),
                         library_effect_id,
@@ -1371,7 +1371,7 @@ mod tests {
                     Zone::Library,
                 );
                 assert_zone_change_destination(
-                    crate::event_processor::process_event_with_chosen_replacement_trait(
+                    crate::events::processing::process_event_with_chosen_replacement_trait(
                         &mut game,
                         event,
                         exile_effect_id,

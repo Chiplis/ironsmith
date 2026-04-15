@@ -145,7 +145,7 @@ pub(crate) fn apply_processed_damage_assignment(
             }
 
             if is_creature && (keywords.has_infect || keywords.has_wither) {
-                let final_count = crate::event_processor::process_put_counters_with_event(
+                let final_count = crate::events::processing::process_put_counters_with_event(
                     game,
                     object_id,
                     crate::CounterType::MinusOneMinusOne,

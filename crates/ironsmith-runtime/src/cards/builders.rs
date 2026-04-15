@@ -4492,7 +4492,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .stable_id;
 
         let mut dm = SelectFirstDecisionMaker;
-        let zone_change = crate::event_processor::process_zone_change(
+        let zone_change = crate::events::processing::process_zone_change(
             &mut game,
             bears_id,
             Zone::Battlefield,
@@ -4503,7 +4503,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         assert!(
             matches!(
                 zone_change,
-                crate::event_processor::ZoneChangeOutcome::Replaced
+                crate::events::processing::ZoneChangeOutcome::Replaced
             ),
             "expected Dauthi replacement to exile the creature, got {zone_change:?}"
         );

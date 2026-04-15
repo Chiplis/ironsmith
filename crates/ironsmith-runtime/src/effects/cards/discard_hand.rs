@@ -55,7 +55,7 @@ impl EffectExecutor for DiscardHandEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        use crate::event_processor::execute_discard;
+        use crate::events::processing::execute_discard;
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
 
         let hand_cards: Vec<_> = game

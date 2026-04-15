@@ -8,7 +8,7 @@ use crate::filter::ObjectFilterExt as _;
 use super::{StaticAbilityId, StaticAbilityKind};
 use crate::effect::Restriction;
 use crate::effects::EffectExecutor;
-use crate::event_processor::{EventOutcome, process_zone_change};
+use crate::events::processing::{EventOutcome, process_zone_change};
 use crate::events::permanents::SacrificeEvent;
 use crate::events::{EventKind, KeywordActionEvent};
 use crate::game_state::{CantEffectTracker, GameState};

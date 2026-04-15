@@ -661,13 +661,13 @@ fn apply_single_sba_with_snapshots(
             if is_destroyed_by_damage_sba {
                 // Damage-based SBAs are destruction, so process through the event
                 // system to allow replacement effects like regeneration.
-                use crate::event_processor::process_destroy;
+                use crate::events::processing::process_destroy;
                 let _ = process_destroy(game, obj_id, None, decision_maker);
             } else {
                 // 0 toughness or object not found - goes directly to graveyard
                 // Regeneration cannot replace this (Rule 704.5f), but other
                 // replacement effects like Yawgmoth's Will can still apply
-                use crate::event_processor::{ZoneChangeOutcome, process_zone_change};
+                use crate::events::processing::{ZoneChangeOutcome, process_zone_change};
                 let outcome = process_zone_change(
                     game,
                     obj_id,
@@ -684,7 +684,7 @@ fn apply_single_sba_with_snapshots(
 
         StateBasedAction::PlaneswalkerDies(obj_id) => {
             // Process through replacement effects (e.g., Yawgmoth's Will)
-            use crate::event_processor::{ZoneChangeOutcome, process_zone_change};
+            use crate::events::processing::{ZoneChangeOutcome, process_zone_change};
             let outcome = process_zone_change(
                 game,
                 obj_id,

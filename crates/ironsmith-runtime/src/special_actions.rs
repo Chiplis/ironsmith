@@ -8,7 +8,7 @@ use crate::cost::CostPaymentError;
 use crate::costs::{CostContext, CostPaymentResult};
 use crate::decisions::make_decision;
 use crate::decisions::specs::ChooseObjectsSpec;
-use crate::event_processor::{EventOutcome, execute_discard};
+use crate::events::processing::{EventOutcome, execute_discard};
 use crate::events::cause::EventCause;
 use crate::events::permanents::SacrificeEvent;
 use crate::filter::{FilterContext, ObjectFilter};

@@ -3939,8 +3939,8 @@ mod tests {
             .attachments
             .push(aura_id);
 
-        let result = crate::event_processor::process_destroy_full(&mut game, creature_id, None);
-        assert_eq!(result, crate::event_processor::DestroyResult::Replaced);
+        let result = crate::events::processing::process_destroy_full(&mut game, creature_id, None);
+        assert_eq!(result, crate::events::processing::DestroyResult::Replaced);
         assert!(
             game.object(creature_id).is_some(),
             "creature should survive"

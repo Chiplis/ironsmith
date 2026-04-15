@@ -7,7 +7,7 @@ use crate::effects::helpers::{
     resolve_value,
 };
 use crate::effects::{CostExecutableEffect, EffectExecutor};
-use crate::event_processor::EventOutcome;
+use crate::events::processing::EventOutcome;
 use crate::events::permanents::SacrificeEvent;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::filter::PlayerFilterExt;

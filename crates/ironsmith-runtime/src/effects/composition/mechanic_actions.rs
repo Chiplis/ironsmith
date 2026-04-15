@@ -13,7 +13,7 @@ use crate::effects::zones::apply_zone_change;
 use crate::effects::zones::{
     BattlefieldEntryOptions, BattlefieldEntryOutcome, move_to_battlefield_with_options,
 };
-use crate::event_processor::EventOutcome;
+use crate::events::processing::EventOutcome;
 use crate::events::permanents::SacrificeEvent;
 use crate::events::{CardRevealedEvent, KeywordActionEvent, KeywordActionKind};
 use crate::effects::{ExecutionContext, ExecutionError};

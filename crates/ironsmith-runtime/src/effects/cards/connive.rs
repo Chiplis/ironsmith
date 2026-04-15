@@ -71,7 +71,7 @@ impl EffectExecutor for ConniveEffect {
             if !hand_cards.is_empty() {
                 use crate::decisions::make_decision;
                 use crate::decisions::specs::ChooseObjectsSpec;
-                use crate::event_processor::execute_discard;
+                use crate::events::processing::execute_discard;
 
                 let spec = ChooseObjectsSpec::new(
                     ctx.source,

@@ -132,7 +132,6 @@ fn production_rust_files_stay_under_size_ceiling() {
         "crates/ironsmith-runtime/src/decision/mana.rs",
         "crates/ironsmith-runtime/src/effect.rs",
         "crates/ironsmith-runtime/src/effects/helpers.rs",
-        "crates/ironsmith-runtime/src/event_processor.rs",
         "crates/ironsmith-runtime/src/filter.rs",
         "crates/ironsmith-runtime/src/game_loop/priority_cast.rs",
         "crates/ironsmith-runtime/src/game_loop/priority_mana.rs",
@@ -239,6 +238,7 @@ fn aggregate_compiled_card_models_are_core_owned() {
 fn runtime_public_surface_does_not_export_legacy_executor_or_game_event_modules() {
     let root = workspace_root();
     let lib_rs = read_repo_file(&root, "crates/ironsmith-runtime/src/lib.rs");
+    let effects_mod = read_repo_file(&root, "crates/ironsmith-runtime/src/effects/mod.rs");
 
     for forbidden in ["pub mod executor;", "pub mod game_event;"] {
         assert!(
@@ -246,6 +246,23 @@ fn runtime_public_surface_does_not_export_legacy_executor_or_game_event_modules(
             "runtime lib.rs should not publicly export legacy module `{forbidden}`"
         );
     }
+
+    assert!(
+        !root.join("crates/ironsmith-runtime/src/executor.rs").exists(),
+        "legacy executor.rs should not exist once effect execution is effects-owned"
+    );
+    assert!(
+        !lib_rs.contains("ExecutionContext"),
+        "runtime lib.rs should not publicly surface the legacy ExecutionContext name"
+    );
+    assert!(
+        effects_mod.contains("pub type EffectContext<'a> = context::ExecutionContext<'a>;"),
+        "effects/mod.rs should keep EffectContext as the public execution-context name"
+    );
+    assert!(
+        effects_mod.contains("pub(crate) use context::ExecutionContext;"),
+        "effects/mod.rs should keep ExecutionContext crate-private for runtime internals"
+    );
 }
 
 #[test]
@@ -317,5 +334,35 @@ fn compiler_runtime_backend_does_not_import_ironsmith_runtime_directly() {
     assert!(
         offenders.is_empty(),
         "compiler runtime_backend should not import ironsmith-runtime directly: {offenders:?}"
+    );
+}
+
+#[test]
+fn runtime_code_does_not_import_legacy_executor_module_paths() {
+    let root = workspace_root();
+    let runtime_src = root.join("crates/ironsmith-runtime/src");
+    let mut files = Vec::new();
+    collect_rust_files(&runtime_src, &mut files);
+
+    let offenders: Vec<String> = files
+        .into_iter()
+        .filter_map(|path| {
+            let content = fs::read_to_string(&path)
+                .unwrap_or_else(|err| panic!("failed to read {}: {err}", path.display()));
+            (content.contains("crate::executor")
+                || content.contains("use crate::executor")
+                || content.contains("super::executor"))
+            .then(|| {
+                path.strip_prefix(&root)
+                    .unwrap_or(&path)
+                    .display()
+                    .to_string()
+            })
+        })
+        .collect();
+
+    assert!(
+        offenders.is_empty(),
+        "runtime source should not import legacy executor module paths: {offenders:?}"
     );
 }

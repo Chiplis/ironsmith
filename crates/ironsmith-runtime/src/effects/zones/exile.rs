@@ -7,7 +7,7 @@ use crate::effects::helpers::{
     ObjectApplyResultPolicy, apply_single_target_object_from_context, apply_to_selected_objects,
 };
 use crate::effects::{CostExecutableEffect, EffectExecutor};
-use crate::event_processor::EventOutcome;
+use crate::events::processing::EventOutcome;
 use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};
 use crate::filter::FilterContext;
 use crate::game_state::GameState;

@@ -30,7 +30,7 @@ impl EffectExecutor for UmbraArmorEffect {
             game.clear_damage(permanent);
         }
 
-        let _ = crate::event_processor::process_destroy(game, self.aura, None, ctx.decision_maker);
+        let _ = crate::events::processing::process_destroy(game, self.aura, None, ctx.decision_maker);
 
         Ok(EffectOutcome::resolved())
     }

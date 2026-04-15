@@ -6,7 +6,7 @@
 use crate::effect::{EffectOutcome, Value};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_from_spec, resolve_value};
-use crate::event_processor::process_damage_assignments_with_event_with_source_snapshot;
+use crate::events::processing::process_damage_assignments_with_event_with_source_snapshot;
 use crate::events::DamageEvent;
 use crate::events::LifeLossEvent;
 use crate::events::combat::{CreatureAttackedEvent, CreatureBecameBlockedEvent};
@@ -139,7 +139,7 @@ pub(crate) fn apply_processed_damage_outcome(
         && total_damage_dealt > 0
         && let Some(controller) = source_controller
     {
-        let life_to_gain = crate::event_processor::process_life_gain_with_event(
+        let life_to_gain = crate::events::processing::process_life_gain_with_event(
             game,
             controller,
             total_damage_dealt,

@@ -7,7 +7,7 @@ use crate::effects::helpers::{
     resolve_tagged_object_id,
 };
 use crate::effects::{CostExecutableEffect, EffectExecutor};
-use crate::event_processor::EventOutcome;
+use crate::events::processing::EventOutcome;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::{ChooseSpec, ObjectFilter};

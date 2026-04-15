@@ -4,7 +4,7 @@ use crate::continuous::{EffectTarget, Modification, PtSublayer};
 use crate::effect::{Effect, EffectOutcome, Until, Value};
 use crate::effects::helpers::{resolve_player_filter, resolve_single_object_for_effect};
 use crate::effects::{ApplyContinuousEffect, EffectExecutor};
-use crate::event_processor::process_life_gain_with_event;
+use crate::events::processing::process_life_gain_with_event;
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
 use crate::target::{ChooseSpec, PlayerFilter};

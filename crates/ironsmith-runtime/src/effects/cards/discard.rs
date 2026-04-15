@@ -133,7 +133,7 @@ impl EffectExecutor for DiscardEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         use crate::decisions::make_decision;
         use crate::decisions::specs::ChooseObjectsSpec;
-        use crate::event_processor::execute_discard;
+        use crate::events::processing::execute_discard;
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
         let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
         let mut discarded = 0;

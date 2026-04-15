@@ -549,7 +549,7 @@ pub fn apply_cleanup_discard(
     cards_to_discard: &[crate::ids::ObjectId],
     decision_maker: &mut impl DecisionMaker,
 ) -> Vec<crate::ids::ObjectId> {
-    use crate::event_processor::execute_discard;
+    use crate::events::processing::execute_discard;
     use crate::events::cause::EventCause;
     use crate::zone::Zone;
 

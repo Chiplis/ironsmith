@@ -126,7 +126,7 @@ impl EffectExecutor for PreventNextTimeDamageEffect {
 mod tests {
     use super::*;
     use crate::decision::SelectFirstDecisionMaker;
-    use crate::event_processor::process_damage_with_event;
+    use crate::events::processing::process_damage_with_event;
     use crate::events::traits::ReplacementMatcher;
     use crate::events::DamageTarget;
     use crate::ids::{ObjectId, PlayerId};

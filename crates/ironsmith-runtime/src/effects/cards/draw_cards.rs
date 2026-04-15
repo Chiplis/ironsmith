@@ -204,7 +204,7 @@ impl EffectExecutor for DrawCardsEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        use crate::event_processor::{EventOutcome, process_draw};
+        use crate::events::processing::{EventOutcome, process_draw};
 
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
         let count = resolve_value(game, &self.count, ctx)?.max(0) as u32;

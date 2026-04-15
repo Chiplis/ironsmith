@@ -3,7 +3,7 @@
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_objects_for_effect, resolve_player_filter};
-use crate::event_processor::{EventOutcome, process_zone_change_with_additional_effects};
+use crate::events::processing::{EventOutcome, process_zone_change_with_additional_effects};
 use crate::events::ShuffleLibraryEvent;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;

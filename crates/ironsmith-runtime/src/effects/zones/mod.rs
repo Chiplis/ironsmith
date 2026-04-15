@@ -7,7 +7,7 @@ use std::collections::HashSet;
 
 use crate::DecisionMaker;
 use crate::decisions::context::{DecisionContext, OrderContext, enrich_display_hints};
-use crate::event_processor::{EventOutcome, process_zone_change_with_additional_effects};
+use crate::events::processing::{EventOutcome, process_zone_change_with_additional_effects};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::replacement::ReplacementEffect;

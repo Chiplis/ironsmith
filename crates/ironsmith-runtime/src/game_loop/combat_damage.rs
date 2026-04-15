@@ -255,7 +255,7 @@ pub(super) fn apply_combat_lifelink(
     }
 
     let life_to_gain =
-        crate::event_processor::process_life_gain_with_event(game, controller, total_damage_dealt);
+        crate::events::processing::process_life_gain_with_event(game, controller, total_damage_dealt);
     if life_to_gain > 0
         && let Some(player) = game.player_mut(controller)
     {
@@ -409,7 +409,7 @@ pub(super) fn deal_damage_to_defender(
             })
         }
         AttackTarget::Planeswalker(pw_id) => {
-            use crate::event_processor::process_damage_assignments_with_event;
+            use crate::events::processing::process_damage_assignments_with_event;
             use crate::events::DamageTarget as EventDamageTarget;
 
             let damage_result =
@@ -516,7 +516,7 @@ pub(super) fn apply_damage_to_permanent(
     source_id: ObjectId,
     result: &DamageResult,
 ) -> AppliedPermanentDamage {
-    use crate::event_processor::process_damage_assignments_with_event;
+    use crate::events::processing::process_damage_assignments_with_event;
     use crate::events::DamageTarget;
 
     let processed = process_damage_assignments_with_event(
@@ -586,7 +586,7 @@ pub(super) fn apply_damage_to_player(
     source_id: ObjectId,
     result: &DamageResult,
 ) -> AppliedPlayerDamage {
-    use crate::event_processor::process_damage_assignments_with_event;
+    use crate::events::processing::process_damage_assignments_with_event;
     use crate::events::DamageTarget;
 
     let processed = process_damage_assignments_with_event(
@@ -778,7 +778,7 @@ mod tests {
         add_doubling_season_like_effect(&mut game, bob, blocker);
         add_fiery_emancipation_like_effect(&mut game, alice, attacker);
 
-        let processed = crate::event_processor::process_damage_assignments_with_event(
+        let processed = crate::events::processing::process_damage_assignments_with_event(
             &mut game,
             attacker,
             EventDamageTarget::Object(blocker),

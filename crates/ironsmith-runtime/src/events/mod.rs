@@ -17,7 +17,7 @@
 //!
 //! ```ignore
 //! use ironsmith::events::{Event, EventContext};
-//! use ironsmith::event_processor::process_trait_event;
+//! use ironsmith::events::processing::process_trait_event;
 //!
 //! // Create a damage event using the factory method
 //! let event = Event::damage(source_id, DamageTarget::Player(player), 3, false);
@@ -62,6 +62,7 @@
 
 pub mod cause;
 pub mod context;
+pub mod processing;
 pub mod traits;
 
 // Event type modules

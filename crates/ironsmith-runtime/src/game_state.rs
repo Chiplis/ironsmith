@@ -3017,7 +3017,7 @@ impl GameState {
         }
 
         // Process through ETB replacement effects
-        let result = crate::event_processor::process_etb_with_event_and_dm(
+        let result = crate::events::processing::process_etb_with_event_and_dm(
             self,
             old_id,
             old_zone,

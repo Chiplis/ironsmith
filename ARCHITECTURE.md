@@ -60,8 +60,8 @@ This repository now uses an explicit workspace split instead of a root product c
 - `ironsmith-registry` still needs to become the sole owner of concrete
   catalog/loading policy, with adapter-owned instances instead of hidden
   singleton access paths.
-- `ironsmith-runtime` still needs to expose only one public effect execution
-  path and one public event/replacement path.
+- `ironsmith-runtime` now exposes one public effect execution path through
+  `effects` and one public event/replacement path through `events`.
 - `GameSession<C>` and `GameState` still need to become the canonical
   service/state boundary: explicit catalog injection, no gameplay-time global
   registry access, and a private aggregate over internal state stores.

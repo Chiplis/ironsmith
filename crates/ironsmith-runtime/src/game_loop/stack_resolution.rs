@@ -770,7 +770,7 @@ pub(super) fn resolve_stack_entry_full(
             };
 
             if has_rebound {
-                if let crate::event_processor::EventOutcome::Proceed(result) =
+                if let crate::events::processing::EventOutcome::Proceed(result) =
                     crate::effects::zones::apply_zone_change(
                         game,
                         entry.object_id,

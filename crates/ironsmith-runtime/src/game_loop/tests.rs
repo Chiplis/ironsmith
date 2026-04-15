@@ -14205,7 +14205,7 @@ fn test_backdraft_cast_from_hand_uses_blasphemous_act_damage_history() {
 fn test_dauthi_voidwalker_activation_makes_void_counter_card_castable_from_exile_for_free() {
     use crate::alternative_cast::CastingMethod;
     use crate::decision::{LegalAction, compute_legal_actions};
-    use crate::event_processor::ZoneChangeOutcome;
+    use crate::events::processing::ZoneChangeOutcome;
     use crate::effects::{ExecutionContext, execute_effect};
     use crate::object::CounterType;
 
@@ -14235,7 +14235,7 @@ fn test_dauthi_voidwalker_activation_makes_void_counter_card_castable_from_exile
         .stable_id;
 
     let mut dm = SelectFirstDecisionMaker;
-    let zone_change = crate::event_processor::process_zone_change(
+    let zone_change = crate::events::processing::process_zone_change(
         &mut game,
         bears_id,
         Zone::Battlefield,
