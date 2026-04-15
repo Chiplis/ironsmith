@@ -8,7 +8,7 @@ use crate::effects::damage::deal_damage::apply_processed_damage_outcome;
 use crate::effects::helpers::{
     resolve_objects_from_spec, resolve_players_from_spec, resolve_value,
 };
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::{GameState, Target};
 use crate::target::ChooseSpec;
 use crate::types::CardType;
@@ -97,8 +97,8 @@ impl EffectExecutor for DealDistributedDamageEffect {
             }
 
             let damage_target = match target {
-                Target::Player(player_id) => crate::game_event::DamageTarget::Player(player_id),
-                Target::Object(object_id) => crate::game_event::DamageTarget::Object(object_id),
+                Target::Player(player_id) => crate::events::DamageTarget::Player(player_id),
+                Target::Object(object_id) => crate::events::DamageTarget::Object(object_id),
             };
 
             outcomes.push(apply_processed_damage_outcome(

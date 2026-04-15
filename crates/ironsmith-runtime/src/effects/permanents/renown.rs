@@ -3,7 +3,7 @@
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::events::other::{KeywordActionEvent, KeywordActionKind};
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::object::CounterType;
 use crate::triggers::TriggerEvent;
@@ -61,7 +61,7 @@ impl EffectExecutor for RenownEffect {
 mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
     use crate::ids::{CardId, PlayerId};
     use crate::types::CardType;
     use crate::zone::Zone;

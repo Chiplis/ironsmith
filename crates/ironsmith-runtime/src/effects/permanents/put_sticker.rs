@@ -2,7 +2,7 @@ use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_single_object_from_spec;
 use crate::events::{KeywordActionEvent, KeywordActionKind};
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::snapshot::ObjectSnapshot;
 use crate::target::ChooseSpec;
@@ -60,7 +60,7 @@ impl EffectExecutor for PutStickerEffect {
 mod tests {
     use super::*;
     use crate::effects::EffectExecutor;
-    use crate::executor::ResolvedTarget;
+    use crate::effects::ResolvedTarget;
     use crate::game_state::GameState;
     use crate::ids::{CardId, PlayerId};
     use crate::target::ObjectFilter;

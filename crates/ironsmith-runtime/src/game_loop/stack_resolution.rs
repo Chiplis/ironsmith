@@ -1,5 +1,5 @@
 use super::*;
-use crate::executor::rebase_target_scope;
+use crate::effects::rebase_target_scope;
 use crate::triggers::Trigger;
 
 pub(super) fn active_target_assignments_for_effect(
@@ -22,7 +22,7 @@ fn representative_segment_targets(
     ctx: &mut ExecutionContext,
     effect: &Effect,
     effect_target_assignments: Vec<crate::game_state::TargetAssignment>,
-) -> Result<Option<Vec<crate::executor::ResolvedTarget>>, GameLoopError> {
+) -> Result<Option<Vec<crate::effects::ResolvedTarget>>, GameLoopError> {
     ctx.with_temp_target_assignments(effect_target_assignments, |ctx| {
         let Some(spec) = effect.0.get_target_spec() else {
             return Ok(None);
@@ -30,10 +30,10 @@ fn representative_segment_targets(
         let object_id =
             match crate::effects::helpers::resolve_single_object_for_effect(game, ctx, spec) {
                 Ok(id) => id,
-                Err(crate::executor::ExecutionError::InvalidTarget) => return Ok(None),
+                Err(crate::effects::ExecutionError::InvalidTarget) => return Ok(None),
                 Err(err) => return Err(GameLoopError::ResolutionFailed(err.to_string())),
             };
-        Ok(Some(vec![crate::executor::ResolvedTarget::Object(
+        Ok(Some(vec![crate::effects::ResolvedTarget::Object(
             object_id,
         )]))
     })
@@ -65,7 +65,7 @@ fn apply_self_replacement_tag_prelude(
         if !is_pure_tag_effect {
             break;
         }
-        crate::executor::execute_effect(game, effect, ctx)
+        crate::effects::execute_effect(game, effect, ctx)
             .map_err(|err| GameLoopError::ResolutionFailed(err.to_string()))?;
     }
     Ok(())
@@ -181,7 +181,7 @@ pub(crate) fn execute_resolution_program(
         }
 
         let mut active_scope: Option<(
-            Vec<crate::executor::ResolvedTarget>,
+            Vec<crate::effects::ResolvedTarget>,
             Vec<crate::game_state::TargetAssignment>,
         )> = None;
         for effect in &selected_effects {
@@ -610,10 +610,10 @@ pub(super) fn resolve_stack_entry_full(
                             locked_targets: vec![result.new_id],
                         },
                     );
-                    let _ = crate::executor::execute_effect(
+                    let _ = crate::effects::execute_effect(
                         game,
                         &crate::effect::Effect::new(dash_haste),
-                        &mut crate::executor::ExecutionContext::new_default(
+                        &mut crate::effects::ExecutionContext::new_default(
                             result.new_id,
                             entry.controller,
                         ),
@@ -630,10 +630,10 @@ pub(super) fn resolve_stack_entry_full(
                         vec![result.new_id],
                         crate::target::PlayerFilter::Specific(entry.controller),
                     );
-                    let _ = crate::executor::execute_effect(
+                    let _ = crate::effects::execute_effect(
                         game,
                         &crate::effect::Effect::new(return_to_hand),
-                        &mut crate::executor::ExecutionContext::new_default(
+                        &mut crate::effects::ExecutionContext::new_default(
                             result.new_id,
                             entry.controller,
                         ),
@@ -647,10 +647,10 @@ pub(super) fn resolve_stack_entry_full(
                         ),
                         crate::effect::Until::YouStopControllingThis,
                     );
-                    let _ = crate::executor::execute_effect(
+                    let _ = crate::effects::execute_effect(
                         game,
                         &crate::effect::Effect::new(suspend_haste),
-                        &mut crate::executor::ExecutionContext::new_default(
+                        &mut crate::effects::ExecutionContext::new_default(
                             result.new_id,
                             entry.controller,
                         ),
@@ -670,10 +670,10 @@ pub(super) fn resolve_stack_entry_full(
                         vec![result.new_id],
                         crate::target::PlayerFilter::Specific(entry.controller),
                     );
-                    let _ = crate::executor::execute_effect(
+                    let _ = crate::effects::execute_effect(
                         game,
                         &crate::effect::Effect::new(exile_then_grant),
-                        &mut crate::executor::ExecutionContext::new_default(
+                        &mut crate::effects::ExecutionContext::new_default(
                             result.new_id,
                             entry.controller,
                         ),

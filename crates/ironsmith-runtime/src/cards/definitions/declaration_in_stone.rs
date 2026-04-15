@@ -27,7 +27,7 @@ mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
     use crate::cards::definitions::grizzly_bears;
-    use crate::executor::{ExecutionContext, ResolvedTarget, execute_effect};
+    use crate::effects::{ExecutionContext, ResolvedTarget, execute_effect};
     use crate::filter::{ObjectRef, TaggedOpbjectRelation};
     use crate::target::{ObjectFilter, PlayerFilter};
     use crate::types::Subtype;

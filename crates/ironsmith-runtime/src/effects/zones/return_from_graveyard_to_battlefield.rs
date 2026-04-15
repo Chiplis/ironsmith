@@ -6,7 +6,7 @@ use super::battlefield_entry::{
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_single_object_for_effect;
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
 use crate::zone::Zone;
@@ -118,7 +118,7 @@ mod tests {
     use crate::card::{CardBuilder, PowerToughness};
     use crate::decision::DecisionMaker;
     use crate::decisions::context::SelectObjectsContext;
-    use crate::executor::ResolvedTarget;
+    use crate::effects::ResolvedTarget;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::Object;

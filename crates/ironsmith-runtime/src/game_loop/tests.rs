@@ -44,11 +44,11 @@ fn resolve_triggered_ability_from_spell_cast(
         SpellCastEvent::new(spell_id, controller, Zone::Hand),
         crate::provenance::ProvNodeId::default(),
     );
-    let mut ctx = crate::executor::ExecutionContext::new(source_id, controller, decision_maker)
+    let mut ctx = crate::effects::ExecutionContext::new(source_id, controller, decision_maker)
         .with_triggering_event(event);
 
     for effect in &triggered.effects {
-        crate::executor::execute_effect(game, effect, &mut ctx)
+        crate::effects::execute_effect(game, effect, &mut ctx)
             .expect("Quandrix Apprentice trigger should resolve");
     }
 }
@@ -1315,7 +1315,7 @@ fn crystalline_resonance_copies_target_permanent_when_you_cycle() {
 
 #[test]
 fn test_make_an_example_leaves_unselected_creatures_on_the_battlefield() {
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
 
     struct ChooseFirstObjectDecisionMaker;
 
@@ -2594,7 +2594,7 @@ fn test_stangg_linked_twin_sacrifice_survives_legend_rule_for_other_twin() {
     use crate::ability::AbilityKind;
     use crate::cards::CardDefinitionBuilder;
     use crate::events::zones::EnterBattlefieldEvent;
-    use crate::executor::{ExecutionContext, execute_effect};
+    use crate::effects::{ExecutionContext, execute_effect};
     use crate::ids::CardId;
     use crate::triggers::TriggerEvent;
     use crate::zone::Zone;
@@ -3645,8 +3645,8 @@ fn test_distinct_object_target_clauses_resolve_against_their_own_selected_target
 
     let mut ctx = ExecutionContext::new_default(source_id, alice)
         .with_targets(vec![
-            crate::executor::ResolvedTarget::Object(creature_id),
-            crate::executor::ResolvedTarget::Object(land_id),
+            crate::effects::ResolvedTarget::Object(creature_id),
+            crate::effects::ResolvedTarget::Object(land_id),
         ])
         .with_target_assignments(vec![
             crate::game_state::TargetAssignment {
@@ -3665,9 +3665,9 @@ fn test_distinct_object_target_clauses_resolve_against_their_own_selected_target
         crate::filter::ObjectFilter::land(),
     )));
 
-    crate::executor::execute_effect(&mut game, &destroy_creature, &mut ctx)
+    crate::effects::execute_effect(&mut game, &destroy_creature, &mut ctx)
         .expect("creature-destroy effect should resolve");
-    crate::executor::execute_effect(&mut game, &destroy_land, &mut ctx)
+    crate::effects::execute_effect(&mut game, &destroy_land, &mut ctx)
         .expect("land-destroy effect should resolve");
 
     assert!(
@@ -6113,7 +6113,7 @@ fn test_sba_deathtouch_damage_destroys_creature() {
     let applied = crate::rules::damage::apply_processed_damage_assignment(
         &mut game,
         attacker_id,
-        crate::game_event::DamageTarget::Object(victim_id),
+        crate::events::DamageTarget::Object(victim_id),
         1,
         keywords,
         crate::events::cause::EventCause::effect(),
@@ -6156,7 +6156,7 @@ fn test_deathtouch_sba_marker_clears_after_each_check() {
     let applied = crate::rules::damage::apply_processed_damage_assignment(
         &mut game,
         attacker_id,
-        crate::game_event::DamageTarget::Object(victim_id),
+        crate::events::DamageTarget::Object(victim_id),
         1,
         keywords,
         crate::events::cause::EventCause::effect(),
@@ -6573,7 +6573,7 @@ fn terastodon_etb_destroys_up_to_three_permanents_and_makes_elephants() {
     use crate::cards::builders::CardDefinitionBuilder;
     use crate::decision::DecisionMaker;
     use crate::events::zones::EnterBattlefieldEvent;
-    use crate::executor::{ExecutionContext, execute_effect};
+    use crate::effects::{ExecutionContext, execute_effect};
     use crate::ids::CardId;
     use crate::provenance::ProvNodeId;
     use crate::triggers::TriggerEvent;
@@ -6671,9 +6671,9 @@ fn terastodon_etb_destroys_up_to_three_permanents_and_makes_elephants() {
     let mut ctx = ExecutionContext::new(terastodon_id, alice, &mut dm)
         .with_triggering_event(event)
         .with_targets(vec![
-            crate::executor::ResolvedTarget::Object(alice_enchantment_id),
-            crate::executor::ResolvedTarget::Object(bob_artifact_id),
-            crate::executor::ResolvedTarget::Object(bob_land_id),
+            crate::effects::ResolvedTarget::Object(alice_enchantment_id),
+            crate::effects::ResolvedTarget::Object(bob_artifact_id),
+            crate::effects::ResolvedTarget::Object(bob_land_id),
         ])
         .with_target_assignments(vec![crate::game_state::TargetAssignment {
             spec: target_spec,
@@ -6825,7 +6825,7 @@ fn test_quintessential_katana_granted_combat_damage_trigger_stacks_and_resolves(
     let damage_event = TriggerEvent::new_with_provenance(
         crate::events::DamageEvent::with_cause(
             attacker_id,
-            crate::game_event::DamageTarget::Player(bob),
+            crate::events::DamageTarget::Player(bob),
             3,
             true,
             crate::events::cause::EventCause::combat_damage(attacker_id),
@@ -6898,7 +6898,7 @@ fn test_ragavan_trigger_exiles_top_card_of_damaged_players_library() {
     let damage_event = TriggerEvent::new_with_provenance(
         crate::events::DamageEvent::with_cause(
             ragavan_id,
-            crate::game_event::DamageTarget::Player(bob),
+            crate::events::DamageTarget::Player(bob),
             2,
             true,
             crate::events::cause::EventCause::combat_damage(ragavan_id),
@@ -7036,7 +7036,7 @@ fn test_fallen_shinobi_trigger_exiles_top_two_cards_and_grants_play_permission()
     let damage_event = TriggerEvent::new_with_provenance(
         crate::events::DamageEvent::with_cause(
             shinobi_id,
-            crate::game_event::DamageTarget::Player(bob),
+            crate::events::DamageTarget::Player(bob),
             5,
             true,
             crate::events::cause::EventCause::combat_damage(shinobi_id),
@@ -7927,7 +7927,7 @@ fn test_geist_token_has_correct_modifications() {
 fn test_stormbreath_dragon_monstrosity_adds_counters() {
     use crate::cards::definitions::stormbreath_dragon;
     use crate::effect::Effect;
-    use crate::executor::{ExecutionContext, execute_effect};
+    use crate::effects::{ExecutionContext, execute_effect};
     use crate::object::CounterType;
 
     let mut game = setup_game();
@@ -7975,7 +7975,7 @@ fn test_stormbreath_dragon_monstrosity_adds_counters() {
 fn test_stormbreath_dragon_monstrosity_only_works_once() {
     use crate::cards::definitions::stormbreath_dragon;
     use crate::effect::Effect;
-    use crate::executor::{ExecutionContext, execute_effect};
+    use crate::effects::{ExecutionContext, execute_effect};
     use crate::object::CounterType;
 
     let mut game = setup_game();
@@ -8027,7 +8027,7 @@ fn test_stormbreath_dragon_becomes_monstrous_trigger_fires() {
     use crate::cards::definitions::stormbreath_dragon;
     use crate::effect::Effect;
     use crate::events::other::BecameMonstrousEvent;
-    use crate::executor::{ExecutionContext, execute_effect};
+    use crate::effects::{ExecutionContext, execute_effect};
     use crate::triggers::check_triggers;
 
     let mut game = setup_game();
@@ -8067,7 +8067,7 @@ fn test_fleecemane_lion_gains_keywords_when_monstrous() {
     use crate::card::PowerToughness;
     use crate::cards::CardDefinitionBuilder;
     use crate::effect::Effect;
-    use crate::executor::{ExecutionContext, execute_effect};
+    use crate::effects::{ExecutionContext, execute_effect};
     use crate::static_abilities::StaticAbilityId;
 
     let mut game = setup_game();
@@ -8398,7 +8398,7 @@ fn test_legend_rule_decision() {
 #[test]
 fn test_may_effect_with_callback() {
     use crate::decision::DecisionMaker;
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
 
     // A decision maker that always accepts May effects
     struct AcceptMayDecisionMaker;
@@ -8685,7 +8685,7 @@ fn test_persist_trigger_generation() {
 #[test]
 fn test_return_from_graveyard_with_counter_effect() {
     use crate::events::zones::ZoneChangeEvent;
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
     use crate::snapshot::ObjectSnapshot;
     use crate::triggers::TriggerEvent;
 
@@ -10364,7 +10364,7 @@ fn test_flashback_exiles_after_resolution() {
 fn test_creeping_renaissance_returns_chosen_permanent_type_from_graveyard() {
     use crate::cards::builders::CardDefinitionBuilder;
     use crate::cards::definitions::{basic_forest, grizzly_bears};
-    use crate::executor::{ExecutionContext, execute_effect};
+    use crate::effects::{ExecutionContext, execute_effect};
     use crate::mana::{ManaCost, ManaSymbol};
 
     struct ChooseLandDecisionMaker;
@@ -10445,7 +10445,7 @@ fn test_creeping_renaissance_returns_chosen_permanent_type_from_graveyard() {
 
 #[test]
 fn test_make_an_example_sacrifices_the_chosen_pile() {
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
 
     struct ChooseFirstObjectDecisionMaker;
 
@@ -10514,7 +10514,7 @@ fn test_make_an_example_sacrifices_the_chosen_pile() {
 #[test]
 fn test_split_the_spoils_opponent_can_take_the_split_pile_into_hand() {
     use crate::decision::DecisionMaker;
-    use crate::executor::{ExecutionContext, execute_effect};
+    use crate::effects::{ExecutionContext, execute_effect};
 
     struct SplitTheSpoilsDecisionMaker {
         caster: PlayerId,
@@ -10611,9 +10611,9 @@ fn test_split_the_spoils_opponent_can_take_the_split_pile_into_hand() {
     };
     let mut ctx = ExecutionContext::new_default(source_id, alice)
         .with_targets(vec![
-            crate::executor::ResolvedTarget::Object(alpha_id),
-            crate::executor::ResolvedTarget::Object(beta_id),
-            crate::executor::ResolvedTarget::Object(gamma_id),
+            crate::effects::ResolvedTarget::Object(alpha_id),
+            crate::effects::ResolvedTarget::Object(beta_id),
+            crate::effects::ResolvedTarget::Object(gamma_id),
         ])
         .with_decision_maker(&mut dm);
 
@@ -10644,7 +10644,7 @@ fn test_split_the_spoils_opponent_can_take_the_split_pile_into_hand() {
 #[test]
 fn test_split_the_spoils_opponent_can_take_the_other_pile_into_hand() {
     use crate::decision::DecisionMaker;
-    use crate::executor::{ExecutionContext, execute_effect};
+    use crate::effects::{ExecutionContext, execute_effect};
 
     struct SplitTheSpoilsDecisionMaker {
         caster: PlayerId,
@@ -10741,9 +10741,9 @@ fn test_split_the_spoils_opponent_can_take_the_other_pile_into_hand() {
     };
     let mut ctx = ExecutionContext::new_default(source_id, alice)
         .with_targets(vec![
-            crate::executor::ResolvedTarget::Object(alpha_id),
-            crate::executor::ResolvedTarget::Object(beta_id),
-            crate::executor::ResolvedTarget::Object(gamma_id),
+            crate::effects::ResolvedTarget::Object(alpha_id),
+            crate::effects::ResolvedTarget::Object(beta_id),
+            crate::effects::ResolvedTarget::Object(gamma_id),
         ])
         .with_decision_maker(&mut dm);
 
@@ -12070,9 +12070,10 @@ fn test_disturb_cast_uses_back_face_characteristics_on_stack() {
     game.turn.active_player = alice;
     game.turn.priority_player = Some(alice);
 
-    let back_face = crate::cards::builtin_registry()
+    let registry = crate::cards::CardRegistry::with_builtin_cards_for_names(["Squirrel Nest"]);
+    let back_face = registry
         .get("Squirrel Nest")
-        .expect("Squirrel Nest should exist in builtin registry");
+        .expect("Squirrel Nest should exist in explicit test registry");
     let mut disturb_def = CardDefinitionBuilder::new(CardId::new(), "Disturb Runtime Front")
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
         .card_types(vec![CardType::Creature])
@@ -12080,6 +12081,7 @@ fn test_disturb_cast_uses_back_face_characteristics_on_stack() {
         .power_toughness(PowerToughness::fixed(2, 2))
         .disturb(ManaCost::from_pips(vec![vec![ManaSymbol::Green]]))
         .build();
+    disturb_def.card.other_face_name = Some("Squirrel Nest".to_string());
     disturb_def.card.other_face = Some(back_face.card.id);
 
     let host_id = game.create_object_from_definition(&basic_forest(), alice, Zone::Battlefield);
@@ -12736,7 +12738,7 @@ fn test_cipher_resolution_encodes_and_combat_damage_casts_a_copy() {
     let damage_event = TriggerEvent::new_with_provenance(
         crate::events::DamageEvent::with_cause(
             encoded_creature,
-            crate::game_event::DamageTarget::Player(bob),
+            crate::events::DamageTarget::Player(bob),
             2,
             true,
             crate::events::cause::EventCause::combat_damage(encoded_creature),
@@ -13014,7 +13016,7 @@ fn test_flashback_requires_enough_mana() {
 fn test_everflowing_chalice_no_kicks() {
     use crate::cards::definitions::everflowing_chalice;
     use crate::cost::OptionalCostsPaid;
-    use crate::executor::{ExecutionContext, ResolvedTarget, execute_effect};
+    use crate::effects::{ExecutionContext, ResolvedTarget, execute_effect};
     use crate::object::CounterType;
 
     let mut game = setup_game();
@@ -13063,7 +13065,7 @@ fn test_everflowing_chalice_no_kicks() {
 fn test_everflowing_chalice_one_kick() {
     use crate::cards::definitions::everflowing_chalice;
     use crate::cost::OptionalCostsPaid;
-    use crate::executor::{ExecutionContext, ResolvedTarget, execute_effect};
+    use crate::effects::{ExecutionContext, ResolvedTarget, execute_effect};
     use crate::object::CounterType;
 
     let mut game = setup_game();
@@ -13108,7 +13110,7 @@ fn test_everflowing_chalice_one_kick() {
 fn test_everflowing_chalice_two_kicks() {
     use crate::cards::definitions::everflowing_chalice;
     use crate::cost::OptionalCostsPaid;
-    use crate::executor::{ExecutionContext, ResolvedTarget, execute_effect};
+    use crate::effects::{ExecutionContext, ResolvedTarget, execute_effect};
     use crate::object::CounterType;
 
     let mut game = setup_game();
@@ -13155,7 +13157,7 @@ fn test_everflowing_chalice_etb_trigger_uses_object_kick_count() {
     // the kick count from the permanent that entered (not from ctx)
     use crate::cards::definitions::everflowing_chalice;
     use crate::cost::OptionalCostsPaid;
-    use crate::executor::{ExecutionContext, ResolvedTarget, execute_effect};
+    use crate::effects::{ExecutionContext, ResolvedTarget, execute_effect};
     use crate::object::CounterType;
 
     let mut game = setup_game();
@@ -14204,7 +14206,7 @@ fn test_dauthi_voidwalker_activation_makes_void_counter_card_castable_from_exile
     use crate::alternative_cast::CastingMethod;
     use crate::decision::{LegalAction, compute_legal_actions};
     use crate::event_processor::ZoneChangeOutcome;
-    use crate::executor::{ExecutionContext, execute_effect};
+    use crate::effects::{ExecutionContext, execute_effect};
     use crate::object::CounterType;
 
     let mut game = setup_game();
@@ -16009,7 +16011,7 @@ fn test_search_library_finds_matching_card() {
     use crate::cards::definitions::{basic_plains, the_birth_of_meletis};
     use crate::decision::DecisionMaker;
     use crate::effect::Effect;
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
 
     // Decision maker that always selects the first matching card
     struct SelectFirstDecisionMaker;
@@ -16098,7 +16100,7 @@ fn test_search_library_no_matching_cards() {
     use crate::cards::definitions::the_birth_of_meletis;
     use crate::decision::DecisionMaker;
     use crate::effect::Effect;
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
 
     // Decision maker for search (shouldn't be called if no matches)
     struct NoMatchDecisionMaker;
@@ -16167,7 +16169,7 @@ fn test_search_library_fail_to_find() {
     use crate::cards::definitions::{basic_plains, the_birth_of_meletis};
     use crate::decision::DecisionMaker;
     use crate::effect::Effect;
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
 
     // Decision maker that always chooses to "fail to find" even with matching cards
     struct FailToFindDecisionMaker;
@@ -16257,7 +16259,7 @@ fn test_search_library_for_card_cannot_fail_to_find() {
     use crate::cards::definitions::the_birth_of_meletis;
     use crate::decision::DecisionMaker;
     use crate::effect::Effect;
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
 
     struct FailToFindDecisionMaker;
     impl DecisionMaker for FailToFindDecisionMaker {
@@ -16312,7 +16314,7 @@ fn test_search_library_selects_specific_card() {
     use crate::cards::definitions::{basic_island, basic_plains, the_birth_of_meletis};
     use crate::decision::DecisionMaker;
     use crate::effect::Effect;
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
 
     // Decision maker that selects the second matching card (if available)
     struct SelectSecondDecisionMaker;
@@ -16596,7 +16598,7 @@ fn test_silverglade_elemental_may_search_puts_forest_onto_battlefield() {
     use crate::cards::builders::CardDefinitionBuilder;
     use crate::cards::definitions::basic_forest;
     use crate::decision::DecisionMaker;
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
     use crate::ids::{CardId, ObjectId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::types::CardType;
@@ -16714,7 +16716,7 @@ fn test_oreskos_explorer_searches_for_players_with_more_lands_than_you() {
     use crate::cards::builders::CardDefinitionBuilder;
     use crate::cards::definitions::basic_plains;
     use crate::decision::DecisionMaker;
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::types::CardType;
@@ -17165,7 +17167,7 @@ fn test_doubling_chant_same_name_search_prompts_are_user_facing() {
 fn test_sundering_eruption_lets_target_controller_search_after_land_dies() {
     use crate::cards::builders::CardDefinitionBuilder;
     use crate::cards::definitions::{basic_forest, basic_mountain};
-    use crate::executor::{ExecutionContext, ResolvedTarget, execute_effect};
+    use crate::effects::{ExecutionContext, ResolvedTarget, execute_effect};
     use crate::ids::ObjectId;
 
     struct AcceptAndChooseFirstDecisionMaker;
@@ -17260,7 +17262,7 @@ fn test_sundering_eruption_lets_target_controller_search_after_land_dies() {
 fn test_boseiju_channel_lets_destroyed_permanent_controller_search_for_land() {
     use crate::cards::builders::CardDefinitionBuilder;
     use crate::cards::definitions::{basic_forest, command_tower};
-    use crate::executor::{ExecutionContext, ResolvedTarget, execute_effect};
+    use crate::effects::{ExecutionContext, ResolvedTarget, execute_effect};
     use crate::ids::CardId;
     use crate::ids::ObjectId;
 
@@ -18089,7 +18091,7 @@ fn test_cephalid_inkshrouder_grants_shroud_and_unblockable_after_discard() {
 #[test]
 fn cultivator_colossus_etb_only_asks_may_once_per_land_put() {
     use crate::cards::definitions::{basic_forest, grizzly_bears};
-    use crate::executor::{ExecutionContext, execute_effect};
+    use crate::effects::{ExecutionContext, execute_effect};
     use crate::ids::ObjectId;
 
     #[derive(Default)]
@@ -18244,7 +18246,7 @@ fn voices_from_the_void_discards_one_card_per_basic_land_type() {
 
 #[test]
 fn atraxa_grand_unifier_puts_one_card_per_type_into_hand_and_bottoms_the_rest() {
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
     use crate::types::Supertype;
 
     fn build_library_card(id: u32, name: &str, card_type: CardType) -> crate::card::Card {
@@ -18352,7 +18354,7 @@ fn atraxa_grand_unifier_puts_one_card_per_type_into_hand_and_bottoms_the_rest() 
     let mut dm = SelectFirstDecisionMaker;
     let mut ctx = ExecutionContext::new(source_id, alice, &mut dm);
     for effect in &triggered.effects {
-        crate::executor::execute_effect(&mut game, effect, &mut ctx)
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
             .expect("Atraxa ETB effect should resolve");
     }
 
@@ -18825,7 +18827,7 @@ fn test_saga_full_lifecycle() {
 #[test]
 fn test_saga_survives_when_lore_counter_removed() {
     use crate::cards::definitions::{hex_parasite, ornithopter, urzas_saga};
-    use crate::executor::execute_effect;
+    use crate::effects::execute_effect;
 
     // Test that removing a lore counter from a saga at its final chapter prevents sacrifice
     // This simulates: Urza's Saga with 2 counters, gets 3rd counter (final chapter),
@@ -18892,7 +18894,7 @@ fn test_saga_survives_when_lore_counter_removed() {
     );
     let mut ctx = ExecutionContext::new_default(parasite_id, alice)
         .with_x(1)
-        .with_targets(vec![crate::executor::ResolvedTarget::Object(saga_id)]);
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(saga_id)]);
     let result = execute_effect(&mut game, &remove_effect, &mut ctx);
     assert!(result.is_ok(), "Counter removal should succeed");
 
@@ -19125,7 +19127,7 @@ fn test_saga_chapter_triggers_again_after_counter_removed() {
 #[test]
 fn test_urzas_saga_excludes_x_cost_artifacts() {
     use crate::cards::definitions::{everflowing_chalice, ornithopter, urzas_saga};
-    use crate::executor::execute_effect;
+    use crate::effects::execute_effect;
     use crate::target::FilterContext;
 
     // Test that Urza's Saga's search filter correctly excludes X-cost artifacts
@@ -19238,7 +19240,7 @@ fn test_urzas_saga_excludes_x_cost_artifacts() {
 #[test]
 fn test_hex_parasite_pump_effect() {
     use crate::cards::definitions::{hex_parasite, the_birth_of_meletis};
-    use crate::executor::execute_effect;
+    use crate::effects::execute_effect;
 
     // Test that Hex Parasite gets +1/+0 for each counter removed
     let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
@@ -19278,7 +19280,7 @@ fn test_hex_parasite_pump_effect() {
 
     let mut ctx = ExecutionContext::new_default(parasite_id, alice)
         .with_x(2)
-        .with_targets(vec![crate::executor::ResolvedTarget::Object(saga_id)]);
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(saga_id)]);
     let result = execute_effect(&mut game, &remove_effect, &mut ctx);
     assert!(result.is_ok(), "Counter removal should succeed");
 
@@ -19333,7 +19335,7 @@ fn test_hex_parasite_pump_effect() {
 #[test]
 fn test_remove_up_to_counters_player_choice() {
     use crate::cards::definitions::the_birth_of_meletis;
-    use crate::executor::execute_effect;
+    use crate::effects::execute_effect;
 
     // Test that RemoveUpToCounters allows player to choose how many counters to remove
     let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
@@ -19366,7 +19368,7 @@ fn test_remove_up_to_counters_player_choice() {
     let mut dm = ChooseOneDecisionMaker;
     let mut ctx = ExecutionContext::new_default(source_id, alice)
         .with_x(5) // Pay X=5, but only 3 counters available
-        .with_targets(vec![crate::executor::ResolvedTarget::Object(saga_id)])
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(saga_id)])
         .with_decision_maker(&mut dm);
 
     // Use RemoveUpToCounters - player should be able to choose 0-3
@@ -19398,7 +19400,7 @@ fn test_remove_up_to_counters_player_choice() {
 #[test]
 fn test_remove_up_to_counters_choose_zero() {
     use crate::cards::definitions::the_birth_of_meletis;
-    use crate::executor::execute_effect;
+    use crate::effects::execute_effect;
 
     // Test that player can choose to remove 0 counters with "up to" effect
     let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
@@ -19428,7 +19430,7 @@ fn test_remove_up_to_counters_choose_zero() {
     let mut dm = ChooseZeroDecisionMaker;
     let mut ctx = ExecutionContext::new_default(source_id, alice)
         .with_x(3)
-        .with_targets(vec![crate::executor::ResolvedTarget::Object(saga_id)])
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(saga_id)])
         .with_decision_maker(&mut dm);
 
     let effect = Effect::remove_up_to_counters(
@@ -19458,7 +19460,7 @@ fn test_remove_up_to_counters_choose_zero() {
 
 #[test]
 fn test_remove_up_to_any_counters_multiple_types() {
-    use crate::executor::execute_effect;
+    use crate::effects::execute_effect;
 
     // Test that RemoveUpToAnyCounters works with multiple counter types
     let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
@@ -19525,7 +19527,7 @@ fn test_remove_up_to_any_counters_multiple_types() {
     let mut dm = ChooseFourDecisionMaker;
     let mut ctx = ExecutionContext::new_default(source_id, alice)
         .with_x(10) // X=10, but only 5 counters available
-        .with_targets(vec![crate::executor::ResolvedTarget::Object(creature_id)])
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(creature_id)])
         .with_decision_maker(&mut dm);
 
     let effect = Effect::remove_up_to_any_counters(
@@ -19560,7 +19562,7 @@ fn test_remove_up_to_any_counters_multiple_types() {
 
 #[test]
 fn test_hex_parasite_removes_loyalty_counters() {
-    use crate::executor::execute_effect;
+    use crate::effects::execute_effect;
 
     // Test that Hex Parasite can remove loyalty counters from a planeswalker
     let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
@@ -19601,7 +19603,7 @@ fn test_hex_parasite_removes_loyalty_counters() {
     let mut dm = ChooseTwoDecisionMaker;
     let mut ctx = ExecutionContext::new_default(source_id, alice)
         .with_x(5)
-        .with_targets(vec![crate::executor::ResolvedTarget::Object(pw_id)])
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(pw_id)])
         .with_decision_maker(&mut dm);
 
     // Use the same effect Hex Parasite uses

@@ -4,8 +4,8 @@ use crate::card::{CardBuilder, PowerToughness};
 use crate::cards::builders::CardDefinitionBuilder;
 use crate::color::Color;
 use crate::decision::DecisionMaker;
-use crate::executor::{ExecutionContext, execute_effect};
-use crate::game_event::DamageTarget;
+use crate::effects::{ExecutionContext, execute_effect};
+use crate::events::DamageTarget;
 use crate::ids::CardId;
 use crate::mana::ManaSymbol;
 use crate::provenance::ProvNodeId;
@@ -449,7 +449,7 @@ fn choose_player_split_the_party_returns_half_the_chosen_players_creatures_round
         .expect("spell effects");
     let mut ctx = ExecutionContext::new_default(spell_id, alice)
         .with_decision_maker(&mut dm)
-        .with_targets(vec![crate::executor::ResolvedTarget::Player(bob)]);
+        .with_targets(vec![crate::effects::ResolvedTarget::Player(bob)]);
     let mut trigger_queue = TriggerQueue::new();
 
     for effect in effects {

@@ -3,7 +3,7 @@
 use super::prevention_helpers::register_prevention_shield;
 use crate::effect::{EffectOutcome, Until};
 use crate::effects::EffectExecutor;
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::prevention::{DamageFilter, PreventionTarget};
 use crate::target::ObjectFilter;

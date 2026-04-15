@@ -10,7 +10,7 @@ use std::collections::{HashMap, HashSet};
 use crate::color::Color;
 use crate::cost::OptionalCostsPaid;
 use crate::decision::DecisionMaker;
-use crate::effect::{Effect, EffectId, EffectOutcome, Value};
+use crate::effect::{EffectId, EffectOutcome};
 use crate::effects::VoteResult;
 use crate::events::cause::EventCause;
 use crate::game_state::{GameState, TargetAssignment};
@@ -19,7 +19,7 @@ use crate::provenance::ProvNodeId;
 use crate::replacement::ReplacementEffect;
 use crate::snapshot::ObjectSnapshot;
 use crate::tag::{SOURCE_EXILED_TAG, TagKey};
-use crate::target::{ChooseSpec, FilterContext};
+use crate::target::FilterContext;
 use crate::types::Subtype;
 
 // ============================================================================
@@ -857,46 +857,6 @@ impl<'a> ExecutionContext<'a> {
         }
         filter_ctx
     }
-}
-
-// ============================================================================
-// Value Resolution
-// ============================================================================
-
-/// Resolve a Value to a concrete i32.
-pub fn resolve_value(
-    game: &GameState,
-    value: &Value,
-    ctx: &ExecutionContext,
-) -> Result<i32, ExecutionError> {
-    crate::effects::resolve_value(game, value, ctx)
-}
-
-// ============================================================================
-// Target Validation
-// ============================================================================
-
-/// Validate that a resolved target matches a target spec.
-pub fn validate_target(
-    game: &GameState,
-    target: &ResolvedTarget,
-    spec: &ChooseSpec,
-    ctx: &ExecutionContext,
-) -> bool {
-    crate::effects::validate_target(game, target, spec, ctx)
-}
-
-// ============================================================================
-// Effect Execution
-// ============================================================================
-
-/// Execute an effect and return the outcome (result + events).
-pub fn execute_effect(
-    game: &mut GameState,
-    effect: &Effect,
-    ctx: &mut ExecutionContext,
-) -> Result<EffectOutcome, ExecutionError> {
-    crate::effects::execute_effect(game, effect, ctx)
 }
 
 // ============================================================================

@@ -2,7 +2,7 @@
 
 use crate::effect::{Effect, EffectId, EffectOutcome};
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
-use crate::executor::{ExecutionContext, ExecutionError, execute_effect};
+use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
 
 /// Effect that executes an inner effect and stores its result with an ID.

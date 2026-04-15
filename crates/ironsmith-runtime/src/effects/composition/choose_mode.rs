@@ -3,7 +3,7 @@
 use crate::effect::{EffectMode, EffectOutcome, Value};
 use crate::effects::executor_trait::ModalSpec;
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 
 /// Effect that presents modal choices to the player.

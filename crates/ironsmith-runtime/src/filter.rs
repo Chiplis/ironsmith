@@ -4832,7 +4832,7 @@ mod tests {
         use crate::cards::definitions::basic_mountain;
         use crate::effect::Effect;
         use crate::effects::EarthbendEffect;
-        use crate::executor::{ExecutionContext, execute_effect};
+        use crate::effects::{ExecutionContext, execute_effect};
         use crate::game_state::GameState;
         use crate::ids::CardId;
         use crate::target::ChooseSpec;
@@ -4889,7 +4889,7 @@ mod tests {
         let damage_event = crate::triggers::TriggerEvent::new_with_provenance(
             crate::events::DamageEvent {
                 source: ObjectId::from_raw(500),
-                target: crate::game_event::DamageTarget::Object(creature_id),
+                target: crate::events::DamageTarget::Object(creature_id),
                 amount: 1,
                 is_combat: false,
                 is_unpreventable: false,

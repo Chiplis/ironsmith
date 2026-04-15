@@ -4,7 +4,7 @@ use crate::effect::{ChoiceCount, EffectOutcome, ExecutionFact, Value};
 use crate::effects::helpers::{resolve_objects_for_effect, resolve_value};
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::event_processor::process_put_counters_with_event;
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::ObjectId;
 use crate::object::CounterType;
@@ -246,7 +246,7 @@ mod tests {
         let target = create_creature_on_battlefield(&mut game, "Bear", alice);
 
         let mut ctx = ExecutionContext::new_default(source, alice);
-        ctx.targets = vec![crate::executor::ResolvedTarget::Object(target)];
+        ctx.targets = vec![crate::effects::ResolvedTarget::Object(target)];
 
         let effect = PutCountersEffect::plus_one_counters(2, ChooseSpec::target_creature());
         let result = effect

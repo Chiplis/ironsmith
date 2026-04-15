@@ -4,7 +4,7 @@ use crate::filter::ObjectFilterExt as _;
 use crate::effect::EffectOutcome;
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{EffectExecutionCategory, EffectExecutor};
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::resolution::ResolutionProgram;
 use crate::tag::TagKey;
@@ -173,7 +173,7 @@ mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
     use crate::effect::Effect;
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::snapshot::ObjectSnapshot;

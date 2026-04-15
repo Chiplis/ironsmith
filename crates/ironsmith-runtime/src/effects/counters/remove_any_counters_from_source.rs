@@ -4,7 +4,7 @@ use crate::decision::FallbackStrategy;
 use crate::decisions::{CounterRemovalSpec, NumberSpec, make_decision_with_fallback};
 use crate::effect::EffectOutcome;
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::object::CounterType;
 

@@ -4,7 +4,7 @@ use crate::events::DamageEvent;
 use crate::events::EventKind;
 use crate::filter::Comparison;
 use crate::filter::PlayerFilterExt;
-use crate::game_event::DamageTarget;
+use crate::events::DamageTarget;
 use crate::target::PlayerFilter;
 use crate::triggers::TriggerEvent;
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
@@ -133,7 +133,7 @@ impl TriggerMatcher for ThisDealsDamageTrigger {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::game_event::DamageTarget;
+    use crate::events::DamageTarget;
     use crate::game_state::GameState;
     use crate::ids::{ObjectId, PlayerId};
 

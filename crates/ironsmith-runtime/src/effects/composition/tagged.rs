@@ -5,7 +5,7 @@
 
 use crate::effect::{Effect, EffectOutcome};
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::tag::TagKey;
 
@@ -213,7 +213,7 @@ mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
     use crate::effect::Effect;
-    use crate::executor::ResolvedTarget;
+    use crate::effects::ResolvedTarget;
     use crate::filter::ObjectRef;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};

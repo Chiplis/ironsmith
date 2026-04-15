@@ -12,7 +12,7 @@ use crate::effect::Effect;
 #[cfg(test)]
 use crate::effect::Until;
 #[cfg(test)]
-use crate::executor::ExecutionContext;
+use crate::effects::ExecutionContext;
 #[cfg(test)]
 use crate::static_abilities::StaticAbility;
 #[cfg(test)]

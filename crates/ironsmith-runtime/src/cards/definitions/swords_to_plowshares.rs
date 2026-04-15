@@ -20,7 +20,7 @@ pub fn swords_to_plowshares() -> CardDefinition {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::executor::{ExecutionContext, ResolvedTarget, execute_effect};
+    use crate::effects::{ExecutionContext, ResolvedTarget, execute_effect};
     use crate::game_state::GameState;
     use crate::ids::PlayerId;
     use crate::zone::Zone;

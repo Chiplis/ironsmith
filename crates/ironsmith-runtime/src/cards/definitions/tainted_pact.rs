@@ -30,7 +30,7 @@ mod tests {
     use super::*;
     use crate::card::CardBuilder;
     use crate::decision::DecisionMaker;
-    use crate::executor::{ExecutionContext, execute_effect};
+    use crate::effects::{ExecutionContext, execute_effect};
     use crate::game_loop::resolve_stack_entry_with;
     use crate::game_state::{GameState, StackEntry};
     use crate::ids::{CardId, ObjectId, PlayerId};

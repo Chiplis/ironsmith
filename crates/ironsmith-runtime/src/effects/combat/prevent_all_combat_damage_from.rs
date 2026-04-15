@@ -4,7 +4,7 @@ use super::prevention_helpers::register_prevention_shield;
 use crate::effect::{EffectOutcome, Until};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_objects_for_effect;
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::prevention::{DamageFilter, PreventionTarget};
 use crate::target::ChooseSpec;
@@ -77,7 +77,7 @@ impl EffectExecutor for PreventAllCombatDamageFromEffect {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::executor::ResolvedTarget;
+    use crate::effects::ResolvedTarget;
     use crate::ids::PlayerId;
     use crate::target::ObjectFilter;
 

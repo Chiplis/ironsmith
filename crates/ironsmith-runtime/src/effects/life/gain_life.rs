@@ -5,7 +5,7 @@ use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_from_spec, resolve_value};
 use crate::event_processor::process_life_gain_with_event;
 use crate::events::LifeGainEvent;
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::{ChooseSpec, PlayerFilter};
 use crate::triggers::TriggerEvent;

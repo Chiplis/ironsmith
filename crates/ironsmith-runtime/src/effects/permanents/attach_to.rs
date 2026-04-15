@@ -4,7 +4,7 @@ use super::attach_battlefield_object_to_target;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_single_target_from_spec;
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::object::AttachmentTarget;
 use crate::target::ChooseSpec;
@@ -55,10 +55,10 @@ impl EffectExecutor for AttachToEffect {
         }
 
         match target {
-            crate::executor::ResolvedTarget::Object(id) => {
+            crate::effects::ResolvedTarget::Object(id) => {
                 attach_battlefield_object_to_target(game, ctx.source, AttachmentTarget::Object(id));
             }
-            crate::executor::ResolvedTarget::Player(id) => {
+            crate::effects::ResolvedTarget::Player(id) => {
                 attach_battlefield_object_to_target(game, ctx.source, AttachmentTarget::Player(id));
             }
         }
@@ -79,7 +79,7 @@ impl EffectExecutor for AttachToEffect {
 mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
-    use crate::executor::ResolvedTarget;
+    use crate::effects::ResolvedTarget;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::Object;

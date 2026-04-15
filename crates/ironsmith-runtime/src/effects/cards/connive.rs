@@ -6,7 +6,7 @@ use crate::effects::EffectExecutor;
 use crate::effects::helpers::{normalize_object_selection, resolve_objects_for_effect};
 use crate::events::cause::EventCause;
 use crate::events::{KeywordActionEvent, KeywordActionKind};
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::ObjectId;
 use crate::target::{ChooseSpec, PlayerFilter};

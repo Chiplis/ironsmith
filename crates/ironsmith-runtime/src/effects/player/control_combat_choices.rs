@@ -2,7 +2,7 @@
 
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 
 /// Lets the source controller choose attackers and/or blockers this turn.
@@ -41,7 +41,7 @@ mod tests {
         AttackerOptionContext, AttackersContext, BlockerOptionContext, BlockersContext,
     };
     use crate::decisions::spec::{AttackerDeclaration, BlockerDeclaration};
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
     use crate::ids::PlayerId;
 
     #[derive(Default)]

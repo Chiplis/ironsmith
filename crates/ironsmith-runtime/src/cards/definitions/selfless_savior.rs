@@ -30,8 +30,8 @@ mod tests {
     use crate::ability::ActivationTiming;
     use crate::card::CardBuilder;
     use crate::color::Color;
-    use crate::executor::execute_effect;
-    use crate::executor::{ExecutionContext, ResolvedTarget};
+    use crate::effects::execute_effect;
+    use crate::effects::{ExecutionContext, ResolvedTarget};
     use crate::game_state::GameState;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::object::Object;

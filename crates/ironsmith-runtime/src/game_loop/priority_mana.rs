@@ -1896,7 +1896,7 @@ pub(super) fn execute_pending_mana_ability(
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<(), GameLoopError> {
     use crate::costs::CostContext;
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
 
     // Pay the mana cost
     if !game.try_pay_mana_cost_with_reason(

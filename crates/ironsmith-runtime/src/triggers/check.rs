@@ -545,7 +545,7 @@ fn add_monarch_designation_triggers(
         && let Some(damage_event) = trigger_event.downcast::<crate::events::damage::DamageEvent>()
         && damage_event.is_combat
         && damage_event.amount > 0
-        && let crate::game_event::DamageTarget::Player(player_id) = damage_event.target
+        && let crate::events::DamageTarget::Player(player_id) = damage_event.target
         && player_id == monarch
         && let Some(source_obj) = game.object(damage_event.source)
         && game.object_has_card_type(source_obj.id, CardType::Creature)
@@ -618,7 +618,7 @@ fn add_initiative_designation_triggers(
         && let Some(damage_event) = trigger_event.downcast::<crate::events::damage::DamageEvent>()
         && damage_event.is_combat
         && damage_event.amount > 0
-        && let crate::game_event::DamageTarget::Player(player_id) = damage_event.target
+        && let crate::events::DamageTarget::Player(player_id) = damage_event.target
         && player_id == initiative
         && let Some(source_obj) = game.object(damage_event.source)
         && game.object_has_card_type(source_obj.id, CardType::Creature)
@@ -713,7 +713,7 @@ fn add_ring_designation_triggers(
         && damage_event.amount > 0
         && matches!(
             damage_event.target,
-            crate::game_event::DamageTarget::Player(_)
+            crate::events::DamageTarget::Player(_)
         )
         && let Some(source_obj) = game.object(damage_event.source)
         && game.ring_level(source_obj.controller) >= 4
@@ -1634,7 +1634,7 @@ mod tests {
     use crate::events::combat::{AttackEventTarget, CreatureAttackedEvent, CreatureBlockedEvent};
     use crate::events::other::BecameMonstrousEvent;
     use crate::events::spells::SpellCastEvent;
-    use crate::game_event::DamageTarget;
+    use crate::events::DamageTarget;
     use crate::ids::{CardId, PlayerId};
     use crate::static_abilities::StaticAbility;
     use crate::target::ChooseSpec;

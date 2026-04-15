@@ -8,7 +8,7 @@ use crate::costs::{CostContext, CostPayer, CostPaymentResult};
 use crate::effect::Effect;
 use crate::effects::{CostExecutableEffect, CostValidationError};
 use crate::events::cause::EventCause;
-use crate::executor::{ExecutionContext, execute_effect};
+use crate::effects::{ExecutionContext, execute_effect};
 use crate::game_state::GameState;
 
 /// Convert a CostValidationError to CostPaymentError.
@@ -75,7 +75,7 @@ impl CostPayer for CostEffect {
             .pre_chosen_cards
             .iter()
             .copied()
-            .map(crate::executor::ResolvedTarget::Object)
+            .map(crate::effects::ResolvedTarget::Object)
             .collect();
 
         let mut exec_ctx = ExecutionContext::new(ctx.source, ctx.payer, &mut *ctx.decision_maker)

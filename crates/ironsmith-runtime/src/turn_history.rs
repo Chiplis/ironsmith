@@ -207,7 +207,7 @@ impl TurnHistory {
             .filter_map(|record| record.event.downcast::<DamageEvent>())
             .filter(|event| !event.is_combat)
             .filter_map(|event| match event.target {
-                crate::game_event::DamageTarget::Player(player) if players.contains(&player) => {
+                crate::events::DamageTarget::Player(player) if players.contains(&player) => {
                     Some(event.amount)
                 }
                 _ => None,
@@ -219,7 +219,7 @@ impl TurnHistory {
         self.projected_records()
             .filter_map(|record| record.event.downcast::<DamageEvent>())
             .filter_map(|event| match event.target {
-                crate::game_event::DamageTarget::Player(pid) if pid == player => Some(event.amount),
+                crate::events::DamageTarget::Player(pid) if pid == player => Some(event.amount),
                 _ => None,
             })
             .sum()
@@ -230,7 +230,7 @@ impl TurnHistory {
             .filter_map(|record| {
                 let damage = record.event.downcast::<DamageEvent>()?;
                 match damage.target {
-                    crate::game_event::DamageTarget::Player(pid) if pid == player => {
+                    crate::events::DamageTarget::Player(pid) if pid == player => {
                         let source_is_creature =
                             record.source_snapshot.as_ref().is_some_and(|snapshot| {
                                 snapshot.card_types.contains(&CardType::Creature)
@@ -355,7 +355,7 @@ impl TurnHistory {
                 .event
                 .downcast::<DamageEvent>()
                 .is_some_and(|event| {
-                    matches!(event.target, crate::game_event::DamageTarget::Object(target) if target == creature)
+                    matches!(event.target, crate::events::DamageTarget::Object(target) if target == creature)
                         && event.source == source
                         && event.amount > 0
                 })
@@ -368,7 +368,7 @@ impl TurnHistory {
                 .event
                 .downcast::<DamageEvent>()
                 .is_some_and(|event| {
-                    matches!(event.target, crate::game_event::DamageTarget::Object(target) if target == creature)
+                    matches!(event.target, crate::events::DamageTarget::Object(target) if target == creature)
                         && event.amount > 0
                 })
         })

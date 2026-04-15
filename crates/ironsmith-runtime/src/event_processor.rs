@@ -16,7 +16,7 @@
 use crate::filter::ObjectFilterExt as _;
 use crate::DecisionMaker;
 use crate::events::{Event, EventContext, EventKind};
-use crate::game_event::DamageTarget;
+use crate::events::DamageTarget;
 use crate::game_state::{GameState, UiBattlefieldTransitionKind};
 use crate::ids::PlayerId;
 use crate::object::CounterType;
@@ -835,7 +835,7 @@ fn apply_trait_replacement(
             amount,
         } => {
             use crate::events::{DamageEvent, downcast_event};
-            use crate::game_event::DamageTarget;
+            use crate::events::DamageTarget;
             use crate::game_state::Target;
 
             if *amount == 0 {
@@ -1500,7 +1500,7 @@ fn resolve_value_for_etb(
         .unwrap_or(crate::ids::PlayerId::from_index(0));
 
     let mut dm = crate::decision::SelectFirstDecisionMaker;
-    let mut ctx = crate::executor::ExecutionContext::new(source, controller, &mut dm);
+    let mut ctx = crate::effects::ExecutionContext::new(source, controller, &mut dm);
 
     if let Some(source_obj) = game.object(source) {
         ctx.optional_costs_paid = source_obj.optional_costs_paid.clone();
@@ -1666,7 +1666,7 @@ pub fn process_destroy(
     source: Option<crate::ids::ObjectId>,
     dm: &mut dyn DecisionMaker,
 ) -> DestroyOutcome {
-    use crate::executor::{ExecutionContext, execute_effect};
+    use crate::effects::{ExecutionContext, execute_effect};
 
     game.update_replacement_effects();
 
@@ -1873,9 +1873,9 @@ pub fn process_zone_change_with_additional_effects(
                 .map(|obj| obj.controller)
                 .or_else(|| snapshot.as_ref().map(|snap| snap.controller))
                 .unwrap_or(PlayerId::from_index(0));
-            let mut ctx = crate::executor::ExecutionContext::new(object, controller, dm);
+            let mut ctx = crate::effects::ExecutionContext::new(object, controller, dm);
             for effect in effects {
-                let _ = crate::executor::execute_effect(game, &effect, &mut ctx);
+                let _ = crate::effects::execute_effect(game, &effect, &mut ctx);
             }
             EventOutcome::Replaced
         }
@@ -2262,7 +2262,7 @@ pub fn process_damage_assignments_with_event_with_source_snapshot(
                 });
 
             let mut dm = crate::decision::AutoPassDecisionMaker;
-            let mut exec_ctx = crate::executor::ExecutionContext::new(
+            let mut exec_ctx = crate::effects::ExecutionContext::new(
                 replacement_source,
                 replacement_controller,
                 &mut dm,
@@ -2276,13 +2276,13 @@ pub fn process_damage_assignments_with_event_with_source_snapshot(
             match target {
                 DamageTarget::Player(player_id) => exec_ctx
                     .targets
-                    .push(crate::executor::ResolvedTarget::Player(player_id)),
+                    .push(crate::effects::ResolvedTarget::Player(player_id)),
                 DamageTarget::Object(object_id) => exec_ctx
                     .targets
-                    .push(crate::executor::ResolvedTarget::Object(object_id)),
+                    .push(crate::effects::ResolvedTarget::Object(object_id)),
             }
             for effect in effects {
-                if let Ok(outcome) = crate::executor::execute_effect(game, &effect, &mut exec_ctx) {
+                if let Ok(outcome) = crate::effects::execute_effect(game, &effect, &mut exec_ctx) {
                     for trigger_event in outcome.events {
                         game.queue_trigger_event(trigger_event.provenance(), trigger_event);
                     }
@@ -2447,7 +2447,7 @@ fn apply_prevention_for_damage_assignment(
         );
         for follow_up in result.follow_ups {
             let mut dm = crate::decision::AutoPassDecisionMaker;
-            let mut exec_ctx = crate::executor::ExecutionContext::new(
+            let mut exec_ctx = crate::effects::ExecutionContext::new(
                 follow_up.source,
                 follow_up.controller,
                 &mut dm,
@@ -2462,16 +2462,16 @@ fn apply_prevention_for_damage_assignment(
                 DamageTarget::Player(player_id) => {
                     exec_ctx
                         .targets
-                        .push(crate::executor::ResolvedTarget::Player(player_id));
+                        .push(crate::effects::ResolvedTarget::Player(player_id));
                 }
                 DamageTarget::Object(object_id) => {
                     exec_ctx
                         .targets
-                        .push(crate::executor::ResolvedTarget::Object(object_id));
+                        .push(crate::effects::ResolvedTarget::Object(object_id));
                 }
             }
             for effect in follow_up.effects {
-                if let Ok(outcome) = crate::executor::execute_effect(game, &effect, &mut exec_ctx) {
+                if let Ok(outcome) = crate::effects::execute_effect(game, &effect, &mut exec_ctx) {
                     for trigger_event in outcome.events {
                         game.queue_trigger_event(trigger_event.provenance(), trigger_event);
                     }
@@ -2792,7 +2792,7 @@ pub fn process_etb_with_event_and_dm(
                 return EtbEventResult::default();
             }
             TraitEventResult::Replaced { effects, effect_id } => {
-                use crate::executor::{ExecutionContext, execute_effect};
+                use crate::effects::{ExecutionContext, execute_effect};
                 if let Some(controller) = game.object(object).map(|o| o.controller) {
                     game.effect_store
                         .replacement_effects
@@ -2862,7 +2862,7 @@ pub fn process_etb_with_event_and_dm(
                         };
                     }
                     TraitApplyResult::Replaced(effects) => {
-                        use crate::executor::{ExecutionContext, execute_effect};
+                        use crate::effects::{ExecutionContext, execute_effect};
                         if let Some(controller) = game.object(object).map(|o| o.controller) {
                             game.effect_store
                                 .replacement_effects

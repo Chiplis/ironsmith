@@ -701,8 +701,9 @@ impl WasmGame {
             let Some(definition) = self.find_card_definition(name).cloned() else {
                 return Err(JsValue::from_str(&format!("unknown card name: {name}")));
             };
-            self.game.create_object_from_definition(
+            self.game.create_object_from_catalog_definition(
                 &definition,
+                &self.registry,
                 player_id,
                 ironsmith::zone::Zone::Library,
             );
@@ -1129,10 +1130,14 @@ impl WasmGame {
 
         let mut faces = vec![Self::definition_to_custom_face_input(&definition)];
         if layout.face_count() == 2 {
-            let Some(other_face) = ironsmith::cards::linked_face_definition_by_name_or_id(
-                definition.card.other_face_name.as_deref(),
-                definition.card.other_face,
-            ) else {
+            let Some(other_face) = self
+                .registry
+                .linked_face_definition_by_name_or_id(
+                    definition.card.other_face_name.as_deref(),
+                    definition.card.other_face,
+                )
+                .cloned()
+            else {
                 return Err(JsValue::from_str(
                     "sampled card references an unsupported linked face",
                 ));
@@ -1153,6 +1158,8 @@ impl WasmGame {
         player_id: PlayerId,
         zone: Zone,
     ) -> Result<ObjectId, JsValue> {
+        self.game
+            .register_linked_face_family_from_catalog(definition, &self.registry);
         // Create in Command zone first, then move to target zone so that
         // zone-change triggers (ETB, etc.) fire naturally.
         let temp_id = self.game.create_object_from_definition(

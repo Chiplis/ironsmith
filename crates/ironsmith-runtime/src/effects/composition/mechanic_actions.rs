@@ -16,7 +16,7 @@ use crate::effects::zones::{
 use crate::event_processor::EventOutcome;
 use crate::events::permanents::SacrificeEvent;
 use crate::events::{CardRevealedEvent, KeywordActionEvent, KeywordActionKind};
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::filter::PlayerFilter;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId, StableId};
@@ -1179,7 +1179,7 @@ mod tests {
     use crate::decision::DecisionMaker;
     use crate::decisions::context::SelectObjectsContext;
     use crate::events::{CardRevealedEvent, EventKind, KeywordActionEvent, KeywordActionKind};
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
     use crate::ids::{CardId, PlayerId};
     use crate::static_abilities::StaticAbility;
     use crate::static_abilities::StaticAbilityId;
@@ -1722,7 +1722,7 @@ mod tests {
             Some(4),
         );
         let mut ctx = ExecutionContext::new_default(source, alice)
-            .with_targets(vec![crate::executor::ResolvedTarget::Player(bob)]);
+            .with_targets(vec![crate::effects::ResolvedTarget::Player(bob)]);
 
         let outcome =
             ManifestTopCardOfLibraryEffect::new(PlayerFilter::TargetPlayerOrControllerOfTarget)
@@ -1887,8 +1887,8 @@ mod tests {
         let first = create_creature(&mut game, alice, 41, "First Ally", 2, 2);
         let second = create_creature(&mut game, alice, 42, "Second Ally", 2, 2);
         let mut ctx = ExecutionContext::new_default(source, alice).with_targets(vec![
-            crate::executor::ResolvedTarget::Object(first),
-            crate::executor::ResolvedTarget::Object(second),
+            crate::effects::ResolvedTarget::Object(first),
+            crate::effects::ResolvedTarget::Object(second),
         ]);
 
         let outcome = SupportEffect::new(2)
@@ -1918,7 +1918,7 @@ mod tests {
         let source = game.new_object_id();
         let target = create_creature(&mut game, alice, 43, "Spell Support Target", 2, 2);
         let mut ctx = ExecutionContext::new_default(source, alice)
-            .with_targets(vec![crate::executor::ResolvedTarget::Object(target)]);
+            .with_targets(vec![crate::effects::ResolvedTarget::Object(target)]);
 
         SupportEffect::new(2)
             .execute(&mut game, &mut ctx)
@@ -2062,7 +2062,7 @@ mod tests {
         let target = create_creature(&mut game, alice, 21, "Backup Target", 1, 1);
         let granted = Ability::static_ability(StaticAbility::flying()).with_text("Flying");
         let mut ctx = ExecutionContext::new_default(source, alice)
-            .with_targets(vec![crate::executor::ResolvedTarget::Object(target)]);
+            .with_targets(vec![crate::effects::ResolvedTarget::Object(target)]);
 
         let outcome = BackupEffect::new(1, vec![granted])
             .execute(&mut game, &mut ctx)

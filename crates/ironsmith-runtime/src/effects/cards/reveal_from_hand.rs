@@ -6,7 +6,7 @@ use crate::decisions::{ChooseObjectsSpec, make_decision_with_fallback};
 use crate::effect::EffectOutcome;
 use crate::effects::helpers::normalize_object_selection;
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::ObjectId;
 use crate::snapshot::ObjectSnapshot;
@@ -84,8 +84,8 @@ impl EffectExecutor for RevealFromHandEffect {
             .targets
             .iter()
             .filter_map(|target| match target {
-                crate::executor::ResolvedTarget::Object(id) => Some(*id),
-                crate::executor::ResolvedTarget::Player(_) => None,
+                crate::effects::ResolvedTarget::Object(id) => Some(*id),
+                crate::effects::ResolvedTarget::Player(_) => None,
             })
             .collect();
 
@@ -197,7 +197,7 @@ mod tests {
     use crate::card::CardBuilder;
     use crate::costs::{Cost, CostContext, CostPaymentResult};
     use crate::decision::DecisionMaker;
-    use crate::executor::{ExecutionContext, ResolvedTarget};
+    use crate::effects::{ExecutionContext, ResolvedTarget};
     use crate::ids::{CardId, PlayerId};
     use crate::zone::Zone;
 

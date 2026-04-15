@@ -32,7 +32,7 @@ mod tests {
     use crate::ability::AbilityKind;
     use crate::card::PowerToughness;
     use crate::color::Color;
-    use crate::executor::{ExecutionContext, execute_effect};
+    use crate::effects::{ExecutionContext, execute_effect};
     use crate::game_state::GameState;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::zone::Zone;

@@ -2,7 +2,7 @@
 
 use crate::color::Color;
 use crate::decisions::{ManaColorsSpec, ask_choose_one, make_decision};
-use crate::executor::ExecutionContext;
+use crate::effects::ExecutionContext;
 use crate::game_state::GameState;
 use crate::ids::ObjectId;
 use crate::ids::PlayerId;

@@ -3,7 +3,7 @@ use crate::decisions::context::{SelectOptionsContext, SelectableOption};
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_filter, resolve_player_filter_to_list};
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::tag::TagKey;
 use crate::target::{ObjectFilter, PlayerFilter};

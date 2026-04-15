@@ -14,7 +14,7 @@ use crate::effects::helpers::{
     resolve_objects_from_spec, resolve_player_filter, resolve_players_from_spec,
 };
 use crate::events::spells::BecomesTargetedEvent;
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::filter::PlayerFilterExt;
 use crate::game_state::{GameState, StackEntry, Target};
 use crate::ids::PlayerId;

@@ -24,7 +24,7 @@
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_single_object_for_effect;
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::grant::{GrantDuration, Grantable};
 use crate::grant_registry::GrantSource;
@@ -193,7 +193,7 @@ mod tests {
         let instant_id = create_instant_in_graveyard(&mut game, "Counterspell", alice);
 
         let mut ctx = ExecutionContext::new_default(source, alice);
-        ctx.targets = vec![crate::executor::ResolvedTarget::Object(instant_id)];
+        ctx.targets = vec![crate::effects::ResolvedTarget::Object(instant_id)];
 
         let effect = GrantEffect::new(
             Grantable::flashback_from_cards_mana_cost(),
@@ -243,7 +243,7 @@ mod tests {
         let creature_id = game.create_object_from_card(&card, alice, Zone::Hand);
 
         let mut ctx = ExecutionContext::new_default(source, alice);
-        ctx.targets = vec![crate::executor::ResolvedTarget::Object(creature_id)];
+        ctx.targets = vec![crate::effects::ResolvedTarget::Object(creature_id)];
 
         let effect = GrantEffect::new(
             Grantable::ability(StaticAbility::flash()),
@@ -282,7 +282,7 @@ mod tests {
         let creature_id = game.create_object_from_card(&card, alice, Zone::Graveyard);
 
         let mut ctx = ExecutionContext::new_default(source, alice);
-        ctx.targets = vec![crate::executor::ResolvedTarget::Object(creature_id)];
+        ctx.targets = vec![crate::effects::ResolvedTarget::Object(creature_id)];
 
         let effect = GrantEffect::new(
             Grantable::flashback_from_cards_mana_cost(),

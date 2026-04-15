@@ -410,7 +410,7 @@ pub(super) fn deal_damage_to_defender(
         }
         AttackTarget::Planeswalker(pw_id) => {
             use crate::event_processor::process_damage_assignments_with_event;
-            use crate::game_event::DamageTarget as EventDamageTarget;
+            use crate::events::DamageTarget as EventDamageTarget;
 
             let damage_result =
                 calculate_damage_with_game(game, attacker, DamageTarget::Permanent, damage, true);
@@ -517,7 +517,7 @@ pub(super) fn apply_damage_to_permanent(
     result: &DamageResult,
 ) -> AppliedPermanentDamage {
     use crate::event_processor::process_damage_assignments_with_event;
-    use crate::game_event::DamageTarget;
+    use crate::events::DamageTarget;
 
     let processed = process_damage_assignments_with_event(
         game,
@@ -587,7 +587,7 @@ pub(super) fn apply_damage_to_player(
     result: &DamageResult,
 ) -> AppliedPlayerDamage {
     use crate::event_processor::process_damage_assignments_with_event;
-    use crate::game_event::DamageTarget;
+    use crate::events::DamageTarget;
 
     let processed = process_damage_assignments_with_event(
         game,
@@ -653,7 +653,7 @@ mod tests {
     use crate::events::cause::CauseFilter;
     use crate::events::counters::matchers::WouldPutCountersMatcher;
     use crate::events::damage::matchers::DamageFromSourceMatcher;
-    use crate::game_event::DamageTarget as EventDamageTarget;
+    use crate::events::DamageTarget as EventDamageTarget;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::{CounterType, Object};

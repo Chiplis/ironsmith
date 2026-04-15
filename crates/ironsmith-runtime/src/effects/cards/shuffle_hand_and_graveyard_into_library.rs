@@ -4,7 +4,7 @@ use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
 use crate::events::ShuffleLibraryEvent;
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::PlayerFilter;
 use crate::triggers::TriggerEvent;
@@ -61,7 +61,7 @@ impl EffectExecutor for ShuffleHandAndGraveyardIntoLibraryEffect {
 mod tests {
     use super::*;
     use crate::card::CardBuilder;
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
     use crate::ids::{CardId, PlayerId};
 
     fn setup_game() -> GameState {

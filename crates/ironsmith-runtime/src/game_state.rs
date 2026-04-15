@@ -2584,6 +2584,38 @@ impl GameState {
         id
     }
 
+    /// Cache a linked-face definition for later runtime lookups.
+    pub fn register_linked_face_definition(&mut self, def: &crate::cards::CardDefinition) {
+        self.cache_linked_face_definition(def);
+    }
+
+    /// Cache a definition and its linked face using an explicit catalog.
+    pub fn register_linked_face_family_from_catalog<C: crate::session::CardCatalog>(
+        &mut self,
+        def: &crate::cards::CardDefinition,
+        catalog: &C,
+    ) {
+        self.cache_linked_face_definition(def);
+        if let Some(other_def) = catalog
+            .linked_face_definition(def.card.other_face_name.as_deref(), def.card.other_face)
+            .cloned()
+        {
+            self.cache_linked_face_definition(&other_def);
+        }
+    }
+
+    /// Create an object after explicitly priming linked-face lookup from a catalog.
+    pub fn create_object_from_catalog_definition<C: crate::session::CardCatalog>(
+        &mut self,
+        def: &crate::cards::CardDefinition,
+        catalog: &C,
+        owner: PlayerId,
+        zone: Zone,
+    ) -> ObjectId {
+        self.register_linked_face_family_from_catalog(def, catalog);
+        self.create_object_from_definition(def, owner, zone)
+    }
+
     /// Draws cards for a player, moving them from library to hand.
     /// Uses move_object to properly update the object's zone.
     /// Returns the new ObjectIds of the drawn cards.
@@ -2666,8 +2698,29 @@ impl GameState {
             .insert(def.card.name.clone(), def.clone());
     }
 
+    fn load_linked_face_definition(
+        &self,
+        name: Option<&str>,
+        id: Option<crate::ids::CardId>,
+    ) -> Option<crate::cards::CardDefinition> {
+        #[cfg(test)]
+        if let Some(definition) = crate::cards::linked_face_definition_by_name_or_id(name, id) {
+            return Some(definition);
+        }
+
+        if let Some(face_name) = name
+            && let Ok(definition) = crate::cards::CardRegistry::try_compile_card(face_name)
+        {
+            return Some(definition);
+        }
+
+        let card_id = id?;
+        let registry = crate::cards::CardRegistry::with_builtin_cards();
+        registry.get_by_id(card_id).cloned()
+    }
+
     fn prime_linked_face_lookup(&mut self, name: Option<&str>, id: Option<crate::ids::CardId>) {
-        if let Some(other_def) = crate::cards::linked_face_definition_by_name_or_id(name, id) {
+        if let Some(other_def) = self.load_linked_face_definition(name, id) {
             self.cache_linked_face_definition(&other_def);
         }
     }
@@ -2698,7 +2751,7 @@ impl GameState {
             return Some(definition.clone());
         }
 
-        crate::cards::linked_face_definition_by_name_or_id(name, id)
+        self.load_linked_face_definition(name, id)
     }
 
     pub fn move_object(
@@ -6744,7 +6797,7 @@ impl GameState {
         use crate::events::DamageEvent;
         use crate::events::permanents::SacrificeEvent;
         use crate::events::zones::ZoneChangeEvent;
-        use crate::game_event::DamageTarget;
+        use crate::events::DamageTarget;
 
         if let Some(damage) = event.downcast::<DamageEvent>()
             && let DamageTarget::Object(object_id) = damage.target
@@ -6915,7 +6968,7 @@ mod tests {
         use crate::cards::definitions::basic_mountain;
         use crate::effect::Effect;
         use crate::effects::EarthbendEffect;
-        use crate::executor::{ExecutionContext, execute_effect};
+        use crate::effects::{ExecutionContext, execute_effect};
         use crate::ids::CardId;
         use crate::target::ChooseSpec;
         use crate::types::CardType;
@@ -6949,7 +7002,7 @@ mod tests {
         use crate::cards::definitions::basic_mountain;
         use crate::effect::Effect;
         use crate::effects::EarthbendEffect;
-        use crate::executor::{ExecutionContext, execute_effect};
+        use crate::effects::{ExecutionContext, execute_effect};
         use crate::ids::CardId;
         use crate::static_abilities::StaticAbilityId;
         use crate::target::ChooseSpec;

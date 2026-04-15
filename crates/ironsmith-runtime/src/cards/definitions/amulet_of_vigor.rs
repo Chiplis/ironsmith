@@ -27,7 +27,7 @@ mod tests {
     use crate::card::CardBuilder;
     use crate::effect::EffectOutcome;
     use crate::events::zones::EnterBattlefieldEvent;
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
     use crate::game_state::GameState;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::triggers::{TriggerEvent, check_triggers};
@@ -322,7 +322,7 @@ mod tests {
     fn test_cultivator_colossus_triggers_amulet_for_each_land() {
         use super::CardDefinitionBuilder;
         use crate::cards::definitions::{basic_forest, grizzly_bears};
-        use crate::executor::execute_effect;
+        use crate::effects::execute_effect;
         use crate::game_loop::{
             drain_pending_trigger_events, put_triggers_on_stack, resolve_stack_entry,
         };

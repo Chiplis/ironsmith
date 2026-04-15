@@ -3,7 +3,7 @@
 use crate::filter::ObjectFilterExt as _;
 use crate::events::{DamageEvent, EventKind};
 use crate::filter::PlayerFilterExt;
-use crate::game_event::DamageTarget;
+use crate::events::DamageTarget;
 use crate::target::ChooseSpec;
 use crate::triggers::TriggerEvent;
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};

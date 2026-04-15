@@ -2,7 +2,7 @@
 
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::snapshot::ObjectSnapshot;
 use crate::tag::TagKey;
@@ -84,7 +84,7 @@ impl EffectExecutor for TagTriggeringObjectEffect {
 mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
     use crate::ids::{CardId, ObjectId, PlayerId, StableId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::Object;

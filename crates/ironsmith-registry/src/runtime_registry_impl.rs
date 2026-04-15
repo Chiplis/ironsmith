@@ -657,13 +657,9 @@ pub fn linked_face_definition_by_name_or_id(
         return Some(definition);
     }
 
-    if let Some(face_name) = name
-        && let Some(definition) = loose_name_match(builtin_registry(), face_name).cloned()
-    {
-        return Some(definition);
-    }
-
-    id.and_then(|card_id| builtin_registry().get_by_id(card_id).cloned())
+    let card_id = id?;
+    let registry = CardRegistry::with_builtin_cards();
+    registry.get_by_id(card_id).cloned()
 }
 
 pub fn meld_counterpart_name(name: &str) -> Option<&'static str> {

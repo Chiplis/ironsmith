@@ -55,7 +55,7 @@ mod tests {
     use crate::cards::tokens::treasure_token_definition;
     use crate::decision::DecisionMaker;
     use crate::decisions::context::SelectOptionsContext;
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
     use crate::game_state::GameState;
     use crate::ids::PlayerId;
 

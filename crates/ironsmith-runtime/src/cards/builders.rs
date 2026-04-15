@@ -4463,7 +4463,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         use crate::ability::AbilityKind;
         use crate::alternative_cast::CastingMethod;
         use crate::decision::{LegalAction, SelectFirstDecisionMaker, compute_legal_actions};
-        use crate::executor::{ExecutionContext, execute_effect};
+        use crate::effects::{ExecutionContext, execute_effect};
         use crate::ids::PlayerId;
 
         let mut game = crate::tests::test_helpers::setup_two_player_game();
@@ -4636,7 +4636,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         use crate::alternative_cast::CastingMethod;
         use crate::decision::LegalAction;
         use crate::decision::compute_legal_actions;
-        use crate::executor::{ExecutionContext, execute_effect};
+        use crate::effects::{ExecutionContext, execute_effect};
         use crate::ids::PlayerId;
 
         let mut game = crate::tests::test_helpers::setup_two_player_game();
@@ -4713,7 +4713,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         use crate::alternative_cast::CastingMethod;
         use crate::decision::LegalAction;
         use crate::decision::compute_legal_actions;
-        use crate::executor::{ExecutionContext, execute_effect};
+        use crate::effects::{ExecutionContext, execute_effect};
         use crate::ids::PlayerId;
 
         let mut game = crate::tests::test_helpers::setup_two_player_game();
@@ -4827,7 +4827,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         use crate::alternative_cast::CastingMethod;
         use crate::decision::LegalAction;
         use crate::decision::compute_legal_actions;
-        use crate::executor::{ExecutionContext, execute_effect};
+        use crate::effects::{ExecutionContext, execute_effect};
         use crate::ids::PlayerId;
 
         let mut game = crate::tests::test_helpers::setup_two_player_game();
@@ -4916,7 +4916,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         use crate::ability::AbilityKind;
         use crate::decision::LegalAction;
         use crate::decision::compute_legal_actions;
-        use crate::executor::{ExecutionContext, execute_effect};
+        use crate::effects::{ExecutionContext, execute_effect};
         use crate::ids::PlayerId;
 
         let mut game = crate::tests::test_helpers::setup_two_player_game();
@@ -6124,7 +6124,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
     #[test]
     fn daybound_runtime_transforms_source_for_day_and_night_spell_count_windows() {
-        use crate::executor::{ExecutionContext, execute_effect};
+        use crate::effects::{ExecutionContext, execute_effect};
         use crate::ids::PlayerId;
 
         crate::cards::clear_runtime_custom_cards();
@@ -8683,7 +8683,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
     #[test]
     fn cumulative_upkeep_generic_runtime_pays_then_sacrifices_when_unpaid() {
-        use crate::executor::{ExecutionContext, execute_effect};
+        use crate::effects::{ExecutionContext, execute_effect};
         use crate::ids::PlayerId;
         use crate::mana::ManaSymbol;
         use crate::zone::Zone;
@@ -9065,7 +9065,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     fn training_trigger_execution_adds_counter_and_emits_train_action() {
         use crate::card::{CardBuilder, PowerToughness};
         use crate::events::{KeywordActionEvent, KeywordActionKind};
-        use crate::executor::{ExecutionContext, execute_effect};
+        use crate::effects::{ExecutionContext, execute_effect};
         use crate::ids::PlayerId;
         use crate::zone::Zone;
 

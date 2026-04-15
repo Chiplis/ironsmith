@@ -5,7 +5,7 @@ use crate::effect::{EffectOutcome, Value};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
 use crate::events::{KeywordActionEvent, KeywordActionKind};
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::filter::{FilterContext, PlayerFilterExt};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
@@ -434,7 +434,7 @@ mod tests {
     use super::*;
     use crate::cards::CardDefinitionBuilder;
     use crate::decision::DecisionMaker;
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
     use crate::ids::CardId;
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::Object;

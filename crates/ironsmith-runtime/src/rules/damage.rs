@@ -96,13 +96,13 @@ pub(crate) struct AppliedDamageAssignment {
 pub(crate) fn apply_processed_damage_assignment(
     game: &mut GameState,
     source: ObjectId,
-    target: crate::game_event::DamageTarget,
+    target: crate::events::DamageTarget,
     amount: u32,
     keywords: SourceDamageKeywords,
     cause: crate::events::cause::EventCause,
 ) -> AppliedDamageAssignment {
     match target {
-        crate::game_event::DamageTarget::Player(player_id) => {
+        crate::events::DamageTarget::Player(player_id) => {
             let source_controller = game
                 .object(source)
                 .map(|obj| obj.controller)
@@ -133,7 +133,7 @@ pub(crate) fn apply_processed_damage_assignment(
                 life_lost,
             }
         }
-        crate::game_event::DamageTarget::Object(object_id) => {
+        crate::events::DamageTarget::Object(object_id) => {
             let Some(obj) = game.object(object_id) else {
                 return AppliedDamageAssignment::default();
             };
@@ -600,7 +600,7 @@ mod tests {
         let result = apply_processed_damage_assignment(
             &mut game,
             source_id,
-            crate::game_event::DamageTarget::Player(PlayerId::from_index(1)),
+            crate::events::DamageTarget::Player(PlayerId::from_index(1)),
             3,
             SourceDamageKeywords {
                 has_infect: true,

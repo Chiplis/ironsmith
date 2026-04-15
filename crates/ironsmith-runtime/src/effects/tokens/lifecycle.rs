@@ -5,7 +5,7 @@ use crate::ability::Ability;
 use crate::effect::Effect;
 use crate::effects::{EnterAttackingEffect, SacrificeTargetEffect, ScheduleDelayedTriggerEffect};
 use crate::events::EnterBattlefieldEvent;
-use crate::executor::{ExecutionContext, ExecutionError, ResolvedTarget, execute_effect};
+use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget, execute_effect};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 #[cfg(test)]
@@ -204,7 +204,7 @@ mod tests {
     use crate::color::ColorSet;
     use crate::combat_state::{AttackTarget, AttackerInfo, CombatState};
     use crate::events::EventKind;
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
     use crate::ids::PlayerId;
     use crate::object::Object;
     use crate::types::CardType;

@@ -6,7 +6,7 @@ use crate::effects::helpers::{normalize_object_selection, resolve_player_filter,
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::events::cards::DiscardEvent;
 use crate::events::other::CardDiscardedEvent;
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::filter::ObjectFilter;
 use crate::game_state::GameState;
 use crate::snapshot::ObjectSnapshot;
@@ -162,8 +162,8 @@ impl EffectExecutor for DiscardEffect {
             .targets
             .iter()
             .filter_map(|target| match target {
-                crate::executor::ResolvedTarget::Object(id) => Some(*id),
-                crate::executor::ResolvedTarget::Player(_) => None,
+                crate::effects::ResolvedTarget::Object(id) => Some(*id),
+                crate::effects::ResolvedTarget::Player(_) => None,
             })
             .collect();
 
@@ -541,8 +541,8 @@ mod tests {
 
         let mut ctx = ExecutionContext::new_default(source, alice);
         ctx.targets = vec![
-            crate::executor::ResolvedTarget::Object(first),
-            crate::executor::ResolvedTarget::Object(second),
+            crate::effects::ResolvedTarget::Object(first),
+            crate::effects::ResolvedTarget::Object(second),
         ];
 
         let effect = DiscardEffect::you(2);

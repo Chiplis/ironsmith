@@ -16,7 +16,7 @@ use crate::decisions::specs::ChooseObjectsSpec;
 use crate::effect::EffectOutcome;
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::events::PermanentTappedEvent;
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::triggers::TriggerEvent;
@@ -156,7 +156,7 @@ impl CostExecutableEffect for ConspireCostEffect {
 mod tests {
     use super::*;
     use crate::card::CardBuilder;
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
     use crate::ids::{CardId, PlayerId};
     use crate::tests::test_helpers::setup_two_player_game;
     use crate::types::CardType;

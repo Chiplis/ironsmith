@@ -2,7 +2,7 @@
 
 use crate::effect::{Effect, EffectOutcome};
 use crate::effects::helpers::resolve_objects_from_spec;
-use crate::executor::{ExecutionContext, ResolvedTarget};
+use crate::effects::{ExecutionContext, ResolvedTarget};
 use crate::game_state::GameState;
 use crate::ids::StableId;
 use crate::snapshot::ObjectSnapshot;
@@ -243,7 +243,7 @@ fn snapshot_for_object_reference(
 mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
-    use crate::executor::ResolvedTarget;
+    use crate::effects::ResolvedTarget;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::Object;

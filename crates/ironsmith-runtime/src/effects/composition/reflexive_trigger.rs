@@ -3,7 +3,7 @@
 use crate::decisions::context::{TargetRequirementContext, TargetsContext};
 use crate::effect::{Effect, EffectId, EffectOutcome, EffectPredicate};
 use crate::effects::EffectExecutor;
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::{GameState, StackEntry};
 use crate::target::ChooseSpec;
 use crate::targeting::normalize_targets_for_requirements;
@@ -102,7 +102,7 @@ mod tests {
     use crate::decision::DecisionMaker;
     use crate::decisions::context::TargetsContext;
     use crate::effect::ChoiceCount;
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
     use crate::game_state::{GameState, Target};
     use crate::ids::PlayerId;
     use crate::target::ChooseSpec;

@@ -5,7 +5,7 @@ use crate::decisions::ask_may_choice;
 use crate::effect::{Effect, EffectOutcome, ExecutionFact};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
-use crate::executor::{ExecutionContext, ExecutionError, execute_effect};
+use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
 use crate::target::PlayerFilter;
 
@@ -199,7 +199,7 @@ mod tests {
     use crate::cards::tokens::lander_token_definition;
     use crate::effect::{Condition, ExecutionFact};
     use crate::effect::{EffectId, EffectPredicate};
-    use crate::executor::{ExecutionContext, execute_effect};
+    use crate::effects::{ExecutionContext, execute_effect};
     use crate::ids::{CardId, PlayerId};
     use crate::object::CounterType;
     use crate::target::{ChooseSpec, PlayerFilter};
@@ -383,7 +383,7 @@ mod tests {
             Zone::Battlefield,
         );
         let mut ctx = ExecutionContext::new_default(source, alice)
-            .with_targets(vec![crate::executor::ResolvedTarget::Player(bob)]);
+            .with_targets(vec![crate::effects::ResolvedTarget::Player(bob)]);
 
         for effect in terrapact_style_effects(crate::decision::FallbackStrategy::Accept) {
             execute_effect(&mut game, &effect, &mut ctx).expect("effect should resolve");

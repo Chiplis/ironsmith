@@ -31,7 +31,7 @@ mod tests {
     use crate::ability::ActivationTiming;
     use crate::card::CardBuilder;
     use crate::color::Color;
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
     use crate::game_state::GameState;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::object::Object;

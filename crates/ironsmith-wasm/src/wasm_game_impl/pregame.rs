@@ -1,8 +1,8 @@
 
 impl WasmGame {
     pub(super) fn initialize_empty_match(&mut self, player_names: Vec<String>, starting_life: i32, seed: u64) {
-        ironsmith::cards::clear_runtime_custom_cards();
         self.game = GameState::new_with_runtime_id_reset(player_names, starting_life);
+        self.registry = CardRegistry::new();
         self.game.set_random_seed(seed);
         self.match_format = MatchFormatInput::Normal;
         self.pregame = None;
@@ -40,8 +40,9 @@ impl WasmGame {
                 let Some(definition) = self.find_card_definition(name).cloned() else {
                     return Err(JsValue::from_str(&format!("unknown card name: {name}")));
                 };
-                let object_id = self.game.create_object_from_definition(
+                let object_id = self.game.create_object_from_catalog_definition(
                     &definition,
+                    &self.registry,
                     player_id,
                     ironsmith::zone::Zone::Command,
                 );

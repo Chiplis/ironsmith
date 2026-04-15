@@ -3,7 +3,7 @@
 use crate::effect::{Effect, EffectOutcome};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_single_object_for_effect;
-use crate::executor::{ExecutionContext, ExecutionError, execute_effect};
+use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
 use crate::snapshot::ObjectSnapshot;
 use crate::target::ChooseSpec;
@@ -77,8 +77,8 @@ mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
     use crate::events::DamageEvent;
-    use crate::executor::ResolvedTarget;
-    use crate::game_event::DamageTarget;
+    use crate::effects::ResolvedTarget;
+    use crate::events::DamageTarget;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::Object;

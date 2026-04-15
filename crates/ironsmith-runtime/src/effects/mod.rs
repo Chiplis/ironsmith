@@ -41,21 +41,17 @@
 //! building a reusable `Standard` effect first and only opt into the more
 //! specialized categories when the effect's main job is registration or cost handling.
 //!
-//! # Migration Status
+//! # Ownership
 //!
-//! Effect execution now routes through the runtime harness in this module.
-//! `executor.rs` still owns execution context types and compatibility wrappers,
-//! but new effect work should extend `src/effects/` and call `effects::execute_effect()`.
-//! During migration:
-//! - The `Effect` enum remains unchanged while modular execution lands
-//! - `effects::execute_effect()` provides the shared harness around trait-dispatched effects
-//! - `executor.rs` compatibility wrappers delegate back into this module
-//! - New effects should be added directly to this module tree
+//! Effect execution routes through the runtime harness in this module. Public
+//! effect execution entry points live here, while effect model data remains in
+//! the shared compiled-card domain.
 
 pub mod cards;
 pub mod combat;
 pub mod composition;
 pub(crate) mod consult_helpers;
+mod context;
 pub mod continuous;
 pub mod control;
 pub mod counters;
@@ -81,6 +77,9 @@ pub const PUBLIC_REVEALED_TAG: &str = "__public_revealed";
 pub use executor_trait::{
     CostExecutableEffect, CostValidationError, EffectExecutionCategory, EffectExecutor, ModalSpec,
 };
+pub use context::{ExecutionError, ResolvedTarget, TargetError, rebase_target_scope};
+pub type EffectContext<'a> = context::ExecutionContext<'a>;
+pub(crate) use context::ExecutionContext;
 pub use runtime::{execute_effect, resolve_value, validate_target};
 
 // Re-export effect implementations

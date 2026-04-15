@@ -4,7 +4,7 @@ use std::any::Any;
 
 use crate::events::cause::EventCause;
 use crate::events::traits::{EventKind, GameEventType, RedirectValidTypes, RedirectableTarget};
-use crate::game_event::DamageTarget;
+use crate::events::DamageTarget;
 use crate::game_state::{GameState, Target};
 use crate::ids::{ObjectId, PlayerId};
 

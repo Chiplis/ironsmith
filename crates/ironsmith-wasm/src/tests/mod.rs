@@ -5598,7 +5598,7 @@
             .expect("created custom card should exist");
 
         assert_eq!(object.name, "Forge Pup");
-        let linked = ironsmith::cards::linked_face_definition_by_name_or_id(
+        let linked = wasm.game.linked_face_definition_by_name_or_id(
             object.other_face_name.as_deref(),
             object.other_face,
         )

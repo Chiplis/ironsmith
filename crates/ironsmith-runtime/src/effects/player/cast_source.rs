@@ -6,7 +6,7 @@ use crate::alternative_cast::CastingMethod;
 use crate::cost::OptionalCostsPaid;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::{GameState, StackEntry};
 use crate::zone::Zone;
 

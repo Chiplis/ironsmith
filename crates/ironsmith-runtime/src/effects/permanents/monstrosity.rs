@@ -3,7 +3,7 @@
 use crate::effect::{Effect, EffectOutcome, Value};
 use crate::effects::helpers::resolve_value;
 use crate::effects::{EffectExecutor, PutCountersEffect};
-use crate::executor::{ExecutionContext, ExecutionError, ResolvedTarget, execute_effect};
+use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget, execute_effect};
 use crate::game_state::GameState;
 use crate::object::CounterType;
 use crate::target::ChooseSpec;

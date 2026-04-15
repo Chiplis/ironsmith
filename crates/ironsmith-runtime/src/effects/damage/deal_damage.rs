@@ -10,8 +10,8 @@ use crate::event_processor::process_damage_assignments_with_event_with_source_sn
 use crate::events::DamageEvent;
 use crate::events::LifeLossEvent;
 use crate::events::combat::{CreatureAttackedEvent, CreatureBecameBlockedEvent};
-use crate::executor::{ExecutionContext, ExecutionError, ResolvedTarget};
-use crate::game_event::DamageTarget;
+use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};
+use crate::events::DamageTarget;
 use crate::game_state::GameState;
 use crate::target::{ChooseSpec, PlayerFilter};
 use crate::triggers::AttackEventTarget;

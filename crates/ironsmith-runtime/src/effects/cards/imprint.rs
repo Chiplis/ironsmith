@@ -7,7 +7,7 @@ use crate::filter::ObjectFilterExt as _;
 use crate::decisions::{MayChooseCardSpec, make_decision};
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::ObjectFilter;
 use crate::zone::Zone;

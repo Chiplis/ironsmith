@@ -8,7 +8,7 @@ use crate::effects::helpers::{
 };
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::event_processor::EventOutcome;
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::{ChooseSpec, ObjectFilter};
 use crate::zone::Zone;
@@ -365,7 +365,7 @@ mod tests {
     use crate::decisions::context::SelectObjectsContext;
     use crate::effect::Effect;
     use crate::events::zones::matchers::WouldGoToHandMatcher;
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
     use crate::game_state::GameState;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::replacement::{ReplacementAction, ReplacementEffect};

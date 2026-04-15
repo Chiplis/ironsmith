@@ -6,7 +6,7 @@ use crate::events::traits::{
     EventKind, GameEventType, ReplacementMatcher, ReplacementPriority, downcast_event,
 };
 use crate::filter::PlayerFilterExt;
-use crate::game_event::DamageTarget;
+use crate::events::DamageTarget;
 use crate::ids::{ObjectId, PlayerId};
 use crate::target::{ObjectFilter, PlayerFilter};
 

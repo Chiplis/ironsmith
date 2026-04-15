@@ -5,7 +5,7 @@ use std::collections::HashSet;
 
 use crate::effect::{Effect, EffectOutcome};
 use crate::effects::EffectExecutor;
-use crate::executor::{ExecutionContext, ExecutionError, execute_effect};
+use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
 use crate::tag::TagKey;
 use crate::target::{ObjectFilter, TaggedOpbjectRelation};

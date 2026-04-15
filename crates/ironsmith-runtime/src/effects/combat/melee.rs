@@ -4,7 +4,7 @@ use crate::combat_state::AttackTarget;
 use crate::continuous::{EffectTarget, Modification};
 use crate::effect::{Effect, EffectOutcome, Until};
 use crate::effects::{ApplyContinuousEffect, EffectExecutor};
-use crate::executor::{ExecutionContext, ExecutionError, execute_effect};
+use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
 use std::collections::HashSet;
 
@@ -74,7 +74,7 @@ mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
     use crate::combat_state::{AttackTarget, AttackerInfo, CombatState};
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::Object;

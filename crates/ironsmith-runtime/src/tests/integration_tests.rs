@@ -293,7 +293,7 @@ impl GameScript {
                 let def = registry
                     .get(card_name)
                     .ok_or_else(|| ScriptError::CardNotFound(card_name.to_string()))?;
-                game.create_object_from_definition(def, player_id, Zone::Hand);
+                game.create_object_from_catalog_definition(def, &registry, player_id, Zone::Hand);
             }
         }
 
@@ -848,7 +848,7 @@ pub fn run_replay_test(input: impl Into<ReplayInput>, config: ReplayTestConfig) 
         let player_id = PlayerId::from_index(player_idx as u8);
         for card_name in hand_cards {
             if let Some(def) = find_card(card_name) {
-                game.create_object_from_definition(&def, player_id, Zone::Hand);
+                game.create_object_from_catalog_definition(&def, &registry, player_id, Zone::Hand);
             } else {
                 panic!("Card not found: {}", card_name);
             }
@@ -860,7 +860,12 @@ pub fn run_replay_test(input: impl Into<ReplayInput>, config: ReplayTestConfig) 
         let player_id = PlayerId::from_index(player_idx as u8);
         for card_name in bf_cards {
             if let Some(def) = find_card(card_name) {
-                let obj_id = game.create_object_from_definition(&def, player_id, Zone::Battlefield);
+                let obj_id = game.create_object_from_catalog_definition(
+                    &def,
+                    &registry,
+                    player_id,
+                    Zone::Battlefield,
+                );
                 // Remove summoning sickness for creatures that start on battlefield
                 game.remove_summoning_sickness(obj_id);
             } else {
@@ -874,7 +879,12 @@ pub fn run_replay_test(input: impl Into<ReplayInput>, config: ReplayTestConfig) 
         let player_id = PlayerId::from_index(player_idx as u8);
         for card_name in gy_cards {
             if let Some(def) = find_card(card_name) {
-                game.create_object_from_definition(&def, player_id, Zone::Graveyard);
+                game.create_object_from_catalog_definition(
+                    &def,
+                    &registry,
+                    player_id,
+                    Zone::Graveyard,
+                );
             } else {
                 panic!("Card not found: {}", card_name);
             }
@@ -886,7 +896,12 @@ pub fn run_replay_test(input: impl Into<ReplayInput>, config: ReplayTestConfig) 
         let player_id = PlayerId::from_index(player_idx as u8);
         for card_name in deck_cards {
             if let Some(def) = find_card(card_name) {
-                game.create_object_from_definition(&def, player_id, Zone::Library);
+                game.create_object_from_catalog_definition(
+                    &def,
+                    &registry,
+                    player_id,
+                    Zone::Library,
+                );
             } else {
                 panic!("Card not found: {}", card_name);
             }
@@ -898,7 +913,12 @@ pub fn run_replay_test(input: impl Into<ReplayInput>, config: ReplayTestConfig) 
         let player_id = PlayerId::from_index(player_idx as u8);
         for card_name in commander_cards {
             if let Some(def) = find_card(card_name) {
-                let obj_id = game.create_object_from_definition(&def, player_id, Zone::Command);
+                let obj_id = game.create_object_from_catalog_definition(
+                    &def,
+                    &registry,
+                    player_id,
+                    Zone::Command,
+                );
                 game.set_as_commander(obj_id, player_id);
             } else {
                 panic!("Card not found: {}", card_name);
@@ -911,7 +931,12 @@ pub fn run_replay_test(input: impl Into<ReplayInput>, config: ReplayTestConfig) 
         let player_id = PlayerId::from_index(player_idx as u8);
         for card_name in commander_cards {
             if let Some(def) = find_card(card_name) {
-                let obj_id = game.create_object_from_definition(&def, player_id, Zone::Battlefield);
+                let obj_id = game.create_object_from_catalog_definition(
+                    &def,
+                    &registry,
+                    player_id,
+                    Zone::Battlefield,
+                );
                 game.set_as_commander(obj_id, player_id);
                 // Remove summoning sickness for commanders that start on battlefield
                 game.remove_summoning_sickness(obj_id);

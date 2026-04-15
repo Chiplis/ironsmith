@@ -1,6 +1,6 @@
 use crate::effect::EffectOutcome;
 use crate::effects::{EffectExecutor, helpers::resolve_player_filter};
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::PlayerFilter;
 
@@ -38,7 +38,7 @@ impl EffectExecutor for RollDieEffect {
 mod tests {
     use super::*;
     use crate::effect::{Comparison, Effect, EffectId, EffectPredicate};
-    use crate::executor::{ExecutionContext, execute_effect};
+    use crate::effects::{ExecutionContext, execute_effect};
     use crate::ids::PlayerId;
 
     #[test]

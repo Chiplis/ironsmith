@@ -5,7 +5,7 @@ use crate::decision::FallbackStrategy;
 use crate::decisions::{CounterRemovalSpec, DistributeSpec, make_decision_with_fallback};
 use crate::effect::EffectOutcome;
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::filter::{FilterContext, ObjectFilter, PlayerFilter};
 use crate::game_state::{GameState, Target};
 use crate::ids::{ObjectId, PlayerId};

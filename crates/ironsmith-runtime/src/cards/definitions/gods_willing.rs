@@ -26,7 +26,7 @@ mod tests {
     use crate::card::CardBuilder;
     use crate::card::PowerToughness;
     use crate::color::Color;
-    use crate::executor::{ExecutionContext, ResolvedTarget, execute_effect};
+    use crate::effects::{ExecutionContext, ResolvedTarget, execute_effect};
     use crate::game_state::GameState;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::object::Object;

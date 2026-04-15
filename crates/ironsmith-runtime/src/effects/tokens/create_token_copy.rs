@@ -8,7 +8,7 @@ use crate::decisions::context::{SelectOptionsContext, SelectableOption};
 use crate::effect::{EffectOutcome, Value};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_objects_for_effect, resolve_player_filter, resolve_value};
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::PlayerId;
 use crate::object::Object;
@@ -537,7 +537,7 @@ mod tests {
     use crate::ability::AbilityKind;
     use crate::card::{CardBuilder, PowerToughness};
     use crate::cards::CardDefinitionBuilder;
-    use crate::executor::ResolvedTarget;
+    use crate::effects::ResolvedTarget;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::CounterType;

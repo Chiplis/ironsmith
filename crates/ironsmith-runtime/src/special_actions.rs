@@ -1310,7 +1310,7 @@ pub fn perform_activate_mana_ability_restricted_colors(
     mana_color_restriction: Option<Vec<crate::color::Color>>,
     decision_maker: &mut impl crate::decision::DecisionMaker,
 ) -> Result<(), ActionError> {
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
 
     // Get the mana ability details
     game.object(permanent_id)

@@ -123,12 +123,20 @@ pub use life::matchers::*;
 pub use permanents::matchers::*;
 pub use zones::matchers::*;
 
-use crate::game_event::DamageTarget;
+pub use crate::snapshot::ObjectSnapshot;
 use crate::ids::{ObjectId, PlayerId};
 use crate::object::CounterType;
 use crate::provenance::ProvNodeId;
-use crate::snapshot::ObjectSnapshot;
 use crate::zone::Zone;
+
+/// The target of damage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum DamageTarget {
+    /// Damage to a player.
+    Player(PlayerId),
+    /// Damage to a creature or planeswalker.
+    Object(ObjectId),
+}
 
 /// Wrapper around a boxed event type.
 ///

@@ -9,7 +9,7 @@ use crate::alternative_cast::CastingMethod;
 use crate::combat_state::{AttackTarget, CombatState};
 use crate::derived_view::DerivedGameView;
 use crate::effects::helpers::resolve_value;
-use crate::executor::ExecutionContext;
+use crate::effects::ExecutionContext;
 use crate::game_state::{GameState, Phase, Target};
 use crate::ids::{ObjectId, PlayerId};
 use crate::perf::PerfTimer;
@@ -400,7 +400,7 @@ mod tests {
         let event = crate::triggers::TriggerEvent::new_with_provenance(
             crate::events::DamageEvent::with_cause(
                 source,
-                crate::game_event::DamageTarget::Player(player),
+                crate::events::DamageTarget::Player(player),
                 amount,
                 false,
                 crate::events::cause::EventCause::effect(),

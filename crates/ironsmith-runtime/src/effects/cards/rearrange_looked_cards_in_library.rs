@@ -2,7 +2,7 @@ use crate::decisions::context::{SelectObjectsContext, SelectableObject};
 use crate::effect::{ChoiceCount, EffectOutcome};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::filter::PlayerFilter;
 use crate::game_state::GameState;
 use crate::ids::ObjectId;
@@ -190,7 +190,7 @@ mod tests {
     use super::*;
     use crate::card::CardBuilder;
     use crate::decision::DecisionMaker;
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
     use crate::ids::{CardId, PlayerId};
     use crate::snapshot::ObjectSnapshot;
 

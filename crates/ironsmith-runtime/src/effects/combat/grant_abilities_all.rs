@@ -4,7 +4,7 @@ use crate::filter::ObjectFilterExt as _;
 use crate::continuous::{EffectSourceType, EffectTarget, Modification};
 use crate::effect::{Effect, EffectOutcome, Until};
 use crate::effects::{ApplyContinuousEffect, EffectExecutor};
-use crate::executor::{ExecutionContext, ExecutionError, execute_effect};
+use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::filter::ObjectFilter;
 use crate::game_state::GameState;
 use crate::static_abilities::StaticAbility;

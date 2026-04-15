@@ -6,7 +6,7 @@ use crate::effects::helpers::{
     ObjectApplyResultPolicy, apply_single_target_object_from_spec, apply_to_selected_objects,
 };
 use crate::event_processor::{EventOutcome, process_destroy};
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::{ChooseSpec, ObjectFilter};
 
@@ -162,7 +162,7 @@ mod tests {
     use crate::card::{CardBuilder, PowerToughness};
     use crate::color::ColorSet;
     use crate::effect::Effect;
-    use crate::executor::{ExecutionContext, ResolvedTarget};
+    use crate::effects::{ExecutionContext, ResolvedTarget};
     use crate::filter::ObjectRef;
     use crate::game_state::GameState;
     use crate::ids::{CardId, ObjectId, PlayerId};

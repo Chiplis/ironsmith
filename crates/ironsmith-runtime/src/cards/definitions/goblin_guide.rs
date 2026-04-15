@@ -26,7 +26,7 @@ mod tests {
     use super::*;
     use crate::ability::AbilityKind;
     use crate::events::EventKind;
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
     use crate::game_state::GameState;
     use crate::ids::PlayerId;
     use crate::types::{CardType, Subtype};

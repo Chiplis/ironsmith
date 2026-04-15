@@ -270,7 +270,7 @@ mod tests {
     #[test]
     fn test_triggers_on_combat_damage_to_player() {
         use crate::events::DamageEvent;
-        use crate::game_event::DamageTarget;
+        use crate::events::DamageTarget;
         use crate::triggers::{TriggerEvent, check_triggers};
 
         let mut game = setup_game();
@@ -304,7 +304,7 @@ mod tests {
     #[test]
     fn test_does_not_trigger_on_non_combat_damage() {
         use crate::events::DamageEvent;
-        use crate::game_event::DamageTarget;
+        use crate::events::DamageTarget;
         use crate::triggers::{TriggerEvent, check_triggers};
 
         let mut game = setup_game();
@@ -338,7 +338,7 @@ mod tests {
     #[test]
     fn test_does_not_trigger_on_combat_damage_to_creature() {
         use crate::events::DamageEvent;
-        use crate::game_event::DamageTarget;
+        use crate::events::DamageTarget;
         use crate::triggers::{TriggerEvent, check_triggers};
 
         let mut game = setup_game();

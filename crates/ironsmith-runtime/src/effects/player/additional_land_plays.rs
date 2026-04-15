@@ -1,7 +1,7 @@
 use crate::effect::{EffectOutcome, Restriction, Until, Value};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::PlayerFilter;
 
@@ -49,7 +49,7 @@ impl EffectExecutor for AdditionalLandPlaysEffect {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
     use crate::ids::PlayerId;
 
     #[test]

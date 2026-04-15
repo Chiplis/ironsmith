@@ -4,7 +4,7 @@ use crate::effect::{EffectOutcome, Value};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_objects_for_effect, resolve_value};
 use crate::events::damage::matchers::DamageToSelfMatcher;
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::replacement::{RedirectTarget, RedirectWhich, ReplacementAction, ReplacementEffect};
 use crate::target::ChooseSpec;

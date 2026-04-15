@@ -1,7 +1,7 @@
 use crate::effect::EffectOutcome;
 use crate::effects::helpers::resolve_objects_for_effect;
 use crate::effects::{EffectExecutionCategory, EffectExecutor, ReplacementApplyMode};
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::replacement::{ReplacementAction, ReplacementEffect};
 use crate::target::{ChooseSpec, ObjectFilter};
@@ -117,7 +117,7 @@ mod tests {
     use crate::card::{CardBuilder, PowerToughness};
     use crate::decision::SelectFirstDecisionMaker;
     use crate::effect::OutcomeStatus;
-    use crate::executor::{ExecutionContext, execute_effect};
+    use crate::effects::{ExecutionContext, execute_effect};
     use crate::ids::{CardId, PlayerId};
     use crate::types::CardType;
 

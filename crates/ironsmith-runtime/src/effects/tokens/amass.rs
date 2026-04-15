@@ -9,7 +9,7 @@ use crate::effect::{EffectOutcome, ExecutionFact};
 use crate::effects::helpers::normalize_object_selection;
 use crate::effects::{CreateTokenEffect, EffectExecutor, PutCountersEffect};
 use crate::events::{KeywordActionEvent, KeywordActionKind};
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::{CardId, ObjectId, PlayerId};
 use crate::object::CounterType;
@@ -159,8 +159,8 @@ mod tests {
     use crate::card::CardBuilder;
     use crate::effect::{Effect, Value};
     use crate::events::DamageEvent;
-    use crate::executor::{ResolvedTarget, execute_effect};
-    use crate::game_event::DamageTarget;
+    use crate::effects::{ResolvedTarget, execute_effect};
+    use crate::events::DamageTarget;
     use crate::tag::TagKey;
     use crate::zone::Zone;
 

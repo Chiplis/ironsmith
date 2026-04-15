@@ -3,8 +3,8 @@
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::events::DamageEvent;
-use crate::executor::{ExecutionContext, ExecutionError};
-use crate::game_event::DamageTarget;
+use crate::effects::{ExecutionContext, ExecutionError};
+use crate::events::DamageTarget;
 use crate::game_state::GameState;
 use crate::snapshot::ObjectSnapshot;
 use crate::tag::TagKey;

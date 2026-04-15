@@ -1,6 +1,6 @@
 use crate::decisions::context::{OrderContext, ViewCardsContext};
 use crate::effect::EffectOutcome;
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId, StableId};
 use crate::snapshot::ObjectSnapshot;
@@ -358,7 +358,7 @@ mod tests {
     use crate::card::CardBuilder;
     use crate::decision::{AutoPassDecisionMaker, DecisionMaker};
     use crate::decisions::context::OrderContext;
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
     use crate::game_state::GameState;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::types::CardType;

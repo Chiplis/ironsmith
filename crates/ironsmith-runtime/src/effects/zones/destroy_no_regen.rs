@@ -10,7 +10,7 @@ use crate::effects::helpers::{
     ObjectApplyResultPolicy, apply_single_target_object_from_spec, apply_to_selected_objects,
 };
 use crate::event_processor::{EventOutcome, process_destroy};
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::{ChooseSpec, ObjectFilter};
 
@@ -143,7 +143,7 @@ mod tests {
     use super::*;
     use crate::card::CardBuilder;
     use crate::effects::RegenerateEffect;
-    use crate::executor::{ExecutionContext, ResolvedTarget};
+    use crate::effects::{ExecutionContext, ResolvedTarget};
     use crate::game_state::GameState;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};

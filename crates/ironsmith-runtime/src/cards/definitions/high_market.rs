@@ -291,7 +291,7 @@ mod tests {
     #[test]
     fn test_gain_life_effect_execution() {
         // Test that the gain life effect actually works when executed
-        use crate::executor::ExecutionContext;
+        use crate::effects::ExecutionContext;
 
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);

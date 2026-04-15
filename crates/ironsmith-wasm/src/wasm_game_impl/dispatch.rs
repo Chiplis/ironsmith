@@ -506,8 +506,9 @@ impl WasmGame {
         self.registry.ensure_cards_loaded([query]);
         let definition = self.load_compilable_card_definition(query)?;
 
-        let object_id = self.game.create_object_from_definition(
+        let object_id = self.game.create_object_from_catalog_definition(
             &definition,
+            &self.registry,
             player_id,
             ironsmith::zone::Zone::Hand,
         );
@@ -526,12 +527,14 @@ impl WasmGame {
         if skip_triggers {
             let object_id = self
                 .game
-                .create_object_from_definition(definition, player_id, zone);
+                .create_object_from_catalog_definition(definition, &self.registry, player_id, zone);
             return Ok(object_id.0);
         }
 
         // Create in Command zone first, then move to target zone so that
         // zone-change triggers (ETB, etc.) fire naturally.
+        self.game
+            .register_linked_face_family_from_catalog(definition, &self.registry);
         let temp_id = self
             .game
             .create_object_from_definition(definition, player_id, Zone::Command);
@@ -756,8 +759,9 @@ impl WasmGame {
                         failed_below_threshold.push(name.clone());
                         continue;
                     }
-                    self.game.create_object_from_definition(
+                    self.game.create_object_from_catalog_definition(
                         &definition,
+                        &self.registry,
                         player_id,
                         ironsmith::zone::Zone::Library,
                     );
@@ -834,16 +838,16 @@ impl WasmGame {
         let compiled = self.compile_custom_card_faces(&payload.draft)?;
         for definition in &compiled {
             self.registry.register(definition.clone());
-            ironsmith::cards::register_runtime_custom_card(definition.clone());
+            self.game.register_linked_face_definition(definition);
         }
         let Some(front) = compiled.first() else {
             return Err(JsValue::from_str("custom card draft produced no faces"));
         };
 
         let object_id = if payload.skip_triggers {
-            let object_id = self
-                .game
-                .create_object_from_definition(front, player_id, zone);
+            let object_id =
+                self.game
+                    .create_object_from_catalog_definition(front, &self.registry, player_id, zone);
             self.recompute_ui_decision()?;
             object_id
         } else {

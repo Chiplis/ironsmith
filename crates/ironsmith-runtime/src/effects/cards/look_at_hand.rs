@@ -4,7 +4,7 @@ use crate::decisions::context::ViewCardsContext;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_players_from_spec;
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
 
@@ -102,7 +102,7 @@ mod tests {
     use super::*;
     use crate::card::{Card, CardBuilder};
     use crate::decision::DecisionMaker;
-    use crate::executor::ResolvedTarget;
+    use crate::effects::ResolvedTarget;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::Object;

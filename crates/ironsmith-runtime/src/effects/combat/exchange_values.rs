@@ -5,7 +5,7 @@ use crate::effect::{Effect, EffectOutcome, Until, Value};
 use crate::effects::helpers::{resolve_player_filter, resolve_single_object_for_effect};
 use crate::effects::{ApplyContinuousEffect, EffectExecutor};
 use crate::event_processor::process_life_gain_with_event;
-use crate::executor::{ExecutionContext, ExecutionError, execute_effect};
+use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
 use crate::target::{ChooseSpec, PlayerFilter};
 use crate::triggers::TriggerEvent;
@@ -259,7 +259,7 @@ impl EffectExecutor for ExchangeValuesEffect {
 mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
-    use crate::executor::ResolvedTarget;
+    use crate::effects::ResolvedTarget;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::Object;

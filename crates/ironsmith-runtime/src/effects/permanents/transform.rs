@@ -5,7 +5,7 @@ use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_single_object_for_effect, resolve_tagged_object_id};
 use crate::events::other::{ConvertedEvent, TransformedEvent};
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
 use crate::triggers::TriggerEvent;
@@ -225,7 +225,7 @@ mod tests {
     use crate::events::EventKind;
     use crate::events::combat::CreatureAttackedEvent;
     use crate::events::phase::EndOfCombatEvent;
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::snapshot::ObjectSnapshot;

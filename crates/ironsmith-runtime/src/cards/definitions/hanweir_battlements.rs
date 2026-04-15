@@ -27,7 +27,7 @@ mod tests {
     use crate::card::{CardBuilder, PowerToughness};
     use crate::decision::AutoPassDecisionMaker;
     use crate::events::EventKind;
-    use crate::executor::{ExecutionContext, ResolvedTarget, execute_effect};
+    use crate::effects::{ExecutionContext, ResolvedTarget, execute_effect};
     use crate::game_state::GameState;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
@@ -162,14 +162,9 @@ mod tests {
 
         let battlements_id =
             game.create_object_from_definition(&hanweir_battlements(), alice, Zone::Battlefield);
-        let garrison_id = game.create_object_from_definition(
-            &crate::cards::builtin_registry()
-                .get("Hanweir Garrison")
-                .cloned()
-                .expect("Hanweir Garrison should be in builtin registry"),
-            alice,
-            Zone::Battlefield,
-        );
+        let garrison = crate::cards::CardRegistry::try_compile_card("Hanweir Garrison")
+            .expect("Hanweir Garrison should compile");
+        let garrison_id = game.create_object_from_definition(&garrison, alice, Zone::Battlefield);
 
         let def = hanweir_battlements();
         let effect = match &def.abilities[2].kind {

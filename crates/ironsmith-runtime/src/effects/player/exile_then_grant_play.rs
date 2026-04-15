@@ -3,7 +3,7 @@
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_filter, resolve_single_object_for_effect};
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::grant::{GrantDuration, Grantable};
 use crate::grant_registry::GrantSource;

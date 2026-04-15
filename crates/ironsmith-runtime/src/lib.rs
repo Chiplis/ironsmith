@@ -19,9 +19,7 @@ mod effect_text_shared;
 pub mod effects;
 pub mod event_processor;
 pub mod events;
-pub mod executor;
 pub mod filter;
-pub mod game_event;
 pub mod game_loop;
 pub mod game_state;
 pub mod grant;
@@ -125,7 +123,7 @@ pub use filter::{
     Comparison, FilterContext, ObjectFilter, PlayerFilter, PlayerFilterExt,
     TaggedObjectConstraint, TaggedOpbjectRelation,
 };
-pub use game_event::{DamageTarget as GameEventDamageTarget, ObjectSnapshot};
+pub use events::{DamageTarget as GameEventDamageTarget, ObjectSnapshot};
 pub use game_state::{CantEffectTracker, GameState, Phase, StackEntry, Step, Target, TurnState};
 pub use ids::{CardId, ObjectId, PlayerId};
 pub use mana::{ManaCost, ManaSymbol};
@@ -166,8 +164,8 @@ pub use decisions::context::{
     NumberContext, OrderContext, PartitionContext, PriorityContext, ProliferateContext,
     SelectObjectsContext, SelectOptionsContext, SelectableObject, SelectableOption,
 };
-pub use executor::{
-    ExecutionContext, ExecutionError, ResolvedTarget, TargetError, execute_effect, resolve_value,
+pub use effects::{
+    EffectContext, ExecutionError, ResolvedTarget, TargetError, execute_effect, resolve_value,
     validate_target,
 };
 pub use game_loop::{
@@ -205,8 +203,6 @@ pub use turn::{
 };
 pub use turn_history::{TurnEventRecord, TurnHistory};
 pub use turn_runner::{TurnAction, TurnRunner, TurnState as TurnRunnerState};
-pub use executor::ExecutionContext as EffectContext;
-
 // Trait-based events module re-exports
 pub use events::{
     // Matchers

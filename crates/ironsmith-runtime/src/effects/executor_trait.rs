@@ -8,7 +8,7 @@ use std::any::Any;
 
 use crate::costs::PaymentReason;
 use crate::effect::{EffectOutcome, Value};
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::mana::ManaSymbol;

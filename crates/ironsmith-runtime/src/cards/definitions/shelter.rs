@@ -30,9 +30,9 @@ mod tests {
     use crate::card::PowerToughness;
     use crate::color::Color;
     use crate::decision::AutoPassDecisionMaker;
-    use crate::executor::ExecutionContext;
-    use crate::executor::ResolvedTarget;
-    use crate::executor::execute_effect;
+    use crate::effects::ExecutionContext;
+    use crate::effects::ResolvedTarget;
+    use crate::effects::execute_effect;
     use crate::game_state::GameState;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::object::Object;

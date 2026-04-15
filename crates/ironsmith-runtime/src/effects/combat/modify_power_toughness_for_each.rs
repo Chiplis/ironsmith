@@ -4,7 +4,7 @@ use crate::continuous::{EffectTarget, Modification};
 use crate::effect::{Effect, EffectOutcome, Until, Value};
 use crate::effects::helpers::{resolve_single_object_for_effect, resolve_value};
 use crate::effects::{ApplyContinuousEffect, EffectExecutor};
-use crate::executor::{ExecutionContext, ExecutionError, execute_effect};
+use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
 
@@ -120,7 +120,7 @@ impl EffectExecutor for ModifyPowerToughnessForEachEffect {
 mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
-    use crate::executor::ResolvedTarget;
+    use crate::effects::ResolvedTarget;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::Object;

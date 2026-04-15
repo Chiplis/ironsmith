@@ -4,7 +4,7 @@ use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_objects_for_effect, resolve_tagged_object_id};
 use crate::event_processor::{EventOutcome, process_zone_change_with_additional_effects};
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
 use crate::zone::Zone;
@@ -258,7 +258,7 @@ mod tests {
     use crate::card::CardBuilder;
     use crate::effect::Effect;
     use crate::events::zones::matchers::WouldGoToGraveyardMatcher;
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::Object;

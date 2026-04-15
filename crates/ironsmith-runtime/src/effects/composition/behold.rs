@@ -8,7 +8,7 @@
 use crate::effect::EffectOutcome;
 use crate::effects::helpers::normalize_object_selection;
 use crate::effects::{CostExecutableEffect, EffectExecutor};
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::target::PlayerFilter;
@@ -295,7 +295,7 @@ mod tests {
 
         let mut dm = CaptureViewDm::default();
         let mut ctx = ExecutionContext::new(source, alice, &mut dm)
-            .with_targets(vec![crate::executor::ResolvedTarget::Object(hand)]);
+            .with_targets(vec![crate::effects::ResolvedTarget::Object(hand)]);
 
         BeholdEffect::you(Subtype::Dragon, 1)
             .execute(&mut game, &mut ctx)

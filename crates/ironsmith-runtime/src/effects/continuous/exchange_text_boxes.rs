@@ -4,7 +4,7 @@ use crate::continuous::{Modification, TextBoxOverlay, text_box_characteristics_w
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_objects_for_effect;
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
 use crate::types::CardType;
@@ -114,7 +114,7 @@ mod tests {
     use crate::cards::CardDefinitionBuilder;
     use crate::effect::ChoiceCount;
     use crate::events::combat::CreatureAttackedEvent;
-    use crate::executor::ResolvedTarget;
+    use crate::effects::ResolvedTarget;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::provenance::ProvNodeId;
     use crate::triggers::{AttackEventTarget, TriggerEvent, check_triggers};

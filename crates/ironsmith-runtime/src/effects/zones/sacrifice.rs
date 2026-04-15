@@ -9,7 +9,7 @@ use crate::effects::helpers::{
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::event_processor::EventOutcome;
 use crate::events::permanents::SacrificeEvent;
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::filter::PlayerFilterExt;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
@@ -181,8 +181,8 @@ impl EffectExecutor for SacrificeEffect {
             .targets
             .iter()
             .filter_map(|target| match target {
-                crate::executor::ResolvedTarget::Object(id) => Some(*id),
-                crate::executor::ResolvedTarget::Player(_) => None,
+                crate::effects::ResolvedTarget::Object(id) => Some(*id),
+                crate::effects::ResolvedTarget::Player(_) => None,
             })
             .collect();
         let to_sacrifice = if count == 0 {
@@ -663,7 +663,7 @@ mod tests {
     use crate::effect::{Effect, Restriction};
     use crate::effects::CostExecutableEffect;
     use crate::effects::EarthbendEffect;
-    use crate::executor::{ExecutionContext, execute_effect};
+    use crate::effects::{ExecutionContext, execute_effect};
     use crate::ids::{CardId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::Object;

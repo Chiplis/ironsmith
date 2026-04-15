@@ -37,7 +37,7 @@ mod tests {
     use crate::card::{CardBuilder, PowerToughness};
     use crate::color::{Color, ColorSet};
     use crate::effect::{Effect, Until};
-    use crate::executor::{ExecutionContext, ResolvedTarget};
+    use crate::effects::{ExecutionContext, ResolvedTarget};
     use crate::filter::ObjectFilterExt as _;
     use crate::game_state::StackEntry;
     use crate::game_state::{GameState, Target};

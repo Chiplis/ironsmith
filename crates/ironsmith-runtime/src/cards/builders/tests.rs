@@ -2415,7 +2415,7 @@ fn test_parse_copy_this_spell_for_each_creature_sacrificed_this_way() {
 fn test_plumb_style_additional_cost_trigger_copies_for_each_payment() {
     use crate::ability::AbilityKind;
     use crate::cost::OptionalCostsPaid;
-    use crate::executor::{ExecutionContext, execute_effect};
+    use crate::effects::{ExecutionContext, execute_effect};
     use crate::game_state::StackEntry;
     use crate::object::ObjectKind;
     use crate::tests::test_helpers::setup_two_player_game;
@@ -3997,7 +3997,7 @@ fn test_parse_squad_keyword_line_compiles_to_optional_cost_and_etb_copy_trigger(
 fn test_squad_trigger_creates_token_copies_equal_to_times_paid() {
     use crate::ability::AbilityKind;
     use crate::cost::OptionalCostsPaid;
-    use crate::executor::{ExecutionContext, execute_effect};
+    use crate::effects::{ExecutionContext, execute_effect};
     use crate::object::ObjectKind;
     use crate::tests::test_helpers::setup_two_player_game;
     use crate::zone::Zone;
@@ -4138,7 +4138,7 @@ fn test_parse_conspire_keyword_line_compiles_to_optional_cost() {
 fn test_offspring_trigger_creates_one_one_copy_when_paid() {
     use crate::ability::AbilityKind;
     use crate::cost::OptionalCostsPaid;
-    use crate::executor::{ExecutionContext, execute_effect};
+    use crate::effects::{ExecutionContext, execute_effect};
     use crate::object::ObjectKind;
     use crate::tests::test_helpers::setup_two_player_game;
     use crate::zone::Zone;
@@ -4230,7 +4230,7 @@ fn test_parse_scavenge_keyword_line_compiles_to_graveyard_activated_ability() {
 #[test]
 fn test_scavenge_uses_source_snapshot_power_after_source_is_exiled() {
     use crate::ability::AbilityKind;
-    use crate::executor::{ExecutionContext, ResolvedTarget, execute_effect};
+    use crate::effects::{ExecutionContext, ResolvedTarget, execute_effect};
     use crate::snapshot::ObjectSnapshot;
     use crate::zone::Zone;
 
@@ -4341,7 +4341,7 @@ fn test_parse_mobilize_keyword_line_compiles_to_attack_trigger() {
 fn test_mobilize_trigger_creates_attacking_warriors() {
     use crate::ability::AbilityKind;
     use crate::combat_state::{AttackTarget, AttackerInfo, CombatState};
-    use crate::executor::{ExecutionContext, execute_effect};
+    use crate::effects::{ExecutionContext, execute_effect};
     use crate::zone::Zone;
 
     let mut game = crate::tests::test_helpers::setup_two_player_game();
@@ -12844,7 +12844,7 @@ fn parse_shape_anew_targets_controller_and_consults_until_artifact() {
 
 #[test]
 fn shape_anew_sacrifices_target_and_uses_that_controller_library() {
-    use crate::executor::{ExecutionContext, ResolvedTarget, execute_effect};
+    use crate::effects::{ExecutionContext, ResolvedTarget, execute_effect};
 
     fn artifact(name: &str) -> crate::cards::CardDefinition {
         CardDefinitionBuilder::new(CardId::new(), name)
@@ -16844,11 +16844,11 @@ fn arcbond_delayed_trigger_deals_damage_to_each_other_creature_and_each_player()
 
     let spell_source = game.new_object_id();
     let mut ctx =
-        crate::executor::ExecutionContext::new_default(spell_source, alice).with_targets(vec![
-            crate::executor::ResolvedTarget::Object(chosen_creature),
+        crate::effects::ExecutionContext::new_default(spell_source, alice).with_targets(vec![
+            crate::effects::ResolvedTarget::Object(chosen_creature),
         ]);
     for effect in &spell_effects {
-        crate::executor::execute_effect(&mut game, effect, &mut ctx)
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
             .expect("spell effect execution should succeed");
     }
 
@@ -16866,7 +16866,7 @@ fn arcbond_delayed_trigger_deals_damage_to_each_other_creature_and_each_player()
     let damage_event = crate::triggers::TriggerEvent::new_with_provenance(
         crate::events::DamageEvent::with_cause(
             other_creature_one,
-            crate::game_event::DamageTarget::Object(chosen_creature),
+            crate::events::DamageTarget::Object(chosen_creature),
             3,
             false,
             crate::events::cause::EventCause::effect(),
@@ -22061,7 +22061,7 @@ fn parse_oracle_over_the_top_dynamic_reveal_and_distribution_regression() {
 #[test]
 fn over_the_top_moves_nonpermanents_to_their_owners_graveyards_at_runtime() {
     use crate::card::CardBuilder;
-    use crate::executor::{ExecutionContext, execute_effect};
+    use crate::effects::{ExecutionContext, execute_effect};
     use crate::zone::Zone;
 
     let def = parse_oracle_card_definition("Over the Top");
@@ -24939,7 +24939,7 @@ fn parse_sacred_guide_reveals_until_white_card_and_exiles_others() {
     );
 
     let mut dm = crate::decision::AutoPassDecisionMaker;
-    let mut ctx = crate::executor::ExecutionContext::new(guide_id, alice, &mut dm);
+    let mut ctx = crate::effects::ExecutionContext::new(guide_id, alice, &mut dm);
     crate::game_loop::execute_resolution_program(
         &mut game,
         &mut ctx,
@@ -25948,11 +25948,11 @@ fn coax_from_the_blind_eternities_puts_the_face_up_exiled_eldrazi_into_hand() {
     let mut dm = ChooseFaceUpEldraziDecisionMaker {
         expected: emrakul_id,
     };
-    let mut ctx = crate::executor::ExecutionContext::new(source, alice, &mut dm);
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm);
 
     let program = coax_def.spell_effect.as_ref().expect("spell effect");
     for effect in &program.segments[0].default_effects {
-        crate::executor::execute_effect(&mut game, effect, &mut ctx)
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
             .expect("Coax from the Blind Eternities effect should resolve");
     }
 
@@ -26229,7 +26229,7 @@ fn abundant_harvest_land_choice_puts_first_land_into_hand() {
     );
 
     let mut dm = ChooseLandOptionDecisionMaker;
-    let mut ctx = crate::executor::ExecutionContext::new(harvest_id, alice, &mut dm);
+    let mut ctx = crate::effects::ExecutionContext::new(harvest_id, alice, &mut dm);
     crate::game_loop::execute_resolution_program(
         &mut game,
         &mut ctx,
@@ -26333,7 +26333,7 @@ fn abundant_harvest_nonland_choice_skips_lands_until_nonland() {
     );
 
     let mut dm = ChooseNonlandOptionDecisionMaker;
-    let mut ctx = crate::executor::ExecutionContext::new(harvest_id, alice, &mut dm);
+    let mut ctx = crate::effects::ExecutionContext::new(harvest_id, alice, &mut dm);
     crate::game_loop::execute_resolution_program(
         &mut game,
         &mut ctx,
@@ -26645,7 +26645,7 @@ fn parse_hermit_druid_reveals_until_basic_land_and_graveyards_others() {
     );
 
     let mut dm = crate::decision::AutoPassDecisionMaker;
-    let mut ctx = crate::executor::ExecutionContext::new(druid_id, alice, &mut dm);
+    let mut ctx = crate::effects::ExecutionContext::new(druid_id, alice, &mut dm);
     crate::game_loop::execute_resolution_program(
         &mut game,
         &mut ctx,
@@ -26772,7 +26772,7 @@ fn parse_hermit_druid_basic_land_on_top_goes_straight_to_hand() {
     );
 
     let mut dm = crate::decision::AutoPassDecisionMaker;
-    let mut ctx = crate::executor::ExecutionContext::new(druid_id, alice, &mut dm);
+    let mut ctx = crate::effects::ExecutionContext::new(druid_id, alice, &mut dm);
     crate::game_loop::execute_resolution_program(
         &mut game,
         &mut ctx,
@@ -26913,7 +26913,7 @@ fn parse_hermit_druid_no_basic_land_mills_entire_library() {
     }
 
     let mut dm = crate::decision::AutoPassDecisionMaker;
-    let mut ctx = crate::executor::ExecutionContext::new(druid_id, alice, &mut dm);
+    let mut ctx = crate::effects::ExecutionContext::new(druid_id, alice, &mut dm);
     crate::game_loop::execute_resolution_program(
         &mut game,
         &mut ctx,
@@ -27116,7 +27116,7 @@ fn union_of_the_third_path_gains_life_equal_to_hand_size_after_draw() {
     }
 
     let mut dm = crate::decision::AutoPassDecisionMaker;
-    let mut ctx = crate::executor::ExecutionContext::new(union_id, alice, &mut dm);
+    let mut ctx = crate::effects::ExecutionContext::new(union_id, alice, &mut dm);
     crate::game_loop::execute_resolution_program(
         &mut game,
         &mut ctx,

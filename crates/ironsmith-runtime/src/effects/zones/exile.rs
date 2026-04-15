@@ -8,7 +8,7 @@ use crate::effects::helpers::{
 };
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::event_processor::EventOutcome;
-use crate::executor::{ExecutionContext, ExecutionError, ResolvedTarget};
+use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};
 use crate::filter::FilterContext;
 use crate::game_state::GameState;
 use crate::target::{ChooseSpec, ObjectFilter};
@@ -458,7 +458,7 @@ mod tests {
     use crate::effects::ChooseObjectsEffect;
     use crate::effects::LookAtTopCardsEffect;
     use crate::effects::ShuffleGraveyardIntoLibraryEffect;
-    use crate::executor::{ExecutionContext, ResolvedTarget};
+    use crate::effects::{ExecutionContext, ResolvedTarget};
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::Object;

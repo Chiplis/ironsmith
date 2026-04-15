@@ -3,7 +3,7 @@
 use crate::effect::{EffectOutcome, Restriction, Until};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_objects_for_effect;
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::{ChooseSpec, ObjectFilter};
 use crate::zone::Zone;
@@ -81,7 +81,7 @@ mod tests {
     use crate::CardDefinitionBuilder;
     use crate::card::PowerToughness;
     use crate::effect::{OutcomeStatus, OutcomeValue};
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
     use crate::ids::{CardId, PlayerId};
     use crate::target::PlayerFilter;
     use crate::types::CardType;

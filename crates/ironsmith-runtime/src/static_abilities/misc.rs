@@ -3145,7 +3145,7 @@ mod tests {
     use crate::events::DamageEvent;
     use crate::events::EventContext;
     use crate::events::zones::ZoneChangeEvent;
-    use crate::game_event::DamageTarget;
+    use crate::events::DamageTarget;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::ManaCost;
     use crate::rules::state_based::apply_state_based_actions_with;
@@ -3428,7 +3428,7 @@ mod tests {
         let damage_event = crate::triggers::TriggerEvent::new_with_provenance(
             crate::events::DamageEvent::with_cause(
                 source,
-                crate::game_event::DamageTarget::Player(bob),
+                crate::events::DamageTarget::Player(bob),
                 3,
                 false,
                 crate::events::cause::EventCause::effect(),

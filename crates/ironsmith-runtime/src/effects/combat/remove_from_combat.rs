@@ -3,7 +3,7 @@
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{ObjectApplyResultPolicy, apply_to_selected_objects};
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
 
@@ -110,7 +110,7 @@ mod tests {
     use super::*;
     use crate::card::CardBuilder;
     use crate::combat_state::{AttackTarget, AttackerInfo, is_attacking, is_blocking};
-    use crate::executor::ResolvedTarget;
+    use crate::effects::ResolvedTarget;
     use crate::ids::{CardId, PlayerId};
     use crate::types::CardType;
     use crate::zone::Zone;

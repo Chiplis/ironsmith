@@ -7,7 +7,7 @@ use crate::effects::{
     ApplyContinuousEffect, EffectExecutor, PutCountersEffect, ScheduleDelayedTriggerEffect,
 };
 use crate::events::{KeywordActionEvent, KeywordActionKind};
-use crate::executor::{ExecutionContext, ExecutionError, ResolvedTarget, execute_effect};
+use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget, execute_effect};
 use crate::game_state::GameState;
 use crate::object::CounterType;
 use crate::target::ChooseSpec;

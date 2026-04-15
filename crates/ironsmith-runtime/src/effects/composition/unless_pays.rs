@@ -6,7 +6,7 @@ use crate::effect::{Effect, EffectOutcome, Value};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
 use crate::events::LifeLossEvent;
-use crate::executor::{ExecutionContext, ExecutionError, execute_effect};
+use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
 use crate::ids::PlayerId;
 use crate::mana::{ManaCost, ManaSymbol};
@@ -316,7 +316,7 @@ mod tests {
     use crate::card::CardBuilder;
     use crate::decision::SelectFirstDecisionMaker;
     use crate::effect::Effect;
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
     use crate::ids::{CardId, PlayerId};
     use crate::static_abilities::StaticAbility;
     use crate::types::CardType;

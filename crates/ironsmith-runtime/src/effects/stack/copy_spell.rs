@@ -4,7 +4,7 @@ use crate::effect::{EffectOutcome, Value};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_objects_for_effect, resolve_player_filter, resolve_value};
 use crate::events::spells::SpellCopiedEvent;
-use crate::executor::{ExecutionContext, ExecutionError, ResolvedTarget};
+use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};
 use crate::game_state::{GameState, StackEntry, Target};
 use crate::object::Object;
 use crate::target::{ChooseSpec, PlayerFilter};
@@ -233,7 +233,7 @@ mod tests {
         let spell_id = create_instant_on_stack(&mut game, "Lightning Bolt", alice);
 
         let mut ctx = ExecutionContext::new_default(source, alice);
-        ctx.targets = vec![crate::executor::ResolvedTarget::Object(spell_id)];
+        ctx.targets = vec![crate::effects::ResolvedTarget::Object(spell_id)];
 
         let effect = CopySpellEffect::single(ChooseSpec::spell());
         let result = effect.execute(&mut game, &mut ctx).unwrap();
@@ -271,7 +271,7 @@ mod tests {
         }
 
         let mut ctx = ExecutionContext::new_default(source, alice);
-        ctx.targets = vec![crate::executor::ResolvedTarget::Object(spell_id)];
+        ctx.targets = vec![crate::effects::ResolvedTarget::Object(spell_id)];
 
         let effect = CopySpellEffect::single(ChooseSpec::spell());
         let result = effect.execute(&mut game, &mut ctx).unwrap();
@@ -298,7 +298,7 @@ mod tests {
         let spell_id = create_instant_on_stack(&mut game, "Shock", alice);
 
         let mut ctx = ExecutionContext::new_default(source, alice);
-        ctx.targets = vec![crate::executor::ResolvedTarget::Object(spell_id)];
+        ctx.targets = vec![crate::effects::ResolvedTarget::Object(spell_id)];
 
         let effect = CopySpellEffect::new(ChooseSpec::spell(), 3);
         let result = effect.execute(&mut game, &mut ctx).unwrap();
@@ -329,7 +329,7 @@ mod tests {
         let spell_id = create_instant_on_stack(&mut game, "Shock", alice);
 
         let mut ctx = ExecutionContext::new_default(source, alice);
-        ctx.targets = vec![crate::executor::ResolvedTarget::Object(spell_id)];
+        ctx.targets = vec![crate::effects::ResolvedTarget::Object(spell_id)];
 
         let effect = CopySpellEffect::single(ChooseSpec::spell());
         let _ = effect.execute(&mut game, &mut ctx).unwrap();
@@ -355,7 +355,7 @@ mod tests {
         }
 
         let mut ctx = ExecutionContext::new_default(source, alice);
-        ctx.targets = vec![crate::executor::ResolvedTarget::Object(spell_id)];
+        ctx.targets = vec![crate::effects::ResolvedTarget::Object(spell_id)];
 
         let effect = CopySpellEffect::single(ChooseSpec::spell());
         let result = effect.execute(&mut game, &mut ctx).unwrap();
@@ -389,7 +389,7 @@ mod tests {
         }
 
         let mut ctx = ExecutionContext::new_default(source, alice);
-        ctx.targets = vec![crate::executor::ResolvedTarget::Object(spell_id)];
+        ctx.targets = vec![crate::effects::ResolvedTarget::Object(spell_id)];
 
         let effect = CopySpellEffect::single(ChooseSpec::spell());
         let result = effect.execute(&mut game, &mut ctx).unwrap();
@@ -445,7 +445,7 @@ mod tests {
         let spell_id = game.create_object_from_card(&card, alice, Zone::Hand);
 
         let mut ctx = ExecutionContext::new_default(source, alice);
-        ctx.targets = vec![crate::executor::ResolvedTarget::Object(spell_id)];
+        ctx.targets = vec![crate::effects::ResolvedTarget::Object(spell_id)];
 
         let effect = CopySpellEffect::single(ChooseSpec::spell());
         let result = effect.execute(&mut game, &mut ctx).unwrap();
@@ -465,7 +465,7 @@ mod tests {
 
         // Bob copies it
         let mut ctx = ExecutionContext::new_default(source, bob);
-        ctx.targets = vec![crate::executor::ResolvedTarget::Object(spell_id)];
+        ctx.targets = vec![crate::effects::ResolvedTarget::Object(spell_id)];
 
         let effect = CopySpellEffect::single(ChooseSpec::spell());
         let result = effect.execute(&mut game, &mut ctx).unwrap();

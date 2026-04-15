@@ -10,7 +10,7 @@ use crate::effects::EffectExecutor;
 use crate::effects::zones::{
     BattlefieldEntryOptions, BattlefieldEntryOutcome, move_to_battlefield_with_options,
 };
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::{GameState, StackEntry};
 use crate::mana::ManaCost;
 use crate::tag::TagKey;

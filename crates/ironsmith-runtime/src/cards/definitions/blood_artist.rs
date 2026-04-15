@@ -28,7 +28,7 @@ mod tests {
     use crate::card::PowerToughness;
     use crate::color::Color;
     use crate::events::zones::ZoneChangeEvent;
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
     use crate::game_state::GameState;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::object::Object;
@@ -359,7 +359,7 @@ mod tests {
         // effects[0] = TargetOnlyEffect, effects[1] = LoseLifeEffect
         let mut ctx = ExecutionContext::new_default(blood_artist_id, alice);
         ctx.targets
-            .push(crate::executor::ResolvedTarget::Player(bob));
+            .push(crate::effects::ResolvedTarget::Player(bob));
 
         let starting_life = game.player(bob).unwrap().life;
         let result = effects[1].0.execute(&mut game, &mut ctx);
@@ -394,7 +394,7 @@ mod tests {
         // effects[0] = TargetOnlyEffect, effects[1] = LoseLifeEffect, effects[2] = GainLifeEffect
         let mut ctx = ExecutionContext::new_default(blood_artist_id, alice);
         ctx.targets
-            .push(crate::executor::ResolvedTarget::Player(bob));
+            .push(crate::effects::ResolvedTarget::Player(bob));
 
         let starting_life = game.player(alice).unwrap().life;
         let result = effects[2].0.execute(&mut game, &mut ctx);
@@ -428,7 +428,7 @@ mod tests {
         // Set up execution context
         let mut ctx = ExecutionContext::new_default(blood_artist_id, alice);
         ctx.targets
-            .push(crate::executor::ResolvedTarget::Player(bob));
+            .push(crate::effects::ResolvedTarget::Player(bob));
 
         let alice_starting = game.player(alice).unwrap().life;
         let bob_starting = game.player(bob).unwrap().life;
@@ -470,7 +470,7 @@ mod tests {
         // Set up execution context with Alice targeting herself
         let mut ctx = ExecutionContext::new_default(blood_artist_id, alice);
         ctx.targets
-            .push(crate::executor::ResolvedTarget::Player(alice));
+            .push(crate::effects::ResolvedTarget::Player(alice));
 
         let starting_life = game.player(alice).unwrap().life;
 
@@ -676,7 +676,7 @@ mod tests {
 
         let mut ctx = ExecutionContext::new_default(blood_artist_id, alice);
         ctx.targets
-            .push(crate::executor::ResolvedTarget::Player(bob));
+            .push(crate::effects::ResolvedTarget::Player(bob));
 
         // First effect should return Count(1) for 1 life lost
         let result1 = effects[0].0.execute(&mut game, &mut ctx).unwrap();

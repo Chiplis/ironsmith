@@ -4,7 +4,7 @@
 
 use crate::effect::{Effect, EffectOutcome};
 use crate::effects::EffectExecutor;
-use crate::executor::{ExecutionContext, ExecutionError, execute_effect};
+use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
 
 /// Effect that executes multiple effects in sequence.

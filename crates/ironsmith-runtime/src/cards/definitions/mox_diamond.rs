@@ -29,7 +29,7 @@ mod tests {
     use crate::card::CardBuilder;
     use crate::effects::EffectExecutor;
     use crate::effects::mana::AddManaOfAnyColorEffect;
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
     use crate::game_state::GameState;
     use crate::ids::PlayerId;
     use crate::zone::Zone;

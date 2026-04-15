@@ -2,7 +2,7 @@
 
 use crate::effect::{Effect, EffectOutcome};
 use crate::effects::{EffectExecutor, PutOntoBattlefieldEffect};
-use crate::executor::{ExecutionContext, ExecutionError, ResolvedTarget, execute_effect};
+use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget, execute_effect};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId, StableId};
 use crate::target::{ChooseSpec, ObjectRef, PlayerFilter};

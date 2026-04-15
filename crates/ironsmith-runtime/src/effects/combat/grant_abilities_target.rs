@@ -4,7 +4,7 @@ use crate::continuous::{EffectTarget, Modification};
 use crate::effect::{Effect, EffectOutcome, Until};
 use crate::effects::helpers::resolve_single_object_for_effect;
 use crate::effects::{ApplyContinuousEffect, EffectExecutor};
-use crate::executor::{ExecutionContext, ExecutionError, execute_effect};
+use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
 use crate::static_abilities::StaticAbility;
 use crate::target::ChooseSpec;

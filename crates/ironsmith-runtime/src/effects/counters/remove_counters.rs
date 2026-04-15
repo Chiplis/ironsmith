@@ -3,7 +3,7 @@
 use crate::effect::{EffectOutcome, Value};
 use crate::effects::helpers::{resolve_single_object_for_effect, resolve_value};
 use crate::effects::{CostExecutableEffect, EffectExecutor};
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::object::CounterType;
 use crate::target::ChooseSpec;
@@ -147,7 +147,7 @@ impl CostExecutableEffect for RemoveCountersEffect {
 mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
-    use crate::executor::ResolvedTarget;
+    use crate::effects::ResolvedTarget;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::Object;

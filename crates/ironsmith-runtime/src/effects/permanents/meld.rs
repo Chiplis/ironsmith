@@ -6,7 +6,7 @@ use crate::effects::EffectExecutor;
 use crate::effects::zones::{
     BattlefieldEntryOptions, BattlefieldEntryOutcome, move_to_battlefield_with_options,
 };
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::game_state::MeldComponentState;
 use crate::object::ObjectKind;
@@ -129,8 +129,7 @@ impl EffectExecutor for MeldEffect {
             return Ok(EffectOutcome::resolved());
         }
 
-        let Some(result_def) =
-            crate::cards::linked_face_definition_by_name_or_id(Some(&self.result_name), None)
+        let Some(result_def) = game.linked_face_definition_by_name_or_id(Some(&self.result_name), None)
         else {
             return Ok(EffectOutcome::resolved());
         };
@@ -185,7 +184,7 @@ mod tests {
     use crate::cards::{CardDefinition, register_runtime_custom_card};
     use crate::combat_state::{AttackTarget, AttackerInfo, CombatState};
     use crate::decision::DecisionMaker;
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::{Object, ObjectKind};

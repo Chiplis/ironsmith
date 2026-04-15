@@ -741,6 +741,12 @@ fn run_cli() {
 
     // Create the game
     let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let add_registry_card = |game: &mut GameState,
+                             card: &CardDefinition,
+                             player: PlayerId,
+                             zone: Zone| {
+        game.create_object_from_catalog_definition(card, &registry, player, zone)
+    };
 
     let player1 = PlayerId::from_index(0);
     let player2 = PlayerId::from_index(1);
@@ -760,10 +766,10 @@ fn run_cli() {
 
     // Add cards to libraries (excluding hand cards for custom hands)
     for card in &deck1 {
-        game.create_object_from_definition(card, player1, Zone::Library);
+        add_registry_card(&mut game, card, player1, Zone::Library);
     }
     for card in &deck2 {
-        game.create_object_from_definition(card, player2, Zone::Library);
+        add_registry_card(&mut game, card, player2, Zone::Library);
     }
 
     // Add custom hand cards directly to hand
@@ -771,7 +777,7 @@ fn run_cli() {
         println!("\nAlice starting hand ({} cards):", hand1.len());
         for card in &hand1 {
             println!("  - {}", card.name());
-            game.create_object_from_definition(card, player1, Zone::Hand);
+            add_registry_card(&mut game, card, player1, Zone::Hand);
         }
     }
 
@@ -779,7 +785,7 @@ fn run_cli() {
         println!("\nBob starting hand ({} cards):", hand2.len());
         for card in &hand2 {
             println!("  - {}", card.name());
-            game.create_object_from_definition(card, player2, Zone::Hand);
+            add_registry_card(&mut game, card, player2, Zone::Hand);
         }
     }
 
@@ -802,14 +808,14 @@ fn run_cli() {
         );
         for card in &battlefield1 {
             println!("  - {}", card.name());
-            game.create_object_from_definition(card, player1, Zone::Battlefield);
+            add_registry_card(&mut game, card, player1, Zone::Battlefield);
         }
     }
     if !battlefield2.is_empty() {
         println!("\nBob starting battlefield ({} cards):", battlefield2.len());
         for card in &battlefield2 {
             println!("  - {}", card.name());
-            game.create_object_from_definition(card, player2, Zone::Battlefield);
+            add_registry_card(&mut game, card, player2, Zone::Battlefield);
         }
     }
 
@@ -829,14 +835,14 @@ fn run_cli() {
         println!("\nAlice starting graveyard ({} cards):", graveyard1.len());
         for card in &graveyard1 {
             println!("  - {}", card.name());
-            game.create_object_from_definition(card, player1, Zone::Graveyard);
+            add_registry_card(&mut game, card, player1, Zone::Graveyard);
         }
     }
     if !graveyard2.is_empty() {
         println!("\nBob starting graveyard ({} cards):", graveyard2.len());
         for card in &graveyard2 {
             println!("  - {}", card.name());
-            game.create_object_from_definition(card, player2, Zone::Graveyard);
+            add_registry_card(&mut game, card, player2, Zone::Graveyard);
         }
     }
 
@@ -856,14 +862,14 @@ fn run_cli() {
         println!("\nAlice starting exile ({} cards):", exile1.len());
         for card in &exile1 {
             println!("  - {}", card.name());
-            game.create_object_from_definition(card, player1, Zone::Exile);
+            add_registry_card(&mut game, card, player1, Zone::Exile);
         }
     }
     if !exile2.is_empty() {
         println!("\nBob starting exile ({} cards):", exile2.len());
         for card in &exile2 {
             println!("  - {}", card.name());
-            game.create_object_from_definition(card, player2, Zone::Exile);
+            add_registry_card(&mut game, card, player2, Zone::Exile);
         }
     }
 
@@ -883,7 +889,7 @@ fn run_cli() {
         println!("\nAlice commander(s) ({} cards):", commander1.len());
         for card in &commander1 {
             println!("  - {}", card.name());
-            let obj_id = game.create_object_from_definition(card, player1, Zone::Command);
+            let obj_id = add_registry_card(&mut game, card, player1, Zone::Command);
             game.set_as_commander(obj_id, player1);
         }
     }
@@ -891,7 +897,7 @@ fn run_cli() {
         println!("\nBob commander(s) ({} cards):", commander2.len());
         for card in &commander2 {
             println!("  - {}", card.name());
-            let obj_id = game.create_object_from_definition(card, player2, Zone::Command);
+            let obj_id = add_registry_card(&mut game, card, player2, Zone::Command);
             game.set_as_commander(obj_id, player2);
         }
     }

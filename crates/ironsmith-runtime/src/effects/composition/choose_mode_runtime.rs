@@ -4,7 +4,7 @@ use crate::ability::AbilityKind;
 use crate::decisions::{ModesSpec, make_decision, specs::ModeOption};
 use crate::effect::{EffectMode, EffectOutcome, ExecutionFact};
 use crate::effects::helpers::resolve_value;
-use crate::executor::{ExecutionContext, ExecutionError, execute_effect, rebase_target_scope};
+use crate::effects::{ExecutionContext, ExecutionError, execute_effect, rebase_target_scope};
 use crate::game_state::GameState;
 use crate::game_state::TargetAssignment;
 use crate::ids::{ObjectId, PlayerId};
@@ -216,7 +216,7 @@ pub(crate) fn run_choose_mode(
     for &idx in &valid_chosen_indices {
         if let Some(mode) = effect.modes.get(idx) {
             let mut active_scope: Option<(
-                Vec<crate::executor::ResolvedTarget>,
+                Vec<crate::effects::ResolvedTarget>,
                 Vec<TargetAssignment>,
             )> = None;
             for inner in &mode.effects {
@@ -320,8 +320,8 @@ mod tests {
         let mut ctx = ExecutionContext::new_default(source, alice)
             .with_chosen_modes(Some(vec![0, 1]))
             .with_targets(vec![
-                crate::executor::ResolvedTarget::Object(creature),
-                crate::executor::ResolvedTarget::Object(land),
+                crate::effects::ResolvedTarget::Object(creature),
+                crate::effects::ResolvedTarget::Object(land),
             ])
             .with_target_assignments(vec![
                 TargetAssignment {
@@ -376,8 +376,8 @@ mod tests {
         let mut ctx = ExecutionContext::new_default(source, alice)
             .with_chosen_modes(Some(vec![0, 1]))
             .with_targets(vec![
-                crate::executor::ResolvedTarget::Player(alice),
-                crate::executor::ResolvedTarget::Player(bob),
+                crate::effects::ResolvedTarget::Player(alice),
+                crate::effects::ResolvedTarget::Player(bob),
             ])
             .with_target_assignments(vec![
                 TargetAssignment {

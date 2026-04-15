@@ -52,3 +52,16 @@ This repository now uses an explicit workspace split instead of a root product c
   cost payment, target matching, and mana-symbol inference in runtime-local
   extension traits/helpers.
 - `ironsmith-core`, `ironsmith-compiler`, `ironsmith-registry`, and `ironsmith-wasm` are active extraction targets rather than fully migrated end states.
+
+## Remaining Finish Milestones
+
+- `ironsmith-compiler` still needs to stop behaving like a relocated runtime
+  subtree and become the native owner of its backend modules.
+- `ironsmith-registry` still needs to become the sole owner of concrete
+  catalog/loading policy, with adapter-owned instances instead of hidden
+  singleton access paths.
+- `ironsmith-runtime` still needs to expose only one public effect execution
+  path and one public event/replacement path.
+- `GameSession<C>` and `GameState` still need to become the canonical
+  service/state boundary: explicit catalog injection, no gameplay-time global
+  registry access, and a private aggregate over internal state stores.

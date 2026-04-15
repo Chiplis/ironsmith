@@ -3,7 +3,7 @@
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::grant::Grantable;
 use crate::grant_registry::GrantSource;
@@ -216,7 +216,7 @@ mod tests {
     use crate::Zone;
     use crate::card::CardBuilder;
     use crate::decision::SelectFirstDecisionMaker;
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::snapshot::ObjectSnapshot;
     use std::collections::HashSet;

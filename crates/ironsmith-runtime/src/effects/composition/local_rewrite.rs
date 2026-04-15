@@ -1,7 +1,7 @@
 use crate::effect::{Effect, EffectOutcome};
 use crate::effects::{EffectExecutor, RegisterZoneReplacementEffect};
 use crate::events::ReplacementPriority;
-use crate::executor::{ExecutionContext, ExecutionError, execute_effect};
+use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
 
 /// Execute an effect while temporary replacement effects are scoped to that execution.

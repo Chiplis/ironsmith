@@ -4,7 +4,7 @@ use crate::cards::CardDefinition;
 use crate::effect::{EffectOutcome, Value};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_value;
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::object::Object;
 use crate::target::{ChooseSpec, PlayerFilter};

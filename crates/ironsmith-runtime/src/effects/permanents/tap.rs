@@ -4,7 +4,7 @@ use crate::effect::{ChoiceCount, EffectOutcome};
 use crate::effects::helpers::{ObjectApplyResultPolicy, apply_to_selected_objects};
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::events::PermanentTappedEvent;
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::{ChooseSpec, ObjectFilter};
 use crate::triggers::TriggerEvent;
@@ -183,7 +183,7 @@ impl CostExecutableEffect for TapEffect {
 mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
-    use crate::executor::ResolvedTarget;
+    use crate::effects::ResolvedTarget;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::Object;

@@ -5,7 +5,7 @@ use crate::effects::helpers::{resolve_player_filter, resolve_value};
 use crate::effects::zones::apply_zone_change_with_additional_effects;
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::event_processor::EventOutcome;
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::ObjectId;
 use crate::target::PlayerFilter;
@@ -149,7 +149,7 @@ impl CostExecutableEffect for MillEffect {
                 ));
             }
             _ => {
-                let ctx = crate::executor::ExecutionContext::new_default(source, controller);
+                let ctx = crate::effects::ExecutionContext::new_default(source, controller);
                 crate::effects::helpers::resolve_value(game, &self.count, &ctx)
                     .map_err(|err| crate::effects::CostValidationError::Other(format!("{err:?}")))?
                     .max(0) as usize

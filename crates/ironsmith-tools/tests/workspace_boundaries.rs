@@ -10,6 +10,12 @@ fn workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
+fn read_repo_file(root: &Path, relative: &str) -> String {
+    let path = root.join(relative);
+    fs::read_to_string(&path)
+        .unwrap_or_else(|err| panic!("failed to read {}: {err}", path.display()))
+}
+
 fn package_dependencies(manifest_path: &Path) -> Vec<String> {
     let raw = fs::read_to_string(manifest_path)
         .unwrap_or_else(|err| panic!("failed to read {}: {err}", manifest_path.display()));
@@ -227,4 +233,89 @@ fn aggregate_compiled_card_models_are_core_owned() {
             );
         }
     }
+}
+
+#[test]
+fn runtime_public_surface_does_not_export_legacy_executor_or_game_event_modules() {
+    let root = workspace_root();
+    let lib_rs = read_repo_file(&root, "crates/ironsmith-runtime/src/lib.rs");
+
+    for forbidden in ["pub mod executor;", "pub mod game_event;"] {
+        assert!(
+            !lib_rs.contains(forbidden),
+            "runtime lib.rs should not publicly export legacy module `{forbidden}`"
+        );
+    }
+}
+
+#[test]
+fn runtime_gameplay_code_does_not_call_global_registry_singletons_directly() {
+    let root = workspace_root();
+    let runtime_src = root.join("crates/ironsmith-runtime/src");
+    let mut files = Vec::new();
+    collect_rust_files(&runtime_src, &mut files);
+
+    let allowlisted_runtime_registry_owner = root.join("crates/ironsmith-runtime/src/cards/mod.rs");
+    let allowlisted_test_helpers = [
+        root.join("crates/ironsmith-runtime/src/cards/definitions/hanweir_battlements.rs"),
+        root.join("crates/ironsmith-runtime/src/game_loop/tests.rs"),
+    ];
+
+    let offenders: Vec<String> = files
+        .into_iter()
+        .filter(|path| *path != allowlisted_runtime_registry_owner)
+        .filter(|path| !allowlisted_test_helpers.iter().any(|allowed| allowed == path))
+        .filter(|path| path.components().all(|component| component.as_os_str() != "tests"))
+        .filter_map(|path| {
+            let content = fs::read_to_string(&path)
+                .unwrap_or_else(|err| panic!("failed to read {}: {err}", path.display()));
+            (content.contains("builtin_registry(") || content.contains("runtime_custom_registry("))
+                .then(|| {
+                    path.strip_prefix(&root)
+                        .unwrap_or(&path)
+                        .display()
+                        .to_string()
+                })
+        })
+        .collect();
+
+    assert!(
+        offenders.is_empty(),
+        "runtime gameplay code should not call global registry singletons directly: {offenders:?}"
+    );
+}
+
+#[test]
+fn compiler_runtime_backend_does_not_import_ironsmith_runtime_directly() {
+    let root = workspace_root();
+    let backend_root = root.join("crates/ironsmith-compiler/src/runtime_backend");
+    let mut files = Vec::new();
+    collect_rust_files(&backend_root, &mut files);
+
+    let forbidden_fragments = ["use ironsmith_runtime", "extern crate ironsmith_runtime"];
+
+    let offenders: Vec<String> = files
+        .into_iter()
+        .filter_map(|path| {
+            let content = fs::read_to_string(&path)
+                .unwrap_or_else(|err| panic!("failed to read {}: {err}", path.display()));
+            forbidden_fragments
+                .iter()
+                .find(|fragment| content.contains(**fragment))
+                .map(|fragment| {
+                    format!(
+                        "{} -> {}",
+                        path.strip_prefix(&root)
+                            .unwrap_or(&path)
+                            .display(),
+                        fragment
+                    )
+                })
+        })
+        .collect();
+
+    assert!(
+        offenders.is_empty(),
+        "compiler runtime_backend should not import ironsmith-runtime directly: {offenders:?}"
+    );
 }

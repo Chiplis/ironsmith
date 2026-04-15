@@ -7,7 +7,7 @@ use crate::effects::EffectExecutor;
 use crate::effects::helpers::{
     resolve_objects_for_effect, resolve_player_filter, resolve_value, validate_target,
 };
-use crate::executor::{ExecutionContext, ExecutionError, ResolvedTarget};
+use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};
 use crate::game_state::GameState;
 use crate::ids::ObjectId;
 use crate::target::ChooseSpec;
@@ -427,7 +427,7 @@ mod tests {
     use crate::card::{CardBuilder, PowerToughness};
     use crate::continuous::{ContinuousEffect, Modification};
     use crate::effect::Effect;
-    use crate::executor::{ExecutionContext, ResolvedTarget, execute_effect};
+    use crate::effects::{ExecutionContext, ResolvedTarget, execute_effect};
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::Object;

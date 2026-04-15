@@ -8,7 +8,7 @@ use crate::effects::helpers::{
     resolve_player_filter, resolve_player_filter_to_list, resolve_value,
 };
 use crate::events::SearchLibraryEvent;
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::filter::{ObjectFilter, PlayerFilter};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
@@ -887,7 +887,7 @@ mod tests {
     use crate::card::CardBuilder;
     use crate::decision::DecisionMaker;
     use crate::effect::ExecutionFact;
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
     use crate::filter::ObjectFilter;
     use crate::ids::{CardId, PlayerId};
     use crate::target::PlayerFilter;

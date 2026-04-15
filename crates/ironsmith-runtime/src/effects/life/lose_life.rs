@@ -4,7 +4,7 @@ use crate::effect::{EffectOutcome, Value};
 use crate::effects::helpers::{resolve_player_from_spec, resolve_value};
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::events::LifeLossEvent;
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::{ChooseSpec, PlayerFilter};
 use crate::triggers::TriggerEvent;

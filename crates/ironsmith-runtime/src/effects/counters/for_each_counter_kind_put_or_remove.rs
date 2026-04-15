@@ -4,7 +4,7 @@ use crate::decisions::context::{SelectOptionsContext, SelectableOption};
 use crate::effect::EffectOutcome;
 use crate::effects::helpers::resolve_objects_for_effect;
 use crate::effects::{EffectExecutor, PutCountersEffect, RemoveCountersEffect};
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::object::CounterType;
 use crate::target::ChooseSpec;

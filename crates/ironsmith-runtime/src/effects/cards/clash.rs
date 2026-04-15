@@ -10,7 +10,7 @@ use crate::decisions::{
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::events::{CardRevealedEvent, KeywordActionEvent, KeywordActionKind};
-use crate::executor::{ExecutionContext, ExecutionError, ResolvedTarget};
+use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::snapshot::ObjectSnapshot;
@@ -337,7 +337,7 @@ mod tests {
     use super::*;
     use crate::card::CardBuilder;
     use crate::decision::DecisionMaker;
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
     use crate::ids::CardId;
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::types::CardType;

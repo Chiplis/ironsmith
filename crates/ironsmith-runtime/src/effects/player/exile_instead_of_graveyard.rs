@@ -5,7 +5,7 @@ use crate::effect::EffectOutcome;
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ApplyReplacementEffect, EffectExecutor};
 use crate::events::zones::matchers::WouldGoToGraveyardMatcher;
-use crate::executor::{ExecutionContext, ExecutionError, execute_effect};
+use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
 use crate::replacement::{ReplacementAction, ReplacementEffect};
 use crate::target::{ObjectFilter, PlayerFilter};

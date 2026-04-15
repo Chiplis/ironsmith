@@ -6,7 +6,7 @@ use super::choice_helpers::{choose_mana_colors, credit_mana_symbols_from_context
 use crate::color::Color;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::mana::ManaSymbol;
 

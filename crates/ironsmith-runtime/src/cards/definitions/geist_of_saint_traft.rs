@@ -34,7 +34,7 @@ pub fn geist_of_saint_traft() -> CardDefinition {
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
     use crate::game_state::GameState;
     use crate::ids::PlayerId;
     use crate::zone::Zone;

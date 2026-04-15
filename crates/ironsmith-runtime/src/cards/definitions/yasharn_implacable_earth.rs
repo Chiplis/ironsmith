@@ -29,7 +29,7 @@ mod tests {
     use crate::card::CardBuilder;
     use crate::decision::SelectFirstDecisionMaker;
     use crate::decision::{LegalAction, compute_legal_actions};
-    use crate::executor::{ExecutionContext, execute_effect};
+    use crate::effects::{ExecutionContext, execute_effect};
     use crate::game_state::Phase;
     use crate::ids::{CardId, PlayerId};
     use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};

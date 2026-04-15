@@ -10,7 +10,7 @@
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::events::other::CardsDrawnEvent;
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::{GameState, StackEntry};
 use crate::zone::Zone;
 

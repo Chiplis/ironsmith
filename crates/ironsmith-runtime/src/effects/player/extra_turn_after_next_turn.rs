@@ -4,7 +4,7 @@ use crate::effect::{Effect, EffectOutcome};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::player::ExtraTurnEffect;
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::PlayerFilter;
 use crate::triggers::Trigger;

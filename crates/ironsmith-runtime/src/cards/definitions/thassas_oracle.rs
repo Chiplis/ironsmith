@@ -35,7 +35,7 @@ mod tests {
     use crate::ability::AbilityKind;
     use crate::card::CardBuilder;
     use crate::decision::DecisionMaker;
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
     use crate::game_loop::execute_resolution_program;
     use crate::game_state::GameState;
     use crate::ids::{CardId, PlayerId};

@@ -3,7 +3,7 @@
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_single_object_for_effect;
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
 
@@ -41,12 +41,13 @@ impl EffectExecutor for FlipEffect {
             return Ok(EffectOutcome::resolved());
         };
 
-        let Some(other_def) = crate::cards::builtin_registry().get_by_id(other_face) else {
+        let Some(other_def) = game.linked_face_definition_by_name_or_id(None, Some(other_face))
+        else {
             return Ok(EffectOutcome::resolved());
         };
 
         if let Some(obj) = game.object_mut(target_id) {
-            obj.apply_definition_face(other_def);
+            obj.apply_definition_face(&other_def);
         }
 
         game.flip(target_id);

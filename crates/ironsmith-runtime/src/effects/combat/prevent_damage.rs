@@ -6,7 +6,7 @@ use super::prevention_helpers::{
 use crate::effect::{Effect, EffectOutcome, Until, Value};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_value;
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::prevention::DamageFilter;
 use crate::target::ChooseSpec;
@@ -120,7 +120,7 @@ impl EffectExecutor for PreventDamageEffect {
 mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
-    use crate::executor::ResolvedTarget;
+    use crate::effects::ResolvedTarget;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::Object;

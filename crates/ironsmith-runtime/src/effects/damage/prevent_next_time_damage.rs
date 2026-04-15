@@ -9,7 +9,7 @@ use crate::effects::EffectExecutor;
 use crate::events::damage::matchers::{
     DamageSourceConstraint, DamageTargetConstraint, PreventableDamageConstraintMatcher,
 };
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::replacement::{ReplacementAction, ReplacementEffect};
 use crate::target::ObjectFilter;
@@ -128,7 +128,7 @@ mod tests {
     use crate::decision::SelectFirstDecisionMaker;
     use crate::event_processor::process_damage_with_event;
     use crate::events::traits::ReplacementMatcher;
-    use crate::game_event::DamageTarget;
+    use crate::events::DamageTarget;
     use crate::ids::{ObjectId, PlayerId};
 
     #[test]

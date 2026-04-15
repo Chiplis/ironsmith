@@ -5,7 +5,7 @@ use std::collections::HashSet;
 
 use crate::effect::{EffectOutcome, Restriction, Until};
 use crate::effects::EffectExecutor;
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::ObjectFilter;
 
@@ -151,7 +151,7 @@ mod tests {
     use crate::PowerToughness;
     use crate::card::CardBuilder;
     use crate::effects::RegenerateEffect;
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
     use crate::game_state::GameState;
     use crate::ids::CardId;
     use crate::ids::PlayerId;

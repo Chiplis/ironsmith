@@ -2,7 +2,7 @@
 
 use crate::effect::{Effect, EffectOutcome};
 use crate::effects::EffectExecutor;
-use crate::executor::{ExecutionContext, ExecutionError, ResolvedTarget, execute_effect};
+use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget, execute_effect};
 use crate::game_state::GameState;
 use crate::snapshot::ObjectSnapshot;
 use crate::target::ChooseSpec;

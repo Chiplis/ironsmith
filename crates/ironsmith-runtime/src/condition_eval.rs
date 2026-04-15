@@ -2,7 +2,7 @@ use crate::filter::ObjectFilterExt as _;
 use crate::effect::Condition;
 use crate::effect::Value;
 use crate::effects::helpers::resolve_value;
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId, StableId};
 use crate::object_query::candidate_ids_for_zone;
@@ -62,7 +62,7 @@ fn this_spell_was_cast_from_zone(
 mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
-    use crate::executor::ExecutionContext;
+    use crate::effects::ExecutionContext;
     use crate::ids::CardId;
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::types::CardType;
@@ -2515,14 +2515,14 @@ fn evaluate_condition(
         }
         Condition::TargetIsTapped => {
             // Check if the target is tapped
-            if let Some(crate::executor::ResolvedTarget::Object(id)) = ctx.targets.first() {
+            if let Some(crate::effects::ResolvedTarget::Object(id)) = ctx.targets.first() {
                 return Ok(game.is_tapped(*id));
             }
             Ok(false)
         }
         Condition::TargetWasKicked => {
             for target in &ctx.targets {
-                if let crate::executor::ResolvedTarget::Object(id) = target
+                if let crate::effects::ResolvedTarget::Object(id) = target
                     && let Some(obj) = game.object(*id)
                 {
                     return Ok(obj.optional_costs_paid.was_kicked());
@@ -2540,7 +2540,7 @@ fn evaluate_condition(
         Condition::YouHaveFullParty => Ok(player_has_full_party(game, ctx.controller)),
         Condition::TargetSpellCastOrderThisTurn(order) => {
             for target in &ctx.targets {
-                if let crate::executor::ResolvedTarget::Object(id) = target {
+                if let crate::effects::ResolvedTarget::Object(id) = target {
                     let actual = game
                         .turn_store
                         .turn_history
@@ -2553,7 +2553,7 @@ fn evaluate_condition(
         }
         Condition::TargetSpellControllerIsPoisoned => {
             for target in &ctx.targets {
-                if let crate::executor::ResolvedTarget::Object(id) = target
+                if let crate::effects::ResolvedTarget::Object(id) = target
                     && let Some(obj) = game.object(*id)
                     && let Some(player) = game.player(obj.controller)
                 {
@@ -2564,7 +2564,7 @@ fn evaluate_condition(
         }
         Condition::TargetSpellManaSpentToCastAtLeast { amount, symbol } => {
             for target in &ctx.targets {
-                if let crate::executor::ResolvedTarget::Object(id) = target
+                if let crate::effects::ResolvedTarget::Object(id) = target
                     && let Some(obj) = game.object(*id)
                 {
                     let spent = if let Some(sym) = symbol {
@@ -2579,7 +2579,7 @@ fn evaluate_condition(
         }
         Condition::YouControlMoreCreaturesThanTargetSpellController => {
             let target_controller = ctx.targets.iter().find_map(|target| match target {
-                crate::executor::ResolvedTarget::Object(id) => {
+                crate::effects::ResolvedTarget::Object(id) => {
                     game.object(*id).map(|obj| obj.controller)
                 }
                 _ => None,
@@ -2612,7 +2612,7 @@ fn evaluate_condition(
         }
         Condition::TargetHasGreatestPowerAmongCreatures => {
             let target_id = ctx.targets.iter().find_map(|target| match target {
-                crate::executor::ResolvedTarget::Object(id) => Some(*id),
+                crate::effects::ResolvedTarget::Object(id) => Some(*id),
                 _ => None,
             });
             let Some(target_id) = target_id else {
@@ -2641,7 +2641,7 @@ fn evaluate_condition(
         }
         Condition::TargetManaValueLteColorsSpentToCastThisSpell => {
             let target_id = ctx.targets.iter().find_map(|target| match target {
-                crate::executor::ResolvedTarget::Object(id) => Some(*id),
+                crate::effects::ResolvedTarget::Object(id) => Some(*id),
                 _ => None,
             });
             let Some(target_id) = target_id else {
@@ -2685,7 +2685,7 @@ fn evaluate_condition(
             // Check if the target is among declared attackers
             // Note: Combat attackers are tracked in game_loop, not game_state directly.
             // For now, check ctx.attacking_creatures if it exists
-            if let Some(crate::executor::ResolvedTarget::Object(id)) = ctx.targets.first() {
+            if let Some(crate::effects::ResolvedTarget::Object(id)) = ctx.targets.first() {
                 // Simplified: check if it's a creature that's tapped (attackers are usually tapped)
                 // Full implementation would need access to combat state from game loop
                 if let Some(obj) = game.object(*id) {
@@ -2698,7 +2698,7 @@ fn evaluate_condition(
             Ok(false)
         }
         Condition::TargetIsBlocked => {
-            if let Some(crate::executor::ResolvedTarget::Object(id)) = ctx.targets.first()
+            if let Some(crate::effects::ResolvedTarget::Object(id)) = ctx.targets.first()
                 && let Some(combat) = &game.combat
             {
                 return Ok(crate::combat_state::is_blocked(combat, *id));
@@ -2723,7 +2723,7 @@ fn evaluate_condition(
                 return Ok(false);
             }
 
-            let Some(crate::executor::ResolvedTarget::Object(id)) = ctx.targets.first() else {
+            let Some(crate::effects::ResolvedTarget::Object(id)) = ctx.targets.first() else {
                 return Ok(false);
             };
             if let Some(obj) = game.object(*id) {
@@ -2746,7 +2746,7 @@ fn evaluate_condition(
             .is_some_and(|attached_to| game.creature_attacked_this_turn(attached_to))),
         Condition::TargetMatches(filter) => {
             let filter_ctx = ctx.filter_context(game);
-            let Some(crate::executor::ResolvedTarget::Object(id)) = ctx.targets.first() else {
+            let Some(crate::effects::ResolvedTarget::Object(id)) = ctx.targets.first() else {
                 return Ok(false);
             };
             if let Some(obj) = game.object(*id) {
@@ -2759,7 +2759,7 @@ fn evaluate_condition(
         }
         Condition::TargetIsSoulbondPaired => {
             let target_id = ctx.targets.iter().find_map(|target| match target {
-                crate::executor::ResolvedTarget::Object(id) => Some(*id),
+                crate::effects::ResolvedTarget::Object(id) => Some(*id),
                 _ => None,
             });
             Ok(target_id.is_some_and(|id| game.is_soulbond_paired(id)))

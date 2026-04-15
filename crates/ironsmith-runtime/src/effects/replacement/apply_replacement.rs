@@ -2,7 +2,7 @@
 
 use crate::effect::EffectOutcome;
 use crate::effects::{EffectExecutionCategory, EffectExecutor};
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::replacement::ReplacementEffect;
 

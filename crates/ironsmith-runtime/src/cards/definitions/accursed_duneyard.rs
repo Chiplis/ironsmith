@@ -52,7 +52,7 @@ mod tests {
     use crate::card::PowerToughness;
     use crate::combat_state::{AttackTarget, AttackerInfo, is_attacking, is_blocking};
     use crate::effect::{Effect, Until};
-    use crate::executor::{ExecutionContext, ResolvedTarget, execute_effect};
+    use crate::effects::{ExecutionContext, ResolvedTarget, execute_effect};
     use crate::game_loop::check_and_apply_sbas;
     use crate::game_state::GameState;
     use crate::ids::{CardId, ObjectId, PlayerId};
@@ -355,7 +355,7 @@ mod tests {
         let applied = crate::rules::damage::apply_processed_damage_assignment(
             &mut game,
             attacker_id,
-            crate::game_event::DamageTarget::Object(victim_id),
+            crate::events::DamageTarget::Object(victim_id),
             1,
             keywords,
             crate::events::cause::EventCause::effect(),

@@ -3,7 +3,7 @@
 use crate::effect::{ChoiceCount, EffectOutcome};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{ObjectApplyResultPolicy, apply_to_selected_objects};
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::{ChooseSpec, ObjectFilter};
 use crate::zone::Zone;

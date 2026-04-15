@@ -1,6 +1,6 @@
 use crate::effect::{Effect, EffectId, EffectOutcome, EffectPredicate};
 use crate::effects::{EffectExecutor, SequenceEffect};
-use crate::executor::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 
 #[derive(Debug, Clone, PartialEq)]
