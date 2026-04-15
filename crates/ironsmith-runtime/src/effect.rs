@@ -1,0 +1,3951 @@
+//! Effect system for spells and abilities.
+//!
+//! Effects are one-shot game actions that occur when a spell or ability resolves.
+//! This module defines the vocabulary of effects that can be composed into abilities.
+//!
+//! ## Effect Results and Outcomes
+//!
+//! Effects return an `EffectOutcome` when executed, which contains:
+//! - An `OutcomeStatus` control-flow status
+//! - An `OutcomeValue` structured payload
+//! - A `Vec<TriggerEvent>` of game events that occurred during execution
+//! - A `Vec<ExecutionFact>` of non-triggerable execution metadata
+//!
+//! `OutcomeStatus` carries control flow (`Succeeded`, `Declined`, `TargetInvalid`,
+//! `Prevented`, `Protected`, `Impossible`, `Replaced`), while `OutcomeValue`
+//! carries structured payloads like counts, object IDs, mana added, or
+//! monstrosity application.
+//!
+//! Effects can be labeled with `EffectId` using `Effect::with_id`, and later effects
+//! can reference those results using `Effect::if_` with an `EffectPredicate`.
+
+use crate::effects::{EffectExecutionCategory, EffectExecutor};
+use crate::game_state::GameState;
+use crate::ids::{ObjectId, PlayerId, StableId};
+use crate::mana::ManaSymbol;
+use crate::object::CounterType;
+use crate::tag::TagKey;
+use crate::target::{ChooseSpec, ObjectFilter, ObjectRef, PlayerFilter};
+use crate::filter::ObjectFilterExt as _;
+use crate::zone::Zone;
+pub use ironsmith_core::effect::{ChoiceCount, EffectId, SearchSelectionMode};
+pub use ironsmith_core::{Comparison, EventValueSpec, ValueComparisonOperator};
+use std::sync::Arc;
+
+// ============================================================================
+// Effect Identity and Results
+// ============================================================================
+
+/// Control-flow status of an effect execution.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum OutcomeStatus {
+    /// Effect executed successfully.
+    #[default]
+    Succeeded,
+    /// Player declined a "you may" choice.
+    Declined,
+    /// Target was invalid (doesn't exist, wrong zone, wrong characteristics).
+    TargetInvalid,
+    /// Effect was actively prevented (e.g., damage prevention shield).
+    Prevented,
+    /// Target was protected (indestructible, hexproof, "can't be countered", etc.).
+    Protected,
+    /// Effect was impossible to perform (empty library, no sacrifice targets, etc.).
+    Impossible,
+    /// Effect was replaced by another effect.
+    Replaced,
+}
+
+impl OutcomeStatus {
+    pub fn is_success(self) -> bool {
+        !matches!(
+            self,
+            Self::Declined
+                | Self::TargetInvalid
+                | Self::Prevented
+                | Self::Protected
+                | Self::Impossible
+        )
+    }
+
+    pub fn is_failure(self) -> bool {
+        !self.is_success()
+    }
+}
+
+/// Structured payload emitted by an effect execution.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum OutcomeValue {
+    #[default]
+    None,
+    Count(i32),
+    ManaAdded(Vec<ManaSymbol>),
+    Objects(Vec<ObjectId>),
+    MonstrosityApplied {
+        creature: ObjectId,
+        n: u32,
+    },
+}
+
+impl OutcomeValue {
+    pub fn as_count(&self) -> Option<i32> {
+        match self {
+            Self::Count(n) => Some(*n),
+            _ => None,
+        }
+    }
+
+    pub fn count_or_zero(&self) -> i32 {
+        self.as_count().unwrap_or(0)
+    }
+
+    pub fn objects(&self) -> Option<&[ObjectId]> {
+        match self {
+            Self::Objects(ids) => Some(ids.as_slice()),
+            _ => None,
+        }
+    }
+
+    pub fn mana_added(&self) -> Option<&[ManaSymbol]> {
+        match self {
+            Self::ManaAdded(mana) => Some(mana.as_slice()),
+            _ => None,
+        }
+    }
+
+    pub fn something_happened(&self) -> bool {
+        match self {
+            Self::None => false,
+            Self::Count(n) => *n > 0,
+            Self::ManaAdded(mana) => !mana.is_empty(),
+            Self::Objects(objs) => !objs.is_empty(),
+            Self::MonstrosityApplied { .. } => true,
+        }
+    }
+}
+
+// ============================================================================
+// Effect Outcome (result + events)
+// ============================================================================
+
+/// Non-triggerable metadata emitted during effect execution.
+///
+/// These facts complement domain events: they capture control-flow-relevant
+/// resolution details that are not game events and should not be fed into the
+/// trigger or replacement systems.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExecutionFact {
+    Accepted,
+    Declined,
+    TargetInvalid,
+    Prevented,
+    Protected,
+    Impossible,
+    Replaced,
+    ChosenObjects(Vec<ObjectId>),
+    AffectedObjects(Vec<ObjectId>),
+    ChosenOptions(Vec<usize>),
+    ChosenNumber(u32),
+}
+
+impl ExecutionFact {
+    fn from_status(status: OutcomeStatus) -> Vec<Self> {
+        match status {
+            OutcomeStatus::Declined => vec![Self::Declined],
+            OutcomeStatus::TargetInvalid => vec![Self::TargetInvalid],
+            OutcomeStatus::Prevented => vec![Self::Prevented],
+            OutcomeStatus::Protected => vec![Self::Protected],
+            OutcomeStatus::Impossible => vec![Self::Impossible],
+            OutcomeStatus::Replaced => vec![Self::Replaced],
+            _ => Vec::new(),
+        }
+    }
+}
+
+/// The outcome of executing an effect, including emitted game events and
+/// non-triggerable execution facts.
+///
+/// This type combines an explicit status/value pair with a list of `TriggerEvent`s that occurred
+/// during execution. This enables centralized trigger checking in the game loop -
+/// instead of effects directly firing triggers, they return events that the game
+/// loop can process.
+///
+/// # Example
+///
+/// ```ignore
+/// // Simple effect with no events
+/// Ok(EffectOutcome::resolved())
+///
+/// // Effect that generated an event
+/// Ok(EffectOutcome::count(3).with_event(TriggerEvent::new_with_provenance(DamageEvent { ... }, crate::provenance::ProvNodeId::default())))
+///
+/// // Aggregating multiple outcomes from child effects
+/// let outcomes: Vec<EffectOutcome> = child_effects.iter()
+///     .map(|e| execute_effect(game, e, ctx))
+///     .collect::<Result<_, _>>()?;
+/// Ok(EffectOutcome::aggregate(outcomes))
+/// ```
+#[derive(Debug, Clone, PartialEq)]
+pub struct EffectOutcome {
+    /// Control-flow status of the effect execution.
+    pub status: OutcomeStatus,
+    /// Structured payload preserved for later consumers.
+    pub value: OutcomeValue,
+    /// Events that occurred during execution (for trigger checking).
+    pub events: Vec<crate::triggers::TriggerEvent>,
+    /// Non-triggerable execution metadata preserved across composition.
+    pub execution_facts: Vec<ExecutionFact>,
+}
+
+impl EffectOutcome {
+    fn is_meaningful(status: OutcomeStatus, value: &OutcomeValue) -> bool {
+        status != OutcomeStatus::Succeeded || !matches!(value, OutcomeValue::None)
+    }
+
+    fn derive_summary(results: &[(OutcomeStatus, OutcomeValue)]) -> (OutcomeStatus, OutcomeValue) {
+        let meaningful = results
+            .iter()
+            .filter(|(status, value)| Self::is_meaningful(*status, value))
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let Some((first_status, first_value)) = meaningful.first().cloned() else {
+            return (OutcomeStatus::Succeeded, OutcomeValue::None);
+        };
+        if meaningful.len() == 1 {
+            return (first_status, first_value);
+        }
+        if meaningful
+            .iter()
+            .all(|(status, value)| *status == first_status && *value == first_value)
+        {
+            return (first_status, first_value);
+        }
+        (OutcomeStatus::Succeeded, OutcomeValue::None)
+    }
+
+    fn derive_summary_summing_counts(
+        results: &[(OutcomeStatus, OutcomeValue)],
+    ) -> (OutcomeStatus, OutcomeValue) {
+        let mut total_count = 0;
+        let mut saw_count = false;
+        let mut non_count_meaningful = Vec::new();
+
+        for (status, value) in results {
+            match (*status, value) {
+                (OutcomeStatus::Succeeded, OutcomeValue::Count(n)) => {
+                    saw_count = true;
+                    total_count += n;
+                }
+                (OutcomeStatus::Succeeded, OutcomeValue::None) => {}
+                other => non_count_meaningful.push((other.0, other.1.clone())),
+            }
+        }
+
+        if saw_count && non_count_meaningful.is_empty() {
+            return (OutcomeStatus::Succeeded, OutcomeValue::Count(total_count));
+        }
+
+        Self::derive_summary(results)
+    }
+
+    fn aggregate_with_summary(
+        outcomes: impl IntoIterator<Item = EffectOutcome>,
+        summary_fn: fn(&[(OutcomeStatus, OutcomeValue)]) -> (OutcomeStatus, OutcomeValue),
+    ) -> Self {
+        let mut results = Vec::new();
+        let mut all_events = Vec::new();
+        let mut all_execution_facts = Vec::new();
+
+        for outcome in outcomes {
+            results.push((outcome.status, outcome.value));
+            all_events.extend(outcome.events);
+            all_execution_facts.extend(outcome.execution_facts);
+        }
+
+        let (status, value) = summary_fn(&results);
+        Self::with_details(status, value, all_events, all_execution_facts)
+    }
+
+    /// Create an outcome from just a status (no payload, no events).
+    pub fn from_status(status: OutcomeStatus) -> Self {
+        let value = OutcomeValue::None;
+        Self {
+            execution_facts: ExecutionFact::from_status(status),
+            status,
+            value,
+            events: Vec::new(),
+        }
+    }
+
+    /// Create an outcome from just a payload (successful, no events).
+    pub fn from_value(value: OutcomeValue) -> Self {
+        let status = OutcomeStatus::Succeeded;
+        Self {
+            execution_facts: Vec::new(),
+            status,
+            value,
+            events: Vec::new(),
+        }
+    }
+
+    /// Create an outcome with both status/value and events.
+    pub fn new(
+        status: OutcomeStatus,
+        value: OutcomeValue,
+        events: Vec<crate::triggers::TriggerEvent>,
+    ) -> Self {
+        Self {
+            execution_facts: ExecutionFact::from_status(status),
+            status,
+            value,
+            events,
+        }
+    }
+
+    /// Create an outcome with status, payload, events, and explicit facts.
+    pub fn with_details(
+        status: OutcomeStatus,
+        value: OutcomeValue,
+        events: Vec<crate::triggers::TriggerEvent>,
+        execution_facts: Vec<ExecutionFact>,
+    ) -> Self {
+        Self {
+            status,
+            value,
+            events,
+            execution_facts,
+        }
+    }
+
+    /// Create a resolved outcome (no events).
+    pub fn resolved() -> Self {
+        Self::from_status(OutcomeStatus::Succeeded)
+    }
+
+    /// Create a count outcome (no events).
+    pub fn count(n: i32) -> Self {
+        Self::from_value(OutcomeValue::Count(n))
+    }
+
+    pub fn mana_added(mana: Vec<ManaSymbol>) -> Self {
+        Self::from_value(OutcomeValue::ManaAdded(mana))
+    }
+
+    pub fn with_objects(objects: Vec<ObjectId>) -> Self {
+        Self::from_value(OutcomeValue::Objects(objects))
+    }
+
+    pub fn monstrosity_applied(creature: ObjectId, n: u32) -> Self {
+        Self::from_value(OutcomeValue::MonstrosityApplied { creature, n })
+    }
+
+    pub fn declined() -> Self {
+        Self::from_status(OutcomeStatus::Declined)
+    }
+
+    pub fn target_invalid() -> Self {
+        Self::from_status(OutcomeStatus::TargetInvalid)
+    }
+
+    pub fn prevented() -> Self {
+        Self::from_status(OutcomeStatus::Prevented)
+    }
+
+    pub fn protected() -> Self {
+        Self::from_status(OutcomeStatus::Protected)
+    }
+
+    pub fn impossible() -> Self {
+        Self::from_status(OutcomeStatus::Impossible)
+    }
+
+    pub fn replaced() -> Self {
+        Self::from_status(OutcomeStatus::Replaced)
+    }
+
+    /// Add a single event to this outcome.
+    pub fn with_event(mut self, event: crate::triggers::TriggerEvent) -> Self {
+        self.events.push(event);
+        self
+    }
+
+    /// Add multiple events to this outcome.
+    pub fn with_events(
+        mut self,
+        events: impl IntoIterator<Item = crate::triggers::TriggerEvent>,
+    ) -> Self {
+        self.events.extend(events);
+        self
+    }
+
+    /// Add a single execution fact to this outcome.
+    pub fn with_execution_fact(mut self, fact: ExecutionFact) -> Self {
+        self.execution_facts.push(fact);
+        self
+    }
+
+    /// Add multiple execution facts to this outcome.
+    pub fn with_execution_facts(mut self, facts: impl IntoIterator<Item = ExecutionFact>) -> Self {
+        self.execution_facts.extend(facts);
+        self
+    }
+
+    /// Record object ids materially affected by the effect.
+    pub fn with_affected_objects(self, objects: Vec<ObjectId>) -> Self {
+        if objects.is_empty() {
+            self
+        } else {
+            self.with_execution_fact(ExecutionFact::AffectedObjects(objects))
+        }
+    }
+
+    pub fn set_status(&mut self, status: OutcomeStatus) {
+        self.status = status;
+    }
+
+    pub fn set_value(&mut self, value: OutcomeValue) {
+        self.value = value;
+    }
+
+    /// Aggregate multiple outcomes into a single outcome.
+    ///
+    /// Events and execution facts are concatenated from all child outcomes.
+    /// Status/value are derived conservatively and will only retain a single
+    /// meaningful payload when the composed outcomes agree on it.
+    pub fn aggregate(outcomes: impl IntoIterator<Item = EffectOutcome>) -> Self {
+        Self::aggregate_with_summary(outcomes, Self::derive_summary)
+    }
+
+    /// Aggregate repeated homogeneous outcomes into a single outcome.
+    ///
+    /// This is intended for iterator-style composition (`for each`, `for each player`,
+    /// and similar constructs) where summing `Count(n)` child summaries remains
+    /// semantically meaningful. Mixed non-count summaries still fall back to the
+    /// conservative aggregate behavior.
+    pub fn aggregate_summing_counts(outcomes: impl IntoIterator<Item = EffectOutcome>) -> Self {
+        Self::aggregate_with_summary(outcomes, Self::derive_summary_summing_counts)
+    }
+
+    /// Check if something happened using the full outcome payload.
+    pub fn something_happened(&self) -> bool {
+        EffectPredicate::Happened.evaluate_outcome(self)
+    }
+
+    /// Get the count value, or zero if not a Count result.
+    pub fn count_or_zero(&self) -> i32 {
+        self.value.count_or_zero()
+    }
+
+    /// Get the count value if this is a Count result.
+    pub fn as_count(&self) -> Option<i32> {
+        self.value.as_count()
+    }
+
+    /// Access explicit object IDs returned by the compatibility summary.
+    pub fn explicit_objects(&self) -> Option<&[ObjectId]> {
+        self.value.objects()
+    }
+
+    pub fn mana(&self) -> Option<&[ManaSymbol]> {
+        self.value.mana_added()
+    }
+
+    /// Access object IDs captured as chosen objects.
+    pub fn chosen_objects(&self) -> Option<&[ObjectId]> {
+        self.execution_facts.iter().find_map(|fact| match fact {
+            ExecutionFact::ChosenObjects(ids) => Some(ids.as_slice()),
+            _ => None,
+        })
+    }
+
+    /// Access object IDs captured as affected objects.
+    pub fn affected_objects(&self) -> Option<&[ObjectId]> {
+        self.execution_facts.iter().find_map(|fact| match fact {
+            ExecutionFact::AffectedObjects(ids) => Some(ids.as_slice()),
+            _ => None,
+        })
+    }
+
+    /// Access explicit object IDs returned by the outcome payload.
+    pub fn objects(&self) -> Option<&[ObjectId]> {
+        self.explicit_objects()
+    }
+
+    /// Preferred object IDs for downstream runtime consumers.
+    ///
+    /// This uses explicit object payloads first, then falls back to
+    /// chosen/affected object facts so callers do not need to pattern-match on
+    /// the compatibility summary directly.
+    pub fn output_objects(&self) -> &[ObjectId] {
+        self.explicit_objects()
+            .or_else(|| self.chosen_objects())
+            .or_else(|| self.affected_objects())
+            .unwrap_or(&[])
+    }
+
+    /// The first preferred object ID, if one exists.
+    pub fn first_output_object(&self) -> Option<ObjectId> {
+        self.output_objects().first().copied()
+    }
+
+    /// Access the preserved execution facts.
+    pub fn execution_facts(&self) -> &[ExecutionFact] {
+        &self.execution_facts
+    }
+
+    /// Returns true when any execution fact matches the predicate.
+    pub fn has_execution_fact(&self, predicate: impl Fn(&ExecutionFact) -> bool) -> bool {
+        self.execution_facts.iter().any(predicate)
+    }
+
+    /// Iterate over emitted events of a specific concrete type.
+    pub fn events_of_type<T: 'static>(&self) -> impl Iterator<Item = &T> {
+        self.events.iter().filter_map(|event| event.downcast::<T>())
+    }
+
+    /// Returns true when any emitted marker-change event matches the predicate.
+    pub fn has_marker_change(
+        &self,
+        predicate: impl Fn(&crate::events::MarkersChangedEvent) -> bool,
+    ) -> bool {
+        self.events_of_type::<crate::events::MarkersChangedEvent>()
+            .any(predicate)
+    }
+
+    /// Sum marker-change amounts matching the predicate.
+    pub fn total_marker_changes(
+        &self,
+        predicate: impl Fn(&crate::events::MarkersChangedEvent) -> bool,
+    ) -> u32 {
+        self.events_of_type::<crate::events::MarkersChangedEvent>()
+            .filter(|event| predicate(event))
+            .map(|event| event.amount)
+            .sum()
+    }
+}
+
+impl Default for EffectOutcome {
+    fn default() -> Self {
+        Self::resolved()
+    }
+}
+
+// ============================================================================
+// Effect Predicates (for conditional effects)
+// ============================================================================
+
+/// Predicate to evaluate an effect's result.
+///
+/// Used with `Effect::If` to conditionally execute effects based on
+/// a prior effect's result.
+#[derive(Debug, Clone, PartialEq)]
+pub enum EffectPredicate {
+    /// Effect succeeded (is_success() returns true).
+    Succeeded,
+
+    /// Effect failed (is_failure() returns true).
+    Failed,
+
+    /// Something actually happened (something_happened() returns true).
+    /// This is the typical "if you do" meaning.
+    Happened,
+
+    /// Nothing happened (something_happened() returns false).
+    /// This is the typical "if you don't" meaning.
+    DidNotHappen,
+
+    /// Something happened and it was not replaced.
+    HappenedNotReplaced,
+
+    /// Compare the count value.
+    /// Only meaningful for `OutcomeValue::Count` payloads.
+    Value(Comparison),
+
+    /// Player chose to do it (result is not Declined).
+    Chosen,
+
+    /// Was the result Declined?
+    WasDeclined,
+}
+
+impl EffectPredicate {
+    /// Evaluate this predicate against a full effect outcome.
+    pub fn evaluate_outcome(&self, outcome: &EffectOutcome) -> bool {
+        match self {
+            Self::Succeeded => outcome.status.is_success(),
+            Self::Failed => outcome.status.is_failure(),
+            Self::Happened => {
+                if !outcome.events.is_empty() {
+                    return true;
+                }
+                if outcome.has_execution_fact(|fact| {
+                    matches!(
+                        fact,
+                        ExecutionFact::Declined
+                            | ExecutionFact::TargetInvalid
+                            | ExecutionFact::Prevented
+                            | ExecutionFact::Protected
+                            | ExecutionFact::Impossible
+                    )
+                }) {
+                    return false;
+                }
+                outcome.status == OutcomeStatus::Replaced
+                    || (outcome.status == OutcomeStatus::Succeeded
+                        && (matches!(outcome.value, OutcomeValue::None)
+                            || outcome.value.something_happened()))
+            }
+            Self::DidNotHappen => !Self::Happened.evaluate_outcome(outcome),
+            Self::HappenedNotReplaced => {
+                Self::Happened.evaluate_outcome(outcome)
+                    && !outcome.has_execution_fact(|fact| matches!(fact, ExecutionFact::Replaced))
+                    && outcome.status != OutcomeStatus::Replaced
+            }
+            Self::Value(cmp) => outcome.as_count().is_some_and(|n| cmp.evaluate(n)),
+            Self::Chosen => {
+                !outcome.has_execution_fact(|fact| matches!(fact, ExecutionFact::Declined))
+            }
+            Self::WasDeclined => {
+                outcome.has_execution_fact(|fact| matches!(fact, ExecutionFact::Declined))
+                    || outcome.status == OutcomeStatus::Declined
+            }
+        }
+    }
+}
+
+// ============================================================================
+// Values
+// ============================================================================
+
+pub use ironsmith_core::value_model::{
+    Condition, ManaSpendPermission, ManaSpendScope, Restriction, Value,
+};
+
+pub(crate) trait RestrictionExt {
+    fn apply(
+        &self,
+        game: &mut crate::game_state::GameState,
+        tracker: &mut crate::game_state::CantEffectTracker,
+        controller: crate::ids::PlayerId,
+        source: Option<crate::ids::ObjectId>,
+    );
+}
+
+impl RestrictionExt for Restriction {
+    fn apply(
+        &self,
+        game: &mut crate::game_state::GameState,
+        tracker: &mut crate::game_state::CantEffectTracker,
+        controller: crate::ids::PlayerId,
+        source: Option<crate::ids::ObjectId>,
+    ) {
+        use crate::game_loop::player_matches_filter_with_combat;
+
+        let combat = game.combat.as_ref();
+        let ctx = game.filter_context_for_combat(controller, source, None, None);
+
+        match self {
+            Restriction::AdditionalLandPlays(filter, count) => {
+                let affected_players: Vec<_> = game
+                    .players
+                    .iter()
+                    .filter(|player| {
+                        player.is_in_game()
+                            && player_matches_filter_with_combat(
+                                player.id, filter, game, controller, combat,
+                            )
+                    })
+                    .map(|player| player.id)
+                    .collect();
+                for player_id in affected_players {
+                    if let Some(player) = game.player_mut(player_id) {
+                        player.land_plays_per_turn =
+                            player.land_plays_per_turn.saturating_add(*count);
+                    }
+                }
+            }
+            Restriction::GainLife(filter) => {
+                for player in &game.players {
+                    if player.is_in_game()
+                        && player_matches_filter_with_combat(
+                            player.id, filter, game, controller, combat,
+                        )
+                    {
+                        tracker.cant_gain_life.insert(player.id);
+                    }
+                }
+            }
+            Restriction::SearchLibraries(filter) => {
+                for player in &game.players {
+                    if player.is_in_game()
+                        && player_matches_filter_with_combat(
+                            player.id, filter, game, controller, combat,
+                        )
+                    {
+                        tracker.cant_search.insert(player.id);
+                    }
+                }
+            }
+            Restriction::CastSpellsMatching(filter, spell_filter) => {
+                for player in &game.players {
+                    if player.is_in_game()
+                        && player_matches_filter_with_combat(
+                            player.id, filter, game, controller, combat,
+                        )
+                    {
+                        tracker.add_cant_cast_filter(player.id, spell_filter.clone());
+                    }
+                }
+            }
+            Restriction::ActivateNonManaAbilities(filter) => {
+                for player in &game.players {
+                    if player.is_in_game()
+                        && player_matches_filter_with_combat(
+                            player.id, filter, game, controller, combat,
+                        )
+                    {
+                        tracker.cant_activate_non_mana_abilities.insert(player.id);
+                    }
+                }
+            }
+            Restriction::ActivateAbilitiesOf(filter) => {
+                for &obj_id in &game.battlefield {
+                    if let Some(obj) = game.object(obj_id)
+                        && filter.matches(obj, &ctx, game)
+                    {
+                        tracker.cant_activate_abilities_of.insert(obj_id);
+                    }
+                }
+            }
+            Restriction::ActivateTapAbilitiesOf(filter) => {
+                for &obj_id in &game.battlefield {
+                    if let Some(obj) = game.object(obj_id)
+                        && filter.matches(obj, &ctx, game)
+                    {
+                        tracker.cant_activate_tap_abilities_of.insert(obj_id);
+                    }
+                }
+            }
+            Restriction::ActivateNonManaAbilitiesOf(filter) => {
+                for &obj_id in &game.battlefield {
+                    if let Some(obj) = game.object(obj_id)
+                        && filter.matches(obj, &ctx, game)
+                    {
+                        tracker.cant_activate_non_mana_abilities_of.insert(obj_id);
+                    }
+                }
+            }
+            Restriction::CastMoreThanOneSpellEachTurn(filter, spell_filter) => {
+                for player in &game.players {
+                    if player.is_in_game()
+                        && player_matches_filter_with_combat(
+                            player.id, filter, game, controller, combat,
+                        )
+                    {
+                        tracker.add_cast_limit_filter(player.id, spell_filter.clone());
+                    }
+                }
+            }
+            Restriction::DrawCards(filter) => {
+                for player in &game.players {
+                    if player.is_in_game()
+                        && player_matches_filter_with_combat(
+                            player.id, filter, game, controller, combat,
+                        )
+                    {
+                        tracker.cant_draw.insert(player.id);
+                    }
+                }
+            }
+            Restriction::DrawExtraCards(filter) => {
+                for player in &game.players {
+                    if player.is_in_game()
+                        && player_matches_filter_with_combat(
+                            player.id, filter, game, controller, combat,
+                        )
+                    {
+                        tracker.cant_draw_extra_cards.insert(player.id);
+                    }
+                }
+            }
+            Restriction::ChangeLifeTotal(filter) => {
+                for player in &game.players {
+                    if player.is_in_game()
+                        && player_matches_filter_with_combat(
+                            player.id, filter, game, controller, combat,
+                        )
+                    {
+                        tracker.life_total_cant_change.insert(player.id);
+                    }
+                }
+            }
+            Restriction::LoseGame(filter) => {
+                for player in &game.players {
+                    if player.is_in_game()
+                        && player_matches_filter_with_combat(
+                            player.id, filter, game, controller, combat,
+                        )
+                    {
+                        tracker.cant_lose_game.insert(player.id);
+                    }
+                }
+            }
+            Restriction::WinGame(filter) => {
+                for player in &game.players {
+                    if player.is_in_game()
+                        && player_matches_filter_with_combat(
+                            player.id, filter, game, controller, combat,
+                        )
+                    {
+                        tracker.cant_win_game.insert(player.id);
+                    }
+                }
+            }
+            Restriction::BecomeMonarch(filter) => {
+                for player in &game.players {
+                    if player.is_in_game()
+                        && player_matches_filter_with_combat(
+                            player.id, filter, game, controller, combat,
+                        )
+                    {
+                        tracker.cant_become_monarch.insert(player.id);
+                    }
+                }
+            }
+            Restriction::PreventDamage => {
+                tracker.damage_cant_be_prevented = true;
+            }
+            Restriction::Attack(filter) => {
+                for &obj_id in &game.battlefield {
+                    if let Some(obj) = game.object(obj_id)
+                        && filter.matches(obj, &ctx, game)
+                    {
+                        tracker.cant_attack.insert(obj_id);
+                    }
+                }
+            }
+            Restriction::AttackAlone(filter) => {
+                for &obj_id in &game.battlefield {
+                    if let Some(obj) = game.object(obj_id)
+                        && filter.matches(obj, &ctx, game)
+                    {
+                        tracker.cant_attack_alone.insert(obj_id);
+                    }
+                }
+            }
+            Restriction::Block(filter) => {
+                for &obj_id in &game.battlefield {
+                    if let Some(obj) = game.object(obj_id)
+                        && filter.matches(obj, &ctx, game)
+                    {
+                        tracker.cant_block.insert(obj_id);
+                    }
+                }
+            }
+            Restriction::BlockSpecificAttacker { blockers, attacker } => {
+                let attacker_ids = game
+                    .battlefield
+                    .iter()
+                    .copied()
+                    .filter(|obj_id| {
+                        game.object(*obj_id)
+                            .is_some_and(|obj| attacker.matches(obj, &ctx, game))
+                    })
+                    .collect::<Vec<_>>();
+                if attacker_ids.is_empty() {
+                    return;
+                }
+
+                for &obj_id in &game.battlefield {
+                    if let Some(obj) = game.object(obj_id)
+                        && blockers.matches(obj, &ctx, game)
+                    {
+                        let blocked = tracker
+                            .cant_block_specific_attackers
+                            .entry(obj_id)
+                            .or_default();
+                        blocked.extend(attacker_ids.iter().copied());
+                    }
+                }
+            }
+            Restriction::MustBlockSpecificAttacker { blockers, attacker } => {
+                let attacker_ids = game
+                    .battlefield
+                    .iter()
+                    .copied()
+                    .filter(|obj_id| {
+                        game.object(*obj_id)
+                            .is_some_and(|obj| attacker.matches(obj, &ctx, game))
+                    })
+                    .collect::<Vec<_>>();
+                if attacker_ids.is_empty() {
+                    return;
+                }
+
+                for &obj_id in &game.battlefield {
+                    if let Some(obj) = game.object(obj_id)
+                        && blockers.matches(obj, &ctx, game)
+                    {
+                        let required = tracker
+                            .must_block_specific_attackers
+                            .entry(obj_id)
+                            .or_default();
+                        required.extend(attacker_ids.iter().copied());
+                    }
+                }
+            }
+            Restriction::BlockAlone(filter) => {
+                for &obj_id in &game.battlefield {
+                    if let Some(obj) = game.object(obj_id)
+                        && filter.matches(obj, &ctx, game)
+                    {
+                        tracker.cant_block_alone.insert(obj_id);
+                    }
+                }
+            }
+            Restriction::Untap(filter) => {
+                for &obj_id in &game.battlefield {
+                    if let Some(obj) = game.object(obj_id)
+                        && filter.matches(obj, &ctx, game)
+                    {
+                        tracker.cant_untap.insert(obj_id);
+                    }
+                }
+            }
+            Restriction::BeBlocked(filter) => {
+                for &obj_id in &game.battlefield {
+                    if let Some(obj) = game.object(obj_id)
+                        && filter.matches(obj, &ctx, game)
+                    {
+                        tracker.cant_be_blocked.insert(obj_id);
+                    }
+                }
+            }
+            Restriction::BeDestroyed(filter) => {
+                for &obj_id in &game.battlefield {
+                    if let Some(obj) = game.object(obj_id)
+                        && filter.matches(obj, &ctx, game)
+                    {
+                        tracker.cant_be_destroyed.insert(obj_id);
+                    }
+                }
+            }
+            Restriction::BeRegenerated(filter) => {
+                for &obj_id in &game.battlefield {
+                    if let Some(obj) = game.object(obj_id)
+                        && filter.matches(obj, &ctx, game)
+                    {
+                        tracker.cant_be_regenerated.insert(obj_id);
+                    }
+                }
+            }
+            Restriction::BeSacrificed(filter) => {
+                for &obj_id in &game.battlefield {
+                    if let Some(obj) = game.object(obj_id)
+                        && filter.matches(obj, &ctx, game)
+                    {
+                        tracker.cant_be_sacrificed.insert(obj_id);
+                    }
+                }
+            }
+            Restriction::HaveCountersPlaced(filter) => {
+                for &obj_id in &game.battlefield {
+                    if let Some(obj) = game.object(obj_id)
+                        && filter.matches(obj, &ctx, game)
+                    {
+                        tracker.cant_have_counters_placed.insert(obj_id);
+                    }
+                }
+            }
+            Restriction::BeTargeted(filter) => {
+                for &obj_id in &game.battlefield {
+                    if let Some(obj) = game.object(obj_id)
+                        && filter.matches(obj, &ctx, game)
+                    {
+                        tracker.cant_be_targeted.insert(obj_id);
+                    }
+                }
+            }
+            Restriction::BeTargetedPlayer(filter) => {
+                for player in &game.players {
+                    if player.is_in_game()
+                        && player_matches_filter_with_combat(
+                            player.id, filter, game, controller, combat,
+                        )
+                    {
+                        tracker.cant_target_players.insert(player.id);
+                    }
+                }
+            }
+            Restriction::BeTargetedPlayerFrom(player_filter, source_filter) => {
+                for player in &game.players {
+                    if player.is_in_game()
+                        && player_matches_filter_with_combat(
+                            player.id,
+                            player_filter,
+                            game,
+                            controller,
+                            combat,
+                        )
+                    {
+                        tracker.cant_target_players_from.push(
+                            crate::game_state::PlayerCantBeTargetedFrom {
+                                player: player.id,
+                                source_filter: source_filter.clone(),
+                                controller,
+                            },
+                        );
+                    }
+                }
+            }
+            Restriction::BeCountered(filter) => {
+                for entry in &game.stack {
+                    let obj_id = entry.object_id;
+                    if let Some(obj) = game.object(obj_id)
+                        && filter.matches(obj, &ctx, game)
+                    {
+                        tracker.cant_be_countered.insert(obj_id);
+                    }
+                }
+            }
+            Restriction::Transform(filter) => {
+                for &obj_id in &game.battlefield {
+                    if let Some(obj) = game.object(obj_id)
+                        && filter.matches(obj, &ctx, game)
+                    {
+                        tracker.cant_transform.insert(obj_id);
+                    }
+                }
+            }
+            Restriction::AttackOrBlock(filter) => {
+                for &obj_id in &game.battlefield {
+                    if let Some(obj) = game.object(obj_id)
+                        && filter.matches(obj, &ctx, game)
+                    {
+                        tracker.cant_attack.insert(obj_id);
+                        tracker.cant_block.insert(obj_id);
+                    }
+                }
+            }
+            Restriction::AttackOrBlockAlone(filter) => {
+                for &obj_id in &game.battlefield {
+                    if let Some(obj) = game.object(obj_id)
+                        && filter.matches(obj, &ctx, game)
+                    {
+                        tracker.cant_attack_alone.insert(obj_id);
+                        tracker.cant_block_alone.insert(obj_id);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// A one-shot effect that occurs when a spell or ability resolves.
+///
+/// Effects are implemented via the `EffectExecutor` trait, allowing for modular
+/// effect implementations with co-located tests. This struct wraps a trait object
+/// that can execute any effect type.
+///
+/// Use the helper constructors (e.g., `Effect::draw()`, `Effect::damage()`) to
+/// create effects rather than constructing directly.
+#[derive(Debug)]
+pub struct Effect(pub Arc<dyn EffectExecutor>);
+
+impl Clone for Effect {
+    fn clone(&self) -> Self {
+        Effect(Arc::clone(&self.0))
+    }
+}
+
+impl PartialEq for Effect {
+    fn eq(&self, _other: &Self) -> bool {
+        // Two effects are never considered equal via PartialEq.
+        // This is a limitation, but acceptable since Effect equality
+        // is primarily used for testing where effects can be
+        // compared via their behavior or debug output instead.
+        false
+    }
+}
+
+impl Effect {
+    /// Create a new effect from an EffectExecutor implementation.
+    pub fn new<E: EffectExecutor + 'static>(executor: E) -> Self {
+        Effect(Arc::new(executor))
+    }
+
+    /// Attempt to downcast this effect to a concrete executor type.
+    pub fn downcast_ref<T: 'static>(&self) -> Option<&T> {
+        (self.0.as_ref() as &dyn std::any::Any).downcast_ref::<T>()
+    }
+
+    /// Return mana symbols this effect can produce for inference call sites.
+    pub fn producible_mana_symbols(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<Vec<ManaSymbol>> {
+        self.0.producible_mana_symbols(game, source, controller)
+    }
+
+    /// Return the primary runtime execution category for this effect.
+    pub fn primary_execution_category(&self) -> EffectExecutionCategory {
+        self.0.primary_execution_category()
+    }
+
+    /// Return all runtime execution categories this effect participates in.
+    pub fn execution_categories(&self) -> Vec<EffectExecutionCategory> {
+        self.0.execution_categories()
+    }
+
+    /// Tag this effect's target for reference by subsequent effects.
+    ///
+    /// This wraps the effect in a `TaggedEffect` that captures a snapshot of
+    /// the first object target before executing the inner effect. Subsequent
+    /// effects can then reference this object using:
+    /// - `PlayerFilter::ControllerOf(ObjectRef::tagged("tag_name"))`
+    /// - `PlayerFilter::OwnerOf(ObjectRef::tagged("tag_name"))`
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // "Destroy target permanent. Its controller creates a 3/3 token."
+    /// vec![
+    ///     Effect::destroy(ChooseSpec::permanent()).tag("destroyed"),
+    ///     Effect::create_tokens_player(
+    ///         elephant_token(),
+    ///         1,
+    ///         PlayerFilter::ControllerOf(ObjectRef::tagged("destroyed")),
+    ///     ),
+    /// ]
+    /// ```
+    pub fn tag(self, tag: impl Into<TagKey>) -> Self {
+        use crate::effects::TaggedEffect;
+        Self::new(TaggedEffect::new(tag.into(), self))
+    }
+
+    /// Wrap this effect to tag ALL object targets for later reference by subsequent effects.
+    ///
+    /// Unlike `tag()` which only tags the first target, this method tags all object
+    /// targets. This is useful for effects like "destroy all creatures" where
+    /// subsequent effects need to reference all the destroyed creatures.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // "Destroy all creatures. Their controllers each create a 3/3 for each
+    /// // creature they controlled that was destroyed this way."
+    /// vec![
+    ///     Effect::destroy_all(ObjectFilter::creature()).tag_all("destroyed"),
+    ///     Effect::for_each_controller_of_tagged("destroyed", vec![
+    ///         Effect::create_tokens_player(
+    ///             elephant_token(),
+    ///             Value::TaggedCount,
+    ///             PlayerFilter::IteratedPlayer,
+    ///         ),
+    ///     ]),
+    /// ]
+    /// ```
+    pub fn tag_all(self, tag: impl Into<TagKey>) -> Self {
+        use crate::effects::TagAllEffect;
+        Self::new(TagAllEffect::new(tag.into(), self))
+    }
+
+    /// Tag the triggering object for later reference by subsequent effects.
+    ///
+    /// This is used for triggered abilities that refer to "that creature/permanent".
+    pub fn tag_triggering_object(tag: impl Into<TagKey>) -> Self {
+        use crate::effects::TagTriggeringObjectEffect;
+        Self::new(TagTriggeringObjectEffect::new(tag.into()))
+    }
+
+    /// Tag the damaged object from the triggering damage event.
+    pub fn tag_triggering_damage_target(tag: impl Into<TagKey>) -> Self {
+        use crate::effects::TagTriggeringDamageTargetEffect;
+        Self::new(TagTriggeringDamageTargetEffect::new(tag.into()))
+    }
+
+    /// Tag the object attached to the source (equipment/aura) for later reference.
+    pub fn tag_attached_to_source(tag: impl Into<TagKey>) -> Self {
+        use crate::effects::TagAttachedToSourceEffect;
+        Self::new(TagAttachedToSourceEffect::new(tag.into()))
+    }
+
+    /// Create a "can't" restriction effect with a specific duration.
+    pub fn cant_until(restriction: Restriction, duration: Until) -> Self {
+        use crate::effects::CantEffect;
+        Self::new(CantEffect::new(restriction, duration))
+    }
+}
+
+/// Duration for temporary effects.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum Until {
+    /// Permanent (until removed)
+    #[default]
+    Forever,
+
+    /// Until end of turn
+    EndOfTurn,
+
+    /// Until your next turn
+    YourNextTurn,
+
+    /// Until that permanent's controller's next untap step
+    ControllersNextUntapStep,
+
+    /// Until end of combat
+    EndOfCombat,
+
+    /// As long as source remains on battlefield
+    ThisLeavesTheBattlefield,
+
+    /// As long as you control source
+    YouStopControllingThis,
+
+    /// For a number of turns
+    TurnsPass(Value),
+}
+
+/// A mode for modal spells.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EffectMode {
+    pub description: String,
+    pub effects: Vec<Effect>,
+}
+
+impl EffectMode {
+    pub fn new(description: impl Into<String>, effects: Vec<Effect>) -> Self {
+        Self {
+            description: description.into(),
+            effects,
+        }
+    }
+}
+
+/// Description for creating an emblem.
+#[derive(Debug, Clone)]
+pub struct EmblemDescription {
+    pub name: String,
+    pub text: String,
+    /// Abilities granted by this emblem.
+    pub abilities: Vec<crate::ability::Ability>,
+}
+
+impl EmblemDescription {
+    /// Create a new emblem description.
+    pub fn new(name: &str, text: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            text: text.to_string(),
+            abilities: Vec::new(),
+        }
+    }
+
+    /// Add an ability to the emblem.
+    pub fn with_ability(mut self, ability: crate::ability::Ability) -> Self {
+        self.abilities.push(ability);
+        self
+    }
+}
+
+// === Builder methods for common effects ===
+
+impl Effect {
+    /// Create a "deal N damage to target" effect.
+    pub fn deal_damage(amount: impl Into<Value>, target: ChooseSpec) -> Self {
+        use crate::effects::DealDamageEffect;
+        Self::new(DealDamageEffect::new(amount, target))
+    }
+
+    /// Create a "draw N cards" effect.
+    pub fn draw(count: impl Into<Value>) -> Self {
+        use crate::effects::DrawCardsEffect;
+        Self::new(DrawCardsEffect::you(count))
+    }
+
+    /// Create a "target player draws N cards" effect.
+    pub fn target_draws(count: impl Into<Value>, player: PlayerFilter) -> Self {
+        use crate::effects::DrawCardsEffect;
+        Self::new(DrawCardsEffect::new(count, player))
+    }
+
+    /// Create a "target creature connives" effect.
+    pub fn connive(target: ChooseSpec) -> Self {
+        use crate::effects::ConniveEffect;
+        Self::new(ConniveEffect::new(target))
+    }
+
+    /// Create a "goad target creature" effect.
+    pub fn goad(target: ChooseSpec) -> Self {
+        use crate::effects::GoadEffect;
+        Self::new(GoadEffect::new(target))
+    }
+
+    /// Create a "detain target permanent" effect.
+    pub fn detain(target: ChooseSpec) -> Self {
+        use crate::effects::DetainEffect;
+        Self::new(DetainEffect::new(target))
+    }
+
+    /// Create an "explore" effect for a chosen object.
+    pub fn explore(target: ChooseSpec) -> Self {
+        use crate::effects::ExploreEffect;
+        Self::new(ExploreEffect::new(target))
+    }
+
+    /// Create an "open an Attraction" effect.
+    pub fn open_attraction() -> Self {
+        use crate::effects::OpenAttractionEffect;
+        Self::new(OpenAttractionEffect::new())
+    }
+
+    /// Create a "put a sticker on" effect.
+    pub fn put_sticker(target: ChooseSpec, action: crate::events::KeywordActionKind) -> Self {
+        use crate::effects::PutStickerEffect;
+        Self::new(PutStickerEffect::new(target, action))
+    }
+
+    /// Create a "manifest dread" effect.
+    pub fn manifest_dread() -> Self {
+        use crate::effects::ManifestDreadEffect;
+        Self::new(ManifestDreadEffect::new())
+    }
+
+    /// Create a "manifest the top card of [library]" effect.
+    pub fn manifest_top_card_of_library(player: crate::filter::PlayerFilter) -> Self {
+        use crate::effects::ManifestTopCardOfLibraryEffect;
+        Self::new(ManifestTopCardOfLibraryEffect::new(player))
+    }
+
+    /// Create a "populate" effect.
+    pub fn populate(count: impl Into<Value>) -> Self {
+        use crate::effects::PopulateEffect;
+        Self::new(PopulateEffect::new(count))
+    }
+
+    /// Create a "behold" effect.
+    pub fn behold(subtype: crate::types::Subtype, count: u32) -> Self {
+        use crate::effects::BeholdEffect;
+        Self::new(BeholdEffect::you(subtype, count))
+    }
+
+    /// Create a "bolster N" effect.
+    pub fn bolster(amount: u32) -> Self {
+        use crate::effects::BolsterEffect;
+        Self::new(BolsterEffect::new(amount))
+    }
+
+    /// Create a "devour N" effect.
+    pub fn devour(multiplier: u32) -> Self {
+        use crate::effects::DevourEffect;
+        Self::new(DevourEffect::new(multiplier))
+    }
+
+    /// Create a "backup N" effect.
+    pub fn backup(amount: u32, granted_abilities: Vec<crate::ability::Ability>) -> Self {
+        use crate::effects::BackupEffect;
+        Self::new(BackupEffect::new(amount, granted_abilities))
+    }
+
+    /// Create a "support N" effect.
+    pub fn support(amount: u32) -> Self {
+        use crate::effects::SupportEffect;
+        Self::new(SupportEffect::new(amount))
+    }
+
+    /// Create an "adapt N" effect.
+    pub fn adapt(amount: u32) -> Self {
+        use crate::effects::AdaptEffect;
+        Self::new(AdaptEffect::new(amount))
+    }
+
+    /// Create an "amass" effect.
+    pub fn amass(subtype: Option<crate::types::Subtype>, amount: u32) -> Self {
+        use crate::effects::AmassEffect;
+        Self::new(AmassEffect::new(subtype, amount))
+    }
+
+    /// Create a "venture into the dungeon" effect for a specific player.
+    pub fn venture_into_dungeon_player(player: PlayerFilter) -> Self {
+        use crate::effects::VentureIntoDungeonEffect;
+        Self::new(VentureIntoDungeonEffect::new(player))
+    }
+
+    /// Create a venture effect that starts in Undercity when the player has no active dungeon.
+    pub fn venture_into_undercity_player(player: PlayerFilter) -> Self {
+        use crate::effects::VentureIntoDungeonEffect;
+        Self::new(VentureIntoDungeonEffect::via_initiative(player))
+    }
+
+    /// Create a "take the initiative" effect for a specific player.
+    pub fn take_initiative_player(player: PlayerFilter) -> Self {
+        use crate::effects::TakeInitiativeEffect;
+        Self::new(TakeInitiativeEffect::new(player))
+    }
+
+    /// Emit a keyword-action event (for "when you <keyword action>" triggers).
+    pub fn emit_keyword_action(action: crate::events::KeywordActionKind, amount: u32) -> Self {
+        use crate::effects::EmitKeywordActionEffect;
+        Self::new(EmitKeywordActionEffect::new(action, amount))
+    }
+
+    /// Emit a Gift-given event (for "when a player gives a gift" triggers).
+    pub fn emit_gift_given(recipient: PlayerFilter) -> Self {
+        use crate::effects::EmitGiftGivenEffect;
+        Self::new(EmitGiftGivenEffect::new(recipient))
+    }
+
+    /// Create a "counter target activated or triggered ability" effect.
+    pub fn counter_activated_or_triggered_ability() -> Self {
+        use crate::effects::CounterAbilityEffect;
+        Self::new(CounterAbilityEffect::new())
+    }
+
+    /// Create a "gain N life" effect.
+    pub fn gain_life(amount: impl Into<Value>) -> Self {
+        use crate::effects::GainLifeEffect;
+        Self::new(GainLifeEffect::you(amount))
+    }
+
+    /// Create a "gain N life" effect for a specific player.
+    pub fn gain_life_player(amount: impl Into<Value>, player: ChooseSpec) -> Self {
+        use crate::effects::GainLifeEffect;
+        Self::new(GainLifeEffect::new(amount, player))
+    }
+
+    /// Create a "target player gains N life" effect.
+    pub fn gain_life_target(amount: impl Into<Value>) -> Self {
+        use crate::effects::GainLifeEffect;
+        Self::new(GainLifeEffect::target_player(amount))
+    }
+
+    /// Create a "lose N life" effect.
+    pub fn lose_life(amount: impl Into<Value>) -> Self {
+        use crate::effects::LoseLifeEffect;
+        Self::new(LoseLifeEffect::you(amount))
+    }
+
+    /// Create a "lose N life" effect for a specific player.
+    pub fn lose_life_player(amount: impl Into<Value>, player: PlayerFilter) -> Self {
+        use crate::effects::LoseLifeEffect;
+        Self::new(LoseLifeEffect::with_filter(amount, player))
+    }
+
+    /// Create a "target player loses N life" effect.
+    pub fn lose_life_target(amount: impl Into<Value>) -> Self {
+        use crate::effects::LoseLifeEffect;
+        Self::new(LoseLifeEffect::target_player(amount))
+    }
+
+    /// Create a "set life total to N" effect.
+    pub fn set_life_total(amount: impl Into<Value>) -> Self {
+        use crate::effects::SetLifeTotalEffect;
+        Self::new(SetLifeTotalEffect::you(amount))
+    }
+
+    /// Create a "set life total to N" effect for a specific player.
+    pub fn set_life_total_player(amount: impl Into<Value>, player: PlayerFilter) -> Self {
+        use crate::effects::SetLifeTotalEffect;
+        Self::new(SetLifeTotalEffect::new(amount, player))
+    }
+
+    /// Create an effect that doubles each type of unspent mana a player has.
+    pub fn double_mana_pool_player(player: PlayerFilter) -> Self {
+        use crate::effects::DoubleManaPoolEffect;
+        Self::new(DoubleManaPoolEffect::new(player))
+    }
+
+    /// Create a "become the monarch" effect for the controller.
+    pub fn become_monarch() -> Self {
+        use crate::effects::BecomeMonarchEffect;
+        Self::new(BecomeMonarchEffect::you())
+    }
+
+    /// Create a "become the monarch" effect for a specific player.
+    pub fn become_monarch_player(player: PlayerFilter) -> Self {
+        use crate::effects::BecomeMonarchEffect;
+        Self::new(BecomeMonarchEffect::new(player))
+    }
+
+    /// Create a "The Ring tempts you" effect for the controller.
+    pub fn ring_tempts_you() -> Self {
+        use crate::effects::RingTemptsYouEffect;
+        Self::new(RingTemptsYouEffect::you())
+    }
+
+    /// Create a "The Ring tempts you" effect for a specific player.
+    pub fn ring_tempts_player(player: PlayerFilter) -> Self {
+        use crate::effects::RingTemptsYouEffect;
+        Self::new(RingTemptsYouEffect::new(player))
+    }
+
+    /// Create an "exchange life totals" effect.
+    pub fn exchange_life_totals(player1: PlayerFilter, player2: PlayerFilter) -> Self {
+        use crate::effects::ExchangeLifeTotalsEffect;
+        Self::new(ExchangeLifeTotalsEffect::new(player1, player2))
+    }
+
+    /// Create an "exchange text boxes" effect.
+    pub fn exchange_text_boxes(target: ChooseSpec) -> Self {
+        use crate::effects::ExchangeTextBoxesEffect;
+        Self::new(ExchangeTextBoxesEffect::new(target))
+    }
+
+    /// Create an "exchange zone contents" effect.
+    pub fn exchange_zones(
+        player: PlayerFilter,
+        zone1: crate::zone::Zone,
+        zone2: crate::zone::Zone,
+    ) -> Self {
+        use crate::effects::ExchangeZonesEffect;
+        Self::new(ExchangeZonesEffect::new(player, zone1, zone2))
+    }
+
+    /// Create an "exchange values" effect.
+    pub fn exchange_values(
+        left: crate::effects::ExchangeValueOperand,
+        right: crate::effects::ExchangeValueOperand,
+        duration: Until,
+    ) -> Self {
+        use crate::effects::ExchangeValuesEffect;
+        Self::new(ExchangeValuesEffect::new(left, right, duration))
+    }
+
+    /// Create a "destroy target permanent" effect.
+    pub fn destroy(choice: ChooseSpec) -> Self {
+        use crate::effects::DestroyEffect;
+        Self::new(DestroyEffect::target(choice))
+    }
+
+    /// Create an "exile target" effect.
+    pub fn exile(choice: ChooseSpec) -> Self {
+        use crate::effects::ExileEffect;
+        Self::new(ExileEffect::target(choice))
+    }
+
+    /// Create a haunt exile effect: exiles the source and schedules a delayed
+    /// trigger with the given effects/choices for when the haunted creature dies.
+    pub fn haunt_exile(haunt_effects: Vec<Self>, haunt_choices: Vec<ChooseSpec>) -> Self {
+        use crate::effects::HauntExileEffect;
+        Self::new(HauntExileEffect::new(haunt_effects, haunt_choices))
+    }
+
+    /// Create an "exile any number of targets" effect.
+    pub fn exile_any_number(choice: ChooseSpec) -> Self {
+        use crate::effects::ExileEffect;
+        Self::new(ExileEffect::any_number(choice))
+    }
+
+    /// Create an "exile target until this source leaves the battlefield" effect.
+    pub fn exile_until_source_leaves(choice: ChooseSpec) -> Self {
+        use crate::effects::ExileUntilEffect;
+        Self::new(ExileUntilEffect::source_leaves(choice))
+    }
+
+    /// Create an "exile ... until <duration>" effect.
+    pub fn exile_until(choice: ChooseSpec, duration: crate::effects::ExileUntilDuration) -> Self {
+        use crate::effects::ExileUntilEffect;
+        Self::new(ExileUntilEffect::new(choice, duration))
+    }
+
+    /// Create a "sacrifice" effect.
+    pub fn sacrifice(filter: ObjectFilter, count: impl Into<Value>) -> Self {
+        use crate::effects::SacrificeEffect;
+        Self::new(SacrificeEffect::you(filter, count))
+    }
+
+    /// Create a "sacrifice" effect for a specific player.
+    pub fn sacrifice_player(
+        filter: ObjectFilter,
+        count: impl Into<Value>,
+        player: PlayerFilter,
+    ) -> Self {
+        use crate::effects::SacrificeEffect;
+        Self::new(SacrificeEffect::player(filter, count, player))
+    }
+
+    /// Create a "sacrifice source" effect (self-sacrifice).
+    pub fn sacrifice_source() -> Self {
+        use crate::effects::SacrificeTargetEffect;
+        Self::new(SacrificeTargetEffect::source())
+    }
+
+    /// Create a "discard this card" cost effect.
+    pub fn discard_source_as_cost() -> Self {
+        use crate::effects::DiscardEffect;
+        Self::new(DiscardEffect::new_with_filter(
+            1,
+            PlayerFilter::You,
+            false,
+            Some(ObjectFilter::source().in_zone(Zone::Hand)),
+        ))
+    }
+
+    /// Create a "return target card to its owner's hand" effect.
+    pub fn return_to_hand(objects: ObjectFilter) -> Self {
+        use crate::effects::ReturnToHandEffect;
+        Self::new(ReturnToHandEffect::target(ChooseSpec::Object(objects)))
+    }
+
+    /// Create a "return the source permanent to its owner's hand" cost effect.
+    pub fn return_source_to_hand_as_cost() -> Self {
+        use crate::effects::ReturnToHandEffect;
+        Self::new(ReturnToHandEffect::with_spec(ChooseSpec::Source))
+    }
+
+    /// Create a "destroy all permanents matching filter" effect.
+    pub fn destroy_all(filter: ObjectFilter) -> Self {
+        use crate::effects::DestroyEffect;
+        Self::new(DestroyEffect::all(filter))
+    }
+
+    /// Create an "exile all permanents matching filter" effect.
+    pub fn exile_all(filter: ObjectFilter) -> Self {
+        use crate::effects::ExileEffect;
+        Self::new(ExileEffect::all(filter))
+    }
+
+    /// Create a "return all permanents matching filter to owners' hands" effect.
+    pub fn return_all_to_hand(filter: ObjectFilter) -> Self {
+        use crate::effects::ReturnToHandEffect;
+        Self::new(ReturnToHandEffect::all(filter))
+    }
+
+    /// Create an "each player sacrifices permanents matching filter" effect.
+    pub fn each_player_sacrifices(filter: ObjectFilter, count: impl Into<Value>) -> Self {
+        use crate::effects::EachPlayerSacrificesEffect;
+        Self::new(EachPlayerSacrificesEffect::new(
+            filter,
+            count.into(),
+            PlayerFilter::Any,
+        ))
+    }
+
+    /// Create a "move target to zone" effect.
+    pub fn move_to_zone(target: ChooseSpec, zone: Zone, to_top: bool) -> Self {
+        use crate::effects::MoveToZoneEffect;
+        Self::new(MoveToZoneEffect::new(target, zone, to_top))
+    }
+
+    /// Create an effect that shuffles specific objects into a library and
+    /// still shuffles that library even if none of those objects move.
+    pub fn shuffle_objects_into_library(target: ChooseSpec, player: PlayerFilter) -> Self {
+        use crate::effects::ShuffleObjectsIntoLibraryEffect;
+        Self::new(ShuffleObjectsIntoLibraryEffect::new(target, player))
+    }
+
+    pub fn may_move_to_zone(target: ChooseSpec, zone: Zone, decider: PlayerFilter) -> Self {
+        use crate::effects::MayMoveToZoneEffect;
+        Self::new(MayMoveToZoneEffect::new(target, zone, decider))
+    }
+
+    /// Create a "return target card from graveyard to hand" effect.
+    pub fn return_from_graveyard_to_hand(target: ChooseSpec) -> Self {
+        Self::return_from_graveyard_to_hand_with_random(target, false)
+    }
+
+    /// Create a "return target card from graveyard to hand" effect with optional random selection wording.
+    pub fn return_from_graveyard_to_hand_with_random(target: ChooseSpec, random: bool) -> Self {
+        use crate::effects::ReturnFromGraveyardToHandEffect;
+        Self::new(ReturnFromGraveyardToHandEffect::new(target, random))
+    }
+
+    /// Create a "return target card from graveyard to battlefield" effect.
+    pub fn return_from_graveyard_to_battlefield(target: ChooseSpec, tapped: bool) -> Self {
+        use crate::effects::ReturnFromGraveyardToBattlefieldEffect;
+        Self::new(ReturnFromGraveyardToBattlefieldEffect::new(target, tapped))
+    }
+
+    /// Create a "return this card from graveyard or exile to battlefield" effect.
+    ///
+    /// This effect uses the triggering event's snapshot to locate the card.
+    pub fn return_from_graveyard_or_exile_to_battlefield(tapped: bool) -> Self {
+        use crate::effects::ReturnFromGraveyardOrExileToBattlefieldEffect;
+        Self::new(ReturnFromGraveyardOrExileToBattlefieldEffect::new(tapped))
+    }
+
+    /// Create a "put onto battlefield" effect.
+    pub fn put_onto_battlefield(
+        target: ChooseSpec,
+        tapped: bool,
+        controller: PlayerFilter,
+    ) -> Self {
+        use crate::effects::PutOntoBattlefieldEffect;
+        Self::new(PutOntoBattlefieldEffect::new(target, tapped, controller))
+    }
+
+    /// Create a "counter target spell" effect.
+    pub fn counter(target: ChooseSpec) -> Self {
+        use crate::effects::CounterEffect;
+        Self::new(CounterEffect::new(target))
+    }
+
+    /// Create a "counter unless pays" effect.
+    pub fn counter_unless_pays(target: ChooseSpec, mana: Vec<ManaSymbol>) -> Self {
+        Self::counter_unless_pays_with_life(target, mana, None)
+    }
+
+    /// Create a "counter unless pays [mana] and [life]" effect.
+    pub fn counter_unless_pays_with_life(
+        target: ChooseSpec,
+        mana: Vec<ManaSymbol>,
+        life: Option<Value>,
+    ) -> Self {
+        Self::counter_unless_pays_with_life_and_additional_and_x(target, mana, life, None, None)
+    }
+
+    /// Create a "counter unless pays [mana] and optional dynamic additional generic mana" effect.
+    pub fn counter_unless_pays_with_life_and_additional(
+        target: ChooseSpec,
+        mana: Vec<ManaSymbol>,
+        life: Option<Value>,
+        additional_generic: Option<Value>,
+    ) -> Self {
+        Self::counter_unless_pays_with_life_and_additional_and_x(
+            target,
+            mana,
+            life,
+            additional_generic,
+            None,
+        )
+    }
+
+    /// Create a "counter unless pays [mana]" effect with optional life, dynamic additional
+    /// generic mana, and a bound X value.
+    pub fn counter_unless_pays_with_life_and_additional_and_x(
+        target: ChooseSpec,
+        mana: Vec<ManaSymbol>,
+        life: Option<Value>,
+        additional_generic: Option<Value>,
+        x_value: Option<Value>,
+    ) -> Self {
+        let player = match target.base() {
+            ChooseSpec::SpecificObject(id) => PlayerFilter::ControllerOf(ObjectRef::Specific(*id)),
+            ChooseSpec::Tagged(tag) => PlayerFilter::ControllerOf(ObjectRef::Tagged(tag.clone())),
+            _ => PlayerFilter::ControllerOf(ObjectRef::Target),
+        };
+        Self::unless_pays_with_life_and_additional_and_x(
+            vec![Self::counter(target)],
+            player,
+            mana,
+            life,
+            additional_generic,
+            x_value,
+        )
+    }
+
+    /// Create a "copy target spell" effect.
+    pub fn copy_spell(target: ChooseSpec) -> Self {
+        use crate::effects::CopySpellEffect;
+        Self::new(CopySpellEffect::single(target))
+    }
+
+    /// Create a "copy target spell N times" effect.
+    pub fn copy_spell_n(target: ChooseSpec, count: impl Into<Value>) -> Self {
+        use crate::effects::CopySpellEffect;
+        Self::new(CopySpellEffect::new(target, count))
+    }
+
+    /// Create a "choose new targets" effect for objects from a prior effect result.
+    pub fn choose_new_targets(from_effect: EffectId) -> Self {
+        use crate::effects::ChooseNewTargetsEffect;
+        Self::new(ChooseNewTargetsEffect::must(from_effect))
+    }
+
+    /// Create a "you may choose new targets" effect for objects from a prior effect result.
+    pub fn may_choose_new_targets(from_effect: EffectId) -> Self {
+        use crate::effects::ChooseNewTargetsEffect;
+        Self::new(ChooseNewTargetsEffect::may(from_effect))
+    }
+
+    /// Create a "[player] may choose new targets" effect.
+    pub fn may_choose_new_targets_player(from_effect: EffectId, chooser: PlayerFilter) -> Self {
+        use crate::effects::ChooseNewTargetsEffect;
+        Self::new(ChooseNewTargetsEffect::may_for_player(from_effect, chooser))
+    }
+
+    /// Create a "create N tokens" effect.
+    pub fn create_tokens(token: crate::cards::CardDefinition, count: impl Into<Value>) -> Self {
+        use crate::effects::CreateTokenEffect;
+        Self::new(CreateTokenEffect::you(token, count))
+    }
+
+    /// Create an "investigate N times" effect.
+    pub fn investigate(count: impl Into<Value>) -> Self {
+        use crate::effects::InvestigateEffect;
+        Self::new(InvestigateEffect::you(count))
+    }
+
+    /// Create an "[player] investigates N times" effect.
+    pub fn investigate_player(count: impl Into<Value>, player: PlayerFilter) -> Self {
+        use crate::effects::InvestigateEffect;
+        Self::new(InvestigateEffect::new(count, player))
+    }
+
+    /// Create a cipher resolution effect.
+    pub fn cipher() -> Self {
+        use crate::effects::CipherEffect;
+        Self::new(CipherEffect::new())
+    }
+
+    /// Create an effect that offers casting a copy of a specific encoded card.
+    pub fn cast_encoded_card_copy(encoded_card: StableId) -> Self {
+        use crate::effects::CastEncodedCardCopyEffect;
+        Self::new(CastEncodedCardCopyEffect::new(encoded_card))
+    }
+
+    /// Create a "create N tokens" effect for a specific player.
+    pub fn create_tokens_player(
+        token: crate::cards::CardDefinition,
+        count: impl Into<Value>,
+        controller: PlayerFilter,
+    ) -> Self {
+        use crate::effects::CreateTokenEffect;
+        Self::new(CreateTokenEffect::new(token, count, controller))
+    }
+
+    /// Create a "create token copy of target" effect.
+    pub fn create_token_copy(target: ChooseSpec) -> Self {
+        use crate::effects::CreateTokenCopyEffect;
+        Self::new(CreateTokenCopyEffect::one(target))
+    }
+
+    /// Create a "create token copy with haste that's exiled at end of combat" effect.
+    /// Used for Kiki-Jiki style effects.
+    pub fn create_token_copy_kiki_jiki(target: ChooseSpec) -> Self {
+        use crate::effects::CreateTokenCopyEffect;
+        Self::new(CreateTokenCopyEffect::kiki_jiki_style(target))
+    }
+
+    /// Create a "create token copy with haste" effect.
+    pub fn create_token_copy_with_haste(target: ChooseSpec) -> Self {
+        use crate::effects::CreateTokenCopyEffect;
+        Self::new(CreateTokenCopyEffect::with_haste(target))
+    }
+
+    /// Create a "put N +1/+1 counters on target" effect.
+    pub fn plus_one_counters(count: impl Into<Value>, target: ChooseSpec) -> Self {
+        use crate::effects::PutCountersEffect;
+        Self::new(PutCountersEffect::plus_one_counters(count, target))
+    }
+
+    /// Create a "put counters on target" effect.
+    pub fn put_counters(
+        counter_type: CounterType,
+        count: impl Into<Value>,
+        target: ChooseSpec,
+    ) -> Self {
+        use crate::effects::PutCountersEffect;
+        Self::new(PutCountersEffect::new(counter_type, count, target))
+    }
+
+    /// Create a "put counters on source" effect.
+    pub fn put_counters_on_source(counter_type: CounterType, count: impl Into<Value>) -> Self {
+        use crate::effects::PutCountersEffect;
+        Self::new(PutCountersEffect::on_source(counter_type, count))
+    }
+
+    /// Create a "remove counters from target" effect.
+    pub fn remove_counters(
+        counter_type: CounterType,
+        count: impl Into<Value>,
+        target: ChooseSpec,
+    ) -> Self {
+        use crate::effects::RemoveCountersEffect;
+        Self::new(RemoveCountersEffect::new(counter_type, count, target))
+    }
+
+    /// Create an effect for removing counters from among matching permanents.
+    pub fn remove_any_counters_among(
+        count: u32,
+        filter: crate::filter::ObjectFilter,
+        counter_type: Option<CounterType>,
+    ) -> Self {
+        use crate::effects::RemoveAnyCountersAmongEffect;
+        Self::new(RemoveAnyCountersAmongEffect::new(count, filter).with_counter_type(counter_type))
+    }
+
+    /// Create an effect for removing any number of counters from the source.
+    pub fn remove_any_counters_from_source(
+        counter_type: Option<CounterType>,
+        display_x: bool,
+    ) -> Self {
+        use crate::effects::RemoveAnyCountersFromSourceEffect;
+        let effect = if display_x {
+            RemoveAnyCountersFromSourceEffect::x(counter_type)
+        } else {
+            RemoveAnyCountersFromSourceEffect::any_number(counter_type)
+        };
+        Self::new(effect)
+    }
+
+    /// Create a "remove up to N counters from target" effect (player chooses how many).
+    pub fn remove_up_to_counters(
+        counter_type: CounterType,
+        max_count: impl Into<Value>,
+        target: ChooseSpec,
+    ) -> Self {
+        use crate::effects::RemoveUpToCountersEffect;
+        Self::new(RemoveUpToCountersEffect::new(
+            counter_type,
+            max_count,
+            target,
+        ))
+    }
+
+    /// Create a "remove up to N counters of any type from target" effect.
+    pub fn remove_up_to_any_counters(max_count: impl Into<Value>, target: ChooseSpec) -> Self {
+        use crate::effects::RemoveUpToAnyCountersEffect;
+        Self::new(RemoveUpToAnyCountersEffect::new(max_count, target))
+    }
+
+    /// Create an effect that reveals cards from your hand.
+    pub fn reveal_from_hand(count: u32, card_type: Option<crate::types::CardType>) -> Self {
+        use crate::effects::RevealFromHandEffect;
+        Self::new(RevealFromHandEffect::new(count, card_type))
+    }
+
+    /// Create a "move counters from one permanent to another" effect.
+    pub fn move_counters(
+        counter_type: CounterType,
+        count: impl Into<Value>,
+        from: ChooseSpec,
+        to: ChooseSpec,
+    ) -> Self {
+        use crate::effects::MoveCountersEffect;
+        Self::new(MoveCountersEffect::new(counter_type, count, from, to))
+    }
+
+    /// Create a "move all counters from one creature to another" effect (Fate Transfer).
+    pub fn move_all_counters(from: ChooseSpec, to: ChooseSpec) -> Self {
+        use crate::effects::MoveAllCountersEffect;
+        Self::new(MoveAllCountersEffect::new(from, to))
+    }
+
+    /// Create a "proliferate" effect.
+    pub fn proliferate(count: impl Into<Value>) -> Self {
+        use crate::effects::ProliferateEffect;
+        Self::new(ProliferateEffect::new(count))
+    }
+
+    /// Create a "+N/+M" effect with explicit duration.
+    pub fn pump(
+        power: impl Into<Value>,
+        toughness: impl Into<Value>,
+        target: ChooseSpec,
+        duration: Until,
+    ) -> Self {
+        use crate::effects::ModifyPowerToughnessEffect;
+        Self::new(ModifyPowerToughnessEffect::new(
+            target, power, toughness, duration,
+        ))
+    }
+
+    /// Create a "set base power/toughness to N/M" effect with explicit duration.
+    pub fn set_base_power_toughness(
+        power: impl Into<Value>,
+        toughness: impl Into<Value>,
+        target: ChooseSpec,
+        duration: Until,
+    ) -> Self {
+        use crate::effects::SetBasePowerToughnessEffect;
+        Self::new(SetBasePowerToughnessEffect::new(
+            target, power, toughness, duration,
+        ))
+    }
+
+    /// Create a "+N/+M" effect for all creatures matching a filter with explicit duration.
+    pub fn pump_all(
+        filter: ObjectFilter,
+        power: impl Into<Value>,
+        toughness: impl Into<Value>,
+        duration: Until,
+    ) -> Self {
+        use crate::effects::ModifyPowerToughnessAllEffect;
+        Self::new(ModifyPowerToughnessAllEffect::new(
+            filter, power, toughness, duration,
+        ))
+    }
+
+    /// Create a "+X/+X per count" effect with explicit duration.
+    pub fn pump_for_each(
+        target: ChooseSpec,
+        power_per: i32,
+        toughness_per: i32,
+        count: Value,
+        duration: Until,
+    ) -> Self {
+        use crate::effects::ModifyPowerToughnessForEachEffect;
+        Self::new(ModifyPowerToughnessForEachEffect::new(
+            target,
+            power_per,
+            toughness_per,
+            count,
+            duration,
+        ))
+    }
+
+    /// Create a "fight" effect.
+    pub fn fight(creature1: ChooseSpec, creature2: ChooseSpec) -> Self {
+        use crate::effects::FightEffect;
+        Self::new(FightEffect::new(creature1, creature2))
+    }
+
+    /// Create a "prevent damage" effect with explicit duration.
+    pub fn prevent_damage(amount: impl Into<Value>, target: ChooseSpec, duration: Until) -> Self {
+        use crate::effects::PreventDamageEffect;
+        Self::new(PreventDamageEffect::new(amount, target, duration))
+    }
+
+    /// Create a "prevent all damage" effect.
+    pub fn prevent_all_damage(until: Until) -> Self {
+        use crate::effects::PreventAllDamageEffect;
+        Self::new(PreventAllDamageEffect::all(until))
+    }
+
+    /// Create a "prevent all combat damage" effect.
+    pub fn prevent_all_combat_damage(until: Until) -> Self {
+        use crate::effects::PreventAllDamageEffect;
+        use crate::prevention::DamageFilter;
+        Self::new(PreventAllDamageEffect::all_with_filter(
+            DamageFilter::combat(),
+            until,
+        ))
+    }
+
+    /// Create a "prevent all combat damage from a chosen source" effect.
+    pub fn prevent_all_combat_damage_from(source: ChooseSpec, until: Until) -> Self {
+        use crate::effects::PreventAllCombatDamageFromEffect;
+        Self::new(PreventAllCombatDamageFromEffect::new(source, until))
+    }
+
+    /// Create a "prevent all combat damage to players" effect.
+    pub fn prevent_all_combat_damage_to_players(until: Until) -> Self {
+        use crate::effects::PreventAllDamageEffect;
+        use crate::prevention::{DamageFilter, PreventionTarget};
+        Self::new(PreventAllDamageEffect::new(
+            PreventionTarget::Players,
+            DamageFilter::combat(),
+            until,
+        ))
+    }
+
+    /// Create a "prevent all combat damage to you" effect.
+    pub fn prevent_all_combat_damage_to_you(until: Until) -> Self {
+        use crate::effects::PreventAllDamageEffect;
+        use crate::prevention::{DamageFilter, PreventionTarget};
+        Self::new(PreventAllDamageEffect::new(
+            PreventionTarget::You,
+            DamageFilter::combat(),
+            until,
+        ))
+    }
+
+    /// Create a "prevent all damage to matching permanents" effect.
+    pub fn prevent_all_damage_to(filter: ObjectFilter, until: Until) -> Self {
+        use crate::effects::PreventAllDamageEffect;
+        Self::new(PreventAllDamageEffect::matching(filter, until))
+    }
+
+    /// Create a "prevent all damage to target" effect.
+    pub fn prevent_all_damage_to_target(target: ChooseSpec, until: Until) -> Self {
+        use crate::effects::PreventAllDamageToTargetEffect;
+        Self::new(PreventAllDamageToTargetEffect::new(target, until))
+    }
+
+    /// Create a "grant abilities to all matching creatures" effect with explicit duration.
+    pub fn grant_abilities_all(
+        filter: ObjectFilter,
+        abilities: Vec<crate::static_abilities::StaticAbility>,
+        duration: Until,
+    ) -> Self {
+        use crate::effects::GrantAbilitiesAllEffect;
+        Self::new(GrantAbilitiesAllEffect::new(filter, abilities, duration))
+    }
+
+    /// Create an "add mana" effect.
+    pub fn add_mana(mana: Vec<ManaSymbol>) -> Self {
+        use crate::effects::AddManaEffect;
+        Self::new(AddManaEffect::you(mana))
+    }
+
+    /// Create an "add mana" effect for a specific player.
+    pub fn add_mana_player(mana: Vec<ManaSymbol>, player: PlayerFilter) -> Self {
+        use crate::effects::AddManaEffect;
+        Self::new(AddManaEffect::new(mana, player))
+    }
+
+    /// Create an "add colorless mana" effect.
+    pub fn add_colorless_mana(amount: impl Into<Value>) -> Self {
+        use crate::effects::AddColorlessManaEffect;
+        Self::new(AddColorlessManaEffect::you(amount))
+    }
+
+    /// Create an "add colorless mana" effect for a specific player.
+    pub fn add_colorless_mana_player(amount: impl Into<Value>, player: PlayerFilter) -> Self {
+        use crate::effects::AddColorlessManaEffect;
+        Self::new(AddColorlessManaEffect::new(amount, player))
+    }
+
+    /// Create an "add mana of any color" effect (can choose different colors).
+    pub fn add_mana_of_any_color(amount: impl Into<Value>) -> Self {
+        use crate::effects::AddManaOfAnyColorEffect;
+        Self::new(AddManaOfAnyColorEffect::you(amount))
+    }
+
+    /// Create an "add mana of any color" effect for a specific player.
+    pub fn add_mana_of_any_color_player(amount: impl Into<Value>, player: PlayerFilter) -> Self {
+        use crate::effects::AddManaOfAnyColorEffect;
+        Self::new(AddManaOfAnyColorEffect::new(amount, player))
+    }
+
+    /// Create an "add mana of restricted colors" effect (can choose different colors).
+    pub fn add_mana_of_any_color_restricted(
+        amount: impl Into<Value>,
+        colors: Vec<crate::color::Color>,
+    ) -> Self {
+        use crate::effects::AddManaOfAnyColorEffect;
+        Self::new(AddManaOfAnyColorEffect::you_restricted(amount, colors))
+    }
+
+    /// Create an "add mana of restricted colors" effect for a specific player.
+    pub fn add_mana_of_any_color_restricted_player(
+        amount: impl Into<Value>,
+        player: PlayerFilter,
+        colors: Vec<crate::color::Color>,
+    ) -> Self {
+        use crate::effects::AddManaOfAnyColorEffect;
+        Self::new(AddManaOfAnyColorEffect::restricted(amount, player, colors))
+    }
+
+    /// Create an "add mana of any one color" effect (all must be same color).
+    pub fn add_mana_of_any_one_color(amount: impl Into<Value>) -> Self {
+        use crate::effects::AddManaOfAnyOneColorEffect;
+        Self::new(AddManaOfAnyOneColorEffect::you(amount))
+    }
+
+    /// Create an "add mana of any one color" effect for a specific player.
+    pub fn add_mana_of_any_one_color_player(
+        amount: impl Into<Value>,
+        player: PlayerFilter,
+    ) -> Self {
+        use crate::effects::AddManaOfAnyOneColorEffect;
+        Self::new(AddManaOfAnyOneColorEffect::new(amount, player))
+    }
+
+    /// Create an "add mana constrained by what matching lands could produce" effect.
+    pub fn add_mana_of_land_produced_types_player(
+        amount: impl Into<Value>,
+        player: PlayerFilter,
+        land_filter: ObjectFilter,
+        allow_colorless: bool,
+        same_type: bool,
+    ) -> Self {
+        use crate::effects::AddManaOfLandProducedTypesEffect;
+        Self::new(AddManaOfLandProducedTypesEffect::new(
+            amount,
+            player,
+            land_filter,
+            allow_colorless,
+            same_type,
+        ))
+    }
+
+    /// Create an "add mana from commander color identity" effect.
+    pub fn add_mana_from_commander_color_identity(amount: impl Into<Value>) -> Self {
+        use crate::effects::AddManaFromCommanderColorIdentityEffect;
+        Self::new(AddManaFromCommanderColorIdentityEffect::you(amount))
+    }
+
+    /// Create an "add mana from commander color identity" effect for a specific player.
+    pub fn add_mana_from_commander_color_identity_player(
+        amount: impl Into<Value>,
+        player: PlayerFilter,
+    ) -> Self {
+        use crate::effects::AddManaFromCommanderColorIdentityEffect;
+        Self::new(AddManaFromCommanderColorIdentityEffect::new(amount, player))
+    }
+
+    /// Create a "tap target permanent" effect.
+    pub fn tap(target: ChooseSpec) -> Self {
+        use crate::effects::TapEffect;
+        Self::new(TapEffect::target(target))
+    }
+
+    /// Create an "untap target permanent" effect.
+    pub fn untap(target: ChooseSpec) -> Self {
+        use crate::effects::UntapEffect;
+        Self::new(UntapEffect::target(target))
+    }
+
+    /// Create a "phase out target permanent" effect.
+    pub fn phase_out(target: ChooseSpec) -> Self {
+        use crate::effects::PhaseOutEffect;
+        Self::new(PhaseOutEffect::target(target))
+    }
+
+    /// Create a "tap all permanents matching filter" effect.
+    pub fn tap_all(filter: ObjectFilter) -> Self {
+        use crate::effects::TapEffect;
+        Self::new(TapEffect::all(filter))
+    }
+
+    /// Create a "tap the source permanent" effect.
+    ///
+    /// Used for cost effects that require tapping the ability's source.
+    pub fn tap_source() -> Self {
+        use crate::effects::TapEffect;
+        Self::new(TapEffect::source())
+    }
+
+    /// Create a "pay life" effect (controller loses life).
+    ///
+    /// Used for cost effects that require paying life.
+    /// Note: Paying life is identical to losing life in the rules.
+    pub fn pay_life(amount: u32) -> Self {
+        use crate::effects::LoseLifeEffect;
+        Self::new(LoseLifeEffect::you(amount))
+    }
+
+    /// Create an "exile card(s) from hand as cost" effect.
+    ///
+    /// Used for alternative casting costs like Force of Will.
+    /// The controller exiles the specified number of cards from their hand,
+    /// optionally filtered by color.
+    ///
+    /// Note: This effect requires player choice when there are more cards
+    /// than needed. The game loop handles prompting for the selection.
+    pub fn exile_from_hand_as_cost(
+        count: u32,
+        color_filter: Option<crate::color::ColorSet>,
+    ) -> Self {
+        use crate::effects::ExileEffect;
+
+        let mut filter = ObjectFilter::default()
+            .in_zone(Zone::Hand)
+            .owned_by(PlayerFilter::You)
+            .other();
+        if let Some(colors) = color_filter {
+            filter = filter.with_colors(colors);
+        }
+
+        Self::new(ExileEffect::with_spec(
+            ChooseSpec::Object(filter).with_count(ChoiceCount::exactly(count as usize)),
+        ))
+    }
+
+    /// Create an "exile cards from your graveyard" cost effect.
+    pub fn exile_from_graveyard_as_cost(
+        count: u32,
+        card_type: Option<crate::types::CardType>,
+    ) -> Self {
+        use crate::effects::ExileEffect;
+
+        let mut filter = ObjectFilter::default()
+            .in_zone(Zone::Graveyard)
+            .owned_by(PlayerFilter::You);
+        if let Some(card_type) = card_type {
+            filter = filter.with_type(card_type);
+        }
+
+        Self::new(ExileEffect::with_spec(
+            ChooseSpec::Object(filter).with_count(ChoiceCount::exactly(count as usize)),
+        ))
+    }
+
+    /// Create an "exile the source object" cost effect.
+    pub fn exile_source_as_cost() -> Self {
+        use crate::effects::ExileEffect;
+        Self::new(ExileEffect::with_spec(ChooseSpec::Source))
+    }
+
+    /// Create an "untap all permanents matching filter" effect.
+    pub fn untap_all(filter: ObjectFilter) -> Self {
+        use crate::effects::UntapEffect;
+        Self::new(UntapEffect::all(filter))
+    }
+
+    /// Create a "clear all damage from target creature" effect.
+    pub fn clear_damage(target: ChooseSpec) -> Self {
+        use crate::effects::ClearDamageEffect;
+        Self::new(ClearDamageEffect::new(target))
+    }
+
+    /// Create a "monstrosity N" effect.
+    pub fn monstrosity(n: impl Into<Value>) -> Self {
+        use crate::effects::MonstrosityEffect;
+        Self::new(MonstrosityEffect::new(n))
+    }
+
+    /// Create an evolve resolution effect for this source creature.
+    pub fn evolve_source() -> Self {
+        use crate::effects::EvolveEffect;
+        Self::new(EvolveEffect::new())
+    }
+
+    /// Create a renown resolution effect for this source creature.
+    pub fn renown_source(amount: u32) -> Self {
+        use crate::effects::RenownEffect;
+        Self::new(RenownEffect::new(amount))
+    }
+
+    /// Create a "regenerate" effect with explicit duration.
+    pub fn regenerate(target: ChooseSpec, duration: Until) -> Self {
+        use crate::effects::RegenerateEffect;
+        Self::new(RegenerateEffect::new(target, duration))
+    }
+
+    /// Create a "transform" effect for double-faced cards.
+    pub fn transform(target: ChooseSpec) -> Self {
+        use crate::effects::TransformEffect;
+        Self::new(TransformEffect::new(target))
+    }
+
+    /// Create a "meld" effect for meld pairs.
+    pub fn meld(result_name: impl Into<String>) -> Self {
+        use crate::effects::MeldEffect;
+        Self::new(MeldEffect::new(result_name))
+    }
+
+    /// Create a "convert" effect for double-faced cards.
+    pub fn convert(target: ChooseSpec) -> Self {
+        use crate::effects::ConvertEffect;
+        Self::new(ConvertEffect::new(target))
+    }
+
+    /// Create a "flip" effect for flip cards.
+    pub fn flip(target: ChooseSpec) -> Self {
+        use crate::effects::FlipEffect;
+        Self::new(FlipEffect::new(target))
+    }
+
+    /// Create a "create emblem" effect.
+    pub fn create_emblem(emblem: EmblemDescription) -> Self {
+        use crate::effects::CreateEmblemEffect;
+        Self::new(CreateEmblemEffect::new(emblem))
+    }
+
+    /// Create a unified grant effect.
+    ///
+    /// This is the preferred way to create effects that grant abilities or
+    /// alternative casting methods to cards.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// // Grant flashback until end of turn (Snapcaster Mage)
+    /// Effect::grant(
+    ///     Grantable::flashback_from_cards_mana_cost(),
+    ///     target,
+    ///     GrantDuration::UntilEndOfTurn,
+    /// )
+    ///
+    /// // Grant flying until end of turn
+    /// Effect::grant(
+    ///     Grantable::ability(StaticAbility::flying()),
+    ///     target,
+    ///     GrantDuration::UntilEndOfTurn,
+    /// )
+    /// ```
+    pub fn grant(
+        grantable: crate::grant::Grantable,
+        target: ChooseSpec,
+        duration: crate::grant::GrantDuration,
+    ) -> Self {
+        use crate::effects::GrantEffect;
+        Self::new(GrantEffect::new(grantable, target, duration))
+    }
+
+    /// Create a unified filter-based grant effect from a shared grant spec.
+    pub fn grant_by_spec(
+        spec: crate::grant::GrantSpec,
+        player: crate::target::PlayerFilter,
+        duration: crate::grant::GrantDuration,
+    ) -> Self {
+        use crate::effects::GrantBySpecEffect;
+        Self::new(GrantBySpecEffect::new(spec, player, duration))
+    }
+
+    /// Create an effect that grants the next matching spell this turn a static ability.
+    pub fn grant_next_spell_ability_this_turn(
+        player: crate::target::PlayerFilter,
+        filter: crate::target::ObjectFilter,
+        ability: crate::static_abilities::StaticAbility,
+    ) -> Self {
+        use crate::effects::GrantNextSpellAbilityEffect;
+        Self::new(GrantNextSpellAbilityEffect::new(player, filter, ability))
+    }
+
+    /// Create an effect that grants an ability directly to an object.
+    ///
+    /// This is useful for effects like saga chapters that say "this permanent gains ...".
+    pub fn grant_object_ability(ability: crate::ability::Ability, target: ChooseSpec) -> Self {
+        use crate::effects::GrantObjectAbilityEffect;
+        Self::new(GrantObjectAbilityEffect::new(ability, target))
+    }
+
+    /// Create an effect that grants an ability directly to the source object.
+    pub fn grant_object_ability_to_source(ability: crate::ability::Ability) -> Self {
+        use crate::effects::GrantObjectAbilityEffect;
+        Self::new(GrantObjectAbilityEffect::to_source(ability))
+    }
+
+    /// Create an "attach to" effect for Auras and Equipment.
+    pub fn attach_to(target: ChooseSpec) -> Self {
+        use crate::effects::AttachToEffect;
+        Self::new(AttachToEffect::new(target))
+    }
+
+    /// Create an effect that attaches one or more objects to a target object.
+    pub fn attach_objects(objects: ChooseSpec, target: ChooseSpec) -> Self {
+        use crate::effects::AttachObjectsEffect;
+        Self::new(AttachObjectsEffect::new(objects, target))
+    }
+
+    /// Create a "mill N cards" effect.
+    pub fn mill(count: impl Into<Value>) -> Self {
+        use crate::effects::MillEffect;
+        Self::new(MillEffect::you(count))
+    }
+
+    /// Create a "mill N cards" effect for a specific player.
+    pub fn mill_player(count: impl Into<Value>, player: PlayerFilter) -> Self {
+        use crate::effects::MillEffect;
+        Self::new(MillEffect::new(count, player))
+    }
+
+    /// Create an "exile top N cards of library" effect for a specific player.
+    pub fn exile_top_of_library_player(count: impl Into<Value>, player: PlayerFilter) -> Self {
+        use crate::effects::ExileTopOfLibraryEffect;
+        Self::new(ExileTopOfLibraryEffect::new(count, player))
+    }
+
+    /// Create a "shuffle library" effect.
+    pub fn shuffle_library() -> Self {
+        use crate::effects::ShuffleLibraryEffect;
+        Self::new(ShuffleLibraryEffect::you())
+    }
+
+    /// Create a "shuffle library" effect for a specific player.
+    pub fn shuffle_library_player(player: PlayerFilter) -> Self {
+        use crate::effects::ShuffleLibraryEffect;
+        Self::new(ShuffleLibraryEffect::new(player))
+    }
+
+    /// Create a "shuffle graveyard into library" effect for a specific player.
+    pub fn shuffle_graveyard_into_library_player(player: PlayerFilter) -> Self {
+        use crate::effects::ShuffleGraveyardIntoLibraryEffect;
+        Self::new(ShuffleGraveyardIntoLibraryEffect::new(player))
+    }
+
+    /// Create a "shuffle hand and graveyard into library" effect for a specific player.
+    pub fn shuffle_hand_and_graveyard_into_library_player(player: PlayerFilter) -> Self {
+        use crate::effects::ShuffleHandAndGraveyardIntoLibraryEffect;
+        Self::new(ShuffleHandAndGraveyardIntoLibraryEffect::new(player))
+    }
+
+    /// Create a "reorder graveyard" effect for a specific player.
+    pub fn reorder_graveyard_player(player: PlayerFilter) -> Self {
+        use crate::effects::ReorderGraveyardEffect;
+        Self::new(ReorderGraveyardEffect::new(player))
+    }
+
+    /// Create a "poison counters" effect.
+    pub fn poison_counters(count: impl Into<Value>) -> Self {
+        use crate::effects::PoisonCountersEffect;
+        Self::new(PoisonCountersEffect::you(count))
+    }
+
+    /// Create a "poison counters" effect for a specific player.
+    pub fn poison_counters_player(count: impl Into<Value>, player: PlayerFilter) -> Self {
+        use crate::effects::PoisonCountersEffect;
+        Self::new(PoisonCountersEffect::new(count, player))
+    }
+
+    /// Create an "energy counters" effect.
+    pub fn energy_counters(count: impl Into<Value>) -> Self {
+        use crate::effects::EnergyCountersEffect;
+        Self::new(EnergyCountersEffect::you(count))
+    }
+
+    /// Create an "energy counters" effect for a specific player.
+    pub fn energy_counters_player(count: impl Into<Value>, player: PlayerFilter) -> Self {
+        use crate::effects::EnergyCountersEffect;
+        Self::new(EnergyCountersEffect::new(count, player))
+    }
+
+    /// Create an "experience counters" effect.
+    pub fn experience_counters(count: impl Into<Value>) -> Self {
+        use crate::effects::ExperienceCountersEffect;
+        Self::new(ExperienceCountersEffect::you(count))
+    }
+
+    /// Create an "experience counters" effect for a specific player.
+    pub fn experience_counters_player(count: impl Into<Value>, player: PlayerFilter) -> Self {
+        use crate::effects::ExperienceCountersEffect;
+        Self::new(ExperienceCountersEffect::new(count, player))
+    }
+
+    /// Flip a coin for the specified player.
+    pub fn flip_coin(player: PlayerFilter) -> Self {
+        use crate::effects::FlipCoinEffect;
+        Self::new(FlipCoinEffect::new(player))
+    }
+
+    /// Roll a die with the given number of sides for the specified player.
+    pub fn roll_die(sides: u32, player: PlayerFilter) -> Self {
+        use crate::effects::RollDieEffect;
+        Self::new(RollDieEffect::new(player, sides))
+    }
+
+    // === Effect composition builders ===
+
+    /// Wrap an effect with an ID for later reference.
+    ///
+    /// Example: Label a damage effect so we can reference how much damage was dealt.
+    /// ```ignore
+    /// Effect::with_id(0, Effect::deal_damage(3, target))
+    /// ```
+    pub fn with_id(id: u32, effect: Effect) -> Self {
+        use crate::effects::WithIdEffect;
+        Self::new(WithIdEffect::new(EffectId(id), effect))
+    }
+
+    /// "You may X" - wrap effects in a player choice.
+    ///
+    /// Example: "You may draw a card."
+    /// ```ignore
+    /// Effect::may(vec![Effect::draw(1)])
+    ///
+    /// // "You may sacrifice a creature" - composed effects
+    /// Effect::may(vec![
+    ///     Effect::choose_objects(ObjectFilter::creature().you_control(), 1, PlayerFilter::You, "sac"),
+    ///     Effect::sacrifice(ChooseSpec::tagged("sac")),
+    /// ])
+    /// ```
+    pub fn may(effects: Vec<Effect>) -> Self {
+        use crate::effects::MayEffect;
+        Self::new(MayEffect::new(effects))
+    }
+
+    /// "[player] may X" - wrap effects in a choice made by the specified player.
+    pub fn may_player(player: PlayerFilter, effects: Vec<Effect>) -> Self {
+        use crate::effects::MayEffect;
+        Self::new(MayEffect::new_for_player(effects, player))
+    }
+
+    /// "You may X" - wrap a single effect in a player choice (convenience).
+    ///
+    /// Example: "You may draw a card."
+    /// ```ignore
+    /// Effect::may_single(Effect::draw(1))
+    /// ```
+    pub fn may_single(effect: Effect) -> Self {
+        use crate::effects::MayEffect;
+        Self::new(MayEffect::single(effect))
+    }
+
+    /// "X unless you/they pay {mana}" - execute effects unless the player pays.
+    ///
+    /// Example: "Sacrifice this creature unless you pay {U}."
+    /// ```ignore
+    /// Effect::unless_pays(
+    ///     vec![Effect::sacrifice_self()],
+    ///     PlayerFilter::You,
+    ///     vec![ManaSymbol::Blue],
+    /// )
+    /// ```
+    pub fn unless_pays(effects: Vec<Effect>, player: PlayerFilter, mana: Vec<ManaSymbol>) -> Self {
+        Self::unless_pays_with_life(effects, player, mana, None)
+    }
+
+    /// "X unless you/they pay {mana} and/or life" - execute effects unless paid.
+    pub fn unless_pays_with_life(
+        effects: Vec<Effect>,
+        player: PlayerFilter,
+        mana: Vec<ManaSymbol>,
+        life: Option<Value>,
+    ) -> Self {
+        Self::unless_pays_with_life_and_additional(effects, player, mana, life, None)
+    }
+
+    /// "X unless you/they pay {mana}, optional life, and optional dynamic additional generic mana"
+    /// - execute effects unless paid.
+    pub fn unless_pays_with_life_and_additional(
+        effects: Vec<Effect>,
+        player: PlayerFilter,
+        mana: Vec<ManaSymbol>,
+        life: Option<Value>,
+        additional_generic: Option<Value>,
+    ) -> Self {
+        Self::unless_pays_with_life_and_additional_and_x(
+            effects,
+            player,
+            mana,
+            life,
+            additional_generic,
+            None,
+        )
+    }
+
+    /// "X unless you/they pay [mana] and optional life/additional/X binding" -
+    /// execute effects unless paid.
+    pub fn unless_pays_with_life_and_additional_and_x(
+        effects: Vec<Effect>,
+        player: PlayerFilter,
+        mana: Vec<ManaSymbol>,
+        life: Option<Value>,
+        additional_generic: Option<Value>,
+        x_value: Option<Value>,
+    ) -> Self {
+        Self::unless_pays_with_life_additional_and_multiplier_and_x(
+            effects,
+            player,
+            mana,
+            life,
+            additional_generic,
+            None,
+            x_value,
+        )
+    }
+
+    /// "X unless you/they pay [mana] and optional life/additional/multiplier" -
+    /// execute effects unless paid.
+    pub fn unless_pays_with_life_additional_and_multiplier(
+        effects: Vec<Effect>,
+        player: PlayerFilter,
+        mana: Vec<ManaSymbol>,
+        life: Option<Value>,
+        additional_generic: Option<Value>,
+        mana_multiplier: Option<Value>,
+    ) -> Self {
+        Self::unless_pays_with_life_additional_and_multiplier_and_x(
+            effects,
+            player,
+            mana,
+            life,
+            additional_generic,
+            mana_multiplier,
+            None,
+        )
+    }
+
+    /// "X unless you/they pay [mana] and optional life/additional/multiplier/X binding" -
+    /// execute effects unless paid.
+    pub fn unless_pays_with_life_additional_and_multiplier_and_x(
+        effects: Vec<Effect>,
+        player: PlayerFilter,
+        mana: Vec<ManaSymbol>,
+        life: Option<Value>,
+        additional_generic: Option<Value>,
+        mana_multiplier: Option<Value>,
+        x_value: Option<Value>,
+    ) -> Self {
+        use crate::effects::UnlessPaysEffect;
+        Self::new(
+            UnlessPaysEffect::new_with_life_and_additional_and_multiplier_and_x(
+                effects,
+                player,
+                mana,
+                life,
+                additional_generic,
+                mana_multiplier,
+                x_value,
+            ),
+        )
+    }
+
+    /// "X unless you/they [action]" - execute effects unless the player performs an action.
+    ///
+    /// Example: "Sacrifice this creature unless you sacrifice another creature."
+    pub fn unless_action(
+        effects: Vec<Effect>,
+        alternative: Vec<Effect>,
+        player: PlayerFilter,
+    ) -> Self {
+        use crate::effects::UnlessActionEffect;
+        Self::new(UnlessActionEffect::new(effects, alternative, player))
+    }
+
+    /// "If [prior effect satisfied predicate], then [effects]."
+    ///
+    /// Example: "If you do, draw two cards."
+    /// ```ignore
+    /// Effect::if_then(EffectId(0), EffectPredicate::Happened, vec![Effect::draw(2)])
+    /// ```
+    pub fn if_then(condition: EffectId, predicate: EffectPredicate, then: Vec<Effect>) -> Self {
+        use crate::effects::IfEffect;
+        Self::new(IfEffect::new(condition, predicate, then, vec![]))
+    }
+
+    /// "If [prior effect satisfied predicate], then [then], else [else_]."
+    ///
+    /// Example: "If you don't, you lose the game."
+    /// ```ignore
+    /// Effect::if_then_else(
+    ///     EffectId(0),
+    ///     EffectPredicate::Happened,
+    ///     vec![],
+    ///     vec![Effect::LoseTheGame { player: PlayerFilter::You }],
+    /// )
+    /// ```
+    pub fn if_then_else(
+        condition: EffectId,
+        predicate: EffectPredicate,
+        then: Vec<Effect>,
+        else_: Vec<Effect>,
+    ) -> Self {
+        use crate::effects::IfEffect;
+        Self::new(IfEffect::new(condition, predicate, then, else_))
+    }
+
+    /// Create a reflexive triggered ability based on a prior effect result.
+    ///
+    /// Example: "When you do, target player draws two cards."
+    pub fn reflexive_trigger(
+        condition: EffectId,
+        predicate: EffectPredicate,
+        effects: Vec<Effect>,
+        choices: Vec<ChooseSpec>,
+    ) -> Self {
+        use crate::effects::ReflexiveTriggerEffect;
+        Self::new(ReflexiveTriggerEffect::new(
+            condition, predicate, effects, choices,
+        ))
+    }
+
+    /// Repeat a compiled process while a tracked effect result keeps matching.
+    pub fn repeat_process(
+        effects: Vec<Effect>,
+        condition: EffectId,
+        predicate: EffectPredicate,
+    ) -> Self {
+        use crate::effects::RepeatProcessEffect;
+        Self::new(RepeatProcessEffect::new(effects, condition, predicate))
+    }
+
+    /// Repeat a compiled sequence a resolved number of times.
+    pub fn repeat_effects(count: Value, effects: Vec<Effect>) -> Self {
+        use crate::effects::RepeatEffectsEffect;
+        Self::new(RepeatEffectsEffect::new(count, effects))
+    }
+
+    /// Create a "for each object matching filter" effect.
+    ///
+    /// Example: "For each creature you control, gain 1 life."
+    /// ```ignore
+    /// Effect::for_each(ObjectFilter::creature().you_control(), vec![Effect::gain_life(1)])
+    /// ```
+    pub fn for_each(filter: ObjectFilter, effects: Vec<Effect>) -> Self {
+        use crate::effects::ForEachObject;
+        Self::new(ForEachObject::new(filter, effects))
+    }
+
+    /// Create a "for each opponent" effect.
+    ///
+    /// Example: "Deal 3 damage to each opponent."
+    /// ```ignore
+    /// Effect::for_each_opponent(vec![Effect::deal_damage(3, ChooseSpec::Player(PlayerFilter::IteratedPlayer))])
+    /// ```
+    ///
+    /// Note: This is a convenience wrapper around `for_players(PlayerFilter::Opponent, ...)`.
+    pub fn for_each_opponent(effects: Vec<Effect>) -> Self {
+        Self::for_players(crate::filter::PlayerFilter::Opponent, effects)
+    }
+
+    /// Create an effect that executes for each player matching a filter.
+    ///
+    /// Sets `ctx.iterated_player` for each iteration, allowing inner effects
+    /// to reference the current player via `PlayerFilter::IteratedPlayer`.
+    ///
+    /// # Examples
+    ///
+    /// Deal 3 damage to each opponent:
+    /// ```ignore
+    /// Effect::for_players(PlayerFilter::Opponent, vec![
+    ///     Effect::deal_damage(3, ChooseSpec::Player(PlayerFilter::IteratedPlayer)),
+    /// ])
+    /// ```
+    ///
+    /// Each player draws a card:
+    /// ```ignore
+    /// Effect::for_players(PlayerFilter::Any, vec![
+    ///     Effect::target_draws(1, PlayerFilter::IteratedPlayer),
+    /// ])
+    /// ```
+    pub fn for_players(filter: PlayerFilter, effects: Vec<Effect>) -> Self {
+        use crate::effects::ForPlayersEffect;
+        Self::new(ForPlayersEffect::new(filter, effects))
+    }
+
+    /// Create an effect that executes for each tagged object.
+    ///
+    /// Sets `ctx.iterated_object` for each iteration, allowing inner effects
+    /// to reference the current object.
+    ///
+    /// Example: "For each creature destroyed this way, its controller loses 1 life."
+    /// ```ignore
+    /// vec![
+    ///     Effect::destroy_all(ObjectFilter::creature()).tag_all("destroyed"),
+    ///     Effect::for_each_tagged("destroyed", vec![
+    ///         Effect::lose_life_player(1, PlayerFilter::ControllerOf(ObjectRef::Iterated)),
+    ///     ]),
+    /// ]
+    /// ```
+    pub fn for_each_tagged(tag: impl Into<TagKey>, effects: Vec<Effect>) -> Self {
+        use crate::effects::ForEachTaggedEffect;
+        Self::new(ForEachTaggedEffect::new(tag.into(), effects))
+    }
+
+    /// Create an effect that groups tagged objects by controller and executes for each.
+    ///
+    /// Sets `ctx.iterated_player` for each iteration and provides a count via
+    /// `Value::TaggedCount`. This enables patterns like "each player creates a
+    /// token for each creature they controlled that was destroyed."
+    ///
+    /// Example: "Destroy all creatures. Their controllers each create a 3/3 Elephant
+    /// for each creature they controlled that was destroyed this way."
+    /// ```ignore
+    /// vec![
+    ///     Effect::destroy_all(ObjectFilter::creature()).tag_all("destroyed"),
+    ///     Effect::for_each_controller_of_tagged("destroyed", vec![
+    ///         Effect::create_tokens_player(
+    ///             elephant_token(),
+    ///             Value::TaggedCount,
+    ///             PlayerFilter::IteratedPlayer,
+    ///         ),
+    ///     ]),
+    /// ]
+    /// ```
+    pub fn for_each_controller_of_tagged(tag: impl Into<TagKey>, effects: Vec<Effect>) -> Self {
+        use crate::effects::ForEachControllerOfTaggedEffect;
+        Self::new(ForEachControllerOfTaggedEffect::new(tag.into(), effects))
+    }
+
+    /// Execute effects for each player tagged under the given tag.
+    ///
+    /// Sets `ctx.iterated_player` for each iteration, allowing inner effects
+    /// to reference the current player via `PlayerFilter::IteratedPlayer`.
+    ///
+    /// # Arguments
+    ///
+    /// * `tag` - The tag name to iterate over (e.g., "voted_with_you")
+    /// * `effects` - Effects to execute for each tagged player
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Each opponent who voted with you may scry 2
+    /// Effect::for_each_tagged_player("voted_with_you", vec![
+    ///     Effect::may_player(PlayerFilter::IteratedPlayer, vec![Effect::scry(2)]),
+    /// ])
+    /// ```
+    pub fn for_each_tagged_player(tag: impl Into<TagKey>, effects: Vec<Effect>) -> Self {
+        use crate::effects::ForEachTaggedPlayerEffect;
+        Self::new(ForEachTaggedPlayerEffect::new(tag.into(), effects))
+    }
+
+    /// Create an effect that prompts a player to choose objects and tags them.
+    ///
+    /// This enables interactive sacrifice patterns and cost effects:
+    /// - "Sacrifice a creature" → choose_objects + sacrifice
+    /// - "Choose a creature an opponent controls" → choose_objects for later reference
+    ///
+    /// The chosen objects are stored under the given tag and can be referenced by
+    /// subsequent effects using `ChooseSpec::tagged("tag_name")`.
+    ///
+    /// Example: "Sacrifice a creature" as composed effects:
+    /// ```ignore
+    /// vec![
+    ///     Effect::choose_objects(
+    ///         ObjectFilter::creature().you_control(),
+    ///         1,
+    ///         PlayerFilter::You,
+    ///         "sacrificed",
+    ///     ),
+    ///     Effect::sacrifice(ChooseSpec::tagged("sacrificed")),
+    /// ]
+    /// ```
+    pub fn choose_objects(
+        filter: ObjectFilter,
+        count: impl Into<ChoiceCount>,
+        chooser: PlayerFilter,
+        tag: impl Into<TagKey>,
+    ) -> Self {
+        use crate::effects::ChooseObjectsEffect;
+        Self::new(ChooseObjectsEffect::new(filter, count, chooser, tag.into()))
+    }
+
+    /// Choose one spell cast this turn matching a historical filter and tag its snapshot.
+    pub fn choose_spell_cast_history(
+        chooser: PlayerFilter,
+        cast_by: PlayerFilter,
+        filter: ObjectFilter,
+        tag: impl Into<TagKey>,
+    ) -> Self {
+        use crate::effects::ChooseSpellCastHistoryEffect;
+        Self::new(ChooseSpellCastHistoryEffect::new(
+            chooser,
+            cast_by,
+            filter,
+            tag.into(),
+        ))
+    }
+
+    /// Choose a card name and tag it for later same-name references.
+    pub fn choose_card_name(
+        chooser: PlayerFilter,
+        filter: Option<crate::target::ObjectFilter>,
+        tag: impl Into<TagKey>,
+    ) -> Self {
+        use crate::effects::ChooseCardNameEffect;
+        Self::new(ChooseCardNameEffect::new(chooser, filter, tag))
+    }
+
+    /// Choose a player and tag that choice for later reference.
+    pub fn choose_player(
+        chooser: PlayerFilter,
+        filter: PlayerFilter,
+        tag: impl Into<TagKey>,
+    ) -> Self {
+        use crate::effects::ChoosePlayerEffect;
+        Self::new(ChoosePlayerEffect::new(chooser, filter, tag))
+    }
+
+    /// Choose a color and store it on the source object for later effects.
+    pub fn choose_color(chooser: PlayerFilter) -> Self {
+        use crate::effects::ChooseColorEffect;
+        Self::new(ChooseColorEffect::new(chooser))
+    }
+
+    /// Choose a card type and store it on the source object for later effects.
+    pub fn choose_card_type(chooser: PlayerFilter, options: Vec<crate::types::CardType>) -> Self {
+        use crate::effects::ChooseCardTypeEffect;
+        Self::new(ChooseCardTypeEffect::new(chooser, options))
+    }
+
+    /// Choose one named option and store it on the source object for later effects.
+    pub fn choose_named_option(chooser: PlayerFilter, options: Vec<String>) -> Self {
+        use crate::effects::ChooseNamedOptionEffect;
+        Self::new(ChooseNamedOptionEffect::new(chooser, options))
+    }
+
+    /// Choose a creature type and store it on the source object for later effects.
+    pub fn choose_creature_type(
+        chooser: PlayerFilter,
+        excluded_subtypes: Vec<crate::types::Subtype>,
+    ) -> Self {
+        use crate::effects::ChooseCreatureTypeEffect;
+        Self::new(ChooseCreatureTypeEffect::new(chooser, excluded_subtypes))
+    }
+
+    /// Create a conditional effect based on game state.
+    ///
+    /// Example: "If you control a creature, draw a card. Otherwise, gain 3 life."
+    /// ```ignore
+    /// Effect::conditional(
+    ///     Condition::YouControl(ObjectFilter::creature()),
+    ///     vec![Effect::draw(1)],
+    ///     vec![Effect::gain_life(3)],
+    /// )
+    /// ```
+    pub fn conditional(condition: Condition, if_true: Vec<Effect>, if_false: Vec<Effect>) -> Self {
+        use crate::effects::ConditionalEffect;
+        Self::new(ConditionalEffect::new(condition, if_true, if_false))
+    }
+
+    /// Create a conditional effect with only a true branch.
+    ///
+    /// Example: "If you control a creature, draw a card."
+    /// ```ignore
+    /// Effect::conditional_only(Condition::YouControl(ObjectFilter::creature()), vec![Effect::draw(1)])
+    /// ```
+    pub fn conditional_only(condition: Condition, if_true: Vec<Effect>) -> Self {
+        use crate::effects::ConditionalEffect;
+        Self::new(ConditionalEffect::if_only(condition, if_true))
+    }
+
+    /// Create a "choose one" modal effect.
+    ///
+    /// Example: Modal spell with two options.
+    /// ```ignore
+    /// Effect::choose_one(vec![
+    ///     EffectMode { description: "Draw 2 cards".to_string(), effects: vec![Effect::draw(2)] },
+    ///     EffectMode { description: "Gain 5 life".to_string(), effects: vec![Effect::gain_life(5)] },
+    /// ])
+    /// ```
+    pub fn choose_one(modes: Vec<EffectMode>) -> Self {
+        use crate::effects::ChooseModeEffect;
+        Self::new(ChooseModeEffect::choose_one(modes))
+    }
+
+    /// Create a "choose exactly N" modal effect.
+    ///
+    /// Example: "Choose two modes."
+    /// ```ignore
+    /// Effect::choose_exactly(2, modes)
+    /// ```
+    pub fn choose_exactly(count: impl Into<Value>, modes: Vec<EffectMode>) -> Self {
+        use crate::effects::ChooseModeEffect;
+        Self::new(ChooseModeEffect::choose_exactly(count, modes))
+    }
+
+    /// Create a "choose exactly N" modal effect that allows choosing the same mode more than once.
+    pub fn choose_exactly_allow_repeated_modes(
+        count: impl Into<Value>,
+        modes: Vec<EffectMode>,
+    ) -> Self {
+        use crate::effects::ChooseModeEffect;
+        Self::new(ChooseModeEffect::choose_exactly(count, modes).with_repeated_modes())
+    }
+
+    /// Create a "choose up to N" modal effect.
+    ///
+    /// Example: "Choose one or both modes."
+    /// ```ignore
+    /// Effect::choose_up_to(2, 1, modes) // min 1, max 2
+    /// ```
+    pub fn choose_up_to(
+        max: impl Into<Value>,
+        min: impl Into<Value>,
+        modes: Vec<EffectMode>,
+    ) -> Self {
+        use crate::effects::ChooseModeEffect;
+        Self::new(ChooseModeEffect::choose_up_to(max, min, modes))
+    }
+
+    /// Convenience: "You may X. If you do, Y."
+    ///
+    /// This is such a common pattern that it deserves a helper.
+    /// Equivalent to: `WithId(0, May(effect))` + `If(0, Happened, then)`
+    ///
+    /// Example: "You may draw a card. If you do, discard a card."
+    /// ```ignore
+    /// Effect::may_if_do(
+    ///     0,
+    ///     Effect::draw(1),
+    ///     vec![Effect::discard(1)],
+    /// )
+    /// ```
+    pub fn may_if_do(id: u32, effect: Effect, then: Vec<Effect>) -> Vec<Effect> {
+        vec![
+            Self::with_id(id, Self::may_single(effect)),
+            Self::if_then(EffectId(id), EffectPredicate::Happened, then),
+        ]
+    }
+
+    /// Convenience: "X. If you do, Y."
+    ///
+    /// For non-optional effects with conditional follow-up.
+    ///
+    /// Example: "Sacrifice a creature. If you do, draw two cards."
+    /// ```ignore
+    /// Effect::do_if_do(
+    ///     0,
+    ///     Effect::sacrifice(ObjectFilter::creature(), 1),
+    ///     vec![Effect::draw(2)],
+    /// )
+    /// ```
+    pub fn do_if_do(id: u32, effect: Effect, then: Vec<Effect>) -> Vec<Effect> {
+        vec![
+            Self::with_id(id, effect),
+            Self::if_then(EffectId(id), EffectPredicate::Happened, then),
+        ]
+    }
+
+    // === Player/Game State Effects ===
+
+    /// Create a "lose the game" effect for the controller.
+    pub fn lose_the_game() -> Self {
+        use crate::effects::LoseTheGameEffect;
+        Self::new(LoseTheGameEffect::you())
+    }
+
+    /// Create a "lose the game" effect for a specific player.
+    pub fn lose_the_game_player(player: PlayerFilter) -> Self {
+        use crate::effects::LoseTheGameEffect;
+        Self::new(LoseTheGameEffect::new(player))
+    }
+
+    /// Create a "win the game" effect for the controller.
+    pub fn win_the_game() -> Self {
+        use crate::effects::WinTheGameEffect;
+        Self::new(WinTheGameEffect::you())
+    }
+
+    /// Create a "win the game" effect for a specific player.
+    pub fn win_the_game_player(player: PlayerFilter) -> Self {
+        use crate::effects::WinTheGameEffect;
+        Self::new(WinTheGameEffect::new(player))
+    }
+
+    /// Create an "extra turn" effect for the controller.
+    pub fn extra_turn() -> Self {
+        use crate::effects::ExtraTurnEffect;
+        Self::new(ExtraTurnEffect::you())
+    }
+
+    /// Create an "extra turn" effect for a specific player.
+    pub fn extra_turn_player(player: PlayerFilter) -> Self {
+        use crate::effects::ExtraTurnEffect;
+        Self::new(ExtraTurnEffect::new(player))
+    }
+
+    /// Create an extra-turn effect that happens after the player's next turn.
+    pub fn extra_turn_after_next_turn_player(player: PlayerFilter) -> Self {
+        use crate::effects::ExtraTurnAfterNextTurnEffect;
+        Self::new(ExtraTurnAfterNextTurnEffect::new(player))
+    }
+
+    /// Create a "skip turn" effect for the controller.
+    pub fn skip_turn() -> Self {
+        use crate::effects::SkipTurnEffect;
+        Self::new(SkipTurnEffect::you())
+    }
+
+    /// Create a "skip turn" effect for a specific player.
+    pub fn skip_turn_player(player: PlayerFilter) -> Self {
+        use crate::effects::SkipTurnEffect;
+        Self::new(SkipTurnEffect::new(player))
+    }
+
+    /// Create a "skip all combat phases of next turn" effect for the controller.
+    pub fn skip_combat_phases() -> Self {
+        use crate::effects::SkipCombatPhasesEffect;
+        Self::new(SkipCombatPhasesEffect::you())
+    }
+
+    /// Create a "skip all combat phases of next turn" effect for a specific player.
+    pub fn skip_combat_phases_player(player: PlayerFilter) -> Self {
+        use crate::effects::SkipCombatPhasesEffect;
+        Self::new(SkipCombatPhasesEffect::new(player))
+    }
+
+    /// Create a "skip next combat phase this turn" effect for the controller.
+    pub fn skip_next_combat_phase_this_turn() -> Self {
+        use crate::effects::SkipNextCombatPhaseThisTurnEffect;
+        Self::new(SkipNextCombatPhaseThisTurnEffect::you())
+    }
+
+    /// Create a "skip next combat phase this turn" effect for a specific player.
+    pub fn skip_next_combat_phase_this_turn_player(player: PlayerFilter) -> Self {
+        use crate::effects::SkipNextCombatPhaseThisTurnEffect;
+        Self::new(SkipNextCombatPhaseThisTurnEffect::new(player))
+    }
+
+    /// Create a "skip next draw step" effect for the controller.
+    pub fn skip_draw_step() -> Self {
+        use crate::effects::SkipDrawStepEffect;
+        Self::new(SkipDrawStepEffect::you())
+    }
+
+    /// Create a "skip next draw step" effect for a specific player.
+    pub fn skip_draw_step_player(player: PlayerFilter) -> Self {
+        use crate::effects::SkipDrawStepEffect;
+        Self::new(SkipDrawStepEffect::new(player))
+    }
+
+    // === Control Effects ===
+
+    /// Create a "gain control" effect with a specific duration.
+    pub fn gain_control_with_duration(target: ChooseSpec, duration: Until) -> Self {
+        use crate::effects::GainControlEffect;
+        Self::new(GainControlEffect::new(target, duration))
+    }
+
+    /// Create an "exchange control" effect between two permanents.
+    pub fn exchange_control(permanent1: ChooseSpec, permanent2: ChooseSpec) -> Self {
+        use crate::effects::ExchangeControlEffect;
+        Self::new(ExchangeControlEffect::new(permanent1, permanent2))
+    }
+
+    /// Create a "control player" effect with explicit timing.
+    pub fn control_player(
+        player: PlayerFilter,
+        start: crate::game_state::PlayerControlStart,
+        duration: crate::game_state::PlayerControlDuration,
+    ) -> Self {
+        use crate::effects::ControlPlayerEffect;
+        Self::new(ControlPlayerEffect::new(player, start, duration))
+    }
+
+    /// Create a "control player until end of turn" effect.
+    pub fn control_player_until_end_of_turn(player: PlayerFilter) -> Self {
+        use crate::effects::ControlPlayerEffect;
+        Self::new(ControlPlayerEffect::until_end_of_turn(player))
+    }
+
+    /// Create a "control player during their next turn" effect.
+    pub fn control_player_next_turn(player: PlayerFilter) -> Self {
+        use crate::effects::ControlPlayerEffect;
+        Self::new(ControlPlayerEffect::during_next_turn(player))
+    }
+
+    /// Create an effect that lets you choose attackers and/or blockers this turn.
+    pub fn control_combat_choices_this_turn(attackers: bool, blockers: bool) -> Self {
+        use crate::effects::ControlCombatChoicesThisTurnEffect;
+        Self::new(ControlCombatChoicesThisTurnEffect::new(attackers, blockers))
+    }
+
+    // === Card Manipulation Effects ===
+
+    /// Create a "discard" effect.
+    pub fn discard(count: impl Into<Value>) -> Self {
+        use crate::effects::DiscardEffect;
+        Self::new(DiscardEffect::you(count))
+    }
+
+    /// Create a "discard" effect for a specific player.
+    pub fn discard_player(count: impl Into<Value>, player: PlayerFilter, random: bool) -> Self {
+        Self::discard_player_filtered(count, player, random, None)
+    }
+
+    /// Create a "discard" effect for a specific player, optionally restricted
+    /// to cards matching an object filter (for example, "discard a creature card").
+    pub fn discard_player_filtered(
+        count: impl Into<Value>,
+        player: PlayerFilter,
+        random: bool,
+        card_filter: Option<crate::filter::ObjectFilter>,
+    ) -> Self {
+        use crate::effects::DiscardEffect;
+        Self::new(DiscardEffect::new_with_filter(
+            count,
+            player,
+            random,
+            card_filter,
+        ))
+    }
+
+    /// Create a "discard hand" effect.
+    pub fn discard_hand() -> Self {
+        use crate::effects::DiscardHandEffect;
+        Self::new(DiscardHandEffect::you())
+    }
+
+    /// Create a "discard hand" effect for a specific player.
+    pub fn discard_hand_player(player: PlayerFilter) -> Self {
+        use crate::effects::DiscardHandEffect;
+        Self::new(DiscardHandEffect::new(player))
+    }
+
+    /// Create a "scry" effect.
+    pub fn scry(count: impl Into<Value>) -> Self {
+        use crate::effects::ScryEffect;
+        Self::new(ScryEffect::you(count))
+    }
+
+    /// Create a "scry" effect for a specific player.
+    pub fn scry_player(count: impl Into<Value>, player: PlayerFilter) -> Self {
+        use crate::effects::ScryEffect;
+        Self::new(ScryEffect::new(count, player))
+    }
+
+    /// Create a "fateseal" effect.
+    pub fn fateseal(count: impl Into<Value>) -> Self {
+        use crate::effects::FatesealEffect;
+        Self::new(FatesealEffect::you(count))
+    }
+
+    /// Create a "fateseal" effect for a specific player.
+    pub fn fateseal_player(count: impl Into<Value>, player: PlayerFilter) -> Self {
+        use crate::effects::FatesealEffect;
+        Self::new(FatesealEffect::new(count, player))
+    }
+
+    /// Create a "discover N" effect.
+    pub fn discover(count: impl Into<Value>) -> Self {
+        use crate::effects::DiscoverEffect;
+        Self::new(DiscoverEffect::you(count))
+    }
+
+    /// Create a "discover N" effect for a specific player.
+    pub fn discover_player(count: impl Into<Value>, player: PlayerFilter) -> Self {
+        use crate::effects::DiscoverEffect;
+        Self::new(DiscoverEffect::new(count, player))
+    }
+
+    /// Exile cards from the top of a library until one matches `filter`, let a
+    /// player cast it, then put the rest on the bottom in random order.
+    pub fn exile_until_match_cast(
+        player: PlayerFilter,
+        filter: ObjectFilter,
+        caster: PlayerFilter,
+        without_paying_mana_cost: bool,
+    ) -> Self {
+        use crate::effects::ExileUntilMatchCastEffect;
+        Self::new(ExileUntilMatchCastEffect::new(
+            player,
+            filter,
+            caster,
+            without_paying_mana_cost,
+        ))
+    }
+
+    /// Exile cards from the top of a library until one matches `filter`, then
+    /// let a player play that exiled card until end of turn.
+    pub fn exile_until_match_grant_play_until_eot(
+        player: PlayerFilter,
+        filter: ObjectFilter,
+        caster: PlayerFilter,
+    ) -> Self {
+        use crate::effects::ExileUntilMatchGrantPlayEffect;
+        Self::new(ExileUntilMatchGrantPlayEffect::new(player, filter, caster))
+    }
+
+    /// Exile cards from the top of a library until one matches `filter`.
+    pub fn exile_until_match(player: PlayerFilter, filter: ObjectFilter) -> Self {
+        use crate::effects::ExileUntilMatchEffect;
+        Self::new(ExileUntilMatchEffect::new(player, filter))
+    }
+
+    pub fn consult_top_of_library(
+        player: PlayerFilter,
+        mode: crate::effects::consult_helpers::LibraryConsultMode,
+        filter: ObjectFilter,
+        stop_rule: crate::effects::ConsultTopOfLibraryStopRule,
+        all_tag: impl Into<TagKey>,
+        match_tag: impl Into<TagKey>,
+    ) -> Self {
+        use crate::effects::ConsultTopOfLibraryEffect;
+        Self::new(ConsultTopOfLibraryEffect::new(
+            player, mode, filter, stop_rule, all_tag, match_tag,
+        ))
+    }
+
+    pub fn put_tagged_remainder_on_library_bottom(
+        tag: impl Into<TagKey>,
+        keep_tagged: Option<TagKey>,
+        order: crate::effects::consult_helpers::LibraryBottomOrder,
+        player: PlayerFilter,
+    ) -> Self {
+        use crate::effects::PutTaggedRemainderOnLibraryBottomEffect;
+        Self::new(PutTaggedRemainderOnLibraryBottomEffect::new(
+            tag,
+            keep_tagged,
+            order,
+            player,
+        ))
+    }
+
+    /// Create a "surveil" effect.
+    pub fn surveil(count: impl Into<Value>) -> Self {
+        use crate::effects::SurveilEffect;
+        Self::new(SurveilEffect::you(count))
+    }
+
+    /// Create a "surveil" effect for a specific player.
+    pub fn surveil_player(count: impl Into<Value>, player: PlayerFilter) -> Self {
+        use crate::effects::SurveilEffect;
+        Self::new(SurveilEffect::new(count, player))
+    }
+
+    /// Create a "reveal top card" effect, tagging the revealed card.
+    pub fn reveal_top(player: PlayerFilter, tag: impl Into<TagKey>) -> Self {
+        use crate::effects::RevealTopEffect;
+        Self::new(RevealTopEffect::tagged(player, tag))
+    }
+
+    /// Create a "look at the top N cards" effect, tagging the viewed cards.
+    pub fn look_at_top_cards(
+        player: PlayerFilter,
+        count: impl Into<Value>,
+        tag: impl Into<TagKey>,
+    ) -> Self {
+        use crate::effects::LookAtTopCardsEffect;
+        Self::new(LookAtTopCardsEffect::new(player, count, tag))
+    }
+
+    /// Rearrange tagged library cards by keeping some on top and putting the
+    /// rest on the bottom in random order.
+    pub fn rearrange_looked_cards_in_library(
+        tag: impl Into<TagKey>,
+        chooser: PlayerFilter,
+        count: ChoiceCount,
+    ) -> Self {
+        use crate::effects::RearrangeLookedCardsInLibraryEffect;
+        Self::new(RearrangeLookedCardsInLibraryEffect::new(
+            tag, chooser, count,
+        ))
+    }
+
+    /// Create a "search library" effect.
+    pub fn search_library(
+        filter: ObjectFilter,
+        destination: Zone,
+        player: PlayerFilter,
+        reveal: bool,
+    ) -> Self {
+        Self::search_library_as(filter, destination, player.clone(), player, reveal)
+    }
+
+    /// Create a "search library" effect with an explicit searching player.
+    pub fn search_library_as(
+        filter: ObjectFilter,
+        destination: Zone,
+        chooser: PlayerFilter,
+        player: PlayerFilter,
+        reveal: bool,
+    ) -> Self {
+        use crate::effects::SearchLibraryEffect;
+        Self::new(SearchLibraryEffect::new(
+            filter,
+            destination,
+            chooser,
+            player,
+            reveal,
+        ))
+    }
+
+    /// Create a "search library to hand" effect.
+    pub fn search_library_to_hand(filter: ObjectFilter, reveal: bool) -> Self {
+        use crate::effects::SearchLibraryEffect;
+        Self::new(SearchLibraryEffect::to_hand(
+            filter,
+            PlayerFilter::You,
+            reveal,
+        ))
+    }
+
+    /// Create a multi-slot search that finds several differently constrained cards.
+    pub fn search_library_slots_to_hand(
+        slots: Vec<crate::effects::SearchLibrarySlot>,
+        player: PlayerFilter,
+        reveal: bool,
+        progress_tag: impl Into<TagKey>,
+    ) -> Self {
+        use crate::effects::SearchLibrarySlotsEffect;
+        Self::new(SearchLibrarySlotsEffect::to_hand(
+            slots,
+            player,
+            reveal,
+            progress_tag,
+        ))
+    }
+
+    /// Grant play from graveyard until end of turn.
+    pub fn grant_play_from_graveyard_until_eot(player: PlayerFilter) -> Self {
+        Self::grant_by_spec(
+            crate::grant::GrantSpec::play_from_graveyard(),
+            player,
+            crate::grant::GrantDuration::UntilEndOfTurn,
+        )
+    }
+
+    /// Grant additional land plays for a duration.
+    pub fn additional_land_plays(
+        count: impl Into<Value>,
+        player: PlayerFilter,
+        duration: Until,
+    ) -> Self {
+        use crate::effects::AdditionalLandPlaysEffect;
+        Self::new(AdditionalLandPlaysEffect::new(count, player, duration))
+    }
+
+    /// Exile cards instead of going to graveyard this turn.
+    pub fn exile_instead_of_graveyard_this_turn(player: PlayerFilter) -> Self {
+        use crate::effects::ExileInsteadOfGraveyardEffect;
+        Self::new(ExileInsteadOfGraveyardEffect::new(player))
+    }
+
+    /// Create a "may cast for miracle cost" effect.
+    ///
+    /// This effect is used by Miracle triggers to present the player with the choice
+    /// to cast the spell for its miracle cost.
+    ///
+    /// Gets the card and owner from the triggering CardsDrawnEvent.
+    pub fn may_cast_for_miracle_cost() -> Self {
+        use crate::effects::player::MayCastForMiracleCostEffect;
+        Self::new(MayCastForMiracleCostEffect::new())
+    }
+
+    /// Cast a previously tagged card immediately.
+    ///
+    /// This is used for one-shot "You may cast it" patterns where a prior
+    /// effect tagged the card to be cast.
+    pub fn cast_tagged(
+        tag: impl Into<crate::tag::TagKey>,
+        player: PlayerFilter,
+        allow_land: bool,
+        as_copy: bool,
+        without_paying_mana_cost: bool,
+        cost_reduction: Option<crate::mana::ManaCost>,
+    ) -> Self {
+        use crate::effects::CastTaggedEffect;
+        let effect = CastTaggedEffect::new(tag, player);
+        let effect = if allow_land {
+            effect.allow_land()
+        } else {
+            effect
+        };
+        let effect = if as_copy { effect.as_copy() } else { effect };
+        let effect = if without_paying_mana_cost {
+            effect.without_paying_mana_cost()
+        } else {
+            effect
+        };
+        let effect = if let Some(cost_reduction) = cost_reduction {
+            effect.cost_reduction(cost_reduction)
+        } else {
+            effect
+        };
+        Self::new(effect)
+    }
+
+    // === Voting Effects ===
+
+    /// Create a vote effect for council's dilemma and similar mechanics.
+    ///
+    /// Each player votes for one of the options. After all votes, effects are
+    /// executed based on vote counts (once per vote).
+    ///
+    /// # Arguments
+    ///
+    /// * `options` - The vote options (e.g., "evidence" -> investigate)
+    /// * `controller_extra_votes` - Mandatory extra votes for the controller
+    ///
+    /// # Example
+    ///
+    /// Tivit's council's dilemma:
+    /// ```ignore
+    /// Effect::vote_with_optional_extra(
+    ///     vec![
+    ///         VoteOption::new("evidence", vec![Effect::investigate()]),
+    ///         VoteOption::new("bribery", vec![Effect::create_tokens(treasure_token(), 1)]),
+    ///     ],
+    ///     0, // Mandatory extra votes
+    ///     1, // Optional extra votes ("you may vote an additional time")
+    /// )
+    /// ```
+    pub fn vote(options: Vec<crate::effects::VoteOption>, controller_extra_votes: u32) -> Self {
+        use crate::effects::VoteEffect;
+        Self::new(VoteEffect::new(options, controller_extra_votes))
+    }
+
+    /// Create a vote effect with optional extra votes for the controller.
+    pub fn vote_with_optional_extra(
+        options: Vec<crate::effects::VoteOption>,
+        controller_extra_votes: u32,
+        controller_optional_extra_votes: u32,
+    ) -> Self {
+        use crate::effects::VoteEffect;
+        Self::new(VoteEffect::with_optional_extra(
+            options,
+            controller_extra_votes,
+            controller_optional_extra_votes,
+        ))
+    }
+
+    /// Create an object-vote effect.
+    pub fn vote_objects(
+        filter: crate::filter::ObjectFilter,
+        count: crate::effect::ChoiceCount,
+        controller_extra_votes: u32,
+    ) -> Self {
+        use crate::effects::VoteEffect;
+        Self::new(VoteEffect::vote_objects(
+            filter,
+            count,
+            controller_extra_votes,
+        ))
+    }
+
+    /// Create an object-vote effect with optional extra votes.
+    pub fn vote_objects_with_optional_extra(
+        filter: crate::filter::ObjectFilter,
+        count: crate::effect::ChoiceCount,
+        controller_extra_votes: u32,
+        controller_optional_extra_votes: u32,
+    ) -> Self {
+        use crate::effects::VoteEffect;
+        Self::new(VoteEffect::vote_objects_with_optional_extra(
+            filter,
+            count,
+            controller_extra_votes,
+            controller_optional_extra_votes,
+        ))
+    }
+
+    /// Create a council's dilemma vote effect (controller may vote an additional time).
+    ///
+    /// This is a convenience method for the common council's dilemma pattern.
+    pub fn councils_dilemma(options: Vec<crate::effects::VoteOption>) -> Self {
+        use crate::effects::VoteEffect;
+        Self::new(VoteEffect::councils_dilemma(options))
+    }
+
+    /// Create a basic vote effect (no extra votes for controller).
+    pub fn vote_basic(options: Vec<crate::effects::VoteOption>) -> Self {
+        use crate::effects::VoteEffect;
+        Self::new(VoteEffect::basic(options))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_deal_damage_effect() {
+        let effect = Effect::deal_damage(3, ChooseSpec::AnyTarget);
+        // Verify it has the expected target spec via the trait method
+        assert!(effect.0.get_target_spec().is_some());
+        assert!(matches!(
+            effect.0.get_target_spec().unwrap(),
+            ChooseSpec::AnyTarget
+        ));
+    }
+
+    #[test]
+    fn test_draw_cards_effect() {
+        let effect = Effect::draw(2);
+        let debug_str = format!("{:?}", effect);
+        assert!(debug_str.contains("DrawCardsEffect"));
+        assert!(debug_str.contains("Fixed(2)"));
+    }
+
+    #[test]
+    fn test_complex_effect() {
+        // "Draw cards equal to the number of creatures you control"
+        let effect = Effect::target_draws(Value::creatures_you_control(), PlayerFilter::You);
+
+        let debug_str = format!("{:?}", effect);
+        assert!(debug_str.contains("DrawCardsEffect"));
+        assert!(debug_str.contains("Count"));
+    }
+
+    #[test]
+    fn test_conditional_effect() {
+        // "If you control a creature, draw a card. Otherwise, gain 3 life."
+        let effect = Effect::conditional(
+            Condition::YouControl(ObjectFilter::creature()),
+            vec![Effect::draw(1)],
+            vec![Effect::gain_life(3)],
+        );
+
+        let debug_str = format!("{:?}", effect);
+        assert!(debug_str.contains("ConditionalEffect"));
+    }
+
+    #[test]
+    fn test_pump_spell() {
+        // "Target creature gets +3/+3 until end of turn"
+        let effect = Effect::pump(3, 3, ChooseSpec::creature(), Until::EndOfTurn);
+        let debug_str = format!("{:?}", effect);
+        assert!(debug_str.contains("ModifyPowerToughnessEffect"));
+    }
+
+    // === OutcomeStatus / OutcomeValue tests ===
+
+    #[test]
+    fn test_outcome_value_count() {
+        let value = OutcomeValue::Count(3);
+        assert!(value.something_happened());
+        assert_eq!(value.as_count(), Some(3));
+        assert_eq!(value.count_or_zero(), 3);
+    }
+
+    #[test]
+    fn test_outcome_value_count_zero() {
+        let value = OutcomeValue::Count(0);
+        assert!(!value.something_happened());
+        assert_eq!(value.as_count(), Some(0));
+    }
+
+    #[test]
+    fn test_outcome_status_resolved() {
+        assert!(OutcomeStatus::Succeeded.is_success());
+        assert!(!OutcomeStatus::Succeeded.is_failure());
+    }
+
+    #[test]
+    fn test_outcome_status_declined() {
+        assert!(OutcomeStatus::Declined.is_failure());
+    }
+
+    #[test]
+    fn test_outcome_status_failures() {
+        for status in [
+            OutcomeStatus::Declined,
+            OutcomeStatus::TargetInvalid,
+            OutcomeStatus::Prevented,
+            OutcomeStatus::Protected,
+            OutcomeStatus::Impossible,
+        ] {
+            assert!(status.is_failure());
+        }
+    }
+
+    #[test]
+    fn test_outcome_status_replaced() {
+        assert!(OutcomeStatus::Replaced.is_success());
+    }
+
+    #[test]
+    fn test_effect_outcome_from_result_captures_execution_fact() {
+        let outcome = EffectOutcome::declined();
+        assert_eq!(outcome.execution_facts(), &[ExecutionFact::Declined]);
+    }
+
+    #[test]
+    fn test_effect_outcome_aggregate_preserves_execution_facts() {
+        let outcome = EffectOutcome::aggregate(vec![
+            EffectOutcome::count(1).with_execution_fact(ExecutionFact::ChosenNumber(1)),
+            EffectOutcome::declined(),
+        ]);
+
+        assert_eq!(outcome.status, OutcomeStatus::Succeeded);
+        assert_eq!(outcome.value, OutcomeValue::None);
+        assert_eq!(
+            outcome.execution_facts(),
+            &[ExecutionFact::ChosenNumber(1), ExecutionFact::Declined]
+        );
+    }
+
+    #[test]
+    fn test_effect_outcome_aggregate_preserves_identical_summary_only() {
+        let outcome =
+            EffectOutcome::aggregate(vec![EffectOutcome::declined(), EffectOutcome::declined()]);
+
+        assert_eq!(outcome.status, OutcomeStatus::Declined);
+        assert_eq!(outcome.value, OutcomeValue::None);
+    }
+
+    #[test]
+    fn test_effect_outcome_aggregate_summing_counts_sums_homogeneous_counts() {
+        let outcome = EffectOutcome::aggregate_summing_counts(vec![
+            EffectOutcome::count(1),
+            EffectOutcome::count(2),
+            EffectOutcome::count(0),
+        ]);
+
+        assert_eq!(outcome.status, OutcomeStatus::Succeeded);
+        assert_eq!(outcome.value, OutcomeValue::Count(3));
+    }
+
+    #[test]
+    fn test_effect_outcome_aggregate_summing_counts_keeps_mixed_results_conservative() {
+        let outcome = EffectOutcome::aggregate_summing_counts(vec![
+            EffectOutcome::count(1),
+            EffectOutcome::declined(),
+        ]);
+
+        assert_eq!(outcome.status, OutcomeStatus::Succeeded);
+        assert_eq!(outcome.value, OutcomeValue::None);
+    }
+
+    // === EffectPredicate tests ===
+
+    #[test]
+    fn test_predicate_succeeded() {
+        let pred = EffectPredicate::Succeeded;
+        assert!(pred.evaluate_outcome(&EffectOutcome::count(0)));
+        assert!(pred.evaluate_outcome(&EffectOutcome::resolved()));
+        assert!(!pred.evaluate_outcome(&EffectOutcome::declined()));
+        assert!(!pred.evaluate_outcome(&EffectOutcome::target_invalid()));
+    }
+
+    #[test]
+    fn test_predicate_happened() {
+        let pred = EffectPredicate::Happened;
+        assert!(pred.evaluate_outcome(&EffectOutcome::count(1)));
+        assert!(!pred.evaluate_outcome(&EffectOutcome::count(0)));
+        assert!(pred.evaluate_outcome(&EffectOutcome::resolved()));
+        assert!(!pred.evaluate_outcome(&EffectOutcome::declined()));
+    }
+
+    #[test]
+    fn test_predicate_did_not_happen() {
+        let pred = EffectPredicate::DidNotHappen;
+        assert!(!pred.evaluate_outcome(&EffectOutcome::count(1)));
+        assert!(pred.evaluate_outcome(&EffectOutcome::count(0)));
+        assert!(!pred.evaluate_outcome(&EffectOutcome::resolved()));
+        assert!(pred.evaluate_outcome(&EffectOutcome::declined()));
+    }
+
+    #[test]
+    fn test_predicate_value_comparison() {
+        let pred = EffectPredicate::Value(Comparison::GreaterThan(2));
+        assert!(pred.evaluate_outcome(&EffectOutcome::count(3)));
+        assert!(!pred.evaluate_outcome(&EffectOutcome::count(2)));
+        assert!(!pred.evaluate_outcome(&EffectOutcome::count(1)));
+        assert!(!pred.evaluate_outcome(&EffectOutcome::resolved())); // Not a count
+    }
+
+    #[test]
+    fn test_predicate_chosen_vs_declined() {
+        let chosen = EffectPredicate::Chosen;
+        let declined = EffectPredicate::WasDeclined;
+
+        assert!(chosen.evaluate_outcome(&EffectOutcome::count(1)));
+        assert!(chosen.evaluate_outcome(&EffectOutcome::resolved()));
+        assert!(!chosen.evaluate_outcome(&EffectOutcome::declined()));
+
+        assert!(!declined.evaluate_outcome(&EffectOutcome::count(1)));
+        assert!(declined.evaluate_outcome(&EffectOutcome::declined()));
+    }
+
+    #[test]
+    fn test_predicate_happened_uses_events_from_outcome() {
+        let outcome = EffectOutcome::with_details(
+            OutcomeStatus::Succeeded,
+            OutcomeValue::Count(0),
+            vec![crate::events::RawEvent::new_with_provenance(
+                crate::events::TapEvent {
+                    permanent: ObjectId::from_raw(1),
+                },
+                crate::provenance::ProvNodeId::default(),
+            )],
+            Vec::new(),
+        );
+
+        assert!(EffectPredicate::Happened.evaluate_outcome(&outcome));
+        assert!(!EffectPredicate::DidNotHappen.evaluate_outcome(&outcome));
+    }
+
+    #[test]
+    fn test_predicate_declined_uses_execution_facts_from_outcome() {
+        let outcome = EffectOutcome::with_details(
+            OutcomeStatus::Succeeded,
+            OutcomeValue::None,
+            Vec::new(),
+            vec![ExecutionFact::Declined],
+        );
+
+        assert!(EffectPredicate::WasDeclined.evaluate_outcome(&outcome));
+        assert!(!EffectPredicate::Chosen.evaluate_outcome(&outcome));
+        assert!(!EffectPredicate::Happened.evaluate_outcome(&outcome));
+    }
+
+    #[test]
+    fn test_effect_outcome_output_objects_prefers_summary_then_facts() {
+        let summary = EffectOutcome::with_objects(vec![ObjectId::from_raw(1)]);
+        assert_eq!(summary.output_objects(), &[ObjectId::from_raw(1)]);
+
+        let chosen = EffectOutcome::resolved()
+            .with_execution_fact(ExecutionFact::ChosenObjects(vec![ObjectId::from_raw(2)]));
+        assert_eq!(chosen.output_objects(), &[ObjectId::from_raw(2)]);
+
+        let affected = EffectOutcome::resolved()
+            .with_execution_fact(ExecutionFact::AffectedObjects(vec![ObjectId::from_raw(3)]));
+        assert_eq!(affected.first_output_object(), Some(ObjectId::from_raw(3)));
+    }
+
+    #[test]
+    fn test_effect_outcome_total_marker_changes_reads_events() {
+        let outcome =
+            EffectOutcome::resolved().with_event(crate::events::RawEvent::new_with_provenance(
+                crate::events::MarkersChangedEvent::added(
+                    crate::object::CounterType::PlusOnePlusOne,
+                    ObjectId::from_raw(7),
+                    2,
+                    None,
+                    None,
+                ),
+                crate::provenance::ProvNodeId::default(),
+            ));
+
+        assert!(outcome.has_marker_change(|event| {
+            event.is_added() && event.object() == Some(ObjectId::from_raw(7))
+        }));
+        assert_eq!(outcome.total_marker_changes(|event| event.is_added()), 2);
+    }
+
+    // === Comparison tests ===
+
+    #[test]
+    fn test_comparison_operations() {
+        assert!(Comparison::GreaterThan(5).evaluate(6));
+        assert!(!Comparison::GreaterThan(5).evaluate(5));
+
+        assert!(Comparison::GreaterThanOrEqual(5).evaluate(5));
+        assert!(Comparison::GreaterThanOrEqual(5).evaluate(6));
+        assert!(!Comparison::GreaterThanOrEqual(5).evaluate(4));
+
+        assert!(Comparison::Equal(5).evaluate(5));
+        assert!(!Comparison::Equal(5).evaluate(4));
+
+        assert!(Comparison::LessThan(5).evaluate(4));
+        assert!(!Comparison::LessThan(5).evaluate(5));
+
+        assert!(Comparison::LessThanOrEqual(5).evaluate(5));
+        assert!(Comparison::LessThanOrEqual(5).evaluate(4));
+
+        assert!(Comparison::NotEqual(5).evaluate(4));
+        assert!(!Comparison::NotEqual(5).evaluate(5));
+    }
+
+    // === Effect composition tests ===
+
+    #[test]
+    fn test_effect_with_id() {
+        let effect = Effect::with_id(0, Effect::draw(1));
+        let debug_str = format!("{:?}", effect);
+        assert!(debug_str.contains("WithIdEffect"));
+    }
+
+    #[test]
+    fn test_effect_may() {
+        let effect = Effect::may_single(Effect::draw(1));
+        let debug_str = format!("{:?}", effect);
+        assert!(debug_str.contains("MayEffect"));
+    }
+
+    #[test]
+    fn test_effect_if_then() {
+        let effect = Effect::if_then(
+            EffectId(0),
+            EffectPredicate::Happened,
+            vec![Effect::draw(2)],
+        );
+        let debug_str = format!("{:?}", effect);
+        assert!(debug_str.contains("IfEffect"));
+    }
+
+    #[test]
+    fn test_effect_may_if_do() {
+        // "You may draw a card. If you do, discard a card."
+        let effects = Effect::may_if_do(0, Effect::draw(1), vec![Effect::discard(1)]);
+
+        assert_eq!(effects.len(), 2);
+
+        // First effect should be WithIdEffect(MayEffect)
+        let debug_str_0 = format!("{:?}", &effects[0]);
+        assert!(debug_str_0.contains("WithIdEffect"));
+        assert!(debug_str_0.contains("MayEffect"));
+
+        // Second effect should be IfEffect
+        let debug_str_1 = format!("{:?}", &effects[1]);
+        assert!(debug_str_1.contains("IfEffect"));
+    }
+
+    #[test]
+    fn test_effect_do_if_do() {
+        // "Sacrifice a creature. If you do, draw two cards."
+        let effects = Effect::do_if_do(
+            0,
+            Effect::sacrifice(ObjectFilter::creature(), 1),
+            vec![Effect::draw(2)],
+        );
+
+        assert_eq!(effects.len(), 2);
+
+        // First effect should be WithIdEffect(sacrifice)
+        let debug_str_0 = format!("{:?}", &effects[0]);
+        assert!(debug_str_0.contains("WithIdEffect"));
+
+        // Second effect should be IfEffect
+        let debug_str_1 = format!("{:?}", &effects[1]);
+        assert!(debug_str_1.contains("IfEffect"));
+    }
+
+    #[test]
+    fn test_value_effect_value() {
+        // "Draw cards equal to the damage dealt"
+        let value = Value::EffectValue(EffectId(0));
+        assert!(matches!(value, Value::EffectValue(EffectId(0))));
+    }
+}

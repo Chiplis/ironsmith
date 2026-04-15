@@ -6,12 +6,15 @@ use std::io::{BufReader, Read};
 use std::panic::{self, AssertUnwindSafe};
 
 use ironsmith::cards::{
-    CardDefinition, CardDefinitionBuilder, generated_definition_has_unimplemented_content,
+    CardDefinition, generated_definition_has_unimplemented_content,
 };
 use ironsmith::compiled_text::canonical_compiled_lines;
 use ironsmith::ids::CardId;
 use ironsmith::semantic_compare::strip_reminder_text_for_comparison;
-use ironsmith_tools::{CardStatusDb, CompilationSnapshot, ParseStatus, default_db_path};
+use ironsmith_tools::{
+    CardStatusDb, CompilationSnapshot, ParseStatus, default_cards_path, default_db_path,
+    parse_card_definition_with_runtime_builder,
+};
 use serde::de::{self, Deserializer, SeqAccess, Visitor};
 use serde_json::Value;
 
@@ -48,7 +51,7 @@ enum ParseOutcome {
 }
 
 fn parse_args() -> Result<Args, String> {
-    let mut cards_path = "cards.json".to_string();
+    let mut cards_path = default_cards_path().display().to_string();
     let mut all_out = "cards_compiled_oracle_text.csv".to_string();
     let mut mismatch_out = "cards_compiled_oracle_text_semantic_mismatch.csv".to_string();
     let mut strip_reminder_for_comparison = true;
@@ -250,7 +253,7 @@ fn set_allow_unsupported(enabled: bool) {
 fn parse_card(name: &str, parse_input: &str, allow_unsupported: bool) -> ParseOutcome {
     set_allow_unsupported(allow_unsupported);
     let result = panic::catch_unwind(AssertUnwindSafe(|| {
-        CardDefinitionBuilder::new(CardId::from_raw(1), name).parse_text(parse_input.to_string())
+        parse_card_definition_with_runtime_builder(name, parse_input.to_string(), allow_unsupported)
     }));
     match result {
         Ok(Ok(definition)) => ParseOutcome::Success(definition),

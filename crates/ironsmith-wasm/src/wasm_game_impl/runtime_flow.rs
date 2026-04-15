@@ -1,0 +1,1508 @@
+
+impl WasmGame {
+    fn recompute_ui_decision(&mut self) -> Result<(), JsValue> {
+        self.pending_decision = None;
+        self.pending_replay_action = None;
+        self.pending_action_checkpoint = None;
+        self.pending_live_action_root = None;
+        self.priority_epoch_checkpoint = None;
+        self.priority_epoch_has_undoable_action = false;
+        self.priority_epoch_undo_locked_by_mana = false;
+        self.priority_epoch_undo_land_stable_id = None;
+        self.active_viewed_cards = None;
+        self.clear_active_resolving_stack_object();
+        if self.game_over.is_some() {
+            return Ok(());
+        }
+        self.advance_until_decision()
+    }
+
+    pub(super) fn should_auto_resolve_cleanup_discard(&self, ctx: &DecisionContext) -> bool {
+        if !self.auto_cleanup_discard {
+            return false;
+        }
+        let DecisionContext::SelectObjects(obj) = ctx else {
+            return false;
+        };
+        self.game.turn.step == Some(ironsmith::game_state::Step::Cleanup)
+            && obj.min > 0
+            && obj.player != self.perspective
+    }
+
+    pub(super) fn advance_until_decision(&mut self) -> Result<(), JsValue> {
+        use ironsmith::turn_runner::TurnAction;
+
+        let total_started_at = PerfTimer::start();
+        let mut perf = AdvanceUntilDecisionPerfMetrics::default();
+        self.last_advance_until_decision_perf = None;
+
+        if self.pregame.is_some() {
+            for _ in 0..64 {
+                perf.iterations += 1;
+                let normalize_started_at = PerfTimer::start();
+                self.normalize_pregame_state()?;
+                perf.pregame_normalize_ms += normalize_started_at.elapsed_ms();
+                let build_started_at = PerfTimer::start();
+                if let Some(ctx) = self.build_pregame_decision()? {
+                    perf.pregame_decision_build_ms += build_started_at.elapsed_ms();
+                    self.pending_decision = Some(ctx);
+                    self.runner_pending_decision = false;
+                    perf.total_ms = total_started_at.elapsed_ms();
+                    perf.final_outcome = "pregame_decision".to_string();
+                    self.last_advance_until_decision_perf = Some(perf);
+                    return Ok(());
+                }
+                perf.pregame_decision_build_ms += build_started_at.elapsed_ms();
+                if self.pregame.is_none() {
+                    break;
+                }
+            }
+        }
+
+        // Lazily create the TurnRunner on first call.
+        if self.runner.is_none() {
+            self.runner = Some(ironsmith::turn_runner::TurnRunner::new());
+            self.runner_awaiting_priority = false;
+        }
+
+        for _ in 0..192 {
+            perf.iterations += 1;
+            // If we're NOT currently inside a priority loop, advance the TurnRunner
+            if !self.runner_awaiting_priority {
+                let runner_advance_started_at = PerfTimer::start();
+                let action = {
+                    let runner = self.runner.as_mut().unwrap();
+                    runner
+                        .advance(&mut self.game, &mut self.trigger_queue)
+                        .map_err(|e| JsValue::from_str(&format!("{e}")))?
+                };
+                perf.runner_advance_ms += runner_advance_started_at.elapsed_ms();
+
+                match action {
+                    TurnAction::Continue => continue,
+
+                    TurnAction::Decision(ctx) => {
+                        self.clear_active_resolving_stack_object();
+                        // Auto-resolve cleanup discards when the flag is set.
+                        if self.should_auto_resolve_cleanup_discard(&ctx)
+                            && let DecisionContext::SelectObjects(ref obj) = ctx
+                        {
+                            let auto_cleanup_started_at = PerfTimer::start();
+                            let mut ids: Vec<_> = obj
+                                .candidates
+                                .iter()
+                                .filter(|c| c.legal)
+                                .map(|c| c.id)
+                                .collect();
+                            self.game.shuffle_slice(&mut ids);
+                            ids.truncate(obj.min);
+                            self.runner.as_mut().unwrap().respond_discard(ids);
+                            perf.auto_cleanup_discard_ms += auto_cleanup_started_at.elapsed_ms();
+                            continue;
+                        }
+                        self.pending_decision = Some(ctx);
+                        self.runner_pending_decision = true;
+                        perf.total_ms = total_started_at.elapsed_ms();
+                        perf.final_outcome = "runner_decision".to_string();
+                        self.last_advance_until_decision_perf = Some(perf);
+                        return Ok(());
+                    }
+
+                    TurnAction::RunPriority => {
+                        self.runner_awaiting_priority = true;
+                        // Fall through to the priority loop below
+                    }
+
+                    TurnAction::TurnComplete => {
+                        // Check for game over before starting next turn
+                        let remaining: Vec<_> = self
+                            .game
+                            .players
+                            .iter()
+                            .filter(|p| p.is_in_game())
+                            .collect();
+                        if remaining.len() <= 1 {
+                            let result = if let Some(winner) = remaining.first() {
+                                GameResult::Winner(winner.id)
+                            } else {
+                                GameResult::Draw
+                            };
+                            self.game_over = Some(result);
+                            return Ok(());
+                        }
+
+                        // Advance to next turn
+                        self.game.next_turn();
+                        self.runner = Some(ironsmith::turn_runner::TurnRunner::new());
+                        self.runner_awaiting_priority = false;
+                        continue;
+                    }
+
+                    TurnAction::GameOver(result) => {
+                        self.game_over = Some(result);
+                        perf.total_ms = total_started_at.elapsed_ms();
+                        perf.final_outcome = "runner_game_over".to_string();
+                        self.last_advance_until_decision_perf = Some(perf);
+                        return Ok(());
+                    }
+                }
+            }
+
+            // We're inside a priority loop - use existing priority mechanism
+            if self.priority_epoch_checkpoint.is_none() {
+                self.priority_epoch_checkpoint = Some(self.capture_replay_checkpoint());
+                self.priority_epoch_has_undoable_action = false;
+                self.priority_epoch_undo_locked_by_mana = false;
+                self.priority_epoch_undo_land_stable_id = None;
+            }
+            let checkpoint = self.capture_replay_checkpoint();
+            let replay_started_at = PerfTimer::start();
+            let outcome = self.execute_with_replay(&checkpoint, &ReplayRoot::Advance, &[])?;
+            perf.replay_advance_ms += replay_started_at.elapsed_ms();
+            perf.replay_execution = self.last_replay_execution_perf.clone();
+
+            match outcome {
+                ReplayOutcome::NeedsDecision(ctx) => {
+                    self.pending_decision = Some(ctx);
+                    self.runner_pending_decision = false;
+                    self.pending_replay_action = Some(PendingReplayAction {
+                        checkpoint,
+                        root: ReplayRoot::Advance,
+                        nested_answers: Vec::new(),
+                    });
+                    perf.total_ms = total_started_at.elapsed_ms();
+                    perf.final_outcome = "replay_needs_decision".to_string();
+                    self.last_advance_until_decision_perf = Some(perf);
+                    return Ok(());
+                }
+                ReplayOutcome::Complete(progress) => match progress {
+                    GameProgress::NeedsDecisionCtx(ctx) => {
+                        self.clear_active_resolving_stack_object();
+                        self.pending_decision = Some(ctx);
+                        self.runner_pending_decision = false;
+                        perf.total_ms = total_started_at.elapsed_ms();
+                        perf.final_outcome = "progress_needs_decision".to_string();
+                        self.last_advance_until_decision_perf = Some(perf);
+                        return Ok(());
+                    }
+                    GameProgress::Continue => {
+                        // Priority loop ended - notify runner
+                        self.runner.as_mut().unwrap().priority_done();
+                        self.runner_awaiting_priority = false;
+                        self.pending_action_checkpoint = None;
+                        self.priority_epoch_checkpoint = None;
+                        self.priority_epoch_has_undoable_action = false;
+                        self.priority_epoch_undo_locked_by_mana = false;
+                        self.priority_epoch_undo_land_stable_id = None;
+                        self.pending_decision = None;
+                        self.clear_active_resolving_stack_object();
+                        continue;
+                    }
+                    GameProgress::StackResolved => {
+                        // New priority round after resolution — fresh epoch.
+                        self.pending_action_checkpoint = None;
+                        self.priority_epoch_checkpoint = None;
+                        self.priority_epoch_has_undoable_action = false;
+                        self.priority_epoch_undo_locked_by_mana = false;
+                        self.priority_epoch_undo_land_stable_id = None;
+                        self.clear_active_resolving_stack_object();
+                        continue;
+                    }
+                    GameProgress::GameOver(result) => {
+                        self.pending_action_checkpoint = None;
+                        self.pending_decision = None;
+                        self.clear_active_resolving_stack_object();
+                        self.game_over = Some(result);
+                        perf.total_ms = total_started_at.elapsed_ms();
+                        perf.final_outcome = "progress_game_over".to_string();
+                        self.last_advance_until_decision_perf = Some(perf);
+                        return Ok(());
+                    }
+                },
+            }
+        }
+
+        perf.total_ms = total_started_at.elapsed_ms();
+        perf.final_outcome = "iteration_budget_exceeded".to_string();
+        self.last_advance_until_decision_perf = Some(perf);
+        Err(JsValue::from_str(
+            "advance loop exceeded iteration budget (possible infinite loop)",
+        ))
+    }
+
+    fn apply_progress(&mut self, progress: GameProgress) -> Result<(), JsValue> {
+        match progress {
+            GameProgress::NeedsDecisionCtx(ctx) => {
+                self.clear_active_resolving_stack_object();
+                self.pending_decision = Some(ctx);
+                Ok(())
+            }
+            GameProgress::Continue => {
+                // Priority loop ended - notify runner and continue
+                if self.runner.is_some() {
+                    self.runner.as_mut().unwrap().priority_done();
+                    self.runner_awaiting_priority = false;
+                }
+                self.pending_action_checkpoint = None;
+                self.priority_epoch_checkpoint = None;
+                self.priority_epoch_has_undoable_action = false;
+                self.priority_epoch_undo_locked_by_mana = false;
+                self.priority_epoch_undo_land_stable_id = None;
+                self.pending_decision = None;
+                self.clear_active_resolving_stack_object();
+                self.advance_until_decision()
+            }
+            GameProgress::GameOver(result) => {
+                self.pending_action_checkpoint = None;
+                self.pending_decision = None;
+                self.clear_active_resolving_stack_object();
+                self.game_over = Some(result);
+                Ok(())
+            }
+            GameProgress::StackResolved => {
+                self.pending_action_checkpoint = None;
+                self.priority_epoch_checkpoint = None;
+                self.priority_epoch_has_undoable_action = false;
+                self.priority_epoch_undo_locked_by_mana = false;
+                self.priority_epoch_undo_land_stable_id = None;
+                self.pending_decision = None;
+                self.clear_active_resolving_stack_object();
+                self.advance_until_decision()
+            }
+        }
+    }
+
+    /// Handle a response to a TurnRunner-sourced decision (attackers/blockers/discard).
+    fn dispatch_runner_decision(
+        &mut self,
+        pending_ctx: DecisionContext,
+        command: UiCommand,
+    ) -> Result<JsValue, JsValue> {
+        let _runner = self.runner.as_mut().ok_or_else(|| {
+            // Restore decision on structural error so UI can retry.
+            self.pending_decision = Some(pending_ctx.clone());
+            self.runner_pending_decision = true;
+            JsValue::from_str("runner_pending_decision set but no runner present")
+        })?;
+
+        let restore_on_err = |this: &mut Self, ctx: DecisionContext, err: JsValue| -> JsValue {
+            this.pending_decision = Some(ctx);
+            this.runner_pending_decision = true;
+            err
+        };
+
+        match (&pending_ctx, command) {
+            (DecisionContext::Attackers(actx), UiCommand::DeclareAttackers { declarations }) => {
+                let converted = validate_attacker_declarations(actx, &declarations)
+                    .map_err(|e| restore_on_err(self, pending_ctx.clone(), e))?;
+                self.runner.as_mut().unwrap().respond_attackers(converted);
+            }
+            (DecisionContext::Blockers(bctx), UiCommand::DeclareBlockers { declarations }) => {
+                let player = bctx.player;
+                let converted = validate_blocker_declarations(bctx, &declarations)
+                    .map_err(|e| restore_on_err(self, pending_ctx.clone(), e))?;
+                self.runner
+                    .as_mut()
+                    .unwrap()
+                    .respond_blockers(converted, player);
+            }
+            (DecisionContext::SelectObjects(obj_ctx), UiCommand::SelectObjects { object_ids }) => {
+                // Validate discard selection against the decision context.
+                let legal_ids: Vec<u64> = obj_ctx
+                    .candidates
+                    .iter()
+                    .filter(|c| c.legal)
+                    .map(|c| c.id.0)
+                    .collect();
+                validate_object_selection(
+                    obj_ctx.min,
+                    obj_ctx.max,
+                    obj_ctx.allow_partial_completion,
+                    &object_ids,
+                    &legal_ids,
+                )
+                .map_err(|e| restore_on_err(self, pending_ctx.clone(), e))?;
+
+                let cards: Vec<ObjectId> = object_ids
+                    .iter()
+                    .map(|&id| ObjectId::from_raw(id))
+                    .collect();
+                self.runner.as_mut().unwrap().respond_discard(cards);
+            }
+            (DecisionContext::Boolean(_), UiCommand::SelectOptions { option_indices }) => {
+                validate_option_selection(1, Some(1), &option_indices, &[0usize, 1usize])?;
+                let answer = option_indices.first().copied() == Some(1);
+                self.runner.as_mut().unwrap().respond_boolean(answer);
+            }
+            _ => {
+                self.pending_decision = Some(pending_ctx);
+                self.runner_pending_decision = true;
+                return Err(JsValue::from_str("unexpected command for runner decision"));
+            }
+        }
+
+        // The runner is now in a state where advance() will apply the response.
+        // We're no longer awaiting priority (runner will handle the next steps).
+        self.runner_awaiting_priority = false;
+        self.advance_until_decision()?;
+        self.snapshot()
+    }
+
+    pub(super) fn finish_live_priority_dispatch(
+        &mut self,
+        progress: GameProgress,
+        action_checkpoint: Option<ReplayCheckpoint>,
+        resolving_checkpoint: Option<ReplayCheckpoint>,
+    ) -> Result<JsValue, JsValue> {
+        match progress {
+            GameProgress::NeedsDecisionCtx(next_ctx) => {
+                let action_still_pending = self.priority_action_chain_still_pending();
+                if action_still_pending {
+                    self.clear_active_resolving_stack_object();
+                } else {
+                    self.sync_active_resolving_stack_object(resolving_checkpoint.as_ref());
+                }
+                if action_still_pending {
+                    if let Some(checkpoint) = action_checkpoint {
+                        self.pending_action_checkpoint.get_or_insert(checkpoint);
+                    }
+                } else {
+                    self.pending_action_checkpoint = None;
+                }
+
+                if !action_still_pending {
+                    self.priority_state.pending_continuation = None;
+                    self.pending_live_action_root = None;
+                    self.pending_replay_action = None;
+                    self.pending_live_continuation = Some(LivePriorityContinuation {
+                        checkpoint: self.capture_replay_checkpoint_tagged("finish_live_dispatch"),
+                        root: PendingPriorityContinuation::ApplyDecisionContext(next_ctx.clone()),
+                        answers: Vec::new(),
+                        speculative_progress: None,
+                    });
+                } else if self.decision_uses_live_priority_response(&next_ctx) {
+                    self.priority_state.pending_continuation = None;
+                    self.pending_live_continuation = None;
+                    self.pending_replay_action = None;
+                } else {
+                    self.priority_state.pending_continuation = None;
+                    self.pending_live_continuation = Some(LivePriorityContinuation {
+                        checkpoint: self.capture_replay_checkpoint_tagged("finish_live_dispatch"),
+                        root: PendingPriorityContinuation::ApplyDecisionContext(next_ctx.clone()),
+                        answers: Vec::new(),
+                        speculative_progress: None,
+                    });
+                    self.pending_replay_action = None;
+                }
+                self.pending_decision = Some(next_ctx);
+                self.snapshot()
+            }
+            progress => {
+                self.active_viewed_cards = None;
+                self.clear_active_resolving_stack_object();
+                self.priority_state.pending_continuation = None;
+                if let Some(root_response) = self.pending_live_action_root.take() {
+                    self.priority_epoch_has_undoable_action |=
+                        Self::response_starts_cancelable_action_chain(&root_response);
+
+                    if let Some(checkpoint) = self
+                        .pending_action_checkpoint
+                        .as_ref()
+                        .or(action_checkpoint.as_ref())
+                    {
+                        let root = ReplayRoot::Response(root_response);
+                        if Self::replay_root_has_irreversible_mana_activation(
+                            &checkpoint.game,
+                            &root,
+                        ) || self.replay_root_mana_activation_added_to_stack(checkpoint, &root)
+                        {
+                            self.priority_epoch_undo_locked_by_mana = true;
+                        }
+                        self.priority_epoch_undo_land_stable_id =
+                            self.committed_undo_land_stable_id(checkpoint, &root);
+                    }
+                }
+
+                self.pending_action_checkpoint = None;
+                self.pending_live_continuation = None;
+                self.pending_replay_action = None;
+                self.apply_progress(progress)?;
+                self.snapshot()
+            }
+        }
+    }
+
+    fn dispatch_live_priority_response(
+        &mut self,
+        pending_ctx: DecisionContext,
+        command: UiCommand,
+    ) -> Result<JsValue, JsValue> {
+        let response = match self.command_to_response(&pending_ctx, command) {
+            Ok(response) => response,
+            Err(err) => {
+                self.pending_decision = Some(pending_ctx);
+                return Err(err);
+            }
+        };
+
+        let should_track_action_checkpoint = self.pending_action_checkpoint.is_none()
+            && self.pending_live_action_root.is_none()
+            && Self::response_starts_cancelable_action_chain(&response);
+        let action_checkpoint =
+            should_track_action_checkpoint.then(|| self.capture_replay_checkpoint());
+        if should_track_action_checkpoint {
+            self.pending_live_action_root = Some(response.clone());
+        }
+
+        let step_checkpoint = self.capture_replay_checkpoint_tagged("live_response_dm_capture");
+        let mut live_dm = WasmReplayDecisionMaker::new(&[]);
+        let result = apply_priority_response_with_dm(
+            &mut self.game,
+            &mut self.trigger_queue,
+            &mut self.priority_state,
+            &response,
+            &mut live_dm,
+        );
+        let (pending_context, viewed_cards) = live_dm.finish();
+        self.active_viewed_cards = viewed_cards;
+
+        if let Some(next_ctx) = pending_context {
+            self.sync_active_resolving_stack_object_for_prompt(Some(&step_checkpoint));
+            if self.priority_action_chain_still_pending() {
+                if let Some(checkpoint) = action_checkpoint {
+                    self.pending_action_checkpoint.get_or_insert(checkpoint);
+                }
+            } else {
+                self.pending_action_checkpoint = None;
+            }
+            self.priority_state.pending_continuation = None;
+            self.pending_live_continuation = Some(LivePriorityContinuation {
+                checkpoint: step_checkpoint,
+                root: PendingPriorityContinuation::ApplyResponse(response),
+                answers: Vec::new(),
+                speculative_progress: match (&next_ctx, &result) {
+                    (DecisionContext::Boolean(_), Ok(progress)) => Some(progress.clone()),
+                    _ => None,
+                },
+            });
+            self.pending_decision = Some(next_ctx);
+            return self.snapshot();
+        }
+
+        match result {
+            Ok(progress) => self.finish_live_priority_dispatch(
+                progress,
+                action_checkpoint,
+                Some(step_checkpoint),
+            ),
+            Err(err) => {
+                self.restore_replay_checkpoint(&step_checkpoint);
+                if should_track_action_checkpoint {
+                    self.pending_live_action_root = None;
+                }
+                self.pending_decision = Some(pending_ctx);
+                Err(JsValue::from_str(&format!("dispatch failed: {err}")))
+            }
+        }
+    }
+
+    fn dispatch_live_priority_continuation(
+        &mut self,
+        pending_ctx: DecisionContext,
+        command: UiCommand,
+    ) -> Result<JsValue, JsValue> {
+        let mut continuation = self
+            .pending_live_continuation
+            .take()
+            .ok_or_else(|| JsValue::from_str("no live continuation checkpoint to resume"))?;
+        let answer = match self.command_to_replay_answer(&pending_ctx, command) {
+            Ok(answer) => answer,
+            Err(err) => {
+                self.pending_decision = Some(pending_ctx);
+                self.pending_live_continuation = Some(continuation);
+                return Err(err);
+            }
+        };
+        if matches!(
+            (&continuation.root, &pending_ctx, &answer),
+            (
+                PendingPriorityContinuation::ApplyDecisionContext(DecisionContext::Boolean(_)),
+                DecisionContext::Boolean(_),
+                ReplayDecisionAnswer::Boolean(false),
+            )
+        ) && continuation
+            .speculative_progress
+            .as_ref()
+            .is_some_and(|progress| !matches!(progress, GameProgress::NeedsDecisionCtx(_)))
+        {
+            return self.finish_live_priority_dispatch(
+                continuation
+                    .speculative_progress
+                    .take()
+                    .expect("checked speculative progress above"),
+                None,
+                Some(continuation.checkpoint.clone()),
+            );
+        }
+        continuation.answers.push(answer);
+
+        // Diagnostic: record whether checkpoint has pending_activation before restore
+        let checkpoint_diag_tag = continuation.checkpoint.diag_tag;
+        let checkpoint_has_pa = continuation
+            .checkpoint
+            .priority_state
+            .pending_activation
+            .is_some();
+        let checkpoint_pa_debug = continuation
+            .checkpoint
+            .priority_state
+            .pending_activation
+            .as_ref()
+            .map(|p| {
+                format!(
+                    "stage={}, staged_remove={}, remaining_costs={}",
+                    p.stage,
+                    p.pending_remove_counters_among.is_some(),
+                    p.remaining_cost_steps.len()
+                )
+            });
+        let live_pa_before = self.priority_state.pending_activation.is_some();
+
+        self.restore_replay_checkpoint(&continuation.checkpoint);
+        self.priority_state.pending_continuation = None;
+
+        let live_pa_after = self.priority_state.pending_activation.is_some();
+        let mut live_dm = WasmReplayDecisionMaker::new(&continuation.answers);
+        let result = match &continuation.root {
+            PendingPriorityContinuation::ApplyResponse(response) => {
+                apply_priority_response_with_dm(
+                    &mut self.game,
+                    &mut self.trigger_queue,
+                    &mut self.priority_state,
+                    response,
+                    &mut live_dm,
+                )
+            }
+            PendingPriorityContinuation::ApplyDecisionContext(ctx) => {
+                apply_decision_context_with_dm(
+                    &mut self.game,
+                    &mut self.trigger_queue,
+                    &mut self.priority_state,
+                    ctx,
+                    &mut live_dm,
+                )
+            }
+        };
+        let (pending_context, viewed_cards) = live_dm.finish();
+        self.active_viewed_cards = viewed_cards;
+
+        if let Some(next_ctx) = pending_context {
+            self.sync_active_resolving_stack_object_for_prompt(Some(&continuation.checkpoint));
+            self.priority_state.pending_continuation = None;
+            continuation.checkpoint.diag_tag = "continuation_dm_capture";
+            continuation.speculative_progress = match (&next_ctx, &result) {
+                (DecisionContext::Boolean(_), Ok(progress)) => Some(progress.clone()),
+                _ => None,
+            };
+            self.pending_live_continuation = Some(continuation);
+            self.pending_decision = Some(next_ctx);
+            return self.snapshot();
+        }
+
+        match result {
+            Ok(progress) => self.finish_live_priority_dispatch(
+                progress,
+                None,
+                Some(continuation.checkpoint.clone()),
+            ),
+            Err(err) => {
+                self.restore_replay_checkpoint(&continuation.checkpoint);
+                self.priority_state.pending_continuation = None;
+                self.pending_live_continuation = Some(continuation);
+                self.pending_decision = Some(pending_ctx);
+                Err(JsValue::from_str(&format!(
+                    "dispatch failed: {err} [diag: tag={checkpoint_diag_tag}, checkpoint_has_pa={checkpoint_has_pa}, \
+                     checkpoint_pa={checkpoint_pa_debug:?}, \
+                     live_pa_before={live_pa_before}, live_pa_after={live_pa_after}]"
+                )))
+            }
+        }
+    }
+
+    fn capture_replay_checkpoint_tagged(&self, tag: &'static str) -> ReplayCheckpoint {
+        ReplayCheckpoint {
+            game: self.game.clone(),
+            trigger_queue: self.trigger_queue.clone(),
+            priority_state: self.priority_state.clone(),
+            game_over: self.game_over.clone(),
+            id_counters: snapshot_id_counters(),
+            diag_tag: tag,
+        }
+    }
+
+    pub(super) fn capture_replay_checkpoint(&self) -> ReplayCheckpoint {
+        self.capture_replay_checkpoint_tagged("untagged")
+    }
+
+    fn restore_replay_checkpoint(&mut self, checkpoint: &ReplayCheckpoint) {
+        restore_id_counters(checkpoint.id_counters);
+        self.game = checkpoint.game.clone();
+        self.trigger_queue = checkpoint.trigger_queue.clone();
+        self.priority_state = checkpoint.priority_state.clone();
+        self.game_over = checkpoint.game_over.clone();
+    }
+
+    pub(super) fn clear_active_resolving_stack_object(&mut self) {
+        self.active_resolving_stack_object = None;
+    }
+
+    fn sync_active_resolving_stack_object(&mut self, checkpoint: Option<&ReplayCheckpoint>) {
+        if let Some(checkpoint) = checkpoint {
+            self.update_active_resolving_stack_object_from_checkpoint(checkpoint);
+        } else {
+            self.clear_active_resolving_stack_object();
+        }
+    }
+
+    fn sync_active_resolving_stack_object_for_prompt(
+        &mut self,
+        checkpoint: Option<&ReplayCheckpoint>,
+    ) {
+        if self.priority_action_chain_still_pending() {
+            self.clear_active_resolving_stack_object();
+        } else {
+            self.sync_active_resolving_stack_object(checkpoint);
+        }
+    }
+
+    fn resolving_stack_object_from_checkpoint(
+        &self,
+        checkpoint: &ReplayCheckpoint,
+    ) -> Option<StackObjectSnapshot> {
+        let entry = checkpoint.game.stack.last()?;
+        if checkpoint.game.stack.len() != self.game.stack.len() + 1 {
+            return None;
+        }
+        if self
+            .game
+            .stack
+            .iter()
+            .any(|current| current.object_id == entry.object_id)
+        {
+            return None;
+        }
+        Some(build_stack_object_snapshot(
+            &self.game,
+            self.perspective,
+            self.active_viewed_cards.as_ref(),
+            entry,
+        ))
+    }
+
+    fn update_active_resolving_stack_object_from_checkpoint(
+        &mut self,
+        checkpoint: &ReplayCheckpoint,
+    ) {
+        self.active_resolving_stack_object =
+            self.resolving_stack_object_from_checkpoint(checkpoint);
+    }
+
+    pub(super) fn execute_with_replay(
+        &mut self,
+        checkpoint: &ReplayCheckpoint,
+        root: &ReplayRoot,
+        nested_answers: &[ReplayDecisionAnswer],
+    ) -> Result<ReplayOutcome, JsValue> {
+        let total_started_at = PerfTimer::start();
+        let mut perf = ReplayExecutionPerfMetrics {
+            root_kind: replay_root_kind(root).to_string(),
+            ..ReplayExecutionPerfMetrics::default()
+        };
+        self.last_replay_execution_perf = None;
+
+        let restore_started_at = PerfTimer::start();
+        self.restore_replay_checkpoint(checkpoint);
+        perf.restore_checkpoint_ms = restore_started_at.elapsed_ms();
+        self.active_viewed_cards = None;
+        self.clear_active_resolving_stack_object();
+
+        let mut replay_dm = WasmReplayDecisionMaker::new(nested_answers);
+
+        let root_execution_started_at = PerfTimer::start();
+        let result = match root {
+            ReplayRoot::Response(response) => apply_priority_response_with_dm(
+                &mut self.game,
+                &mut self.trigger_queue,
+                &mut self.priority_state,
+                response,
+                &mut replay_dm,
+            )
+            .map_err(|e| format!("{e}")),
+            ReplayRoot::Advance => {
+                // Resume only until the next externally visible priority/decision boundary.
+                // Using run_priority_loop_with here would auto-pass any fresh pass-only
+                // windows after a nested answer (for example, after trigger ordering),
+                // which skips the per-trigger priority opportunities players must get.
+                advance_priority_with_dm(&mut self.game, &mut self.trigger_queue, &mut replay_dm)
+                    .map_err(|e| format!("{e}"))
+            }
+            ReplayRoot::AddCardToZone {
+                player,
+                card_name,
+                zone,
+                skip_triggers,
+            } => {
+                self.registry.ensure_cards_loaded([card_name.as_str()]);
+                match self.load_compilable_card_definition(card_name) {
+                    Ok(definition) => self
+                        .add_card_to_zone_with_dm(
+                            *player,
+                            &definition,
+                            *zone,
+                            *skip_triggers,
+                            &mut replay_dm,
+                        )
+                        .map(|_| GameProgress::Continue),
+                    Err(err) => Err(err
+                        .as_string()
+                        .unwrap_or_else(|| "failed to load card for replay".to_string())),
+                }
+            }
+        };
+        perf.root_execution_ms = root_execution_started_at.elapsed_ms();
+        perf.priority_action = last_priority_action_perf();
+        perf.priority_advance = last_priority_advance_perf();
+
+        let finish_started_at = PerfTimer::start();
+        let (pending_context, viewed_cards) = replay_dm.finish();
+        perf.decision_maker_finish_ms = finish_started_at.elapsed_ms();
+        self.active_viewed_cards = viewed_cards;
+
+        if let Some(next_ctx) = pending_context {
+            self.sync_active_resolving_stack_object_for_prompt(Some(checkpoint));
+            let outcome = ReplayOutcome::NeedsDecision(next_ctx);
+            perf.outcome_kind = replay_outcome_kind(&outcome).to_string();
+            perf.total_ms = total_started_at.elapsed_ms();
+            self.last_replay_execution_perf = Some(perf);
+            return Ok(outcome);
+        }
+
+        match result {
+            Ok(progress) => {
+                if matches!(progress, GameProgress::NeedsDecisionCtx(_)) {
+                    self.sync_active_resolving_stack_object_for_prompt(Some(checkpoint));
+                } else {
+                    self.clear_active_resolving_stack_object();
+                }
+                let outcome = ReplayOutcome::Complete(progress);
+                perf.outcome_kind = replay_outcome_kind(&outcome).to_string();
+                if let ReplayOutcome::Complete(progress) = &outcome {
+                    perf.progress_kind = Some(game_progress_kind(progress).to_string());
+                }
+                perf.total_ms = total_started_at.elapsed_ms();
+                self.last_replay_execution_perf = Some(perf);
+                Ok(outcome)
+            }
+            Err(e) => {
+                self.active_viewed_cards = None;
+                self.clear_active_resolving_stack_object();
+                self.restore_replay_checkpoint(checkpoint);
+                perf.outcome_kind = "error".to_string();
+                perf.total_ms = total_started_at.elapsed_ms();
+                self.last_replay_execution_perf = Some(perf);
+                Err(JsValue::from_str(&format!("dispatch failed: {e}")))
+            }
+        }
+    }
+
+    fn command_to_replay_answer(
+        &mut self,
+        ctx: &DecisionContext,
+        command: UiCommand,
+    ) -> Result<ReplayDecisionAnswer, JsValue> {
+        match (ctx, command) {
+            (DecisionContext::Boolean(_), UiCommand::SelectOptions { option_indices }) => {
+                validate_option_selection(1, Some(1), &option_indices, &[0usize, 1usize])?;
+                let choice = option_indices
+                    .first()
+                    .copied()
+                    .ok_or_else(|| JsValue::from_str("boolean choice requires one option"))?;
+                Ok(ReplayDecisionAnswer::Boolean(choice == 1))
+            }
+            (DecisionContext::Number(number), UiCommand::NumberChoice { value }) => {
+                if value < number.min || value > number.max {
+                    return Err(JsValue::from_str(&format!(
+                        "number out of range: expected {}..={}, got {}",
+                        number.min, number.max, value
+                    )));
+                }
+                Ok(ReplayDecisionAnswer::Number(value))
+            }
+            (DecisionContext::TextInput(text), UiCommand::TextChoice { value }) => {
+                let value = value.trim();
+                if value.is_empty() {
+                    return Err(JsValue::from_str("text choice cannot be empty"));
+                }
+                if text.require_known_value && !self.is_known_card_name_query(value) {
+                    return Err(JsValue::from_str(&format!("unknown card name: {value}")));
+                }
+                Ok(ReplayDecisionAnswer::Text(value.to_string()))
+            }
+            (
+                DecisionContext::SelectOptions(options),
+                UiCommand::SelectOptions { option_indices },
+            ) => {
+                let legal_indices: Vec<usize> = options
+                    .options
+                    .iter()
+                    .filter(|o| o.legal)
+                    .map(|o| o.index)
+                    .collect();
+                validate_option_selection(
+                    options.min,
+                    Some(options.max),
+                    &option_indices,
+                    &legal_indices,
+                )?;
+                Ok(ReplayDecisionAnswer::Options(option_indices))
+            }
+            (
+                DecisionContext::Priority(priority),
+                UiCommand::PriorityAction {
+                    action_index,
+                    action_ref,
+                },
+            ) => {
+                let action = resolve_priority_action(priority, action_index, action_ref.as_ref())
+                    .ok_or_else(|| {
+                    if let Some(action_ref) = action_ref.as_ref() {
+                        JsValue::from_str(&format!("invalid priority action ref: {action_ref:?}"))
+                    } else if let Some(action_index) = action_index {
+                        JsValue::from_str(&format!("invalid priority action index: {action_index}"))
+                    } else {
+                        JsValue::from_str("missing priority action selector")
+                    }
+                })?;
+                Ok(ReplayDecisionAnswer::Priority(action))
+            }
+            (DecisionContext::SelectObjects(objects), UiCommand::SelectObjects { object_ids }) => {
+                let legal_ids: Vec<u64> = objects
+                    .candidates
+                    .iter()
+                    .filter(|obj| obj.legal)
+                    .map(|obj| obj.id.0)
+                    .collect();
+                validate_object_selection(
+                    objects.min,
+                    objects.max,
+                    objects.allow_partial_completion,
+                    &object_ids,
+                    &legal_ids,
+                )?;
+                Ok(ReplayDecisionAnswer::Objects(
+                    object_ids
+                        .into_iter()
+                        .map(ObjectId::from_raw)
+                        .collect::<Vec<_>>(),
+                ))
+            }
+            (DecisionContext::Order(order), UiCommand::SelectOptions { option_indices }) => {
+                let legal: Vec<usize> = (0..order.items.len()).collect();
+                validate_option_selection(
+                    order.items.len(),
+                    Some(order.items.len()),
+                    &option_indices,
+                    &legal,
+                )?;
+                if unique_indices(&option_indices).len() != order.items.len() {
+                    return Err(JsValue::from_str(
+                        "ordering requires each option index exactly once",
+                    ));
+                }
+                Ok(ReplayDecisionAnswer::Order(
+                    option_indices
+                        .into_iter()
+                        .filter_map(|index| order.items.get(index).map(|(id, _)| *id))
+                        .collect(),
+                ))
+            }
+            (
+                DecisionContext::Distribute(distribute),
+                UiCommand::SelectOptions { option_indices },
+            ) => {
+                let legal: Vec<usize> = (0..distribute.targets.len()).collect();
+                validate_option_selection(
+                    0,
+                    Some(distribute.total as usize),
+                    &option_indices,
+                    &legal,
+                )?;
+
+                if distribute.targets.is_empty() || distribute.total == 0 {
+                    return Ok(ReplayDecisionAnswer::Distribute(Vec::new()));
+                }
+
+                let mut counts: HashMap<usize, u32> = HashMap::new();
+                for index in option_indices {
+                    *counts.entry(index).or_insert(0) += 1;
+                }
+
+                let total_assigned: u32 = counts.values().sum();
+                if total_assigned != distribute.total {
+                    return Err(JsValue::from_str(&format!(
+                        "distribution must assign exactly {} total (got {})",
+                        distribute.total, total_assigned
+                    )));
+                }
+
+                if distribute.min_per_target > 0
+                    && counts
+                        .values()
+                        .any(|amount| *amount > 0 && *amount < distribute.min_per_target)
+                {
+                    return Err(JsValue::from_str(&format!(
+                        "each selected target must receive at least {}",
+                        distribute.min_per_target
+                    )));
+                }
+
+                let mut allocations: Vec<(Target, u32)> = Vec::new();
+                for index in 0..distribute.targets.len() {
+                    let Some(amount) = counts.get(&index).copied() else {
+                        continue;
+                    };
+                    if amount == 0 {
+                        continue;
+                    }
+                    allocations.push((distribute.targets[index].target, amount));
+                }
+                Ok(ReplayDecisionAnswer::Distribute(allocations))
+            }
+            (DecisionContext::Colors(colors), UiCommand::SelectOptions { option_indices }) => {
+                if colors.count == 0 {
+                    validate_option_selection(0, Some(0), &option_indices, &[])?;
+                    return Ok(ReplayDecisionAnswer::Colors(Vec::new()));
+                }
+
+                let choices = colors_for_context(colors);
+                if choices.is_empty() {
+                    return Err(JsValue::from_str("no legal colors in colors decision"));
+                }
+                let legal: Vec<usize> = (0..choices.len()).collect();
+                let max = if colors.same_color {
+                    1
+                } else {
+                    colors.count as usize
+                };
+                validate_option_selection(1, Some(max), &option_indices, &legal)?;
+
+                if colors.same_color {
+                    let choice = option_indices.first().copied().ok_or_else(|| {
+                        JsValue::from_str("color choice requires selecting one option")
+                    })?;
+                    let color = choices.get(choice).copied().ok_or_else(|| {
+                        JsValue::from_str("selected color option is out of range")
+                    })?;
+                    return Ok(ReplayDecisionAnswer::Colors(vec![
+                        color;
+                        colors.count as usize
+                    ]));
+                }
+
+                let mut selected: Vec<ironsmith::color::Color> = option_indices
+                    .iter()
+                    .copied()
+                    .into_iter()
+                    .filter_map(|index| choices.get(index).copied())
+                    .collect();
+                if selected.is_empty() {
+                    return Err(JsValue::from_str("choose at least one color"));
+                }
+                let desired = colors.count as usize;
+                if selected.len() > desired {
+                    selected.truncate(desired);
+                }
+                if selected.len() < desired {
+                    let pad = selected[0];
+                    selected.resize(desired, pad);
+                }
+                Ok(ReplayDecisionAnswer::Colors(selected))
+            }
+            (DecisionContext::Counters(counters), UiCommand::SelectOptions { option_indices }) => {
+                let legal: Vec<usize> = counters
+                    .available_counters
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, (_, available))| *available > 0)
+                    .map(|(index, _)| index)
+                    .collect();
+                validate_option_selection(
+                    0,
+                    Some(counters.max_total as usize),
+                    &option_indices,
+                    &legal,
+                )?;
+
+                let mut counts: HashMap<usize, u32> = HashMap::new();
+                for index in option_indices {
+                    *counts.entry(index).or_insert(0) += 1;
+                }
+
+                let mut selected: Vec<(ironsmith::object::CounterType, u32)> = Vec::new();
+                for index in 0..counters.available_counters.len() {
+                    let Some(chosen) = counts.get(&index).copied() else {
+                        continue;
+                    };
+                    let Some((counter_type, available)) =
+                        counters.available_counters.get(index).copied()
+                    else {
+                        continue;
+                    };
+                    if chosen > available {
+                        return Err(JsValue::from_str(&format!(
+                            "cannot remove {} of counter {} (only {} available)",
+                            chosen,
+                            counter_type.description(),
+                            available
+                        )));
+                    }
+                    if chosen > 0 {
+                        selected.push((counter_type, chosen));
+                    }
+                }
+
+                Ok(ReplayDecisionAnswer::Counters(selected))
+            }
+            (DecisionContext::Partition(partition), UiCommand::SelectObjects { object_ids }) => {
+                let legal_ids: Vec<u64> = partition.cards.iter().map(|(id, _)| id.0).collect();
+                validate_object_selection(
+                    0,
+                    Some(legal_ids.len()),
+                    false,
+                    &object_ids,
+                    &legal_ids,
+                )?;
+                Ok(ReplayDecisionAnswer::Partition(
+                    unique_object_ids(&object_ids)
+                        .into_iter()
+                        .map(ObjectId::from_raw)
+                        .collect(),
+                ))
+            }
+            (
+                DecisionContext::Proliferate(proliferate),
+                UiCommand::SelectOptions { option_indices },
+            ) => {
+                let permanent_count = proliferate.eligible_permanents.len();
+                let total_options = permanent_count + proliferate.eligible_players.len();
+                let legal: Vec<usize> = (0..total_options).collect();
+                validate_option_selection(0, Some(total_options), &option_indices, &legal)?;
+
+                let mut response = ironsmith::decisions::specs::ProliferateResponse::default();
+                for index in unique_indices(&option_indices) {
+                    if index < permanent_count {
+                        if let Some((permanent, _)) = proliferate.eligible_permanents.get(index) {
+                            response.permanents.push(*permanent);
+                        }
+                        continue;
+                    }
+                    let player_index = index - permanent_count;
+                    if let Some((player, _)) = proliferate.eligible_players.get(player_index) {
+                        response.players.push(*player);
+                    }
+                }
+                Ok(ReplayDecisionAnswer::Proliferate(response))
+            }
+            (DecisionContext::Targets(targets_ctx), UiCommand::SelectTargets { targets }) => {
+                let converted =
+                    convert_and_validate_targets(targets_ctx, targets).map_err(|err| {
+                        JsValue::from_str(&err)
+                    })?;
+                Ok(ReplayDecisionAnswer::Targets(converted))
+            }
+            (
+                DecisionContext::Attackers(attackers),
+                UiCommand::DeclareAttackers { declarations },
+            ) => {
+                let converted = validate_attacker_declarations(attackers, &declarations)?
+                    .into_iter()
+                    .map(|declaration| ironsmith::decisions::spec::AttackerDeclaration {
+                        creature: declaration.creature,
+                        target: declaration.target,
+                    })
+                    .collect();
+                Ok(ReplayDecisionAnswer::Attackers(converted))
+            }
+            (DecisionContext::Blockers(blockers), UiCommand::DeclareBlockers { declarations }) => {
+                let converted = validate_blocker_declarations(blockers, &declarations)?
+                    .into_iter()
+                    .map(|declaration| ironsmith::decisions::spec::BlockerDeclaration {
+                        blocker: declaration.blocker,
+                        blocking: declaration.blocking,
+                    })
+                    .collect();
+                Ok(ReplayDecisionAnswer::Blockers(converted))
+            }
+            (DecisionContext::Modes(modes), UiCommand::SelectOptions { option_indices }) => {
+                let legal: Vec<usize> = modes
+                    .spec
+                    .modes
+                    .iter()
+                    .filter(|mode| mode.legal)
+                    .map(|mode| mode.index)
+                    .collect();
+                validate_option_selection(
+                    modes.spec.min_modes,
+                    Some(modes.spec.max_modes),
+                    &option_indices,
+                    &legal,
+                )?;
+                Ok(ReplayDecisionAnswer::Options(option_indices))
+            }
+            (
+                DecisionContext::HybridChoice(hybrid),
+                UiCommand::SelectOptions { option_indices },
+            ) => {
+                let legal: Vec<usize> = hybrid.options.iter().map(|opt| opt.index).collect();
+                validate_option_selection(1, Some(1), &option_indices, &legal)?;
+                Ok(ReplayDecisionAnswer::Options(option_indices))
+            }
+            (ctx, _) => Err(JsValue::from_str(&format!(
+                "command type does not match pending replay decision: {}",
+                decision_context_kind(ctx)
+            ))),
+        }
+    }
+
+    fn command_to_response(
+        &self,
+        ctx: &DecisionContext,
+        command: UiCommand,
+    ) -> Result<PriorityResponse, JsValue> {
+        match (ctx, command) {
+            (
+                DecisionContext::Priority(priority),
+                UiCommand::PriorityAction {
+                    action_index,
+                    action_ref,
+                },
+            ) => {
+                let action = resolve_priority_action(priority, action_index, action_ref.as_ref())
+                    .ok_or_else(|| {
+                    if let Some(action_ref) = action_ref.as_ref() {
+                        JsValue::from_str(&format!("invalid priority action ref: {action_ref:?}"))
+                    } else if let Some(action_index) = action_index {
+                        JsValue::from_str(&format!("invalid priority action index: {action_index}"))
+                    } else {
+                        JsValue::from_str("missing priority action selector")
+                    }
+                })?;
+                Ok(PriorityResponse::PriorityAction(action))
+            }
+            (DecisionContext::Number(number), UiCommand::NumberChoice { value }) => {
+                if value < number.min || value > number.max {
+                    return Err(JsValue::from_str(&format!(
+                        "number out of range: expected {}..={}, got {}",
+                        number.min, number.max, value
+                    )));
+                }
+                if number.is_x_value {
+                    Ok(PriorityResponse::XValue(value))
+                } else {
+                    Ok(PriorityResponse::NumberChoice(value))
+                }
+            }
+            (DecisionContext::TextInput(_), UiCommand::TextChoice { .. }) => {
+                Err(JsValue::from_str(
+                    "text input decisions should be replayed through their originating effect",
+                ))
+            }
+            (
+                DecisionContext::SelectOptions(options),
+                UiCommand::SelectOptions { option_indices },
+            ) => {
+                let legal_indices: Vec<usize> = options
+                    .options
+                    .iter()
+                    .filter(|o| o.legal)
+                    .map(|o| o.index)
+                    .collect();
+                validate_option_selection(
+                    options.min,
+                    Some(options.max),
+                    &option_indices,
+                    &legal_indices,
+                )?;
+                self.map_select_options_response(option_indices)
+            }
+            (DecisionContext::Modes(modes), UiCommand::SelectOptions { option_indices }) => {
+                let legal: Vec<usize> = modes
+                    .spec
+                    .modes
+                    .iter()
+                    .filter(|mode| mode.legal)
+                    .map(|mode| mode.index)
+                    .collect();
+                validate_option_selection(
+                    modes.spec.min_modes,
+                    Some(modes.spec.max_modes),
+                    &option_indices,
+                    &legal,
+                )?;
+                Ok(PriorityResponse::Modes(option_indices))
+            }
+            (
+                DecisionContext::HybridChoice(hybrid),
+                UiCommand::SelectOptions { option_indices },
+            ) => {
+                let legal: Vec<usize> = hybrid.options.iter().map(|opt| opt.index).collect();
+                validate_option_selection(1, Some(1), &option_indices, &legal)?;
+                let choice = option_indices.first().copied().ok_or_else(|| {
+                    JsValue::from_str("hybrid choice requires selecting one option")
+                })?;
+                Ok(PriorityResponse::HybridChoice(choice))
+            }
+            (DecisionContext::SelectObjects(objects), UiCommand::SelectObjects { object_ids }) => {
+                let legal_ids: Vec<u64> = objects
+                    .candidates
+                    .iter()
+                    .filter(|obj| obj.legal)
+                    .map(|obj| obj.id.0)
+                    .collect();
+                validate_object_selection(
+                    objects.min,
+                    objects.max,
+                    objects.allow_partial_completion,
+                    &object_ids,
+                    &legal_ids,
+                )?;
+
+                let chosen = object_ids.first().copied().ok_or_else(|| {
+                    JsValue::from_str("select_objects requires one chosen object")
+                })?;
+                if let Some(pending) = self.priority_state.pending_activation.as_ref() {
+                    match pending.stage {
+                        ActivationStage::ChoosingSacrifice => Ok(
+                            PriorityResponse::SacrificeTarget(ObjectId::from_raw(chosen)),
+                        ),
+                        ActivationStage::ChoosingCardCost => {
+                            Ok(PriorityResponse::CardCostChoice(ObjectId::from_raw(chosen)))
+                        }
+                        _ => Err(JsValue::from_str(
+                            "SelectObjects received while activation is not in an object-cost stage",
+                        )),
+                    }
+                } else if self
+                    .priority_state
+                    .pending_cast
+                    .as_ref()
+                    .is_some_and(|pending| {
+                        matches!(
+                            pending.stage,
+                            CastStage::ChoosingSacrifice | CastStage::ChoosingCardCost
+                        )
+                    })
+                {
+                    Ok(PriorityResponse::CardCostChoice(ObjectId::from_raw(chosen)))
+                } else {
+                    let cast_stage = self
+                        .priority_state
+                        .pending_cast
+                        .as_ref()
+                        .map(|p| p.stage.to_string());
+                    let act_stage = self
+                        .priority_state
+                        .pending_activation
+                        .as_ref()
+                        .map(|p| p.stage.to_string());
+                    Err(JsValue::from_str(&format!(
+                        "unsupported SelectObjects context in priority flow \
+                         (pending_cast={}, pending_activation={})",
+                        cast_stage.as_deref().unwrap_or("none"),
+                        act_stage.as_deref().unwrap_or("none"),
+                    )))
+                }
+            }
+            (DecisionContext::Targets(targets_ctx), UiCommand::SelectTargets { targets }) => {
+                let converted =
+                    convert_and_validate_targets(targets_ctx, targets).map_err(|err| {
+                        JsValue::from_str(&err)
+                    })?;
+                Ok(PriorityResponse::Targets(converted))
+            }
+            (
+                DecisionContext::Attackers(attackers),
+                UiCommand::DeclareAttackers { declarations },
+            ) => {
+                let converted = validate_attacker_declarations(attackers, &declarations)?;
+                Ok(PriorityResponse::Attackers(converted))
+            }
+            (DecisionContext::Blockers(blockers), UiCommand::DeclareBlockers { declarations }) => {
+                let converted = validate_blocker_declarations(blockers, &declarations)?;
+                Ok(PriorityResponse::Blockers {
+                    defending_player: blockers.player,
+                    declarations: converted,
+                })
+            }
+            (DecisionContext::Modes(_), UiCommand::NumberChoice { .. })
+            | (DecisionContext::Modes(_), UiCommand::SelectObjects { .. })
+            | (DecisionContext::Modes(_), UiCommand::SelectTargets { .. })
+            | (DecisionContext::Modes(_), UiCommand::DeclareAttackers { .. })
+            | (DecisionContext::Modes(_), UiCommand::DeclareBlockers { .. })
+            | (DecisionContext::HybridChoice(_), UiCommand::PriorityAction { .. })
+            | (DecisionContext::HybridChoice(_), UiCommand::NumberChoice { .. })
+            | (DecisionContext::HybridChoice(_), UiCommand::SelectObjects { .. })
+            | (DecisionContext::HybridChoice(_), UiCommand::SelectTargets { .. })
+            | (DecisionContext::HybridChoice(_), UiCommand::DeclareAttackers { .. })
+            | (DecisionContext::HybridChoice(_), UiCommand::DeclareBlockers { .. })
+            | (DecisionContext::SelectOptions(_), UiCommand::PriorityAction { .. })
+            | (DecisionContext::SelectOptions(_), UiCommand::NumberChoice { .. })
+            | (DecisionContext::SelectOptions(_), UiCommand::SelectObjects { .. })
+            | (DecisionContext::SelectOptions(_), UiCommand::SelectTargets { .. })
+            | (DecisionContext::SelectOptions(_), UiCommand::DeclareAttackers { .. })
+            | (DecisionContext::SelectOptions(_), UiCommand::DeclareBlockers { .. })
+            | (DecisionContext::SelectObjects(_), UiCommand::PriorityAction { .. })
+            | (DecisionContext::SelectObjects(_), UiCommand::NumberChoice { .. })
+            | (DecisionContext::SelectObjects(_), UiCommand::SelectOptions { .. })
+            | (DecisionContext::SelectObjects(_), UiCommand::SelectTargets { .. })
+            | (DecisionContext::SelectObjects(_), UiCommand::DeclareAttackers { .. })
+            | (DecisionContext::SelectObjects(_), UiCommand::DeclareBlockers { .. })
+            | (DecisionContext::Targets(_), UiCommand::PriorityAction { .. })
+            | (DecisionContext::Targets(_), UiCommand::NumberChoice { .. })
+            | (DecisionContext::Targets(_), UiCommand::SelectObjects { .. })
+            | (DecisionContext::Targets(_), UiCommand::SelectOptions { .. })
+            | (DecisionContext::Targets(_), UiCommand::DeclareAttackers { .. })
+            | (DecisionContext::Targets(_), UiCommand::DeclareBlockers { .. })
+            | (DecisionContext::Number(_), UiCommand::PriorityAction { .. })
+            | (DecisionContext::Number(_), UiCommand::SelectOptions { .. })
+            | (DecisionContext::Number(_), UiCommand::SelectObjects { .. })
+            | (DecisionContext::Number(_), UiCommand::SelectTargets { .. })
+            | (DecisionContext::Number(_), UiCommand::DeclareAttackers { .. })
+            | (DecisionContext::Number(_), UiCommand::DeclareBlockers { .. })
+            | (DecisionContext::Priority(_), UiCommand::NumberChoice { .. })
+            | (DecisionContext::Priority(_), UiCommand::SelectOptions { .. })
+            | (DecisionContext::Priority(_), UiCommand::SelectObjects { .. })
+            | (DecisionContext::Priority(_), UiCommand::SelectTargets { .. })
+            | (DecisionContext::Priority(_), UiCommand::DeclareAttackers { .. })
+            | (DecisionContext::Priority(_), UiCommand::DeclareBlockers { .. })
+            | (DecisionContext::Attackers(_), UiCommand::PriorityAction { .. })
+            | (DecisionContext::Attackers(_), UiCommand::NumberChoice { .. })
+            | (DecisionContext::Attackers(_), UiCommand::SelectOptions { .. })
+            | (DecisionContext::Attackers(_), UiCommand::SelectObjects { .. })
+            | (DecisionContext::Attackers(_), UiCommand::SelectTargets { .. })
+            | (DecisionContext::Attackers(_), UiCommand::DeclareBlockers { .. })
+            | (DecisionContext::Blockers(_), UiCommand::PriorityAction { .. })
+            | (DecisionContext::Blockers(_), UiCommand::NumberChoice { .. })
+            | (DecisionContext::Blockers(_), UiCommand::SelectOptions { .. })
+            | (DecisionContext::Blockers(_), UiCommand::SelectObjects { .. })
+            | (DecisionContext::Blockers(_), UiCommand::SelectTargets { .. })
+            | (DecisionContext::Blockers(_), UiCommand::DeclareAttackers { .. }) => Err(
+                JsValue::from_str("command type does not match pending decision"),
+            ),
+            (_, _) => Err(JsValue::from_str(&format!(
+                "pending decision type is not yet supported in WASM dispatch: {}",
+                decision_context_kind(ctx)
+            ))),
+        }
+    }
+
+    fn map_select_options_response(
+        &self,
+        option_indices: Vec<usize>,
+    ) -> Result<PriorityResponse, JsValue> {
+        if self.game.effect_store.pending_replacement_choice.is_some() {
+            let choice = option_indices.first().copied().ok_or_else(|| {
+                JsValue::from_str("replacement effect choice requires one selected option")
+            })?;
+            return Ok(PriorityResponse::ReplacementChoice(choice));
+        }
+        if self.priority_state.pending_method_selection.is_some() {
+            let choice = option_indices.first().copied().ok_or_else(|| {
+                JsValue::from_str("casting method choice requires one selected option")
+            })?;
+            return Ok(PriorityResponse::CastingMethodChoice(choice));
+        }
+        if self
+            .priority_state
+            .pending_cast
+            .as_ref()
+            .is_some_and(|pending| matches!(pending.stage, CastStage::ChoosingOptionalCosts))
+        {
+            let mut counts: HashMap<usize, u32> = HashMap::new();
+            let mut order: Vec<usize> = Vec::new();
+            for index in option_indices {
+                if !counts.contains_key(&index) {
+                    order.push(index);
+                }
+                *counts.entry(index).or_insert(0) += 1;
+            }
+            let choices: Vec<(usize, u32)> = order
+                .into_iter()
+                .filter_map(|index| counts.get(&index).copied().map(|count| (index, count)))
+                .collect();
+            return Ok(PriorityResponse::OptionalCosts(choices));
+        }
+        if self.priority_state.pending_mana_ability.is_some() {
+            let choice = option_indices
+                .first()
+                .copied()
+                .ok_or_else(|| JsValue::from_str("mana payment choice requires one option"))?;
+            return Ok(PriorityResponse::ManaPayment(choice));
+        }
+        if self
+            .priority_state
+            .pending_activation
+            .as_ref()
+            .is_some_and(|pending| matches!(pending.stage, ActivationStage::ChoosingNextCost))
+            || self
+                .priority_state
+                .pending_cast
+                .as_ref()
+                .is_some_and(|pending| matches!(pending.stage, CastStage::ChoosingNextCost))
+        {
+            let choice = option_indices
+                .first()
+                .copied()
+                .ok_or_else(|| JsValue::from_str("next-cost choice requires one option"))?;
+            return Ok(PriorityResponse::NextCostChoice(choice));
+        }
+        if self
+            .priority_state
+            .pending_activation
+            .as_ref()
+            .is_some_and(|pending| matches!(pending.stage, ActivationStage::PayingMana))
+            || self
+                .priority_state
+                .pending_cast
+                .as_ref()
+                .is_some_and(|pending| matches!(pending.stage, CastStage::PayingMana))
+        {
+            let choice = option_indices
+                .first()
+                .copied()
+                .ok_or_else(|| JsValue::from_str("mana pip payment requires one option"))?;
+            return Ok(PriorityResponse::ManaPipPayment(choice));
+        }
+
+        let cast_stage = self
+            .priority_state
+            .pending_cast
+            .as_ref()
+            .map(|p| p.stage.to_string());
+        let act_stage = self
+            .priority_state
+            .pending_activation
+            .as_ref()
+            .map(|p| p.stage.to_string());
+        Err(JsValue::from_str(&format!(
+            "unsupported SelectOptions context in priority flow \
+             (pending_cast={}, pending_activation={}, \
+             pending_mana_ability={}, pending_method={}, replacement={})",
+            cast_stage.as_deref().unwrap_or("none"),
+            act_stage.as_deref().unwrap_or("none"),
+            self.priority_state.pending_mana_ability.is_some(),
+            self.priority_state.pending_method_selection.is_some(),
+            self.game.effect_store.pending_replacement_choice.is_some(),
+        )))
+    }
+}

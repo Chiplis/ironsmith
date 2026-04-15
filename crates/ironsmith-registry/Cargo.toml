@@ -1,0 +1,11 @@
+[package]
+name = "ironsmith-registry"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ironsmith-core = { path = "../ironsmith-core" }
+ironsmith-compiler = { path = "../ironsmith-compiler" }
+
+[lib]
+path = "src/lib.rs"

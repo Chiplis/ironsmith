@@ -3,9 +3,8 @@ use std::fs;
 
 use serde_json::Value;
 
-use ironsmith::CardDefinitionBuilder;
 use ironsmith::compiled_text::compiled_lines;
-use ironsmith::ids::CardId;
+use ironsmith_tools::parse_card_definition_with_runtime_builder;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
@@ -48,8 +47,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             missing.push(name);
             continue;
         };
-        let parse_result = CardDefinitionBuilder::new(CardId::new(), &input.name)
-            .parse_text(input.parse_input.clone());
+        let parse_result = parse_card_definition_with_runtime_builder(
+            &input.name,
+            input.parse_input.clone(),
+            false,
+        );
         out.push_str(&format!("Name: {}\n", input.name));
         out.push_str("Oracle:\n");
         out.push_str(&input.oracle_text);

@@ -1,7 +1,8 @@
 use std::collections::BTreeSet;
 
 use ironsmith_tools::{
-    CardStatusDb, TAGGER_BASE_URL, TaggerClient, build_local_tag_rows, default_db_path,
+    CardStatusDb, TAGGER_BASE_URL, TaggerClient, build_local_tag_rows, default_cards_path,
+    default_db_path,
     fetch_all_oracle_tag_card_names, load_canonical_cards,
 };
 
@@ -16,7 +17,7 @@ struct Args {
 }
 
 fn parse_args() -> Result<Args, String> {
-    let mut cards_path = "cards.json".to_string();
+    let mut cards_path = default_cards_path().display().to_string();
     let mut db_path = default_db_path().display().to_string();
     let mut tagger_url = TAGGER_BASE_URL.to_string();
     let mut tags = Vec::new();

@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 use std::io::{self, Read};
 
-use ironsmith::cards::CardDefinitionBuilder;
 use ironsmith::cards::builders::CardTextError;
-use ironsmith::ids::CardId;
+use ironsmith_tools::parse_card_definition_with_runtime_builder;
 
 #[derive(Debug, Clone)]
 struct FailedCard {
@@ -101,8 +100,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let text = text_lines.join("\n");
         total += 1;
 
-        let builder = CardDefinitionBuilder::new(CardId::new(), name);
-        match builder.parse_text(text.as_str()) {
+        let parse_result =
+            parse_card_definition_with_runtime_builder(name, text.clone(), allow_unsupported);
+        match parse_result {
             Ok(_) => ok += 1,
             Err(CardTextError::ParseError(message)) => {
                 failed += 1;

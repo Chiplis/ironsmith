@@ -5,9 +5,8 @@ use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
 
 use ironsmith::ability::AbilityKind;
-use ironsmith::cards::CardDefinitionBuilder;
-use ironsmith::ids::CardId;
 use ironsmith::static_abilities::StaticAbilityId;
+use ironsmith_tools::{default_cards_path, parse_card_definition_with_runtime_builder};
 
 mod tooling_paths;
 
@@ -32,7 +31,7 @@ fn usage() {
 }
 
 fn parse_args() -> Result<Args, String> {
-    let mut cards_path = "cards.json".to_string();
+    let mut cards_path = default_cards_path().display().to_string();
     let mut partition_path: Option<String> = None;
     let mut limit = None;
     let mut top = 40usize;
@@ -218,8 +217,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         processed += 1;
-        let parse_result = CardDefinitionBuilder::new(CardId::new(), &card_input.name)
-            .parse_text(card_input.parse_input);
+        let parse_result = parse_card_definition_with_runtime_builder(
+            &card_input.name,
+            card_input.parse_input,
+            false,
+        );
         let Ok(def) = parse_result else {
             parse_failed += 1;
             if parse_failure_examples.len() < 5 {

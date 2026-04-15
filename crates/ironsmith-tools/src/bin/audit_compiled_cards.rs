@@ -3,10 +3,9 @@ use std::env;
 use std::fs::File;
 use std::io::{self, BufWriter, Read, Write};
 
-use ironsmith::cards::CardDefinitionBuilder;
 use ironsmith::compiled_text::compiled_lines;
-use ironsmith::ids::CardId;
 use serde::Serialize;
+use ironsmith_tools::parse_card_definition_with_runtime_builder;
 
 #[derive(Debug)]
 struct Args {
@@ -170,7 +169,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut compiled_text = String::new();
         let mut parse_error = None;
 
-        match CardDefinitionBuilder::new(CardId::new(), &name).parse_text(parse_input) {
+        match parse_card_definition_with_runtime_builder(&name, parse_input, false) {
             Ok(def) => {
                 if raw_contains_unimplemented(&def) {
                     parse_failed += 1;

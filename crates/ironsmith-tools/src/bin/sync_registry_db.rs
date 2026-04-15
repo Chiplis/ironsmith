@@ -1,4 +1,4 @@
-use ironsmith_tools::{CardStatusDb, default_db_path, load_registry_cards};
+use ironsmith_tools::{CardStatusDb, default_cards_path, default_db_path, load_registry_cards};
 
 #[derive(Debug)]
 struct Args {
@@ -7,7 +7,7 @@ struct Args {
 }
 
 fn parse_args() -> Result<Args, String> {
-    let mut cards_path = "cards.json".to_string();
+    let mut cards_path = default_cards_path().display().to_string();
     let mut db_path = default_db_path().display().to_string();
 
     let mut iter = std::env::args().skip(1);

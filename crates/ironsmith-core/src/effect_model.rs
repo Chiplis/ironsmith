@@ -1,0 +1,76 @@
+/// Comparison operations for numeric values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Comparison {
+    GreaterThan(i32),
+    GreaterThanOrEqual(i32),
+    Equal(i32),
+    LessThan(i32),
+    LessThanOrEqual(i32),
+    NotEqual(i32),
+    BetweenInclusive(i32, i32),
+}
+
+impl Comparison {
+    pub fn evaluate(&self, value: i32) -> bool {
+        match self {
+            Self::GreaterThan(n) => value > *n,
+            Self::GreaterThanOrEqual(n) => value >= *n,
+            Self::Equal(n) => value == *n,
+            Self::LessThan(n) => value < *n,
+            Self::LessThanOrEqual(n) => value <= *n,
+            Self::NotEqual(n) => value != *n,
+            Self::BetweenInclusive(min, max) => value >= *min && value <= *max,
+        }
+    }
+}
+
+/// Comparison operations between two runtime-resolved values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ValueComparisonOperator {
+    GreaterThan,
+    GreaterThanOrEqual,
+    Equal,
+    LessThan,
+    LessThanOrEqual,
+    NotEqual,
+}
+
+impl ValueComparisonOperator {
+    pub fn evaluate(self, left: i32, right: i32) -> bool {
+        match self {
+            Self::GreaterThan => left > right,
+            Self::GreaterThanOrEqual => left >= right,
+            Self::Equal => left == right,
+            Self::LessThan => left < right,
+            Self::LessThanOrEqual => left <= right,
+            Self::NotEqual => left != right,
+        }
+    }
+}
+
+/// Event payload fields that can be referenced by effect values.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EventValueSpec {
+    Amount,
+    LifeAmount,
+    BlockersBeyondFirst { multiplier: i32 },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Comparison, ValueComparisonOperator};
+
+    #[test]
+    fn comparison_evaluates_values() {
+        assert!(Comparison::GreaterThan(2).evaluate(3));
+        assert!(Comparison::BetweenInclusive(2, 4).evaluate(4));
+        assert!(!Comparison::LessThanOrEqual(1).evaluate(2));
+    }
+
+    #[test]
+    fn value_operator_evaluates_values() {
+        assert!(ValueComparisonOperator::GreaterThan.evaluate(5, 4));
+        assert!(ValueComparisonOperator::Equal.evaluate(7, 7));
+        assert!(!ValueComparisonOperator::NotEqual.evaluate(3, 3));
+    }
+}

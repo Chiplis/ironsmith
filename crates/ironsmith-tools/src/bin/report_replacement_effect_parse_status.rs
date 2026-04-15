@@ -4,12 +4,14 @@ use std::fs;
 use std::panic::{self, AssertUnwindSafe};
 
 use ironsmith::cards::{
-    CardDefinition, CardDefinitionBuilder, generated_definition_has_unimplemented_content,
+    CardDefinition, generated_definition_has_unimplemented_content,
 };
 use ironsmith::compiled_text::compiled_lines;
-use ironsmith::ids::CardId;
 use ironsmith::semantic_compare::compare_semantics_scored;
-use ironsmith_tools::{CardStatusDb, CompilationSnapshot, ParseStatus, default_db_path};
+use ironsmith_tools::{
+    CardStatusDb, CompilationSnapshot, ParseStatus, default_db_path,
+    parse_card_definition_with_runtime_builder,
+};
 use serde_json::Value;
 
 #[derive(Debug)]
@@ -249,7 +251,7 @@ fn panic_payload_to_string(payload: Box<dyn std::any::Any + Send>) -> String {
 fn parse_card(name: &str, parse_input: &str, allow_unsupported: bool) -> ParseOutcome {
     set_allow_unsupported(allow_unsupported);
     let result = panic::catch_unwind(AssertUnwindSafe(|| {
-        CardDefinitionBuilder::new(CardId::new(), name).parse_text(parse_input.to_string())
+        parse_card_definition_with_runtime_builder(name, parse_input.to_string(), allow_unsupported)
     }));
     match result {
         Ok(Ok(definition)) => ParseOutcome::Success(definition),

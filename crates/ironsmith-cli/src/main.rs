@@ -18,9 +18,14 @@
 use ironsmith::compiler::prelude::{
     CardDefinition, CardDefinitionBuilder, CardId, CardRegistry, CardTextError,
 };
+use ironsmith::cards::builders::parse_card_text;
 use ironsmith::decision::{CliDecisionMaker, DecisionRouter, init_input_manager, read_input};
 use ironsmith::engine::prelude::{
     CombatState, GameState, ManaSymbol, PlayerId, TriggerQueue, Zone, execute_turn_with,
+};
+use ironsmith_compiler::{
+    CardTextError as CompilerCardTextError, CompilePolicy, CompiledCardText, CompilerBackend,
+    CompilerCompileRequest, CompilerFacade,
 };
 use rand::seq::SliceRandom;
 use serde::Deserialize;
@@ -365,25 +370,65 @@ fn load_cards_json() -> Result<Vec<CardJson>, String> {
     serde_json::from_reader(reader).map_err(|err| format!("Failed to parse cards.json: {err}"))
 }
 
+struct CliRuntimeBuilderBackend;
+
+impl CompilerBackend<String, CardDefinition, ()> for CliRuntimeBuilderBackend {
+    fn compile(
+        &self,
+        request: CompilerCompileRequest<String>,
+    ) -> Result<CompiledCardText<CardDefinition>, CompilerCardTextError> {
+        let compiler = CompilerFacade::new();
+        let _ = compiler.prepare_source(&request.text);
+
+        let builder = CardDefinitionBuilder::new(CardId::new(), request.context.clone());
+        let definition = parse_card_text(builder, request.text.as_str())
+            .map_err(|err| match err {
+                CardTextError::UnsupportedLine(message) => {
+                    CompilerCardTextError::UnsupportedLine(message)
+                }
+                CardTextError::ParseError(message) => CompilerCardTextError::ParseError(message),
+                CardTextError::InvariantViolation(message) => {
+                    CompilerCardTextError::InvariantViolation(message)
+                }
+            })?;
+
+        Ok(CompiledCardText {
+            definition,
+            annotations: Default::default(),
+        })
+    }
+
+    fn analyze(&self, _request: CompilerCompileRequest<String>) -> Result<(), CompilerCardTextError> {
+        Ok(())
+    }
+}
+
 fn run_meta(card_names: &[String]) -> Result<(), String> {
+    let backend = CliRuntimeBuilderBackend;
+    let compiler = CompilerFacade::new();
     let cards = load_cards_json()?;
 
     for name in card_names {
         match lookup_oracle_text(&cards, name) {
             Some((resolved_name, text)) => {
                 println!("=== {} ===", resolved_name);
-                let builder = CardDefinitionBuilder::new(CardId::new(), resolved_name.clone());
-                match builder.parse_text(text.as_str()) {
-                    Ok(definition) => {
+                let request = CompilerCompileRequest::new(
+                    resolved_name.clone(),
+                    text,
+                    CompilePolicy::default(),
+                );
+                match compiler.compile_with_backend(&backend, request) {
+                    Ok(compiled) => {
+                        let definition = compiled.definition;
                         println!("{definition:#?}");
                     }
-                    Err(CardTextError::ParseError(message)) => {
+                    Err(CompilerCardTextError::ParseError(message)) => {
                         eprintln!("Failed to parse {}: {message}", resolved_name);
                     }
-                    Err(CardTextError::UnsupportedLine(message)) => {
+                    Err(CompilerCardTextError::UnsupportedLine(message)) => {
                         eprintln!("Unsupported line for {}: {message}", resolved_name);
                     }
-                    Err(CardTextError::InvariantViolation(message)) => {
+                    Err(CompilerCardTextError::InvariantViolation(message)) => {
                         eprintln!(
                             "Parser invariant violation for {}: {message}",
                             resolved_name

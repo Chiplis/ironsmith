@@ -3,9 +3,8 @@ use std::env;
 use std::fs;
 
 use ironsmith::ability::AbilityKind;
-use ironsmith::cards::CardDefinitionBuilder;
-use ironsmith::ids::CardId;
 use ironsmith::static_abilities::StaticAbilityId;
+use ironsmith_tools::{default_cards_path, parse_card_definition_with_runtime_builder};
 use serde::Serialize;
 use serde_json::Value;
 
@@ -58,7 +57,7 @@ struct SliceReport {
 }
 
 fn parse_args() -> Result<Args, String> {
-    let mut cards_path = "cards.json".to_string();
+    let mut cards_path = default_cards_path().display().to_string();
     let mut limit = None;
     let mut allow_unsupported = false;
     let mut json_out = None;
@@ -520,8 +519,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
         cards_processed += 1;
 
-        let parse_result = CardDefinitionBuilder::new(CardId::new(), &card_input.name)
-            .parse_text(card_input.parse_input);
+        let parse_result = parse_card_definition_with_runtime_builder(
+            &card_input.name,
+            card_input.parse_input,
+            args.allow_unsupported,
+        );
         let Ok(def) = parse_result else {
             parse_failures += 1;
             continue;

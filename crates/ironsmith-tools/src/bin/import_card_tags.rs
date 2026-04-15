@@ -1,7 +1,8 @@
 use std::collections::BTreeSet;
 
 use ironsmith_tools::{
-    CardStatusDb, TagImportRow, default_db_path, load_canonical_cards, normalize_lookup_name,
+    CardStatusDb, TagImportRow, default_cards_path, default_db_path, load_canonical_cards,
+    normalize_lookup_name,
     read_tag_rows_from_research_csv_paths,
 };
 
@@ -13,7 +14,7 @@ struct Args {
 }
 
 fn parse_args() -> Result<Args, String> {
-    let mut cards_path = "cards.json".to_string();
+    let mut cards_path = default_cards_path().display().to_string();
     let mut db_path = default_db_path().display().to_string();
     let mut csv_paths = Vec::new();
 

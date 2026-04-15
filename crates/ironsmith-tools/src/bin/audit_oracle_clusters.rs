@@ -6,15 +6,17 @@ use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-use ironsmith::cards::{CardDefinitionBuilder, generated_definition_has_unimplemented_content};
+use ironsmith::cards::generated_definition_has_unimplemented_content;
 use ironsmith::compiled_text::compiled_lines;
-use ironsmith::ids::CardId;
 use ironsmith::semantic_compare::{
     clause_comparison_tokens as shared_clause_comparison_tokens,
     compare_semantics_scored as shared_compare_semantics_scored,
     semantic_clauses_for_compare as shared_semantic_clauses,
 };
-use ironsmith_tools::{CardStatusDb, CompilationSnapshot, ParseStatus, default_db_path};
+use ironsmith_tools::{
+    CardStatusDb, CompilationSnapshot, ParseStatus, default_db_path,
+    parse_card_definition_with_runtime_builder,
+};
 
 mod tooling_paths;
 
@@ -1977,8 +1979,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         let cluster_key = cluster_key(&card_input.oracle_text);
-        let parse_result = CardDefinitionBuilder::new(CardId::new(), &card_input.name)
-            .parse_text(card_input.parse_input.clone());
+        let parse_result = parse_card_definition_with_runtime_builder(
+            &card_input.name,
+            card_input.parse_input.clone(),
+            args.allow_unsupported,
+        );
 
         let (audit, snapshot) = match parse_result {
             Ok(definition) => {

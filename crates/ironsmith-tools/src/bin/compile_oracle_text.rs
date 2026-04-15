@@ -1,12 +1,13 @@
 use std::env;
 use std::io::{self, IsTerminal, Read};
 
-use ironsmith::cards::{CardDefinition, CardDefinitionBuilder, CardRegistry};
+use ironsmith::cards::{CardDefinition, CardRegistry};
 use ironsmith::compiled_text::{canonical_compiled_lines, raw_compiled_lines};
-use ironsmith::ids::CardId;
 use ironsmith_tools::{
-    CardStatusDb, build_parse_input, compile_definition_from_payload,
-    compile_snapshot_from_payload, default_db_path, load_card_by_name,
+    CardStatusDb, CompilationSnapshot, ParseStatus, build_parse_input,
+    compile_authoritative_snapshot_from_payload, compile_definition_from_payload,
+    compile_snapshot_from_payload, default_cards_path, default_db_path, load_card_by_name,
+    parse_card_definition_with_runtime_builder,
 };
 
 const DEFAULT_PROBE_NAME: &str = "Parser Probe";
@@ -46,6 +47,7 @@ fn should_read_input_text(
 
 fn store_snapshot_if_requested(
     should_write_db: bool,
+    snapshot: Option<&CompilationSnapshot>,
     db_payload: Option<&ironsmith_tools::CardPayload>,
     db_path: &str,
 ) -> Result<(), String> {
@@ -57,7 +59,9 @@ fn store_snapshot_if_requested(
     };
 
     let db = CardStatusDb::open(db_path).map_err(|err| err.to_string())?;
-    let snapshot = compile_snapshot_from_payload(payload);
+    let snapshot = snapshot
+        .cloned()
+        .unwrap_or_else(|| compile_snapshot_from_payload(payload));
     let inserted = db
         .insert_snapshot_if_changed(&snapshot)
         .map_err(|err| err.to_string())?;
@@ -177,6 +181,7 @@ struct CompileJob {
     oracle_text: String,
     parse_input: String,
     db_payload: Option<ironsmith_tools::CardPayload>,
+    authoritative_snapshot: Option<CompilationSnapshot>,
     compiled_definition: Option<CardDefinition>,
 }
 
@@ -199,6 +204,7 @@ fn compile_job_for_name(
             oracle_text: payload.oracle_text.clone(),
             parse_input: payload.parse_input.clone(),
             db_payload: Some(payload),
+            authoritative_snapshot: None,
             compiled_definition: Some(definition),
         });
     }
@@ -207,22 +213,22 @@ fn compile_job_for_name(
         (Some(text), Some(card)) if !text_includes_metadata(text) => {
             let parse_input = build_parse_input(&card.metadata_lines, text);
             let oracle_text = text.trim().to_string();
-            let db_payload = snapshot_payload_for_db(Some(&card), &oracle_text, &parse_input);
             Ok(CompileJob {
                 name: card.name,
                 oracle_text,
                 parse_input,
-                db_payload,
+                db_payload: None,
+                authoritative_snapshot: None,
                 compiled_definition: None,
             })
         }
         (Some(text), Some(card)) => {
-            let db_payload = snapshot_payload_for_db(Some(&card), &card.oracle_text, text);
             Ok(CompileJob {
                 name: card.name,
                 oracle_text: card.oracle_text,
                 parse_input: text.to_string(),
-                db_payload,
+                db_payload: None,
+                authoritative_snapshot: None,
                 compiled_definition: None,
             })
         }
@@ -231,6 +237,7 @@ fn compile_job_for_name(
             oracle_text: text.to_string(),
             parse_input: text.to_string(),
             db_payload: None,
+            authoritative_snapshot: None,
             compiled_definition: None,
         }),
         (None, Some(card)) => {
@@ -238,12 +245,17 @@ fn compile_job_for_name(
             let oracle_text = card.oracle_text.clone();
             let parse_input = card.parse_input.clone();
             let db_payload = snapshot_payload_for_db(Some(&card), &oracle_text, &parse_input);
-            let compiled_definition = compile_definition_from_payload(&card).ok();
+            let authoritative_snapshot = compile_authoritative_snapshot_from_payload(&card);
+            let compiled_definition = match authoritative_snapshot.parse_status {
+                ParseStatus::StrictCompiled => compile_definition_from_payload(&card).ok(),
+                _ => None,
+            };
             Ok(CompileJob {
                 name,
                 oracle_text,
                 parse_input,
                 db_payload,
+                authoritative_snapshot: Some(authoritative_snapshot),
                 compiled_definition,
             })
         }
@@ -259,13 +271,41 @@ fn print_compiled_job(
     should_write_db: bool,
     db_path: &str,
 ) -> Result<(), String> {
+    if let Some(snapshot) = job.authoritative_snapshot.as_ref()
+        && snapshot.parse_status == ParseStatus::ParseFailed
+    {
+        let _ = store_snapshot_if_requested(
+            should_write_db,
+            Some(snapshot),
+            job.db_payload.as_ref(),
+            db_path,
+        );
+        return Err(format!(
+            "parse failed for {}: {}",
+            job.name,
+            snapshot
+                .parse_error
+                .as_deref()
+                .unwrap_or("unknown authoritative parse failure"),
+        ));
+    }
+
     let parsed_definition;
     let def = if let Some(definition) = job.compiled_definition.as_ref() {
         definition
     } else {
-        let builder = CardDefinitionBuilder::new(CardId::new(), &job.name);
-        parsed_definition = builder.parse_text(job.parse_input.clone()).map_err(|err| {
-            let _ = store_snapshot_if_requested(should_write_db, job.db_payload.as_ref(), db_path);
+        parsed_definition = parse_card_definition_with_runtime_builder(
+            &job.name,
+            job.parse_input.clone(),
+            false,
+        )
+        .map_err(|err| {
+            let _ = store_snapshot_if_requested(
+                should_write_db,
+                job.authoritative_snapshot.as_ref(),
+                job.db_payload.as_ref(),
+                db_path,
+            );
             format!("parse failed for {}: {err:?}", job.name)
         })?;
         &parsed_definition
@@ -317,13 +357,18 @@ fn print_compiled_job(
         println!("{:#?}", display_def);
     }
 
-    store_snapshot_if_requested(should_write_db, job.db_payload.as_ref(), db_path)?;
+    store_snapshot_if_requested(
+        should_write_db,
+        job.authoritative_snapshot.as_ref(),
+        job.db_payload.as_ref(),
+        db_path,
+    )?;
     Ok(())
 }
 
 fn main() -> Result<(), String> {
     let mut names: Vec<String> = Vec::new();
-    let mut cards_path = "cards.json".to_string();
+    let mut cards_path = default_cards_path().display().to_string();
     let mut text_arg: Option<String> = None;
     let mut stacktrace = false;
     let mut trace = false;

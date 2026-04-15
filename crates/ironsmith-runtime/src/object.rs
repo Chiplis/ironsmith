@@ -1,0 +1,1598 @@
+use crate::filter::ObjectFilterExt as _;
+use std::collections::HashMap;
+
+use crate::ability::Ability;
+use crate::alternative_cast::AlternativeCastingMethod;
+use crate::card::{Card, LinkedFaceLayout, PtValue};
+use crate::color::ColorSet;
+use crate::cost::{OptionalCost, OptionalCostsPaid, TotalCost};
+use crate::filter::PlayerFilterExt;
+use crate::ids::{CardId, ObjectId, PlayerId, StableId};
+use crate::mana::ManaCost;
+use crate::player::ManaPool;
+use crate::target::FilterContext;
+use crate::types::{CardType, Subtype, Supertype};
+use crate::zone::Zone;
+pub use ironsmith_core::CounterType;
+
+/// The kind of game object.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ObjectKind {
+    /// A physical card
+    Card,
+    /// A token permanent
+    Token,
+    /// A copy of a spell on the stack
+    SpellCopy,
+    /// An emblem (from planeswalker ultimates)
+    Emblem,
+}
+
+impl ObjectKind {
+    pub fn name(self) -> &'static str {
+        match self {
+            ObjectKind::Card => "card",
+            ObjectKind::Token => "token",
+            ObjectKind::SpellCopy => "spell copy",
+            ObjectKind::Emblem => "emblem",
+        }
+    }
+}
+
+impl std::fmt::Display for ObjectKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.name())
+    }
+}
+
+/// A legal thing an attachment can be attached to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AttachmentTarget {
+    Object(ObjectId),
+    Player(PlayerId),
+}
+
+impl AttachmentTarget {
+    pub fn object_id(self) -> Option<ObjectId> {
+        match self {
+            Self::Object(id) => Some(id),
+            Self::Player(_) => None,
+        }
+    }
+
+    pub fn player_id(self) -> Option<PlayerId> {
+        match self {
+            Self::Object(_) => None,
+            Self::Player(id) => Some(id),
+        }
+    }
+}
+
+pub use ironsmith_core::AuraAttachmentFilter;
+
+pub trait AuraAttachmentFilterRuntimeExt {
+    fn matches_target(
+        &self,
+        target: AttachmentTarget,
+        ctx: &FilterContext,
+        game: &crate::game_state::GameState,
+    ) -> bool;
+}
+
+impl AuraAttachmentFilterRuntimeExt for AuraAttachmentFilter {
+    fn matches_target(
+        &self,
+        target: AttachmentTarget,
+        ctx: &FilterContext,
+        game: &crate::game_state::GameState,
+    ) -> bool {
+        match (self, target) {
+            (Self::Object(filter), AttachmentTarget::Object(id)) => game
+                .object(id)
+                .is_some_and(|object| filter.matches(object, ctx, game)),
+            (Self::Player(filter), AttachmentTarget::Player(id)) => filter.matches_player(id, ctx),
+            _ => false,
+        }
+    }
+}
+
+/// Stored copiable fields needed to end a bestow cast and restore creature form.
+#[derive(Debug, Clone)]
+pub struct BestowCastState {
+    pub card_types: Vec<CardType>,
+    pub subtypes: Vec<Subtype>,
+    pub aura_attach_filter: Option<AuraAttachmentFilter>,
+    pub spell_effect: Option<crate::resolution::ResolutionProgram>,
+}
+
+/// Stored copiable fields needed to restore a card after a face-down cast.
+#[derive(Debug, Clone)]
+pub struct FaceDownCastState {
+    pub name: String,
+    pub mana_cost: Option<ManaCost>,
+    pub color_override: Option<ColorSet>,
+    pub supertypes: Vec<Supertype>,
+    pub card_types: Vec<CardType>,
+    pub subtypes: Vec<Subtype>,
+    pub oracle_text: String,
+    pub base_power: Option<PtValue>,
+    pub base_toughness: Option<PtValue>,
+    pub base_loyalty: Option<u32>,
+    pub base_defense: Option<u32>,
+    pub abilities: Vec<Ability>,
+    pub spell_effect: Option<crate::resolution::ResolutionProgram>,
+    pub aura_attach_filter: Option<AuraAttachmentFilter>,
+}
+
+/// Runtime representation of a game object.
+/// Contains both copiable values (layer 1) and non-copiable state.
+#[derive(Debug, Clone)]
+pub struct Object {
+    // Identity
+    pub id: ObjectId,
+    /// Stable identifier that persists across zone changes.
+    /// Unlike `id` which changes when an object moves zones (per MTG rule 400.7),
+    /// `stable_id` stays constant for the lifetime of this card/token instance.
+    /// Useful for tracking "this specific card" for display and triggered abilities.
+    pub stable_id: StableId,
+    pub kind: ObjectKind,
+    /// Reference to the original card definition (None for pure tokens)
+    pub card: Option<CardId>,
+    pub zone: Zone,
+
+    // Ownership (owner never changes, controller can)
+    pub owner: PlayerId,
+    pub controller: PlayerId,
+
+    // Copiable values (what Clone effects copy)
+    pub name: String,
+    pub mana_cost: Option<ManaCost>,
+    pub color_override: Option<ColorSet>,
+    pub supertypes: Vec<Supertype>,
+    pub card_types: Vec<CardType>,
+    pub subtypes: Vec<Subtype>,
+    pub oracle_text: String,
+    /// Optional reference to another face for flip/DFC style cards.
+    ///
+    /// This is copied from `Card::other_face` when the object is created.
+    pub other_face: Option<CardId>,
+    /// Linked face name for on-demand compilation without a global registry preload.
+    pub other_face_name: Option<String>,
+    /// Layout semantics for linked-face cards.
+    pub linked_face_layout: LinkedFaceLayout,
+    pub base_power: Option<PtValue>,
+    pub base_toughness: Option<PtValue>,
+    pub base_loyalty: Option<u32>,
+    pub base_defense: Option<u32>,
+    /// Abilities this object has (copiable)
+    pub abilities: Vec<Ability>,
+
+    // Non-copiable values (kept on Object)
+    pub counters: HashMap<CounterType, u32>,
+    pub attached_to: Option<AttachmentTarget>,
+    pub attachments: Vec<ObjectId>,
+
+    // Spell-related state
+    /// Spell effects (for instants/sorceries)
+    pub spell_effect: Option<crate::resolution::ResolutionProgram>,
+    /// For Auras: what this card can enchant (used for non-target attachments)
+    pub aura_attach_filter: Option<AuraAttachmentFilter>,
+    /// Original copiable fields to restore if this permanent ends bestow.
+    pub bestow_cast_state: Option<BestowCastState>,
+    /// Original copiable fields to restore if this card was cast face down.
+    pub face_down_cast_state: Option<Box<FaceDownCastState>>,
+    /// Alternative casting methods (flashback, escape, etc.)
+    pub alternative_casts: Vec<AlternativeCastingMethod>,
+    /// True if this split card can be cast fused from hand.
+    pub has_fuse: bool,
+    /// Optional costs (kicker, buyback, etc.)
+    pub optional_costs: Vec<OptionalCost>,
+    /// Which optional costs were paid when this spell was cast (for ETB triggers)
+    pub optional_costs_paid: OptionalCostsPaid,
+    /// Mana actually spent to cast this object while it was a spell.
+    /// Used by conditional text like "if at least three blue mana was spent to cast this spell".
+    pub mana_spent_to_cast: ManaPool,
+    /// X value chosen for this object when it was cast (if any).
+    /// Used by ETB and other triggered abilities that reference X from the mana cost.
+    pub x_value: Option<u32>,
+    /// Permanents that contributed keyword-ability alternative payments while casting this object
+    /// as a spell (e.g., Convoke/Improvise). Used by later resolution-time references like
+    /// "each creature that convoked it".
+    pub keyword_payment_contributions_to_cast: Vec<crate::decision::KeywordPaymentContribution>,
+    /// Additional non-printed costs paid while casting this object as a spell.
+    pub additional_cost: TotalCost,
+
+    // === Saga fields ===
+    /// For sagas: the maximum chapter number (typically 3)
+    pub max_saga_chapter: Option<u32>,
+    // Note: The following fields have been moved to GameState extension maps:
+    // - tapped -> GameState::tapped_permanents
+    // - flipped -> GameState::flipped
+    // - face_down -> GameState::face_down
+    // - phased_out -> GameState::phased_out
+    // - damage_marked -> GameState::damage_marked
+    // - summoning_sick -> GameState::summoning_sick
+    // - is_monstrous -> GameState::monstrous
+    // - regeneration_shields -> GameState::regeneration_shields
+    // - madness_exiled -> GameState::madness_exiled
+    // - final_chapter_resolved -> GameState::saga_final_chapter_resolved
+    // - is_commander -> GameState::commanders
+}
+
+impl Object {
+    fn extend_unique<T: PartialEq + Clone>(base: &mut Vec<T>, extra: &[T]) {
+        for item in extra {
+            if !base.contains(item) {
+                base.push(item.clone());
+            }
+        }
+    }
+
+    /// Returns non-mana additional cost components for this object.
+    pub fn additional_non_mana_costs(&self) -> Vec<crate::costs::Cost> {
+        self.additional_cost.non_mana_costs().cloned().collect()
+    }
+
+    /// Creates a new object from a card definition.
+    pub fn from_card(id: ObjectId, card: &Card, owner: PlayerId, zone: Zone) -> Self {
+        let (base_power, base_toughness) = card
+            .power_toughness
+            .map(|pt| (Some(pt.power), Some(pt.toughness)))
+            .unwrap_or((None, None));
+
+        Self {
+            id,
+            stable_id: StableId::from(id), // Set to same as id initially; preserved across zone changes
+            kind: ObjectKind::Card,
+            card: Some(card.id),
+            zone,
+            owner,
+            controller: owner,
+            name: card.name.clone(),
+            mana_cost: card.mana_cost.clone(),
+            color_override: card.color_indicator,
+            supertypes: card.supertypes.clone(),
+            card_types: card.card_types.clone(),
+            subtypes: card.subtypes.clone(),
+            oracle_text: card.oracle_text.clone(),
+            other_face: card.other_face,
+            other_face_name: card.other_face_name.clone(),
+            linked_face_layout: card.linked_face_layout,
+            base_power,
+            base_toughness,
+            base_loyalty: card.loyalty,
+            base_defense: card.defense,
+            abilities: Vec::new(),
+            counters: HashMap::new(),
+            attached_to: None,
+            attachments: Vec::new(),
+            spell_effect: None,
+            aura_attach_filter: None,
+            bestow_cast_state: None,
+            face_down_cast_state: None,
+            alternative_casts: Vec::new(),
+            has_fuse: false,
+            optional_costs: Vec::new(),
+            optional_costs_paid: OptionalCostsPaid::default(),
+            mana_spent_to_cast: ManaPool::default(),
+            x_value: None,
+            keyword_payment_contributions_to_cast: Vec::new(),
+            additional_cost: TotalCost::free(),
+            max_saga_chapter: None,
+        }
+    }
+
+    /// Creates a new object from a CardDefinition (card + abilities + spell effects).
+    pub fn from_card_definition(
+        id: ObjectId,
+        def: &crate::cards::CardDefinition,
+        owner: PlayerId,
+        zone: Zone,
+    ) -> Self {
+        let mut obj = Self::from_card(id, &def.card, owner, zone);
+        obj.abilities = def.abilities.clone();
+        obj.spell_effect = def.spell_effect.clone();
+        obj.aura_attach_filter = def.aura_attach_filter.clone();
+        obj.bestow_cast_state = None;
+        obj.face_down_cast_state = None;
+        obj.alternative_casts = def.alternative_casts.clone();
+        obj.has_fuse = def.has_fuse;
+        obj.optional_costs = def.optional_costs.clone();
+        obj.max_saga_chapter = def.max_saga_chapter;
+        obj.additional_cost = def.additional_cost.clone();
+        obj
+    }
+
+    /// Apply the printed/copied characteristics of another card definition.
+    ///
+    /// Used for flip cards and similar "becomes this other face" mechanics.
+    /// This preserves identity, ownership, controller, zone, counters, and attachments.
+    pub fn apply_definition_face(&mut self, def: &crate::cards::CardDefinition) {
+        let (base_power, base_toughness) = def
+            .card
+            .power_toughness
+            .map(|pt| (Some(pt.power), Some(pt.toughness)))
+            .unwrap_or((None, None));
+
+        self.name = def.card.name.clone();
+        self.mana_cost = def.card.mana_cost.clone();
+        self.color_override = def.card.color_indicator;
+        self.supertypes = def.card.supertypes.clone();
+        self.card_types = def.card.card_types.clone();
+        self.subtypes = def.card.subtypes.clone();
+        self.oracle_text = def.card.oracle_text.clone();
+        self.other_face = def.card.other_face;
+        self.other_face_name = def.card.other_face_name.clone();
+        self.linked_face_layout = def.card.linked_face_layout;
+        self.base_power = base_power;
+        self.base_toughness = base_toughness;
+        self.base_loyalty = def.card.loyalty;
+        self.base_defense = def.card.defense;
+        self.abilities = def.abilities.clone();
+
+        self.spell_effect = def.spell_effect.clone();
+        self.aura_attach_filter = def.aura_attach_filter.clone();
+        self.bestow_cast_state = None;
+        self.face_down_cast_state = None;
+        self.alternative_casts = def.alternative_casts.clone();
+        self.has_fuse = def.has_fuse;
+        self.optional_costs = def.optional_costs.clone();
+        self.max_saga_chapter = def.max_saga_chapter;
+        self.additional_cost = def.additional_cost.clone();
+    }
+
+    /// Apply the temporary stack characteristics of a fused split spell.
+    pub fn apply_fused_split_spell_overlay(&mut self, other: &crate::cards::CardDefinition) {
+        let mut mana_pips = Vec::new();
+        if let Some(cost) = &self.mana_cost {
+            mana_pips.extend(cost.pips().iter().cloned());
+        }
+        if let Some(cost) = &other.card.mana_cost {
+            mana_pips.extend(cost.pips().iter().cloned());
+        }
+
+        self.name = format!("{} // {}", self.name, other.card.name);
+        self.mana_cost = if mana_pips.is_empty() {
+            None
+        } else {
+            Some(ManaCost::from_pips(mana_pips))
+        };
+        self.color_override = match (self.color_override, other.card.color_indicator) {
+            (Some(left), Some(right)) => Some(left.union(right)),
+            (Some(left), None) => Some(left),
+            (None, Some(right)) => Some(right),
+            (None, None) => None,
+        };
+        Self::extend_unique(&mut self.supertypes, &other.card.supertypes);
+        Self::extend_unique(&mut self.card_types, &other.card.card_types);
+        Self::extend_unique(&mut self.subtypes, &other.card.subtypes);
+        if self.oracle_text.is_empty() {
+            self.oracle_text = other.card.oracle_text.clone();
+        } else if !other.card.oracle_text.is_empty() {
+            self.oracle_text = format!("{}\n//\n{}", self.oracle_text, other.card.oracle_text);
+        }
+        self.base_power = None;
+        self.base_toughness = None;
+        self.base_loyalty = None;
+        self.base_defense = None;
+        self.abilities.extend(other.abilities.iter().cloned());
+
+        let mut effects = self.spell_effect.clone().unwrap_or_default();
+        effects.extend(other.spell_effect.clone().unwrap_or_default());
+        self.spell_effect = Some(effects);
+        self.aura_attach_filter = None;
+        self.bestow_cast_state = None;
+        self.linked_face_layout = LinkedFaceLayout::Split;
+    }
+
+    /// Reconstructs a CardDefinition from this object's fields.
+    /// Used for rendering compiled text in the UI.
+    pub fn to_card_definition(&self) -> crate::cards::CardDefinition {
+        use crate::card::PowerToughness;
+
+        let power_toughness = match (self.base_power, self.base_toughness) {
+            (Some(p), Some(t)) => Some(PowerToughness::new(p, t)),
+            _ => None,
+        };
+        crate::cards::CardDefinition {
+            card: Card {
+                id: self.card.unwrap_or(CardId::new()),
+                name: self.name.clone(),
+                mana_cost: self.mana_cost.clone(),
+                color_indicator: self.color_override,
+                supertypes: self.supertypes.clone(),
+                card_types: self.card_types.clone(),
+                subtypes: self.subtypes.clone(),
+                oracle_text: self.oracle_text.clone(),
+                power_toughness,
+                loyalty: self.base_loyalty,
+                defense: self.base_defense,
+                other_face: self.other_face,
+                other_face_name: self.other_face_name.clone(),
+                linked_face_layout: self.linked_face_layout,
+                is_token: matches!(self.kind, ObjectKind::Token),
+            },
+            abilities: self.abilities.clone(),
+            spell_effect: self.spell_effect.clone(),
+            aura_attach_filter: self.aura_attach_filter.clone(),
+            alternative_casts: self.alternative_casts.clone(),
+            has_fuse: self.has_fuse,
+            optional_costs: self.optional_costs.clone(),
+            max_saga_chapter: self.max_saga_chapter,
+            additional_cost: self.additional_cost.clone(),
+        }
+    }
+
+    /// Creates a new token.
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_token(
+        id: ObjectId,
+        owner: PlayerId,
+        name: String,
+        card_types: Vec<CardType>,
+        subtypes: Vec<Subtype>,
+        power: Option<i32>,
+        toughness: Option<i32>,
+        color: ColorSet,
+    ) -> Self {
+        Self {
+            id,
+            stable_id: StableId::from(id), // New token gets its own stable_id
+            kind: ObjectKind::Token,
+            card: None,
+            zone: Zone::Battlefield,
+            owner,
+            controller: owner,
+            name,
+            mana_cost: None,
+            color_override: Some(color),
+            supertypes: Vec::new(),
+            card_types,
+            subtypes,
+            oracle_text: String::new(),
+            other_face: None,
+            other_face_name: None,
+            linked_face_layout: LinkedFaceLayout::None,
+            base_power: power.map(PtValue::Fixed),
+            base_toughness: toughness.map(PtValue::Fixed),
+            base_loyalty: None,
+            base_defense: None,
+            abilities: Vec::new(),
+            counters: HashMap::new(),
+            attached_to: None,
+            attachments: Vec::new(),
+            spell_effect: None,
+            aura_attach_filter: None,
+            bestow_cast_state: None,
+            face_down_cast_state: None,
+            alternative_casts: Vec::new(),
+            has_fuse: false,
+            optional_costs: Vec::new(),
+            optional_costs_paid: OptionalCostsPaid::default(),
+            mana_spent_to_cast: ManaPool::default(),
+            x_value: None,
+            keyword_payment_contributions_to_cast: Vec::new(),
+            additional_cost: TotalCost::free(),
+            max_saga_chapter: None,
+        }
+    }
+
+    /// Creates a token that's a copy of another object.
+    /// Per MTG rules, tokens copy copiable values but not non-copiable state.
+    /// Note: Battlefield state (tapped, summoning_sick, etc.) is managed via GameState extension maps.
+    pub fn token_copy_of(source: &Object, id: ObjectId, owner: PlayerId) -> Self {
+        let mut token = Self {
+            id,
+            stable_id: StableId::from(id), // Token copy is a new instance
+            kind: ObjectKind::Token,
+            card: None,
+            zone: Zone::Battlefield,
+            owner,
+            controller: owner,
+            // Copiable values from source
+            name: source.name.clone(),
+            mana_cost: source.mana_cost.clone(),
+            color_override: source.color_override,
+            supertypes: source.supertypes.clone(),
+            card_types: source.card_types.clone(),
+            subtypes: source.subtypes.clone(),
+            oracle_text: source.oracle_text.clone(),
+            other_face: source.other_face,
+            other_face_name: source.other_face_name.clone(),
+            linked_face_layout: source.linked_face_layout,
+            base_power: source.base_power,
+            base_toughness: source.base_toughness,
+            base_loyalty: source.base_loyalty,
+            base_defense: source.base_defense,
+            abilities: source.abilities.clone(),
+            // Non-copiable values reset to defaults
+            counters: HashMap::new(),
+            attached_to: None,
+            attachments: Vec::new(),
+            // Note: spell_effect is copiable for spell copies
+            spell_effect: source.spell_effect.clone(),
+            aura_attach_filter: source.aura_attach_filter.clone(),
+            bestow_cast_state: source.bestow_cast_state.clone(),
+            face_down_cast_state: source.face_down_cast_state.clone(),
+            // Alternative casts are copiable (though tokens rarely use them)
+            alternative_casts: source.alternative_casts.clone(),
+            has_fuse: source.has_fuse,
+            // Optional costs are copiable
+            optional_costs: source.optional_costs.clone(),
+            // Optional costs paid is non-copiable (tokens weren't cast)
+            optional_costs_paid: OptionalCostsPaid::default(),
+            // Tokens are never cast.
+            mana_spent_to_cast: ManaPool::default(),
+            x_value: None,
+            keyword_payment_contributions_to_cast: Vec::new(),
+            // Cost effects are copiable
+            additional_cost: source.additional_cost.clone(),
+            // Saga fields - copiable (a token copy of a saga is also a saga)
+            max_saga_chapter: source.max_saga_chapter,
+        };
+        // Planeswalker tokens enter with loyalty counters equal to base loyalty
+        if let Some(loyalty) = source.base_loyalty {
+            token.add_counters(CounterType::Loyalty, loyalty);
+        }
+        token
+    }
+
+    /// Creates a token using last-known-information copiable values.
+    ///
+    /// This is used when the source object no longer exists, but a resolving effect
+    /// still needs to copy what it looked like at the relevant earlier moment.
+    pub fn token_copy_from_snapshot(
+        snapshot: &crate::snapshot::ObjectSnapshot,
+        id: ObjectId,
+        owner: PlayerId,
+    ) -> Self {
+        let mut token = Self {
+            id,
+            stable_id: StableId::from(id),
+            kind: ObjectKind::Token,
+            card: None,
+            zone: Zone::Battlefield,
+            owner,
+            controller: owner,
+            name: snapshot.name.clone(),
+            mana_cost: snapshot.mana_cost.clone(),
+            color_override: (!snapshot.colors.is_empty()).then_some(snapshot.colors),
+            supertypes: snapshot.supertypes.clone(),
+            card_types: snapshot.card_types.clone(),
+            subtypes: snapshot.subtypes.clone(),
+            oracle_text: snapshot.oracle_text.clone(),
+            other_face: snapshot.other_face,
+            other_face_name: snapshot.other_face_name.clone(),
+            linked_face_layout: snapshot.linked_face_layout,
+            base_power: snapshot.base_power.map(PtValue::Fixed),
+            base_toughness: snapshot.base_toughness.map(PtValue::Fixed),
+            base_loyalty: snapshot.loyalty,
+            base_defense: snapshot.defense,
+            abilities: snapshot.abilities.clone(),
+            counters: HashMap::new(),
+            attached_to: None,
+            attachments: Vec::new(),
+            spell_effect: None,
+            aura_attach_filter: snapshot.aura_attach_filter.clone(),
+            bestow_cast_state: None,
+            face_down_cast_state: None,
+            alternative_casts: Vec::new(),
+            has_fuse: false,
+            optional_costs: Vec::new(),
+            optional_costs_paid: OptionalCostsPaid::default(),
+            mana_spent_to_cast: ManaPool::default(),
+            x_value: None,
+            keyword_payment_contributions_to_cast: Vec::new(),
+            additional_cost: TotalCost::free(),
+            max_saga_chapter: snapshot.max_saga_chapter,
+        };
+        if let Some(loyalty) = snapshot.loyalty {
+            token.add_counters(CounterType::Loyalty, loyalty);
+        }
+        token
+    }
+
+    /// Creates a new emblem in the command zone.
+    ///
+    /// Emblems are permanent game objects created by planeswalker ultimates.
+    /// They exist in the command zone and cannot be interacted with by most
+    /// game mechanics (they have no controller change, can't be destroyed, etc.)
+    pub fn new_emblem(
+        id: ObjectId,
+        owner: PlayerId,
+        name: String,
+        abilities: Vec<Ability>,
+    ) -> Self {
+        Self {
+            id,
+            stable_id: StableId::from(id), // Emblems get their own stable_id
+            kind: ObjectKind::Emblem,
+            card: None,
+            zone: Zone::Command,
+            owner,
+            controller: owner,
+            name,
+            mana_cost: None,
+            color_override: None,
+            supertypes: Vec::new(),
+            card_types: Vec::new(),
+            subtypes: Vec::new(),
+            oracle_text: String::new(),
+            other_face: None,
+            other_face_name: None,
+            linked_face_layout: LinkedFaceLayout::None,
+            base_power: None,
+            base_toughness: None,
+            base_loyalty: None,
+            base_defense: None,
+            abilities,
+            counters: HashMap::new(),
+            attached_to: None,
+            attachments: Vec::new(),
+            spell_effect: None,
+            aura_attach_filter: None,
+            bestow_cast_state: None,
+            face_down_cast_state: None,
+            alternative_casts: Vec::new(),
+            has_fuse: false,
+            optional_costs: Vec::new(),
+            optional_costs_paid: OptionalCostsPaid::default(),
+            mana_spent_to_cast: ManaPool::default(),
+            x_value: None,
+            keyword_payment_contributions_to_cast: Vec::new(),
+            additional_cost: TotalCost::free(),
+            max_saga_chapter: None,
+        }
+    }
+
+    /// Copies copiable values from another object (for Clone effects).
+    /// Per MTG rule 707.2, copiable values are: name, mana cost, color, card types,
+    /// subtypes, supertypes, rules text, power, toughness, loyalty, and abilities.
+    /// Non-copiable state (counters, damage, etc.) is NOT copied.
+    pub fn copy_copiable_values_from(&mut self, source: &Object) {
+        self.name = source.name.clone();
+        self.mana_cost = source.mana_cost.clone();
+        self.color_override = source.color_override;
+        self.supertypes = source.supertypes.clone();
+        self.card_types = source.card_types.clone();
+        self.subtypes = source.subtypes.clone();
+        self.oracle_text = source.oracle_text.clone();
+        self.other_face = source.other_face;
+        self.other_face_name = source.other_face_name.clone();
+        self.linked_face_layout = source.linked_face_layout;
+        self.base_power = source.base_power;
+        self.base_toughness = source.base_toughness;
+        self.base_loyalty = source.base_loyalty;
+        self.base_defense = source.base_defense;
+        self.abilities = source.abilities.clone();
+        self.aura_attach_filter = source.aura_attach_filter.clone();
+        self.has_fuse = source.has_fuse;
+    }
+
+    /// Apply the temporary "cast with bestow" Aura overlay.
+    ///
+    /// This stores original copiable fields so state-based actions can restore
+    /// creature form when the permanent stops being attached.
+    pub fn apply_bestow_cast_overlay(&mut self) {
+        if self.bestow_cast_state.is_some() {
+            return;
+        }
+
+        self.bestow_cast_state = Some(BestowCastState {
+            card_types: self.card_types.clone(),
+            subtypes: self.subtypes.clone(),
+            aura_attach_filter: self.aura_attach_filter.clone(),
+            spell_effect: self.spell_effect.clone(),
+        });
+
+        let mut card_types = self.card_types.clone();
+        card_types.retain(|card_type| *card_type != CardType::Creature);
+        if !card_types.contains(&CardType::Enchantment) {
+            card_types.push(CardType::Enchantment);
+        }
+        self.card_types = card_types;
+
+        let mut subtypes = self.subtypes.clone();
+        subtypes.retain(|subtype| !subtype.is_creature_type() && *subtype != Subtype::Aura);
+        subtypes.push(Subtype::Aura);
+        self.subtypes = subtypes;
+
+        self.aura_attach_filter = Some(crate::target::ObjectFilter::creature().into());
+        self.ensure_aura_cast_spell_effect();
+    }
+
+    /// Synthesize the cast-time attach effect for Aura spells that only carry an
+    /// enchant restriction on the definition.
+    pub fn ensure_aura_cast_spell_effect(&mut self) {
+        if self.spell_effect.is_some() || !self.subtypes.contains(&Subtype::Aura) {
+            return;
+        }
+
+        let Some(filter) = self.aura_attach_filter.clone() else {
+            return;
+        };
+
+        let target_spec = filter.target_spec();
+        self.spell_effect = Some(crate::resolution::ResolutionProgram::from_effects(vec![
+            crate::effect::Effect::attach_to(target_spec),
+        ]));
+    }
+
+    /// Returns true if this object is currently in the temporary bestow Aura form.
+    pub fn is_bestow_overlay_active(&self) -> bool {
+        self.bestow_cast_state.is_some()
+    }
+
+    /// End bestow Aura form and restore original copiable fields.
+    pub fn end_bestow_cast_overlay(&mut self) -> bool {
+        let Some(restore) = self.bestow_cast_state.take() else {
+            return false;
+        };
+        self.card_types = restore.card_types;
+        self.subtypes = restore.subtypes;
+        self.aura_attach_filter = restore.aura_attach_filter;
+        self.spell_effect = restore.spell_effect;
+        true
+    }
+
+    /// Apply the shared face-down cast overlay used by morph-style casting.
+    pub fn apply_face_down_cast_overlay(&mut self) -> bool {
+        if self.face_down_cast_state.is_some() {
+            return false;
+        }
+
+        self.face_down_cast_state = Some(Box::new(FaceDownCastState {
+            name: self.name.clone(),
+            mana_cost: self.mana_cost.clone(),
+            color_override: self.color_override,
+            supertypes: self.supertypes.clone(),
+            card_types: self.card_types.clone(),
+            subtypes: self.subtypes.clone(),
+            oracle_text: self.oracle_text.clone(),
+            base_power: self.base_power,
+            base_toughness: self.base_toughness,
+            base_loyalty: self.base_loyalty,
+            base_defense: self.base_defense,
+            abilities: self.abilities.clone(),
+            spell_effect: self.spell_effect.clone(),
+            aura_attach_filter: self.aura_attach_filter.clone(),
+        }));
+
+        self.name = "Face-down creature".to_string();
+        self.mana_cost = None;
+        self.color_override = Some(ColorSet::COLORLESS);
+        self.supertypes.clear();
+        self.card_types = vec![CardType::Creature];
+        self.subtypes.clear();
+        self.oracle_text.clear();
+        self.base_power = Some(PtValue::Fixed(2));
+        self.base_toughness = Some(PtValue::Fixed(2));
+        self.base_loyalty = None;
+        self.base_defense = None;
+        self.abilities.retain(|ability| {
+            matches!(
+                &ability.kind,
+                crate::ability::AbilityKind::Static(static_ability)
+                    if static_ability.turn_face_up_cost().is_some()
+            )
+        });
+        self.spell_effect = None;
+        self.aura_attach_filter = None;
+        self.bestow_cast_state = None;
+        true
+    }
+
+    /// End the shared face-down cast overlay and restore printed characteristics.
+    pub fn end_face_down_cast_overlay(&mut self) -> bool {
+        let Some(restore) = self.face_down_cast_state.take() else {
+            return false;
+        };
+        let restore = *restore;
+
+        self.name = restore.name;
+        self.mana_cost = restore.mana_cost;
+        self.color_override = restore.color_override;
+        self.supertypes = restore.supertypes;
+        self.card_types = restore.card_types;
+        self.subtypes = restore.subtypes;
+        self.oracle_text = restore.oracle_text;
+        self.base_power = restore.base_power;
+        self.base_toughness = restore.base_toughness;
+        self.base_loyalty = restore.base_loyalty;
+        self.base_defense = restore.base_defense;
+        self.abilities = restore.abilities;
+        self.spell_effect = restore.spell_effect;
+        self.aura_attach_filter = restore.aura_attach_filter;
+        true
+    }
+
+    /// Returns the colors of this object.
+    pub fn colors(&self) -> ColorSet {
+        // Devoid applies in all functional zones of the ability.
+        if self.abilities.iter().any(|ability| {
+            ability.functions_in(&self.zone)
+                && matches!(
+                    &ability.kind,
+                    crate::ability::AbilityKind::Static(static_ability) if static_ability.is_devoid()
+                )
+        }) {
+            return ColorSet::COLORLESS;
+        }
+
+        if let Some(override_colors) = self.color_override {
+            return override_colors;
+        }
+
+        let Some(mana_cost) = &self.mana_cost else {
+            return ColorSet::COLORLESS;
+        };
+
+        use crate::color::Color;
+        use crate::mana::ManaSymbol;
+
+        let mut colors = ColorSet::COLORLESS;
+        for pip in mana_cost.pips() {
+            for symbol in pip {
+                match symbol {
+                    ManaSymbol::White => colors = colors.with(Color::White),
+                    ManaSymbol::Blue => colors = colors.with(Color::Blue),
+                    ManaSymbol::Black => colors = colors.with(Color::Black),
+                    ManaSymbol::Red => colors = colors.with(Color::Red),
+                    ManaSymbol::Green => colors = colors.with(Color::Green),
+                    _ => {}
+                }
+            }
+        }
+        colors
+    }
+
+    /// Returns the color identity of this object (for Commander format).
+    /// Color identity includes colors from:
+    /// - Mana cost
+    /// - Color indicator/override
+    /// - Mana symbols in rules text (e.g., "{T}: Add {G}")
+    pub fn color_identity(&self) -> ColorSet {
+        use crate::color::Color;
+        use crate::mana::ManaSymbol;
+
+        let mut identity = ColorSet::COLORLESS;
+
+        // Add colors from mana cost
+        if let Some(mana_cost) = &self.mana_cost {
+            for pip in mana_cost.pips() {
+                for symbol in pip {
+                    match symbol {
+                        ManaSymbol::White => identity = identity.with(Color::White),
+                        ManaSymbol::Blue => identity = identity.with(Color::Blue),
+                        ManaSymbol::Black => identity = identity.with(Color::Black),
+                        ManaSymbol::Red => identity = identity.with(Color::Red),
+                        ManaSymbol::Green => identity = identity.with(Color::Green),
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        // Add colors from color indicator/override
+        if let Some(override_colors) = self.color_override {
+            identity = identity.union(override_colors);
+        }
+
+        // Parse oracle text for mana symbols
+        identity = identity.union(Self::parse_colors_from_text(&self.oracle_text));
+
+        identity
+    }
+
+    /// Parses mana symbols from rules text and returns the colors found.
+    fn parse_colors_from_text(text: &str) -> ColorSet {
+        use crate::color::Color;
+
+        let mut colors = ColorSet::COLORLESS;
+        let chars: Vec<char> = text.chars().collect();
+        let mut i = 0;
+
+        while i < chars.len() {
+            if chars[i] == '{' {
+                // Find the closing brace
+                if let Some(end) = chars[i..].iter().position(|&c| c == '}') {
+                    let symbol: String = chars[i + 1..i + end].iter().collect();
+                    // Check for color symbols (including in hybrid like "W/U")
+                    for c in symbol.chars() {
+                        match c {
+                            'W' => colors = colors.with(Color::White),
+                            'U' => colors = colors.with(Color::Blue),
+                            'B' => colors = colors.with(Color::Black),
+                            'R' => colors = colors.with(Color::Red),
+                            'G' => colors = colors.with(Color::Green),
+                            _ => {}
+                        }
+                    }
+                    i += end + 1;
+                    continue;
+                }
+            }
+            i += 1;
+        }
+        colors
+    }
+
+    /// Returns the current power of this creature.
+    /// Returns None if this is not a creature.
+    pub fn power(&self) -> Option<i32> {
+        // Check for level abilities first - they can override base P/T
+        let base = if let Some((power, _)) = self.level_ability_pt() {
+            power
+        } else {
+            self.base_power?.base_value()
+        };
+        let (power_delta, _) = self.pt_counter_deltas();
+        Some(base + power_delta)
+    }
+
+    /// Returns the current toughness of this creature.
+    /// Returns None if this is not a creature.
+    pub fn toughness(&self) -> Option<i32> {
+        // Check for level abilities first - they can override base P/T
+        let base = if let Some((_, toughness)) = self.level_ability_pt() {
+            toughness
+        } else {
+            self.base_toughness?.base_value()
+        };
+        let (_, toughness_delta) = self.pt_counter_deltas();
+        Some(base + toughness_delta)
+    }
+
+    pub fn pt_counter_deltas(&self) -> (i32, i32) {
+        let mut power = 0i32;
+        let mut toughness = 0i32;
+        for (counter_type, count) in &self.counters {
+            if let Some((dp, dt)) = counter_type.pt_delta() {
+                power += dp * (*count as i32);
+                toughness += dt * (*count as i32);
+            }
+        }
+        (power, toughness)
+    }
+
+    /// Returns the P/T override from level abilities if applicable.
+    /// Returns None if there are no level abilities or the current level tier has no P/T override.
+    fn level_ability_pt(&self) -> Option<(i32, i32)> {
+        use crate::ability::AbilityKind;
+
+        let level_count = self.counters.get(&CounterType::Level).copied().unwrap_or(0);
+
+        for ability in &self.abilities {
+            if let AbilityKind::Static(s) = &ability.kind
+                && let Some(levels) = s.level_abilities()
+            {
+                // Find the matching tier (highest tier that applies)
+                for tier in levels.iter().rev() {
+                    if level_count >= tier.min_level
+                        && tier.max_level.is_none_or(|max| level_count <= max)
+                    {
+                        return tier.power_toughness;
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Returns all static abilities granted by the current level tier.
+    pub fn level_granted_abilities(&self) -> Vec<crate::static_abilities::StaticAbility> {
+        use crate::ability::AbilityKind;
+
+        let level_count = self.counters.get(&CounterType::Level).copied().unwrap_or(0);
+
+        for ability in &self.abilities {
+            if let AbilityKind::Static(s) = &ability.kind
+                && let Some(levels) = s.level_abilities()
+            {
+                // Find the matching tier (highest tier that applies)
+                for tier in levels.iter().rev() {
+                    if level_count >= tier.min_level
+                        && tier.max_level.is_none_or(|max| level_count <= max)
+                    {
+                        // Abilities are now stored as the new type directly
+                        return tier.abilities.clone();
+                    }
+                }
+            }
+        }
+        Vec::new()
+    }
+
+    /// Returns the current loyalty of this planeswalker.
+    pub fn loyalty(&self) -> Option<u32> {
+        let base = self.base_loyalty?;
+        Some(
+            self.counters
+                .get(&CounterType::Loyalty)
+                .copied()
+                .unwrap_or(base),
+        )
+    }
+
+    /// Returns the printed defense value of this battle.
+    pub fn defense(&self) -> Option<u32> {
+        self.base_defense
+    }
+
+    /// Adds counters of the specified type.
+    pub fn add_counters(&mut self, counter_type: CounterType, amount: u32) {
+        *self.counters.entry(counter_type).or_insert(0) += amount;
+    }
+
+    /// Removes counters of the specified type. Returns the number actually removed.
+    pub fn remove_counters(&mut self, counter_type: CounterType, amount: u32) -> u32 {
+        let current = self.counters.entry(counter_type).or_insert(0);
+        let removed = (*current).min(amount);
+        *current -= removed;
+        if *current == 0 {
+            self.counters.remove(&counter_type);
+        }
+        removed
+    }
+
+    /// Returns true if this creature has taken lethal damage.
+    /// `damage_marked` should be obtained from GameState::damage_on(id).
+    pub fn has_lethal_damage(&self, damage_marked: u32) -> bool {
+        if let Some(toughness) = self.toughness() {
+            toughness <= 0 || damage_marked >= toughness as u32
+        } else {
+            false
+        }
+    }
+
+    /// Returns true if this object has the given card type.
+    pub fn has_card_type(&self, card_type: CardType) -> bool {
+        self.card_types.contains(&card_type)
+    }
+
+    /// Returns true if this object has the given supertype.
+    pub fn has_supertype(&self, supertype: Supertype) -> bool {
+        self.supertypes.contains(&supertype)
+    }
+
+    /// Returns true if this object has the given subtype.
+    ///
+    /// If the object has Changeling and is a creature, it has all creature types.
+    pub fn has_subtype(&self, subtype: Subtype) -> bool {
+        if self.subtypes.contains(&subtype) {
+            return true;
+        }
+
+        // Changeling means this creature is every creature type
+        if subtype.is_creature_type() && self.is_creature() && self.has_changeling() {
+            return true;
+        }
+
+        false
+    }
+
+    /// Returns true if this object has the Changeling ability.
+    pub fn has_changeling(&self) -> bool {
+        use crate::ability::AbilityKind;
+        self.abilities.iter().any(|a| {
+            if let AbilityKind::Static(s) = &a.kind {
+                s.is_changeling()
+            } else {
+                false
+            }
+        })
+    }
+
+    /// Returns true if this is a creature.
+    pub fn is_creature(&self) -> bool {
+        self.has_card_type(CardType::Creature)
+    }
+
+    /// Returns true if this is a land.
+    pub fn is_land(&self) -> bool {
+        self.has_card_type(CardType::Land)
+    }
+
+    /// Returns true if this is a permanent type.
+    pub fn is_permanent(&self) -> bool {
+        self.has_card_type(CardType::Creature)
+            || self.has_card_type(CardType::Artifact)
+            || self.has_card_type(CardType::Enchantment)
+            || self.has_card_type(CardType::Land)
+            || self.has_card_type(CardType::Planeswalker)
+            || self.has_card_type(CardType::Battle)
+    }
+
+    /// Returns true if this is legendary.
+    pub fn is_legendary(&self) -> bool {
+        self.has_supertype(Supertype::Legendary)
+    }
+
+    /// Returns true if this object has the given static ability.
+    /// This includes abilities granted by level tiers.
+    pub fn has_static_ability(&self, ability: &crate::static_abilities::StaticAbility) -> bool {
+        use crate::ability::AbilityKind;
+
+        // Check regular static abilities
+        let has_regular = self.abilities.iter().any(|a| {
+            if let AbilityKind::Static(s) = &a.kind {
+                s == ability
+            } else {
+                false
+            }
+        });
+
+        if has_regular {
+            return true;
+        }
+
+        // Check level-granted abilities
+        self.level_granted_abilities().iter().any(|a| a == ability)
+    }
+
+    /// Returns true if this object has a static ability with the given ID.
+    /// This includes abilities granted by level tiers.
+    pub fn has_static_ability_id(
+        &self,
+        ability_id: crate::static_abilities::StaticAbilityId,
+    ) -> bool {
+        use crate::ability::AbilityKind;
+
+        let has_regular = self.abilities.iter().any(|ability| {
+            if let AbilityKind::Static(static_ability) = &ability.kind {
+                static_ability.id() == ability_id
+            } else {
+                false
+            }
+        });
+        if has_regular {
+            return true;
+        }
+
+        self.level_granted_abilities()
+            .iter()
+            .any(|ability| ability.id() == ability_id)
+    }
+
+    /// Returns true if this object has indestructible.
+    pub fn has_indestructible(&self) -> bool {
+        self.has_static_ability(&crate::static_abilities::StaticAbility::indestructible())
+    }
+
+    /// Creates a token from a CardDefinition.
+    ///
+    /// The CardDefinition should have been built with `.token()` to mark it as a token.
+    /// This is the preferred way to create tokens - use CardDefinitionBuilder with all
+    /// the normal ability methods instead of the deprecated TokenDescription.
+    /// Note: Battlefield state (summoning_sick, etc.) is managed via GameState extension maps.
+    pub fn from_token_definition(
+        id: ObjectId,
+        def: &crate::cards::CardDefinition,
+        controller: PlayerId,
+    ) -> Self {
+        Self {
+            id,
+            stable_id: StableId::from(id),
+            kind: ObjectKind::Token,
+            card: None,
+            zone: Zone::Battlefield,
+            owner: controller,
+            controller,
+            name: def.card.name.clone(),
+            mana_cost: None,                          // Tokens don't have mana costs
+            color_override: def.card.color_indicator, // Use color indicator if set
+            supertypes: def.card.supertypes.clone(),
+            card_types: def.card.card_types.clone(),
+            subtypes: def.card.subtypes.clone(),
+            oracle_text: def.card.oracle_text.clone(),
+            other_face: def.card.other_face,
+            other_face_name: def.card.other_face_name.clone(),
+            linked_face_layout: def.card.linked_face_layout,
+            base_power: def.card.power_toughness.map(|pt| pt.power),
+            base_toughness: def.card.power_toughness.map(|pt| pt.toughness),
+            base_loyalty: def.card.loyalty,
+            base_defense: def.card.defense,
+            abilities: def.abilities.clone(),
+            counters: HashMap::new(),
+            attached_to: None,
+            attachments: Vec::new(),
+            spell_effect: def.spell_effect.clone(),
+            aura_attach_filter: def.aura_attach_filter.clone(),
+            bestow_cast_state: None,
+            face_down_cast_state: None,
+            alternative_casts: def.alternative_casts.clone(),
+            has_fuse: def.has_fuse,
+            optional_costs: def.optional_costs.clone(),
+            optional_costs_paid: OptionalCostsPaid::default(),
+            mana_spent_to_cast: ManaPool::default(),
+            x_value: None,
+            keyword_payment_contributions_to_cast: Vec::new(),
+            additional_cost: def.additional_cost.clone(),
+            max_saga_chapter: def.max_saga_chapter,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ability::Ability;
+    use crate::card::CardBuilder;
+    use crate::color::Color;
+    use crate::mana::ManaSymbol;
+    use crate::static_abilities::StaticAbility;
+    use crate::target::ObjectFilter;
+
+    #[test]
+    fn test_object_from_card() {
+        let card = CardBuilder::new(CardId::from_raw(1), "Grizzly Bears")
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(1)],
+                vec![ManaSymbol::Green],
+            ]))
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Bear])
+            .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+            .build();
+
+        let obj = Object::from_card(
+            ObjectId::from_raw(1),
+            &card,
+            PlayerId::from_index(0),
+            Zone::Battlefield,
+        );
+
+        assert_eq!(obj.name, "Grizzly Bears");
+        assert_eq!(obj.power(), Some(2));
+        assert_eq!(obj.toughness(), Some(2));
+        assert!(obj.is_creature());
+        assert!(obj.colors().contains(Color::Green));
+    }
+
+    #[test]
+    fn test_token_creation() {
+        let token = Object::new_token(
+            ObjectId::from_raw(1),
+            PlayerId::from_index(0),
+            "Soldier".to_string(),
+            vec![CardType::Creature],
+            vec![Subtype::Soldier],
+            Some(1),
+            Some(1),
+            ColorSet::WHITE,
+        );
+
+        assert_eq!(token.name, "Soldier");
+        assert_eq!(token.kind, ObjectKind::Token);
+        assert_eq!(token.power(), Some(1));
+        assert_eq!(token.toughness(), Some(1));
+        assert!(token.colors().contains(Color::White));
+        // Note: summoning_sick is now tracked in GameState::summoning_sick
+    }
+
+    #[test]
+    fn test_devoid_applies_in_hand() {
+        let card = CardBuilder::new(CardId::from_raw(1), "Devoid Probe")
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(1)],
+                vec![ManaSymbol::Blue],
+            ]))
+            .card_types(vec![CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(2, 1))
+            .build();
+
+        let mut obj = Object::from_card(
+            ObjectId::from_raw(1),
+            &card,
+            PlayerId::from_index(0),
+            Zone::Hand,
+        );
+        obj.abilities.push(
+            Ability::static_ability(StaticAbility::make_colorless(ObjectFilter::source()))
+                .in_zones(vec![
+                    Zone::Battlefield,
+                    Zone::Stack,
+                    Zone::Hand,
+                    Zone::Library,
+                    Zone::Graveyard,
+                    Zone::Exile,
+                    Zone::Command,
+                ]),
+        );
+
+        assert!(
+            obj.colors().is_empty(),
+            "devoid object in hand should be colorless"
+        );
+    }
+
+    #[test]
+    fn test_make_colorless_ability_respects_functional_zone() {
+        let card = CardBuilder::new(CardId::from_raw(1), "Color Probe")
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(1)],
+                vec![ManaSymbol::Blue],
+            ]))
+            .card_types(vec![CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(2, 1))
+            .build();
+
+        let mut obj = Object::from_card(
+            ObjectId::from_raw(1),
+            &card,
+            PlayerId::from_index(0),
+            Zone::Hand,
+        );
+        obj.abilities
+            .push(Ability::static_ability(StaticAbility::make_colorless(
+                ObjectFilter::source(),
+            )));
+
+        assert!(
+            obj.colors().contains(Color::Blue),
+            "battlefield-only make-colorless should not apply in hand"
+        );
+    }
+
+    #[test]
+    fn test_counters() {
+        let card = CardBuilder::new(CardId::from_raw(1), "Grizzly Bears")
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(1)],
+                vec![ManaSymbol::Green],
+            ]))
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Bear])
+            .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+            .build();
+
+        let mut obj = Object::from_card(
+            ObjectId::from_raw(1),
+            &card,
+            PlayerId::from_index(0),
+            Zone::Battlefield,
+        );
+
+        // Add +1/+1 counters
+        obj.add_counters(CounterType::PlusOnePlusOne, 3);
+        assert_eq!(obj.power(), Some(5));
+        assert_eq!(obj.toughness(), Some(5));
+
+        // Remove some counters
+        let removed = obj.remove_counters(CounterType::PlusOnePlusOne, 2);
+        assert_eq!(removed, 2);
+        assert_eq!(obj.power(), Some(3));
+        assert_eq!(obj.toughness(), Some(3));
+    }
+
+    #[test]
+    fn test_loyalty_uses_loyalty_counters_when_present() {
+        let card = CardBuilder::new(CardId::from_raw(7), "Test Walker")
+            .card_types(vec![CardType::Planeswalker])
+            .loyalty(6)
+            .build();
+        let mut obj = Object::from_card(
+            ObjectId::from_raw(7),
+            &card,
+            PlayerId::from_index(0),
+            Zone::Battlefield,
+        );
+
+        assert_eq!(
+            obj.loyalty(),
+            Some(6),
+            "without counters, loyalty should fall back to printed value"
+        );
+
+        obj.add_counters(CounterType::Loyalty, 4);
+        assert_eq!(
+            obj.loyalty(),
+            Some(4),
+            "with counters present, loyalty should reflect counters, not base+counter"
+        );
+    }
+
+    #[test]
+    fn test_lethal_damage() {
+        let card = CardBuilder::new(CardId::from_raw(1), "Grizzly Bears")
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(1)],
+                vec![ManaSymbol::Green],
+            ]))
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Bear])
+            .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+            .build();
+
+        let obj = Object::from_card(
+            ObjectId::from_raw(1),
+            &card,
+            PlayerId::from_index(0),
+            Zone::Battlefield,
+        );
+
+        // damage_marked is now tracked in GameState::damage_marked
+        assert!(!obj.has_lethal_damage(0));
+        assert!(!obj.has_lethal_damage(1));
+        assert!(obj.has_lethal_damage(2));
+    }
+
+    #[test]
+    fn test_minus_counters() {
+        let card = CardBuilder::new(CardId::from_raw(1), "Grizzly Bears")
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(1)],
+                vec![ManaSymbol::Green],
+            ]))
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Bear])
+            .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+            .build();
+
+        let mut obj = Object::from_card(
+            ObjectId::from_raw(1),
+            &card,
+            PlayerId::from_index(0),
+            Zone::Battlefield,
+        );
+
+        obj.add_counters(CounterType::MinusOneMinusOne, 1);
+        assert_eq!(obj.power(), Some(1));
+        assert_eq!(obj.toughness(), Some(1));
+
+        // With enough -1/-1 counters, toughness goes to 0 or below
+        obj.add_counters(CounterType::MinusOneMinusOne, 1);
+        assert_eq!(obj.toughness(), Some(0));
+        assert!(obj.has_lethal_damage(0)); // 0 toughness = lethal even with no damage
+    }
+
+    #[test]
+    fn test_non_standard_pt_counters() {
+        let card = CardBuilder::new(CardId::from_raw(1), "Grizzly Bears")
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(1)],
+                vec![ManaSymbol::Green],
+            ]))
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Bear])
+            .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+            .build();
+
+        let mut obj = Object::from_card(
+            ObjectId::from_raw(1),
+            &card,
+            PlayerId::from_index(0),
+            Zone::Battlefield,
+        );
+
+        obj.add_counters(CounterType::PlusOnePlusZero, 1);
+        assert_eq!(obj.power(), Some(3));
+        assert_eq!(obj.toughness(), Some(2));
+
+        obj.add_counters(CounterType::PlusZeroPlusOne, 2);
+        assert_eq!(obj.power(), Some(3));
+        assert_eq!(obj.toughness(), Some(4));
+
+        obj.add_counters(CounterType::MinusZeroMinusTwo, 1);
+        assert_eq!(obj.power(), Some(3));
+        assert_eq!(obj.toughness(), Some(2));
+
+        obj.add_counters(CounterType::PlusOnePlusTwo, 1);
+        assert_eq!(obj.power(), Some(4));
+        assert_eq!(obj.toughness(), Some(4));
+    }
+
+    #[test]
+    fn test_counter_type_description() {
+        assert_eq!(CounterType::PlusOnePlusOne.description(), "+1/+1");
+        assert_eq!(CounterType::PlusOnePlusZero.description(), "+1/+0");
+        assert_eq!(CounterType::DoubleStrike.description(), "double strike");
+        assert_eq!(CounterType::Finality.description(), "finality");
+        assert_eq!(CounterType::Named("burden").description(), "burden");
+    }
+
+    #[test]
+    fn test_token_copy_of() {
+        let card = CardBuilder::new(CardId::from_raw(1), "Serra Angel")
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(3)],
+                vec![ManaSymbol::White],
+                vec![ManaSymbol::White],
+            ]))
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Angel])
+            .oracle_text("Flying, vigilance")
+            .power_toughness(crate::card::PowerToughness::fixed(4, 4))
+            .build();
+
+        let mut original = Object::from_card(
+            ObjectId::from_raw(1),
+            &card,
+            PlayerId::from_index(0),
+            Zone::Battlefield,
+        );
+
+        // Add some non-copiable state to the original
+        original.add_counters(CounterType::PlusOnePlusOne, 2);
+        // Note: tapped, damage_marked, summoning_sick are now in GameState extension maps
+
+        // Create a token copy
+        let token =
+            Object::token_copy_of(&original, ObjectId::from_raw(2), PlayerId::from_index(1));
+
+        // Copiable values should match
+        assert_eq!(token.name, "Serra Angel");
+        assert_eq!(token.base_power, Some(PtValue::Fixed(4)));
+        assert_eq!(token.base_toughness, Some(PtValue::Fixed(4)));
+        assert!(token.has_subtype(Subtype::Angel));
+        assert_eq!(token.oracle_text, "Flying, vigilance");
+
+        // Non-copiable state should NOT be copied
+        assert_eq!(token.counters.get(&CounterType::PlusOnePlusOne), None);
+        // Note: damage_marked, tapped, summoning_sick are now in GameState extension maps
+
+        // Token-specific properties
+        assert_eq!(token.kind, ObjectKind::Token);
+        assert_eq!(token.owner, PlayerId::from_index(1));
+        assert_eq!(token.controller, PlayerId::from_index(1));
+    }
+
+    #[test]
+    fn test_copy_copiable_values_from() {
+        let bear_card = CardBuilder::new(CardId::from_raw(1), "Grizzly Bears")
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(1)],
+                vec![ManaSymbol::Green],
+            ]))
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Bear])
+            .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+            .build();
+
+        let angel_card = CardBuilder::new(CardId::from_raw(2), "Serra Angel")
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(3)],
+                vec![ManaSymbol::White],
+                vec![ManaSymbol::White],
+            ]))
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Angel])
+            .oracle_text("Flying, vigilance")
+            .power_toughness(crate::card::PowerToughness::fixed(4, 4))
+            .build();
+
+        // Create a Clone creature that enters as a copy of Serra Angel
+        let mut clone = Object::from_card(
+            ObjectId::from_raw(1),
+            &bear_card,
+            PlayerId::from_index(0),
+            Zone::Battlefield,
+        );
+        clone.add_counters(CounterType::PlusOnePlusOne, 1);
+
+        let angel = Object::from_card(
+            ObjectId::from_raw(2),
+            &angel_card,
+            PlayerId::from_index(1),
+            Zone::Battlefield,
+        );
+
+        // Clone copies the angel
+        clone.copy_copiable_values_from(&angel);
+
+        // Copiable values now match the angel
+        assert_eq!(clone.name, "Serra Angel");
+        assert_eq!(clone.power(), Some(5)); // 4 base + 1 counter
+        assert_eq!(clone.toughness(), Some(5));
+        assert!(clone.has_subtype(Subtype::Angel));
+        assert!(!clone.has_subtype(Subtype::Bear));
+
+        // But identity fields remain unchanged
+        assert_eq!(clone.id, ObjectId::from_raw(1));
+        assert_eq!(clone.owner, PlayerId::from_index(0));
+        assert_eq!(clone.controller, PlayerId::from_index(0));
+
+        // And counters are preserved (non-copiable)
+        assert_eq!(clone.counters.get(&CounterType::PlusOnePlusOne), Some(&1));
+    }
+}
