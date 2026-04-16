@@ -3,22 +3,7 @@ use crate::effects::{EffectExecutor, SequenceEffect};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct RepeatProcessEffect {
-    pub effects: Vec<Effect>,
-    pub condition: EffectId,
-    pub predicate: EffectPredicate,
-}
-
-impl RepeatProcessEffect {
-    pub fn new(effects: Vec<Effect>, condition: EffectId, predicate: EffectPredicate) -> Self {
-        Self {
-            effects,
-            condition,
-            predicate,
-        }
-    }
-}
+pub type RepeatProcessEffect = ironsmith_core::RepeatProcessEffect<Effect>;
 
 impl EffectExecutor for RepeatProcessEffect {
     fn clone_box(&self) -> Box<dyn EffectExecutor> {

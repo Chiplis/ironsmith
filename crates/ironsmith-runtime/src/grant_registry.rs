@@ -10,7 +10,7 @@
 
 use crate::alternative_cast::AlternativeCastingMethod;
 use crate::filter::ObjectFilterExt as _;
-use crate::grant::{DerivedAlternativeCast, Grantable};
+use crate::grant::{DerivedAlternativeCast, DerivedAlternativeCastRuntimeExt, Grantable};
 use crate::ids::{ObjectId, PlayerId};
 use crate::static_abilities::StaticAbility;
 use crate::target::ObjectFilter;

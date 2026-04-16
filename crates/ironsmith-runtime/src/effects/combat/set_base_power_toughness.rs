@@ -9,39 +9,11 @@ use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
 use crate::types::CardType;
+pub use ironsmith_core::SetBasePowerToughnessEffect;
 
 /// Effect that sets a creature's base power and toughness.
 ///
 /// Creates a continuous effect in layer 7b ("setting" sublayer).
-#[derive(Debug, Clone, PartialEq)]
-pub struct SetBasePowerToughnessEffect {
-    /// Which creature to modify.
-    pub target: ChooseSpec,
-    /// Base power value.
-    pub power: Value,
-    /// Base toughness value.
-    pub toughness: Value,
-    /// Duration for the base P/T setting.
-    pub duration: Until,
-}
-
-impl SetBasePowerToughnessEffect {
-    /// Create a new set-base-power/toughness effect.
-    pub fn new(
-        target: ChooseSpec,
-        power: impl Into<Value>,
-        toughness: impl Into<Value>,
-        duration: Until,
-    ) -> Self {
-        Self {
-            target,
-            power: power.into(),
-            toughness: toughness.into(),
-            duration,
-        }
-    }
-}
-
 impl EffectExecutor for SetBasePowerToughnessEffect {
     fn execute(
         &self,

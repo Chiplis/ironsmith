@@ -20,6 +20,10 @@ pub use move_counters::MoveCountersEffect;
 pub use proliferate::ProliferateEffect;
 pub use put_counters::PutCountersEffect;
 pub use remove_any_counters_among::RemoveAnyCountersAmongEffect;
+pub(crate) use remove_any_counters_among::{
+    cost_display as remove_any_counters_among_cost_display,
+    valid_targets_with_tags as remove_any_counters_among_valid_targets_with_tags,
+};
 pub use remove_any_counters_from_source::RemoveAnyCountersFromSourceEffect;
 pub use remove_counters::RemoveCountersEffect;
 pub use remove_up_to_any_counters::RemoveUpToAnyCountersEffect;

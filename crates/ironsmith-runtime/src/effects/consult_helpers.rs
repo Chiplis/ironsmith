@@ -6,19 +6,8 @@ use crate::ids::{ObjectId, PlayerId, StableId};
 use crate::snapshot::ObjectSnapshot;
 use crate::tag::TagKey;
 use crate::zone::Zone;
+pub use ironsmith_core::{LibraryBottomOrder, LibraryConsultMode};
 use std::collections::{HashMap, HashSet};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LibraryConsultMode {
-    Reveal,
-    Exile,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LibraryBottomOrder {
-    Random,
-    ChooserChooses,
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LibraryConsultStopRule {

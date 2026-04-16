@@ -2,13 +2,13 @@
 
 use super::choice_helpers::{choose_mana_colors, credit_repeated_mana_symbol_from_context};
 use crate::color::Color;
-use crate::effect::{EffectOutcome, Value};
+use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::mana::ManaSymbol;
-use crate::target::PlayerFilter;
+pub use ironsmith_core::AddManaFromCommanderColorIdentityEffect;
 
 /// Effect that adds mana of any color in the player's commander's color identity.
 ///
@@ -26,29 +26,6 @@ use crate::target::PlayerFilter;
 /// // Arcane Signet: Tap to add one mana of any color in your commander's identity
 /// let effect = AddManaFromCommanderColorIdentityEffect::you(1);
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct AddManaFromCommanderColorIdentityEffect {
-    /// Number of mana to add.
-    pub amount: Value,
-    /// Which player receives the mana.
-    pub player: PlayerFilter,
-}
-
-impl AddManaFromCommanderColorIdentityEffect {
-    /// Create a new add mana from commander color identity effect.
-    pub fn new(amount: impl Into<Value>, player: PlayerFilter) -> Self {
-        Self {
-            amount: amount.into(),
-            player,
-        }
-    }
-
-    /// Create an effect where you add mana from your commander's color identity.
-    pub fn you(amount: impl Into<Value>) -> Self {
-        Self::new(amount, PlayerFilter::You)
-    }
-}
-
 impl EffectExecutor for AddManaFromCommanderColorIdentityEffect {
     fn execute(
         &self,

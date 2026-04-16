@@ -10,18 +10,7 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::{KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
 use crate::triggers::TriggerEvent;
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct EmitKeywordActionEffect {
-    pub action: KeywordActionKind,
-    pub amount: u32,
-}
-
-impl EmitKeywordActionEffect {
-    pub fn new(action: KeywordActionKind, amount: u32) -> Self {
-        Self { action, amount }
-    }
-}
+pub use ironsmith_core::EmitKeywordActionEffect;
 
 impl EffectExecutor for EmitKeywordActionEffect {
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {

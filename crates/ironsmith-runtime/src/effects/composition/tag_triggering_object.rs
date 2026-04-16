@@ -5,22 +5,9 @@ use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::snapshot::ObjectSnapshot;
-use crate::tag::TagKey;
+pub use ironsmith_core::TagTriggeringObjectEffect;
 
 /// Effect that tags the object that caused the trigger.
-#[derive(Debug, Clone, PartialEq)]
-pub struct TagTriggeringObjectEffect {
-    /// Tag name to store the triggering object snapshot under.
-    pub tag: TagKey,
-}
-
-impl TagTriggeringObjectEffect {
-    /// Create a new effect that tags the triggering object.
-    pub fn new(tag: impl Into<TagKey>) -> Self {
-        Self { tag: tag.into() }
-    }
-}
-
 impl EffectExecutor for TagTriggeringObjectEffect {
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())

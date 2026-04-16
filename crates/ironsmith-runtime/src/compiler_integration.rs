@@ -71,7 +71,7 @@ fn convert_continuous_modification(
 ) -> Result<crate::continuous::Modification, CompilerIntegrationError> {
     crate::continuous::Modification::try_from_compiled(
         modification,
-        convert_static_ability,
+        runtime_static_ability,
         convert_ability,
         convert_removed_ability,
     )
@@ -82,7 +82,7 @@ fn convert_removed_ability(
 ) -> Result<crate::static_abilities::StaticAbility, CompilerIntegrationError> {
     match ability.kind {
         compiler::ability::AbilityKind::Static(static_ability) => {
-            convert_static_ability(static_ability)
+            runtime_static_ability(static_ability)
         }
         other => Err(CompilerIntegrationError::UnsupportedEffect {
             detail: format!("continuous RemoveAbility for non-static ability `{other:?}`"),
@@ -122,35 +122,6 @@ fn convert_runtime_modification(
     })
 }
 
-fn convert_player_control_start(
-    start: compiler::game_state::PlayerControlStart,
-) -> crate::game_state::PlayerControlStart {
-    match start {
-        compiler::game_state::PlayerControlStart::Immediate => {
-            crate::game_state::PlayerControlStart::Immediate
-        }
-        compiler::game_state::PlayerControlStart::NextTurn => {
-            crate::game_state::PlayerControlStart::NextTurn
-        }
-    }
-}
-
-fn convert_player_control_duration(
-    duration: compiler::game_state::PlayerControlDuration,
-) -> crate::game_state::PlayerControlDuration {
-    match duration {
-        compiler::game_state::PlayerControlDuration::UntilEndOfTurn => {
-            crate::game_state::PlayerControlDuration::UntilEndOfTurn
-        }
-        compiler::game_state::PlayerControlDuration::Forever => {
-            crate::game_state::PlayerControlDuration::Forever
-        }
-        compiler::game_state::PlayerControlDuration::UntilSourceLeaves => {
-            crate::game_state::PlayerControlDuration::UntilSourceLeaves
-        }
-    }
-}
-
 fn convert_grant_duration(
     duration: compiler::grant::GrantDuration,
 ) -> Result<crate::grant::GrantDuration, CompilerIntegrationError> {
@@ -173,20 +144,35 @@ fn convert_grantable(
 ) -> Result<crate::grant::Grantable, CompilerIntegrationError> {
     Ok(match grantable {
         compiler::grant::Grantable::Ability(ability) => {
-            crate::grant::Grantable::Ability(convert_static_ability(ability)?)
+            crate::grant::Grantable::Ability(runtime_static_ability(ability)?)
         }
         compiler::grant::Grantable::AlternativeCast(method) => {
             crate::grant::Grantable::AlternativeCast(convert_alternative_cast(method)?)
         }
         compiler::grant::Grantable::PlayFrom => crate::grant::Grantable::PlayFrom,
-        compiler::grant::Grantable::FlashbackFromCardManaCost => {
-            crate::grant::Grantable::flashback_from_cards_mana_cost()
+        compiler::grant::Grantable::DerivedAlternativeCast(spec) => {
+            crate::grant::Grantable::DerivedAlternativeCast(convert_derived_alternative_cast(spec)?)
         }
-        compiler::grant::Grantable::EscapeFromCardManaCost { exile_count } => {
-            crate::grant::Grantable::escape(exile_count)
+    })
+}
+
+fn convert_derived_alternative_cast(
+    spec: compiler::grant::DerivedAlternativeCast,
+) -> Result<crate::grant::DerivedAlternativeCast, CompilerIntegrationError> {
+    Ok(match spec {
+        compiler::grant::DerivedAlternativeCast::FlashbackFromCardManaCost { additional_costs } => {
+            crate::grant::DerivedAlternativeCast::FlashbackFromCardManaCost {
+                additional_costs: additional_costs
+                    .into_iter()
+                    .map(convert_cost)
+                    .collect::<Result<Vec<_>, _>>()?,
+            }
         }
-        compiler::grant::Grantable::ManaValueAsGenericFromHand => {
-            crate::grant::Grantable::mana_value_as_generic_from_hand()
+        compiler::grant::DerivedAlternativeCast::EscapeFromCardManaCost { exile_count } => {
+            crate::grant::DerivedAlternativeCast::EscapeFromCardManaCost { exile_count }
+        }
+        compiler::grant::DerivedAlternativeCast::ManaValueAsGenericFromHand => {
+            crate::grant::DerivedAlternativeCast::ManaValueAsGenericFromHand
         }
     })
 }
@@ -349,45 +335,20 @@ fn convert_effect(
     if let Some(payload) = effect.as_remove_counters() {
         return Ok(crate::effect::Effect::new(payload.clone()));
     }
-    if effect
-        .downcast_ref::<compiler::effects::UnearthEffect>()
-        .is_some()
-    {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::UnearthEffect::new(),
-        ));
+    if let Some(payload) = effect.downcast_ref::<compiler::effects::UnearthEffect>() {
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
-    if effect
-        .downcast_ref::<compiler::effects::NinjutsuCostEffect>()
-        .is_some()
-    {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::NinjutsuCostEffect::new(),
-        ));
+    if let Some(payload) = effect.downcast_ref::<compiler::effects::NinjutsuCostEffect>() {
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
-    if effect
-        .downcast_ref::<compiler::effects::NinjutsuEffect>()
-        .is_some()
-    {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::NinjutsuEffect::new(),
-        ));
+    if let Some(payload) = effect.downcast_ref::<compiler::effects::NinjutsuEffect>() {
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::CastSourceEffect>() {
-        let mut converted = crate::effects::CastSourceEffect::new();
-        if payload.without_paying_mana_cost {
-            converted = converted.without_paying_mana_cost();
-        }
-        if payload.require_exile {
-            converted = converted.require_exile();
-        }
-        return Ok(crate::effect::Effect::new(converted));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
-    if effect
-        .downcast_ref::<compiler::effects::CipherEffect>()
-        .is_some()
-    {
-        return Ok(crate::effect::Effect::cipher());
+    if let Some(payload) = effect.downcast_ref::<compiler::effects::CipherEffect>() {
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.as_counter() {
         return Ok(crate::effect::Effect::new(payload.clone()));
@@ -440,7 +401,7 @@ fn convert_effect(
                     .abilities
                     .iter()
                     .cloned()
-                    .map(convert_static_ability)
+                    .map(runtime_static_ability)
                     .collect::<Result<Vec<_>, _>>()?,
                 payload.duration.clone(),
             ),
@@ -471,7 +432,7 @@ fn convert_effect(
                     .granted_static_abilities
                     .iter()
                     .cloned()
-                    .map(convert_static_ability)
+                    .map(runtime_static_ability)
                     .collect::<Result<Vec<_>, _>>()?,
             },
         ));
@@ -481,7 +442,7 @@ fn convert_effect(
             crate::effects::GrantNextSpellAbilityEffect::new(
                 payload.player.clone(),
                 payload.filter.clone(),
-                convert_static_ability(payload.ability.clone())?,
+                runtime_static_ability(payload.ability.clone())?,
             ),
         ));
     }
@@ -532,9 +493,7 @@ fn convert_effect(
         ));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::GainLifeEffect>() {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::GainLifeEffect::new(payload.amount.clone(), payload.player.clone()),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::SacrificeEffect>() {
         return Ok(crate::effect::Effect::new(
@@ -545,13 +504,7 @@ fn convert_effect(
         ));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::SacrificePlayerEffect>() {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::SacrificeEffect::player(
-                payload.filter.clone(),
-                payload.count.clone(),
-                payload.player.clone(),
-            ),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::DestroyEffect>() {
         return Ok(crate::effect::Effect::new(
@@ -571,95 +524,40 @@ fn convert_effect(
         return Ok(crate::effect::Effect::new(converted));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::RegenerateEffect>() {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::RegenerateEffect::new(payload.target.clone(), payload.duration.clone()),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) =
         effect.downcast_ref::<compiler::effects::AddManaFromCommanderColorIdentityEffect>()
     {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::AddManaFromCommanderColorIdentityEffect::new(
-                payload.amount.clone(),
-                payload.player.clone(),
-            ),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::AddManaOfAnyColorEffect>() {
-        let converted = if let Some(colors) = &payload.available_colors {
-            crate::effects::AddManaOfAnyColorEffect::restricted(
-                payload.amount.clone(),
-                payload.player.clone(),
-                colors.clone(),
-            )
-        } else {
-            crate::effects::AddManaOfAnyColorEffect::new(
-                payload.amount.clone(),
-                payload.player.clone(),
-            )
-        };
-        return Ok(crate::effect::Effect::new(converted));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::AddManaOfAnyOneColorEffect>() {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::AddManaOfAnyOneColorEffect::new(
-                payload.amount.clone(),
-                payload.player.clone(),
-            ),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::AddManaEffect>() {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::AddManaEffect::new(payload.mana.clone(), payload.player.clone()),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::PreventAllCombatDamageEffect>()
     {
-        return Ok(match &payload.target {
-            compiler::effects::CombatDamagePreventionTarget::All => {
-                crate::effect::Effect::prevent_all_combat_damage(payload.until.clone())
-            }
-            compiler::effects::CombatDamagePreventionTarget::Players => {
-                crate::effect::Effect::prevent_all_combat_damage_to_players(payload.until.clone())
-            }
-            compiler::effects::CombatDamagePreventionTarget::You => {
-                crate::effect::Effect::prevent_all_combat_damage_to_you(payload.until.clone())
-            }
-            compiler::effects::CombatDamagePreventionTarget::From(source) => {
-                crate::effect::Effect::prevent_all_combat_damage_from(
-                    source.clone(),
-                    payload.until.clone(),
-                )
-            }
-        });
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::EmitKeywordActionEffect>() {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::EmitKeywordActionEffect::new(payload.action, payload.amount),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::RenownEffect>() {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::RenownEffect::new(payload.amount),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::BolsterEffect>() {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::BolsterEffect::new(payload.amount),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::FlipEffect>() {
-        return Ok(crate::effect::Effect::new(crate::effects::FlipEffect::new(
-            payload.target.clone(),
-        )));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::PreventAllDamageEffect>() {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::PreventAllDamageEffect::matching(
-                payload.filter.clone(),
-                payload.until.clone(),
-            ),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) =
         effect.downcast_ref::<compiler::effects::PreventAllDamageToTargetEffect>()
@@ -680,9 +578,7 @@ fn convert_effect(
         ));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::LoseTheGameEffect>() {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::LoseTheGameEffect::new(payload.player.clone()),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::CreateEmblemEffect>() {
         let mut emblem =
@@ -695,156 +591,66 @@ fn convert_effect(
         ));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::DiscardHandEffect>() {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::DiscardHandEffect::new(payload.player.clone()),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::RemoveAnyCountersAmongEffect>()
     {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::RemoveAnyCountersAmongEffect::new(
-                payload.count,
-                payload.filter.clone(),
-            )
-            .with_counter_type(payload.counter_type),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::ChooseCardTypeEffect>() {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::ChooseCardTypeEffect::new(
-                payload.chooser.clone(),
-                payload.options.clone(),
-            ),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) =
         effect.downcast_ref::<compiler::effects::ShuffleObjectsIntoLibraryEffect>()
     {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::ShuffleObjectsIntoLibraryEffect::new(
-                payload.target.clone(),
-                payload.player.clone(),
-            ),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::ExchangeTextBoxesEffect>() {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::ExchangeTextBoxesEffect::new(payload.target.clone()),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::EnergyCountersEffect>() {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::EnergyCountersEffect::new(
-                payload.count.clone(),
-                payload.player.clone(),
-            ),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::DiscoverEffect>() {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::DiscoverEffect::new(payload.count.clone(), payload.player.clone()),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::SetBasePowerToughnessEffect>() {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::SetBasePowerToughnessEffect::new(
-                payload.target.clone(),
-                payload.power.clone(),
-                payload.toughness.clone(),
-                payload.duration.clone(),
-            ),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::CantEffect>() {
-        return Ok(crate::effect::Effect::new(crate::effects::CantEffect::new(
-            payload.restriction.clone(),
-            payload.duration.clone(),
-        )));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::ExtraTurnEffect>() {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::ExtraTurnEffect::new(payload.player.clone()),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::ExtraTurnAfterNextTurnEffect>()
     {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::ExtraTurnAfterNextTurnEffect::new(payload.player.clone()),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) =
         effect.downcast_ref::<compiler::effects::ModifyPowerToughnessForEachEffect>()
     {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::ModifyPowerToughnessForEachEffect::new(
-                payload.target.clone(),
-                payload.power_per,
-                payload.toughness_per,
-                payload.count.clone(),
-                payload.duration.clone(),
-            ),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::CastTaggedEffect>() {
-        let mut converted =
-            crate::effects::CastTaggedEffect::new(payload.tag.clone(), payload.player.clone());
-        if payload.allow_land {
-            converted = converted.allow_land();
-        }
-        if payload.as_copy {
-            converted = converted.as_copy();
-        }
-        if payload.without_paying_mana_cost {
-            converted = converted.without_paying_mana_cost();
-        }
-        if let Some(reduction) = &payload.cost_reduction {
-            converted = converted.cost_reduction(reduction.clone());
-        }
-        return Ok(crate::effect::Effect::new(converted));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) =
         effect.downcast_ref::<compiler::effects::PutTaggedRemainderOnLibraryBottomEffect>()
     {
-        let order = match payload.order {
-            compiler::effects::consult_helpers::LibraryBottomOrder::Random => {
-                crate::effects::consult_helpers::LibraryBottomOrder::Random
-            }
-            compiler::effects::consult_helpers::LibraryBottomOrder::ChooserChooses => {
-                crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses
-            }
-        };
-        return Ok(crate::effect::Effect::new(
-            crate::effects::PutTaggedRemainderOnLibraryBottomEffect::new(
-                payload.tag.clone(),
-                payload.keep_tagged.clone(),
-                order,
-                payload.player.clone(),
-            ),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::RemoveUpToAnyCountersEffect>() {
-        return Ok(crate::effect::Effect::remove_up_to_any_counters(
-            payload.max_count.clone(),
-            payload.target.clone(),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::TagTriggeringObjectEffect>() {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::TagTriggeringObjectEffect::new(payload.tag.clone()),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::AttachToEffect>() {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::AttachToEffect::new(payload.target.clone()),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::AttachObjectsEffect>() {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::AttachObjectsEffect::new(
-                payload.objects.clone(),
-                payload.target.clone(),
-            ),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::SequenceEffect>() {
         return Ok(crate::effect::Effect::new(
@@ -875,14 +681,10 @@ fn convert_effect(
         return Ok(crate::effect::Effect::new(converted));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::RevealTopEffect>() {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::RevealTopEffect::new(payload.player.clone(), payload.tag.clone()),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::TagAttachedToSourceEffect>() {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::TagAttachedToSourceEffect::new(payload.tag.clone()),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) =
         effect.downcast_ref::<compiler::effects::ForPlayersEffect<compiler::effect::Effect>>()
@@ -991,45 +793,21 @@ fn convert_effect(
     if let Some(payload) =
         effect.downcast_ref::<compiler::effects::ReturnFromGraveyardToBattlefieldEffect>()
     {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::ReturnFromGraveyardToBattlefieldEffect::new(
-                payload.target.clone(),
-                payload.tapped,
-            ),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) =
         effect.downcast_ref::<compiler::effects::ReturnFromGraveyardToHandEffect>()
     {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::ReturnFromGraveyardToHandEffect::new(
-                payload.target.clone(),
-                payload.random,
-            ),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::PutOntoBattlefieldEffect>() {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::PutOntoBattlefieldEffect::new(
-                payload.target.clone(),
-                payload.tapped,
-                payload.controller.clone(),
-            ),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::ShuffleLibraryEffect>() {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::ShuffleLibraryEffect::new(payload.player.clone()),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::MayMoveToZoneEffect>() {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::MayMoveToZoneEffect::new(
-                payload.target.clone(),
-                payload.zone,
-                payload.decider.clone(),
-            ),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::ExileTopOfLibraryEffect>() {
         let mut converted = crate::effects::ExileTopOfLibraryEffect::new(
@@ -1045,31 +823,13 @@ fn convert_effect(
         return Ok(crate::effect::Effect::new(converted));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::LookAtTopCardsEffect>() {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::LookAtTopCardsEffect::new(
-                payload.player.clone(),
-                payload.count.clone(),
-                payload.tag.clone(),
-            ),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::ChooseCardNameEffect>() {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::ChooseCardNameEffect::new(
-                payload.chooser.clone(),
-                payload.filter.clone(),
-                payload.tag.clone(),
-            ),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::ControlPlayerEffect>() {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::ControlPlayerEffect::new(
-                payload.player.clone(),
-                convert_player_control_start(payload.start),
-                convert_player_control_duration(payload.duration),
-            ),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::GrantEffect>() {
         return Ok(crate::effect::Effect::new(
@@ -1090,24 +850,16 @@ fn convert_effect(
         ));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::MoveAllCountersEffect>() {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::MoveAllCountersEffect::new(payload.from.clone(), payload.to.clone()),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::ProliferateEffect>() {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::ProliferateEffect::new(payload.count.clone()),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::MonstrosityEffect>() {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::MonstrosityEffect::new(payload.n.clone()),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::TransformEffect>() {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::TransformEffect::new(payload.target.clone()),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::RepeatEffectsEffect>() {
         return Ok(crate::effect::Effect::new(
@@ -1139,13 +891,7 @@ fn convert_effect(
     if let Some(payload) =
         effect.downcast_ref::<compiler::effects::RearrangeLookedCardsInLibraryEffect>()
     {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::RearrangeLookedCardsInLibraryEffect::new(
-                payload.tag.clone(),
-                payload.chooser.clone(),
-                payload.count,
-            ),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::ChoosePlayerEffect>() {
         let mut converted = crate::effects::ChoosePlayerEffect::new(
@@ -1305,16 +1051,7 @@ fn convert_effect(
         ));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::ChooseNewTargetsEffect>() {
-        let converted = if let Some(chooser) = &payload.chooser {
-            crate::effects::ChooseNewTargetsEffect::new_for_player(
-                payload.from_effect,
-                payload.may,
-                chooser.clone(),
-            )
-        } else {
-            crate::effects::ChooseNewTargetsEffect::new(payload.from_effect, payload.may)
-        };
-        return Ok(crate::effect::Effect::new(converted));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::RegisterZoneReplacementEffect>()
     {
@@ -1330,42 +1067,13 @@ fn convert_effect(
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::ExileInsteadOfGraveyardEffect>()
     {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::ExileInsteadOfGraveyardEffect::new(payload.player.clone()),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::WinTheGameEffect>() {
-        return Ok(crate::effect::Effect::new(
-            crate::effects::WinTheGameEffect::new(payload.player.clone()),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
     if let Some(payload) = effect.downcast_ref::<compiler::effects::ConsultTopOfLibraryEffect>() {
-        let mode = match payload.mode {
-            compiler::effects::consult_helpers::LibraryConsultMode::Reveal => {
-                crate::effects::consult_helpers::LibraryConsultMode::Reveal
-            }
-            compiler::effects::consult_helpers::LibraryConsultMode::Exile => {
-                crate::effects::consult_helpers::LibraryConsultMode::Exile
-            }
-        };
-        let stop_rule = match &payload.stop_rule {
-            compiler::effects::ConsultTopOfLibraryStopRule::FirstMatch => {
-                crate::effects::ConsultTopOfLibraryStopRule::FirstMatch
-            }
-            compiler::effects::ConsultTopOfLibraryStopRule::MatchCount(value) => {
-                crate::effects::ConsultTopOfLibraryStopRule::MatchCount(value.clone())
-            }
-        };
-        return Ok(crate::effect::Effect::new(
-            crate::effects::ConsultTopOfLibraryEffect::new(
-                payload.player.clone(),
-                mode,
-                payload.filter.clone(),
-                stop_rule,
-                payload.all_tag.clone(),
-                payload.match_tag.clone(),
-            ),
-        ));
+        return Ok(crate::effect::Effect::new(payload.clone()));
     }
 
     macro_rules! clone_direct {
@@ -1446,37 +1154,17 @@ fn convert_effect(
 fn convert_resolution_program(
     program: compiler::resolution::ResolutionProgram,
 ) -> Result<crate::resolution::ResolutionProgram, CompilerIntegrationError> {
-    Ok(crate::resolution::ResolutionProgram::new(
-        program
-            .segments
-            .into_iter()
-            .map(|segment| {
-                let default_effects = segment
-                    .default_effects
-                    .into_iter()
-                    .map(convert_effect)
-                    .collect::<Result<Vec<_>, _>>()?;
-                Ok(crate::resolution::ResolutionSegment {
-                    default_effects: remove_redundant_target_only_effects(default_effects),
-                    self_replacements: segment
-                        .self_replacements
-                        .into_iter()
-                        .map(|branch| {
-                            let replacement_effects = branch
-                                .replacement_effects
-                                .into_iter()
-                                .map(convert_effect)
-                                .collect::<Result<Vec<_>, _>>()?;
-                            Ok(crate::resolution::SelfReplacementBranch::new(
-                                branch.condition,
-                                remove_redundant_target_only_effects(replacement_effects),
-                            ))
-                        })
-                        .collect::<Result<Vec<_>, CompilerIntegrationError>>()?,
-                })
-            })
-            .collect::<Result<Vec<_>, CompilerIntegrationError>>()?,
-    ))
+    let mut mapped = program.try_map_effects(convert_effect)?;
+    for segment in &mut mapped.segments {
+        segment.default_effects =
+            remove_redundant_target_only_effects(std::mem::take(&mut segment.default_effects));
+        for branch in &mut segment.self_replacements {
+            branch.replacement_effects = remove_redundant_target_only_effects(std::mem::take(
+                &mut branch.replacement_effects,
+            ));
+        }
+    }
+    Ok(crate::resolution::ResolutionProgram::new(mapped.segments))
 }
 
 fn remove_redundant_target_only_effects(
@@ -1599,521 +1287,21 @@ fn convert_optional_cost(
 fn convert_alternative_cast(
     method: compiler::alternative_cast::AlternativeCastingMethod,
 ) -> Result<crate::alternative_cast::AlternativeCastingMethod, CompilerIntegrationError> {
-    use crate::alternative_cast::AlternativeCastingMethod as Dst;
-    use compiler::alternative_cast::AlternativeCastingMethod as Src;
-
-    Ok(match method {
-        Src::Dash { cost } => Dst::Dash { cost },
-        Src::Warp { cost } => Dst::Warp { cost },
-        Src::Plot { cost } => Dst::Plot { cost },
-        Src::Suspend { cost, time } => Dst::Suspend { cost, time },
-        Src::Disturb { cost } => Dst::Disturb { cost },
-        Src::Overload { cost, effects } => Dst::Overload {
-            cost,
-            effects: effects
-                .into_iter()
-                .map(convert_effect)
-                .collect::<Result<Vec<_>, _>>()?,
-        },
-        Src::Flashback { total_cost } => Dst::Flashback {
-            total_cost: convert_total_cost(total_cost)?,
-        },
-        Src::Harmonize { total_cost } => Dst::Harmonize {
-            total_cost: convert_total_cost(total_cost)?,
-        },
-        Src::JumpStart => Dst::JumpStart,
-        Src::Escape { cost, exile_count } => Dst::Escape { cost, exile_count },
-        Src::Madness { cost } => Dst::Madness { cost },
-        Src::Miracle { cost } => Dst::Miracle { cost },
-        Src::Foretell { cost } => Dst::Foretell { cost },
-        Src::Composed {
-            name,
-            total_cost,
-            condition,
-        } => Dst::Composed {
-            name,
-            total_cost: convert_total_cost(total_cost)?,
-            condition,
-        },
-        Src::MindbreakTrap {
-            name,
-            cost,
-            condition,
-        } => Dst::MindbreakTrap {
-            name,
-            cost,
-            condition,
-        },
-        Src::Bestow { total_cost } => Dst::Bestow {
-            total_cost: convert_total_cost(total_cost)?,
-        },
-    })
+    method.try_map(convert_effect, convert_cost)
 }
 
-fn convert_static_ability(
+fn runtime_static_ability_model(
+    ability: compiler::static_abilities::StaticAbility,
+) -> Result<crate::static_abilities::CompiledStaticAbility, CompilerIntegrationError> {
+    ability.try_map(convert_trigger, convert_effect, convert_cost)
+}
+
+fn runtime_static_ability(
     ability: compiler::static_abilities::StaticAbility,
 ) -> Result<crate::static_abilities::StaticAbility, CompilerIntegrationError> {
-    match ability.payload {
-        compiler::static_abilities::StaticAbilityPayload::Anthem(anthem) => match anthem.filter {
-            Some(filter) => {
-                let mut converted = crate::static_abilities::Anthem::new(filter, 0, 0)
-                    .with_values(anthem.power, anthem.toughness);
-                if let Some(condition) = anthem.condition {
-                    converted = converted.with_condition(condition);
-                }
-                Ok(crate::static_abilities::StaticAbility::new(converted))
-            }
-            None => {
-                let mut converted = crate::static_abilities::Anthem::for_source(0, 0)
-                    .with_values(anthem.power, anthem.toughness);
-                if let Some(condition) = anthem.condition {
-                    converted = converted.with_condition(condition);
-                }
-                Ok(crate::static_abilities::StaticAbility::new(converted))
-            }
-        },
-        compiler::static_abilities::StaticAbilityPayload::AttachedAbilityGrant(grant) => {
-            let grant = *grant;
-            let mut converted = crate::static_abilities::AttachedAbilityGrant::new(
-                convert_ability(grant.ability)?,
-                grant.display,
-            );
-            if let Some(condition) = grant.condition {
-                converted = converted.with_condition(condition);
-            }
-            Ok(crate::static_abilities::StaticAbility::new(converted))
-        }
-        compiler::static_abilities::StaticAbilityPayload::Conditional { ability, condition } => {
-            let converted = convert_static_ability(*ability)?;
-            Ok(converted.with_condition(condition.clone()).unwrap_or_else(|| {
-                crate::static_abilities::StaticAbility::new(
-                    crate::static_abilities::GrantAbility::source(converted)
-                        .with_condition(condition),
-                )
-            }))
-        }
-        compiler::static_abilities::StaticAbilityPayload::GrantAbility(grant) => {
-            let grant = *grant;
-            let mut converted = crate::static_abilities::GrantAbility::new(
-                grant.filter,
-                convert_removed_ability(grant.ability)?,
-            );
-            if let Some(condition) = grant.condition {
-                converted = converted.with_condition(condition);
-            }
-            Ok(crate::static_abilities::StaticAbility::new(converted))
-        }
-        compiler::static_abilities::StaticAbilityPayload::GrantObjectAbilityForFilter(grant) => {
-            let grant = *grant;
-            let mut converted = crate::static_abilities::GrantObjectAbilityForFilter::new(
-                grant.filter,
-                convert_ability(grant.ability)?,
-                grant.display,
-            );
-            if let Some(condition) = grant.condition {
-                converted = converted.with_condition(condition);
-            }
-            Ok(crate::static_abilities::StaticAbility::new(converted))
-        }
-        compiler::static_abilities::StaticAbilityPayload::CopyActivatedAbilities(copy) => {
-            let converted = crate::static_abilities::CopyActivatedAbilities::new(copy.filter)
-                .with_exclude_source_name(copy.exclude_source_name);
-            Ok(crate::static_abilities::StaticAbility::copy_activated_abilities(
-                converted,
-            ))
-        }
-        compiler::static_abilities::StaticAbilityPayload::CostReduction(reduction) => {
-            Ok(crate::static_abilities::StaticAbility::new(
-                crate::static_abilities::CostReduction::new(reduction.filter, reduction.amount),
-            ))
-        }
-        compiler::static_abilities::StaticAbilityPayload::CostReductionManaCost(reduction) => {
-            Ok(crate::static_abilities::StaticAbility::new(
-                crate::static_abilities::CostReductionManaCost::new(
-                    reduction.filter,
-                    reduction.cost,
-                ),
-            ))
-        }
-        compiler::static_abilities::StaticAbilityPayload::CostIncrease(increase) => {
-            Ok(crate::static_abilities::StaticAbility::new(
-                crate::static_abilities::CostIncrease::new(increase.filter, increase.amount),
-            ))
-        }
-        compiler::static_abilities::StaticAbilityPayload::CostIncreaseManaCost(increase) => {
-            Ok(crate::static_abilities::StaticAbility::new(
-                crate::static_abilities::CostIncreaseManaCost::new(increase.filter, increase.cost),
-            ))
-        }
-        compiler::static_abilities::StaticAbilityPayload::ThisSpellCostReduction(reduction) => {
-            Ok(crate::static_abilities::StaticAbility::new(
-                crate::static_abilities::ThisSpellCostReduction::new(
-                    reduction.amount,
-                    reduction.condition,
-                ),
-            ))
-        }
-        compiler::static_abilities::StaticAbilityPayload::ThisSpellCostReductionManaCost(
-            reduction,
-        ) => Ok(crate::static_abilities::StaticAbility::new(
-            crate::static_abilities::ThisSpellCostReductionManaCost::new(
-                reduction.cost,
-                reduction.condition,
-            ),
-        )),
-        compiler::static_abilities::StaticAbilityPayload::LevelAbility(level) => {
-            let level = *level;
-            let abilities = level
-                .abilities
-                .into_iter()
-                .map(convert_static_ability)
-                .collect::<Result<Vec<_>, _>>()?;
-            Ok(crate::static_abilities::StaticAbility::with_level_abilities(
-                vec![crate::ability::LevelAbility {
-                    min_level: level.min_level,
-                    max_level: level.max_level,
-                    power_toughness: level.power_toughness,
-                    abilities,
-                }],
-            ))
-        }
-        compiler::static_abilities::StaticAbilityPayload::None => {
-            crate::static_abilities::StaticAbility::from_compiler_model_parts(
-                ability.id,
-                ability.label,
-            )
-            .map_err(|err| CompilerIntegrationError::UnsupportedStaticAbility {
-                detail: err.detail,
-            })
-        }
-        compiler::static_abilities::StaticAbilityPayload::Protection(from) => {
-            Ok(crate::static_abilities::StaticAbility::protection(from))
-        }
-        compiler::static_abilities::StaticAbilityPayload::RuleRestriction {
-            restriction,
-            display,
-        } => Ok(crate::static_abilities::StaticAbility::restriction(
-            restriction,
-            display,
-        )),
-        compiler::static_abilities::StaticAbilityPayload::Ward(cost) => {
-            Ok(crate::static_abilities::StaticAbility::ward(convert_total_cost(cost)?))
-        }
-        compiler::static_abilities::StaticAbilityPayload::PregameAction { kind, text } => Ok(
-            crate::static_abilities::StaticAbility::pregame_action(kind, text),
-        ),
-        compiler::static_abilities::StaticAbilityPayload::CanBlockAdditionalCreatureEachCombat(
-            additional,
-        ) => Ok(
-            crate::static_abilities::StaticAbility::can_block_additional_creature_each_combat(
-                additional,
-            ),
-        ),
-        compiler::static_abilities::StaticAbilityPayload::ExertAttack {
-            only_if_not_exerted_this_turn,
-            linked_trigger,
-            display,
-        } => {
-            let linked_trigger = linked_trigger
-                .map(|triggered| {
-                    Ok::<_, CompilerIntegrationError>(crate::ability::TriggeredAbility {
-                        trigger: convert_trigger(triggered.trigger)?,
-                        effects: convert_resolution_program(triggered.effects)?,
-                        choices: triggered.choices,
-                        intervening_if: triggered.intervening_if,
-                    })
-                })
-                .transpose()?;
-            Ok(crate::static_abilities::StaticAbility::exert_attack(
-                only_if_not_exerted_this_turn,
-                linked_trigger,
-                display,
-            ))
-        }
-        compiler::static_abilities::StaticAbilityPayload::EquipmentGrant(abilities) => {
-            Ok(crate::static_abilities::StaticAbility::equipment_grant(
-                abilities
-                    .into_iter()
-                    .map(convert_static_ability)
-                    .collect::<Result<Vec<_>, _>>()?,
-            ))
-        }
-        compiler::static_abilities::StaticAbilityPayload::RemoveAllAbilities(filter) => {
-            Ok(crate::static_abilities::StaticAbility::remove_all_abilities(filter))
-        }
-        compiler::static_abilities::StaticAbilityPayload::RemoveAllAbilitiesExceptMana(filter) => {
-            Ok(crate::static_abilities::StaticAbility::remove_all_abilities_except_mana(filter))
-        }
-        compiler::static_abilities::StaticAbilityPayload::SetBasePowerToughness {
-            filter,
-            power,
-            toughness,
-        } => Ok(
-            crate::static_abilities::StaticAbility::set_base_power_toughness(
-                filter, power, toughness,
-            ),
-        ),
-        compiler::static_abilities::StaticAbilityPayload::AddCardTypes { filter, card_types } => {
-            Ok(crate::static_abilities::StaticAbility::add_card_types(
-                filter, card_types,
-            ))
-        }
-        compiler::static_abilities::StaticAbilityPayload::SetCardTypes { filter, card_types } => {
-            Ok(crate::static_abilities::StaticAbility::set_card_types(
-                filter, card_types,
-            ))
-        }
-        compiler::static_abilities::StaticAbilityPayload::AddSubtypes { filter, subtypes } => {
-            Ok(crate::static_abilities::StaticAbility::add_subtypes(
-                filter, subtypes,
-            ))
-        }
-        compiler::static_abilities::StaticAbilityPayload::AddAllSubtypesOfFamily {
-            filter,
-            family,
-        } => Ok(
-            crate::static_abilities::StaticAbility::add_all_subtypes_of_family(filter, family),
-        ),
-        compiler::static_abilities::StaticAbilityPayload::SetCreatureSubtypes {
-            filter,
-            subtypes,
-        } => Ok(crate::static_abilities::StaticAbility::set_creature_subtypes(
-            filter,
-            subtypes,
-        )),
-        compiler::static_abilities::StaticAbilityPayload::MakeColorless(filter) => {
-            Ok(crate::static_abilities::StaticAbility::make_colorless(filter))
-        }
-        compiler::static_abilities::StaticAbilityPayload::CostIncreasePerTargetBeyondFirst(
-            amount,
-        ) => Ok(
-            crate::static_abilities::StaticAbility::cost_increase_per_target_beyond_first(amount),
-        ),
-        compiler::static_abilities::StaticAbilityPayload::MinimumSpellTotalMana(amount) => {
-            Ok(crate::static_abilities::StaticAbility::minimum_spell_total_mana(
-                amount,
-            ))
-        }
-        compiler::static_abilities::StaticAbilityPayload::ActivatedAbilityCostReduction {
-            filter,
-            reduction,
-            condition,
-            per_matching_objects,
-            minimum_total_mana,
-        } => match (condition, per_matching_objects) {
-            (Some(condition), None) => Ok(
-                crate::static_abilities::StaticAbility::reduce_activated_ability_costs_if_targets(
-                    filter,
-                    reduction,
-                    convert_activated_ability_cost_condition(condition),
-                    minimum_total_mana,
-                ),
-            ),
-            (None, Some(per_matching_objects)) => Ok(
-                crate::static_abilities::StaticAbility::reduce_activated_ability_costs_for_each(
-                    filter,
-                    reduction,
-                    per_matching_objects,
-                    minimum_total_mana,
-                ),
-            ),
-            (None, None) => Ok(
-                crate::static_abilities::StaticAbility::reduce_activated_ability_costs(
-                    filter,
-                    reduction,
-                    minimum_total_mana,
-                ),
-            ),
-            (Some(_), Some(_)) => Err(CompilerIntegrationError::UnsupportedStaticAbility {
-                detail: "activated ability cost reduction cannot have both target and per-object conditions".to_string(),
-            }),
-        },
-        compiler::static_abilities::StaticAbilityPayload::ActivatedAbilityCostIncrease {
-            filter,
-            increase,
-        } => Ok(
-            crate::static_abilities::StaticAbility::increase_activated_ability_costs(
-                filter,
-                convert_total_cost(increase)?,
-            ),
-        ),
-        compiler::static_abilities::StaticAbilityPayload::ChoosePlayerAsEnters(display) => {
-            Ok(crate::static_abilities::StaticAbility::choose_player_as_enters(display))
-        }
-        compiler::static_abilities::StaticAbilityPayload::ChooseCreatureTypeAsEnters(display) => {
-            Ok(crate::static_abilities::StaticAbility::choose_creature_type_as_enters(display))
-        }
-        compiler::static_abilities::StaticAbilityPayload::EnterAsCopyAsEnters {
-            spec,
-            display,
-        } => Ok(crate::static_abilities::StaticAbility::with_enter_as_copy_as_enters(
-            convert_enter_as_copy_spec(spec)?,
-            display,
-        )),
-        compiler::static_abilities::StaticAbilityPayload::DoubleDamageFromSourcesYouControlOfChosenType(
-            display,
-        ) => Ok(
-            crate::static_abilities::StaticAbility::double_damage_from_sources_you_control_of_chosen_type(
-                display,
-            ),
-        ),
-        compiler::static_abilities::StaticAbilityPayload::AdditionalLandPlays(count) => {
-            Ok(crate::static_abilities::StaticAbility::additional_land_plays(count))
-        }
-        compiler::static_abilities::StaticAbilityPayload::RevealFirstCardYouDrawEachTurn {
-            optional,
-            your_turns_only,
-        } => Ok(
-            crate::static_abilities::StaticAbility::reveal_first_card_you_draw_each_turn(
-                optional,
-                your_turns_only,
-            ),
-        ),
-        compiler::static_abilities::StaticAbilityPayload::ExileToCounteredExileInsteadOfGraveyard {
-            player,
-            counter_type,
-        } => Ok(
-            crate::static_abilities::StaticAbility::exile_to_countered_exile_instead_of_graveyard(
-                player,
-                counter_type,
-            ),
-        ),
-        compiler::static_abilities::StaticAbilityPayload::CharacteristicDefiningPt {
-            power,
-            toughness,
-        } => Ok(crate::static_abilities::StaticAbility::characteristic_defining_pt(
-            power, toughness,
-        )),
-        compiler::static_abilities::StaticAbilityPayload::DiscardOrRedirectReplacement {
-            filter,
-            redirect_zone,
-        } => Ok(
-            crate::static_abilities::StaticAbility::discard_or_redirect_replacement(
-                filter,
-                redirect_zone,
-            ),
-        ),
-        compiler::static_abilities::StaticAbilityPayload::PayLifeOrEnterTapped(value) => {
-            Ok(crate::static_abilities::StaticAbility::pay_life_or_enter_tapped(value))
-        }
-        compiler::static_abilities::StaticAbilityPayload::ManaSpendPermission {
-            permission,
-            display,
-        } => Ok(crate::static_abilities::StaticAbility::mana_spend_permission(
-            permission,
-            display,
-        )),
-        compiler::static_abilities::StaticAbilityPayload::Landwalk(kind) => Ok(match kind {
-            compiler::static_abilities::LandwalkKind::Subtype {
-                subtype,
-                snow: false,
-            } => crate::static_abilities::StaticAbility::landwalk(subtype),
-            compiler::static_abilities::LandwalkKind::Subtype {
-                subtype,
-                snow: true,
-            } => crate::static_abilities::StaticAbility::snow_landwalk(subtype),
-            compiler::static_abilities::LandwalkKind::AnyLand => {
-                crate::static_abilities::StaticAbility::any_landwalk()
-            }
-            compiler::static_abilities::LandwalkKind::NonbasicLand => {
-                crate::static_abilities::StaticAbility::nonbasic_landwalk()
-            }
-            compiler::static_abilities::LandwalkKind::ArtifactLand => {
-                crate::static_abilities::StaticAbility::artifact_landwalk()
-            }
-        }),
-        compiler::static_abilities::StaticAbilityPayload::Bloodthirst(amount) => {
-            Ok(crate::static_abilities::StaticAbility::bloodthirst(amount))
-        }
-        compiler::static_abilities::StaticAbilityPayload::CantAttackYouUnlessControllerPaysPerAttacker(
-            amount,
-        ) => Ok(
-            crate::static_abilities::StaticAbility::cant_attack_you_unless_controller_pays_per_attacker(
-                amount,
-            ),
-        ),
-        compiler::static_abilities::StaticAbilityPayload::CantAttackYouUnlessControllerPaysPerAttackerBasicLandTypesAmongLandsYouControl => {
-            Ok(crate::static_abilities::StaticAbility::cant_attack_you_unless_controller_pays_per_attacker_basic_land_types_among_lands_you_control())
-        }
-        compiler::static_abilities::StaticAbilityPayload::Grants(spec) => {
-            Ok(crate::static_abilities::StaticAbility::grants(convert_grant_spec(*spec)?))
-        }
-        compiler::static_abilities::StaticAbilityPayload::EntersTappedUnlessCondition {
-            condition,
-            display,
-        } => Ok(crate::static_abilities::StaticAbility::enters_tapped_unless_condition(
-            condition,
-            display,
-        )),
-        compiler::static_abilities::StaticAbilityPayload::EntersWithCountersIfCondition {
-            counter,
-            count,
-            condition,
-            display,
-        } => Ok(
-            crate::static_abilities::StaticAbility::enters_with_counters_if_condition(
-                counter,
-                count,
-                condition,
-                display,
-            ),
-        ),
-        compiler::static_abilities::StaticAbilityPayload::EntersWithCountersValue {
-            counter,
-            count,
-        } => Ok(crate::static_abilities::StaticAbility::enters_with_counters_value(
-            counter, count,
-        )),
-        compiler::static_abilities::StaticAbilityPayload::EntersTappedForFilter(filter) => {
-            Ok(crate::static_abilities::StaticAbility::enters_tapped_for_filter(filter))
-        }
-        compiler::static_abilities::StaticAbilityPayload::EntersUntappedForFilter(filter) => {
-            Ok(crate::static_abilities::StaticAbility::enters_untapped_for_filter(filter))
-        }
-        compiler::static_abilities::StaticAbilityPayload::EntersWithCountersAndSubtypesForFilter {
-            filter,
-            counter,
-            count,
-            subtypes,
-        } => Ok(
-            crate::static_abilities::StaticAbility::enters_with_counters_and_subtypes_for_filter(
-                filter,
-                counter,
-                count,
-                subtypes,
-            ),
-        ),
-    }
-}
-
-fn convert_activated_ability_cost_condition(
-    condition: compiler::static_abilities::ActivatedAbilityCostCondition,
-) -> crate::static_abilities::ActivatedAbilityCostCondition {
-    match condition {
-        compiler::static_abilities::ActivatedAbilityCostCondition::TargetsExactly {
-            count,
-            filter,
-        } => {
-            crate::static_abilities::ActivatedAbilityCostCondition::TargetsExactly { count, filter }
-        }
-    }
-}
-
-fn convert_enter_as_copy_spec(
-    spec: compiler::static_abilities::EnterAsCopyAsEntersSpec,
-) -> Result<crate::static_abilities::EnterAsCopyAsEntersSpec, CompilerIntegrationError> {
-    Ok(crate::static_abilities::EnterAsCopyAsEntersSpec {
-        filter: spec.filter,
-        may: spec.may,
-        enters_tapped_if_chosen: spec.enters_tapped_if_chosen,
-        added_card_types: spec.added_card_types,
-        added_subtypes: spec.added_subtypes,
-        added_abilities: spec
-            .added_abilities
-            .into_iter()
-            .map(convert_ability)
-            .collect::<Result<Vec<_>, _>>()?,
-    })
+    Ok(crate::static_abilities::StaticAbility::from_model(
+        runtime_static_ability_model(ability)?,
+    ))
 }
 
 fn convert_trigger(
@@ -2129,7 +1317,7 @@ fn convert_ability(
     let source_text = ability.text.clone();
     let mut converted = match ability.kind {
         compiler::ability::AbilityKind::Static(static_ability) => {
-            crate::ability::Ability::static_ability(convert_static_ability(static_ability)?)
+            crate::ability::Ability::static_ability(runtime_static_ability(static_ability)?)
         }
         compiler::ability::AbilityKind::Triggered(triggered) => {
             let mut out = crate::ability::Ability::triggered(

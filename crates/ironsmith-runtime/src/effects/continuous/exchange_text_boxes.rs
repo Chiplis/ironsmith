@@ -8,44 +8,34 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
 use crate::types::CardType;
+pub use ironsmith_core::ExchangeTextBoxesEffect;
 
 /// Effect that exchanges the text boxes of exactly two creatures.
-#[derive(Debug, Clone, PartialEq)]
-pub struct ExchangeTextBoxesEffect {
-    pub target: ChooseSpec,
+fn is_current_creature(game: &GameState, object_id: crate::ids::ObjectId) -> bool {
+    let Some(object) = game.object(object_id) else {
+        return false;
+    };
+    game.calculated_characteristics(object_id)
+        .map(|chars| chars.card_types.contains(&CardType::Creature))
+        .unwrap_or_else(|| object.card_types.contains(&CardType::Creature))
 }
 
-impl ExchangeTextBoxesEffect {
-    pub fn new(target: ChooseSpec) -> Self {
-        Self { target }
-    }
+fn current_text_box_overlay(
+    game: &GameState,
+    object_id: crate::ids::ObjectId,
+) -> Result<TextBoxOverlay, ExecutionError> {
+    let effects: Vec<_> = game.effect_store.continuous_effects.effects().to_vec();
+    let chars = text_box_characteristics_with_effects(
+        object_id,
+        game.objects_map(),
+        &effects,
+        &game.battlefield,
+        &game.commanders,
+        game,
+    )
+    .ok_or(ExecutionError::InvalidTarget)?;
 
-    fn is_current_creature(game: &GameState, object_id: crate::ids::ObjectId) -> bool {
-        let Some(object) = game.object(object_id) else {
-            return false;
-        };
-        game.calculated_characteristics(object_id)
-            .map(|chars| chars.card_types.contains(&CardType::Creature))
-            .unwrap_or_else(|| object.card_types.contains(&CardType::Creature))
-    }
-
-    fn current_text_box_overlay(
-        game: &GameState,
-        object_id: crate::ids::ObjectId,
-    ) -> Result<TextBoxOverlay, ExecutionError> {
-        let effects: Vec<_> = game.effect_store.continuous_effects.effects().to_vec();
-        let chars = text_box_characteristics_with_effects(
-            object_id,
-            game.objects_map(),
-            &effects,
-            &game.battlefield,
-            &game.commanders,
-            game,
-        )
-        .ok_or(ExecutionError::InvalidTarget)?;
-
-        Ok(TextBoxOverlay::new(chars.oracle_text, chars.abilities))
-    }
+    Ok(TextBoxOverlay::new(chars.oracle_text, chars.abilities))
 }
 
 impl EffectExecutor for ExchangeTextBoxesEffect {
@@ -62,14 +52,14 @@ impl EffectExecutor for ExchangeTextBoxesEffect {
         let first = resolved[0];
         let second = resolved[1];
         if first == second
-            || !Self::is_current_creature(game, first)
-            || !Self::is_current_creature(game, second)
+            || !is_current_creature(game, first)
+            || !is_current_creature(game, second)
         {
             return Ok(EffectOutcome::target_invalid());
         }
 
-        let first_overlay = Self::current_text_box_overlay(game, first)?;
-        let second_overlay = Self::current_text_box_overlay(game, second)?;
+        let first_overlay = current_text_box_overlay(game, first)?;
+        let second_overlay = current_text_box_overlay(game, second)?;
 
         game.effect_store.continuous_effects.add_effect(
             crate::continuous::ContinuousEffect::from_resolution(

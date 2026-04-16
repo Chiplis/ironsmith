@@ -1279,25 +1279,7 @@ impl TurnState {
     }
 }
 
-/// When a player-control effect starts.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PlayerControlStart {
-    /// Starts immediately when the effect resolves.
-    Immediate,
-    /// Starts at the beginning of the target player's next turn.
-    NextTurn,
-}
-
-/// How long a player-control effect lasts.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PlayerControlDuration {
-    /// Until end of the current turn.
-    UntilEndOfTurn,
-    /// Until the source leaves the battlefield.
-    UntilSourceLeaves,
-    /// No duration limit.
-    Forever,
-}
+pub use ironsmith_core::{PlayerControlDuration, PlayerControlStart};
 
 /// An effect that lets a player choose attackers and/or blockers this turn.
 #[derive(Debug, Clone)]

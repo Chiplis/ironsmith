@@ -6,42 +6,7 @@ use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
 use crate::tag::TagKey;
 use crate::target::{ObjectFilter, PlayerFilter};
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum ConsultTopOfLibraryStopRule {
-    FirstMatch,
-    MatchCount(Value),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct ConsultTopOfLibraryEffect {
-    pub player: PlayerFilter,
-    pub mode: LibraryConsultMode,
-    pub filter: ObjectFilter,
-    pub stop_rule: ConsultTopOfLibraryStopRule,
-    pub all_tag: TagKey,
-    pub match_tag: TagKey,
-}
-
-impl ConsultTopOfLibraryEffect {
-    pub fn new(
-        player: PlayerFilter,
-        mode: LibraryConsultMode,
-        filter: ObjectFilter,
-        stop_rule: ConsultTopOfLibraryStopRule,
-        all_tag: impl Into<TagKey>,
-        match_tag: impl Into<TagKey>,
-    ) -> Self {
-        Self {
-            player,
-            mode,
-            filter,
-            stop_rule,
-            all_tag: all_tag.into(),
-            match_tag: match_tag.into(),
-        }
-    }
-}
+pub use ironsmith_core::{ConsultTopOfLibraryEffect, ConsultTopOfLibraryStopRule};
 
 impl EffectExecutor for ConsultTopOfLibraryEffect {
     fn execute(

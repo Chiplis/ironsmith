@@ -11,6 +11,7 @@ use crate::target::ChooseSpec;
 use crate::triggers::TriggerEvent;
 use crate::types::CardType;
 use crate::zone::Zone;
+pub use ironsmith_core::TransformEffect;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TransformLikeAction {
@@ -61,29 +62,6 @@ impl TransformLikeAction {
 /// // Transform this permanent (the source)
 /// let effect = TransformEffect::source();
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct TransformEffect {
-    /// The targeting specification.
-    pub target: ChooseSpec,
-}
-
-impl TransformEffect {
-    /// Create a new transform effect.
-    pub fn new(target: ChooseSpec) -> Self {
-        Self { target }
-    }
-
-    /// Create an effect that transforms the source permanent.
-    pub fn source() -> Self {
-        Self::new(ChooseSpec::Source)
-    }
-
-    /// Create an effect that transforms target permanent.
-    pub fn target_permanent() -> Self {
-        Self::new(ChooseSpec::permanent())
-    }
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct ConvertEffect {
     /// The targeting specification.

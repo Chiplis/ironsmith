@@ -6,25 +6,11 @@ use crate::effects::helpers::resolve_single_object_for_effect;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
+pub use ironsmith_core::FlipEffect;
 
 /// Effect that flips a flip-card permanent to its other face.
 ///
 /// This uses `Object.other_face` to find the destination definition.
-#[derive(Debug, Clone, PartialEq)]
-pub struct FlipEffect {
-    pub target: ChooseSpec,
-}
-
-impl FlipEffect {
-    pub fn new(target: ChooseSpec) -> Self {
-        Self { target }
-    }
-
-    pub fn source() -> Self {
-        Self::new(ChooseSpec::Source)
-    }
-}
-
 impl EffectExecutor for FlipEffect {
     fn execute(
         &self,

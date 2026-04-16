@@ -26,9 +26,10 @@ use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_single_object_for_effect;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
-use crate::grant::{GrantDuration, Grantable};
+use crate::grant::{DerivedAlternativeCastRuntimeExt, GrantDuration, Grantable};
 use crate::grant_registry::GrantSource;
 use crate::target::ChooseSpec;
+pub type GrantEffect = ironsmith_core::GrantEffect<Grantable, GrantDuration>;
 
 /// Effect that grants something to a target card.
 ///
@@ -39,27 +40,6 @@ use crate::target::ChooseSpec;
 /// - Derived alternative casting methods that use the granted card's mana cost
 ///
 /// The grant lasts for the specified duration (typically until end of turn).
-#[derive(Debug, Clone, PartialEq)]
-pub struct GrantEffect {
-    /// What to grant (ability or alternative casting method).
-    pub grantable: Grantable,
-    /// Target specification for the card to grant to.
-    pub target: ChooseSpec,
-    /// How long the grant lasts.
-    pub duration: GrantDuration,
-}
-
-impl GrantEffect {
-    /// Create a new grant effect.
-    pub fn new(grantable: Grantable, target: ChooseSpec, duration: GrantDuration) -> Self {
-        Self {
-            grantable,
-            target,
-            duration,
-        }
-    }
-}
-
 impl EffectExecutor for GrantEffect {
     fn execute(
         &self,
@@ -79,6 +59,11 @@ impl EffectExecutor for GrantEffect {
         let expires = match self.duration {
             GrantDuration::UntilEndOfTurn => game.turn.turn_number,
             GrantDuration::Forever => u32::MAX,
+            GrantDuration::UntilYourNextTurnEnd => {
+                return Err(ExecutionError::Impossible(
+                    "grant duration until your next turn is not implemented".to_string(),
+                ));
+            }
         };
 
         let source_id = ctx.source;

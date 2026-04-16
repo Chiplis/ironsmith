@@ -7,6 +7,7 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::object::Object;
 use crate::zone::Zone;
+pub type CreateEmblemEffect = ironsmith_core::CreateEmblemEffect<EmblemDescription>;
 
 /// Effect that creates an emblem for the controller.
 ///
@@ -26,19 +27,6 @@ use crate::zone::Zone;
 ///     .with_ability(ability);
 /// let effect = CreateEmblemEffect::new(emblem);
 /// ```
-#[derive(Debug, Clone)]
-pub struct CreateEmblemEffect {
-    /// The emblem description.
-    pub emblem: EmblemDescription,
-}
-
-impl CreateEmblemEffect {
-    /// Create a new create emblem effect.
-    pub fn new(emblem: EmblemDescription) -> Self {
-        Self { emblem }
-    }
-}
-
 impl EffectExecutor for CreateEmblemEffect {
     fn execute(
         &self,

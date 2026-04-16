@@ -21,6 +21,7 @@ pub mod effect;
 pub mod effect_model;
 pub mod event_model;
 pub mod filter_model;
+pub mod grant_model;
 pub mod ids;
 pub mod mana;
 pub mod resolution_model;
@@ -58,39 +59,57 @@ pub use cost_model::{CostComponent, OptionalCost, OptionalCostsPaid, TotalCost};
 pub use counter::CounterType;
 pub use definition_model::CardDefinition;
 pub use effect::{
-    AddManaOfChosenColorEffect, AddManaOfImprintedColorsEffect, AddScaledManaEffect, AmassEffect,
-    ApplyContinuousEffect, BattlefieldController, BecomeBasicLandTypeChoiceEffect,
-    BecomeColorChoiceEffect, BecomeCreatureTypeChoiceEffect, ChoiceCount, ChooseModeEffect,
-    ChooseObjectsEffect, ChoosePlayerEffect, ChooseSpellCastHistoryEffect, ClashEffect,
-    ClashOpponentMode, ConditionalEffect, ConsultTopOfLibraryStopRule, CopyAttackTargetMode,
-    CopyPtAdjustment, CopySpellEffect, CounterEffect, CreateTokenCopyEffect, CreateTokenEffect,
-    CrewCostEffect, DealDamageEffect, DealDistributedDamageEffect, DelayedTriggerSpec,
-    DestroyEffect, DestroyNoRegenerationEffect, DiscardEffect, DrawCardsEffect,
+    AddManaEffect, AddManaFromCommanderColorIdentityEffect, AddManaOfAnyColorEffect,
+    AddManaOfAnyOneColorEffect, AddManaOfChosenColorEffect, AddManaOfImprintedColorsEffect,
+    AddScaledManaEffect, AmassEffect, ApplyContinuousEffect, AttachObjectsEffect, AttachToEffect,
+    BattlefieldController, BecomeBasicLandTypeChoiceEffect, BecomeColorChoiceEffect,
+    BecomeCreatureTypeChoiceEffect, BolsterEffect, CantEffect, CastSourceEffect, CastTaggedEffect,
+    ChoiceCount, ChooseCardNameEffect, ChooseCardTypeEffect, ChooseModeEffect,
+    ChooseNewTargetsEffect, ChooseObjectsEffect, ChoosePlayerEffect, ChooseSpellCastHistoryEffect,
+    CipherEffect, ClashEffect, ClashOpponentMode, CombatDamagePreventionTarget, ConditionalEffect,
+    ConsultTopOfLibraryEffect, ConsultTopOfLibraryStopRule, ControlPlayerEffect,
+    CopyAttackTargetMode, CopyPtAdjustment, CopySpellEffect, CounterEffect, CreateEmblemEffect,
+    CreateTokenCopyEffect, CreateTokenEffect, CrewCostEffect, DamageFilter, DealDamageEffect,
+    DealDistributedDamageEffect, DelayedTriggerSpec, DestroyEffect, DestroyNoRegenerationEffect,
+    DiscardEffect, DiscardHandEffect, DiscoverEffect, DrawCardsEffect,
     DrawForEachTaggedMatchingEffect, EachPlayerScryEffect, EarthbendEffect, EffectId, EffectMode,
-    EffectPredicate, ExchangeControlEffect, ExchangeValueOperand, ExecuteWithSourceEffect,
-    ExertCostEffect, ExileEffect, ExileTaggedWhenSourceLeavesEffect, ExileTopOfLibraryEffect,
-    ExileUntilDuration, ExileUntilEffect, ForEachControllerOfTaggedEffect,
+    EffectPredicate, EmitKeywordActionEffect, EnergyCountersEffect, ExchangeControlEffect,
+    ExchangeTextBoxesEffect, ExchangeValueOperand, ExecuteWithSourceEffect, ExertCostEffect,
+    ExileEffect, ExileInsteadOfGraveyardEffect, ExileTaggedWhenSourceLeavesEffect,
+    ExileTopOfLibraryEffect, ExileUntilDuration, ExileUntilEffect, ExtraTurnAfterNextTurnEffect,
+    ExtraTurnEffect, FlipEffect, ForEachControllerOfTaggedEffect,
     ForEachCounterKindPutOrRemoveEffect, ForEachObject, ForEachTaggedEffect,
-    ForEachTaggedPlayerEffect, ForPlayersEffect, GrantAbilitiesTargetEffect,
-    GrantNextSpellAbilityEffect, GrantNextSpellCostReductionEffect, GrantPlayTaggedDuration,
-    GrantPlayTaggedEffect, GrantTaggedSpellFreeCastUntilEndOfTurnEffect,
+    ForEachTaggedPlayerEffect, ForPlayersEffect, GainLifeEffect, GrantAbilitiesTargetEffect,
+    GrantBySpecEffect, GrantEffect, GrantNextSpellAbilityEffect, GrantNextSpellCostReductionEffect,
+    GrantPlayTaggedDuration, GrantPlayTaggedEffect, GrantTaggedSpellFreeCastUntilEndOfTurnEffect,
     GrantTaggedSpellLifeCostByManaValueEffect, HauntExileEffect, IfEffect, InvestigateEffect,
-    LocalRewriteEffect, LookAtHandEffect, LoseLifeEffect, MayEffect, MeldEffect, MillEffect,
-    ModifyPowerToughnessEffect, MoveToLibraryNthFromTopEffect, MoveToZoneEffect,
-    NewTargetRestriction, PayEnergyEffect, PayManaEffect, PhaseOutEffect, PlaceholderEffect,
-    PopulateEffect, PreventAllDamageToTargetEffect, PreventDamageEffect,
-    PreventNextTimeDamageEffect, PreventNextTimeDamageSource, PreventNextTimeDamageTarget,
-    PutCountersEffect, RedirectNextDamageToTargetEffect, RedirectNextTimeDamageSource,
-    RedirectNextTimeDamageToSourceEffect, ReflexiveTriggerEffect, RegisterZoneReplacementEffect,
+    LibraryBottomOrder, LibraryConsultMode, LocalRewriteEffect, LookAtHandEffect,
+    LookAtTopCardsEffect, LoseLifeEffect, LoseTheGameEffect, MayEffect, MayMoveToZoneEffect,
+    MeldEffect, MillEffect, ModifyPowerToughnessEffect, ModifyPowerToughnessForEachEffect,
+    MonstrosityEffect, MoveAllCountersEffect, MoveToLibraryNthFromTopEffect, MoveToZoneEffect,
+    NewTargetRestriction, NinjutsuCostEffect, NinjutsuEffect, PayEnergyEffect, PayManaEffect,
+    PhaseOutEffect, PlaceholderEffect, PlayerControlDuration, PlayerControlStart, PopulateEffect,
+    PreventAllCombatDamageEffect, PreventAllDamageEffect, PreventAllDamageToTargetEffect,
+    PreventDamageEffect, PreventNextTimeDamageEffect, PreventNextTimeDamageSource,
+    PreventNextTimeDamageTarget, PreventionTarget, ProliferateEffect, PutCountersEffect,
+    PutOntoBattlefieldEffect, PutTaggedRemainderOnLibraryBottomEffect,
+    RearrangeLookedCardsInLibraryEffect, RedirectNextDamageToTargetEffect,
+    RedirectNextTimeDamageSource, RedirectNextTimeDamageToSourceEffect, ReflexiveTriggerEffect,
+    RegenerateEffect, RegisterZoneReplacementEffect, RemoveAnyCountersAmongEffect,
     RemoveAnyCountersFromSourceEffect, RemoveCountersEffect, RemoveFromCombatEffect,
-    ReorderLibraryTopEffect, RepeatProcessPromptEffect, ReplacementApplyMode,
+    RemoveUpToAnyCountersEffect, RenownEffect, ReorderLibraryTopEffect, RepeatEffectsEffect,
+    RepeatProcessEffect, RepeatProcessPromptEffect, ReplacementApplyMode,
     RetainManaUntilEndOfTurnEffect, RetargetMode, RetargetStackObjectEffect,
-    ReturnAllToBattlefieldEffect, ReturnToHandEffect, RevealTaggedEffect, SacrificeEffect,
-    SacrificeTargetEffect, ScheduleDelayedTriggerEffect, ScheduleEffectsWhenTaggedLeavesEffect,
-    ScryEffect, SearchLibraryEffect, SearchLibrarySlot, SearchLibrarySlotsEffect,
-    SearchSelectionMode, SequenceEffect, SharedTypeConstraint, TagMatchingObjectsEffect,
-    TaggedEffect, TaggedLeavesAbilitySource, TapEffect, TargetOnlyEffect, UnlessActionEffect,
-    UnlessPaysEffect, UntapEffect, Until, VoteChoice, VoteEffect, VoteOption, WithIdEffect,
+    ReturnAllToBattlefieldEffect, ReturnFromGraveyardToBattlefieldEffect,
+    ReturnFromGraveyardToHandEffect, ReturnToHandEffect, RevealTaggedEffect, RevealTopEffect,
+    SacrificeEffect, SacrificePlayerEffect, SacrificeTargetEffect, ScheduleDelayedTriggerEffect,
+    ScheduleEffectsWhenTaggedLeavesEffect, ScryEffect, SearchLibraryEffect, SearchLibrarySlot,
+    SearchLibrarySlotsEffect, SearchSelectionMode, SequenceEffect, SetBasePowerToughnessEffect,
+    SharedTypeConstraint, ShuffleLibraryEffect, ShuffleObjectsIntoLibraryEffect,
+    TagAttachedToSourceEffect, TagMatchingObjectsEffect, TagTriggeringObjectEffect, TaggedEffect,
+    TaggedLeavesAbilitySource, TapEffect, TargetOnlyEffect, TransformEffect, UnearthEffect,
+    UnlessActionEffect, UnlessPaysEffect, UntapEffect, Until, VoteChoice, VoteEffect, VoteOption,
+    WinTheGameEffect, WithIdEffect,
 };
 pub use effect_model::{Comparison, EventValueSpec, ValueComparisonOperator};
 pub use event_model::KeywordActionKind;
@@ -98,6 +117,9 @@ pub use filter_model::{
     AlternativeCastKind, Comparison as FilterComparison, CounterConstraint, ObjectFilter,
     ObjectRef, ParityRequirement, PlayerFilter, PtReference, SourcePowerRelation, StackObjectKind,
     TaggedObjectConstraint, TaggedOpbjectRelation,
+};
+pub use grant_model::{
+    DerivedAlternativeCast, GrantDuration, GrantSpec, GrantStaticAbility, Grantable,
 };
 pub use ids::{
     CardId, IdCountersSnapshot, ObjectId, PlayerId, StableId, reset_runtime_id_counters,
@@ -109,8 +131,14 @@ pub use spell_cost_condition_model::ThisSpellCostCondition;
 pub use spell_timing_model::ThisSpellCastTiming;
 pub use static_ability_id::StaticAbilityId;
 pub use static_ability_model::{
-    ConditionalSpellKeywordKind, ConditionalSpellKeywordSpec, GraveyardCountMetric,
-    PregameActionKind, PregameBeginOnBattlefieldSpec,
+    ActivatedAbilityCostCondition, Anthem, AttachedAbilityGrant, AttachedChosenLandwalkGrant,
+    AttackCostCondition, AttackingGroupAttackCondition, CantAttackUnlessConditionSpec,
+    ConditionalSpellKeywordKind, ConditionalSpellKeywordSpec, CopyActivatedAbilities, CostIncrease,
+    CostIncreaseManaCost, CostReduction, CostReductionManaCost, DefendingPlayerAttackCondition,
+    EnterAsCopyAsEntersSpec, GrantAbility, GrantObjectAbilityForFilter, GraveyardCountMetric,
+    LandwalkKind, PregameActionKind, PregameBeginOnBattlefieldSpec, RemoveCardTypesForFilter,
+    SetColorsForFilter, StaticAbility, StaticAbilityPayload, ThisSpellCastRestrictionKind,
+    ThisSpellCostReduction, ThisSpellCostReductionManaCost,
 };
 pub use tag::{SOURCE_EXILED_TAG, TagKey};
 pub use target_model::ChooseSpec;

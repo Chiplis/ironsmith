@@ -10,35 +10,24 @@ use crate::game_state::GameState;
 use crate::target::{ChooseSpec, PlayerFilter};
 use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
+pub use ironsmith_core::ShuffleObjectsIntoLibraryEffect;
 
 use super::{finalize_zone_change_move, maybe_prompt_for_split_result_order};
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct ShuffleObjectsIntoLibraryEffect {
-    pub target: ChooseSpec,
-    pub player: PlayerFilter,
-}
-
-impl ShuffleObjectsIntoLibraryEffect {
-    pub fn new(target: ChooseSpec, player: PlayerFilter) -> Self {
-        Self { target, player }
-    }
-
-    fn expected_zone_for_object(
-        &self,
-        game: &GameState,
-        ctx: &ExecutionContext,
-        object_id: crate::ids::ObjectId,
-    ) -> Option<Zone> {
-        match self.target.base() {
-            ChooseSpec::Object(filter) => filter.zone,
-            ChooseSpec::Tagged(tag) => ctx
-                .get_tagged_all(tag)
-                .and_then(|snapshots| snapshots.iter().find(|s| s.object_id == object_id))
-                .map(|snapshot| snapshot.zone),
-            ChooseSpec::Source => game.object(ctx.source).map(|obj| obj.zone),
-            _ => None,
-        }
+fn expected_zone_for_object(
+    target: &ChooseSpec,
+    game: &GameState,
+    ctx: &ExecutionContext,
+    object_id: crate::ids::ObjectId,
+) -> Option<Zone> {
+    match target.base() {
+        ChooseSpec::Object(filter) => filter.zone,
+        ChooseSpec::Tagged(tag) => ctx
+            .get_tagged_all(tag)
+            .and_then(|snapshots| snapshots.iter().find(|s| s.object_id == object_id))
+            .map(|snapshot| snapshot.zone),
+        ChooseSpec::Source => game.object(ctx.source).map(|obj| obj.zone),
+        _ => None,
     }
 }
 
@@ -62,7 +51,8 @@ impl EffectExecutor for ShuffleObjectsIntoLibraryEffect {
             let Some(obj) = game.object(object_id) else {
                 continue;
             };
-            if let Some(expected_zone) = self.expected_zone_for_object(game, ctx, object_id)
+            if let Some(expected_zone) =
+                expected_zone_for_object(&self.target, game, ctx, object_id)
                 && obj.zone != expected_zone
             {
                 continue;

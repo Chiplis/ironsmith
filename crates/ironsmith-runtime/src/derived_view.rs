@@ -1169,6 +1169,7 @@ fn materialize_derived_alternative_cast(
     card: &crate::object::Object,
     spec: &DerivedAlternativeCast,
 ) -> Option<crate::alternative_cast::AlternativeCastingMethod> {
+    use crate::grant::DerivedAlternativeCastRuntimeExt as _;
     spec.materialize_for(card)
 }
 

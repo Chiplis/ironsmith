@@ -7,19 +7,9 @@ use crate::events::other::{KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
 use crate::object::CounterType;
 use crate::triggers::TriggerEvent;
+pub use ironsmith_core::RenownEffect;
 
 /// "If this creature isn't renowned, put N +1/+1 counters on it and it becomes renowned."
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RenownEffect {
-    pub amount: u32,
-}
-
-impl RenownEffect {
-    pub const fn new(amount: u32) -> Self {
-        Self { amount }
-    }
-}
-
 impl EffectExecutor for RenownEffect {
     fn execute(
         &self,

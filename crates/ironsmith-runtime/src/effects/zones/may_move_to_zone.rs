@@ -9,37 +9,21 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::{ChooseSpec, PlayerFilter};
 use crate::zone::Zone;
+pub use ironsmith_core::MayMoveToZoneEffect;
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct MayMoveToZoneEffect {
-    pub target: ChooseSpec,
-    pub zone: Zone,
-    pub decider: PlayerFilter,
-}
-
-impl MayMoveToZoneEffect {
-    pub fn new(target: ChooseSpec, zone: Zone, decider: PlayerFilter) -> Self {
-        Self {
-            target,
-            zone,
-            decider,
-        }
-    }
-
-    fn describe_move(&self, game: &GameState, object_id: crate::ids::ObjectId) -> String {
-        let object_name = game
-            .object(object_id)
-            .map(|obj| obj.name.clone())
-            .unwrap_or_else(|| "that card".to_string());
-        match self.zone {
-            Zone::Hand => format!("Put {object_name} into your hand?"),
-            Zone::Exile => format!("Exile {object_name}?"),
-            Zone::Graveyard => format!("Put {object_name} into its owner's graveyard?"),
-            Zone::Library => format!("Put {object_name} into its owner's library?"),
-            Zone::Battlefield => format!("Put {object_name} onto the battlefield?"),
-            Zone::Command => format!("Put {object_name} into the command zone?"),
-            Zone::Stack => format!("Move {object_name} to the stack?"),
-        }
+fn describe_move(zone: Zone, game: &GameState, object_id: crate::ids::ObjectId) -> String {
+    let object_name = game
+        .object(object_id)
+        .map(|obj| obj.name.clone())
+        .unwrap_or_else(|| "that card".to_string());
+    match zone {
+        Zone::Hand => format!("Put {object_name} into your hand?"),
+        Zone::Exile => format!("Exile {object_name}?"),
+        Zone::Graveyard => format!("Put {object_name} into its owner's graveyard?"),
+        Zone::Library => format!("Put {object_name} into its owner's library?"),
+        Zone::Battlefield => format!("Put {object_name} onto the battlefield?"),
+        Zone::Command => format!("Put {object_name} into the command zone?"),
+        Zone::Stack => format!("Move {object_name} to the stack?"),
     }
 }
 
@@ -59,7 +43,7 @@ impl EffectExecutor for MayMoveToZoneEffect {
             &mut ctx.decision_maker,
             decider,
             ctx.source,
-            self.describe_move(game, object_id),
+            describe_move(self.zone, game, object_id),
             FallbackStrategy::Decline,
         );
         if ctx.decision_maker.awaiting_choice() {

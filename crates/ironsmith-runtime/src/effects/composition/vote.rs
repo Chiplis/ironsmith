@@ -6,30 +6,11 @@ use crate::effect::ChoiceCount;
 use crate::effect::{Effect, EffectOutcome};
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::filter::ObjectFilter;
 use crate::game_state::GameState;
 use crate::ids::ObjectId;
 use crate::target::ChooseSpec;
 
-/// A vote option with a name and effects to execute per vote.
-#[derive(Debug, Clone, PartialEq)]
-pub struct VoteOption {
-    /// Name of this vote option (e.g., "evidence", "bribery").
-    pub name: String,
-    /// Effects to execute once per vote for this option.
-    /// For example, "investigate" for evidence, or "create a Treasure token" for bribery.
-    pub effects_per_vote: Vec<Effect>,
-}
-
-impl VoteOption {
-    /// Create a new vote option.
-    pub fn new(name: impl Into<String>, effects: Vec<Effect>) -> Self {
-        Self {
-            name: name.into(),
-            effects_per_vote: effects,
-        }
-    }
-}
+pub type VoteOption = ironsmith_core::VoteOption<Effect>;
 
 /// Stores the resolved outcome of a vote for later conditions and follow-up effects.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -71,14 +52,7 @@ impl VoteResult {
 pub const VOTE_WINNERS_TAG: &str = "__vote_winners__";
 pub const VOTED_OBJECTS_TAG: &str = "__voted_objects__";
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum VoteChoice {
-    NamedOptions(Vec<VoteOption>),
-    Objects {
-        filter: ObjectFilter,
-        count: ChoiceCount,
-    },
-}
+pub type VoteChoice = ironsmith_core::VoteChoice<Effect>;
 
 /// Effect that implements council's dilemma and similar voting mechanics.
 ///
@@ -97,76 +71,7 @@ pub enum VoteChoice {
 ///     1, // Controller gets 1 extra vote
 /// );
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct VoteEffect {
-    /// Available vote choices.
-    pub choice: VoteChoice,
-    /// Mandatory extra votes for the controller.
-    pub controller_extra_votes: u32,
-    /// Optional extra votes for the controller (e.g., "you may vote an additional time" = 1).
-    pub controller_optional_extra_votes: u32,
-}
-
-impl VoteEffect {
-    /// Create a new vote effect.
-    pub fn new(options: Vec<VoteOption>, controller_extra_votes: u32) -> Self {
-        Self {
-            choice: VoteChoice::NamedOptions(options),
-            controller_extra_votes,
-            controller_optional_extra_votes: 0,
-        }
-    }
-
-    /// Create a vote effect with optional extra votes for the controller.
-    pub fn with_optional_extra(
-        options: Vec<VoteOption>,
-        controller_extra_votes: u32,
-        controller_optional_extra_votes: u32,
-    ) -> Self {
-        Self {
-            choice: VoteChoice::NamedOptions(options),
-            controller_extra_votes,
-            controller_optional_extra_votes,
-        }
-    }
-
-    /// Create an object-vote effect.
-    pub fn vote_objects(
-        filter: ObjectFilter,
-        count: ChoiceCount,
-        controller_extra_votes: u32,
-    ) -> Self {
-        Self {
-            choice: VoteChoice::Objects { filter, count },
-            controller_extra_votes,
-            controller_optional_extra_votes: 0,
-        }
-    }
-
-    /// Create an object-vote effect with optional extra votes.
-    pub fn vote_objects_with_optional_extra(
-        filter: ObjectFilter,
-        count: ChoiceCount,
-        controller_extra_votes: u32,
-        controller_optional_extra_votes: u32,
-    ) -> Self {
-        Self {
-            choice: VoteChoice::Objects { filter, count },
-            controller_extra_votes,
-            controller_optional_extra_votes,
-        }
-    }
-
-    /// Create a vote effect with no extra votes for the controller.
-    pub fn basic(options: Vec<VoteOption>) -> Self {
-        Self::new(options, 0)
-    }
-
-    /// Create a council's dilemma vote effect (controller may vote an additional time).
-    pub fn councils_dilemma(options: Vec<VoteOption>) -> Self {
-        Self::with_optional_extra(options, 0, 1)
-    }
-}
+pub type VoteEffect = ironsmith_core::VoteEffect<Effect>;
 
 impl EffectExecutor for VoteEffect {
     fn clone_box(&self) -> Box<dyn EffectExecutor> {

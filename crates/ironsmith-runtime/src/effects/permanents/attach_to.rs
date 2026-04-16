@@ -9,6 +9,7 @@ use crate::game_state::GameState;
 use crate::object::AttachmentTarget;
 use crate::target::ChooseSpec;
 use crate::zone::Zone;
+pub use ironsmith_core::AttachToEffect;
 
 /// Effect that attaches the source permanent to a target permanent.
 ///
@@ -26,19 +27,6 @@ use crate::zone::Zone;
 /// // Create an attach effect for an aura
 /// let effect = AttachToEffect::new(ChooseSpec::target_creature());
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct AttachToEffect {
-    /// The target to attach to.
-    pub target: ChooseSpec,
-}
-
-impl AttachToEffect {
-    /// Create a new attach to effect.
-    pub fn new(target: ChooseSpec) -> Self {
-        Self { target }
-    }
-}
-
 impl EffectExecutor for AttachToEffect {
     fn execute(
         &self,

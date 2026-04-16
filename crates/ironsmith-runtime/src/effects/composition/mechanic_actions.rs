@@ -25,6 +25,7 @@ use crate::snapshot::ObjectSnapshot;
 use crate::target::ChooseSpec;
 use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
+pub use ironsmith_core::{BolsterEffect, CipherEffect};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct BackupEffect {
@@ -507,11 +508,6 @@ impl EffectExecutor for ManifestTopCardOfLibraryEffect {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct BolsterEffect {
-    pub amount: u32,
-}
-
 pub type PopulateEffect = ironsmith_core::PopulateEffect;
 
 impl EffectExecutor for PopulateEffect {
@@ -606,12 +602,6 @@ impl EffectExecutor for PopulateEffect {
     }
 }
 
-impl BolsterEffect {
-    pub fn new(amount: u32) -> Self {
-        Self { amount }
-    }
-}
-
 impl EffectExecutor for BolsterEffect {
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
@@ -689,15 +679,6 @@ impl EffectExecutor for BolsterEffect {
             KeywordActionEvent::new(KeywordActionKind::Bolster, ctx.controller, ctx.source, 1),
             ctx.provenance,
         )))
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct CipherEffect;
-
-impl CipherEffect {
-    pub fn new() -> Self {
-        Self
     }
 }
 

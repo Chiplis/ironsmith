@@ -9,38 +9,11 @@ use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::{GameState, StackEntry};
 use crate::zone::Zone;
+pub use ironsmith_core::CastSourceEffect;
 
 use super::runtime_helpers::with_spell_cast_event;
 
 /// Effect that casts the source card immediately.
-#[derive(Debug, Clone, PartialEq)]
-pub struct CastSourceEffect {
-    pub without_paying_mana_cost: bool,
-    pub require_exile: bool,
-}
-
-impl CastSourceEffect {
-    /// Create a new cast-source effect.
-    pub fn new() -> Self {
-        Self {
-            without_paying_mana_cost: false,
-            require_exile: false,
-        }
-    }
-
-    /// Cast without paying mana cost.
-    pub fn without_paying_mana_cost(mut self) -> Self {
-        self.without_paying_mana_cost = true;
-        self
-    }
-
-    /// Require the source card to be in exile.
-    pub fn require_exile(mut self) -> Self {
-        self.require_exile = true;
-        self
-    }
-}
-
 impl EffectExecutor for CastSourceEffect {
     fn execute(
         &self,

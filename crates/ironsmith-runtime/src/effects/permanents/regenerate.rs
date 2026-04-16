@@ -8,6 +8,7 @@ use crate::game_state::GameState;
 use crate::replacement::{ReplacementAction, ReplacementEffect};
 use crate::target::ChooseSpec;
 use crate::zone::Zone;
+pub use ironsmith_core::RegenerateEffect;
 
 /// Effect that regenerates a target creature.
 ///
@@ -35,31 +36,6 @@ use crate::zone::Zone;
 /// // Regenerate this creature (source)
 /// let effect = RegenerateEffect::source(Until::EndOfTurn);
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct RegenerateEffect {
-    /// The targeting specification.
-    pub target: ChooseSpec,
-    /// Duration for the regeneration shield.
-    pub duration: Until,
-}
-
-impl RegenerateEffect {
-    /// Create a new regenerate effect with explicit duration.
-    pub fn new(target: ChooseSpec, duration: Until) -> Self {
-        Self { target, duration }
-    }
-
-    /// Create an effect that regenerates the source creature with explicit duration.
-    pub fn source(duration: Until) -> Self {
-        Self::new(ChooseSpec::Source, duration)
-    }
-
-    /// Create an effect that regenerates target creature with explicit duration.
-    pub fn target_creature(duration: Until) -> Self {
-        Self::new(ChooseSpec::creature(), duration)
-    }
-}
-
 impl EffectExecutor for RegenerateEffect {
     fn execute(
         &self,

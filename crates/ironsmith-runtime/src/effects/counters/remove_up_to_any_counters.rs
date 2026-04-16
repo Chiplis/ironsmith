@@ -9,6 +9,7 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::object::CounterType;
 use crate::target::ChooseSpec;
+pub use ironsmith_core::RemoveUpToAnyCountersEffect;
 
 /// Effect that removes up to a number of counters of ANY type from a target.
 ///
@@ -25,24 +26,6 @@ use crate::target::ChooseSpec;
 /// // Remove up to X counters from target permanent
 /// let effect = RemoveUpToAnyCountersEffect::new(Value::X, ChooseSpec::permanent());
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct RemoveUpToAnyCountersEffect {
-    /// Maximum total counters to remove.
-    pub max_count: Value,
-    /// Which permanent to target.
-    pub target: ChooseSpec,
-}
-
-impl RemoveUpToAnyCountersEffect {
-    /// Create a new remove up to any counters effect.
-    pub fn new(max_count: impl Into<Value>, target: ChooseSpec) -> Self {
-        Self {
-            max_count: max_count.into(),
-            target,
-        }
-    }
-}
-
 impl EffectExecutor for RemoveUpToAnyCountersEffect {
     fn execute(
         &self,

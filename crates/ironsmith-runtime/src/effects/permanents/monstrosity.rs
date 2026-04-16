@@ -7,6 +7,7 @@ use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget, execute_e
 use crate::game_state::GameState;
 use crate::object::CounterType;
 use crate::target::ChooseSpec;
+pub use ironsmith_core::MonstrosityEffect;
 
 /// Effect that makes a creature monstrous.
 ///
@@ -30,19 +31,6 @@ use crate::target::ChooseSpec;
 /// // Monstrosity X (where X was chosen when activating)
 /// let effect = MonstrosityEffect::new(Value::X);
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct MonstrosityEffect {
-    /// The number of +1/+1 counters to add.
-    pub n: Value,
-}
-
-impl MonstrosityEffect {
-    /// Create a new monstrosity effect.
-    pub fn new(n: impl Into<Value>) -> Self {
-        Self { n: n.into() }
-    }
-}
-
 impl EffectExecutor for MonstrosityEffect {
     fn execute(
         &self,

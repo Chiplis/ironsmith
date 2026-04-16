@@ -8,23 +8,9 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::object::AttachmentTarget;
 use crate::target::ChooseSpec;
+pub use ironsmith_core::AttachObjectsEffect;
 
 /// Effect that attaches one or more objects to a destination object.
-#[derive(Debug, Clone, PartialEq)]
-pub struct AttachObjectsEffect {
-    /// Objects to attach.
-    pub objects: ChooseSpec,
-    /// Destination to attach objects to.
-    pub target: ChooseSpec,
-}
-
-impl AttachObjectsEffect {
-    /// Create a new attach-objects effect.
-    pub fn new(objects: ChooseSpec, target: ChooseSpec) -> Self {
-        Self { objects, target }
-    }
-}
-
 impl EffectExecutor for AttachObjectsEffect {
     fn execute(
         &self,

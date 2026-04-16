@@ -6,6 +6,7 @@ use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::PlayerFilter;
+pub use ironsmith_core::DiscardHandEffect;
 
 /// Effect that causes a player to discard their entire hand.
 ///
@@ -22,29 +23,6 @@ use crate::target::PlayerFilter;
 /// // Target player discards their hand
 /// let effect = DiscardHandEffect::new(PlayerFilter::Any);
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct DiscardHandEffect {
-    /// The player who discards their hand.
-    pub player: PlayerFilter,
-}
-
-impl DiscardHandEffect {
-    /// Create a new discard hand effect.
-    pub fn new(player: PlayerFilter) -> Self {
-        Self { player }
-    }
-
-    /// The controller discards their hand.
-    pub fn you() -> Self {
-        Self::new(PlayerFilter::You)
-    }
-
-    /// Target opponent discards their hand.
-    pub fn opponent() -> Self {
-        Self::new(PlayerFilter::Opponent)
-    }
-}
-
 impl EffectExecutor for DiscardHandEffect {
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         Some(self)

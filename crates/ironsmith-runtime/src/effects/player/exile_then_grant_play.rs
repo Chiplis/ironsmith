@@ -38,6 +38,11 @@ impl EffectExecutor for ExileThenGrantPlayEffect {
         let expires = match self.duration {
             GrantDuration::UntilEndOfTurn => game.turn.turn_number,
             GrantDuration::Forever => u32::MAX,
+            GrantDuration::UntilYourNextTurnEnd => {
+                return Err(ExecutionError::Impossible(
+                    "grant duration until your next turn is not implemented".to_string(),
+                ));
+            }
         };
         let additional_effects = ctx.additional_replacement_effects_snapshot();
 

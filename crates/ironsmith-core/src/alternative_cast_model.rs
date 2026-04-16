@@ -323,3 +323,82 @@ where
         matches!(self, Self::Bestow { .. })
     }
 }
+
+impl<E, C, Cond> AlternativeCastingMethod<E, C, Cond> {
+    pub fn try_map<E2, C2, Err>(
+        self,
+        mut map_effect: impl FnMut(E) -> Result<E2, Err>,
+        mut map_cost: impl FnMut(C) -> Result<C2, Err>,
+    ) -> Result<AlternativeCastingMethod<E2, C2, Cond>, Err>
+    where
+        C: Clone,
+        C2: CostComponent,
+    {
+        fn map_total_cost<C, C2, Err>(
+            total_cost: TotalCost<C>,
+            map_cost: &mut impl FnMut(C) -> Result<C2, Err>,
+        ) -> Result<TotalCost<C2>, Err>
+        where
+            C: Clone,
+            C2: CostComponent,
+        {
+            let mut mapped = Vec::new();
+            for cost in total_cost.costs().iter().cloned() {
+                mapped.push(map_cost(cost)?);
+            }
+            Ok(TotalCost::from_costs(mapped))
+        }
+
+        Ok(match self {
+            Self::Dash { cost } => AlternativeCastingMethod::Dash { cost },
+            Self::Warp { cost } => AlternativeCastingMethod::Warp { cost },
+            Self::Plot { cost } => AlternativeCastingMethod::Plot { cost },
+            Self::Suspend { cost, time } => AlternativeCastingMethod::Suspend { cost, time },
+            Self::Disturb { cost } => AlternativeCastingMethod::Disturb { cost },
+            Self::Overload { cost, effects } => AlternativeCastingMethod::Overload {
+                cost,
+                effects: {
+                    let mut mapped = Vec::with_capacity(effects.len());
+                    for effect in effects {
+                        mapped.push(map_effect(effect)?);
+                    }
+                    mapped
+                },
+            },
+            Self::Flashback { total_cost } => AlternativeCastingMethod::Flashback {
+                total_cost: map_total_cost(total_cost, &mut map_cost)?,
+            },
+            Self::Harmonize { total_cost } => AlternativeCastingMethod::Harmonize {
+                total_cost: map_total_cost(total_cost, &mut map_cost)?,
+            },
+            Self::JumpStart => AlternativeCastingMethod::JumpStart,
+            Self::Escape { cost, exile_count } => {
+                AlternativeCastingMethod::Escape { cost, exile_count }
+            }
+            Self::Madness { cost } => AlternativeCastingMethod::Madness { cost },
+            Self::Miracle { cost } => AlternativeCastingMethod::Miracle { cost },
+            Self::Foretell { cost } => AlternativeCastingMethod::Foretell { cost },
+            Self::Composed {
+                name,
+                total_cost,
+                condition,
+            } => AlternativeCastingMethod::Composed {
+                name,
+                total_cost: map_total_cost(total_cost, &mut map_cost)?,
+                condition,
+            },
+            Self::MindbreakTrap {
+                name,
+                cost,
+                condition,
+            } => AlternativeCastingMethod::MindbreakTrap {
+                name,
+                cost,
+                condition,
+            },
+            Self::Bestow { total_cost } => AlternativeCastingMethod::Bestow {
+                total_cost: map_total_cost(total_cost, &mut map_cost)?,
+            },
+        })
+    }
+}

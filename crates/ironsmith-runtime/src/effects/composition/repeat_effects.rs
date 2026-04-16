@@ -4,17 +4,7 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::resolve_value;
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct RepeatEffectsEffect {
-    pub count: Value,
-    pub effects: Vec<Effect>,
-}
-
-impl RepeatEffectsEffect {
-    pub fn new(count: Value, effects: Vec<Effect>) -> Self {
-        Self { count, effects }
-    }
-}
+pub type RepeatEffectsEffect = ironsmith_core::RepeatEffectsEffect<Effect>;
 
 impl EffectExecutor for RepeatEffectsEffect {
     fn clone_box(&self) -> Box<dyn EffectExecutor> {

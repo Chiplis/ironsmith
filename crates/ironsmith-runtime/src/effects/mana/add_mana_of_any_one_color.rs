@@ -1,13 +1,13 @@
 //! Add mana of any one color effect implementation.
 
 use crate::color::Color;
-use crate::effect::{EffectOutcome, Value};
+use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::mana::ManaSymbol;
-use crate::target::PlayerFilter;
+pub use ironsmith_core::AddManaOfAnyOneColorEffect;
 
 use super::choice_helpers::{choose_mana_colors, credit_repeated_mana_symbol_from_context};
 
@@ -28,29 +28,6 @@ use super::choice_helpers::{choose_mana_colors, credit_repeated_mana_symbol_from
 /// // Add 3 mana of any one color (must all be same color)
 /// let effect = AddManaOfAnyOneColorEffect::you(3);
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct AddManaOfAnyOneColorEffect {
-    /// Number of mana to add.
-    pub amount: Value,
-    /// Which player receives the mana.
-    pub player: PlayerFilter,
-}
-
-impl AddManaOfAnyOneColorEffect {
-    /// Create a new add mana of any one color effect.
-    pub fn new(amount: impl Into<Value>, player: PlayerFilter) -> Self {
-        Self {
-            amount: amount.into(),
-            player,
-        }
-    }
-
-    /// Create an effect where you add mana of any one color.
-    pub fn you(amount: impl Into<Value>) -> Self {
-        Self::new(amount, PlayerFilter::You)
-    }
-}
-
 impl EffectExecutor for AddManaOfAnyOneColorEffect {
     fn execute(
         &self,
@@ -99,7 +76,9 @@ impl EffectExecutor for AddManaOfAnyOneColorEffect {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::effect::Value;
     use crate::ids::PlayerId;
+    use crate::target::PlayerFilter;
 
     fn setup_game() -> GameState {
         crate::tests::test_helpers::setup_two_player_game()

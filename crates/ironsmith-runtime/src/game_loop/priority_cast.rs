@@ -2216,7 +2216,13 @@ fn staged_remove_counters_among_allocations(
     tagged_objects: &std::collections::HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>>,
     distribution: Vec<(Target, u32)>,
 ) -> Result<std::collections::VecDeque<(ObjectId, u32)>, GameLoopError> {
-    let valid_targets = cost.valid_targets_with_tags(game, source, payer, tagged_objects);
+    let valid_targets = crate::effects::remove_any_counters_among_valid_targets_with_tags(
+        cost,
+        game,
+        source,
+        payer,
+        tagged_objects,
+    );
 
     let mut allocations: std::collections::HashMap<ObjectId, u32> =
         std::collections::HashMap::new();
@@ -2284,8 +2290,9 @@ pub(super) fn continue_activation_remove_counters_among_payment(
             {
                 ctx.clone()
             } else {
-                let targets: Vec<Target> = cost
-                    .valid_targets_with_tags(
+                let targets: Vec<Target> =
+                    crate::effects::remove_any_counters_among_valid_targets_with_tags(
+                        &cost,
                         game,
                         pending.source,
                         pending.activator,

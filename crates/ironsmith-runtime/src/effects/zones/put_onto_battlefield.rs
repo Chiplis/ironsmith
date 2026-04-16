@@ -9,6 +9,7 @@ use crate::effects::helpers::{resolve_objects_for_effect, resolve_player_filter}
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::{ChooseSpec, ObjectRef, PlayerFilter};
+pub use ironsmith_core::PutOntoBattlefieldEffect;
 
 /// Effect that puts a target card onto the battlefield.
 ///
@@ -32,37 +33,6 @@ use crate::target::{ChooseSpec, ObjectRef, PlayerFilter};
 ///     PlayerFilter::You,
 /// );
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct PutOntoBattlefieldEffect {
-    /// The targeting specification (for UI/validation purposes).
-    pub target: ChooseSpec,
-    /// Whether the permanent enters tapped.
-    pub tapped: bool,
-    /// Who controls the permanent when it enters.
-    pub controller: PlayerFilter,
-}
-
-impl PutOntoBattlefieldEffect {
-    /// Create a new put onto battlefield effect.
-    pub fn new(target: ChooseSpec, tapped: bool, controller: PlayerFilter) -> Self {
-        Self {
-            target,
-            tapped,
-            controller,
-        }
-    }
-
-    /// Create an effect that puts a card onto the battlefield under your control.
-    pub fn you_control(target: ChooseSpec, tapped: bool) -> Self {
-        Self::new(target, tapped, PlayerFilter::You)
-    }
-
-    /// Create an effect that puts a card onto the battlefield under its owner's control.
-    pub fn owner_control(target: ChooseSpec, tapped: bool) -> Self {
-        Self::new(target, tapped, PlayerFilter::OwnerOf(ObjectRef::Target))
-    }
-}
-
 impl EffectExecutor for PutOntoBattlefieldEffect {
     fn execute(
         &self,

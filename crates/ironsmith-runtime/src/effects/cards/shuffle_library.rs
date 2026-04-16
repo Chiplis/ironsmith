@@ -8,6 +8,7 @@ use crate::events::ShuffleLibraryEvent;
 use crate::game_state::GameState;
 use crate::target::{ChooseSpec, PlayerFilter};
 use crate::triggers::TriggerEvent;
+pub use ironsmith_core::ShuffleLibraryEffect;
 
 /// Effect that shuffles a player's library.
 ///
@@ -21,35 +22,6 @@ use crate::triggers::TriggerEvent;
 /// // Shuffle your library
 /// let effect = ShuffleLibraryEffect::you();
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct ShuffleLibraryEffect {
-    /// Which player's library to shuffle.
-    pub player: PlayerFilter,
-    /// Target metadata, when this effect targets a player.
-    pub target_spec: Option<ChooseSpec>,
-}
-
-impl ShuffleLibraryEffect {
-    /// Create a new shuffle library effect.
-    pub fn new(player: PlayerFilter) -> Self {
-        let target_spec = match &player {
-            PlayerFilter::Target(inner) => {
-                Some(ChooseSpec::target(ChooseSpec::Player((**inner).clone())))
-            }
-            _ => None,
-        };
-        Self {
-            player,
-            target_spec,
-        }
-    }
-
-    /// Create an effect to shuffle your library.
-    pub fn you() -> Self {
-        Self::new(PlayerFilter::You)
-    }
-}
-
 impl EffectExecutor for ShuffleLibraryEffect {
     fn execute(
         &self,

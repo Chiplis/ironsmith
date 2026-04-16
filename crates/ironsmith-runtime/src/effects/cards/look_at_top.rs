@@ -8,26 +8,9 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::filter::PlayerFilter;
 use crate::game_state::GameState;
 use crate::snapshot::ObjectSnapshot;
-use crate::tag::TagKey;
+pub use ironsmith_core::LookAtTopCardsEffect;
 
 /// Effect that looks at the top N cards of a player's library and tags them.
-#[derive(Debug, Clone, PartialEq)]
-pub struct LookAtTopCardsEffect {
-    pub player: PlayerFilter,
-    pub count: Value,
-    pub tag: TagKey,
-}
-
-impl LookAtTopCardsEffect {
-    pub fn new(player: PlayerFilter, count: impl Into<Value>, tag: impl Into<TagKey>) -> Self {
-        Self {
-            player,
-            count: count.into(),
-            tag: tag.into(),
-        }
-    }
-}
-
 impl EffectExecutor for LookAtTopCardsEffect {
     fn execute(
         &self,
@@ -80,6 +63,7 @@ mod tests {
     use crate::card::CardBuilder;
     use crate::decision::DecisionMaker;
     use crate::ids::{CardId, PlayerId};
+    use crate::tag::TagKey;
     use crate::zone::Zone;
 
     #[derive(Debug)]

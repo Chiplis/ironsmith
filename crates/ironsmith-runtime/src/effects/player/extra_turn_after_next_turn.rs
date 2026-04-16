@@ -8,24 +8,13 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::PlayerFilter;
 use crate::triggers::Trigger;
+pub use ironsmith_core::ExtraTurnAfterNextTurnEffect;
 
 use crate::effects::delayed::trigger_queue::{
     DelayedTriggerTemplate, DelayedWatcherIdentity, queue_delayed_from_template,
 };
 
 /// Effect that schedules a player's extra turn after that player's next turn.
-#[derive(Debug, Clone, PartialEq)]
-pub struct ExtraTurnAfterNextTurnEffect {
-    /// The player who gets the extra turn.
-    pub player: PlayerFilter,
-}
-
-impl ExtraTurnAfterNextTurnEffect {
-    pub fn new(player: PlayerFilter) -> Self {
-        Self { player }
-    }
-}
-
 impl EffectExecutor for ExtraTurnAfterNextTurnEffect {
     fn execute(
         &self,

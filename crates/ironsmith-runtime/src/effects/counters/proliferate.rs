@@ -10,6 +10,7 @@ use crate::events::{KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
 use crate::object::CounterType;
 use crate::triggers::TriggerEvent;
+pub use ironsmith_core::ProliferateEffect;
 
 /// Effect that proliferates (adds counters to permanents/players with counters).
 ///
@@ -21,27 +22,6 @@ use crate::triggers::TriggerEvent;
 /// ```ignore
 /// let effect = ProliferateEffect::new(1);
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct ProliferateEffect {
-    /// How many times to proliferate.
-    pub count: Value,
-}
-
-impl ProliferateEffect {
-    /// Create a new proliferate effect.
-    pub fn new(count: impl Into<Value>) -> Self {
-        Self {
-            count: count.into(),
-        }
-    }
-}
-
-impl Default for ProliferateEffect {
-    fn default() -> Self {
-        Self::new(1)
-    }
-}
-
 impl EffectExecutor for ProliferateEffect {
     fn execute(
         &self,

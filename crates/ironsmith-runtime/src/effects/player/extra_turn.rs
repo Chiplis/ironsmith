@@ -5,7 +5,7 @@ use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
-use crate::target::PlayerFilter;
+pub use ironsmith_core::ExtraTurnEffect;
 
 /// Effect that gives a player an extra turn.
 ///
@@ -24,24 +24,6 @@ use crate::target::PlayerFilter;
 /// // Target player takes an extra turn
 /// let effect = ExtraTurnEffect::new(PlayerFilter::Any);
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct ExtraTurnEffect {
-    /// The player who gets the extra turn.
-    pub player: PlayerFilter,
-}
-
-impl ExtraTurnEffect {
-    /// Create a new extra turn effect.
-    pub fn new(player: PlayerFilter) -> Self {
-        Self { player }
-    }
-
-    /// The controller gets an extra turn.
-    pub fn you() -> Self {
-        Self::new(PlayerFilter::You)
-    }
-}
-
 impl EffectExecutor for ExtraTurnEffect {
     fn execute(
         &self,
@@ -61,6 +43,7 @@ impl EffectExecutor for ExtraTurnEffect {
 mod tests {
     use super::*;
     use crate::ids::PlayerId;
+    use crate::target::PlayerFilter;
 
     fn setup_game() -> GameState {
         crate::tests::test_helpers::setup_two_player_game()

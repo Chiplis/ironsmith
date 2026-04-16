@@ -5,7 +5,7 @@ use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
-use crate::target::PlayerFilter;
+pub use ironsmith_core::WinTheGameEffect;
 
 /// Effect that causes a player to win the game.
 ///
@@ -25,24 +25,6 @@ use crate::target::PlayerFilter;
 /// // Target player wins the game
 /// let effect = WinTheGameEffect::new(PlayerFilter::Any);
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct WinTheGameEffect {
-    /// The player who wins the game.
-    pub player: PlayerFilter,
-}
-
-impl WinTheGameEffect {
-    /// Create a new win the game effect.
-    pub fn new(player: PlayerFilter) -> Self {
-        Self { player }
-    }
-
-    /// The controller wins the game.
-    pub fn you() -> Self {
-        Self::new(PlayerFilter::You)
-    }
-}
-
 impl EffectExecutor for WinTheGameEffect {
     fn execute(
         &self,

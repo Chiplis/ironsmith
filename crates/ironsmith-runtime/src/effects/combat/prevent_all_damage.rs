@@ -1,12 +1,11 @@
 //! Prevent all damage effect implementation.
 
 use super::prevention_helpers::register_prevention_shield;
-use crate::effect::{EffectOutcome, Until};
+use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
-use crate::prevention::{DamageFilter, PreventionTarget};
-use crate::target::ObjectFilter;
+pub use ironsmith_core::PreventAllDamageEffect;
 
 /// Effect that prevents all damage until end of turn.
 ///
@@ -27,68 +26,6 @@ use crate::target::ObjectFilter;
 ///     ObjectFilter::creature().you_control()
 /// );
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct PreventAllDamageEffect {
-    /// What this shield protects.
-    pub target: PreventionTarget,
-    /// What kinds of damage this shield prevents.
-    pub damage_filter: DamageFilter,
-    pub until: Until,
-}
-
-impl PreventAllDamageEffect {
-    /// Create a new prevent all damage effect.
-    pub fn new(target: PreventionTarget, damage_filter: DamageFilter, until: Until) -> Self {
-        Self {
-            target,
-            damage_filter,
-            until,
-        }
-    }
-
-    /// Prevent all damage to everything.
-    pub fn all(until: Until) -> Self {
-        Self::new(PreventionTarget::All, DamageFilter::all(), until)
-    }
-
-    /// Prevent all damage to the controller.
-    pub fn to_you(until: Until) -> Self {
-        Self::new(PreventionTarget::You, DamageFilter::all(), until)
-    }
-
-    /// Prevent all damage to permanents matching the filter.
-    pub fn matching(filter: ObjectFilter, until: Until) -> Self {
-        Self::new(
-            PreventionTarget::PermanentsMatching(filter),
-            DamageFilter::all(),
-            until,
-        )
-    }
-
-    /// Prevent all damage to everything with a damage filter.
-    pub fn all_with_filter(damage_filter: DamageFilter, until: Until) -> Self {
-        Self::new(PreventionTarget::All, damage_filter, until)
-    }
-
-    /// Prevent all damage to permanents matching the filter with a damage filter.
-    pub fn matching_with_filter(
-        filter: ObjectFilter,
-        damage_filter: DamageFilter,
-        until: Until,
-    ) -> Self {
-        Self::new(
-            PreventionTarget::PermanentsMatching(filter),
-            damage_filter,
-            until,
-        )
-    }
-
-    /// Prevent all damage to creatures you control.
-    pub fn your_creatures(until: Until) -> Self {
-        Self::matching(ObjectFilter::creature().you_control(), until)
-    }
-}
-
 impl EffectExecutor for PreventAllDamageEffect {
     fn execute(
         &self,
@@ -117,7 +54,9 @@ impl EffectExecutor for PreventAllDamageEffect {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::effect::Until;
     use crate::ids::PlayerId;
+    use crate::target::ObjectFilter;
 
     fn setup_game() -> GameState {
         crate::tests::test_helpers::setup_two_player_game()

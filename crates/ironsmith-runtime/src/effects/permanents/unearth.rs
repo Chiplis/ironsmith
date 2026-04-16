@@ -14,21 +14,13 @@ use crate::static_abilities::StaticAbility;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::triggers::Trigger;
 use crate::zone::Zone;
+pub use ironsmith_core::UnearthEffect;
 
 /// Effect that executes the rules text for Unearth.
 ///
 /// "Return this card from your graveyard to the battlefield. It gains haste.
 /// Exile it at the beginning of the next end step or if it would leave the
 /// battlefield."
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UnearthEffect;
-
-impl UnearthEffect {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
 impl EffectExecutor for UnearthEffect {
     fn execute(
         &self,

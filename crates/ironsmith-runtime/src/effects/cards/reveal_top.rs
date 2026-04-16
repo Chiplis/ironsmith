@@ -8,29 +8,11 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::filter::PlayerFilter;
 use crate::game_state::GameState;
 use crate::snapshot::ObjectSnapshot;
-use crate::tag::TagKey;
+pub use ironsmith_core::RevealTopEffect;
 
 /// Effect that reveals the top card of a player's library and tags it.
 ///
 /// This is a composable primitive for effects like Goblin Guide.
-#[derive(Debug, Clone, PartialEq)]
-pub struct RevealTopEffect {
-    pub player: PlayerFilter,
-    pub tag: Option<TagKey>,
-}
-
-impl RevealTopEffect {
-    /// Create a new reveal-top effect, optionally tagging the revealed card.
-    pub fn new(player: PlayerFilter, tag: Option<TagKey>) -> Self {
-        Self { player, tag }
-    }
-
-    /// Create a tagged reveal-top effect.
-    pub fn tagged(player: PlayerFilter, tag: impl Into<TagKey>) -> Self {
-        Self::new(player, Some(tag.into()))
-    }
-}
-
 impl EffectExecutor for RevealTopEffect {
     fn execute(
         &self,

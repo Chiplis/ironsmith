@@ -8,23 +8,7 @@ use crate::game_state::GameState;
 use crate::ids::ObjectId;
 use crate::tag::TagKey;
 use crate::zone::Zone;
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct RearrangeLookedCardsInLibraryEffect {
-    pub tag: TagKey,
-    pub chooser: PlayerFilter,
-    pub count: ChoiceCount,
-}
-
-impl RearrangeLookedCardsInLibraryEffect {
-    pub fn new(tag: impl Into<TagKey>, chooser: PlayerFilter, count: ChoiceCount) -> Self {
-        Self {
-            tag: tag.into(),
-            chooser,
-            count,
-        }
-    }
-}
+pub use ironsmith_core::RearrangeLookedCardsInLibraryEffect;
 
 fn compute_choice_bounds(
     count: ChoiceCount,

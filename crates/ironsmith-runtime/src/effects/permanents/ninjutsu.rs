@@ -19,46 +19,38 @@ use crate::game_state::{GameState, Phase, Step};
 use crate::ids::{ObjectId, PlayerId};
 use crate::types::CardType;
 use crate::zone::Zone;
+pub use ironsmith_core::{NinjutsuCostEffect, NinjutsuEffect};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NinjutsuCostEffect;
-
-impl NinjutsuCostEffect {
-    pub fn new() -> Self {
-        Self
+fn in_ninjutsu_window(game: &GameState) -> bool {
+    if game.turn.phase != Phase::Combat {
+        return false;
     }
+    matches!(
+        game.turn.step,
+        Some(Step::DeclareBlockers | Step::CombatDamage | Step::EndCombat)
+    )
+}
 
-    fn in_ninjutsu_window(game: &GameState) -> bool {
-        if game.turn.phase != Phase::Combat {
-            return false;
-        }
-        matches!(
-            game.turn.step,
-            Some(Step::DeclareBlockers | Step::CombatDamage | Step::EndCombat)
-        )
-    }
+fn unblocked_attackers(game: &GameState, controller: PlayerId) -> Vec<ObjectId> {
+    let Some(combat) = game.combat.as_ref() else {
+        return Vec::new();
+    };
 
-    fn unblocked_attackers(game: &GameState, controller: PlayerId) -> Vec<ObjectId> {
-        let Some(combat) = game.combat.as_ref() else {
-            return Vec::new();
-        };
-
-        combat
-            .attackers
-            .iter()
-            .filter_map(|info| {
-                let creature = info.creature;
-                let obj = game.object(creature)?;
-                if obj.zone != Zone::Battlefield || obj.controller != controller {
-                    return None;
-                }
-                if !is_unblocked(combat, creature) {
-                    return None;
-                }
-                Some(creature)
-            })
-            .collect()
-    }
+    combat
+        .attackers
+        .iter()
+        .filter_map(|info| {
+            let creature = info.creature;
+            let obj = game.object(creature)?;
+            if obj.zone != Zone::Battlefield || obj.controller != controller {
+                return None;
+            }
+            if !is_unblocked(combat, creature) {
+                return None;
+            }
+            Some(creature)
+        })
+        .collect()
 }
 
 impl EffectExecutor for NinjutsuCostEffect {
@@ -71,7 +63,7 @@ impl EffectExecutor for NinjutsuCostEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if !Self::in_ninjutsu_window(game) {
+        if !in_ninjutsu_window(game) {
             return Err(ExecutionError::Impossible(
                 "Ninjutsu can only be activated during combat after blockers are declared"
                     .to_string(),
@@ -87,7 +79,7 @@ impl EffectExecutor for NinjutsuCostEffect {
             ));
         }
 
-        let candidates = Self::unblocked_attackers(game, ctx.controller);
+        let candidates = unblocked_attackers(game, ctx.controller);
         if candidates.is_empty() {
             return Err(ExecutionError::Impossible(
                 "No unblocked attacker you control to return".to_string(),
@@ -178,7 +170,7 @@ impl CostExecutableEffect for NinjutsuCostEffect {
         source: ObjectId,
         controller: PlayerId,
     ) -> Result<(), CostValidationError> {
-        if !Self::in_ninjutsu_window(game) {
+        if !in_ninjutsu_window(game) {
             return Err(CostValidationError::Other(
                 "Ninjutsu can only be activated during combat after blockers are declared"
                     .to_string(),
@@ -196,7 +188,7 @@ impl CostExecutableEffect for NinjutsuCostEffect {
             ));
         }
 
-        if Self::unblocked_attackers(game, controller).is_empty() {
+        if unblocked_attackers(game, controller).is_empty() {
             return Err(CostValidationError::Other(
                 "No unblocked attacker you control to return".to_string(),
             ));
@@ -206,41 +198,30 @@ impl CostExecutableEffect for NinjutsuCostEffect {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NinjutsuEffect;
-
-impl NinjutsuEffect {
-    pub fn new() -> Self {
-        Self
-    }
-
-    fn pop_attack_target(game: &mut GameState, source: ObjectId) -> Option<AttackTarget> {
-        let mut remove_entry = false;
-        let target = game
-            .ninjutsu_attack_targets
-            .get_mut(&source)
-            .and_then(|targets| {
-                let popped = targets.pop();
-                if targets.is_empty() {
-                    remove_entry = true;
-                }
-                popped
-            });
-        if remove_entry {
-            game.ninjutsu_attack_targets.remove(&source);
-        }
-        target
-    }
-
-    fn attack_target_still_valid(game: &GameState, target: &AttackTarget) -> bool {
-        match target {
-            AttackTarget::Player(player) => game.player(*player).is_some(),
-            AttackTarget::Planeswalker(planeswalker) => {
-                game.object(*planeswalker).is_some_and(|obj| {
-                    obj.zone == Zone::Battlefield && obj.has_card_type(CardType::Planeswalker)
-                })
+fn pop_ninjutsu_attack_target(game: &mut GameState, source: ObjectId) -> Option<AttackTarget> {
+    let mut remove_entry = false;
+    let target = game
+        .ninjutsu_attack_targets
+        .get_mut(&source)
+        .and_then(|targets| {
+            let popped = targets.pop();
+            if targets.is_empty() {
+                remove_entry = true;
             }
-        }
+            popped
+        });
+    if remove_entry {
+        game.ninjutsu_attack_targets.remove(&source);
+    }
+    target
+}
+
+fn attack_target_still_valid(game: &GameState, target: &AttackTarget) -> bool {
+    match target {
+        AttackTarget::Player(player) => game.player(*player).is_some(),
+        AttackTarget::Planeswalker(planeswalker) => game.object(*planeswalker).is_some_and(|obj| {
+            obj.zone == Zone::Battlefield && obj.has_card_type(CardType::Planeswalker)
+        }),
     }
 }
 
@@ -250,7 +231,7 @@ impl EffectExecutor for NinjutsuEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let Some(attack_target) = Self::pop_attack_target(game, ctx.source) else {
+        let Some(attack_target) = pop_ninjutsu_attack_target(game, ctx.source) else {
             return Ok(EffectOutcome::target_invalid());
         };
 
@@ -270,7 +251,7 @@ impl EffectExecutor for NinjutsuEffect {
 
         match outcome {
             BattlefieldEntryOutcome::Moved(new_id) => {
-                let valid_target = Self::attack_target_still_valid(game, &attack_target);
+                let valid_target = attack_target_still_valid(game, &attack_target);
                 if let Some(combat) = game.combat.as_mut()
                     && valid_target
                 {

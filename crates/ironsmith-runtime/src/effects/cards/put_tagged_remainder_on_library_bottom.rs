@@ -3,32 +3,7 @@ use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{EffectExecutor, consult_helpers::*};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
-use crate::tag::TagKey;
-use crate::target::PlayerFilter;
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct PutTaggedRemainderOnLibraryBottomEffect {
-    pub tag: TagKey,
-    pub keep_tagged: Option<TagKey>,
-    pub order: LibraryBottomOrder,
-    pub player: PlayerFilter,
-}
-
-impl PutTaggedRemainderOnLibraryBottomEffect {
-    pub fn new(
-        tag: impl Into<TagKey>,
-        keep_tagged: Option<TagKey>,
-        order: LibraryBottomOrder,
-        player: PlayerFilter,
-    ) -> Self {
-        Self {
-            tag: tag.into(),
-            keep_tagged,
-            order,
-            player,
-        }
-    }
-}
+pub use ironsmith_core::PutTaggedRemainderOnLibraryBottomEffect;
 
 impl EffectExecutor for PutTaggedRemainderOnLibraryBottomEffect {
     fn execute(

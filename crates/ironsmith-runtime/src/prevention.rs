@@ -14,8 +14,8 @@ use crate::color::Color;
 use crate::effect::{Effect, Until};
 use crate::filter::ObjectFilterExt as _;
 use crate::ids::{ObjectId, PlayerId};
-use crate::target::ObjectFilter;
 use crate::types::CardType;
+pub use ironsmith_core::{DamageFilter, PreventionTarget};
 
 /// Unique identifier for a prevention shield.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -24,137 +24,6 @@ pub struct PreventionShieldId(pub u64);
 impl PreventionShieldId {
     pub fn new(id: u64) -> Self {
         Self(id)
-    }
-}
-
-/// What a prevention shield protects.
-#[derive(Debug, Clone, PartialEq)]
-pub enum PreventionTarget {
-    /// Protects a specific player
-    Player(PlayerId),
-
-    /// Protects a specific permanent
-    Permanent(ObjectId),
-
-    /// Protects all permanents matching a filter (e.g., "creatures you control")
-    PermanentsMatching(ObjectFilter),
-
-    /// Protects all players.
-    Players,
-
-    /// Protects "you" (the shield's controller)
-    You,
-
-    /// Protects "you and permanents you control"
-    YouAndPermanentsYouControl,
-
-    /// Protects everything (like Fog)
-    All,
-}
-
-/// Filter for what kind of damage a prevention shield applies to.
-#[derive(Debug, Clone, PartialEq, Default)]
-pub struct DamageFilter {
-    /// Only prevent combat damage
-    pub combat_only: bool,
-
-    /// Only prevent noncombat damage
-    pub noncombat_only: bool,
-
-    /// Only prevent damage from sources matching this filter
-    pub from_source: Option<ObjectFilter>,
-
-    /// Only prevent damage from sources of these colors
-    pub from_colors: Option<Vec<Color>>,
-
-    /// Only prevent damage from sources of these card types
-    pub from_card_types: Option<Vec<CardType>>,
-
-    /// Only prevent damage from a specific source
-    pub from_specific_source: Option<ObjectId>,
-}
-
-impl DamageFilter {
-    /// Create a filter that matches all damage.
-    pub fn all() -> Self {
-        Self::default()
-    }
-
-    /// Create a filter for combat damage only.
-    pub fn combat() -> Self {
-        Self {
-            combat_only: true,
-            ..Default::default()
-        }
-    }
-
-    /// Create a filter for noncombat damage only.
-    pub fn noncombat() -> Self {
-        Self {
-            noncombat_only: true,
-            ..Default::default()
-        }
-    }
-
-    /// Create a filter for damage from sources of a specific color.
-    pub fn from_color(color: Color) -> Self {
-        Self {
-            from_colors: Some(vec![color]),
-            ..Default::default()
-        }
-    }
-
-    /// Create a filter for damage from a specific source.
-    pub fn from_source(source: ObjectId) -> Self {
-        Self {
-            from_specific_source: Some(source),
-            ..Default::default()
-        }
-    }
-
-    /// Check if this filter matches the given damage parameters.
-    pub fn matches(
-        &self,
-        is_combat: bool,
-        source: ObjectId,
-        source_colors: &crate::color::ColorSet,
-        source_card_types: &[CardType],
-    ) -> bool {
-        // Check combat/noncombat restrictions
-        if self.combat_only && !is_combat {
-            return false;
-        }
-        if self.noncombat_only && is_combat {
-            return false;
-        }
-
-        // Check specific source restriction
-        if let Some(specific) = self.from_specific_source
-            && source != specific
-        {
-            return false;
-        }
-
-        // Check color restriction
-        if let Some(ref colors) = self.from_colors {
-            let matches_color = colors.iter().any(|c| source_colors.contains(*c));
-            if !matches_color {
-                return false;
-            }
-        }
-
-        // Check card type restriction
-        if let Some(ref types) = self.from_card_types {
-            let matches_type = types.iter().any(|t| source_card_types.contains(t));
-            if !matches_type {
-                return false;
-            }
-        }
-
-        // For ObjectFilter-based source checks, would need game state context
-        // This is a simplified check
-
-        true
     }
 }
 

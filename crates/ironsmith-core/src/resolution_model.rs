@@ -143,6 +143,58 @@ impl<E: Clone> ResolutionProgram<E> {
     }
 }
 
+impl<E> ResolutionProgram<E> {
+    pub fn try_map_effects<U: Clone, Err>(
+        self,
+        mut f: impl FnMut(E) -> Result<U, Err>,
+    ) -> Result<ResolutionProgram<U>, Err> {
+        let mut segments = Vec::with_capacity(self.segments.len());
+        for segment in self.segments {
+            segments.push(segment.try_map_effects(&mut f)?);
+        }
+        Ok(ResolutionProgram::new(segments))
+    }
+}
+
+impl<E> ResolutionSegment<E> {
+    pub fn try_map_effects<U, Err>(
+        self,
+        f: &mut impl FnMut(E) -> Result<U, Err>,
+    ) -> Result<ResolutionSegment<U>, Err> {
+        let mut default_effects = Vec::with_capacity(self.default_effects.len());
+        for effect in self.default_effects {
+            default_effects.push(f(effect)?);
+        }
+
+        let mut self_replacements = Vec::with_capacity(self.self_replacements.len());
+        for branch in self.self_replacements {
+            self_replacements.push(branch.try_map_effects(f)?);
+        }
+
+        Ok(ResolutionSegment {
+            default_effects,
+            self_replacements,
+        })
+    }
+}
+
+impl<E> SelfReplacementBranch<E> {
+    pub fn try_map_effects<U, Err>(
+        self,
+        f: &mut impl FnMut(E) -> Result<U, Err>,
+    ) -> Result<SelfReplacementBranch<U>, Err> {
+        let mut replacement_effects = Vec::with_capacity(self.replacement_effects.len());
+        for effect in self.replacement_effects {
+            replacement_effects.push(f(effect)?);
+        }
+
+        Ok(SelfReplacementBranch {
+            condition: self.condition,
+            replacement_effects,
+        })
+    }
+}
+
 impl<E: Clone> From<Vec<E>> for ResolutionProgram<E> {
     fn from(value: Vec<E>) -> Self {
         Self::from_effects(value)

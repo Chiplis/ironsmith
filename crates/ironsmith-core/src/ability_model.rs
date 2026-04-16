@@ -253,6 +253,16 @@ where
     }
 }
 
+impl<SA, T, E, C> From<SA> for Ability<SA, T, E, C>
+where
+    E: Clone,
+    C: CoreCostComponent,
+{
+    fn from(value: SA) -> Self {
+        Self::static_ability(value)
+    }
+}
+
 pub trait CoreCostComponent: CostComponent {
     fn tap_cost() -> Self;
 }

@@ -270,6 +270,146 @@ fn aggregate_compiled_card_models_are_core_owned() {
 }
 
 #[test]
+fn migrated_effect_payloads_are_core_owned() {
+    let root = workspace_root();
+    let core_effect = read_repo_file(&root, "crates/ironsmith-core/src/effect.rs");
+    let compiler_effects = read_repo_file(&root, "crates/ironsmith-compiler/src/effects/mod.rs");
+    let migrated = [
+        "AddManaEffect",
+        "AddManaFromCommanderColorIdentityEffect",
+        "AddManaOfAnyColorEffect",
+        "AddManaOfAnyOneColorEffect",
+        "AttachObjectsEffect",
+        "AttachToEffect",
+        "BolsterEffect",
+        "CantEffect",
+        "CastSourceEffect",
+        "CastTaggedEffect",
+        "ChooseCardNameEffect",
+        "ChooseCardTypeEffect",
+        "ChooseNewTargetsEffect",
+        "CipherEffect",
+        "ConsultTopOfLibraryEffect",
+        "ControlPlayerEffect",
+        "CreateEmblemEffect",
+        "DiscardHandEffect",
+        "DiscoverEffect",
+        "EmitKeywordActionEffect",
+        "EnergyCountersEffect",
+        "ExchangeTextBoxesEffect",
+        "ExileInsteadOfGraveyardEffect",
+        "ExtraTurnAfterNextTurnEffect",
+        "ExtraTurnEffect",
+        "FlipEffect",
+        "GainLifeEffect",
+        "GrantBySpecEffect",
+        "GrantEffect",
+        "LookAtTopCardsEffect",
+        "LoseTheGameEffect",
+        "MayMoveToZoneEffect",
+        "ModifyPowerToughnessForEachEffect",
+        "MonstrosityEffect",
+        "MoveAllCountersEffect",
+        "NinjutsuCostEffect",
+        "NinjutsuEffect",
+        "PreventAllCombatDamageEffect",
+        "PreventAllDamageEffect",
+        "ProliferateEffect",
+        "PutOntoBattlefieldEffect",
+        "PutTaggedRemainderOnLibraryBottomEffect",
+        "RearrangeLookedCardsInLibraryEffect",
+        "RegenerateEffect",
+        "RemoveAnyCountersAmongEffect",
+        "RemoveUpToAnyCountersEffect",
+        "RenownEffect",
+        "RepeatEffectsEffect",
+        "RepeatProcessEffect",
+        "ReturnFromGraveyardToBattlefieldEffect",
+        "ReturnFromGraveyardToHandEffect",
+        "RevealTopEffect",
+        "SacrificePlayerEffect",
+        "SetBasePowerToughnessEffect",
+        "ShuffleLibraryEffect",
+        "ShuffleObjectsIntoLibraryEffect",
+        "TagAttachedToSourceEffect",
+        "TagTriggeringObjectEffect",
+        "TransformEffect",
+        "UnearthEffect",
+        "VoteEffect",
+        "WinTheGameEffect",
+    ];
+
+    for effect in migrated {
+        assert!(
+            core_effect.contains(&format!("pub struct {effect}"))
+                || core_effect.contains(&format!("pub enum {effect}")),
+            "{effect} data must live in ironsmith-core"
+        );
+        assert!(
+            !compiler_effects.contains(&format!("pub struct {effect}"))
+                && !compiler_effects.contains(&format!("pub enum {effect}")),
+            "compiler effects module must not define a local {effect} payload after migration"
+        );
+    }
+
+    let integration = read_repo_file(
+        &root,
+        "crates/ironsmith-runtime/src/compiler_integration.rs",
+    );
+    assert!(
+        !integration.contains(
+            "crate::effects::GainLifeEffect::new(payload.amount.clone(), payload.player.clone())",
+        ),
+        "compiler integration must not reconstruct GainLifeEffect field by field"
+    );
+}
+
+#[test]
+fn migrated_static_ability_model_is_core_owned() {
+    let root = workspace_root();
+    let core_static_abilities =
+        read_repo_file(&root, "crates/ironsmith-core/src/static_ability_model.rs");
+    let compiler_static_abilities =
+        read_repo_file(&root, "crates/ironsmith-compiler/src/static_abilities.rs");
+
+    assert!(
+        core_static_abilities.contains("pub struct StaticAbility<"),
+        "core must define the shared StaticAbility data model"
+    );
+    assert!(
+        core_static_abilities.contains("pub enum StaticAbilityPayload<"),
+        "core must define the shared StaticAbilityPayload data model"
+    );
+    assert!(
+        !compiler_static_abilities.contains("pub struct StaticAbility"),
+        "compiler must not define a local StaticAbility data model after migration"
+    );
+    assert!(
+        !compiler_static_abilities.contains("pub enum StaticAbilityPayload"),
+        "compiler must not define a local StaticAbilityPayload data model after migration"
+    );
+    assert!(
+        compiler_static_abilities
+            .contains("pub type StaticAbility = ironsmith_core::StaticAbility<"),
+        "compiler should alias the core StaticAbility data model"
+    );
+    assert!(
+        compiler_static_abilities
+            .contains("pub type StaticAbilityPayload = ironsmith_core::StaticAbilityPayload<"),
+        "compiler should alias the core StaticAbilityPayload data model"
+    );
+
+    let runtime_compiler_integration = read_repo_file(
+        &root,
+        "crates/ironsmith-runtime/src/compiler_integration.rs",
+    );
+    assert!(
+        !runtime_compiler_integration.contains("fn convert_static_ability"),
+        "compiler integration must not define a static-ability semantic conversion table"
+    );
+}
+
+#[test]
 fn runtime_public_surface_does_not_export_legacy_executor_or_game_event_modules() {
     let root = workspace_root();
     let lib_rs = read_repo_file(&root, "crates/ironsmith-runtime/src/lib.rs");

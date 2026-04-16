@@ -12,62 +12,12 @@ use crate::effects::zones::{
 };
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::{GameState, StackEntry};
-use crate::mana::ManaCost;
-use crate::tag::TagKey;
-use crate::target::PlayerFilter;
 use crate::zone::Zone;
+pub use ironsmith_core::CastTaggedEffect;
 
 use super::runtime_helpers::{queue_effect_driven_land_play, with_spell_cast_event};
 
 /// Effect that casts a tagged card immediately.
-#[derive(Debug, Clone, PartialEq)]
-pub struct CastTaggedEffect {
-    pub tag: TagKey,
-    pub player: PlayerFilter,
-    pub allow_land: bool,
-    pub as_copy: bool,
-    pub without_paying_mana_cost: bool,
-    pub cost_reduction: Option<ManaCost>,
-}
-
-impl CastTaggedEffect {
-    /// Create a new cast-tagged effect.
-    pub fn new(tag: impl Into<TagKey>, player: PlayerFilter) -> Self {
-        Self {
-            tag: tag.into(),
-            player,
-            allow_land: false,
-            as_copy: false,
-            without_paying_mana_cost: false,
-            cost_reduction: None,
-        }
-    }
-
-    /// Allow playing a tagged land (best-effort, ignores ownership restrictions).
-    pub fn allow_land(mut self) -> Self {
-        self.allow_land = true;
-        self
-    }
-
-    /// Cast a copy of the tagged object instead of the tagged object itself.
-    pub fn as_copy(mut self) -> Self {
-        self.as_copy = true;
-        self
-    }
-
-    /// Cast without paying mana cost.
-    pub fn without_paying_mana_cost(mut self) -> Self {
-        self.without_paying_mana_cost = true;
-        self
-    }
-
-    /// Reduce the generated spell's mana cost during this immediate cast.
-    pub fn cost_reduction(mut self, reduction: ManaCost) -> Self {
-        self.cost_reduction = Some(reduction);
-        self
-    }
-}
-
 impl EffectExecutor for CastTaggedEffect {
     fn execute(
         &self,
@@ -283,6 +233,7 @@ mod tests {
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::snapshot::ObjectSnapshot;
     use crate::tag::TagKey;
+    use crate::target::PlayerFilter;
     use crate::types::CardType;
 
     fn setup_game() -> GameState {

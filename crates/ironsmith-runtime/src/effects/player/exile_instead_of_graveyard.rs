@@ -10,25 +10,9 @@ use crate::game_state::GameState;
 use crate::replacement::{ReplacementAction, ReplacementEffect};
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::zone::Zone;
+pub use ironsmith_core::ExileInsteadOfGraveyardEffect;
 
 /// Effect that exiles cards that would go to a player's graveyard this turn.
-#[derive(Debug, Clone, PartialEq)]
-pub struct ExileInsteadOfGraveyardEffect {
-    pub player: PlayerFilter,
-}
-
-impl ExileInsteadOfGraveyardEffect {
-    /// Create a new effect.
-    pub fn new(player: PlayerFilter) -> Self {
-        Self { player }
-    }
-
-    /// Apply to you.
-    pub fn you() -> Self {
-        Self::new(PlayerFilter::You)
-    }
-}
-
 impl EffectExecutor for ExileInsteadOfGraveyardEffect {
     fn execute(
         &self,

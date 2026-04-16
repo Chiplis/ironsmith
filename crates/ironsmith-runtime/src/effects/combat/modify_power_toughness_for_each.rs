@@ -7,6 +7,7 @@ use crate::effects::{ApplyContinuousEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
+pub use ironsmith_core::ModifyPowerToughnessForEachEffect;
 
 /// Effect that modifies a creature's power/toughness based on a count.
 ///
@@ -40,44 +41,6 @@ use crate::target::ChooseSpec;
 ///     Until::EndOfTurn,
 /// );
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct ModifyPowerToughnessForEachEffect {
-    /// Which creature to modify.
-    pub target: ChooseSpec,
-    /// Power modifier per count.
-    pub power_per: i32,
-    /// Toughness modifier per count.
-    pub toughness_per: i32,
-    /// Value determining the multiplier.
-    pub count: Value,
-    /// Duration for the modification.
-    pub duration: Until,
-}
-
-impl ModifyPowerToughnessForEachEffect {
-    /// Create a new modify power/toughness for each effect with explicit duration.
-    pub fn new(
-        target: ChooseSpec,
-        power_per: i32,
-        toughness_per: i32,
-        count: Value,
-        duration: Until,
-    ) -> Self {
-        Self {
-            target,
-            power_per,
-            toughness_per,
-            count,
-            duration,
-        }
-    }
-
-    /// Create a symmetric pump (+N/+N per count) with explicit duration.
-    pub fn symmetric(target: ChooseSpec, per: i32, count: Value, duration: Until) -> Self {
-        Self::new(target, per, per, count, duration)
-    }
-}
-
 impl EffectExecutor for ModifyPowerToughnessForEachEffect {
     fn execute(
         &self,

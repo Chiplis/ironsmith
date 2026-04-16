@@ -8568,7 +8568,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(remove_counters_among) =
         effect.downcast_ref::<crate::effects::RemoveAnyCountersAmongEffect>()
     {
-        return remove_counters_among.cost_display();
+        return crate::effects::remove_any_counters_among_cost_display(remove_counters_among);
     }
     if let Some(remove_any_from_source) =
         effect.downcast_ref::<crate::effects::RemoveAnyCountersFromSourceEffect>()
@@ -11186,6 +11186,30 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             timing
         );
     }
+    if let Some(prevent_combat) =
+        effect.downcast_ref::<crate::effects::PreventAllCombatDamageEffect>()
+    {
+        let timing = match prevent_combat.until {
+            Until::EndOfTurn => "this turn".to_string(),
+            _ => describe_until(&prevent_combat.until),
+        };
+        return match &prevent_combat.target {
+            crate::effects::CombatDamagePreventionTarget::All => {
+                format!("Prevent all combat damage {timing}")
+            }
+            crate::effects::CombatDamagePreventionTarget::Players => {
+                format!("Prevent all combat damage that would be dealt to players {timing}")
+            }
+            crate::effects::CombatDamagePreventionTarget::You => {
+                format!("Prevent all combat damage that would be dealt to you {timing}")
+            }
+            crate::effects::CombatDamagePreventionTarget::From(source) => format!(
+                "Prevent all combat damage that would be dealt by {} {}",
+                describe_choose_spec(source),
+                timing
+            ),
+        };
+    }
     if let Some(prevent_all) = effect.downcast_ref::<crate::effects::PreventAllDamageEffect>() {
         let simple_damage_filter = prevent_all.damage_filter.from_source.is_none()
             && prevent_all.damage_filter.from_colors.is_none()
@@ -11686,6 +11710,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         }
         let duration = match grant.duration {
             crate::grant::GrantDuration::UntilEndOfTurn => " until end of turn",
+            crate::grant::GrantDuration::UntilYourNextTurnEnd => " until the end of your next turn",
             crate::grant::GrantDuration::Forever => "",
         };
         let granted_text = match &grant.grantable {
@@ -11715,6 +11740,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         }
         let duration = match grant.duration {
             crate::grant::GrantDuration::UntilEndOfTurn => " until end of turn",
+            crate::grant::GrantDuration::UntilYourNextTurnEnd => " until the end of your next turn",
             crate::grant::GrantDuration::Forever => "",
         };
         return format!(

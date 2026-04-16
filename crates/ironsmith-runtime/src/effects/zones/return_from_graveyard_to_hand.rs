@@ -10,6 +10,7 @@ use crate::game_state::GameState;
 use crate::ids::ObjectId;
 use crate::target::ChooseSpec;
 use crate::zone::Zone;
+pub use ironsmith_core::ReturnFromGraveyardToHandEffect;
 
 use super::apply_zone_change_with_additional_effects;
 
@@ -27,50 +28,30 @@ use super::apply_zone_change_with_additional_effects;
 /// // Return target creature card from your graveyard to your hand
 /// let effect = ReturnFromGraveyardToHandEffect::new(ChooseSpec::creature_card_in_graveyard());
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct ReturnFromGraveyardToHandEffect {
-    /// The targeting specification (for UI/validation purposes).
-    pub target: ChooseSpec,
-    /// Whether the cards are selected at random (text-level semantics).
-    pub random: bool,
-}
-
-impl ReturnFromGraveyardToHandEffect {
-    /// Create a new return from graveyard to hand effect.
-    pub fn new(target: ChooseSpec, random: bool) -> Self {
-        Self { target, random }
+fn return_object(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    object_id: ObjectId,
+) -> Option<ObjectId> {
+    let Some(obj) = game.object(object_id) else {
+        return None;
+    };
+    if obj.zone != Zone::Graveyard {
+        return None;
     }
+    let additional_effects = ctx.additional_replacement_effects_snapshot();
 
-    /// Create an effect targeting any card in a graveyard.
-    pub fn any_card() -> Self {
-        Self::new(ChooseSpec::card_in_zone(Zone::Graveyard), false)
-    }
-
-    fn return_object(
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        object_id: ObjectId,
-    ) -> Option<ObjectId> {
-        let Some(obj) = game.object(object_id) else {
-            return None;
-        };
-        if obj.zone != Zone::Graveyard {
-            return None;
-        }
-        let additional_effects = ctx.additional_replacement_effects_snapshot();
-
-        match apply_zone_change_with_additional_effects(
-            game,
-            object_id,
-            Zone::Graveyard,
-            Zone::Hand,
-            ctx.cause.clone(),
-            &mut ctx.decision_maker,
-            &additional_effects,
-        ) {
-            EventOutcome::Proceed(result) => result.new_object_id,
-            EventOutcome::Prevented | EventOutcome::Replaced | EventOutcome::NotApplicable => None,
-        }
+    match apply_zone_change_with_additional_effects(
+        game,
+        object_id,
+        Zone::Graveyard,
+        Zone::Hand,
+        ctx.cause.clone(),
+        &mut ctx.decision_maker,
+        &additional_effects,
+    ) {
+        EventOutcome::Proceed(result) => result.new_object_id,
+        EventOutcome::Prevented | EventOutcome::Replaced | EventOutcome::NotApplicable => None,
     }
 }
 
@@ -114,7 +95,7 @@ impl EffectExecutor for ReturnFromGraveyardToHandEffect {
 
             game.shuffle_slice(&mut candidates);
             for id in candidates.into_iter().take(requested) {
-                if let Some(new_id) = Self::return_object(game, ctx, id) {
+                if let Some(new_id) = return_object(game, ctx, id) {
                     returned.push(new_id);
                 }
             }
@@ -128,7 +109,7 @@ impl EffectExecutor for ReturnFromGraveyardToHandEffect {
             Err(_) => return Ok(EffectOutcome::target_invalid()),
         };
         for target_id in resolved_targets {
-            if let Some(new_id) = Self::return_object(game, ctx, target_id) {
+            if let Some(new_id) = return_object(game, ctx, target_id) {
                 returned.push(new_id);
             }
         }

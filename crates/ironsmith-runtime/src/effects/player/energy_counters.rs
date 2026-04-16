@@ -1,12 +1,12 @@
 //! Energy counters effect implementation.
 
-use crate::effect::{EffectOutcome, Value};
+use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::object::CounterType;
-use crate::target::PlayerFilter;
+pub use ironsmith_core::EnergyCountersEffect;
 
 /// Effect that gives a player energy counters.
 ///
@@ -21,29 +21,6 @@ use crate::target::PlayerFilter;
 /// // Get 3 energy
 /// let effect = EnergyCountersEffect::you(3);
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct EnergyCountersEffect {
-    /// How many energy counters to add.
-    pub count: Value,
-    /// Which player receives the counters.
-    pub player: PlayerFilter,
-}
-
-impl EnergyCountersEffect {
-    /// Create a new energy counters effect.
-    pub fn new(count: impl Into<Value>, player: PlayerFilter) -> Self {
-        Self {
-            count: count.into(),
-            player,
-        }
-    }
-
-    /// Create an effect where you get energy counters.
-    pub fn you(count: impl Into<Value>) -> Self {
-        Self::new(count, PlayerFilter::You)
-    }
-}
-
 impl EffectExecutor for EnergyCountersEffect {
     fn execute(
         &self,

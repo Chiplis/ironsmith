@@ -31,9 +31,3 @@ pub fn extract_static_abilities(
         })
         .collect()
 }
-
-impl From<crate::static_abilities::StaticAbility> for Ability {
-    fn from(value: crate::static_abilities::StaticAbility) -> Self {
-        Self::static_ability(value)
-    }
-}

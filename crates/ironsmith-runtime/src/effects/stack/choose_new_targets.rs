@@ -14,56 +14,12 @@ use crate::target::{ChooseSpec, PlayerFilter};
 use crate::targeting::{compute_legal_targets, normalize_targets_for_requirements};
 use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
+pub use ironsmith_core::ChooseNewTargetsEffect;
 
 /// Effect that lets a player choose new targets for stack object(s).
 ///
 /// The objects are read from a prior effect outcome, preferring explicit
 /// object outputs and falling back to preserved chosen/affected-object facts.
-#[derive(Debug, Clone, PartialEq)]
-pub struct ChooseNewTargetsEffect {
-    /// Effect result ID that contains stack object IDs to retarget.
-    pub from_effect: EffectId,
-    /// Whether this is optional ("you may choose new targets").
-    pub may: bool,
-    /// Optional explicit chooser for "that player may choose new targets".
-    pub chooser: Option<PlayerFilter>,
-}
-
-impl ChooseNewTargetsEffect {
-    /// Create a new retargeting effect.
-    pub fn new(from_effect: EffectId, may: bool) -> Self {
-        Self {
-            from_effect,
-            may,
-            chooser: None,
-        }
-    }
-
-    /// Create a new retargeting effect with explicit chooser.
-    pub fn new_for_player(from_effect: EffectId, may: bool, chooser: PlayerFilter) -> Self {
-        Self {
-            from_effect,
-            may,
-            chooser: Some(chooser),
-        }
-    }
-
-    /// Optional retargeting ("you may choose new targets").
-    pub fn may(from_effect: EffectId) -> Self {
-        Self::new(from_effect, true)
-    }
-
-    /// Optional retargeting where a specific player chooses.
-    pub fn may_for_player(from_effect: EffectId, chooser: PlayerFilter) -> Self {
-        Self::new_for_player(from_effect, true, chooser)
-    }
-
-    /// Mandatory retargeting ("choose new targets").
-    pub fn must(from_effect: EffectId) -> Self {
-        Self::new(from_effect, false)
-    }
-}
-
 fn requires_target_selection(spec: &ChooseSpec) -> bool {
     match spec {
         ChooseSpec::Target(inner) => requires_target_selection(inner),

@@ -1938,10 +1938,9 @@ impl Effect {
 
     /// Create a "prevent all combat damage" effect.
     pub fn prevent_all_combat_damage(until: Until) -> Self {
-        use crate::effects::PreventAllDamageEffect;
-        use crate::prevention::DamageFilter;
-        Self::new(PreventAllDamageEffect::all_with_filter(
-            DamageFilter::combat(),
+        use crate::effects::{CombatDamagePreventionTarget, PreventAllCombatDamageEffect};
+        Self::new(PreventAllCombatDamageEffect::new(
+            CombatDamagePreventionTarget::All,
             until,
         ))
     }
@@ -1954,22 +1953,18 @@ impl Effect {
 
     /// Create a "prevent all combat damage to players" effect.
     pub fn prevent_all_combat_damage_to_players(until: Until) -> Self {
-        use crate::effects::PreventAllDamageEffect;
-        use crate::prevention::{DamageFilter, PreventionTarget};
-        Self::new(PreventAllDamageEffect::new(
-            PreventionTarget::Players,
-            DamageFilter::combat(),
+        use crate::effects::{CombatDamagePreventionTarget, PreventAllCombatDamageEffect};
+        Self::new(PreventAllCombatDamageEffect::new(
+            CombatDamagePreventionTarget::Players,
             until,
         ))
     }
 
     /// Create a "prevent all combat damage to you" effect.
     pub fn prevent_all_combat_damage_to_you(until: Until) -> Self {
-        use crate::effects::PreventAllDamageEffect;
-        use crate::prevention::{DamageFilter, PreventionTarget};
-        Self::new(PreventAllDamageEffect::new(
-            PreventionTarget::You,
-            DamageFilter::combat(),
+        use crate::effects::{CombatDamagePreventionTarget, PreventAllCombatDamageEffect};
+        Self::new(PreventAllCombatDamageEffect::new(
+            CombatDamagePreventionTarget::You,
             until,
         ))
     }

@@ -8,6 +8,7 @@ use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::ObjectFilter;
+pub use ironsmith_core::CantEffect;
 
 fn collapse_tagged_filter_to_specific_objects(
     filter: &ObjectFilter,
@@ -72,25 +73,6 @@ fn normalize_restriction_for_resolution(
 }
 
 /// Effect that applies a restriction for a duration.
-#[derive(Debug, Clone, PartialEq)]
-pub struct CantEffect {
-    pub restriction: Restriction,
-    pub duration: Until,
-}
-
-impl CantEffect {
-    pub fn new(restriction: Restriction, duration: Until) -> Self {
-        Self {
-            restriction,
-            duration,
-        }
-    }
-
-    pub fn until_end_of_turn(restriction: Restriction) -> Self {
-        Self::new(restriction, Until::EndOfTurn)
-    }
-}
-
 impl EffectExecutor for CantEffect {
     fn execute(
         &self,

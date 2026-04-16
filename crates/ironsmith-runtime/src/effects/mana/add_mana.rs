@@ -7,7 +7,7 @@ use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::mana::ManaSymbol;
-use crate::target::PlayerFilter;
+pub use ironsmith_core::AddManaEffect;
 
 /// Effect that adds specific mana symbols to a player's mana pool.
 ///
@@ -22,26 +22,6 @@ use crate::target::PlayerFilter;
 /// // Add two green mana
 /// let effect = AddManaEffect::new(vec![ManaSymbol::Green, ManaSymbol::Green], PlayerFilter::You);
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct AddManaEffect {
-    /// The mana symbols to add.
-    pub mana: Vec<ManaSymbol>,
-    /// Which player receives the mana.
-    pub player: PlayerFilter,
-}
-
-impl AddManaEffect {
-    /// Create a new add mana effect.
-    pub fn new(mana: Vec<ManaSymbol>, player: PlayerFilter) -> Self {
-        Self { mana, player }
-    }
-
-    /// Create an effect where you add mana.
-    pub fn you(mana: Vec<ManaSymbol>) -> Self {
-        Self::new(mana, PlayerFilter::You)
-    }
-}
-
 impl EffectExecutor for AddManaEffect {
     fn execute(
         &self,
@@ -69,6 +49,7 @@ impl EffectExecutor for AddManaEffect {
 mod tests {
     use super::*;
     use crate::ids::PlayerId;
+    use crate::target::PlayerFilter;
 
     fn setup_game() -> GameState {
         crate::tests::test_helpers::setup_two_player_game()

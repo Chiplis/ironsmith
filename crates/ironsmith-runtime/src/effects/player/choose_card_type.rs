@@ -8,40 +8,7 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::PlayerFilter;
 use crate::types::CardType;
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct ChooseCardTypeEffect {
-    pub chooser: PlayerFilter,
-    pub options: Vec<CardType>,
-}
-
-impl ChooseCardTypeEffect {
-    pub fn new(chooser: PlayerFilter, options: Vec<CardType>) -> Self {
-        Self { chooser, options }
-    }
-
-    pub fn all_card_types() -> &'static [CardType] {
-        &[
-            CardType::Artifact,
-            CardType::Battle,
-            CardType::Creature,
-            CardType::Enchantment,
-            CardType::Instant,
-            CardType::Kindred,
-            CardType::Land,
-            CardType::Planeswalker,
-            CardType::Sorcery,
-        ]
-    }
-
-    fn card_type_options(&self) -> Vec<CardType> {
-        if self.options.is_empty() {
-            Self::all_card_types().to_vec()
-        } else {
-            self.options.clone()
-        }
-    }
-}
+pub use ironsmith_core::ChooseCardTypeEffect;
 
 impl EffectExecutor for ChooseCardTypeEffect {
     fn execute(

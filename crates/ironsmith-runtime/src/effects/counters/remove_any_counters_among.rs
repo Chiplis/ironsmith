@@ -14,125 +14,104 @@ use crate::snapshot::ObjectSnapshot;
 use crate::tag::TagKey;
 use crate::types::CardType;
 use crate::zone::Zone;
+pub use ironsmith_core::RemoveAnyCountersAmongEffect;
 use std::collections::HashMap;
 
 /// Remove a total number of counters from among permanents matching a filter.
 ///
 /// When used as a cost, this is wrapped by `CostEffect` via `Cost::effect(...)`.
-#[derive(Debug, Clone, PartialEq)]
-pub struct RemoveAnyCountersAmongEffect {
-    /// Total counters to remove.
-    pub count: u32,
-    /// Which permanents can have counters removed.
-    pub filter: ObjectFilter,
-    /// Optional counter type restriction.
-    pub counter_type: Option<CounterType>,
+pub(crate) fn valid_targets_with_tags(
+    effect: &RemoveAnyCountersAmongEffect,
+    game: &GameState,
+    source: ObjectId,
+    payer: PlayerId,
+    tagged_objects: &HashMap<TagKey, Vec<ObjectSnapshot>>,
+) -> Vec<ObjectId> {
+    let filter_ctx = FilterContext::new(payer)
+        .with_source(source)
+        .with_tagged_objects(tagged_objects);
+
+    game.battlefield
+        .iter()
+        .copied()
+        .filter(|id| {
+            let Some(obj) = game.object(*id) else {
+                return false;
+            };
+            let available = if let Some(counter_type) = effect.counter_type {
+                obj.counters.get(&counter_type).copied().unwrap_or(0)
+            } else {
+                obj.counters.values().copied().sum::<u32>()
+            };
+            effect.filter.matches(obj, &filter_ctx, game) && available > 0
+        })
+        .collect()
 }
 
-impl RemoveAnyCountersAmongEffect {
-    /// Create a new remove-counters-among effect.
-    pub fn new(count: u32, filter: ObjectFilter) -> Self {
-        Self {
-            count,
-            filter,
-            counter_type: None,
+pub fn valid_targets(
+    effect: &RemoveAnyCountersAmongEffect,
+    game: &GameState,
+    source: ObjectId,
+    payer: PlayerId,
+) -> Vec<ObjectId> {
+    valid_targets_with_tags(effect, game, source, payer, &HashMap::new())
+}
+
+fn total_available_with_tags(
+    effect: &RemoveAnyCountersAmongEffect,
+    game: &GameState,
+    source: ObjectId,
+    payer: PlayerId,
+    tagged_objects: &HashMap<TagKey, Vec<ObjectSnapshot>>,
+) -> u32 {
+    valid_targets_with_tags(effect, game, source, payer, tagged_objects)
+        .iter()
+        .filter_map(|id| game.object(*id))
+        .map(|obj| {
+            if let Some(counter_type) = effect.counter_type {
+                obj.counters.get(&counter_type).copied().unwrap_or(0)
+            } else {
+                obj.counters.values().copied().sum::<u32>()
+            }
+        })
+        .sum()
+}
+
+fn total_available(
+    effect: &RemoveAnyCountersAmongEffect,
+    game: &GameState,
+    source: ObjectId,
+    payer: PlayerId,
+) -> u32 {
+    total_available_with_tags(effect, game, source, payer, &HashMap::new())
+}
+
+pub fn cost_display(effect: &RemoveAnyCountersAmongEffect) -> String {
+    let target_phrase_single = remove_counters_target_phrase(&effect.filter, false);
+    let target_phrase_plural = remove_counters_target_phrase(&effect.filter, true);
+    match (effect.count, effect.counter_type) {
+        (1, Some(counter_type)) => {
+            let counter_name = counter_type.description();
+            format!(
+                "Remove {} {} counter from {}",
+                counter_article(&counter_name),
+                counter_name,
+                target_phrase_single
+            )
         }
-    }
-
-    /// Restrict this cost to a specific counter type.
-    pub fn with_counter_type(mut self, counter_type: Option<CounterType>) -> Self {
-        self.counter_type = counter_type;
-        self
-    }
-
-    pub(crate) fn valid_targets_with_tags(
-        &self,
-        game: &GameState,
-        source: ObjectId,
-        payer: PlayerId,
-        tagged_objects: &HashMap<TagKey, Vec<ObjectSnapshot>>,
-    ) -> Vec<ObjectId> {
-        let filter_ctx = FilterContext::new(payer)
-            .with_source(source)
-            .with_tagged_objects(tagged_objects);
-
-        game.battlefield
-            .iter()
-            .copied()
-            .filter(|id| {
-                let Some(obj) = game.object(*id) else {
-                    return false;
-                };
-                let available = if let Some(counter_type) = self.counter_type {
-                    obj.counters.get(&counter_type).copied().unwrap_or(0)
-                } else {
-                    obj.counters.values().copied().sum::<u32>()
-                };
-                self.filter.matches(obj, &filter_ctx, game) && available > 0
-            })
-            .collect()
-    }
-
-    pub fn valid_targets(
-        &self,
-        game: &GameState,
-        source: ObjectId,
-        payer: PlayerId,
-    ) -> Vec<ObjectId> {
-        self.valid_targets_with_tags(game, source, payer, &HashMap::new())
-    }
-
-    fn total_available_with_tags(
-        &self,
-        game: &GameState,
-        source: ObjectId,
-        payer: PlayerId,
-        tagged_objects: &HashMap<TagKey, Vec<ObjectSnapshot>>,
-    ) -> u32 {
-        self.valid_targets_with_tags(game, source, payer, tagged_objects)
-            .iter()
-            .filter_map(|id| game.object(*id))
-            .map(|obj| {
-                if let Some(counter_type) = self.counter_type {
-                    obj.counters.get(&counter_type).copied().unwrap_or(0)
-                } else {
-                    obj.counters.values().copied().sum::<u32>()
-                }
-            })
-            .sum()
-    }
-
-    fn total_available(&self, game: &GameState, source: ObjectId, payer: PlayerId) -> u32 {
-        self.total_available_with_tags(game, source, payer, &HashMap::new())
-    }
-
-    pub fn cost_display(&self) -> String {
-        let target_phrase_single = remove_counters_target_phrase(&self.filter, false);
-        let target_phrase_plural = remove_counters_target_phrase(&self.filter, true);
-        match (self.count, self.counter_type) {
-            (1, Some(counter_type)) => {
-                let counter_name = counter_type.description();
-                format!(
-                    "Remove {} {} counter from {}",
-                    counter_article(&counter_name),
-                    counter_name,
-                    target_phrase_single
-                )
-            }
-            (count, Some(counter_type)) => {
-                let counter_name = counter_type.description();
-                format!(
-                    "Remove {} {} counters from among {}",
-                    count, counter_name, target_phrase_plural
-                )
-            }
-            (1, None) => format!("Remove a counter from {}", target_phrase_single),
-            (count, None) => {
-                format!(
-                    "Remove {} counters from among {}",
-                    count, target_phrase_plural
-                )
-            }
+        (count, Some(counter_type)) => {
+            let counter_name = counter_type.description();
+            format!(
+                "Remove {} {} counters from among {}",
+                count, counter_name, target_phrase_plural
+            )
+        }
+        (1, None) => format!("Remove a counter from {}", target_phrase_single),
+        (count, None) => {
+            format!(
+                "Remove {} counters from among {}",
+                count, target_phrase_plural
+            )
         }
     }
 }
@@ -147,14 +126,14 @@ impl EffectExecutor for RemoveAnyCountersAmongEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if self.total_available_with_tags(game, ctx.source, ctx.controller, &ctx.tagged_objects)
+        if total_available_with_tags(self, game, ctx.source, ctx.controller, &ctx.tagged_objects)
             < self.count
         {
             return Ok(EffectOutcome::impossible());
         }
 
         let valid_targets =
-            self.valid_targets_with_tags(game, ctx.source, ctx.controller, &ctx.tagged_objects);
+            valid_targets_with_tags(self, game, ctx.source, ctx.controller, &ctx.tagged_objects);
         let distribute_targets: Vec<Target> =
             valid_targets.iter().copied().map(Target::Object).collect();
         let distribution = make_decision_with_fallback(
@@ -305,7 +284,7 @@ impl EffectExecutor for RemoveAnyCountersAmongEffect {
     }
 
     fn cost_description(&self) -> Option<String> {
-        Some(self.cost_display())
+        Some(cost_display(self))
     }
 }
 
@@ -316,7 +295,7 @@ impl CostExecutableEffect for RemoveAnyCountersAmongEffect {
         source: ObjectId,
         controller: PlayerId,
     ) -> Result<(), CostValidationError> {
-        if self.total_available(game, source, controller) < self.count {
+        if total_available(self, game, source, controller) < self.count {
             return Err(CostValidationError::Other(
                 "not enough counters".to_string(),
             ));
@@ -519,7 +498,7 @@ mod tests {
     fn display_permanent_you_control_singular() {
         let effect = RemoveAnyCountersAmongEffect::new(1, ObjectFilter::permanent().you_control());
         assert_eq!(
-            effect.cost_display(),
+            cost_display(&effect),
             "Remove a counter from a permanent you control"
         );
     }

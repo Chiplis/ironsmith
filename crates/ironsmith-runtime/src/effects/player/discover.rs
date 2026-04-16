@@ -21,30 +21,11 @@ use crate::tag::TagKey;
 use crate::target::PlayerFilter;
 use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
+pub use ironsmith_core::DiscoverEffect;
 
 use super::runtime_helpers::register_effect_driven_spell_cast;
 
 /// Effect that resolves a discover action for a player.
-#[derive(Debug, Clone, PartialEq)]
-pub struct DiscoverEffect {
-    pub count: Value,
-    pub player: PlayerFilter,
-}
-
-impl DiscoverEffect {
-    pub fn new(count: impl Into<Value>, player: PlayerFilter) -> Self {
-        Self {
-            count: count.into(),
-            player,
-        }
-    }
-
-    /// The controller discovers N.
-    pub fn you(count: impl Into<Value>) -> Self {
-        Self::new(count, PlayerFilter::You)
-    }
-}
-
 impl EffectExecutor for DiscoverEffect {
     fn execute(
         &self,

@@ -7,30 +7,9 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::grant::{GrantDuration, GrantSpec};
 use crate::grant_registry::GrantSource;
-use crate::target::PlayerFilter;
+pub type GrantBySpecEffect = ironsmith_core::GrantBySpecEffect<GrantSpec, GrantDuration>;
 
 /// Effect that grants a [`GrantSpec`] to cards matching its filter for a duration.
-#[derive(Debug, Clone, PartialEq)]
-pub struct GrantBySpecEffect {
-    /// Shared grant definition used by static abilities and temporary effects.
-    pub spec: GrantSpec,
-    /// Player who may use the grant.
-    pub player: PlayerFilter,
-    /// How long the grant lasts.
-    pub duration: GrantDuration,
-}
-
-impl GrantBySpecEffect {
-    /// Create a new filter-based grant effect.
-    pub fn new(spec: GrantSpec, player: PlayerFilter, duration: GrantDuration) -> Self {
-        Self {
-            spec,
-            player,
-            duration,
-        }
-    }
-}
-
 impl EffectExecutor for GrantBySpecEffect {
     fn execute(
         &self,
@@ -46,6 +25,11 @@ impl EffectExecutor for GrantBySpecEffect {
                 source_id: ctx.source,
                 expires_end_of_turn: u32::MAX,
             },
+            GrantDuration::UntilYourNextTurnEnd => {
+                return Err(ExecutionError::Impossible(
+                    "grant duration until your next turn is not implemented".to_string(),
+                ));
+            }
         };
 
         game.effect_store.grant_registry.grant_to_filter(
@@ -67,6 +51,7 @@ mod tests {
     use crate::ids::{CardId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::static_abilities::StaticAbility;
+    use crate::target::PlayerFilter;
     use crate::types::CardType;
     use crate::zone::Zone;
 

@@ -10,6 +10,7 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
 use crate::zone::Zone;
+pub use ironsmith_core::ReturnFromGraveyardToBattlefieldEffect;
 
 /// Effect that returns a target card from a graveyard to the battlefield.
 ///
@@ -29,47 +30,6 @@ use crate::zone::Zone;
 ///     false
 /// );
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct ReturnFromGraveyardToBattlefieldEffect {
-    /// The targeting specification (for UI/validation purposes).
-    pub target: ChooseSpec,
-    /// Whether the permanent enters tapped.
-    pub tapped: bool,
-}
-
-impl ReturnFromGraveyardToBattlefieldEffect {
-    /// Create a new return from graveyard to battlefield effect.
-    pub fn new(target: ChooseSpec, tapped: bool) -> Self {
-        Self { target, tapped }
-    }
-
-    /// Create an effect that returns a creature untapped.
-    pub fn creature() -> Self {
-        Self::new(
-            ChooseSpec::Object(crate::target::ObjectFilter::creature().in_zone(Zone::Graveyard)),
-            false,
-        )
-    }
-
-    /// Create an effect that returns a creature tapped.
-    pub fn creature_tapped() -> Self {
-        Self::new(
-            ChooseSpec::Object(crate::target::ObjectFilter::creature().in_zone(Zone::Graveyard)),
-            true,
-        )
-    }
-
-    /// Create an effect targeting any card in a graveyard, entering untapped.
-    pub fn any_card() -> Self {
-        Self::new(ChooseSpec::card_in_zone(Zone::Graveyard), false)
-    }
-
-    /// Create an effect targeting any card in a graveyard, entering tapped.
-    pub fn any_card_tapped() -> Self {
-        Self::new(ChooseSpec::card_in_zone(Zone::Graveyard), true)
-    }
-}
-
 impl EffectExecutor for ReturnFromGraveyardToBattlefieldEffect {
     fn execute(
         &self,

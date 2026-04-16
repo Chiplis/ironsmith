@@ -4,70 +4,9 @@ use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::game_state::{GameState, PlayerControlDuration, PlayerControlStart};
-use crate::target::{ChooseSpec, PlayerFilter};
-
-/// Effect that lets a player control another player's decisions.
-#[derive(Debug, Clone, PartialEq)]
-pub struct ControlPlayerEffect {
-    /// Which player is controlled.
-    pub player: PlayerFilter,
-    /// When control begins.
-    pub start: PlayerControlStart,
-    /// How long control lasts.
-    pub duration: PlayerControlDuration,
-    /// Target spec if this effect targets a player.
-    pub target_spec: Option<ChooseSpec>,
-}
-
-impl ControlPlayerEffect {
-    /// Create a new control player effect.
-    pub fn new(
-        player: PlayerFilter,
-        start: PlayerControlStart,
-        duration: PlayerControlDuration,
-    ) -> Self {
-        let target_spec = match &player {
-            PlayerFilter::Target(inner) => {
-                Some(ChooseSpec::target(ChooseSpec::Player((**inner).clone())))
-            }
-            _ => None,
-        };
-        Self {
-            player,
-            start,
-            duration,
-            target_spec,
-        }
-    }
-
-    /// Control a player until end of turn.
-    pub fn until_end_of_turn(player: PlayerFilter) -> Self {
-        Self::new(
-            player,
-            PlayerControlStart::Immediate,
-            PlayerControlDuration::UntilEndOfTurn,
-        )
-    }
-
-    /// Control a player during their next turn.
-    pub fn during_next_turn(player: PlayerFilter) -> Self {
-        Self::new(
-            player,
-            PlayerControlStart::NextTurn,
-            PlayerControlDuration::UntilEndOfTurn,
-        )
-    }
-
-    /// Control a player indefinitely.
-    pub fn forever(player: PlayerFilter) -> Self {
-        Self::new(
-            player,
-            PlayerControlStart::Immediate,
-            PlayerControlDuration::Forever,
-        )
-    }
-}
+use crate::game_state::GameState;
+use crate::target::ChooseSpec;
+pub use ironsmith_core::ControlPlayerEffect;
 
 impl EffectExecutor for ControlPlayerEffect {
     fn execute(
@@ -101,7 +40,9 @@ impl EffectExecutor for ControlPlayerEffect {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::game_state::{PlayerControlDuration, PlayerControlStart};
     use crate::ids::PlayerId;
+    use crate::target::PlayerFilter;
 
     fn setup_game() -> GameState {
         crate::tests::test_helpers::setup_two_player_game()

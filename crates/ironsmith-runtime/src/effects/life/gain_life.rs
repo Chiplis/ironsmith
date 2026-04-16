@@ -1,14 +1,15 @@
 //! Gain life effect implementation.
 
-use crate::effect::{EffectOutcome, Value};
+use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_from_spec, resolve_value};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::LifeGainEvent;
 use crate::events::processing::process_life_gain_with_event;
 use crate::game_state::GameState;
-use crate::target::{ChooseSpec, PlayerFilter};
+use crate::target::ChooseSpec;
 use crate::triggers::TriggerEvent;
+pub use ironsmith_core::GainLifeEffect;
 
 /// Effect that causes a player to gain life.
 ///
@@ -32,39 +33,6 @@ use crate::triggers::TriggerEvent;
 ///     player: ChooseSpec::target(ChooseSpec::Player(PlayerFilter::Any)),
 /// };
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct GainLifeEffect {
-    /// The amount of life to gain.
-    pub amount: Value,
-    /// Which player gains life.
-    pub player: ChooseSpec,
-}
-
-impl GainLifeEffect {
-    /// Create a new gain life effect.
-    pub fn new(amount: impl Into<Value>, player: ChooseSpec) -> Self {
-        Self {
-            amount: amount.into(),
-            player,
-        }
-    }
-
-    /// Create a new gain life effect from a PlayerFilter (convenience).
-    pub fn with_filter(amount: impl Into<Value>, player: PlayerFilter) -> Self {
-        Self::new(amount, ChooseSpec::Player(player))
-    }
-
-    /// Create an effect where you gain life.
-    pub fn you(amount: impl Into<Value>) -> Self {
-        Self::new(amount, ChooseSpec::Player(PlayerFilter::You))
-    }
-
-    /// Create an effect where target player gains life.
-    pub fn target_player(amount: impl Into<Value>) -> Self {
-        Self::new(amount, ChooseSpec::target_player())
-    }
-}
-
 impl EffectExecutor for GainLifeEffect {
     fn execute(
         &self,
@@ -107,5 +75,85 @@ impl EffectExecutor for GainLifeEffect {
 
     fn target_description(&self) -> &'static str {
         "player to gain life"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::events::EventKind;
+    use crate::events::life::matchers::WouldGainLifeMatcher;
+    use crate::ids::PlayerId;
+    use crate::replacement::{EventModification, ReplacementAction, ReplacementEffect};
+
+    fn setup() -> (GameState, PlayerId) {
+        (
+            crate::tests::test_helpers::setup_two_player_game(),
+            PlayerId::from_index(0),
+        )
+    }
+
+    #[test]
+    fn shared_gain_life_payload_executes_in_runtime() {
+        let (mut game, alice) = setup();
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let outcome = GainLifeEffect::you(3)
+            .execute(&mut game, &mut ctx)
+            .expect("gain life should resolve");
+
+        assert_eq!(game.player(alice).expect("alice exists").life, 23);
+        assert_eq!(outcome.as_count(), Some(3));
+        assert!(
+            outcome
+                .events
+                .iter()
+                .any(|event| event.kind() == EventKind::LifeGain),
+            "life gain should emit a LifeGainEvent"
+        );
+    }
+
+    #[test]
+    fn shared_gain_life_payload_uses_replacement_effects() {
+        let (mut game, alice) = setup();
+        let source = game.new_object_id();
+        game.effect_store.replacement_effects.add_resolution_effect(
+            ReplacementEffect::with_matcher(
+                source,
+                alice,
+                WouldGainLifeMatcher::you(),
+                ReplacementAction::Modify(EventModification::Add(2)),
+            ),
+        );
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let outcome = GainLifeEffect::you(3)
+            .execute(&mut game, &mut ctx)
+            .expect("gain life should resolve");
+
+        assert_eq!(game.player(alice).expect("alice exists").life, 25);
+        assert_eq!(outcome.as_count(), Some(5));
+    }
+
+    #[test]
+    fn shared_gain_life_payload_respects_life_gain_prevention() {
+        let (mut game, alice) = setup();
+        let source = game.new_object_id();
+        game.effect_store
+            .replacement_effects
+            .add_resolution_effect(ReplacementEffect::cant_gain_life(source, alice));
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let outcome = GainLifeEffect::you(3)
+            .execute(&mut game, &mut ctx)
+            .expect("gain life should resolve");
+
+        assert_eq!(game.player(alice).expect("alice exists").life, 20);
+        assert_eq!(outcome.as_count(), Some(0));
+        assert!(
+            outcome.events.is_empty(),
+            "prevented life gain should not emit a LifeGainEvent"
+        );
     }
 }

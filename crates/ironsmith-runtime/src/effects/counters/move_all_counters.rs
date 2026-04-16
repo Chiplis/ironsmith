@@ -6,6 +6,7 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::object::CounterType;
 use crate::target::ChooseSpec;
+pub use ironsmith_core::MoveAllCountersEffect;
 
 /// Effect that moves ALL counters of ALL types from one creature to another.
 ///
@@ -25,26 +26,6 @@ use crate::target::ChooseSpec;
 ///     ChooseSpec::creature(),
 /// );
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct MoveAllCountersEffect {
-    /// Source creature (first target).
-    pub from: ChooseSpec,
-    /// Destination creature (second target).
-    pub to: ChooseSpec,
-}
-
-impl MoveAllCountersEffect {
-    /// Create a new move all counters effect.
-    pub fn new(from: ChooseSpec, to: ChooseSpec) -> Self {
-        Self { from, to }
-    }
-
-    /// Create an effect that moves all counters between creatures.
-    pub fn between_creatures() -> Self {
-        Self::new(ChooseSpec::creature(), ChooseSpec::creature())
-    }
-}
-
 impl EffectExecutor for MoveAllCountersEffect {
     fn execute(
         &self,

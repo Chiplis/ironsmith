@@ -8,7 +8,7 @@ use crate::effects::helpers::{resolve_player_filter, resolve_value};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::mana::ManaSymbol;
-use crate::target::PlayerFilter;
+pub use ironsmith_core::AddManaOfAnyColorEffect;
 
 /// Effect that adds mana of any color(s) to a player's mana pool.
 ///
@@ -29,50 +29,6 @@ use crate::target::PlayerFilter;
 /// // Add X mana of any color
 /// let effect = AddManaOfAnyColorEffect::you(Value::X);
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct AddManaOfAnyColorEffect {
-    /// Number of mana to add.
-    pub amount: Value,
-    /// Which player receives the mana.
-    pub player: PlayerFilter,
-    /// Optional restriction on which colors can be chosen.
-    pub available_colors: Option<Vec<Color>>,
-}
-
-impl AddManaOfAnyColorEffect {
-    /// Create a new add mana of any color effect.
-    pub fn new(amount: impl Into<Value>, player: PlayerFilter) -> Self {
-        Self {
-            amount: amount.into(),
-            player,
-            available_colors: None,
-        }
-    }
-
-    /// Create a new add mana effect restricted to specific colors.
-    pub fn restricted(
-        amount: impl Into<Value>,
-        player: PlayerFilter,
-        available_colors: Vec<Color>,
-    ) -> Self {
-        Self {
-            amount: amount.into(),
-            player,
-            available_colors: Some(available_colors),
-        }
-    }
-
-    /// Create an effect where you add mana of any color.
-    pub fn you(amount: impl Into<Value>) -> Self {
-        Self::new(amount, PlayerFilter::You)
-    }
-
-    /// Create a restricted-color effect where you add mana.
-    pub fn you_restricted(amount: impl Into<Value>, available_colors: Vec<Color>) -> Self {
-        Self::restricted(amount, PlayerFilter::You, available_colors)
-    }
-}
-
 impl EffectExecutor for AddManaOfAnyColorEffect {
     fn execute(
         &self,
@@ -134,6 +90,7 @@ impl EffectExecutor for AddManaOfAnyColorEffect {
 mod tests {
     use super::*;
     use crate::ids::PlayerId;
+    use crate::target::PlayerFilter;
 
     fn setup_game() -> GameState {
         crate::tests::test_helpers::setup_two_player_game()

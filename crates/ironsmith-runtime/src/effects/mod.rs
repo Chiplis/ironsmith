@@ -94,9 +94,10 @@ pub use cards::{
     ShuffleHandAndGraveyardIntoLibraryEffect, ShuffleLibraryEffect, SurveilEffect,
 };
 pub use combat::{
-    EnterAttackingEffect, ExchangeValueKind, ExchangeValueOperand, ExchangeValuesEffect,
-    FightEffect, GoadEffect, GrantAbilitiesAllEffect, GrantAbilitiesTargetEffect, MeleeEffect,
-    ModifyPowerToughnessAllEffect, ModifyPowerToughnessEffect, ModifyPowerToughnessForEachEffect,
+    CombatDamagePreventionTarget, EnterAttackingEffect, ExchangeValueKind, ExchangeValueOperand,
+    ExchangeValuesEffect, FightEffect, GoadEffect, GrantAbilitiesAllEffect,
+    GrantAbilitiesTargetEffect, MeleeEffect, ModifyPowerToughnessAllEffect,
+    ModifyPowerToughnessEffect, ModifyPowerToughnessForEachEffect, PreventAllCombatDamageEffect,
     PreventAllCombatDamageFromEffect, PreventAllDamageEffect, PreventAllDamageToTargetEffect,
     PreventDamageEffect, RemoveFromCombatEffect, SetBasePowerToughnessEffect,
 };
@@ -121,6 +122,9 @@ pub use counters::{
     ProliferateEffect, PutCountersEffect, RemoveAnyCountersAmongEffect,
     RemoveAnyCountersFromSourceEffect, RemoveCountersEffect, RemoveUpToAnyCountersEffect,
     RemoveUpToCountersEffect,
+};
+pub(crate) use counters::{
+    remove_any_counters_among_cost_display, remove_any_counters_among_valid_targets_with_tags,
 };
 pub use damage::{
     ClearDamageEffect, DealDamageEffect, DealDistributedDamageEffect, PreventNextTimeDamageEffect,

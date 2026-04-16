@@ -49,6 +49,7 @@ mod cost_modifiers;
 mod id;
 mod keywords;
 mod misc;
+mod model_interpreter;
 mod protection;
 mod restrictions;
 mod text_utils;
@@ -65,6 +66,7 @@ pub use cost_modifiers::*;
 pub use ironsmith_core::ThisSpellCastTiming;
 pub use keywords::*;
 pub use misc::*;
+pub use model_interpreter::{CompiledStaticAbility, StaticAbilityModelInterpreter};
 pub use protection::*;
 pub use restrictions::*;
 

@@ -5,7 +5,7 @@ use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
-use crate::target::PlayerFilter;
+pub use ironsmith_core::LoseTheGameEffect;
 
 /// Effect that causes a player to lose the game.
 ///
@@ -24,29 +24,6 @@ use crate::target::PlayerFilter;
 /// // You lose the game (alternate win condition trigger)
 /// let effect = LoseTheGameEffect::you();
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct LoseTheGameEffect {
-    /// The player who loses the game.
-    pub player: PlayerFilter,
-}
-
-impl LoseTheGameEffect {
-    /// Create a new lose the game effect.
-    pub fn new(player: PlayerFilter) -> Self {
-        Self { player }
-    }
-
-    /// The controller loses the game.
-    pub fn you() -> Self {
-        Self::new(PlayerFilter::You)
-    }
-
-    /// Target opponent loses the game.
-    pub fn opponent() -> Self {
-        Self::new(PlayerFilter::Opponent)
-    }
-}
-
 impl EffectExecutor for LoseTheGameEffect {
     fn execute(
         &self,

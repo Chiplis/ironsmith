@@ -17,6 +17,7 @@ use crate::snapshot::ObjectSnapshot;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
+pub use ironsmith_core::SacrificePlayerEffect;
 
 use super::apply_zone_change_with_additional_effects;
 
@@ -162,6 +163,17 @@ impl SacrificeEffect {
     /// Create an effect where a specific player sacrifices.
     pub fn player(filter: ObjectFilter, count: impl Into<Value>, player: PlayerFilter) -> Self {
         Self::new(filter, count, player)
+    }
+}
+
+impl EffectExecutor for SacrificePlayerEffect {
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        SacrificeEffect::player(self.filter.clone(), self.count.clone(), self.player.clone())
+            .execute(game, ctx)
     }
 }
 
