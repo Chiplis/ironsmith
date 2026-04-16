@@ -162,6 +162,7 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly __wbg_wasmgame_free: (a: number, b: number) => void;
+    readonly wasm_start: () => void;
     readonly wasmgame_new: () => number;
     readonly wasmgame_reset: (a: number, b: any, c: number) => [number, number];
     readonly wasmgame_startMatch: (a: number, b: any) => [number, number, number];
@@ -200,7 +201,6 @@ export interface InitOutput {
     readonly wasmgame_setPerspective: (a: number, b: number) => [number, number];
     readonly wasmgame_cancelDecision: (a: number) => [number, number, number];
     readonly wasmgame_dispatch: (a: number, b: any) => [number, number, number];
-    readonly wasm_start: () => void;
     readonly wasmgame_uiState: (a: number) => [number, number, number];
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;

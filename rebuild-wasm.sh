@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+WASM_CRATE_DIR="$ROOT_DIR/crates/ironsmith-wasm"
 PKG_DIR="$ROOT_DIR/pkg"
 DEMO_PKG_DIR="$ROOT_DIR/web/wasm_demo/pkg"
 DEFAULT_DB_PATH="$ROOT_DIR/reports/engine-status.sqlite3"
@@ -270,7 +271,22 @@ else
   echo "[INFO] wasm-opt: disabled (--no-opt)"
 fi
 
-WASM_PACK_ARGS=(build --target web --release)
+WASM_OUT_DIR="$(
+  python3 - "$PKG_DIR" "$WASM_CRATE_DIR" <<'PY'
+import os
+import sys
+
+print(os.path.relpath(sys.argv[1], sys.argv[2]))
+PY
+)"
+
+WASM_PACK_ARGS=(
+  build "$WASM_CRATE_DIR"
+  --target web
+  --release
+  --out-dir "$WASM_OUT_DIR"
+  --out-name ironsmith
+)
 if [[ "$OPTIMIZE_WASM" -eq 0 ]]; then
   WASM_PACK_ARGS+=(--no-opt)
 fi

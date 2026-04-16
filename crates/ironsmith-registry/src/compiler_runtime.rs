@@ -1,3 +1,5 @@
+#[cfg(ironsmith_runtime_inline_compiler_runtime)]
+use crate as ironsmith;
 use ironsmith_compiler as compiler;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

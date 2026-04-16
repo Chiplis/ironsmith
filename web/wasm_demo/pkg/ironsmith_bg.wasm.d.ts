@@ -2,6 +2,7 @@
 /* eslint-disable */
 export const memory: WebAssembly.Memory;
 export const __wbg_wasmgame_free: (a: number, b: number) => void;
+export const wasm_start: () => void;
 export const wasmgame_new: () => number;
 export const wasmgame_reset: (a: number, b: any, c: number) => [number, number];
 export const wasmgame_startMatch: (a: number, b: any) => [number, number, number];
@@ -40,7 +41,6 @@ export const wasmgame_switchPerspective: (a: number) => [number, number, number]
 export const wasmgame_setPerspective: (a: number, b: number) => [number, number];
 export const wasmgame_cancelDecision: (a: number) => [number, number, number];
 export const wasmgame_dispatch: (a: number, b: any) => [number, number, number];
-export const wasm_start: () => void;
 export const wasmgame_uiState: (a: number) => [number, number, number];
 export const __wbindgen_malloc: (a: number, b: number) => number;
 export const __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;

@@ -18,7 +18,9 @@ console_error_panic_hook = "0.1"
 
 [lib]
 path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
 
 [features]
 default = ["generated-registry"]
-generated-registry = []
+generated-registry = ["ironsmith/generated-registry"]
+wasm = ["ironsmith/wasm"]

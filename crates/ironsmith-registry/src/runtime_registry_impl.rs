@@ -1,7 +1,9 @@
 //! Registry-owned runtime card-loading implementation shared with runtime.
 
 use super::{generated_meld_counterparts, generated_registry};
-use crate::ability::{Ability, AbilityKind};
+#[cfg(all(feature = "handwritten-parse-support", not(test)))]
+use crate::ability::Ability;
+use crate::ability::AbilityKind;
 use crate::cards::CardDefinition;
 #[cfg(all(feature = "handwritten-parse-support", not(test)))]
 use crate::cards::CardDefinitionBuilder;

@@ -3,8 +3,6 @@
 //! This module extends the CardBuilder with methods for adding abilities,
 //! making it easy to define cards with their complete gameplay mechanics.
 
-#[cfg(all(test, ironsmith_runtime_parser_tests))]
-use crate::TaggedOpbjectRelation;
 use crate::ability::{
     self, Ability, AbilityKind, ActivationTiming, LevelAbility, TriggeredAbility,
 };
@@ -23,8 +21,6 @@ use crate::mana::{ManaCost, ManaSymbol};
 use crate::object::{AuraAttachmentFilter, CounterType};
 use crate::resolution::ResolutionProgram;
 use crate::static_abilities::StaticAbility;
-#[cfg(all(test, ironsmith_runtime_parser_tests))]
-use crate::static_abilities::StaticAbilityId;
 use crate::tag::TagKey;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::triggers::Trigger;
@@ -62,7 +58,7 @@ impl std::error::Error for CardTextError {}
 #[cfg(any(test, ironsmith_runtime_parser_tests))]
 type ParsedAbility = ();
 
-#[cfg(all(test, ironsmith_runtime_parser_tests))]
+#[cfg(ironsmith_runtime_parser_tests)]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct ParseCacheKey {
     builder_context: String,
@@ -70,7 +66,7 @@ struct ParseCacheKey {
     allow_unsupported: bool,
 }
 
-#[cfg(all(test, ironsmith_runtime_parser_tests))]
+#[cfg(ironsmith_runtime_parser_tests)]
 impl ParseCacheKey {
     fn new(builder: &CardDefinitionBuilder, text: &str, allow_unsupported: bool) -> Self {
         Self {
@@ -81,14 +77,14 @@ impl ParseCacheKey {
     }
 }
 
-#[cfg(all(test, ironsmith_runtime_parser_tests))]
+#[cfg(ironsmith_runtime_parser_tests)]
 type CachedParseResult = Result<CardDefinition, CardTextError>;
 
-#[cfg(all(test, ironsmith_runtime_parser_tests))]
+#[cfg(ironsmith_runtime_parser_tests)]
 #[path = "../../../ironsmith-registry/src/compiler_runtime.rs"]
 mod compiler_runtime_for_tests;
 
-#[cfg(all(test, ironsmith_runtime_parser_tests))]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn parse_result_cache() -> &'static std::sync::Mutex<HashMap<ParseCacheKey, CachedParseResult>> {
     static PARSE_RESULT_CACHE: std::sync::OnceLock<
         std::sync::Mutex<HashMap<ParseCacheKey, CachedParseResult>>,
@@ -96,7 +92,7 @@ fn parse_result_cache() -> &'static std::sync::Mutex<HashMap<ParseCacheKey, Cach
     PARSE_RESULT_CACHE.get_or_init(|| std::sync::Mutex::new(HashMap::new()))
 }
 
-#[cfg(all(test, ironsmith_runtime_parser_tests))]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn store_cached_parse(key: ParseCacheKey, result: CachedParseResult) -> CachedParseResult {
     parse_result_cache()
         .lock()
@@ -105,7 +101,7 @@ fn store_cached_parse(key: ParseCacheKey, result: CachedParseResult) -> CachedPa
     result
 }
 
-#[cfg(all(test, ironsmith_runtime_parser_tests))]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn finalize_definition(
     definition: CardDefinition,
     original_builder: &CardDefinitionBuilder,
@@ -227,7 +223,7 @@ fn finalize_cipher_effects(definition: CardDefinition) -> CardDefinition {
     definition
 }
 
-#[cfg(all(test, ironsmith_runtime_parser_tests))]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn lookup_cached_parse(key: &ParseCacheKey) -> Option<CachedParseResult> {
     parse_result_cache()
         .lock()
@@ -236,7 +232,7 @@ fn lookup_cached_parse(key: &ParseCacheKey) -> Option<CachedParseResult> {
         .cloned()
 }
 
-#[cfg(all(test, ironsmith_runtime_parser_tests))]
+#[cfg(ironsmith_runtime_parser_tests)]
 pub fn parse_card_text(
     builder: CardDefinitionBuilder,
     text: impl Into<String>,
@@ -244,7 +240,7 @@ pub fn parse_card_text(
     parse_card_text_with_policy(builder, text, false)
 }
 
-#[cfg(all(test, ironsmith_runtime_parser_tests))]
+#[cfg(ironsmith_runtime_parser_tests)]
 pub fn parse_card_text_allow_unsupported(
     builder: CardDefinitionBuilder,
     text: impl Into<String>,
@@ -252,7 +248,7 @@ pub fn parse_card_text_allow_unsupported(
     parse_card_text_with_policy(builder, text, true)
 }
 
-#[cfg(all(test, ironsmith_runtime_parser_tests))]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn parse_card_text_with_policy(
     builder: CardDefinitionBuilder,
     text: impl Into<String>,
@@ -267,7 +263,7 @@ fn parse_card_text_with_policy(
     store_cached_parse(cache_key, result)
 }
 
-#[cfg(all(test, ironsmith_runtime_parser_tests))]
+#[cfg(ironsmith_runtime_parser_tests)]
 pub fn parse_card_text_with_annotations(
     builder: CardDefinitionBuilder,
     text: impl Into<String>,
@@ -275,7 +271,7 @@ pub fn parse_card_text_with_annotations(
     parse_card_text_with_annotations_policy(builder, text, false)
 }
 
-#[cfg(all(test, ironsmith_runtime_parser_tests))]
+#[cfg(ironsmith_runtime_parser_tests)]
 pub fn parse_card_text_with_annotations_allow_unsupported(
     builder: CardDefinitionBuilder,
     text: impl Into<String>,
@@ -283,7 +279,7 @@ pub fn parse_card_text_with_annotations_allow_unsupported(
     parse_card_text_with_annotations_policy(builder, text, true)
 }
 
-#[cfg(all(test, ironsmith_runtime_parser_tests))]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn parse_card_text_with_annotations_policy(
     builder: CardDefinitionBuilder,
     text: impl Into<String>,
@@ -1139,7 +1135,7 @@ pub struct CardDefinitionBuilder {
     has_fuse: bool,
 }
 
-#[cfg(all(test, ironsmith_runtime_parser_tests))]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn compile_to_runtime_definition(
     builder: &CardDefinitionBuilder,
     text: impl Into<String>,
@@ -1153,7 +1149,7 @@ fn compile_to_runtime_definition(
     .map_err(compiler_runtime_error_to_card_text_error)
 }
 
-#[cfg(all(test, ironsmith_runtime_parser_tests))]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn runtime_builder_snapshot(
     builder: &CardDefinitionBuilder,
 ) -> compiler_runtime_for_tests::RuntimeBuilderSnapshot {
@@ -1164,14 +1160,14 @@ fn runtime_builder_snapshot(
     }
 }
 
-#[cfg(all(test, ironsmith_runtime_parser_tests))]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn compiler_runtime_error_to_card_text_error(
     err: compiler_runtime_for_tests::CompilerIntegrationError,
 ) -> CardTextError {
     CardTextError::ParseError(err.to_string())
 }
 
-#[cfg(all(test, ironsmith_runtime_parser_tests))]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn parse_annotations_from_compiler(
     annotations: ironsmith_compiler::ParseAnnotations,
 ) -> ParseAnnotations {
@@ -1200,7 +1196,7 @@ fn parse_annotations_from_compiler(
 }
 
 impl CardDefinitionBuilder {
-    #[cfg(all(test, ironsmith_runtime_parser_tests))]
+    #[cfg(ironsmith_runtime_parser_tests)]
     fn parse_cache_key(&self, text: &str, allow_unsupported: bool) -> ParseCacheKey {
         ParseCacheKey::new(self, text, allow_unsupported)
     }
@@ -1621,7 +1617,7 @@ impl CardDefinitionBuilder {
     }
 
     /// Build a CardDefinition from oracle text.
-    #[cfg(all(test, ironsmith_runtime_parser_tests))]
+    #[cfg(ironsmith_runtime_parser_tests)]
     pub fn parse_text(self, text: impl Into<String>) -> Result<CardDefinition, CardTextError> {
         parse_card_text(self, text)
     }
@@ -1636,7 +1632,7 @@ impl CardDefinitionBuilder {
     }
 
     /// Build a CardDefinition from oracle text, preserving unsupported lines as markers.
-    #[cfg(all(test, ironsmith_runtime_parser_tests))]
+    #[cfg(ironsmith_runtime_parser_tests)]
     pub fn parse_text_allow_unsupported(
         self,
         text: impl Into<String>,
@@ -1657,7 +1653,7 @@ impl CardDefinitionBuilder {
     }
 
     /// Build a CardDefinition from oracle text, returning parse annotations.
-    #[cfg(all(test, ironsmith_runtime_parser_tests))]
+    #[cfg(ironsmith_runtime_parser_tests)]
     pub fn parse_text_with_annotations(
         self,
         text: impl Into<String>,
@@ -1667,7 +1663,7 @@ impl CardDefinitionBuilder {
 
     /// Build a CardDefinition from oracle text, returning parse annotations while
     /// preserving unsupported lines as markers.
-    #[cfg(all(test, ironsmith_runtime_parser_tests))]
+    #[cfg(ironsmith_runtime_parser_tests)]
     pub fn parse_text_with_annotations_allow_unsupported(
         self,
         text: impl Into<String>,
@@ -1693,7 +1689,7 @@ impl CardDefinitionBuilder {
 
     /// Build a CardDefinition from oracle text with metadata, without parsing rules text.
     /// Useful for cards with custom/manual abilities where parsing may be incomplete.
-    #[cfg(all(test, ironsmith_runtime_parser_tests))]
+    #[cfg(ironsmith_runtime_parser_tests)]
     pub fn from_text_with_metadata_oracle_only(self, text: impl Into<String>) -> CardDefinition {
         fn pt_value_text(value: PtValue) -> String {
             match value {
@@ -4505,7 +4501,7 @@ mod target_parse_tests {
                 assert_eq!(filter.tagged_constraints.len(), 1);
                 let constraint = &filter.tagged_constraints[0];
                 assert_eq!(constraint.tag.as_str(), IT_TAG);
-                assert_eq!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject);
+                assert_eq!(constraint.relation, crate::TaggedOpbjectRelation::IsTaggedObject);
             }
             _ => panic!("expected object target"),
         }
@@ -4556,7 +4552,7 @@ mod target_parse_tests {
         assert_eq!(filter.tagged_constraints.len(), 1);
         let constraint = &filter.tagged_constraints[0];
         assert_eq!(constraint.tag.as_str(), IT_TAG);
-        assert_eq!(constraint.relation, TaggedOpbjectRelation::SharesCardType);
+        assert_eq!(constraint.relation, crate::TaggedOpbjectRelation::SharesCardType);
     }
 
     #[test]
@@ -4570,7 +4566,7 @@ mod target_parse_tests {
         assert!(
             filter.tagged_constraints.iter().any(|constraint| {
                 constraint.tag.as_str() == "enchanted"
-                    && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                    && constraint.relation == crate::TaggedOpbjectRelation::IsTaggedObject
             }),
             "expected enchanted attachment constraint, got {:?}",
             filter.tagged_constraints
@@ -4588,7 +4584,7 @@ mod target_parse_tests {
         assert!(
             filter.tagged_constraints.iter().any(|constraint| {
                 constraint.tag.as_str() == "equipped"
-                    && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                    && constraint.relation == crate::TaggedOpbjectRelation::IsTaggedObject
             }),
             "expected equipped attachment constraint, got {:?}",
             filter.tagged_constraints
@@ -4635,7 +4631,7 @@ mod target_parse_tests {
         assert!(
             filter.tagged_constraints.iter().any(|constraint| {
                 constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
-                    && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                    && constraint.relation == crate::TaggedOpbjectRelation::IsTaggedObject
             }),
             "expected source-linked exile tag, got {:?}",
             filter.tagged_constraints
@@ -6064,7 +6060,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             })
             .collect();
         assert!(
-            static_ids.contains(&StaticAbilityId::SetBasePowerToughnessForFilter),
+            static_ids.contains(&crate::static_abilities::StaticAbilityId::SetBasePowerToughnessForFilter),
             "expected static SetBasePowerToughnessForFilter, got {static_ids:?}"
         );
 
@@ -6109,23 +6105,23 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             })
             .collect();
         assert!(
-            static_ids.contains(&StaticAbilityId::RemoveAllAbilitiesForFilter),
+            static_ids.contains(&crate::static_abilities::StaticAbilityId::RemoveAllAbilitiesForFilter),
             "expected lose-all-abilities static, got {static_ids:?}"
         );
         assert!(
-            static_ids.contains(&StaticAbilityId::SetCardTypes),
+            static_ids.contains(&crate::static_abilities::StaticAbilityId::SetCardTypes),
             "expected set-card-types static, got {static_ids:?}"
         );
         assert!(
-            static_ids.contains(&StaticAbilityId::SetCreatureSubtypes),
+            static_ids.contains(&crate::static_abilities::StaticAbilityId::SetCreatureSubtypes),
             "expected creature-subtype reset static, got {static_ids:?}"
         );
         assert!(
-            static_ids.contains(&StaticAbilityId::SetColors),
+            static_ids.contains(&crate::static_abilities::StaticAbilityId::SetColors),
             "expected set-colors static, got {static_ids:?}"
         );
         assert!(
-            static_ids.contains(&StaticAbilityId::SetBasePowerToughnessForFilter),
+            static_ids.contains(&crate::static_abilities::StaticAbilityId::SetBasePowerToughnessForFilter),
             "expected set-base-power/toughness static, got {static_ids:?}"
         );
     }
@@ -6156,23 +6152,23 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             def.alternative_casts
         );
         assert!(
-            static_ids.contains(&StaticAbilityId::RemoveAllAbilitiesForFilter),
+            static_ids.contains(&crate::static_abilities::StaticAbilityId::RemoveAllAbilitiesForFilter),
             "expected lose-all-abilities static, got {static_ids:?}"
         );
         assert!(
-            static_ids.contains(&StaticAbilityId::SetCardTypes),
+            static_ids.contains(&crate::static_abilities::StaticAbilityId::SetCardTypes),
             "expected set-card-types static, got {static_ids:?}"
         );
         assert!(
-            static_ids.contains(&StaticAbilityId::SetCreatureSubtypes),
+            static_ids.contains(&crate::static_abilities::StaticAbilityId::SetCreatureSubtypes),
             "expected creature-subtype reset static, got {static_ids:?}"
         );
         assert!(
-            static_ids.contains(&StaticAbilityId::SetColors),
+            static_ids.contains(&crate::static_abilities::StaticAbilityId::SetColors),
             "expected set-colors static, got {static_ids:?}"
         );
         assert!(
-            static_ids.contains(&StaticAbilityId::SetBasePowerToughnessForFilter),
+            static_ids.contains(&crate::static_abilities::StaticAbilityId::SetBasePowerToughnessForFilter),
             "expected set-base-power/toughness static, got {static_ids:?}"
         );
     }
@@ -12150,11 +12146,11 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             })
             .collect();
         assert!(
-            static_ids.contains(&StaticAbilityId::AddCardTypes),
+            static_ids.contains(&crate::static_abilities::StaticAbilityId::AddCardTypes),
             "expected AddCardTypes static ability for lands becoming creatures, got {static_ids:?}"
         );
         assert!(
-            static_ids.contains(&StaticAbilityId::SetBasePowerToughnessForFilter),
+            static_ids.contains(&crate::static_abilities::StaticAbilityId::SetBasePowerToughnessForFilter),
             "expected SetBasePowerToughnessForFilter static ability for lands becoming 1/1, got {static_ids:?}"
         );
     }
@@ -12283,7 +12279,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             })
             .collect();
         assert!(
-            static_ids.contains(&StaticAbilityId::ActivatedAbilityCostReduction),
+            static_ids.contains(&crate::static_abilities::StaticAbilityId::ActivatedAbilityCostReduction),
             "expected activated-ability cost reduction static ability, got {static_ids:?}"
         );
     }
@@ -12312,7 +12308,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             })
             .collect();
         assert!(
-            static_ids.contains(&StaticAbilityId::ActivatedAbilityCostIncrease),
+            static_ids.contains(&crate::static_abilities::StaticAbilityId::ActivatedAbilityCostIncrease),
             "expected activated-ability cost increase static ability, got {static_ids:?}"
         );
     }
@@ -12354,7 +12350,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             })
             .collect();
         assert!(
-            static_ids.contains(&StaticAbilityId::Anthem),
+            static_ids.contains(&crate::static_abilities::StaticAbilityId::Anthem),
             "expected anthem static ability for +X/+X where-X clause, got {static_ids:?}"
         );
     }
@@ -12867,7 +12863,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .expect("expected ForEachObject for nonland revealed card fanout");
         assert!(
             for_each.filter.tagged_constraints.iter().any(|constraint| {
-                constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                constraint.relation == crate::TaggedOpbjectRelation::IsTaggedObject
                     && crate::cards::is_sentence_helper_tag(constraint.tag.as_str(), "revealed")
             }),
             "expected revealed-this-way fanout to reference revealed tag, got {for_each:?}"
